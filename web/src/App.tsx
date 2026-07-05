@@ -10,8 +10,10 @@ import {
   IconOrbits,
   IconProfileWave,
   IconRun,
+  IconSpark,
   IconTransform,
 } from "./components/ui";
+import { AssistantPanel } from "./llm";
 import { ConsistencyViewer } from "./pages/ConsistencyViewer";
 import { BraggProfileViewer } from "./pages/BraggProfileViewer";
 import { DeltaPdfViewer } from "./pages/DeltaPdfViewer";
@@ -21,9 +23,9 @@ import { PipelineExecution } from "./pages/PipelineExecution";
 import { ReciprocalViewer } from "./pages/ReciprocalViewer";
 import { usePipelineStore } from "./state/pipelineStore";
 
-export type Tab = "config" | "execution" | "reciprocal" | "bragg" | "dpdf" | "multi" | "consistency";
+export type Tab = "config" | "execution" | "reciprocal" | "bragg" | "dpdf" | "multi" | "consistency" | "assistant";
 
-const NAV: { id: Tab; label: string; desc: string; icon: ReactNode }[] = [
+const NAV: { id: Tab; label: string; desc?: string; icon: ReactNode }[] = [
   {
     id: "config",
     label: "Configure",
@@ -66,6 +68,11 @@ const NAV: { id: Tab; label: string; desc: string; icon: ReactNode }[] = [
     desc: "ΔPDF orthoslices side by side across related files, with shared cuts and pooled colour scale.",
     icon: <IconLayers />,
   },
+  {
+    id: "assistant",
+    label: "AI Assistant",
+    icon: <IconSpark />,
+  },
 ];
 
 function renderPage(tab: Tab, setTab: (t: Tab) => void): ReactNode {
@@ -84,6 +91,8 @@ function renderPage(tab: Tab, setTab: (t: Tab) => void): ReactNode {
       return <MultiTempViewer />;
     case "consistency":
       return <ConsistencyViewer />;
+    case "assistant":
+      return <AssistantPanel />;
   }
 }
 
@@ -103,7 +112,6 @@ export function App() {
           </span>
           <span className="brand-name">
             <b>nebula3d</b>
-            <span className="brand-sub">scattering console</span>
           </span>
         </div>
 
@@ -117,6 +125,7 @@ export function App() {
             >
               {n.icon}
               {n.label}
+              {n.id === "assistant" && <span className="nav-beta">Beta</span>}
               {n.id === "execution" && running && (
                 <span className="nav-dot" title="a job is running" />
               )}
@@ -144,7 +153,7 @@ export function App() {
       <main className="main">
         <header className="page-head">
           <h2>{active.label}</h2>
-          <p>{active.desc}</p>
+          {active.desc && <p>{active.desc}</p>}
         </header>
         {renderPage(tab, setTab)}
       </main>
