@@ -112,7 +112,6 @@ export function App() {
           </span>
           <span className="brand-name">
             <b>nebula3d</b>
-            <span className="brand-sub">scattering console</span>
           </span>
         </div>
 
