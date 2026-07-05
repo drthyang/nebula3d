@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
-import { useHealth } from "./api/hooks";
+import { useDatasets, useHealth } from "./api/hooks";
 import { PYODIDE_MODE } from "./api/pyodideEngine";
 import {
   BrandGlyph,
@@ -19,6 +19,7 @@ import { DeltaPdfViewer } from "./pages/DeltaPdfViewer";
 import { PipelineConfig } from "./pages/PipelineConfig";
 import { PipelineExecution } from "./pages/PipelineExecution";
 import { ReciprocalViewer } from "./pages/ReciprocalViewer";
+import { useDatasetStore, useInitializeDataset } from "./state/datasetStore";
 import { usePipelineStore } from "./state/pipelineStore";
 
 export type Tab = "config" | "execution" | "reciprocal" | "bragg" | "dpdf" | "consistency" | "assistant";
@@ -93,6 +94,14 @@ export function App() {
   const running = usePipelineStore((s) => s.running);
   const active = NAV.find((n) => n.id === tab) ?? NAV[0];
 
+  // The dataset is chosen once, here in the sidebar, and every page reads it
+  // from the shared store — no per-page dataset pickers.
+  const datasetsQ = useDatasets();
+  const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
+  useInitializeDataset(datasets);
+  const datasetId = useDatasetStore((s) => s.datasetId);
+  const setDataset = useDatasetStore((s) => s.setDataset);
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -104,6 +113,22 @@ export function App() {
             <b>nebula3d</b>
           </span>
         </div>
+
+        <label className="sidebar-dataset">
+          <span className="sidebar-dataset-label">Dataset</span>
+          <select
+            value={datasetId ?? ""}
+            onChange={(e) => setDataset(e.target.value)}
+            disabled={!datasets.length}
+          >
+            {!datasets.length && <option value="">—</option>}
+            {datasets.map((d) => (
+              <option key={d.id} value={d.id} title={d.raw_name}>
+                {d.temperature ?? d.stem}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <nav className="nav">
           {NAV.map((n) => (

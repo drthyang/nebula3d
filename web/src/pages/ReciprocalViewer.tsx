@@ -44,7 +44,6 @@ export function ReciprocalViewer() {
   useInitializeDataset(datasets);
 
   const datasetId = useDatasetStore((s) => s.datasetId);
-  const setDataset = useDatasetStore((s) => s.setDataset);
   const fixedAxis = useViewerStore((s) => s.fixedAxis);
   const cutIndex = useViewerStore((s) => s.cutIndex);
   const contrast = useViewerStore((s) => s.contrast);
@@ -169,24 +168,8 @@ export function ReciprocalViewer() {
 
   return (
     <div className="page-body qr-page">
-      {/* ── Header: dataset · raw → flattened pipeline identity · one-liner ── */}
+      {/* ── Header: raw → flattened pipeline identity · one-liner ── */}
       <div className="qr-header">
-        <div className="qr-header-dataset">
-          <span className="qr-eyebrow">Dataset</span>
-          <select
-            value={datasetId ?? ""}
-            onChange={(e) => setDataset(e.target.value)}
-          >
-            {datasets.map((d) => (
-              <option key={d.id} value={d.id} title={d.raw_name}>
-                {d.temperature ?? d.stem}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="qr-divider" />
-
         <div className="qr-roundtrip">
           <span className="qr-rt qr-rt--q">raw</span>
           <span className="qr-rt-arrow">→</span>

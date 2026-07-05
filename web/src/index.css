@@ -145,6 +145,34 @@ button {
   letter-spacing: 0.02em;
 }
 
+/* Global dataset picker — the single place to switch datasets. */
+.sidebar-dataset {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0 4px;
+}
+.sidebar-dataset-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.sidebar-dataset select {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 7px 9px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.sidebar-dataset select:hover:not(:disabled) {
+  border-color: var(--text-3);
+}
+
 .nav {
   display: flex;
   flex-direction: column;
@@ -1836,6 +1864,19 @@ input[type="range"]::-moz-range-track {
   flex: none;
   min-width: 0;
 }
+/* Read-only current-dataset value on Configure (the dropdown lives in the sidebar). */
+.dataset-current {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
 .dataset-meta {
   display: flex;
   align-items: center;
@@ -3123,12 +3164,6 @@ input[type="range"]::-moz-range-track {
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
-.ai-topbar-dataset {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-.ai-topbar-dataset select,
 .ai-settings select,
 .ai-settings input {
   background: var(--surface-2);
@@ -3144,7 +3179,6 @@ input[type="range"]::-moz-range-track {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-left: auto;
 }
 .ai-conn-status {
   display: inline-flex;

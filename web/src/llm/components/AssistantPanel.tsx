@@ -20,7 +20,6 @@ export function AssistantPanel() {
   useInitializeDataset(datasets);
 
   const datasetId = useDatasetStore((s) => s.datasetId);
-  const setDataset = useDatasetStore((s) => s.setDataset);
   const dataset = datasets.find((d) => d.id === datasetId);
 
   const { settings, connection, connected, runTest, contextQuery } = useAssistant(dataset);
@@ -30,17 +29,6 @@ export function AssistantPanel() {
   return (
     <div className="page-body ai-page">
       <div className="ai-topbar">
-        <label className="ai-topbar-dataset">
-          <span className="qr-eyebrow">Dataset</span>
-          <select value={datasetId ?? ""} onChange={(e) => setDataset(e.target.value)}>
-            {datasets.map((d) => (
-              <option key={d.id} value={d.id} title={d.raw_name}>
-                {d.temperature ?? d.stem}
-              </option>
-            ))}
-          </select>
-        </label>
-
         <ConnectionBar
           settings={settings}
           connection={connection}

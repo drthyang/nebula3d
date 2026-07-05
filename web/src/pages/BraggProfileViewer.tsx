@@ -562,7 +562,6 @@ export function BraggProfileViewer() {
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
   useInitializeDataset(datasets);
   const datasetId = useDatasetStore((s) => s.datasetId);
-  const setDataset = useDatasetStore((s) => s.setDataset);
   const colormap = useViewerStore((s) => s.colormap);
   const setColormap = useViewerStore((s) => s.setColormap);
 
@@ -646,12 +645,6 @@ export function BraggProfileViewer() {
                 />
               </span>
             )}
-            <label className="bragg-chip bragg-chip-select">
-              <span className="bragg-chip-key">Dataset</span>
-              <select value={datasetId ?? ""} onChange={(e) => { setDataset(e.target.value); setSelected(0); }}>
-                {datasets.map((d) => <option key={d.id} value={d.id} title={d.raw_name}>{d.temperature ?? d.stem}</option>)}
-              </select>
-            </label>
             {profile?.has_profile && (
               <span className="bragg-chip bragg-chip-fit">
                 <i /> {profile.fit_covariance ? "covariance fit" : "moment fit"}

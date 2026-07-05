@@ -47,7 +47,6 @@ export function DeltaPdfViewer() {
   useInitializeDataset(datasets);
 
   const datasetId = useDatasetStore((s) => s.datasetId);
-  const setDataset = useDatasetStore((s) => s.setDataset);
   const cutX = useDpdfStore((s) => s.cutX);
   const cutY = useDpdfStore((s) => s.cutY);
   const cutZ = useDpdfStore((s) => s.cutZ);
@@ -149,24 +148,8 @@ export function DeltaPdfViewer() {
 
   return (
     <div className="page-body qr-page">
-      {/* ── Header: dataset · x·y·z orthoslice identity · recenter ───────── */}
+      {/* ── Header: x·y·z orthoslice identity · recenter ───────── */}
       <div className="qr-header">
-        <div className="qr-header-dataset">
-          <span className="qr-eyebrow">Dataset</span>
-          <select
-            value={datasetId ?? ""}
-            onChange={(e) => setDataset(e.target.value)}
-          >
-            {datasets.map((d) => (
-              <option key={d.id} value={d.id} title={d.raw_name}>
-                {d.temperature ?? d.stem}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="qr-divider" />
-
         <div className="qr-roundtrip">
           <span className="qr-rt qr-rt--q">x</span>
           <span className="qr-rt-arrow">·</span>
