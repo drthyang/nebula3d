@@ -120,7 +120,10 @@ export const dpdfMetrics = (
   base.background_sigma = roundSig(sigma, 3);
   if (sigma <= 0) return base;
 
-  const maxAbs = Math.max(...abs);
+  // Loop rather than Math.max(...abs): the spread overflows the call stack on
+  // full-resolution slices (hundreds of thousands of voxels).
+  let maxAbs = 0;
+  for (let i = 0; i < abs.length; i++) if (abs[i] > maxAbs) maxAbs = abs[i];
   base.feature_snr = roundSig(maxAbs / sigma);
 
   const floor = sigmaThreshold * sigma;

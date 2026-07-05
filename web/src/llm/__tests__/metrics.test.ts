@@ -121,6 +121,14 @@ describe("delta pdf metrics", () => {
     expect(Math.abs(m.anisotropy_angle_deg!)).toBeLessThan(20);
   });
 
+  it("handles a full-resolution slice without overflowing the stack", () => {
+    // 401×401 ≈ 160k voxels — a spread into Math.max(...) would overflow here.
+    const big = makeSlice(401, 401, (x, y) => 0.01 * Math.sin(x + y) + (Math.abs(x) < 2 && Math.abs(y) > 8 ? 2 : 0));
+    expect(() => dpdfMetrics(big)).not.toThrow();
+    const m = dpdfMetrics(big)!;
+    expect(m.feature_snr!).toBeGreaterThan(0);
+  });
+
   it("passes through consistency metrics when no slice is given", () => {
     const m = dpdfMetrics(null, {
       consistency: {
