@@ -25,7 +25,7 @@ import { usePipelineStore } from "./state/pipelineStore";
 
 export type Tab = "config" | "execution" | "reciprocal" | "bragg" | "dpdf" | "multi" | "consistency" | "assistant";
 
-const NAV: { id: Tab; label: string; desc: string; icon: ReactNode }[] = [
+const NAV: { id: Tab; label: string; desc?: string; icon: ReactNode }[] = [
   {
     id: "config",
     label: "Configure",
@@ -71,7 +71,6 @@ const NAV: { id: Tab; label: string; desc: string; icon: ReactNode }[] = [
   {
     id: "assistant",
     label: "AI Assistant",
-    desc: "Ask a local or cloud model to assess the reduction, grounded in metrics computed from the volumes.",
     icon: <IconSpark />,
   },
 ];
@@ -155,7 +154,7 @@ export function App() {
       <main className="main">
         <header className="page-head">
           <h2>{active.label}</h2>
-          <p>{active.desc}</p>
+          {active.desc && <p>{active.desc}</p>}
         </header>
         {renderPage(tab, setTab)}
       </main>

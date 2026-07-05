@@ -38,16 +38,6 @@ export function AssistantPanel() {
             ))}
           </select>
         </div>
-
-        <div className="qr-divider" />
-
-        <span className="qr-desc">
-          {contextQuery.isFetching
-            ? "Reading the stage volumes and computing quality metrics…"
-            : ready
-              ? "Quality metrics for every stage are ready — ask the assistant about ring removal, the Bragg punch, backfill, or the ΔPDF."
-              : "Select a processed dataset to prepare the assistant's context."}
-        </span>
       </div>
 
       <ConnectionBar settings={settings} connection={connection} onTest={runTest} />
@@ -67,7 +57,12 @@ export function AssistantPanel() {
         />
       )}
 
-      <ChatView assistant={contextQuery.data} connected={connected} settings={settings} />
+      <ChatView
+        assistant={contextQuery.data}
+        connected={connected}
+        settings={settings}
+        contextLoading={contextQuery.isFetching}
+      />
     </div>
   );
 }
