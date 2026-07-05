@@ -49,6 +49,7 @@ from nebula3d.analysis import (
 )
 from nebula3d.analysis.delta_pdf import _q_max_from_axes
 from nebula3d.core import HKLVolume
+from nebula3d.core import low_memory as _low_memory
 from nebula3d.preprocessing import (
     ParametricRingModel,
     PatchedRadialRingModel,
@@ -530,9 +531,25 @@ def _build_ring_model(
     )
 
 
+def _drop_sigma(vol: HKLVolume) -> HKLVolume:
+    """Replace ``sigma`` with a zero-stride broadcast view, freeing a full array.
+
+    Only the ring/backfill stages consult ``sigma``; the ΔPDF and back-FFT check
+    do not.  Swapping in a broadcast zero (the same pattern ``invert_delta_pdf``
+    already uses) lets the real per-voxel error array be reclaimed before those
+    stages' FFT transients allocate — one volume-sized float64 saved at peak.
+    """
+    return dataclasses.replace(
+        vol, sigma=np.broadcast_to(np.float64(0.0), vol.data.shape))
+
+
 def _plane_slice_coords(
-    q_full: np.ndarray, phi_full: np.ndarray, axis_dim: int, ip: int,
-) -> tuple[np.ndarray, np.ndarray]:
+    q_full: np.ndarray | None, phi_full: np.ndarray | None, axis_dim: int, ip: int,
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    # low-memory mode passes no precomputed grids — the model recomputes the
+    # (cheap, 2-D) per-plane coordinates itself, bit-for-bit identically.
+    if q_full is None or phi_full is None:
+        return None, None
     sl: list[slice | int] = [slice(None), slice(None), slice(None)]
     sl[axis_dim] = slice(ip, ip + 1)
     return q_full[tuple(sl)], phi_full[tuple(sl)]
@@ -542,7 +559,7 @@ def _process_ring_plane(
     ip: int, vol: HKLVolume, cfg: _SliceConfig, p: RingParams, min_voxels: int,
     q_range: tuple[float, float], ring_centers: np.ndarray | None,
     ring_halfwidths: np.ndarray | None, ring_ceilings: np.ndarray | None,
-    q_full: np.ndarray, phi_full: np.ndarray,
+    q_full: np.ndarray | None, phi_full: np.ndarray | None,
 ) -> _PlaneResult:
     """Fit + subtract powder rings on a single plane; return ``(ip, data2d,
     mask2d, skipped, err)``.  Pure and deterministic, so it gives identical
@@ -704,12 +721,21 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
     # mask each rebuild the meshgrid (previously ~5 redundant rebuilds/plane).
     # Uses the model's own plane/offsets so the values are bit-for-bit what the
     # per-call path would have produced.
-    q_full = _plane_offset_q_magnitude(
-        vol, dummy_model.plane, dummy_model.center_offset,
-        dummy_model.center_offset_h_slope)
-    phi_full = _plane_azimuthal_angle(
-        vol, dummy_model.plane, dummy_model.center_offset,
-        dummy_model.center_offset_h_slope)
+    #
+    # These two full-volume float64 grids stay resident for the whole stage.
+    # In low-memory mode (the Pyodide heap) that is ~2 volumes we cannot afford,
+    # so we skip them and let each plane recompute its own (2-D) coordinates —
+    # identical values, a little more CPU, ~2 volumes less peak.
+    low_mem = _low_memory()
+    if low_mem:
+        q_full = phi_full = None
+    else:
+        q_full = _plane_offset_q_magnitude(
+            vol, dummy_model.plane, dummy_model.center_offset,
+            dummy_model.center_offset_h_slope)
+        phi_full = _plane_azimuthal_angle(
+            vol, dummy_model.plane, dummy_model.center_offset,
+            dummy_model.center_offset_h_slope)
 
     res_data = np.empty_like(vol.data)
     out_mask = vol.mask.copy()
@@ -721,8 +747,8 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
     # above this floor.  spawn's per-worker re-import + volume pickle makes auto
     # a net loss, so it stays serial there unless explicitly overridden.
     parallel_floor = 2_000_000
-    n_workers = _resolve_ring_workers(max_workers, n, int(vol.data.size),
-                                      parallel_floor, is_fork)
+    n_workers = 1 if low_mem else _resolve_ring_workers(
+        max_workers, n, int(vol.data.size), parallel_floor, is_fork)
 
     counters = {"skipped": 0, "done": 0}
 
@@ -1042,7 +1068,10 @@ def pdf_consistency_check(
     """
     recon = invert_delta_pdf(dpdf, deapodize=True, consume=consume_dpdf)
     data_vol = _crop_hkl(vol, p.crop_hkl)
-    data = np.where(np.isfinite(data_vol.masked_data()), data_vol.data, 0.0)
+    # Equivalent to isfinite(masked_data()) but without materialising the full
+    # NaN-filled masked copy: masked_data() is NaN where ~mask, so its finite
+    # set is exactly (mask & isfinite(data)).
+    data = np.where(data_vol.mask & np.isfinite(data_vol.data), data_vol.data, 0.0)
     region = recon.mask & np.isfinite(data)
     if p.q_band is not None:
         region &= _band_limit_q(data_vol, p.q_band)[1]
@@ -1125,7 +1154,9 @@ def consistency_reconstruction(
         dpdf.data = np.where(r_mask, dpdf.data, 0.0)
 
     recon = invert_delta_pdf(dpdf, deapodize=True)
-    data = np.where(np.isfinite(vol_c.masked_data()), vol_c.data, 0.0)
+    # isfinite(masked_data()) without the full NaN-filled copy (see
+    # pdf_consistency_check): masked_data is NaN where ~mask.
+    data = np.where(vol_c.mask & np.isfinite(vol_c.data), vol_c.data, 0.0)
     region = recon.mask & np.isfinite(data) & in_band
     metrics, _rows = _consistency_metrics(
         recon.data, data, region, recon.h_axis, h_values)
@@ -1136,9 +1167,12 @@ def consistency_reconstruction(
     metrics["crop_hkl"] = list(p.crop_hkl) if p.crop_hkl else None
     metrics["apodization"] = p.apodization
 
-    zeros = np.zeros(recon.data.shape, dtype=np.float64)
-    ones = np.ones(recon.data.shape, dtype=bool)
-    data_vol = dataclasses.replace(vol_c, data=data, sigma=zeros, mask=ones)
+    # sigma/mask of the "data" panel are never read numerically by the viewer
+    # (it slices .data), so use zero-stride broadcast views instead of two more
+    # full volume-sized arrays.
+    zero_sigma = np.broadcast_to(np.float64(0.0), recon.data.shape)
+    all_valid = np.broadcast_to(True, recon.data.shape)
+    data_vol = dataclasses.replace(vol_c, data=data, sigma=zero_sigma, mask=all_valid)
     resid_vol = dataclasses.replace(recon, data=data - recon.data)
     return {"metrics": metrics, "recon": recon, "data": data_vol,
             "residual": resid_vol, "dpdf": dpdf}
@@ -1405,6 +1439,10 @@ def run_pipeline(
             dpdf_obj = delta_pdf(pdf_vol, p.delta_pdf, progress=progress)
             write_delta_pdf_h5(dpdf_obj, pdf_vol, p.delta_pdf,
                                pdf_input.name, paths.delta_pdf)
+            # sigma is unused by the ΔPDF and the back-FFT check that follow;
+            # free it so it does not sit under the check's inverse-FFT transient.
+            if _low_memory():
+                pdf_vol = _drop_sigma(pdf_vol)
 
     # --- stage 6: back-FFT round-trip consistency check ---------------------
     if want("pdf_check") and p.pdf_check_enabled:
@@ -1420,6 +1458,8 @@ def run_pipeline(
                   "back-FFT round-trip consistency check")
             if pdf_vol is None:
                 pdf_vol = stage_load(pdf_input)
+                if _low_memory():
+                    pdf_vol = _drop_sigma(pdf_vol)
             if dpdf_obj is None:
                 dpdf_obj = delta_pdf(pdf_vol, p.delta_pdf)
             # consume_dpdf: the ΔPDF is already saved to disk (pdf stage), and

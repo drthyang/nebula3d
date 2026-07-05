@@ -68,7 +68,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter1d
 
-from nebula3d.core import HKLVolume
+from nebula3d.core import HKLVolume, low_memory
 from nebula3d.preprocessing.radial_background import _estimate_baseline, _fill_nan_1d
 
 ESTIMATORS = ("floor", "mode", "median", "snip")
@@ -222,7 +222,10 @@ def flatten_radial_background(
         q, q_grid, bg_curve, left=float(bg_curve[0]), right=float(bg_curve[-1])
     )
     del q  # full-volume |Q| no longer needed
-    data_out = data.copy()
+    # In low-memory mode subtract in place over the (disposable) input instead of
+    # allocating a second full volume — the pipeline hands this stage a fresh
+    # volume and discards it afterwards.  Same arithmetic, bit-identical output.
+    data_out = data if low_memory() else data.copy()
     finite = np.isfinite(data)
     np.subtract(data, bg_at, out=data_out, where=finite)
     del bg_at
