@@ -91,6 +91,10 @@ interface PipelineState extends PipelineConfig {
   jobId: string | null;
   running: boolean;
   events: JobEvent[];
+  // Client arrival time of each event, index-aligned with `events`. Lives in the
+  // store (not component state) so the elapsed timer and log wall-clock times
+  // survive navigating away from the Execution page mid-run.
+  times: number[];
   terminal: string | null;
   // actions
   patch: (p: Partial<PipelineConfig>) => void;
@@ -152,6 +156,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   jobId: null,
   running: false,
   events: [],
+  times: [],
   terminal: null,
 
   patch: (p) => set(p),
@@ -160,7 +165,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     const s = get();
     const datasetId = useDatasetStore.getState().datasetId ?? "";
     closeStream();
-    set({ events: [], terminal: null, running: true, jobId: null });
+    set({ events: [], times: [], terminal: null, running: true, jobId: null });
 
     const params = formToParams(s);
     const stages = enabledStages(s);
@@ -187,7 +192,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
           set({ terminal: ev.type, running: false });
           closeStream();
         } else {
-          set({ events: [...get().events, ev] });
+          set({ events: [...get().events, ev], times: [...get().times, Date.now()] });
         }
       };
       es.onerror = () => {
@@ -201,6 +206,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
         events: [
           { type: "progress", status: "error", message: (e as Error).message },
         ],
+        times: [Date.now()],
       });
     }
   },
@@ -291,7 +297,8 @@ async function runInBrowser(
   set: Setter,
   get: Getter,
 ): Promise<void> {
-  const log = (ev: JobEvent) => set({ events: [...get().events, ev] });
+  const log = (ev: JobEvent) =>
+    set({ events: [...get().events, ev], times: [...get().times, Date.now()] });
   try {
     await engine.runPipeline({
       paramsJson: JSON.stringify(params),
