@@ -445,6 +445,16 @@ export function IconAlert({ size = 20 }: IconProps) {
   );
 }
 
+/* gear — connection settings */
+export function IconGear({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" {...stroke}>
+      <circle cx={9} cy={9} r={2.4} />
+      <path d="M9 1.6v2M9 14.4v2M1.6 9h2M14.4 9h2M3.8 3.8l1.4 1.4M12.8 12.8l1.4 1.4M14.2 3.8l-1.4 1.4M5.2 12.8l-1.4 1.4" />
+    </svg>
+  );
+}
+
 /* four-point spark — the AI assistant */
 export function IconSpark({ size = 17 }: IconProps) {
   return (
