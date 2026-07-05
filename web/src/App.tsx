@@ -6,7 +6,6 @@ import {
   BrandGlyph,
   IconFlow,
   IconLattice,
-  IconLayers,
   IconOrbits,
   IconProfileWave,
   IconRun,
@@ -17,13 +16,12 @@ import { AssistantPanel } from "./llm";
 import { ConsistencyViewer } from "./pages/ConsistencyViewer";
 import { BraggProfileViewer } from "./pages/BraggProfileViewer";
 import { DeltaPdfViewer } from "./pages/DeltaPdfViewer";
-import { MultiTempViewer } from "./pages/MultiTempViewer";
 import { PipelineConfig } from "./pages/PipelineConfig";
 import { PipelineExecution } from "./pages/PipelineExecution";
 import { ReciprocalViewer } from "./pages/ReciprocalViewer";
 import { usePipelineStore } from "./state/pipelineStore";
 
-export type Tab = "config" | "execution" | "reciprocal" | "bragg" | "dpdf" | "multi" | "consistency" | "assistant";
+export type Tab = "config" | "execution" | "reciprocal" | "bragg" | "dpdf" | "consistency" | "assistant";
 
 const NAV: { id: Tab; label: string; desc?: string; icon: ReactNode }[] = [
   {
@@ -63,12 +61,6 @@ const NAV: { id: Tab; label: string; desc?: string; icon: ReactNode }[] = [
     icon: <IconTransform />,
   },
   {
-    id: "multi",
-    label: "Multi-volume",
-    desc: "ΔPDF orthoslices side by side across related files, with shared cuts and pooled colour scale.",
-    icon: <IconLayers />,
-  },
-  {
     id: "assistant",
     label: "AI Assistant",
     icon: <IconSpark />,
@@ -87,8 +79,6 @@ function renderPage(tab: Tab, setTab: (t: Tab) => void): ReactNode {
       return <BraggProfileViewer />;
     case "dpdf":
       return <DeltaPdfViewer />;
-    case "multi":
-      return <MultiTempViewer />;
     case "consistency":
       return <ConsistencyViewer />;
     case "assistant":
