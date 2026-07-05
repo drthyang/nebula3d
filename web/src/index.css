@@ -3179,6 +3179,10 @@ input[type="range"]::-moz-range-track {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 1;
+}
+.ai-conn-bar .ai-gear {
+  margin-left: auto;
 }
 .ai-conn-status {
   display: inline-flex;
@@ -3207,14 +3211,52 @@ input[type="range"]::-moz-range-track {
   box-shadow: 0 0 0 3px var(--amber-soft);
   animation: ai-blink 1s steps(2) infinite;
 }
-.ai-conn-model select {
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
+/* active-provider badge in the top bar */
+.ai-provider-badge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 10px;
   border-radius: 999px;
-  color: var(--text);
-  padding: 6px 12px;
+  color: var(--text-2);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+}
+.ai-provider-badge.cloud {
+  color: var(--amber);
+  background: var(--amber-soft);
+  border-color: rgba(232, 180, 84, 0.35);
+}
+
+/* provider badge buttons in the settings drawer */
+.ai-provider-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ai-provider-tab {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-2);
   font-size: 12.5px;
-  max-width: 220px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.ai-provider-tab:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.ai-provider-tab.on {
+  color: var(--accent-hi);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.ai-provider-tab.cloud.on {
+  color: var(--amber);
+  background: var(--amber-soft);
+  border-color: rgba(232, 180, 84, 0.5);
 }
 .ai-gear {
   display: inline-flex;
@@ -3370,6 +3412,35 @@ input[type="range"]::-moz-range-track {
   overflow-wrap: anywhere;
 }
 .ai-msg-assistant {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 11px;
+}
+.ai-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 1px;
+  border-radius: 8px;
+  background: linear-gradient(145deg, var(--surface-3), var(--surface));
+  border: 1px solid var(--border-strong);
+  color: var(--accent-hi);
+}
+.ai-avatar-spin {
+  animation: ai-avatar-rotate 1.4s linear infinite;
+}
+@keyframes ai-avatar-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ai-msg-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 .ai-answer {
@@ -3471,15 +3542,15 @@ input[type="range"]::-moz-range-track {
   cursor: not-allowed;
 }
 
-/* rounded composer with a circular send button */
+/* rounded composer: textarea on top, a foot row with model pill + send below */
 .ai-composer {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 8px 8px 8px 16px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
   background: var(--surface);
   border: 1px solid var(--border-strong);
-  border-radius: 24px;
+  border-radius: 20px;
   box-shadow: var(--shadow-1);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -3491,7 +3562,7 @@ input[type="range"]::-moz-range-track {
   opacity: 0.7;
 }
 .ai-composer textarea {
-  flex: 1;
+  width: 100%;
   resize: none;
   border: none;
   outline: none;
@@ -3501,10 +3572,37 @@ input[type="range"]::-moz-range-track {
   font-family: inherit;
   line-height: 1.5;
   max-height: 160px;
-  padding: 7px 0;
+  padding: 4px 2px;
 }
 .ai-composer textarea::placeholder {
   color: var(--text-3);
+}
+.ai-composer-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ai-model-pill {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-2);
+  padding: 4px 11px;
+  font-size: 12px;
+  max-width: 260px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.ai-model-pill:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.ai-model-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ai-composer-foot .ai-send {
+  margin-left: auto;
 }
 .ai-send {
   flex: none;

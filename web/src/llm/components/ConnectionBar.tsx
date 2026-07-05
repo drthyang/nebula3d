@@ -1,10 +1,11 @@
-// The compact connection control: a status indicator light, the model selector,
-// and a gear that toggles the settings drawer.  Everything else (provider, base
-// URL, API key, vision opt-in) is folded into ConnectionSettings so the resting
-// state stays clean and sleek.
+// The compact connection control: a status indicator light, a provider badge
+// (Ollama / LM Studio / OpenAI / Gemini), and a gear on the right that toggles
+// the settings drawer.  The model selector lives down by the composer, LLM-app
+// style; everything else is folded into ConnectionSettings.
 
 import { IconGear } from "../../components/ui";
-import { saveSettings, type LlmSettings } from "../settings";
+import { providerForUrl } from "../provider/presets";
+import type { LlmSettings } from "../settings";
 import type { ConnectionState } from "../useAssistant";
 
 export function ConnectionBar({
@@ -18,6 +19,9 @@ export function ConnectionBar({
   settingsOpen: boolean;
   onToggleSettings: () => void;
 }) {
+  const preset = providerForUrl(settings.baseUrl);
+  const providerLabel = preset?.label ?? "Custom";
+  const isCloud = preset?.cloud ?? false;
   const dotClass =
     connection.status === "ok" ? "ok" : connection.status === "testing" ? "testing" : "down";
   const statusLabel =
@@ -36,21 +40,7 @@ export function ConnectionBar({
         {statusLabel}
       </span>
 
-      <div className="ai-conn-model">
-        <select
-          value={settings.model}
-          onChange={(e) => saveSettings({ model: e.target.value })}
-          disabled={!connection.models.length}
-          aria-label="Model"
-        >
-          {!connection.models.length && <option value="">No model</option>}
-          {connection.models.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </div>
+      <span className={`ai-provider-badge${isCloud ? " cloud" : ""}`}>{providerLabel}</span>
 
       <button
         type="button"
@@ -58,6 +48,7 @@ export function ConnectionBar({
         onClick={onToggleSettings}
         aria-expanded={settingsOpen}
         title="Connection settings"
+        aria-label="Connection settings"
       >
         <IconGear />
       </button>

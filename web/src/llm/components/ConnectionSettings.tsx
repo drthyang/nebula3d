@@ -75,22 +75,23 @@ export function ConnectionSettings({
 
   return (
     <div className="ai-settings">
-      <div className="ai-settings-row">
-        <Field label="Provider">
-          <select
-            value={preset?.baseUrl ?? settings.baseUrl}
-            onChange={(e) => saveSettings({ baseUrl: e.target.value, model: "" })}
-          >
-            {PROVIDER_PRESETS.map((p) => (
-              <option key={p.id} value={p.baseUrl}>
-                {p.label}
-                {p.cloud ? " (cloud)" : ""}
-              </option>
-            ))}
-            {!preset && <option value={settings.baseUrl}>Custom</option>}
-          </select>
-        </Field>
+      <Field label="Provider">
+        <div className="ai-provider-tabs">
+          {PROVIDER_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`ai-provider-tab${preset?.id === p.id ? " on" : ""}${p.cloud ? " cloud" : ""}`}
+              onClick={() => saveSettings({ baseUrl: p.baseUrl, model: "" })}
+            >
+              {p.label}
+            </button>
+          ))}
+          {!preset && <span className="ai-provider-tab on">Custom</span>}
+        </div>
+      </Field>
 
+      <div className="ai-settings-row">
         <Field label="Base URL" grow>
           <input
             type="text"
