@@ -15,9 +15,10 @@ import {
   type ReviewStage,
 } from "../prompts/templates";
 import { renderSliceToDataUrl } from "../render/sliceImage";
-import type { LlmSettings } from "../settings";
-import type { AssistantContext } from "../useAssistant";
+import { saveSettings, type LlmSettings } from "../settings";
+import type { AssistantContext, ConnectionState } from "../useAssistant";
 import { useStreamedReply } from "../useStreamedReply";
+import { BrandGlyph } from "../../components/ui";
 import { Markdown } from "./Markdown";
 
 interface Turn extends HistoryTurn {
@@ -70,11 +71,13 @@ export function ChatView({
   assistant,
   connected,
   settings,
+  connection,
   contextLoading = false,
 }: {
   assistant: AssistantContext | undefined;
   connected: boolean;
   settings: LlmSettings;
+  connection: ConnectionState;
   contextLoading?: boolean;
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -156,26 +159,36 @@ export function ChatView({
             </div>
           ) : (
             <div key={t.id} className="ai-msg ai-msg-assistant">
-              {t.reasoning ? <Thinking text={t.reasoning} /> : null}
-              <div className="ai-answer">
-                <Markdown text={t.content} />
+              <span className="ai-avatar" aria-hidden="true">
+                <BrandGlyph size={16} />
+              </span>
+              <div className="ai-msg-main">
+                {t.reasoning ? <Thinking text={t.reasoning} /> : null}
+                <div className="ai-answer">
+                  <Markdown text={t.content} />
+                </div>
               </div>
             </div>
           ),
         )}
         {reply.streaming && (
           <div className="ai-msg ai-msg-assistant">
-            <Thinking text={reply.reasoning} live />
-            {reply.content ? (
-              <div className="ai-answer">
-                <Markdown text={reply.content} />
-                <span className="ai-caret" />
-              </div>
-            ) : !reply.reasoning ? (
-              <div className="ai-answer ai-answer-waiting">
-                <span className="ai-caret" />
-              </div>
-            ) : null}
+            <span className="ai-avatar ai-avatar-spin" aria-hidden="true">
+              <BrandGlyph size={16} />
+            </span>
+            <div className="ai-msg-main">
+              <Thinking text={reply.reasoning} live />
+              {reply.content ? (
+                <div className="ai-answer">
+                  <Markdown text={reply.content} />
+                  <span className="ai-caret" />
+                </div>
+              ) : !reply.reasoning ? (
+                <div className="ai-answer ai-answer-waiting">
+                  <span className="ai-caret" />
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
         {reply.error && <div className="ai-conn-alert">{reply.error}</div>}
@@ -211,32 +224,50 @@ export function ChatView({
               }
             }}
           />
-          {reply.streaming ? (
-            <button type="button" className="ai-send is-stop" onClick={reply.cancel} title="Stop">
-              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-                <rect x="3" y="3" width="8" height="8" rx="1.5" fill="currentColor" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="ai-send"
-              disabled={disabled || !draft.trim()}
-              onClick={sendChat}
-              title="Send"
+          <div className="ai-composer-foot">
+            <select
+              className="ai-model-pill"
+              value={settings.model}
+              onChange={(e) => saveSettings({ model: e.target.value })}
+              disabled={!connection.models.length}
+              aria-label="Model"
+              title="Model"
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-                <path
-                  d="M8 13V3M8 3l-4 4M8 3l4 4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          )}
+              {!connection.models.length && <option value="">No model</option>}
+              {connection.models.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+
+            {reply.streaming ? (
+              <button type="button" className="ai-send is-stop" onClick={reply.cancel} title="Stop">
+                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                  <rect x="3" y="3" width="8" height="8" rx="1.5" fill="currentColor" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="ai-send"
+                disabled={disabled || !draft.trim()}
+                onClick={sendChat}
+                title="Send"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    d="M8 13V3M8 3l-4 4M8 3l4 4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -60,6 +60,7 @@ export function AssistantPanel() {
         assistant={contextQuery.data}
         connected={connected}
         settings={settings}
+        connection={connection}
         contextLoading={contextQuery.isFetching}
       />
     </div>
