@@ -63,10 +63,12 @@ export function ChatView({
   assistant,
   connected,
   settings,
+  contextLoading = false,
 }: {
   assistant: AssistantContext | undefined;
   connected: boolean;
   settings: LlmSettings;
+  contextLoading?: boolean;
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
@@ -135,9 +137,13 @@ export function ChatView({
       <div className="ai-transcript" ref={scrollRef}>
         {turns.length === 0 && !reply.streaming && (
           <div className="ai-placeholder">
-            {disabled
-              ? "Connect a local or cloud model above, pick a dataset, then ask about the reduction — or use a one-click review."
-              : "Ask about the reduction, or click a stage review above. Answers are grounded in metrics computed from the current cut."}
+            {!connected
+              ? "Connect a local or cloud model above, then ask about the reduction — or use a one-click review."
+              : !assistant
+                ? contextLoading
+                  ? "Preparing metrics from the stage volumes…"
+                  : "Select a processed dataset to prepare the assistant's context."
+                : "Ask about the reduction, or click a stage review above. Answers are grounded in metrics computed from the current cut."}
           </div>
         )}
         {turns.map((t) =>
