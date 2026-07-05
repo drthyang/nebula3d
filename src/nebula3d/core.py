@@ -5,10 +5,24 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.typing import NDArray
+
+
+def low_memory() -> bool:
+    """Whether to favour a smaller memory peak over speed.
+
+    Enabled by ``NEBULA3D_LOW_MEMORY=1`` (set by ``nebula3d.webbridge.setup`` for
+    the in-browser Pyodide build, whose 4 GB WASM heap makes the peak — not the
+    CPU — the binding constraint).  In this mode the pipeline stages drop
+    volume-sized caches that only trade memory for a little recompute and write
+    their output in place over the (disposable) freshly-loaded input, instead of
+    copying it.  Off by default, so the native path is unchanged.
+    """
+    return os.environ.get("NEBULA3D_LOW_MEMORY") == "1"
 
 
 def q_magnitude_from_axes(

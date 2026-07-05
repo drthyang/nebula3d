@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **In-browser low-memory mode — smaller peak, bit-identical results.** A new
+  `NEBULA3D_LOW_MEMORY` mode (`nebula3d.core.low_memory`, always on in the
+  Pyodide bridge) trades a little recompute for a smaller peak so full-resolution
+  reductions fit the 4 GB WASM heap (Pyodide is 32-bit; there is no wasm64
+  build). The ring stage drops its full-3-D |Q|/φ coordinate caches (per-plane
+  2-D recompute), the flatten stage subtracts in place, and the unused per-voxel
+  `sigma` is freed before the ΔPDF / back-FFT stages. **Verified byte-for-byte
+  identical to the exact path on real data** — a 401×501×151 (30.3 M-voxel)
+  neutron dataset gives identical backfilled / flattened / ΔPDF volumes and
+  identical consistency metrics either way; the whole reduction peaks at ~2.3 GB
+  (binding stage: the back-FFT consistency check, ~75 B/voxel). Separately, the
+  ring-workflow `backfill_ring_shells` (not the default `q_shell` Bragg backfill)
+  now bounds its all-valid-voxel KD-tree to a per-H-slab local tree in
+  low-memory mode — within ~1e-5 relative of the exact fill, tested in
+  `tests/test_backfill_blocked.py`. 222 tests, ruff, and mypy clean.
 - **Pipeline ~22–31 % faster with bit-identical outputs.** Browser audit +
   performance pass (see
   [docs/reports/2026-07-02_browser_audit_perf.md](docs/reports/2026-07-02_browser_audit_perf.md)):

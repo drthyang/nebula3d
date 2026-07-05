@@ -80,6 +80,15 @@ def reconstruction(
             _cache.move_to_end(key)
             return hit
     vol = load_volume(path)  # shared with the slice viewers' cache
+    # Evict the previous reconstruction(s) BEFORE building the new one.  Each
+    # entry holds four volume-sized arrays (data / recon / residual / ΔPDF) —
+    # dead weight during the new band's memory-heavy forward+inverse FFT.  In the
+    # browser (cache_max=1, a 4 GB WASM heap that never shrinks) freeing them
+    # first reclaims ~4 volumes for the computation to reuse, instead of stacking
+    # the old result under the new one's peak and OOM-ing.
+    with _lock:
+        while len(_cache) >= _CACHE_MAX:
+            _cache.popitem(last=False)
     res = consistency_reconstruction(
         vol, DeltaPdfParams(crop_hkl=None), q_band=q_band, r_band=r_band
     )

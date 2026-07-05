@@ -30,11 +30,12 @@ from __future__ import annotations
 import concurrent.futures
 import dataclasses
 import json
+import os
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 
@@ -48,12 +49,19 @@ from nebula3d.analysis import (
 )
 from nebula3d.analysis.delta_pdf import _q_max_from_axes
 from nebula3d.core import HKLVolume
+from nebula3d.core import low_memory as _low_memory
 from nebula3d.preprocessing import (
     ParametricRingModel,
     PatchedRadialRingModel,
     azimuthal_sampling_mask,
     confirm_ring_shells_across_h,
     flatten_radial_background,
+)
+from nebula3d.preprocessing.radial_background import (
+    _azimuthal_angle as _plane_azimuthal_angle,
+)
+from nebula3d.preprocessing.radial_background import (
+    _offset_q_magnitude as _plane_offset_q_magnitude,
 )
 
 __all__ = [
@@ -488,14 +496,198 @@ def _assign_plane(dest: np.ndarray, cfg: _SliceConfig, index: int,
     dest[tuple(sl)] = plane
 
 
+# A per-plane ring fit is independent of every other plane, so the stack is
+# embarrassingly parallel.  Threads do not help (the per-patch fitting is
+# Python-heavy and GIL-bound), so ``remove_rings`` distributes planes across a
+# *process* pool on native CPython.  The worker function and its context must be
+# module-level (picklable); the volume + coordinate grids are shipped once per
+# worker through the initializer, and only a plane index crosses per task.
+_PlaneResult = tuple[int, np.ndarray, "np.ndarray | None", bool, "str | None"]
+
+
+def _build_ring_model(
+    p: RingParams,
+    plane: str,
+    ring_centers: np.ndarray | None,
+    ring_halfwidths: np.ndarray | None,
+    ring_ceilings: np.ndarray | None,
+) -> PatchedRadialRingModel | ParametricRingModel:
+    """Construct the configured ring model (shared by the driver and workers)."""
+    if p.ring_model.strip().lower() == "parametric":
+        return ParametricRingModel(
+            plane=plane, q_step=p.q_step, n_fourier=p.n_fourier,
+            profile_method=p.profile_method, texture_ridge=p.texture_ridge,
+            ring_width=p.ring_width, eta0=p.ring_eta0,
+            radial_mode=p.ring_radial_mode, roll_step=p.ring_roll_step,
+            allowed_ring_centers=ring_centers,
+            allowed_ring_halfwidths=ring_halfwidths,
+            allowed_ring_ceilings=ring_ceilings,
+        )
+    return PatchedRadialRingModel(
+        plane=plane, q_step=p.q_step, n_patches=p.n_patches, n_fourier=p.n_fourier,
+        profile_method=p.profile_method, texture_q_smooth=p.texture_q_smooth,
+        texture_ridge=p.texture_ridge, allowed_ring_centers=ring_centers,
+        allowed_ring_halfwidths=ring_halfwidths, allowed_ring_ceilings=ring_ceilings,
+    )
+
+
+def _drop_sigma(vol: HKLVolume) -> HKLVolume:
+    """Replace ``sigma`` with a zero-stride broadcast view, freeing a full array.
+
+    Only the ring/backfill stages consult ``sigma``; the ΔPDF and back-FFT check
+    do not.  Swapping in a broadcast zero (the same pattern ``invert_delta_pdf``
+    already uses) lets the real per-voxel error array be reclaimed before those
+    stages' FFT transients allocate — one volume-sized float64 saved at peak.
+    """
+    return dataclasses.replace(
+        vol, sigma=np.broadcast_to(np.float64(0.0), vol.data.shape))
+
+
+def _plane_slice_coords(
+    q_full: np.ndarray | None, phi_full: np.ndarray | None, axis_dim: int, ip: int,
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    # low-memory mode passes no precomputed grids — the model recomputes the
+    # (cheap, 2-D) per-plane coordinates itself, bit-for-bit identically.
+    if q_full is None or phi_full is None:
+        return None, None
+    sl: list[slice | int] = [slice(None), slice(None), slice(None)]
+    sl[axis_dim] = slice(ip, ip + 1)
+    return q_full[tuple(sl)], phi_full[tuple(sl)]
+
+
+def _process_ring_plane(
+    ip: int, vol: HKLVolume, cfg: _SliceConfig, p: RingParams, min_voxels: int,
+    q_range: tuple[float, float], ring_centers: np.ndarray | None,
+    ring_halfwidths: np.ndarray | None, ring_ceilings: np.ndarray | None,
+    q_full: np.ndarray | None, phi_full: np.ndarray | None,
+) -> _PlaneResult:
+    """Fit + subtract powder rings on a single plane; return ``(ip, data2d,
+    mask2d, skipped, err)``.  Pure and deterministic, so it gives identical
+    output whether called in-process or in a pool worker."""
+    sl = _slice_volume(vol, cfg, ip)
+    valid = sl.mask & np.isfinite(sl.data)
+    if int(valid.sum()) < min_voxels:
+        return ip, _take_plane(sl.data, cfg, 0), None, True, None
+
+    q_plane, phi_plane = _plane_slice_coords(q_full, phi_full, cfg.axis_dim, ip)
+    keep = azimuthal_sampling_mask(sl, plane=cfg.plane, min_count_frac=0.25,
+                                   q_range=q_range, q=q_plane, phi=phi_plane)
+    src = dataclasses.replace(sl, mask=keep)
+    out_mask_2d = _take_plane(keep, cfg, 0)
+
+    model = _build_ring_model(p, cfg.plane, ring_centers, ring_halfwidths,
+                              ring_ceilings)
+    try:
+        model.fit(src, q_range=q_range, q_mag=q_plane, phi=phi_plane)
+        _, I_ring = model.subtract(src, q_mag=q_plane, phi=phi_plane)
+    except Exception as exc:  # noqa: BLE001 - a bad plane must not sink the run
+        return ip, _take_plane(sl.data, cfg, 0), out_mask_2d, True, str(exc)
+
+    I_ring2d = _take_plane(I_ring, cfg, 0)
+    sl_data2d = _take_plane(sl.data, cfg, 0)
+    return ip, sl_data2d - I_ring2d, out_mask_2d, False, None
+
+
+# Populated once per worker process by the pool initializer (so the volume and
+# grids are pickled once per process, not once per plane).
+_RING_CTX: dict[str, object] = {}
+
+
+def _ring_worker_init(*ctx: object) -> None:
+    keys = ("vol", "cfg", "p", "min_voxels", "q_range", "ring_centers",
+            "ring_halfwidths", "ring_ceilings", "q_full", "phi_full")
+    _RING_CTX.clear()
+    _RING_CTX.update(zip(keys, ctx))
+
+
+def _ring_worker_run(ip: int) -> _PlaneResult:
+    c = _RING_CTX
+    return _process_ring_plane(
+        ip, c["vol"], c["cfg"], c["p"], c["min_voxels"], c["q_range"],  # type: ignore[arg-type]
+        c["ring_centers"], c["ring_halfwidths"], c["ring_ceilings"],  # type: ignore[arg-type]
+        c["q_full"], c["phi_full"],  # type: ignore[arg-type]
+    )
+
+
+def _ring_pool_context() -> tuple[Any, bool]:
+    """Return ``(mp_context, is_fork)`` for the ring pool.
+
+    ``fork`` is cheap — workers inherit the already-imported numpy/scipy and the
+    volume via copy-on-write, so startup is near-instant — and is used on Linux
+    (the typical server).  Elsewhere (macOS/Windows) fork is unsafe with native
+    BLAS, so ``spawn`` is used, which re-imports and pickles and therefore has a
+    much larger fixed startup cost (reflected in the parallel floor below).
+    """
+    import multiprocessing as mp
+
+    if sys.platform.startswith("linux"):
+        try:
+            return mp.get_context("fork"), True
+        except ValueError:
+            pass
+    return mp.get_context("spawn"), False
+
+
+def _resolve_ring_workers(
+    requested: int | None, n_planes: int, n_voxels: int, parallel_floor: int,
+    is_fork: bool,
+) -> int:
+    """Choose the ring-removal worker-process count (1 = serial in-process).
+
+    Serial when the platform has no processes (Pyodide/WASM ``emscripten``) or
+    when there are too few planes to bother.  In the **auto** case the pool is
+    used only under a ``fork`` start method (Linux): fork shares the volume with
+    workers copy-on-write, so startup is near-free and the win is real.  Under
+    ``spawn`` (macOS/Windows) each worker re-imports scipy and receives a pickled
+    copy of the whole volume — measured to cost *more* than the compute saved
+    even for large volumes — so auto stays serial there.  An explicit count
+    (``max_workers`` arg or ``NEBULA3D_RING_WORKERS`` env) is always honoured, on
+    any platform, for callers who know their volume/RAM justify it.  The auto
+    path also skips volumes below *parallel_floor* voxels and caps workers so the
+    per-worker volume copies (~5 volume-sized arrays: data, sigma, mask, |Q|, φ)
+    stay within a memory budget.
+    """
+    if sys.platform == "emscripten":  # Pyodide: no processes, no real threads
+        return 1
+    if n_planes < 4:                  # pool startup not worth it
+        return 1
+
+    explicit = requested is not None
+    if requested is None:
+        env = os.environ.get("NEBULA3D_RING_WORKERS", "").strip()
+        if env:
+            requested, explicit = int(env), True
+        else:
+            requested = os.cpu_count() or 1
+    workers = max(1, int(requested))
+
+    if not explicit:
+        if not is_fork or n_voxels < parallel_floor:
+            return 1
+        bytes_per_worker = n_voxels * (8 + 8 + 1 + 8 + 8)  # data+sigma+mask+q+phi
+        budget = 8_000_000_000  # ~8 GB across all worker copies (native server)
+        mem_cap = max(1, budget // max(bytes_per_worker, 1))
+        workers = min(workers, mem_cap)
+
+    return min(workers, n_planes)
+
+
 def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
-                 progress: ProgressFn | None = None) -> HKLVolume:
+                 progress: ProgressFn | None = None,
+                 max_workers: int | None = None) -> HKLVolume:
     """Subtract powder rings from every plane along the stack axis independently.
 
     Ports the validated per-slice driver of ``examples/remove_rings_3d.py``:
     optionally confirm the real |Q| shells across the stack axis (so a
     Bragg-fed phantom on one plane washes out), cap each shell's per-plane
     amplitude, then fit and subtract ``PatchedRadialRingModel`` per plane.
+
+    Planes are independent, so they are fitted in parallel across a process pool
+    on native CPython (``max_workers`` / ``NEBULA3D_RING_WORKERS`` control the
+    count; ``None`` auto-scales to the CPU count within a memory budget).  The
+    run degrades to a serial in-process loop where processes are unavailable
+    (Pyodide/WASM) or a pool cannot start — the per-plane result is identical
+    either way.
     """
     p = params or RingParams()
     cfg = _SLICE_CONFIGS[p.slice_axis.strip().upper()]
@@ -518,104 +710,108 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
               f"confirmed {ring_centers.size} ring shells across "
               f"{cfg.axis_name} (amp cap {p.ring_amp_cap}×)")
 
-    def make_model() -> PatchedRadialRingModel | ParametricRingModel:
-        if p.ring_model.strip().lower() == "parametric":
-            return ParametricRingModel(
-                plane=cfg.plane,
-                q_step=p.q_step,
-                n_fourier=p.n_fourier,
-                profile_method=p.profile_method,
-                texture_ridge=p.texture_ridge,
-                ring_width=p.ring_width,
-                eta0=p.ring_eta0,
-                radial_mode=p.ring_radial_mode,
-                roll_step=p.ring_roll_step,
-                allowed_ring_centers=ring_centers,
-                allowed_ring_halfwidths=ring_halfwidths,
-                allowed_ring_ceilings=ring_ceilings,
-            )
-        else:
-            return PatchedRadialRingModel(
-                plane=cfg.plane,
-                q_step=p.q_step,
-                n_patches=p.n_patches,
-                n_fourier=p.n_fourier,
-                profile_method=p.profile_method,
-                texture_q_smooth=p.texture_q_smooth,
-                texture_ridge=p.texture_ridge,
-                allowed_ring_centers=ring_centers,
-                allowed_ring_halfwidths=ring_halfwidths,
-                allowed_ring_ceilings=ring_ceilings,
-            )
-
-    dummy_model = make_model()
+    dummy_model = _build_ring_model(p, cfg.plane, ring_centers, ring_halfwidths,
+                                    ring_ceilings)
     min_voxels = dummy_model.min_voxels_per_patch
+
+    # Per-voxel |Q| and azimuth depend only on the plane geometry (axes + UB),
+    # not on the data or mask, so they are identical on every fit/subtract of a
+    # given plane.  Compute them once for the whole volume here and hand each
+    # plane its slice, instead of letting fit(), subtract() and the sampling
+    # mask each rebuild the meshgrid (previously ~5 redundant rebuilds/plane).
+    # Uses the model's own plane/offsets so the values are bit-for-bit what the
+    # per-call path would have produced.
+    #
+    # These two full-volume float64 grids stay resident for the whole stage.
+    # In low-memory mode (the Pyodide heap) that is ~2 volumes we cannot afford,
+    # so we skip them and let each plane recompute its own (2-D) coordinates —
+    # identical values, a little more CPU, ~2 volumes less peak.
+    low_mem = _low_memory()
+    if low_mem:
+        q_full = phi_full = None
+    else:
+        q_full = _plane_offset_q_magnitude(
+            vol, dummy_model.plane, dummy_model.center_offset,
+            dummy_model.center_offset_h_slope)
+        phi_full = _plane_azimuthal_angle(
+            vol, dummy_model.plane, dummy_model.center_offset,
+            dummy_model.center_offset_h_slope)
 
     res_data = np.empty_like(vol.data)
     out_mask = vol.mask.copy()
     n = int(axis_values.size)
+    worker_args = (vol, cfg, p, min_voxels, q_range, ring_centers,
+                   ring_halfwidths, ring_ceilings, q_full, phi_full)
+    mp_context, is_fork = _ring_pool_context()
+    # fork shares the volume copy-on-write (near-free); auto-parallel engages
+    # above this floor.  spawn's per-worker re-import + volume pickle makes auto
+    # a net loss, so it stays serial there unless explicitly overridden.
+    parallel_floor = 2_000_000
+    n_workers = 1 if low_mem else _resolve_ring_workers(
+        max_workers, n, int(vol.data.size), parallel_floor, is_fork)
 
-    def process_slice(ip: int) -> tuple[int, np.ndarray, np.ndarray | None, bool, str | None]:
-        sl = _slice_volume(vol, cfg, ip)
-        valid = sl.mask & np.isfinite(sl.data)
-        if int(valid.sum()) < min_voxels:
-            return ip, _take_plane(sl.data, cfg, 0), None, True, None
+    counters = {"skipped": 0, "done": 0}
 
-        keep = azimuthal_sampling_mask(sl, plane=cfg.plane, min_count_frac=0.25,
-                                       q_range=q_range)
-        src = dataclasses.replace(sl, mask=keep)
-        out_mask_2d = _take_plane(keep, cfg, 0)
-
-        local_model = make_model()
-        try:
-            local_model.fit(src, q_range=q_range)
-            _, I_ring = local_model.subtract(src)
-        except Exception as exc:
-            return ip, _take_plane(sl.data, cfg, 0), out_mask_2d, True, str(exc)
-
-        I_ring2d = _take_plane(I_ring, cfg, 0)
-        sl_data2d = _take_plane(sl.data, cfg, 0)
-        return ip, sl_data2d - I_ring2d, out_mask_2d, False, None
-
-    n_skipped = 0
-    done_count = 0
-    # Emscripten/Pyodide (the in-browser engine) cannot start threads, so run the
-    # slices serially there; native CPython parallelises across slices.
-    serial = sys.platform == "emscripten"
-    mode = "serial" if serial else "parallel"
-
-    def _consume(result: tuple[int, np.ndarray, np.ndarray | None, bool, str | None]) -> None:
-        nonlocal n_skipped, done_count
+    def _apply(result: _PlaneResult) -> None:
         ip, data_2d, mask_2d, skipped, err_msg = result
         _assign_plane(res_data, cfg, ip, data_2d)
         if mask_2d is not None:
             _assign_plane(out_mask, cfg, ip, mask_2d)
         if skipped:
-            n_skipped += 1
+            counters["skipped"] += 1
         if err_msg:
-            _emit(progress, "rings", "progress", (done_count + 1) / n,
+            _emit(progress, "rings", "progress", (counters["done"] + 1) / n,
                   f"{cfg.axis_name}[{ip}] fit failed ({err_msg}); left as-is")
-        done_count += 1
-        if done_count % 30 == 0 or done_count == n:
-            _emit(progress, "rings", "progress", done_count / n,
-                  f"{cfg.axis_name}[{done_count}/{n}] ({mode})")
+        counters["done"] += 1
+        if counters["done"] % 30 == 0 or counters["done"] == n:
+            _emit(progress, "rings", "progress", counters["done"] / n,
+                  f"{cfg.axis_name}[{counters['done']}/{n}] "
+                  f"({'serial' if n_workers == 1 else f'{n_workers}-way'})")
 
-    if serial:
+    ran_parallel = False
+    if n_workers > 1:
+        # fork: publish the volume + grids to a parent-process global so the
+        # forked workers inherit them copy-on-write (no per-worker pickle) — the
+        # task only carries a plane index.  spawn: no shared memory, so hand them
+        # over through the pickled ``initargs`` initializer instead.
+        try:
+            if is_fork:
+                _ring_worker_init(*worker_args)
+                pool = concurrent.futures.ProcessPoolExecutor(
+                    max_workers=n_workers, mp_context=mp_context)
+            else:
+                pool = concurrent.futures.ProcessPoolExecutor(
+                    max_workers=n_workers, mp_context=mp_context,
+                    initializer=_ring_worker_init, initargs=worker_args)
+            with pool as executor:
+                futures = {executor.submit(_ring_worker_run, ip): ip
+                           for ip in range(n)}
+                for future in concurrent.futures.as_completed(list(futures)):
+                    # Drop the future (and the plane result it retains) as soon
+                    # as it is consumed — otherwise every completed plane stays
+                    # referenced until the pool closes, ~1 extra volume total.
+                    del futures[future]
+                    _apply(future.result())
+            ran_parallel = True
+        except (OSError, ValueError, ImportError, RuntimeError,
+                AssertionError) as exc:
+            # No usable process pool (sandbox, WASM, broken worker, or a
+            # daemonic parent that forbids children) — reset and fall back to a
+            # serial in-process run, which produces identical output.
+            _emit(progress, "rings", "progress", None,
+                  f"process pool unavailable ({exc}); running serially")
+            out_mask = vol.mask.copy()
+            counters["skipped"] = counters["done"] = 0
+        finally:
+            _RING_CTX.clear()  # don't retain the volume in the parent global
+
+    if not ran_parallel:
         for ip in range(n):
-            _consume(process_slice(ip))
-    else:
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = {executor.submit(process_slice, ip): ip for ip in range(n)}
-            for future in concurrent.futures.as_completed(list(futures)):
-                # Drop the future (and the plane result it retains) as soon as it
-                # is consumed — otherwise every completed plane stays referenced
-                # until the pool closes, ~1 extra volume in aggregate.
-                del futures[future]
-                _consume(future.result())
+            _apply(_process_ring_plane(ip, *worker_args))
 
     out_vol = dataclasses.replace(vol, data=res_data, mask=out_mask)
     _emit(progress, "rings", "done", 1.0,
-          f"ring removal complete ({n_skipped} planes left unchanged)")
+          f"ring removal complete ({counters['skipped']} planes left unchanged)")
     return out_vol
 
 
@@ -872,7 +1068,10 @@ def pdf_consistency_check(
     """
     recon = invert_delta_pdf(dpdf, deapodize=True, consume=consume_dpdf)
     data_vol = _crop_hkl(vol, p.crop_hkl)
-    data = np.where(np.isfinite(data_vol.masked_data()), data_vol.data, 0.0)
+    # Equivalent to isfinite(masked_data()) but without materialising the full
+    # NaN-filled masked copy: masked_data() is NaN where ~mask, so its finite
+    # set is exactly (mask & isfinite(data)).
+    data = np.where(data_vol.mask & np.isfinite(data_vol.data), data_vol.data, 0.0)
     region = recon.mask & np.isfinite(data)
     if p.q_band is not None:
         region &= _band_limit_q(data_vol, p.q_band)[1]
@@ -920,6 +1119,11 @@ def consistency_reconstruction(
     for :func:`nebula3d.visualization.extract_slice` — plus the metrics dict.
     """
     vol_c = _crop_hkl(vol, p.crop_hkl)
+    # sigma is never read on this path (the round trip uses data + mask only, and
+    # the returned "data" panel gets a broadcast-zero sigma below), so drop it —
+    # one fewer volume-sized array resident through the forward+inverse FFT.
+    if _low_memory():
+        vol_c = _drop_sigma(vol_c)
     in_band = np.ones(vol_c.data.shape, dtype=bool)
     # The full per-voxel |Q| grid is only needed to build the band mask.  When no
     # |Q| band is requested, skip it entirely and get the q_data_max scalar from
@@ -928,6 +1132,7 @@ def consistency_reconstruction(
         q_mag_c = vol_c.q_magnitude()
         vol_c, in_band = _band_limit_q(vol_c, q_band, q_mag=q_mag_c)
         q_data_max = float(q_mag_c.max())
+        del q_mag_c  # free the full |Q| grid before the FFTs allocate
     else:
         q_data_max = _q_max_from_axes(
             vol_c.h_axis, vol_c.k_axis, vol_c.l_axis, vol_c.ub_matrix)
@@ -955,7 +1160,9 @@ def consistency_reconstruction(
         dpdf.data = np.where(r_mask, dpdf.data, 0.0)
 
     recon = invert_delta_pdf(dpdf, deapodize=True)
-    data = np.where(np.isfinite(vol_c.masked_data()), vol_c.data, 0.0)
+    # isfinite(masked_data()) without the full NaN-filled copy (see
+    # pdf_consistency_check): masked_data is NaN where ~mask.
+    data = np.where(vol_c.mask & np.isfinite(vol_c.data), vol_c.data, 0.0)
     region = recon.mask & np.isfinite(data) & in_band
     metrics, _rows = _consistency_metrics(
         recon.data, data, region, recon.h_axis, h_values)
@@ -966,9 +1173,12 @@ def consistency_reconstruction(
     metrics["crop_hkl"] = list(p.crop_hkl) if p.crop_hkl else None
     metrics["apodization"] = p.apodization
 
-    zeros = np.zeros(recon.data.shape, dtype=np.float64)
-    ones = np.ones(recon.data.shape, dtype=bool)
-    data_vol = dataclasses.replace(vol_c, data=data, sigma=zeros, mask=ones)
+    # sigma/mask of the "data" panel are never read numerically by the viewer
+    # (it slices .data), so use zero-stride broadcast views instead of two more
+    # full volume-sized arrays.
+    zero_sigma = np.broadcast_to(np.float64(0.0), recon.data.shape)
+    all_valid = np.broadcast_to(True, recon.data.shape)
+    data_vol = dataclasses.replace(vol_c, data=data, sigma=zero_sigma, mask=all_valid)
     resid_vol = dataclasses.replace(recon, data=data - recon.data)
     return {"metrics": metrics, "recon": recon, "data": data_vol,
             "residual": resid_vol, "dpdf": dpdf}
@@ -1235,6 +1445,10 @@ def run_pipeline(
             dpdf_obj = delta_pdf(pdf_vol, p.delta_pdf, progress=progress)
             write_delta_pdf_h5(dpdf_obj, pdf_vol, p.delta_pdf,
                                pdf_input.name, paths.delta_pdf)
+            # sigma is unused by the ΔPDF and the back-FFT check that follow;
+            # free it so it does not sit under the check's inverse-FFT transient.
+            if _low_memory():
+                pdf_vol = _drop_sigma(pdf_vol)
 
     # --- stage 6: back-FFT round-trip consistency check ---------------------
     if want("pdf_check") and p.pdf_check_enabled:
@@ -1250,6 +1464,8 @@ def run_pipeline(
                   "back-FFT round-trip consistency check")
             if pdf_vol is None:
                 pdf_vol = stage_load(pdf_input)
+                if _low_memory():
+                    pdf_vol = _drop_sigma(pdf_vol)
             if dpdf_obj is None:
                 dpdf_obj = delta_pdf(pdf_vol, p.delta_pdf)
             # consume_dpdf: the ΔPDF is already saved to disk (pdf stage), and
