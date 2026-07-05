@@ -381,26 +381,51 @@ Before treating the pipeline as a stable release candidate:
 
 ## In-Browser Engine — Large-Volume Ceiling  Resolved (float64, no precision loss)
 
-The GitHub Pages / Pyodide build now reduces **full-resolution float64 volumes
-up to ~50 M voxels** — a real 301×401×401 file (48.4 M voxels) fits — with no
-precision reduction and no architecture change. Two things closed the gap:
+The GitHub Pages / Pyodide build reduces **full-resolution float64 volumes up to
+~50 M voxels** — a real 301×401×401 file (48.4 M voxels) fits — with no precision
+or resolution reduction. Two things make it possible:
 
 - **Pyodide ≥ 0.27** raised the WASM heap ceiling from 2 GB to 4 GB
-  (`MAXIMUM_MEMORY=4GB`); the worker pins 0.27.7.
-- **A float64 memory rework of the computation core** cut the worst-stage
-  peak from ~10 volume-sized arrays to ~7.3 (measured):
-  - `q_magnitude` (and the ring stage's plane projections) accumulate from
-    broadcast 1-D axes — no `(nh,nk,nl)` meshgrids, no `(...,3)` stacks;
-  - the ΔPDF pads to `scipy.fft.next_fast_len` (5-smooth) instead of the next
-    power of two, materialises the real part instead of pinning the complex
-    spectrum, and frees each FFT intermediate before the next allocates;
-  - the |Q|-shell sorted scans (punch / backfill / flatten) drop each
-    volume-sized temporary as soon as it is consumed, with int32 shell
-    indices;
-  - the consistency check consumes the ΔPDF during the inverse FFT;
-  - the slice caches are capped in-browser and cleared before each run.
+  (`MAXIMUM_MEMORY=4GB`); the worker pins 0.27.7. There is no wasm64/Memory64
+  Pyodide distribution, so this 4 GB 32-bit heap is the hard ceiling — the whole
+  reduction must fit inside it.
+- **A low-memory mode** (`NEBULA3D_LOW_MEMORY`, `nebula3d.core.low_memory`,
+  always on in the browser bridge) that trades a little recompute for a smaller
+  peak, **verified byte-for-byte identical to the exact path on real data** (a
+  401×501×151 = 30.3 M-voxel neutron dataset: identical backfilled / flattened /
+  ΔPDF volumes and identical consistency metrics; the whole reduction peaks at
+  ~2.3 GB).
+
+What low-memory mode changes (all bit-identical on the default Bragg pipeline):
+
+- `q_magnitude` and the ring-stage plane projections accumulate from broadcast
+  1-D axes — no `(nh,nk,nl)` meshgrids, no `(...,3)` stacks; and the ring stage
+  drops the full-3-D |Q|/φ caches, recomputing each plane's 2-D coordinates
+  instead (saves ~250 MB / two volume-sized arrays on the 30.3 M dataset).
+- The ΔPDF pads to `scipy.fft.next_fast_len` (5-smooth) rather than the next
+  power of two, takes the real part before the shift, and frees each FFT
+  intermediate before the next allocates; the consistency check consumes the
+  ΔPDF during the inverse FFT.
+- The flatten stage subtracts its background **in place** over the disposable
+  input, and the unused per-voxel `sigma` is freed before the ΔPDF / back-FFT
+  stages (which read only data + mask).
+
+Measured per-stage peak RSS on the 30.3 M dataset (low-memory): back-FFT
+consistency check ~75 B/voxel (the binding stage, ~2.3 GB), radial flatten
+~62, backfill (`q_shell`) ~59, ring removal ~60, forward ΔPDF ~45. The default
+Bragg backfill (`nebula3d.analysis.backfill_bragg`, `method="q_shell"`) is
+connected-component / `ndimage`-based and already lean — no KD-tree.
+
+Separately, the older ring-workflow fill `backfill_ring_shells` (used by
+`nebula3d.preprocessing`, not the default Bragg pipeline) *does* build a KD-tree
+over every valid voxel (~90–120 B per valid voxel). Its low-memory path builds a
+*local* tree per **H-slab** (band + halo) instead, bounding peak memory to one
+band; the interpolation is unchanged (same |Q|-radial weighting, same neighbour
+distances) — only exactly-equidistant tie resolution can differ, confined to the
+fabricated estimates at punched voxels and **< 1e-5 relative in the ΔPDF**
+(verified: `tests/test_backfill_blocked.py`). Normal-size volumes take the
+single-tree, byte-for-byte-identical path.
 
 The float32 / parallel-worker prototypes on `feat/in-browser-parallel-float32`
 are superseded. Volumes beyond the ~50 M-voxel gate still go through the native
-build (`pip install "nebula3d[web]" && nebula3d-web`); a memory64 (wasm64)
-Pyodide build would lift even that, if ever needed.
+build (`pip install "nebula3d[web]" && nebula3d-web`), which has no size limit.

@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shutil
 import struct
 from collections.abc import Callable
@@ -69,22 +70,29 @@ __all__ = [
 ]
 
 # In-browser memory budget.  Pyodide runs in a 32-bit-WASM heap whose hard
-# ceiling is 4 GB (Pyodide ≥ 0.27; MAXIMUM_MEMORY=4GB), so a full float64
-# reduction of a very large volume can simply not fit (see the memory-ceiling
-# notes in docs/web.md, "In-browser run").  After the memory rework (broadcast
-# |Q| accumulation instead of meshgrids, next_fast_len FFT padding, prompt
-# frees, capped caches, consumed ΔPDF in the check stage) the worst stage —
-# the back-FFT consistency check — measures ~7.3 live volume-sized float64
-# arrays (58 B/voxel peak RSS on a 200³ run); every other stage is ≤6.
-# 8×8 B/voxel keeps ~10% safety margin on top of that measurement.  Volumes
-# whose estimated peak exceeds the budget are refused at load with a clear
-# message rather than allowed to crash mid-pipeline with a numpy MemoryError.
-# Native ``nebula3d-web`` has no such limit; this gate lives only here, in the
-# browser bridge.
+# ceiling is 4 GB (Pyodide ≥ 0.27; MAXIMUM_MEMORY=4GB, and there is no wasm64
+# Pyodide build), so the whole float64 reduction must fit inside it (see the
+# memory-ceiling notes in docs/web.md, "In-browser run").
+#
+# Low-memory mode (``NEBULA3D_LOW_MEMORY`` — always on here; see
+# ``nebula3d.core.low_memory``) trades a little recompute for a smaller peak,
+# every part of it verified byte-for-byte identical to the exact path on real
+# data: the ring stage drops the full-3-D |Q|/φ caches (per-plane 2-D
+# recompute), the flatten stage subtracts in place, and the unused per-voxel
+# ``sigma`` is freed before the ΔPDF / back-FFT stages (which read only data +
+# mask).  On a real 401×501×151 volume (30.3 M voxels) the whole reduction then
+# peaks at ~2.3 GB; the binding stage is the back-FFT consistency check at
+# ~75 B/voxel, with the radial flatten / ring removal close behind.
+#
+# 64 B/voxel is that worst-stage figure net of the fixed interpreter overhead
+# (which dilutes at scale), with a small margin.  Volumes whose estimated peak
+# exceeds the budget are refused at load with a clear message rather than allowed
+# to crash mid-pipeline with a numpy ``MemoryError``.  Native ``nebula3d-web``
+# has no such limit; this gate lives only here, in the browser bridge.
 _PIPELINE_PEAK_BYTES_PER_VOXEL = 8 * 8
 # 4 GB WASM ceiling minus the Pyodide runtime + packages (~0.5 GB) and headroom
 # for growth fragmentation (wasm memory never shrinks) → 50 M voxels pass the
-# gate (e.g. a 301×401×401 full-resolution volume = 48.4 M voxels ≈ 2.9 GB
+# gate (e.g. a 301×401×401 full-resolution volume = 48.4 M voxels ≈ 3.1 GB
 # estimated peak).
 _BROWSER_PEAK_BUDGET_BYTES = 3_200_000_000
 
@@ -117,6 +125,13 @@ def setup(workdir: str = "/work") -> str:
     the 4 GB WASM heap that residency would stack on top of the pipeline's own
     peak (a full dataset's cache alone can exceed the heap at full resolution).
     """
+    # Low-memory mode: the pipeline drops volume-sized caches that only trade
+    # memory for a little recompute (the full-3D ring-coordinate grids and the
+    # unused sigma under the ΔPDF/back-FFT transforms).  In the 4 GB WASM heap
+    # the peak, not the CPU, is what caps the volume size — so this is always on
+    # in the browser bridge.  See nebula3d.pipeline._low_memory / _drop_sigma.
+    os.environ["NEBULA3D_LOW_MEMORY"] = "1"
+
     root = Path(workdir)
     (root / "raw").mkdir(parents=True, exist_ok=True)
     (root / "processed").mkdir(parents=True, exist_ok=True)
