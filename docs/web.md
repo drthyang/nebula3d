@@ -74,6 +74,38 @@ replace the standalone `examples/explore_*.py` viewers:
 | **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three linked real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) as square **windows** (adjustable, default 80 Å), each with its own cut slider, plus contrast and a gray dashed unit-cell overlay. |
 | **Multi-volume** | `explore_delta_pdf_multi.py` | Related DeltaPDF files × the three planes as a square grid, sharing cut, window, and contrast; a per-plane colour scale pooled across files. |
 | **Consistency check** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data \| back-FFT \| residual** at a shared plane/cut, with agreement metrics (Pearson r, normalised RMS, per-plane r). Adjustable **\|Q\|** and real-space **r** bands isolate which ranges support a signal. |
+| **AI Assistant** | — (new) | Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini) model and ask it to assess the reduction. Four one-click reviews (ring removal, Bragg punch, backfill, ΔPDF features) plus free chat, all grounded in numeric metrics computed in the browser from the stage volumes. Optional vision opt-in attaches the rendered slice for image-capable models. |
+
+## AI Assistant
+
+The assistant lives entirely in the browser (`web/src/llm/`) and follows a
+*metrics-compute-the-truth, the-LLM-narrates* design: deterministic pure
+functions derive real diagnostic numbers from the same slice envelopes the
+viewers already fetch, and those numbers (never the raw volume) are sent to the
+model as a compact JSON context. Nothing leaves the machine except the chat call
+to the model server the user configured — local providers keep everything
+on-device; cloud providers are gated behind a data-leaves-your-device warning.
+
+- **`metrics/`** — one pure module per judgment, each unit-tested
+  (`vitest`, `npm --prefix web run test`):
+  - `rings.ts` — residual powder-ring energy (localized bumps in the azimuthal
+    radial profile) before vs after, over-subtraction fraction, and a suggested
+    robust display ceiling for inspecting leftover rings at optimal contrast.
+  - `punch.ts` — scans the *punched* slice for sharp maxima left unpunched
+    (bright finite spikes away from the NaN holes) and summarises the fitted
+    `BraggProfile` (resolution-limited fraction, measured widths, anisotropy).
+  - `backfill.ts` — hole-rim seam magnitude (σ units), bright residual plugs, and
+    a checkerboard-fraction that flags periodic interpolation artefacts.
+  - `dpdf.ts` — feature SNR vs background, strong-feature anisotropy (covariance
+    ratio + orientation), radial trend, and back-FFT consistency pass-through.
+- **`context/pipelineContext.ts`** — folds the per-stage metrics into the budgeted
+  JSON context; **`prompts/`** — the nebula3d domain system prompt + per-stage
+  message builders; **`provider/`** — a dependency-free streaming
+  OpenAI-compatible client; **`settings.ts`** — a localStorage store (provider,
+  model, key, temperature, vision opt-in).
+- **Vision** (`render/sliceImage.ts`) — when enabled and the model is
+  vision-capable, the rendered slice PNG is attached to stage reviews so the
+  model can literally assess the image alongside the numbers.
 
 ## Architecture
 

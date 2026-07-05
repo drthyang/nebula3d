@@ -10,8 +10,10 @@ import {
   IconOrbits,
   IconProfileWave,
   IconRun,
+  IconSpark,
   IconTransform,
 } from "./components/ui";
+import { AssistantPanel } from "./llm";
 import { ConsistencyViewer } from "./pages/ConsistencyViewer";
 import { BraggProfileViewer } from "./pages/BraggProfileViewer";
 import { DeltaPdfViewer } from "./pages/DeltaPdfViewer";
@@ -21,7 +23,7 @@ import { PipelineExecution } from "./pages/PipelineExecution";
 import { ReciprocalViewer } from "./pages/ReciprocalViewer";
 import { usePipelineStore } from "./state/pipelineStore";
 
-export type Tab = "config" | "execution" | "reciprocal" | "bragg" | "dpdf" | "multi" | "consistency";
+export type Tab = "config" | "execution" | "reciprocal" | "bragg" | "dpdf" | "multi" | "consistency" | "assistant";
 
 const NAV: { id: Tab; label: string; desc: string; icon: ReactNode }[] = [
   {
@@ -66,6 +68,12 @@ const NAV: { id: Tab; label: string; desc: string; icon: ReactNode }[] = [
     desc: "ΔPDF orthoslices side by side across related files, with shared cuts and pooled colour scale.",
     icon: <IconLayers />,
   },
+  {
+    id: "assistant",
+    label: "AI Assistant",
+    desc: "Ask a local or cloud model to assess this reduction — ring removal, Bragg punch, backfill, and 3D-ΔPDF features — grounded in metrics computed from the volumes.",
+    icon: <IconSpark />,
+  },
 ];
 
 function renderPage(tab: Tab, setTab: (t: Tab) => void): ReactNode {
@@ -84,6 +92,8 @@ function renderPage(tab: Tab, setTab: (t: Tab) => void): ReactNode {
       return <MultiTempViewer />;
     case "consistency":
       return <ConsistencyViewer />;
+    case "assistant":
+      return <AssistantPanel />;
   }
 }
 
