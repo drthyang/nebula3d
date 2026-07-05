@@ -49,15 +49,36 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   (`web/src/workers/pyodideWorker.ts`) so the UI never blocks; a boot-progress
   panel covers the ~15 MB WASM download (cached after first load).
 - **Memory ceiling.** Pyodide's 32-bit-WASM heap tops out at 4 GB (Pyodide
-  ≥ 0.27). The pipeline is memory-lean in float64 — |Q| grids accumulate from
-  broadcast 1-D axes instead of meshgrids, the ΔPDF pads to
-  `scipy.fft.next_fast_len` instead of powers of two, intermediates are freed
-  promptly, and the slice caches are capped in-browser — so the worst stage
-  peaks at ~7.3 volume-sized arrays (measured; the gate assumes 8). That admits
-  **up to ~50 M voxels at full float64 precision** (e.g. a 301×401×401
-  full-resolution volume = 48.4 M voxels). Every upload is pre-flighted by
-  `nebula3d.webbridge.inspect_input` (reads only the HDF5 shape, so it can't OOM)
-  and rejected above the gate with a message pointing to the native build.
+  ≥ 0.27; there is no wasm64 Pyodide build), so the whole float64 reduction of a
+  full-resolution volume has to fit in that heap. The browser bridge turns on a
+  **low-memory mode** (`NEBULA3D_LOW_MEMORY`, see `nebula3d.core.low_memory`)
+  that trades a little recompute for a smaller peak, none of it a precision or
+  resolution compromise — and **verified byte-for-byte identical to the exact
+  path on real data** (a 401×501×151 = 30.3 M-voxel neutron dataset gives
+  identical backfilled / flattened / ΔPDF volumes and identical consistency
+  metrics either way):
+  - |Q| grids accumulate from broadcast 1-D axes instead of meshgrids, and the
+    ΔPDF pads to `scipy.fft.next_fast_len` rather than powers of two;
+  - the ring stage skips the full-3-D |Q|/φ coordinate caches (each plane
+    recomputes its own 2-D coordinates — ~250 MB / two volume-sized arrays saved
+    on the 30.3 M dataset);
+  - the flatten stage subtracts its background **in place**, and the unused
+    per-voxel `sigma` is freed before the ΔPDF / back-FFT stages (which read only
+    data + mask).
+
+  On the 30.3 M dataset the whole reduction peaks at ~2.3 GB; the binding stage
+  is the back-FFT consistency check (~75 B/voxel), with the radial flatten and
+  ring removal close behind. That admits **up to ~50 M voxels at full float64
+  precision** (e.g. a 301×401×401 full-resolution volume = 48.4 M voxels). Every
+  upload is pre-flighted by `nebula3d.webbridge.inspect_input` (reads only the
+  HDF5 shape, so it can't OOM) and rejected above the gate with a message
+  pointing to the native build.
+
+  (The default Bragg backfill, `backfill_bragg` with `method="q_shell"`, is
+  connected-component / `ndimage`-based and already lean. The older ring-workflow
+  `backfill_ring_shells` — not on this pipeline — builds a KD-tree over every
+  valid voxel; its low-memory path bounds that to a per-H-slab local tree,
+  within ~1e-5 relative of the exact fill.)
 
 Local dev for this build: `cd web && npm run dev:pyodide` (loads `.env.pages`,
 base `/`).

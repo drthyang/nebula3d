@@ -1245,8 +1245,10 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
   };
 
   const onRun = async () => {
-    await run();
+    // Jump to the Execution page as soon as the job starts (run() streams
+    // progress into the store for the whole run), not after it finishes.
     onStarted();
+    await run();
   };
 
   const applyDataRoot = async () => {
