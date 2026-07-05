@@ -115,48 +115,42 @@ export function ChatView({
 
   const stages: ReviewStage[] = ["rings", "punch", "backfill", "dpdf"];
   const disabled = !connected || !assistant;
+  const empty = turns.length === 0 && !reply.streaming;
 
   return (
     <div className="ai-chat">
-      <div className="ai-reviews">
-        <span className="ai-reviews-label">One-click reviews</span>
-        {stages.map((s) => (
-          <button
-            key={s}
-            type="button"
-            className="ai-chip"
-            disabled={disabled || reply.streaming}
-            onClick={() => runReview(s)}
-            title={disabled ? "Connect a model and select a dataset first" : undefined}
-          >
-            {STAGE_REVIEW_LABELS[s]}
-          </button>
-        ))}
-      </div>
-
       <div className="ai-transcript" ref={scrollRef}>
-        {turns.length === 0 && !reply.streaming && (
+        {empty && (
           <div className="ai-placeholder">
-            {!connected
-              ? "Connect a local or cloud model above, then ask about the reduction — or use a one-click review."
-              : !assistant
-                ? contextLoading
-                  ? "Preparing metrics from the stage volumes…"
-                  : "Select a processed dataset to prepare the assistant's context."
-                : "Ask about the reduction, or click a stage review above. Answers are grounded in metrics computed from the current cut."}
+            <span className="ai-placeholder-title">
+              {!connected
+                ? "Connect a model to begin"
+                : !assistant
+                  ? contextLoading
+                    ? "Preparing metrics…"
+                    : "Select a processed dataset"
+                  : "Ask about this reduction"}
+            </span>
+            <span className="ai-placeholder-sub">
+              {!connected
+                ? "Open connection settings (gear) to point at a local or cloud model."
+                : !assistant
+                  ? contextLoading
+                    ? "Reading the stage volumes and computing quality metrics."
+                    : "Its stage outputs feed the assistant's context."
+                  : "Answers are grounded in metrics computed from the current cut — or use a one-click review below."}
+            </span>
           </div>
         )}
         {turns.map((t) =>
           t.role === "user" ? (
             <div key={t.id} className="ai-msg ai-msg-user">
-              <span className="ai-msg-role">You</span>
-              <div className="ai-msg-bubble">{t.content}</div>
+              <div className="ai-user-bubble">{t.content}</div>
             </div>
           ) : (
             <div key={t.id} className="ai-msg ai-msg-assistant">
-              <span className="ai-msg-role">Assistant</span>
               {t.reasoning ? <Thinking text={t.reasoning} /> : null}
-              <div className="ai-msg-bubble">
+              <div className="ai-answer">
                 <Markdown text={t.content} />
               </div>
             </div>
@@ -164,15 +158,14 @@ export function ChatView({
         )}
         {reply.streaming && (
           <div className="ai-msg ai-msg-assistant">
-            <span className="ai-msg-role">Assistant</span>
             <Thinking text={reply.reasoning} live />
             {reply.content ? (
-              <div className="ai-msg-bubble">
+              <div className="ai-answer">
                 <Markdown text={reply.content} />
                 <span className="ai-caret" />
               </div>
             ) : !reply.reasoning ? (
-              <div className="ai-msg-bubble ai-msg-waiting">
+              <div className="ai-answer ai-answer-waiting">
                 <span className="ai-caret" />
               </div>
             ) : null}
@@ -181,29 +174,63 @@ export function ChatView({
         {reply.error && <div className="ai-conn-alert">{reply.error}</div>}
       </div>
 
-      <div className="ai-composer">
-        <textarea
-          value={draft}
-          placeholder={disabled ? "Connect a model to chat" : "Ask about this reduction…"}
-          disabled={disabled}
-          rows={2}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void sendChat();
-            }
-          }}
-        />
-        {reply.streaming ? (
-          <button type="button" className="ai-btn ai-btn-stop" onClick={reply.cancel}>
-            Stop
-          </button>
-        ) : (
-          <button type="button" className="ai-btn ai-btn-send" disabled={disabled || !draft.trim()} onClick={sendChat}>
-            Send
-          </button>
-        )}
+      <div className="ai-dock">
+        <div className="ai-reviews">
+          {stages.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className="ai-chip"
+              disabled={disabled || reply.streaming}
+              onClick={() => runReview(s)}
+              title={disabled ? "Connect a model and select a dataset first" : undefined}
+            >
+              {STAGE_REVIEW_LABELS[s]}
+            </button>
+          ))}
+        </div>
+
+        <div className={`ai-composer${disabled ? " is-disabled" : ""}`}>
+          <textarea
+            value={draft}
+            placeholder={disabled ? "Connect a model to chat…" : "Ask about this reduction…"}
+            disabled={disabled}
+            rows={1}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void sendChat();
+              }
+            }}
+          />
+          {reply.streaming ? (
+            <button type="button" className="ai-send is-stop" onClick={reply.cancel} title="Stop">
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                <rect x="3" y="3" width="8" height="8" rx="1.5" fill="currentColor" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="ai-send"
+              disabled={disabled || !draft.trim()}
+              onClick={sendChat}
+              title="Send"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path
+                  d="M8 13V3M8 3l-4 4M8 3l4 4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
