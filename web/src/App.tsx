@@ -127,6 +127,7 @@ export function App() {
             >
               {n.icon}
               {n.label}
+              {n.id === "assistant" && <span className="nav-beta">Beta</span>}
               {n.id === "execution" && running && (
                 <span className="nav-dot" title="a job is running" />
               )}
