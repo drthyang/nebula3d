@@ -5,7 +5,7 @@
 
 import { IconGear } from "../../components/ui";
 import { providerForUrl } from "../provider/presets";
-import type { LlmSettings } from "../settings";
+import { saveSettings, type LlmSettings } from "../settings";
 import type { ConnectionState } from "../useAssistant";
 
 export function ConnectionBar({
@@ -41,6 +41,22 @@ export function ConnectionBar({
       </span>
 
       <span className={`ai-provider-badge${isCloud ? " cloud" : ""}`}>{providerLabel}</span>
+
+      <select
+        className="ai-model-select"
+        value={settings.model}
+        onChange={(e) => saveSettings({ model: e.target.value })}
+        disabled={!connection.models.length}
+        aria-label="Model"
+        title="Model"
+      >
+        {!connection.models.length && <option value="">No model</option>}
+        {connection.models.map((m) => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
+      </select>
 
       <button
         type="button"
