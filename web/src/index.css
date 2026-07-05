@@ -3137,7 +3137,9 @@ input[type="range"]::-moz-range-track {
   padding: 6px 9px;
   font-size: 13px;
 }
-.ai-conn-url {
+/* Beat the global `input[type="text"] { width: 96px }` (specificity 0,1,1) so
+   the Base URL / API-key fields fill their growing column. */
+.ai-conn-controls input.ai-conn-url {
   width: 100%;
   font-family: var(--font-mono);
   font-size: 12px;
