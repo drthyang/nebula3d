@@ -7,6 +7,60 @@ import { isLocalUrl, PROVIDER_PRESETS, providerForUrl } from "../provider/preset
 import { saveSettings, type LlmSettings } from "../settings";
 import type { ConnectionState } from "../useAssistant";
 
+const origin = typeof window !== "undefined" ? window.location.origin : "this page";
+
+// Concise, click-to-expand setup guide.  The key gotcha for a browser app is
+// CORS: a local model server must allow this page's origin before it will answer
+// fetch() calls from here.
+function HelpConnect() {
+  return (
+    <details className="ai-help">
+      <summary>
+        <span className="ai-help-q">?</span> How to connect a model
+      </summary>
+      <div className="ai-help-body">
+        <p>
+          This app runs in your browser, so a local model server must <b>allow this page's origin
+          (CORS)</b>. This page is <code>{origin}</code>.
+        </p>
+
+        <p className="ai-help-h">Ollama — local &amp; private</p>
+        <ol>
+          <li>
+            Pull a model: <code>ollama pull llama3.2</code> (or a vision model like{" "}
+            <code>llama3.2-vision</code>).
+          </li>
+          <li>
+            Start it allowing this site:
+            <code className="ai-help-cmd">OLLAMA_ORIGINS="{origin}" ollama serve</code>
+            (or <code>OLLAMA_ORIGINS="*"</code> to allow any site).
+          </li>
+          <li>
+            Base URL: <code>http://localhost:11434/v1</code>.
+          </li>
+        </ol>
+
+        <p className="ai-help-h">LM Studio — local &amp; private</p>
+        <ol>
+          <li>Load a model, open the <b>Developer</b> (Local Server) tab.</li>
+          <li>Turn on <b>Enable CORS</b>, then Start Server.</li>
+          <li>
+            Base URL: <code>http://localhost:1234/v1</code>.
+          </li>
+        </ol>
+
+        <p className="ai-help-h">Cloud — OpenAI / Gemini</p>
+        <p>Pick the provider below and paste an API key. Your run data leaves your device.</p>
+
+        <p className="ai-help-note">
+          Use Chrome, Edge, or Firefox — Safari blocks <code>http://localhost</code> from an https
+          page. Then click <b>Test</b>.
+        </p>
+      </div>
+    </details>
+  );
+}
+
 export function ConnectionSettings({
   settings,
   connection,
@@ -21,6 +75,8 @@ export function ConnectionSettings({
 
   return (
     <div className="ai-settings">
+      <HelpConnect />
+
       <div className="ai-settings-row">
         <Field label="Provider">
           <select

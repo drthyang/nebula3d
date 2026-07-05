@@ -3,7 +3,7 @@
 // Every request re-sends the compact diagnostic context; stage reviews optionally
 // attach the rendered slice image when the vision opt-in is on.
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { COLORMAPS } from "../../colormaps/luts";
 import type { Slice } from "../../api/types";
@@ -45,8 +45,13 @@ function stageImage(stage: ReviewStage, ac: AssistantContext): string | null {
   return renderSliceToDataUrl(p.slice, { lut, vmax, diverging: p.diverging });
 }
 
-// A collapsible "thinking" panel for a reasoning-model chain-of-thought.
+// A collapsible "thinking" panel for a reasoning-model chain-of-thought. While
+// live, the body auto-scrolls to the newest reasoning as it streams in.
 function Thinking({ text, live }: { text: string; live?: boolean }) {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (live && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+  }, [text, live]);
   if (!text) return null;
   return (
     <details className="ai-think" open={live}>
@@ -54,7 +59,9 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
         {live ? "Thinking…" : "Thoughts"}
         <span className="ai-think-count">{live ? "" : " · reasoning"}</span>
       </summary>
-      <div className="ai-think-body">{text}</div>
+      <div className="ai-think-body" ref={bodyRef}>
+        {text}
+      </div>
     </details>
   );
 }

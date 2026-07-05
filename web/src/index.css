@@ -3202,7 +3202,6 @@ input[type="range"]::-moz-range-track {
   color: var(--accent-hi);
   border-color: var(--accent);
   background: var(--accent-soft);
-  transform: rotate(35deg);
 }
 
 /* — settings drawer — */
@@ -3603,4 +3602,88 @@ h6.md-h {
 }
 .md-table tr:nth-child(even) td {
   background: rgba(255, 255, 255, 0.015);
+}
+
+/* — "How to connect a model" help — */
+.ai-help {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.ai-help > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-hi);
+  list-style: none;
+  user-select: none;
+}
+.ai-help > summary::-webkit-details-marker {
+  display: none;
+}
+.ai-help-q {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid rgba(79, 143, 247, 0.4);
+  font-size: 10px;
+  font-weight: 700;
+}
+.ai-help[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+.ai-help-body {
+  padding: 10px 14px 12px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.ai-help-body p {
+  margin: 0 0 8px;
+}
+.ai-help-body ol {
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+.ai-help-body li {
+  margin: 4px 0;
+}
+.ai-help-h {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-top: 10px !important;
+}
+.ai-help-body code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--accent-hi);
+  overflow-wrap: anywhere;
+}
+.ai-help-cmd {
+  display: block;
+  margin: 5px 0;
+  padding: 7px 10px !important;
+  white-space: pre-wrap;
+  color: var(--text) !important;
+}
+.ai-help-note {
+  color: var(--text-3);
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-bottom: 0 !important;
 }
