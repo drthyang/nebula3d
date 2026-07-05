@@ -71,7 +71,7 @@ const NAV: { id: Tab; label: string; desc: string; icon: ReactNode }[] = [
   {
     id: "assistant",
     label: "AI Assistant",
-    desc: "Ask a local or cloud model to assess this reduction — ring removal, Bragg punch, backfill, and 3D-ΔPDF features — grounded in metrics computed from the volumes.",
+    desc: "Ask a local or cloud model to assess the reduction, grounded in metrics computed from the volumes.",
     icon: <IconSpark />,
   },
 ];
