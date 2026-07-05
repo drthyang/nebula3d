@@ -444,3 +444,13 @@ export function IconAlert({ size = 20 }: IconProps) {
     </svg>
   );
 }
+
+/* four-point spark — the AI assistant */
+export function IconSpark({ size = 17 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" {...stroke}>
+      <path d="M9 2.2c.4 2.9 1.9 4.4 4.8 4.8-2.9.4-4.4 1.9-4.8 4.8-.4-2.9-1.9-4.4-4.8-4.8C7.1 6.6 8.6 5.1 9 2.2Z" />
+      <path d="M14 11.5c.2 1.3.9 2 2.2 2.2-1.3.2-2 .9-2.2 2.2-.2-1.3-.9-2-2.2-2.2 1.3-.2 2-.9 2.2-2.2Z" />
+    </svg>
+  );
+}
