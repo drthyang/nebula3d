@@ -3,7 +3,7 @@
 // Every request re-sends the compact diagnostic context; stage reviews optionally
 // attach the rendered slice image when the vision opt-in is on.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { COLORMAPS } from "../../colormaps/luts";
 import type { Slice } from "../../api/types";
@@ -11,20 +11,15 @@ import {
   buildChatMessages,
   buildStageReviewMessages,
   STAGE_REVIEW_LABELS,
-  type HistoryTurn,
   type ReviewStage,
 } from "../prompts/templates";
 import { renderSliceToDataUrl } from "../render/sliceImage";
 import type { LlmSettings } from "../settings";
 import type { AssistantContext } from "../useAssistant";
 import { useStreamedReply } from "../useStreamedReply";
+import { useChatStore } from "../chatStore";
 import { BrandGlyph } from "../../components/ui";
 import { Markdown } from "./Markdown";
-
-interface Turn extends HistoryTurn {
-  id: number;
-  reasoning?: string;
-}
 
 // Pick the slice + colour mapping to render for a given stage review.
 function stageImage(stage: ReviewStage, ac: AssistantContext): string | null {
@@ -78,13 +73,13 @@ export function ChatView({
   settings: LlmSettings;
   contextLoading?: boolean;
 }) {
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [draft, setDraft] = useState("");
-  const idRef = useRef(0);
+  const turns = useChatStore((s) => s.turns);
+  const draft = useChatStore((s) => s.draft);
+  const addTurn = useChatStore((s) => s.addTurn);
+  const setDraft = useChatStore((s) => s.setDraft);
+  const clearChat = useChatStore((s) => s.clear);
   const reply = useStreamedReply();
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const nextId = () => (idRef.current += 1);
 
   const scrollDown = useCallback(() => {
     requestAnimationFrame(() => {
@@ -98,27 +93,27 @@ export function ChatView({
     if (!text || !assistant || reply.streaming) return;
     setDraft("");
     const history = turns.map(({ role, content }) => ({ role, content }));
-    setTurns((t) => [...t, { id: nextId(), role: "user", content: text }]);
+    addTurn({ role: "user", content: text });
     scrollDown();
     const messages = buildChatMessages(assistant.context, history, text);
     const { content, reasoning } = await reply.run(messages);
-    if (content) setTurns((t) => [...t, { id: nextId(), role: "assistant", content, reasoning }]);
+    if (content) addTurn({ role: "assistant", content, reasoning });
     scrollDown();
-  }, [draft, assistant, turns, reply, scrollDown]);
+  }, [draft, assistant, turns, reply, addTurn, setDraft, scrollDown]);
 
   const runReview = useCallback(
     async (stage: ReviewStage) => {
       if (!assistant || reply.streaming) return;
       const image = settings.attachImages ? stageImage(stage, assistant) : null;
       const label = STAGE_REVIEW_LABELS[stage] + (image ? " (with image)" : "");
-      setTurns((t) => [...t, { id: nextId(), role: "user", content: label }]);
+      addTurn({ role: "user", content: label });
       scrollDown();
       const messages = buildStageReviewMessages(assistant.context, stage, image);
       const { content, reasoning } = await reply.run(messages);
-      if (content) setTurns((t) => [...t, { id: nextId(), role: "assistant", content, reasoning }]);
+      if (content) addTurn({ role: "assistant", content, reasoning });
       scrollDown();
     },
-    [assistant, reply, settings.attachImages, scrollDown],
+    [assistant, reply, settings.attachImages, addTurn, scrollDown],
   );
 
   const stages: ReviewStage[] = ["rings", "punch", "backfill", "dpdf"];
@@ -206,6 +201,17 @@ export function ChatView({
               {STAGE_REVIEW_LABELS[s]}
             </button>
           ))}
+          {turns.length > 0 && (
+            <button
+              type="button"
+              className="ai-clear"
+              onClick={clearChat}
+              disabled={reply.streaming}
+              title="Clear the conversation"
+            >
+              Clear
+            </button>
+          )}
         </div>
 
         <div className={`ai-composer${disabled ? " is-disabled" : ""}`}>
