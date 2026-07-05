@@ -75,8 +75,6 @@ export function ConnectionSettings({
 
   return (
     <div className="ai-settings">
-      <HelpConnect />
-
       <div className="ai-settings-row">
         <Field label="Provider">
           <select
@@ -157,6 +155,8 @@ export function ConnectionSettings({
           device. {preset?.hint}
         </div>
       )}
+
+      <HelpConnect />
     </div>
   );
 }
