@@ -159,37 +159,47 @@ button {
   text-transform: uppercase;
   color: var(--text-3);
 }
-.sidebar-dataset-chip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+.sidebar-dataset-control {
+  position: relative;
+}
+.sidebar-dataset-control select {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: 9px;
   color: var(--text);
-  padding: 7px 10px;
+  padding: 9px 30px 9px 12px;
   font-size: 13px;
-  font-weight: 500;
-  text-align: left;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
-.sidebar-dataset-chip:hover {
+.sidebar-dataset-control select:hover:not(:disabled) {
   background: var(--surface-3);
   border-color: var(--accent);
 }
-.sidebar-dataset-value {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.sidebar-dataset-control select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.sidebar-dataset-chip svg {
-  flex: none;
+.sidebar-dataset-control select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.sidebar-dataset-caret {
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--text-3);
+  pointer-events: none;
+  transition: color 0.12s;
 }
-.sidebar-dataset-chip:hover svg {
+.sidebar-dataset-control:hover .sidebar-dataset-caret {
   color: var(--accent-hi);
 }
 
@@ -1883,6 +1893,19 @@ input[type="range"]::-moz-range-track {
 .dataset-panel .field {
   flex: none;
   min-width: 0;
+}
+/* Read-only current-dataset value on Configure (switch it from the sidebar). */
+.dataset-current {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
 }
 .dataset-meta {
   display: flex;
