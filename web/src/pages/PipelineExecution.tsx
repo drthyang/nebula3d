@@ -83,9 +83,10 @@ function condense(events: JobEvent[], times: number[]): { ev: JobEvent; t: numbe
 }
 
 export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
-  const { events, terminal, running, flatten, jobId } = usePipelineStore(
+  const { events, times, terminal, running, flatten, jobId } = usePipelineStore(
     useShallow((s) => ({
       events: s.events,
+      times: s.times,
       terminal: s.terminal,
       running: s.running,
       flatten: s.flatten,
@@ -104,13 +105,6 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
 
   const logRef = useRef<HTMLDivElement | null>(null);
 
-  // Per-event client arrival times (index-aligned with `events`); reset on a new
-  // run (when the store clears `events`), appended for each newly-seen event.
-  const timesRef = useRef<number[]>([]);
-  const times = timesRef.current;
-  if (times.length > events.length) times.length = 0;
-  while (times.length < events.length) times.push(Date.now());
-
   // Tick while running so elapsed/ETA advance.
   const [, tick] = useState(0);
   useEffect(() => {
@@ -119,9 +113,7 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
     return () => window.clearInterval(id);
   }, [running]);
 
-  // `times` is a ref mutated in place (stable identity), so track its length.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const condensed = useMemo(() => condense(events, times), [events, times.length]);
+  const condensed = useMemo(() => condense(events, times), [events, times]);
   useEffect(() => {
     if (running) logRef.current?.scrollTo(0, logRef.current.scrollHeight);
   }, [condensed, running]);
