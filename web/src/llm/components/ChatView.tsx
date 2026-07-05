@@ -1,7 +1,7 @@
-// The conversation surface: a transcript, a streaming live reply, a prompt box,
-// and the four one-click stage reviews.  Every request re-sends the compact
-// diagnostic context; stage reviews optionally attach the rendered slice image
-// when the vision opt-in is on.
+// The conversation surface: a transcript with collapsible model "thinking",
+// markdown-rendered answers, a prompt box, and the four one-click stage reviews.
+// Every request re-sends the compact diagnostic context; stage reviews optionally
+// attach the rendered slice image when the vision opt-in is on.
 
 import { useCallback, useRef, useState } from "react";
 
@@ -18,9 +18,11 @@ import { renderSliceToDataUrl } from "../render/sliceImage";
 import type { LlmSettings } from "../settings";
 import type { AssistantContext } from "../useAssistant";
 import { useStreamedReply } from "../useStreamedReply";
+import { Markdown } from "./Markdown";
 
 interface Turn extends HistoryTurn {
   id: number;
+  reasoning?: string;
 }
 
 // Pick the slice + colour mapping to render for a given stage review.
@@ -41,6 +43,20 @@ function stageImage(stage: ReviewStage, ac: AssistantContext): string | null {
   const lut = COLORMAPS[p.cmap] ?? COLORMAPS.inferno;
   const vmax = p.vmax && p.vmax > 0 ? p.vmax : p.slice.header.robust_max || 1;
   return renderSliceToDataUrl(p.slice, { lut, vmax, diverging: p.diverging });
+}
+
+// A collapsible "thinking" panel for a reasoning-model chain-of-thought.
+function Thinking({ text, live }: { text: string; live?: boolean }) {
+  if (!text) return null;
+  return (
+    <details className="ai-think" open={live}>
+      <summary>
+        {live ? "Thinking…" : "Thoughts"}
+        <span className="ai-think-count">{live ? "" : " · reasoning"}</span>
+      </summary>
+      <div className="ai-think-body">{text}</div>
+    </details>
+  );
 }
 
 export function ChatView({
@@ -72,12 +88,11 @@ export function ChatView({
     if (!text || !assistant || reply.streaming) return;
     setDraft("");
     const history = turns.map(({ role, content }) => ({ role, content }));
-    const userTurn: Turn = { id: nextId(), role: "user", content: text };
-    setTurns((t) => [...t, userTurn]);
+    setTurns((t) => [...t, { id: nextId(), role: "user", content: text }]);
     scrollDown();
     const messages = buildChatMessages(assistant.context, history, text);
-    const answer = await reply.run(messages);
-    if (answer) setTurns((t) => [...t, { id: nextId(), role: "assistant", content: answer }]);
+    const { content, reasoning } = await reply.run(messages);
+    if (content) setTurns((t) => [...t, { id: nextId(), role: "assistant", content, reasoning }]);
     scrollDown();
   }, [draft, assistant, turns, reply, scrollDown]);
 
@@ -89,8 +104,8 @@ export function ChatView({
       setTurns((t) => [...t, { id: nextId(), role: "user", content: label }]);
       scrollDown();
       const messages = buildStageReviewMessages(assistant.context, stage, image);
-      const answer = await reply.run(messages);
-      if (answer) setTurns((t) => [...t, { id: nextId(), role: "assistant", content: answer }]);
+      const { content, reasoning } = await reply.run(messages);
+      if (content) setTurns((t) => [...t, { id: nextId(), role: "assistant", content, reasoning }]);
       scrollDown();
     },
     [assistant, reply, settings.attachImages, scrollDown],
@@ -102,6 +117,7 @@ export function ChatView({
   return (
     <div className="ai-chat">
       <div className="ai-reviews">
+        <span className="ai-reviews-label">One-click reviews</span>
         {stages.map((s) => (
           <button
             key={s}
@@ -124,22 +140,36 @@ export function ChatView({
               : "Ask about the reduction, or click a stage review above. Answers are grounded in metrics computed from the current cut."}
           </div>
         )}
-        {turns.map((t) => (
-          <div key={t.id} className={`ai-msg ai-msg-${t.role}`}>
-            <span className="ai-msg-role">{t.role === "user" ? "You" : "Assistant"}</span>
-            <div className="ai-msg-text">{t.content}</div>
-          </div>
-        ))}
+        {turns.map((t) =>
+          t.role === "user" ? (
+            <div key={t.id} className="ai-msg ai-msg-user">
+              <span className="ai-msg-role">You</span>
+              <div className="ai-msg-bubble">{t.content}</div>
+            </div>
+          ) : (
+            <div key={t.id} className="ai-msg ai-msg-assistant">
+              <span className="ai-msg-role">Assistant</span>
+              {t.reasoning ? <Thinking text={t.reasoning} /> : null}
+              <div className="ai-msg-bubble">
+                <Markdown text={t.content} />
+              </div>
+            </div>
+          ),
+        )}
         {reply.streaming && (
           <div className="ai-msg ai-msg-assistant">
             <span className="ai-msg-role">Assistant</span>
-            {reply.reasoning && !reply.content && (
-              <div className="ai-msg-reasoning">thinking… {reply.reasoning.slice(-160)}</div>
-            )}
-            <div className="ai-msg-text">
-              {reply.content}
-              <span className="ai-caret" />
-            </div>
+            <Thinking text={reply.reasoning} live />
+            {reply.content ? (
+              <div className="ai-msg-bubble">
+                <Markdown text={reply.content} />
+                <span className="ai-caret" />
+              </div>
+            ) : !reply.reasoning ? (
+              <div className="ai-msg-bubble ai-msg-waiting">
+                <span className="ai-caret" />
+              </div>
+            ) : null}
           </div>
         )}
         {reply.error && <div className="ai-conn-alert">{reply.error}</div>}

@@ -26,42 +26,45 @@ export function useStreamedReply() {
     setState((s) => ({ ...s, streaming: false }));
   }, []);
 
-  // Stream a reply for `messages`; resolves with the final text (or "" on error
-  // / abort) so the caller can commit it to the transcript.
-  const run = useCallback(async (messages: ChatMessage[]): Promise<string> => {
-    cancel();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setState({ streaming: true, content: "", reasoning: "", error: null });
-    const settings = loadSettings();
-    let content = "";
-    let reasoning = "";
-    try {
-      for await (const delta of streamChat({
-        baseUrl: settings.baseUrl,
-        model: settings.model,
-        messages,
-        temperature: settings.temperature,
-        apiKey: settings.apiKey || undefined,
-        signal: controller.signal,
-      })) {
-        if (delta.content) content += delta.content;
-        if (delta.reasoning) reasoning += delta.reasoning;
-        setState({ streaming: true, content, reasoning, error: null });
-      }
-      setState({ streaming: false, content, reasoning, error: null });
-      return content;
-    } catch (e) {
-      if ((e as Error).name === "AbortError") {
+  // Stream a reply for `messages`; resolves with the final `{ content, reasoning }`
+  // (content "" on error / abort) so the caller can commit both to the transcript.
+  const run = useCallback(
+    async (messages: ChatMessage[]): Promise<{ content: string; reasoning: string }> => {
+      cancel();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setState({ streaming: true, content: "", reasoning: "", error: null });
+      const settings = loadSettings();
+      let content = "";
+      let reasoning = "";
+      try {
+        for await (const delta of streamChat({
+          baseUrl: settings.baseUrl,
+          model: settings.model,
+          messages,
+          temperature: settings.temperature,
+          apiKey: settings.apiKey || undefined,
+          signal: controller.signal,
+        })) {
+          if (delta.content) content += delta.content;
+          if (delta.reasoning) reasoning += delta.reasoning;
+          setState({ streaming: true, content, reasoning, error: null });
+        }
         setState({ streaming: false, content, reasoning, error: null });
-        return content;
+        return { content, reasoning };
+      } catch (e) {
+        if ((e as Error).name === "AbortError") {
+          setState({ streaming: false, content, reasoning, error: null });
+          return { content, reasoning };
+        }
+        setState({ streaming: false, content, reasoning, error: (e as Error).message });
+        return { content: "", reasoning };
+      } finally {
+        abortRef.current = null;
       }
-      setState({ streaming: false, content, reasoning, error: (e as Error).message });
-      return "";
-    } finally {
-      abortRef.current = null;
-    }
-  }, [cancel]);
+    },
+    [cancel],
+  );
 
   const reset = useCallback(() => setState(IDLE), []);
 

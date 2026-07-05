@@ -1,20 +1,31 @@
-// The AI Assistant view: dataset picker, model connection bar, a compact
-// at-a-glance metric summary, and the chat.  The heavy lifting (metrics + the
+// The AI Assistant view: a shared-style header (dataset + at-a-glance verdicts),
+// the model connection cluster, and the chat.  The heavy lifting (metrics + the
 // model call) lives in useAssistant / ChatView; this component only wires the
-// shared dataset selection to them.
+// shared dataset selection to them and mirrors the layout of the other pages.
 
 import { useMemo } from "react";
 
 import { useDatasets } from "../../api/hooks";
-import { EmptyState, IconAlert, MetaStrip } from "../../components/ui";
+import { EmptyState, IconAlert } from "../../components/ui";
 import { useDatasetStore, useInitializeDataset } from "../../state/datasetStore";
 import { useAssistant } from "../useAssistant";
 import { ChatView } from "./ChatView";
 import { ConnectionBar } from "./ConnectionBar";
 
-function verdict(value: number | null | undefined, good: (v: number) => boolean, na = "—"): string {
-  if (value == null || !Number.isFinite(value)) return na;
-  return `${value} ${good(value) ? "✓" : "⚠"}`;
+interface Verdict {
+  key: string;
+  value: string;
+  tone: "good" | "warn" | "none";
+}
+
+function verdict(
+  key: string,
+  value: number | null | undefined,
+  good: (v: number) => boolean,
+  fmt: (v: number) => string = String,
+): Verdict {
+  if (value == null || !Number.isFinite(value)) return { key, value: "—", tone: "none" };
+  return { key, value: fmt(value), tone: good(value) ? "good" : "warn" };
 }
 
 export function AssistantPanel() {
@@ -30,36 +41,21 @@ export function AssistantPanel() {
   const ac = contextQuery.data;
   const ctx = ac?.context;
 
-  const summary = ctx
+  const verdicts: Verdict[] = ctx
     ? [
-        {
-          key: "Ring energy after",
-          value: verdict(ctx.ring_removal?.after_ring_energy, (v) => v < 0.15),
-        },
-        {
-          key: "Peaks left unpunched",
-          value: verdict(ctx.bragg_punch?.leftover.n_suspicious, (v) => v === 0),
-        },
-        {
-          key: "Backfill seam σ",
-          value: verdict(ctx.backfill?.median_seam_sigma, (v) => v < 1.5),
-        },
-        {
-          key: "ΔPDF feature SNR",
-          value: verdict(ctx.delta_pdf?.feature_snr, (v) => v >= 5),
-        },
-        {
-          key: "ΔPDF anisotropy",
-          value: ctx.delta_pdf?.anisotropy_ratio ?? "—",
-        },
+        verdict("Ring energy", ctx.ring_removal?.after_ring_energy, (v) => v < 0.15),
+        verdict("Peaks left", ctx.bragg_punch?.leftover.n_suspicious, (v) => v === 0),
+        verdict("Backfill seam σ", ctx.backfill?.median_seam_sigma, (v) => v < 1.5),
+        verdict("ΔPDF SNR", ctx.delta_pdf?.feature_snr, (v) => v >= 5),
+        verdict("ΔPDF anisotropy", ctx.delta_pdf?.anisotropy_ratio, () => true, (v) => `${v}×`),
       ]
     : [];
 
   return (
     <div className="page-body ai-page">
-      <div className="ai-toolbar">
-        <label className="ai-conn-field">
-          <span className="field-label">Dataset</span>
+      <div className="qr-header ai-header">
+        <div className="qr-header-dataset">
+          <span className="qr-eyebrow">Dataset</span>
           <select value={datasetId ?? ""} onChange={(e) => setDataset(e.target.value)}>
             {datasets.map((d) => (
               <option key={d.id} value={d.id} title={d.raw_name}>
@@ -67,8 +63,26 @@ export function AssistantPanel() {
               </option>
             ))}
           </select>
-        </label>
-        {contextQuery.isFetching && <span className="ai-hint">computing metrics…</span>}
+        </div>
+
+        <div className="qr-divider" />
+
+        {verdicts.length > 0 ? (
+          <div className="ai-verdicts">
+            {verdicts.map((v) => (
+              <div key={v.key} className={`ai-verdict ai-verdict--${v.tone}`}>
+                <span className="ai-verdict-key">{v.key}</span>
+                <span className="ai-verdict-val">{v.value}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <span className="qr-desc">
+            {contextQuery.isFetching
+              ? "Computing metrics from the stage volumes…"
+              : "Select a processed dataset to compute per-stage quality metrics."}
+          </span>
+        )}
       </div>
 
       <ConnectionBar settings={settings} connection={connection} onTest={runTest} />
@@ -87,8 +101,6 @@ export function AssistantPanel() {
           hint="Run the pipeline for this dataset first — the assistant reads its stage outputs."
         />
       )}
-
-      {summary.length > 0 && <MetaStrip items={summary} />}
 
       <ChatView assistant={ac} connected={connected} settings={settings} />
     </div>
