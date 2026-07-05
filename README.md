@@ -42,13 +42,15 @@ the same reduction code:
   http://127.0.0.1:8000); the same UI backed by FastAPI for local work with no
   size limit.
 
-The browser build now has **full feature parity** with the native backend — the
+The browser build has **full feature parity** with the native backend — the
 static, hosted app is a first-class way to run nebula3d, not a reduced demo.
 
-A sidebar console with five views — a pipeline runner (the default landing
-view), reciprocal-space cleanup, 3D-ΔPDF orthoslices, multi-volume comparison,
-and the consistency check — replaces the standalone
-`examples/explore_*.py` viewers (which remain as a fallback). See
+A sidebar console drives everything from one place — a global dataset switcher,
+a pipeline runner (the default landing view), reciprocal-space cleanup, a Bragg
+profile view, 3D-ΔPDF orthoslices, and the back-FFT consistency check — plus an
+**AI Assistant** that connects to a local (Ollama / LM Studio) or cloud (OpenAI /
+Gemini) model and assesses the reduction from metrics computed in the browser
+(nothing leaves your machine but the chat call to your own model server). See
 [QUICKSTART.md](QUICKSTART.md) to get running and [docs/web.md](docs/web.md) for
 the reference, architecture, and development workflow.
 
@@ -343,13 +345,14 @@ GitHub Actions runs the same checks on Python 3.10, 3.11, and 3.12.
 
 ## Status
 
-Version 0.2.0. The recommended workflow is operational and now ends with the
+Version 0.3.0 (beta). The recommended workflow is operational and ends with the
 back-FFT consistency check: powder-ring removal, Bragg cleanup, Bragg-hole
 backfill, radial flatten, 3D-DeltaPDF transform, consistency QA, and interactive
-viewers. The complete pipeline now also runs **fully client-side** in the static
+viewers. The complete pipeline also runs **fully client-side** in the static
 GitHub Pages app, at full-resolution float64 with feature parity to the native
-backend. The package remains pre-1.0/alpha while the public API and file formats
-continue to evolve.
+backend, and the browser console now includes an **AI Assistant** that grades the
+reduction from in-browser metrics. The package remains pre-1.0/beta while the
+public API and file formats continue to evolve.
 
 ## License and provenance
 

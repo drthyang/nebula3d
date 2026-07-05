@@ -1,9 +1,9 @@
 # Web UI
 
 `nebula3d` ships **one** browser console — a React + TypeScript SPA (Vite)
-that unifies the cleanup, 3D-ΔPDF, multi-volume, and consistency views and
-drives the whole reduction pipeline. It has two interchangeable run modes that
-share the same UI and the same `nebula3d` reduction code:
+that unifies the cleanup, 3D-ΔPDF, and consistency views, adds an AI Assistant,
+and drives the whole reduction pipeline. It has two interchangeable run modes
+that share the same UI and the same `nebula3d` reduction code:
 
 | Mode | `VITE_DATA_MODE` | Backend | Use it for |
 | --- | --- | --- | --- |
@@ -85,15 +85,16 @@ base `/`).
 
 ## What it does
 
-A single-page console with a left sidebar; the five views (in sidebar order)
-replace the standalone `examples/explore_*.py` viewers:
+A single-page console with a left sidebar. The dataset is switched once from a
+picker at the top of the sidebar; every view reads it from there (no per-view
+dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer:
 
 | View | Replaces | What |
 | --- | --- | --- |
 | **Configure / Run pipeline** | `run_pipeline.py` | Pick a dataset and tune the key parameters per stage — ring removal (azimuthal **patches**, texture **Fourier order**), punch (HKL ↔ Q-space frame), backfill, flatten, ΔPDF, consistency — then run all stages with a live stepper and log. Existing outputs are skipped unless *force* is on. Default landing view. |
 | **Reciprocal cleanup** | `explore_slice.py` | One panel per HKLVolume stage (raw / ring-removed / punched / backfilled / flattened) sharing an H/K/L plane selector, cut, contrast, log, and colormap. All panels share **one fixed global colour scale** (pooled from the centre cut). The cut readout is an **editable box** — type `0.3333` and it snaps to the nearest plane. |
 | **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three linked real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) as square **windows** (adjustable, default 80 Å), each with its own cut slider, plus contrast and a gray dashed unit-cell overlay. |
-| **Multi-volume** | `explore_delta_pdf_multi.py` | Related DeltaPDF files × the three planes as a square grid, sharing cut, window, and contrast; a per-plane colour scale pooled across files. |
+| **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related DeltaPDF files × the three planes as a square grid, sharing cut, window, and contrast; a per-plane colour scale pooled across files. Component retained; unrouted from the sidebar for now. |
 | **Consistency check** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data \| back-FFT \| residual** at a shared plane/cut, with agreement metrics (Pearson r, normalised RMS, per-plane r). Adjustable **\|Q\|** and real-space **r** bands isolate which ranges support a signal. |
 | **AI Assistant** | — (new) | Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini) model and ask it to assess the reduction. Four one-click reviews (ring removal, Bragg punch, backfill, ΔPDF features) plus free chat, all grounded in numeric metrics computed in the browser from the stage volumes. Optional vision opt-in attaches the rendered slice for image-capable models. |
 

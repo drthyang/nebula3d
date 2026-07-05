@@ -90,7 +90,7 @@ async function boot(wheelBase: string): Promise<void> {
   await py.loadPackage(["numpy", "scipy", "h5py", "matplotlib", "micropip"]);
 
   postBoot("wheel", "Installing the nebula3d reduction package…", false);
-  const wheelUrl = `${wheelBase}wheels/nebula3d-0.2.0-py3-none-any.whl`;
+  const wheelUrl = `${wheelBase}wheels/nebula3d-0.3.0-py3-none-any.whl`;
   py.globals.set("_nebula3d_wheel_url", wheelUrl);
   await py.runPythonAsync(
     "import micropip\nawait micropip.install(_nebula3d_wheel_url, deps=False)\n",

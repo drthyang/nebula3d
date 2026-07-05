@@ -178,8 +178,8 @@ export function App() {
                 : "API offline"}
           </span>
           <span className="ver">
-            <span className="ver-num">v0.2.0</span>
-            <span className="ver-tag">alpha</span>
+            <span className="ver-num">v0.3.0</span>
+            <span className="ver-tag">beta</span>
           </span>
           <span className="copyright">© 2026 Tsung-Han Yang</span>
         </div>

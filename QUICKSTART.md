@@ -51,16 +51,18 @@ make ui                 # build the SPA into src/nebula3d/server/static
 
 ## Using the console
 
-Five views in the left sidebar; a session typically runs top to bottom:
+Pick the dataset once from the switcher at the top of the sidebar; every view
+reads it from there. A session typically runs top to bottom:
 
-1. **Configure** — pick a dataset, tune ring removal / punch / backfill / flatten
-   / ΔPDF, then **Run pipeline**. Existing outputs are skipped unless *force* is on.
+1. **Configure** — tune ring removal / punch / backfill / flatten / ΔPDF, then
+   **Run pipeline**. Existing outputs are skipped unless *force* is on.
 2. **Reciprocal cleanup** — compare stages (raw → ring-removed → punched →
    backfilled → flattened) on one shared plane and colour scale.
 3. **3D-ΔPDF** — three linked real-space orthoslices with a unit-cell overlay.
 4. **Consistency check** — inverse-FFT the ΔPDF back to reciprocal space and
    compare *data | back-FFT | residual*, with `|Q|` and real-space `r` bands.
-5. **Multi-volume** — DeltaPDF orthoslices side by side across related files.
+5. **AI Assistant** — connect a local (Ollama / LM Studio) or cloud (OpenAI /
+   Gemini) model to assess the reduction from metrics computed in the browser.
 
 ## Going further
 
