@@ -3096,7 +3096,7 @@ input[type="range"]::-moz-range-track {
   gap: 14px;
 }
 
-/* — header: dataset + at-a-glance stage verdicts (matches .qr-header) — */
+/* — header: dataset picker (matches .qr-header) — */
 .ai-header {
   flex-wrap: wrap;
 }
@@ -3107,43 +3107,6 @@ input[type="range"]::-moz-range-track {
   color: var(--text);
   padding: 6px 9px;
   font-size: 13px;
-}
-.ai-verdicts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.ai-verdict {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 5px 11px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-left-width: 3px;
-}
-.ai-verdict--good {
-  border-left-color: var(--green);
-}
-.ai-verdict--warn {
-  border-left-color: var(--amber);
-}
-.ai-verdict--none {
-  border-left-color: var(--border-strong);
-}
-.ai-verdict-key {
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-.ai-verdict-val {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
 }
 
 /* — connection cluster (extends .qr-cluster) — */
@@ -3535,10 +3498,4 @@ h6.md-h {
 }
 .md-table tr:nth-child(even) td {
   background: rgba(255, 255, 255, 0.015);
-}
-
-@media (max-width: 860px) {
-  .ai-verdicts {
-    width: 100%;
-  }
 }
