@@ -40,7 +40,6 @@ export function ConsistencyViewer() {
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
   useInitializeDataset(datasets);
   const datasetId = useDatasetStore((s) => s.datasetId);
-  const setDatasetId = useDatasetStore((s) => s.setDataset);
   // Only datasets whose ΔPDF input (flattened/backfilled) exists can be inverted.
   const usable = useMemo(
     () =>
@@ -291,23 +290,8 @@ export function ConsistencyViewer() {
 
   return (
     <div className="page-body qr-page">
-      {/* ── Header: dataset · round-trip · description · apply/full ───────── */}
+      {/* ── Header: round-trip · description · apply/full ───────── */}
       <div className="qr-header">
-        <div className="qr-header-dataset">
-          <span className="qr-eyebrow">Dataset</span>
-          <select
-            value={datasetId ?? ""}
-            onChange={(e) => setDatasetId(e.target.value)}
-          >
-            {datasets.map((d) => (
-              <option key={d.id} value={d.id} title={d.raw_name}>
-                {d.temperature ?? d.stem}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="qr-divider" />
 
         <div className="qr-roundtrip">
           <span className="qr-rt qr-rt--q">Q</span>
