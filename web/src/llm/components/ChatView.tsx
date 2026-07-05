@@ -14,7 +14,7 @@ import {
   type ReviewStage,
 } from "../prompts/templates";
 import { renderSliceToDataUrl } from "../render/sliceImage";
-import type { LlmSettings } from "../settings";
+import { saveSettings, type LlmSettings } from "../settings";
 import type { AssistantContext } from "../useAssistant";
 import { useStreamedReply } from "../useStreamedReply";
 import { useChatStore } from "../chatStore";
@@ -201,6 +201,28 @@ export function ChatView({
               {STAGE_REVIEW_LABELS[s]}
             </button>
           ))}
+          <button
+            type="button"
+            className={`ai-vision-chip${settings.attachImages ? " on" : ""}`}
+            onClick={() => saveSettings({ attachImages: !settings.attachImages })}
+            aria-pressed={settings.attachImages}
+            title={
+              settings.attachImages
+                ? "Vision on: the rendered slice is sent with stage reviews so a vision model can assess the image."
+                : "Vision off: only computed metrics are sent. Turn on for vision-capable models."
+            }
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8Z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.3"
+              />
+              <circle cx="8" cy="8" r="2.1" fill="currentColor" />
+            </svg>
+            Vision
+          </button>
           {turns.length > 0 && (
             <button
               type="button"

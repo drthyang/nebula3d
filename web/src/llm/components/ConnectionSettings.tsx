@@ -2,7 +2,7 @@
 // everything the compact bar hides: provider preset, base URL, API key (cloud
 // only), the Test button, the vision opt-in, and the connection hint/warning.
 
-import { Field, Switch } from "../../components/ui";
+import { Field } from "../../components/ui";
 import { isLocalUrl, PROVIDER_PRESETS, providerForUrl } from "../provider/presets";
 import { saveSettings, type LlmSettings } from "../settings";
 import type { ConnectionState } from "../useAssistant";
@@ -133,19 +133,6 @@ export function ConnectionSettings({
           </Field>
         </div>
       )}
-
-      <div className="ai-settings-toggle">
-        <Switch
-          label="Attach slice image (vision models)"
-          checked={settings.attachImages}
-          onChange={(b) => saveSettings({ attachImages: b })}
-        />
-        <span className="ai-hint">
-          {settings.attachImages
-            ? "The rendered slice is sent with stage reviews so a vision model can assess the image."
-            : "Off: only computed metrics are sent (works with any text model)."}
-        </span>
-      </div>
 
       {connection.status === "error" && (connection.hint || connection.error) && (
         <div className="ai-conn-alert">{connection.hint || connection.error}</div>
