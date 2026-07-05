@@ -538,6 +538,12 @@ def consistency_meta_json(
 ) -> str:
     """Consistency grid + agreement metrics (mirrors /api/consistency/{id}/meta)."""
     path = _pdf_input(dataset_id)
+    # The back-FFT round trip is the heaviest interactive computation (a forward
+    # AND inverse 3-D FFT plus its comparison volumes).  Drop the ΔPDF viewer's
+    # cache first — it is not needed here and, in the 4 GB WASM heap that never
+    # shrinks after a pipeline run, that headroom is what keeps the round trip
+    # from OOM-ing.  A later ΔPDF-view slice just recomputes it (cheap).
+    _dpdf.clear_cache()
     meta = _cons.consistency_meta(path, _band(q_min, q_max), _band(r_min, r_max))
     return _json(meta)
 
