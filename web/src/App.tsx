@@ -95,13 +95,13 @@ export function App() {
   const running = usePipelineStore((s) => s.running);
   const active = NAV.find((n) => n.id === tab) ?? NAV[0];
 
-  // The dataset is chosen once, here in the sidebar, and every page reads it
-  // from the shared store — no per-page dataset pickers.
+  // Every page reads the active dataset from the shared store; it is changed
+  // only on the Configure page, so the sidebar shows it read-only and links there.
   const datasetsQ = useDatasets();
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
   useInitializeDataset(datasets);
   const datasetId = useDatasetStore((s) => s.datasetId);
-  const setDataset = useDatasetStore((s) => s.setDataset);
+  const selectedDataset = datasets.find((d) => d.id === datasetId);
 
   return (
     <div className="app">
@@ -115,21 +115,29 @@ export function App() {
           </span>
         </div>
 
-        <label className="sidebar-dataset">
+        <div className="sidebar-dataset">
           <span className="sidebar-dataset-label">Dataset</span>
-          <select
-            value={datasetId ?? ""}
-            onChange={(e) => setDataset(e.target.value)}
-            disabled={!datasets.length}
+          <button
+            type="button"
+            className="sidebar-dataset-chip"
+            onClick={() => setTab("config")}
+            title="Change the dataset on the Configure page"
           >
-            {!datasets.length && <option value="">—</option>}
-            {datasets.map((d) => (
-              <option key={d.id} value={d.id} title={d.raw_name}>
-                {d.temperature ?? d.stem}
-              </option>
-            ))}
-          </select>
-        </label>
+            <span className="sidebar-dataset-value">
+              {selectedDataset ? (selectedDataset.temperature ?? selectedDataset.stem) : "—"}
+            </span>
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M4.5 2.5 8 6l-3.5 3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
 
         <nav className="nav">
           {NAV.map((n) => (

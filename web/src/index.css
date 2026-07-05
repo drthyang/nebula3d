@@ -159,18 +159,38 @@ button {
   text-transform: uppercase;
   color: var(--text-3);
 }
-.sidebar-dataset select {
+.sidebar-dataset-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   color: var(--text);
-  padding: 7px 9px;
+  padding: 7px 10px;
   font-size: 13px;
   font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
 }
-.sidebar-dataset select:hover:not(:disabled) {
-  border-color: var(--text-3);
+.sidebar-dataset-chip:hover {
+  background: var(--surface-3);
+  border-color: var(--accent);
+}
+.sidebar-dataset-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-dataset-chip svg {
+  flex: none;
+  color: var(--text-3);
+}
+.sidebar-dataset-chip:hover svg {
+  color: var(--accent-hi);
 }
 
 .nav {
@@ -1863,19 +1883,6 @@ input[type="range"]::-moz-range-track {
 .dataset-panel .field {
   flex: none;
   min-width: 0;
-}
-/* Read-only current-dataset value on Configure (the dropdown lives in the sidebar). */
-.dataset-current {
-  display: inline-flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 11px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 500;
 }
 .dataset-meta {
   display: flex;

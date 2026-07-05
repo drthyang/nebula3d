@@ -1470,14 +1470,21 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
           )}
 
           <div className="dataset-panel">
-            <Field label="Dataset">
-              <div className="dataset-current" title="Change the dataset from the sidebar">
-                {selectedDataset ? (selectedDataset.temperature ?? selectedDataset.stem) : "—"}
-              </div>
+            <Field label="Dataset" grow>
+              <select
+                value={datasetId ?? ""}
+                onChange={(e) => setDataset(e.target.value)}
+              >
+                {datasets.map((d) => (
+                  <option key={d.id} value={d.id} title={d.raw_name}>
+                    {d.temperature ?? d.stem}
+                  </option>
+                ))}
+              </select>
             </Field>
             <div className="dataset-meta">
               <span>{selectedDataset?.raw_name ?? "No raw file selected"}</span>
-              <span>{datasets.length} datasets in folder · pick in the sidebar</span>
+              <span>{datasets.length} datasets in folder</span>
             </div>
           </div>
         </div>
