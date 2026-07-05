@@ -3560,6 +3560,23 @@ input[type="range"]::-moz-range-track {
   opacity: 0.45;
   cursor: not-allowed;
 }
+.ai-clear {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  font-size: 12px;
+  padding: 5px 8px;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.ai-clear:hover:not(:disabled) {
+  color: var(--red);
+}
+.ai-clear:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 /* rounded composer with a circular send button */
 .ai-composer {
