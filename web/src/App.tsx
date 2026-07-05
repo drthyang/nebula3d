@@ -95,13 +95,13 @@ export function App() {
   const running = usePipelineStore((s) => s.running);
   const active = NAV.find((n) => n.id === tab) ?? NAV[0];
 
-  // Every page reads the active dataset from the shared store; it is changed
-  // only on the Configure page, so the sidebar shows it read-only and links there.
+  // The dataset is switched here in the sidebar; every page reads it from the
+  // shared store — no per-page dataset pickers.
   const datasetsQ = useDatasets();
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
   useInitializeDataset(datasets);
   const datasetId = useDatasetStore((s) => s.datasetId);
-  const selectedDataset = datasets.find((d) => d.id === datasetId);
+  const setDataset = useDatasetStore((s) => s.setDataset);
 
   return (
     <div className="app">
@@ -117,18 +117,29 @@ export function App() {
 
         <div className="sidebar-dataset">
           <span className="sidebar-dataset-label">Dataset</span>
-          <button
-            type="button"
-            className="sidebar-dataset-chip"
-            onClick={() => setTab("config")}
-            title="Change the dataset on the Configure page"
-          >
-            <span className="sidebar-dataset-value">
-              {selectedDataset ? (selectedDataset.temperature ?? selectedDataset.stem) : "—"}
-            </span>
-            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <div className="sidebar-dataset-control">
+            <select
+              value={datasetId ?? ""}
+              onChange={(e) => setDataset(e.target.value)}
+              disabled={!datasets.length}
+              aria-label="Dataset"
+            >
+              {!datasets.length && <option value="">—</option>}
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id} title={d.raw_name}>
+                  {d.temperature ?? d.stem}
+                </option>
+              ))}
+            </select>
+            <svg
+              className="sidebar-dataset-caret"
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              aria-hidden="true"
+            >
               <path
-                d="M4.5 2.5 8 6l-3.5 3.5"
+                d="M2.5 4.5 6 8l3.5-3.5"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.4"
@@ -136,7 +147,7 @@ export function App() {
                 strokeLinejoin="round"
               />
             </svg>
-          </button>
+          </div>
         </div>
 
         <nav className="nav">
