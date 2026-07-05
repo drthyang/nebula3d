@@ -148,6 +148,30 @@ def _clear_caches() -> None:
     _cons.clear_cache()
 
 
+def _release_other_caches(keep: str) -> None:
+    """Free the slice/volume caches for views other than *keep* (they're now
+    off-screen).
+
+    The three viewers — cleanup slices (``vol``), ΔPDF (``dpdf``), and the
+    back-FFT consistency check (``cons``) — are mutually exclusive on screen, so
+    when the UI enters one the others' volume-sized caches (up to four volumes
+    for a cached reconstruction) are dead weight.  Releasing them here keeps the
+    WASM heap's high-water mark to the active view's working set instead of the
+    accumulated caches — the headroom the heavy back-FFT round trip needs on a
+    large volume.  The cost is a reload of a view's data when the user switches
+    back to it, which happens behind that view transition's existing loading
+    state (never during slider scrubbing of the active view, whose cache is
+    kept).  Called only from the per-view *metadata* entry points (once on view
+    entry), never from the per-slice ones.
+    """
+    if keep != "vol":
+        _vol.clear_cache()
+    if keep != "dpdf":
+        _dpdf.clear_cache()
+    if keep != "cons":
+        _cons.clear_cache()
+
+
 def _safe_stem(name: str) -> str:
     """Filename → a clean stem for the raw ``.nxs`` (drops the extension)."""
     stem = Path(name).name
@@ -482,6 +506,7 @@ def _resolve(volume_id: str, kind: str) -> _ds.StageStatus:
 # ---------------------------------------------------------------------------
 def volume_meta_json(volume_id: str) -> str:
     """Metadata for an HKL stage (mirrors GET /api/volumes/{id}/meta)."""
+    _release_other_caches("vol")  # entering the cleanup view: drop ΔPDF/consistency
     stage = _resolve(volume_id, "hkl")
     m = _vol.volume_meta(stage.path)
     m.update(id=volume_id, stage=stage.name, kind=stage.kind)
@@ -501,6 +526,7 @@ def volume_slice(volume_id: str, plane: str, value: float, interp: bool = False
 # ---------------------------------------------------------------------------
 def dpdf_meta_json(volume_id: str) -> str:
     """Metadata for a ΔPDF stage (mirrors GET /api/deltapdf/{id}/meta)."""
+    _release_other_caches("dpdf")  # entering the ΔPDF view: drop cleanup/consistency
     stage = _resolve(volume_id, "delta_pdf")
     m = _dpdf.dpdf_meta(stage.path)
     m["id"] = volume_id
@@ -539,11 +565,14 @@ def consistency_meta_json(
     """Consistency grid + agreement metrics (mirrors /api/consistency/{id}/meta)."""
     path = _pdf_input(dataset_id)
     # The back-FFT round trip is the heaviest interactive computation (a forward
-    # AND inverse 3-D FFT plus its comparison volumes).  Drop the ΔPDF viewer's
-    # cache first — it is not needed here and, in the 4 GB WASM heap that never
-    # shrinks after a pipeline run, that headroom is what keeps the round trip
-    # from OOM-ing.  A later ΔPDF-view slice just recomputes it (cheap).
-    _dpdf.clear_cache()
+    # AND inverse 3-D FFT plus its comparison volumes).  Free the off-screen
+    # views' caches first — the ΔPDF cache and the cleanup slice volumes are not
+    # needed here, and in the 4 GB WASM heap (which never shrinks after a
+    # pipeline run) that headroom is what keeps the round trip from OOM-ing.  The
+    # reconstruction reloads its one input volume behind the FFT it is about to
+    # run; the consistency cache itself is kept (the reconstruction manages its
+    # own eviction).
+    _release_other_caches("cons")
     meta = _cons.consistency_meta(path, _band(q_min, q_max), _band(r_min, r_max))
     return _json(meta)
 
