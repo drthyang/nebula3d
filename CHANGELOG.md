@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## 0.3.0 (beta) — 2026-07-05
+
+First beta. Adds an in-browser AI Assistant, a sidebar UI refresh, and the
+low-memory + performance work below.
+
+- **AI Assistant — grade the reduction from computed metrics.** A new browser
+  view (`web/src/llm/`) connects to a local (Ollama / LM Studio) or cloud
+  (OpenAI / Gemini) model and assesses the reduction, grounded in numeric
+  metrics computed **in the browser** from the stage volumes — ring-removal
+  residual energy, a leftover-Bragg-peak scan plus fitted peak-profile summary,
+  backfill seam / checkerboard diagnostics, and ΔPDF feature SNR / anisotropy /
+  radial trend. Four one-click stage reviews plus free chat; a ChatGPT-style
+  transcript with markdown + LaTeX-Greek rendering, a rotating "sun" avatar, and
+  collapsible model reasoning; an optional vision toggle that attaches the
+  rendered slice for image-capable models. Everything is client-side — nothing
+  leaves the machine except the chat call to the user's configured model server.
+  The metrics layer is unit-tested (Vitest). Fixed a stack-overflow in the ΔPDF
+  metrics on full-resolution slices along the way.
+- **Sidebar UI refresh.** A single global dataset switcher lives in the sidebar
+  (per-page dataset pickers removed; Configure shows it read-only); the chat
+  session persists across page navigation; the brand is set full-caps; and the
+  Multi-volume view is hidden for now. The browser build keeps full feature
+  parity with the native backend.
 - **In-browser low-memory mode — smaller peak, bit-identical results.** A new
   `NEBULA3D_LOW_MEMORY` mode (`nebula3d.core.low_memory`, always on in the
   Pyodide bridge) trades a little recompute for a smaller peak so full-resolution

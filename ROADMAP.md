@@ -376,6 +376,10 @@ Before treating the pipeline as a stable release candidate:
 - Done for `v0.2.0`: the recommended workflow now has a documented endpoint
   (`pdf_check` / consistency viewer), and package/web/API version metadata is
   aligned.
+- Done for `v0.3.0` (beta): in-browser AI Assistant that grades the reduction
+  from client-side metrics; sidebar UI refresh (global dataset switcher,
+  persistent chat); in-browser low-memory mode; ~22–31 % pipeline speed-up. The
+  frontend Vitest suite now runs in CI alongside lint/type-check/build.
 - Still open: add CI coverage that specifically exercises the Bragg
   guard/exclusion behavior, not just import/type checks.
 
