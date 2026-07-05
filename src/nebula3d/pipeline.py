@@ -1119,6 +1119,11 @@ def consistency_reconstruction(
     for :func:`nebula3d.visualization.extract_slice` — plus the metrics dict.
     """
     vol_c = _crop_hkl(vol, p.crop_hkl)
+    # sigma is never read on this path (the round trip uses data + mask only, and
+    # the returned "data" panel gets a broadcast-zero sigma below), so drop it —
+    # one fewer volume-sized array resident through the forward+inverse FFT.
+    if _low_memory():
+        vol_c = _drop_sigma(vol_c)
     in_band = np.ones(vol_c.data.shape, dtype=bool)
     # The full per-voxel |Q| grid is only needed to build the band mask.  When no
     # |Q| band is requested, skip it entirely and get the q_data_max scalar from
@@ -1127,6 +1132,7 @@ def consistency_reconstruction(
         q_mag_c = vol_c.q_magnitude()
         vol_c, in_band = _band_limit_q(vol_c, q_band, q_mag=q_mag_c)
         q_data_max = float(q_mag_c.max())
+        del q_mag_c  # free the full |Q| grid before the FFTs allocate
     else:
         q_data_max = _q_max_from_axes(
             vol_c.h_axis, vol_c.k_axis, vol_c.l_axis, vol_c.ub_matrix)
