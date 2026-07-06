@@ -20,11 +20,11 @@ replace `$PY` with `python`.
 `examples/run_pipeline.py` runs:
 
 ```text
-ring removal -> Bragg punch -> Bragg backfill -> radial-background flatten -> DeltaPDF -> consistency check
+ring removal -> Bragg punch -> Bragg backfill -> radial-background flatten -> ΔPDF -> consistency check
 ```
 
 Step 4, the **radial-background flatten, is the explicit background-removal step
-and is on by default** (disable with `FLATTEN=0`). The DeltaPDF's own Gaussian
+and is on by default** (disable with `FLATTEN=0`). The ΔPDF's own Gaussian
 `SUBTRACT_BG` blur is the alternative remover and defaults off; do not run both.
 
 It skips stages whose output files already exist. Add `FORCE=1` to recompute
@@ -54,17 +54,17 @@ for DATA_FILE in data/raw/condition_*.nxs; do
 done
 ```
 
-## DeltaPDF Files
+## ΔPDF Files
 
 Use this when the reciprocal-space cleanup stages already exist and you want a
-persistent DeltaPDF file in `data/processed`. The input is the **flattened**
+persistent ΔPDF file in `data/processed`. The input is the **flattened**
 (step-4, background-removed) volume, so the transform's own `SUBTRACT_BG` is left
 off. To use the legacy in-FFT Gaussian blur instead, point `PROC_FILE` at a
 `*_backfilled.h5` file and add `SUBTRACT_BG="0,1.5,1.5"`, but not both.
 
 The `CROP_H=4 CROP_K=8 CROP_L=15` below is an **optional band-limit**. The
 default (omit them) is the full `|Q|` range, which gives a finer real-space grid
-that matches the web 3D-DeltaPDF page and the consistency view, at the cost of a
+that matches the web 3D-ΔPDF page and the consistency view, at the cost of a
 larger transform that includes noisier outer `|Q|` shells.
 
 ```bash
@@ -90,18 +90,18 @@ BACKFILL_FILE="data/processed/example_volume_ringremoved_braggpunched_backfilled
 $PY examples/explore_slice.py
 ```
 
-## View DeltaPDF
+## View ΔPDF
 
 ```bash
 PDF_FILE="data/processed/example_volume_delta_pdf.h5" \
 $PY examples/explore_delta_pdf_ortho.py
 ```
 
-## Check DeltaPDF Consistency
+## Check ΔPDF Consistency
 
 Use this as the endpoint of a single-volume workflow. It starts from the
 flattened diffuse volume (or a backfilled volume if flattening was disabled),
-computes the DeltaPDF, inverse-transforms it back to reciprocal space, and
+computes the ΔPDF, inverse-transforms it back to reciprocal space, and
 writes a `data | back-FFT | residual` figure plus metrics on stdout.
 
 ```bash
@@ -114,10 +114,10 @@ A faithful transform should give Pearson `r` close to 1 and a small normalised
 RMS residual over the reliably recovered reciprocal-space region. For interactive
 band-limited checks, use the web UI's **Consistency check** view.
 
-## Compare DeltaPDF Files
+## Compare ΔPDF Files
 
 With pipeline outputs in `data/processed`, use the web UI's multi-volume view for
-general comparisons. The script accepts a comma-separated list of DeltaPDF paths:
+general comparisons. The script accepts a comma-separated list of ΔPDF paths:
 
 ```bash
 PDF_FILES="data/processed/condition_a_delta_pdf.h5,data/processed/condition_b_delta_pdf.h5,data/processed/condition_c_delta_pdf.h5" \
@@ -130,12 +130,12 @@ scale.
 
 ## 3D-PDF (Bragg Kept)
 
-The DeltaPDF workflow removes the Bragg peaks (punch -> backfill) to isolate the
+The ΔPDF workflow removes the Bragg peaks (punch -> backfill) to isolate the
 diffuse. The **3D-PDF** instead keeps the Bragg peaks and Fourier-transforms the
 total scattering, giving a Patterson-like map of the average-structure
 correlations. `examples/run_pipeline_pdf.py` runs `ring removal -> 3D-PDF` with
 **no punch and no backfill**; the smooth-background subtraction is off. The
-ring-removed files are shared with the DeltaPDF workflow, so stage 1 is skipped
+ring-removed files are shared with the ΔPDF workflow, so stage 1 is skipped
 if it already ran.
 
 ```bash
