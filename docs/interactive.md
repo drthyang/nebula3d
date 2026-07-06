@@ -51,7 +51,7 @@ and the initial cut with `{H,K,L}_VALUE` (default `0.3333` for H, else `0.0`).
 > load the result via `RING_FILE`.
 
 Use this viewer to inspect integer-H Bragg cleanup and fractional-H diffuse
-preservation before running the final 3D-DeltaPDF transform.
+preservation before running the final 3D-ΔPDF transform.
 
 ## 2. ΔPDF Real-Space Viewers (standard preview)
 
@@ -113,7 +113,7 @@ writes `_delta_pdf_hk0/h0l/0kl.png`.
 
 ### Multi-volume comparison — `examples/explore_delta_pdf_multi.py`
 
-Compare related DeltaPDF files as one row per file × the three orthoslice
+Compare related ΔPDF files as one row per file × the three orthoslice
 planes, with shared `x_H / y_K / z_L` cut sliders, a `contrast ×` slider, and
 the unit-cell gridline toggle. Each plane (column) is scaled to its own level
 pooled across the loaded files, so files are directly comparable *within* a
@@ -125,7 +125,7 @@ PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl RMAX=28 \
 python3 examples/explore_delta_pdf_multi.py
 ```
 
-- `PDF_FILES` — comma-separated DeltaPDF `.h5` paths.
+- `PDF_FILES` — comma-separated ΔPDF `.h5` paths.
 - `PDF_LABELS` — optional comma-separated row labels.
 - `RMAX` — display half-window (Å) for all axes (default 50).
 - `PERCENTILE` — per-plane colour-scale percentile at r>3 Å (default 98).

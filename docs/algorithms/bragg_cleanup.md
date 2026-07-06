@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Before 3D-DeltaPDF, sharp Bragg and satellite peaks must be removed from the
+Before 3D-ΔPDF, sharp Bragg and satellite peaks must be removed from the
 diffuse volume and replaced with a plausible diffuse background. The current
 workflow is:
 
@@ -160,7 +160,7 @@ radii are the **resolution floor** in Å⁻¹ (lattice- and temperature-independ
 set `punch_q_radius` for an isotropic floor instead, or `punch_frame="hkl"` +
 `punch_radii` to restore the legacy r.l.u. footprint. In the web Run-pipeline
 panel this is the **Frame → Q-space (Å⁻¹)** selector. Validate a new dataset
-against the HKL punch with the full-pipeline DeltaPDF A/B in
+against the HKL punch with the full-pipeline ΔPDF A/B in
 `examples/compare_delta_pdf_frames.py`.
 
 In Q-mode the punch is **adaptive**, not fixed: the per-peak shape-fit is floored

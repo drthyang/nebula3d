@@ -10,7 +10,7 @@
   2. Bragg/satellite punch          implemented, real-data QA active
   3. Bragg-hole backfill            implemented, real-data QA active
   4. Radial-background flatten      implemented (background removal, default ON)
-  5. 3D-DeltaPDF Fourier transform  implemented, centring bug fixed
+  5. 3D-ΔPDF Fourier transform      implemented, centring bug fixed
   6. Back-FFT consistency check     implemented (inverse-FFT round trip vs data)
 ```
 
@@ -23,7 +23,7 @@ was built from, writing a metric (Pearson r + normalised RMS residual) and a
 Background removal is an explicit step (4 — the radial flatten), not a hidden
 blur inside the FFT; the transform's own Gaussian `SUBTRACT_BG` defaults off and
 is only the alternative remover. The current development goal is to enter the
-final 3D-DeltaPDF stage with a well-organized cleanup stack and clear defaults.
+final 3D-ΔPDF stage with a well-organized cleanup stack and clear defaults.
 
 ## Phase 1 — Foundation  Complete
 
@@ -169,7 +169,7 @@ Open validation:
 - Optional future work: an H-aware residual-cross reduction that lowers the
   leftover L=0 cross without harming the sharp H-axis peaks.
 
-## Phase 4 — 3D-DeltaPDF  Implemented
+## Phase 4 — 3D-ΔPDF  Implemented
 
 Implemented API and drivers:
 

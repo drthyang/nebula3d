@@ -3,12 +3,12 @@
 **NEBULA3D** — *Neutron Elastic Background Utility for Local Analysis and
 3D-ΔPDF* — is a Python toolkit (the `nebula3d` package) for cleaning 3D
 reciprocal-space neutron diffuse scattering volumes and preparing them for
-3D-DeltaPDF analysis.
+3D-ΔPDF analysis.
 
 The current workflow is built around symmetrised Mantid HKL volumes. It removes
 powder-ring backgrounds, punches sharp Bragg and satellite peaks, fills the
 punched holes with a diffuse-background estimate, Fourier-transforms the cleaned
-volume into a real-space 3D-DeltaPDF, ends with a back-FFT consistency check, and
+volume into a real-space 3D-ΔPDF, ends with a back-FFT consistency check, and
 can hand the result to an **AI reasoning review** — a local or cloud LLM that
 grades the reduction from metrics computed in the browser.
 
@@ -20,9 +20,9 @@ Mantid / symmetrised HKL volume
   2. Bragg/satellite punch          examples/punch_bragg_3d.py
   3. Bragg-hole backfill            examples/backfill_bragg_3d.py
   4. radial-background flatten      examples/flatten_background_3d.py
-  5. 3D-DeltaPDF transform          examples/delta_pdf.py
+  5. 3D-ΔPDF transform              examples/delta_pdf.py
   6. back-FFT consistency check     examples/delta_pdf_consistency.py
-  7. cleanup / DeltaPDF viewers     examples/explore_slice.py, examples/explore_delta_pdf_ortho.py
+  7. cleanup / ΔPDF viewers         examples/explore_slice.py, examples/explore_delta_pdf_ortho.py
   8. AI reasoning review (optional) web AI Assistant — local or cloud LLM
 ```
 
@@ -123,10 +123,10 @@ python3 examples/run_pipeline.py
 ```
 
 `examples/run_pipeline.py` runs all compute stages, skips stages whose outputs
-already exist, writes the 3D-DeltaPDF, runs the consistency check, then opens the
-cleanup and DeltaPDF viewers. The stages are: (1) ring removal, (2) Bragg punch,
+already exist, writes the 3D-ΔPDF, runs the consistency check, then opens the
+cleanup and ΔPDF viewers. The stages are: (1) ring removal, (2) Bragg punch,
 (3) Bragg backfill, (4) **radial-background flatten** — the explicit
-background-removal step (default on; `FLATTEN=0` to skip), (5) 3D-DeltaPDF FFT,
+background-removal step (default on; `FLATTEN=0` to skip), (5) 3D-ΔPDF FFT,
 (6) back-FFT consistency check. The background is removed at step 4, not by a
 hidden blur inside the FFT: the transform's own Gaussian `SUBTRACT_BG` is off by
 default because it is the *alternative* remover (see step 5 below).
@@ -210,7 +210,7 @@ preserved. This is the explicit background-removal step. Use
 `examples/validate_flatten.py` to check isotropy, feature retention, and
 over-subtraction on your own volumes.
 
-### 5. Compute The 3D-DeltaPDF
+### 5. Compute The 3D-ΔPDF
 
 ```bash
 PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl APODIZE=gaussian \
@@ -240,7 +240,7 @@ per-H-plane Gaussian background inside the FFT. Use the flatten **or**
 per-H-plane blur (σ_H=0) destroys the on-axis H-direction signal that the
 flatten preserves.
 
-### 6. Check DeltaPDF Consistency
+### 6. Check ΔPDF Consistency
 
 ```bash
 PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl \
@@ -270,7 +270,7 @@ python3 examples/explore_slice.py
 The viewer shows raw data, removed ring intensity, punched data, and backfilled
 data, with an H slider for scrubbing through the volume.
 
-Inspect the real-space 3D-DeltaPDF:
+Inspect the real-space 3D-ΔPDF:
 
 ```bash
 PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl RMAX=50 \
@@ -319,7 +319,7 @@ Key pages:
 | --- | --- |
 | [docs/algorithms/powder_rings.md](docs/algorithms/powder_rings.md) | Powder-ring model and subtraction strategy. |
 | [docs/algorithms/bragg_cleanup.md](docs/algorithms/bragg_cleanup.md) | Bragg/satellite detection, punching, and backfill. |
-| [docs/algorithms/delta_pdf.md](docs/algorithms/delta_pdf.md) | 3D-DeltaPDF transform, centring, background subtraction, and consistency checks. |
+| [docs/algorithms/delta_pdf.md](docs/algorithms/delta_pdf.md) | 3D-ΔPDF transform, centring, background subtraction, and consistency checks. |
 | [QUICKSTART.md](QUICKSTART.md) | Get the app running (native or in-browser) in a few commands. |
 | [docs/commands.md](docs/commands.md) | Concise CLI command recipes for batch workflows and viewers. |
 | [docs/web.md](docs/web.md) | Browser console: run modes, viewers, architecture, dev workflow. |
@@ -333,7 +333,7 @@ src/nebula3d/
 ├── core.py              HKLVolume: 3D array, HKL axes, mask, sigma, UB matrix
 ├── io/                  Mantid NeXus, nebula3d HDF5, and ASCII HKL I/O
 ├── preprocessing/       powder-ring models, background handling, sampling
-├── analysis/            Bragg punch/fill and 3D-DeltaPDF
+├── analysis/            Bragg punch/fill and 3D-ΔPDF
 ├── inpainting/          symmetry, TV, RBF, and biharmonic fallbacks
 └── visualization/       slices, profiles, overview plots, interactive viewers
 ```
@@ -354,7 +354,7 @@ GitHub Actions runs the same checks on Python 3.10, 3.11, and 3.12.
 
 Version 0.3.0 (beta). The recommended workflow is operational and ends with the
 back-FFT consistency check: powder-ring removal, Bragg cleanup, Bragg-hole
-backfill, radial flatten, 3D-DeltaPDF transform, consistency QA, and interactive
+backfill, radial flatten, 3D-ΔPDF transform, consistency QA, and interactive
 viewers. The complete pipeline also runs **fully client-side** in the static
 GitHub Pages app, at full-resolution float64 with feature parity to the native
 backend, and the browser console now includes an **AI Assistant** that grades the
