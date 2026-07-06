@@ -98,16 +98,17 @@ ln -s ../../scripts/check.sh .git/hooks/pre-push
 
 ## Input Data
 
-The preferred input is a Mantid-background-subtracted NeXus file in
-`data/raw/`:
+Place a Mantid-exported NeXus file in `data/raw/`. Either variant works:
 
 ```text
-*_cc_sub_bkg.nxs
+*_cc_sub_bkg.nxs   # correlation chopper, empty-can background subtracted
+*_cc_data.nxs      # correlation chopper data
 ```
 
 Here `cc` means CORELLI correlation chopper, and `sub_bkg` means the empty-can
-background has already been subtracted. You can also load nebula3d HDF5 files
-written by the package itself.
+background has already been subtracted. **Correlation-chopper (`cc`) and
+properly symmetrised data is recommended.** You can also load nebula3d HDF5
+files written by the package itself.
 
 ## Quick Start
 
