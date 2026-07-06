@@ -1,12 +1,16 @@
-# nebula3d
+# NEBULA3D
 
-`nebula3d` is a Python toolkit for cleaning 3D reciprocal-space neutron
-diffuse scattering volumes and preparing them for 3D-DeltaPDF analysis.
+**NEBULA3D** — *Neutron Elastic Background Utility for Local Analysis and
+3D-ΔPDF* — is a Python toolkit (the `nebula3d` package) for cleaning 3D
+reciprocal-space neutron diffuse scattering volumes and preparing them for
+3D-DeltaPDF analysis.
 
 The current workflow is built around symmetrised Mantid HKL volumes. It removes
 powder-ring backgrounds, punches sharp Bragg and satellite peaks, fills the
 punched holes with a diffuse-background estimate, Fourier-transforms the cleaned
-volume into a real-space 3D-DeltaPDF, and ends with a back-FFT consistency check.
+volume into a real-space 3D-DeltaPDF, ends with a back-FFT consistency check, and
+can hand the result to an **AI reasoning review** — a local or cloud LLM that
+grades the reduction from metrics computed in the browser.
 
 ```text
 Mantid / symmetrised HKL volume
@@ -19,6 +23,7 @@ Mantid / symmetrised HKL volume
   5. 3D-DeltaPDF transform          examples/delta_pdf.py
   6. back-FFT consistency check     examples/delta_pdf_consistency.py
   7. cleanup / DeltaPDF viewers     examples/explore_slice.py, examples/explore_delta_pdf_ortho.py
+  8. AI reasoning review (optional) web AI Assistant — local or cloud LLM
 ```
 
 For a **3D-PDF** (total scattering with the Bragg peaks *kept* — a Patterson-like
@@ -48,9 +53,11 @@ static, hosted app is a first-class way to run nebula3d, not a reduced demo.
 A sidebar console drives everything from one place — a global dataset switcher,
 a pipeline runner (the default landing view), reciprocal-space cleanup, a Bragg
 profile view, 3D-ΔPDF orthoslices, and the back-FFT consistency check — plus an
-**AI Assistant** that connects to a local (Ollama / LM Studio) or cloud (OpenAI /
-Gemini) model and assesses the reduction from metrics computed in the browser
-(nothing leaves your machine but the chat call to your own model server). See
+**AI Assistant** that connects to your **selected LLM**, local (Ollama / LM
+Studio) or cloud (OpenAI / Gemini), and **reasons over the reduction** — grading
+ring removal, the Bragg punch, backfill, and the ΔPDF from metrics computed in
+the browser (nothing leaves your machine but the chat call to your own model
+server). See
 [QUICKSTART.md](QUICKSTART.md) to get running and [docs/web.md](docs/web.md) for
 the reference, architecture, and development workflow.
 
