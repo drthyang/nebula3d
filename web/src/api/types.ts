@@ -141,11 +141,16 @@ export interface StageParamsIn {
   rings_n_patches?: number;
   rings_n_fourier?: number;
   rings_slice_axis?: string;
-  // "patched" (per-patch) | "parametric" (separable Ring(|Q|) × per-shell texture)
+  // "global_v2" (sample-only global 3D) | "patched" | "parametric"
   rings_model?: string;
   rings_ring_width?: number;
   // "rolling" (continuous Ring(|Q|)) | "peaks" (discrete pseudo-Voigt)
   rings_radial_mode?: string;
+  rings_global_material?: string;
+  rings_global_subtraction?: string;
+  rings_global_confidence_z?: number;
+  rings_global_angular_lmax?: number;
+  rings_global_min_snr?: number;
   punch_min_intensity?: number;
   punch_search_n_mad?: number;
   punch_mode?: string;

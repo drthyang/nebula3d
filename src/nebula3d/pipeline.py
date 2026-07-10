@@ -51,11 +51,14 @@ from nebula3d.analysis.delta_pdf import _q_max_from_axes
 from nebula3d.core import HKLVolume
 from nebula3d.core import low_memory as _low_memory
 from nebula3d.preprocessing import (
+    GlobalRingConfig,
     ParametricRingModel,
     PatchedRadialRingModel,
     azimuthal_sampling_mask,
     confirm_ring_shells_across_h,
+    fit_global_rings,
     flatten_radial_background,
+    write_global_ring_diagnostics,
 )
 from nebula3d.preprocessing.radial_background import (
     _azimuthal_angle as _plane_azimuthal_angle,
@@ -304,8 +307,11 @@ def write_bragg_profile_json(profile: dict, out_path: Path) -> None:
 # ---------------------------------------------------------------------------
 @dataclass
 class RingParams:
-    """Powder-ring removal (per-slice ``PatchedRadialRingModel`` or
-    ``ParametricRingModel``, selected by ``ring_model``)."""
+    """Powder-ring removal.
+
+    ``ring_model='global_v2'`` is the sample-only, coordinate-independent 3D
+    fitter. ``'patched'`` and ``'parametric'`` retain the legacy per-slice paths.
+    """
 
     q_min: float = 1.5
     q_max: float = 10.5
@@ -318,9 +324,9 @@ class RingParams:
     texture_ridge: float = 0.08
     ring_amp_cap: float = 3.0       # per-shell amplitude ceiling × cross-stack norm
     confirm_rings: bool = True      # confirm real |Q| shells across the stack axis
-    # "patched" (default, non-parametric per-patch) | "parametric" (separable
-    # Ring(|Q|) × per-shell Fourier texture — binning-free azimuthal LS, so the
-    # statistics don't vary with |Q|).
+    # "global_v2" (sample-only global 3D shells) | "patched" (legacy
+    # non-parametric per-patch) | "parametric" (legacy separable Ring(|Q|) ×
+    # per-shell Fourier texture).
     ring_model: str = "patched"
     ring_width: float = 0.24        # parametric: ring width / rolling window (Å⁻¹)
     ring_eta0: float = 0.5          # parametric peaks: initial pseudo-Voigt Lorentzian frac
@@ -328,6 +334,14 @@ class RingParams:
     # Qmin→Qmax) | "peaks" (discrete pseudo-Voigt rings)
     ring_radial_mode: str = "rolling"
     ring_roll_step: float = 0.04    # parametric rolling: |Q| spacing of window centres
+    # Ring Removal 2.0: empty-scan-free global model. "auto" fits every
+    # supported powder shell and labels FCC Al matches; "aluminum" keeps only
+    # Al-matched shells; "generic" uses no material prior.
+    global_material: str = "auto"
+    global_subtraction: str = "conservative"  # conservative | mean | diagnose_only
+    global_confidence_z: float = 1.0
+    global_angular_lmax: int = 4
+    global_min_snr: float = 5.0
 
 
 @dataclass
@@ -690,6 +704,33 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
     either way.
     """
     p = params or RingParams()
+    if p.ring_model.strip().lower() in {"global", "global_v2", "sample_only"}:
+        _emit(progress, "rings", "start", 0.0,
+              f"sample-only global 3D ring inference (material={p.global_material}, "
+              f"subtraction={p.global_subtraction}, |Q| {(p.q_min, p.q_max)})")
+        result = fit_global_rings(vol, GlobalRingConfig(
+            q_min=p.q_min,
+            q_max=p.q_max,
+            q_step=p.q_step,
+            max_fwhm=p.ring_width,
+            min_snr=p.global_min_snr,
+            material=p.global_material,  # type: ignore[arg-type]
+            angular_lmax=p.global_angular_lmax,
+            angular_ridge=p.texture_ridge,
+            subtraction=p.global_subtraction,  # type: ignore[arg-type]
+            confidence_z=p.global_confidence_z,
+        ))
+        out = result.cleaned
+        # HKLVolume intentionally remains a lean interchange type. Attach the
+        # small diagnostics transiently so run_pipeline can write a JSON sidecar.
+        setattr(out, "_ring_diagnostics", result.diagnostics.to_dict())
+        _emit(progress, "rings", "done", 1.0,
+              f"global ring inference {result.diagnostics.status}: "
+              f"{result.diagnostics.n_fitted_shells} shells, "
+              f"removed {100.0 * result.diagnostics.removed_energy_fraction:.3g}% "
+              f"of |I|")
+        return out
+
     cfg = _SLICE_CONFIGS[p.slice_axis.strip().upper()]
     q_range = (p.q_min, p.q_max)
     axis_values = getattr(vol, cfg.axis_attr)
@@ -1238,6 +1279,7 @@ class PipelinePaths:
 
     input: Path
     ringremoved: Path
+    ring_diagnostics_json: Path
     braggpunched: Path
     bragg_profile_json: Path
     backfilled: Path
@@ -1263,7 +1305,9 @@ def pipeline_paths(input_path: str | Path, *, proc_dir: str | Path | None = None
     flat = proc / f"{fill.stem}_flattened.h5"
     pdf = proc / f"{fill.stem}_delta_pdf.h5"
     return PipelinePaths(
-        input=inp, ringremoved=ring, braggpunched=punch,
+        input=inp, ringremoved=ring,
+        ring_diagnostics_json=proc / f"{ring.stem}_diagnostics.json",
+        braggpunched=punch,
         bragg_profile_json=proc / f"{punch.stem}_profile.json",
         backfilled=fill, flattened=flat, delta_pdf=pdf,
         pdf_input=flat if flatten_enabled else fill,
@@ -1382,6 +1426,10 @@ def run_pipeline(
             vol = nebula3d.load(paths.input)
             out = remove_rings(vol, p.rings, progress=progress)
             nebula3d.save(out, paths.ringremoved)
+            ring_diagnostics = getattr(out, "_ring_diagnostics", None)
+            if ring_diagnostics is not None:
+                write_global_ring_diagnostics(
+                    ring_diagnostics, paths.ring_diagnostics_json)
             carry, carry_path = out, paths.ringremoved
             del vol, out  # free the input; `carry` hands the output onward
 

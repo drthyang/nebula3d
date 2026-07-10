@@ -37,6 +37,66 @@ peak structure or azimuthal texture.
 
 ## Current Production Path
 
+### Ring Removal 2.0: sample-only global 3D model
+
+`RingParams.ring_model="global_v2"` enables the sample-only global fitter. It is
+designed for experiments where the empty-environment scan does not reproduce the
+Al sample holder and direct subtraction leaves the holder rings while creating
+negative residuals elsewhere.
+
+The measured sample volume is treated as
+
+```text
+I_sample(Q) = I_crystal(Q) + I_powder(Q) + I_other-background(Q)
+```
+
+and only `I_powder` is inferred and removed. This is **powder-component removal**,
+not a claim of complete or absolute background correction. Smooth incoherent,
+instrumental, and other non-shell backgrounds remain for separately disclosed
+processing.
+
+The implementation:
+
+1. Builds one Bragg-robust radial median over the full 3D volume.
+2. Detects only narrow radial peaks; broad features remain possible sample
+   diffuse scattering.
+3. Optionally identifies FCC Al families and fits their common lattice parameter.
+   In `material="auto"`, unmatched statistically supported powder shells are kept
+   as generic rather than forced into the Al hypothesis.
+4. Fits each shell's non-negative angular amplitude over the full unit sphere with
+   regularized real spherical harmonics. Equal-solid-angle cell medians reject
+   sparse crystal Bragg peaks.
+5. Estimates model uncertainty from angular-cell residuals and propagates it into
+   the cleaned volume's `sigma`.
+6. Defaults to conservative subtraction
+   `max(ring_mean - z * ring_sigma, 0)`. `mean` and `diagnose_only` policies are
+   available explicitly.
+7. Writes `<stem>_ringremoved_diagnostics.json` with material matches, shell
+   centers/widths, angular coverage, uncertainty, removed energy, negative flips,
+   warnings, and fit status.
+
+The legacy models below remain selectable and are still the Python default until
+the global path completes the real-data qualification gates in
+`docs/reports/2026-07-10_al_ring_removal_2_0_plan.md`.
+
+#### Initial real-data check (2026-07-10)
+
+A stride-4 read of the unsubtracted 22 K `TbTi3Bi4 ... mmm_cc.nxs` sample volume
+(76 × 101 × 101; 775,210 valid voxels) exercised the sample-only path without an
+empty-environment scan. With `material="auto"`, `min_snr=5`, and conservative
+subtraction, it found:
+
+- the strong non-Al shell at approximately 1.92 Å⁻¹;
+- the FCC Al sequence at approximately 2.68, 3.12, 4.40, 5.16, 5.40, 6.24,
+  6.80, 6.96, 7.64, 8.08, 9.24, and 10.32 Å⁻¹;
+- a fitted Al lattice parameter of 4.039 Å (nominal room-temperature prior
+  4.0494 Å);
+- 7.56% of total `|I|` removed and a 2.04% positive-to-negative flip fraction.
+
+This is a smoke/geometry check, not the release qualification: full-resolution
+before/model/after figures, injected-truth retention metrics, and downstream
+DeltaPDF comparison remain required before changing the default.
+
 The original factored Gaussian/SVD model remains in the package as
 `PatchedRingModel`, but the current real-data driver uses
 `PatchedRadialRingModel` through `examples/remove_rings_3d.py`.

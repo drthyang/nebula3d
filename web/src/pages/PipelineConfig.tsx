@@ -331,6 +331,29 @@ function RingEquation({
   nFourier: number;
   nPatches: number;
 }) {
+  if (model === "global_v2") {
+    return (
+      <div className="ring-eqn">
+        <div className="eq">
+          <i>I</i>
+          <sub>ring</sub>(<i>Q</i>) = <span className="op">Σ</span>
+          <sub>j</sub> <span className="op">PV</span>
+          <sub>j</sub>(|<i>Q</i>|)&nbsp;·&nbsp;<i>A</i>
+          <sub>j</sub>(Q̂)
+        </div>
+        <div className="eq sub">
+          <i>A</i>
+          <sub>j</sub>(Q̂) = <span className="op">max</span>(0,&nbsp;
+          <span className="op">Σ</span><sub>ℓm</sub> β<sub>jℓm</sub>
+          <i>Y</i><sub>ℓm</sub>(Q̂))
+        </div>
+        <div className="eq sub">
+          conservative subtraction = <span className="op">max</span>(0,&nbsp;μ
+          <sub>ring</sub> − zσ<sub>ring</sub>)
+        </div>
+      </div>
+    );
+  }
   if (model === "parametric") {
     return (
       <div className="ring-eqn">
@@ -1130,6 +1153,11 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       ringNFourier: st.ringNFourier,
       ringSliceAxis: st.ringSliceAxis,
       ringWidth: st.ringWidth,
+      ringGlobalMaterial: st.ringGlobalMaterial,
+      ringGlobalSubtraction: st.ringGlobalSubtraction,
+      ringGlobalConfidence: st.ringGlobalConfidence,
+      ringGlobalLmax: st.ringGlobalLmax,
+      ringGlobalMinSnr: st.ringGlobalMinSnr,
       punchMinI: st.punchMinI,
       punchMethod: st.punchMethod,
       punchMode: st.punchMode,
@@ -1499,9 +1527,9 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   onToggle={(v) => patch({ ringsEnabled: v })}
                 >
                   <HelpTip>
-                    Powder-ring subtraction before punching. Patched removes a
-                    per-azimuthal-patch radial background; parametric fits a
-                    separable Ring(|Q|) × Fourier-texture model.
+                    Global 3D infers powder shells directly from the sample volume
+                    without requiring an empty-environment subtraction. Legacy
+                    patched and parametric models remain available for comparison.
                   </HelpTip>
                 </StageHead>
                 <div className="cfg-stage-grid">
@@ -1510,24 +1538,85 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     <Field label="Model">
                       <select
                         value={s.ringModel}
-                        title="Patched: non-parametric per-azimuthal-patch radial subtraction. Parametric: separable pseudo-Voigt(|Q|) × per-ring Fourier texture, fit from thin radial shells + binning-free azimuthal LS (statistics don't vary with |Q|)."
+                        title="Global 3D: sample-only spherical-shell inference with uncertainty. Patched/parametric: legacy plane-by-plane models."
                         onChange={(e) => patch({ ringModel: e.target.value })}
                       >
+                        <option value="global_v2">Global 3D (sample-only)</option>
                         <option value="patched">Patched (per-patch)</option>
                         <option value="parametric">Parametric (pseudo-Voigt)</option>
                       </select>
                     </Field>
-                    <Field label="Slice axis">
-                      <select
-                        value={s.ringSliceAxis}
-                        title="Axis sliced over when fitting the powder rings plane-by-plane"
-                        onChange={(e) => patch({ ringSliceAxis: e.target.value })}
-                      >
-                        <option value="H">H · fit 0kl planes</option>
-                        <option value="K">K · fit h0l planes</option>
-                        <option value="L">L · fit hk0 planes</option>
-                      </select>
-                    </Field>
+                    {s.ringModel !== "global_v2" && (
+                      <Field label="Slice axis">
+                        <select
+                          value={s.ringSliceAxis}
+                          title="Axis sliced over when fitting the legacy powder-ring models"
+                          onChange={(e) => patch({ ringSliceAxis: e.target.value })}
+                        >
+                          <option value="H">H · fit 0kl planes</option>
+                          <option value="K">K · fit h0l planes</option>
+                          <option value="L">L · fit hk0 planes</option>
+                        </select>
+                      </Field>
+                    )}
+                    {s.ringModel === "global_v2" && (
+                      <>
+                        <Field label="Material prior">
+                          <select
+                            value={s.ringGlobalMaterial}
+                            title="Auto keeps supported powder shells and labels Al matches. Aluminum keeps only FCC-Al-matched shells. Generic uses no material prior."
+                            onChange={(e) => patch({ ringGlobalMaterial: e.target.value })}
+                          >
+                            <option value="auto">Auto · Al + generic</option>
+                            <option value="aluminum">Aluminum FCC only</option>
+                            <option value="generic">Material agnostic</option>
+                          </select>
+                        </Field>
+                        <Field label="Subtraction">
+                          <select
+                            value={s.ringGlobalSubtraction}
+                            title="Conservative subtracts the lower confidence bound; Mean subtracts the fitted mean; Diagnose only leaves intensity unchanged."
+                            onChange={(e) => patch({ ringGlobalSubtraction: e.target.value })}
+                          >
+                            <option value="conservative">Conservative</option>
+                            <option value="mean">Fitted mean</option>
+                            <option value="diagnose_only">Diagnose only</option>
+                          </select>
+                        </Field>
+                        <Field label="Confidence z">
+                          <input
+                            type="number" min="0" step="0.25"
+                            value={s.ringGlobalConfidence}
+                            title="Conservative subtraction removes max(mean − z·sigma, 0). Higher retains more uncertain intensity."
+                            onChange={(e) => patch({ ringGlobalConfidence: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Angular degree">
+                          <input
+                            type="number" min="0" max="8" step="1"
+                            value={s.ringGlobalLmax}
+                            title="Maximum real-spherical-harmonic degree for the full 3D shell texture."
+                            onChange={(e) => patch({ ringGlobalLmax: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Minimum SNR">
+                          <input
+                            type="number" min="0" step="0.5"
+                            value={s.ringGlobalMinSnr}
+                            title="Minimum global radial-profile signal-to-noise ratio required to fit a shell."
+                            onChange={(e) => patch({ ringGlobalMinSnr: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Max FWHM (Å⁻¹)">
+                          <input
+                            type="number" min="0.02" step="0.02" placeholder="0.24"
+                            value={s.ringWidth}
+                            title="Broader radial features are retained as possible sample diffuse scattering."
+                            onChange={(e) => patch({ ringWidth: e.target.value })}
+                          />
+                        </Field>
+                      </>
+                    )}
                     {s.ringModel === "parametric" && (
                       <>
                         <Field label="Radial mode">
@@ -1572,17 +1661,19 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         />
                       </Field>
                     )}
-                    <Field label="Fourier order">
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        placeholder="8"
-                        value={s.ringNFourier}
-                        title="Fourier order of the azimuthal texture T(φ) modelling the powder rings"
-                        onChange={(e) => patch({ ringNFourier: e.target.value })}
-                      />
-                    </Field>
+                    {s.ringModel !== "global_v2" && (
+                      <Field label="Fourier order">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="8"
+                          value={s.ringNFourier}
+                          title="Fourier order of the legacy azimuthal texture T(φ)"
+                          onChange={(e) => patch({ ringNFourier: e.target.value })}
+                        />
+                      </Field>
+                    )}
                   </div>
                   </div>
                   <div className="cfg-box cfg-box--plot" aria-hidden="true">
@@ -1592,7 +1683,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   </div>
                   <div className="cfg-box ring-removal-figure">
                     <div className="ring-removal-viz">
-                      {s.ringModel === "parametric" ? (
+                      {s.ringModel === "parametric" || s.ringModel === "global_v2" ? (
                         <ParametricRingViz
                           nFourier={vizFourier}
                           radialMode={s.ringRadialMode}
@@ -1602,7 +1693,11 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         <RingTextureViz nPatches={vizPatches} nFourier={vizFourier} />
                       )}
                       <div className="ring-viz-cap">
-                        {s.ringModel === "parametric" ? (
+                        {s.ringModel === "global_v2" ? (
+                          <>
+                            full 3D shell texture · spherical degree <b>{s.ringGlobalLmax}</b>
+                          </>
+                        ) : s.ringModel === "parametric" ? (
                           <>
                             azimuthal Fourier texture · order <b>{vizFourier}</b>
                           </>
