@@ -161,6 +161,59 @@ def test_bragg_profile_json_unknown_dataset(ran_pipeline):
         webbridge.bragg_profile_json("nope")
 
 
+def test_ring_diagnostics_json_round_trip(ran_pipeline):
+    from pathlib import Path
+
+    dataset_id, _datasets, _events = ran_pipeline
+    initial = json.loads(webbridge.ring_diagnostics_json(dataset_id))
+    path = Path(initial["diagnostics_path"])
+    path.unlink(missing_ok=True)
+
+    missing = json.loads(webbridge.ring_diagnostics_json(dataset_id))
+    assert missing["has_diagnostics"] is False
+    assert missing["shells"] == []
+
+    path.write_text(json.dumps({
+        "algorithm": "global_v2",
+        "status": "ok",
+        "material_mode": "auto",
+        "subtraction_policy": "conservative",
+        "n_detected_candidates": 2,
+        "n_fitted_shells": 1,
+        "removed_energy_fraction": 0.08,
+        "negative_flip_fraction": 0.001,
+        "median_angular_coverage": 0.9,
+        "warnings": [],
+        "shells": [{
+            "q_center": 2.69,
+            "fwhm": 0.12,
+            "eta": 0.5,
+            "snr": 8.0,
+            "pooled_amplitude": 2.0,
+            "angular_amplitude_median": 1.8,
+            "angular_amplitude_max": 3.0,
+            "angular_lmax": 4,
+            "angular_coverage": 0.9,
+            "angular_residual_rms": 0.1,
+            "model_uncertainty_median": 0.05,
+            "material": "aluminum",
+            "al_family": "111",
+            "al_prior_q": 2.687,
+        }],
+    }), encoding="utf-8")
+
+    loaded = json.loads(webbridge.ring_diagnostics_json(dataset_id))
+    assert loaded["has_diagnostics"] is True
+    assert loaded["algorithm"] == "global_v2"
+    assert loaded["shells"][0]["al_family"] == "111"
+    assert loaded["shells"][0]["heldout_improvement"] == 0.0
+
+
+def test_ring_diagnostics_json_unknown_dataset(ran_pipeline):
+    with pytest.raises(KeyError):
+        webbridge.ring_diagnostics_json("nope")
+
+
 def test_save_dpdf_envelope(ran_pipeline):
     dataset_id, _datasets, _events = ran_pipeline
     env = bytes(webbridge.save_dpdf(dataset_id, q_min=0.5, q_max=3.0))

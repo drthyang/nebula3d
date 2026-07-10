@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class StageStatusOut(BaseModel):
@@ -94,6 +94,57 @@ class BraggProfileOut(BaseModel):
     fit_covariance: bool = False
     punch_frame: str | None = None
     peaks: list[BraggPeakWidthOut] = []
+
+
+class RingShellOut(BaseModel):
+    """Fit summary for one shell in a global ring-removal diagnostic."""
+
+    q_center: float
+    fwhm: float
+    eta: float
+    snr: float
+    pooled_amplitude: float
+    angular_amplitude_median: float
+    angular_amplitude_max: float
+    angular_lmax: int
+    angular_coverage: float
+    angular_residual_rms: float
+    heldout_improvement: float = 0.0
+    heldout_rmse: float = 0.0
+    no_ring_rmse: float = 0.0
+    bright_arc_bias: float = 0.0
+    dim_arc_bias: float = 0.0
+    model_uncertainty_median: float
+    material: str = "generic"
+    al_family: str | None = None
+    al_prior_q: float | None = None
+
+
+class RingDiagnosticsOut(BaseModel):
+    """Small persisted summary of the sample-only global ring fit."""
+
+    dataset_id: str
+    diagnostics_path: str | None = None
+    has_diagnostics: bool
+    schema_version: int = 2
+    algorithm: str | None = None
+    status: str | None = None
+    material_mode: str | None = None
+    subtraction_policy: str | None = None
+    fitted_al_lattice_a: float | None = None
+    n_detected_candidates: int = 0
+    n_rejected_shells: int = 0
+    n_fitted_shells: int = 0
+    n_valid_voxels: int = 0
+    n_profile_voxels: int = 0
+    fit_seconds: float = 0.0
+    removed_energy_fraction: float = 0.0
+    negative_flip_fraction: float = 0.0
+    median_angular_coverage: float = 0.0
+    warnings: list[str] = Field(default_factory=list)
+    rejection_reasons: list[str] = Field(default_factory=list)
+    effective_config: dict[str, object] = Field(default_factory=dict)
+    shells: list[RingShellOut] = Field(default_factory=list)
 
 
 class StageParamsIn(BaseModel):

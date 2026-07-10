@@ -66,6 +66,7 @@ __all__ = [
     "consistency_meta_json",
     "consistency_slice",
     "bragg_profile_json",
+    "ring_diagnostics_json",
     "save_dpdf",
 ]
 
@@ -486,6 +487,74 @@ def bragg_profile_json(dataset_id: str) -> str:
         "fit_covariance": bool(data.get("fit_covariance", False)),
         "punch_frame": data.get("punch_frame"),
         "peaks": list(data.get("peaks", [])),
+    })
+
+
+def ring_diagnostics_json(dataset_id: str) -> str:
+    """Global ring-fit summary (mirrors GET /api/rings/{id}/diagnostics)."""
+    cfg = _require_cfg()
+    ds = _ds.find_dataset(cfg, dataset_id)
+    if ds is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    path = pipeline_paths(ds.raw_path, proc_dir=cfg.processed_dir).ring_diagnostics_json
+    if not path.exists():
+        return _json({
+            "dataset_id": dataset_id,
+            "diagnostics_path": str(path),
+            "has_diagnostics": False,
+            "schema_version": 2,
+            "algorithm": None,
+            "status": None,
+            "material_mode": None,
+            "subtraction_policy": None,
+            "fitted_al_lattice_a": None,
+            "n_detected_candidates": 0,
+            "n_rejected_shells": 0,
+            "n_fitted_shells": 0,
+            "n_valid_voxels": 0,
+            "n_profile_voxels": 0,
+            "fit_seconds": 0.0,
+            "removed_energy_fraction": 0.0,
+            "negative_flip_fraction": 0.0,
+            "median_angular_coverage": 0.0,
+            "warnings": [],
+            "rejection_reasons": [],
+            "effective_config": {},
+            "shells": [],
+        })
+    data = json.loads(path.read_text(encoding="utf-8"))
+    shells = []
+    for raw_shell in list(data.get("shells", [])):
+        shell = dict(raw_shell)
+        for key in (
+            "heldout_improvement", "heldout_rmse", "no_ring_rmse",
+            "bright_arc_bias", "dim_arc_bias",
+        ):
+            shell.setdefault(key, 0.0)
+        shells.append(shell)
+    return _json({
+        "dataset_id": dataset_id,
+        "diagnostics_path": str(path),
+        "has_diagnostics": True,
+        "schema_version": int(data.get("schema_version", 1)),
+        "algorithm": data.get("algorithm"),
+        "status": data.get("status"),
+        "material_mode": data.get("material_mode"),
+        "subtraction_policy": data.get("subtraction_policy"),
+        "fitted_al_lattice_a": data.get("fitted_al_lattice_a"),
+        "n_detected_candidates": int(data.get("n_detected_candidates", 0)),
+        "n_rejected_shells": int(data.get("n_rejected_shells", 0)),
+        "n_fitted_shells": int(data.get("n_fitted_shells", 0)),
+        "n_valid_voxels": int(data.get("n_valid_voxels", 0)),
+        "n_profile_voxels": int(data.get("n_profile_voxels", 0)),
+        "fit_seconds": float(data.get("fit_seconds", 0.0)),
+        "removed_energy_fraction": float(data.get("removed_energy_fraction", 0.0)),
+        "negative_flip_fraction": float(data.get("negative_flip_fraction", 0.0)),
+        "median_angular_coverage": float(data.get("median_angular_coverage", 0.0)),
+        "warnings": list(data.get("warnings", [])),
+        "rejection_reasons": list(data.get("rejection_reasons", [])),
+        "effective_config": dict(data.get("effective_config", {})),
+        "shells": shells,
     })
 
 

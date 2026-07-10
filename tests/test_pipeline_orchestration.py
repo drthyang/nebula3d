@@ -134,7 +134,12 @@ def test_remove_rings_global_v2_is_slice_axis_independent():
     out_h = pipeline.remove_rings(vol, pipeline.RingParams(slice_axis="H", **common))
     out_l = pipeline.remove_rings(vol, pipeline.RingParams(slice_axis="L", **common))
     assert np.array_equal(out_h.data, out_l.data)
-    assert getattr(out_h, "_ring_diagnostics") == getattr(out_l, "_ring_diagnostics")
+    diagnostics_h = dict(getattr(out_h, "_ring_diagnostics"))
+    diagnostics_l = dict(getattr(out_l, "_ring_diagnostics"))
+    # Runtime is deliberately persisted but is not part of scientific invariance.
+    diagnostics_h.pop("fit_seconds")
+    diagnostics_l.pop("fit_seconds")
+    assert diagnostics_h == diagnostics_l
 
 
 def test_run_pipeline_global_v2_writes_diagnostic_sidecar(tmp_path):

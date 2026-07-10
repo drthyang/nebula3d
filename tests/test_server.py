@@ -251,6 +251,70 @@ def test_bragg_profile_reads_saved_json(tmp_path):
     assert body["peaks"][0]["width_q"] == [0.12, 0.08, 0.04]
 
 
+def test_ring_diagnostics_missing_returns_empty_state(env):
+    client, _ = env
+    r = client.get(f"/api/rings/{SLUG}/diagnostics")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["dataset_id"] == SLUG
+    assert body["has_diagnostics"] is False
+    assert body["algorithm"] is None
+    assert body["n_fitted_shells"] == 0
+    assert body["shells"] == []
+
+
+def test_ring_diagnostics_reads_saved_json(tmp_path):
+    (tmp_path / "raw").mkdir()
+    proc = tmp_path / "processed"
+    proc.mkdir()
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=proc)
+    nebula3d.save(_vol(), paths.ringremoved)
+    paths.ring_diagnostics_json.write_text(json.dumps({
+        "algorithm": "global_v2",
+        "schema_version": 1,
+        "status": "ok",
+        "material_mode": "auto",
+        "subtraction_policy": "conservative",
+        "fitted_al_lattice_a": 4.039,
+        "n_detected_candidates": 3,
+        "n_fitted_shells": 1,
+        "removed_energy_fraction": 0.12,
+        "negative_flip_fraction": 0.004,
+        "median_angular_coverage": 0.81,
+        "warnings": ["review weak sector"],
+        "shells": [{
+            "q_center": 2.69,
+            "fwhm": 0.14,
+            "eta": 0.5,
+            "snr": 9.2,
+            "pooled_amplitude": 3.1,
+            "angular_amplitude_median": 2.8,
+            "angular_amplitude_max": 4.4,
+            "angular_lmax": 4,
+            "angular_coverage": 0.81,
+            "angular_residual_rms": 0.13,
+            "model_uncertainty_median": 0.08,
+            "material": "aluminum",
+            "al_family": "111",
+            "al_prior_q": 2.687,
+        }],
+    }), encoding="utf-8")
+
+    app = create_app(ServerConfig(data_root=tmp_path))
+    client = TestClient(app)
+    r = client.get(f"/api/rings/{SLUG}/diagnostics")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["has_diagnostics"] is True
+    assert body["schema_version"] == 1
+    assert body["fitted_al_lattice_a"] == pytest.approx(4.039)
+    assert body["n_rejected_shells"] == 0
+    assert body["warnings"] == ["review weak sector"]
+    assert body["shells"][0]["al_family"] == "111"
+    assert body["shells"][0]["heldout_improvement"] == 0.0
+
+
 @pytest.mark.parametrize("plane,value", [("hk", 0.0), ("0kl", 0.0), ("h0l", 1.0)])
 def test_slice_matches_extract_slice(env, plane, value):
     client, vol = env

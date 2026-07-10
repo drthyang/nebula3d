@@ -10,6 +10,7 @@ import {
   fetchDpdfSlice,
   fetchHealth,
   fetchMeta,
+  fetchRingDiagnostics,
 } from "./client";
 
 export function useHealth() {
@@ -62,6 +63,14 @@ export function useBraggProfile(datasetId: string | undefined) {
   return useQuery({
     queryKey: ["braggProfile", datasetId],
     queryFn: () => fetchBraggProfile(datasetId as string),
+    enabled: Boolean(datasetId),
+  });
+}
+
+export function useRingDiagnostics(datasetId: string | undefined) {
+  return useQuery({
+    queryKey: ["ringDiagnostics", datasetId],
+    queryFn: () => fetchRingDiagnostics(datasetId as string),
     enabled: Boolean(datasetId),
   });
 }

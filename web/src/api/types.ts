@@ -119,6 +119,53 @@ export interface BraggProfile {
   peaks: BraggPeakWidth[];
 }
 
+export interface RingShellDiagnostic {
+  q_center: number;
+  fwhm: number;
+  eta: number;
+  snr: number;
+  pooled_amplitude: number;
+  angular_amplitude_median: number;
+  angular_amplitude_max: number;
+  angular_lmax: number;
+  angular_coverage: number;
+  angular_residual_rms: number;
+  heldout_improvement: number;
+  heldout_rmse: number;
+  no_ring_rmse: number;
+  bright_arc_bias: number;
+  dim_arc_bias: number;
+  model_uncertainty_median: number;
+  material: string;
+  al_family: string | null;
+  al_prior_q: number | null;
+}
+
+export interface RingDiagnostics {
+  dataset_id: string;
+  diagnostics_path: string | null;
+  has_diagnostics: boolean;
+  schema_version: number;
+  algorithm: string | null;
+  status: string | null;
+  material_mode: string | null;
+  subtraction_policy: string | null;
+  fitted_al_lattice_a: number | null;
+  n_detected_candidates: number;
+  n_rejected_shells: number;
+  n_fitted_shells: number;
+  n_valid_voxels: number;
+  n_profile_voxels: number;
+  fit_seconds: number;
+  removed_energy_fraction: number;
+  negative_flip_fraction: number;
+  median_angular_coverage: number;
+  warnings: string[];
+  rejection_reasons: string[];
+  effective_config: Record<string, unknown>;
+  shells: RingShellDiagnostic[];
+}
+
 // Header decoded from the binary slice envelope.
 export interface SliceHeader {
   ny: number;
