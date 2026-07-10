@@ -47,12 +47,17 @@ interface PipelineConfig {
   flatten: boolean;
   pdfEnabled: boolean;
   force: boolean;
-  ringModel: string; // "patched" | "parametric"
+  ringModel: string; // "global_v2" | "patched" | "parametric"
   ringRadialMode: string; // parametric: "rolling" | "peaks"
   ringNPatches: string;
   ringNFourier: string;
   ringSliceAxis: string;
   ringWidth: string; // parametric: ring width / rolling window (Å⁻¹)
+  ringGlobalMaterial: string; // "auto" | "aluminum" | "generic"
+  ringGlobalSubtraction: string; // "conservative" | "mean" | "diagnose_only"
+  ringGlobalConfidence: string;
+  ringGlobalLmax: string;
+  ringGlobalMinSnr: string;
   punchMinI: string;
   punchMethod: string;
   punchMode: string;
@@ -118,12 +123,17 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   flatten: true,
   pdfEnabled: true,
   force: false,
-  ringModel: "parametric",
+  ringModel: "patched",
   ringRadialMode: "rolling",
   ringNPatches: "",
   ringNFourier: "8",
   ringSliceAxis: "H",
   ringWidth: "",
+  ringGlobalMaterial: "auto",
+  ringGlobalSubtraction: "conservative",
+  ringGlobalConfidence: "1",
+  ringGlobalLmax: "4",
+  ringGlobalMinSnr: "5",
   punchMinI: "",
   punchMethod: "ellipsoid",
   punchMode: "",
@@ -247,6 +257,16 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.ringModel === "parametric") {
     params.rings_radial_mode = s.ringRadialMode;
     if (s.ringWidth) params.rings_ring_width = Number(s.ringWidth);
+  }
+  if (s.ringModel === "global_v2") {
+    if (s.ringWidth) params.rings_ring_width = Number(s.ringWidth);
+    params.rings_global_material = s.ringGlobalMaterial;
+    params.rings_global_subtraction = s.ringGlobalSubtraction;
+    if (s.ringGlobalConfidence) {
+      params.rings_global_confidence_z = Number(s.ringGlobalConfidence);
+    }
+    if (s.ringGlobalLmax) params.rings_global_angular_lmax = Number(s.ringGlobalLmax);
+    if (s.ringGlobalMinSnr) params.rings_global_min_snr = Number(s.ringGlobalMinSnr);
   }
   if (s.punchMinI) params.punch_min_intensity = Number(s.punchMinI);
   if (s.punchMode) params.punch_mode = s.punchMode;

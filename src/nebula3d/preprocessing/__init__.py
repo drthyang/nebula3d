@@ -5,23 +5,27 @@
 
 Input: symmetrised 3D HKL volume from Mantid.
 
-Step 1 — Empty-scan subtraction  (``EmptySubtractor``)
-    Removes the environment ring (cryostat, furnace, etc.).
-    Residual rings from the sample holder remain.
+The Ring Removal 2.0 path (``fit_global_rings``) works directly on sample data:
+it identifies narrow persistent spherical shells, fits a full 3D angular field,
+and subtracts conservatively with uncertainty. An empty-environment scan is not
+required and is not assumed to contain the sample holder.
 
-Step 2 — Factored ring model  (``PatchedRingModel``)
-    Fits  I_ring(Q, φ) = T(φ) × Σᵢ Aᵢ G(|Q| − qᵢ, σᵢ)
-    by dividing φ into overlapping patches, fitting Gaussians per patch,
-    then extracting T(φ) via SVD + Fourier smoothing.
-    Subtracts the model; masks voxels where ring dominates.
-
-Step 3 — Backfill  (``backfill_ring_shells``)
-    Fills masked voxels by radial interpolation from nearest uncontaminated
-    neighbours.  C¹ continuity comes from the interpolation itself.
+The earlier empty-subtraction, per-slice patched/parametric, masking, and backfill
+components remain public for comparison and specialized workflows.
 """
 
 from nebula3d.preprocessing.backfill import backfill_ring_shells
 from nebula3d.preprocessing.empty_subtraction import EmptySubtractor
+from nebula3d.preprocessing.global_rings import (
+    AluminumLine,
+    GlobalRingConfig,
+    GlobalRingDiagnostics,
+    GlobalRingResult,
+    GlobalRingShell,
+    aluminum_fcc_lines,
+    fit_global_rings,
+    write_global_ring_diagnostics,
+)
 from nebula3d.preprocessing.parametric_ring import (
     FittedParametricRingModel,
     ParametricRing,
@@ -52,6 +56,14 @@ from nebula3d.preprocessing.sampling import azimuthal_sampling_mask
 __all__ = [
     # Primary pipeline
     "EmptySubtractor",
+    "GlobalRingConfig",
+    "GlobalRingDiagnostics",
+    "GlobalRingResult",
+    "GlobalRingShell",
+    "AluminumLine",
+    "fit_global_rings",
+    "aluminum_fcc_lines",
+    "write_global_ring_diagnostics",
     "PatchedRingModel",
     "RingParams",
     "FittedRingModel",

@@ -43,6 +43,21 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
         p.rings = dataclasses.replace(p.rings, ring_width=sp.rings_ring_width)
     if sp.rings_radial_mode is not None:
         p.rings = dataclasses.replace(p.rings, ring_radial_mode=sp.rings_radial_mode)
+    if sp.rings_global_material is not None:
+        p.rings = dataclasses.replace(
+            p.rings, global_material=sp.rings_global_material)
+    if sp.rings_global_subtraction is not None:
+        p.rings = dataclasses.replace(
+            p.rings, global_subtraction=sp.rings_global_subtraction)
+    if sp.rings_global_confidence_z is not None:
+        p.rings = dataclasses.replace(
+            p.rings, global_confidence_z=sp.rings_global_confidence_z)
+    if sp.rings_global_angular_lmax is not None:
+        p.rings = dataclasses.replace(
+            p.rings, global_angular_lmax=sp.rings_global_angular_lmax)
+    if sp.rings_global_min_snr is not None:
+        p.rings = dataclasses.replace(
+            p.rings, global_min_snr=sp.rings_global_min_snr)
     if sp.punch_min_intensity is not None:
         p.punch = dataclasses.replace(p.punch, min_intensity=sp.punch_min_intensity)
     if sp.punch_search_n_mad is not None:

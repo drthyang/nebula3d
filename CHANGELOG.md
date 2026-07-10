@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Ring Removal 2.0 — sample-only global 3D powder-shell inference.** Added the
+  opt-in `ring_model="global_v2"` path for datasets where an empty-environment
+  scan omits the Al holder or over-subtracts. It detects narrow shells in the
+  unsubtracted 3D sample volume, weakly identifies the FCC Al family and fitted
+  lattice parameter, fits a Bragg-robust real-spherical-harmonic angular field,
+  propagates model uncertainty, and defaults to lower-confidence-bound
+  subtraction. `auto`, `aluminum`, and material-agnostic modes plus
+  conservative/mean/diagnose-only policies are exposed in Python, API, Pyodide,
+  and Configure UI. Pipeline runs write a JSON diagnostic sidecar. Legacy
+  patched/parametric models remain available and the default pending full
+  real-data qualification.
+
 ## 0.3.0 (beta) — 2026-07-05
 
 First beta. Adds an in-browser AI Assistant, a sidebar UI refresh, and the

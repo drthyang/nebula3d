@@ -13,6 +13,7 @@ contract of :func:`nebula3d.pipeline.run_pipeline`:
   stale-cache guard.
 """
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -49,6 +50,9 @@ def test_pipeline_paths_match_run_pipeline_naming(tmp_path):
     paths = pipeline.pipeline_paths(tmp_path / "sample.nxs", proc_dir=tmp_path,
                                     flatten_enabled=True)
     assert paths.ringremoved.name == "sample_ringremoved.h5"
+    assert paths.ring_diagnostics_json.name == (
+        "sample_ringremoved_diagnostics.json"
+    )
     assert paths.braggpunched.name == "sample_ringremoved_braggpunched.h5"
     assert paths.backfilled.name == "sample_ringremoved_braggpunched_backfilled.h5"
     assert paths.flattened.name == (
@@ -103,6 +107,53 @@ def test_remove_rings_parametric_runs_and_suppresses_ring():
     after = float(np.median(out.data[(q > on_lo) & (q < on_hi)])) - base
     assert before > 0.3
     assert after < 0.4 * before
+
+
+def test_remove_rings_global_v2_attaches_diagnostics():
+    """The sample-only global path bypasses slice fitting and returns a
+    persistable diagnostic contract."""
+    vol, _q = _ring_vol_3d()
+    params = pipeline.RingParams(
+        ring_model="global_v2", q_min=1.0, q_max=8.0, q_step=0.04,
+        ring_width=0.30, global_material="generic", global_subtraction="mean",
+        global_angular_lmax=2, global_min_snr=2.0)
+    out = pipeline.remove_rings(vol, params)
+
+    diagnostics = getattr(out, "_ring_diagnostics")
+    assert diagnostics["algorithm"] == "global_v2"
+    assert diagnostics["n_fitted_shells"] >= 1
+    assert out.data.shape == vol.data.shape
+
+
+def test_remove_rings_global_v2_is_slice_axis_independent():
+    vol, _q = _ring_vol_3d()
+    common = dict(
+        ring_model="global_v2", q_min=1.0, q_max=8.0, q_step=0.04,
+        ring_width=0.30, global_material="generic", global_subtraction="mean",
+        global_angular_lmax=2, global_min_snr=2.0)
+    out_h = pipeline.remove_rings(vol, pipeline.RingParams(slice_axis="H", **common))
+    out_l = pipeline.remove_rings(vol, pipeline.RingParams(slice_axis="L", **common))
+    assert np.array_equal(out_h.data, out_l.data)
+    assert getattr(out_h, "_ring_diagnostics") == getattr(out_l, "_ring_diagnostics")
+
+
+def test_run_pipeline_global_v2_writes_diagnostic_sidecar(tmp_path):
+    vol, _q = _ring_vol_3d()
+    inp = tmp_path / "global_sample.nxs"
+    nebula3d.save(vol, inp)
+    params = pipeline.PipelineParams(rings=pipeline.RingParams(
+        ring_model="global_v2", q_min=1.0, q_max=8.0, q_step=0.04,
+        ring_width=0.30, global_material="generic", global_subtraction="mean",
+        global_angular_lmax=2, global_min_snr=2.0))
+
+    paths = pipeline.run_pipeline(
+        inp, params, proc_dir=tmp_path, stages=("rings",))
+
+    assert paths.ringremoved.exists()
+    assert paths.ring_diagnostics_json.exists()
+    diagnostic = json.loads(paths.ring_diagnostics_json.read_text())
+    assert diagnostic["algorithm"] == "global_v2"
+    assert diagnostic["n_fitted_shells"] >= 1
 
 
 def test_transform_config_string_format():

@@ -452,6 +452,23 @@ def test_build_params_ring_overrides():
     assert parametric.rings.ring_radial_mode == "peaks"
     # the parametric radial model defaults to the continuous rolling sweep
     assert defaults.rings.ring_radial_mode == "rolling"
+    global_v2 = build_params(PipelineRunRequest(
+        dataset_id="x",
+        params=StageParamsIn(
+            rings_model="global_v2",
+            rings_global_material="aluminum",
+            rings_global_subtraction="diagnose_only",
+            rings_global_confidence_z=1.5,
+            rings_global_angular_lmax=3,
+            rings_global_min_snr=7.0,
+        ),
+    ))
+    assert global_v2.rings.ring_model == "global_v2"
+    assert global_v2.rings.global_material == "aluminum"
+    assert global_v2.rings.global_subtraction == "diagnose_only"
+    assert global_v2.rings.global_confidence_z == 1.5
+    assert global_v2.rings.global_angular_lmax == 3
+    assert global_v2.rings.global_min_snr == 7.0
     # an unrelated stage keeps its default
     from nebula3d.pipeline import PunchParams
     assert overridden.punch.min_intensity == PunchParams().min_intensity
