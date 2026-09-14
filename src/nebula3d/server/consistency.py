@@ -41,8 +41,8 @@ _lock = threading.Lock()
 
 def set_cache_max(n: int) -> None:
     """Cap the reconstruction cache (evicting oldest); the browser build
-    shrinks it — each entry holds four volume-sized arrays (data / recon /
-    residual / ΔPDF)."""
+    shrinks it — each entry holds three volume-sized arrays (data / recon /
+    ΔPDF); the residual panel is derived per-slice."""
     global _CACHE_MAX
     with _lock:
         _CACHE_MAX = max(1, int(n))
@@ -81,7 +81,7 @@ def reconstruction(
             return hit
     vol = load_volume(path)  # shared with the slice viewers' cache
     # Evict the previous reconstruction(s) BEFORE building the new one.  Each
-    # entry holds four volume-sized arrays (data / recon / residual / ΔPDF) —
+    # entry holds three volume-sized arrays (data / recon / ΔPDF) —
     # dead weight during the new band's memory-heavy forward+inverse FFT.  In the
     # browser (cache_max=1, a 4 GB WASM heap that never shrinks) freeing them
     # first reclaims ~4 volumes for the computation to reuse, instead of stacking
@@ -171,6 +171,14 @@ def consistency_slice_envelope(
     res = reconstruction(path, q_band, r_band)
     if panel == "dpdf":
         sd = extract_slice_dpdf(res["dpdf"], plane=plane, value=value)
+    elif panel == "residual":
+        # Derived per-slice instead of caching a full residual volume: slicing
+        # is nearest-plane, so data_slice − recon_slice is elementwise identical
+        # to slicing a materialised (data − recon) volume — including the NaN
+        # pattern, since recon's masked-out voxels slice to NaN and propagate.
+        sd_data = extract_slice(res["data"], plane=plane, value=value)
+        sd_recon = extract_slice(res["recon"], plane=plane, value=value)
+        sd = sd_data._replace(data=sd_data.data - sd_recon.data)
     else:
         sd = extract_slice(res[panel], plane=plane, value=value)
     return pack_slice(sd)

@@ -71,7 +71,7 @@ _FWHM_TO_SIGMA = 1.0 / (2.0 * np.sqrt(2.0 * np.log(2.0)))
 # Radial line shape
 # ---------------------------------------------------------------------------
 def _pseudo_voigt(
-    q: NDArray[np.float64], q0: float, fwhm: float, eta: float
+    q: NDArray[np.floating], q0: float, fwhm: float, eta: float
 ) -> NDArray[np.float64]:
     """Unit-peak pseudo-Voigt: ``η·Lorentzian + (1−η)·Gaussian``.
 
@@ -90,9 +90,9 @@ def _pseudo_voigt(
 
 
 def _pseudo_voigt_phi(
-    q: NDArray[np.float64],
-    q0: NDArray[np.float64],
-    fwhm: NDArray[np.float64],
+    q: NDArray[np.floating],
+    q0: NDArray[np.floating],
+    fwhm: NDArray[np.floating],
     eta: float,
 ) -> NDArray[np.float64]:
     """Unit-peak pseudo-Voigt with **per-voxel** centre ``q0`` and width ``fwhm``
@@ -135,7 +135,7 @@ class ParametricRing:
     q_center: float
     fwhm: float
     eta: float
-    texture_coeffs: NDArray[np.float64]
+    texture_coeffs: NDArray[np.floating]
     q0_coeffs: NDArray[np.float64] | None = None
     fwhm_coeffs: NDArray[np.float64] | None = None
 
@@ -171,9 +171,9 @@ class FittedParametricRingModel:
     rings: list[ParametricRing] = field(default_factory=list)
     roll_centers: NDArray[np.float64] = field(default_factory=lambda: np.array([]))
     roll_coeffs: NDArray[np.float64] = field(default_factory=lambda: np.array([]))
-    q_grid: NDArray[np.float64] = field(default_factory=lambda: np.array([]))
-    pooled_profile: NDArray[np.float64] = field(default_factory=lambda: np.array([]))
-    baseline: NDArray[np.float64] = field(default_factory=lambda: np.array([]))
+    q_grid: NDArray[np.floating] = field(default_factory=lambda: np.array([]))
+    pooled_profile: NDArray[np.floating] = field(default_factory=lambda: np.array([]))
+    baseline: NDArray[np.floating] = field(default_factory=lambda: np.array([]))
     ceilings: NDArray[np.float64] | None = None
     radial_n_fourier: int = 0
 
@@ -629,16 +629,16 @@ class ParametricRingModel:
     # ------------------------------------------------------------------
     def _fit_ring_texture(
         self,
-        q: NDArray[np.float64],
-        intensity: NDArray[np.float64],
-        phi: NDArray[np.float64],
-        q_grid: NDArray[np.float64],
-        baseline: NDArray[np.float64],
+        q: NDArray[np.floating],
+        intensity: NDArray[np.floating],
+        phi: NDArray[np.floating],
+        q_grid: NDArray[np.floating],
+        baseline: NDArray[np.floating],
         q0: float,
         fwhm: float,
         eta: float,
         amp: float,
-    ) -> NDArray[np.float64]:
+    ) -> NDArray[np.floating]:
         """Robust, binning-free Fourier fit of one ring's azimuthal amplitude.
 
         Each shell voxel contributes ``(φ, target/template)`` where ``target =
@@ -688,13 +688,13 @@ class ParametricRingModel:
 
     def _robust_texture_solve(
         self,
-        B: NDArray[np.float64],
-        ratio: NDArray[np.float64],
-        w0: NDArray[np.float64],
-        phi_s: NDArray[np.float64],
+        B: NDArray[np.floating],
+        ratio: NDArray[np.floating],
+        w0: NDArray[np.floating],
+        phi_s: NDArray[np.floating],
         n_basis: int,
-        reg: NDArray[np.float64],
-    ) -> NDArray[np.float64]:
+        reg: NDArray[np.floating],
+    ) -> NDArray[np.floating]:
         """Ridge-regularised, robust IRLS solve of one azimuthal texture.
 
         With ``texture_spike_reject`` (default) the φ-narrow Bragg spikes are
@@ -706,7 +706,7 @@ class ParametricRingModel:
         high-side IRLS is used (down-weights every positive residual — bright
         arcs included — and so under-subtracts textured rings).
         """
-        def _solve(w: NDArray[np.float64]) -> NDArray[np.float64]:
+        def _solve(w: NDArray[np.floating]) -> NDArray[np.floating]:
             AtA = B.T @ (B * w[:, None])
             scale = np.trace(AtA) / n_basis
             Aty = B.T @ (w * ratio)
@@ -740,15 +740,15 @@ class ParametricRingModel:
     # ------------------------------------------------------------------
     def _fit_radial_harmonics(
         self,
-        q: NDArray[np.float64],
-        intensity: NDArray[np.float64],
-        phi: NDArray[np.float64],
-        q_grid: NDArray[np.float64],
-        baseline: NDArray[np.float64],
+        q: NDArray[np.floating],
+        intensity: NDArray[np.floating],
+        phi: NDArray[np.floating],
+        q_grid: NDArray[np.floating],
+        baseline: NDArray[np.floating],
         q0: float,
         fwhm: float,
         eta: float,
-        texture_coeffs: NDArray[np.float64],
+        texture_coeffs: NDArray[np.floating],
     ) -> tuple[NDArray[np.float64] | None, NDArray[np.float64] | None]:
         """Fit ``q0(φ)`` and ``fwhm(φ)`` for one ring and accept them only if they
         help (adaptive).
@@ -840,12 +840,12 @@ class ParametricRingModel:
     # ------------------------------------------------------------------
     def _fit_rolling(
         self,
-        q: NDArray[np.float64],
-        intensity: NDArray[np.float64],
-        phi: NDArray[np.float64],
-        q_grid: NDArray[np.float64],
-        pooled_f: NDArray[np.float64],
-        baseline: NDArray[np.float64],
+        q: NDArray[np.floating],
+        intensity: NDArray[np.floating],
+        phi: NDArray[np.floating],
+        q_grid: NDArray[np.floating],
+        pooled_f: NDArray[np.floating],
+        baseline: NDArray[np.floating],
         q_lo: float,
         q_hi: float,
     ) -> FittedParametricRingModel:
@@ -968,8 +968,8 @@ class ParametricRingModel:
 
 
 def _phi_spike_weight(
-    phi: NDArray[np.float64],
-    ratio: NDArray[np.float64],
+    phi: NDArray[np.floating],
+    ratio: NDArray[np.floating],
     n_basis: int,
     cut: float = 4.0,
 ) -> NDArray[np.float64]:
@@ -1027,7 +1027,7 @@ def _phi_spike_weight(
     return bin_w[b]
 
 
-def _profile_noise(prof: NDArray[np.float64]) -> float:
+def _profile_noise(prof: NDArray[np.floating]) -> float:
     """Robust noise level of a 1-D profile from its first differences.
 
     ``MAD(Δprof) / √2`` estimates the per-bin noise σ even on a sloping or

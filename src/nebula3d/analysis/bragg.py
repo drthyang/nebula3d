@@ -960,7 +960,10 @@ class BraggRemover:
         del sb
         thr = np.full(nb, np.inf)
         for b in range(nb):
-            seg = sI[bounds[b]:bounds[b + 1]]
+            # Threshold arithmetic in float64 regardless of storage precision
+            # (astype is a no-op on float64 input): a float32 median/MAD would
+            # shift the discrete peak-candidate set.
+            seg = sI[bounds[b]:bounds[b + 1]].astype(np.float64, copy=False)
             if seg.size < min_shell_size:
                 continue
             med = float(np.median(seg))
@@ -994,7 +997,12 @@ class BraggRemover:
             min_intensity=self.search_min_intensity,
         )
 
-        cand = valid & (vol.data > thr[bin_idx])
+        # Slab-wise compare: elementwise (bit-identical to the whole-volume
+        # form) and never materialises the full-volume thr[bin_idx] lookup.
+        cand = np.empty(vol.shape, dtype=bool)
+        for lo in range(0, vol.shape[0], 16):
+            hi = min(vol.shape[0], lo + 16)
+            cand[lo:hi] = valid[lo:hi] & (vol.data[lo:hi] > thr[bin_idx[lo:hi]])
         del bin_idx  # full-volume index array no longer needed
         if not cand.any():
             return []

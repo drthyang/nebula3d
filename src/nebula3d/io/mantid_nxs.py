@@ -55,6 +55,8 @@ _TWO_PI: float = 2.0 * np.pi
 def load_mantid_nxs(
     path: _PathLike,
     ub_matrix: NDArray[np.float64] | None = None,
+    *,
+    dtype: np.dtype | type = np.float64,
 ) -> HKLVolume:
     """Load a Mantid MDHistoWorkspace NeXus file into an HKLVolume.
 
@@ -69,6 +71,9 @@ def load_mantid_nxs(
         of the one stored in the file.  Background/empty-can scans often lack
         an ``experiment0`` group; pass the paired data volume's
         ``ub_matrix`` so both share a consistent |Q| scale.
+    dtype
+        Storage precision for ``data``/``sigma`` (float64 default; float32 in
+        the browser build).  Axes and UB stay float64.
     """
     path = Path(path)
     try:
@@ -81,7 +86,7 @@ def load_mantid_nxs(
         data_grp = root["data"]
         axes = _parse_dim_axes(data_grp)
         ub = _resolve_ub(root, ub_matrix)
-        data, sigma, mask = _assemble(data_grp, axes)
+        data, sigma, mask = _assemble(data_grp, axes, dtype)
 
     return HKLVolume(
         data=data,
@@ -181,7 +186,8 @@ def _read_ub_matrix(lattice_grp: h5py.Group) -> NDArray[np.float64]:
 def _assemble(
     data_grp: h5py.Group,
     axes: dict[str, tuple[int, NDArray[np.float64]]],
-) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.bool_]]:
+    dtype: np.dtype | type = np.float64,
+) -> tuple[NDArray[np.floating], NDArray[np.floating], NDArray[np.bool_]]:
     """Read signal/σ²/mask and permute to canonical (H, K, L) axis order.
 
     Reads and transposes one array at a time, rebinding each variable so the
@@ -195,9 +201,9 @@ def _assemble(
     perm = (axes["H"][0], axes["K"][0], axes["L"][0])
 
     # astype(copy=False): no redundant copy when the file dtype already matches.
-    sig = data_grp["signal"][:].astype(np.float64, copy=False)
+    sig = data_grp["signal"][:].astype(dtype, copy=False)
     sig = np.ascontiguousarray(np.transpose(sig, perm))
-    err2 = data_grp["errors_squared"][:].astype(np.float64, copy=False)
+    err2 = data_grp["errors_squared"][:].astype(dtype, copy=False)
     err2 = np.ascontiguousarray(np.transpose(err2, perm))
     fmask = data_grp["mask"][:].astype(np.int8, copy=False)
     fmask = np.ascontiguousarray(np.transpose(fmask, perm))

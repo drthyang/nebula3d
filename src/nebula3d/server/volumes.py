@@ -67,7 +67,9 @@ def load_volume(path: Path) -> HKLVolume:
         if vol is not None:
             _cache.move_to_end(key)
             return vol
-    vol = nebula3d.load(path)  # heavy I/O outside the lock
+    # dtype=None: keep the artifact's stored precision (float32 stage
+    # files from a float32 run must not double in the viewer cache).
+    vol = nebula3d.load(path, dtype=None)  # heavy I/O outside the lock
     with _lock:
         _cache[key] = vol
         _cache.move_to_end(key)

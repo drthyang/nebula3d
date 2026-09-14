@@ -19,6 +19,7 @@ Simonov, Weber & Steurer, J. Appl. Cryst. 47, 2011–2018 (2014)
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -55,7 +56,7 @@ class DeltaPDF:
         Window function applied before FFT.
     """
 
-    data: NDArray[np.float64]
+    data: NDArray[np.floating]
     x_axis: NDArray[np.float64]
     y_axis: NDArray[np.float64]
     z_axis: NDArray[np.float64]
@@ -70,26 +71,134 @@ class DeltaPDF:
     cropped_shape: tuple[int, int, int] | None = None
     window_axes: tuple[NDArray[np.float64], ...] | None = None
     subtracted_mean: float = 0.0
-    smooth_bg: NDArray[np.float64] | None = None
+    smooth_bg: NDArray[np.floating] | None = None
     h_axis_c: NDArray[np.float64] | None = None
     k_axis_c: NDArray[np.float64] | None = None
     l_axis_c: NDArray[np.float64] | None = None
     ub_matrix: NDArray[np.float64] | None = None
 
-    def slice_hk0(self) -> NDArray[np.float64]:
+    def slice_hk0(self) -> NDArray[np.floating]:
         """Return the l=0 (z=0) slice."""
         mid = self.data.shape[2] // 2
         return self.data[:, :, mid]
 
-    def slice_h0l(self) -> NDArray[np.float64]:
+    def slice_h0l(self) -> NDArray[np.floating]:
         """Return the k=0 (y=0) slice."""
         mid = self.data.shape[1] // 2
         return self.data[:, mid, :]
 
-    def slice_0kl(self) -> NDArray[np.float64]:
+    def slice_0kl(self) -> NDArray[np.floating]:
         """Return the h=0 (x=0) slice."""
         mid = self.data.shape[0] // 2
         return self.data[mid, :, :]
+
+
+@dataclass
+class _ForwardPlan:
+    """Everything between the pure-Python preparation and the FFT core.
+
+    ``data`` is the compact (cropped, NaN-filled, background/band-processed,
+    windowed, mean-subtracted) volume that enters the transform; the padded
+    array is materialised only inside the FFT core — a replaceable backend
+    (scipy here; WebGPU in the browser) that computes
+    ``fftshift(real(fftn(ifftshift(pad(data)))))``.
+    """
+
+    data: NDArray[np.floating]
+    pad_width: list[tuple[int, int]]
+    padded_shape: tuple[int, ...]
+    cropped_shape: tuple[int, ...]
+    window_axes: tuple[NDArray[np.float64], ...]
+    subtracted_mean: float
+    smooth_bg: NDArray[np.floating] | None
+    h_axis: NDArray[np.float64]
+    k_axis: NDArray[np.float64]
+    l_axis: NDArray[np.float64]
+    q_max: float
+    apodization: str
+    real_space_angstrom: bool
+    ub_matrix: NDArray[np.float64]
+
+
+def _fft_core_forward(plan: _ForwardPlan) -> NDArray[np.floating]:
+    """The scipy FFT backend: pad → centred transform → real part.
+
+    The input has its Q=0 origin at the array centre, but fftn treats index
+    [0,0,0] as the origin.  Without ifftshift the transform picks up a linear
+    phase ramp e^{-iπk} → (-1)^k, which flips the sign of real-space features
+    by pixel parity and splits each correlation peak into mixed +/- lobes.
+    The correct centred transform is fftshift(fftn(ifftshift(·))) — computed
+    in explicit steps that free each intermediate before the next allocates
+    (the complex spectrum alone is 2 padded volumes), and taking the real
+    part BEFORE fftshift (they commute: fftshift only permutes elements) so
+    the shift copies a real array, not a complex one.
+    """
+    data = np.pad(plan.data, plan.pad_width, mode="constant")
+    # Release the compact volume as soon as the padded copy exists (the same
+    # rebinding discipline the pre-refactor code had — peak stays 2 volumes).
+    plan.data = np.empty((0, 0, 0), dtype=data.dtype)
+    data = ifftshift(data)
+    # pocketfft dispatches on dtype: float64 -> complex128, float32 ->
+    # complex64 — the float32 mode halves the transform's peak automatically.
+    ft = fftn(data, workers=_FFT_WORKERS)
+    del data  # free the padded input before the real-part copy below
+    # Materialise the real part (valid for centrosymmetric I(Q)): np.real()
+    # returns a VIEW that would otherwise pin the complex buffer (2 padded
+    # volumes) for the DeltaPDF's whole lifetime.
+    out = np.ascontiguousarray(ft.real)
+    del ft
+    return fftshift(out)
+
+
+def _finish_forward(
+    plan: _ForwardPlan, delta_pdf: NDArray[np.floating],
+) -> DeltaPDF:
+    """Real-space axes + the DeltaPDF dataclass (backend-independent)."""
+    nh, nk, nl = plan.padded_shape
+    h_axis, k_axis, l_axis = plan.h_axis, plan.k_axis, plan.l_axis
+    dh = (h_axis[-1] - h_axis[0]) / max(len(h_axis) - 1, 1)
+    dk = (k_axis[-1] - k_axis[0]) / max(len(k_axis) - 1, 1)
+    dl = (l_axis[-1] - l_axis[0]) / max(len(l_axis) - 1, 1)
+
+    # FFT frequency grid (in reciprocal of HKL step → direct lattice units)
+    x_frac = fftshift(fftfreq(nh, d=dh))
+    y_frac = fftshift(fftfreq(nk, d=dk))
+    z_frac = fftshift(fftfreq(nl, d=dl))
+
+    if plan.real_space_angstrom:
+        # Convert fractional direct-lattice coordinates to Å
+        # Real-space basis vectors = columns of (UB/2π)^{-T}  times 2π
+        # i.e., direct lattice = 2π * inv(UB)^T
+        try:
+            direct = 2 * np.pi * np.linalg.inv(plan.ub_matrix).T
+            a_vec = direct[:, 0]
+            b_vec = direct[:, 1]
+            c_vec = direct[:, 2]
+            x_axis = x_frac * np.linalg.norm(a_vec)
+            y_axis = y_frac * np.linalg.norm(b_vec)
+            z_axis = z_frac * np.linalg.norm(c_vec)
+        except np.linalg.LinAlgError:
+            x_axis, y_axis, z_axis = x_frac, y_frac, z_frac
+    else:
+        x_axis, y_axis, z_axis = x_frac, y_frac, z_frac
+
+    return DeltaPDF(
+        data=delta_pdf,
+        x_axis=x_axis,
+        y_axis=y_axis,
+        z_axis=z_axis,
+        q_max=plan.q_max,
+        apodization=plan.apodization,  # type: ignore[arg-type]
+        pad_width=tuple(tuple(pw) for pw in plan.pad_width),  # type: ignore[misc]
+        cropped_shape=plan.cropped_shape,  # type: ignore[arg-type]
+        window_axes=plan.window_axes,
+        subtracted_mean=plan.subtracted_mean,
+        smooth_bg=plan.smooth_bg,
+        h_axis_c=h_axis,
+        k_axis_c=k_axis,
+        l_axis_c=l_axis,
+        ub_matrix=plan.ub_matrix.copy(),
+    )
 
 
 def compute_delta_pdf(
@@ -163,6 +272,35 @@ def compute_delta_pdf(
     DeltaPDF
     """
 
+    plan = _prepare_forward(
+        vol, apodization=apodization, gaussian_sigma=gaussian_sigma,
+        zero_pad=zero_pad, subtract_mean=subtract_mean,
+        real_space_angstrom=real_space_angstrom, crop_hkl=crop_hkl,
+        q_band=q_band, subtract_smooth_bg=subtract_smooth_bg)
+    delta_pdf = _fft_core_forward(plan)
+    return _finish_forward(plan, delta_pdf)
+
+
+def _prepare_forward(
+    vol: HKLVolume,
+    *,
+    apodization: Window = "hann",
+    gaussian_sigma: float = 0.5,
+    zero_pad: bool = True,
+    subtract_mean: bool = True,
+    real_space_angstrom: bool = True,
+    crop_hkl: tuple[float, float, float] | None = None,
+    q_band: tuple[float, float] | None = None,
+    subtract_smooth_bg: float | tuple[float, float, float] | None = None,
+    fast_len: Callable[[int], int] = next_fast_len,
+) -> _ForwardPlan:
+    """All pure-Python preparation up to (but excluding) the FFT core.
+
+    ``fast_len`` is injectable so a backend with different fast radices can
+    choose its own padded lengths (the WebGPU core pads to strict 5-smooth);
+    the choice is recorded in the plan/DeltaPDF ``pad_width``, keeping the
+    inverse self-consistent whichever backend produced the result.
+    """
     data = vol.masked_data()  # NaN at masked voxels
 
     # Crop Q-space symmetrically to ±(h_max, k_max, l_max) in r.l.u.
@@ -195,7 +333,7 @@ def compute_delta_pdf(
     # one 3D FFT.  This is the right model for H-layered/modulated data, where an
     # isotropic H-blur (e.g. 1.5 r.l.u. ≈ 45 px on a 0.033-step H axis) would
     # smear the H=0/±1/3/±2/3 layers into each other's background.
-    smooth_bg: NDArray[np.float64] | None = None
+    smooth_bg: NDArray[np.floating] | None = None
     if subtract_smooth_bg:
         if isinstance(subtract_smooth_bg, tuple):
             sig_h, sig_k, sig_l = (float(s) for s in subtract_smooth_bg)
@@ -237,74 +375,35 @@ def compute_delta_pdf(
 
     subtracted_mean = 0.0
     if subtract_mean:
-        subtracted_mean = float(data.mean())
+        # Explicit float64 accumulator: with float32 storage a native-dtype
+        # mean over ~5e7 elements would drift far beyond round-off, and the
+        # residual DC term shows up as a spurious r=0 spike in the ΔPDF.
+        subtracted_mean = float(data.mean(dtype=np.float64))
         data -= subtracted_mean
 
-    # Zero-pad to the next fast FFT length (5-smooth; scipy.fft.next_fast_len).
-    # pocketfft transforms these just as fast as powers of two, but the pad is
-    # far smaller (e.g. 360→375 instead of 360→512 — ~2.6× less memory for the
-    # padded and complex arrays), which is what keeps full-resolution volumes
-    # inside the browser's WASM heap.  Pad SYMMETRICALLY so the Q=0 origin (at
-    # index s//2 of each axis) stays at the centre of the padded array —
-    # one-sided padding would shift the origin and reintroduce the phase ramp
-    # that ifftshift (below) removes.
+    # Zero-pad to the next fast FFT length (11-smooth; scipy.fft.next_fast_len
+    # — pocketfft has fast radices up to 11).  pocketfft transforms these just
+    # as fast as powers of two, but the pad is far smaller (e.g. 360→375
+    # instead of 360→512 — ~2.6× less memory for the padded and complex
+    # arrays), which is what keeps full-resolution volumes inside the
+    # browser's WASM heap.  Pad SYMMETRICALLY so the Q=0 origin (at index s//2
+    # of each axis) stays at the centre of the padded array — one-sided
+    # padding would shift the origin and reintroduce the phase ramp that the
+    # FFT core's ifftshift removes.  The padded length is an implementation
+    # detail recorded per-result in ``pad_width``: invert_delta_pdf reads the
+    # stored values, so a backend with a different fast-length rule (the
+    # WebGPU path pads to 5-smooth) stays self-consistent on inversion.
     if zero_pad:
-        padded_shape = tuple(next_fast_len(s) for s in data.shape)
+        padded_shape = tuple(fast_len(s) for s in data.shape)
     else:
         padded_shape = data.shape
     pad_width = []
     for s, ps in zip(data.shape, padded_shape):
         lo = ps // 2 - s // 2          # land the origin on the new centre ps//2
         pad_width.append((lo, ps - s - lo))
-    data = np.pad(data, pad_width, mode="constant")
 
-    # The input has its Q=0 origin at the array centre, but fftn treats index
-    # [0,0,0] as the origin.  Without ifftshift the transform picks up a linear
-    # phase ramp e^{-iπk} → (-1)^k, which flips the sign of real-space features
-    # by pixel parity and splits each correlation peak into mixed +/- lobes.
-    # The correct centred transform is fftshift(fftn(ifftshift(·))) — computed
-    # in explicit steps that free each intermediate before the next allocates
-    # (the complex spectrum alone is 2 padded volumes), and taking the real
-    # part BEFORE fftshift (they commute: fftshift only permutes elements) so
-    # the shift copies a float64 array, not a complex128 one.
-    data = ifftshift(data)
-    ft = fftn(data, workers=_FFT_WORKERS)
-    del data  # free the padded input before the real-part copy below
-    # Materialise the real part (valid for centrosymmetric I(Q)): np.real()
-    # returns a VIEW that would otherwise pin the complex128 buffer (2 padded
-    # volumes) for the DeltaPDF's whole lifetime.
-    delta_pdf = np.ascontiguousarray(ft.real)
-    del ft
-    delta_pdf = fftshift(delta_pdf)
-
-    # Build real-space axes (use possibly-cropped local axes)
-    nh, nk, nl = padded_shape
-    dh = (h_axis[-1] - h_axis[0]) / max(len(h_axis) - 1, 1)
-    dk = (k_axis[-1] - k_axis[0]) / max(len(k_axis) - 1, 1)
-    dl = (l_axis[-1] - l_axis[0]) / max(len(l_axis) - 1, 1)
-
-    # FFT frequency grid (in reciprocal of HKL step → direct lattice units)
-    x_frac = fftshift(fftfreq(nh, d=dh))
-    y_frac = fftshift(fftfreq(nk, d=dk))
-    z_frac = fftshift(fftfreq(nl, d=dl))
-
-    if real_space_angstrom:
-        # Convert fractional direct-lattice coordinates to Å
-        # Real-space basis vectors = columns of (UB/2π)^{-T}  times 2π
-        # i.e., direct lattice = 2π * inv(UB)^T
-        try:
-            direct = 2 * np.pi * np.linalg.inv(vol.ub_matrix).T
-            a_vec = direct[:, 0]
-            b_vec = direct[:, 1]
-            c_vec = direct[:, 2]
-            x_axis = x_frac * np.linalg.norm(a_vec)
-            y_axis = y_frac * np.linalg.norm(b_vec)
-            z_axis = z_frac * np.linalg.norm(c_vec)
-        except np.linalg.LinAlgError:
-            x_axis, y_axis, z_axis = x_frac, y_frac, z_frac
-    else:
-        x_axis, y_axis, z_axis = x_frac, y_frac, z_frac
-
+    # Everything below is backend-replaceable: prepare-plan → FFT core →
+    # finish (the browser's WebGPU path swaps only the core).
     if q_mag is None:
         # max|Q| over the (cropped) grid.  |Q| = ‖UB·hkl‖ is convex, so its
         # maximum over the axis-aligned hkl box is attained at a corner — and the
@@ -318,24 +417,29 @@ def compute_delta_pdf(
             q_max = float(np.max(retained))
         else:
             q_max = float(np.max(q_mag))
+    del q_mag
 
-    return DeltaPDF(
-        data=delta_pdf,
-        x_axis=x_axis,
-        y_axis=y_axis,
-        z_axis=z_axis,
-        q_max=q_max,
-        apodization=apodization,
-        pad_width=tuple(tuple(p) for p in pad_width),  # type: ignore[misc]
-        cropped_shape=cropped_shape,  # type: ignore[arg-type]
+    plan = _ForwardPlan(
+        data=data,
+        pad_width=pad_width,
+        padded_shape=padded_shape,
+        cropped_shape=cropped_shape,
         window_axes=window_axes,
         subtracted_mean=subtracted_mean,
         smooth_bg=smooth_bg,
-        h_axis_c=h_axis,
-        k_axis_c=k_axis,
-        l_axis_c=l_axis,
-        ub_matrix=vol.ub_matrix.copy(),
+        h_axis=h_axis,
+        k_axis=k_axis,
+        l_axis=l_axis,
+        q_max=q_max,
+        apodization=apodization,
+        real_space_angstrom=real_space_angstrom,
+        ub_matrix=vol.ub_matrix,
     )
+    del data  # the plan owns the compact volume now
+    return plan
+
+
+
 
 
 def invert_delta_pdf(
@@ -396,32 +500,74 @@ def invert_delta_pdf(
             "/ window_axes / cropped axes); recompute it with compute_delta_pdf "
             "from this build before inverting.")
 
-    # Exact inverse of fftshift(fftn(ifftshift(·))).  The stored ΔPDF is real
-    # (FT of centrosymmetric I(Q)); ifftn of it is real up to round-off.
-    # Stepwise with prompt frees, real part before fftshift (they commute) —
-    # same memory discipline as the forward transform in compute_delta_pdf.
-    work = ifftshift(dpdf.data)
-    if consume:
-        dpdf.data = np.empty((0, 0, 0), dtype=np.float64)
-    ft = ifftn(work, workers=_FFT_WORKERS)
-    del work
-    prep_pad = np.ascontiguousarray(ft.real)
-    del ft
-    prep_pad = fftshift(prep_pad)
+    prep_pad = _fft_core_inverse(dpdf, consume=consume)
 
     # Strip the symmetric zero-padding → the windowed, mean-subtracted volume.
     sl = tuple(slice(lo, lo + n)
                for (lo, _hi), n in zip(dpdf.pad_width, dpdf.cropped_shape))
     prep = prep_pad[sl] + dpdf.subtracted_mean   # restore mean → win·(I − bg)
     del prep_pad  # the padded inverse is no longer needed
+    return _finish_inverse(dpdf, prep, deapodize=deapodize,
+                           add_back_smooth_bg=add_back_smooth_bg,
+                           window_floor=window_floor)
 
-    win = (dpdf.window_axes[0][:, None, None]
-           * dpdf.window_axes[1][None, :, None]
-           * dpdf.window_axes[2][None, None, :])
-    reliable = win >= window_floor * float(win.max())
+
+def _fft_core_inverse(dpdf: DeltaPDF, *, consume: bool) -> NDArray[np.floating]:
+    """The scipy inverse-FFT backend: centred inverse transform, real part.
+
+    Exact inverse of fftshift(fftn(ifftshift(·))).  The stored ΔPDF is real
+    (FT of centrosymmetric I(Q)); ifftn of it is real up to round-off.
+    Stepwise with prompt frees, real part before fftshift (they commute) —
+    same memory discipline as the forward transform.  Backend-replaceable
+    (the browser's WebGPU path swaps this core, returning the same padded
+    real volume).
+    """
+    work = ifftshift(dpdf.data)
+    if consume:
+        dpdf.data = np.empty((0, 0, 0), dtype=work.dtype)
+    ft = ifftn(work, workers=_FFT_WORKERS)
+    del work
+    prep_pad = np.ascontiguousarray(ft.real)
+    del ft
+    return fftshift(prep_pad)
+
+
+def _finish_inverse(
+    dpdf: DeltaPDF,
+    prep: NDArray[np.floating],
+    *,
+    deapodize: bool,
+    add_back_smooth_bg: bool,
+    window_floor: float,
+) -> HKLVolume:
+    """Deapodize + rebuild the reciprocal-space HKLVolume (backend-agnostic).
+
+    ``prep`` is the un-padded, mean-restored ``win·(I − bg)`` volume — the
+    common meeting point of the scipy and WebGPU cores.
+    """
+    # invert_delta_pdf validated these; repeat for direct callers + narrowing.
+    assert (dpdf.window_axes is not None and dpdf.h_axis_c is not None
+            and dpdf.k_axis_c is not None and dpdf.l_axis_c is not None)
 
     if deapodize:
-        recon = np.divide(prep, win, out=np.zeros_like(prep), where=reliable)
+        # Deapodize one H-plane at a time instead of materialising the full
+        # 3-D window (+ a fresh zero-filled output): peak drops by ~2 volumes.
+        # Bit-identical to the whole-volume version: each window element is
+        # still computed as (wh[i]*wk[j])*wl[k] (same association order), the
+        # window maximum of a non-negative separable product is exactly
+        # (wh.max()*wk.max())*wl.max() (attained at the argmax element, same
+        # arithmetic), and the where-divide + zero-fill reproduces
+        # ``np.divide(..., out=np.zeros_like(prep), where=reliable)``.
+        wh, wk, wl = dpdf.window_axes
+        thr = window_floor * float((wh.max() * wk.max()) * wl.max())
+        reliable = np.empty(prep.shape, dtype=bool)
+        for i in range(prep.shape[0]):
+            win_i = (wh[i] * wk)[:, None] * wl[None, :]
+            rel_i = win_i >= thr
+            np.divide(prep[i], win_i, out=prep[i], where=rel_i)
+            prep[i][~rel_i] = 0.0
+            reliable[i] = rel_i
+        recon = prep
     else:
         recon = prep
         reliable = np.ones(recon.shape, dtype=bool)
@@ -433,9 +579,9 @@ def invert_delta_pdf(
           if dpdf.ub_matrix is not None else np.eye(3, dtype=np.float64))
     # Zero-stride broadcast view instead of a materialised zeros volume: the
     # reconstruction has no error estimate and nothing writes to it.
-    zero_sigma = np.broadcast_to(np.float64(0.0), recon.shape)
+    zero_sigma = np.broadcast_to(recon.dtype.type(0.0), recon.shape)
     return HKLVolume(
-        data=recon.astype(np.float64),
+        data=recon,
         sigma=zero_sigma,
         mask=reliable,
         h_axis=dpdf.h_axis_c.copy(),

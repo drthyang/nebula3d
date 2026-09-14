@@ -22,7 +22,7 @@ from numpy.typing import NDArray
 
 
 def tv_inpaint(
-    data: NDArray[np.float64],
+    data: NDArray[np.floating],
     mask: NDArray[np.bool_],
     lam: float = 0.1,
     max_iter: int = 300,
@@ -49,6 +49,13 @@ def tv_inpaint(
     u:
         Inpainted volume with masked regions reconstructed.
     """
+    # Chambolle-Pock at tol=1e-5 is marginal in float32, and this path is not
+    # memory-binding in the default pipeline — always solve in float64 and
+    # return in the caller's storage precision.
+    in_dtype = data.dtype
+    data64: NDArray[np.float64] = np.asarray(data, dtype=np.float64)
+    data = data64
+
     f = data.copy()
     # mask weight (observation operator W)
     W = mask.astype(np.float64)
@@ -87,7 +94,7 @@ def tv_inpaint(
         if rel_change < tol and i > 10:
             break
 
-    return u
+    return u.astype(in_dtype, copy=False)
 
 
 # ------------------------------------------------------------------

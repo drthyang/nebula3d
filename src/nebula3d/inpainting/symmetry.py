@@ -65,7 +65,7 @@ def symmetry_fill(
     symmetry_ops: Sequence[NDArray] | None = None,
     laue_class: str = "m3m",
     min_equivalents: int = 1,
-) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.bool_]]:
+) -> tuple[NDArray[np.floating], NDArray[np.floating], NDArray[np.bool_]]:
     """Fill masked voxels using crystallographic symmetry equivalents.
 
     Parameters

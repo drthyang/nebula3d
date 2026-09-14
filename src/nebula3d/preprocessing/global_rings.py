@@ -222,8 +222,10 @@ def fit_global_rings(
              & (q >= cfg.q_min) & (q <= cfg.q_max))
     diagnostics = GlobalRingDiagnostics(
         material_mode=cfg.material, subtraction_policy=cfg.subtraction)
-    ring_mean = np.zeros(vol.shape, dtype=np.float64)
-    ring_var = np.zeros(vol.shape, dtype=np.float64)
+    # Full-volume accumulators follow the storage precision (float32 halves
+    # them in the browser); the per-shell fits stay float64 below.
+    ring_mean = np.zeros(vol.shape, dtype=vol.data.dtype)
+    ring_var = np.zeros(vol.shape, dtype=vol.data.dtype)
 
     if int(valid.sum()) < 32:
         diagnostics.status = "failed"
@@ -328,14 +330,19 @@ def _finish_result(
     else:
         subtracted = np.maximum(ring_mean - cfg.confidence_z * ring_sigma, 0.0)
 
-    cleaned_data = np.asarray(vol.data, dtype=np.float64) - subtracted
-    cleaned_sigma = np.sqrt(np.asarray(vol.sigma, dtype=np.float64) ** 2 + ring_var)
+    # Storage-precision arithmetic (float64 path unchanged: the old forced
+    # float64 asarray was a no-op there).
+    cleaned_data = vol.data - subtracted
+    cleaned_sigma = np.sqrt(
+        vol.sigma.astype(vol.data.dtype, copy=False) ** 2 + ring_var)
     cleaned = dataclasses.replace(vol, data=cleaned_data, sigma=cleaned_sigma)
 
     valid = vol.mask & np.isfinite(vol.data)
-    denom = float(np.sum(np.abs(vol.data[valid]))) if valid.any() else 0.0
+    denom = (float(np.sum(np.abs(vol.data[valid]), dtype=np.float64))
+             if valid.any() else 0.0)
     diagnostics.removed_energy_fraction = (
-        float(np.sum(subtracted[valid])) / denom if denom > 0 else 0.0)
+        float(np.sum(subtracted[valid], dtype=np.float64)) / denom
+        if denom > 0 else 0.0)
     pos = valid & (vol.data > 0)
     diagnostics.negative_flip_fraction = (
         float(np.mean(cleaned_data[pos] < 0)) if pos.any() else 0.0)
@@ -406,14 +413,14 @@ def _weighted_median(values: NDArray[np.float64], weights: NDArray[np.float64]) 
 
 def _fit_one_shell(
     vol: HKLVolume,
-    q: NDArray[np.float64],
+    q: NDArray[np.floating],
     valid: NDArray[np.bool_],
     q0: float,
     fwhm: float,
     pooled_amp: float,
     snr: float,
-    q_grid: NDArray[np.float64],
-    baseline: NDArray[np.float64],
+    q_grid: NDArray[np.floating],
+    baseline: NDArray[np.floating],
     cfg: GlobalRingConfig,
     al_line: AluminumLine | None,
 ) -> tuple[NDArray[np.intp], NDArray[np.float64], NDArray[np.float64],
@@ -431,7 +438,9 @@ def _fit_one_shell(
         return None
 
     directions = _directions_for_flat_indices(vol, indices)
-    data = np.asarray(vol.data, dtype=np.float64).ravel()[indices]
+    # Gather first (small), upcast after: identical values, and float32 mode
+    # never materialises a full-volume float64 copy per shell.
+    data = vol.data.ravel()[indices].astype(np.float64, copy=False)
     base = np.interp(q_shell, q_grid, baseline)
     amplitude_samples = (data - base) / np.maximum(profile, 0.35)
 

@@ -39,7 +39,7 @@ def azimuthal_sampling_mask(
     min_count_frac: float = 0.25,
     min_count: int = 1,
     q_range: tuple[float, float] | None = None,
-    q: NDArray[np.float64] | None = None,
+    q: NDArray[np.floating] | None = None,
     phi: NDArray[np.float64] | None = None,
 ) -> NDArray[np.bool_]:
     """Keep-mask that drops voxels in azimuthally under-sampled (|Q|, φ) cells.

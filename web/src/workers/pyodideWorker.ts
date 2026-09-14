@@ -1,6 +1,6 @@
 // Web Worker: hosts the Pyodide runtime so the nebula3d pipeline runs off the
-// main thread.  Built as a classic worker (importScripts is available), driven
-// by message-passing from the main thread.
+// main thread.  A module worker (Pyodide loads via its pyodide.mjs ESM entry),
+// driven by message-passing from the main thread.
 //
 // Message protocol
 // ─────────────────
@@ -15,35 +15,13 @@
 //
 // See docs/web.md ("In-browser run" / "Architecture") for the rationale.
 
-// importScripts is only available in classic workers; declare so TS is happy.
-declare function importScripts(...urls: string[]): void;
+import { installGpuGlobal } from "../gpu";
+import type { NebulaGpu } from "../gpu";
+import { loadPyodideRuntime, resolveWheelUrl } from "./pyodideShared";
+import type { PyodideAPI, PyProxy } from "./pyodideShared";
+import { addRingPort, installRingPoolGlobal } from "./ringPoolClient";
 
-// 0.27+ raises the WASM heap ceiling from 2 GB to 4 GB (MAXIMUM_MEMORY=4GB),
-// which is what lets full-resolution float64 volumes (~46 M voxels) reduce
-// in-browser; 0.27.7 also fixes a WebWorker asyncio memory leak.
-const PYODIDE_VERSION = "0.27.7";
-const PYODIDE_INDEX = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const STAGES = ["rings", "punch", "backfill", "flatten", "pdf", "pdf_check"] as const;
-
-// Minimal Pyodide typings (the CDN script ships no TypeScript types).
-interface PyProxy {
-  toJs(opts?: { create_proxies?: boolean }): unknown;
-  destroy(): void;
-  [k: string]: unknown;
-}
-interface PyodideAPI {
-  loadPackage(names: string[]): Promise<void>;
-  runPythonAsync(code: string): Promise<unknown>;
-  pyimport(name: string): PyProxy;
-  FS: {
-    writeFile(path: string, data: Uint8Array): void;
-    mkdirTree(path: string): void;
-    unlink(path: string): void;
-  };
-  globals: { set(k: string, v: unknown): void; delete(k: string): void };
-}
-// loadPyodide is injected into the Worker scope by importScripts(pyodide.js).
-declare function loadPyodide(opts: { indexURL: string }): Promise<PyodideAPI>;
 
 // Typed postMessage bypassing the DOM Window vs DedicatedWorkerGlobalScope mismatch.
 type PostFn = (data: unknown, transfer?: Transferable[]) => void;
@@ -81,16 +59,15 @@ function postBoot(phase: string, message: string, ready: boolean, error?: string
   post({ id: null, type: "boot_status", phase, message, ready, error });
 }
 
-async function boot(wheelBase: string): Promise<void> {
+async function boot(wheelBase: string): Promise<string> {
   postBoot("runtime", "Downloading Python runtime (~10 MB)…", false);
-  importScripts(`${PYODIDE_INDEX}pyodide.js`);
-  py = await loadPyodide({ indexURL: PYODIDE_INDEX });
+  py = await loadPyodideRuntime();
 
   postBoot("packages", "Loading numpy, scipy, h5py, matplotlib…", false);
   await py.loadPackage(["numpy", "scipy", "h5py", "matplotlib", "micropip"]);
 
   postBoot("wheel", "Installing the nebula3d reduction package…", false);
-  const wheelUrl = `${wheelBase}wheels/nebula3d-0.3.0-py3-none-any.whl`;
+  const wheelUrl = await resolveWheelUrl(wheelBase);
   py.globals.set("_nebula3d_wheel_url", wheelUrl);
   await py.runPythonAsync(
     "import micropip\nawait micropip.install(_nebula3d_wheel_url, deps=False)\n",
@@ -101,6 +78,10 @@ async function boot(wheelBase: string): Promise<void> {
   (bridge.setup as () => unknown)();
 
   postBoot("ready", "Ready — compute runs locally in your browser.", true);
+  // Probe WebGPU in the background so the ΔPDF-engine status (and the
+  // admission decision Python makes) is known before the first run.
+  void (self as unknown as { nebulaGpu: NebulaGpu }).nebulaGpu.init();
+  return wheelUrl;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,29 +98,43 @@ async function dispatch(req: WorkerRequest): Promise<void> {
 
   try {
     switch (req.type) {
-      case "boot":
-        await boot(req.wheelBase);
-        reply(null);
+      case "boot": {
+        const wheelUrl = await boot(req.wheelBase);
+        // The resolved wheel URL travels back so the ring workers install the
+        // EXACT same wheel (no independent manifest fetch → no version skew).
+        reply(wheelUrl);
         break;
+      }
 
       case "load_file": {
         const bytes = new Uint8Array(req.buffer);
         py!.FS.mkdirTree("/uploads");
         const tmp = `/uploads/${Date.now()}`;
         py!.FS.writeFile(tmp, bytes);
-        // Pre-flight: a metadata-only size check (reads the HDF5 shape, not the
-        // arrays) so an oversized volume is rejected with a clear message rather
-        // than crashing the reduction with a numpy MemoryError.
-        const report = JSON.parse(
-          (bridge!.inspect_input as (n: string, p: string) => string)(req.name, tmp),
-        ) as { ok: boolean; message: string };
-        if (!report.ok) {
-          py!.FS.unlink(tmp);
-          replyError(new Error(report.message));
-          break;
+        // The upload temp must never outlive this dispatch: load_input copies
+        // it into the workspace (/work/raw), and every failure path (a corrupt
+        // file makes inspect_input/load_input raise) used to leak one full
+        // input file per attempt in session-lifetime MEMFS.
+        try {
+          // Pre-flight: a metadata-only size check (reads the HDF5 shape, not
+          // the arrays) so an oversized volume is rejected with a clear message
+          // rather than crashing the reduction with a numpy MemoryError.
+          const report = JSON.parse(
+            (bridge!.inspect_input as (n: string, p: string) => string)(req.name, tmp),
+          ) as { ok: boolean; message: string };
+          if (!report.ok) {
+            replyError(new Error(report.message));
+            break;
+          }
+          const dsId = (bridge!.load_input as (n: string, p: string) => string)(req.name, tmp);
+          reply(dsId);
+        } finally {
+          try {
+            py!.FS.unlink(tmp);
+          } catch {
+            // best-effort: the temp may be gone already
+          }
         }
-        const dsId = (bridge!.load_input as (n: string, p: string) => string)(req.name, tmp);
-        reply(dsId);
         break;
       }
 
@@ -164,9 +159,12 @@ async function dispatch(req: WorkerRequest): Promise<void> {
         // Run the enabled stages in one call (canonical order) so the pipeline
         // can resolve pass-through inputs across the whole selection; a disabled
         // stage is skipped and its input flows to the next enabled stage.
+        // run_async is a Python coroutine — Pyodide surfaces it as a thenable,
+        // so awaiting it here lets the ring stage fan out over the worker pool
+        // (self.nebulaRingPool) while this dispatch stays suspended.
         const selected = stages ?? STAGES;
         const stagesCsv = STAGES.filter((st) => selected.includes(st)).join(",");
-        (bridge!.run as (...a: unknown[]) => string)(
+        const json = await (bridge!.run_async as (...a: unknown[]) => Promise<string>)(
           stagesCsv,
           paramsJson,
           flattenEnabled,
@@ -174,7 +172,7 @@ async function dispatch(req: WorkerRequest): Promise<void> {
           forceFrom ?? null,
           progress,
         );
-        reply((bridge!.datasets_json as () => string)());
+        reply(json);
         break;
       }
 
@@ -189,13 +187,16 @@ async function dispatch(req: WorkerRequest): Promise<void> {
         // (slice envelopes, the ΔPDF download envelope, …).
         const proxy = (bridge![req.method] as (...a: unknown[]) => PyProxy)(...req.args);
         try {
+          // toJs() on Python bytes materialises a fresh, exactly-sized JS-heap
+          // ArrayBuffer (Pyodide copies out of the WASM heap), so it can be
+          // transferred directly — a second .slice() copy would double the
+          // peak JS heap on large envelopes (the ΔPDF .h5 download is 100+ MB).
           const u8 = proxy.toJs() as Uint8Array;
-          // Slice out of the WASM ArrayBuffer so it can be transferred without
-          // detaching the entire WASM memory.  Pyodide uses plain ArrayBuffer
-          // (not SharedArrayBuffer), so the cast is safe.
-          const buf = u8.buffer.slice(
-            u8.byteOffset,
-            u8.byteOffset + u8.byteLength,
+          const aligned =
+            u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength;
+          const buf = (aligned
+            ? u8.buffer
+            : u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)
           ) as ArrayBuffer;
           replyBinary(buf);
         } finally {
@@ -209,6 +210,24 @@ async function dispatch(req: WorkerRequest): Promise<void> {
   }
 }
 
+// The ring-plane fan-out primitive Python awaits (self.nebulaRingPool).
+installRingPoolGlobal();
+// The WebGPU ΔPDF backend Python awaits (self.nebulaGpu); absence of WebGPU
+// simply leaves the scipy path in charge.
+installGpuGlobal((status) => post({ id: null, type: "gpu_status", ...status }));
+
+// Serialize top-level RPCs: now that run_pipeline suspends (async ring
+// fan-out), an interleaved json_call/slice_call could otherwise read
+// half-written pipeline state.  Ring-port messages bypass this chain — they
+// are delivered on their own MessagePorts, which is exactly what lets the
+// pool make progress while a dispatch is suspended.
+let dispatchChain: Promise<void> = Promise.resolve();
+
 self.addEventListener("message", ((ev: MessageEvent<WorkerRequest>) => {
-  void dispatch(ev.data);
+  const data = ev.data as unknown as { type?: string };
+  if (data?.type === "ring_port") {
+    addRingPort(ev.ports[0]);
+    return;
+  }
+  dispatchChain = dispatchChain.then(() => dispatch(ev.data));
 }) as EventListener);
