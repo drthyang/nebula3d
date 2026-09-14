@@ -232,9 +232,12 @@ def fit_global_rings(
         diagnostics.warnings.append("too few valid voxels in the requested Q range")
         return _finish_result(vol, ring_mean, ring_var, diagnostics, cfg)
 
-    edges = np.arange(cfg.q_min, cfg.q_max + cfg.q_step * 1.0001, cfg.q_step)
+    # Shape-agnostic annotation + explicit float64: numpy's stubs (2.2 → 2.5,
+    # one per CI Python) disagree on the shape/dtype `arange`/`append` return.
+    edges: NDArray[np.float64] = np.arange(
+        cfg.q_min, cfg.q_max + cfg.q_step * 1.0001, cfg.q_step, dtype=np.float64)
     if edges[-1] < cfg.q_max:
-        edges = np.append(edges, cfg.q_max)
+        edges = np.asarray(np.append(edges, cfg.q_max), dtype=np.float64)
     q_grid = 0.5 * (edges[:-1] + edges[1:])
     pooled, counts = _robust_radial_profile(
         q[valid], np.asarray(vol.data[valid], dtype=np.float64), edges,
@@ -594,7 +597,9 @@ def _ridge_irls(
     degrees: NDArray[np.float64], ridge: float,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], float]:
     robust = np.ones_like(y)
-    beta = np.zeros(X.shape[1], dtype=np.float64)
+    # Shape-agnostic annotation + float64 coercions (no-ops at runtime): the
+    # `solve`/`lstsq` return types differ across numpy stub versions.
+    beta: NDArray[np.float64] = np.zeros(X.shape[1], dtype=np.float64)
     lhs = np.eye(X.shape[1])
     for _ in range(4):
         ww = w * robust
@@ -605,9 +610,9 @@ def _ridge_irls(
         lhs = xtwx + np.diag(penalty)
         rhs = X.T @ (ww * y)
         try:
-            beta = np.linalg.solve(lhs, rhs)
+            beta = np.asarray(np.linalg.solve(lhs, rhs), dtype=np.float64)
         except np.linalg.LinAlgError:
-            beta = np.linalg.lstsq(lhs, rhs, rcond=None)[0]
+            beta = np.asarray(np.linalg.lstsq(lhs, rhs, rcond=None)[0], dtype=np.float64)
         resid = y - X @ beta
         med = float(np.median(resid))
         mad = max(1.4826 * float(np.median(np.abs(resid - med))), 1e-12)
