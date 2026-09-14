@@ -20,6 +20,7 @@
 //
 // See docs/web.md ("In-browser run" / "Architecture") for context.
 
+import { disposeRingPool, ensureRingPool } from "./ringPool";
 import type {
   BraggProfile,
   ConsistencyMeta,
@@ -29,6 +30,8 @@ import type {
   SliceHeader,
   VolumeMeta,
 } from "./types";
+
+export { ringPoolStatus, subscribeRingPool } from "./ringPool";
 
 export const PYODIDE_MODE = import.meta.env.VITE_DATA_MODE === "pyodide";
 
@@ -63,6 +66,26 @@ function setBoot(s: BootStatus): void {
 }
 
 // ---------------------------------------------------------------------------
+// GPU status (fire-and-forget from the Worker after its WebGPU probe)
+// ---------------------------------------------------------------------------
+export interface GpuStatus {
+  available: boolean;
+  adapter: string;
+  maxBufferMB: number;
+}
+
+let gpuStatus: GpuStatus | null = null;
+const gpuListeners = new Set<(s: GpuStatus) => void>();
+
+export function getGpuStatus(): GpuStatus | null {
+  return gpuStatus;
+}
+export function subscribeGpu(fn: (s: GpuStatus) => void): () => void {
+  gpuListeners.add(fn);
+  return () => gpuListeners.delete(fn);
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline progress (fire-and-forget events from the Worker during a run)
 // ---------------------------------------------------------------------------
 export interface PipelineProgressEvent {
@@ -94,15 +117,22 @@ function getOrCreateWorker(): Worker {
   if (!workerInstance) {
     workerInstance = new Worker(
       new URL("../workers/pyodideWorker.ts", import.meta.url),
-      { type: "classic" },
+      // Module worker: shares ESM code (pyodideShared/ringPoolClient) and loads
+      // Pyodide via pyodide.mjs — works identically under vite dev and build.
+      { type: "module" },
     );
     workerInstance.addEventListener("message", handleWorkerMessage);
     workerInstance.addEventListener("error", (ev: ErrorEvent) => {
       const msg = `Worker error: ${ev.message}`;
       setBoot({ phase: "error", message: msg, ready: false, error: msg });
       rejectAllPending(msg);
+      // An 'error' event does NOT kill the worker — terminate it explicitly,
+      // and tear down the ring pool wired to it (otherwise up to ~1 GB of idle
+      // Pyodide heaps stay resident until the next boot).
+      workerInstance?.terminate();
       workerInstance = null;
       bootPromise = null;
+      disposeRingPool();
     });
   }
   return workerInstance;
@@ -137,6 +167,13 @@ function handleWorkerMessage(ev: MessageEvent): void {
         message: msg.message as string,
       };
       for (const fn of progressListeners) fn(ev);
+    } else if (msg.type === "gpu_status") {
+      gpuStatus = {
+        available: msg.available as boolean,
+        adapter: msg.adapter as string,
+        maxBufferMB: msg.maxBufferMB as number,
+      };
+      for (const fn of gpuListeners) fn(gpuStatus);
     }
     return;
   }
@@ -179,7 +216,14 @@ export function ensureBooted(): Promise<void> {
         import.meta.env.BASE_URL ?? "/",
         window.location.origin,
       ).href;
-      await rpc("boot", { wheelBase: base });
+      const wheelUrl = (await rpc("boot", { wheelBase: base })) as string;
+      // Prewarm the ring-worker pool strictly AFTER the main boot so its N
+      // Pyodide/package downloads hit the HTTP cache instead of racing the
+      // main worker's, and hand it the exact wheel URL the main worker
+      // installed (no independent manifest fetch → no version skew).
+      // Fire-and-forget: the pipeline engages however many workers are ready
+      // at ring-stage start, serial if none.
+      ensureRingPool(getOrCreateWorker(), wheelUrl);
     })().catch((e: unknown) => {
       bootPromise = null;
       throw e;
@@ -195,6 +239,7 @@ export function cancelPipeline(): void {
     workerInstance.terminate();
     workerInstance = null;
   }
+  disposeRingPool();
   bootPromise = null;
   rejectAllPending("Pipeline cancelled");
   setBoot({ phase: "idle", message: "not started", ready: false });

@@ -18,10 +18,13 @@ export default defineConfig(({ mode }) => ({
     outDir: mode === "pages" ? "dist" : "../src/nebula3d/server/static",
     emptyOutDir: true,
   },
-  // Classic workers (pyodideWorker.ts) need IIFE format so importScripts is
-  // available at runtime; this applies to all workers in the bundle.
+  // Module workers: pyodideWorker.ts / ringWorker.ts share code via ESM
+  // imports (pyodideShared.ts, ringPoolClient.ts), which vite only supports in
+  // dev when workers are modules — so Pyodide is loaded via its pyodide.mjs
+  // entry (dynamic import) instead of importScripts, and the built workers are
+  // emitted as ES modules.
   worker: {
-    format: "iife",
+    format: "es",
   },
   server: {
     port: 5173,

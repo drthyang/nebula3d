@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Browser engine: parallel ring removal, float32 compute, WebGPU ΔPDF.** The
+  static (Pages/Pyodide) build now fans the ring stage out over a pool of slim
+  Pyodide ring workers (bit-identical to serial by construction — the pure
+  per-plane core in `nebula3d._ringplane` is shared by every backend; pinned by
+  `tests/test_ring_parallel.py`), computes with float32 volume storage
+  (`PipelineParams.precision`; axes/UB, |Q|-bin decisions, 1-D fits, and large
+  reductions stay float64 — validated on all three real TbTi3Bi4 volumes at
+  ΔPDF nrms ≤ 1e-5 with ≤ 2 punch-mask flips of 48.4 M voxels, ~15–25 %
+  faster), and runs the ΔPDF forward/inverse FFT cores on WebGPU when available
+  (`web/src/gpu/` mixed-radix Stockham with numpy-pinned index math; scipy
+  fallback at every rung; `fft=webgpu-f32-p5` cache token). The admission gate
+  rises from ~50 M to **~80 M voxels** (401³ volumes now run in-browser).
+  Plus: streaming consistency metrics and per-plane deapodization (bit-exact,
+  ~30 B/voxel off the old peak stage), wheel-manifest boot (no hardcoded
+  version), lazy `nebula3d.visualization` import, MEMFS upload-leak fix, and
+  workers moved to ES modules (`pyodide.mjs`). Native float64 runs are
+  hash-verified bit-identical to the previous release.
+  See `docs/reports/2026-08-07_browser_parallel_f32_webgpu.md`.
 - **Ring Removal 2.0 — sample-only global 3D powder-shell inference.** Added the
   opt-in `ring_model="global_v2"` path for datasets where an empty-environment
   scan omits the Al holder or over-subtracts. It detects narrow shells in the

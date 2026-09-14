@@ -40,8 +40,22 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
+import numpy as np
+
 import nebula3d
-from nebula3d.pipeline import STAGES, pipeline_paths, run_pipeline
+from nebula3d._ringplane import RingWorkerContext, _PlaneResult
+from nebula3d.core import HKLVolume
+from nebula3d.pipeline import (
+    STAGES,
+    delta_pdf_transform_config,
+    pdf_consistency_check,
+    pipeline_paths,
+    remove_rings_async,
+    ring_stage_pending,
+    run_pipeline,
+    write_delta_pdf_h5,
+)
+from nebula3d.preprocessing import write_global_ring_diagnostics
 from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
 from nebula3d.server import deltapdf as _dpdf
@@ -58,6 +72,7 @@ __all__ = [
     "load_input",
     "make_demo_input",
     "run",
+    "run_async",
     "datasets_json",
     "volume_meta_json",
     "volume_slice",
@@ -84,17 +99,32 @@ __all__ = [
 # peaks at ~2.3 GB; the binding stage is the back-FFT consistency check at
 # ~75 B/voxel, with the radial flatten / ring removal close behind.
 #
-# 64 B/voxel is that worst-stage figure net of the fixed interpreter overhead
-# (which dilutes at scale), with a small margin.  Volumes whose estimated peak
-# exceeds the budget are refused at load with a clear message rather than allowed
-# to crash mid-pipeline with a numpy ``MemoryError``.  Native ``nebula3d-web``
-# has no such limit; this gate lives only here, in the browser bridge.
-_PIPELINE_PEAK_BYTES_PER_VOXEL = 8 * 8
+# The browser always computes in float32 storage precision
+# (``PipelineParams.precision="float32"``): volume arrays halve, the FFT runs
+# float32→complex64, while axes/UB, every |Q|-derived decision, all 1-D
+# profile fits/solves, and every large reduction stay float64 (see the
+# mixed-precision rules in ``nebula3d.pipeline.PipelineParams.precision`` and
+# ``tests/test_float32_equivalence.py``, which tolerance-gates the results
+# against the float64 reference).  Native runs keep float64 by default.
+#
+# 40 B/voxel is the float32 worst-stage figure, measured on the real 48.4
+# M-voxel TbTi3Bi4 volume (scripts/measure_stage_peaks.py, low-memory, after
+# the streaming-metrics fixes): binding stage = backfill at 42.4 B/voxel
+# INCLUDING the ~5 B/voxel interpreter baseline (which dilutes at scale), so
+# 40 carries a small margin net of overhead.  float arrays halve vs float64;
+# the bool mask and int32 shell indices do not.  Volumes whose estimated peak
+# exceeds the budget are refused at load with a clear message rather than
+# allowed to crash mid-pipeline with a numpy ``MemoryError``.  Native
+# ``nebula3d-web`` has no such limit; this gate lives only here.
+_PIPELINE_PEAK_BYTES_PER_VOXEL = 40
 # 4 GB WASM ceiling minus the Pyodide runtime + packages (~0.5 GB) and headroom
-# for growth fragmentation (wasm memory never shrinks) → 50 M voxels pass the
-# gate (e.g. a 301×401×401 full-resolution volume = 48.4 M voxels ≈ 3.1 GB
-# estimated peak).
+# for growth fragmentation (wasm memory never shrinks) → 80 M voxels pass the
+# gate in float32 (e.g. a 401×401×401 volume = 64.5 M voxels ≈ 2.6 GB
+# estimated peak; 501³ = 125.8 M is still refused).
 _BROWSER_PEAK_BUDGET_BYTES = 3_200_000_000
+#: Storage precision every browser run uses (overridable per-run via a
+#: ``"precision"`` key in ``params_json`` — a debugging/validation lever).
+_BROWSER_PRECISION = "float32"
 
 
 # ---------------------------------------------------------------------------
@@ -229,9 +259,9 @@ def inspect_input(name: str, tmp_path: str) -> str:
             f"“{Path(name).name}” is {dims} ({n / 1e6:.1f} M voxels). Reducing it "
             f"would need roughly {est_peak / 1e9:.1f} GB of browser memory — more "
             f"than the in-browser engine can hold (it targets volumes up to about "
-            f"{budget_voxels / 1e6:.0f} M voxels). For full-resolution data this "
-            f"large, run the native build, which has no memory limit and opens the "
-            f"same interface:\n"
+            f"{budget_voxels / 1e6:.0f} M voxels in its float32 compute mode). "
+            f"For full-resolution data this large, run the native build, which has "
+            f"no memory limit and opens the same interface:\n"
             f'    pip install "nebula3d[web]"  &&  nebula3d-web'
         )
     return _json({
@@ -240,6 +270,10 @@ def inspect_input(name: str, tmp_path: str) -> str:
         "est_peak_mb": est_peak / 1e6,
         "ok": ok,
         "message": message,
+        # The storage precision this browser session will compute in (native
+        # runs default to float64; the ceiling above is the float32 one).
+        "precision": _BROWSER_PRECISION,
+        "ceiling_voxels": int(budget_voxels),
     })
 
 
@@ -376,6 +410,19 @@ def _make_request(params_json: str, flatten_enabled: bool) -> PipelineRunRequest
     return cast("PipelineRunRequest", req)
 
 
+def _apply_browser_precision(params: object, params_json: str) -> None:
+    """Browser storage-precision policy: always float32, unless the caller
+    explicitly pinned ``"precision"`` in *params_json* (the debug/validation
+    lever used to compare the two modes on the same session)."""
+    explicit = None
+    try:
+        explicit = (json.loads(params_json) if params_json else {}).get("precision")
+    except (ValueError, AttributeError):
+        explicit = None
+    params.precision = (  # type: ignore[attr-defined]
+        explicit if explicit in ("float64", "float32") else _BROWSER_PRECISION)
+
+
 def run(
     stages_csv: str,
     params_json: str,
@@ -402,6 +449,7 @@ def run(
     stages = tuple(s for s in (stages_csv.split(",") if stages_csv else [])
                    if s) or STAGES
     params = build_params(_make_request(params_json, flatten_enabled))
+    _apply_browser_precision(params, params_json)
 
     cb = None
     if progress is not None:
@@ -413,6 +461,450 @@ def run(
         force=bool(force), force_from=force_from, progress=cb,
     )
     return datasets_json()
+
+
+# ---------------------------------------------------------------------------
+# Async run — parallel ring removal over the browser worker pool
+# ---------------------------------------------------------------------------
+def _ring_pool_js() -> object | None:
+    """The ring-worker pool the JS layer installs on the worker global scope
+    (``self.nebulaRingPool``); ``None`` natively or when not installed."""
+    try:
+        import js  # type: ignore[import-not-found]  # noqa: PLC0415 - Pyodide-only
+    except ImportError:
+        return None
+    return getattr(js, "nebulaRingPool", None)
+
+
+class _JsPlaneExecutor:
+    """`nebula3d.pipeline.PlaneExecutor` over the JS ring-worker pool.
+
+    Plane payloads cross the FFI as JS ``Uint8Array``s (created Python-side via
+    ``pyodide.ffi.to_js`` so no PyProxy lingers on the JS side); results come
+    back as plain JS objects whose typed arrays are copied into numpy on
+    receipt.  Any worker/messaging failure marks the plane infrastructurally
+    failed — the driver recomputes it in-process, so the run never breaks.
+    """
+
+    def __init__(self, pool: object,
+                 progress: Callable[[str, str, float | None, str], None] | None
+                 = None) -> None:
+        self._pool = pool
+        self._progress = progress
+        self._reported: set[str] = set()
+
+    def workers(self) -> int:
+        try:
+            return int(self._pool.readyCount())  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 - a broken pool is just "no workers"
+            return 0
+
+    def _report_infra(self, message: str) -> None:
+        """Surface each distinct worker-infrastructure failure once (the plane
+        itself is recomputed in-process, but a silent discard would hide e.g. a
+        protocol mismatch behind a mysteriously serial run)."""
+        if self._progress is None or message in self._reported:
+            return
+        self._reported.add(message)
+        self._progress("rings", "progress", None,
+                       f"ring worker degraded ({message}); affected planes "
+                       "recomputed in-process")
+
+    async def run(
+        self,
+        context: RingWorkerContext,
+        n_planes: int,
+        get_task: Callable[[int], tuple[float, np.ndarray, np.ndarray]],
+        apply_result: Callable[[_PlaneResult], None],
+    ) -> list[int]:
+        import asyncio  # noqa: PLC0415
+
+        from pyodide.ffi import to_js  # type: ignore[import-not-found]  # noqa: PLC0415
+
+        pool = self._pool
+
+        def _u8(buf: bytes | None) -> object | None:
+            return None if buf is None else to_js(buf)
+
+        pool.beginStage(  # type: ignore[attr-defined]
+            context.scalars_json(),
+            _u8(np.ascontiguousarray(context.axis_a, dtype=np.float64).tobytes()),
+            _u8(np.ascontiguousarray(context.axis_b, dtype=np.float64).tobytes()),
+            _u8(np.ascontiguousarray(context.ub_matrix, dtype=np.float64).tobytes()),
+            _u8(None if context.ring_centers is None
+                else np.ascontiguousarray(context.ring_centers,
+                                          dtype=np.float64).tobytes()),
+            _u8(None if context.ring_halfwidths is None
+                else np.ascontiguousarray(context.ring_halfwidths,
+                                          dtype=np.float64).tobytes()),
+            _u8(None if context.ring_ceilings is None
+                else np.ascontiguousarray(context.ring_ceilings,
+                                          dtype=np.float64).tobytes()),
+        )
+
+        failed: list[int] = []
+        # Bound in-flight planes so transient JS-side buffers stay a few MB.
+        sem = asyncio.Semaphore(max(2, 2 * self.workers()))
+
+        async def one(ip: int) -> None:
+            async with sem:
+                # EVERYTHING per-plane sits inside the try: a MemoryError while
+                # extracting the plane (the very heap-pressure regime this
+                # feature targets) must fail one plane — not escape the task,
+                # abort the whole gather, and orphan in-flight workers.
+                try:
+                    sv, d2, m2 = get_task(ip)
+                    shape = (int(d2.shape[0]), int(d2.shape[1]))
+                    res = await pool.submitPlane(  # type: ignore[attr-defined]
+                        ip, float(sv), shape[0], shape[1],
+                        # The wire format is explicitly little-endian float64 —
+                        # normalise here so a future dtype change upstream can
+                        # never silently corrupt the byte protocol.
+                        _u8(np.ascontiguousarray(d2, dtype="<f8").tobytes()),
+                        _u8(np.ascontiguousarray(m2).astype(np.uint8).tobytes()))
+                    if not bool(res.ok):
+                        msg = getattr(res, "message", None)
+                        if msg:
+                            self._report_infra(str(msg))
+                        failed.append(ip)
+                        return
+                    data_2d = np.frombuffer(
+                        bytes(res.data.to_py()), dtype="<f8").reshape(shape)
+                    mask_js = getattr(res, "mask", None)
+                    mask_2d = (None if mask_js is None else np.frombuffer(
+                        bytes(mask_js.to_py()), dtype=np.uint8)
+                        .reshape(shape).astype(bool))
+                    err = getattr(res, "err", None)
+                    apply_result((ip, data_2d, mask_2d, bool(res.skipped),
+                                  None if err is None else str(err)))
+                except Exception as exc:  # noqa: BLE001 - failure → recompute
+                    self._report_infra(str(exc))
+                    failed.append(ip)
+
+        try:
+            await asyncio.gather(*(one(ip) for ip in range(n_planes)))
+        finally:
+            try:
+                pool.endStage()  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001 - teardown is best-effort
+                pass
+        return failed
+
+
+async def run_async(
+    stages_csv: str,
+    params_json: str,
+    flatten_enabled: bool,
+    force: bool = False,
+    force_from: str | None = None,
+    progress: Callable[[str, str, float | None, str], None] | None = None,
+) -> str:
+    """Async twin of :func:`run` that fans the ring stage out over the browser
+    ring-worker pool when one is available (bit-identical results either way).
+
+    Everything else — parameter handling, resume/force semantics, artifacts,
+    progress events — matches :func:`run` exactly: when the pool is absent,
+    empty, the ring model is a global one, or the ring stage would be skipped
+    anyway (`ring_stage_pending` is the shared gate), this delegates to the
+    very same single ``run_pipeline`` call ``run`` makes.
+    """
+    cfg = _require_cfg()
+    if _S.input is None:
+        raise RuntimeError("no input loaded; call load_input() first")
+    # Validate up front, exactly like run_pipeline does at its top — the
+    # out-of-band ring stage must not burn minutes of compute before a bad
+    # force_from raises in the trailing run_pipeline call.
+    if force_from is not None and force_from not in STAGES:
+        raise ValueError(f"force_from={force_from!r}; choose one of {STAGES}")
+    _clear_caches()
+    stages = tuple(s for s in (stages_csv.split(",") if stages_csv else [])
+                   if s) or STAGES
+    params = build_params(_make_request(params_json, flatten_enabled))
+    _apply_browser_precision(params, params_json)
+
+    cb = None
+    if progress is not None:
+        def cb(stage: str, status: str, fraction: float | None, message: str) -> None:
+            progress(stage, status, fraction, message)  # type: ignore[misc]
+
+    executor = None
+    pool = _ring_pool_js()
+    if (
+        pool is not None
+        and params.rings.ring_model.strip().lower() in {"patched", "parametric"}
+        and ring_stage_pending(_S.input, params, proc_dir=cfg.processed_dir,
+                               stages=stages, force=bool(force),
+                               force_from=force_from)
+    ):
+        candidate = _JsPlaneExecutor(pool, progress=cb)
+        if candidate.workers() > 0:
+            executor = candidate
+
+    # WebGPU ΔPDF core: split pdf/pdf_check out of the CPU run when the GPU
+    # is usable (float32 storage only — the GPU path is f32 end to end).
+    gpu = _gpu_js()
+    split_pdf = (
+        gpu is not None
+        and params.precision == "float32"
+        and any(st in stages for st in ("pdf", "pdf_check"))
+        and await _gpu_usable(gpu)
+    )
+    cpu_stages = (tuple(st for st in stages if st not in ("pdf", "pdf_check"))
+                  if split_pdf else stages)
+
+    if executor is None:
+        run_pipeline(
+            _S.input, params, proc_dir=cfg.processed_dir, stages=cpu_stages,
+            force=bool(force), force_from=force_from, progress=cb,
+        )
+    else:
+        # Ring stage out-of-band (mirrors run_pipeline's stage-1 block: save
+        # the artifact + optional diagnostics sidecar), then the remaining CPU
+        # stages in one call with the ring output handed over in memory.
+        paths = pipeline_paths(_S.input, proc_dir=cfg.processed_dir,
+                               flatten_enabled=params.flatten_enabled)
+        paths.delta_pdf.parent.mkdir(parents=True, exist_ok=True)
+        vol = nebula3d.load(paths.input, dtype=params.np_dtype())
+        out = await remove_rings_async(vol, params.rings, progress=cb,
+                                       plane_executor=executor)
+        del vol
+        nebula3d.save(out, paths.ringremoved)
+        ring_diagnostics = getattr(out, "_ring_diagnostics", None)
+        if ring_diagnostics is not None:
+            write_global_ring_diagnostics(
+                ring_diagnostics, paths.ring_diagnostics_json)
+        run_pipeline(
+            _S.input, params, proc_dir=cfg.processed_dir,
+            stages=tuple(st for st in cpu_stages if st != "rings"),
+            force=bool(force), force_from=force_from, progress=cb,
+            carry_in=(paths.ringremoved, out),
+        )
+
+    if split_pdf:
+        done = False
+        try:
+            done = await _run_pdf_stages_gpu(
+                params, stages, bool(force), force_from, cb, gpu)
+        except Exception as exc:  # noqa: BLE001 - GPU must never fail the run
+            _cb_emit(cb, "pdf", "progress", None,
+                     f"WebGPU ΔPDF failed ({exc}); recomputing with the CPU FFT")
+        if not done:
+            run_pipeline(
+                _S.input, params, proc_dir=cfg.processed_dir,
+                stages=tuple(st for st in stages if st in ("pdf", "pdf_check")),
+                force=bool(force), force_from=force_from, progress=cb,
+            )
+    return datasets_json()
+
+
+# ---------------------------------------------------------------------------
+# WebGPU ΔPDF backend (the FFT core runs on the GPU; everything else CPU)
+# ---------------------------------------------------------------------------
+#: Appended to the transform_config stamp so CPU- and GPU-computed ΔPDFs never
+#: masquerade as each other in the stale-cache guard (the GPU pads to strict
+#: 5-smooth lengths and computes the FFT in f32).
+_GPU_FFT_TOKEN = ";fft=webgpu-f32-p5"
+
+
+def _five_smooth(n: int) -> int:
+    """Smallest 5-smooth integer ≥ n (the GPU line kernel's radix set)."""
+    m = max(1, int(n))
+    while True:
+        k = m
+        for f in (2, 3, 5):
+            while k % f == 0:
+                k //= f
+        if k == 1:
+            return m
+        m += 1
+
+
+def _gpu_js() -> object | None:
+    """The GPU backend the JS layer installs (``self.nebulaGpu``); None natively."""
+    try:
+        import js  # type: ignore[import-not-found]  # noqa: PLC0415 - Pyodide-only
+    except ImportError:
+        return None
+    return getattr(js, "nebulaGpu", None)
+
+
+async def _gpu_usable(gpu: object) -> bool:
+    try:
+        if bool(gpu.available()):  # type: ignore[attr-defined]
+            return True
+        status = await gpu.init()  # type: ignore[attr-defined]
+        return bool(getattr(status, "available", False))
+    except Exception:  # noqa: BLE001 - any GPU trouble is just "not usable"
+        return False
+
+
+async def _gpu_forward(gpu: object, plan: object) -> np.ndarray | None:
+    """Run the forward FFT core on the GPU; returns the padded real volume.
+
+    The complex intermediates never touch the wasm heap — only the compact
+    input (float32) goes up and the padded real result (float32) comes back.
+    """
+    from pyodide.ffi import create_proxy, to_js  # type: ignore[import-not-found]  # noqa: PLC0415
+
+    data32 = np.ascontiguousarray(plan.data, dtype=np.float32)  # type: ignore[attr-defined]
+    plan.data = np.empty((0, 0, 0), dtype=np.float32)  # type: ignore[attr-defined]
+    padded = [int(x) for x in plan.padded_shape]  # type: ignore[attr-defined]
+    lo = [int(pw[0]) for pw in plan.pad_width]  # type: ignore[attr-defined]
+    out = np.zeros(tuple(padded), dtype=np.float32)
+    dp, op = create_proxy(data32), create_proxy(out)
+    try:
+        ok = await gpu.forwardDpdf(  # type: ignore[attr-defined]
+            dp, op, to_js([int(x) for x in data32.shape]), to_js(padded),
+            to_js(lo))
+    finally:
+        dp.destroy()
+        op.destroy()
+    if not bool(ok):
+        plan.data = data32  # type: ignore[attr-defined]  # restore for CPU retry
+        return None
+    return out
+
+
+async def _gpu_inverse(gpu: object, dpdf: object) -> HKLVolume | None:
+    """Run the inverse FFT core on the GPU; returns the reconstruction.
+
+    Consumes ``dpdf.data`` (the padded ΔPDF) once uploaded — the CPU fallback
+    path recomputes the ΔPDF from disk if the GPU refuses mid-way.
+    """
+    from pyodide.ffi import create_proxy, to_js  # type: ignore[import-not-found]  # noqa: PLC0415
+
+    from nebula3d.analysis.delta_pdf import _finish_inverse  # noqa: PLC0415
+
+    padded = [int(x) for x in dpdf.data.shape]  # type: ignore[attr-defined]
+    crop_lo = [int(pw[0]) for pw in dpdf.pad_width]  # type: ignore[attr-defined]
+    out_shape = [int(x) for x in dpdf.cropped_shape]  # type: ignore[attr-defined]
+    data32 = np.ascontiguousarray(dpdf.data, dtype=np.float32)  # type: ignore[attr-defined]
+    dpdf.data = np.empty((0, 0, 0), dtype=np.float32)  # type: ignore[attr-defined]
+    out = np.zeros(tuple(out_shape), dtype=np.float32)
+    dp, op = create_proxy(data32), create_proxy(out)
+    try:
+        ok = await gpu.inverseDpdf(  # type: ignore[attr-defined]
+            dp, op, to_js(padded), to_js(crop_lo), to_js(out_shape))
+    finally:
+        dp.destroy()
+        op.destroy()
+    if not bool(ok):
+        return None
+    del data32
+    prep = out + dpdf.subtracted_mean  # type: ignore[attr-defined]
+    return _finish_inverse(dpdf, prep, deapodize=True,  # type: ignore[arg-type]
+                           add_back_smooth_bg=True, window_floor=1e-3)
+
+
+def _cb_emit(cb: object, stage: str, status: str, fraction: float | None,
+             message: str) -> None:
+    if cb is not None:
+        cb(stage, status, fraction, message)  # type: ignore[operator]
+
+
+async def _run_pdf_stages_gpu(
+    params: object, stages: tuple[str, ...], force: bool,
+    force_from: str | None, cb: object, gpu: object,
+) -> bool:
+    """pdf + pdf_check with the GPU FFT core (mirrors run_pipeline's blocks).
+
+    Returns False whenever the GPU cannot serve this volume — the caller then
+    runs the same stages through the normal CPU ``run_pipeline`` path.
+    """
+    from nebula3d.analysis.delta_pdf import (  # noqa: PLC0415
+        DeltaPDF,
+        _finish_forward,
+        _prepare_forward,
+    )
+    from nebula3d.core import low_memory  # noqa: PLC0415
+    from nebula3d.pipeline import _drop_sigma, _pdf_is_current  # noqa: PLC0415
+
+    cfg = _require_cfg()
+    assert _S.input is not None
+    paths = pipeline_paths(_S.input, proc_dir=cfg.processed_dir,
+                           flatten_enabled=params.flatten_enabled)  # type: ignore[attr-defined]
+    p = params.delta_pdf  # type: ignore[attr-defined]
+
+    def forced(stage: str) -> bool:
+        if force:
+            return True
+        if force_from is not None and force_from in STAGES:
+            return STAGES.index(stage) >= STAGES.index(force_from)
+        return False
+
+    pdf_input = paths.pdf_input
+    if not pdf_input.exists():
+        return False  # pass-through subtleties → CPU path resolves them
+    gpu_cfg = delta_pdf_transform_config(p) + _GPU_FFT_TOKEN
+
+    async def forward_dpdf(vol: HKLVolume) -> DeltaPDF | None:
+        plan = _prepare_forward(
+            vol, apodization=p.apodization, gaussian_sigma=p.gaussian_sigma,
+            zero_pad=p.zero_pad, subtract_mean=p.subtract_mean,
+            real_space_angstrom=True, crop_hkl=p.crop_hkl, q_band=p.q_band,
+            subtract_smooth_bg=p.subtract_smooth_bg, fast_len=_five_smooth)
+        padded_real = await _gpu_forward(gpu, plan)
+        if padded_real is None:
+            return None
+        return _finish_forward(plan, padded_real)
+
+    dpdf: DeltaPDF | None = None
+    pdf_vol: HKLVolume | None = None
+    if "pdf" in stages:
+        is_current = _pdf_is_current(paths.delta_pdf, pdf_input.name, gpu_cfg)
+        if is_current and not forced("pdf"):
+            _cb_emit(cb, "pdf", "skip", None,
+                     f"{paths.delta_pdf.name} is current")
+        else:
+            if paths.delta_pdf.exists() and not is_current:
+                _cb_emit(cb, "pdf", "progress", None,
+                         f"{paths.delta_pdf.name} stale — recomputing")
+            _cb_emit(cb, "pdf", "start", None,
+                     f"3D-ΔPDF FFT (apodize={p.apodization}) [WebGPU]")
+            pdf_vol = nebula3d.load(pdf_input, dtype=params.np_dtype())  # type: ignore[attr-defined]
+            dpdf = await forward_dpdf(pdf_vol)
+            if dpdf is None:
+                return False
+            write_delta_pdf_h5(dpdf, pdf_vol, p, pdf_input.name,
+                               paths.delta_pdf, transform_config=gpu_cfg)
+            _cb_emit(cb, "pdf", "done", 1.0,
+                     f"ΔPDF complete (|Q|max {dpdf.q_max:.2f} Å⁻¹, "
+                     f"shape {dpdf.data.shape}) [WebGPU]")
+            if low_memory():
+                pdf_vol = _drop_sigma(pdf_vol)
+
+    if "pdf_check" in stages and params.pdf_check_enabled:  # type: ignore[attr-defined]
+        outputs_exist = (paths.pdf_check_json.exists()
+                         and paths.pdf_check_png.exists())
+        if dpdf is None and outputs_exist and not forced("pdf_check"):
+            _cb_emit(cb, "pdf_check", "skip", None,
+                     f"{paths.pdf_check_json.name} exists")
+            return True
+        _cb_emit(cb, "pdf_check", "start", None,
+                 "back-FFT round-trip consistency check [WebGPU]")
+        if pdf_vol is None:
+            pdf_vol = nebula3d.load(pdf_input, dtype=params.np_dtype())  # type: ignore[attr-defined]
+            if low_memory():
+                pdf_vol = _drop_sigma(pdf_vol)
+        if dpdf is None:
+            dpdf = await forward_dpdf(pdf_vol)
+            if dpdf is None:
+                return False
+        recon = await _gpu_inverse(gpu, dpdf)
+        if recon is None:
+            return False
+        metrics = pdf_consistency_check(
+            pdf_vol, dpdf, p, figure_path=paths.pdf_check_png,
+            recon=recon)
+        paths.pdf_check_json.parent.mkdir(parents=True, exist_ok=True)
+        paths.pdf_check_json.write_text(json.dumps(metrics, indent=2))
+        _cb_emit(cb, "pdf_check", "done", 1.0,
+                 f"back-FFT vs data: r={metrics['pearson_r']:.5f}, "
+                 f"normalised RMS={metrics['normalized_rms']:.3e}")
+    elif "pdf_check" in stages:
+        _cb_emit(cb, "pdf_check", "skip", None, "consistency check disabled")
+    return True
+
 
 
 # ---------------------------------------------------------------------------

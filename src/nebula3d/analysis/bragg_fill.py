@@ -137,11 +137,15 @@ def _local_background_fill(
         return dataclasses.replace(vol, mask=np.ones(vol.shape, dtype=bool))
 
     valid = vol.mask & np.isfinite(vol.data)
-    global_vals = vol.data[valid]
+    # Fill-value statistics in float64 regardless of storage precision
+    # (astype is a no-op on float64 input).
+    global_vals = vol.data[valid].astype(np.float64, copy=False)
     n_valid = global_vals.size
     global_fill = float(np.median(global_vals)) if n_valid else 0.0
     del global_vals  # compressed copy of most of the volume
-    global_sigma = float(np.median(vol.sigma[valid])) if n_valid else 1.0
+    global_sigma = (float(np.median(vol.sigma[valid].astype(np.float64,
+                                                            copy=False)))
+                    if n_valid else 1.0)
     q_lookup = (
         _radial_background_lookup(vol, valid, q_step=q_shell_step,
                                   min_count=q_shell_min_count)
@@ -191,7 +195,7 @@ def _local_background_fill(
             ) & ~comp
             shell_valid = shell & valid[region]
             if int(shell_valid.sum()) >= min_count:
-                vals = data[region][shell_valid]
+                vals = data[region][shell_valid].astype(np.float64, copy=False)
                 fill_val = float(np.median(vals))
                 fill_sig = float(np.std(vals)) if vals.size > 1 else global_sigma
             else:
@@ -263,7 +267,9 @@ def _radial_background_lookup(
     sigmas = np.full(nb, np.nan)
     counts = np.zeros(nb, dtype=int)
     for b in range(nb):
-        seg = si[bounds[b]:bounds[b + 1]]
+        # Shell statistics in float64 regardless of storage precision
+        # (astype is a no-op on float64 input).
+        seg = si[bounds[b]:bounds[b + 1]].astype(np.float64, copy=False)
         counts[b] = int(seg.size)
         if seg.size < min_count:
             continue
@@ -377,7 +383,7 @@ def _fill_direct_beam(
     if int(shell.sum()) < min_count:
         return resolved  # no clean outside shell → fall back to generic fill
 
-    vals = data[region][shell]
+    vals = data[region][shell].astype(np.float64, copy=False)
     fill_val = float(np.median(vals))
     fill_sig = float(np.std(vals)) if vals.size > 1 else global_sigma
 

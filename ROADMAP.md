@@ -383,11 +383,42 @@ Before treating the pipeline as a stable release candidate:
 - Still open: add CI coverage that specifically exercises the Bragg
   guard/exclusion behavior, not just import/type checks.
 
-## In-Browser Engine — Large-Volume Ceiling  Resolved (float64, no precision loss)
+## In-Browser Engine — Parallel + float32 + WebGPU (2026-08)
 
-The GitHub Pages / Pyodide build reduces **full-resolution float64 volumes up to
+The 2026-08 pass removed the two limits of the static build (serial ring
+removal; the ~50 M-voxel float64 ceiling):
+
+- **Parallel ring removal** — the per-plane ring fits fan out over a pool of
+  slim Pyodide ring workers (`web/src/api/ringPool.ts`,
+  `web/src/workers/ringWorker.ts`, Python seam `webbridge.run_async` →
+  `pipeline.remove_rings_async`).  Bit-identical to serial by construction
+  (pure per-plane core in `nebula3d._ringplane`, order-independent apply;
+  pinned by `tests/test_ring_parallel.py`), with in-process recompute of any
+  worker-failed plane and stage-epoch-tagged messages so a reused pool can
+  never apply a stale result.
+- **float32 compute mode** — browser runs always use float32 volume storage
+  (`PipelineParams.precision`; native default stays float64 and remains
+  bit-identical to the historical pipeline).  Mixed-precision rules: axes/UB,
+  |Q|-derived decisions (`nebula3d.core.q_bin_indices`), 1-D fits/solves, and
+  large reductions stay float64.  Real-data validation (TbTi3Bi4 22/45/100 K,
+  48.4 M voxels): ΔPDF nrms ≤ 1e-5, |Δr| ≤ 6e-10, ≤ 2 punch-mask flips of
+  48.4 M, identical peak counts, ~15–25 % faster.  Gate: 40 B/voxel measured →
+  **~80 M-voxel ceiling** (401³ = 64.5 M admitted).
+- **WebGPU ΔPDF core** — forward + inverse centred FFTs run on the GPU when
+  available (`web/src/gpu/`, mixed-radix Stockham, CPU-precomputed twiddles,
+  numpy-pinned index math), keeping the complex FFT intermediates off the wasm
+  heap entirely; scipy fallback at every rung, `fft=webgpu-f32-p5`
+  transform-config token keeps CPU/GPU caches distinct.
+
+Remaining follow-ups: a dedicated GPU-vs-CPU validation harness page
+(`?gpu=validate` in-app mode), Safari/Firefox E2E pass of the worker pool, and
+a Phase-A-style memory pass over the (now binding) backfill stage.
+
+### Previous state (superseded): float64-only ceiling
+
+The earlier resolution reduced **full-resolution float64 volumes up to
 ~50 M voxels** — a real 301×401×401 file (48.4 M voxels) fits — with no precision
-or resolution reduction. Two things make it possible:
+or resolution reduction. Two things made it possible:
 
 - **Pyodide ≥ 0.27** raised the WASM heap ceiling from 2 GB to 4 GB
   (`MAXIMUM_MEMORY=4GB`); the worker pins 0.27.7. There is no wasm64/Memory64
@@ -430,6 +461,10 @@ fabricated estimates at punched voxels and **< 1e-5 relative in the ΔPDF**
 (verified: `tests/test_backfill_blocked.py`). Normal-size volumes take the
 single-tree, byte-for-byte-identical path.
 
-The float32 / parallel-worker prototypes on `feat/in-browser-parallel-float32`
-are superseded. Volumes beyond the ~50 M-voxel gate still go through the native
-build (`pip install "nebula3d[web]" && nebula3d-web`), which has no size limit.
+(The early float32 / parallel-worker prototypes on
+`feat/in-browser-parallel-float32` were superseded first by this float64
+resolution, and then properly landed in the 2026-08 pass above — with
+bit-identity tests for the worker pool and tolerance gates for float32 that
+the prototypes lacked.)  Volumes beyond the ~80 M-voxel gate still go through
+the native build (`pip install "nebula3d[web]" && nebula3d-web`), which has no
+size limit.

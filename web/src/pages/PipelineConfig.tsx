@@ -1442,7 +1442,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   <span className={`data-root-status${loadError ? " error" : ""}`}>
                     {loadError ??
                       loadNote ??
-                      "Your .nxs / .h5 is processed locally in your browser — nothing is uploaded."}
+                      "Your .nxs / .h5 is processed locally in your browser (float32 compute) — nothing is uploaded."}
                   </span>
                 )}
               </Field>

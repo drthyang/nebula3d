@@ -113,7 +113,7 @@ def extract_slice(
 
     fixed_attr, array_dim, y_attr, x_attr, y_label, x_label, transpose = _PLANE[key]
     fixed_axis: NDArray[np.float64] = getattr(vol, fixed_attr)
-    masked: NDArray[np.float64] = vol.masked_data()
+    masked: NDArray[np.floating] = vol.masked_data()
 
     if interp:
         data_2d, actual = _interp_plane(masked, fixed_axis, float(value), array_dim)
@@ -166,7 +166,7 @@ def extract_slice_dpdf(
 
     fixed_attr, array_dim, y_attr, x_attr, y_label, x_label, transpose = _PLANE_DPDF[key]
     fixed_axis: NDArray[np.float64] = getattr(vol, fixed_attr)
-    data: NDArray[np.float64] = vol.data
+    data: NDArray[np.floating] = vol.data
 
     if interp:
         data_2d, actual = _interp_plane(data, fixed_axis, float(value), array_dim)
@@ -284,8 +284,8 @@ def plot_slice(
 
 
 def _interp_plane(
-    data: NDArray[np.float64],
-    axis_coords: NDArray[np.float64],
+    data: NDArray[np.floating],
+    axis_coords: NDArray[np.floating],
     value: float,
     array_dim: int,
 ) -> tuple[NDArray[np.float64], float]:

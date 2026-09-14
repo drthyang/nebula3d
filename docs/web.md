@@ -45,34 +45,58 @@ hosted — the privacy-preserving path to a public, fully-functional app.
 - Hosted at **https://drthyang.github.io/nebula3d/** (deployed by
   `.github/workflows/pages.yml` on push to `main`).
 - The pipeline ships as a data-free `nebula3d` wheel that the page micropip-installs
-  at runtime. Pyodide runs in a dedicated Web Worker
+  at runtime (the wheel filename is resolved from `wheels/manifest.json`, built
+  by CI / `make web-wheel`). Pyodide runs in a dedicated Web Worker
   (`web/src/workers/pyodideWorker.ts`) so the UI never blocks; a boot-progress
   panel covers the ~15 MB WASM download (cached after first load).
+- **Parallel ring removal.** The ring stage (~70 % of a serial browser run) fans
+  its independent per-plane fits out over a pool of slim Pyodide **ring
+  workers** (`web/src/api/ringPool.ts` spawns them; each boots numpy/scipy + the
+  wheel, no matplotlib — `nebula3d.visualization` imports lazily).  Plane
+  buffers flow pipeline-worker ↔ ring-worker directly over `MessageChannel`
+  ports (stage-epoch-tagged messages; no `SharedArrayBuffer`, no COOP/COEP
+  needed on Pages).  Every plane runs the exact same
+  `nebula3d._ringplane._process_ring_plane` the serial path runs, and result
+  application is order-independent, so **parallel output is bit-identical to
+  serial** (pinned by `tests/test_ring_parallel.py`); a dead worker's planes are
+  recomputed in-process.  Pool size: `min(4, hardwareConcurrency − 2)`,
+  overridable via localStorage `nebula3d.ringWorkers` (`"0"` disables).
+- **float32 compute mode.** The browser always computes with float32 volume
+  storage (`PipelineParams.precision="float32"`; native default stays float64):
+  volume arrays and the FFT (float32→complex64) halve, while axes/UB, every
+  |Q|-derived bin/band/threshold decision, all 1-D profile fits/solves, and
+  every large reduction stay float64.  Validated against the float64 reference
+  on all three real TbTi3Bi4 volumes (22/45/100 K, 48.4 M voxels each): ΔPDF
+  normalised RMS ≤ 1e-5, consistency-r deltas ≤ 6e-10, at most 2 punch-mask
+  voxels flipped out of 48.4 M, identical peak counts — and ~15–25 % faster
+  (`tests/test_float32_equivalence.py` gates it; a `"precision"` key in the run
+  params JSON pins either mode for A/B validation).
+- **WebGPU ΔPDF.** When WebGPU is available, the ΔPDF forward FFT and the
+  back-FFT consistency inverse run on the GPU (`web/src/gpu/` — a mixed
+  radix-2/3/4/5 Stockham line kernel with CPU-precomputed twiddles; index math
+  CI-pinned to numpy fixtures).  The complex intermediates — the largest
+  contiguous allocations in the pipeline — then never touch the wasm heap.
+  Stage log lines show `[WebGPU]`; the ΔPDF `transform_config` carries an
+  `fft=webgpu-f32-p5` token so CPU- and GPU-computed caches never masquerade as
+  each other.  Any GPU refusal (no adapter, limits too low, device lost)
+  silently falls back to the scipy path — the run never fails because of the
+  GPU.
 - **Memory ceiling.** Pyodide's 32-bit-WASM heap tops out at 4 GB (Pyodide
-  ≥ 0.27; there is no wasm64 Pyodide build), so the whole float64 reduction of a
-  full-resolution volume has to fit in that heap. The browser bridge turns on a
-  **low-memory mode** (`NEBULA3D_LOW_MEMORY`, see `nebula3d.core.low_memory`)
-  that trades a little recompute for a smaller peak, none of it a precision or
-  resolution compromise — and **verified byte-for-byte identical to the exact
-  path on real data** (a 401×501×151 = 30.3 M-voxel neutron dataset gives
-  identical backfilled / flattened / ΔPDF volumes and identical consistency
-  metrics either way):
-  - |Q| grids accumulate from broadcast 1-D axes instead of meshgrids, and the
-    ΔPDF pads to `scipy.fft.next_fast_len` rather than powers of two;
-  - the ring stage skips the full-3-D |Q|/φ coordinate caches (each plane
-    recomputes its own 2-D coordinates — ~250 MB / two volume-sized arrays saved
-    on the 30.3 M dataset);
-  - the flatten stage subtracts its background **in place**, and the unused
-    per-voxel `sigma` is freed before the ΔPDF / back-FFT stages (which read only
-    data + mask).
+  ≥ 0.27; there is no wasm64 Pyodide build), so the whole reduction has to fit
+  in that heap. The browser bridge turns on a **low-memory mode**
+  (`NEBULA3D_LOW_MEMORY`, see `nebula3d.core.low_memory`) that trades a little
+  recompute for a smaller peak (broadcast |Q| grids, per-plane ring
+  coordinates, in-place flatten, dropped sigma before the FFTs), plus streaming
+  consistency metrics and per-plane deapodization that replaced the old
+  whole-volume temporaries at the peak stage.
 
-  On the 30.3 M dataset the whole reduction peaks at ~2.3 GB; the binding stage
-  is the back-FFT consistency check (~75 B/voxel), with the radial flatten and
-  ring removal close behind. That admits **up to ~50 M voxels at full float64
-  precision** (e.g. a 301×401×401 full-resolution volume = 48.4 M voxels). Every
-  upload is pre-flighted by `nebula3d.webbridge.inspect_input` (reads only the
-  HDF5 shape, so it can't OOM) and rejected above the gate with a message
-  pointing to the native build.
+  Measured on the real 48.4 M-voxel volume (float32, low-memory), the binding
+  stage is the backfill at ~42 B/voxel; the admission gate
+  (`nebula3d.webbridge.inspect_input`, metadata-only so it can't OOM) budgets
+  40 B/voxel net of interpreter overhead against 3.2 GB → volumes up to
+  **~80 M voxels** are admitted (e.g. 401×401×401 = 64.5 M voxels ≈ 2.6 GB
+  estimated peak; 501³ = 125.8 M is still refused with a message pointing to
+  the native build).
 
   (The default Bragg backfill, `backfill_bragg` with `method="q_shell"`, is
   connected-component / `ndimage`-based and already lean. The older ring-workflow
@@ -145,10 +169,13 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
   terminates the worker. Loaded volumes are kept in an LRU cache sized to hold
   every cleanup stage of a dataset at once, so the shared cut slider scrubs
   without re-reading the ~100 MB volumes.
-- **In-browser** drives the pipeline **stage-by-stage** from JS, yielding between
-  stages so the stepper + log update per stage. The Python side is a thin
-  in-process driver, **`nebula3d.webbridge`**, that reuses the FastAPI-free server
-  helpers (`volumes`, `deltapdf`, `consistency`, `datasets`, `params`) against a
+- **In-browser** runs the selected stages through one `webbridge.run_async`
+  call (progress streams per stage through a JS callback).  The async seam is
+  what lets the ring stage fan out over the worker pool and the ΔPDF stages
+  await the WebGPU backend while the rest of the pipeline stays the unchanged
+  synchronous `run_pipeline`.  The Python side is a thin in-process driver,
+  **`nebula3d.webbridge`**, that reuses the FastAPI-free server helpers
+  (`volumes`, `deltapdf`, `consistency`, `datasets`, `params`) against a
   virtual `/work` FS — slicing/discovery/consistency are *not* reimplemented in
   JS. `client.ts` branches on `PYODIDE_MODE` for every endpoint.
 
@@ -234,13 +261,21 @@ A clean wheel is ~252 KB. The CI workflow performs this same data-leak check.
 
 ## In-browser design notes
 
-- **Why Pyodide, not WebGPU or pre-baked data.** `nebula3d` is pure Python and its
-  compute deps (numpy/scipy/h5py) are official Pyodide packages, so the existing,
-  regression-gated pipeline runs in the browser essentially unchanged. WebGPU was
-  shelved: profiling shows the 3D FFT is only ~4% of runtime while the dominant
-  stage (ring removal, ~70%) is an irregular robust fit — a poor GPU fit — and a
-  WGSL rewrite would discard the "real `nebula3d` runs unchanged" property. Pre-baked
-  static volumes were rejected because they would require *hosting the data*.
+- **Why Pyodide (with targeted WebGPU), not a JS/WGSL rewrite or pre-baked
+  data.** `nebula3d` is pure Python and its compute deps (numpy/scipy/h5py) are
+  official Pyodide packages, so the existing, regression-gated pipeline runs in
+  the browser essentially unchanged.  The two places parallel/GPU compute
+  actually pays are handled surgically without giving that property up: the
+  runtime-dominant ring stage (~70 %) parallelises across Pyodide ring workers
+  running the *identical* per-plane Python (bit-identical results), and the
+  memory-dominant ΔPDF FFT block runs on WebGPU behind the shared
+  prepare/core/finish seam in `nebula3d.analysis.delta_pdf` (only the
+  `fftshift(fftn(ifftshift(pad(·))))` core is replaced; windowing, mean, and
+  deapodization stay single-source Python, and the GPU result is
+  tolerance-gated against the scipy core).  An earlier idea of rewriting the
+  whole pipeline in WGSL stays rejected — the robust fits are a poor GPU fit.
+  Pre-baked static volumes were rejected because they would require *hosting
+  the data*.
 - **Pyodide gotchas.** `import nebula3d` pulls in matplotlib; Pyodide ships
   matplotlib 3.5.2 (< the wheel's `>=3.7` pin), so install with `deps=False` to
   skip the version check. Pipeline entry points: `nebula3d.load`,

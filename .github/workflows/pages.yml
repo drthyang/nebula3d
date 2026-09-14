@@ -40,11 +40,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip build
           rm -rf build src/*.egg-info src/nebula3d/server/static/data
+          rm -f web/public/wheels/*.whl
           python -m pip wheel . --no-deps --no-cache-dir -w web/public/wheels
           # Fail the build if any experimental data leaked into the wheel.
           if unzip -l web/public/wheels/*.whl | grep -iqE '\.(bin|nxs|h5|hdf5|npy)'; then
             echo "DATA LEAK in wheel — aborting"; exit 1
           fi
+          # Manifest both workers resolve the wheel filename from at boot —
+          # a version bump can never silently 404 a hardcoded URL.
+          python - <<'EOF'
+          import glob, json, pathlib
+          wheels = sorted(glob.glob("web/public/wheels/*.whl"))
+          assert len(wheels) == 1, wheels
+          pathlib.Path("web/public/wheels/manifest.json").write_text(
+              json.dumps({"wheel": pathlib.Path(wheels[0]).name}))
+          print("manifest:", pathlib.Path(wheels[0]).name)
+          EOF
       - uses: actions/setup-node@v4
         with:
           node-version: "20"

@@ -15,25 +15,41 @@ from nebula3d.core import HKLVolume
 _PathLike = str | Path
 
 
-def load(path: _PathLike, **kwargs: object) -> HKLVolume:
+def load(
+    path: _PathLike, *, dtype: np.dtype | type | None = np.float64,
+    **kwargs: object,
+) -> HKLVolume:
     """Load an HKLVolume from *path*.
 
     Supported formats (auto-detected by extension and file content):
     - ``.nxs``: Mantid MDHistoWorkspace (auto-detected) or nebula3d HDF5
     - ``.h5`` / ``.hdf5``: nebula3d HDF5
     - ``.txt`` / ``.dat`` / ``.hkl``: whitespace-delimited ASCII (h k l I [sigma])
+
+    ``dtype`` sets the storage precision of ``data``/``sigma`` (float64
+    default; the browser build loads float32 to halve its WASM-heap
+    footprint; ``None`` preserves the file's stored dtype — used by the slice
+    viewers so a float32 artifact is not silently doubled on reload).  Axes
+    and UB are always float64.
     """
     path = Path(path)
     ext = path.suffix.lower()
     if ext in {".h5", ".hdf5", ".nxs"}:
         from nebula3d.io.mantid_nxs import is_mantid_nxs, load_mantid_nxs
         if is_mantid_nxs(path):
-            return load_mantid_nxs(path)
+            _reject_kwargs(kwargs)
+            # Raw Mantid files store float64; "preserve" is float64 there.
+            return load_mantid_nxs(
+                path, dtype=np.float64 if dtype is None else dtype)
         entry = _pop_only_kwarg(kwargs, "entry", "/entry")
-        return _load_hdf5(path, entry=entry)
+        return _load_hdf5(path, entry=entry, dtype=dtype)
     if ext in {".txt", ".dat", ".hkl"}:
         _reject_kwargs(kwargs)
-        return _load_ascii(path)
+        vol = _load_ascii(path)
+        if dtype is not None and np.dtype(dtype) != vol.data.dtype:
+            vol.data = vol.data.astype(dtype)
+            vol.sigma = vol.sigma.astype(dtype)
+        return vol
     raise ValueError(f"Unrecognised file extension: {ext!r}")
 
 
@@ -68,7 +84,10 @@ def _reject_kwargs(kwargs: dict[str, object]) -> None:
 # ------------------------------------------------------------------
 
 
-def _load_hdf5(path: Path, entry: str = "/entry") -> HKLVolume:
+def _load_hdf5(
+    path: Path, entry: str = "/entry",
+    dtype: np.dtype | type | None = np.float64,
+) -> HKLVolume:
     try:
         import h5py
     except ImportError as exc:
@@ -76,8 +95,9 @@ def _load_hdf5(path: Path, entry: str = "/entry") -> HKLVolume:
 
     with h5py.File(path, "r") as f:
         grp = f[entry]
-        data = np.array(grp["data"], dtype=np.float64)
-        sigma = (np.array(grp["sigma"], dtype=np.float64) if "sigma" in grp
+        # dtype=None preserves the stored precision (h5py returns it as-is).
+        data = np.array(grp["data"], dtype=dtype)
+        sigma = (np.array(grp["sigma"], dtype=dtype) if "sigma" in grp
                  else np.sqrt(np.abs(data)))
         mask = (np.array(grp["mask"], dtype=bool) if "mask" in grp
                 else np.ones(data.shape, dtype=bool))

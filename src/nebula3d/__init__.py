@@ -16,11 +16,16 @@ Current diffuse workflow:
     (6) back-FFT consistency check
 """
 
-from nebula3d import analysis, inpainting, preprocessing, utils, visualization
+from typing import TYPE_CHECKING
+
+from nebula3d import analysis, inpainting, preprocessing, utils
 from nebula3d._version import __version__
 from nebula3d.core import HKLVolume
 from nebula3d.io.hkl_reader import load, save
 from nebula3d.io.mantid_nxs import is_mantid_nxs, load_mantid_nxs
+
+if TYPE_CHECKING:
+    from nebula3d import visualization
 
 __all__ = [
     "__version__",
@@ -35,3 +40,17 @@ __all__ = [
     "utils",
     "visualization",
 ]
+
+
+def __getattr__(name: str):  # noqa: ANN202 - PEP 562 lazy submodule import
+    """Lazy ``nebula3d.visualization`` (PEP 562): it imports matplotlib, which
+    the browser ring workers (``nebula3d.ringworker``) neither need nor load —
+    keeping their Pyodide boot to the numeric stack.  Everything else about
+    ``import nebula3d; nebula3d.visualization`` is unchanged."""
+    if name == "visualization":
+        import importlib
+
+        module = importlib.import_module("nebula3d.visualization")
+        globals()[name] = module
+        return module
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

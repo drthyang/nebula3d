@@ -77,7 +77,7 @@ def load_dpdf(path: Path) -> DeltaPdfData:
             return d
     with h5py.File(path, "r") as fh:
         d = DeltaPdfData(
-            data=np.asarray(fh["data"][()], dtype=np.float64),
+            data=np.asarray(fh["data"][()]),  # preserve stored precision
             x_axis=np.asarray(fh["x_axis"][()], dtype=float),
             y_axis=np.asarray(fh["y_axis"][()], dtype=float),
             z_axis=np.asarray(fh["z_axis"][()], dtype=float),

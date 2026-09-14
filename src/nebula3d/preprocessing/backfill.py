@@ -91,11 +91,11 @@ def _backfill_n_slabs(n_valid: int, nh: int) -> int:
 
 
 def _fill_from_tree(
-    query_pts: NDArray[np.int64], norm: NDArray[np.float64], k: int,
-    tree: KDTree, q_cand: NDArray[np.float64], i_cand: NDArray[np.float64],
-    sig_cand: NDArray[np.float64], ring_lo: NDArray[np.float64],
-    ring_hi: NDArray[np.float64], uncertainty_scale: float, chunk: int,
-    data_out: NDArray[np.float64], sigma_out: NDArray[np.float64],
+    query_pts: NDArray[np.int64], norm: NDArray[np.floating], k: int,
+    tree: KDTree, q_cand: NDArray[np.floating], i_cand: NDArray[np.floating],
+    sig_cand: NDArray[np.floating], ring_lo: NDArray[np.floating],
+    ring_hi: NDArray[np.floating], uncertainty_scale: float, chunk: int,
+    data_out: NDArray[np.floating], sigma_out: NDArray[np.floating],
     mask_out: NDArray[np.bool_],
 ) -> NDArray[np.bool_]:
     """Query k-NN for *query_pts* against *tree* and write the weighted |Q|-radial

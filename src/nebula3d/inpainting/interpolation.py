@@ -15,12 +15,12 @@ from scipy.interpolate import RBFInterpolator
 
 
 def rbf_fill(
-    data: NDArray[np.float64],
+    data: NDArray[np.floating],
     mask: NDArray[np.bool_],
     kernel: str = "thin_plate_spline",
     neighbors: int = 64,
     smoothing: float = 0.0,
-) -> NDArray[np.float64]:
+) -> NDArray[np.floating]:
     """Fill masked voxels via RBF interpolation from surrounding unmasked voxels.
 
     Parameters
@@ -74,11 +74,11 @@ def rbf_fill(
 
 
 def biharmonic_fill(
-    data: NDArray[np.float64],
+    data: NDArray[np.floating],
     mask: NDArray[np.bool_],
     max_iter: int = 500,
     tol: float = 1e-4,
-) -> NDArray[np.float64]:
+) -> NDArray[np.floating]:
     """Fill masked voxels by iteratively solving the discrete biharmonic equation.
 
     Minimises ∫|∇²u|² over the masked region with boundary conditions from

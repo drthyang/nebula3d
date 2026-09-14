@@ -211,3 +211,91 @@ def test_inspect_input_still_rejects_oversized_volume(tmp_path):
     report = json.loads(webbridge.inspect_input("huge.h5", str(path)))
     assert report["ok"] is False
     assert "native build" in report["message"]
+
+
+# ---------------------------------------------------------------------------
+# run_async — the parallel-rings orchestration seam
+# ---------------------------------------------------------------------------
+def test_run_async_without_pool_delegates(tmp_path):
+    """Natively there is no JS ring pool, so run_async must behave exactly
+    like run(): full pipeline, every stage present."""
+    import asyncio
+
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    dataset_id = webbridge.make_demo_input(n=24)
+    events: list[tuple] = []
+
+    def progress(stage, status, fraction, message):
+        events.append((stage, status, fraction, message))
+
+    datasets = json.loads(asyncio.run(webbridge.run_async(
+        "", "{}", flatten_enabled=True, force=True, progress=progress)))
+    by_name = {s["name"]: s for s in datasets[0]["stages"]}
+    assert datasets[0]["id"] == dataset_id
+    assert by_name["delta_pdf"]["exists"]
+    stages_seen = {ev[0] for ev in events}
+    assert set(webbridge.STAGES).issubset(stages_seen)
+
+
+def test_run_async_with_pool_matches_sync_run(tmp_path, monkeypatch):
+    """With a (fake) pool installed, run_async fans the ring stage out through
+    nebula3d.ringworker and must reproduce run()'s artifacts bit for bit."""
+    import asyncio
+
+    import nebula3d
+    from tests.test_ring_parallel import FakeExecutor
+
+    # Reference: plain sync run in workspace A.
+    webbridge.setup(workdir=str(tmp_path / "a"))
+    webbridge.make_demo_input(n=24)
+    webbridge.run("", "{}", flatten_enabled=True, force=True)
+    ring_a = sorted((tmp_path / "a" / "processed").glob("*_ringremoved.h5"))[0]
+    vol_a = nebula3d.load(ring_a)
+
+    # Parallel: fake pool + FakeExecutor in workspace B.
+    monkeypatch.setattr(webbridge, "_ring_pool_js", lambda: object())
+    monkeypatch.setattr(webbridge, "_JsPlaneExecutor",
+                        lambda pool, progress=None: FakeExecutor(n_workers=3))
+    webbridge.setup(workdir=str(tmp_path / "b"))
+    webbridge.make_demo_input(n=24)
+    events: list[tuple] = []
+
+    def progress(stage, status, fraction, message):
+        events.append((stage, status, fraction, message))
+
+    datasets = json.loads(asyncio.run(webbridge.run_async(
+        "", "{}", flatten_enabled=True, force=True, progress=progress)))
+    ring_b = sorted((tmp_path / "b" / "processed").glob("*_ringremoved.h5"))[0]
+    vol_b = nebula3d.load(ring_b)
+
+    assert np.array_equal(vol_a.data, vol_b.data)
+    assert np.array_equal(vol_a.mask, vol_b.mask)
+    assert np.array_equal(vol_a.sigma, vol_b.sigma)
+    # The fan-out label reaches the progress stream, and downstream stages ran.
+    assert any("3-way" in ev[3] for ev in events if ev[0] == "rings")
+    by_name = {s["name"]: s for s in datasets[0]["stages"]}
+    assert by_name["delta_pdf"]["exists"]
+
+
+def test_run_async_pool_skipped_when_rings_current(tmp_path, monkeypatch):
+    """A resume run whose ring artifact is current must not engage the pool
+    (ring_stage_pending is the shared gate)."""
+    import asyncio
+
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    webbridge.make_demo_input(n=24)
+    webbridge.run("", "{}", flatten_enabled=True, force=True)
+
+    def _boom(pool):  # noqa: ANN001
+        raise AssertionError("pool must not be constructed on a current resume")
+
+    monkeypatch.setattr(webbridge, "_ring_pool_js", lambda: object())
+    monkeypatch.setattr(webbridge, "_JsPlaneExecutor", _boom)
+    events: list[tuple] = []
+
+    def progress(stage, status, fraction, message):
+        events.append((stage, status, fraction, message))
+
+    asyncio.run(webbridge.run_async(
+        "", "{}", flatten_enabled=True, force=False, progress=progress))
+    assert any(status == "skip" for st, status, _f, _m in events if st == "rings")
