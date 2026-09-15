@@ -5,12 +5,20 @@
 # pyodideEngine.ts).  The pipeline code ships as a data-free `nebula3d` wheel that
 # the page micropip-installs at runtime; the wheel is gitignored (a careless
 # build could bundle experimental data), so CI builds it fresh here — data-free —
-# into web/public/wheels/ before `vite build` copies it into the bundle.
-# No data is hosted: users supply their own volume at runtime.
+# with scripts/build_web_wheel.py into web/public/wheels/<sha256>/ before
+# `vite build` copies it into the bundle.  No data is hosted: users supply their
+# own volume at runtime.
+#
+# Gated on CI: this workflow runs when the "CI" workflow finishes on main and
+# deploys only if it succeeded, checking out the exact commit CI tested — a push
+# that breaks tests, lint, types or the frontend build can no longer reach the
+# live site.  `workflow_dispatch` still allows a manual deploy of main.
 name: Pages
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -26,36 +34,29 @@ concurrency:
 
 jobs:
   build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The commit CI just validated (falls back to main for manual runs).
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build data-free nebula3d wheel
+      - name: Build data-free nebula3d wheel + manifest
         working-directory: .
+        # Builds the wheel, refuses any data / nested-wheel payload, publishes it
+        # content-addressed under web/public/wheels/<sha256[:12]>/ and writes
+        # the manifest both Pyodide workers resolve it from at boot.
         run: |
-          python -m pip install --upgrade pip build
-          rm -rf build src/*.egg-info src/nebula3d/server/static/data
-          rm -f web/public/wheels/*.whl
-          python -m pip wheel . --no-deps --no-cache-dir -w web/public/wheels
-          # Fail the build if any experimental data leaked into the wheel.
-          if unzip -l web/public/wheels/*.whl | grep -iqE '\.(bin|nxs|h5|hdf5|npy)'; then
-            echo "DATA LEAK in wheel — aborting"; exit 1
-          fi
-          # Manifest both workers resolve the wheel filename from at boot —
-          # a version bump can never silently 404 a hardcoded URL.
-          python - <<'EOF'
-          import glob, json, pathlib
-          wheels = sorted(glob.glob("web/public/wheels/*.whl"))
-          assert len(wheels) == 1, wheels
-          pathlib.Path("web/public/wheels/manifest.json").write_text(
-              json.dumps({"wheel": pathlib.Path(wheels[0]).name}))
-          print("manifest:", pathlib.Path(wheels[0]).name)
-          EOF
+          python -m pip install --upgrade pip
+          python scripts/build_web_wheel.py
       - uses: actions/setup-node@v4
         with:
           node-version: "20"

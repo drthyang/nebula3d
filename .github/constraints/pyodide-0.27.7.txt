@@ -1,0 +1,9 @@
+# The numeric stack the *browser* actually runs (Pyodide 0.27.7 = CPython
+# 3.12.7; see web/src/workers/pyodideShared.ts PYODIDE_VERSION and the
+# pyodide-lock.json it ships).  The CI `test-browser-pins` job runs the suite
+# under these so an API that only exists in newer numpy/scipy fails in CI
+# instead of at runtime in a user's browser.  Bump together with PYODIDE_VERSION.
+numpy==2.0.2
+scipy==1.14.1
+h5py==3.12.1
+matplotlib==3.8.4

@@ -9,8 +9,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # Report every leg: one red leg used to cancel the others mid-run, hiding
+      # whether the failure was version-specific.
+      fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -25,13 +28,51 @@ jobs:
         run: pip install -e ".[dev,web]"
 
       - name: Run tests
-        run: pytest --tb=short
+        run: pytest --tb=short --cov=nebula3d --cov-report=term-missing
 
       - name: Lint
         run: ruff check src/ tests/
 
+  # mypy's verdict depends on the installed numpy *stubs*, which differ between
+  # the numpy each Python resolves and drift with every numpy release (main was
+  # red for two months on exactly that).  Type-check once, against a pinned
+  # pair (.github/constraints/typecheck.txt) that is bumped deliberately.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package (pinned numpy + mypy)
+        run: pip install -e ".[dev,web]" -c .github/constraints/typecheck.txt
+
       - name: Type check
-        run: mypy src/nebula3d --ignore-missing-imports --python-version "${{ matrix.python-version }}"
+        run: mypy src/nebula3d --ignore-missing-imports --python-version 3.12
+
+  # The browser runs the pipeline on Pyodide's numeric stack, not on the latest
+  # PyPI releases the matrix above resolves.  Run the suite under the exact
+  # numpy/scipy/h5py/matplotlib Pyodide ships so an API that only exists in a
+  # newer release fails here instead of at runtime in a user's browser.
+  test-browser-pins:
+    name: test (Pyodide 0.27.7 pins)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package (Pyodide 0.27.7 numeric stack)
+        run: pip install -e ".[dev,web]" -c .github/constraints/pyodide-0.27.7.txt
+
+      - name: Run tests
+        run: pytest --tb=short
 
   frontend:
     runs-on: ubuntu-latest
@@ -57,5 +98,7 @@ jobs:
       - name: Test
         run: npm run test
 
-      - name: Type check and build
-        run: npm run build
+      # Both bundles: the native SPA baked into the wheel and the Pages /
+      # Pyodide build (different base path, publicDir and env).
+      - name: Type check and build (native + Pages modes)
+        run: npm run build && npm run build:pages

@@ -1,0 +1,7 @@
+# Pins for the CI `typecheck` job only (pip install -c).  mypy's verdict
+# depends on the installed numpy *stubs*, which differ between the numpy that
+# each Python resolves (2.2 on 3.10, 2.4 on 3.11, 2.5 on 3.12) and drift with
+# every numpy release — the July→September 2026 red main was exactly that.
+# Type-check once, against a deliberately chosen pair; bump both on purpose.
+numpy==2.5.3
+mypy==2.3.1

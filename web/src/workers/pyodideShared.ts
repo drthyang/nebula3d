@@ -42,9 +42,12 @@ export async function loadPyodideRuntime(): Promise<PyodideAPI> {
   return mod.loadPyodide({ indexURL: PYODIDE_INDEX });
 }
 
-// The wheel filename is looked up from a manifest CI writes next to the wheel
-// (web/public/wheels/manifest.json → { "wheel": "nebula3d-<ver>-py3-none-any.whl" }),
-// so bumping the package version can never silently 404 a hardcoded URL.
+// The wheel path is looked up from a manifest scripts/build_web_wheel.py writes
+// next to it (web/public/wheels/manifest.json →
+// { "wheel": "<sha256[:12]>/nebula3d-<ver>-py3-none-any.whl", ... }): the
+// content-hash directory makes every distinct wheel a distinct URL, so a
+// redeploy can never serve a Pages-cached stale wheel under a version-only
+// name, and a version bump can never silently 404 a hardcoded URL.
 export async function resolveWheelUrl(wheelBase: string): Promise<string> {
   const manifestUrl = `${wheelBase}wheels/manifest.json`;
   const res = await fetch(manifestUrl, { cache: "no-cache" });
