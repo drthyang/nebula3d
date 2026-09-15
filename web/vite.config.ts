@@ -12,6 +12,10 @@ export default defineConfig(({ mode }) => ({
   // config type-checkable without @types/node.
   // See docs/web.md for the two run modes and the Pages build.
   base: mode === "pages" ? "/nebula3d/" : "/",
+  // web/public holds only the Pyodide wheel (+ manifest).  Only the Pages /
+  // pyodide build needs it; copying it into server/static for the native
+  // build used to nest the previous wheel inside the next one via package-data.
+  publicDir: mode === "pages" ? "public" : false,
   build: {
     // Pages build (Pyodide, backend-less) goes to web/dist so it does not clobber
     // the api-mode bundle baked into the Python package.

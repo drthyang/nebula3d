@@ -268,7 +268,7 @@ def plot_slice(
         interpolation="nearest",
     )
     # grey out masked/empty voxels
-    img.cmap.set_bad("0.85")
+    img.set_cmap(img.cmap.with_extremes(bad="0.85"))
 
     plt.colorbar(img, ax=ax, fraction=0.046, pad=0.04,
                  label="log₁₀(I)" if log_scale else "Intensity (arb.)")

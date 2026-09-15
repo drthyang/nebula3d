@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **Build & CI hardening.** The packaged wheel no longer nests a stale copy of
+  the Pyodide wheel inside itself (`vite build` copied `web/public/wheels`
+  into `server/static/`, and `package-data` shipped it: 1.35 MB of
+  Russian-doll wheels vs ~230 KB clean); `exclude-package-data` now drops
+  `static/data` + `static/wheels` from every wheel, the native build no
+  longer copies `web/public`, and one shared `scripts/build_web_wheel.py`
+  (Makefile + Pages workflow) inspects the wheel and publishes it
+  content-addressed under `wheels/<sha256>/` so a redeploy can never serve a
+  Pages-cached stale wheel. The browser boot drops matplotlib (~9 MB of
+  wheels it loaded only to render a `pdf_check` PNG nothing reads). Pages now
+  deploys only after the CI workflow passes on `main`; CI type-checks once
+  against pinned numpy/mypy stubs (per-Python stub drift had kept `main` red
+  since July), runs the suite under the exact numpy/scipy/h5py/matplotlib
+  Pyodide 0.27.7 ships, builds both frontend modes, and reports every matrix
+  leg. Also: the package version is read from `_version.py` only, coverage
+  moved from pytest `addopts` to the CI command (~40 % faster local runs),
+  `httpx2` replaces `httpx` for the Starlette test client, matplotlib
+  `set_bad` → `with_extremes`, and a CSS comment containing `*/` that had
+  silently disabled the `.bragg-page` flex rule is fixed.
 - **Browser engine: parallel ring removal, float32 compute, WebGPU ΔPDF.** The
   static (Pages/Pyodide) build now fans the ring stage out over a pool of slim
   Pyodide ring workers (bit-identical to serial by construction — the pure

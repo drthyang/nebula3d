@@ -12,6 +12,7 @@ import itself is part of the contract under test.
 from __future__ import annotations
 
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -299,3 +300,31 @@ def test_run_async_pool_skipped_when_rings_current(tmp_path, monkeypatch):
     asyncio.run(webbridge.run_async(
         "", "{}", flatten_enabled=True, force=False, progress=progress))
     assert any(status == "skip" for st, status, _f, _m in events if st == "rings")
+
+
+def test_browser_run_is_matplotlib_free(tmp_path):
+    """The Pyodide boot no longer loads matplotlib (~9 MB of wheels), so a full
+    browser-style run — import the bridge, make the demo input, run every
+    stage — must succeed with matplotlib *uninstallable*: a fresh interpreter
+    with the import blocked exactly as a missing package would be.  Guards
+    both the lazy ``nebula3d.visualization`` import and the bridge skipping the
+    native ``pdf_check`` PNG (the only matplotlib consumer on the run path)."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys\n"
+        "sys.modules['matplotlib'] = None  # any `import matplotlib` -> ImportError\n"
+        "import json\n"
+        "from nebula3d import webbridge\n"
+        f"webbridge.setup(workdir={str(tmp_path / 'work')!r})\n"
+        "webbridge.make_demo_input(n=24)\n"
+        "out = json.loads(webbridge.run('', '{}', flatten_enabled=True, force=True))\n"
+        "assert out, 'no datasets returned'\n"
+        "loaded = [m for m in sys.modules if m.startswith('matplotlib') "
+        "and sys.modules[m] is not None]\n"
+        "assert not loaded, loaded\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                          text=True, env={**os.environ, "MPLCONFIGDIR": str(tmp_path)})
+    assert proc.returncode == 0, proc.stderr

@@ -183,7 +183,7 @@ def interactive_slices(
                        extent=_imshow_extent(s.x_axis, s.y_axis),
                        aspect="auto", cmap=cmap, vmin=v0, vmax=v1,
                        interpolation="nearest")
-        im.cmap.set_bad("0.5")
+        im.set_cmap(im.cmap.with_extremes(bad="0.5"))
         ax.set_title(lab)
         ax.set_xlabel(s.x_label)
         ax.set_ylabel(s.y_label)

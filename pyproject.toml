@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nebula3d"
-version = "0.3.0"
+# Single source of truth: src/nebula3d/_version.py (see [tool.setuptools.dynamic]).
+dynamic = ["version"]
 description = "3D diffuse neutron scattering processing: powder ring removal and 3D-ΔPDF"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -36,7 +37,7 @@ dev = [
     "ruff",
     "mypy",
     "pre-commit",
-    "httpx",
+    "httpx2",  # starlette.testclient (fastapi TestClient) transport
 ]
 docs = [
     "sphinx",
@@ -54,8 +55,17 @@ Changelog = "https://github.com/drthyang/nebula3d/blob/main/CHANGELOG.md"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.dynamic]
+version = { attr = "nebula3d._version.__version__" }
+
 [tool.setuptools.package-data]
 "nebula3d.server" = ["static/**/*"]
+
+[tool.setuptools.exclude-package-data]
+# Never ship experimental data or a (stale, self-nesting) copy of the Pyodide
+# wheel: both can land in server/static/ (export scripts; `vite build` copying
+# web/public).  scripts/build_web_wheel.py inspects the wheel as a second guard.
+"nebula3d.server" = ["static/data/*", "static/wheels/*"]
 
 [tool.ruff]
 line-length = 100
@@ -72,10 +82,14 @@ ignore = ["E741", "E702"]
 "tests/**" = ["ANN"]
 
 [tool.mypy]
-python_version = "3.10"
+# Type-check against the 3.12 target: numpy >= 2.4 ships stubs that use the
+# `type` statement, which mypy rejects for older targets (runtime support for
+# 3.10+ is covered by the CI test matrix and ruff's py310 target).
+python_version = "3.12"
 strict = false
 disable_error_code = ["type-arg", "no-any-return", "unused-ignore"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=nebula3d --cov-report=term-missing"
+# Coverage is a CI flag (`pytest --cov=nebula3d`, .github/workflows/ci.yml);
+# keeping it out of addopts makes the default local run ~40 % faster.

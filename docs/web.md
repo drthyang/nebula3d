@@ -43,12 +43,17 @@ WebAssembly). Users load **their own** data file; nothing is uploaded, nothing i
 hosted — the privacy-preserving path to a public, fully-functional app.
 
 - Hosted at **https://drthyang.github.io/nebula3d/** (deployed by
-  `.github/workflows/pages.yml` on push to `main`).
+  `.github/workflows/pages.yml` once the CI workflow has passed on `main`; a
+  push that breaks tests, lint, types or the frontend build never reaches the
+  live site).
 - The pipeline ships as a data-free `nebula3d` wheel that the page micropip-installs
-  at runtime (the wheel filename is resolved from `wheels/manifest.json`, built
-  by CI / `make web-wheel`). Pyodide runs in a dedicated Web Worker
+  at runtime (its content-addressed path `wheels/<sha256>/…` is resolved from
+  `wheels/manifest.json`, both written by `scripts/build_web_wheel.py` — CI /
+  `make web-wheel`). Pyodide runs in a dedicated Web Worker
   (`web/src/workers/pyodideWorker.ts`) so the UI never blocks; a boot-progress
-  panel covers the ~15 MB WASM download (cached after first load).
+  panel covers the ~15 MB WASM download (cached after first load). The boot
+  loads only numpy, scipy and h5py — no matplotlib: nothing in the browser
+  renders a figure.
 - **Parallel ring removal.** The ring stage (~70 % of a serial browser run) fans
   its independent per-plane fits out over a pool of slim Pyodide **ring
   workers** (`web/src/api/ringPool.ts` spawns them; each boots numpy/scipy + the
@@ -249,15 +254,24 @@ npm run build`, then build the wheel.
 
 The **Pages** build instead micropip-installs an `nebula3d` wheel at runtime, so it
 must be built **data-free** — a careless build can bundle experimental data via
-the packaged `static/`. Always clean first:
+the packaged `static/`. Three guards, in depth:
+
+1. `pyproject.toml` `exclude-package-data` drops `static/data/*` and
+   `static/wheels/*` from every wheel (the latter is the Pyodide wheel that
+   `vite build` used to copy into `static/`, which made each wheel nest the
+   previous one; the native build no longer copies `web/public` at all).
+2. `scripts/build_web_wheel.py` — what `make web-wheel` and the Pages workflow
+   run — inspects the built wheel and refuses any data suffix, anything under
+   `static/data/` or `static/wheels/`, or a nested `.whl`.
+3. It then publishes the wheel **content-addressed** at
+   `web/public/wheels/<sha256[:12]>/…` and writes `manifest.json`, so a redeploy
+   can never serve a Pages-cached stale wheel under a version-only name.
 
 ```bash
-rm -rf build src/*.egg-info src/nebula3d/server/static/data
-python -m pip wheel . --no-deps --no-cache-dir -w web/public/wheels
-unzip -l web/public/wheels/*.whl | grep -iqE '\.(bin|nxs|h5)' && echo "DATA LEAK — stop" || echo "clean"
+make web-wheel          # = python scripts/build_web_wheel.py
 ```
 
-A clean wheel is ~252 KB. The CI workflow performs this same data-leak check.
+A clean wheel is ~230 KB. `tests/test_build_web_wheel.py` covers the guards.
 
 ## In-browser design notes
 
@@ -276,9 +290,10 @@ A clean wheel is ~252 KB. The CI workflow performs this same data-leak check.
   whole pipeline in WGSL stays rejected — the robust fits are a poor GPU fit.
   Pre-baked static volumes were rejected because they would require *hosting
   the data*.
-- **Pyodide gotchas.** `import nebula3d` pulls in matplotlib; Pyodide ships
-  matplotlib 3.5.2 (< the wheel's `>=3.7` pin), so install with `deps=False` to
-  skip the version check. Pipeline entry points: `nebula3d.load`,
+- **Pyodide gotchas.** The wheel declares matplotlib as a dependency but the
+  browser never imports it (`nebula3d.visualization` is lazy and the bridge
+  skips the native `pdf_check` PNG), so the boot loads only numpy/scipy/h5py
+  and installs the wheel with `deps=False`. Pipeline entry points: `nebula3d.load`,
   `nebula3d.core.HKLVolume.from_arrays`, `nebula3d.pipeline.run_pipeline`,
   `nebula3d.analysis.compute_delta_pdf`.
 - **Privacy.** The public app ships **no data**; users supply their own at

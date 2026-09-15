@@ -439,6 +439,11 @@ class PipelineParams:
     # ΔPDF and compare to the diffuse data it came from); writes a metric JSON
     # and a comparison figure, no large volume.
     pdf_check_enabled: bool = True
+    # Whether that check also renders its comparison PNG (matplotlib).  The
+    # browser build turns this off: nothing there reads the figure, and
+    # rendering it would drag matplotlib (~9 MB of wheels) into the Pyodide
+    # boot.  Off, the stage is complete once the metric JSON exists.
+    pdf_check_figure: bool = True
     # Storage precision of the volume arrays through the whole run.  "float64"
     # (the default) is bit-identical to the historical pipeline.  "float32"
     # halves peak memory (the browser build always uses it — see
@@ -1673,7 +1678,8 @@ def run_pipeline(
     # --- stage 6: back-FFT round-trip consistency check ---------------------
     if want("pdf_check") and p.pdf_check_enabled:
         outputs_exist = (paths.pdf_check_json.exists()
-                         and paths.pdf_check_png.exists())
+                         and (paths.pdf_check_png.exists()
+                              or not p.pdf_check_figure))
         # Re-run if the ΔPDF was (re)computed this run, if outputs are missing,
         # or if explicitly forced; otherwise the cached check is still valid.
         if dpdf_obj is None and outputs_exist and not forced("pdf_check"):
@@ -1694,7 +1700,8 @@ def run_pipeline(
             # matters in the browser's capped WASM heap.
             metrics = pdf_consistency_check(
                 pdf_vol, dpdf_obj, p.delta_pdf,
-                figure_path=paths.pdf_check_png, consume_dpdf=True)
+                figure_path=paths.pdf_check_png if p.pdf_check_figure else None,
+                consume_dpdf=True)
             paths.pdf_check_json.parent.mkdir(parents=True, exist_ok=True)
             paths.pdf_check_json.write_text(json.dumps(metrics, indent=2))
             _emit(progress, "pdf_check", "done", 1.0,

@@ -449,6 +449,7 @@ def run(
     stages = tuple(s for s in (stages_csv.split(",") if stages_csv else [])
                    if s) or STAGES
     params = build_params(_make_request(params_json, flatten_enabled))
+    params.pdf_check_figure = False  # browser: no matplotlib, nothing reads the PNG
     _apply_browser_precision(params, params_json)
 
     cb = None
@@ -620,6 +621,7 @@ async def run_async(
     stages = tuple(s for s in (stages_csv.split(",") if stages_csv else [])
                    if s) or STAGES
     params = build_params(_make_request(params_json, flatten_enabled))
+    params.pdf_check_figure = False  # browser: no matplotlib, nothing reads the PNG
     _apply_browser_precision(params, params_json)
 
     cb = None
@@ -874,8 +876,8 @@ async def _run_pdf_stages_gpu(
                 pdf_vol = _drop_sigma(pdf_vol)
 
     if "pdf_check" in stages and params.pdf_check_enabled:  # type: ignore[attr-defined]
-        outputs_exist = (paths.pdf_check_json.exists()
-                         and paths.pdf_check_png.exists())
+        # The browser writes no figure (see below), so only the JSON counts.
+        outputs_exist = paths.pdf_check_json.exists()
         if dpdf is None and outputs_exist and not forced("pdf_check"):
             _cb_emit(cb, "pdf_check", "skip", None,
                      f"{paths.pdf_check_json.name} exists")
@@ -893,9 +895,11 @@ async def _run_pdf_stages_gpu(
         recon = await _gpu_inverse(gpu, dpdf)
         if recon is None:
             return False
+        # figure_path=None: the PNG is a native-only artifact (nothing in the
+        # web app reads it) and rendering it would drag matplotlib (~9 MB of
+        # wheels) into the Pyodide boot.
         metrics = pdf_consistency_check(
-            pdf_vol, dpdf, p, figure_path=paths.pdf_check_png,
-            recon=recon)
+            pdf_vol, dpdf, p, figure_path=None, recon=recon)
         paths.pdf_check_json.parent.mkdir(parents=True, exist_ok=True)
         paths.pdf_check_json.write_text(json.dumps(metrics, indent=2))
         _cb_emit(cb, "pdf_check", "done", 1.0,

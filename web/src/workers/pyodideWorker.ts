@@ -63,8 +63,11 @@ async function boot(wheelBase: string): Promise<string> {
   postBoot("runtime", "Downloading Python runtime (~10 MB)…", false);
   py = await loadPyodideRuntime();
 
-  postBoot("packages", "Loading numpy, scipy, h5py, matplotlib…", false);
-  await py.loadPackage(["numpy", "scipy", "h5py", "matplotlib", "micropip"]);
+  // No matplotlib: the browser never renders a figure (webbridge skips the
+  // native pdf_check PNG) and nebula3d.visualization imports it lazily, so
+  // the boot skips ~9 MB of matplotlib + pillow + fonttools downloads.
+  postBoot("packages", "Loading numpy, scipy, h5py…", false);
+  await py.loadPackage(["numpy", "scipy", "h5py", "micropip"]);
 
   postBoot("wheel", "Installing the nebula3d reduction package…", false);
   const wheelUrl = await resolveWheelUrl(wheelBase);

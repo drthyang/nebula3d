@@ -3,7 +3,7 @@
 #
 #   pytest                                    -> tests
 #   ruff  check src/ tests/                   -> lint
-#   mypy  src/nebula3d --ignore-missing-imports  -> type check
+#   mypy  src/nebula3d --ignore-missing-imports --python-version 3.12  -> type check
 #
 # Usage:
 #   bash scripts/check.sh
@@ -21,7 +21,10 @@ REPO="$(git rev-parse --show-toplevel 2>/dev/null)" \
 cd "$REPO" || exit 1
 export PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-/tmp/mpl}"
-PY="${PY:-python3}"
+# Interpreter: $PY if set, else the repo venv when present, else python3.
+if [ -z "${PY:-}" ]; then
+    if [ -x "$REPO/.venv/bin/python" ]; then PY="$REPO/.venv/bin/python"; else PY="python3"; fi
+fi
 
 fail=0
 run() {  # run <label> <module> <args...>; skip if the tool is not importable
@@ -34,11 +37,11 @@ run() {  # run <label> <module> <args...>; skip if the tool is not importable
     "$PY" -m "$mod" "$@" || fail=1
 }
 
-# pytest: -o addopts= drops the pyproject --cov flags so it runs without
-# pytest-cov (coverage has no fail-under, so this does not change pass/fail).
+# pytest: -o addopts= keeps the run independent of any pyproject addopts
+# (coverage is a CI-only flag; it has no fail-under, so pass/fail is unchanged).
 run pytest pytest -o addopts= -q
 run ruff   ruff   check src/ tests/
-run mypy   mypy   src/nebula3d --ignore-missing-imports
+run mypy   mypy   src/nebula3d --ignore-missing-imports --python-version 3.12
 
 if [ "$fail" -ne 0 ]; then
     echo "" >&2

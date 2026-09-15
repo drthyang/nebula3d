@@ -900,8 +900,8 @@ input[type="range"]::-moz-range-track {
 
 /* ---------------------------------------------------------------------------
    Bragg profile · width diagnostics (Cockpit redesign — see
-   design_handoff_bragg_profile_Bragg/).  Axis colours: a*/H #f1a73a,
-   b*/K #74a8ff, c*/L #34c98e.
+   design_handoff_bragg_profile_Bragg/).  Axis colours: a* (H) #f1a73a,
+   b* (K) #74a8ff, c* (L) #34c98e.  (Star-slash inside a comment ends it.)
    --------------------------------------------------------------------------- */
 .bragg-page { display: flex; min-width: 0; }
 .bragg-card {
