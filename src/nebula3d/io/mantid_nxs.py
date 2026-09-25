@@ -13,6 +13,8 @@ MDHistoWorkspace/data/
 MDHistoWorkspace/experiment0/sample/oriented_lattice/
     orientation_matrix  UB matrix (3×3), Q = UB @ [h,k,l]ᵀ
     unit_cell_*         lattice parameters (provenance only)
+MDHistoWorkspace/experiment0/logs/W_MATRIX/value
+    projection matrix, 9 values row-major; column j = (h,k,l) direction of Dj
 
 Convention note
 ---------------
@@ -20,10 +22,20 @@ Mantid stores a *crystallographic* orientation matrix (|b*| = 1/d, no 2π).
 nebula3d uses the *physics* convention everywhere (Q = 2π/d, see
 ``ub_from_lattice`` and ``al_ring_q_positions``), so the stored matrix is
 scaled by 2π on read to keep |Q| consistent across the package.
+
+Projection note
+---------------
+Only volumes binned on the crystal's own H, K, L axes (in any order) load.
+Non-orthogonal *cells* (hexagonal, monoclinic, …) are fine: the UB matrix
+carries the metric.  A *projected* grid such as the orthogonal hexagonal cut
+``[H,0,0]/[K,2K,0]/[0,0,L]`` is rejected, because every downstream stage
+indexes the grid as h, k, l directly.
 """
 
 from __future__ import annotations
 
+import re
+from itertools import permutations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -38,6 +50,10 @@ if TYPE_CHECKING:
 _PathLike = str | Path
 
 _HKL_LETTERS = ("H", "K", "L")
+
+# One component of a Mantid axis label: "0", "H", "-K", "2K", "-0.5L", "0.333H".
+_LABEL_COMPONENT = re.compile(
+    r"(?P<sign>[+-]?)(?P<coef>(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)?(?P<var>[A-Za-z]*)")
 
 # signal has shape (n_D2, n_D1, n_D0), so the array axis for each label is:
 _DIM_TO_FILE_AXIS: dict[str, int] = {"D0": 2, "D1": 1, "D2": 0}
@@ -84,7 +100,7 @@ def load_mantid_nxs(
     with h5py.File(path, "r") as f:
         root = _require_md_histo(f)
         data_grp = root["data"]
-        axes = _parse_dim_axes(data_grp)
+        axes = _parse_dim_axes(data_grp, _read_w_matrix(root))
         ub = _resolve_ub(root, ub_matrix)
         data, sigma, mask = _assemble(data_grp, axes, dtype)
 
@@ -126,19 +142,26 @@ def _require_md_histo(f: h5py.File) -> h5py.Group:
 
 def _parse_dim_axes(
     data_grp: h5py.Group,
+    w_matrix: NDArray[np.float64] | None = None,
 ) -> dict[str, tuple[int, NDArray[np.float64]]]:
     """Return {hkl_char: (file_array_axis, bin_centers)} for H, K, L.
 
     Mantid stores signal as (n_D2, n_D1, n_D0), so D2 → axis 0,
-    D1 → axis 1, D0 → axis 2.  The long_name attribute on each dim
-    (e.g. '[0,K,0]') identifies which HKL coordinate it represents.
+    D1 → axis 1, D0 → axis 2.  The long_name attribute on each dim spells out
+    its (h, k, l) direction ('[0,K,0]' is the plain K axis); the H/K/L it maps
+    to is the direction's nonzero component, not the letter in the label.
     """
+    labels: dict[str, str] = {}
+    vectors: dict[str, NDArray[np.float64]] = {}
+    for d_label in _DIM_TO_FILE_AXIS:
+        labels[d_label] = _as_text(data_grp[d_label].attrs["long_name"])
+        vectors[d_label] = _projection_vector(labels[d_label])
+    _check_projection(Path(data_grp.file.filename).name, labels, vectors, w_matrix)
+
     result: dict[str, tuple[int, NDArray[np.float64]]] = {}
     for d_label, file_axis in _DIM_TO_FILE_AXIS.items():
-        ds = data_grp[d_label]
-        edges: NDArray[np.float64] = ds[:].astype(np.float64)
-        long_name = _as_text(ds.attrs["long_name"])
-        hkl_char = _identify_hkl_char(long_name)
+        edges: NDArray[np.float64] = data_grp[d_label][:].astype(np.float64)
+        hkl_char = _HKL_LETTERS[int(np.argmax(vectors[d_label]))]
         result[hkl_char] = (file_axis, _bin_centers(edges))
     return result
 
@@ -149,17 +172,90 @@ def _as_text(value: object) -> str:
     return str(value)
 
 
-def _identify_hkl_char(long_name: str) -> str:
-    """Return 'H', 'K', or 'L' from a Mantid dim long_name like '[0,K,0]'.
+def _projection_vector(long_name: str) -> NDArray[np.float64]:
+    """The (h, k, l) direction of one dim, read from its Mantid long_name.
 
-    Assumes an orthogonal cut where exactly one HKL component varies.
-    Oblique cuts (e.g. '[H,H,0]') are not supported.
+    Mantid writes the direction component by component: '[0,K,0]' is
+    (0, 1, 0), '[K,2K,0]' is (1, 2, 0), '[-0.5H,H,0]' is (-0.5, 1, 0).  A bare
+    'H', 'K' or 'L' is read as that plain axis.
     """
-    upper = long_name.upper()
-    for ch in _HKL_LETTERS:
-        if ch in upper:
-            return ch
-    raise ValueError(f"Cannot identify H/K/L component in dim long_name {long_name!r}")
+    text = long_name.strip()
+    bracket = re.search(r"\[([^\[\]]*)\]", text)
+    if bracket is None:
+        if text.upper() in _HKL_LETTERS:
+            return np.eye(3)[_HKL_LETTERS.index(text.upper())]
+        raise ValueError(f"Cannot identify H/K/L component in dim long_name {long_name!r}")
+
+    parts = bracket.group(1).split(",")
+    comps = [c for c in map(_label_component, parts) if c is not None]
+    if len(parts) == len(comps) == 3:
+        vec = np.array([value for _, value in comps], dtype=np.float64)
+        if len({name for name, _ in comps if name}) == 1 and np.any(vec):
+            return vec
+    raise ValueError(
+        f"Cannot read an (h, k, l) direction from dim long_name {long_name!r}")
+
+
+def _label_component(part: str) -> tuple[str, float] | None:
+    """('K', 2.0) for '2K', ('', 0.0) for '0'; None if unreadable or a constant offset."""
+    m = _LABEL_COMPONENT.fullmatch(part.strip())
+    if m is None or not (m["coef"] or m["var"]):
+        return None
+    coef = float(m["coef"]) if m["coef"] else 1.0
+    if not m["var"]:
+        return ("", 0.0) if coef == 0.0 else None
+    return m["var"].upper(), -coef if m["sign"] == "-" else coef
+
+
+def _read_w_matrix(root: h5py.Group) -> NDArray[np.float64] | None:
+    """Projection matrix from the W_MATRIX run log (column j = direction of Dj)."""
+    try:
+        values = np.asarray(root["experiment0/logs/W_MATRIX/value"][()], dtype=np.float64)
+    except KeyError:
+        return None
+    return values.reshape(3, 3) if values.size == 9 else None
+
+
+def _check_projection(
+    filename: str,
+    labels: dict[str, str],
+    vectors: dict[str, NDArray[np.float64]],
+    w_matrix: NDArray[np.float64] | None,
+) -> None:
+    """Accept only plain H, K, L axes, cross-checked against the W_MATRIX log.
+
+    Every downstream stage indexes the grid as h, k, l directly (integer-node
+    Bragg punch, H/K/L planes, the ΔPDF's a/b/c axes), so a projected grid would
+    load with |Q| and every node position silently wrong.  If the labels and
+    W_MATRIX disagree, refuse rather than guess which one describes the data.
+    """
+    for d_label, vec in vectors.items():
+        if not np.allclose(np.sort(vec), (0.0, 0.0, 1.0)):
+            direction = ", ".join(f"{v:g}" for v in vec)
+            raise ValueError(
+                f"{filename}: dim {d_label} ({labels[d_label]!r}) is binned along "
+                f"(h, k, l) = ({direction}), not a single H, K or L axis.  nebula3d "
+                "needs the volume on the crystal's own H, K, L axes (non-orthogonal "
+                "cells such as hexagonal or monoclinic are fine there: the UB matrix "
+                "carries the metric).  Rebin in Mantid with projections "
+                "u=[1,0,0], v=[0,1,0], w=[0,0,1].")
+
+    proj = np.column_stack([vectors[d] for d in _DIM_TO_FILE_AXIS])
+    if not np.allclose(np.abs(np.linalg.det(proj)), 1.0):
+        raise ValueError(
+            f"{filename}: dims {list(labels.values())} do not span H, K and L.")
+
+    if w_matrix is not None and not any(
+        np.allclose(proj[:, list(perm)], w_matrix, atol=1e-3)
+        for perm in permutations(range(3))
+    ):
+        columns = ", ".join(
+            "(" + ", ".join(f"{v:g}" for v in w_matrix[:, j]) + ")" for j in range(3))
+        raise ValueError(
+            f"{filename}: the dim labels {list(labels.values())} describe plain "
+            f"H, K, L axes, but the W_MATRIX log has projection columns {columns}.  "
+            "Refusing to guess which one describes the data; rebin in Mantid with "
+            "projections u=[1,0,0], v=[0,1,0], w=[0,0,1].")
 
 
 def _bin_centers(edges: NDArray[np.float64]) -> NDArray[np.float64]:
