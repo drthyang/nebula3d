@@ -461,8 +461,8 @@ fabricated estimates at punched voxels and **< 1e-5 relative in the ΔPDF**
 (verified: `tests/test_backfill_blocked.py`). Normal-size volumes take the
 single-tree, byte-for-byte-identical path.
 
-(The early float32 / parallel-worker prototypes on
-`feat/in-browser-parallel-float32` were superseded first by this float64
+(The early float32 / parallel-worker prototypes on the since-deleted
+`feat/in-browser-parallel-float32` branch were superseded first by this float64
 resolution, and then properly landed in the 2026-08 pass above — with
 bit-identity tests for the worker pool and tolerance gates for float32 that
 the prototypes lacked.)  Volumes beyond the ~80 M-voxel gate still go through
