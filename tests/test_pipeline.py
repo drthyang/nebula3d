@@ -168,6 +168,99 @@ def test_direct_beam_fill_uses_background_outside_not_adjacent_halo():
     # OLD: generic fill samples the adjacent −2 halo, so it goes negative.
     assert float(old.data[i0, i0, i0]) < 0.0
 
+    # The Laplace method routes the beam through the same outside-|Q| fill.
+    lap = backfill_bragg(vol, method="laplace", direct_beam_q_gap=0.2,
+                         direct_beam_q_width=0.15)
+    assert abs(float(lap.data[i0, i0, i0]) - 0.3) < 0.05
+
+
+def _ramp_vol(n=15):
+    """A linear ramp: harmonic, so an exact Laplace fill must reproduce it."""
+    i, j, k = np.meshgrid(*(np.arange(n),) * 3, indexing="ij")
+    data = 0.3 + 0.10 * i + 0.05 * j - 0.02 * k
+    return HKLVolume.from_arrays(data.astype(float), (-1, 1), (-1, 1), (-1, 1)), data
+
+
+def test_bragg_laplace_backfill_continues_surrounding_gradient():
+    for gap in (0, 1, 2):
+        vol, truth = _ramp_vol()
+        vol.mask[5:8, 5:8, 4:9] = False       # an elongated Bragg hole
+        vol.mask[10, 3, 11] = False           # and a single-voxel one
+        vol.data[~vol.mask] = 100.0
+
+        filled = backfill_bragg(vol, method="laplace", laplace_gap=gap,
+                                direct_beam_fill=False)
+
+        assert filled.mask.all()
+        np.testing.assert_allclose(filled.data, truth, atol=1e-8)
+
+
+def test_bragg_local_backfill_is_flat_where_laplace_follows_gradient():
+    vol, truth = _ramp_vol()
+    vol.mask[5:8, 5:8, 4:9] = False
+    local = backfill_bragg(vol, method="local", direct_beam_fill=False)
+    # the flat median plateau misses the ramp by up to its half-width
+    assert np.abs(local.data - truth)[~vol.mask].max() > 0.1
+
+
+def test_bragg_laplace_gap_takes_boundary_past_leaked_bragg_tail():
+    from scipy import ndimage
+
+    data = np.ones((15, 15, 15))
+    vol = HKLVolume.from_arrays(data, (-1, 1), (-1, 1), (-1, 1))
+    hole = np.zeros(vol.shape, dtype=bool)
+    hole[6:9, 6:9, 6:9] = True
+    tail = ndimage.binary_dilation(
+        hole, structure=ndimage.generate_binary_structure(3, 1)) & ~hole
+    vol.data[hole] = 50.0
+    vol.data[tail] = 5.0                      # Bragg tail just past the punch
+    vol.mask[hole] = False
+
+    adjacent = backfill_bragg(vol, method="laplace", laplace_gap=0,
+                              direct_beam_fill=False)
+    past = backfill_bragg(vol, method="laplace", laplace_gap=1,
+                          direct_beam_fill=False)
+
+    assert adjacent.data[hole].min() > 4.0    # pulled up to the tail level
+    np.testing.assert_allclose(past.data[hole], 1.0, atol=1e-8)
+    # the band is only a boundary offset: its measured values are kept
+    np.testing.assert_array_equal(past.data[tail], 5.0)
+
+
+def test_bragg_laplace_backfill_orphan_hole_gets_global_median():
+    data = np.full((9, 9, 9), 0.5)
+    vol = HKLVolume.from_arrays(data, (-1, 1), (-1, 1), (-1, 1))
+    for d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
+        nb = (4 + d[0], 4 + d[1], 4 + d[2])
+        vol.data[nb] = np.nan                 # unmeasured all around
+        vol.mask[nb] = False
+    vol.data[4, 4, 4] = 100.0
+    vol.mask[4, 4, 4] = False
+
+    filled = backfill_bragg(vol, method="laplace", direct_beam_fill=False)
+
+    assert float(filled.data[4, 4, 4]) == 0.5
+
+
+def test_bragg_laplace_backfill_keeps_float32_storage():
+    vol, truth = _ramp_vol()
+    vol = dataclasses.replace(vol, data=vol.data.astype(np.float32),
+                              sigma=vol.sigma.astype(np.float32))
+    vol.mask[5:8, 5:8, 4:9] = False
+
+    filled = backfill_bragg(vol, method="laplace", direct_beam_fill=False)
+
+    assert filled.data.dtype == np.float32
+    assert filled.sigma.dtype == np.float32
+    np.testing.assert_allclose(filled.data, truth, atol=1e-5)
+
+
+def test_pipeline_backfill_default_fills_from_surroundings():
+    from nebula3d.pipeline import BackfillParams
+
+    # never the |Q|-shell level: it is biased at every lattice node
+    assert BackfillParams().method == "local"
+
 
 def test_q_magnitude_matches_meshgrid_reference():
     """The broadcast |Q| accumulation must match the meshgrid formulation.

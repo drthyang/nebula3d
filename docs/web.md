@@ -103,8 +103,9 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   estimated peak; 501³ = 125.8 M is still refused with a message pointing to
   the native build).
 
-  (The default Bragg backfill, `backfill_bragg` with `method="q_shell"`, is
-  connected-component / `ndimage`-based and already lean. The older ring-workflow
+  (The default Bragg backfill, `backfill_bragg` with `method="local"`, is
+  connected-component / `ndimage`-based and already lean: ~25 B/voxel transient
+  vs ~41 for the former `q_shell` default and ~35 for `laplace`. The older ring-workflow
   `backfill_ring_shells` — not on this pipeline — builds a KD-tree over every
   valid voxel; its low-memory path bounds that to a per-H-slab local tree,
   within ~1e-5 relative of the exact fill.)

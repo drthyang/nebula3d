@@ -102,7 +102,7 @@ INTEGER_FIT_SHAPE=1
 INTEGER_H_GUARD=0.12
 SEARCH_EXCLUDE_H=-0.6667,-0.3333,0.3333,0.6667
 SEARCH_EXCLUDE_H_WIDTH=0.08
-BACKFILL_METHOD=q_shell
+BACKFILL_METHOD=local
 ```
 
 Current decisions:
@@ -113,14 +113,17 @@ Current decisions:
   can damage fractional-H diffuse planes. Search exclusions protect those planes.
 - Integer-node Bragg holes are guarded in H so they do not bleed from integer-H
   planes into `H=±1/3` or `H=±2/3` diffuse planes.
-- Ordinary Bragg holes can be filled with `method="q_shell"` from the robust
-  background level at the same `|Q|`.
+- Ordinary Bragg holes are filled from the diffuse around each hole
+  (`method="local"`, default; `method="laplace"` for a smooth harmonic fill).
+  The former `q_shell` default (|Q|-shell level) is biased at every lattice
+  node and leaves spurious ΔPDF features at the lattice vectors.
 - Direct-beam backfill remains a special just-outside-`|Q|` fill.
 
 Open validation:
 
 - Confirm guarded `MODE=both` leaves no important small Bragg peaks.
-- Check whether `q_shell` fill creates radial banding around large holes.
+- Measure the `q_shell` → `local`/`laplace` change on the real 22/45/100 K
+  ΔPDFs at the lattice vectors.
 - Decide whether search exclusions should be derived from known magnetic diffuse
   planes rather than passed manually.
 
@@ -448,8 +451,9 @@ What low-memory mode changes (all bit-identical on the default Bragg pipeline):
 Measured per-stage peak RSS on the 30.3 M dataset (low-memory): back-FFT
 consistency check ~75 B/voxel (the binding stage, ~2.3 GB), radial flatten
 ~62, backfill (`q_shell`) ~59, ring removal ~60, forward ΔPDF ~45. The default
-Bragg backfill (`nebula3d.analysis.backfill_bragg`, `method="q_shell"`) is
-connected-component / `ndimage`-based and already lean — no KD-tree.
+Bragg backfill is now `method="local"` (~25 B/voxel transient on a 25 M
+synthetic vs ~41 for `q_shell`; `laplace` ~35) — connected-component /
+`ndimage`-based, no KD-tree.
 
 Separately, the older ring-workflow fill `backfill_ring_shells` (used by
 `nebula3d.preprocessing`, not the default Bragg pipeline) *does* build a KD-tree
