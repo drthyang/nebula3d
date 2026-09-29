@@ -387,12 +387,16 @@ class PunchParams:
 class BackfillParams:
     """Backfill of punched Bragg holes (``backfill_bragg``)."""
 
-    method: str = "q_shell"
+    # Fill from the diffuse *around* each hole ("local" or "laplace"), never a
+    # global |Q|-shell level: "q_shell" is biased at every lattice node, which
+    # FTs into spurious ΔPDF features at the lattice vectors.
+    method: str = "local"
     laue_class: str = "mmm"
     local_radius: int = 2
     local_min_count: int = 8
     q_shell_step: float = 0.05
     q_shell_min_count: int = 20
+    laplace_gap: int = 1
     tv_lam: float = 0.2
     tv_iter: int = 80
 
@@ -974,7 +978,7 @@ def backfill(vol: HKLVolume, params: BackfillParams | None = None, *,
         vol, method=p.method, laue_class=p.laue_class,  # type: ignore[arg-type]
         local_radius=p.local_radius, local_min_count=p.local_min_count,
         q_shell_step=p.q_shell_step, q_shell_min_count=p.q_shell_min_count,
-        tv_lam=p.tv_lam, tv_iter=p.tv_iter,
+        laplace_gap=p.laplace_gap, tv_lam=p.tv_lam, tv_iter=p.tv_iter,
     )
     _emit(progress, "backfill", "done", 1.0, "backfill complete")
     return filled

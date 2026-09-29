@@ -639,10 +639,14 @@ function sec4() {
 
     // 4.3
     h2("4.3", "Stage 3 — Bragg-Hole Backfill"),
-    h3("4.3.1  Q-Shell Fill (recommended)"),
-    p("For ordinary Bragg holes, the robust diffuse level at the same |Q| is the best estimate. For each |Q| bin:"),
-    ...math(["I_fill = median(I_valid) + n_mad · MAD(I_valid)"]),
-    h3("4.3.2  TV Inpainting"),
+    p("Each hole is filled from the diffuse intensity around it (the 3D-ΔPDF punch-and-fill convention). Every punch sits on a reciprocal-lattice node, so any bias of the fill at the nodes repeats on the lattice and Fourier-transforms into spurious ΔPDF features at the lattice vectors."),
+    h3("4.3.1  Local Fill (default)"),
+    p("method=\"local\" fills each connected punched component with the median of a dilated shell of nearby valid voxels. Robust to leaked Bragg tails; the flat fill leaves a small step at the hole edge."),
+    h3("4.3.2  Laplace Fill"),
+    p("method=\"laplace\" solves the discrete Laplace equation in every hole (one sparse system, Jacobi-preconditioned CG), continuing the surrounding diffuse smoothly. The boundary sits laplace_gap (default 1) voxels outside the punch so leaked Bragg tails do not bias it."),
+    h3("4.3.3  Q-Shell Fill (comparison only)"),
+    p("method=\"q_shell\" uses the median of all valid voxels at the same |Q|. It is biased at the lattice nodes and leaves lattice-vector artefacts in the ΔPDF."),
+    h3("4.3.4  TV Inpainting"),
     p("For complex cases, Total-Variation inpainting solves:"),
     ...math(["min_u   ½ ‖ W(u − f) ‖²  +  λ ‖∇u‖₁"]),
     p("where f is the observed data, W the diagonal mask operator, ∇u the 3D forward-difference gradient, and λ the regularisation. The Chambolle–Pock primal-dual algorithm (step sizes τσ = 1/6) preserves piecewise-smooth structures — sharp diffuse sheets and streaks — while suppressing noise."),
@@ -742,7 +746,7 @@ function sec6() {
   INTEGER_FIT_POSITION=1 INTEGER_FIT_SHAPE=1 INTEGER_H_GUARD=0.12 \\
   SEARCH_EXCLUDE_H_FRACTIONS=0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \\
   python examples/punch_bragg_3d.py`, "Stage 2 · Bragg punch"),
-    ...code(`PYTHONPATH=src METHOD=q_shell \\
+    ...code(`PYTHONPATH=src METHOD=local \\
   python examples/backfill_bragg_3d.py`, "Stage 3 · Backfill"),
     ...code(`PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl \\
   SUBTRACT_BG="0,1.5,1.5" CROP_H=4 CROP_K=8 CROP_L=15 \\
@@ -780,7 +784,7 @@ remover = BraggRemover(
     incident_beam_ellipsoid_radii_hkl=(0.15, 0.50, 1.00),
 )
 punched = remover.apply(vol)
-filled  = backfill_bragg(punched, method="q_shell")
+filled  = backfill_bragg(punched)  # method="local"
 
 dpdf = compute_delta_pdf(
     filled, apodization="gaussian", gaussian_sigma=0.4,
@@ -825,7 +829,8 @@ function sec7() {
     ]),
     h2("7.3", "Backfill"),
     ...cfg([
-      ["METHOD", "str", "q_shell", "q_shell, local, tv, symmetry, symmetry+tv"],
+      ["METHOD", "str", "local", "local, laplace, q_shell (comparison), tv, symmetry, symmetry+tv"],
+      ["LAPLACE_GAP", "int", "1", "Voxels outside the punch where the laplace fill takes its boundary"],
       ["Q_SHELL_STEP", "float", "0.05", "Bin width for q-shell fill (Å⁻¹)"],
       ["Q_SHELL_MIN_COUNT", "int", "10", "Min valid voxels/bin before falling back to local"],
       ["TV_LAM", "float", "0.1", "TV regularisation λ (higher = smoother)"],
@@ -1034,7 +1039,7 @@ function sec11() {
       rows: [
         ["Ring removal (per-slice)", "~2–5 min", "Sequential per H-slice; embarrassingly parallel"],
         ["Bragg punch", "~1–2 min", "Scales with the number of peaks"],
-        ["Backfill (q-shell)", "~30 sec", "Linear in the number of voxels"],
+        ["Backfill (local)", "~30 sec", "Linear in the number of voxels"],
         ["3D-ΔPDF (FFT)", "~10 sec", "Dominated by the FFT of the zero-padded array"],
       ],
     }),

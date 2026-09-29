@@ -3,8 +3,19 @@
 
 """Backfill Bragg-punched holes — step 5 of the further analysis pipeline.
 
-The preferred real-data fill is local-background replacement: each punched
-Bragg/satellite hole is filled from the nearby unpunched shell around that hole.
+A punched hole must be filled with the diffuse intensity *surrounding* it (the
+3D-ΔPDF "punch-and-fill" convention: NXRefine's Laplace/Matérn fill, Mantid
+``DeltaPDF3D``'s convolution fill, KAREN), not with a global background level.
+Every punch sits on a reciprocal-lattice node, so a fill rule that is biased at
+the nodes repeats that bias on the lattice, and its Fourier transform lands as
+spurious ΔPDF features at the lattice vectors — exactly where the real
+correlations are.  The |Q|-shell median (``method="q_shell"``) is biased this
+way: pair correlations at lattice-vector separations peak or dip *at* the nodes,
+and a whole-shell median averages that away.
+
+``method="local"`` (default) fills each hole with the median of its own local
+shell; ``method="laplace"`` solves the discrete Laplace equation in each hole so
+the fill continues the surrounding diffuse smoothly, with no step at the edge.
 Generic TV inpainting remains available as an option, but it can introduce
 slice-scale staircase / smoothing artefacts in structured diffuse scattering.
 """
@@ -12,17 +23,19 @@ slice-scale staircase / smoothing artefacts in structured diffuse scattering.
 from __future__ import annotations
 
 import dataclasses
+import warnings
 from collections.abc import Sequence
 from typing import Literal, cast
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy import ndimage
+from scipy import ndimage, sparse
+from scipy.sparse.csgraph import connected_components
 
 from nebula3d.core import HKLVolume, q_magnitude_from_axes
 from nebula3d.inpainting.pipeline import Method, fill
 
-BraggFillMethod = Method | Literal["local", "q_shell"]
+BraggFillMethod = Method | Literal["local", "q_shell", "laplace"]
 
 
 def backfill_bragg(
@@ -36,24 +49,37 @@ def backfill_bragg(
     local_min_count: int = 8,
     q_shell_step: float = 0.05,
     q_shell_min_count: int = 20,
+    laplace_gap: int = 1,
     direct_beam_fill: bool = True,
     direct_beam_q_gap: float = 0.05,
     direct_beam_q_width: float = 0.15,
 ) -> HKLVolume:
     """Fill Bragg-punched voxels in *vol*.
 
-    ``method="local"`` fills each connected punched region with the median of
-    nearby valid voxels in a dilated shell around that region.  This estimates
-    the local background level near the Bragg peak and avoids inventing a smooth
-    TV surface through real diffuse texture.  TV/symmetry methods are retained
-    for explicit comparisons.
+    ``method="local"`` (default) fills each connected punched region with the
+    median of nearby valid voxels in a dilated shell around that region — the
+    diffuse level right next to that Bragg peak.  It is robust to Bragg tails
+    that leak past the punch edge, but the fill is flat, so it leaves a small
+    step at the hole edge.
+
+    ``method="laplace"`` fills the holes with the harmonic interpolant of the
+    surrounding valid data (discrete Laplace equation, 6-neighbour stencil —
+    the Laplace fill of NXRefine's punch-and-fill).  The fill follows the local
+    diffuse gradient smoothly into the hole.  Because it honours its boundary
+    exactly, Bragg tails just outside the punch would pull it up, so the
+    boundary values are taken ``laplace_gap`` voxels *outside* the punch: that
+    band is solved together with the hole and then discarded, i.e. its measured
+    values are kept and only punched voxels change.
 
     ``method="q_shell"`` fills ordinary Bragg components from the robust radial
-    background level at the same ``|Q|`` as each punched voxel.  This is the
-    lattice-node Bragg workflow's background-level fill: the peak itself is
-    removed, and the hole is replaced by the diffuse level expected at that
-    scattering vector magnitude.  Components whose ``|Q|`` bins are too sparsely
-    sampled fall back to the local-shell median.
+    background level at the same ``|Q|`` as each punched voxel.  Kept for
+    comparison only: a whole-shell median ignores the diffuse structure at the
+    lattice nodes, and that node-periodic bias Fourier-transforms into spurious
+    ΔPDF features at the lattice vectors (see the module docstring).
+    Components whose ``|Q|`` bins are too sparsely sampled fall back to the
+    local-shell median.
+
+    TV/symmetry methods are retained for explicit comparisons.
 
     The **direct beam** (the punched hole at the origin) is filled differently
     from ordinary Bragg holes: a generic dilated shell around that large,
@@ -88,6 +114,10 @@ def backfill_bragg(
     q_shell_min_count:
         Minimum valid samples in a radial bin before it can be used for
         ``method="q_shell"``.
+    laplace_gap:
+        For ``method="laplace"``: how many voxels outside the punch the
+        Dirichlet boundary sits (default 1).  0 uses the voxels adjacent to the
+        hole — best when the punch fully clears the Bragg tails.
     direct_beam_fill:
         If True (default), fill the origin hole from the ``|Q|``-just-outside
         diffuse background instead of the generic dilated shell.
@@ -102,6 +132,12 @@ def backfill_bragg(
     -------
     HKLVolume with Bragg holes filled.
     """
+    if method == "laplace":
+        return _laplace_fill(
+            vol, gap=laplace_gap, direct_beam_fill=direct_beam_fill,
+            db_q_gap=direct_beam_q_gap, db_q_width=direct_beam_q_width,
+            db_min_count=local_min_count,
+        )
     if method in {"local", "q_shell"}:
         return _local_background_fill(
             vol, radius=local_radius, min_count=local_min_count,
@@ -209,6 +245,158 @@ def _local_background_fill(
 
     return dataclasses.replace(vol, data=data, sigma=sigma,
                                mask=np.ones(vol.shape, dtype=bool))
+
+
+def _laplace_fill(
+    vol: HKLVolume,
+    gap: int = 1,
+    direct_beam_fill: bool = True,
+    db_q_gap: float = 0.05,
+    db_q_width: float = 0.15,
+    db_min_count: int = 8,
+) -> HKLVolume:
+    """Fill every punched hole with the harmonic interpolant of its surroundings.
+
+    One sparse system covers all holes: each unknown voxel satisfies
+    ``deg·u_i − Σ u_j = Σ y_k`` over its in-volume 6-neighbours, where ``u_j``
+    are other unknowns and ``y_k`` known valid voxels (Dirichlet).  Neighbours
+    that are neither (unmeasured voxels) are dropped from the stencil
+    (Neumann).  Separate holes are separate blocks of one block-diagonal SPD
+    matrix, solved together by Jacobi-preconditioned CG — no per-hole Python
+    loop, and only unknown-sized arrays beyond the output copies.
+    """
+    holes = (~vol.mask) & np.isfinite(vol.data)
+    if not holes.any():
+        return dataclasses.replace(vol, mask=np.ones(vol.shape, dtype=bool))
+
+    valid = vol.mask & np.isfinite(vol.data)
+    global_vals = vol.data[valid].astype(np.float64, copy=False)
+    global_fill = float(np.median(global_vals)) if global_vals.size else 0.0
+    global_sigma = (float(np.median(vol.sigma[valid].astype(np.float64,
+                                                            copy=False)))
+                    if global_vals.size else 1.0)
+    del global_vals
+    data = vol.data.copy()
+    sigma = vol.sigma.copy()
+
+    resolved: NDArray[np.bool_] = np.zeros(vol.shape, dtype=bool)
+    if direct_beam_fill:
+        resolved = _fill_direct_beam(
+            vol, data, sigma, holes, valid, global_sigma,
+            q_gap=db_q_gap, q_width=db_q_width, min_count=db_min_count,
+        )
+    remaining = holes & ~resolved
+    out_mask = np.ones(vol.shape, dtype=bool)
+    if not remaining.any():
+        return dataclasses.replace(vol, data=data, sigma=sigma, mask=out_mask)
+
+    # Unknowns = the holes plus a ``gap``-voxel band of valid data around them;
+    # the band is solved (so the boundary sits past any Bragg tail) and then
+    # discarded — only punched voxels are written.
+    unknown = remaining.copy()
+    if gap > 0:
+        cross = ndimage.generate_binary_structure(3, 1)
+        unknown |= (ndimage.binary_dilation(remaining, structure=cross,
+                                            iterations=int(gap))
+                    & valid & ~resolved)
+    known = (valid & ~unknown).reshape(-1)
+    flat = data.reshape(-1)
+    idx = np.flatnonzero(unknown)  # sorted → searchsorted neighbour lookup
+    del unknown
+    n = idx.size
+    coords = np.unravel_index(idx, vol.shape)
+    strides = (vol.shape[1] * vol.shape[2], vol.shape[2], 1)
+
+    deg = np.zeros(n)
+    rhs = np.zeros(n)
+    rhs_sq = np.zeros(n)
+    n_links = np.zeros(n)
+    rows: list[NDArray[np.intp]] = []
+    cols: list[NDArray[np.intp]] = []
+    for axis in range(3):
+        for step in (-1, 1):
+            inside = (coords[axis] > 0 if step < 0
+                      else coords[axis] < vol.shape[axis] - 1)
+            src = np.flatnonzero(inside)
+            nb = idx[src] + step * strides[axis]
+            pos = np.minimum(np.searchsorted(idx, nb), n - 1)
+            is_u = idx[pos] == nb
+            is_k = ~is_u & known[nb]
+            y = flat[nb[is_k]].astype(np.float64, copy=False)
+            deg += np.bincount(src[is_u | is_k], minlength=n)
+            rhs += np.bincount(src[is_k], weights=y, minlength=n)
+            rhs_sq += np.bincount(src[is_k], weights=y * y, minlength=n)
+            n_links += np.bincount(src[is_k], minlength=n)
+            rows.append(src[is_u])
+            cols.append(pos[is_u])
+    del coords, known
+    r_idx = np.concatenate(rows).astype(np.int32, copy=False)
+    del rows
+    c_idx = np.concatenate(cols).astype(np.int32, copy=False)
+    del cols
+    adj = sparse.csr_matrix((np.ones(r_idx.size), (r_idx, c_idx)), shape=(n, n))
+    del r_idx, c_idx
+
+    # Per connected hole: the Dirichlet data's mean seeds CG, its spread sets
+    # sigma.  A hole with no measured neighbour at all ("orphan", e.g. walled
+    # in by unmeasured voxels) has a singular block — give it the global median.
+    n_comp, comp = connected_components(adj, directed=False)
+    c_links = np.bincount(comp, weights=n_links, minlength=n_comp)
+    c_n = np.maximum(c_links, 1.0)
+    c_mean = np.bincount(comp, weights=rhs, minlength=n_comp) / c_n
+    c_var = np.bincount(comp, weights=rhs_sq, minlength=n_comp) / c_n - c_mean ** 2
+    c_sig = np.sqrt(np.maximum(c_var, 0.0))
+    solvable = c_links[comp] > 0
+
+    u = np.full(n, global_fill)
+    lap = (sparse.diags(deg) - adj).tocsr()
+    del adj
+    if not solvable.all():  # rare — skip the sub-matrix copies otherwise
+        lap = lap[solvable][:, solvable]
+    if solvable.any():
+        u[solvable], converged = _pcg(lap, rhs[solvable], c_mean[comp[solvable]],
+                                      1.0 / deg[solvable])
+        if not converged:
+            warnings.warn("laplace backfill: CG did not reach tolerance",
+                          RuntimeWarning, stacklevel=3)
+
+    write = remaining.reshape(-1)[idx]
+    flat[idx[write]] = u[write]
+    sigma.reshape(-1)[idx[write]] = np.maximum(c_sig[comp[write]], global_sigma)
+    return dataclasses.replace(vol, data=data, sigma=sigma, mask=out_mask)
+
+
+def _pcg(
+    a: sparse.csr_matrix,
+    b: NDArray[np.float64],
+    x0: NDArray[np.float64],
+    dinv: NDArray[np.float64],
+    rtol: float = 1e-10,
+    maxiter: int = 10_000,
+) -> tuple[NDArray[np.float64], bool]:
+    """Jacobi-preconditioned conjugate gradient for the SPD Laplace system.
+
+    Hand-rolled rather than ``scipy.sparse.linalg.cg`` because that function's
+    tolerance keyword changed (``tol`` → ``rtol``) inside our scipy>=1.10 range.
+    """
+    x = x0.copy()
+    r = b - a @ x
+    z = dinv * r
+    p = z.copy()
+    rz = float(r @ z)
+    tol = rtol * (float(np.linalg.norm(b)) or 1.0)
+    for _ in range(maxiter):
+        if float(np.linalg.norm(r)) <= tol:
+            return x, True
+        ap = a @ p
+        alpha = rz / float(p @ ap)
+        x += alpha * p
+        r -= alpha * ap
+        z = dinv * r
+        rz_new = float(r @ z)
+        p = z + (rz_new / rz) * p
+        rz = rz_new
+    return x, float(np.linalg.norm(r)) <= tol
 
 
 @dataclasses.dataclass(frozen=True)
