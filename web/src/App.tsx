@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useDatasets, useHealth } from "./api/hooks";
 import { PYODIDE_MODE } from "./api/pyodideEngine";
@@ -25,7 +25,9 @@ import { usePipelineStore } from "./state/pipelineStore";
 
 export type Tab = "config" | "execution" | "reciprocal" | "bragg" | "dpdf" | "consistency" | "assistant";
 
-const NAV: { id: Tab; label: string; desc?: string; icon: ReactNode }[] = [
+// `short` is the label used by the compact top bar (phones and iPad portrait),
+// where the nav runs as one row of pills instead of the sidebar list.
+const NAV: { id: Tab; label: string; short?: string; desc?: string; icon: ReactNode }[] = [
   {
     id: "config",
     label: "Configure",
@@ -41,12 +43,14 @@ const NAV: { id: Tab; label: string; desc?: string; icon: ReactNode }[] = [
   {
     id: "reciprocal",
     label: "Reciprocal cleanup",
+    short: "Cleanup",
     desc: "Compare cleanup stages slice-by-slice across the reciprocal-space volume.",
     icon: <IconLattice />,
   },
   {
     id: "bragg",
     label: "Bragg profile",
+    short: "Bragg",
     desc: "Fitted radius vs. pad-free measured width for every punched peak across all three reciprocal axes — peaks sagging to the half-voxel floor are resolution-limited.",
     icon: <IconProfileWave />,
   },
@@ -59,16 +63,41 @@ const NAV: { id: Tab; label: string; desc?: string; icon: ReactNode }[] = [
   {
     id: "consistency",
     label: "Q–R Band Transform",
+    short: "Q–R",
     desc: "Inverse-FFT the ΔPDF back to reciprocal space and compare to the data; band-limit |Q| to separate low- vs high-frequency signal.",
     icon: <IconTransform />,
   },
   {
     id: "assistant",
     label: "AI Assistant",
+    short: "Assistant",
     desc: "Ask a local or cloud model to assess the reduction, grounded in metrics from the volumes.",
     icon: <IconSpark />,
   },
 ];
+
+// API status, version and copyright.  Sits at the foot of the sidebar; in the
+// compact top-bar layout the sidebar copy is hidden and the one at the end of
+// <main> shows instead (see "Device layouts" in index.css).
+function ConsoleFoot({ className, apiUp }: { className: string; apiUp: boolean }) {
+  return (
+    <footer className={className}>
+      <span className="api-status">
+        <span className={`api-dot ${apiUp ? "ok" : "down"}`} />
+        {PYODIDE_MODE
+          ? "in-browser engine"
+          : apiUp
+            ? "API connected"
+            : "API offline"}
+      </span>
+      <span className="ver">
+        <span className="ver-num">v0.3.0</span>
+        <span className="ver-tag">beta</span>
+      </span>
+      <span className="copyright">© 2026 Tsung-Han Yang</span>
+    </footer>
+  );
+}
 
 function renderPage(tab: Tab, setTab: (t: Tab) => void): ReactNode {
   switch (tab) {
@@ -105,6 +134,19 @@ export function App() {
   useInitializeDataset(datasets);
   const datasetId = useDatasetStore((s) => s.datasetId);
   const setDataset = useDatasetStore((s) => s.setDataset);
+
+  // In the compact top bar the nav is a horizontally scrolling row of pills;
+  // keep the active one in view when the tab changes (including programmatic
+  // switches such as Configure → Execution on launch).
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = navRef.current;
+    const btn = nav?.querySelector<HTMLElement>("button.active");
+    if (!nav || !btn || nav.scrollWidth <= nav.clientWidth) return;
+    const offset = btn.getBoundingClientRect().left - nav.getBoundingClientRect().left;
+    const left = nav.scrollLeft + offset - (nav.clientWidth - btn.offsetWidth) / 2;
+    nav.scrollTo({ left: Math.max(0, left) });
+  }, [tab]);
 
   return (
     <div className="app">
@@ -153,7 +195,7 @@ export function App() {
           </div>
         </div>
 
-        <nav className="nav">
+        <nav className="nav" ref={navRef}>
           {NAV.map((n) => (
             <button
               key={n.id}
@@ -162,7 +204,8 @@ export function App() {
               onClick={() => setTab(n.id)}
             >
               {n.icon}
-              {n.label}
+              <span className="nav-label">{n.label}</span>
+              <span className="nav-label-short">{n.short ?? n.label}</span>
               {n.id === "assistant" && <span className="nav-beta">Beta</span>}
               {n.id === "execution" && running && (
                 <span className="nav-dot" title="a job is running" />
@@ -171,21 +214,7 @@ export function App() {
           ))}
         </nav>
 
-        <div className="sidebar-foot">
-          <span className="api-status">
-            <span className={`api-dot ${apiUp ? "ok" : "down"}`} />
-            {PYODIDE_MODE
-              ? "in-browser engine"
-              : apiUp
-                ? "API connected"
-                : "API offline"}
-          </span>
-          <span className="ver">
-            <span className="ver-num">v0.3.0</span>
-            <span className="ver-tag">beta</span>
-          </span>
-          <span className="copyright">© 2026 Tsung-Han Yang</span>
-        </div>
+        <ConsoleFoot className="sidebar-foot" apiUp={apiUp} />
       </aside>
 
       <main className="main">
@@ -195,6 +224,7 @@ export function App() {
         </header>
         <ViewerImportBanner onLoaded={showConfig} />
         {renderPage(tab, setTab)}
+        <ConsoleFoot className="main-foot" apiUp={apiUp} />
       </main>
     </div>
   );

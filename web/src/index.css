@@ -38,6 +38,12 @@
 
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 
+  /* shell metrics, retuned per device tier (see "Device layouts" at the end) */
+  --sidebar-w: 224px;
+  --main-pad-top: 22px;
+  --main-pad-x: 28px;
+  --ui-zoom: 1; /* whole-console scale; > 1 only on a 4K panel at 100–125 % */
+
   color-scheme: dark;
 }
 
@@ -98,8 +104,17 @@ button {
 
 .app {
   display: grid;
-  grid-template-columns: 224px 1fr;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   height: 100vh;
+  zoom: var(--ui-zoom);
+}
+/* The dynamic viewport tracks Safari's collapsing toolbars on iPhone / iPad.
+   Viewport units inside a zoomed box are scaled by the zoom, so divide it back
+   out to keep the shell exactly one screen tall. */
+@supports (height: 100dvh) {
+  .app {
+    height: calc(100dvh / var(--ui-zoom));
+  }
 }
 
 .sidebar {
@@ -107,8 +122,10 @@ button {
   flex-direction: column;
   background: var(--bg-raised);
   border-right: 1px solid var(--border);
-  padding: 16px 12px 14px;
+  padding: 16px 12px max(14px, env(safe-area-inset-bottom));
   gap: 18px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .brand {
@@ -237,6 +254,9 @@ button {
   background: var(--accent-soft);
   color: var(--accent-hi);
 }
+.nav-label-short {
+  display: none;
+}
 
 .sidebar-foot {
   display: flex;
@@ -266,7 +286,7 @@ button {
 .api-dot.down {
   background: var(--red);
 }
-.sidebar-foot .ver {
+:is(.sidebar-foot, .main-foot) .ver {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -276,14 +296,14 @@ button {
   border-radius: 999px;
   background: var(--surface);
 }
-.sidebar-foot .ver-num {
+:is(.sidebar-foot, .main-foot) .ver-num {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--text-2);
 }
-.sidebar-foot .ver-tag {
+:is(.sidebar-foot, .main-foot) .ver-tag {
   font-size: 8.5px;
   font-weight: 700;
   letter-spacing: 0.09em;
@@ -293,14 +313,29 @@ button {
   padding: 2px 6px;
   border-radius: 999px;
 }
-.sidebar-foot .copyright {
+:is(.sidebar-foot, .main-foot) .copyright {
   font-size: 10.5px;
   color: var(--text-3);
 }
 
 .main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   overflow-y: auto;
-  padding: 22px 28px 40px;
+  padding:
+    var(--main-pad-top)
+    max(var(--main-pad-x), env(safe-area-inset-right))
+    max(40px, env(safe-area-inset-bottom))
+    max(var(--main-pad-x), env(safe-area-inset-left));
+}
+.main > * {
+  flex-shrink: 0;
+}
+/* The console foot repeated at the end of <main>; shown only when the sidebar
+   collapses into the compact top bar. */
+.main-foot {
+  display: none;
 }
 
 /* ---------------------------------------------------------------------------
@@ -423,9 +458,10 @@ button {
 }
 .field-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 4px 12px;
 }
 .readout {
   font-family: var(--font-mono);
@@ -1006,13 +1042,14 @@ input[type="range"]::-moz-range-track {
 .bragg-stats {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  background: #15191f;
+  grid-auto-flow: dense;
+  gap: 1px;
+  background: #232a33;
   border: 1px solid #252c36;
   border-radius: 11px;
   overflow: hidden;
 }
-.bragg-stat { padding: 14px 17px; display: flex; flex-direction: column; gap: 6px; }
-.bragg-stat + .bragg-stat { border-left: 1px solid #232a33; }
+.bragg-stat { padding: 14px 17px; display: flex; flex-direction: column; gap: 6px; min-width: 0; background: #15191f; }
 .bragg-stat-eyebrow { font: 600 9px/1 system-ui; letter-spacing: 0.07em; text-transform: uppercase; color: #6c7686; white-space: nowrap; }
 .bragg-stat-row { height: 24px; display: flex; align-items: flex-end; gap: 8px; }
 .bragg-stat-v { font: 700 21px/1 ui-monospace, monospace; color: #e8ebf0; letter-spacing: -0.01em; white-space: nowrap; }
@@ -1129,7 +1166,7 @@ input[type="range"]::-moz-range-track {
 .bragg-ell-leg-floor { width: 11px !important; height: 0 !important; border-radius: 0 !important; border-top: 1.4px dashed #cdd4df; }
 
 .bragg-cmap select { background: #1b2027; border: 1px solid #333d4a; border-radius: 7px; color: #e8ebf0; font: 500 11px system-ui; padding: 5px 9px; cursor: pointer; }
-.bragg-cmap .cmap-bar { flex: 1; height: 14px; border-radius: 4px; display: block; }
+.bragg-cmap .cmap-bar { flex: 1; min-width: 0; height: 14px; border-radius: 4px; display: block; }
 
 .bragg-readout { display: grid; grid-template-columns: auto 1fr 1fr 1fr; gap: 6px 12px; align-items: center; padding-top: 8px; border-top: 1px solid #232a33; }
 .bragg-readout > span { font: 600 11px ui-monospace, monospace; color: #cdd4df; text-align: right; }
@@ -1420,7 +1457,7 @@ input[type="range"]::-moz-range-track {
   left: 50%;
   transform: translateX(-50%);
   width: 232px;
-  max-width: 232px;
+  max-width: min(232px, calc(100vw - 48px));
   padding: 8px 10px;
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
@@ -1630,6 +1667,13 @@ input[type="range"]::-moz-range-track {
 }
 .cfg-box .config-grid-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.cfg-box :is(select, input[type="number"], input[type="text"]) {
+  max-width: 100%;
+  min-width: 0;
+}
+.cfg-box .config-grid > :only-child {
+  grid-column: 1 / -1;
 }
 /* placeholder box (radial-PV fit) — striped to read as a pending plot */
 .cfg-box--plot {
@@ -1976,11 +2020,13 @@ input[type="range"]::-moz-range-track {
   font-size: 11px;
   line-height: 1.35;
 }
+.dataset-meta {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
 .dataset-meta span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .dataset-stage-board {
   display: flex;
@@ -2842,8 +2888,9 @@ input[type="range"]::-moz-range-track {
 /* — header bar — */
 .qr-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 8px 16px;
   padding: 8px 18px;
   background: linear-gradient(180deg, var(--surface), var(--bg-raised));
   border: 1px solid var(--border);
@@ -2918,6 +2965,7 @@ input[type="range"]::-moz-range-track {
   border-color: rgba(52, 201, 142, 0.42);
 }
 .qr-desc {
+  flex: 1 1 220px;
   font-size: 11.5px;
   line-height: 1.4;
   color: #7a8494;
@@ -2931,10 +2979,11 @@ input[type="range"]::-moz-range-track {
 /* — display-control clusters — */
 .qr-clusters {
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
 }
 .qr-cluster {
-  flex: 1;
+  flex: 1 1 360px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -2963,6 +3012,7 @@ input[type="range"]::-moz-range-track {
   padding-bottom: 0;
 }
 .qr-cluster-toggle .switch-label {
+  white-space: nowrap;
   font-size: 9.5px;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -3020,9 +3070,10 @@ input[type="range"]::-moz-range-track {
 }
 .qr-panel-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px 8px;
   min-height: 38px;
   padding: 6px 11px;
   background: var(--surface);
@@ -3227,21 +3278,16 @@ input[type="range"]::-moz-range-track {
   min-width: 180px;
 }
 
-@media (max-width: 980px) {
-  .qr-clusters,
-  .qr-flow-row {
-    flex-wrap: wrap;
-  }
-}
-
 /* ============================================================ AI Assistant */
 
+/* Fills the height <main> has left (at least 460px), and grows past it when
+   the settings drawer is open instead of overflowing onto what follows: the
+   flex item's automatic minimum keeps it at least as tall as its content. */
 .ai-page {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: calc(100vh - 150px);
-  min-height: 460px;
+  flex: 1 0 460px;
 }
 
 /* — top toolbar: dataset picker + compact connection — */
@@ -3465,9 +3511,13 @@ input[type="range"]::-moz-range-track {
   display: flex;
   flex-direction: column;
 }
+/* contain: size keeps a long conversation from counting toward the page's
+   content height (it scrolls here instead); min-height is the chat area kept
+   free when the settings drawer takes the rest. */
 .ai-transcript {
   flex: 1;
-  min-height: 0;
+  min-height: 160px;
+  contain: size;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -3935,4 +3985,636 @@ h6.md-h {
   border-top: 1px solid var(--border);
   padding-top: 8px;
   margin-bottom: 0 !important;
+}
+
+/* ===========================================================================
+   Device layouts
+   ---------------------------------------------------------------------------
+   Tiers follow the CSS viewport (Apple "points") of the target screens:
+
+     phone         ≤ 599 px        iPhone 18 Pro 402 × 874 · 18 Pro Max 440 × 956
+     phone, land   ≤ 1099 × ≤ 500  iPhone 18 Pro 874 × 402 · 18 Pro Max 956 × 440
+     tablet        600–1099 px     iPad Pro 11″ portrait 834 · 13″ portrait 1032
+     tablet, land  1100–1439 px    iPad Pro 11″ landscape 1210 · 13″ landscape 1376
+     laptop        1440–1799 px    MacBook Pro 14″ 1512 × 982 · 16″ 1728 × 1117
+     desktop       1800–2399 px    4K at 200 % (macOS default, 1920 × 1080)
+     wide          2400–3199 px    4K at 150 % (2560 × 1440)
+     ultra         ≥ 3200 px       4K at 100 % (3840 × 2160) — scaled up
+
+   Below 1100 px the sidebar collapses into a compact top bar.  Touch sizing
+   keys off (pointer: coarse) rather than width, so an iPad gets finger-sized
+   controls in either orientation.  The Configure workflow grid follows its own
+   container width (container queries), so it also adapts when the 4K layout
+   puts the controls and the preview side by side.
+   =========================================================================== */
+
+/* — Configure workflow: columns follow the space the controls actually get — */
+.punch-controls {
+  container: cfg-controls / inline-size;
+}
+.punch-preview-pane {
+  container: cfg-preview / inline-size;
+}
+@container cfg-controls (max-width: 1049px) {
+  .cfg-stage-grid,
+  .cfg-stage-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* an odd box out (ring figure, direct beam, the ΔPDF transform) spans the row */
+  .cfg-stage-grid > :last-child:nth-child(odd),
+  .cfg-stage-row > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+@container cfg-controls (max-width: 559px) {
+  .cfg-stage-grid,
+  .cfg-stage-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cfg-box--plot {
+    min-height: 90px;
+  }
+}
+/* Punch "Detection" (method · min I · mode): two selects and an input do not
+   fit three-up in a narrow box, so the mode select takes its own row. */
+.cfg-box:has(> .punch-basis) {
+  container-type: inline-size;
+}
+@container (max-width: 419px) {
+  .cfg-box .punch-basis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cfg-box .punch-basis > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+@container cfg-preview (max-width: 559px) {
+  .punch-preview-grid,
+  .punch-preview-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .punch-preview-controls {
+    display: grid;
+  }
+}
+
+/* — tablet, landscape (iPad Pro 11″ / 13″ landscape) — */
+@media (min-width: 1100px) and (max-width: 1439px) {
+  :root {
+    --sidebar-w: 208px;
+    --main-pad-x: 24px;
+  }
+}
+
+/* Bragg stat strip wraps to 3 columns (median width spans two) until there is
+   room for all five side by side. */
+@media (max-width: 1439px) {
+  .bragg-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .bragg-stat:nth-child(2) {
+    grid-column: span 2;
+  }
+}
+
+/* — short laptop screens (MacBook Pro 14″, iPad landscape): trim vertical
+     chrome so the viewer panels start higher on the screen — */
+@media (min-width: 1100px) and (max-height: 920px) {
+  :root {
+    --main-pad-top: 18px;
+  }
+  .page-head {
+    margin-bottom: 12px;
+  }
+  .qr-page {
+    gap: 12px;
+  }
+  .qr-cluster {
+    padding: 11px 14px;
+  }
+  .qr-cluster-head,
+  .qr-cluster-controls {
+    margin-bottom: 9px;
+  }
+  .qr-cluster-cmap {
+    padding-top: 9px;
+  }
+}
+
+/* AI Assistant: keep the transcript at a readable measure on wide screens */
+@media (min-width: 1440px) {
+  .ai-chat {
+    width: 100%;
+    max-width: 1040px;
+    margin-inline: auto;
+  }
+}
+
+/* — desktop (1920-class: 4K at 200 %, 1080p/1200p monitors) — */
+@media (min-width: 1800px) {
+  :root {
+    --sidebar-w: 240px;
+    --main-pad-top: 26px;
+    --main-pad-x: 36px;
+  }
+  .bragg-plot {
+    min-height: 340px;
+  }
+  .bragg-tbody {
+    max-height: 380px;
+  }
+  .exec-log {
+    max-height: 560px;
+  }
+  .ai-chat {
+    max-width: 1120px;
+  }
+}
+
+/* — wide (4K at 150 %, 1440p-class): Configure becomes a cockpit — workflow
+     controls on the left, the live punch / |Q|-band preview pinned beside them — */
+@media (min-width: 2400px) {
+  :root {
+    --sidebar-w: 256px;
+    --main-pad-top: 30px;
+    --main-pad-x: 44px;
+  }
+  .punch-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .punch-preview-pane {
+    position: sticky;
+    top: 0;
+  }
+  .bragg-plot {
+    min-height: 420px;
+  }
+  .bragg-tbody {
+    max-height: 480px;
+  }
+  .exec-log {
+    max-height: 720px;
+  }
+  .ai-chat {
+    max-width: 1200px;
+  }
+}
+
+/* — ultra (4K panel at 100–125 %): scale the whole console so text and
+     controls keep a readable physical size; it then lays out like the wide
+     tier.  Browser zoom (⌘/Ctrl +) shrinks the CSS viewport and turns this off.
+     Guarded so a browser without `zoom` keeps a full-height, unscaled shell. — */
+@supports (zoom: 1.5) {
+  @media (min-width: 3200px) {
+    :root {
+      --ui-zoom: 1.25;
+    }
+  }
+  @media (min-width: 3600px) {
+    :root {
+      --ui-zoom: 1.5;
+    }
+  }
+}
+
+/* — compact top bar (iPad Pro portrait, all iPhones) — */
+@media (max-width: 1099px) {
+  :root {
+    --main-pad-top: 20px;
+    --main-pad-x: 24px;
+  }
+  .app {
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar {
+    flex: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    padding:
+      calc(env(safe-area-inset-top) + 10px)
+      max(var(--main-pad-x), env(safe-area-inset-right))
+      0
+      max(var(--main-pad-x), env(safe-area-inset-left));
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    overflow: visible;
+  }
+  .brand {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+  }
+  .sidebar-dataset {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+  }
+  .sidebar-dataset-control select {
+    min-width: 120px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+  /* nav: one row of pills, scrolling sideways when it does not fit.  It bleeds
+     into the side padding so pills can slide under a soft fade at each edge
+     while the first pill still lines up with the page content. */
+  .nav {
+    --nav-bleed: 16px;
+    order: 3;
+    flex: 1 0 calc(100% + 2 * var(--nav-bleed));
+    flex-direction: row;
+    gap: 4px;
+    min-width: 0;
+    margin: 0 calc(-1 * var(--nav-bleed));
+    padding: 0 var(--nav-bleed) 10px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--nav-bleed), #000 calc(100% - var(--nav-bleed)), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 var(--nav-bleed), #000 calc(100% - var(--nav-bleed)), transparent);
+  }
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+  .nav button {
+    flex: none;
+    width: auto;
+    gap: 8px;
+    padding: 7px 13px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .nav-label {
+    display: none;
+  }
+  .nav-label-short {
+    display: inline;
+  }
+  .nav-beta,
+  .nav-dot {
+    margin-left: 2px;
+  }
+  .sidebar-foot {
+    display: none;
+  }
+  .main {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .main-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin-top: 28px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--text-3);
+  }
+  .exec-log {
+    max-height: 60vh;
+  }
+  /* stage chips size to their text and wrap, rather than truncating to fit */
+  .dataset-stage-item {
+    flex: 1 1 auto;
+  }
+}
+
+/* viewer panels wrap into a grid instead of squeezing into one row */
+@media (min-width: 600px) and (max-width: 1099px) {
+  .qr-flow-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  /* 1–2 or exactly 4 panels read better two to a row */
+  .qr-flow-row:not(:has(> :nth-child(3))),
+  .qr-flow-row:has(> :nth-child(4):last-child) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* narrow portrait tablets (iPad mini 744, Split View): three panels would be
+   under ~240 px each, too tight for the Q–R headers and cut readouts */
+@media (min-width: 600px) and (max-width: 799px) and (min-height: 501px) {
+  .qr-flow-row,
+  .qr-flow-row:not(:has(> :nth-child(3))),
+  .qr-flow-row:has(> :nth-child(4):last-child) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* — phone, portrait (iPhone 18 Pro / Pro Max) — */
+@media (max-width: 599px) {
+  :root {
+    --main-pad-top: 16px;
+    --main-pad-x: 16px;
+  }
+  .sidebar {
+    gap: 10px 12px;
+  }
+  .sidebar-dataset-label {
+    display: none;
+  }
+  .page-head h2 {
+    font-size: 16px;
+  }
+
+  /* viewers: one panel per row, controls fill the width */
+  .qr-flow-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .qr-header {
+    padding: 10px 14px;
+  }
+  .qr-header-actions {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+  .qr-header-actions .btn {
+    flex: 1 1 0;
+  }
+  .qr-cluster {
+    padding: 12px 13px;
+  }
+  .qr-cluster-head {
+    flex-wrap: wrap;
+  }
+  .qr-cluster-controls {
+    gap: 12px 18px;
+  }
+  .qr-cluster-slider {
+    flex: 1 1 140px;
+    width: auto;
+  }
+  .qr-cluster-cut {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .qr-cluster-cmap select {
+    flex: none;
+  }
+  /* stacked one per row, the Q / Q′ panels need not be square to line up:
+     let the box hug the slice (the R panel's square window stays square) */
+  .qr-img:not(:has(> .skeleton, > .panel-err)) {
+    aspect-ratio: auto;
+  }
+
+  /* Configure */
+  .card-body {
+    padding: 13px;
+  }
+  .stage-card > .card-title-row {
+    padding: 13px 13px 0;
+  }
+  .data-card {
+    padding: 13px;
+  }
+  .cfg-box {
+    padding: 12px;
+  }
+  .dataset-stage-board {
+    min-width: 0;
+  }
+  .data-root-row input[type="text"] {
+    min-width: 0;
+  }
+  .dataset-meta {
+    flex-wrap: wrap;
+  }
+
+  /* Execution */
+  .exec-head,
+  .exec-panel {
+    padding: 14px;
+  }
+  .exec-right {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+    margin-left: 0;
+  }
+  .exec-timing {
+    align-items: flex-start;
+  }
+  .exec-meta {
+    flex-wrap: wrap;
+  }
+  .exec-meta-id {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .exec-vrule {
+    display: none;
+  }
+  .exec-actions {
+    flex-wrap: wrap;
+  }
+  .exec-log {
+    min-height: 260px;
+  }
+  .exec-idle {
+    padding: 40px 16px;
+  }
+
+  /* Bragg profile */
+  .bragg-card {
+    padding: 14px;
+    border-radius: 12px;
+  }
+  .bragg-title-row {
+    justify-content: flex-start;
+  }
+  .bragg-chips,
+  .bragg-panel-head,
+  .bragg-legend {
+    flex-wrap: wrap;
+  }
+  .bragg-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bragg-stat {
+    padding: 12px 13px;
+  }
+  .bragg-plot {
+    min-height: 220px;
+  }
+  .bragg-thead,
+  .bragg-trow {
+    grid-template-columns: 64px 38px 44px repeat(3, minmax(0, 1fr));
+    padding: 0 12px;
+  }
+  .bragg-thead > :nth-child(7),
+  .bragg-trow > :nth-child(7) {
+    display: none; /* fit kind — the stat strip already names it */
+  }
+
+  /* AI Assistant */
+  .ai-page {
+    flex-basis: 420px;
+  }
+  .ai-topbar {
+    padding: 8px 10px;
+  }
+  .ai-conn-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ai-model-select {
+    flex: 1 1 140px;
+    min-width: 0;
+    max-width: none;
+  }
+  .ai-user-bubble {
+    max-width: 90%;
+  }
+  .ai-msg-assistant {
+    gap: 8px;
+  }
+}
+
+/* — phone, landscape (iPhone 18 Pro / Pro Max on its side): one-row top bar,
+     to keep the short screen for content — */
+@media (max-width: 1099px) and (max-height: 500px) and (orientation: landscape) {
+  :root {
+    --main-pad-top: 14px;
+    --main-pad-x: 20px;
+  }
+  .sidebar {
+    flex-wrap: nowrap;
+    gap: 12px;
+    padding-top: calc(env(safe-area-inset-top) + 8px);
+    padding-bottom: 8px;
+  }
+  .brand {
+    flex: none;
+  }
+  .brand-name,
+  .sidebar-dataset-label {
+    display: none;
+  }
+  .nav {
+    --nav-bleed: 12px; /* = the bar's gap, so it never overlaps the dataset picker */
+    order: 0;
+    flex: 1 1 auto;
+    padding-bottom: 0;
+  }
+  .page-head {
+    margin-bottom: 12px;
+  }
+  .ai-page {
+    flex-basis: 300px;
+  }
+  .exec-log {
+    min-height: 220px;
+  }
+}
+
+/* Phones: 16 px form text so iOS Safari does not zoom the page on focus.
+   The :is() carries (0,1,1) specificity, so it also beats the per-component
+   `.x select` sizes declared earlier. */
+@media (max-width: 599px), (max-width: 1099px) and (max-height: 500px) {
+  :is(input[type="number"], input[type="text"], select, textarea) {
+    font-size: 16px;
+  }
+  .readout-edit input.value-input,
+  .readout-edits .readout-edit input.value-input {
+    width: 76px;
+    font-size: 16px;
+  }
+}
+
+/* — touch screens (iPhone, iPad): finger-sized targets, no tap flash — */
+@media (pointer: coarse) {
+  :is(button, select, input, label, summary, a) {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  input[type="range"] {
+    height: 6px;
+    margin: 11px 0;
+    border-radius: 3px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+  }
+  .range-dual,
+  .range-dual input[type="range"] {
+    height: 28px;
+  }
+  .range-dual {
+    margin: 0;
+  }
+  .range-dual .range-track,
+  .range-dual .range-fill {
+    height: 6px;
+    border-radius: 3px;
+  }
+  .switch-track {
+    width: 40px;
+    height: 24px;
+    border-radius: 12px;
+  }
+  .switch-track::after {
+    width: 18px;
+    height: 18px;
+  }
+  .switch input:checked + .switch-track::after {
+    transform: translateX(16px);
+  }
+  .segmented button {
+    padding: 8px 14px;
+  }
+  .btn,
+  .exec-btn {
+    min-height: 40px;
+  }
+  .nav button {
+    min-height: 40px;
+  }
+  .helptip-icon {
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+  }
+  .bragg-sort button {
+    padding: 7px 12px;
+  }
+  .bragg-trow {
+    height: 38px;
+  }
+  .punch-tabs button {
+    padding: 8px 0;
+  }
+  .ai-chip,
+  .ai-vision-chip,
+  .ai-provider-tab {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .ai-gear {
+    width: 36px;
+    height: 36px;
+  }
+  .ai-send {
+    width: 38px;
+    height: 38px;
+  }
+  .import-banner-close {
+    width: 32px;
+    height: 32px;
+  }
 }
