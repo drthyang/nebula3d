@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **NeXus Viewer import: the two tabs no longer share a browser process.** The
+  viewer opened this app with a window reference. Same-site tabs linked that way
+  share one renderer process and main thread, so reloading, closing or crashing
+  the viewer could also end a pipeline run here. A viewer on this app's origin
+  now opens the tab with `noopener` and exchanges the same messages over the
+  `BroadcastChannel` `nebula3d-import:<id>`. This app listens on the channel and
+  on `window.opener`, so an older viewer and cross-origin dev servers still
+  work. `web/src/api/importHandoff.ts` (+ tests); needs the matching
+  neutron-nexus-viewer change; see `docs/web.md`.
 - **Bragg backfill now fills from the diffuse around each hole.** The pipeline,
   `run_pipeline.py` and web default changes from `q_shell` to `local`.
   `q_shell` filled every hole with the median of its whole |Q| shell. That is
