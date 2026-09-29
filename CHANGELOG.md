@@ -11,10 +11,10 @@
   localhost in dev). `web/src/api/importHandoff.ts` (+ vitest suite),
   `web/src/components/ViewerImportBanner.tsx`; see `docs/web.md`.
 - **Mantid loader: projection guard for non-orthogonal cells.** Each dim's
-  `long_name` is now read as an (h, k, l) direction (`[K,2K,0]` → (1, 2, 0))
+  `long_name` is now read as an (h, k, l) direction (`[-K,2K,0]` → (−1, 2, 0))
   and cross-checked against the `W_MATRIX` log. Only plain H, K, L axes (in any
   order) load; a projected grid such as the orthogonal hexagonal cut
-  `[H,0,0]/[K,2K,0]/[0,0,L]` is rejected with a rebinning hint instead of
+  `[H,0,0]/[-K,2K,0]/[0,0,L]` is rejected with a rebinning hint instead of
   loading with silently wrong |Q| (the old parser took the first H/K/L letter
   in the label). Loads of the existing TbTi3Bi4 files are bit-identical.
   `tests/test_nonorthogonal_cells.py` pins the guard plus metric-correct ring

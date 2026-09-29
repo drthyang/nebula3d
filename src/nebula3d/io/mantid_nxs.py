@@ -28,8 +28,9 @@ Projection note
 Only volumes binned on the crystal's own H, K, L axes (in any order) load.
 Non-orthogonal *cells* (hexagonal, monoclinic, …) are fine: the UB matrix
 carries the metric.  A *projected* grid such as the orthogonal hexagonal cut
-``[H,0,0]/[K,2K,0]/[0,0,L]`` is rejected, because every downstream stage
-indexes the grid as h, k, l directly.
+``[H,0,0]/[-K,2K,0]/[0,0,L]`` is rejected, because every downstream stage
+indexes the grid as h, k, l directly.  (With γ = 120°, a*·(h a* + k b*) ∝
+h + k/2, so (−1, 2, 0) is the in-plane direction perpendicular to a*.)
 """
 
 from __future__ import annotations

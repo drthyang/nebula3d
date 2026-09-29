@@ -106,7 +106,7 @@ def test_loader_maps_permuted_axes_and_keeps_hexagonal_metric(tmp_path, with_w):
 
 
 @pytest.mark.parametrize(("labels", "match"), [
-    (("[H,0,0]", "[K,2K,0]", "[0,0,L]"), "Rebin in Mantid"),   # orthogonal hexagonal cut
+    (("[H,0,0]", "[-K,2K,0]", "[0,0,L]"), "Rebin in Mantid"),  # orthogonal hexagonal cut
     (("[H,H,0]", "[H,-H,0]", "[0,0,L]"), "Rebin in Mantid"),   # MDNorm diagonal pair
     (("[-H,0,0]", "[0,K,0]", "[0,0,L]"), "Rebin in Mantid"),   # reversed axis
     (("[2H,0,0]", "[0,K,0]", "[0,0,L]"), "Rebin in Mantid"),   # rescaled axis
