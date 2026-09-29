@@ -105,7 +105,11 @@ hosted — the privacy-preserving path to a public, fully-functional app.
 
   (The default Bragg backfill, `backfill_bragg` with `method="local"`, is
   connected-component / `ndimage`-based and already lean: ~25 B/voxel transient
-  vs ~41 for the former `q_shell` default and ~35 for `laplace`. The older ring-workflow
+  vs ~41 for the former `q_shell` default; `laplace` adds ~10 B/voxel on top of
+  `local` on the 22 K volume, and its sparse solve runs in batches of at most
+  2 M unknowns (`LAPLACE_MAX_UNKNOWNS`), so it stays bounded however much of the
+  volume is masked — a single masked region larger than that is an unmeasured
+  coverage gap and gets the `local` fill, noted in the run log. The older ring-workflow
   `backfill_ring_shells` — not on this pipeline — builds a KD-tree over every
   valid voxel; its low-memory path bounds that to a per-H-slab local tree,
   within ~1e-5 relative of the exact fill.)
