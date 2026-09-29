@@ -979,6 +979,9 @@ def backfill(vol: HKLVolume, params: BackfillParams | None = None, *,
         local_radius=p.local_radius, local_min_count=p.local_min_count,
         q_shell_step=p.q_shell_step, q_shell_min_count=p.q_shell_min_count,
         laplace_gap=p.laplace_gap, tv_lam=p.tv_lam, tv_iter=p.tv_iter,
+        # fill notes go to the run log; without one they stay warnings
+        report=(None if progress is None else
+                lambda msg: _emit(progress, "backfill", "progress", None, msg)),
     )
     _emit(progress, "backfill", "done", 1.0, "backfill complete")
     return filled

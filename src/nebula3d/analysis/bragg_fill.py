@@ -24,18 +24,25 @@ from __future__ import annotations
 
 import dataclasses
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Literal, cast
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy import ndimage, sparse
-from scipy.sparse.csgraph import connected_components
 
 from nebula3d.core import HKLVolume, q_magnitude_from_axes
 from nebula3d.inpainting.pipeline import Method, fill
 
 BraggFillMethod = Method | Literal["local", "q_shell", "laplace"]
+
+#: Most unknowns one ``method="laplace"`` solve holds.  Caps the solver's
+#: working set (~200 B per unknown, so ≲0.4 GB) however many voxels are masked,
+#: which keeps the browser build inside its 4 GB WASM heap.  It is also the
+#: largest single region the Laplace fill solves: a real Bragg punch plus its
+#: gap band is ~10²–10⁵ voxels, so a connected region past this is an
+#: unmeasured coverage gap, which gets the ``local`` shell-median fill instead.
+LAPLACE_MAX_UNKNOWNS = 2_000_000
 
 
 def backfill_bragg(
@@ -53,6 +60,8 @@ def backfill_bragg(
     direct_beam_fill: bool = True,
     direct_beam_q_gap: float = 0.05,
     direct_beam_q_width: float = 0.15,
+    laplace_max_unknowns: int = LAPLACE_MAX_UNKNOWNS,
+    report: Callable[[str], None] | None = None,
 ) -> HKLVolume:
     """Fill Bragg-punched voxels in *vol*.
 
@@ -69,7 +78,10 @@ def backfill_bragg(
     exactly, Bragg tails just outside the punch would pull it up, so the
     boundary values are taken ``laplace_gap`` voxels *outside* the punch: that
     band is solved together with the hole and then discarded, i.e. its measured
-    values are kept and only punched voxels change.
+    values are kept and only punched voxels change.  The holes are solved in
+    batches of at most ``laplace_max_unknowns`` unknowns, so memory stays
+    bounded; a single masked region larger than that (an unmeasured coverage
+    gap, not a Bragg punch) gets the ``local`` fill instead.
 
     ``method="q_shell"`` fills ordinary Bragg components from the robust radial
     background level at the same ``|Q|`` as each punched voxel.  Kept for
@@ -127,6 +139,12 @@ def backfill_bragg(
         trough that hugs the direct beam.
     direct_beam_q_width:
         Å⁻¹ thickness of the ``|Q|`` shell sampled for the direct-beam fill.
+    laplace_max_unknowns:
+        For ``method="laplace"``: most unknowns per CG solve, and the largest
+        connected region Laplace-filled (see :data:`LAPLACE_MAX_UNKNOWNS`).
+    report:
+        Receives notes about the fill (oversized regions, CG not converging);
+        they are raised as ``RuntimeWarning`` when it is None.
 
     Returns
     -------
@@ -136,7 +154,8 @@ def backfill_bragg(
         return _laplace_fill(
             vol, gap=laplace_gap, direct_beam_fill=direct_beam_fill,
             db_q_gap=direct_beam_q_gap, db_q_width=direct_beam_q_width,
-            db_min_count=local_min_count,
+            db_min_count=local_min_count, local_radius=local_radius,
+            max_unknowns=laplace_max_unknowns, report=report,
         )
     if method in {"local", "q_shell"}:
         return _local_background_fill(
@@ -202,8 +221,34 @@ def _local_background_fill(
             q_gap=db_q_gap, q_width=db_q_width, min_count=min_count,
         )
 
-    remaining = holes & ~resolved
-    labels, n_label = ndimage.label(remaining, structure=np.ones((3, 3, 3), dtype=bool))
+    _shell_fill_components(
+        data, sigma, holes & ~resolved, valid, radius=radius,
+        min_count=min_count, global_fill=global_fill,
+        global_sigma=global_sigma, q_lookup=q_lookup,
+    )
+    return dataclasses.replace(vol, data=data, sigma=sigma,
+                               mask=np.ones(vol.shape, dtype=bool))
+
+
+def _shell_fill_components(
+    data: NDArray,
+    sigma: NDArray,
+    targets: NDArray[np.bool_],
+    valid: NDArray[np.bool_],
+    *,
+    radius: int,
+    min_count: int,
+    global_fill: float,
+    global_sigma: float,
+    q_lookup: _QShellLookup | None = None,
+) -> None:
+    """Fill each connected component of *targets* in place, from its valid shell.
+
+    The ``local`` fill (and ``q_shell``'s per-component fallback): the median
+    of the valid voxels in a ``radius``-voxel dilated shell around the
+    component, or the global median when that shell is too sparse.
+    """
+    labels, _ = ndimage.label(targets, structure=np.ones((3, 3, 3), dtype=bool))
     objects = ndimage.find_objects(labels)
     structure = np.ones((3, 3, 3), dtype=bool)
     pad = max(int(radius) + 1, 1)
@@ -212,7 +257,7 @@ def _local_background_fill(
         if obj is None:
             continue
         slices = []
-        for s, n in zip(obj, vol.shape):
+        for s, n in zip(obj, data.shape):
             slices.append(slice(max(0, s.start - pad), min(n, s.stop + pad)))
         region = cast(tuple[slice, slice, slice], tuple(slices))
         comp = labels[region] == lbl
@@ -243,9 +288,6 @@ def _local_background_fill(
         data[region] = data_region
         sigma[region] = sigma_region
 
-    return dataclasses.replace(vol, data=data, sigma=sigma,
-                               mask=np.ones(vol.shape, dtype=bool))
-
 
 def _laplace_fill(
     vol: HKLVolume,
@@ -254,16 +296,24 @@ def _laplace_fill(
     db_q_gap: float = 0.05,
     db_q_width: float = 0.15,
     db_min_count: int = 8,
+    local_radius: int = 2,
+    max_unknowns: int = LAPLACE_MAX_UNKNOWNS,
+    report: Callable[[str], None] | None = None,
 ) -> HKLVolume:
     """Fill every punched hole with the harmonic interpolant of its surroundings.
 
-    One sparse system covers all holes: each unknown voxel satisfies
-    ``deg·u_i − Σ u_j = Σ y_k`` over its in-volume 6-neighbours, where ``u_j``
-    are other unknowns and ``y_k`` known valid voxels (Dirichlet).  Neighbours
-    that are neither (unmeasured voxels) are dropped from the stencil
-    (Neumann).  Separate holes are separate blocks of one block-diagonal SPD
-    matrix, solved together by Jacobi-preconditioned CG — no per-hole Python
-    loop, and only unknown-sized arrays beyond the output copies.
+    Each unknown voxel satisfies ``deg·u_i − Σ u_j = Σ y_k`` over its
+    in-volume 6-neighbours, where ``u_j`` are other unknowns and ``y_k`` known
+    valid voxels (Dirichlet).  Neighbours that are neither (unmeasured voxels)
+    are dropped from the stencil (Neumann).  Separate holes are independent
+    blocks of this block-diagonal SPD system: whole blocks are packed into
+    batches of at most ``max_unknowns`` unknowns, and each batch is solved by
+    Jacobi-preconditioned CG.  The solver's memory is therefore bounded by the
+    batch, not by how many voxels were punched.
+
+    A single block larger than ``max_unknowns`` is not a Bragg punch but an
+    unmeasured region (the loader zeroes and masks those, so they arrive here
+    as holes); its holes get the ``local`` shell-median fill instead.
     """
     holes = (~vol.mask) & np.isfinite(vol.data)
     if not holes.any():
@@ -293,77 +343,161 @@ def _laplace_fill(
     # Unknowns = the holes plus a ``gap``-voxel band of valid data around them;
     # the band is solved (so the boundary sits past any Bragg tail) and then
     # discarded — only punched voxels are written.
+    cross = ndimage.generate_binary_structure(3, 1)
     unknown = remaining.copy()
     if gap > 0:
-        cross = ndimage.generate_binary_structure(3, 1)
         unknown |= (ndimage.binary_dilation(remaining, structure=cross,
                                             iterations=int(gap))
                     & valid & ~resolved)
     known = (valid & ~unknown).reshape(-1)
-    flat = data.reshape(-1)
-    idx = np.flatnonzero(unknown)  # sorted → searchsorted neighbour lookup
+    # The stencil's connected blocks are the 6-connected components of the
+    # unknowns; labels come out in raster order of each block's first voxel.
+    labels, n_comp = ndimage.label(unknown, structure=cross)
     del unknown
-    n = idx.size
-    coords = np.unravel_index(idx, vol.shape)
-    strides = (vol.shape[1] * vol.shape[2], vol.shape[2], 1)
+    idx = np.flatnonzero(labels)  # sorted → searchsorted neighbour lookup
+    comp = labels.reshape(-1)[idx] - 1
+    del labels
+    sizes = np.bincount(comp, minlength=n_comp)
 
-    deg = np.zeros(n)
-    rhs = np.zeros(n)
-    rhs_sq = np.zeros(n)
-    n_links = np.zeros(n)
-    rows: list[NDArray[np.intp]] = []
-    cols: list[NDArray[np.intp]] = []
+    oversized = sizes > max_unknowns
+    if oversized.any():
+        drop = oversized[comp]
+        big = np.zeros(data.size, dtype=bool)
+        big[idx[drop]] = True
+        big = big.reshape(vol.shape) & remaining
+        _shell_fill_components(
+            data, sigma, big, valid, radius=local_radius,
+            min_count=db_min_count, global_fill=global_fill,
+            global_sigma=global_sigma,
+        )
+        _note(report, (
+            f"laplace backfill: {int(oversized.sum())} masked region(s) larger "
+            f"than {max_unknowns:,} voxels ({int(big.sum()):,} voxels in all — "
+            f"unmeasured coverage, not Bragg punches) filled with their local "
+            f"shell median instead"))
+        del big
+        idx, comp = idx[~drop], comp[~drop]
+        sizes[oversized] = 0
+
+    flat = data.reshape(-1)
+    sigma_flat = sigma.reshape(-1)
+    todo = remaining.reshape(-1)
+    cum = np.cumsum(sizes)
+    all_converged = True
+    lo = 0
+    while lo < n_comp:  # greedy packing of whole blocks, in label order
+        base = int(cum[lo - 1]) if lo else 0
+        hi = max(int(np.searchsorted(cum, base + max_unknowns, side="right")),
+                 lo + 1)
+        sel = (comp >= lo) & (comp < hi)
+        lo = hi
+        if not sel.any():  # only oversized blocks in this range
+            continue
+        b_idx = idx[sel]
+        u, u_sig, converged = _laplace_solve_batch(
+            b_idx, comp[sel], flat, known, vol.shape, global_fill)
+        all_converged &= converged
+        write = todo[b_idx]
+        flat[b_idx[write]] = u[write]
+        sigma_flat[b_idx[write]] = np.maximum(u_sig[write], global_sigma)
+    if not all_converged:
+        _note(report, "laplace backfill: CG did not reach tolerance")
+    return dataclasses.replace(vol, data=data, sigma=sigma, mask=out_mask)
+
+
+def _laplace_solve_batch(
+    idx: NDArray[np.intp],
+    comp: NDArray[np.integer],
+    flat: NDArray,
+    known: NDArray[np.bool_],
+    shape: tuple[int, ...],
+    global_fill: float,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], bool]:
+    """Solve the Laplace blocks of one batch; return ``(u, sigma, converged)``.
+
+    *idx* are the batch's unknowns as sorted flat indices and *comp* their
+    block ids — whole blocks only, so every unknown neighbour is in the batch.
+    """
+    m = idx.size
+    itype = np.int32 if 7 * m < np.iinfo(np.int32).max else np.int64
+    strides = (shape[1] * shape[2], shape[2], 1)
+    deg = np.zeros(m)
+    rhs = np.zeros(m)
+    rhs_sq = np.zeros(m)
+    n_links = np.zeros(m)
+    # nbr[axis, side]: batch position of the unknown neighbour, -1 if none.
+    nbr = np.full((3, 2, m), -1, dtype=itype)
     for axis in range(3):
-        for step in (-1, 1):
-            inside = (coords[axis] > 0 if step < 0
-                      else coords[axis] < vol.shape[axis] - 1)
+        coord = (idx // strides[axis]) % shape[axis]
+        for side, step in enumerate((-1, 1)):
+            inside = coord > 0 if step < 0 else coord < shape[axis] - 1
             src = np.flatnonzero(inside)
             nb = idx[src] + step * strides[axis]
-            pos = np.minimum(np.searchsorted(idx, nb), n - 1)
+            pos = np.minimum(np.searchsorted(idx, nb), m - 1)
             is_u = idx[pos] == nb
             is_k = ~is_u & known[nb]
             y = flat[nb[is_k]].astype(np.float64, copy=False)
-            deg += np.bincount(src[is_u | is_k], minlength=n)
-            rhs += np.bincount(src[is_k], weights=y, minlength=n)
-            rhs_sq += np.bincount(src[is_k], weights=y * y, minlength=n)
-            n_links += np.bincount(src[is_k], minlength=n)
-            rows.append(src[is_u])
-            cols.append(pos[is_u])
-    del coords, known
-    r_idx = np.concatenate(rows).astype(np.int32, copy=False)
-    del rows
-    c_idx = np.concatenate(cols).astype(np.int32, copy=False)
-    del cols
-    adj = sparse.csr_matrix((np.ones(r_idx.size), (r_idx, c_idx)), shape=(n, n))
-    del r_idx, c_idx
+            # each src appears once per direction, so fancy += is exact
+            deg[src[is_u | is_k]] += 1.0
+            ks = src[is_k]
+            rhs[ks] += y
+            rhs_sq[ks] += y * y
+            n_links[ks] += 1.0
+            nbr[axis, side, src[is_u]] = pos[is_u]
+        del coord
 
     # Per connected hole: the Dirichlet data's mean seeds CG, its spread sets
     # sigma.  A hole with no measured neighbour at all ("orphan", e.g. walled
     # in by unmeasured voxels) has a singular block — give it the global median.
-    n_comp, comp = connected_components(adj, directed=False)
-    c_links = np.bincount(comp, weights=n_links, minlength=n_comp)
+    lc = comp - comp.min()  # a batch holds a contiguous range of block ids
+    k = int(lc.max()) + 1
+    c_links = np.bincount(lc, weights=n_links, minlength=k)
     c_n = np.maximum(c_links, 1.0)
-    c_mean = np.bincount(comp, weights=rhs, minlength=n_comp) / c_n
-    c_var = np.bincount(comp, weights=rhs_sq, minlength=n_comp) / c_n - c_mean ** 2
+    c_mean = np.bincount(lc, weights=rhs, minlength=k) / c_n
+    c_var = np.bincount(lc, weights=rhs_sq, minlength=k) / c_n - c_mean ** 2
     c_sig = np.sqrt(np.maximum(c_var, 0.0))
-    solvable = c_links[comp] > 0
+    del rhs_sq, n_links
+    solvable = c_links[lc] > 0
 
-    u = np.full(n, global_fill)
-    lap = (sparse.diags(deg) - adj).tocsr()
-    del adj
+    # Laplacian as CSR, built in place (no COO / adjacency intermediates).
+    # Entries go in ascending column order — neighbours at −stride₀, −stride₁,
+    # −1, the diagonal, then +1, +stride₁, +stride₀ — the canonical layout.
+    has = nbr >= 0
+    indptr: NDArray[np.signedinteger] = np.zeros(m + 1, dtype=itype)
+    np.cumsum(has.sum(axis=(0, 1), dtype=itype) + 1, out=indptr[1:])
+    indices = np.empty(int(indptr[-1]), dtype=itype)
+    vals = np.empty(indices.size)
+    head = indptr[:-1].copy()  # next free slot of each row
+    for slot in ((0, 0), (1, 0), (2, 0), None, (2, 1), (1, 1), (0, 1)):
+        if slot is None:
+            indices[head] = np.arange(m, dtype=itype)
+            vals[head] = deg
+            head += 1
+            continue
+        rows = np.flatnonzero(has[slot])
+        at = head[rows]
+        indices[at] = nbr[slot][rows]
+        vals[at] = -1.0
+        head[rows] += 1
+    del has, nbr, head
+    lap = sparse.csr_matrix((vals, indices, indptr), shape=(m, m))
+
+    u = np.full(m, global_fill)
+    converged = True
     if not solvable.all():  # rare — skip the sub-matrix copies otherwise
         lap = lap[solvable][:, solvable]
     if solvable.any():
-        u[solvable], converged = _pcg(lap, rhs[solvable], c_mean[comp[solvable]],
+        u[solvable], converged = _pcg(lap, rhs[solvable], c_mean[lc[solvable]],
                                       1.0 / deg[solvable])
-        if not converged:
-            warnings.warn("laplace backfill: CG did not reach tolerance",
-                          RuntimeWarning, stacklevel=3)
+    return u, c_sig[lc], converged
 
-    write = remaining.reshape(-1)[idx]
-    flat[idx[write]] = u[write]
-    sigma.reshape(-1)[idx[write]] = np.maximum(c_sig[comp[write]], global_sigma)
-    return dataclasses.replace(vol, data=data, sigma=sigma, mask=out_mask)
+
+def _note(report: Callable[[str], None] | None, message: str) -> None:
+    """Send a backfill note to *report* (the pipeline log), else warn."""
+    if report is not None:
+        report(message)
+    else:
+        warnings.warn(message, RuntimeWarning, stacklevel=3)
 
 
 def _pcg(
