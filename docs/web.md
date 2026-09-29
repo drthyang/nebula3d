@@ -123,9 +123,13 @@ nebula3d HDF5 file (`/entry/{data, mask, h_axis, k_axis, l_axis, ub_matrix}`,
 padded symmetric about Q = 0) and sends it:
 
 1. this app → viewer: `nebula3d-import-ready`, repeated each second until the file arrives;
-2. viewer → this app: `nebula3d-import` with the `File`, schema `nexus-viewer/1` and
+2. viewer → this app, while it builds the file: `nebula3d-import-progress` with a stage
+   `label` (*Symmetrizing*, *Writing HDF5*) and an overall `fraction` (0–1), shown as a
+   bar in the waiting banner. Optional: an older viewer sends none;
+3. viewer → this app: `nebula3d-import` with the `File`, schema `nexus-viewer/1` and
    provenance `meta` (source file, symmetry, mask), or `nebula3d-import-cancel`;
-3. this app loads it like **Load volume…**, selects it as the dataset, clears the
+4. this app loads it like **Load volume…** (the banner shows the in-browser engine's
+   start-up if it is still booting), selects it as the dataset, clears the
    parameters from the address bar and answers `nebula3d-import-loaded` (or
    `nebula3d-import-error`), which the viewer shows next to its button.
 
