@@ -48,6 +48,7 @@ import numpy as np
 
 import nebula3d
 from nebula3d.analysis import compute_delta_pdf
+from nebula3d.pipeline import write_cell_attrs
 
 # ------------------------------------------------------------------
 # locate input (the ring-removed, NON-punched volume — Bragg still present)
@@ -154,13 +155,8 @@ with h5py.File(out_h5, "w") as fh:
     fh.attrs["source_file"] = proc_path.name
     fh.attrs["kind"] = "3D-PDF (total scattering; Bragg kept)"
     fh.attrs["transform_config"] = transform_config
-    try:
-        _direct = 2 * np.pi * np.linalg.inv(vol.ub_matrix).T
-        fh.attrs["lat_a"] = float(np.linalg.norm(_direct[:, 0]))
-        fh.attrs["lat_b"] = float(np.linalg.norm(_direct[:, 1]))
-        fh.attrs["lat_c"] = float(np.linalg.norm(_direct[:, 2]))
-    except np.linalg.LinAlgError:
-        pass
+    # direct cell (Å, degrees): unit-cell gridlines + each section's real angle
+    write_cell_attrs(fh, vol.ub_matrix)
 print(f"saved {out_h5.name}  ({out_h5.stat().st_size / 1e6:.0f} MB)", flush=True)
 
 # ------------------------------------------------------------------

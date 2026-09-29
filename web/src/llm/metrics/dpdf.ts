@@ -4,9 +4,12 @@
 // directional (anisotropic), and how do they trend with distance?  A huge
 // self-correlation peak sits at the origin, so a small central disk is excluded
 // before every statistic — otherwise it would swamp both the SNR and the
-// anisotropy.
+// anisotropy.  Positions are taken in true Cartesian Å: a section whose axes
+// meet at a non-right angle (hexagonal ab-plane, 120°) is first mapped through
+// its `axes_angle`, so radii and feature directions are physical.
 
 import type { ConsistencyMetrics } from "../../api/types";
+import { toDisplay } from "../../components/oblique";
 import type { GridSlice } from "./sliceStats";
 import { roundSig } from "./sliceStats";
 
@@ -22,16 +25,16 @@ const collectFinite = (
   excludeR: number,
 ): { values: number[]; abs: number[]; coords: [number, number][] } => {
   const { nx, ny, x_axis, y_axis } = grid.header;
+  const angle = grid.header.axes_angle ?? 90;
   const data = grid.data;
   const values: number[] = [];
   const abs: number[] = [];
   const coords: [number, number][] = [];
   for (let iy = 0; iy < ny; iy++) {
-    const y = y_axis[iy] ?? 0;
     for (let ix = 0; ix < nx; ix++) {
       const v = data[iy * nx + ix];
       if (!Number.isFinite(v)) continue;
-      const x = x_axis[ix] ?? 0;
+      const [x, y] = toDisplay(x_axis[ix] ?? 0, y_axis[iy] ?? 0, angle);
       if (Math.sqrt(x * x + y * y) < excludeR) continue;
       values.push(v);
       abs.push(Math.abs(v));

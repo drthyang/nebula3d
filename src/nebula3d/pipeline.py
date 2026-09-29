@@ -35,7 +35,7 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import numpy as np
 
@@ -58,7 +58,7 @@ from nebula3d.analysis import (
     compute_delta_pdf,
     invert_delta_pdf,
 )
-from nebula3d.analysis.delta_pdf import _q_max_from_axes
+from nebula3d.analysis.delta_pdf import _q_max_from_axes, real_space_radius
 from nebula3d.core import HKLVolume
 from nebula3d.core import low_memory as _low_memory
 from nebula3d.preprocessing import (
@@ -74,6 +74,10 @@ from nebula3d.preprocessing.radial_background import (
 from nebula3d.preprocessing.radial_background import (
     _offset_q_magnitude as _plane_offset_q_magnitude,
 )
+from nebula3d.utils.reciprocal_space import direct_cell
+
+if TYPE_CHECKING:
+    import h5py
 
 __all__ = [
     "RingParams",
@@ -1040,6 +1044,18 @@ def delta_pdf_transform_config(p: DeltaPdfParams) -> str:
     ))
 
 
+def write_cell_attrs(fh: h5py.Group, ub_matrix: np.ndarray) -> None:
+    """Store the direct cell on an open HDF5 file/group as ``lat_a/b/c`` (Å)
+    and ``lat_alpha/beta/gamma`` (degrees); a singular UB writes nothing."""
+    try:
+        cell = direct_cell(ub_matrix)
+    except np.linalg.LinAlgError:
+        return
+    for key, value in zip(("lat_a", "lat_b", "lat_c", "lat_alpha", "lat_beta", "lat_gamma"),
+                          cell):
+        fh.attrs[key] = float(value)
+
+
 def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
                        source_name: str, out_path: Path,
                        r_band: tuple[float, float] | None = None,
@@ -1047,7 +1063,8 @@ def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
     """Write the ΔPDF to the same HDF5 schema the viewers read.
 
     Mirrors ``examples/delta_pdf.py`` (data + x/y/z axes, provenance attrs, and
-    the direct-lattice constants for unit-cell gridlines).
+    the direct cell: ``lat_a/b/c`` in Å for unit-cell gridlines and
+    ``lat_alpha/beta/gamma`` in degrees to draw each section at its real angle).
     """
     import h5py
 
@@ -1072,13 +1089,7 @@ def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
         fh.attrs["transform_config"] = (
             transform_config if transform_config is not None
             else delta_pdf_transform_config(p))
-        try:
-            direct = 2 * np.pi * np.linalg.inv(vol.ub_matrix).T
-            fh.attrs["lat_a"] = float(np.linalg.norm(direct[:, 0]))
-            fh.attrs["lat_b"] = float(np.linalg.norm(direct[:, 1]))
-            fh.attrs["lat_c"] = float(np.linalg.norm(direct[:, 2]))
-        except np.linalg.LinAlgError:
-            pass
+        write_cell_attrs(fh, vol.ub_matrix)
 
 
 def _crop_hkl(vol: HKLVolume, crop_hkl: tuple[float, float, float] | None
@@ -1318,20 +1329,20 @@ def consistency_reconstruction(
         subtract_mean=p.subtract_mean, real_space_angstrom=True,
         crop_hkl=None, subtract_smooth_bg=p.subtract_smooth_bg)
 
-    # max R for the UI scale — farthest real-space corner (Å)
-    r_data_max = float(np.sqrt(
-        max(dpdf.x_axis[0]**2, dpdf.x_axis[-1]**2) +
-        max(dpdf.y_axis[0]**2, dpdf.y_axis[-1]**2) +
-        max(dpdf.z_axis[0]**2, dpdf.z_axis[-1]**2)
-    ))
+    # max R for the UI scale — farthest real-space corner (Å).  |r| is convex
+    # in the oblique (x, y, z), so its maximum over the box is at a corner.
+    angles = dpdf.cell_angles
+    ends = [np.array([ax[0], ax[-1]]) for ax in (dpdf.x_axis, dpdf.y_axis, dpdf.z_axis)]
+    r_data_max = float(real_space_radius(
+        ends[0][:, None, None], ends[1][None, :, None], ends[2][None, None, :],
+        angles).max())
 
     if r_band is not None:
         rmin, rmax = r_band
-        # Broadcast the separable real-space axes rather than materialising the
-        # full X/Y/Z meshgrids — same R, one array instead of four.
-        R = np.sqrt(dpdf.x_axis[:, None, None] ** 2
-                    + dpdf.y_axis[None, :, None] ** 2
-                    + dpdf.z_axis[None, None, :] ** 2)
+        # True |r| from the separable oblique axes — one volume-sized array,
+        # no X/Y/Z meshgrids.
+        R = real_space_radius(dpdf.x_axis[:, None, None], dpdf.y_axis[None, :, None],
+                              dpdf.z_axis[None, None, :], angles)
         r_mask = (R >= rmin) & (R <= rmax)
         dpdf.data = np.where(r_mask, dpdf.data, 0.0)
 

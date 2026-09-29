@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **3D-ΔPDF on non-orthogonal cells: true distances and real section angles.**
+  The ΔPDF grid is unchanged (native FFT grid, `x_H/y_K/z_L` in Å along a, b,
+  c), but the cell angles now travel with it. They are stored as
+  `DeltaPDF.cell_angles` and as `lat_alpha/beta/gamma` in the `.h5` attrs (via a
+  shared `pipeline.write_cell_attrs`). They are exposed as `alpha/beta/gamma` in
+  the volume, ΔPDF and consistency lattice metadata, and sent with every ΔPDF
+  slice (`axes_angle`, `r_center`, `r_perp`).
+  - **True distances:** new `real_space_radius` and `section_geometry` in
+    `nebula3d.analysis.delta_pdf`. The consistency r band and `r_data_max`
+    now use the true metric; this is bit-identical for 90° cells.
+  - **Web viewers** (3D-ΔPDF, multi-temperature, Q–R band) draw each section at
+    γ/β/α. Unit-cell lines follow the lattice, and r-band circles are placed by
+    true distance. The assistant's ΔPDF metrics and context use Cartesian
+    positions and include the angles.
+  - **matplotlib viewers** (`explore_delta_pdf_ortho.py`,
+    `explore_delta_pdf.py`, `explore_delta_pdf_multi.py`) apply the same skew.
+    This also fixes the ortho and multi viewers, which had crashed since the
+    June rename on leftover `TEMP` / `central[t]` names.
+  - **Older files** without angle attrs are drawn at 90° as before.
+  - **`ub_from_lattice` fixed.** It returned a singular matrix for every cell;
+    it now builds the Busing–Levy B matrix, and new `direct_cell(ub)` inverts it.
+  - **Tests:** `tests/test_nonorthogonal_cells.py`, `tests/test_server.py` and
+    `web/src/components/__tests__/oblique.test.ts` pin this on orthorhombic,
+    hexagonal, monoclinic and triclinic cells.
+
 - **Import from the NeXus Viewer.** The viewer's *Open in NEBULA3D* button
   opens this app with `?import=nexus-viewer&id=…&from=…` and posts its
   symmetrized, masked volume (nebula3d HDF5, padded symmetric about Q = 0)

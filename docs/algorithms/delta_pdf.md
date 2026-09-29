@@ -52,6 +52,38 @@ Step by step (as implemented in `src/nebula3d/analysis/delta_pdf.py`):
 Real-space axes come from `fftshift(fftfreq(n, d=ΔHKL))`, converted to Å with
 the direct-lattice vector lengths `2π·inv(UB)ᵀ`.
 
+### Non-orthogonal cells (hexagonal, monoclinic, triclinic)
+
+The FFT pairs `(h, k, l)` with fractional `(u, v, w)` for any cell, because
+`Q·r = 2π(hu + kv + lw)` holds whatever the angles. The ΔPDF therefore stays on
+its native grid, and `x_H, y_K, z_L = u·|a|, v·|b|, w·|c|` are coordinates
+**along** a, b, c. For a cell with an angle other than 90° these axes are
+oblique, and the point `(x, y, z)` sits at `r = x·â + y·b̂ + z·ĉ`:
+
+    |r|² = x² + y² + z² + 2(xy·cos γ + xz·cos β + yz·cos α)
+
+Nothing is resampled; the cell angles travel with the result instead
+(`DeltaPDF.cell_angles`, and `lat_alpha/beta/gamma` in the `.h5` attrs next to
+`lat_a/b/c`):
+
+- **True distances.** `real_space_radius(x, y, z, cell_angles)` gives the
+  metric above. The consistency round trip's r band and `r_data_max` use it.
+- **Drawing sections.** x_H–y_K is drawn at γ, x_H–z_L at β and y_K–z_L at α.
+  A point at in-plane `(h, v)` is drawn at `X = h + v·cos θ`, `Y = v·sin θ`, so
+  on-screen distances are true Å. For example, a hexagonal a–b section shows its
+  120°, with ±a, ±b and ±(a+b) on a regular hexagon.
+  `section_geometry(cell_angles, horizontal, vertical, cut)` returns θ plus the
+  display position of the section point nearest the origin and the plane's
+  distance from it. From those, a true-|r| sphere becomes the right circle on
+  any section (`|r|² = (X − cx)² + (Y − cy)² + d²`).
+- **Cut coordinates** stay along the fixed axis. `z_L = 5 Å` means `w·|c| = 5`,
+  not a perpendicular height of 5 Å when c is inclined to the a–b plane.
+
+The web viewers get θ with each slice (`axes_angle`, plus `r_center`/`r_perp` for
+the band circles). The matplotlib viewers read the `.h5` attrs and apply the same
+skew (`nebula3d.visualization.slices.oblique_transform` / `draw_unit_cell`).
+Files written before the angles were stored are drawn at 90°.
+
 ## Inverse transform & consistency check (`invert_delta_pdf`)
 
 The recipe is exactly invertible, so the ΔPDF can be transformed **back** to the

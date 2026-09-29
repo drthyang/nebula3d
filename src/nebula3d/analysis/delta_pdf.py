@@ -29,8 +29,84 @@ from scipy.fft import fftfreq, fftn, fftshift, ifftn, ifftshift, next_fast_len
 from scipy.ndimage import gaussian_filter
 
 from nebula3d.core import HKLVolume, q_magnitude_from_axes
+from nebula3d.utils.reciprocal_space import direct_cell
 
 Window = Literal["hann", "gaussian", "none"]
+
+_AXES = "xyz"  # real-space axes along a, b, c
+
+
+def _axis_cosines(
+    cell_angles: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    """``(cos α, cos β, cos γ)``, snapping 90° to an exact zero so an orthogonal
+    cell reproduces ``sqrt(x² + y² + z²)`` bit-for-bit."""
+    return tuple(  # type: ignore[return-value]
+        0.0 if abs(float(t) - 90.0) < 1e-9 else float(np.cos(np.radians(t)))
+        for t in cell_angles)
+
+
+def real_space_radius(
+    x: NDArray[np.floating] | float,
+    y: NDArray[np.floating] | float,
+    z: NDArray[np.floating] | float,
+    cell_angles: tuple[float, float, float] = (90.0, 90.0, 90.0),
+) -> NDArray[np.float64]:
+    """True distance ``|r|`` (Å) of oblique ΔPDF coordinates ``(x, y, z)``.
+
+    ``r = x·â + y·b̂ + z·ĉ``, so
+    ``|r|² = x² + y² + z² + 2(xy·cos γ + xz·cos β + yz·cos α)``.  The arguments
+    broadcast: pass the 1-D axes as ``x[:, None, None]`` etc. for a full grid,
+    which then costs one volume-sized array (no meshgrids).
+    """
+    ca, cb, cg = _axis_cosines(cell_angles)
+    x, y, z = (np.asarray(v, dtype=np.float64) for v in (x, y, z))
+    r2 = np.asarray(z * (2.0 * (cb * x + ca * y)))  # the only full-size array
+    r2 += z * z
+    r2 += x * x + y * y + 2.0 * cg * x * y
+    return np.sqrt(np.maximum(r2, 0.0, out=r2), out=r2)
+
+
+def _unit_axes(
+    cell_angles: tuple[float, float, float],
+) -> dict[str, NDArray[np.float64]]:
+    """Unit vectors â, b̂, ĉ in an orthonormal frame (â along x, b̂ in xy)."""
+    ca, cb, cg = _axis_cosines(cell_angles)
+    sg = float(np.sqrt(1.0 - cg * cg))
+    cy = (ca - cb * cg) / sg
+    c_hat = np.array([cb, cy, np.sqrt(max(1.0 - cb * cb - cy * cy, 0.0))])
+    return {"x": np.array([1.0, 0.0, 0.0]), "y": np.array([cg, sg, 0.0]), "z": c_hat}
+
+
+def section_geometry(
+    cell_angles: tuple[float, float, float],
+    horizontal: str,
+    vertical: str,
+    cut: float,
+) -> tuple[float, tuple[float, float], float]:
+    """How to draw one ΔPDF section, and where true distances sit in it.
+
+    The section is spanned by two lattice axes (``'x'``, ``'y'``, ``'z'`` =
+    along a, b, c) at ``cut`` Å along the third.  Drawn at its real angle θ,
+    the point with in-plane coordinates ``(h, v)`` appears at
+    ``X = h + v·cos θ``, ``Y = v·sin θ`` (horizontal axis to the right).
+
+    Returns ``(θ in degrees, (cx, cy), d)``: the display position of the
+    section point nearest the origin and the plane's distance from it, so a
+    point drawn at ``(X, Y)`` has ``|r|² = (X − cx)² + (Y − cy)² + d²``.  For an
+    orthogonal cell this is ``(90, (0, 0), |cut|)``.
+    """
+    units = _unit_axes(cell_angles)
+    fixed = next(ax for ax in _AXES if ax not in (horizontal, vertical))
+    e_h, e_v = units[horizontal], units[vertical]
+    cos_t = float(e_h @ e_v)
+    y_hat = e_v - cos_t * e_h
+    y_hat /= np.linalg.norm(y_hat)
+    p0 = float(cut) * units[fixed]
+    x0, y0 = float(p0 @ e_h), float(p0 @ y_hat)
+    perp = float(np.linalg.norm(p0 - x0 * e_h - y0 * y_hat))
+    angle = 90.0 if cos_t == 0.0 else float(np.degrees(np.arccos(cos_t)))
+    return angle, (-x0 + 0.0, -y0 + 0.0), perp
 
 #: Threads for the 3D FFTs.  ``-1`` = all cores (scipy.fft / pocketfft).  The
 #: transform is the dominant cost of the Q–R band round trip; multithreading it
@@ -48,8 +124,14 @@ class DeltaPDF:
     data:
         Shape (na, nb, nc) real-valued ΔPDF in Å^-3 (or arbitrary units).
     x_axis, y_axis, z_axis:
-        Real-space coordinate arrays in Å (or fractional units if
-        ``real_space_angstrom=False`` was passed to :func:`compute_delta_pdf`).
+        Real-space coordinates along the direct axes a, b, c, in Å (``u·|a|``,
+        ``v·|b|``, ``w·|c|`` for fractional ``u, v, w``) — or fractional units
+        if ``real_space_angstrom=False`` was passed to :func:`compute_delta_pdf`.
+        The grid is the FFT's native one, so for a non-orthogonal cell these
+        are *oblique* coordinates: the point ``(x, y, z)`` sits at
+        ``r = x·â + y·b̂ + z·ĉ``.  Use :attr:`cell_angles` with
+        :func:`real_space_radius` / :func:`section_geometry` for true distances
+        and for drawing sections at their real angles.
     q_max:
         |Q|_max used in the transform (Å^-1), for reference.
     apodization:
@@ -76,6 +158,18 @@ class DeltaPDF:
     k_axis_c: NDArray[np.float64] | None = None
     l_axis_c: NDArray[np.float64] | None = None
     ub_matrix: NDArray[np.float64] | None = None
+
+    @property
+    def cell_angles(self) -> tuple[float, float, float]:
+        """Direct-cell angles ``(α, β, γ)`` in degrees between the b–c, a–c and
+        a–b axes; ``(90, 90, 90)`` when the UB matrix is unknown or singular."""
+        if self.ub_matrix is None:
+            return (90.0, 90.0, 90.0)
+        try:
+            _, _, _, alpha, beta, gamma = direct_cell(self.ub_matrix)
+        except np.linalg.LinAlgError:
+            return (90.0, 90.0, 90.0)
+        return (alpha, beta, gamma)
 
     def slice_hk0(self) -> NDArray[np.floating]:
         """Return the l=0 (z=0) slice."""

@@ -114,8 +114,9 @@ Bin the volume on the crystal's own H, K, L axes (Mantid projections
 `u=[1,0,0]`, `v=[0,1,0]`, `w=[0,0,1]`, in any order). Non-orthogonal cells such
 as hexagonal or monoclinic are fine: the UB matrix carries the metric, and every
 |Q|-based stage uses it. A projected grid (e.g. `[H,0,0]/[-K,2K,0]/[0,0,L]`) is
-rejected on load. Known gap: the ΔPDF's Å axes and the web viewers still draw
-the cell angles as 90°.
+rejected on load. The 3D-ΔPDF keeps the cell angles and every viewer draws each
+section at its real angle (see [docs/algorithms/delta_pdf.md](docs/algorithms/delta_pdf.md)).
+Known gap: the *reciprocal-space* viewers still draw a*, b*, c* at 90°.
 
 ## Quick Start
 

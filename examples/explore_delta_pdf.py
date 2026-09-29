@@ -4,7 +4,9 @@ Loads the full 3D-ΔPDF (real-space transform of the cleaned diffuse volume)
 and lets you scrub through the **real-space x_H axis**, showing the y_K–z_L
 correlation plane at each x_H.  This is the proper 3D transform (every plane
 mixes all reciprocal H layers with phase), unlike the per-plane 2D-ΔPDF in
-``examples/delta_pdf_plane.py``.
+``examples/delta_pdf_plane.py``.  The plane is drawn at the cell's real b–c
+angle α (from the file's ``lat_alpha`` attr, 90° if absent), so on-screen
+distances are true Å.
 
 Source: a single ``*_delta_pdf.h5`` in ``data/processed/`` if exactly one is
 present (the pipeline output), else ``examples/_delta_pdf.h5`` (the bare
@@ -32,7 +34,8 @@ Env overrides:
     RMAX        display half-window in Å for K and L axes (default: 25)
     SCALE_MAX   upper |scale| slider multiple of the p99 level (default: 20)
     LAT_A/LAT_B/LAT_C  direct-lattice constants in Å for the unit-cell gridlines
-                (default: ΔPDF file attrs, else the source UB matrix)
+                (default: ΔPDF file attrs, else the source UB matrix; the env
+                override assumes 90° angles)
     INTERP      imshow interpolation (default: bilinear; "nearest" for raw pixels)
     SMOKE       1 → render the initial frame to PNG and exit (no GUI); used
                 to verify the script headless.
@@ -51,6 +54,10 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.widgets import CheckButtons, Slider
+
+from nebula3d.analysis.delta_pdf import real_space_radius
+from nebula3d.utils import direct_cell
+from nebula3d.visualization.slices import draw_unit_cell, oblique_transform, read_cell_attrs
 
 # ------------------------------------------------------------------
 # load or compute the 3D-ΔPDF
@@ -71,6 +78,7 @@ if pdf_file.exists():
         y_axis = fh["y_axis"][...]
         z_axis = fh["z_axis"][...]
         apodization = fh.attrs.get("apodization", "?")
+        cell_attrs = read_cell_attrs(fh.attrs)
 else:
     import nebula3d
     from nebula3d.analysis import compute_delta_pdf
@@ -100,49 +108,52 @@ scale_max = float(os.environ.get("SCALE_MAX", "20.0"))   # |scale| slider headro
 
 
 def _resolve_lattice():
-    """Direct-lattice constants (a, b, c) in Å for unit-cell gridlines, or None.
+    """Direct cell (a, b, c, α, β, γ) in Å and degrees, or None.
 
-    Precedence: env LAT_A/B/C → ΔPDF-file attrs → source backfilled UB (loaded
-    case) → the in-memory volume's UB (computed case).
+    Precedence: env LAT_A/B/C (90°) → ΔPDF-file attrs → source backfilled UB
+    (loaded case) → the in-memory volume's UB (computed case).
     """
     ev = [os.environ.get(k) for k in ("LAT_A", "LAT_B", "LAT_C")]
     if all(ev):
-        return tuple(float(v) for v in ev)
+        return (*(float(v) for v in ev), 90.0, 90.0, 90.0)
     if pdf_file.exists():
+        if cell_attrs is not None:
+            return cell_attrs
         with h5py.File(pdf_file, "r") as fh:
-            if all(k in fh.attrs for k in ("lat_a", "lat_b", "lat_c")):
-                return (float(fh.attrs["lat_a"]), float(fh.attrs["lat_b"]),
-                        float(fh.attrs["lat_c"]))
             src = str(fh.attrs.get("source_file", ""))
         sp = Path("data/processed") / src if src else None
         if sp and sp.exists():
             try:
                 with h5py.File(sp, "r") as fh:
-                    ub = np.array(fh["entry/ub_matrix"], dtype=float)
-                d = 2 * np.pi * np.linalg.inv(ub).T
-                return tuple(float(np.linalg.norm(d[:, i])) for i in range(3))
+                    return direct_cell(np.array(fh["entry/ub_matrix"], dtype=float))
             except Exception:
                 return None
         return None
     try:                                  # computed on the fly: vol is in scope
-        d = 2 * np.pi * np.linalg.inv(vol.ub_matrix).T
-        return tuple(float(np.linalg.norm(d[:, i])) for i in range(3))
+        return direct_cell(vol.ub_matrix)
     except Exception:
         return None
 
+
+lat = _resolve_lattice()
+cell_angles = lat[3:] if lat is not None else (90.0, 90.0, 90.0)
+alpha = cell_angles[0]  # the y_K–z_L (b–c) plane's real angle
+
 # ------------------------------------------------------------------
-# robust colour scale: p99 of |ΔPDF| at r>3 Å (skip near-origin spike)
+# robust colour scale: p99 of |ΔPDF| at true r>3 Å (skip near-origin spike)
 # ------------------------------------------------------------------
-xg, yg, zg = np.meshgrid(x_axis, y_axis, z_axis, indexing="ij")
-r = np.sqrt(xg**2 + yg**2 + zg**2)
-del xg, yg, zg
+r = real_space_radius(x_axis[:, None, None], y_axis[None, :, None],
+                      z_axis[None, None, :], cell_angles)
 vmax0 = float(np.percentile(np.abs(data[r > 3.0]), 99))
 del r
 print(f"  initial |scale| = {vmax0:.4g}  (p99 at r>3 Å)", flush=True)
 
-# K,L display window indices
-ik = np.abs(y_axis) <= rmax
-il = np.abs(z_axis) <= rmax
+# K,L display window: the crop of the native (oblique) axes that fills the
+# ±rmax display square — v up to rmax/sin α, h up to rmax·(1 + |cot α|).
+_sin, _cos = np.sin(np.radians(alpha)), np.cos(np.radians(alpha))
+crop = rmax * max(1.0 + abs(_cos) / _sin, 1.0 / _sin)
+ik = np.abs(y_axis) <= crop
+il = np.abs(z_axis) <= crop
 y_win, z_win = y_axis[ik], z_axis[il]
 extent = [y_win[0], y_win[-1], z_win[0], z_win[-1]]
 
@@ -167,32 +178,28 @@ im = ax.imshow(
     _plane(ix0).T,
     origin="lower",
     extent=extent,
+    transform=oblique_transform(ax, alpha),
     cmap="RdBu_r",
     vmin=-vmax0, vmax=vmax0,
     aspect="equal",
     interpolation=os.environ.get("INTERP", "bilinear"),
 )
+ax.set_xlim(-rmax, rmax)
+ax.set_ylim(-rmax, rmax)
 ax.set_xlabel("y_K (Å)")
-ax.set_ylabel("z_L (Å)")
+ax.set_ylabel("z_L (Å)" if abs(alpha - 90.0) < 1e-6
+              else f"⊥ y_K (Å);  z_L axis at {alpha:.1f}°")
 title = ax.set_title(f"3D-ΔPDF  y_K–z_L plane   x_H = {x_axis[ix0]:+.2f} Å")
 fig.colorbar(im, ax=ax, label="ΔPDF (arb. units)", shrink=0.85)
 
-# light-gray unit-cell gridlines (b along y_K, c along z_L), toggleable
-lat = _resolve_lattice()
+# light-gray unit-cell gridlines (b along y_K, c along z_L, at the real angle α),
+# toggleable
 gridlines = []
 if lat is not None:
-    _, b_len, c_len = lat
-    if b_len > 0:
-        nmax = int(np.floor(max(abs(y_win[0]), abs(y_win[-1])) / b_len))
-        for n in range(-nmax, nmax + 1):
-            gridlines.append(ax.axvline(n * b_len, color="0.6", lw=0.6,
-                                        alpha=0.7, zorder=3))
-    if c_len > 0:
-        mmax = int(np.floor(max(abs(z_win[0]), abs(z_win[-1])) / c_len))
-        for m in range(-mmax, mmax + 1):
-            gridlines.append(ax.axhline(m * c_len, color="0.6", lw=0.6,
-                                        alpha=0.7, zorder=3))
-    print(f"  unit-cell grid: b={b_len:.3f} c={c_len:.3f} Å "
+    b_len, c_len = lat[1], lat[2]
+    gridlines = draw_unit_cell(ax, (y_win[0], y_win[-1]), (z_win[0], z_win[-1]),
+                               b_len, c_len, alpha)
+    print(f"  unit-cell grid: b={b_len:.3f} c={c_len:.3f} Å  α={alpha:.2f}° "
           f"({len(gridlines)} lines)", flush=True)
 else:
     print("  unit-cell grid: lattice unknown (set LAT_A/LAT_B/LAT_C to enable)",

@@ -1,35 +1,29 @@
 // Unit-cell gridline overlay (SVG) for the ΔPDF square-window viewer.  Draws
-// gray dashed lines at integer multiples of the direct-lattice spacing along each
-// displayed axis, over a square [-half, +half] Å window.  Renders into a
-// normalized viewBox with a non-scaling stroke, so it fills its square parent
-// responsively — used both at a fixed px size (single ΔPDF panel) and in the
-// fluid multi-volume grid cells.
+// gray dashed lattice lines at integer multiples of the direct-lattice spacing
+// along each displayed axis, over a square [-half, +half] Å window.  For a
+// section whose axes meet at a non-right angle (e.g. a hexagonal ab-plane,
+// 120°) the lines follow that angle, matching SliceCanvas's oblique drawing —
+// see oblique.ts.  Renders into a normalized viewBox with a non-scaling stroke,
+// so it fills its square parent responsively — used both at a fixed px size
+// (single ΔPDF panel) and in the fluid multi-volume grid cells.
+
+import { unitCellSegments } from "./oblique";
 
 interface Props {
   half: number; // half-window in Å (box spans [-half, +half] on both axes)
   latX: number | null;
   latY: number | null;
+  angle?: number; // angle between the displayed axes (deg); the slice header's axes_angle
 }
 
 const VB = 1000; // normalized viewBox side; stroke stays 1px (non-scaling)
 
-// Lattice-multiple positions (in Å) that fall inside [-half, +half].
-function multiples(lat: number | null, half: number): number[] {
-  if (!lat || lat <= 0) return [];
-  const out: number[] = [];
-  for (let k = Math.ceil(-half / lat); k <= Math.floor(half / lat); k++) {
-    out.push(k * lat);
-  }
-  return out;
-}
-
-export function UnitCellGrid({ half, latX, latY }: Props) {
+export function UnitCellGrid({ half, latX, latY, angle = 90 }: Props) {
   const toX = (v: number) => ((v + half) / (2 * half)) * VB;
   // canvas y is flipped (smallest y at the bottom), so mirror here too.
   const toY = (v: number) => VB - ((v + half) / (2 * half)) * VB;
 
-  const vx = multiples(latX, half).map(toX);
-  const hy = multiples(latY, half).map(toY);
+  const segments = unitCellSegments(half, latX, latY, angle);
 
   return (
     <svg
@@ -37,31 +31,27 @@ export function UnitCellGrid({ half, latX, latY }: Props) {
       preserveAspectRatio="none"
       width="100%"
       height="100%"
-      style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}
+      style={{
+        position: "absolute",
+        left: 0,
+        top: 0,
+        pointerEvents: "none",
+        overflow: "hidden", // slanted lines run past the window corners
+      }}
     >
       <g
         stroke="rgba(150, 158, 172, 0.6)"
         strokeWidth={1}
         strokeDasharray="4 3"
-        shapeRendering="crispEdges"
+        shapeRendering={angle === 90 ? "crispEdges" : "geometricPrecision"}
       >
-        {vx.map((px, i) => (
+        {segments.map(([x1, y1, x2, y2], i) => (
           <line
-            key={`v${i}`}
-            x1={px}
-            y1={0}
-            x2={px}
-            y2={VB}
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-        {hy.map((py, i) => (
-          <line
-            key={`h${i}`}
-            x1={0}
-            y1={py}
-            x2={VB}
-            y2={py}
+            key={i}
+            x1={toX(x1)}
+            y1={toY(y1)}
+            x2={toX(x2)}
+            y2={toY(y2)}
             vectorEffect="non-scaling-stroke"
           />
         ))}

@@ -1,10 +1,13 @@
 """Interactive 3D-DeltaPDF comparison for multiple related files.
 
-Shows one row per DeltaPDF file × three orthogonal real-space cuts:
+Shows one row per DeltaPDF file × three lattice-plane real-space cuts:
 
-    col 0: x_H – y_K  (at z_L = cut)
-    col 1: x_H – z_L  (at y_K = cut)
-    col 2: y_K – z_L  (at x_H = cut)
+    col 0: x_H – y_K  (at z_L = cut)   drawn at γ
+    col 1: x_H – z_L  (at y_K = cut)   drawn at β
+    col 2: y_K – z_L  (at x_H = cut)   drawn at α
+
+Each section is drawn at its file's real cell angle (``lat_alpha/beta/gamma``
+attrs, 90° if absent), so on-screen distances are true Å.
 
 Each column (plane) uses its own colour scale: p<PERCENTILE> of |DeltaPDF| at
 r > 3 Å in that plane's central slice, pooled across all loaded files. Related
@@ -37,6 +40,9 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.widgets import CheckButtons, Slider
+
+from nebula3d.analysis.delta_pdf import real_space_radius
+from nebula3d.visualization.slices import draw_unit_cell, oblique_transform, read_cell_attrs
 
 HERE = Path(__file__).resolve().parent
 PROC = HERE.parent / "data" / "processed"
@@ -87,16 +93,18 @@ for label, p in items:
         y = fh["y_axis"][...]
         z = fh["z_axis"][...]
         apod = str(fh.attrs.get("apodization", "?"))
-        lat = None
-        if all(k in fh.attrs for k in ("lat_a", "lat_b", "lat_c")):
-            lat = (float(fh.attrs["lat_a"]),
-                   float(fh.attrs["lat_b"]),
-                   float(fh.attrs["lat_c"]))
-    mx = np.abs(x) <= RMAX
-    my = np.abs(y) <= RMAX
-    mz = np.abs(z) <= RMAX
+        lat = read_cell_attrs(fh.attrs)  # (a, b, c, α, β, γ) or None
+    alpha, beta, gamma = lat[3:] if lat is not None else (90.0, 90.0, 90.0)
+    angles = [gamma, beta, alpha]  # per column: x_H–y_K, x_H–z_L, y_K–z_L
+    # Crop of the native (oblique) axes that fills the ±RMAX display square: a
+    # section at angle θ needs v up to RMAX/sin θ and h up to RMAX·(1 + |cot θ|).
+    crop = RMAX * max(max(1.0 + abs(np.cos(np.radians(t))) / np.sin(np.radians(t)),
+                          1.0 / np.sin(np.radians(t))) for t in angles)
+    mx = np.abs(x) <= crop
+    my = np.abs(y) <= crop
+    mz = np.abs(z) <= crop
     datasets[label] = dict(data=data, x=x, y=y, z=z, apod=apod, lat=lat,
-                           mx=mx, my=my, mz=mz,
+                           angles=angles, mx=mx, my=my, mz=mz,
                            xw=x[mx], yw=y[my], zw=z[mz])
     print(f"  shape={data.shape}  apod={apod}", flush=True)
 
@@ -128,8 +136,13 @@ for label in labels:
     d = datasets[label]
     central[label] = _slices(d, nidx(d["x"], 0.0), nidx(d["y"], 0.0), nidx(d["z"], 0.0))
     a12 = [(d["xw"], d["yw"]), (d["xw"], d["zw"]), (d["yw"], d["zw"])]
-    for ci, (img, (a1, a2)) in enumerate(zip(central[t], a12)):
-        rr = np.hypot(a1[:, None], a2[None, :]) > 3.0
+    for ci, (img, (a1, a2), angle) in enumerate(zip(central[label], a12, d["angles"])):
+        # true in-plane r > 3 Å, inside the displayed ±RMAX square
+        h, v = a1[:, None], a2[None, :]
+        cos_t = 0.0 if angle == 90.0 else np.cos(np.radians(angle))
+        sin_t = 1.0 if angle == 90.0 else np.sin(np.radians(angle))
+        rr = ((real_space_radius(h, v, 0.0, (90.0, 90.0, angle)) > 3.0)
+              & (np.abs(h + v * cos_t) <= RMAX) & (np.abs(v * sin_t) <= RMAX))
         _col_vals[ci].append(np.abs(img[rr]))
 vmax_col = [max(float(np.percentile(np.concatenate(v), PCT)), 1e-6) for v in _col_vals]
 del _col_vals
@@ -159,16 +172,21 @@ for ri, label in enumerate(labels):
     a12 = [(d["xw"], d["yw"]), (d["xw"], d["zw"]), (d["yw"], d["zw"])]
 
     panels[label] = []
-    for ci, (img, (a1, a2), xl, yl, plane) in enumerate(
-            zip(imgs0, a12, XLABELS, YLABELS, COL_PLANES)):
+    for ci, (img, (a1, a2), xl, yl, plane, angle) in enumerate(
+            zip(imgs0, a12, XLABELS, YLABELS, COL_PLANES, d["angles"])):
         ax = axes[ri][ci]
         im = ax.imshow(img.T, origin="lower", aspect="equal",
                        extent=[a1[0], a1[-1], a2[0], a2[-1]],
+                       transform=oblique_transform(ax, angle),
                        cmap="RdBu_r", vmin=-vmax_col[ci], vmax=vmax_col[ci],
                        interpolation="bilinear")
+        ax.set_xlim(-RMAX, RMAX)
+        ax.set_ylim(-RMAX, RMAX)
         ax.set_title(f"{label}  {plane}", fontsize=10)
         ax.set_xlabel(xl, fontsize=8)
-        ax.set_ylabel(yl, fontsize=8)
+        ax.set_ylabel(yl if abs(angle - 90.0) < 1e-6
+                      else f"⊥ {xl.split()[0]} (Å);  {yl.split()[0]} at {angle:.1f}°",
+                      fontsize=8)
         fig.colorbar(im, ax=ax, shrink=0.7)
         panels[label].append(im)
 
@@ -181,19 +199,13 @@ for ri, label in enumerate(labels):
     lat = d["lat"]
     if lat is None:
         continue
-    a_len, b_len, c_len = lat
+    a_len, b_len, c_len = lat[:3]
     panel_axes = [(d["xw"], d["yw"]), (d["xw"], d["zw"]), (d["yw"], d["zw"])]
     spacings = [(a_len, b_len), (a_len, c_len), (b_len, c_len)]
-    for ci, (ax, (a1, a2), (sx, sy)) in enumerate(
-            zip(axes[ri], panel_axes, spacings)):
-        row_lines = []
-        for sp, axfn in [(sx, ax.axvline), (sy, ax.axhline)]:
-            avals = a1 if (axfn == ax.axvline) else a2
-            nmax = int(np.floor(max(abs(avals[0]), abs(avals[-1])) / sp)) if sp > 0 else 0
-            for n in range(-nmax, nmax + 1):
-                row_lines.append(axfn(n * sp, color="0.6", lw=0.6,
-                                      alpha=0.7, zorder=3))
-        gridlines_all.extend(row_lines)
+    for ax, (a1, a2), (sx, sy), angle in zip(axes[ri], panel_axes, spacings,
+                                             d["angles"]):
+        gridlines_all.extend(draw_unit_cell(ax, (a1[0], a1[-1]), (a2[0], a2[-1]),
+                                            sx, sy, angle))
 
 # ------------------------------------------------------------------
 # sliders

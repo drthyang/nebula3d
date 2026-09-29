@@ -5,9 +5,12 @@
 // CSS scales it for display.  Display modes:
 //   • width  — fixed display width, height follows the data aspect ratio
 //   • fit    — letterbox to fill the parent box (preserves aspect)
-//   • windowA + size — crop to a square coordinate window [-windowA, +windowA]
-//     on both axes and draw it into a square `size` px box (used by the ΔPDF
-//     viewer so all three orthoslices share one square real-space window)
+//   • windowA + size — a square real-space window [-windowA, +windowA]² in true
+//     Å, drawn into a square `size` px box (used by the ΔPDF viewers so every
+//     orthoslice shares one window).  The section is drawn at its real angle:
+//     each display pixel is mapped back to the slice's oblique grid via the
+//     header's `axes_angle` (see oblique.ts), so a hexagonal ab-plane shows its
+//     120° and true distances; pixels outside the data stay transparent
 //   • windowX/windowY — crop each axis independently, still drawn into a square
 //     box after row-resampling preserves equal physical units per pixel
 //
@@ -17,6 +20,7 @@
 import { useEffect, useRef } from "react";
 
 import type { Slice } from "../api/types";
+import { axesTrig } from "./oblique";
 
 interface Props {
   slice: Slice;
@@ -104,52 +108,81 @@ export function SliceCanvas({
   const qScaleCut = reciprocalAxes && latCut ? 2 * Math.PI / latCut : 1;
   const ch = Math.max(1, Math.round(ch_raw * Math.abs(dy_Q / dx_Q)));
 
+  // Square real-space window: an N×N raster over [-windowA, windowA]² (true Å),
+  // one display pixel per native x step.
+  const oblique = windowA != null;
+  const axesAngle = slice.header.axes_angle ?? 90;
+  const obliqueN = oblique ? Math.max(2, Math.round((2 * windowA) / Math.abs(dx))) : 0;
+  const canvasW = oblique ? obliqueN : cw;
+  const canvasH = oblique ? obliqueN : ch;
+
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    canvas.width = cw;
-    canvas.height = ch;
-    const img = ctx.createImageData(cw, ch);
+    canvas.width = canvasW;
+    canvas.height = canvasH;
+    const img = ctx.createImageData(canvasW, canvasH);
     const out = img.data;
     const data = slice.data;
     const vmaxSafe = vmax > 0 ? vmax : 1;
     const span = vmaxSafe - vmin > 0 ? vmaxSafe - vmin : 1;
     const logMax = Math.log10(vmaxSafe + 1) || 1;
 
-    for (let rr = 0; rr < ch; rr++) {
-      // nearest-neighbor scale rows to match physical aspect ratio
-      const srcRow = (iy1 - Math.floor(rr * (ch_raw / ch))) * nx;
-      const dstRow = rr * cw;
-      for (let cc = 0; cc < cw; cc++) {
-        const v = data[srcRow + ix0 + cc];
-        const o = (dstRow + cc) * 4;
-        if (!Number.isFinite(v)) {
-          out[o] = 128;
-          out[o + 1] = 128;
-          out[o + 2] = 128;
-          out[o + 3] = 255;
-          continue;
-        }
-        let t: number;
-        if (diverging) {
-          t = 0.5 + 0.5 * Math.max(-1, Math.min(1, v / vmaxSafe));
-        } else if (log) {
-          t = Math.max(0, Math.min(1, Math.log10(Math.max(v, 0) + 1) / logMax));
-        } else {
-          t = Math.max(0, Math.min(1, (v - vmin) / span));
-        }
-        const li = (t * 255) | 0;
-        out[o] = lut[li * 4];
-        out[o + 1] = lut[li * 4 + 1];
-        out[o + 2] = lut[li * 4 + 2];
+    const paint = (v: number, o: number) => {
+      if (!Number.isFinite(v)) {
+        out[o] = 128;
+        out[o + 1] = 128;
+        out[o + 2] = 128;
         out[o + 3] = 255;
+        return;
+      }
+      let t: number;
+      if (diverging) {
+        t = 0.5 + 0.5 * Math.max(-1, Math.min(1, v / vmaxSafe));
+      } else if (log) {
+        t = Math.max(0, Math.min(1, Math.log10(Math.max(v, 0) + 1) / logMax));
+      } else {
+        t = Math.max(0, Math.min(1, (v - vmin) / span));
+      }
+      const li = (t * 255) | 0;
+      out[o] = lut[li * 4];
+      out[o + 1] = lut[li * 4 + 1];
+      out[o + 2] = lut[li * 4 + 2];
+      out[o + 3] = 255;
+    };
+
+    if (oblique) {
+      // Display pixel (X, Y) → oblique (h, v) → nearest native grid point.
+      const half = windowA;
+      const px = (2 * half) / obliqueN;
+      const { cos, sin } = axesTrig(axesAngle);
+      for (let rr = 0; rr < obliqueN; rr++) {
+        const v = (half - (rr + 0.5) * px) / sin;
+        const iy = Math.round((v - ys[0]) / dy);
+        if (iy < 0 || iy >= ny) continue; // outside the data: transparent
+        const hShift = v * cos;
+        for (let cc = 0; cc < obliqueN; cc++) {
+          const ix = Math.round((-half + (cc + 0.5) * px - hShift - xs[0]) / dx);
+          if (ix < 0 || ix >= nx) continue;
+          paint(data[iy * nx + ix], (rr * obliqueN + cc) * 4);
+        }
+      }
+    } else {
+      for (let rr = 0; rr < ch; rr++) {
+        // nearest-neighbor scale rows to match physical aspect ratio
+        const srcRow = (iy1 - Math.floor(rr * (ch_raw / ch))) * nx;
+        const dstRow = rr * cw;
+        for (let cc = 0; cc < cw; cc++) {
+          paint(data[srcRow + ix0 + cc], (dstRow + cc) * 4);
+        }
       }
     }
     ctx.putImageData(img, 0, 0);
-  }, [slice, lut, vmax, vmin, log, diverging, nx, ny, xCrop, yCrop, cw, ch, ch_raw, ix0, ix1, iy0, iy1, xs, ys]);
+  }, [slice, lut, vmax, vmin, log, diverging, nx, ny, xCrop, yCrop, cw, ch, ch_raw, ix0, ix1, iy0, iy1, xs, ys,
+      oblique, obliqueN, axesAngle, windowA, dx, dy, canvasW, canvasH]);
 
   // A windowed crop is always shown as a physical square: either at a fixed
   // `size` (single ΔPDF viewer) or filling its square parent cell (multi-temp
@@ -187,14 +220,21 @@ export function SliceCanvas({
     wrapperStyle = { width, height: "auto", position: "relative", display: "inline-block" };
   }
 
-  const vX = (xs[ix0] - dx / 2) * qScaleX;
-  const vW = cw * dx_Q;
-  const vH = ch_raw * dy_Q;
+  // Overlay frame: the data crop, or the true-Å window for an oblique section.
+  const vX = oblique ? -windowA : (xs[ix0] - dx / 2) * qScaleX;
+  const vW = oblique ? 2 * windowA : cw * dx_Q;
+  const vH = oblique ? 2 * windowA : ch_raw * dy_Q;
+  const vTop = oblique ? -windowA : -((ys[iy1] + Math.abs(dy) / 2) * qScaleY);
 
+  // Band circles: |r| = R cuts this section in a circle of radius √(R² − d²)
+  // about the point nearest the origin (d = the plane's distance from it).
+  const [circleX, circleY] = oblique ? (slice.header.r_center ?? [0, 0]) : [0, 0];
   const circles: number[] = [];
   if (bands && cutDistance != null) {
     const [bMin, bMax] = bands;
-    const cutPhys = cutDistance * qScaleCut;
+    const cutPhys = oblique && slice.header.r_perp != null
+      ? slice.header.r_perp
+      : cutDistance * qScaleCut;
     const cutSq = cutPhys * cutPhys;
 
     if (bMin > 0) {
@@ -213,23 +253,23 @@ export function SliceCanvas({
       {circles.length > 0 && (
         <svg
           style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-          viewBox={`${vX} ${-((ys[iy1] + Math.abs(dy) / 2) * qScaleY)} ${vW} ${Math.abs(vH)}`}
+          viewBox={`${vX} ${vTop} ${vW} ${Math.abs(vH)}`}
           preserveAspectRatio="none"
         >
           <g transform="scale(1, -1)">
             {circles.map((r, i) => (
               <g key={i}>
                 <circle
-                  cx={0}
-                  cy={0}
+                  cx={circleX}
+                  cy={circleY}
                   r={r}
                   fill="none"
                   stroke="rgba(0, 0, 0, 0.8)"
                   strokeWidth={vW / 100}
                 />
                 <circle
-                  cx={0}
-                  cy={0}
+                  cx={circleX}
+                  cy={circleY}
                   r={r}
                   fill="none"
                   stroke="rgba(255, 255, 255, 0.9)"

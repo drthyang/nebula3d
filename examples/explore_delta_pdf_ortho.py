@@ -3,13 +3,17 @@
 The plot title labels the kind (3D-PDF when the file carries a ``kind`` attr from
 ``pdf_3d.py``, else 3D-ΔPDF) and the source label parsed from the filename.
 
-Shows the three orthogonal cuts through the real-space ΔPDF volume:
+Shows the three lattice-plane cuts through the real-space ΔPDF volume:
 
-    x_H–y_K  (at z_L = cut)      a–b plane
-    x_H–z_L  (at y_K = cut)      a–c plane
-    y_K–z_L  (at x_H = cut)      b–c plane
+    x_H–y_K  (at z_L = cut)      a–b plane, drawn at γ
+    x_H–z_L  (at y_K = cut)      a–c plane, drawn at β
+    y_K–z_L  (at x_H = cut)      b–c plane, drawn at α
 
-with sliders to move each cut position and a global contrast control.  Each
+Each section is drawn at the cell's real angle (a hexagonal a–b plane shows its
+120°), so distances on screen are true Å; for a 90° cell nothing changes.  The
+angles come from the file's ``lat_alpha/beta/gamma`` attrs (90° if absent).
+
+Sliders move each cut position, and a global contrast control scales colour.  Each
 panel auto-scales to its own robust level (so the three very different
 magnitudes stay readable), and the contrast slider multiplies all three.
 
@@ -42,7 +46,7 @@ Env overrides:
               push the colour scale even larger / further de-saturate)
     LAT_A / LAT_B / LAT_C  direct-lattice constants in Å for the unit-cell
               gridlines (default: read from the ΔPDF file attrs, else the source
-              UB matrix)
+              UB matrix; the env override assumes 90° angles)
     SMOKE     1 → render the initial frame to PNG and exit (no GUI).
 """
 import os
@@ -59,6 +63,10 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.widgets import CheckButtons, Slider
+
+from nebula3d.analysis.delta_pdf import real_space_radius
+from nebula3d.utils import direct_cell
+from nebula3d.visualization.slices import draw_unit_cell, oblique_transform, read_cell_attrs
 
 _pdf_env = os.environ.get("PDF_FILE")
 _match = os.environ.get("MATCH", "")
@@ -108,32 +116,47 @@ CMAX = float(os.environ.get("CONTRAST_MAX", "20.0"))
 
 
 def _lattice():
-    """Direct-lattice constants (a, b, c) in Å for unit-cell gridlines, or None.
+    """Direct cell (a, b, c, α, β, γ) in Å and degrees, or None.
 
-    Order of precedence: ΔPDF-file attrs (lat_a/b/c) → env LAT_A/LAT_B/LAT_C →
-    the source backfilled file's UB matrix (cheap h5py read).
+    Order of precedence: ΔPDF-file attrs (lat_*) → env LAT_A/LAT_B/LAT_C (90°)
+    → the source backfilled file's UB matrix (cheap h5py read).
     """
     with h5py.File(pdf_file, "r") as fh:
-        if all(k in fh.attrs for k in ("lat_a", "lat_b", "lat_c")):
-            return (float(fh.attrs["lat_a"]), float(fh.attrs["lat_b"]),
-                    float(fh.attrs["lat_c"]))
+        cell = read_cell_attrs(fh.attrs)
+        if cell is not None:
+            return cell
         src = str(fh.attrs.get("source_file", ""))
     ev = [os.environ.get(k) for k in ("LAT_A", "LAT_B", "LAT_C")]
     if all(ev):
-        return tuple(float(v) for v in ev)
+        return (*(float(v) for v in ev), 90.0, 90.0, 90.0)
     if src:
         sp = Path("data/processed") / src
         if sp.exists():
             try:
                 with h5py.File(sp, "r") as fh:
-                    ub = np.array(fh["entry/ub_matrix"], dtype=float)
-                d = 2 * np.pi * np.linalg.inv(ub).T
-                return tuple(float(np.linalg.norm(d[:, i])) for i in range(3))
+                    return direct_cell(np.array(fh["entry/ub_matrix"], dtype=float))
             except Exception:
                 pass
     return None
 
-mx, my, mz = np.abs(x) <= RMAX, np.abs(y) <= RMAX, np.abs(z) <= RMAX
+# Direct cell: unit-cell spacings (x_H↔a, y_K↔b, z_L↔c) and each plane's real
+# angle (x_H–y_K at γ, x_H–z_L at β, y_K–z_L at α).
+lat = _lattice()
+alpha, beta, gamma = lat[3:] if lat is not None else (90.0, 90.0, 90.0)
+panel_angles = [gamma, beta, alpha]
+if lat is not None:
+    print(f"  cell: a={lat[0]:.3f} b={lat[1]:.3f} c={lat[2]:.3f} Å  "
+          f"α={alpha:.2f} β={beta:.2f} γ={gamma:.2f}°", flush=True)
+else:
+    print("  unit-cell grid: lattice unknown (set LAT_A/LAT_B/LAT_C to enable)",
+          flush=True)
+
+# Crop of the native (oblique) axes that fills the ±RMAX display square: a
+# section at angle θ needs v up to RMAX/sin θ and h up to RMAX·(1 + |cot θ|).
+_reach = max(max(1.0 + abs(np.cos(np.radians(t))) / np.sin(np.radians(t)),
+                 1.0 / np.sin(np.radians(t))) for t in panel_angles)
+CROP = RMAX * _reach
+mx, my, mz = np.abs(x) <= CROP, np.abs(y) <= CROP, np.abs(z) <= CROP
 xw, yw, zw = x[mx], y[my], z[mz]
 
 
@@ -141,10 +164,15 @@ def nidx(ax, v):
     return int(np.argmin(np.abs(ax - v)))
 
 
-def pvmax(slc, a1, a2):
-    g1, g2 = np.meshgrid(a1, a2, indexing="ij")
-    r = np.sqrt(g1 ** 2 + g2 ** 2)
-    sel = np.abs(slc[r > 3.0])
+def pvmax(slc, a1, a2, angle):
+    """p<PCT> of |ΔPDF| over the displayed ±RMAX square at true in-plane
+    r > 3 Å, for a section whose axes meet at ``angle``."""
+    h, v = a1[:, None], a2[None, :]
+    r = real_space_radius(h, v, 0.0, (90.0, 90.0, angle))
+    cos_t = 0.0 if angle == 90.0 else np.cos(np.radians(angle))
+    sin_t = 1.0 if angle == 90.0 else np.sin(np.radians(angle))
+    shown = (np.abs(h + v * cos_t) <= RMAX) & (np.abs(v * sin_t) <= RMAX)
+    sel = np.abs(slc[(r > 3.0) & shown])
     return float(np.percentile(sel, PCT)) if sel.size else 1.0
 
 
@@ -161,10 +189,19 @@ def s_yz(ix):   # y_K–z_L at x=ix
 
 fig, axes = plt.subplots(1, 3, figsize=(20, 7.4))
 try:  # name the OS window so several viewers are distinguishable
-    fig.canvas.manager.set_window_title(f"{KIND} {TEMP}".strip())
+    fig.canvas.manager.set_window_title(f"{KIND} {LABEL}".strip())
 except Exception:
     pass
 plt.subplots_adjust(left=0.05, right=0.99, bottom=0.24, top=0.90, wspace=0.28)
+
+
+
+def _vertical_label(xl, yl, angle):
+    """At a non-right angle the vertical screen axis is ⟂ to the horizontal one."""
+    if abs(angle - 90.0) < 1e-6:
+        return yl
+    return f"⊥ {xl.split()[0]} (Å);  {yl.split()[0]} axis at {angle:.1f}°"
+
 
 panels = []
 specs = [
@@ -173,42 +210,32 @@ specs = [
     (s_yz(ix0), yw, zw, "y_K–z_L  (x_H cut)", "y_K (Å)", "z_L (Å)"),
 ]
 vmaxes = []
-for ax, (img, a1, a2, ttl, xl, yl) in zip(axes, specs):
-    vm = pvmax(img, a1, a2)
+for ax, (img, a1, a2, ttl, xl, yl), angle in zip(axes, specs, panel_angles):
+    vm = pvmax(img, a1, a2, angle)
     vmaxes.append(vm)
     im = ax.imshow(img.T, origin="lower", aspect="equal",
                    extent=[a1[0], a1[-1], a2[0], a2[-1]],
+                   transform=oblique_transform(ax, angle),
                    cmap="RdBu_r", vmin=-vm, vmax=vm, interpolation="bilinear")
+    ax.set_xlim(-RMAX, RMAX)
+    ax.set_ylim(-RMAX, RMAX)
     ax.set_title(f"{ttl}", fontsize=12)
     ax.set_xlabel(xl)
-    ax.set_ylabel(yl)
+    ax.set_ylabel(_vertical_label(xl, yl, angle))
     fig.colorbar(im, ax=ax, shrink=0.8)
     panels.append(im)
 
-# --- light-gray unit-cell gridlines (toggleable) ---
-# spacings per panel match the displayed axes: x_H↔a, y_K↔b, z_L↔c.
-lat = _lattice()
+# --- light-gray unit-cell gridlines (toggleable), at each plane's real angle ---
 gridlines = []
 if lat is not None:
-    a_len, b_len, c_len = lat
+    a_len, b_len, c_len = lat[:3]
     panel_spacing = [(a_len, b_len), (a_len, c_len), (b_len, c_len)]
     panel_axes = [(xw, yw), (xw, zw), (yw, zw)]
-    for ax, (a1, a2), (sx, sy) in zip(axes, panel_axes, panel_spacing):
-        if sx and sx > 0:
-            nmax = int(np.floor(max(abs(a1[0]), abs(a1[-1])) / sx))
-            for n in range(-nmax, nmax + 1):
-                gridlines.append(ax.axvline(n * sx, color="0.6", lw=0.6,
-                                            alpha=0.7, zorder=3))
-        if sy and sy > 0:
-            mmax = int(np.floor(max(abs(a2[0]), abs(a2[-1])) / sy))
-            for m in range(-mmax, mmax + 1):
-                gridlines.append(ax.axhline(m * sy, color="0.6", lw=0.6,
-                                            alpha=0.7, zorder=3))
-    print(f"  unit-cell grid: a={a_len:.3f} b={b_len:.3f} c={c_len:.3f} Å "
-          f"({len(gridlines)} lines)", flush=True)
-else:
-    print("  unit-cell grid: lattice unknown (set LAT_A/LAT_B/LAT_C to enable)",
-          flush=True)
+    for ax, (a1, a2), (sx, sy), angle in zip(axes, panel_axes, panel_spacing,
+                                             panel_angles):
+        gridlines += draw_unit_cell(ax, (a1[0], a1[-1]), (a2[0], a2[-1]),
+                                    sx, sy, angle)
+    print(f"  unit-cell grid: {len(gridlines)} lines", flush=True)
 
 # controls — cut sliders (left column), contrast + unit-cell toggle (right column)
 axc = "lightgoldenrodyellow"
@@ -244,9 +271,10 @@ def update(_):
     titles = [f"x_H–y_K  (z_L={z[iz]:+.1f} Å)",
               f"x_H–z_L  (y_K={y[iy]:+.1f} Å)",
               f"y_K–z_L  (x_H={x[ix]:+.1f} Å)"]
-    for im, ax, img, (a1, a2), ttl in zip(panels, axes, imgs, a12, titles):
+    for im, ax, img, (a1, a2), ttl, angle in zip(panels, axes, imgs, a12, titles,
+                                                 panel_angles):
         im.set_data(img.T)
-        vm = pvmax(img, a1, a2) * s_c.val
+        vm = pvmax(img, a1, a2, angle) * s_c.val
         im.set_clim(-vm, vm)
         ax.set_title(ttl, fontsize=12)
     fig.canvas.draw_idle()
@@ -255,7 +283,7 @@ def update(_):
 for s in (s_x, s_y, s_z, s_c):
     s.on_changed(update)
 
-_temp_seg = f"  {TEMP}" if TEMP else ""
+_temp_seg = f"  {LABEL}" if LABEL else ""
 fig.suptitle(f"{KIND} orthoslices{_temp_seg}  (apod={apod})  ±{RMAX:.0f} Å  "
              "— drag x_H/y_K/z_L cuts; contrast scales colour", y=0.97, fontsize=13)
 

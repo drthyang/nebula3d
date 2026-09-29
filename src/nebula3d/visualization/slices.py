@@ -9,16 +9,19 @@ coordinate value at which the third axis is cut.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 from numpy.typing import NDArray
 
-from nebula3d.analysis.delta_pdf import DeltaPDF
+from nebula3d.analysis.delta_pdf import DeltaPDF, section_geometry
 from nebula3d.core import HKLVolume
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
+    from matplotlib.lines import Line2D
+    from matplotlib.transforms import Transform
 
 # plane key → (fixed_axis_attr, array_dim, y_axis_attr, x_axis_attr,
 #              y_label, x_label, transpose)
@@ -68,7 +71,12 @@ def _format_cut_value(value: float, precision: int, zero_tol: float = 1e-4) -> s
 
 
 class SliceData(NamedTuple):
-    """2D intensity slice extracted from an HKLVolume."""
+    """2D slice extracted from an HKLVolume or a 3D-ΔPDF.
+
+    The last three fields describe a section whose axes are not perpendicular
+    (see :func:`nebula3d.analysis.delta_pdf.section_geometry`); ``None`` means
+    a plain orthogonal slice.
+    """
 
     data:      NDArray[np.float64]  # shape (n_y, n_x); NaN where masked
     y_axis:    NDArray[np.float64]  # bin-centre coordinates along rows
@@ -76,6 +84,9 @@ class SliceData(NamedTuple):
     y_label:   str                  # e.g. "K (r.l.u.)"
     x_label:   str                  # e.g. "L (r.l.u.)"
     cut_label: str                  # e.g. "H = 0.020 r.l.u."
+    axes_angle: float | None = None  # angle between the x and y axes (deg)
+    r_center: tuple[float, float] | None = None  # drawn point nearest the origin
+    r_perp: float | None = None      # section plane's distance from the origin
 
 
 def extract_slice(
@@ -159,6 +170,10 @@ def extract_slice_dpdf(
     interp : bool
         If False (default), snap to the nearest grid plane. If True, linearly
         interpolate between the two bracketing planes.
+
+    The section keeps the ΔPDF's oblique grid; ``axes_angle``, ``r_center`` and
+    ``r_perp`` on the result say how to draw it at the cell's real angle and
+    where true distances sit in it.
     """
     key = plane.lower()
     if key not in _PLANE_DPDF:
@@ -181,6 +196,8 @@ def extract_slice_dpdf(
     y_axis: NDArray[np.float64] = getattr(vol, y_attr)
     x_axis: NDArray[np.float64] = getattr(vol, x_attr)
     fixed_name = fixed_attr[0].upper()  # 'X', 'Y', or 'Z'
+    angle, center, perp = section_geometry(
+        vol.cell_angles, x_attr[0], y_attr[0], actual)
 
     return SliceData(
         data=data_2d,
@@ -189,6 +206,9 @@ def extract_slice_dpdf(
         y_label=y_label,
         x_label=x_label,
         cut_label=f"{fixed_name} = {_format_cut_value(actual, 2)} Å",
+        axes_angle=angle,
+        r_center=center,
+        r_perp=perp,
     )
 
 
@@ -342,3 +362,68 @@ def _imshow_extent(
         float(y_axis[0])  - dy / 2,
         float(y_axis[-1]) + dy / 2,
     )
+
+
+# ---------------------------------------------------------------------------
+# Oblique real-space sections (matplotlib)
+# ---------------------------------------------------------------------------
+_CELL_ATTRS = ("lat_a", "lat_b", "lat_c", "lat_alpha", "lat_beta", "lat_gamma")
+
+
+def read_cell_attrs(
+    attrs: Mapping[str, object],
+) -> tuple[float, float, float, float, float, float] | None:
+    """``(a, b, c, α, β, γ)`` from ΔPDF-file attrs, or ``None`` without a/b/c.
+
+    Angles default to 90° for files written before the cell angles were stored.
+    """
+    if not all(k in attrs for k in _CELL_ATTRS[:3]):
+        return None
+    return tuple(  # type: ignore[return-value]
+        float(attrs[k]) if k in attrs else 90.0  # type: ignore[arg-type]
+        for k in _CELL_ATTRS)
+
+
+def oblique_transform(ax: Axes, axes_angle: float) -> Transform:
+    """Data transform that draws a section's oblique ``(h, v)`` coordinates at
+    their real angle θ: ``X = h + v·cos θ``, ``Y = v·sin θ`` (true Å).
+
+    Pass it as ``transform=`` to ``imshow``/``plot`` with the slice's own
+    extent/coordinates, then set the axes limits in true Å.  For θ = 90° it is
+    the plain data transform.
+    """
+    from matplotlib.transforms import Affine2D
+
+    cos_t = 0.0 if abs(axes_angle - 90.0) < 1e-9 else float(np.cos(np.radians(axes_angle)))
+    sin_t = 1.0 if cos_t == 0.0 else float(np.sin(np.radians(axes_angle)))
+    skew = Affine2D(np.array([[1.0, cos_t, 0.0], [0.0, sin_t, 0.0], [0.0, 0.0, 1.0]]))
+    return skew + ax.transData
+
+
+def draw_unit_cell(
+    ax: Axes,
+    h_extent: tuple[float, float],
+    v_extent: tuple[float, float],
+    h_spacing: float | None,
+    v_spacing: float | None,
+    axes_angle: float = 90.0,
+    **line_kw: object,
+) -> list[Line2D]:
+    """Light-gray unit-cell lines at multiples of the lattice spacings over an
+    oblique section, drawn at its real angle (see :func:`oblique_transform`).
+
+    Lines of constant ``h`` run along the vertical axis's direction; lines of
+    constant ``v`` are horizontal.  Returns the lines (e.g. to toggle them).
+    """
+    tr = oblique_transform(ax, axes_angle)
+    kw: dict[str, object] = {"color": "0.6", "lw": 0.6, "alpha": 0.7, "zorder": 3}
+    kw.update(line_kw)
+    lines: list[Line2D] = []
+    (h0, h1), (v0, v1) = h_extent, v_extent
+    if h_spacing and h_spacing > 0:
+        for n in range(int(np.ceil(h0 / h_spacing)), int(np.floor(h1 / h_spacing)) + 1):
+            lines += ax.plot([n * h_spacing] * 2, [v0, v1], transform=tr, **kw)  # type: ignore[arg-type]
+    if v_spacing and v_spacing > 0:
+        for m in range(int(np.ceil(v0 / v_spacing)), int(np.floor(v1 / v_spacing)) + 1):
+            lines += ax.plot([h0, h1], [m * v_spacing] * 2, transform=tr, **kw)  # type: ignore[arg-type]
+    return lines

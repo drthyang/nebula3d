@@ -121,6 +121,21 @@ describe("delta pdf metrics", () => {
     expect(Math.abs(m.anisotropy_angle_deg!)).toBeLessThan(20);
   });
 
+  it("measures directions in true Cartesian space on an oblique section", () => {
+    // A ridge along the oblique diagonal h = v.  On a hexagonal ab-plane
+    // (axes at 120°) a + b points at 60°, not the 45° a right angle would give.
+    const ridge = (x: number, y: number) => {
+      const noise = 0.05 * Math.sin(x * 3.1 + y * 2.7);
+      return Math.abs(x - y) < 1.2 && Math.abs(x) > 6 ? 3 + noise : noise;
+    };
+    const square = dpdfMetrics(makeSlice(61, 61, ridge))!;
+    expect(square.anisotropy_angle_deg!).toBeCloseTo(45, 0);
+    const hex = makeSlice(61, 61, ridge);
+    hex.header.axes_angle = 120;
+    const m = dpdfMetrics(hex)!;
+    expect(m.anisotropy_angle_deg!).toBeCloseTo(60, 0);
+  });
+
   it("handles a full-resolution slice without overflowing the stack", () => {
     // 401×401 ≈ 160k voxels — a spread into Math.max(...) would overflow here.
     const big = makeSlice(401, 401, (x, y) => 0.01 * Math.sin(x + y) + (Math.abs(x) < 2 && Math.abs(y) > 8 ? 2 : 0));
