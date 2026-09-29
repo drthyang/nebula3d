@@ -6,6 +6,7 @@
 // and builds its symmetrized volume as a nebula3d HDF5 file
 // (/entry/{data, mask, h_axis, k_axis, l_axis, ub_matrix}). The exchange:
 //   app    -> viewer  { type: "nebula3d-import-ready", id }  (repeated until the file arrives)
+//   viewer -> app     { type: "nebula3d-import-progress", id, label, fraction }  (optional, while it builds the file)
 //   viewer -> app     { type: "nebula3d-import", id, schema: "nexus-viewer/1", file: File, meta }
 //                   or { type: "nebula3d-import-cancel", id, message }  (the viewer could not build it)
 //   app    -> viewer  { type: "nebula3d-import-loaded", id, datasetId }
@@ -38,6 +39,12 @@ export interface ImportRequest {
 export interface ImportedVolume {
   file: File;
   meta: Record<string, string>;
+}
+
+/** How far the viewer has built the file: a stage ("Symmetrizing") and 0..1 overall. */
+export interface ImportProgress {
+  label: string;
+  fraction: number;
 }
 
 /** The parts of a BroadcastChannel used here. */
@@ -145,8 +152,9 @@ function openLinks(req: ImportRequest, host: ImportHost, onData?: (data: unknown
 /**
  * Ask the viewer for the volume and resolve with it. "Ready" is posted at once
  * and every `interval` ms until the file arrives, since the viewer may still be
- * building it. Rejects with no way to reach the viewer, on a malformed reply,
- * after `timeout` ms, or when `signal` aborts.
+ * building it; `onProgress` gets the viewer's build progress meanwhile. Rejects
+ * with no way to reach the viewer, on a malformed reply, after `timeout` ms, or
+ * when `signal` aborts.
  */
 export function receiveImport(
   req: ImportRequest,
@@ -155,7 +163,14 @@ export function receiveImport(
     interval = 1000,
     timeout = 600_000,
     signal,
-  }: { host?: ImportHost; interval?: number; timeout?: number; signal?: AbortSignal } = {},
+    onProgress,
+  }: {
+    host?: ImportHost;
+    interval?: number;
+    timeout?: number;
+    signal?: AbortSignal;
+    onProgress?: (progress: ImportProgress) => void;
+  } = {},
 ): Promise<ImportedVolume> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -173,8 +188,17 @@ export function receiveImport(
       reject(new DOMException("Import aborted", "AbortError"));
     };
     const onData = (data: unknown) => {
-      const d = data as { type?: unknown; id?: unknown; schema?: unknown; file?: unknown; meta?: unknown; message?: unknown } | null;
+      const d = data as {
+        type?: unknown; id?: unknown; schema?: unknown; file?: unknown; meta?: unknown; message?: unknown;
+        label?: unknown; fraction?: unknown;
+      } | null;
       if (d?.id !== req.id) return;
+      if (d.type === "nebula3d-import-progress") {
+        if (typeof d.label === "string" && typeof d.fraction === "number" && Number.isFinite(d.fraction)) {
+          onProgress?.({ label: d.label.slice(0, 80), fraction: Math.min(1, Math.max(0, d.fraction)) });
+        }
+        return;
+      }
       if (d.type === "nebula3d-import-cancel") {
         finish();
         reject(new Error(typeof d.message === "string" ? d.message : "the NeXus Viewer cancelled the import."));

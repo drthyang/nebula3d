@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **NeXus Viewer import shows its progress.** While NEBULA3D waits for the
+  volume, the viewer sends `nebula3d-import-progress` (stage label + overall
+  fraction), and the import banner shows it as text and a progress bar instead
+  of only "Waiting for the NeXus Viewer…". Once the file arrives, the banner
+  shows the in-browser engine's start-up step and bar while it boots, instead of
+  a bare "Loading…". The message is optional: older versions of either app
+  ignore it or never send it. The Configure page's boot panel and the banner now
+  share `bootPercent` (`api/pyodideEngine.ts`) and `useBootStatus`
+  (`api/hooks.ts`). `web/src/api/importHandoff.ts` (`onProgress`, + test),
+  `web/src/components/ViewerImportBanner.tsx`; see `docs/web.md`.
 - **NeXus Viewer import: the two tabs no longer share a browser process.** The
   viewer opened this app with a window reference. Same-site tabs linked that way
   share one renderer process and main thread, so reloading, closing or crashing

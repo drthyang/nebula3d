@@ -9,13 +9,12 @@ import { useShallow } from "zustand/react/shallow";
 
 import { browseDataRoot, fetchMeta, fetchSlice, setDataRoot } from "../api/client";
 import {
+  bootPercent,
   engine,
-  getBootStatus,
   PYODIDE_MODE,
-  subscribeBoot,
   type BootStatus,
 } from "../api/pyodideEngine";
-import { useDataRoot, useDatasets } from "../api/hooks";
+import { useBootStatus, useDataRoot, useDatasets } from "../api/hooks";
 import { COLORMAPS } from "../colormaps/luts";
 import { SliceCanvas } from "../components/SliceCanvas";
 import { Field, HelpTip, RangeSlider, Slider, Switch } from "../components/ui";
@@ -1039,12 +1038,6 @@ function PunchPreviewGrid({
 // In-browser boot progress panel (shown during the one-time WASM download)
 // ---------------------------------------------------------------------------
 
-function useBootStatus(): BootStatus {
-  const [status, setStatus] = useState<BootStatus>(getBootStatus);
-  useEffect(() => subscribeBoot(setStatus), []);
-  return status;
-}
-
 const BOOT_PHASE_LABELS: Record<string, string> = {
   runtime: "Downloading Python runtime (~10 MB)…",
   packages: "Loading numpy, scipy, h5py…",
@@ -1054,9 +1047,7 @@ const BOOT_PHASE_LABELS: Record<string, string> = {
 };
 
 function BootProgressPanel({ status }: { status: BootStatus }) {
-  const phases = ["runtime", "packages", "wheel"] as const;
-  const idx = phases.indexOf(status.phase as (typeof phases)[number]);
-  const pct = idx >= 0 ? Math.round(((idx + 1) / phases.length) * 100) : 100;
+  const pct = bootPercent(status);
   const isError = status.phase === "error";
   const isReady = status.phase === "ready";
 

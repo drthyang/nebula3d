@@ -349,6 +349,22 @@ button {
   flex: 1;
   min-width: 0;
 }
+/* The viewer's build progress while the banner waits (as .boot-panel-bar). */
+.import-banner-bar {
+  display: block;
+  height: 3px;
+  margin-top: 7px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  overflow: hidden;
+}
+.import-banner-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
 .import-banner-close {
   flex: none;
   width: 24px;
