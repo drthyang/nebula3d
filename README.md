@@ -189,7 +189,7 @@ data/processed/*_braggpunched.h5
 ### 3. Backfill Bragg Holes
 
 ```bash
-PYTHONPATH=src METHOD=q_shell \
+PYTHONPATH=src METHOD=local \
 python3 examples/backfill_bragg_3d.py
 ```
 
@@ -272,7 +272,7 @@ PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl USE_BACKGROUND=0 \
 PUNCH_PRESET=cc_on MODE=both MIN_I=0.8 MIN_PROM=0.8 \
 INTEGER_FIT_POSITION=1 INTEGER_FIT_SHAPE=1 INTEGER_H_GUARD=0.12 \
 SEARCH_EXCLUDE_H=-0.6667,-0.3333,0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \
-BACKFILL_METHOD=q_shell H_VALUE=0.3333 \
+BACKFILL_METHOD=local H_VALUE=0.3333 \
 python3 examples/explore_slice.py
 ```
 
@@ -314,7 +314,7 @@ remover = BraggRemover(
 )
 
 punched = remover.apply(vol)
-filled = backfill_bragg(punched, method="q_shell")
+filled = backfill_bragg(punched)  # fills each hole from its surroundings
 dpdf = compute_delta_pdf(filled, apodization="hann")
 ```
 

@@ -962,30 +962,42 @@ def build_manual(output_path: str) -> None:
         "<tt>backfill_bragg()</tt> in <tt>nebula3d/analysis/bragg_fill.py</tt>."
     ))
 
-    story.append(H3("4.3.1  Q-Shell Fill (Recommended)"))
     story.append(P(
-        "For ordinary Bragg holes, the robust diffuse level at the same |<b>Q</b>| "
-        "provides the best estimate. For each |<b>Q</b>| bin (step size "
-        "<tt>q_shell_step</tt>), the background is estimated as:"
-    ))
-    story.append(math_block(
-        "I_fill = median(I_valid_in_bin) + n_mad × MAD(I_valid_in_bin)"
-    ))
-    story.append(P(
-        "where the median and MAD are computed over all unmasked voxels in the "
-        "|<b>Q</b>| shell. If a shell has fewer than <tt>q_shell_min_count</tt> valid "
-        "voxels, the algorithm falls back to local shell interpolation. This method is "
-        "physically motivated: the diffuse intensity at a given |<b>Q</b>| is "
-        "relatively smooth and isotropic, so the shell level is a good estimate for "
-        "all punched voxels at that |<b>Q</b>|."
+        "Each hole is filled from the diffuse intensity <i>around</i> it (the "
+        "3D-ΔPDF punch-and-fill convention). Every punch sits on a "
+        "reciprocal-lattice node, so any bias of the fill at the nodes repeats on "
+        "the lattice and Fourier-transforms into spurious ΔPDF features at the "
+        "lattice vectors, where the real correlations are."
     ))
 
-    story.append(H3("4.3.2  Local Fill"))
+    story.append(H3("4.3.1  Local Fill (Default)"))
     story.append(P(
-        "For fast visual checks or sparse synthetic volumes, "
         "<tt>method=\"local\"</tt> fills each connected punched component from a "
         "dilated-shell median of nearby valid voxels, falling back to the global "
-        "median if too few neighbours are available."
+        "median if too few neighbours are available. It is robust to Bragg tails "
+        "leaking past the punch edge; the fill is flat, leaving a small step at "
+        "the hole edge."
+    ))
+
+    story.append(H3("4.3.2  Laplace Fill"))
+    story.append(P(
+        "<tt>method=\"laplace\"</tt> solves the discrete Laplace equation "
+        "(6-neighbour stencil) in every hole, so the fill continues the "
+        "surrounding diffuse smoothly with no edge step. All holes form one "
+        "sparse block-diagonal system solved by Jacobi-preconditioned conjugate "
+        "gradients. The Dirichlet boundary sits <tt>laplace_gap</tt> (default 1) "
+        "voxels outside the punch so leaked Bragg tails do not pull the fill up; "
+        "measured voxels in that band are kept."
+    ))
+
+    story.append(H3("4.3.3  Q-Shell Fill (Comparison Only)"))
+    story.append(P(
+        "<tt>method=\"q_shell\"</tt> fills each hole with the median of all valid "
+        "voxels in its |<b>Q</b>| bin (step <tt>q_shell_step</tt>). It ignores "
+        "the diffuse structure at the lattice nodes (correlations at "
+        "lattice-vector separations peak or dip exactly there), so it is biased "
+        "at every node and leaves lattice-vector artefacts in the ΔPDF. Kept for "
+        "comparison only."
     ))
 
     story.append(H3("4.3.3  General Inpainting Methods"))
@@ -1306,7 +1318,7 @@ def build_manual(output_path: str) -> None:
 
     story.append(H3("Stage 3: Backfill"))
     story.append(code_block(
-        "PYTHONPATH=src METHOD=q_shell \\\n"
+        "PYTHONPATH=src METHOD=local \\\n"
         "  python examples/backfill_bragg_3d.py"
     ))
     story.append(PL("Output: <tt>data/processed/*_braggpunched_backfilled.h5</tt>"))
@@ -1381,7 +1393,7 @@ def build_manual(output_path: str) -> None:
         "punched = remover.apply(vol)\n"
         "\n"
         "# Backfill\n"
-        "filled = backfill_bragg(punched, method=\"q_shell\")\n"
+        "filled = backfill_bragg(punched)  # method=\"local\"\n"
         "\n"
         "# 3D-DeltaPDF\n"
         "dpdf = compute_delta_pdf(\n"
@@ -1441,7 +1453,8 @@ def build_manual(output_path: str) -> None:
 
     story.append(H2("7.3  Backfill Parameters"))
     fill_params = [
-        ["METHOD", "str", "q_shell", "Fill method: q_shell, local, tv, symmetry, symmetry+tv"],
+        ["METHOD", "str", "local", "Fill method: local, laplace, q_shell (comparison), tv, symmetry, symmetry+tv"],
+        ["LAPLACE_GAP", "int", "1", "Voxels outside the punch where the laplace fill takes its boundary"],
         ["Q_SHELL_STEP", "float", "0.05", "Bin width for q-shell fill (Å⁻¹)"],
         ["Q_SHELL_MIN_COUNT", "int", "10", "Min valid voxels per bin; fall back to local if fewer"],
         ["TV_LAM", "float", "0.1", "TV regularisation λ (higher = smoother fill)"],

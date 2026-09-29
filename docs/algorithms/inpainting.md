@@ -7,8 +7,8 @@ interpolation cannot fill them) we need to reconstruct physically reasonable
 intensities. Several complementary strategies are implemented, combined in a pipeline.
 
 > **Scope.** This pipeline is the **general-purpose** inpainter. The current
-> real-data Bragg workflow usually uses `backfill_bragg(method="q_shell")` or
-> `method="local"` before falling back to TV/symmetry methods. Powder-ring shells
+> real-data Bragg workflow uses `backfill_bragg(method="local")` (default) or
+> `method="laplace"` before falling back to TV/symmetry methods. Powder-ring shells
 > are filled first by `backfill_ring_shells`, which interpolates radially across
 > the thin shell from uncontaminated neighbours (see
 > [powder_rings.md](powder_rings.md)). Symmetry averaging is **not** used for ring
@@ -88,13 +88,19 @@ For Bragg-punched volumes, prefer the dedicated wrapper:
 ```python
 from nebula3d.analysis import backfill_bragg
 
-filled = backfill_bragg(punched, method="q_shell")
+filled = backfill_bragg(punched)                    # method="local"
+filled = backfill_bragg(punched, method="laplace")  # smooth harmonic fill
 ```
 
-`method="q_shell"` fills ordinary Bragg components from the robust radial
-background level at the same `|Q|`, while the direct beam keeps its special
-just-outside-`|Q|` fill. `method="local"` remains useful for fast visual checks
-or sparse synthetic volumes.
+Both fill each hole from the diffuse around it, while the direct beam keeps its
+special just-outside-`|Q|` fill. `method="local"` uses the median of the hole's
+own dilated shell. `method="laplace"` solves the discrete Laplace equation in
+every hole at once (one sparse block-diagonal system, Jacobi-preconditioned CG),
+with its Dirichlet boundary `laplace_gap` voxels outside the punch so Bragg
+tails leaking past the punch edge do not pull the fill up. `method="q_shell"`
+(the robust radial level at the same `|Q|`) is kept only for comparison: it is
+biased at the lattice nodes and leaves ΔPDF artefacts at the lattice vectors
+(see [bragg_cleanup.md](bragg_cleanup.md)).
 
 ---
 
