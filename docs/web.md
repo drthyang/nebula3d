@@ -170,7 +170,7 @@ live at the end of `web/src/index.css`, under "Device layouts".
 | Screen | Viewport | Layout |
 | --- | --- | --- |
 | iPhone 18 Pro / Pro Max, portrait | 402 × 874 / 440 × 956 | The sidebar becomes a top bar: brand and dataset picker, then the views as a row of pills that scrolls sideways. Viewer panels stack one per row. Form text is 16 px, so Safari does not zoom in when a field gets focus. The API status and version move to the end of each page. |
-| iPhone 18 Pro / Pro Max, landscape | 874 × 402 / 956 × 440 | The top bar is a single row, and the page description is cut to one line. Panels go three to a row. Padding clears the Dynamic Island and the home indicator (`viewport-fit=cover`). |
+| iPhone 18 Pro / Pro Max, landscape | 874 × 402 / 956 × 440 | The top bar is a single row. Panels go three to a row. Padding clears the Dynamic Island and the home indicator (`viewport-fit=cover`). |
 | iPad Pro 11″ / 13″, portrait | 834 × 1210 / 1032 × 1376 | Top bar with the full row of views. Panels go three to a row, or two to a row when there are 2 or 4. Configure's workflow boxes go two to a row. |
 | iPad Pro 11″ / 13″, landscape | 1210 × 834 / 1376 × 1032 | Sidebar, narrowed to 208 px. |
 | MacBook Pro 14″ / 16″ | 1512 × 982 / 1728 × 1117 | The baseline desktop layout. On short windows (≤ 920 px tall, e.g. the 14″) there is less vertical padding, so viewer panels start higher. |
@@ -178,8 +178,9 @@ live at the end of `web/src/index.css`, under "Device layouts".
 | 4K at 150 % (2560 × 1440) | ≥ 2400 wide | Configure shows the workflow controls and the live punch / \|Q\|-band preview side by side, with the preview pinned while you scroll. |
 | 4K at 100 % (3840 × 2160) | ≥ 3200 wide | The whole console is scaled up 1.25–1.5× (CSS `zoom`), so it looks like the 150 % layout rather than tiny text. Browser zoom turns this off. |
 
-On any touch screen (`pointer: coarse`), slider thumbs, switches, buttons and
-help icons are enlarged to finger size. The Configure workflow grid uses
+Narrower portrait tablets (600–799 px, e.g. iPad mini or Split View) show two
+panels to a row. On any touch screen (`pointer: coarse`), slider thumbs,
+switches, buttons and help icons are enlarged to finger size. The Configure workflow grid uses
 container queries, so its column count follows the width it actually gets,
 including the narrower column in the 4K side-by-side layout.
 

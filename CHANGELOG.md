@@ -12,7 +12,11 @@
   the console is scaled up. Touch screens get finger-sized controls, the shell
   uses the dynamic viewport height and safe-area insets, and phones get 16 px
   form text (no zoom on focus). Configure fields no longer spill out of their
-  boxes on iPad widths. `web/src/index.css` ("Device layouts"),
+  boxes on iPad widths. Long file names, run IDs and slider readouts wrap
+  instead of being cut off. The AI Assistant page grows when its settings
+  drawer is open, instead of running under the page footer. Checked at every
+  target size (with iPhone safe areas emulated) for overlapping components
+  and cut-off text. `web/src/index.css` ("Device layouts"),
   `web/src/App.tsx`, `web/index.html`; see `docs/web.md`.
 - **NeXus Viewer import shows its progress.** While NEBULA3D waits for the
   volume, the viewer sends `nebula3d-import-progress` (stage label + overall
