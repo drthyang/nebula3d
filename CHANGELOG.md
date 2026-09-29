@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Import from the NeXus Viewer.** The viewer's *Open in NEBULA3D* button
+  opens this app with `?import=nexus-viewer&id=…&from=…` and posts its
+  symmetrized, masked volume (nebula3d HDF5, padded symmetric about Q = 0)
+  once the page reports ready; the in-browser build loads it like *Load
+  volume…*, selects it as the dataset and reports back. Messages are exchanged
+  only with `window.opener` at an allowed origin (own, drthyang.github.io,
+  localhost in dev). `web/src/api/importHandoff.ts` (+ vitest suite),
+  `web/src/components/ViewerImportBanner.tsx`; see `docs/web.md`.
 - **Mantid loader: projection guard for non-orthogonal cells.** Each dim's
   `long_name` is now read as an (h, k, l) direction (`[K,2K,0]` → (1, 2, 0))
   and cross-checked against the `W_MATRIX` log. Only plain H, K, L axes (in any
