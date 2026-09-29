@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Layouts for iPhone, iPad, MacBook and 4K screens.** Below 1100 px (iPad
+  Pro portrait and all iPhones) the sidebar becomes a compact top bar with a
+  scrolling row of view pills. On phones this bar is a single row in landscape.
+  Viewer panels no longer squeeze into one row there: they wrap into a grid, or
+  stack one per row on a phone. Stat strips, headers, clusters and the Bragg
+  peak table reflow instead of overflowing. On 4K at 150 %, Configure shows the
+  workflow controls and the live preview side by side. On a 4K panel at 100 %,
+  the console is scaled up. Touch screens get finger-sized controls, the shell
+  uses the dynamic viewport height and safe-area insets, and phones get 16 px
+  form text (no zoom on focus). Configure fields no longer spill out of their
+  boxes on iPad widths. `web/src/index.css` ("Device layouts"),
+  `web/src/App.tsx`, `web/index.html`; see `docs/web.md`.
 - **NeXus Viewer import shows its progress.** While NEBULA3D waits for the
   volume, the viewer sends `nebula3d-import-progress` (stage label + overall
   fraction), and the import banner shows it as text and a progress bar instead
