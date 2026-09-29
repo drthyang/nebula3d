@@ -43,6 +43,7 @@ export interface PipelineContext {
   reciprocal_plane: string;
   cut_value: number;
   lattice_A?: { a: number | null; b: number | null; c: number | null };
+  cell_angles_deg?: { alpha: number; beta: number; gamma: number };
   grid?: number[];
   ring_removal?: ReturnType<typeof ringMetrics>;
   bragg_punch?: {
@@ -86,6 +87,9 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
 
   const lat = hklMeta?.lattice ?? dpdfMeta?.lattice;
   if (lat) ctx.lattice_A = { a: lat.a, b: lat.b, c: lat.c };
+  if (lat?.alpha != null && lat.beta != null && lat.gamma != null) {
+    ctx.cell_angles_deg = { alpha: lat.alpha, beta: lat.beta, gamma: lat.gamma };
+  }
   if (hklMeta?.shape) ctx.grid = hklMeta.shape;
 
   const [latX, latY] = lat ? planeAxisLattice(plane, lat) : [null, null];

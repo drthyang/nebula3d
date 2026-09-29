@@ -20,6 +20,7 @@ import {
   Slider,
   Switch,
 } from "../components/ui";
+import { latticeLabel } from "../components/oblique";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useDpdfStore } from "../state/dpdfStore";
 
@@ -251,6 +252,7 @@ export function MultiTempViewer() {
                             half={halfWindow}
                             latX={planeLat[p.key][0]}
                             latY={planeLat[p.key][1]}
+                            angle={data.header.axes_angle}
                           />
                         )}
                       </div>
@@ -279,10 +281,7 @@ export function MultiTempViewer() {
               key: "Window",
               value: `${windowFull.toFixed(0)} × ${windowFull.toFixed(0)} Å`,
             },
-            {
-              key: "Lattice",
-              value: `a=${a?.toFixed(2)}  b=${b?.toFixed(2)}  c=${c?.toFixed(2)} Å`,
-            },
+            { key: "Lattice", value: latticeLabel(meta.lattice) },
           ]}
         />
       )}

@@ -30,6 +30,7 @@ import numpy as np
 
 import nebula3d
 from nebula3d.core import HKLVolume
+from nebula3d.utils.reciprocal_space import direct_cell
 from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import _ALIASES, _PLANE, SliceData
 
@@ -83,29 +84,28 @@ def clear_cache() -> None:
         _cache.clear()
 
 
-def lattice_constants(vol: HKLVolume) -> tuple[float | None, float | None, float | None]:
-    """Direct-lattice a/b/c (Å) from the UB matrix, or ``None`` if singular."""
+_CELL_KEYS = ("a", "b", "c", "alpha", "beta", "gamma")
+
+
+def lattice_parameters(vol: HKLVolume) -> dict[str, float | None]:
+    """Direct cell ``a/b/c`` (Å) and ``alpha/beta/gamma`` (degrees) from the UB
+    matrix; every value ``None`` if the UB is singular."""
     try:
-        direct = 2 * np.pi * np.linalg.inv(vol.ub_matrix).T
-        return (
-            float(np.linalg.norm(direct[:, 0])),
-            float(np.linalg.norm(direct[:, 1])),
-            float(np.linalg.norm(direct[:, 2])),
-        )
+        cell = direct_cell(vol.ub_matrix)
     except np.linalg.LinAlgError:
-        return None, None, None
+        return dict.fromkeys(_CELL_KEYS)
+    return {k: float(v) for k, v in zip(_CELL_KEYS, cell)}
 
 
 def volume_meta(path: Path) -> dict:
     """Compact metadata for a volume: shape, axis ranges, lattice."""
     vol = load_volume(path)
-    a, b, c = lattice_constants(vol)
     return {
         "shape": [int(n) for n in vol.data.shape],
         "h_range": [float(vol.h_axis[0]), float(vol.h_axis[-1])],
         "k_range": [float(vol.k_axis[0]), float(vol.k_axis[-1])],
         "l_range": [float(vol.l_axis[0]), float(vol.l_axis[-1])],
-        "lattice": {"a": a, "b": b, "c": c},
+        "lattice": lattice_parameters(vol),
         "ub_matrix": np.asarray(vol.ub_matrix, dtype=float).tolist(),
         "planes": list(PLANES),
     }
@@ -131,6 +131,10 @@ def pack_slice(sd: SliceData) -> bytes:
         "cut_label": sd.cut_label,
         "robust_max": _robust_max(data),
     }
+    if sd.axes_angle is not None:  # a section drawn at a non-right angle (ΔPDF)
+        header["axes_angle"] = float(sd.axes_angle)
+        header["r_center"] = [float(v) for v in (sd.r_center or (0.0, 0.0))]
+        header["r_perp"] = float(sd.r_perp or 0.0)
     hb = json.dumps(header).encode("utf-8")
     return struct.pack("<I", len(hb)) + hb + data.tobytes()
 

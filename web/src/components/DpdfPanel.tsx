@@ -1,6 +1,6 @@
 // One ΔPDF orthoslice panel: fetches its slice and renders a square real-space
-// window (±windowA Å on both axes) diverging about 0, with an optional gray
-// dashed unit-cell overlay.  Self-scales to its own robust far-field level ×
+// window (±windowA Å on both axes) diverging about 0, drawn at the section's
+// real axis angle, with an optional gray dashed unit-cell overlay.  Self-scales to its own robust far-field level ×
 // contrast (the multi-temp viewer pools scale separately).
 //
 // Chrome reuses the Q–R Band Transform panel system (`.qr-panel`): a header with
@@ -70,7 +70,14 @@ export function DpdfPanel({
               diverging
               windowA={windowA}
             />
-            {gridlines && <UnitCellGrid half={windowA} latX={latX} latY={latY} />}
+            {gridlines && (
+              <UnitCellGrid
+                half={windowA}
+                latX={latX}
+                latY={latY}
+                angle={data.header.axes_angle}
+              />
+            )}
           </>
         ) : (
           <div className="skeleton" style={{ width: "100%", height: "100%" }} />

@@ -27,7 +27,7 @@ from nebula3d.pipeline import (
 )
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import find_dataset
-from nebula3d.server.volumes import PLANES, lattice_constants, load_volume, pack_slice
+from nebula3d.server.volumes import PLANES, lattice_parameters, load_volume, pack_slice
 from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import extract_slice_dpdf
 
@@ -111,7 +111,6 @@ def consistency_meta(
     """Grid ranges, available span, and the agreement metrics."""
     res = reconstruction(path, q_band, r_band)
     recon = res["recon"]
-    a, b, c = lattice_constants(recon)
     return {
         "shape": [int(n) for n in recon.data.shape],
         "h_range": [float(recon.h_axis[0]), float(recon.h_axis[-1])],
@@ -121,7 +120,7 @@ def consistency_meta(
         "x_range": [float(res["dpdf"].x_axis[0]), float(res["dpdf"].x_axis[-1])],
         "y_range": [float(res["dpdf"].y_axis[0]), float(res["dpdf"].y_axis[-1])],
         "z_range": [float(res["dpdf"].z_axis[0]), float(res["dpdf"].z_axis[-1])],
-        "lattice": {"a": a, "b": b, "c": c},
+        "lattice": lattice_parameters(recon),
         "planes": list(PLANES),
         "q_data_max": res["metrics"]["q_data_max"],
         "r_data_max": res["metrics"]["r_data_max"],

@@ -593,7 +593,12 @@ export function ConsistencyViewer() {
                 windowA={windowFull / 2}
               />,
               dpdfGridlines ? (
-                <UnitCellGrid half={windowFull / 2} latX={dpdfLatX ?? null} latY={dpdfLatY ?? null} />
+                <UnitCellGrid
+                  half={windowFull / 2}
+                  latX={dpdfLatX ?? null}
+                  latY={dpdfLatY ?? null}
+                  angle={dpdfSliceResult.data?.header.axes_angle}
+                />
               ) : undefined,
             )}
             <div className="qr-foot">

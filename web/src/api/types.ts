@@ -28,6 +28,11 @@ export interface Lattice {
   a: number | null;
   b: number | null;
   c: number | null;
+  // Direct-cell angles (degrees).  Absent/null for ΔPDF files written before
+  // they were stored — treat as 90°.
+  alpha?: number | null;
+  beta?: number | null;
+  gamma?: number | null;
 }
 
 export interface VolumeMeta {
@@ -129,6 +134,13 @@ export interface SliceHeader {
   y_label: string;
   cut_label: string;
   robust_max: number;
+  // Real-space (ΔPDF) sections only: the true angle between the x and y axes
+  // (deg; γ for x_H–y_K, β for x_H–z_L, α for y_K–z_L), the display position of
+  // the section point nearest the origin, and the section plane's distance
+  // from it — so |r|² = (X − cx)² + (Y − cy)² + r_perp².  See oblique.ts.
+  axes_angle?: number;
+  r_center?: [number, number];
+  r_perp?: number;
 }
 
 export interface Slice {

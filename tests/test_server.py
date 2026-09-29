@@ -357,6 +357,41 @@ def test_dpdf_slice_matches_transpose(dpdf_env, plane, fixed_axis, xl, yl):
     assert header["y_label"] == yl
 
 
+def test_dpdf_file_without_angles_is_drawn_at_right_angles(dpdf_env):
+    """Files written before the cell angles were stored: no angles in the meta,
+    every section drawn at 90°, and the section plane sits |cut| from the origin."""
+    client, _, _, _, z = dpdf_env
+    m = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/meta").json()
+    assert m["lattice"]["gamma"] is None
+    r = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/slice",
+                   params={"plane": "xy", "value": 4.0})
+    header, _ = _parse_envelope(r.content)
+    cut = float(z[int(np.argmin(np.abs(z - 4.0)))])
+    assert header["axes_angle"] == 90.0
+    assert header["r_center"] == [0.0, 0.0]
+    assert header["r_perp"] == pytest.approx(abs(cut))
+
+
+@pytest.mark.parametrize("plane,angle", [("xy", 115.0), ("xz", 100.0), ("yz", 75.0)])
+def test_dpdf_slices_carry_the_real_section_angle(dpdf_env, tmp_path, plane, angle):
+    """With lat_alpha/beta/gamma stored, each section reports its own angle
+    (γ for x_H–y_K, β for x_H–z_L, α for y_K–z_L) and the meta lists them."""
+    client, *_ = dpdf_env
+    path = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
+                          proc_dir=tmp_path / "processed").delta_pdf  # dpdf_env's file
+    with h5py.File(path, "a") as fh:
+        fh.attrs["lat_alpha"], fh.attrs["lat_beta"], fh.attrs["lat_gamma"] = 75.0, 100.0, 115.0
+    dpdf_mod.clear_cache()
+
+    m = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/meta").json()
+    assert (m["lattice"]["alpha"], m["lattice"]["beta"], m["lattice"]["gamma"]) == (
+        75.0, 100.0, 115.0)
+    r = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/slice",
+                   params={"plane": plane, "value": 0.0})
+    header, _ = _parse_envelope(r.content)
+    assert header["axes_angle"] == pytest.approx(angle)
+
+
 def test_dpdf_bad_plane_400(dpdf_env):
     client, *_ = dpdf_env
     r = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/slice", params={"plane": "hk"})

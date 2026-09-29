@@ -15,6 +15,7 @@ import {
   Switch,
   type ValueInputConfig,
 } from "../components/ui";
+import { latticeLabel } from "../components/oblique";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useDpdfStore } from "../state/dpdfStore";
 
@@ -295,10 +296,7 @@ export function DeltaPdfViewer() {
               key: "Window",
               value: `${windowFull.toFixed(0)} × ${windowFull.toFixed(0)} Å`,
             },
-            {
-              key: "Lattice",
-              value: `a=${a?.toFixed(2)}  b=${b?.toFixed(2)}  c=${c?.toFixed(2)} Å`,
-            },
+            { key: "Lattice", value: latticeLabel(meta.lattice) },
             { key: "|Q| max", value: `${meta.q_max?.toFixed(1)} Å⁻¹` },
           ]}
         />

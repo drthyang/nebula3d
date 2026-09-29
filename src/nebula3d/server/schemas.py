@@ -38,6 +38,11 @@ class LatticeOut(BaseModel):
     a: float | None
     b: float | None
     c: float | None
+    # Direct-cell angles (degrees); None for ΔPDF files written before they
+    # were stored — viewers then assume 90°.
+    alpha: float | None = None
+    beta: float | None = None
+    gamma: float | None = None
 
 
 class VolumeMetaOut(BaseModel):

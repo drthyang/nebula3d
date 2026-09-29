@@ -13,6 +13,7 @@ export interface GridSlice {
     x_axis: number[];
     y_axis: number[];
     robust_max?: number;
+    axes_angle?: number; // real-space sections: angle between x and y axes (deg)
   };
   data: Float32Array | number[];
 }
