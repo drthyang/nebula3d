@@ -156,6 +156,29 @@ describe("receiveImport", () => {
     expect(host.listeners).toHaveLength(0);
   });
 
+  it("passes on the viewer's build progress, clamped, until the file arrives", async () => {
+    const host = new FakeHost({ opener: false });
+    const progress: unknown[] = [];
+    const pending = receiveImport({ id: "abc", origin: OWN }, { host, onProgress: (p) => progress.push(p) });
+    const [channel] = host.channels;
+    channel.emit({ type: "nebula3d-import-progress", id: "abc", label: "Symmetrizing", fraction: 0.3 });
+    channel.emit({ type: "nebula3d-import-progress", id: "abc", label: "Writing HDF5", fraction: 1.5 });
+    // Malformed or for another import: ignored.
+    channel.emit({ type: "nebula3d-import-progress", id: "abc", label: "Symmetrizing", fraction: Number.NaN });
+    channel.emit({ type: "nebula3d-import-progress", id: "abc", fraction: 0.5 });
+    channel.emit({ type: "nebula3d-import-progress", id: "other", label: "Symmetrizing", fraction: 0.5 });
+    expect(progress).toEqual([
+      { label: "Symmetrizing", fraction: 0.3 },
+      { label: "Writing HDF5", fraction: 1 },
+    ]);
+    expect(channel.closed).toBe(false);
+
+    channel.emit(volume);
+    await pending;
+    channel.emit({ type: "nebula3d-import-progress", id: "abc", label: "Symmetrizing", fraction: 0.9 });
+    expect(progress).toHaveLength(2);
+  });
+
   it("rejects with no link to the viewer, on a malformed reply, on cancel, on timeout and on abort", async () => {
     const req = { id: "abc", origin: DEV };
     await expect(receiveImport(req, { host: new FakeHost({ opener: false }) })).rejects.toThrow(/not opened/);

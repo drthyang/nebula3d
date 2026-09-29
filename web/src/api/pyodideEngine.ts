@@ -60,6 +60,12 @@ export function subscribeBoot(fn: (s: BootStatus) => void): () => void {
   bootListeners.add(fn);
   return () => bootListeners.delete(fn);
 }
+/** Boot progress in percent: the share of the steps (runtime, packages, wheel) reached; 100 in other phases. */
+export function bootPercent(status: BootStatus): number {
+  const steps = ["runtime", "packages", "wheel"];
+  const idx = steps.indexOf(status.phase);
+  return idx >= 0 ? Math.round(((idx + 1) / steps.length) * 100) : 100;
+}
 function setBoot(s: BootStatus): void {
   bootStatus = s;
   for (const fn of bootListeners) fn(s);

@@ -1,6 +1,7 @@
-// TanStack Query hooks over the API client.
+// TanStack Query hooks over the API client, and the in-browser engine's boot status.
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 
 import {
   fetchBraggProfile,
@@ -11,6 +12,14 @@ import {
   fetchHealth,
   fetchMeta,
 } from "./client";
+import { getBootStatus, subscribeBoot, type BootStatus } from "./pyodideEngine";
+
+/** The in-browser engine's boot status, updated as it boots (Pyodide build). */
+export function useBootStatus(): BootStatus {
+  const [status, setStatus] = useState<BootStatus>(getBootStatus);
+  useEffect(() => subscribeBoot(setStatus), []);
+  return status;
+}
 
 export function useHealth() {
   return useQuery({
