@@ -80,7 +80,10 @@ STAGE_DEFAULTS = {
         "SEARCH_EXCLUDE_H_FRACTIONS": "0.3333,0.6667",
         "SEARCH_EXCLUDE_H_WIDTH": "0.08", "PREVIEW": "0",
     },
-    "backfill": {"METHOD": "q_shell"},
+    # fill each hole from the diffuse around it ("local"; "laplace" = smooth
+    # harmonic fill).  "q_shell" (|Q|-shell level) is biased at every lattice
+    # node and leaves spurious ΔPDF features at the lattice vectors.
+    "backfill": {"METHOD": "local"},
     # isotropic radial-background flatten — the explicit step-4 background
     # remover (default ON).  floor (p25) keeps diffuse; validate on your data
     # with examples/validate_flatten.py.

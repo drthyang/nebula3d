@@ -13,12 +13,18 @@ Run::
 Env overrides:
     DATA_FILE   punched input .h5
     OUT_FILE    output .h5 (default: <stem>_backfilled.h5)
-    METHOD      "local" | "q_shell" | "tv" | "symmetry+tv" | "symmetry" | ...
-                (default local).  "q_shell" fills ordinary Bragg holes from the
-                robust background level at the same |Q|.
+    METHOD      "local" | "laplace" | "q_shell" | "tv" | "symmetry+tv" | ...
+                (default local).  "local" fills each hole with the median of
+                its own surrounding shell; "laplace" with the smooth harmonic
+                interpolant of the surrounding diffuse.  "q_shell" (robust
+                level at the same |Q|) is kept for comparison only — it is
+                biased at the lattice nodes and leaves ΔPDF artefacts at the
+                lattice vectors.
     LAUE        Laue class for symmetry fill (default mmm)
     LOCAL_RADIUS     dilation radius for local background shell (default 2)
     LOCAL_MIN_COUNT  minimum shell samples before global-median fallback (default 8)
+    LAPLACE_GAP       voxels outside the punch where METHOD=laplace takes its
+                      boundary values, clearing leaked Bragg tails (default 1)
     Q_SHELL_STEP      |Q| bin width for METHOD=q_shell (default 0.05 Å^-1)
     Q_SHELL_MIN_COUNT minimum radial-bin samples for METHOD=q_shell (default 20)
     TV_LAM      TV regularisation weight (default 0.2)
@@ -57,6 +63,7 @@ local_radius = int(os.environ.get("LOCAL_RADIUS", "2"))
 local_min_count = int(os.environ.get("LOCAL_MIN_COUNT", "8"))
 q_shell_step = float(os.environ.get("Q_SHELL_STEP", "0.05"))
 q_shell_min_count = int(os.environ.get("Q_SHELL_MIN_COUNT", "20"))
+laplace_gap = int(os.environ.get("LAPLACE_GAP", "1"))
 tv_lam = float(os.environ.get("TV_LAM", "0.2"))
 tv_iter = int(os.environ.get("TV_ITER", "80"))
 
@@ -69,14 +76,16 @@ print(f"volume {vol.shape}; holes={int(holes.sum()):,} "
       flush=True)
 print(f"backfill method={method} laue={laue} local_radius={local_radius} "
       f"local_min_count={local_min_count} q_shell_step={q_shell_step} "
-      f"q_shell_min_count={q_shell_min_count} tv_lam={tv_lam} tv_iter={tv_iter}",
+      f"q_shell_min_count={q_shell_min_count} laplace_gap={laplace_gap} "
+      f"tv_lam={tv_lam} tv_iter={tv_iter}",
       flush=True)
 
 t0 = time.time()
 filled = backfill_bragg(
     vol, method=method, laue_class=laue, local_radius=local_radius,
     local_min_count=local_min_count, q_shell_step=q_shell_step,
-    q_shell_min_count=q_shell_min_count, tv_lam=tv_lam, tv_iter=tv_iter,
+    q_shell_min_count=q_shell_min_count, laplace_gap=laplace_gap,
+    tv_lam=tv_lam, tv_iter=tv_iter,
 )
 dt = time.time() - t0
 

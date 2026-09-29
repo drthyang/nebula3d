@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **Bragg backfill now fills from the diffuse around each hole.** The pipeline,
+  `run_pipeline.py` and web default changes from `q_shell` to `local`.
+  `q_shell` filled every hole with the median of its whole |Q| shell. That is
+  biased at the lattice nodes, where correlations at lattice-vector separations
+  peak or dip, and the node-periodic bias Fourier-transforms into spurious ΔPDF
+  features at the lattice vectors. The standard punch-and-fill practice
+  (NXRefine, Mantid `DeltaPDF3D`, KAREN) interpolates the surrounding diffuse.
+  **Re-run backfill → ΔPDF on existing datasets: results change.**
+  - **New `method="laplace"`:** a harmonic (Laplace) fill of all holes in one
+    sparse system (Jacobi-preconditioned CG, no per-hole loop), continuing the
+    local diffuse smoothly with no edge step. Its boundary sits `laplace_gap`
+    (default 1) voxels outside the punch, so Bragg tails leaking past the punch
+    do not pull the fill up; measured voxels in that band are kept. Exposed in
+    `BackfillParams.laplace_gap`, the web method menu and `LAPLACE_GAP` in
+    `examples/backfill_bragg_3d.py`.
+  - **Synthetic check** (short-range order + node-peaked diffuse + Bragg):
+    worst lattice-vector ΔPDF artefact ~2.3 % of the signal for `q_shell`,
+    ~1 % for `local`, ~0.8 % for `laplace`. Backfill transient memory on a
+    25 M-voxel volume: `q_shell` 41, `local` 25, `laplace` 35 B/voxel.
+  - `q_shell` stays available for comparison. The web help text no longer
+    claims it "interpolates".
+
 - **3D-ΔPDF on non-orthogonal cells: true distances and real section angles.**
   The ΔPDF grid is unchanged (native FFT grid, `x_H/y_K/z_L` in Å along a, b,
   c), but the cell angles now travel with it. They are stored as

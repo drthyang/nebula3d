@@ -182,12 +182,27 @@ small UB shears can move a handful of boundary voxels.
 
 | Method | Use |
 |--------|-----|
-| `local` | Fill each connected component from a local dilated shell median. |
-| `q_shell` | Fill ordinary Bragg holes from the robust radial background at the same `|Q|`. |
+| `local` (default) | Fill each connected component from a local dilated shell median. |
+| `laplace` | Harmonic (Laplace) interpolation of the surrounding diffuse into each hole; boundary taken `laplace_gap` (default 1) voxels outside the punch so leaked Bragg tails do not bias it. |
+| `q_shell` | Robust radial background at the same `|Q|` — comparison only, see below. |
 | `tv`, `symmetry`, `symmetry+tv`, etc. | General inpainting fallbacks. |
 
-Current real-data QA uses `METHOD=q_shell` for ordinary Bragg holes and keeps the
-special direct-beam fill enabled.
+Holes must be filled from the diffuse **around** them (the 3D-ΔPDF
+punch-and-fill convention: NXRefine's Laplace/Matérn fill, Mantid
+`DeltaPDF3D`'s convolution fill, KAREN), not from a global background level.
+Every punch sits on a reciprocal-lattice node, so any bias of the fill *at the
+nodes* is repeated on the lattice, and its Fourier transform lands as spurious
+ΔPDF features at the lattice vectors — where the real correlations are. The
+`|Q|`-shell median is biased exactly there: correlations at lattice-vector
+separations peak or dip *at* the nodes, and a whole-shell median averages them
+away. On a synthetic test (short-range order + node-peaked diffuse + Bragg) the
+`q_shell` fill left lattice-vector artefacts of ~2.3 % of the ΔPDF signal;
+`local` ~1 % and `laplace` ~0.8 %, with or without Bragg tails leaking past the
+punch. A flat `local` fill still leaves a small step at the hole edge;
+`laplace` removes it and has the smallest long-range sidelobes.
+
+Real-data QA uses `METHOD=local` for ordinary Bragg holes and keeps the special
+direct-beam fill enabled.
 
 ## Recommended QA Settings
 
@@ -195,7 +210,7 @@ special direct-beam fill enabled.
 PUNCH_PRESET=cc_on MODE=both MIN_I=0.8 MIN_PROM=0.8 \
 INTEGER_FIT_POSITION=1 INTEGER_FIT_SHAPE=1 INTEGER_H_GUARD=0.12 \
 SEARCH_EXCLUDE_H=-0.6667,-0.3333,0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \
-BACKFILL_METHOD=q_shell
+BACKFILL_METHOD=local
 ```
 
 Inspect `H=0` for residual Bragg peaks and `H=±1/3`, `±2/3` for diffuse
