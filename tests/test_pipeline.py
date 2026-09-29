@@ -6,6 +6,7 @@ Exercises the real API:
 """
 
 import dataclasses
+import warnings
 
 import numpy as np
 
@@ -240,6 +241,68 @@ def test_bragg_laplace_backfill_orphan_hole_gets_global_median():
     filled = backfill_bragg(vol, method="laplace", direct_beam_fill=False)
 
     assert float(filled.data[4, 4, 4]) == 0.5
+
+
+def test_bragg_laplace_backfill_batches_whole_holes():
+    # A cap below the total unknown count splits the solve into batches of
+    # whole holes; each block is independent, so the fill must not change.
+    vol, truth = _ramp_vol(21)
+    for c in ((4, 4, 4), (4, 15, 10), (15, 5, 14), (16, 16, 5), (10, 10, 10)):
+        vol.mask[c[0]:c[0] + 3, c[1]:c[1] + 3, c[2]:c[2] + 2] = False
+    vol.data[~vol.mask] = 100.0
+    notes: list[str] = []
+
+    one = backfill_bragg(vol, method="laplace", direct_beam_fill=False)
+    # each hole + its 1-voxel band is 18 + 42 = 60 unknowns
+    split = backfill_bragg(vol, method="laplace", direct_beam_fill=False,
+                           laplace_max_unknowns=130, report=notes.append)
+
+    assert notes == []  # nothing oversized, CG converged
+    np.testing.assert_allclose(split.data, one.data, atol=1e-8)
+    np.testing.assert_allclose(split.data, truth, atol=1e-8)
+    np.testing.assert_array_equal(split.sigma, one.sigma)
+
+
+def test_bragg_laplace_backfill_oversized_region_gets_local_fill():
+    # A masked region past the cap is a coverage gap, not a Bragg punch: it
+    # gets the local shell median (bounded memory), and says so; ordinary
+    # holes are still Laplace-filled.
+    vol, truth = _ramp_vol(21)
+    vol.mask[:, :, 16:] = False               # unmeasured slab (zeroed)
+    vol.data[:, :, 16:] = 0.0
+    vol.mask[5:8, 5:8, 4:7] = False           # a Bragg punch
+    vol.data[5:8, 5:8, 4:7] = 100.0
+    notes: list[str] = []
+
+    filled = backfill_bragg(vol, method="laplace", direct_beam_fill=False,
+                            laplace_max_unknowns=1000, report=notes.append)
+    local = backfill_bragg(vol, method="local", direct_beam_fill=False)
+
+    assert filled.mask.all()
+    assert len(notes) == 1 and "local shell median" in notes[0]
+    np.testing.assert_array_equal(filled.data[:, :, 16:], local.data[:, :, 16:])
+    np.testing.assert_allclose(filled.data[5:8, 5:8, 4:7],
+                               truth[5:8, 5:8, 4:7], atol=1e-8)
+
+
+def test_pipeline_backfill_logs_laplace_notes(monkeypatch):
+    import nebula3d.pipeline as pipeline_mod
+    from nebula3d.pipeline import BackfillParams, backfill
+
+    real = pipeline_mod.backfill_bragg
+    monkeypatch.setattr(pipeline_mod, "backfill_bragg",
+                        lambda *a, **k: real(*a, laplace_max_unknowns=1000, **k))
+    vol, _ = _ramp_vol(21)
+    vol.mask[:, :, 16:] = False
+    events: list[tuple[str, str, str]] = []
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")        # routed to the log, not warned
+        backfill(vol, BackfillParams(method="laplace"),
+                 progress=lambda s, st, f, m: events.append((s, st, m)))
+
+    assert any(st == "progress" and "local shell median" in m
+               for _, st, m in events)
 
 
 def test_bragg_laplace_backfill_keeps_float32_storage():

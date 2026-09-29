@@ -183,7 +183,7 @@ small UB shears can move a handful of boundary voxels.
 | Method | Use |
 |--------|-----|
 | `local` (default) | Fill each connected component from a local dilated shell median. |
-| `laplace` | Harmonic (Laplace) interpolation of the surrounding diffuse into each hole; boundary taken `laplace_gap` (default 1) voxels outside the punch so leaked Bragg tails do not bias it. |
+| `laplace` | Harmonic (Laplace) interpolation of the surrounding diffuse into each hole; boundary taken `laplace_gap` (default 1) voxels outside the punch so leaked Bragg tails do not bias it. Solved in memory-bounded batches; a masked region over `laplace_max_unknowns` (2 M, i.e. unmeasured coverage) gets the `local` fill. |
 | `q_shell` | Robust radial background at the same `|Q|` — comparison only, see below. |
 | `tv`, `symmetry`, `symmetry+tv`, etc. | General inpainting fallbacks. |
 
