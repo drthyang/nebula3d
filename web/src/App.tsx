@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import { useDatasets, useHealth } from "./api/hooks";
 import { PYODIDE_MODE } from "./api/pyodideEngine";
@@ -12,6 +12,7 @@ import {
   IconSpark,
   IconTransform,
 } from "./components/ui";
+import { ViewerImportBanner } from "./components/ViewerImportBanner";
 import { AssistantPanel } from "./llm";
 import { ConsistencyViewer } from "./pages/ConsistencyViewer";
 import { BraggProfileViewer } from "./pages/BraggProfileViewer";
@@ -90,6 +91,8 @@ function renderPage(tab: Tab, setTab: (t: Tab) => void): ReactNode {
 
 export function App() {
   const [tab, setTab] = useState<Tab>("config");
+  // A volume sent by the NeXus Viewer lands on the Configure page.
+  const showConfig = useCallback(() => setTab("config"), []);
   const health = useHealth();
   const apiUp = health.isSuccess;
   const running = usePipelineStore((s) => s.running);
@@ -190,6 +193,7 @@ export function App() {
           <h2>{active.label}</h2>
           {active.desc && <p>{active.desc}</p>}
         </header>
+        <ViewerImportBanner onLoaded={showConfig} />
         {renderPage(tab, setTab)}
       </main>
     </div>

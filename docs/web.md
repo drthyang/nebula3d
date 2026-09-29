@@ -112,6 +112,30 @@ hosted — the privacy-preserving path to a public, fully-functional app.
 Local dev for this build: `cd web && npm run dev:pyodide` (loads `.env.pages`,
 base `/`).
 
+### Import from the NeXus Viewer
+
+The [NeXus Viewer](https://drthyang.github.io/neutron-nexus-viewer/) symmetrizes
+and masks Mantid volumes, which this pipeline expects as input. Its **Open in
+NEBULA3D** button opens this app in a new tab as
+`?import=nexus-viewer&id=<uuid>&from=<viewer origin>`, builds the volume as a
+nebula3d HDF5 file (`/entry/{data, mask, h_axis, k_axis, l_axis, ub_matrix}`,
+padded symmetric about Q = 0) and sends it with `postMessage`:
+
+1. this app → viewer: `nebula3d-import-ready`, repeated each second until the file arrives;
+2. viewer → this app: `nebula3d-import` with the `File`, schema `nexus-viewer/1` and
+   provenance `meta` (source file, symmetry, mask), or `nebula3d-import-cancel`;
+3. this app loads it like **Load volume…**, selects it as the dataset, clears the
+   parameters from the address bar and answers `nebula3d-import-loaded` (or
+   `nebula3d-import-error`), which the viewer shows next to its button.
+
+Messages are exchanged only with `window.opener` at the `from` origin, which
+must be this app's origin, `https://drthyang.github.io`, or (in `npm run dev*`
+only) localhost. The engine starts booting as soon as the page opens, while the
+viewer is still building the file. `web/src/api/importHandoff.ts` implements the
+protocol (tests in `web/src/api/__tests__/importHandoff.test.ts`) and
+`web/src/components/ViewerImportBanner.tsx` shows the progress. The native API
+build answers with an error: import needs the in-browser engine.
+
 ## What it does
 
 A single-page console with a left sidebar. The dataset is switched once from a
