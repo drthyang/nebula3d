@@ -95,9 +95,12 @@ filled = backfill_bragg(punched, method="laplace")  # smooth harmonic fill
 Both fill each hole from the diffuse around it, while the direct beam keeps its
 special just-outside-`|Q|` fill. `method="local"` uses the median of the hole's
 own dilated shell. `method="laplace"` solves the discrete Laplace equation in
-every hole at once (one sparse block-diagonal system, Jacobi-preconditioned CG),
+every hole (a sparse block-diagonal system, one block per hole, solved in
+batches of whole blocks by Jacobi-preconditioned CG so memory stays bounded),
 with its Dirichlet boundary `laplace_gap` voxels outside the punch so Bragg
-tails leaking past the punch edge do not pull the fill up. `method="q_shell"`
+tails leaking past the punch edge do not pull the fill up. A single masked
+region past `laplace_max_unknowns` (default 2 M) is an unmeasured coverage gap
+rather than a punch — loaders zero and mask those — and gets the `local` fill. `method="q_shell"`
 (the robust radial level at the same `|Q|`) is kept only for comparison: it is
 biased at the lattice nodes and leaves ΔPDF artefacts at the lattice vectors
 (see [bragg_cleanup.md](bragg_cleanup.md)).
