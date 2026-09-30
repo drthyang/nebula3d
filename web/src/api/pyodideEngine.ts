@@ -20,6 +20,7 @@
 //
 // See docs/web.md ("In-browser run" / "Architecture") for context.
 
+import { isMobileDevice } from "./device";
 import { disposeRingPool, ensureRingPool } from "./ringPool";
 import type {
   BraggProfile,
@@ -223,7 +224,12 @@ export function ensureBooted(): Promise<void> {
         import.meta.env.BASE_URL ?? "/",
         window.location.origin,
       ).href;
-      const wheelUrl = (await rpc("boot", { wheelBase: base })) as string;
+      // The device class travels with the boot: only the main thread can tell
+      // iPadOS from a Mac, and it picks the worker's size gate (device.ts).
+      const wheelUrl = (await rpc("boot", {
+        wheelBase: base,
+        mobile: isMobileDevice(navigator),
+      })) as string;
       // Prewarm the ring-worker pool strictly AFTER the main boot so its N
       // Pyodide/package downloads hit the HTTP cache instead of racing the
       // main worker's, and hand it the exact wheel URL the main worker

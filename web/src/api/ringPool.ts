@@ -3,7 +3,7 @@
 // flow worker↔worker without touching the main thread.
 //
 // Sizing: localStorage "nebula3d.ringWorkers" overrides ("0" disables, capped
-// at 8); otherwise none on phones / tablets (see isMobileDevice) and
+// at 8); otherwise none on phones / tablets (see device.ts) and
 // min(4, hardwareConcurrency − 2) elsewhere.  Each ring worker holds a
 // Pyodide + numpy/scipy WASM heap (~150–250 MB that never shrinks), which is
 // why the auto cap is conservative.
@@ -12,6 +12,8 @@
 // CDN fetches hit the HTTP cache instead of downloading N times), reused for
 // every run in the tab session, torn down on cancel (cancel terminates the
 // pipeline worker, which owns the other end of every port anyway).
+
+import { isMobileDevice } from "./device";
 
 const SETTING_KEY = "nebula3d.ringWorkers";
 const MAX_WORKERS = 8;
@@ -43,22 +45,12 @@ export function ringWorkerSetting(): number | null {
   }
 }
 
-// Phones and tablets: every browser on iOS / iPadOS is WebKit, which runs all
-// of a page's workers inside ONE content process, and the OS kills that
-// process — Safari then silently reloads the page — once it crosses a memory
-// limit far below a desktop's.  Android kills the renderer the same way.  A
-// ring worker is a whole second Pyodide + numpy/scipy (~0.45 GB resident), and
-// WebKit reports hardwareConcurrency 4 on an iPhone, so the desktop rule would
-// add two of them (~0.9 GB) on top of the pipeline worker: enough to push a
-// run over the limit mid-pipeline.  There the ring stage runs serially in the
-// pipeline worker instead (same output, bit-identical).
-export function isMobileDevice(nav: Partial<Navigator>): boolean {
-  const ua = nav.userAgent ?? "";
-  if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
-  // iPadOS 13+ sends a desktop-Mac user agent; only touch support gives it away.
-  return /Macintosh/.test(ua) && (nav.maxTouchPoints ?? 0) > 1;
-}
-
+// Phones and tablets (see device.ts): a ring worker is a whole second Pyodide
+// + numpy/scipy (~0.45 GB resident), and WebKit reports hardwareConcurrency 4
+// on an iPhone, so the desktop rule would add two of them (~0.9 GB) to the
+// pipeline worker in the one content process the OS kills at its memory limit:
+// enough to push a run over it mid-pipeline.  There the ring stage runs
+// serially in the pipeline worker instead (same output, bit-identical).
 export function autoPoolSize(): number {
   if (typeof navigator === "undefined") return 2;
   if (isMobileDevice(navigator)) return 0;

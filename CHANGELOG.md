@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Phones and tablets: a size limit that fits the device.** Loaded volumes
+  (**Load volume…** and the NeXus Viewer import) were checked only against
+  the desktop budget of ~80 M voxels, so a phone accepted volumes that the OS
+  would kill the tab over mid-run. On a phone or tablet the gate now budgets
+  the whole tab: ~0.55 GB of runtime + packages plus 150 B/voxel (measured
+  ~125 B/voxel on a full demo run, plus room for a Mantid input's float64
+  signal and errors) against 1.3 GB, i.e. up to ~5 M voxels (≈ 171³; the demo
+  is 4.2 M). A larger file is refused before it loads, with a message that
+  points to a desktop browser (up to ~80 M voxels) or the native build.
+  Desktops are unchanged. The page detects the device (`web/src/api/device.ts`,
+  now shared with the ring pool) and sends it in the pipeline worker's boot
+  message to `webbridge.setup(mobile=…)`, because only the main thread can tell
+  iPadOS from a Mac. `inspect_input` reports `device`.
+  `src/nebula3d/webbridge.py`, `web/src/api/pyodideEngine.ts`,
+  `web/src/workers/pyodideWorker.ts` (+ tests).
 - **iPhone / iPad: the in-browser run no longer reloads the page mid-run.**
   On iOS every browser is WebKit, which runs all of a page's workers inside one
   content process. The OS kills that process at a memory limit far below a
@@ -13,7 +28,8 @@
   desktop-Mac user agent, so it is caught by its touch points — and Android)
   now get no ring workers. The ring stage runs serially in the pipeline worker
   instead, with bit-identical output. The `nebula3d.ringWorkers` localStorage
-  setting still overrides. `web/src/api/ringPool.ts` (`isMobileDevice`, + test).
+  setting still overrides. `web/src/api/ringPool.ts`, `web/src/api/device.ts`
+  (`isMobileDevice`, + tests).
 - **The demo volume is labelled synthetic and costs less memory.** The file
   and dataset are now `synthetic_rocksalt` (was `demo_rocksalt`), and the
   Configure page says it is simulated, not measured data. It is stored float32,
