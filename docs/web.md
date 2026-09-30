@@ -66,6 +66,15 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   serial** (pinned by `tests/test_ring_parallel.py`); a dead worker's planes are
   recomputed in-process.  Pool size: `min(4, hardwareConcurrency − 2)`,
   overridable via localStorage `nebula3d.ringWorkers` (`"0"` disables).
+  **Phones and tablets get no ring workers** (iOS, iPadOS, Android;
+  `isMobileDevice` in `web/src/api/ringPool.ts`). There, all of a page's
+  workers share one content process, and the OS kills it once it crosses a
+  memory limit far below a desktop's; Safari then silently reloads the page
+  mid-run. Each ring worker is a whole second Pyodide + numpy/scipy (~0.45 GB
+  resident), and WebKit reports `hardwareConcurrency` 4 on an iPhone, so the
+  desktop rule added two of them. The ring stage runs serially in the pipeline
+  worker instead, with bit-identical output. The localStorage setting still
+  overrides.
 - **float32 compute mode.** The browser always computes with float32 volume
   storage (`PipelineParams.precision="float32"`; native default stays float64):
   volume arrays and the FFT (float32→complex64) halve, while axes/UB, every
@@ -120,11 +129,15 @@ base `/`).
 ### Demo volume
 
 **Use demo** (Configure → Data) loads a synthetic volume built by
-`nebula3d.demo.demo_volume` (called from `webbridge.make_demo_input`): a
-rock-salt-type crystal (cubic, a = 4.2 Å, FCC lattice) on a 161³ grid over
-±4 r.l.u. (step 0.05 r.l.u. = 0.075 Å⁻¹, 4.2 M voxels). The full chain runs in
-about 5 s in the browser (Apple-silicon Mac, WebGPU). Every stage has something
-to act on, on the intensity scale of a normalised Mantid volume:
+`nebula3d.demo.demo_volume` (called from `webbridge.make_demo_input`). It is
+named `synthetic_rocksalt` so it can never pass for measured data. The volume is
+a simulated rock-salt-type crystal (cubic, a = 4.2 Å, FCC lattice) on a 161³
+grid over ±4 r.l.u. (step 0.05 r.l.u. = 0.075 Å⁻¹, 4.2 M voxels), stored
+float32. The full chain runs in about 5 s in the browser (Apple-silicon Mac,
+WebGPU). Generating it peaks at `data` + `sigma` plus one slab (~76 MB; the
+noise is drawn one H plane at a time, in place), below the ring stage's
+~195 MB, so the demo never sets the WASM heap's high-water mark. Every stage
+has something to act on, on the intensity scale of a normalised Mantid volume:
 
 | Component | In reciprocal space | In the 3D-ΔPDF |
 | --- | --- | --- |

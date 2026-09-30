@@ -20,6 +20,7 @@ import sys
 import numpy as np
 import pytest
 
+import nebula3d
 from nebula3d import webbridge
 
 
@@ -61,6 +62,18 @@ def ran_pipeline(tmp_path):
     datasets_json = webbridge.run(
         "", "{}", flatten_enabled=True, force=True, progress=progress)
     return dataset_id, json.loads(datasets_json), events
+
+
+def test_demo_input_is_labelled_synthetic_and_stored_float32(tmp_path):
+    """The demo must never pass for measured data, and is stored in the
+    precision the browser computes in (half the MEMFS / heap of float64)."""
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    dataset_id = webbridge.make_demo_input(n=9)
+    assert dataset_id == "synthetic-rocksalt"
+    (raw,) = (tmp_path / "work" / "raw").glob("*.nxs")
+    assert raw.name == "synthetic_rocksalt.nxs"
+    vol = nebula3d.load(raw, dtype=None)
+    assert vol.data.dtype == np.float32 and vol.sigma.dtype == np.float32
 
 
 def test_run_streams_progress_for_every_stage(ran_pipeline):
