@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **iPhone / iPad: the in-browser run no longer reloads the page mid-run.**
+  On iOS every browser is WebKit, which runs all of a page's workers inside one
+  content process. The OS kills that process at a memory limit far below a
+  desktop's, and Safari then silently reloads the page. The ring-worker pool
+  sized itself as `min(4, hardwareConcurrency − 2)`, and WebKit reports 4 on an
+  iPhone, so it added two extra Pyodide + numpy/scipy instances (~0.45 GB
+  resident each, measured) to the pipeline worker. With the 161³ demo that
+  took a run past the limit. Phones and tablets (iOS, iPadOS — which sends a
+  desktop-Mac user agent, so it is caught by its touch points — and Android)
+  now get no ring workers. The ring stage runs serially in the pipeline worker
+  instead, with bit-identical output. The `nebula3d.ringWorkers` localStorage
+  setting still overrides. `web/src/api/ringPool.ts` (`isMobileDevice`, + test).
+- **The demo volume is labelled synthetic and costs less memory.** The file
+  and dataset are now `synthetic_rocksalt` (was `demo_rocksalt`), and the
+  Configure page says it is simulated, not measured data. It is stored float32,
+  which is what the browser computes in, so its in-memory file halves
+  (52 → 23 MB). `demo_volume` draws the counting noise one H plane at a time, in
+  place (`dtype=` sets the storage precision). Generating 161³ then peaks at
+  ~76 MB of arrays instead of ~220 MB, below the ring stage's ~195 MB, so the
+  demo no longer sets the WASM heap's high-water mark (measured under Pyodide
+  0.27.7: 179 MB after generation, was 325 MB). Measured under Node, a full
+  demo run's pipeline worker is ~1.07 GB resident (was ~1.27 GB). On a phone it
+  no longer carries two ring workers of ~0.45 GB each, so the total is roughly
+  half.
+  `src/nebula3d/demo.py`, `src/nebula3d/webbridge.py`, `tests/test_webbridge.py`.
 - **New demo volume: finer grid, physical diffuse scattering.** **Use demo**
   loads a 161³ volume (was 33³) over ±4 r.l.u., step 0.05 r.l.u. (0.075 Å⁻¹).
   That is fine enough for resolution-limited Bragg peaks and a 0.5 Å ΔPDF
@@ -28,7 +53,7 @@
   the ground truth of the planted diffuse (r = 0.91). The generator is `nebula3d.demo.demo_volume`,
   built in slabs so its temporaries stay small in the WASM heap. It can return
   any single component without noise, and `webbridge.make_demo_input` writes
-  it as `demo_rocksalt`. `tests/test_demo.py` pins the physics and the
+  it as `synthetic_rocksalt`. `tests/test_demo.py` pins the physics and the
   end-to-end result. The absolute consistency-r floor in
   `tests/test_float32_equivalence.py` drops from 0.999 to 0.98, because the
   demo's counting noise caps r at ~0.992. The float32/float64 gates are
