@@ -117,6 +117,32 @@ hosted — the privacy-preserving path to a public, fully-functional app.
 Local dev for this build: `cd web && npm run dev:pyodide` (loads `.env.pages`,
 base `/`).
 
+### Demo volume
+
+**Use demo** (Configure → Data) loads a synthetic volume built by
+`nebula3d.demo.demo_volume` (called from `webbridge.make_demo_input`): a
+rock-salt-type crystal (cubic, a = 4.2 Å, FCC lattice) on a 161³ grid over
+±4 r.l.u. (step 0.05 r.l.u. = 0.075 Å⁻¹, 4.2 M voxels). The full chain runs in
+about 5 s in the browser (Apple-silicon Mac, WebGPU). Every stage has something
+to act on, on the intensity scale of a normalised Mantid volume:
+
+| Component | In reciprocal space | In the 3D-ΔPDF |
+| --- | --- | --- |
+| Bragg peaks | FCC nodes only (all-even / all-odd, the odd ones at 40 %), \|Q\|-dependent resolution | removed by the punch |
+| Chemical short-range order (Krivoglaz–Clapp–Moss, V2/V1 = 0.3) | broad maxima at (1 ½ 0), joined along ⟨100⟩ | alternating shells: negative at ⟨½ ½ 0⟩a, positive at ⟨1 ½ ½⟩a and ⟨2 0 0⟩a |
+| Thermal diffuse (nearest-neighbour FCC, Q·D⁻¹·Q) | halos at every node growing as \|Q\|², streaks along ⟨110⟩ | short-range displacement correlations |
+| 2-D order in the (001) layers | rods along L at (h+½, k+½) | a checkerboard confined to the z = 0 plane |
+| Radial background, incident beam, Al can rings (textured), counting noise | removed by flatten, punch, ring removal | — |
+
+With the default parameters the punch finds only FCC nodes (never the diffuse),
+and the ΔPDF reproduces the ground truth of the planted diffuse (the model run
+through the same punch and fill) with a correlation of 0.91; the values at the
+neighbour vectors agree in sign and to within ~20 % in relative size
+(`tests/test_demo.py` pins the signs).
+`demo_volume(components=(...), noise=False)` returns any single component, and
+`nebula3d.save(demo_volume(), "data/raw/demo.nxs")` gives the native app the
+same volume.
+
 ### Import from the NeXus Viewer
 
 The [NeXus Viewer](https://drthyang.github.io/neutron-nexus-viewer/) symmetrizes
