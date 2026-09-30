@@ -24,6 +24,7 @@ import nebula3d
 from nebula3d import webbridge
 from nebula3d.analysis.delta_pdf import compute_delta_pdf
 from nebula3d.core import HKLVolume, q_bin_indices, q_magnitude_from_axes
+from nebula3d.demo import demo_volume
 from nebula3d.pipeline import PipelineParams, pipeline_paths, run_pipeline
 
 
@@ -44,7 +45,8 @@ def _isolate_low_memory_env():
 # dtype plumbing
 # ---------------------------------------------------------------------------
 def _write_demo(tmp_path, n=33):
-    """The FCC demo volume, written natively via the webbridge generator."""
+    """The browser's synthetic demo volume (stored float32), written natively
+    via the webbridge generator."""
     webbridge.setup(workdir=str(tmp_path / "work"))
     webbridge.make_demo_input(n=n)
     raw = sorted((tmp_path / "work" / "raw").glob("*.nxs"))[0]
@@ -52,13 +54,14 @@ def _write_demo(tmp_path, n=33):
 
 
 def test_load_dtype_variants(tmp_path):
-    raw = _write_demo(tmp_path)
+    raw = tmp_path / "demo64.nxs"
+    nebula3d.save(demo_volume(33), raw)  # a float64 file on disk
     v64 = nebula3d.load(raw)
     v32 = nebula3d.load(raw, dtype=np.float32)
     vpre = nebula3d.load(raw, dtype=None)  # preserve stored dtype
     assert v64.data.dtype == np.float64 and v64.sigma.dtype == np.float64
     assert v32.data.dtype == np.float32 and v32.sigma.dtype == np.float32
-    assert vpre.data.dtype == np.float64  # demo file stores float64
+    assert vpre.data.dtype == np.float64  # the file stores float64
     # Axes/UB are float64 in every mode.
     for v in (v64, v32, vpre):
         assert v.h_axis.dtype == np.float64
