@@ -65,6 +65,32 @@ describe("pool sizing", () => {
     expect(ringPool.autoPoolSize()).toBe(0);
   });
 
+  it("spawns no ring workers on phones and tablets", () => {
+    const iphone =
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 " +
+      "(KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1";
+    const mac =
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 " +
+      "(KHTML, like Gecko) Version/26.0 Safari/605.1.15";
+    const android =
+      "Mozilla/5.0 (Linux; Android 16; Pixel 10) AppleWebKit/537.36 " +
+      "(KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36";
+    // WebKit reports 4 cores on an iPhone: the desktop rule would give 2.
+    vi.stubGlobal("navigator", { hardwareConcurrency: 4, userAgent: iphone, maxTouchPoints: 5 });
+    expect(ringPool.autoPoolSize()).toBe(0);
+    vi.stubGlobal("navigator", { hardwareConcurrency: 8, userAgent: android, maxTouchPoints: 5 });
+    expect(ringPool.autoPoolSize()).toBe(0);
+    // iPadOS sends the desktop-Mac user agent; touch points give it away.
+    vi.stubGlobal("navigator", { hardwareConcurrency: 8, userAgent: mac, maxTouchPoints: 5 });
+    expect(ringPool.autoPoolSize()).toBe(0);
+    vi.stubGlobal("navigator", { hardwareConcurrency: 8, userAgent: mac, maxTouchPoints: 0 });
+    expect(ringPool.autoPoolSize()).toBe(4);
+    // the explicit setting still wins (e.g. to try the pool on an iPad)
+    vi.stubGlobal("navigator", { hardwareConcurrency: 4, userAgent: iphone, maxTouchPoints: 5 });
+    storage.set("nebula3d.ringWorkers", "1");
+    expect(ringPool.desiredPoolSize()).toBe(1);
+  });
+
   it("localStorage overrides, clamped to [0, 8]", () => {
     storage.set("nebula3d.ringWorkers", "6");
     expect(ringPool.desiredPoolSize()).toBe(6);

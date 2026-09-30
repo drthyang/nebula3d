@@ -1422,7 +1422,13 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     type="button"
                     className="btn btn-ghost"
                     disabled={loadBusy || bootBusy}
-                    onClick={() => void loadLocalVolume(() => engine.loadDemo(), "demo volume")}
+                    title="Load a simulated volume (synthetic_rocksalt) — not measured data"
+                    onClick={() =>
+                      void loadLocalVolume(
+                        () => engine.loadDemo(),
+                        "synthetic demo volume (simulated, not measured data)",
+                      )
+                    }
                   >
                     Use demo
                   </button>

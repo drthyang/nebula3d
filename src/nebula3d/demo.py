@@ -53,7 +53,7 @@ from collections.abc import Collection
 from dataclasses import dataclass
 
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import DTypeLike, NDArray
 
 from nebula3d.core import HKLVolume
 
@@ -124,6 +124,7 @@ def demo_volume(
     noise: bool = True,
     model: DemoModel | None = None,
     slab: int = 16,
+    dtype: DTypeLike = np.float64,
 ) -> HKLVolume:
     """Build the synthetic demo volume on an ``n³`` grid over ±``extent`` r.l.u.
 
@@ -146,6 +147,14 @@ def demo_volume(
         Crystal / instrument parameters (default :class:`DemoModel`).
     slab:
         H planes computed per batch (bounds the temporaries).
+    dtype:
+        Storage precision of ``data`` / ``sigma`` (the model is evaluated in
+        float64 either way).  The browser demo stores float32, which is what
+        the browser computes in.
+
+    The peak memory is ``data`` + ``sigma`` plus one slab of temporaries: the
+    counting noise is drawn one H plane at a time, in place, so it is the same
+    for any ``slab``.
     """
     m = model or DemoModel()
     parts = set(components)
@@ -160,23 +169,23 @@ def demo_volume(
     rs = 2.0 * math.pi / m.a            # Å⁻¹ per r.l.u.
     box2 = (step * rs) ** 2 / 12.0      # voxel-averaging variance (Å⁻²)
 
-    out = np.empty((n, n, n), dtype=np.float64)
+    data = np.empty((n, n, n), dtype=dtype)
     for i0 in range(0, n, slab):
-        out[i0:i0 + slab] = _smooth_slab(axis[i0:i0 + slab], axis, parts, m, rs, step, box2)
+        data[i0:i0 + slab] = _smooth_slab(axis[i0:i0 + slab], axis, parts, m, rs, step, box2)
     if "bragg" in parts:
-        _add_bragg(out, axis, step, m, rs, box2)
+        _add_bragg(data, axis, step, m, rs, box2)
 
-    lam = np.clip(out, 0.0, None)
+    # Expected intensity → counts, one H plane at a time and in place, so no
+    # extra volume-sized temporaries (the WASM heap never shrinks).
     tau = m.counts_per_unit
-    sigma = np.sqrt(lam / tau + m.residual_noise ** 2)
-    if noise:
-        rng = np.random.default_rng(seed)
-        data = rng.poisson(lam * tau).astype(np.float64)
-        data /= tau
-        data += m.residual_noise * rng.standard_normal(data.shape)
-    else:
-        data = out
-    del lam, out
+    sigma = np.empty_like(data)
+    rng = np.random.default_rng(seed)
+    for i in range(n):
+        lam = np.clip(data[i], 0.0, None).astype(np.float64)
+        sigma[i] = np.sqrt(lam / tau + m.residual_noise ** 2)
+        if noise:
+            data[i] = (rng.poisson(lam * tau) / tau
+                       + m.residual_noise * rng.standard_normal(lam.shape))
 
     return HKLVolume.from_arrays(
         data, (-extent, extent), (-extent, extent), (-extent, extent),
@@ -273,7 +282,7 @@ def _tds_quadratic_form(
 
 
 def _add_bragg(
-    out: NDArray[np.float64], axis: NDArray[np.float64], step: float,
+    out: NDArray[np.floating], axis: NDArray[np.float64], step: float,
     m: DemoModel, rs: float, box2: float,
 ) -> None:
     """Add the FCC Bragg peaks in place, each on a small window around its node."""

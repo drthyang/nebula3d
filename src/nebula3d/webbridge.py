@@ -299,21 +299,27 @@ def load_input(name: str, tmp_path: str) -> str:
 def make_demo_input(n: int = 161) -> str:
     """Write the synthetic demo volume to the workspace; return its id.
 
-    The demo for when the user has no data: a rock-salt-type crystal with
-    FCC Bragg peaks, chemical short-range order, thermal diffuse scattering and
-    planar-order rods, on top of a radial background, an incident-beam spot,
-    textured Al powder rings and counting noise, so every pipeline stage has
-    something real to act on (see :mod:`nebula3d.demo`).  ``n`` points per axis
-    over ±4 r.l.u.: the default 161³ (step 0.05 r.l.u., 4.2 M voxels) runs the
-    full chain in seconds; the tests use a coarse grid.
+    The demo for when the user has no data: a simulated rock-salt-type crystal
+    with FCC Bragg peaks, chemical short-range order, thermal diffuse
+    scattering and planar-order rods, on top of a radial background, an
+    incident-beam spot, textured Al powder rings and counting noise, so every
+    pipeline stage has something real to act on (see :mod:`nebula3d.demo`).
+    It is named ``synthetic_rocksalt`` so it can never pass for measured data.
+    ``n`` points per axis over ±4 r.l.u.: the default 161³ (step 0.05 r.l.u.,
+    4.2 M voxels) runs the full chain in seconds; the tests use a coarse grid.
+
+    Stored float32 — what the browser computes in — so the file in MEMFS and
+    the generator's peak (``data`` + ``sigma`` + one slab) stay half the
+    float64 size; on a phone every byte counts toward the one content process
+    the OS kills (and the browser reloads) at its memory limit.
     """
     from nebula3d.demo import demo_volume
 
     cfg = _require_cfg()
-    dest = cfg.raw_dir / "demo_rocksalt.nxs"
-    nebula3d.save(demo_volume(n), dest)
+    dest = cfg.raw_dir / "synthetic_rocksalt.nxs"
+    nebula3d.save(demo_volume(n, dtype=np.float32), dest)
     _S.input = dest
-    _S.dataset_id = _ds._slug("demo_rocksalt")
+    _S.dataset_id = _ds._slug("synthetic_rocksalt")
     _clear_caches()
     return _S.dataset_id
 
