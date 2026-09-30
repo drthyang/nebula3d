@@ -67,7 +67,7 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   recomputed in-process.  Pool size: `min(4, hardwareConcurrency − 2)`,
   overridable via localStorage `nebula3d.ringWorkers` (`"0"` disables).
   **Phones and tablets get no ring workers** (iOS, iPadOS, Android;
-  `isMobileDevice` in `web/src/api/ringPool.ts`). There, all of a page's
+  `isMobileDevice` in `web/src/api/device.ts`). There, all of a page's
   workers share one content process, and the OS kills it once it crosses a
   memory limit far below a desktop's; Safari then silently reloads the page
   mid-run. Each ring worker is a whole second Pyodide + numpy/scipy (~0.45 GB
@@ -111,6 +111,19 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   **~80 M voxels** are admitted (e.g. 401×401×401 = 64.5 M voxels ≈ 2.6 GB
   estimated peak; 501³ = 125.8 M is still refused with a message pointing to
   the native build).
+
+  **Phones and tablets get a smaller, tab-wide gate: ~5 M voxels** (≈ 171³;
+  the 161³ demo is 4.2 M). There every worker shares one content process that
+  the OS kills at a memory limit far below 4 GB, and the browser then reloads
+  the page, losing the run. So the budget covers the whole tab, not just the
+  pipeline's heap: ~0.55 GB of runtime + numpy/scipy/h5py (resident before any
+  data) plus 150 B/voxel against 1.3 GB. The 150 B/voxel is the ~125 B/voxel a
+  full demo run measured (heap high-water mark, MEMFS input and stage outputs,
+  JS slices) plus room for a Mantid input's float64 signal and errors. The page
+  detects the device (`web/src/api/device.ts`; only the main thread can tell
+  iPadOS from a Mac) and passes it in the worker's boot message to
+  `webbridge.setup(mobile=…)`. A larger file is refused with a message that
+  points to a desktop browser (up to ~80 M voxels) or the native build.
 
   (The default Bragg backfill, `backfill_bragg` with `method="local"`, is
   connected-component / `ndimage`-based and already lean: ~25 B/voxel transient
