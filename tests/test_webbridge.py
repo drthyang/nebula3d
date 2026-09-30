@@ -240,6 +240,45 @@ def test_inspect_input_still_rejects_oversized_volume(tmp_path):
     assert "native build" in report["message"]
 
 
+def _shape_only_volume(path, shape):
+    import h5py
+
+    with h5py.File(path, "w") as f:
+        f.create_group("entry").create_dataset("data", shape=shape, dtype="f8")
+    return str(path)
+
+
+def test_inspect_input_phone_gate_is_tab_wide(tmp_path):
+    """On a phone / tablet the whole tab is budgeted (the OS kills the one
+    content process and the browser reloads the page): ~5 M voxels, the 161³
+    demo (4.2 M) fits, a desktop-sized volume is refused with a message that
+    points to a desktop browser.  setup() without mobile restores the desktop
+    gate."""
+    demo = _shape_only_volume(tmp_path / "demo.h5", (161, 161, 161))
+    mid = _shape_only_volume(tmp_path / "mid.h5", (201, 201, 151))  # 6.1 M
+    try:
+        webbridge.setup(workdir=str(tmp_path / "work"), mobile=True)
+        report = json.loads(webbridge.inspect_input("demo.h5", demo))
+        assert report["ok"] is True, report["message"]
+        assert report["device"] == "mobile"
+        assert 4_300_000 < report["ceiling_voxels"] < 8_000_000
+        # the estimate counts the runtime, not just the pipeline's heap
+        assert report["est_peak_mb"] > 550 + 4.2 * 125
+
+        report = json.loads(webbridge.inspect_input("mid.h5", mid))
+        assert report["ok"] is False
+        message = report["message"]
+        assert "phone or tablet" in message
+        assert "desktop browser" in message
+        assert "native build" in message
+    finally:
+        webbridge.setup(workdir=str(tmp_path / "work"))
+
+    report = json.loads(webbridge.inspect_input("mid.h5", mid))
+    assert report["ok"] is True and report["device"] == "desktop"
+    assert report["ceiling_voxels"] == 80_000_000
+
+
 # ---------------------------------------------------------------------------
 # run_async — the parallel-rings orchestration seam
 # ---------------------------------------------------------------------------

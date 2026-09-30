@@ -123,6 +123,23 @@ _PIPELINE_PEAK_BYTES_PER_VOXEL = 40
 # gate in float32 (e.g. a 401×401×401 volume = 64.5 M voxels ≈ 2.6 GB
 # estimated peak; 501³ = 125.8 M is still refused).
 _BROWSER_PEAK_BUDGET_BYTES = 3_200_000_000
+# Phones and tablets (iOS, iPadOS, Android — the JS side detects them and tells
+# ``setup``).  There every worker of the page shares one content process, which
+# the OS kills once it crosses a memory limit far below the 4 GB WASM ceiling,
+# and the browser then silently reloads the page, losing the run (WebKit bug
+# 221530).  So a phone budgets the whole tab, not just the heap.  Measured (Node)
+# under Pyodide 0.27.7 on the 161³ demo (4.2 M voxels): the runtime + numpy/scipy/
+# h5py + nebula3d are ~0.55 GB resident before any data, and a full run adds
+# ~125 B/voxel on top (the WASM heap's high-water mark, the MEMFS input and
+# stage outputs, JS-side slices).  150 B/voxel leaves room for a Mantid input,
+# which stores float64 signal + errors (~15 B/voxel more than the float32
+# demo).  A 1.3 GB tab then admits 5 M voxels (≈ 171³; the demo is 4.2 M).
+# The limit itself is not published: an iPhone 18 Pro Max killed the pre-fix
+# demo run (~2.2 GB with its two ring workers), and the fixed run measures
+# ~1.1 GB, so 1.3 GB is a target with margin, not a device-verified bound.
+_PHONE_TAB_BUDGET_BYTES = 1_300_000_000
+_PHONE_RUNTIME_BYTES = 550_000_000
+_PHONE_BYTES_PER_VOXEL = 150
 #: Storage precision every browser run uses (overridable per-run via a
 #: ``"precision"`` key in ``params_json`` — a debugging/validation lever).
 _BROWSER_PRECISION = "float32"
@@ -135,6 +152,7 @@ class _State:
     cfg: ServerConfig | None = None
     input: Path | None = None
     dataset_id: str | None = None
+    mobile: bool = False  # phone / tablet: the tab-wide memory budget applies
 
 
 _S = _State()
@@ -147,8 +165,12 @@ def _require_cfg() -> ServerConfig:
     return _S.cfg
 
 
-def setup(workdir: str = "/work") -> str:
+def setup(workdir: str = "/work", mobile: bool = False) -> str:
     """Create the virtual workspace (``raw/`` + ``processed/``); return its root.
+
+    *mobile* is the JS side's phone / tablet detection (only the main thread
+    can tell iPadOS from a Mac); it selects the smaller, tab-wide size gate in
+    :func:`inspect_input`.
 
     Idempotent: re-calling keeps any already-loaded input but ensures the dirs
     exist and resets the config.  Also shrinks the server-side slice caches:
@@ -163,6 +185,7 @@ def setup(workdir: str = "/work") -> str:
     # in the browser bridge.  See nebula3d.pipeline._low_memory / _drop_sigma.
     os.environ["NEBULA3D_LOW_MEMORY"] = "1"
 
+    _S.mobile = bool(mobile)
     root = Path(workdir)
     (root / "raw").mkdir(parents=True, exist_ok=True)
     (root / "processed").mkdir(parents=True, exist_ok=True)
@@ -239,32 +262,60 @@ def _peek_voxel_count(path: Path) -> tuple[tuple[int, ...], int]:
     return shape, n
 
 
+def _size_gate(n_voxels: int) -> tuple[int, int]:
+    """(estimated bytes, ceiling in voxels) for this session's device class."""
+    if _S.mobile:
+        est = _PHONE_RUNTIME_BYTES + n_voxels * _PHONE_BYTES_PER_VOXEL
+        ceiling = (_PHONE_TAB_BUDGET_BYTES - _PHONE_RUNTIME_BYTES) // _PHONE_BYTES_PER_VOXEL
+    else:
+        est = n_voxels * _PIPELINE_PEAK_BYTES_PER_VOXEL
+        ceiling = _BROWSER_PEAK_BUDGET_BYTES // _PIPELINE_PEAK_BYTES_PER_VOXEL
+    return est, ceiling
+
+
 def inspect_input(name: str, tmp_path: str) -> str:
     """Pre-flight memory estimate for an uploaded volume (metadata only).
 
     Reads just the signal-grid shape — never the arrays — so it cannot itself run
-    out of memory, then estimates the full-pipeline peak and compares it to the
-    browser budget.  Returns JSON ``{shape, n_voxels, est_peak_mb, ok, message}``;
+    out of memory, then estimates the memory a full run needs and compares it to
+    the browser budget: the pipeline's WASM-heap peak on a desktop, the whole
+    tab on a phone / tablet (see :func:`setup`).  Returns JSON ``{shape,
+    n_voxels, est_peak_mb, ok, message, precision, ceiling_voxels, device}``;
     the engine refuses to load when ``ok`` is false, surfacing *message* instead
-    of letting the reduction crash with an opaque numpy ``MemoryError``.
+    of letting the reduction crash with an opaque numpy ``MemoryError`` — or, on
+    a phone, the OS killing the tab and the browser reloading the page.
     """
     shape, n = _peek_voxel_count(Path(tmp_path))
-    est_peak = n * _PIPELINE_PEAK_BYTES_PER_VOXEL
-    ok = n == 0 or est_peak <= _BROWSER_PEAK_BUDGET_BYTES
-    budget_voxels = _BROWSER_PEAK_BUDGET_BYTES // _PIPELINE_PEAK_BYTES_PER_VOXEL
+    est_peak, budget_voxels = _size_gate(n)
+    ok = n == 0 or n <= budget_voxels
 
     message = ""
     if not ok:
         dims = "×".join(str(s) for s in shape)
-        message = (
-            f"“{Path(name).name}” is {dims} ({n / 1e6:.1f} M voxels). Reducing it "
-            f"would need roughly {est_peak / 1e9:.1f} GB of browser memory — more "
-            f"than the in-browser engine can hold (it targets volumes up to about "
-            f"{budget_voxels / 1e6:.0f} M voxels in its float32 compute mode). "
-            f"For full-resolution data this large, run the native build, which has "
-            f"no memory limit and opens the same interface:\n"
-            f'    pip install "nebula3d[web]"  &&  nebula3d-web'
+        head = f"“{Path(name).name}” is {dims} ({n / 1e6:.1f} M voxels). "
+        native = (
+            "run the native build, which has no memory limit and opens the same "
+            "interface:\n"
+            '    pip install "nebula3d[web]"  &&  nebula3d-web'
         )
+        if _S.mobile:
+            desktop = _BROWSER_PEAK_BUDGET_BYTES // _PIPELINE_PEAK_BYTES_PER_VOXEL
+            message = head + (
+                f"On a phone or tablet the in-browser engine takes volumes up to "
+                f"about {budget_voxels / 1e6:.0f} M voxels: a run this size would "
+                f"need roughly {est_peak / 1e9:.1f} GB, and the browser reloads the "
+                f"page, losing the run, once a tab uses more memory than the device "
+                f"allows. Open it in a desktop browser (up to about "
+                f"{desktop / 1e6:.0f} M voxels), or " + native
+            )
+        else:
+            message = head + (
+                f"Reducing it would need roughly {est_peak / 1e9:.1f} GB of browser "
+                f"memory — more than the in-browser engine can hold (it targets "
+                f"volumes up to about {budget_voxels / 1e6:.0f} M voxels in its "
+                f"float32 compute mode). For full-resolution data this large, "
+                + native
+            )
     return _json({
         "shape": list(shape),
         "n_voxels": n,
@@ -272,9 +323,10 @@ def inspect_input(name: str, tmp_path: str) -> str:
         "ok": ok,
         "message": message,
         # The storage precision this browser session will compute in (native
-        # runs default to float64; the ceiling above is the float32 one).
+        # runs default to float64; the ceilings above are the float32 ones).
         "precision": _BROWSER_PRECISION,
         "ceiling_voxels": int(budget_voxels),
+        "device": "mobile" if _S.mobile else "desktop",
     })
 
 
