@@ -132,6 +132,19 @@ def test_consistency_meta_and_slice(ran_pipeline):
         assert header["nx"] * header["ny"] == data.size
 
 
+def test_consistency_check_json(ran_pipeline):
+    """The run's saved check is what the pipeline logged, read without an FFT."""
+    dataset_id, _datasets, events = ran_pipeline
+    check = json.loads(webbridge.consistency_check_json(dataset_id))
+    assert check["dataset_id"] == dataset_id
+    assert check["has_check"] is True
+    r = check["metrics"]["pearson_r"]
+    logged = [m for s, st, _f, m in events if s == "pdf_check" and st == "done"]
+    assert logged and f"r={r:.5f}" in logged[-1]
+    with pytest.raises(KeyError):
+        webbridge.consistency_check_json("nope")
+
+
 def test_unknown_volume_raises(ran_pipeline):
     with pytest.raises(KeyError):
         webbridge.volume_meta_json("nope.ringremoved")

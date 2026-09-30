@@ -23,6 +23,7 @@
 import { disposeRingPool, ensureRingPool } from "./ringPool";
 import type {
   BraggProfile,
+  ConsistencyCheck,
   ConsistencyMeta,
   Dataset,
   DeltaPdfMeta,
@@ -343,6 +344,9 @@ export const engine = {
     return jsonCall<ConsistencyMeta>("consistency_meta_json", [
       datasetId, qMin ?? null, qMax ?? null, rMin ?? null, rMax ?? null,
     ]);
+  },
+  consistencyCheck(datasetId: string): Promise<ConsistencyCheck> {
+    return jsonCall<ConsistencyCheck>("consistency_check_json", [datasetId]);
   },
   consistencySlice(
     datasetId: string,

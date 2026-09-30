@@ -73,6 +73,19 @@ export interface ConsistencyMetrics {
   apodization: string;
 }
 
+// The pipeline's own back-FFT check, saved to *_delta_pdf_consistency.json: the
+// agreement metrics for the ΔPDF on disk, computed with the run's ΔPDF params.
+// has_check is false when the check never ran or predates the current ΔPDF.
+export interface ConsistencyCheck {
+  dataset_id: string;
+  check_path: string;
+  has_check: boolean;
+  metrics: Pick<
+    ConsistencyMetrics,
+    "pearson_r" | "normalized_rms" | "rms" | "n_voxels" | "per_plane_r" | "q_band" | "crop_hkl" | "apodization"
+  > | null;
+}
+
 export interface ConsistencyMeta {
   shape: [number, number, number];
   h_range: [number, number];

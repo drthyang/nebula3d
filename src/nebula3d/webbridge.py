@@ -79,6 +79,7 @@ __all__ = [
     "dpdf_meta_json",
     "dpdf_slice",
     "consistency_meta_json",
+    "consistency_check_json",
     "consistency_slice",
     "bragg_profile_json",
     "save_dpdf",
@@ -1007,6 +1008,16 @@ def consistency_meta_json(
     _release_other_caches("cons")
     meta = _cons.consistency_meta(path, _band(q_min, q_max), _band(r_min, r_max))
     return _json(meta)
+
+
+def consistency_check_json(dataset_id: str) -> str:
+    """The pipeline's saved back-FFT check metrics (mirrors
+    /api/consistency/{id}/check).  Only re-reads a small JSON file from the
+    virtual FS, so unlike :func:`consistency_meta_json` it releases no caches."""
+    out = _cons.saved_check(_require_cfg(), dataset_id)
+    if out is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    return _json(out)
 
 
 def consistency_slice(

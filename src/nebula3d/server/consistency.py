@@ -12,10 +12,15 @@ the agreement metrics.
 A reconstruction (one forward+inverse FFT) is the expensive part, so it is LRU
 cached by ``(pdf-input path, mtime, |Q| band)``: changing the displayed plane/cut
 re-slices the cached volumes (cheap), and only a new |Q| band recomputes.
+
+:func:`saved_check` is the cheap counterpart: it re-reads the metrics the
+pipeline's own check stage saved for the ΔPDF it produced, with no FFT at all.
 """
 
 from __future__ import annotations
 
+import json
+import math
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -23,6 +28,7 @@ from pathlib import Path
 from nebula3d.pipeline import (
     DeltaPdfParams,
     consistency_reconstruction,
+    pipeline_paths,
     write_delta_pdf_h5,
 )
 from nebula3d.server.config import ServerConfig
@@ -61,6 +67,46 @@ def pdf_input_path(cfg: ServerConfig, dataset_id: str) -> Path | None:
         if stage is not None and stage.exists:
             return stage.path
     return None
+
+
+def _finite(obj: object) -> object:
+    """NaN/inf → None (the check writes NaN for a degenerate per-plane r)."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _finite(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_finite(v) for v in obj]
+    return obj
+
+
+def saved_check(cfg: ServerConfig, dataset_id: str) -> dict | None:
+    """The pipeline's back-FFT check result (``*_delta_pdf_consistency.json``).
+
+    These are the metrics for the ΔPDF on disk, computed with the run's own ΔPDF
+    parameters; :func:`consistency_meta` instead re-runs the round trip with
+    default parameters for the interactive viewer.  ``None`` for an unknown
+    dataset.  ``has_check`` is false when the check never ran, or when it is
+    older than the ΔPDF (re-run with the check disabled), since it then
+    describes a ΔPDF that no longer exists.
+    """
+    ds = find_dataset(cfg, dataset_id)
+    if ds is None:
+        return None
+    paths = pipeline_paths(ds.raw_path, proc_dir=cfg.processed_dir)
+    path = paths.pdf_check_json
+    metrics = None
+    if path.exists() and not (
+        paths.delta_pdf.exists()
+        and paths.delta_pdf.stat().st_mtime > path.stat().st_mtime
+    ):
+        metrics = _finite(json.loads(path.read_text(encoding="utf-8")))
+    return {
+        "dataset_id": dataset_id,
+        "check_path": str(path),
+        "has_check": metrics is not None,
+        "metrics": metrics,
+    }
 
 
 def _band_key(q_band: tuple[float, float] | None, r_band: tuple[float, float] | None) -> tuple:
