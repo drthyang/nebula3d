@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+- **New demo volume: finer grid, physical diffuse scattering.** **Use demo**
+  loads a 161³ volume (was 33³) over ±4 r.l.u., step 0.05 r.l.u. (0.075 Å⁻¹).
+  That is fine enough for resolution-limited Bragg peaks and a 0.5 Å ΔPDF
+  grid, and the full chain still runs in about 5 s in the browser. The crystal
+  is rock-salt-type (cubic, a = 4.2 Å, FCC lattice), on the intensity scale of
+  a normalised Mantid volume (Bragg up to ~150, diffuse ~0.1–0.5), with three
+  kinds of diffuse scattering, each with a known 3D-ΔPDF signature:
+  - chemical short-range order (Krivoglaz–Clapp–Moss, V2/V1 = 0.3): maxima at
+    (1 ½ 0); in the ΔPDF, negative at ⟨½ ½ 0⟩a and positive at ⟨1 ½ ½⟩a and
+    ⟨2 0 0⟩a;
+  - one-phonon thermal diffuse scattering of a nearest-neighbour FCC lattice
+    (Q·D⁻¹·Q): halos at every node, growing as |Q|², streaking along ⟨110⟩;
+  - 2-D order in the (001) layers: rods along L at (h+½, k+½), a checkerboard
+    confined to the z = 0 plane in the ΔPDF.
+
+  Also in the volume: FCC Bragg peaks with a |Q|-dependent resolution ellipsoid
+  and Debye–Waller falloff, a radial background, a compact incident-beam spot,
+  aluminium-can powder rings at the Al d-spacings with texture about c*,
+  Poisson counting noise, and a matching per-voxel `sigma`. On the old demo,
+  whose Bragg peaks were ~10× the diffuse and smaller than a voxel, the default
+  punch reported 114 peaks and only 34 of them were at FCC nodes; the rest were
+  noise at high |Q|. On the new one it finds only FCC nodes, and every diffuse
+  maximum sits off the integer nodes so none is punched. The ΔPDF reproduces
+  the ground truth of the planted diffuse (r = 0.91). The generator is `nebula3d.demo.demo_volume`,
+  built in slabs so its temporaries stay small in the WASM heap. It can return
+  any single component without noise, and `webbridge.make_demo_input` writes
+  it as `demo_rocksalt`. `tests/test_demo.py` pins the physics and the
+  end-to-end result. The absolute consistency-r floor in
+  `tests/test_float32_equivalence.py` drops from 0.999 to 0.98, because the
+  demo's counting noise caps r at ~0.992. The float32/float64 gates are
+  unchanged. See `docs/web.md` ("Demo volume").
 - **Layouts for iPhone, iPad, MacBook and 4K screens.** Below 1100 px (iPad
   Pro portrait and all iPhones) the sidebar becomes a compact top bar with a
   scrolling row of view pills. On phones this bar is a single row in landscape.
