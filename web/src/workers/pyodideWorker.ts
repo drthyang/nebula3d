@@ -31,7 +31,7 @@ const post: PostFn = (
 
 // Discriminated union for all messages the Worker receives from the main thread.
 type WorkerRequest =
-  | { id: number; type: "boot"; wheelBase: string }
+  | { id: number; type: "boot"; wheelBase: string; mobile?: boolean }
   | { id: number; type: "load_file"; name: string; buffer: ArrayBuffer }
   | { id: number; type: "load_demo" }
   | {
@@ -59,7 +59,7 @@ function postBoot(phase: string, message: string, ready: boolean, error?: string
   post({ id: null, type: "boot_status", phase, message, ready, error });
 }
 
-async function boot(wheelBase: string): Promise<string> {
+async function boot(wheelBase: string, mobile: boolean): Promise<string> {
   postBoot("runtime", "Downloading Python runtime (~10 MB)…", false);
   py = await loadPyodideRuntime();
 
@@ -78,7 +78,8 @@ async function boot(wheelBase: string): Promise<string> {
   py.globals.delete("_nebula3d_wheel_url");
 
   bridge = py.pyimport("nebula3d.webbridge");
-  (bridge.setup as () => unknown)();
+  // mobile → the tab-wide size gate for loaded volumes (see api/device.ts).
+  (bridge.setup as (workdir: string, mobile: boolean) => unknown)("/work", mobile);
 
   postBoot("ready", "Ready — compute runs locally in your browser.", true);
   // Probe WebGPU in the background so the ΔPDF-engine status (and the
@@ -102,7 +103,7 @@ async function dispatch(req: WorkerRequest): Promise<void> {
   try {
     switch (req.type) {
       case "boot": {
-        const wheelUrl = await boot(req.wheelBase);
+        const wheelUrl = await boot(req.wheelBase, req.mobile ?? false);
         // The resolved wheel URL travels back so the ring workers install the
         // EXACT same wheel (no independent manifest fetch → no version skew).
         reply(wheelUrl);
