@@ -451,6 +451,45 @@ def test_consistency_bad_panel_400(env):
 def test_consistency_unknown_dataset_404(env):
     client, _ = env
     assert client.get("/api/consistency/does-not-exist/meta").status_code == 404
+    assert client.get("/api/consistency/does-not-exist/check").status_code == 404
+
+
+def test_consistency_check_reads_saved_json(env, tmp_path):
+    """The saved check is served as written (NaN → null), with no FFT."""
+    client, _ = env
+    r = client.get(f"/api/consistency/{SLUG}/check")
+    assert r.status_code == 200
+    assert r.json()["has_check"] is False
+    assert r.json()["metrics"] is None
+
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
+                           proc_dir=tmp_path / "processed")
+    paths.pdf_check_json.write_text(json.dumps({
+        "pearson_r": 0.978, "normalized_rms": 0.21, "rms": 0.01,
+        "n_voxels": 100, "per_plane_r": {"0": float("nan")},
+        "crop_hkl": None, "q_band": None, "apodization": "none",
+    }))
+    body = client.get(f"/api/consistency/{SLUG}/check").json()
+    assert body["has_check"] is True
+    assert body["metrics"]["pearson_r"] == pytest.approx(0.978)
+    assert body["metrics"]["per_plane_r"] == {"0": None}
+
+
+def test_consistency_check_stale_when_older_than_dpdf(env, tmp_path):
+    """A check older than the ΔPDF describes a ΔPDF that no longer exists."""
+    import os
+
+    client, _ = env
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
+                           proc_dir=tmp_path / "processed")
+    paths.pdf_check_json.write_text(json.dumps(
+        {"pearson_r": 0.99, "normalized_rms": 0.1}))
+    paths.delta_pdf.write_bytes(b"")
+    t = paths.pdf_check_json.stat().st_mtime
+    os.utime(paths.delta_pdf, (t + 10, t + 10))
+    body = client.get(f"/api/consistency/{SLUG}/check").json()
+    assert body["has_check"] is False
+    assert body["metrics"] is None
 
 
 # ---------------------------------------------------------------------------

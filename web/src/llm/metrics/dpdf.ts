@@ -69,7 +69,9 @@ export interface DpdfMetrics {
 
 // A metrics object carrying only the (optional) back-FFT consistency numbers —
 // used when there is no ΔPDF slice but we still want to report trustworthiness.
-const consistencyOnly = (consistency: ConsistencyMetrics | null): DpdfMetrics => ({
+type Consistency = Pick<ConsistencyMetrics, "pearson_r" | "normalized_rms">;
+
+const consistencyOnly = (consistency: Consistency | null): DpdfMetrics => ({
   origin_excluded_radius: 0,
   background_sigma: null,
   feature_snr: null,
@@ -87,7 +89,7 @@ export const dpdfMetrics = (
   {
     sigmaThreshold = 5,
     consistency = null,
-  }: { sigmaThreshold?: number; consistency?: ConsistencyMetrics | null } = {},
+  }: { sigmaThreshold?: number; consistency?: Consistency | null } = {},
 ): DpdfMetrics | null => {
   if (!grid) return consistency ? consistencyOnly(consistency) : null;
   const { nx, ny, x_axis, y_axis } = grid.header;

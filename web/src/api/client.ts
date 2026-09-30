@@ -3,6 +3,7 @@
 import { engine, PYODIDE_MODE } from "./pyodideEngine";
 import type {
   BraggProfile,
+  ConsistencyCheck,
   ConsistencyMeta,
   DataRoot,
   Dataset,
@@ -144,6 +145,13 @@ export function fetchConsistencyMeta(
   const qs = bandParams(qMin, qMax, rMin, rMax);
   const url = `/api/consistency/${encodeURIComponent(datasetId)}/meta${qs ? `?${qs}` : ""}`;
   return getJSON<ConsistencyMeta>(url);
+}
+
+// The pipeline's saved back-FFT check metrics — a small file read, unlike
+// fetchConsistencyMeta, which re-runs the round trip.
+export function fetchConsistencyCheck(datasetId: string): Promise<ConsistencyCheck> {
+  if (PYODIDE_MODE) return engine.consistencyCheck(datasetId);
+  return getJSON<ConsistencyCheck>(`/api/consistency/${encodeURIComponent(datasetId)}/check`);
 }
 
 export function fetchBraggProfile(datasetId: string): Promise<BraggProfile> {
