@@ -295,88 +295,24 @@ def load_input(name: str, tmp_path: str) -> str:
     return _S.dataset_id
 
 
-def make_demo_input(n: int = 33) -> str:
-    """Write a small synthetic **FCC** HKL volume to the workspace; return its id.
+def make_demo_input(n: int = 161) -> str:
+    """Write the synthetic demo volume to the workspace; return its id.
 
-    A physically-flavoured demo for when the user has no data, so every pipeline
-    stage has realistic structure to act on:
-
-    - **FCC Bragg peaks** at integer (h,k,l) with *unmixed parity* (all even or
-      all odd) — the FCC reflection condition; mixed-parity nodes (100, 210, …)
-      are systematically absent.  Sharp, with a Debye-Waller-like |Q| falloff.
-    - **Diffuse scattering along one axis**: continuous rods running along **L**
-      through the in-plane nodes (transverse-narrow, L-extended, modulated so the
-      diffuse is strongest between Bragg peaks) — the signature of 1-D
-      correlations / planar disorder.
-    - a smooth thermal-diffuse background, a faint powder ring, and a bright
-      incident-beam spot at the origin, plus a little noise.
-
-    Cubic lattice ``a = 4 Å`` (``ub = (2π/a)·I``) so |Q| is physical.  Kept tiny
-    (``n³``) so the full chain runs in seconds under Pyodide.
+    The demo for when the user has no data: a rock-salt-type crystal with
+    FCC Bragg peaks, chemical short-range order, thermal diffuse scattering and
+    planar-order rods, on top of a radial background, an incident-beam spot,
+    textured Al powder rings and counting noise, so every pipeline stage has
+    something real to act on (see :mod:`nebula3d.demo`).  ``n`` points per axis
+    over ±4 r.l.u.: the default 161³ (step 0.05 r.l.u., 4.2 M voxels) runs the
+    full chain in seconds; the tests use a coarse grid.
     """
-    import numpy as np
+    from nebula3d.demo import demo_volume
 
     cfg = _require_cfg()
-    extent = 4.0
-    a = 4.0  # cubic lattice parameter (Å) → isotropic reciprocal metric
-    ub = (2.0 * np.pi / a) * np.eye(3, dtype=np.float64)
-
-    h = np.linspace(-extent, extent, n)
-    step = float(h[1] - h[0])
-    H, K, L = np.meshgrid(h, h, h, indexing="ij")
-    q2 = H**2 + K**2 + L**2  # |hkl|² in r.l.u.
-
-    # Smooth thermal-diffuse background + a Debye-Waller-like high-|Q| falloff
-    # shared by the Bragg peaks and the diffuse rods.
-    data = 0.6 + 3.0 * np.exp(-q2 / 6.0)
-    falloff = np.exp(-0.10 * q2)
-
-    nodes = range(int(np.ceil(-extent)), int(np.floor(extent)) + 1)
-    sig_b = max(0.10, 0.9 * step)  # Bragg half-width (r.l.u.)
-    for ih in nodes:
-        for ik in nodes:
-            for il in nodes:
-                all_even = (ih % 2 == 0) and (ik % 2 == 0) and (il % 2 == 0)
-                all_odd = (ih % 2 != 0) and (ik % 2 != 0) and (il % 2 != 0)
-                if not (all_even or all_odd):
-                    continue  # FCC systematic absence (mixed parity)
-                rn2 = ih * ih + ik * ik + il * il
-                amp = 26.0 * np.exp(-0.10 * rn2)
-                data += amp * np.exp(
-                    -((H - ih) ** 2 + (K - ik) ** 2 + (L - il) ** 2)
-                    / (2.0 * sig_b * sig_b)
-                )
-
-    # Diffuse rods along L through the in-plane same-parity columns (|h|,|k| ≤ 2),
-    # so they thread the FCC nodes.  Narrow in H,K; extended in L; modulated to be
-    # brightest midway between Bragg peaks (cos² along L) — 1-D-correlation diffuse.
-    sig_t = max(0.16, 1.1 * step)
-    l_mod = 0.5 - 0.5 * np.cos(2.0 * np.pi * L)  # 0 at integer L, 1 at half-integer
-    for h0 in (-2, -1, 0, 1, 2):
-        for k0 in (-2, -1, 0, 1, 2):
-            if (h0 % 2) != (k0 % 2):
-                continue  # keep columns that pass through FCC nodes
-            amp = 3.2 * np.exp(-0.18 * (h0 * h0 + k0 * k0))
-            data += amp * l_mod * np.exp(
-                -((H - h0) ** 2 + (K - k0) ** 2) / (2.0 * sig_t * sig_t)
-            )
-
-    data *= falloff
-    data += 1.2 * np.exp(-((np.sqrt(q2) - 3.0) ** 2) / 0.05)  # faint powder ring
-    data += 60.0 * np.exp(-q2 / (2.0 * sig_b * sig_b))        # incident beam @ origin
-
-    rng = np.random.default_rng(0)
-    data = np.clip(data + 0.02 * rng.standard_normal(data.shape), 0.0, None)
-
-    vol = nebula3d.core.HKLVolume.from_arrays(
-        data.astype(np.float64),
-        (-extent, extent), (-extent, extent), (-extent, extent),
-        ub_matrix=ub,
-    )
-    dest = cfg.raw_dir / "demo_fcc.nxs"
-    nebula3d.save(vol, dest)
+    dest = cfg.raw_dir / "demo_rocksalt.nxs"
+    nebula3d.save(demo_volume(n), dest)
     _S.input = dest
-    _S.dataset_id = _ds._slug("demo_fcc")
+    _S.dataset_id = _ds._slug("demo_rocksalt")
     _clear_caches()
     return _S.dataset_id
 
