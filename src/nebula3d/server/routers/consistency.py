@@ -14,6 +14,7 @@ from nebula3d.server.consistency import (
     consistency_slice_envelope,
     pdf_input_path,
     save_reconstruction,
+    saved_check,
 )
 from nebula3d.server.deps import get_config
 from nebula3d.server.volumes import PLANES
@@ -47,6 +48,15 @@ def meta(
             404, f"no flattened/backfilled volume for {dataset_id!r}; "
                  "run the pipeline first")
     return consistency_meta(path, _band(q_min, q_max), _band(r_min, r_max))
+
+
+@router.get("/{dataset_id}/check")
+def check(dataset_id: str, cfg: ServerConfig = Depends(get_config)) -> dict:
+    """The pipeline's saved back-FFT check metrics (a file read, no FFT)."""
+    out = saved_check(cfg, dataset_id)
+    if out is None:
+        raise HTTPException(404, f"unknown dataset id {dataset_id!r}")
+    return out
 
 
 @router.get("/{dataset_id}/slice")

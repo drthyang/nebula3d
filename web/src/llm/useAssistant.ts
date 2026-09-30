@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import {
   fetchBraggProfile,
+  fetchConsistencyCheck,
   fetchDpdfMeta,
   fetchDpdfSlice,
   fetchMeta,
@@ -66,14 +67,18 @@ export async function loadPipelineContext(dataset: Dataset): Promise<AssistantCo
     return id ? safe(fetchSlice(id, RECIP_PLANE, RECIP_VALUE)) : Promise.resolve(null);
   };
 
-  const [raw, ringremoved, braggpunched, backfilled, dpdf, braggProfile] = await Promise.all([
-    getRecip("raw"),
-    getRecip("ringremoved"),
-    getRecip("braggpunched"),
-    getRecip("backfilled"),
-    dpdfVolId ? safe(fetchDpdfSlice(dpdfVolId, DPDF_PLANE, DPDF_VALUE)) : Promise.resolve(null),
-    safe(fetchBraggProfile(dataset.id)),
-  ]);
+  const [raw, ringremoved, braggpunched, backfilled, dpdf, braggProfile, consistencyCheck] =
+    await Promise.all([
+      getRecip("raw"),
+      getRecip("ringremoved"),
+      getRecip("braggpunched"),
+      getRecip("backfilled"),
+      dpdfVolId ? safe(fetchDpdfSlice(dpdfVolId, DPDF_PLANE, DPDF_VALUE)) : Promise.resolve(null),
+      safe(fetchBraggProfile(dataset.id)),
+      // The run's own back-FFT check, not the consistency viewer's recompute:
+      // it is a file read, and it describes the ΔPDF the context reports on.
+      dpdfVolId ? safe(fetchConsistencyCheck(dataset.id)) : Promise.resolve(null),
+    ]);
 
   const slices: StageSlices = { raw, ringremoved, braggpunched, backfilled, dpdf };
 
@@ -84,6 +89,7 @@ export async function loadPipelineContext(dataset: Dataset): Promise<AssistantCo
     hklMeta,
     dpdfMeta,
     braggProfile,
+    consistency: consistencyCheck?.metrics ?? null,
     slices,
   });
 

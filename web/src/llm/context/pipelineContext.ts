@@ -34,7 +34,7 @@ export interface BuildContextInput {
   hklMeta?: VolumeMeta | null;
   dpdfMeta?: DeltaPdfMeta | null;
   braggProfile?: BraggProfile | null;
-  consistency?: ConsistencyMetrics | null;
+  consistency?: Pick<ConsistencyMetrics, "pearson_r" | "normalized_rms"> | null;
   slices: StageSlices;
 }
 
