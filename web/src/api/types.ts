@@ -163,6 +163,8 @@ export interface Slice {
 }
 
 export interface StageParamsIn {
+  // Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
+  edge_trim?: number;
   rings_n_patches?: number;
   rings_n_fourier?: number;
   rings_slice_axis?: string;

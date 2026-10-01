@@ -31,6 +31,8 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
     p = PipelineParams(flatten_enabled=req.flatten_enabled)
     sp = req.params
 
+    if sp.edge_trim is not None:
+        p.edge_trim = int(sp.edge_trim)
     if sp.rings_n_patches is not None:
         p.rings = dataclasses.replace(p.rings, n_patches=sp.rings_n_patches)
     if sp.rings_n_fourier is not None:

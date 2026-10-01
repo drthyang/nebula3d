@@ -285,6 +285,86 @@ def test_bragg_laplace_backfill_oversized_region_gets_local_fill():
                                truth[5:8, 5:8, 4:7], atol=1e-8)
 
 
+def test_bragg_backfill_fills_each_punched_hole_from_its_own_surroundings():
+    # A punch hole that touches unmeasured coverage (zeroed and masked by the
+    # loader) used to merge with it, so the whole region shared one value set
+    # by the coverage's far-away rim.  With the punch record the hole is filled
+    # from the measured voxels around it, whatever it touches.
+    vol, truth = _ramp_vol(21)
+    vol.mask[:, :, 16:] = False               # unmeasured slab
+    vol.data[:, :, 16:] = 0.0
+    punched = np.zeros(vol.shape, dtype=bool)
+    punched[1:4, 1:4, 13:16] = True           # a hole at the ramp's low end, touching it
+    vol.mask[punched] = False
+    vol.data[punched] = 100.0
+    hole_level = float(truth[punched].mean())  # ~0.33; the slab rim's median is ~1.5
+    # the measured voxels around the hole (the local fill's 2-voxel shell)
+    from scipy import ndimage
+    shell = (ndimage.binary_dilation(punched, np.ones((3, 3, 3), bool), iterations=2)
+             & ~punched & vol.mask)
+    notes: list[str] = []
+
+    for method, kw in (("local", {}), ("laplace", {"laplace_max_unknowns": 1000})):
+        merged = backfill_bragg(vol, method=method, direct_beam_fill=False,
+                                report=notes.append, **kw)
+        apart = backfill_bragg(vol, method=method, direct_beam_fill=False,
+                               punched=punched, report=notes.append, **kw)
+
+        assert np.all(merged.data[punched] == merged.data[10, 10, 18]), method
+        assert abs(float(merged.data[punched].mean()) - hole_level) > 0.5, method
+        if method == "local":
+            assert np.all(apart.data[punched] == np.median(vol.data[shell]))
+        else:  # the ramp continues into the hole (free, not pinned, at the slab)
+            np.testing.assert_allclose(apart.data[punched], truth[punched], atol=0.1)
+        # the coverage itself still gets its shell median, apart from the hole
+        assert np.all(apart.data[:, :, 16:] == apart.data[10, 10, 18]), method
+        assert apart.mask.all()
+
+
+def test_trim_coverage_edge_unmeasures_the_layer_next_to_unmeasured_space():
+    from nebula3d.preprocessing import trim_coverage_edge
+
+    vol, _ = _ramp_vol(15)
+    vol.mask[:, :, 10:] = False               # unmeasured slab (zeroed by the loader)
+    vol.data[:, :, 10:] = 0.0
+    vol.data[:, :, 9] = 5e6                   # its barely-normalised edge layer
+
+    assert trim_coverage_edge(vol, 1) == 15 * 15
+    assert not vol.mask[:, :, 9].any() and vol.mask[:, :, :9].all()
+    assert np.all(vol.data[:, :, 9] == 0.0) and np.all(vol.sigma[:, :, 9] == 0.0)
+    assert trim_coverage_edge(vol, 0) == 0
+    full, _ = _ramp_vol(15)                   # the volume's own faces are no edge
+    assert trim_coverage_edge(full, 1) == 0 and full.mask.all()
+
+
+def test_punch_records_its_holes_for_the_backfill():
+    from nebula3d.pipeline import BackfillParams, PunchParams, backfill, punch_bragg
+
+    vol, _ = _ramp_vol(21)
+    for c in ((5, 5, 5), (15, 10, 12)):
+        vol.data[c] = 80.0                    # two sharp peaks at integer nodes
+    vol.mask[:, :, 18:] = False               # and some unmeasured coverage
+    out = punch_bragg(vol, PunchParams(mode="search"))
+    punched = getattr(out, "_punched")
+
+    assert punched.any()
+    np.testing.assert_array_equal(punched, vol.mask & ~out.mask)
+    seen: dict[str, object] = {}
+    import nebula3d.pipeline as pipeline_mod
+    real = pipeline_mod.backfill_bragg
+
+    def spy(*a, **k):
+        seen["punched"] = k["punched"]
+        return real(*a, **k)
+
+    pipeline_mod.backfill_bragg = spy
+    try:
+        backfill(out, BackfillParams())
+    finally:
+        pipeline_mod.backfill_bragg = real
+    assert seen["punched"] is punched
+
+
 def test_pipeline_backfill_logs_laplace_notes(monkeypatch):
     import nebula3d.pipeline as pipeline_mod
     from nebula3d.pipeline import BackfillParams, backfill

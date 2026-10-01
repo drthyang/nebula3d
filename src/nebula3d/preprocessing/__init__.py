@@ -51,7 +51,7 @@ from nebula3d.preprocessing.radial_flatten import (
     flatten_radial_background,
 )
 from nebula3d.preprocessing.ring_model import FittedRingModel, PatchedRingModel, RingParams
-from nebula3d.preprocessing.sampling import azimuthal_sampling_mask
+from nebula3d.preprocessing.sampling import azimuthal_sampling_mask, trim_coverage_edge
 
 __all__ = [
     # Primary pipeline
@@ -76,6 +76,7 @@ __all__ = [
     "flatten_radial_background",
     "RadialFlattenResult",
     "azimuthal_sampling_mask",
+    "trim_coverage_edge",
     "backfill_ring_shells",
     # Utilities / diagnostics
     "RingShell",
