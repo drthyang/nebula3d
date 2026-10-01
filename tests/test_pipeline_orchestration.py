@@ -264,6 +264,61 @@ def test_force_recomputes_everything(tmp_path, stubbed):
         "rings", "punch", "backfill", "flatten", "pdf", "pdf_check"]
 
 
+def test_run_pipeline_trims_the_coverage_edge_of_the_raw_input(
+        tmp_path, stubbed, monkeypatch):
+    inp = tmp_path / "sample.nxs"
+    raw = _vol()
+    raw.mask[:, :, 6:] = False                # unmeasured coverage
+    raw.data[:, :, 6:] = 0.0
+    nebula3d.save(raw, inp)
+    seen = []
+
+    def rings_stub(v, params=None, *, progress=None):
+        seen.append(v.mask.copy())
+        return stubbed.vol
+
+    monkeypatch.setattr(pipeline, "remove_rings", rings_stub)
+    events = []
+    pipeline.run_pipeline(inp, proc_dir=tmp_path, stages=("rings",),
+                          progress=lambda *a: events.append(a))
+    pipeline.run_pipeline(inp, pipeline.PipelineParams(edge_trim=0),
+                          proc_dir=tmp_path, stages=("rings",), force=True)
+
+    assert not seen[0][:, :, 5].any() and seen[0][:, :, :5].all()   # on by default
+    assert any("trimmed 64 voxels" in ev[3] for ev in events)
+    assert seen[1][:, :, :6].all()                                  # 0 keeps it
+
+
+def test_punch_record_survives_a_resume_from_disk(tmp_path, stubbed, monkeypatch):
+    # The punch artifact stores which voxels are punch holes, so a backfill
+    # run later (from the file, not the in-memory hand-over) still has them.
+    inp = _seed_input(tmp_path)
+    record = np.zeros(stubbed.vol.shape, dtype=bool)
+    record[2:4, 2:4, 2:4] = True
+
+    def punch_stub(v, params=None, *, progress=None):
+        out = HKLVolume(**{f: getattr(stubbed.vol, f) for f in (
+            "data", "sigma", "mask", "h_axis", "k_axis", "l_axis", "ub_matrix")})
+        setattr(out, "_punched", record)
+        return out
+
+    seen = []
+
+    def backfill_stub(v, params=None, *, progress=None):
+        seen.append(getattr(v, "_punched", None))
+        return stubbed.vol
+
+    monkeypatch.setattr(pipeline, "punch_bragg", punch_stub)
+    monkeypatch.setattr(pipeline, "backfill", backfill_stub)
+    pipeline.run_pipeline(inp, proc_dir=tmp_path, stages=("punch",))
+    events = []
+    pipeline.run_pipeline(inp, proc_dir=tmp_path, stages=("backfill",),
+                          progress=lambda *a: events.append(a))
+
+    np.testing.assert_array_equal(seen[0], record)
+    assert not any("no punch record" in ev[3] for ev in events)
+
+
 def test_stage_subset_runs_only_requested(tmp_path, stubbed):
     inp = _seed_input(tmp_path)
     # seed the punched file so backfill has an input to load

@@ -55,6 +55,7 @@ from nebula3d.pipeline import (
     run_pipeline,
     write_delta_pdf_h5,
 )
+from nebula3d.pipeline import load_input as _load_run_input
 from nebula3d.preprocessing import write_global_ring_diagnostics
 from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
@@ -667,7 +668,7 @@ async def run_async(
         paths = pipeline_paths(_S.input, proc_dir=cfg.processed_dir,
                                flatten_enabled=params.flatten_enabled)
         paths.delta_pdf.parent.mkdir(parents=True, exist_ok=True)
-        vol = nebula3d.load(paths.input, dtype=params.np_dtype())
+        vol = _load_run_input(paths.input, params, progress=cb)
         out = await remove_rings_async(vol, params.rings, progress=cb,
                                        plane_executor=executor)
         del vol

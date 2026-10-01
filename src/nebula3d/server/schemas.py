@@ -104,6 +104,8 @@ class BraggProfileOut(BaseModel):
 class StageParamsIn(BaseModel):
     """Curated, optional per-stage overrides (None = use the validated default)."""
 
+    # Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
+    edge_trim: int | None = None
     rings_n_patches: int | None = None
     rings_n_fourier: int | None = None
     rings_slice_axis: str | None = None
