@@ -187,6 +187,11 @@ small UB shears can move a handful of boundary voxels.
 | `q_shell` | Robust radial background at the same `|Q|` — comparison only, see below. |
 | `tv`, `symmetry`, `symmetry+tv`, etc. | General inpainting fallbacks. |
 
+`local`, `q_shell` and `laplace` take the punch record (`punched=`, which the
+pipeline's punch stage stores in its artifact), so a hole that touches
+unmeasured coverage is still filled from its own surroundings instead of merging
+with the coverage; see [inpainting.md](inpainting.md).
+
 Holes must be filled from the diffuse **around** them (the 3D-ΔPDF
 punch-and-fill convention: NXRefine's Laplace/Matérn fill, Mantid
 `DeltaPDF3D`'s convolution fill, KAREN), not from a global background level.

@@ -26,9 +26,33 @@ from __future__ import annotations
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy import ndimage
 
 from nebula3d.core import HKLVolume
 from nebula3d.preprocessing.radial_background import _azimuthal_angle
+
+
+def trim_coverage_edge(vol: HKLVolume, voxels: int = 1) -> int:
+    """Unmeasure the outer *voxels* layers of the measured coverage, in place.
+
+    A measured voxel next to unmeasured space is only partly covered by the
+    detectors, so its normalisation is tiny and its value unreliable.  On a
+    TOPAZ volume (Fe3Ge2, 401³, 73 % unmeasured) the measured voxels touching an
+    unmeasured one reach p99 ≈ 4,000 and a maximum of 5.5·10⁷, while a voxel
+    further in they already match the interior (p99 ≈ 38 against 34).  Trimmed
+    voxels become unmeasured exactly as the loader leaves them: masked, with
+    data and sigma zeroed.  The volume's own faces are not an edge.  Returns
+    the number of voxels trimmed.
+    """
+    if voxels <= 0 or vol.mask.all():
+        return 0
+    edge = ndimage.binary_dilation(~vol.mask, structure=np.ones((3, 3, 3), dtype=bool),
+                                   iterations=int(voxels))
+    edge &= vol.mask
+    vol.mask[edge] = False
+    vol.data[edge] = 0.0
+    vol.sigma[edge] = 0.0
+    return int(edge.sum())
 
 
 def azimuthal_sampling_mask(

@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+- **The edge of the measured coverage is trimmed at load, on by default.** A
+  measured voxel next to unmeasured space is barely normalised. On the 401³
+  Fe3Ge2 TOPAZ volume those voxels reach p99 ≈ 4,000 and a maximum of
+  5.5·10⁷, while one voxel further in they match the interior (p99 ≈ 38
+  against 34). They went straight into the ΔPDF, and as Laplace boundary
+  values they lit up the holes next to them. The pipeline now takes
+  `PipelineParams.edge_trim` layers (default 1; 0 keeps them) off the measured
+  coverage when it loads the raw input: those voxels become unmeasured, masked
+  and zeroed as the loader leaves unmeasured voxels, and the run log says how
+  many. The volume's own faces are not an edge. A fully measured volume such
+  as TbTi3Bi4 22K loses ~7,000 of 48.4 M voxels; Fe3Ge2 loses 2.8 M, and its
+  default punch then finds 52,281 peaks instead of 120,104 (most of the rest
+  were edge voxels), punching 1.59 M voxels instead of 2.97 M. Existing
+  outputs are not recomputed by themselves: re-run from the ring stage.
+  `nebula3d.preprocessing.trim_coverage_edge`, `nebula3d.pipeline.load_input`,
+  `edge_trim` in the run request (+ tests).
+- **Backfill: each punched hole is filled from its own surroundings.** The
+  backfill took every masked voxel for a hole, so a punched hole that touched
+  unmeasured coverage merged with it, and the whole region (coverage and every
+  hole touching it) got one fill value set by the coverage's rim. On the
+  401³ Fe3Ge2 TOPAZ volume (73 % unmeasured) that was 82 % of the punched
+  voxels, which showed as flat discs that did not match the data around them.
+  The punch stage now records which voxels it punched, in memory and as
+  `/entry/punched` in `*_braggpunched.h5`, and `backfill_bragg(punched=…)`
+  fills each hole only from the measured voxels around it. The coverage is
+  filled separately afterwards, with its own shell median. For `laplace`,
+  unmeasured neighbours are a free (Neumann) boundary. On Fe3Ge2, the holes
+  whose mean fill is more than 3 MAD from the median of the measured voxels
+  within 2 voxels of them drop from 6.6 % to 0.0 % (`local`), and the median
+  offset halves. A punch artifact written before this change has no record:
+  the backfill says so in the run log and fills as before. Re-run the punch to
+  fix it. `src/nebula3d/analysis/bragg_fill.py`, `src/nebula3d/pipeline.py`
+  (+ tests).
 - **Desktop browsers: large volumes no longer run out of memory in the
   backfill.** A 401³ TOPAZ volume (64.5 M voxels, inside the ~80 M-voxel
   limit) failed in the browser with a `MemoryError` in the backfill. Four steps
