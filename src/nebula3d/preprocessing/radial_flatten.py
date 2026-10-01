@@ -68,8 +68,11 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter1d
 
-from nebula3d.core import HKLVolume, low_memory
+from nebula3d.core import HKLVolume, low_memory, q_bin_indices, q_magnitude_from_axes
 from nebula3d.preprocessing.radial_background import _estimate_baseline, _fill_nan_1d
+
+#: H planes per |Q| slab (one float64 slab is the only |Q| ever resident).
+_SLAB = 16
 
 ESTIMATORS = ("floor", "mode", "median", "snip")
 
@@ -150,7 +153,6 @@ def flatten_radial_background(
     if estimator not in ESTIMATORS:
         raise ValueError(f"Unknown estimator {estimator!r}; choose one of {ESTIMATORS}.")
 
-    q = vol.q_magnitude()
     data = vol.data
     valid = vol.mask & np.isfinite(data)
     if not valid.any():
@@ -160,9 +162,23 @@ def flatten_radial_background(
             raw_levels=empty, counts=np.zeros(0, dtype=int), estimator=estimator,
         )
 
+    # |Q| is computed one H-slab at a time (range, bins, then the subtraction
+    # below): the full float64 grid, held through the digitize/clip temporaries
+    # and the interpolated background, was ~5 volumes — this stage's peak in
+    # the browser's WASM heap.  Elementwise arithmetic and exact min/max, so
+    # every value is identical to the whole-volume form.
+    def q_slab(lo: int) -> NDArray[np.floating]:
+        return q_magnitude_from_axes(vol.h_axis[lo:lo + _SLAB], vol.k_axis,
+                                     vol.l_axis, vol.ub_matrix)
+
     qs = max(float(q_step), 1e-12)
     if q_range is None:
-        q0, q1 = float(q[valid].min()), float(q[valid].max())
+        q0, q1 = np.inf, -np.inf
+        for lo in range(0, data.shape[0], _SLAB):
+            v = valid[lo:lo + _SLAB]
+            if v.any():
+                qv = q_slab(lo)[v]
+                q0, q1 = min(q0, float(qv.min())), max(q1, float(qv.max()))
     else:
         q0, q1 = float(q_range[0]), float(q_range[1])
     edges = np.arange(q0, q1 + qs, qs)
@@ -176,19 +192,25 @@ def flatten_radial_background(
     nb = q_grid.size
     # int32 indices: the shell count is tiny, and the full-volume index array
     # is half the size of numpy's default int64.
-    bin_idx = np.clip(np.digitize(q, edges) - 1, 0, nb - 1).astype(
-        np.int32, copy=False)
+    bin_idx = q_bin_indices(vol.h_axis, vol.k_axis, vol.l_axis, vol.ub_matrix,
+                            edges, slab=_SLAB)
+    bin_idx -= 1
+    np.clip(bin_idx, 0, nb - 1, out=bin_idx)
 
     # Per-shell level from the *valid* voxels (sorted-segment scan, like the
     # q_shell backfill lookup), so each shell is touched once.  Prompt frees:
-    # each flattened array covers most of the volume.
+    # each flattened array covers most of the volume, so the gather runs in
+    # storage precision and is widened to float64 (exact) only after the sort
+    # permutation is freed.
     flat_b = bin_idx[valid]
     del bin_idx  # full-volume index array no longer needed
     order = np.argsort(flat_b, kind="stable")
     sb = flat_b[order]
     del flat_b
-    si = np.asarray(data[valid], dtype=np.float64)[order]
+    gathered = data[valid][order]
     del order
+    si = gathered.astype(np.float64, copy=False)
+    del gathered
     bounds = np.searchsorted(sb, np.arange(nb + 1))
     del sb
 
@@ -218,19 +240,18 @@ def flatten_radial_background(
     # step), leaving NaN/masked voxels untouched.  Masked ``where=`` ops instead
     # of fancy indexing: boolean indexing materialises compressed copies of
     # data/bg_at (up to 3 extra volume-sized arrays on mostly-finite data).
-    bg_at = np.interp(
-        q, q_grid, bg_curve, left=float(bg_curve[0]), right=float(bg_curve[-1])
-    )
-    del q  # full-volume |Q| no longer needed
     # In low-memory mode subtract in place over the (disposable) input instead of
     # allocating a second full volume — the pipeline hands this stage a fresh
     # volume and discards it afterwards.  Same arithmetic, bit-identical output.
     data_out = data if low_memory() else data.copy()
-    finite = np.isfinite(data)
-    np.subtract(data, bg_at, out=data_out, where=finite)
-    del bg_at
-    if clip_negative:
-        np.maximum(data_out, 0.0, out=data_out, where=finite)
+    for lo in range(0, data.shape[0], _SLAB):
+        sl = slice(lo, lo + _SLAB)
+        bg_at = np.interp(q_slab(lo), q_grid, bg_curve,
+                          left=float(bg_curve[0]), right=float(bg_curve[-1]))
+        finite = np.isfinite(data[sl])
+        np.subtract(data[sl], bg_at, out=data_out[sl], where=finite)
+        if clip_negative:
+            np.maximum(data_out[sl], 0.0, out=data_out[sl], where=finite)
 
     vol_out = dataclasses.replace(vol, data=data_out)
     return RadialFlattenResult(

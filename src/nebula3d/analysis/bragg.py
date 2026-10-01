@@ -33,7 +33,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from nebula3d.core import HKLVolume
+from nebula3d.core import HKLVolume, q_bin_indices, q_magnitude_from_axes
 
 
 @dataclass(frozen=True)
@@ -932,19 +932,30 @@ class BraggRemover:
         min_shell_size: int = 20,
     ) -> tuple[NDArray[np.int32], NDArray[np.float64]]:
         """Robust per-|Q|-shell high-tail threshold arrays ``(bin_idx, thr)``."""
-        q = vol.q_magnitude()
         valid = vol.mask & np.isfinite(vol.data)
         if not valid.any():
             return np.zeros(vol.shape, dtype=np.int32), np.full(1, np.inf)
         qs = float(q_step)
-        qv = q[valid]
-        edges = np.arange(qv.min(), qv.max() + qs, qs)
+        # |Q| one H-slab at a time, for the valid range and then the bins: the
+        # full float64 |Q| grid and its digitize/clip temporaries (~5 volumes
+        # in all, the punch's peak in the browser's WASM heap) are never
+        # resident.  Elementwise arithmetic and exact min/max, so the edges
+        # and bins are identical to the whole-volume form.
+        q_lo, q_hi = np.inf, -np.inf
+        for lo in range(0, vol.shape[0], 16):
+            v = valid[lo:lo + 16]
+            if v.any():
+                qv = q_magnitude_from_axes(vol.h_axis[lo:lo + 16], vol.k_axis,
+                                           vol.l_axis, vol.ub_matrix)[v]
+                q_lo, q_hi = min(q_lo, float(qv.min())), max(q_hi, float(qv.max()))
+        edges = np.arange(q_lo, q_hi + qs, qs)
         nb = max(len(edges) - 1, 1)
         # int32 indices: the shell count is tiny, and the full-volume index
         # array is half the size of numpy's default int64.
-        bin_idx = np.clip(np.digitize(q, edges) - 1, 0, nb - 1).astype(
-            np.int32, copy=False)
-        del q  # full-volume float64 no longer needed
+        bin_idx = q_bin_indices(vol.h_axis, vol.k_axis, vol.l_axis,
+                                vol.ub_matrix, edges)
+        bin_idx -= 1
+        np.clip(bin_idx, 0, nb - 1, out=bin_idx)
 
         # Per-shell robust threshold (median + n·MAD), computed once over the
         # sorted valid voxels so it is O(N log N), not O(N · n_bins).  Prompt
