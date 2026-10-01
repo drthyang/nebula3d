@@ -66,6 +66,7 @@ from nebula3d.preprocessing import (
     confirm_ring_shells_across_h,
     fit_global_rings,
     flatten_radial_background,
+    trim_coverage_edge,
     write_global_ring_diagnostics,
 )
 from nebula3d.preprocessing.radial_background import (
@@ -314,6 +315,28 @@ def write_bragg_profile_json(profile: dict, out_path: Path) -> None:
     out_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
 
 
+#: The punch record in the punch artifact (bool, True = punched), so a backfill
+#: resumed from disk still tells punch holes from unmeasured coverage.
+_PUNCHED_DATASET = "/entry/punched"
+
+
+def _write_punched(path: Path, punched: np.ndarray) -> None:
+    import h5py
+
+    with h5py.File(path, "a") as fh:
+        fh.create_dataset(_PUNCHED_DATASET, data=punched, compression="gzip",
+                          compression_opts=1, shuffle=True)
+
+
+def _read_punched(path: Path) -> np.ndarray | None:
+    """The punch record stored in *path*; None if it has none."""
+    import h5py
+
+    with h5py.File(path, "r") as fh:
+        ds = fh.get(_PUNCHED_DATASET)
+        return None if ds is None else np.asarray(ds, dtype=bool)
+
+
 # ---------------------------------------------------------------------------
 # Stage parameters (defaults mirror the validated cc_on presets)
 # ---------------------------------------------------------------------------
@@ -461,9 +484,26 @@ class PipelineParams:
     # float64 to well within measurement noise (tolerance-gated by
     # tests/test_float32_equivalence.py).
     precision: Literal["float64", "float32"] = "float64"
+    # Voxel layers taken off the edge of the measured coverage when the raw
+    # input is loaded (see nebula3d.preprocessing.trim_coverage_edge): voxels
+    # next to unmeasured space are barely normalised and can be 10⁶× the
+    # interior.  0 keeps them.
+    edge_trim: int = 1
 
     def np_dtype(self) -> type:
         return np.float64 if self.precision == "float64" else np.float32
+
+
+def load_input(path: str | Path, p: PipelineParams, *,
+               progress: ProgressFn | None = None, stage: str = "rings") -> HKLVolume:
+    """Load the raw input in the run's precision and trim its coverage edge."""
+    vol = nebula3d.load(path, dtype=p.np_dtype())
+    n = trim_coverage_edge(vol, p.edge_trim)
+    if n:
+        _emit(progress, stage, "progress", None,
+              f"trimmed {n:,} voxels at the edge of the measured coverage "
+              f"(edge_trim={p.edge_trim})")
+    return vol
 
 
 # ---------------------------------------------------------------------------
@@ -957,12 +997,14 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         vol, np.ones(vol.shape, dtype=bool), peak_records)  # noqa: SLF001
     keep = remover._punch_incident_beam(vol, keep)  # noqa: SLF001
     profile = bragg_profile_from_records(vol, remover, peak_records)
-    valid = vol.mask & np.isfinite(vol.data)
-    punched = int((valid & ~keep).sum())
+    punched = vol.mask & np.isfinite(vol.data) & ~keep
     out_vol = dataclasses.replace(vol, mask=vol.mask & keep)
     _emit(progress, "punch", "done", 1.0,
-          f"detected {len(peak_records)} peaks; punched {punched:,} voxels")
+          f"detected {len(peak_records)} peaks; punched {int(punched.sum()):,} voxels")
     setattr(out_vol, "_bragg_profile", profile)
+    # Which masked voxels are punch holes (the rest are unmeasured coverage):
+    # the backfill fills each hole from its own surroundings with it.
+    setattr(out_vol, "_punched", punched)
     return out_vol
 
 
@@ -970,9 +1012,17 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
 # Stage 3 — backfill punched holes
 # ---------------------------------------------------------------------------
 def backfill(vol: HKLVolume, params: BackfillParams | None = None, *,
-             progress: ProgressFn | None = None) -> HKLVolume:
-    """Fill punched Bragg holes; return an all-valid volume for the FFT."""
+             progress: ProgressFn | None = None,
+             punched: np.ndarray | None = None) -> HKLVolume:
+    """Fill punched Bragg holes; return an all-valid volume for the FFT.
+
+    *punched* (default: the record :func:`punch_bragg` attaches) marks the punch
+    holes, so each is filled from its own surroundings and never merges with
+    unmeasured coverage; see :func:`backfill_bragg`.
+    """
     p = params or BackfillParams()
+    if punched is None:
+        punched = getattr(vol, "_punched", None)
     _emit(progress, "backfill", "start", None, f"backfill (method={p.method})")
     filled = backfill_bragg(
         vol, method=p.method, laue_class=p.laue_class,  # type: ignore[arg-type]
@@ -982,6 +1032,7 @@ def backfill(vol: HKLVolume, params: BackfillParams | None = None, *,
         # fill notes go to the run log; without one they stay warnings
         report=(None if progress is None else
                 lambda msg: _emit(progress, "backfill", "progress", None, msg)),
+        punched=punched,
     )
     _emit(progress, "backfill", "done", 1.0, "backfill complete")
     return filled
@@ -1604,11 +1655,15 @@ def run_pipeline(
     if carry_in is not None:
         carry_path, carry = Path(carry_in[0]), carry_in[1]
 
-    def stage_load(src: Path) -> HKLVolume:
+    def stage_load(src: Path, stage: str) -> HKLVolume:
         nonlocal carry, carry_path
         vol = carry if (carry is not None and carry_path == src) else None
         carry, carry_path = None, None  # consume (or drop a stale carry)
-        return vol if vol is not None else nebula3d.load(src, dtype=p.np_dtype())
+        if vol is not None:
+            return vol
+        if src == paths.input:  # the raw input: trim its coverage edge
+            return load_input(src, p, progress=progress, stage=stage)
+        return nebula3d.load(src, dtype=p.np_dtype())
 
     # --- stage 1: rings -----------------------------------------------------
     if want("rings"):
@@ -1618,7 +1673,7 @@ def run_pipeline(
             _emit(progress, "rings", "skip", None,
                   f"{paths.ringremoved.name} exists")
         else:
-            vol = nebula3d.load(paths.input, dtype=p.np_dtype())
+            vol = load_input(paths.input, p, progress=progress)
             out = remove_rings(vol, p.rings, progress=progress)
             nebula3d.save(out, paths.ringremoved)
             ring_diagnostics = getattr(out, "_ring_diagnostics", None)
@@ -1634,9 +1689,13 @@ def run_pipeline(
             _emit(progress, "punch", "skip", None,
                   f"{paths.braggpunched.name} exists")
         else:
-            vol = stage_load(stage_input("punch"))
+            vol = stage_load(stage_input("punch"), "punch")
             out = punch_bragg(vol, p.punch, progress=progress)
             nebula3d.save(out, paths.braggpunched)
+            punch_record = getattr(out, "_punched", None)
+            if punch_record is not None:
+                _write_punched(paths.braggpunched, punch_record)
+            del punch_record
             profile = getattr(out, "_bragg_profile", None)
             if profile is not None:
                 write_bragg_profile_json(profile, paths.bragg_profile_json)
@@ -1649,7 +1708,20 @@ def run_pipeline(
             _emit(progress, "backfill", "skip", None,
                   f"{paths.backfilled.name} exists")
         else:
-            vol = stage_load(stage_input("backfill"))
+            src = stage_input("backfill")
+            vol = stage_load(src, "backfill")
+            # A volume reloaded from disk lost the punch record punch_bragg
+            # attached; read it back from the punch artifact.
+            if getattr(vol, "_punched", None) is None and src == paths.braggpunched:
+                record = _read_punched(src)
+                if record is None:
+                    _emit(progress, "backfill", "progress", None,
+                          f"{src.name} has no punch record (written by an older "
+                          f"version): holes that touch unmeasured coverage are "
+                          f"filled together with it — re-run the punch to "
+                          f"fill each hole from its own surroundings")
+                setattr(vol, "_punched", record)
+                del record
             out = backfill(vol, p.backfill, progress=progress)
             nebula3d.save(out, paths.backfilled)
             carry, carry_path = out, paths.backfilled
@@ -1661,7 +1733,7 @@ def run_pipeline(
             _emit(progress, "flatten", "skip", None,
                   f"{paths.flattened.name} exists")
         else:
-            vol = stage_load(stage_input("flatten"))
+            vol = stage_load(stage_input("flatten"), "flatten")
             out = flatten(vol, p.flatten, progress=progress)
             nebula3d.save(out, paths.flattened)
             carry, carry_path = out, paths.flattened
@@ -1684,7 +1756,7 @@ def run_pipeline(
             if paths.delta_pdf.exists() and not is_current:
                 _emit(progress, "pdf", "progress", None,
                       f"{paths.delta_pdf.name} stale — recomputing")
-            pdf_vol = stage_load(pdf_input)
+            pdf_vol = stage_load(pdf_input, "pdf")
             dpdf_obj = delta_pdf(pdf_vol, p.delta_pdf, progress=progress)
             write_delta_pdf_h5(dpdf_obj, pdf_vol, p.delta_pdf,
                                pdf_input.name, paths.delta_pdf)
@@ -1707,7 +1779,7 @@ def run_pipeline(
             _emit(progress, "pdf_check", "start", None,
                   "back-FFT round-trip consistency check")
             if pdf_vol is None:
-                pdf_vol = stage_load(pdf_input)
+                pdf_vol = stage_load(pdf_input, "pdf_check")
                 if _low_memory():
                     pdf_vol = _drop_sigma(pdf_vol)
             if dpdf_obj is None:

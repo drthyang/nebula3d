@@ -100,7 +100,27 @@ batches of whole blocks by Jacobi-preconditioned CG so memory stays bounded),
 with its Dirichlet boundary `laplace_gap` voxels outside the punch so Bragg
 tails leaking past the punch edge do not pull the fill up. A single masked
 region past `laplace_max_unknowns` (default 2 M) is an unmeasured coverage gap
-rather than a punch — loaders zero and mask those — and gets the `local` fill. `method="q_shell"`
+rather than a punch — loaders zero and mask those — and gets the `local` fill.
+
+Pass `punched=` (the voxels the punch removed; the pipeline's punch stage
+records them, in memory and as `/entry/punched` in the punch artifact) so a
+hole and the unmeasured coverage it touches stay apart. Without it every masked
+voxel is a hole: a hole touching coverage merges with it, and the whole region
+gets one value set by the coverage's rim — on the 64.5 M-voxel Fe3Ge2 TOPAZ
+volume that was 82 % of the punched voxels. With it each hole is filled only
+from the measured voxels around it (unmeasured neighbours are a free, Neumann
+boundary for `laplace`), and the coverage is filled afterwards with its own
+shell median.
+
+The pipeline also trims the edge of the measured coverage when it loads the raw
+input (`PipelineParams.edge_trim`, default 1 voxel layer;
+`nebula3d.preprocessing.trim_coverage_edge`). A measured voxel next to
+unmeasured space is barely normalised: on the Fe3Ge2 volume those voxels reach
+p99 ≈ 4,000 and a maximum of 5.5·10⁷, while one voxel further in they match the
+interior (p99 ≈ 38 against 34). Left in, they enter the ΔPDF directly and, as
+Dirichlet data, light up any `laplace` hole that touches them. Trimmed voxels
+become unmeasured coverage: masked and zeroed, as the loader leaves them. The
+volume's own faces are not an edge. `method="q_shell"`
 (the robust radial level at the same `|Q|`) is kept only for comparison: it is
 biased at the lattice nodes and leaves ΔPDF artefacts at the lattice vectors
 (see [bragg_cleanup.md](bragg_cleanup.md)).

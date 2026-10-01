@@ -63,6 +63,7 @@ def backfill_bragg(
     direct_beam_q_width: float = 0.15,
     laplace_max_unknowns: int = LAPLACE_MAX_UNKNOWNS,
     report: Callable[[str], None] | None = None,
+    punched: NDArray[np.bool_] | None = None,
 ) -> HKLVolume:
     """Fill Bragg-punched voxels in *vol*.
 
@@ -146,6 +147,15 @@ def backfill_bragg(
     report:
         Receives notes about the fill (oversized regions, CG not converging);
         they are raised as ``RuntimeWarning`` when it is None.
+    punched:
+        For ``local``, ``q_shell`` and ``laplace``: the voxels the Bragg punch
+        removed (the punch stage records them).  Each punched hole is then
+        filled only from the measured voxels around it, and unmeasured coverage
+        (masked but not punched) is filled afterwards, separately, with its
+        local shell median.  ``None``: every masked voxel is a hole, so a hole
+        that touches unmeasured coverage merges with it and the whole region
+        gets one fill value — on a volume with large coverage gaps, most of
+        the punched voxels.
 
     Returns
     -------
@@ -156,7 +166,7 @@ def backfill_bragg(
             vol, gap=laplace_gap, direct_beam_fill=direct_beam_fill,
             db_q_gap=direct_beam_q_gap, db_q_width=direct_beam_q_width,
             db_min_count=local_min_count, local_radius=local_radius,
-            max_unknowns=laplace_max_unknowns, report=report,
+            max_unknowns=laplace_max_unknowns, report=report, punched=punched,
         )
     if method in {"local", "q_shell"}:
         return _local_background_fill(
@@ -165,6 +175,7 @@ def backfill_bragg(
             q_shell_min_count=q_shell_min_count,
             direct_beam_fill=direct_beam_fill,
             db_q_gap=direct_beam_q_gap, db_q_width=direct_beam_q_width,
+            punched=punched,
         )
     return fill(
         vol,
@@ -186,6 +197,7 @@ def _local_background_fill(
     direct_beam_fill: bool = True,
     db_q_gap: float = 0.05,
     db_q_width: float = 0.15,
+    punched: NDArray[np.bool_] | None = None,
 ) -> HKLVolume:
     """Fill each punched connected component from its local valid shell."""
     holes = (~vol.mask) & np.isfinite(vol.data)
@@ -222,11 +234,17 @@ def _local_background_fill(
             q_gap=db_q_gap, q_width=db_q_width, min_count=min_count,
         )
 
-    _shell_fill_components(
-        data, sigma, holes & ~resolved, valid, radius=radius,
-        min_count=min_count, global_fill=global_fill,
-        global_sigma=global_sigma, q_lookup=q_lookup,
-    )
+    targets = holes & ~resolved
+    del holes
+    # With the punch record, punched holes and unmeasured coverage are filled
+    # as separate components: a hole never joins the coverage it touches.
+    for part in ((targets,) if punched is None
+                 else (targets & punched, targets & ~punched)):
+        _shell_fill_components(
+            data, sigma, part, valid, radius=radius,
+            min_count=min_count, global_fill=global_fill,
+            global_sigma=global_sigma, q_lookup=q_lookup,
+        )
     return dataclasses.replace(vol, data=data, sigma=sigma,
                                mask=np.ones(vol.shape, dtype=bool))
 
@@ -300,6 +318,7 @@ def _laplace_fill(
     local_radius: int = 2,
     max_unknowns: int = LAPLACE_MAX_UNKNOWNS,
     report: Callable[[str], None] | None = None,
+    punched: NDArray[np.bool_] | None = None,
 ) -> HKLVolume:
     """Fill every punched hole with the harmonic interpolant of its surroundings.
 
@@ -314,7 +333,10 @@ def _laplace_fill(
 
     A single block larger than ``max_unknowns`` is not a Bragg punch but an
     unmeasured region (the loader zeroes and masks those, so they arrive here
-    as holes); its holes get the ``local`` shell-median fill instead.
+    as holes); its holes get the ``local`` shell-median fill instead.  With
+    *punched* the unknowns are the punched voxels only: unmeasured coverage is
+    a Neumann boundary of every hole it touches, and gets the ``local`` fill
+    afterwards.
     """
     holes = (~vol.mask) & np.isfinite(vol.data)
     if not holes.any():
@@ -337,9 +359,24 @@ def _laplace_fill(
             q_gap=db_q_gap, q_width=db_q_width, min_count=db_min_count,
         )
     remaining = holes & ~resolved
+    del holes
+    coverage = None
+    if punched is not None:
+        coverage = remaining & ~punched
+        remaining &= punched
     out_mask = np.ones(vol.shape, dtype=bool)
-    if not remaining.any():
+
+    def fill_coverage() -> HKLVolume:
+        if coverage is not None and coverage.any():
+            _shell_fill_components(
+                data, sigma, coverage, valid, radius=local_radius,
+                min_count=db_min_count, global_fill=global_fill,
+                global_sigma=global_sigma,
+            )
         return dataclasses.replace(vol, data=data, sigma=sigma, mask=out_mask)
+
+    if not remaining.any():
+        return fill_coverage()
 
     # Unknowns = the holes plus a ``gap``-voxel band of valid data around them;
     # the band is solved (so the boundary sits past any Bragg tail) and then
@@ -376,11 +413,12 @@ def _laplace_fill(
             min_count=db_min_count, global_fill=global_fill,
             global_sigma=global_sigma,
         )
+        what = ("" if punched is not None
+                else " — unmeasured coverage, not Bragg punches")
         _note(report, (
             f"laplace backfill: {int(oversized.sum())} masked region(s) larger "
-            f"than {max_unknowns:,} voxels ({int(big.sum()):,} voxels in all — "
-            f"unmeasured coverage, not Bragg punches) filled with their local "
-            f"shell median instead"))
+            f"than {max_unknowns:,} voxels ({int(big.sum()):,} voxels in "
+            f"all{what}) filled with their local shell median instead"))
         del big
         sizes[oversized] = 0
 
@@ -407,7 +445,7 @@ def _laplace_fill(
         sigma_flat[b_idx[write]] = np.maximum(u_sig[write], global_sigma)
     if not all_converged:
         _note(report, "laplace backfill: CG did not reach tolerance")
-    return dataclasses.replace(vol, data=data, sigma=sigma, mask=out_mask)
+    return fill_coverage()
 
 
 def _laplace_solve_batch(
