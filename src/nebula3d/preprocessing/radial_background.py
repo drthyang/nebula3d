@@ -801,8 +801,6 @@ def confirm_ring_shells_across_h(
     ``"hk0"`` stacks across L.
     """
     stack_axis = {"0kl": 0, "h0l": 1, "hk0": 2}[plane]
-    q_mag = _offset_q_magnitude(vol, plane)            # full 3D |Q|
-    valid = vol.mask & np.isfinite(vol.data)
 
     q0, q1 = q_range
     edges = np.arange(q0, q1 + q_step, q_step)
@@ -810,14 +808,19 @@ def confirm_ring_shells_across_h(
     n_planes = vol.data.shape[stack_axis]
     n_q = q_grid.size
 
+    # One plane at a time: |Q| and validity are elementwise, so each plane's
+    # values are bit-identical to that plane of the full 3-D grids — which are
+    # never built (the full float64 |Q| and its temporaries peak at ~5 volumes,
+    # more than the rest of the ring stage needs in the browser's WASM heap).
     prof_all = np.full((n_planes, n_q), np.nan)
     samp_all = np.zeros((n_planes, n_q))
     for ip in range(n_planes):
-        vv = np.take(valid, ip, axis=stack_axis)
+        data_ip = np.take(vol.data, ip, axis=stack_axis)
+        vv = np.take(vol.mask, ip, axis=stack_axis) & np.isfinite(data_ip)
         if not vv.any():
             continue
-        qm = np.take(q_mag, ip, axis=stack_axis)[vv]
-        dv = np.take(vol.data, ip, axis=stack_axis)[vv]
+        qm = _stack_plane_q_magnitude(vol, plane, stack_axis, ip)[vv]
+        dv = data_ip[vv]
         prof, cnt = _robust_radial_profile(
             qm, dv, edges, profile_percentiles, min_voxels_per_bin, profile_method,
         )
@@ -916,6 +919,25 @@ def _offset_q_magnitude(
     cy = cy0 + sy * H
     q2 = q2 - x * x - y * y + (x - cx) ** 2 + (y - cy) ** 2
     return np.sqrt(np.maximum(q2, 0.0))
+
+
+def _stack_plane_q_magnitude(
+    vol: HKLVolume, plane: str, stack_axis: int, index: int,
+) -> NDArray[np.float64]:
+    """2-D |Q| of plane *index* along *stack_axis* (no centre offset).
+
+    Bit-identical to ``np.take(_offset_q_magnitude(vol, plane), index,
+    axis=stack_axis)`` — the same code on a one-plane view of the volume, and
+    the |Q| arithmetic is elementwise in the broadcast 1-D axes — without the
+    full 3-D grid.
+    """
+    sl: list[slice] = [slice(None)] * 3
+    sl[stack_axis] = slice(index, index + 1)
+    attr = ("h_axis", "k_axis", "l_axis")[stack_axis]
+    one = dataclasses.replace(
+        vol, data=vol.data[tuple(sl)], sigma=vol.sigma[tuple(sl)],
+        mask=vol.mask[tuple(sl)], **{attr: getattr(vol, attr)[index:index + 1]})
+    return np.take(_offset_q_magnitude(one, plane), 0, axis=stack_axis)
 
 
 def _azimuthal_angle(
