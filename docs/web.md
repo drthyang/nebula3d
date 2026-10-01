@@ -104,13 +104,18 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   consistency metrics and per-plane deapodization that replaced the old
   whole-volume temporaries at the peak stage.
 
-  Measured on the real 48.4 M-voxel volume (float32, low-memory), the binding
-  stage is the backfill at ~42 B/voxel; the admission gate
-  (`nebula3d.webbridge.inspect_input`, metadata-only so it can't OOM) budgets
-  40 B/voxel net of interpreter overhead against 3.2 GB → volumes up to
-  **~80 M voxels** are admitted (e.g. 401×401×401 = 64.5 M voxels ≈ 2.6 GB
-  estimated peak; 501³ = 125.8 M is still refused with a message pointing to
-  the native build).
+  Measured as the WASM heap's high-water mark under Pyodide 0.27.7 (float32,
+  low-memory; it includes the runtime and allocator fragmentation), a full run
+  peaks at 2.9 GiB on a fully measured 79.5 M-voxel volume, 2.8 GiB on a
+  64.5 M-voxel TOPAZ volume that is 73 % unmeasured, and 2.1 GiB on the real
+  48.4 M-voxel volume. The admission gate (`nebula3d.webbridge.inspect_input`,
+  metadata-only so it can't OOM) budgets 40 B/voxel against 3.2 GB → volumes
+  up to **~80 M voxels** are admitted (e.g. 401×401×401 = 64.5 M voxels ≈
+  2.6 GB estimated peak; 501³ = 125.8 M is still refused with a message
+  pointing to the native build). Every stage computes |Q| per plane or per
+  16-plane slab: a full float64 |Q| grid with its temporaries costs ~25–40
+  B/voxel more, which ran that TOPAZ volume out of memory
+  (`tests/test_memory_peaks.py` guards the four stages that built one).
 
   **Phones and tablets get a smaller, tab-wide gate: ~5 M voxels** (≈ 171³;
   the 161³ demo is 4.2 M). There every worker shares one content process that
@@ -131,7 +136,9 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   `local` on the 22 K volume, and its sparse solve runs in batches of at most
   2 M unknowns (`LAPLACE_MAX_UNKNOWNS`), so it stays bounded however much of the
   volume is masked — a single masked region larger than that is an unmeasured
-  coverage gap and gets the `local` fill, noted in the run log. The older ring-workflow
+  coverage gap and gets the `local` fill, noted in the run log. The direct-beam
+  fill applies the same cap to its region's bounding box: unmeasured coverage
+  that reaches the origin is not a beam, and gets the generic fill. The older ring-workflow
   `backfill_ring_shells` — not on this pipeline — builds a KD-tree over every
   valid voxel; its low-memory path bounds that to a per-H-slab local tree,
   within ~1e-5 relative of the exact fill.)

@@ -42,6 +42,7 @@ BraggFillMethod = Method | Literal["local", "q_shell", "laplace"]
 #: largest single region the Laplace fill solves: a real Bragg punch plus its
 #: gap band is ~10²–10⁵ voxels, so a connected region past this is an
 #: unmeasured coverage gap, which gets the ``local`` shell-median fill instead.
+#: The direct-beam fill applies the same cap to its region's bounding box.
 LAPLACE_MAX_UNKNOWNS = 2_000_000
 
 
@@ -364,6 +365,11 @@ def _laplace_fill(
         drop = oversized[comp]
         big = np.zeros(data.size, dtype=bool)
         big[idx[drop]] = True
+        # Shrink the unknown lists before the shell fill: on a volume that is
+        # mostly unmeasured coverage they are ~10 B/voxel, all of it dropped.
+        keep = ~drop
+        idx, comp = idx[keep], comp[keep]
+        del drop, keep
         big = big.reshape(vol.shape) & remaining
         _shell_fill_components(
             data, sigma, big, valid, radius=local_radius,
@@ -376,7 +382,6 @@ def _laplace_fill(
             f"unmeasured coverage, not Bragg punches) filled with their local "
             f"shell median instead"))
         del big
-        idx, comp = idx[~drop], comp[~drop]
         sizes[oversized] = 0
 
     flat = data.reshape(-1)
@@ -639,8 +644,9 @@ def _fill_direct_beam(
     the median diffuse level in a thin shell just outside that ``|Q|`` edge.
 
     Returns a boolean mask of the voxels resolved here (empty if no direct-beam
-    region is found or no clean outside shell is available — the caller's generic
-    per-component fill then handles those holes instead).
+    region is found, the region is too large to be a beam, or no clean outside
+    shell is available — the caller's generic per-component fill then handles
+    those holes instead).
     """
     resolved = np.zeros(vol.shape, dtype=bool)
     nh, nk, nl = vol.shape
@@ -665,6 +671,13 @@ def _fill_direct_beam(
 
     obj = ndimage.find_objects(labels, max_label=lbl)[lbl - 1]
     if obj is None:
+        return resolved
+    # A direct beam is compact (~10³ voxels, a few-thousand-voxel box on real
+    # data).  An origin blob whose box is past the cap is unmeasured coverage
+    # that reaches the origin (e.g. a TOPAZ cube, ~70 % unmeasured): no beam
+    # fill — the generic fill takes it — and no volume-sized |Q| work on a box
+    # that spans the whole volume, which overflowed the browser's WASM heap.
+    if np.prod([s.stop - s.start for s in obj]) > LAPLACE_MAX_UNKNOWNS:
         return resolved
     pad = 6  # room for the outside |Q| shell beyond the beam edge
     region = cast(

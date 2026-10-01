@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **Desktop browsers: large volumes no longer run out of memory in the
+  backfill.** A 401³ TOPAZ volume (64.5 M voxels, inside the ~80 M-voxel
+  limit) failed in the browser with a `MemoryError` in the backfill. Four steps
+  each built a full float64 |Q| grid with its temporaries, ~25–40 B/voxel on
+  top of the volume: the cross-plane ring confirmation, the punch's per-|Q|-shell
+  thresholds, the radial flatten and, on that volume, the direct-beam fill. Its
+  unmeasured coverage (73 % of the cube) reaches the origin, so the direct-beam
+  fill took all of it for the beam. The first three now compute |Q| one plane
+  or one 16-plane slab at a time, with identical values. The direct-beam fill
+  leaves an origin region whose bounding box is over 2 M voxels (a real beam's
+  is ~2,000) to the generic fill. On the TOPAZ volume the old beam fill found
+  no clean shell there and filled nothing, so every stage output is
+  byte-identical, as it is on the 48.4 M-voxel TbTi3Bi4 volume. The Laplace
+  fill also frees its unknown lists for an oversized region before filling it
+  locally (same output). Under Pyodide 0.27.7 the WASM heap now peaks at
+  2.8 GiB on the TOPAZ volume (it failed at 3.8 GiB; 2.9 GiB with
+  `method="laplace"`), 2.1 GiB on the TbTi3Bi4 volume (was 2.5 GiB) and
+  2.9 GiB on a fully measured 79.5 M-voxel volume at the limit (the old code
+  hit the 4 GiB ceiling there), out of 4 GiB.
+  `src/nebula3d/preprocessing/radial_background.py`,
+  `src/nebula3d/analysis/bragg.py`, `src/nebula3d/analysis/bragg_fill.py`,
+  `src/nebula3d/preprocessing/radial_flatten.py`, `tests/test_memory_peaks.py`.
 - **Phones and tablets: a size limit that fits the device.** Loaded volumes
   (**Load volume…** and the NeXus Viewer import) were checked only against
   the desktop budget of ~80 M voxels, so a phone accepted volumes that the OS

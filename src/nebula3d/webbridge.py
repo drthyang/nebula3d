@@ -108,11 +108,17 @@ __all__ = [
 # ``tests/test_float32_equivalence.py``, which tolerance-gates the results
 # against the float64 reference).  Native runs keep float64 by default.
 #
-# 40 B/voxel is the float32 worst-stage figure, measured on the real 48.4
-# M-voxel TbTi3Bi4 volume (scripts/measure_stage_peaks.py, low-memory, after
-# the streaming-metrics fixes): binding stage = backfill at 42.4 B/voxel
-# INCLUDING the ~5 B/voxel interpreter baseline (which dilutes at scale), so
-# 40 carries a small margin net of overhead.  float arrays halve vs float64;
+# 40 B/voxel against the 3.2 GB budget below is checked against the WASM
+# heap's high-water mark of full runs under Pyodide 0.27.7 (Node, float32,
+# low-memory; it includes the ~0.1 GiB runtime and allocator fragmentation):
+# 2.87 GiB for a fully measured 79.5 M-voxel volume (binding stage: the punch),
+# 2.79 GiB for a 64.5 M-voxel TOPAZ volume that is 73 % unmeasured, 2.07 GiB
+# for the real 48.4 M-voxel TbTi3Bi4 volume — 39–46 B/voxel all in, so a
+# volume at the 80 M ceiling stays under ~3.5 GiB of the 4 GiB heap.  That
+# holds only while no stage builds a full float64 |Q| grid: one costs ~25–40
+# B/voxel more, and four did (ring confirmation, punch thresholds, flatten,
+# direct-beam fill) until a 64.5 M-voxel volume ran out of memory;
+# tests/test_memory_peaks.py guards them.  float arrays halve vs float64;
 # the bool mask and int32 shell indices do not.  Volumes whose estimated peak
 # exceeds the budget are refused at load with a clear message rather than
 # allowed to crash mid-pipeline with a numpy ``MemoryError``.  Native
