@@ -16,7 +16,7 @@ This step flattens it directly.  Sweeping spherical shells from |Q|=0 to Qmax,
 in each thin shell we
 
     * estimate a single robust **background level** from the shell's intensity
-      distribution — by default the **floor** (a low percentile / mode), which
+      distribution — by default the **floor** (a low percentile), which
       sits *below* the diffuse and the Bragg-residual high tail, so neither
       enters the estimate, and
     * subtract that level from every voxel in the shell.
@@ -36,12 +36,12 @@ underneath everything.
 Estimator
 ---------
 ``estimator='floor'`` (default) keeps diffuse: the floor is the background, and
-anything above it (diffuse, Bragg) survives.  ``'mode'`` is the most-common
-value (a histogram peak), similar intent.  ``'median'`` subtracts the shell
-*average* and so also removes any genuinely isotropic diffuse component — more
-aggressive, use only when that is intended.  ``'snip'`` builds the per-shell
+anything above it (diffuse, Bragg) survives.  ``'snip'`` builds the per-shell
 median radial profile and takes its SNIP baseline (the floor under broad radial
-humps) — useful when the background itself has broad bumps in |Q|.
+humps) — useful when the background itself has broad bumps in |Q|.  The shell
+``median`` and ``mode`` estimators were removed: a shell's median or mode
+includes the diffuse signal itself, so subtracting it removes real diffuse
+scattering (validation found both over-subtract).
 
 Validation
 ----------
@@ -52,9 +52,9 @@ matter: (1) **isotropy** — is the level we subtract really azimuthally flat?
 (octant-floor spread vs |Q|); and (2) **feature preservation / over-subtraction**
 — background-population residual, negative fraction vs noise, and strong-feature
 contrast retention.  Validation on representative real volumes showed that the
-default ``floor`` is the robust operating point: ``median``/``mode`` centre the
-shell and can flag as over-subtraction, while ``floor`` keeps the bulk positive
-and preserves possibly-real isotropic diffuse.  The subtraction is a function of
+default ``floor`` is the robust operating point: the shell median and mode
+centred the shell and flagged as over-subtraction, while ``floor`` keeps the
+bulk positive and preserves possibly-real isotropic diffuse.  The subtraction is a function of
 |Q| alone, so it cannot create or distort anisotropic structure (regression:
 ``test_radial_flatten.py``).
 """
@@ -74,7 +74,7 @@ from nebula3d.preprocessing.radial_background import _estimate_baseline, _fill_n
 #: H planes per |Q| slab (one float64 slab is the only |Q| ever resident).
 _SLAB = 16
 
-ESTIMATORS = ("floor", "mode", "median", "snip")
+ESTIMATORS = ("floor", "snip")
 
 
 @dataclass
@@ -128,7 +128,7 @@ def flatten_radial_background(
         Spherical-shell width (Å⁻¹).  A few times finer than the scale of the
         background drift; the along-|Q| smoothing controls noise, so a fine step
         is safe (default 0.05).
-    estimator : {'floor', 'mode', 'median', 'snip'}
+    estimator : {'floor', 'snip'}
         How the per-shell background level is estimated (see module docstring).
         ``'floor'`` (default) preserves diffuse and Bragg.
     floor_percentile : float
@@ -230,7 +230,7 @@ def flatten_radial_background(
     filled = _fill_nan_1d(raw)
     if estimator == "snip":
         # SNIP baseline of the median radial profile: the floor under broad humps.
-        bg_curve = _estimate_baseline(filled, qs, snip_width, smooth, "snip")
+        bg_curve = _estimate_baseline(filled, qs, snip_width, smooth)
     elif smooth > 0:
         bg_curve = gaussian_filter1d(filled, smooth / qs, mode="nearest")
     else:
@@ -266,29 +266,4 @@ def _shell_level(
     """Robust per-shell background level for the non-profile estimators."""
     if estimator == "floor":
         return float(np.percentile(vals, floor_percentile))
-    if estimator == "median":
-        return float(np.median(vals))
-    if estimator == "mode":
-        return _shell_mode(vals)
     raise ValueError(f"Unknown estimator: {estimator!r}")
-
-
-def _shell_mode(vals: NDArray[np.float64]) -> float:
-    """Most-common value of a shell — peak of a Scott's-rule histogram.
-
-    The mode is the background level when the background voxels dominate the
-    shell (the usual case): diffuse and Bragg sit in the high tail and do not
-    move the peak.  Falls back to the median for tiny or degenerate shells.
-    """
-    n = vals.size
-    if n < 8:
-        return float(np.median(vals))
-    lo, hi = np.percentile(vals, (1.0, 99.0))
-    if not (hi > lo):
-        return float(np.median(vals))
-    std = float(np.std(vals))
-    bw = 3.49 * std * n ** (-1.0 / 3.0) if std > 0 else 0.0
-    nbins = 4 if bw <= 0 else max(4, int(np.ceil((hi - lo) / bw)))
-    hist, hist_edges = np.histogram(vals, bins=nbins, range=(float(lo), float(hi)))
-    k = int(np.argmax(hist))
-    return float(0.5 * (hist_edges[k] + hist_edges[k + 1]))

@@ -414,14 +414,11 @@ class BackfillParams:
     # global |Q|-shell level: "q_shell" is biased at every lattice node, which
     # FTs into spurious ΔPDF features at the lattice vectors.
     method: str = "local"
-    laue_class: str = "mmm"
     local_radius: int = 2
     local_min_count: int = 8
     q_shell_step: float = 0.05
     q_shell_min_count: int = 20
     laplace_gap: int = 1
-    tv_lam: float = 0.2
-    tv_iter: int = 80
 
 
 @dataclass
@@ -1025,10 +1022,10 @@ def backfill(vol: HKLVolume, params: BackfillParams | None = None, *,
         punched = getattr(vol, "_punched", None)
     _emit(progress, "backfill", "start", None, f"backfill (method={p.method})")
     filled = backfill_bragg(
-        vol, method=p.method, laue_class=p.laue_class,  # type: ignore[arg-type]
+        vol, method=p.method,  # type: ignore[arg-type]
         local_radius=p.local_radius, local_min_count=p.local_min_count,
         q_shell_step=p.q_shell_step, q_shell_min_count=p.q_shell_min_count,
-        laplace_gap=p.laplace_gap, tv_lam=p.tv_lam, tv_iter=p.tv_iter,
+        laplace_gap=p.laplace_gap,
         # fill notes go to the run log; without one they stay warnings
         report=(None if progress is None else
                 lambda msg: _emit(progress, "backfill", "progress", None, msg)),

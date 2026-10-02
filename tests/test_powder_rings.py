@@ -1,10 +1,9 @@
-"""Tests for powder ring detection, masking, and backfill."""
+"""Tests for powder ring detection and masking."""
 
 import numpy as np
 import pytest
 
 from nebula3d.core import HKLVolume
-from nebula3d.preprocessing.backfill import backfill_ring_shells
 from nebula3d.preprocessing.powder_rings import (
     RingShell,
     al_ring_q_positions,
@@ -121,40 +120,6 @@ def test_mask_boundary_is_soft():
     boundary_region = (q_mag > 2.30) & (q_mag < 2.40)
     if boundary_region.any():
         assert keep[boundary_region].any() and not keep[boundary_region].all()
-
-
-# --- backfill ---
-
-def test_backfill_produces_finite_values():
-    ring_q = 2.5
-    vol = _make_vol_with_ring(ring_q=ring_q)
-    rings, *_ = detect_ring_shells(vol, n_bins=200, baseline_window=30,
-                                   sigma_threshold=3.0)
-    if not rings:
-        pytest.skip("No rings detected")
-    keep = mask_ring_shells(vol, rings, taper_width=0.005)
-    import dataclasses
-    vol_masked = dataclasses.replace(vol, mask=vol.mask & keep)
-    vol_filled = backfill_ring_shells(vol_masked, rings, n_neighbors=12,
-                                      fallback_tv=False)
-    assert np.isfinite(vol_filled.data).all()
-
-
-def test_backfill_values_near_diffuse_level():
-    """Filled values should be near the diffuse level (not ring level)."""
-    ring_q, ring_amp = 2.5, 50.0
-    vol = _make_vol_with_ring(ring_q=ring_q, ring_amp=ring_amp)
-    rings = [RingShell(q_center=ring_q, q_lo=ring_q - 0.15, q_hi=ring_q + 0.15)]
-    keep = mask_ring_shells(vol, rings)
-    import dataclasses
-    vol_masked = dataclasses.replace(vol, mask=vol.mask & keep)
-    vol_filled = backfill_ring_shells(vol_masked, rings, n_neighbors=16, fallback_tv=False)
-
-    # Filled voxels should be much closer to 1.0 (diffuse) than to 1 + ring_amp
-    filled_region = ~keep
-    if filled_region.any():
-        filled_vals = vol_filled.data[filled_region]
-        assert float(np.mean(filled_vals)) < ring_amp * 0.5
 
 
 # --- al_ring_q_positions ---

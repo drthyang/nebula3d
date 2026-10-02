@@ -80,7 +80,7 @@ def test_bragg_spikes_survive_and_do_not_inflate_bg():
     assert float(np.nanmax(res.bg_curve)) < 10.0         # bg not pulled to spike
 
 
-def test_floor_keeps_more_diffuse_than_median():
+def test_floor_keeps_the_anisotropic_diffuse():
     vol, q, _ = _base_vol()
     H, K, _ = vol.hkl_grid()
     phi = np.arctan2(K, H)
@@ -91,12 +91,14 @@ def test_floor_keeps_more_diffuse_than_median():
 
     kw = dict(q_step=0.05, smooth=0.2, min_count=15)
     floor = flatten_radial_background(vol, estimator="floor", **kw)
-    med = flatten_radial_background(vol, estimator="median", **kw)
+    # the shell median: the level the removed "median" estimator subtracted
+    shell_median = float(np.median(vol.data[np.abs(q - q[ic]) < 0.025]))
 
-    removed_floor = float(np.nansum(vol.data - floor.volume.data))
-    removed_med = float(np.nansum(vol.data - med.volume.data))
-    assert removed_med > removed_floor > 0               # median is more aggressive
-    assert floor.volume.data[ic] > med.volume.data[ic]   # floor keeps the diffuse lobe
+    assert float(np.nansum(vol.data - floor.volume.data)) > 0
+    # the floor sits under the shell's diffuse: it subtracts less than the
+    # shell median would
+    assert vol.data[ic] - floor.volume.data[ic] < shell_median
+    assert floor.volume.data[ic] > 0.5 * diffuse[ic]
 
 
 def test_snip_estimator_runs_and_flattens():
@@ -177,28 +179,22 @@ def test_subtraction_is_purely_radial_so_anisotropy_is_untouched():
     assert abs(c_after - c_before) < 0.02 * abs(c_before)
 
 
-def test_floor_is_conservative_median_centres_the_shell():
+def test_floor_is_conservative():
     """Why ``floor`` is the validated default: subtracting p25 leaves the shell
     bulk above zero (≈floor_pct negative), so a possibly-real isotropic-diffuse
-    level is kept; ``median`` centres the shell (≈50% negative), removing it.
-    On real data ``median``/``mode`` flagged as over-subtraction; ``floor`` did
-    not.  This guards that conservative ordering.
+    level is kept; a shell median would centre it (≈50% negative).
     """
     vol, _, _ = _base_vol(noise=0.2)
 
     floor = flatten_radial_background(vol, estimator="floor", floor_percentile=25.0,
                                       q_step=0.05, smooth=0.2, min_count=15)
-    med = flatten_radial_background(vol, estimator="median",
-                                    q_step=0.05, smooth=0.2, min_count=15)
-
     fin = np.isfinite(vol.data)
     neg_floor = float(np.mean(floor.volume.data[fin] < 0.0))
-    neg_med = float(np.mean(med.volume.data[fin] < 0.0))
     assert neg_floor < 0.40                       # floor keeps the bulk positive
-    assert neg_med > neg_floor                    # median centres -> more negative
 
 
 def test_unknown_estimator_raises():
     vol, _, _ = _base_vol()
-    with pytest.raises(ValueError, match="estimator"):
-        flatten_radial_background(vol, estimator="nope")
+    for name in ("nope", "median", "mode"):  # median/mode remove real diffuse
+        with pytest.raises(ValueError, match="estimator"):
+            flatten_radial_background(vol, estimator=name)

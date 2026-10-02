@@ -105,7 +105,6 @@ def _hslice(v, ih):
 # profile_method='median', texture_q_smooth=0.0 = per-|Q| azimuthal texture).
 #   ring_width        : max ring full-width in |Q| removed as a peak (Å^-1)
 #   q_step            : radial bin width (finer than the ring to resolve peaks)
-#   baseline_method   : 'snip' = slope-aware peak-clipping baseline
 #   profile_percentiles: trim band per |Q| bin (low=gaps, high=Bragg)
 #   texture_model     : 'fourier' = T(φ) (anisotropy, Bragg-immune)
 #   n_fourier         : azimuthal harmonics (8 — resolves multi-lobed texture)
@@ -173,7 +172,7 @@ n_patches = int(os.environ.get("N_PATCHES", "36"))
 
 prm = PatchedRadialRingModel(
     n_patches=n_patches, plane="0kl", q_step=q_step, ring_width=0.24,
-    baseline_method="snip", baseline_smooth=0.06,
+    baseline_smooth=0.06,
     profile_percentiles=(10.0, 80.0), profile_method=profile_method,
     texture_model="fourier", texture_symmetric=False, texture_q_smooth=texture_q_smooth,
     ring_templates=templates,
@@ -405,8 +404,6 @@ else:
     backfilled = backfill_bragg(
         punch_only,
         method=backfill_method,
-        tv_lam=float(os.environ.get("TV_LAM", "0.2")),
-        tv_iter=int(os.environ.get("TV_ITER", "300")),
         local_radius=int(os.environ.get("LOCAL_RADIUS", "2")),
         local_min_count=int(os.environ.get("LOCAL_MIN_COUNT", "8")),
         q_shell_step=float(os.environ.get("Q_SHELL_STEP", "0.05")),
