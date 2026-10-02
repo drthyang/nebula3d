@@ -559,23 +559,19 @@ def test_build_params_punch_overrides():
         dataset_id="x",
         params=StageParamsIn(
             punch_mode="search",
-            punch_radius_h=0.2,
-            punch_radius_l=0.6,
             punch_margin=0.05,
             punch_phi_tail_hkl=0.3,
         ),
     )).punch
 
     assert overridden.mode == "search"
-    # h and l overridden; k untouched keeps its default
-    assert overridden.punch_radii == (0.2, base.punch_radii[1], 0.6)
     assert overridden.margin == 0.05
     assert overridden.phi_tail_hkl == 0.3
 
     # omitting every punch field leaves PunchParams untouched
     defaults = build_params(PipelineRunRequest(dataset_id="x")).punch
     assert defaults.mode == base.mode
-    assert defaults.punch_radii == base.punch_radii
+    assert defaults.punch_spherical_radii == base.punch_spherical_radii
     assert defaults.phi_tail_hkl == base.phi_tail_hkl
     # the per-peak spherical frame is the default (since 2026-06-27)
     assert defaults.punch_frame == "spherical"

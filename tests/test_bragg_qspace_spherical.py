@@ -99,16 +99,17 @@ def test_spherical_shape_radial_axis_is_softest_or_stiffest_as_set():
 def test_spherical_requires_radii():
     vol = _single_peak_vol(UB_DIAG)
     with pytest.raises(ValueError):
-        _remover(punch_frame="spherical")._spherical_shape_matrix(vol, (1.0, 0, 0))
+        _remover(punch_frame="spherical",
+                 punch_spherical_radii=None)._spherical_shape_matrix(vol, (1.0, 0, 0))
     with pytest.raises(ValueError):
         _remover(punch_frame="spherical",
                  punch_spherical_radii=(0.1, 0.0, 0.1))._spherical_shape_matrix(
             vol, (1.0, 0, 0))
 
 
-def test_default_library_frame_unchanged():
-    # The library default stays hkl; only PunchParams/UI flip to spherical.
-    assert BraggRemover().punch_frame == "hkl"
+def test_default_library_frame_is_spherical():
+    # The library default matches PunchParams: the per-peak spherical frame.
+    assert BraggRemover().punch_frame == "spherical"
 
 
 # --------------------------------------------------------------------------- #

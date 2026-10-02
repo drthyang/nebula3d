@@ -121,60 +121,40 @@ The ellipsoid is sized from H/K/L linecuts through the origin. The direct-beam
 backfill uses a special just-outside-`|Q|` shell so the fill does not sample the
 negative over-subtraction halo adjacent to the beam.
 
-## Punch Coordinate Space (HKL today; Q-space planned)
+## Punch Coordinate Space (Q)
 
-The punch ellipsoid is currently defined in **fractional HKL**: a peak at
-`(h₀,k₀,l₀)` is removed where
-
-```text
-((H−h₀)/rh)² + ((K−k₀)/rk)² + ((L−l₀)/rl)² ≤ 1
-```
-
-with `punch_radii = (rh, rk, rl)` in r.l.u. This is convenient (it matches the
-grid axes) but the *physical* peak profile is a function of **Q** — instrument
-resolution plus size/strain/mosaic — and does not depend on the lattice
-constants. HKL radii therefore bake in reciprocal-lattice scaling: an ellipsoid
-that looks strongly anisotropic in r.l.u. may be much closer to isotropic after
-mapping through `g = UBᵀUB`.
-
-When `g` is nearly diagonal, an axis-aligned ellipsoid in Q can be close to an
-HKL-axis punch in voxel space. The motivation to move to Q is broader
-capability: correct off-axis peak orientation (radial vs tangential), oblique
-crystals (where an HKL-axis ellipsoid shears relative to the resolution
-ellipsoid), and parameters in Å⁻¹ that transfer across lattice constants,
-temperatures, and samples.
+The punch ellipsoid is sized in **Q** (Å⁻¹). The physical peak profile —
+instrument resolution plus size/strain/mosaic — is a function of Q and does not
+depend on the lattice constants. Radii in fractional HKL, the original footprint
+(`((H−h₀)/rh)² + ((K−k₀)/rk)² + ((L−l₀)/rl)² ≤ 1`), baked the reciprocal-lattice
+scaling in: the old `(0.09, 0.12, 0.45)` r.l.u. default, a 5× anisotropy in HKL,
+is ~0.07–0.11 Å⁻¹ — nearly isotropic in Q — and an HKL-axis ellipsoid shears
+relative to the resolution ellipsoid on oblique cells. That frame was removed;
+`punch_frame="hkl"` now raises.
 
 **A single quadratic-form kernel** `δhklᵀ A δhkl ≤ 1` (`_ellipsoid_inside`)
-subsumes all current shapes and the Q-space upgrade:
+covers every shape:
 
 | Shape spec | `A` |
 |------------|-----|
-| legacy HKL radii `(rh,rk,rl)` | `diag(1/rh², 1/rk², 1/rl²)` |
-| Q isotropic radius `ρ` (Å⁻¹) | `g / ρ²` |
+| spherical frame `(rρ, rθ, rφ)` (Å⁻¹) | `UBᵀ R diag(1/r²) Rᵀ UB`, `R = [ρ̂ θ̂ φ̂]` at the peak |
+| Q isotropic radius `ρ` (Å⁻¹) | `g / ρ²`, `g = UBᵀUB` |
 | Q per-axis radii `(ra,rb,rc)` (Å⁻¹) | `Pᵀ diag(1/r²) P`, `P = ê·UB` |
 | fitted resolution ellipsoid (Phase 3) | per-peak 3×3 `A` from the covariance (φ-tail = rank-1 mod) |
 
-**The Q-space punch is the default** (`punch_frame="q"`,
-`punch_q_radii=(0.097, 0.072, 0.115)` Å⁻¹). The Q
-radii are the **resolution floor** in Å⁻¹ (lattice- and temperature-independent);
-set `punch_q_radius` for an isotropic floor instead, or `punch_frame="hkl"` +
-`punch_radii` to restore the legacy r.l.u. footprint. In the web Run-pipeline
-panel this is the **Frame → Q-space (Å⁻¹)** selector. Validate a new dataset
-against the HKL punch with the full-pipeline ΔPDF A/B in
-`examples/compare_delta_pdf_frames.py`.
+**The spherical frame is the default** (`punch_frame="spherical"`,
+`punch_spherical_radii=(0.097, 0.072, 0.115)` Å⁻¹ along each peak's radial,
+polar and azimuthal axes), so every reflection's footprint is oriented by
+construction. `punch_frame="q"` takes one Q-sphere (`punch_q_radius`) or fixed
+a*/b*/c* radii (`punch_q_radii`). The radii are the **resolution floor**: the
+per-peak shape fit is floored to the base ellipsoid's HKL bounding box and then
+punches as an axis-aligned ellipsoid (intensity-scaled, union φ-tail); peaks
+without a fit (off-integer search peaks) use the base ellipsoid itself. The
+`margin` guard band is in Å⁻¹ too. Validate a frame change with the
+full-pipeline ΔPDF A/B in `examples/compare_delta_pdf_frames.py`.
 
-In Q-mode the punch is **adaptive**, not fixed: the per-peak shape-fit is floored
-to the Q resolution and then punches through the same mechanism as the HKL path
-(axis-aligned ellipsoid + union φ-tail, intensity-scaled), so the Q frame only
-relocates the floor from r.l.u. to Å⁻¹ — it does not discard the fit or the
-φ-tail. Off-integer search peaks (no per-peak fit) use the fixed Q metric
-ellipsoid. Use `examples/compare_punch_frames.py` to compare the Q and HKL
-footprints on representative inputs and decide whether a matched isotropic
-radius is appropriate.
-
-Phase 0/1/2 tests live in `tests/test_bragg_qspace_phase{0,1,2}.py`. Note that
-HKL- and Q-axis punches are bit-identical only for an *exactly* diagonal metric;
-small UB shears can move a handful of boundary voxels.
+Phase 0/1/2/3 and spherical-frame tests live in
+`tests/test_bragg_qspace_*.py`.
 
 ## Backfill Modes
 

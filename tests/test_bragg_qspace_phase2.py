@@ -2,12 +2,13 @@
 
 Phase 2 lets the Bragg punch be specified in reciprocal Å^-1 instead of
 fractional HKL, building the quadratic-form shape matrix ``A`` from the UB metric
-and feeding it to the Phase-1 kernel.  Default ``punch_frame="hkl"`` is untouched
-(the Phase 0 golden masters still pass).
+and feeding it to the Phase-1 kernel.  The default is now the per-peak
+spherical frame, and the fractional-HKL frame was removed.
 
 These tests prove: the shape matrix is built correctly; the isotropic Q punch is
-a true metric sphere around each peak; on a diagonal metric it reproduces the
-equivalent HKL punch; and per-axis Q radii give the expected anisotropy.
+a true metric sphere around each peak; on a diagonal metric it equals the
+per-axis Q ellipsoid with equal radii; and per-axis Q radii give the expected
+anisotropy.
 """
 
 import numpy as np
@@ -55,12 +56,14 @@ def _q_remover(**kw):
 # shape-matrix construction
 # --------------------------------------------------------------------------- #
 
-def test_default_frame_is_hkl_no_q_shape():
+def test_default_frame_is_spherical_and_hkl_is_rejected():
     vol = _single_peak_vol(UB_DIAG)
-    assert BraggRemover().punch_frame == "hkl"
+    assert BraggRemover().punch_frame == "spherical"
     assert BraggRemover()._q_shape_matrix(vol) is None
-    # a stray Q radius with the default hkl frame stays inert
+    # a stray Q radius with the default spherical frame stays inert
     assert BraggRemover(punch_q_radius=0.1)._q_shape_matrix(vol) is None
+    with pytest.raises(ValueError, match="fractional-HKL frame was removed"):
+        BraggRemover(punch_frame="hkl")
 
 
 def test_q_shape_matrix_isotropic_is_metric_over_rho2():
@@ -114,15 +117,15 @@ def test_q_isotropic_punch_is_a_metric_sphere():
     assert (~punched[qmag > rho + 0.02]).all()
 
 
-def test_q_isotropic_equals_equivalent_hkl_on_diagonal_metric():
-    """On a diagonal metric, a Q-sphere of radius ρ punches the same voxels as an
-    HKL ellipsoid with radii (ρ/|a*|, ρ/|b*|, ρ/|c*|) — the Phase 0 equivalence,
-    now through the real punch path.  Masks agree except at boundary ties."""
+def test_q_sphere_equals_equal_axis_q_ellipsoid_on_diagonal_metric():
+    """On a diagonal metric, a Q-sphere of radius ρ punches the same voxels as
+    the a*/b*/c* ellipsoid with radii (ρ, ρ, ρ) — the Phase 0 equivalence,
+    through the real punch path.  Masks agree except at boundary ties."""
     rho = 0.12
     vol_q = _single_peak_vol(UB_DIAG)
     vol_h = _single_peak_vol(UB_DIAG)
     keep_q = _q_remover(punch_frame="q", punch_q_radius=rho).build_mask(vol_q)
-    keep_h = _q_remover(punch_radii=tuple(rho / BSTAR)).build_mask(vol_h)
+    keep_h = _q_remover(punch_frame="q", punch_q_radii=(rho, rho, rho)).build_mask(vol_h)
 
     disagree = keep_q ^ keep_h
     # only a thin rim may differ; bound it well below the punched volume

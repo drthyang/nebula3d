@@ -102,7 +102,7 @@ def test_full_pipeline_runs_and_produces_finite_dpdf():
     assert np.isfinite(I_ring).all()
 
     # (3) Bragg punch (the ring model's SNR mask stays masked too).
-    b_keep = bragg_mask(vol2, punch_radius_hkl=0.35)
+    b_keep = bragg_mask(vol2, punch_frame="q", punch_q_radius=0.35 * np.pi / 2)
     vol2.apply_mask(b_keep)
     assert not vol2.mask.all()
 

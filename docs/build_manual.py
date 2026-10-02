@@ -1329,7 +1329,7 @@ def build_manual(output_path: str) -> None:
         "# Bragg punch\n"
         "remover = BraggRemover(\n"
         "    mode=\"both\",\n"
-        "    punch_radii=(0.09, 0.12, 0.45),\n"
+        "    punch_spherical_radii=(0.097, 0.072, 0.115),  # Å⁻¹\n"
         "    min_intensity=0.8,\n"
         "    min_prominence=0.8,\n"
         "    integer_optimize_position=True,\n"

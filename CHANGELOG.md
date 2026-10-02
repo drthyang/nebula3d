@@ -23,6 +23,19 @@
     model, and dips below a diffuse background that falls with |Q|. SNIP is now
     the only baseline, so `baseline_method` is gone from `PatchedRadialRingModel`
     and `ParametricRingModel`.
+  - Bragg punch radii in fractional HKL (`punch_frame="hkl"`, `punch_radii`,
+    `punch_radius_hkl`; `punch_radius_h/k/l` in the run request). The
+    resolution is set in Q, so r.l.u. radii depend on the cell and shear on
+    oblique axes. The punch is sized in Å⁻¹ only: per peak in the spherical
+    frame (the default, now also for `BraggRemover()` and `bragg_mask`) or
+    along a*, b*, c* (`"q"`). `punch_frame="hkl"` raises. The `margin` guard
+    band is Å⁻¹ everywhere, including the covariance-fit path, which inflated
+    by r.l.u. outside the `"q"` frame. The default direct-beam punch, when no
+    beam radii are set, is twice the Bragg punch's HKL bounding box. The
+    default pipeline punch is unchanged: the same mask on the TbTi3Bi4 22K
+    volume. `examples/compare_punch_frames.py` and `plot_punch_slices.py`
+    (HKL vs Q comparisons) were removed, and the punch examples take
+    `SPHERICAL_R` (Å⁻¹) instead of `R_HKL`.
 
   The Configure page no longer offers the removed options. Docs, examples and
   the manual source follow.
