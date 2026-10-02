@@ -435,7 +435,6 @@ interface PunchGeom {
   ax: [string, string, string]; // axis labels, e.g. [H,K,L] or [a*,b*,c*]
   directBeamRadiiQ: [number, number, number];
   directBeamMargin: number;
-  fitCovariance: boolean;
 }
 
 function planeHklAxes(p: PunchPlane): [HklAxis, HklAxis] {
@@ -1159,7 +1158,6 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       punchQA: st.punchQA,
       punchQB: st.punchQB,
       punchQC: st.punchQC,
-      punchFitCovariance: st.punchFitCovariance,
       punchFitUnconstrained: st.punchFitUnconstrained,
       punchMargin: st.punchMargin,
       incidentBeamQA: st.incidentBeamQA,
@@ -1209,7 +1207,6 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       clampFloat(s.incidentBeamQC, 0.25, 0.005, 2.0),
     ],
     directBeamMargin: clampFloat(s.incidentBeamMargin, 0.0, 0, 1.0),
-    fitCovariance: s.punchFitCovariance,
   };
   // Single reciprocal-space preview for the whole punch → ΔPDF card, sourced
   // from the raw volume (falls back to ringremoved if raw is absent).
@@ -1878,35 +1875,16 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 </div>
                 <div className="switch-row">
                   <Switch
-                    label="Fit tilted ellipsoid (covariance)"
-                    checked={s.punchFitCovariance}
-                    onChange={(v) =>
-                      patch({
-                        punchFitCovariance: v,
-                        punchFitUnconstrained: v ? s.punchFitUnconstrained : false,
-                      })
-                    }
-                  />
-                  <HelpTip>
-                    Fit each integer Bragg peak's ellipsoid, tilt included, from
-                    its measured shape in Q. The punch always contains the
-                    resolution ellipsoid above and grows along the peak's own axes
-                    where the peak is wider. The preview shows that floor; the
-                    fitted tilt is best checked in the punched slices. Off: three
-                    radii along H, K, L (no tilt).
-                  </HelpTip>
-                </div>
-                <div className="switch-row">
-                  <Switch
                     label="Drop fit constraints"
                     checked={s.punchFitUnconstrained}
-                    disabled={!s.punchFitCovariance}
                     onChange={(v) => patch({ punchFitUnconstrained: v })}
                   />
                   <HelpTip>
-                    Let Bragg covariance-fit radii go below the resolution
-                    ellipsoid or above the max-radius cap. This is useful for profile diagnostics,
-                    but can create unstable punch masks on weak or noisy peaks.
+                    Each integer Bragg peak's ellipsoid, tilt included, is fitted
+                    from its measured shape in Q. It always contains the resolution
+                    ellipsoid above (the preview) and is capped at a few times it.
+                    This switch drops both limits: useful for profile diagnostics,
+                    but it can create unstable punch masks on weak or noisy peaks.
                   </HelpTip>
                 </div>
                   </div>

@@ -164,7 +164,6 @@ def test_integer_peak_fit_records_subvoxel_center_and_anisotropic_shape():
         detect_window_hkl=0.35,
         integer_optimize_position=True,
         integer_optimize_shape=True,
-        integer_fit_covariance=False,  # the legacy H/K/L-radii fit
         integer_fit_threshold_frac=0.2,
         integer_fit_radius_n_sigma=2.0,
         force_origin=False,
@@ -172,8 +171,9 @@ def test_integer_peak_fit_records_subvoxel_center_and_anisotropic_shape():
     peak = remover._detect_peak_records(vol)[0]
     assert peak.source_node_hkl == (1, 0, 0)
     assert abs(peak.center_hkl[0] - 1.07) < 0.04
-    assert peak.radii_hkl is not None
-    assert peak.radii_hkl[2] > peak.radii_hkl[0]
+    assert peak.shape_hkl is not None
+    extent = np.sqrt(np.diag(np.linalg.inv(peak.shape_hkl)))
+    assert extent[2] > extent[0]  # the fitted punch reaches further along L
 
     keep = remover.build_mask(vol)
     ih = int(np.argmin(np.abs(vol.h_axis - peak.center_hkl[0])))

@@ -302,7 +302,9 @@ integration, Q-mode adaptivity) plus a server `build_params` test.
 On the 100K volume 44 % of peaks were floored on all three axes, and the
 default pipeline ran the diagonal fit anyway. The covariance fit is now in Q,
 cut-corrected, windowed in Å⁻¹, floored at the resolution ellipsoid by
-containment, and on by default; see `docs/algorithms/bragg_cleanup.md`.
+containment, and the only shape fit (the diagonal fit and the
+`integer_fit_covariance` switch were removed); see
+`docs/algorithms/bragg_cleanup.md`.
 
 Phase 4 (validating): HKL-vs-Q comparison via
 [`examples/compare_punch_frames.py`](examples/compare_punch_frames.py). The

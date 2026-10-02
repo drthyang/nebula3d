@@ -1,12 +1,11 @@
 """Phase 3 — the covariance fit: a tilted punch ellipsoid fitted in Q.
 
-With ``integer_optimize_shape`` (and ``integer_fit_covariance``, the default) the
-integer-node fit returns a full 3×3 HKL shape matrix following the peak's
-measured orientation.  The covariance is taken in Q, from a window sized in Å⁻¹,
-corrected for the core cut, and the ellipsoid always contains the resolution
-ellipsoid of the active punch frame.  ``integer_fit_covariance=False`` keeps the
-legacy diagonal H/K/L-radii fit.  The φ-tail folds in as a rank-1 tangential
-inflation.
+With ``integer_optimize_shape`` the integer-node fit returns a full 3×3 HKL
+shape matrix following the peak's measured orientation.  The covariance is taken
+in Q, from a window sized in Å⁻¹, corrected for the core cut, and the ellipsoid
+always contains the resolution ellipsoid of the active punch frame.  The
+diagonal H/K/L-radii fit it replaced is gone.  The φ-tail folds in as a rank-1
+tangential inflation.
 """
 
 import numpy as np
@@ -77,24 +76,31 @@ def _cov_remover(**kw):
     return BraggRemover(**base)
 
 
-def test_legacy_diagonal_fit_returns_radii_not_shape():
-    """With covariance off (opt-out), the integer fit yields radii and no shape."""
-    cov = np.diag([0.06**2, 0.06**2, 0.06**2])
-    vol = _gaussian_peak_vol(cov)
-    rec = next(r for r in _cov_remover(integer_fit_covariance=False)._detect_peak_records(vol)
-               if abs(r.center_hkl[0] - 1.0) < 0.2)
-    assert rec.radii_hkl is not None
-    assert rec.shape_hkl is None
+def test_diagonal_fit_is_gone():
+    with pytest.raises(TypeError):
+        BraggRemover(integer_fit_covariance=False)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        PunchParams(integer_fit_covariance=False)  # type: ignore[call-arg]
 
 
 def test_covariance_fit_records_a_shape_matrix():
-    """With covariance on (default), the integer fit yields a 3×3 shape, no radii."""
+    """The integer shape fit yields a 3×3 shape matrix."""
     cov = np.diag([0.06**2, 0.06**2, 0.06**2])
     vol = _gaussian_peak_vol(cov)
     rec = next(r for r in _cov_remover()._detect_peak_records(vol)
                if abs(r.center_hkl[0] - 1.0) < 0.2)
-    assert rec.radii_hkl is None
     assert rec.shape_hkl is not None and rec.shape_hkl.shape == (3, 3)
+
+
+def test_position_only_fit_moves_the_centre_and_keeps_the_frame_punch():
+    """Without the shape fit, the core's centroid is still the punch centre,
+    and the punch is the punch-frame ellipsoid."""
+    cov = np.diag([0.06**2, 0.06**2, 0.06**2])
+    vol = _gaussian_peak_vol(cov, center=(1.013, 0.0, 0.0))
+    rec = next(r for r in _cov_remover(integer_optimize_shape=False)
+               ._detect_peak_records(vol) if abs(r.center_hkl[0] - 1.0) < 0.2)
+    assert rec.shape_hkl is None
+    assert rec.center_hkl[0] == pytest.approx(1.013, abs=0.005)
 
 
 def test_covariance_punch_follows_tilted_peak():
@@ -105,7 +111,7 @@ def test_covariance_punch_follows_tilted_peak():
     rot = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
     cov = rot @ np.diag([0.05**2, 0.18**2, 0.05**2]) @ rot.T
     vol = _gaussian_peak_vol(cov)
-    keep = _cov_remover(integer_fit_covariance=True).build_mask(vol)
+    keep = _cov_remover().build_mask(vol)
     punched = ~keep
 
     ih = int(np.argmin(np.abs(vol.h_axis - 1.0)))
@@ -135,14 +141,6 @@ def test_q_mode_is_adaptive_not_fixed():
     fixed = BraggRemover(integer_optimize_shape=False, **qr).build_mask(vol)
     fitted = BraggRemover(integer_optimize_shape=True, **qr).build_mask(vol)
     assert int((~fitted).sum()) > int((~fixed).sum())  # fit grows beyond the floor
-
-
-def test_legacy_diagonal_fit_still_punches():
-    """The covariance opt-out (legacy diagonal-radii fit) still punches the peak."""
-    cov = np.diag([0.07**2, 0.05**2, 0.05**2])
-    vol = _gaussian_peak_vol(cov)
-    keep_off = _cov_remover(integer_fit_covariance=False).build_mask(vol)
-    assert (~keep_off).any()
 
 
 # --------------------------------------------------------------------------- #
@@ -324,12 +322,12 @@ def test_peak_too_weak_for_its_noise_gets_the_resolution_ellipsoid():
     rem = _fit_remover(min_intensity=0.0, min_prominence=0.0)
     idx = tuple(int(np.argmin(np.abs(a - x))) for a, x in
                 zip((vol.h_axis, vol.k_axis, vol.l_axis), (1.0, 0.0, 0.0)))
-    center, radii, shape = rem._fit_integer_peak_q(vol, idx, 0.5)
-    assert radii is None and shape is None
-    strong = _fit_remover(min_intensity=0.0, min_prominence=0.0)._fit_integer_peak_q(
+    _, shape = rem._fit_integer_peak(vol, idx, 0.5)
+    assert shape is None
+    strong = _fit_remover(min_intensity=0.0, min_prominence=0.0)._fit_integer_peak(
         _q_peak_vol([((1.0, 0.0, 0.0), 0.03**2 * np.eye(3), 5.0)], noise=0.1, seed=7),
         idx, 0.5)
-    assert strong[2] is not None
+    assert strong[1] is not None
 
 
 def test_margin_grows_each_principal_radius_in_q():
@@ -351,7 +349,7 @@ def test_margin_grows_each_principal_radius_in_q():
 
 
 def test_pipeline_default_punches_fitted_tilted_ellipsoids():
-    assert PunchParams().integer_fit_covariance is True
+    assert PunchParams().integer_optimize_shape is True
     _, cov_q = _tilted_cov_q((1.0, 1.0, 1.0))
     vol = _q_peak_vol([((1.0, 0.0, 0.0), cov_q, 100.0)])
     out = punch_bragg(vol, PunchParams(mode="integer"))

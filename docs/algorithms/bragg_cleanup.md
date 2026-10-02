@@ -45,11 +45,10 @@ The integer path is lattice-aware:
    - `min_prominence`
    - optional `integer_n_mad` against a robust per-`|Q|` shell level.
 4. Recenter to the measured local peak.
-5. Optionally fit peak position and anisotropic shape:
-   - `integer_optimize_position=True`
-   - `integer_optimize_shape=True`
-   - `integer_fit_covariance=True` (the default) fits a **tilted** ellipsoid
-     following the peak's measured orientation, in Q:
+5. Optionally fit peak position and shape:
+   - `integer_optimize_position=True` moves the centre to the core's centroid.
+   - `integer_optimize_shape=True` fits a **tilted** ellipsoid following the
+     peak's measured orientation, in Q:
      - The core is the voxels connected to the peak whose excess is at least
        `integer_fit_threshold_frac` (0.35) of the peak's. It is measured in a
        window `max_radius_scale`× the resolution ellipsoid, the same extent in
@@ -68,8 +67,8 @@ The integer path is lattice-aware:
        ellipsoid. Its core would follow the surrounding signal, not the peak.
      - The φ-tail folds in as a rank-1 tangential inflation.
 
-     `integer_fit_covariance=False` is the legacy fit: three radii along
-     H, K, L (no tilt), floored at the base ellipsoid's HKL bounding box.
+     The diagonal fit it replaced (three radii along H, K, L, no tilt, floored
+     at the base ellipsoid's HKL bounding box) was removed.
 6. Punch a continuous-HKL ellipsoid at the fitted centre.
 
 Useful guards:

@@ -45,7 +45,7 @@ class _PeakPunch:
 
     ``detect_peaks()`` keeps returning the historical ``(ih, ik, il, intensity)``
     tuples for callers/tests.  Internally we keep the richer fitted HKL centre
-    and optional per-peak radii so integer-node detection can decide at the
+    and optional per-peak shape so integer-node detection can decide at the
     lattice node, recenter on the nearby maximum, and punch the fitted peak
     footprint rather than a one-size-fits-all voxel-centred ellipsoid.
     """
@@ -55,9 +55,8 @@ class _PeakPunch:
     il: int
     intensity: float
     center_hkl: tuple[float, float, float]
-    radii_hkl: tuple[float, float, float] | None = None
-    # Per-peak 3×3 HKL shape matrix A (punch where δᵀAδ ≤ 1).  Set by the
-    # covariance fit (Phase 3); supersedes ``radii_hkl`` and folds in the φ-tail.
+    # Per-peak 3×3 HKL shape matrix A (punch where δᵀAδ ≤ 1), set by the
+    # covariance fit; ``None`` punches the punch-frame ellipsoid.
     shape_hkl: NDArray[np.float64] | None = None
     source_node_hkl: tuple[int, int, int] | None = None
     local_background: float = float("nan")
@@ -194,23 +193,18 @@ class BraggRemover:
         |Q| shell width for ``integer_n_mad``.  ``None`` reuses
         ``search_q_step``.
     integer_optimize_position:
-        If True, refine accepted integer-node peaks by a positive-excess weighted
-        centroid in the detection window.  This gives a continuous HKL punch
-        centre instead of only the hottest voxel centre.
+        If True, move accepted integer-node peaks to the excess-weighted
+        centroid of their core (see ``integer_optimize_shape``) — a continuous
+        HKL punch centre instead of the hottest voxel centre.
     integer_optimize_shape:
-        If True, fit each integer-node peak's punch ellipsoid from the
-        excess-weighted second moments of its core.
-    integer_fit_covariance:
-        With ``integer_optimize_shape``: True (default) fits the full covariance
-        in Q, so the punch follows the peak's tilt.  The core comes from a
-        window sized in Å⁻¹, is restricted to the voxels connected to the peak,
-        and is corrected for the ``integer_fit_threshold_frac`` cut.  Principal
-        radii are ``integer_fit_radius_n_sigma``·σ plus half a voxel along each
-        Q axis.  The ellipsoid always contains the resolution ellipsoid of the
+        If True, fit each integer-node peak's punch ellipsoid, tilt included,
+        from the covariance of its core, in Q.  The core is the voxels connected
+        to the peak above the ``integer_fit_threshold_frac`` cut, in a window
+        sized in Å⁻¹; its covariance is corrected for the cut.  Principal radii
+        are ``integer_fit_radius_n_sigma``·σ plus half a voxel along each Q
+        axis.  The ellipsoid always contains the resolution ellipsoid of the
         active ``punch_frame`` and lies inside ``max_radius_scale``× it (or
-        inside ``integer_fit_max_radius_hkl``).  False is the legacy diagonal
-        fit: three radii along H, K, L (no tilt), floored at the base
-        ellipsoid's HKL bounding box.
+        inside ``integer_fit_max_radius_hkl``).
     integer_fit_unconstrained:
         If True, covariance-fit radii are not clipped to the floor/ceiling.
         Useful for diagnosing the measured Bragg profile, but it can create
@@ -306,12 +300,10 @@ class BraggRemover:
     integer_local_prominence_n_mad: float | None = None
     integer_local_min_prominence: float = 0.0
     integer_optimize_position: bool = False
-    integer_optimize_shape: bool = False
-    # Fit the full covariance in Q (a tilted ellipsoid following the peak's real
+    # The covariance fit in Q (a tilted ellipsoid following the peak's real
     # orientation), floored at the resolution ellipsoid; the φ-tail folds in as
-    # a tangential inflation.  Requires ``integer_optimize_shape``.  False is the
-    # legacy diagonal (H/K/L-aligned) fit + union φ-tail.
-    integer_fit_covariance: bool = True
+    # a tangential inflation.
+    integer_optimize_shape: bool = False
     integer_fit_unconstrained: bool = False
     integer_fit_threshold_frac: float = 0.35
     # The covariance fit's core cut must clear this many robust noise sigmas
@@ -334,7 +326,7 @@ class BraggRemover:
     incident_beam_ellipsoid_radii_hkl: tuple[float, float, float] | None = None
     incident_beam_sphere_radius_hkl: float | None = None
     # Fit a tilted covariance ellipsoid in Q to the direct-beam remnant at the
-    # origin (analogue of ``integer_fit_covariance`` for Bragg peaks).  The fit
+    # origin (analogue of ``integer_optimize_shape`` for Bragg peaks).  The fit
     # always contains the fixed direct-beam punch, so it only follows/expands
     # the real beam shape, never punches smaller; falls back to the fixed punch
     # when the origin is masked or no excess is found.
@@ -559,12 +551,11 @@ class BraggRemover:
     def _fit_base_radii(self, vol: HKLVolume) -> tuple[float, float, float]:
         """The HKL bounding box of the base Q ellipsoid.
 
-        The legacy diagonal fit is clipped to it, the axis-aligned fallback
-        punches it, and the default direct-beam punch is twice it.  (The
-        covariance fit floors at the ellipsoid itself, per peak.)  In the
-        spherical frame it is taken at a
-        representative off-pole point along a* — the bounding-box scale depends
-        on the radii and orientation, not on |Q|.
+        The axis-aligned fallback (a peak where the frame is undefined)
+        punches it, and the default direct-beam punch is twice it.  In the
+        spherical frame it is taken at a representative off-pole point along
+        a* — the bounding-box scale depends on the radii and orientation, not
+        on |Q|.
         """
         if str(self.punch_frame).lower() == "spherical":
             a = self._spherical_shape_matrix(vol, (1.0, 0.0, 0.0))
@@ -937,27 +928,16 @@ class BraggRemover:
                 float(vol.k_axis[pk]),
                 float(vol.l_axis[pl]),
             )
-            radii_hkl = None
             shape_hkl = None
-            if self.integer_optimize_shape and self.integer_fit_covariance:
-                center_hkl, radii_hkl, shape_hkl = self._fit_integer_peak_q(
+            if self.integer_optimize_position or self.integer_optimize_shape:
+                center_hkl, shape_hkl = self._fit_integer_peak(
                     vol, (ph, pk, pl), local_bg)
                 ph = int(np.argmin(np.abs(vol.h_axis - center_hkl[0])))
                 pk = int(np.argmin(np.abs(vol.k_axis - center_hkl[1])))
                 pl = int(np.argmin(np.abs(vol.l_axis - center_hkl[2])))
-            elif self.integer_optimize_position or self.integer_optimize_shape:
-                center_hkl, radii_hkl, shape_hkl = self._fit_integer_peak(
-                    vol, wv, wval, (hs, ks, ls), local_bg, peak,
-                )
-                ph = int(np.argmin(np.abs(vol.h_axis - center_hkl[0])))
-                pk = int(np.argmin(np.abs(vol.k_axis - center_hkl[1])))
-                pl = int(np.argmin(np.abs(vol.l_axis - center_hkl[2])))
-                if not self.integer_optimize_shape:
-                    radii_hkl = None
-                    shape_hkl = None
             out.append(_PeakPunch(
                 ih=ph, ik=pk, il=pl, intensity=peak,
-                center_hkl=center_hkl, radii_hkl=radii_hkl, shape_hkl=shape_hkl,
+                center_hkl=center_hkl, shape_hkl=shape_hkl,
                 source_node_hkl=(h, k, l), local_background=local_bg,
             ))
         return out
@@ -965,123 +945,41 @@ class BraggRemover:
     def _fit_integer_peak(
         self,
         vol: HKLVolume,
-        window: NDArray[np.float64],
-        valid: NDArray[np.bool_],
-        origin: tuple[int, int, int],
-        local_bg: float,
-        peak: float,
-    ) -> tuple[
-        tuple[float, float, float],
-        tuple[float, float, float] | None,
-        NDArray[np.float64] | None,
-    ]:
-        """Legacy fit: centroid, and three H/K/L-aligned radii, from the
-        detection window.
-
-        Returns ``(center, radii, None)``; ``radii`` is ``None`` unless
-        ``integer_optimize_shape``.  Used for the position-only fit and when
-        ``integer_fit_covariance`` is off; the covariance fit is
-        :meth:`_fit_integer_peak_q`.
-        """
-        hs, ks, ls = origin
-        excess = np.where(valid, window - local_bg, 0.0)
-        peak_excess = max(peak - local_bg, 0.0)
-
-        def _argmax_center() -> tuple[float, float, float]:
-            off = np.unravel_index(int(np.nanargmax(window)), window.shape)
-            return (float(vol.h_axis[hs + off[0]]), float(vol.k_axis[ks + off[1]]),
-                    float(vol.l_axis[ls + off[2]]))
-
-        if peak_excess <= 0:
-            return _argmax_center(), None, None
-
-        threshold = max(0.0, float(self.integer_fit_threshold_frac)) * peak_excess
-        fit_mask = valid & (excess >= threshold)
-        if int(fit_mask.sum()) < 3:
-            fit_mask = valid & (excess > 0)
-        if int(fit_mask.sum()) < 3:
-            return _argmax_center(), None, None
-
-        H, K, L = np.meshgrid(
-            vol.h_axis[hs:hs + window.shape[0]],
-            vol.k_axis[ks:ks + window.shape[1]],
-            vol.l_axis[ls:ls + window.shape[2]],
-            indexing="ij",
-        )
-        weights = np.where(fit_mask, excess, 0.0)
-        wsum = float(weights.sum())
-        if wsum <= 0:
-            return _argmax_center(), None, None
-
-        center = (
-            float((weights * H).sum() / wsum),
-            float((weights * K).sum() / wsum),
-            float((weights * L).sum() / wsum),
-        )
-        if not self.integer_optimize_shape:
-            return center, None, None
-
-        steps = tuple(abs(s) for s in self._steps(vol))
-        base = self._fit_base_radii(vol)
-        if self.integer_fit_max_radius_hkl is None:
-            max_r = tuple(float(r) * float(self.max_radius_scale) for r in base)
-        else:
-            max_r = tuple(float(r) for r in self.integer_fit_max_radius_hkl)
-        n_sigma = max(float(self.integer_fit_radius_n_sigma), 0.0)
-
-        d = [H - center[0], K - center[1], L - center[2]]
-        dh, dk, dl = steps
-        sigmas = (
-            float(np.sqrt(max((weights * d[0] ** 2).sum() / wsum, 0.0))),
-            float(np.sqrt(max((weights * d[1] ** 2).sum() / wsum, 0.0))),
-            float(np.sqrt(max((weights * d[2] ** 2).sum() / wsum, 0.0))),
-        )
-        fitted = (
-            min(max(n_sigma * sigmas[0] + 0.5 * dh, base[0]), max_r[0]),
-            min(max(n_sigma * sigmas[1] + 0.5 * dk, base[1]), max_r[1]),
-            min(max(n_sigma * sigmas[2] + 0.5 * dl, base[2]), max_r[2]),
-        )
-        return center, fitted, None
-
-    def _fit_integer_peak_q(
-        self,
-        vol: HKLVolume,
         idx: tuple[int, int, int],
         local_bg: float,
-    ) -> tuple[
-        tuple[float, float, float],
-        None,
-        NDArray[np.float64] | None,
-    ]:
+    ) -> tuple[tuple[float, float, float], NDArray[np.float64] | None]:
         """Fit an integer-node peak's centre and tilted punch ellipsoid in Q.
 
         ``idx`` is the peak's brightest voxel.  The core moments are taken in a
         window ``max_radius_scale``× the resolution ellipsoid (see
         :meth:`_core_moments`), and the shape is built in Q, floored at the
         resolution ellipsoid at the fitted centre (see
-        :meth:`_shape_from_q_covariance`).  Returns ``(center, None, shape)``,
-        or ``(voxel centre, None, None)`` when the peak cannot be measured.
+        :meth:`_shape_from_q_covariance`).  Returns ``(center, shape)``;
+        ``shape`` is ``None`` unless ``integer_optimize_shape``, and the centre
+        is the voxel's when the peak cannot be measured.
         """
         voxel_hkl = (float(vol.h_axis[idx[0]]), float(vol.k_axis[idx[1]]),
                      float(vol.l_axis[idx[2]]))
         a_voxel = self._active_shape_matrix(vol, voxel_hkl)
         if a_voxel is None:
-            return voxel_hkl, None, None
+            return voxel_hkl, None
         window = self._window_around(
             vol, idx, self._fit_ceiling(np.linalg.inv(a_voxel)))
         moments = self._core_moments(vol, idx, local_bg, window)
         if moments is None:
-            return voxel_hkl, None, None
+            return voxel_hkl, None
         mean, cov = moments
         center = (float(mean[0]), float(mean[1]), float(mean[2]))
+        if not self.integer_optimize_shape:
+            return center, None
         a_floor = self._active_shape_matrix(vol, center)
         if a_floor is None:
-            return center, None, None
+            return center, None
         floor = np.linalg.inv(a_floor)
         shape = self._shape_from_q_covariance(
             vol, cov, floor, self._fit_ceiling(floor),
             constrain=not self.integer_fit_unconstrained)
-        return center, None, shape
+        return center, shape
 
     @staticmethod
     def _q_shell_thresholds(
@@ -1269,9 +1167,8 @@ class BraggRemover:
     ) -> NDArray[np.bool_]:
         """Punch an anisotropic, intensity-scaled ellipsoid at each peak centre,
         in place on *keep* (local windows only)."""
-        # Base resolution radii: the Q ellipsoid's HKL bounding box (a
-        # lattice-portable floor).  The diagonal per-peak fit is clipped to it and
-        # punches via the radii path below.
+        # The Q ellipsoid's HKL bounding box: the fallback where the punch
+        # frame is undefined (a peak at the origin).
         r_base = self._fit_base_radii(vol)
 
         ref = self.intensity_ref
@@ -1283,7 +1180,7 @@ class BraggRemover:
             s = self._scale_factor(peak_rec.intensity, ref if ref is not None else 1.0)
             center = (peak_rec.ih, peak_rec.ik, peak_rec.il)
 
-            # (1) Covariance fit (Phase 3, either frame): tilted ellipsoid with the
+            # (1) Covariance fit (either frame): tilted ellipsoid with the
             #     φ-tail and margin folded into the matrix.
             if peak_rec.shape_hkl is not None:
                 a = self._inflate_for_frame(
@@ -1298,25 +1195,25 @@ class BraggRemover:
                     h_guard=self._h_guard_for(peak_rec), shape_matrix=a)
                 continue
 
-            # (2) No per-peak fit (search peaks / shape-fit off): the base
-            #     ellipsoid + Q-space margin + folded φ-tail.
-            #     ``_active_shape_matrix`` is per-peak in the spherical frame.
-            if peak_rec.radii_hkl is None:
-                _a = self._active_shape_matrix(
-                    vol, peak_rec.center_hkl, scale=s, margin_q=self.margin)
-                if _a is not None:  # None only when the frame is undefined (origin)
-                    a = self._fold_phi_tail(
-                        vol, _a, peak_rec.center_hkl,
-                        max(0.0, float(self.phi_tail_hkl)) * s)
-                    self._punch_one(
-                        vol, keep, center, self._ellipsoid_bounding_radii(a), 0.0,
-                        center_hkl=peak_rec.center_hkl,
-                        h_guard=self._h_guard_for(peak_rec), shape_matrix=a)
-                    continue
+            # (2) No per-peak fit (search peaks, shape fit off, peaks too weak
+            #     to measure): the base ellipsoid + Q-space margin + folded
+            #     φ-tail.  ``_active_shape_matrix`` is per-peak in the spherical
+            #     frame.
+            _a = self._active_shape_matrix(
+                vol, peak_rec.center_hkl, scale=s, margin_q=self.margin)
+            if _a is not None:  # None only when the frame is undefined (origin)
+                a = self._fold_phi_tail(
+                    vol, _a, peak_rec.center_hkl,
+                    max(0.0, float(self.phi_tail_hkl)) * s)
+                self._punch_one(
+                    vol, keep, center, self._ellipsoid_bounding_radii(a), 0.0,
+                    center_hkl=peak_rec.center_hkl,
+                    h_guard=self._h_guard_for(peak_rec), shape_matrix=a)
+                continue
 
-            # (3) Radii path: the diagonal fit floored by the base (or the base
-            #     at the origin) — axis-aligned ellipsoid with the union φ-tail.
-            rh_base, rk_base, rl_base = peak_rec.radii_hkl or r_base
+            # (3) Frame undefined (origin): the base's HKL bounding box,
+            #     axis-aligned, with the union φ-tail.
+            rh_base, rk_base, rl_base = r_base
             mh, mk, ml = self._axis_hkl_margins_from_q_margin(vol, self.margin)
             radii = (
                 rh_base * s + mh,
