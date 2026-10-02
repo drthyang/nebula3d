@@ -18,7 +18,7 @@ Current diffuse workflow:
 
 from typing import TYPE_CHECKING
 
-from nebula3d import analysis, inpainting, preprocessing, utils
+from nebula3d import analysis, preprocessing, utils
 from nebula3d._version import __version__
 from nebula3d.core import HKLVolume
 from nebula3d.io.hkl_reader import load, save
@@ -36,7 +36,6 @@ __all__ = [
     "is_mantid_nxs",
     "preprocessing",
     "analysis",
-    "inpainting",
     "utils",
     "visualization",
 ]

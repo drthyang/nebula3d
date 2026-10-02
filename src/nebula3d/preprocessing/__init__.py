@@ -14,7 +14,6 @@ The earlier empty-subtraction, per-slice patched/parametric, masking, and backfi
 components remain public for comparison and specialized workflows.
 """
 
-from nebula3d.preprocessing.backfill import backfill_ring_shells
 from nebula3d.preprocessing.empty_subtraction import EmptySubtractor
 from nebula3d.preprocessing.global_rings import (
     AluminumLine,
@@ -77,7 +76,6 @@ __all__ = [
     "RadialFlattenResult",
     "azimuthal_sampling_mask",
     "trim_coverage_edge",
-    "backfill_ring_shells",
     # Utilities / diagnostics
     "RingShell",
     "RingProfile",

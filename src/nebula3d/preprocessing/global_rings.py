@@ -246,7 +246,7 @@ def fit_global_rings(
     adaptive_width = _adaptive_ring_width_profile(
         q_grid, pooled_filled, cfg.q_step, cfg.max_fwhm, 3.0, 0.9, counts)
     baseline = _estimate_baseline(
-        pooled_filled, cfg.q_step, adaptive_width, smooth=0.04, method="snip")
+        pooled_filled, cfg.q_step, adaptive_width, smooth=0.04)
     excess = np.maximum(pooled_filled - baseline, 0.0)
     centers, widths = _detect_rings(
         q_grid, pooled_filled, cfg.q_step, cfg.max_fwhm, counts)

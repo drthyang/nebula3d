@@ -262,7 +262,7 @@ else:
     print(f"model: preset={preset_name} profile={model.profile_method} "
           f"n_fourier={model.n_fourier} "
           f"q_step={model.q_step} q_smooth={model.texture_q_smooth} "
-          f"ridge={model.texture_ridge} baseline={model.baseline_method} "
+          f"ridge={model.texture_ridge} "
           f"adaptive_width={model.adaptive_ring_width} "
           f"slice_axis={slice_cfg.axis_name} plane={slice_cfg.plane} "
           f"confirmed_shells={'none' if ring_centers is None else ring_centers.size} "

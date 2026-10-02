@@ -234,21 +234,18 @@ def test_snip_removes_narrow_ring_on_slope():
     assert np.all(base >= slope - 1e-12)         # never dips below true slope
 
 
-def test_baseline_method_snip_vs_opening_on_slope():
-    # SNIP never creates a negative baseline dip; opening does.
+def test_snip_baseline_never_dips_below_a_sloping_background():
+    # SNIP is slope-aware: no over-subtraction under a ring on a falling slope.
     q_step = 0.02
     q = np.arange(0, 4, q_step)
     slope = 0.5 * np.exp(-0.3 * q)
     ring = 0.4 * np.exp(-0.5 * ((q - 2.0) / 0.04) ** 2)
     prof = slope + ring
 
-    base_snip = _estimate_baseline(prof, q_step, ring_width=0.24, smooth=0.0, method="snip")
-    base_open = _estimate_baseline(prof, q_step, ring_width=0.24, smooth=0.0, method="opening")
+    base_snip = _estimate_baseline(prof, q_step, ring_width=0.24, smooth=0.0)
 
     # SNIP never dips below the true slope (no over-subtraction at any |Q|)
     assert np.max(slope - base_snip) < 1e-10
-    # Opening dips below the slope by a measurable amount
-    assert np.max(slope - base_open) > 0.005
 
 
 def test_adaptive_ring_width_matches_each_ring_thickness():

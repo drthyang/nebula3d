@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- **Removed methods with no physical basis.**
+  - Generic image inpainting as a backfill: `method="tv"`, `"symmetry"`,
+    `"symmetry+tv"` and the `nebula3d.inpainting` package (TV, Laue-symmetry
+    copying, RBF, biharmonic). TV assumes a piecewise-constant image and leaves
+    staircase artefacts in structured diffuse scattering, and every symmetry
+    copy of a punched Bragg node is itself punched. The older ring workflow that
+    used it went too: `backfill_ring_shells` (`preprocessing/backfill.py`) and
+    `preprocessing/residual_rings.py`. The production ring stage subtracts its
+    model, and anything it masks is filled by the Bragg backfill from its own
+    surroundings. `backfill_bragg` now takes `local`, `laplace` or `q_shell`, and
+    raises on anything else; `BackfillParams` lost `laue_class`, `tv_lam`,
+    `tv_iter`.
+  - The flatten's `median` and `mode` estimators. A |Q| shell's median or mode
+    includes the diffuse signal itself, so subtracting it removes real diffuse
+    scattering (the flatten validation found both over-subtract). `floor`
+    (default) and `snip` remain.
+  - Morphological grey opening as the ring-model baseline
+    (`baseline_method="opening"`). It is a shape filter, not a background
+    model, and dips below a diffuse background that falls with |Q|. SNIP is now
+    the only baseline, so `baseline_method` is gone from `PatchedRadialRingModel`
+    and `ParametricRingModel`.
+
+  The Configure page no longer offers the removed options. Docs, examples and
+  the manual source follow.
 - **The edge of the measured coverage is trimmed at load, on by default.** A
   measured voxel next to unmeasured space is barely normalised. On the 401³
   Fe3Ge2 TOPAZ volume those voxels reach p99 ≈ 4,000 and a maximum of

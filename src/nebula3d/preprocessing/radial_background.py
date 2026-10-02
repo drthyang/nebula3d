@@ -25,10 +25,10 @@ peaks.  We isolate it directly:
 2. In each patch, build a **robust radial profile** ``prof(|Q|)`` — a per-|Q|-bin
    trimmed mean.  The trim rejects the high tail (Bragg peaks) and the low tail
    (detector gaps/shadows), so the profile tracks the smooth ring+diffuse level.
-3. Estimate the smooth **diffuse baseline** ``base(|Q|)`` under the rings by a
-   morphological *opening* (rolling minimum then maximum) wider than the rings,
-   followed by light smoothing.  Peaks narrower than ``ring_width`` are removed;
-   the broad diffuse survives.
+3. Estimate the smooth **diffuse baseline** ``base(|Q|)`` under the rings by
+   SNIP peak clipping with a window wider than the rings, followed by light
+   smoothing.  Peaks narrower than ``ring_width`` are removed; the broad
+   diffuse survives.
 4. The ring component in that patch is ``ring(|Q|) = max(0, prof − base)``.
 5. Subtract: each voxel gets the Hann-weighted blend of its neighbouring
    patches' ``ring(|Q|)`` interpolated at the voxel's |Q|.
@@ -253,8 +253,7 @@ class PatchedRadialRingModel:
         close ring pairs (over-subtraction).  The rings are detected in the
         azimuthally-pooled radial profile and each gets a window of
         ``ring_width_scale × FWHM``, capped to ``ring_width_cap_frac`` of the
-        distance to its nearest neighbour ring.  Requires ``baseline_method=
-        'snip'`` (the per-bin window is a SNIP feature).
+        distance to its nearest neighbour ring.
     ring_width_scale : float
         Window = this multiple of each ring's measured FWHM (default 3.0 — wide
         enough to reach the diffuse baseline on both flanks of the peak).
@@ -262,19 +261,12 @@ class PatchedRadialRingModel:
         Cap each ring's window at this fraction of the distance to the nearest
         neighbouring ring (default 0.9), so the clip never bridges into an
         adjacent ring and over-subtracts the valley between them.
-    baseline_method : {'snip', 'opening'}
-        Algorithm used to estimate the smooth diffuse baseline under the rings.
-        ``'snip'`` (default): Statistics-sensitive Non-linear Iterative
-        Peak-clipping — iteratively clips peaks to the midpoint of their
-        neighbors at increasing distances.  Unlike morphological opening, SNIP
-        is **slope-aware**: it uses the average of left and right neighbors,
-        not the minimum, so it correctly tracks a sloping background at the
-        ring position and avoids the systematic over-subtraction that opening
-        produces when the diffuse signal decreases with |Q|.  ``'opening'``:
-        the original grey_opening (erosion → dilation) — kept for comparison.
     baseline_smooth : float
-        σ (Å⁻¹) of the Gaussian applied to the baseline after the opening/SNIP
-        step, to remove kinks (default 0.06).  Set 0 to disable.
+        σ (Å⁻¹) of the Gaussian applied to the SNIP baseline (the smooth
+        diffuse under the rings: Statistics-sensitive Non-linear Iterative
+        Peak-clipping, which clips peaks to the midpoint of their neighbours at
+        increasing distances and so tracks a sloping background), to remove
+        kinks (default 0.06).  Set 0 to disable.
     ring_smooth : float
         σ (Å⁻¹) of an optional Gaussian applied to the fitted ring excess along
         |Q| after baseline subtraction/template projection.  This suppresses
@@ -432,7 +424,6 @@ class PatchedRadialRingModel:
         adaptive_ring_width: bool = True,
         ring_width_scale: float = 3.0,
         ring_width_cap_frac: float = 0.9,
-        baseline_method: str = "snip",
         baseline_smooth: float = 0.06,
         ring_smooth: float = 0.0,
         profile_percentiles: tuple[float, float] = (10.0, 80.0),
@@ -462,7 +453,6 @@ class PatchedRadialRingModel:
         self.adaptive_ring_width = adaptive_ring_width
         self.ring_width_scale = ring_width_scale
         self.ring_width_cap_frac = ring_width_cap_frac
-        self.baseline_method = baseline_method
         self.baseline_smooth = baseline_smooth
         self.ring_smooth = ring_smooth
         self.profile_percentiles = profile_percentiles
@@ -658,7 +648,7 @@ class PatchedRadialRingModel:
         # azimuth, in only a patch or two) are rejected.  Falls back to the
         # scalar ``ring_width`` when disabled or unsupported.
         ring_width: float | NDArray[np.float64] = self.ring_width
-        if self.adaptive_ring_width and self.baseline_method == "snip" and filled.any():
+        if self.adaptive_ring_width and filled.any():
             pooled = np.median(raw[filled], axis=0)
             pooled_cnt = np.median(counts[filled], axis=0)
             ring_width = _adaptive_ring_width_profile(
@@ -682,10 +672,7 @@ class PatchedRadialRingModel:
         for p_raw in np.nonzero(filled)[0]:
             p = int(p_raw)
             prof = raw[p]
-            b = _estimate_baseline(
-                prof, self.q_step, ring_width, self.baseline_smooth,
-                self.baseline_method,
-            )
+            b = _estimate_baseline(prof, self.q_step, ring_width, self.baseline_smooth)
             excess = np.maximum(0.0, prof - b)
             base[p] = b
             ring[p] = _project_templates(excess, templates) if templates else excess
@@ -1449,38 +1436,31 @@ def _estimate_baseline(
     q_step: float,
     ring_width: float | NDArray,
     smooth: float,
-    method: str = "snip",
 ) -> NDArray[np.float64]:
-    """Smooth diffuse baseline under the rings.
+    """Smooth diffuse baseline under the rings (SNIP peak clipping).
+
+    SNIP is slope-aware — it clips to the average of the left and right
+    neighbours, not their minimum — so it follows a sloping diffuse background
+    under a ring instead of dipping below it.  (Morphological grey opening, the
+    old alternative, was removed: it is a shape filter, not a background
+    model, and over-subtracts wherever the diffuse falls with |Q|.)
 
     Parameters
     ----------
     ring_width : float or array
         Peak-removal width (Å⁻¹).  A scalar applies one width everywhere; a
         per-|Q|-bin array gives an adaptive window matched to each ring's
-        thickness (only honoured by ``method='snip'``).
-    method : {'snip', 'opening'}
-        ``'snip'`` (default): SNIP peak-clipping — slope-aware, avoids the
-        systematic over-subtraction of morphological opening on sloping
-        backgrounds, and supports a per-bin adaptive window.  ``'opening'``:
-        original grey_opening (erosion → dilation), scalar width only.
+        thickness.
     """
-    if method == "snip":
-        if np.ndim(ring_width) == 0:
-            scalar_width = float(np.asarray(ring_width).item())
-            n_iter = max(3, int(round(scalar_width / (2.0 * q_step))))
-        else:
-            n_iter = np.maximum(
-                3, np.round(np.asarray(ring_width) / (2.0 * q_step)).astype(int)
-            )
-        base = _snip_baseline(prof, n_iter)
+    if np.ndim(ring_width) == 0:
+        scalar_width = float(np.asarray(ring_width).item())
+        n_iter: int | NDArray[np.int_] = max(
+            3, int(round(scalar_width / (2.0 * q_step))))
     else:
-        from scipy.ndimage import grey_opening
-        width = float(np.mean(ring_width)) if np.ndim(ring_width) else float(ring_width)
-        size = max(3, int(round(width / q_step)))
-        if size % 2 == 0:
-            size += 1
-        base = grey_opening(prof, size=size, mode="nearest")
+        n_iter = np.maximum(
+            3, np.round(np.asarray(ring_width) / (2.0 * q_step)).astype(int)
+        )
+    base = _snip_baseline(prof, n_iter)
     if smooth > 0:
         base = gaussian_filter1d(base, smooth / q_step, mode="nearest")
     return np.minimum(base, prof)

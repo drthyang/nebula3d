@@ -696,14 +696,13 @@ def build_manual(output_path: str) -> None:
     story.append(P(
         "The package is installed from source under <tt>src/nebula3d/</tt> and follows "
         "a strict separation between the core data structure, I/O, the four algorithmic "
-        "stages, an inpainting library, and visualization:"
+        "stages, and visualization:"
     ))
     arch_rows = [
         ["<tt>nebula3d/core.py</tt>", "HKLVolume dataclass — the universal data carrier"],
         ["<tt>nebula3d/io/</tt>", "Mantid NeXus reader, HDF5 load/save, ASCII HKL I/O"],
         ["<tt>nebula3d/preprocessing/</tt>", "Powder-ring models, radial background, backfill"],
         ["<tt>nebula3d/analysis/</tt>", "Bragg punch/backfill, 3D-ΔPDF FFT"],
-        ["<tt>nebula3d/inpainting/</tt>", "Symmetry fill, TV (Chambolle-Pock), RBF, biharmonic"],
         ["<tt>nebula3d/visualization/</tt>", "Slice plots, radial profiles, interactive viewers"],
         ["<tt>nebula3d/utils/</tt>", "UB matrix, d-spacing, Q↔HKL conversion utilities"],
         ["<tt>examples/</tt>", "Pipeline scripts and interactive viewer entry points"],
@@ -1000,62 +999,14 @@ def build_manual(output_path: str) -> None:
         "comparison only."
     ))
 
-    story.append(H3("4.3.3  General Inpainting Methods"))
+    story.append(H3("4.3.3  Removed: generic image inpainting"))
     story.append(P(
-        "For complex cases, the general inpainting pipeline in "
-        "<tt>nebula3d/inpainting/pipeline.py</tt> provides:"
-    ))
-    inpaint_rows = [
-        ["Symmetry", "Crystal Laue-symmetry equivalents (inverse-variance weighted)",
-         "Exact; no smoothing; preserves all features",
-         "Fails when all equivalents are also masked"],
-        ["TV", "Total-variation Chambolle-Pock primal-dual",
-         "Preserves sharp features; piecewise smooth",
-         "Slower for large masks; may over-smooth"],
-        ["RBF", "scipy RBFInterpolator, thin-plate spline",
-         "Fast for small isolated masks",
-         "Intrinsic smoothing"],
-        ["Biharmonic", "∇⁴u = 0 iterative relaxation",
-         "Very smooth fills",
-         "Slow for large masks"],
-    ]
-    tbl = Table(
-        [["Method", "Algorithm", "Strengths", "Limitations"]] + inpaint_rows,
-        colWidths=[2.5 * cm, 4.5 * cm, 5 * cm, 5 * cm],
-    )
-    tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), NAVY),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 8.5),
-        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 1), (-1, -1), 8),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_GREY]),
-        ("GRID", (0, 0), (-1, -1), 0.4, MID_GREY),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-    story.append(tbl)
-
-    story.append(H3("4.3.4  TV Inpainting: Mathematical Formulation"))
-    story.append(P(
-        "Total-variation inpainting solves the following constrained minimisation:"
-    ))
-    story.append(math_block(
-        "min_u  (1/2) || W(u - f) ||<super>2</super>  +  λ ||∇u||<sub>1</sub>"
-    ))
-    story.append(P(
-        "where <b>f</b> is the observed data (arbitrary in the masked region), "
-        "<b>W</b> is the diagonal mask operator (1 for valid, 0 for masked), "
-        "∇<b>u</b> is the 3D forward finite-difference gradient, and "
-        "λ is the regularisation parameter. This is solved by the "
-        "Chambolle–Pock primal-dual algorithm with step sizes "
-        "τσ = 1/6 and projection onto the ℓ∞ ball. "
-        "TV preserves piecewise-smooth structures (sharp diffuse sheets and streaks) "
-        "while suppressing noise in the filled region."
+        "Total-variation (Chambolle–Pock), Laue-symmetry copying, RBF and "
+        "biharmonic inpainting were removed. They carry no model of diffuse "
+        "scattering: TV assumes a piecewise-constant image and leaves staircase "
+        "artefacts, and every symmetry copy of a punched Bragg node is itself "
+        "punched. Coverage gaps are best filled by symmetrising the data before "
+        "it reaches the pipeline."
     ))
 
     # 4.4 3D-DPDF
@@ -1453,12 +1404,10 @@ def build_manual(output_path: str) -> None:
 
     story.append(H2("7.3  Backfill Parameters"))
     fill_params = [
-        ["METHOD", "str", "local", "Fill method: local, laplace, q_shell (comparison), tv, symmetry, symmetry+tv"],
+        ["METHOD", "str", "local", "Fill method: local, laplace, q_shell (comparison)"],
         ["LAPLACE_GAP", "int", "1", "Voxels outside the punch where the laplace fill takes its boundary"],
         ["Q_SHELL_STEP", "float", "0.05", "Bin width for q-shell fill (Å⁻¹)"],
         ["Q_SHELL_MIN_COUNT", "int", "10", "Min valid voxels per bin; fall back to local if fewer"],
-        ["TV_LAM", "float", "0.1", "TV regularisation λ (higher = smoother fill)"],
-        ["TV_ITER", "int", "300", "Chambolle-Pock iterations"],
     ]
     story.append(param_table(
         [[Paragraph(p, styles["code"]),
@@ -1744,12 +1693,6 @@ def build_manual(output_path: str) -> None:
         [Paragraph("Bragg punch / search modes", styles["body_left"]),
          Paragraph("Checks that integer-node and search-mode masks are consistent "
                     "with expected punch radii and guard conditions.", styles["body_left"])],
-        [Paragraph("Symmetry fill", styles["body_left"]),
-         Paragraph("Verifies that inverse-variance-weighted symmetry averaging "
-                    "correctly fills masked voxels using Laue equivalents.", styles["body_left"])],
-        [Paragraph("TV inpainting convergence", styles["body_left"]),
-         Paragraph("Checks that the Chambolle-Pock primal-dual solver converges "
-                    "within the specified iteration budget.", styles["body_left"])],
     ]
     story.append(two_col_table(
         test_rows,
@@ -1901,8 +1844,6 @@ def build_manual(output_path: str) -> None:
          "Q = UB·[h,k,l]ᵀ; |Q| = 2π/d (physics convention)."),
         ("SNIP", "Sensitive Nonlinear Iterative Peak clipping; a morphological method "
          "for baseline estimation in 1D profiles."),
-        ("Total Variation (TV)", "Regulariser ||∇u||<sub>1</sub> promoting "
-         "piecewise-smooth solutions; preserves sharp diffuse sheets."),
         ("UB matrix", "Orientation (U) × metric (B) matrix; Q = UB·[h,k,l]ᵀ."),
         ("3D-ΔPDF", "Three-dimensional difference pair distribution function; "
          "the Fourier transform of diffuse scattering, mapping to real-space pair correlations."),
@@ -1940,7 +1881,7 @@ def build_manual(output_path: str) -> None:
          "Applications to Imaging,&rdquo; "
          "<i>J. Math. Imaging Vision</i> <b>40</b>, 120–145 (2011). "
          "DOI: 10.1007/s10851-010-0251-1. "
-         "<b>Primal-dual TV inpainting algorithm used in nebula3d.</b>"),
+         "<b>Primal-dual TV inpainting (formerly an option; removed).</b>"),
         ("[4]",
          "M. Bertalmio, G. Sapiro, V. Caselles, and C. Ballester, "
          "&ldquo;Image inpainting,&rdquo; "
