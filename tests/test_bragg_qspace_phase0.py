@@ -74,11 +74,15 @@ def _synthetic_vol() -> HKLVolume:
 # the ΔPDF A/B validated it, r=0.9998); regenerated 2026-06-27 when the default
 # frame flipped to the per-peak spherical (rρ, rθ, rφ) ellipsoid (radii unchanged
 # at (0.097, 0.072, 0.115) Å⁻¹) and again when the K–L φ-tail default was dropped
-# to 0 (superseded by the spherical rφ axis).  If a future change is *intended* to
-# alter the default punch geometry, regenerate these deliberately.
-_GOLDEN_DEFAULT_PUNCHED = 612
+# to 0 (superseded by the spherical rφ axis).  Regenerated 2026-10-02 when the
+# default integer-peak fit became the Q-space covariance fit (612 → 489: these
+# single-voxel peaks are too sharp to measure, so they get the spherical
+# resolution ellipsoid instead of a fit spread into the noise).  If a future
+# change is *intended* to alter the default punch geometry, regenerate these
+# deliberately.
+_GOLDEN_DEFAULT_PUNCHED = 489
 _GOLDEN_DEFAULT_KEEP_SHA256 = (
-    "94942afbd8b45c88a5aa617f688b5c4cff98b738e2982ba364345a49fe645afd"
+    "78ba8b560b2c866db59d753737db7e29d6fa9aece5a6a87dbc856e9a0ef41cfd"
 )
 _GOLDEN_INTEGER_ONLY_PUNCHED = 57
 _GOLDEN_SEARCH_ONLY_PUNCHED = 76

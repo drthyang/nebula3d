@@ -202,7 +202,7 @@ def bragg_profile_from_records(
         if peak.shape_hkl is not None:
             shape = np.asarray(peak.shape_hkl, dtype=float)
             fit_kind = "tilted"
-        elif peak.radii_hkl is None and str(remover.punch_frame).lower() == "spherical":
+        elif is_spherical:
             # Fixed spherical punch: report the *real* per-peak ellipsoid so the
             # principal widths/directions follow Q̂ (ρ) and the two transverse axes.
             sm = remover._spherical_shape_matrix(vol, tuple(peak.center_hkl))  # noqa: SLF001
@@ -213,7 +213,7 @@ def bragg_profile_from_records(
                 shape = _shape_from_radii(base)
                 fit_kind = "axis_aligned"
         else:
-            shape = _shape_from_radii(peak.radii_hkl or base)
+            shape = _shape_from_radii(base)
             fit_kind = "axis_aligned"
         widths_hkl_principal, widths_q_principal, directions = (
             _principal_widths_from_shape(vol, shape)
@@ -304,7 +304,9 @@ def bragg_profile_from_records(
         "hkl_width_labels": ["H", "K", "L"],
         "width_units": {"hkl": "r.l.u.", "q": "Å⁻¹"},
         "n_peaks": len(rows),
-        "fit_covariance": bool(remover.integer_fit_covariance),
+        # The integer-peak shape fit is the covariance fit (kept for readers
+        # of profiles written when a diagonal "moment" fit was the default).
+        "fit_covariance": bool(remover.integer_optimize_shape),
         "punch_frame": str(remover.punch_frame),
         "peaks": rows,
     }
@@ -359,8 +361,8 @@ class PunchParams:
     integer_n_mad: float | None = None
     integer_q_step: float | None = None
     integer_optimize_position: bool = True
+    # Tilted ellipsoid fitted in Q, floored at the punch_frame ellipsoid.
     integer_optimize_shape: bool = True
-    integer_fit_covariance: bool = False
     integer_fit_unconstrained: bool = False
     integer_fit_threshold_frac: float = 0.35
     integer_fit_radius_n_sigma: float = 2.5
@@ -393,8 +395,9 @@ class PunchParams:
     incident_beam_fit_covariance: bool = False
     # Spherical-frame punch (default): the ellipsoid axes follow the *local*
     # spherical frame at each peak — (rρ, rθ, rφ) in Å⁻¹ with rρ radial (along Q̂),
-    # rφ azimuthal (a*–b* ring tangent), rθ polar (c* pole).  This orients every
-    # peak's footprint by construction (no tilt angle).  Set punch_frame="q" to use
+    # rφ azimuthal (a*–b* ring tangent), rθ polar (c* pole).  It is the punch for
+    # search peaks and the floor of the integer-peak covariance fit, which tilts
+    # and grows it to follow each measured peak.  Set punch_frame="q" to use
     # the fixed a*/b*/c* radii (``punch_q_radii``).  Both are in Å⁻¹; fractional-HKL
     # radii were removed (cell-dependent, wrong along non-orthogonal axes).
     punch_frame: str = "spherical"
@@ -961,7 +964,6 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         integer_n_mad=p.integer_n_mad, integer_q_step=p.integer_q_step,
         integer_optimize_position=p.integer_optimize_position,
         integer_optimize_shape=p.integer_optimize_shape,
-        integer_fit_covariance=p.integer_fit_covariance,
         integer_fit_unconstrained=p.integer_fit_unconstrained,
         integer_fit_threshold_frac=p.integer_fit_threshold_frac,
         integer_fit_radius_n_sigma=p.integer_fit_radius_n_sigma,

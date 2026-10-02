@@ -876,10 +876,12 @@ def build_manual(output_path: str) -> None:
         ("Recentre",
          "The punch centre is moved to the measured local maximum within the detection window."),
         ("Fit shape (optional)",
-         "If <tt>integer_optimize_shape=True</tt>, the anisotropic covariance of the peak "
-         "excess above a threshold fraction of the peak height is computed, yielding "
-         "per-peak HKL ellipsoid radii. These are clipped by "
-         "<tt>integer_fit_max_radius_hkl</tt> to prevent over-punching in sparse data."),
+         "If <tt>integer_optimize_shape=True</tt>, the covariance of the peak core (the "
+         "connected voxels above a threshold fraction of the peak height) is computed in "
+         "Q and corrected for the cut, giving a tilted ellipsoid along the peak's own "
+         "principal axes. It always contains the resolution ellipsoid of the punch frame "
+         "and is capped at <tt>max_radius_scale</tt> times it; peaks too weak to measure "
+         "get the resolution ellipsoid."),
         ("Guard (H-slab)",
          "The parameter <tt>integer_h_guard_hkl</tt> clips each integer-node punch to a "
          "slab of half-width H<sub>guard</sub> centred on the integer-H plane. This "
