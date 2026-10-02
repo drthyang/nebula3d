@@ -354,7 +354,6 @@ class PunchParams:
     """
 
     mode: str = "both"
-    punch_radii: tuple[float, float, float] = (0.09, 0.12, 0.45)
     min_intensity: float = 0.8
     min_prominence: float = 1.0
     integer_n_mad: float | None = None
@@ -396,8 +395,8 @@ class PunchParams:
     # spherical frame at each peak — (rρ, rθ, rφ) in Å⁻¹ with rρ radial (along Q̂),
     # rφ azimuthal (a*–b* ring tangent), rθ polar (c* pole).  This orients every
     # peak's footprint by construction (no tilt angle).  Set punch_frame="q" to use
-    # the fixed a*/b*/c* radii (``punch_q_radii``), or "hkl" + ``punch_radii`` for
-    # the legacy rlu footprint.
+    # the fixed a*/b*/c* radii (``punch_q_radii``).  Both are in Å⁻¹; fractional-HKL
+    # radii were removed (cell-dependent, wrong along non-orthogonal axes).
     punch_frame: str = "spherical"
     punch_q_radius: float | None = None
     punch_q_radii: tuple[float, float, float] | None = (0.097, 0.072, 0.115)
@@ -957,7 +956,7 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     _emit(progress, "punch", "start", None, f"Bragg punch (mode={p.mode})")
 
     remover = BraggRemover(
-        mode=p.mode, punch_radii=p.punch_radii, min_intensity=p.min_intensity,
+        mode=p.mode, min_intensity=p.min_intensity,
         min_prominence=p.min_prominence,
         integer_n_mad=p.integer_n_mad, integer_q_step=p.integer_q_step,
         integer_optimize_position=p.integer_optimize_position,

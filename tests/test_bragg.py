@@ -14,6 +14,13 @@ from nebula3d.analysis.delta_pdf import (
 from nebula3d.core import HKLVolume
 
 
+def _q_radii(vol, rh, rk, rl):
+    """The ``"q"``-frame punch that equals half-radii (rh, rk, rl) in r.l.u. on
+    this volume's orthogonal cell (Å⁻¹ = r.l.u. × |a*|, |b*|, |c*|)."""
+    n = np.linalg.norm(vol.ub_matrix, axis=0)
+    return dict(punch_frame="q", punch_q_radii=(rh * n[0], rk * n[1], rl * n[2]))
+
+
 def _make_vol(shape=(15, 15, 15), hkl_range=(-2, 2)):
     data = np.random.default_rng(42).uniform(0.5, 1.5, shape)
     h = np.linspace(hkl_range[0], hkl_range[1], shape[0])
@@ -25,7 +32,7 @@ def _make_vol(shape=(15, 15, 15), hkl_range=(-2, 2)):
 
 def test_bragg_mask_removes_integer_positions():
     vol = _make_vol()
-    mask = bragg_mask(vol, punch_radius_hkl=0.4)
+    mask = bragg_mask(vol, **_q_radii(vol, 0.4, 0.4, 0.4))
     # (0,0,0) is punched by the separate incident-beam path.
     ih0 = np.argmin(np.abs(vol.h_axis))
     ik0 = np.argmin(np.abs(vol.k_axis))
@@ -35,7 +42,7 @@ def test_bragg_mask_removes_integer_positions():
 
 def test_bragg_mask_preserves_non_integer():
     vol = _make_vol()
-    mask = bragg_mask(vol, punch_radius_hkl=0.25)
+    mask = bragg_mask(vol, **_q_radii(vol, 0.25, 0.25, 0.25))
     # A voxel at hkl ≈ (0.5, 0.5, 0.5) should not be punched
     ih = np.argmin(np.abs(vol.h_axis - 0.5))
     ik = np.argmin(np.abs(vol.k_axis - 0.5))
@@ -65,7 +72,7 @@ def _peaky_vol(shape=(21, 21, 21), hkl_range=(-2, 2)):
 
 def test_bragg_detect_skips_absent_nodes():
     vol, present = _peaky_vol()
-    remover = BraggRemover(punch_radii=(0.25, 0.25, 0.25), min_intensity=10.0)
+    remover = BraggRemover(**_q_radii(vol, 0.25, 0.25, 0.25), min_intensity=10.0)
     detected = remover.detect_peaks(vol)
     assert len(detected) == len(present) - 1      # real Bragg peaks; origin is separate
     # An empty node, e.g. (2,2,2), is NOT punched (preserve diffuse at absences).
@@ -84,9 +91,9 @@ def test_integer_shell_threshold_catches_weak_high_q_bragg():
     il = int(np.argmin(np.abs(vol.l_axis)))
     vol.data[ih, ik, il] = 2.4
 
-    flat = BraggRemover(mode="integer", punch_radii=(0.2, 0.2, 0.2),
+    flat = BraggRemover(mode="integer", **_q_radii(vol, 0.2, 0.2, 0.2),
                         min_intensity=10.0, force_origin=False)
-    shell = BraggRemover(mode="integer", punch_radii=(0.2, 0.2, 0.2),
+    shell = BraggRemover(mode="integer", **_q_radii(vol, 0.2, 0.2, 0.2),
                          min_intensity=None, integer_n_mad=2.0,
                          integer_q_step=0.4, min_prominence=0.5,
                          force_origin=False)
@@ -97,7 +104,7 @@ def test_integer_shell_threshold_catches_weak_high_q_bragg():
 
 def test_integer_shell_threshold_still_skips_extinct_nodes():
     vol, _ = _peaky_vol(shape=(31, 31, 31), hkl_range=(-3, 3))
-    remover = BraggRemover(mode="integer", punch_radii=(0.2, 0.2, 0.2),
+    remover = BraggRemover(mode="integer", **_q_radii(vol, 0.2, 0.2, 0.2),
                            min_intensity=None, integer_n_mad=2.0,
                            integer_q_step=0.4, min_prominence=0.5,
                            force_origin=False)
@@ -110,7 +117,7 @@ def test_integer_shell_threshold_still_skips_extinct_nodes():
 
 def test_bragg_anisotropic_radii_punch_more_along_broad_axis():
     vol, _ = _peaky_vol()
-    mask = bragg_mask(vol, punch_radii=(0.1, 0.1, 0.6), min_intensity=10.0)
+    mask = bragg_mask(vol, **_q_radii(vol, 0.1, 0.1, 0.6), min_intensity=10.0)
     i0 = int(np.argmin(np.abs(vol.h_axis)))           # origin peak voxel
     punched = ~mask
     # Count punched voxels along H vs L lines through the origin: L (broad) > H.
@@ -123,8 +130,8 @@ def test_bragg_intensity_scaling_enlarges_bright_peaks():
     vol, _ = _peaky_vol()
     ih = int(np.argmin(np.abs(vol.h_axis - 1)))
     i0 = int(np.argmin(np.abs(vol.k_axis)))
-    base = BraggRemover(punch_radii=(0.2, 0.2, 0.2), min_intensity=10.0)
-    scaled = BraggRemover(punch_radii=(0.2, 0.2, 0.2), min_intensity=10.0,
+    base = BraggRemover(**_q_radii(vol, 0.2, 0.2, 0.2), min_intensity=10.0)
+    scaled = BraggRemover(**_q_radii(vol, 0.2, 0.2, 0.2), min_intensity=10.0,
                           intensity_scale=True, intensity_ref=30.0)
     n_base = int((~base.build_mask(vol))[ih, :, i0].sum())
     n_scaled = int((~scaled.build_mask(vol))[ih, :, i0].sum())
@@ -151,7 +158,7 @@ def test_integer_peak_fit_records_subvoxel_center_and_anisotropic_shape():
 
     remover = BraggRemover(
         mode="integer",
-        punch_radii=(0.08, 0.08, 0.08),
+        **_q_radii(vol, 0.08, 0.08, 0.08),
         min_intensity=5.0,
         min_prominence=2.0,
         detect_window_hkl=0.35,
@@ -184,14 +191,14 @@ def test_integer_h_guard_prevents_bleed_into_fractional_h_planes():
 
     wide = BraggRemover(
         mode="integer",
-        punch_radii=(0.45, 0.12, 0.12),
+        **_q_radii(vol, 0.45, 0.12, 0.12),
         min_intensity=5.0,
         min_prominence=2.0,
         force_origin=False,
     )
     guarded = BraggRemover(
         mode="integer",
-        punch_radii=(0.45, 0.12, 0.12),
+        **_q_radii(vol, 0.45, 0.12, 0.12),
         min_intensity=5.0,
         min_prominence=2.0,
         integer_h_guard_hkl=0.12,
@@ -235,9 +242,9 @@ def test_search_mode_punches_off_integer_satellite():
     sl = int(np.argmin(np.abs(vol.l_axis - 1.0)))
     vol.data[sh, sk, sl] = 60.0
 
-    integer = BraggRemover(mode="integer", punch_radii=(0.25, 0.25, 0.25),
+    integer = BraggRemover(mode="integer", **_q_radii(vol, 0.25, 0.25, 0.25),
                            min_intensity=10.0)
-    search = BraggRemover(mode="search", punch_radii=(0.25, 0.25, 0.25),
+    search = BraggRemover(mode="search", **_q_radii(vol, 0.25, 0.25, 0.25),
                           search_n_mad=6.0, search_min_intensity=10.0,
                           search_q_step=0.5)
 
@@ -252,7 +259,7 @@ def test_search_mode_punches_off_integer_satellite():
 
 def test_search_mode_punches_incident_beam_separately():
     vol, _ = _peaky_vol()
-    search = BraggRemover(mode="search", punch_radii=(0.25, 0.25, 0.25),
+    search = BraggRemover(mode="search", **_q_radii(vol, 0.25, 0.25, 0.25),
                           search_n_mad=6.0, search_min_intensity=10.0,
                           search_q_step=0.5)
     i0 = int(np.argmin(np.abs(vol.h_axis)))
@@ -264,7 +271,7 @@ def test_incident_beam_sphere_punches_isotropic_origin_region():
     vol, _ = _peaky_vol(shape=(41, 41, 41), hkl_range=(-2, 2))
     remover = BraggRemover(
         mode="search",
-        punch_radii=(0.1, 0.1, 0.1),
+        **_q_radii(vol, 0.1, 0.1, 0.1),
         search_min_intensity=1e6,
         incident_beam_sphere_radius_hkl=0.8,
     )
@@ -283,7 +290,7 @@ def test_incident_beam_ellipsoid_punches_anisotropic_origin_region():
     # rh=0.3, rk=0.8, rl=1.5 — deliberately different so we can verify each axis
     remover = BraggRemover(
         mode="search",
-        punch_radii=(0.1, 0.1, 0.1),
+        **_q_radii(vol, 0.1, 0.1, 0.1),
         search_min_intensity=1e6,
         incident_beam_ellipsoid_radii_hkl=(0.3, 0.8, 1.5),
     )
@@ -323,7 +330,7 @@ def test_incident_beam_fit_covariance_follows_streak():
 
     kw = dict(
         mode="search",
-        punch_radii=(0.1, 0.1, 0.1),
+        **_q_radii(vol, 0.1, 0.1, 0.1),
         search_min_intensity=1e6,
         incident_beam_ellipsoid_radii_hkl=(0.2, 0.2, 0.2),
     )
@@ -349,7 +356,7 @@ def test_incident_beam_fit_covariance_falls_back_when_origin_masked():
     vol.mask[i0, i0, i0] = False
     remover = BraggRemover(
         mode="search",
-        punch_radii=(0.1, 0.1, 0.1),
+        **_q_radii(vol, 0.1, 0.1, 0.1),
         search_min_intensity=1e6,
         incident_beam_sphere_radius_hkl=0.8,
         incident_beam_fit_covariance=True,
@@ -364,7 +371,7 @@ def test_incident_beam_ellipsoid_takes_precedence_over_sphere():
     # sphere r=0.1 would keep H=0.5; ellipsoid rh=0.6 would punch it
     remover = BraggRemover(
         mode="search",
-        punch_radii=(0.1, 0.1, 0.1),
+        **_q_radii(vol, 0.1, 0.1, 0.1),
         search_min_intensity=1e6,
         incident_beam_ellipsoid_radii_hkl=(0.6, 0.6, 0.6),
         incident_beam_sphere_radius_hkl=0.1,
@@ -382,9 +389,9 @@ def test_phi_tail_expands_punch_along_ring_tangent():
     il = int(np.argmin(np.abs(vol.l_axis - 0)))
     vol.data[ih, ik, il] = 100.0
 
-    base = BraggRemover(mode="integer", punch_radii=(0.2, 0.2, 0.2),
+    base = BraggRemover(mode="integer", **_q_radii(vol, 0.2, 0.2, 0.2),
                         min_intensity=10.0, force_origin=False)
-    phi = BraggRemover(mode="integer", punch_radii=(0.2, 0.2, 0.2),
+    phi = BraggRemover(mode="integer", **_q_radii(vol, 0.2, 0.2, 0.2),
                        min_intensity=10.0, force_origin=False,
                        phi_tail_hkl=0.4)
 
@@ -432,7 +439,7 @@ def test_auto_mode_aliases_search_mode():
     sk = int(np.argmin(np.abs(vol.k_axis - 0.5)))
     sl = int(np.argmin(np.abs(vol.l_axis - 1.0)))
     vol.data[sh, sk, sl] = 60.0
-    auto = BraggRemover(mode="auto", punch_radii=(0.25, 0.25, 0.25),
+    auto = BraggRemover(mode="auto", **_q_radii(vol, 0.25, 0.25, 0.25),
                         search_n_mad=6.0, search_min_intensity=10.0,
                         search_q_step=0.5)
     assert not auto.build_mask(vol)[sh, sk, sl]
@@ -454,7 +461,7 @@ def test_search_prominence_rejects_broad_diffuse_bump():
     sl = int(np.argmin(np.abs(vol.l_axis + 0.8)))
     vol.data[sh, sk, sl] = 8.0
 
-    auto = BraggRemover(mode="auto", punch_radii=(0.2, 0.2, 0.2),
+    auto = BraggRemover(mode="auto", **_q_radii(vol, 0.2, 0.2, 0.2),
                         search_n_mad=3.0, search_min_intensity=1.0,
                         search_min_prominence=1.0, search_q_step=0.5)
     keep = auto.build_mask(vol)
@@ -475,7 +482,7 @@ def test_search_exclude_h_protects_fractional_diffuse_plane():
 
     remover = BraggRemover(
         mode="search",
-        punch_radii=(0.25, 0.25, 0.25),
+        **_q_radii(vol, 0.25, 0.25, 0.25),
         search_n_mad=4.0,
         search_min_intensity=10.0,
         search_q_step=0.5,
@@ -497,7 +504,7 @@ def test_integer_local_prominence_catches_small_sharp_bragg():
     il = int(np.argmin(np.abs(vol.l_axis)))
     vol.data[ih, ik, il] = 4.0   # sharp, but well below an absolute floor of 10
 
-    common = dict(mode="integer", punch_radii=(0.2, 0.2, 0.2),
+    common = dict(mode="integer", **_q_radii(vol, 0.2, 0.2, 0.2),
                   min_intensity=10.0, force_origin=False)
     # absolute floor alone misses the small peak ...
     assert BraggRemover(**common).build_mask(vol)[ih, ik, il]
@@ -519,7 +526,7 @@ def test_search_exclude_h_fractions_protects_thirds_family():
     vol.data[free_h, ik, il] = 60.0
 
     remover = BraggRemover(
-        mode="search", punch_radii=(0.25, 0.25, 0.25),
+        mode="search", **_q_radii(vol, 0.25, 0.25, 0.25),
         search_n_mad=4.0, search_min_intensity=10.0, search_q_step=0.5,
         search_exclude_h_fractions=(1.0 / 3.0, 2.0 / 3.0),
         search_exclude_h_half_width=0.08, force_origin=False,
@@ -537,7 +544,7 @@ def test_both_mode_is_sequential_union():
     sk = int(np.argmin(np.abs(vol.k_axis - 0.5)))
     sl = int(np.argmin(np.abs(vol.l_axis - 1.0)))
     vol.data[sh, sk, sl] = 60.0
-    both = BraggRemover(mode="both", punch_radii=(0.25, 0.25, 0.25),
+    both = BraggRemover(mode="both", **_q_radii(vol, 0.25, 0.25, 0.25),
                         min_intensity=10.0, search_n_mad=6.0,
                         search_min_intensity=10.0, search_q_step=0.5)
     keep = both.build_mask(vol)

@@ -121,7 +121,9 @@ def _cov_remover(**kw):
         punch_incident_beam=False, intensity_scale=False, margin=0.0,
         phi_tail_hkl=0.0, detect_window_hkl=0.4,
         integer_optimize_position=True, integer_optimize_shape=True,
-        punch_radii=(0.01, 0.01, 0.01), integer_fit_max_radius_hkl=(2.0, 2.0, 2.0),
+        punch_frame="q",  # a tiny base: the fit floor never binds
+        punch_q_radii=tuple(0.01 * np.linalg.norm(UB_DIAG, axis=0)),
+        integer_fit_max_radius_hkl=(2.0, 2.0, 2.0),
     )
     base.update(kw)
     return BraggRemover(**base)
