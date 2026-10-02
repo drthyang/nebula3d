@@ -435,7 +435,6 @@ interface PunchGeom {
   ax: [string, string, string]; // axis labels, e.g. [H,K,L] or [a*,b*,c*]
   directBeamRadiiQ: [number, number, number];
   directBeamMargin: number;
-  fitCovariance: boolean;
 }
 
 function planeHklAxes(p: PunchPlane): [HklAxis, HklAxis] {
@@ -1159,7 +1158,6 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       punchQA: st.punchQA,
       punchQB: st.punchQB,
       punchQC: st.punchQC,
-      punchFitCovariance: st.punchFitCovariance,
       punchFitUnconstrained: st.punchFitUnconstrained,
       punchMargin: st.punchMargin,
       incidentBeamQA: st.incidentBeamQA,
@@ -1209,7 +1207,6 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       clampFloat(s.incidentBeamQC, 0.25, 0.005, 2.0),
     ],
     directBeamMargin: clampFloat(s.incidentBeamMargin, 0.0, 0, 1.0),
-    fitCovariance: s.punchFitCovariance,
   };
   // Single reciprocal-space preview for the whole punch → ΔPDF card, sourced
   // from the raw volume (falls back to ringremoved if raw is absent).
@@ -1771,9 +1768,10 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         Punch ellipsoid radii in Q-space. <b>Spherical</b> (default)
                         sets axes in the local spherical frame at each peak —
                         r<sub>ρ</sub> radial (along Q̂), r<sub>θ</sub> polar,
-                        r<sub>φ</sub> azimuth (c* pole) — so every peak is oriented
-                        correctly with no tilt angle. <b>Reciprocal</b> uses fixed
-                        a*, b*, c* axes. Blank fields use the validated defaults
+                        r<sub>φ</sub> azimuth (c* pole). <b>Reciprocal</b> uses fixed
+                        a*, b*, c* axes. This is the resolution ellipsoid: the
+                        smallest punch, and the whole punch for peaks without a
+                        fit. Blank fields use the validated defaults
                         (0.097, 0.072, 0.115).
                       </HelpTip>
                     </div>
@@ -1877,33 +1875,16 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 </div>
                 <div className="switch-row">
                   <Switch
-                    label="Fit tilted ellipsoid (covariance)"
-                    checked={s.punchFitCovariance}
-                    onChange={(v) =>
-                      patch({
-                        punchFitCovariance: v,
-                        punchFitUnconstrained: v ? s.punchFitUnconstrained : false,
-                      })
-                    }
-                  />
-                  <HelpTip>
-                    Fit a tilted 3×3 ellipsoid to each Bragg peak during punching.
-                    The preview uses the exact UB-derived Q-space floor; the
-                    per-peak covariance tilt is fitted from data during the run and
-                    is best checked in the punched slices.
-                  </HelpTip>
-                </div>
-                <div className="switch-row">
-                  <Switch
                     label="Drop fit constraints"
                     checked={s.punchFitUnconstrained}
-                    disabled={!s.punchFitCovariance}
                     onChange={(v) => patch({ punchFitUnconstrained: v })}
                   />
                   <HelpTip>
-                    Let Bragg covariance-fit radii go below the Q-space floor or
-                    above the max-radius cap. This is useful for profile diagnostics,
-                    but can create unstable punch masks on weak or noisy peaks.
+                    Each integer Bragg peak's ellipsoid, tilt included, is fitted
+                    from its measured shape in Q. It always contains the resolution
+                    ellipsoid above (the preview) and is capped at a few times it.
+                    This switch drops both limits: useful for profile diagnostics,
+                    but it can create unstable punch masks on weak or noisy peaks.
                   </HelpTip>
                 </div>
                   </div>

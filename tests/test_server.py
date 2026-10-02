@@ -615,17 +615,13 @@ def test_build_params_qspace_punch_overrides():
     assert sph.punch_frame == "spherical"
     assert sph.punch_spherical_radii == (0.13, 0.05, base.punch_spherical_radii[2])
 
-    # Phase 3 covariance-fit toggle
+    # Covariance-fit constraints toggle (the fit itself is always on)
     cov = build_params(PipelineRunRequest(
         dataset_id="x",
-        params=StageParamsIn(
-            punch_fit_covariance=True,
-            punch_fit_unconstrained=True,
-        ),
+        params=StageParamsIn(punch_fit_unconstrained=True),
     )).punch
-    assert cov.integer_fit_covariance is True
     assert cov.integer_fit_unconstrained is True
-    assert base.integer_fit_covariance is False
+    assert base.integer_optimize_shape is True
     assert base.integer_fit_unconstrained is False
 
 

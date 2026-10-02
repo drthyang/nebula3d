@@ -45,15 +45,30 @@ The integer path is lattice-aware:
    - `min_prominence`
    - optional `integer_n_mad` against a robust per-`|Q|` shell level.
 4. Recenter to the measured local peak.
-5. Optionally fit peak position and anisotropic shape:
-   - `integer_optimize_position=True`
-   - `integer_optimize_shape=True`
-   - `integer_fit_covariance=True` (Phase 3) fits a **tilted** 3×3 resolution
-     ellipsoid following the peak's real orientation (a full weighted covariance,
-     eigen-clipped to the base/max bounds) instead of three axis-aligned radii,
-     and folds the φ-tail into it as a rank-1 tangential inflation rather than a
-     separate unioned ellipsoid. Default off; reduces exactly to the diagonal
-     radii fit for an axis-aligned peak.
+5. Optionally fit peak position and shape:
+   - `integer_optimize_position=True` moves the centre to the core's centroid.
+   - `integer_optimize_shape=True` fits a **tilted** ellipsoid following the
+     peak's measured orientation, in Q:
+     - The core is the voxels connected to the peak whose excess is at least
+       `integer_fit_threshold_frac` (0.35) of the peak's. It is measured in a
+       window `max_radius_scale`× the resolution ellipsoid, the same extent in
+       Å⁻¹ along every axis.
+     - The excess-weighted covariance is mapped to Q (`Σ_Q = UB·C·UBᵀ`) and
+       divided by `κ = P(χ²₅ ≤ c)/P(χ²₃ ≤ c)`, `c = 2 ln(1/0.35)`. The 35 % core
+       of a Gaussian has only 0.61× its width; κ restores σ.
+     - Principal radii are `integer_fit_radius_n_sigma`·σ plus half a voxel,
+       along the Q principal axes.
+     - The ellipsoid is clipped to contain the resolution ellipsoid of the
+       punch frame and lie inside `max_radius_scale`× it (in the frame where
+       the resolution ellipsoid is a unit sphere, so the clip is the same in
+       HKL or Q).
+     - A peak whose core cut is within `integer_fit_noise_n_mad` (3) noise
+       sigmas of the background is not measured; it gets the resolution
+       ellipsoid. Its core would follow the surrounding signal, not the peak.
+     - The φ-tail folds in as a rank-1 tangential inflation.
+
+     The diagonal fit it replaced (three radii along H, K, L, no tilt, floored
+     at the base ellipsoid's HKL bounding box) was removed.
 6. Punch a continuous-HKL ellipsoid at the fitted centre.
 
 Useful guards:
@@ -144,13 +159,15 @@ covers every shape:
 
 **The spherical frame is the default** (`punch_frame="spherical"`,
 `punch_spherical_radii=(0.097, 0.072, 0.115)` Å⁻¹ along each peak's radial,
-polar and azimuthal axes), so every reflection's footprint is oriented by
-construction. `punch_frame="q"` takes one Q-sphere (`punch_q_radius`) or fixed
-a*/b*/c* radii (`punch_q_radii`). The radii are the **resolution floor**: the
-per-peak shape fit is floored to the base ellipsoid's HKL bounding box and then
-punches as an axis-aligned ellipsoid (intensity-scaled, union φ-tail); peaks
-without a fit (off-integer search peaks) use the base ellipsoid itself. The
-`margin` guard band is in Å⁻¹ too. Validate a frame change with the
+polar and azimuthal axes). `punch_frame="q"` takes one Q-sphere
+(`punch_q_radius`) or fixed a*/b*/c* radii (`punch_q_radii`). The radii are the
+**resolution floor**: the per-peak covariance fit always contains this
+ellipsoid and grows it along the peak's own principal axes where the peak is
+wider; peaks without a fit (off-integer search peaks, peaks too weak to
+measure) use the base ellipsoid itself. The frame's axes are an assumption
+about the peak shape: on the TbTi3Bi4 100K volume the measured long axes sit
+a median 38° off φ̂, so the fitted tilt matters. The `margin` guard band is in
+Å⁻¹ too, added to the principal radii in Q. Validate a frame change with the
 full-pipeline ΔPDF A/B in `examples/compare_delta_pdf_frames.py`.
 
 Phase 0/1/2/3 and spherical-frame tests live in
