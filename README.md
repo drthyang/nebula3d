@@ -299,7 +299,7 @@ vol = nebula3d.load("data/processed/sample_ringremoved.h5")
 
 remover = BraggRemover(
     mode="both",
-    punch_radii=(0.09, 0.12, 0.45),
+    punch_spherical_radii=(0.097, 0.072, 0.115),  # Å⁻¹: radial, polar, azimuthal
     min_intensity=0.8,
     min_prominence=0.8,
     integer_optimize_position=True,

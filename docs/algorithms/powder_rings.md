@@ -215,19 +215,13 @@ Subtract the full model from **every voxel**. Voxels where the ring dominates
 > `ring_hints` to seed the fit. But the algorithm is material-agnostic and works
 > without this prior.
 
-### Step 3 — Backfill the masked shell  (`backfill_ring_shells`)
+### Step 3 — (removed) ring-shell backfill
 
-The masked region forms a **thin spherical shell** in HKL space. For each masked voxel,
-the nearest uncontaminated neighbours in 3D HKL space lie at nearly the same direction but
-just inside or outside the shell. A distance- and inverse-variance-weighted interpolation
-across the shell:
-
-- imposes **no assumption** on the diffuse signal shape;
-- is C¹ at the shell boundary by construction;
-- is physically motivated, since the diffuse signal is smooth in |Q| and the shell is
-  thin relative to that scale.
-
-Voxels with too few clean neighbours fall back to TV inpainting (Chambolle-Pock).
+This workflow used to mask the ring shell and refill it by interpolating across
+it (`backfill_ring_shells`, with a TV-inpainting fallback). Both were removed:
+the production ring stage subtracts the ring model instead, and any voxel it
+masks is filled by the Bragg backfill from its own surroundings (see
+[inpainting.md](inpainting.md)).
 
 ## Diagnostics
 

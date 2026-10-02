@@ -82,6 +82,10 @@ _GOLDEN_DEFAULT_KEEP_SHA256 = (
 )
 _GOLDEN_INTEGER_ONLY_PUNCHED = 57
 _GOLDEN_SEARCH_ONLY_PUNCHED = 76
+# The former (0.09, 0.12, 0.45) r.l.u. punch in Å⁻¹ on this metric (r × b*); the
+# fractional-HKL frame itself was removed.
+_RADII_Q = tuple(float(r) for r in
+                 np.asarray((0.09, 0.12, 0.45)) * np.linalg.norm(UB_REFERENCE, axis=0))
 
 
 def test_golden_default_punch_mask_is_unchanged():
@@ -104,7 +108,7 @@ def test_golden_default_punch_mask_is_unchanged():
 def test_golden_integer_mode_punch_count():
     """Integer-node punch count is frozen (origin excluded)."""
     vol = _synthetic_vol()
-    rem = BraggRemover(mode="integer", punch_radii=(0.09, 0.12, 0.45),
+    rem = BraggRemover(mode="integer", punch_frame="q", punch_q_radii=_RADII_Q,
                        min_intensity=10.0, force_origin=False)
     assert int((~rem.build_mask(vol)).sum()) == _GOLDEN_INTEGER_ONLY_PUNCHED
 
@@ -112,7 +116,7 @@ def test_golden_integer_mode_punch_count():
 def test_golden_search_mode_punch_count():
     """Search-mode (off-integer satellite) punch count is frozen."""
     vol = _synthetic_vol()
-    rem = BraggRemover(mode="search", punch_radii=(0.09, 0.12, 0.45),
+    rem = BraggRemover(mode="search", punch_frame="q", punch_q_radii=_RADII_Q,
                        search_min_intensity=10.0, search_n_mad=4.0,
                        force_origin=False)
     assert int((~rem.build_mask(vol)).sum()) == _GOLDEN_SEARCH_ONLY_PUNCHED
@@ -270,8 +274,8 @@ def test_real_ub_hkl_vs_q_axis_differ_only_at_boundary():
 
 
 def test_default_punch_radii_are_near_isotropic_in_q():
-    """The headline reveal: (0.09, 0.12, 0.45) rlu — a 5x HKL anisotropy — is
-    ~0.07–0.11 Å^-1, i.e. near-isotropic in Q (max/min < 1.6)."""
+    """Why the punch moved to Q: the former (0.09, 0.12, 0.45) rlu default — a
+    5x HKL anisotropy — is ~0.07–0.11 Å^-1, i.e. near-isotropic in Q."""
     vol = _synthetic_vol()
     bstar = np.sqrt(np.diag(vol.ub_matrix.T @ vol.ub_matrix))
     radii_A = np.asarray((0.09, 0.12, 0.45)) * bstar

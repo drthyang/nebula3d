@@ -16,15 +16,17 @@ and a whole-shell median averages that away.
 ``method="local"`` (default) fills each hole with the median of its own local
 shell; ``method="laplace"`` solves the discrete Laplace equation in each hole so
 the fill continues the surrounding diffuse smoothly, with no step at the edge.
-Generic TV inpainting remains available as an option, but it can introduce
-slice-scale staircase / smoothing artefacts in structured diffuse scattering.
+Generic image inpainting (total variation, symmetry copies) was removed: it has
+no model of diffuse scattering — TV assumes a piecewise-constant image and
+leaves staircase artefacts — and every symmetry copy of a punched Bragg node is
+itself punched.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import warnings
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import Literal, cast
 
 import numpy as np
@@ -32,9 +34,8 @@ from numpy.typing import NDArray
 from scipy import ndimage, sparse
 
 from nebula3d.core import HKLVolume, q_magnitude_from_axes
-from nebula3d.inpainting.pipeline import Method, fill
 
-BraggFillMethod = Method | Literal["local", "q_shell", "laplace"]
+BraggFillMethod = Literal["local", "q_shell", "laplace"]
 
 #: Most unknowns one ``method="laplace"`` solve holds.  Caps the solver's
 #: working set (~200 B per unknown, so ≲0.4 GB) however many voxels are masked,
@@ -49,10 +50,6 @@ LAPLACE_MAX_UNKNOWNS = 2_000_000
 def backfill_bragg(
     vol: HKLVolume,
     method: BraggFillMethod = "local",
-    laue_class: str = "m3m",
-    symmetry_ops: Sequence[NDArray] | None = None,
-    tv_lam: float = 0.2,
-    tv_iter: int = 300,
     local_radius: int = 2,
     local_min_count: int = 8,
     q_shell_step: float = 0.05,
@@ -93,8 +90,6 @@ def backfill_bragg(
     Components whose ``|Q|`` bins are too sparsely sampled fall back to the
     local-shell median.
 
-    TV/symmetry methods are retained for explicit comparisons.
-
     The **direct beam** (the punched hole at the origin) is filled differently
     from ordinary Bragg holes: a generic dilated shell around that large,
     elongated hole straddles the over-subtracted halo that hugs the beam, so the
@@ -110,13 +105,7 @@ def backfill_bragg(
     vol:
         Volume after Bragg punching (``vol.mask`` marks valid voxels).
     method:
-        Inpainting strategy. Default ``"local"``.
-    laue_class:
-        Crystal Laue class for symmetry filling.
-    tv_lam:
-        TV regularisation weight (higher than for Al backfill).
-    tv_iter:
-        Maximum TV iterations.
+        ``"local"`` (default), ``"laplace"`` or ``"q_shell"``.
     local_radius:
         Number of binary-dilation iterations used to form the local shell around
         each punched component.
@@ -177,14 +166,8 @@ def backfill_bragg(
             db_q_gap=direct_beam_q_gap, db_q_width=direct_beam_q_width,
             punched=punched,
         )
-    return fill(
-        vol,
-        method=cast(Method, method),
-        laue_class=laue_class,
-        symmetry_ops=list(symmetry_ops) if symmetry_ops else None,
-        tv_lam=tv_lam,
-        tv_iter=tv_iter,
-    )
+    raise ValueError(
+        f"Unknown backfill method {method!r}; choose 'local', 'laplace' or 'q_shell'")
 
 
 def _local_background_fill(

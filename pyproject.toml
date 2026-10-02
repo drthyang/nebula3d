@@ -11,7 +11,7 @@ readme = "README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.10"
 authors = [{ name = "Tsung-han Yang" }]
-keywords = ["neutron scattering", "diffuse scattering", "crystallography", "inpainting"]
+keywords = ["neutron scattering", "diffuse scattering", "crystallography", "3D-ΔPDF"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",

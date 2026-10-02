@@ -29,7 +29,7 @@ checks that are **not** tautologically satisfied by the subtraction itself:
     strongest anisotropic voxels (should stay strongly positive).
 
 It also characterises each shell's distribution shape (floor↔median gap, high-
-tail asymmetry) so the estimator choice (floor / mode / median) can be made from
+tail asymmetry) so the estimator choice (floor / snip) can be made from
 the data rather than assumed, and prints a structured PASS/FLAG report.
 
 Run::

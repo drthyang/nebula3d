@@ -105,7 +105,6 @@ def _hslice(v, ih):
 # profile_method='median', texture_q_smooth=0.0 = per-|Q| azimuthal texture).
 #   ring_width        : max ring full-width in |Q| removed as a peak (Å^-1)
 #   q_step            : radial bin width (finer than the ring to resolve peaks)
-#   baseline_method   : 'snip' = slope-aware peak-clipping baseline
 #   profile_percentiles: trim band per |Q| bin (low=gaps, high=Bragg)
 #   texture_model     : 'fourier' = T(φ) (anisotropy, Bragg-immune)
 #   n_fourier         : azimuthal harmonics (8 — resolves multi-lobed texture)
@@ -173,7 +172,7 @@ n_patches = int(os.environ.get("N_PATCHES", "36"))
 
 prm = PatchedRadialRingModel(
     n_patches=n_patches, plane="0kl", q_step=q_step, ring_width=0.24,
-    baseline_method="snip", baseline_smooth=0.06,
+    baseline_smooth=0.06,
     profile_percentiles=(10.0, 80.0), profile_method=profile_method,
     texture_model="fourier", texture_symmetric=False, texture_q_smooth=texture_q_smooth,
     ring_templates=templates,
@@ -190,7 +189,7 @@ print(f"center offset={center_offset}  H slope={center_offset_h_slope} Å^-1/H")
 PUNCH_PRESETS = {
     "cc_off": {
         "MODE": "auto",
-        "R_HKL": "0.09,0.12,0.45",
+        "SPHERICAL_R": "0.097,0.072,0.115",  # (rρ, rθ, rφ) Å⁻¹
         "SEARCH_NMAD": "4.0",
         # Lower floor + prominence to catch the small Bragg the old 1.0/1.0 missed
         # (validated in 3D: captures ~90% of sharp interior Bragg while the
@@ -207,7 +206,7 @@ PUNCH_PRESETS = {
     },
     "cc_on": {
         "MODE": "auto",
-        "R_HKL": "0.09,0.12,0.45",
+        "SPHERICAL_R": "0.097,0.072,0.115",  # (rρ, rθ, rφ) Å⁻¹
         "SEARCH_NMAD": "4.0",
         # Was 1.5/1.0 — too conservative, left ~25% of small Bragg unpunched.
         # 0.8/0.8 captures ~89% of sharp interior Bragg at H=0 with only ~0.7%
@@ -242,7 +241,8 @@ def punch_bool(name: str, default: str = "0") -> bool:
 
 
 mode = punch_default("MODE", "auto")
-r_hkl = tuple(float(x) for x in punch_default("R_HKL", "0.09,0.12,0.45").split(","))
+spherical_r = tuple(
+    float(x) for x in punch_default("SPHERICAL_R", "0.097,0.072,0.115").split(","))
 min_i_env = punch_default("MIN_I", "")
 min_i = None if min_i_env == "" else float(min_i_env)
 min_prom = float(punch_default("MIN_PROM", "1.0"))
@@ -290,7 +290,8 @@ incident_sphere_radius = (
 
 remover = BraggRemover(
     mode=mode,
-    punch_radii=r_hkl,
+    punch_frame="spherical",
+    punch_spherical_radii=spherical_r,
     min_intensity=min_i,
     min_prominence=min_prom,
     integer_n_mad=integer_nmad,
@@ -405,8 +406,6 @@ else:
     backfilled = backfill_bragg(
         punch_only,
         method=backfill_method,
-        tv_lam=float(os.environ.get("TV_LAM", "0.2")),
-        tv_iter=int(os.environ.get("TV_ITER", "300")),
         local_radius=int(os.environ.get("LOCAL_RADIUS", "2")),
         local_min_count=int(os.environ.get("LOCAL_MIN_COUNT", "8")),
         q_shell_step=float(os.environ.get("Q_SHELL_STEP", "0.05")),
@@ -431,7 +430,7 @@ print(f"HKL volume viewer initial {VIEW_AXIS}={VIEW_VALUE:.4g}  "
       f"backfill={'loaded' if backfill_file else 'computed'}")
 valid = residual.mask & np.isfinite(residual.data)
 if not punch_file:
-    print(f"Bragg punch: preset={punch_preset_name} mode={mode} radii={r_hkl} "
+    print(f"Bragg punch: preset={punch_preset_name} mode={mode} spherical_radii={spherical_r} "
           f"phi_tail={phi_tail_hkl} peaks={len(peaks)}")
 print(f"Total punched: {int(punched_voxels.sum())} voxels "
       f"({100 * punched_voxels.sum() / max(int(valid.sum()), 1):.2f}% of valid)")

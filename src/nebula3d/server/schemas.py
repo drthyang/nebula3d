@@ -122,9 +122,6 @@ class StageParamsIn(BaseModel):
     punch_min_intensity: float | None = None
     punch_search_n_mad: float | None = None
     punch_mode: str | None = None
-    punch_radius_h: float | None = None
-    punch_radius_k: float | None = None
-    punch_radius_l: float | None = None
     punch_margin: float | None = None
     punch_phi_tail_hkl: float | None = None
     # Q-space punch: frame "spherical" (default) = (rρ, rθ, rφ) in the local

@@ -272,8 +272,6 @@ class ParametricRingModel:
         Maximum full width (Å⁻¹) for a feature to count as a ring during
         detection / the SNIP baseline window (default 0.24).  Broader bumps are
         treated as diffuse and kept.
-    baseline_method : {'snip', 'opening'}
-        Diffuse-baseline estimator under the rings (default ``'snip'``).
     baseline_smooth : float
         σ (Å⁻¹) of the Gaussian applied to the baseline (default 0.06).
     profile_method : {'median', 'trimmed_mean', 'winsorized_mean', 'huber'}
@@ -380,7 +378,6 @@ class ParametricRingModel:
         plane: str = "0kl",
         q_step: float = 0.02,
         ring_width: float = 0.24,
-        baseline_method: str = "snip",
         baseline_smooth: float = 0.06,
         profile_method: str = "median",
         profile_percentiles: tuple[float, float] = (10.0, 80.0),
@@ -414,7 +411,6 @@ class ParametricRingModel:
         self.ring_width = ring_width
         self.radial_mode = radial_mode
         self.roll_step = roll_step
-        self.baseline_method = baseline_method
         self.baseline_smooth = baseline_smooth
         self.profile_method = profile_method
         self.profile_percentiles = profile_percentiles
@@ -529,7 +525,7 @@ class ParametricRingModel:
         width = _adaptive_ring_width_profile(
             q_grid, pooled_f, self.q_step, self.ring_width, 3.0, 0.9, counts)
         baseline = _estimate_baseline(
-            pooled_f, self.q_step, width, self.baseline_smooth, self.baseline_method)
+            pooled_f, self.q_step, width, self.baseline_smooth)
         excess = np.maximum(0.0, pooled_f - baseline)
 
         # --- rolling-window continuous mode -----------------------------------

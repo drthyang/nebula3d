@@ -1,8 +1,8 @@
 """End-to-end integration test of the full pipeline on synthetic data.
 
 Exercises the real API:
-    EmptySubtractor → PatchedRingModel → backfill_ring_shells
-    → bragg_mask → backfill_bragg → compute_delta_pdf
+    EmptySubtractor → PatchedRingModel → bragg_mask → backfill_bragg
+    → compute_delta_pdf
 """
 
 import dataclasses
@@ -12,12 +12,7 @@ import numpy as np
 
 from nebula3d.analysis import backfill_bragg, bragg_mask, compute_delta_pdf
 from nebula3d.core import HKLVolume
-from nebula3d.preprocessing import (
-    EmptySubtractor,
-    PatchedRingModel,
-    RingShell,
-    backfill_ring_shells,
-)
+from nebula3d.preprocessing import EmptySubtractor, PatchedRingModel
 from nebula3d.preprocessing.ring_model import _gaussian
 
 RING_Q = 2.6
@@ -106,23 +101,17 @@ def test_full_pipeline_runs_and_produces_finite_dpdf():
     assert np.isfinite(vol2.data).all()
     assert np.isfinite(I_ring).all()
 
-    # (3) Backfill the masked ring shell.
-    rings = [RingShell(q_center=RING_Q, q_lo=RING_Q - 0.2, q_hi=RING_Q + 0.2)]
-    vol_clean = backfill_ring_shells(vol2, rings, n_neighbors=12,
-                                     fallback_tv=True, tv_iter=100)
-    assert np.isfinite(vol_clean.data).all()
-    assert vol_clean.mask.all()
+    # (3) Bragg punch (the ring model's SNR mask stays masked too).
+    b_keep = bragg_mask(vol2, punch_frame="q", punch_q_radius=0.35 * np.pi / 2)
+    vol2.apply_mask(b_keep)
+    assert not vol2.mask.all()
 
-    # (4) Bragg punch.
-    b_keep = bragg_mask(vol_clean, punch_radius_hkl=0.35)
-    vol_clean.apply_mask(b_keep)
-    assert not vol_clean.mask.all()
-
-    # (5) Backfill Bragg holes.
-    vol_diffuse = backfill_bragg(vol_clean, method="tv", tv_lam=0.2)
+    # (4) Backfill every hole from its surroundings.
+    vol_diffuse = backfill_bragg(vol2, method="laplace")
     assert np.isfinite(vol_diffuse.data).all()
+    assert vol_diffuse.mask.all()
 
-    # (6) 3D-ΔPDF.
+    # (5) 3D-ΔPDF.
     dpdf = compute_delta_pdf(vol_diffuse, apodization="hann", zero_pad=False)
     assert dpdf.data.shape == vol.data.shape
     assert np.isfinite(dpdf.data).all()

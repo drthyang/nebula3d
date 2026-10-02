@@ -16,9 +16,12 @@ Strategy
    every node would gouge diffuse signal at the ~3/4 of nodes that are extinct.
    Each surviving peak is re-centred on its local argmax (peaks drift off the
    exact integer by thermal contraction etc.).
-3. Punch a 3D ellipsoidal hole at each detected peak.  Radii are **anisotropic**
-   (Bragg peaks are several-fold broader along the coarse axis — here L) and
-   optionally **scale with intensity** (bright peaks have longer tails).
+3. Punch a 3D ellipsoidal hole at each detected peak.  Its size is set in Q
+   (Å⁻¹), where the instrument resolution lives — per peak in the local
+   spherical frame (radial, polar, azimuthal) by default, or along a*, b*, c* —
+   and optionally **scales with intensity** (bright peaks have longer tails).
+   Radii in fractional HKL were removed: they depend on the cell, not on the
+   resolution, and are wrong along non-orthogonal axes.
 4. The mask is built on **local windows** around each peak, never a full-volume
    array per peak, so it scales to thousands of peaks on a 50M-voxel volume.
 
@@ -120,13 +123,16 @@ class BraggRemover:
         (small-domain / superlattice reflections) the integer mode misses, at the
         cost of also removing any sharp *structural* diffuse (acceptable when only
         magnetic diffuse is wanted).  ``"both"`` takes the union.
-    punch_radius_hkl:
-        Isotropic punch half-radius in fractional HKL units.  Used only when
-        ``punch_radii`` is not given.
-    punch_radii:
-        ``(rh, rk, rl)`` per-axis half-radii (Å⁻¹-free, fractional HKL).  Bragg
-        peaks are anisotropic — broad along a coarse axis — so prefer this over
-        the isotropic radius (e.g. ``(0.12, 0.12, 0.45)`` here, L being broad).
+    punch_frame:
+        Frame the punch ellipsoid is sized in, both in Å⁻¹.  ``"spherical"``
+        (default): ``punch_spherical_radii`` (rρ, rθ, rφ) along each peak's own
+        radial (Q̂), polar and azimuthal (a*–b* ring tangent, about c*) axes, so
+        every reflection's footprint is oriented by construction.  ``"q"``:
+        ``punch_q_radius`` (a Q-sphere) or ``punch_q_radii`` along a*, b*, c*.
+    punch_spherical_radii:
+        (rρ, rθ, rφ) half-radii in Å⁻¹ for the spherical frame.
+    punch_q_radius, punch_q_radii:
+        Isotropic, or per-a*/b*/c*, half-radii in Å⁻¹ for the ``"q"`` frame.
     min_intensity:
         Detection threshold.  ``None`` (default) punches **every** integer node
         (legacy behaviour).  When set, only nodes whose local peak intensity
@@ -181,7 +187,7 @@ class BraggRemover:
     max_radius_scale:
         Upper clamp on the intensity radius multiplier.
     margin:
-        Extra half-width (HKL) added to every punch radius — a guard band so the
+        Extra half-width (Å⁻¹) added to every punch radius — a guard band so the
         peak's faint wings are removed too.
     punch_incident_beam:
         Punch the nearest voxel to (0,0,0) as a separate incident-beam remnant,
@@ -189,7 +195,7 @@ class BraggRemover:
         peaks, so it has independent radii / margin / tail settings.
     incident_beam_radii:
         Independent HKL half-radii for the incident-beam punch.  Defaults to
-        twice the Bragg punch radii when unset.
+        twice the HKL bounding box of the Bragg punch when unset.
     incident_beam_margin:
         Extra margin for the incident-beam punch.
     incident_beam_phi_tail_hkl:
@@ -226,8 +232,6 @@ class BraggRemover:
     """
 
     mode: str = "integer"
-    punch_radius_hkl: float = 0.3
-    punch_radii: tuple[float, float, float] | None = None
     min_intensity: float | None = None
     min_prominence: float = 1.0
     integer_n_mad: float | None = None
@@ -274,23 +278,18 @@ class BraggRemover:
     incident_beam_fit_covariance: bool = False
     force_origin: bool | None = None
     phi_tail_hkl: float = 0.0
-    # --- Q-space punch (opt-in; ROADMAP Phase 6 / Phase 2) ---
-    # ``punch_frame="q"`` describes the Bragg punch shape in reciprocal Å^-1
-    # rather than fractional HKL, via the quadratic-form kernel
-    # ``δhklᵀ A δhkl ≤ 1`` with ``A`` built from the UB metric (see
-    # ``_q_shape_matrix``).  Default ``"hkl"`` keeps the legacy radii path
-    # untouched.  In Q-mode the per-peak HKL shape-fit and the φ-tail are not
-    # applied (that unification is Phase 3); intensity scaling still applies.
-    # ``punch_frame="spherical"`` describes the punch in the *local* spherical
-    # frame at each peak: (rρ, rθ, rφ) in Å^-1 with rρ along the radial direction
-    # Q̂, rφ along the azimuthal (a*–b* plane) tangent ẑ×Q̂ (ẑ = c*), and rθ along
-    # the polar tangent Q̂×φ̂.  Because the frame is rebuilt per peak from its Q
-    # direction, the ellipsoid is correctly oriented for every reflection with no
-    # tilt angle — the same three radii apply everywhere.  See ``_spherical_frame``.
-    punch_frame: str = "hkl"
+    # --- punch size, in Q (Å⁻¹) ---
+    # Both frames feed the quadratic-form kernel ``δhklᵀ A δhkl ≤ 1`` with ``A``
+    # built from the UB metric.  ``"spherical"`` (default) sizes the punch in the
+    # *local* spherical frame at each peak — (rρ, rθ, rφ) with rρ along Q̂, rφ
+    # along the azimuthal (a*–b* plane) tangent ẑ×Q̂ (ẑ = c*) and rθ along the
+    # polar tangent Q̂×φ̂ — rebuilt per peak, so every reflection's ellipsoid is
+    # oriented with no tilt angle (see ``_spherical_frame``).  ``"q"`` uses one
+    # Q-sphere or fixed a*/b*/c* radii (see ``_q_shape_matrix``).
+    punch_frame: str = "spherical"
     punch_q_radius: float | None = None  # isotropic, Å^-1  (A = g / ρ²)
     punch_q_radii: tuple[float, float, float] | None = None  # per a*,b*,c*, Å^-1
-    punch_spherical_radii: tuple[float, float, float] | None = None  # (rρ, rθ, rφ) Å^-1
+    punch_spherical_radii: tuple[float, float, float] | None = (0.097, 0.072, 0.115)
     # --- search mode (|Q|-shell outlier detection) ---
     search_q_step: float = 0.05
     search_n_mad: float = 8.0
@@ -305,11 +304,13 @@ class BraggRemover:
     search_exclude_h_fractions: tuple[float, ...] | None = None
     subtract_profile: bool = False
 
-    def _radii(self) -> tuple[float, float, float]:
-        if self.punch_radii is not None:
-            return tuple(float(r) for r in self.punch_radii)  # type: ignore[return-value]
-        r = float(self.punch_radius_hkl)
-        return r, r, r
+    def __post_init__(self) -> None:
+        frame = str(self.punch_frame).lower()
+        if frame not in {"spherical", "q"}:
+            raise ValueError(
+                f"punch_frame={self.punch_frame!r}: choose 'spherical' or 'q' (radii "
+                f"in Å⁻¹).  The fractional-HKL frame was removed — HKL radii depend "
+                f"on the cell, not on the resolution.")
 
     @staticmethod
     def _shape_matrix_from_q_radii(
@@ -339,7 +340,7 @@ class BraggRemover:
         scale: float = 1.0,
         margin_q: float = 0.0,
     ) -> NDArray[np.float64] | None:
-        """HKL shape matrix ``A`` for the Q-space punch, or ``None`` in hkl mode.
+        """HKL shape matrix ``A`` for the ``"q"`` frame, or ``None`` in the spherical one.
 
         The punch is ``δhklᵀ A δhkl ≤ 1`` (see :func:`_ellipsoid_inside`).  With
         the metric ``g = UBᵀUB``:
@@ -460,8 +461,8 @@ class BraggRemover:
         """Per-peak punch shape matrix for the active frame, or ``None``.
 
         Dispatches on ``punch_frame``: ``"q"`` → the global a\\*/b\\*/c\\* ellipsoid
-        (``center_hkl`` ignored); ``"spherical"`` → the per-peak spherical frame;
-        otherwise ``None`` (legacy hkl-radii path).
+        (``center_hkl`` ignored); ``"spherical"`` → the per-peak spherical frame,
+        ``None`` at the origin (frame undefined).
         """
         frame = str(self.punch_frame).lower()
         if frame == "spherical":
@@ -493,27 +494,21 @@ class BraggRemover:
         return (float(peak.source_node_hkl[0]), float(self.integer_h_guard_hkl))
 
     def _fit_base_radii(self, vol: HKLVolume) -> tuple[float, float, float]:
-        """Resolution-floor radii for the per-peak fit clip.
+        """Resolution-floor radii: the HKL bounding box of the base Q ellipsoid.
 
-        In Q-mode the floor is the Q base ellipsoid's HKL bounding box (so the
-        fitted punch is never smaller than the Å⁻¹ resolution and the floor is
-        lattice-portable); in spherical mode it is the HKL bounding box of the
-        spherical ellipsoid at a representative on-axis point (same resolution
-        scale, orientation-independent enough for a clip floor); in HKL mode it is
-        the plain ``punch_radii`` — so the legacy fit is unchanged.
+        The per-peak fit is clipped to it (so a fitted punch is never smaller than
+        the Å⁻¹ resolution), the axis-aligned fallback punches it, and the default
+        direct-beam punch is twice it.  In the spherical frame it is taken at a
+        representative off-pole point along a* — the bounding-box scale depends
+        on the radii and orientation, not on |Q|.
         """
         if str(self.punch_frame).lower() == "spherical":
-            # Evaluate at a representative off-pole direction (along a*); the
-            # bounding-box scale depends only on the radii + orientation, not on
-            # |Q|, so any off-pole point gives the same resolution floor.
             a = self._spherical_shape_matrix(vol, (1.0, 0.0, 0.0))
-            if a is not None:
-                return self._ellipsoid_bounding_radii(a)
-            return self._radii()
-        a = self._q_shape_matrix(vol)
-        if a is not None:
-            return self._ellipsoid_bounding_radii(a)
-        return self._radii()
+        else:
+            a = self._q_shape_matrix(vol)
+        if a is None:
+            raise ValueError("the punch ellipsoid is undefined for this UB matrix")
+        return self._ellipsoid_bounding_radii(a)
 
     @staticmethod
     def _shape_from_covariance(
@@ -579,17 +574,6 @@ class BraggRemover:
         return np.asarray(np.linalg.inv(cov + tau * np.outer(t, t)), dtype=np.float64)
 
     @staticmethod
-    def _inflate_isotropic(
-        shape_matrix: NDArray[np.float64], margin: float,
-    ) -> NDArray[np.float64]:
-        """Grow every half-radius of ``δᵀAδ ≤ 1`` by ``margin`` (guard band)."""
-        if margin <= 0:
-            return shape_matrix
-        lam, vecs = np.linalg.eigh(shape_matrix)
-        r = 1.0 / np.sqrt(np.clip(lam, 1e-300, None)) + margin
-        return np.asarray(vecs @ np.diag(1.0 / (r * r)) @ vecs.T, dtype=np.float64)
-
-    @staticmethod
     def _axis_hkl_margins_from_q_margin(
         vol: HKLVolume,
         margin_q: float,
@@ -634,10 +618,8 @@ class BraggRemover:
         shape_matrix: NDArray[np.float64],
         margin: float,
     ) -> NDArray[np.float64]:
-        """Inflate a general punch shape using the active frame's margin units."""
-        if str(self.punch_frame).lower() == "q":
-            return self._inflate_q_isotropic(vol, shape_matrix, margin)
-        return self._inflate_isotropic(shape_matrix, margin)
+        """Inflate a punch shape by the Å⁻¹ margin (both frames size in Q)."""
+        return self._inflate_q_isotropic(vol, shape_matrix, margin)
 
     @staticmethod
     def _steps(vol: HKLVolume) -> tuple[float, float, float]:
@@ -1109,16 +1091,10 @@ class BraggRemover:
     ) -> NDArray[np.bool_]:
         """Punch an anisotropic, intensity-scaled ellipsoid at each peak centre,
         in place on *keep* (local windows only)."""
-        # Base resolution radii: the Q ellipsoid's HKL bounding box in Q-mode
-        # (lattice-portable floor), else the plain HKL radii — so the HKL path is
-        # unchanged.  The diagonal per-peak fit is clipped to this same floor, so
-        # in Q-mode it punches via the radii path below (identical mechanism to
-        # HKL, incl. the union φ-tail) — the frame only relocates the floor.
+        # Base resolution radii: the Q ellipsoid's HKL bounding box (a
+        # lattice-portable floor).  The diagonal per-peak fit is clipped to it and
+        # punches via the radii path below.
         r_base = self._fit_base_radii(vol)
-        # A general (non-axis-aligned) frame builds a per-peak shape matrix below.
-        # ``"q"`` is global; ``"spherical"`` is rebuilt per peak from its Q
-        # direction.  ``"hkl"`` (legacy) stays on the axis-aligned radii path.
-        general_frame = str(self.punch_frame).lower() in {"q", "spherical"}
 
         ref = self.intensity_ref
         if self.intensity_scale and ref is None:
@@ -1144,10 +1120,10 @@ class BraggRemover:
                     h_guard=self._h_guard_for(peak_rec), shape_matrix=a)
                 continue
 
-            # (2) General frame (q / spherical) with no per-peak fit (search peaks
-            #     / shape-fit off): the base ellipsoid + Q-space margin + folded
-            #     φ-tail.  ``_active_shape_matrix`` is per-peak in spherical mode.
-            if general_frame and peak_rec.radii_hkl is None:
+            # (2) No per-peak fit (search peaks / shape-fit off): the base
+            #     ellipsoid + Q-space margin + folded φ-tail.
+            #     ``_active_shape_matrix`` is per-peak in the spherical frame.
+            if peak_rec.radii_hkl is None:
                 _a = self._active_shape_matrix(
                     vol, peak_rec.center_hkl, scale=s, margin_q=self.margin)
                 if _a is not None:  # None only when the frame is undefined (origin)
@@ -1160,14 +1136,10 @@ class BraggRemover:
                         h_guard=self._h_guard_for(peak_rec), shape_matrix=a)
                     continue
 
-            # (3) Radii path: HKL adaptive, or general-frame diagonal fit floored
-            #     by the base — axis-aligned ellipsoid with the union φ-tail.
+            # (3) Radii path: the diagonal fit floored by the base (or the base
+            #     at the origin) — axis-aligned ellipsoid with the union φ-tail.
             rh_base, rk_base, rl_base = peak_rec.radii_hkl or r_base
-            mh, mk, ml = (
-                self._axis_hkl_margins_from_q_margin(vol, self.margin)
-                if general_frame
-                else (float(self.margin), float(self.margin), float(self.margin))
-            )
+            mh, mk, ml = self._axis_hkl_margins_from_q_margin(vol, self.margin)
             radii = (
                 rh_base * s + mh,
                 rk_base * s + mk,
@@ -1199,7 +1171,7 @@ class BraggRemover:
         if self.incident_beam_sphere_radius_hkl is not None:
             r = max(0.0, float(self.incident_beam_sphere_radius_hkl))
             return (r, r, r)
-        rh, rk, rl = self._radii()
+        rh, rk, rl = self._fit_base_radii(vol)
         m = self.incident_beam_margin
         if self.incident_beam_radii is None:
             return (2.0 * rh + m, 2.0 * rk + m, 2.0 * rl + m)
@@ -1299,7 +1271,7 @@ class BraggRemover:
         if center is None:
             return keep
         if self.incident_beam_radii is None:
-            rh, rk, rl = self._radii()
+            rh, rk, rl = self._fit_base_radii(vol)
             radii = (
                 2.0 * rh + self.incident_beam_margin,
                 2.0 * rk + self.incident_beam_margin,
@@ -1592,8 +1564,10 @@ class BraggRemover:
 
 def bragg_mask(
     vol: HKLVolume,
-    punch_radius_hkl: float = 0.3,
-    punch_radii: tuple[float, float, float] | None = None,
+    punch_frame: str = "spherical",
+    punch_spherical_radii: tuple[float, float, float] | None = (0.097, 0.072, 0.115),
+    punch_q_radius: float | None = None,
+    punch_q_radii: tuple[float, float, float] | None = None,
     min_intensity: float | None = None,
     min_prominence: float = 1.0,
     integer_n_mad: float | None = None,
@@ -1621,8 +1595,10 @@ def bragg_mask(
 ) -> NDArray[np.bool_]:
     """Convenience wrapper.  Returns a keep-mask (True = valid)."""
     return BraggRemover(
-        punch_radius_hkl=punch_radius_hkl,
-        punch_radii=punch_radii,
+        punch_frame=punch_frame,
+        punch_spherical_radii=punch_spherical_radii,
+        punch_q_radius=punch_q_radius,
+        punch_q_radii=punch_q_radii,
         min_intensity=min_intensity,
         min_prominence=min_prominence,
         integer_n_mad=integer_n_mad,

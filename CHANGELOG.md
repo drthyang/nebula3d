@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+- **Removed methods with no physical basis.**
+  - Generic image inpainting as a backfill: `method="tv"`, `"symmetry"`,
+    `"symmetry+tv"` and the `nebula3d.inpainting` package (TV, Laue-symmetry
+    copying, RBF, biharmonic). TV assumes a piecewise-constant image and leaves
+    staircase artefacts in structured diffuse scattering, and every symmetry
+    copy of a punched Bragg node is itself punched. The older ring workflow that
+    used it went too: `backfill_ring_shells` (`preprocessing/backfill.py`) and
+    `preprocessing/residual_rings.py`. The production ring stage subtracts its
+    model, and anything it masks is filled by the Bragg backfill from its own
+    surroundings. `backfill_bragg` now takes `local`, `laplace` or `q_shell`, and
+    raises on anything else; `BackfillParams` lost `laue_class`, `tv_lam`,
+    `tv_iter`.
+  - The flatten's `median` and `mode` estimators. A |Q| shell's median or mode
+    includes the diffuse signal itself, so subtracting it removes real diffuse
+    scattering (the flatten validation found both over-subtract). `floor`
+    (default) and `snip` remain.
+  - Morphological grey opening as the ring-model baseline
+    (`baseline_method="opening"`). It is a shape filter, not a background
+    model, and dips below a diffuse background that falls with |Q|. SNIP is now
+    the only baseline, so `baseline_method` is gone from `PatchedRadialRingModel`
+    and `ParametricRingModel`.
+  - Bragg punch radii in fractional HKL (`punch_frame="hkl"`, `punch_radii`,
+    `punch_radius_hkl`; `punch_radius_h/k/l` in the run request). The
+    resolution is set in Q, so r.l.u. radii depend on the cell and shear on
+    oblique axes. The punch is sized in Å⁻¹ only: per peak in the spherical
+    frame (the default, now also for `BraggRemover()` and `bragg_mask`) or
+    along a*, b*, c* (`"q"`). `punch_frame="hkl"` raises. The `margin` guard
+    band is Å⁻¹ everywhere, including the covariance-fit path, which inflated
+    by r.l.u. outside the `"q"` frame. The default direct-beam punch, when no
+    beam radii are set, is twice the Bragg punch's HKL bounding box. The
+    default pipeline punch is unchanged: the same mask on the TbTi3Bi4 22K
+    volume. `examples/compare_punch_frames.py` and `plot_punch_slices.py`
+    (HKL vs Q comparisons) were removed, and the punch examples take
+    `SPHERICAL_R` (Å⁻¹) instead of `R_HKL`.
+
+  The Configure page no longer offers the removed options. Docs, examples and
+  the manual source follow.
 - **The edge of the measured coverage is trimmed at load, on by default.** A
   measured voxel next to unmeasured space is barely normalised. On the 401³
   Fe3Ge2 TOPAZ volume those voxels reach p99 ≈ 4,000 and a maximum of
