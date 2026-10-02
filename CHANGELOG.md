@@ -9,8 +9,8 @@
   a ±0.2 r.l.u. window (±1 voxel along c* here), and used the width of the 35 %
   core, which is 0.61σ for a Gaussian. On the TbTi3Bi4 100K volume, 44 % of
   peaks were floored on all three axes, and 0.7 % were set by the data on all
-  three. The covariance fit (`integer_fit_covariance`, now on by default in
-  `BraggRemover` and `PunchParams`):
+  three. `integer_optimize_shape` is now the covariance fit, in Q (the
+  pipeline default):
   - takes the core's covariance in Q (`Σ_Q = UB·C·UBᵀ`), from a window sized
     in Å⁻¹, using only voxels connected to the peak;
   - divides by the Gaussian core-cut factor, so the widths are σ;
@@ -28,10 +28,18 @@
   strong-peak excess outside the punch, down from 7.1 %. `measure_peak_sigmas`
   and `measure_peak_covariance` (the profile's measured widths) use the same
   cut-corrected core, so the width histogram reads 1.65× wider than
-  before. `integer_fit_covariance=False` keeps the legacy diagonal fit. The web
-  switch is on by default and now sends "off" explicitly. The default-punch
-  golden master was regenerated (612 → 489 voxels). Profile JSONs from earlier
-  runs predate this change.
+  before. The position-only fit takes the same core's centroid. The
+  default-punch golden master was regenerated (612 → 489 voxels). Profile
+  JSONs from earlier runs predate this change.
+- **Removed the diagonal Bragg-shape fit**: three radii along H, K, L, so no
+  tilt, floored at an HKL bounding box; the same class of r.l.u. punch as the
+  removed HKL frame. `integer_fit_covariance` is gone from `BraggRemover` and
+  `PunchParams`, `punch_fit_covariance` from the run request, and the
+  Configure page's "Fit tilted ellipsoid" switch with it; "Drop fit
+  constraints" stays. Peak records no longer carry `radii_hkl`. A peak where
+  the punch frame is undefined (at the origin) still gets the base
+  ellipsoid's HKL bounding box. The profile JSON keeps `fit_covariance` (true
+  when the shape fit ran) for readers of older profiles.
 - **Removed methods with no physical basis.**
   - Generic image inpainting as a backfill: `method="tv"`, `"symmetry"`,
     `"symmetry+tv"` and the `nebula3d.inpainting` package (TV, Laue-symmetry
