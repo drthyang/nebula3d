@@ -144,7 +144,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   punchQA: "",
   punchQB: "",
   punchQC: "",
-  punchFitCovariance: false,
+  punchFitCovariance: true,
   punchFitUnconstrained: false,
   punchMargin: "",
   incidentBeamQA: "",
@@ -287,7 +287,8 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.incidentBeamQB) params.incident_beam_q_radius_b = Number(s.incidentBeamQB);
   if (s.incidentBeamQC) params.incident_beam_q_radius_c = Number(s.incidentBeamQC);
   if (s.incidentBeamMargin) params.incident_beam_q_margin = Number(s.incidentBeamMargin);
-  if (s.punchFitCovariance) params.punch_fit_covariance = true;
+  // Always sent: the backend default is on, so "off" must be explicit.
+  params.punch_fit_covariance = s.punchFitCovariance;
   if (s.punchFitCovariance && s.punchFitUnconstrained) {
     params.punch_fit_unconstrained = true;
   }

@@ -164,6 +164,7 @@ def test_integer_peak_fit_records_subvoxel_center_and_anisotropic_shape():
         detect_window_hkl=0.35,
         integer_optimize_position=True,
         integer_optimize_shape=True,
+        integer_fit_covariance=False,  # the legacy H/K/L-radii fit
         integer_fit_threshold_frac=0.2,
         integer_fit_radius_n_sigma=2.0,
         force_origin=False,

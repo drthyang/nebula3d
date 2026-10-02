@@ -360,7 +360,9 @@ class PunchParams:
     integer_q_step: float | None = None
     integer_optimize_position: bool = True
     integer_optimize_shape: bool = True
-    integer_fit_covariance: bool = False
+    # Tilted ellipsoid fitted in Q, floored at the punch_frame ellipsoid; False
+    # is the legacy H/K/L-aligned diagonal fit (no tilt).
+    integer_fit_covariance: bool = True
     integer_fit_unconstrained: bool = False
     integer_fit_threshold_frac: float = 0.35
     integer_fit_radius_n_sigma: float = 2.5
@@ -393,8 +395,9 @@ class PunchParams:
     incident_beam_fit_covariance: bool = False
     # Spherical-frame punch (default): the ellipsoid axes follow the *local*
     # spherical frame at each peak — (rρ, rθ, rφ) in Å⁻¹ with rρ radial (along Q̂),
-    # rφ azimuthal (a*–b* ring tangent), rθ polar (c* pole).  This orients every
-    # peak's footprint by construction (no tilt angle).  Set punch_frame="q" to use
+    # rφ azimuthal (a*–b* ring tangent), rθ polar (c* pole).  It is the punch for
+    # search peaks and the floor of the integer-peak covariance fit, which tilts
+    # and grows it to follow each measured peak.  Set punch_frame="q" to use
     # the fixed a*/b*/c* radii (``punch_q_radii``).  Both are in Å⁻¹; fractional-HKL
     # radii were removed (cell-dependent, wrong along non-orthogonal axes).
     punch_frame: str = "spherical"
