@@ -2010,8 +2010,6 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     <option value="">local (default)</option>
                     <option value="laplace">laplace</option>
                     <option value="q_shell">q_shell</option>
-                    <option value="tv">tv</option>
-                    <option value="symmetry+tv">symmetry+tv</option>
                   </select>
                 </Field>
                   </div>
@@ -2037,8 +2035,6 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     onChange={(e) => patch({ flattenEstimator: e.target.value })}
                   >
                     <option value="">floor (default)</option>
-                    <option value="median">median</option>
-                    <option value="mode">mode</option>
                     <option value="snip">snip</option>
                   </select>
                 </Field>

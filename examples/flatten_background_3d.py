@@ -23,7 +23,7 @@ Run::
 Env overrides:
     DATA_FILE     backfilled input .h5
     OUT_FILE      output .h5 (default: <stem>_flattened.h5)
-    ESTIMATOR     floor | mode | median | snip   (default floor — keeps diffuse)
+    ESTIMATOR     floor | snip   (default floor — keeps diffuse)
     FLOOR_PCT     percentile for ESTIMATOR=floor (default 25)
     Q_STEP        |Q| shell width Å^-1 (default 0.05)
     SMOOTH        Gaussian sigma Å^-1 smoothing the bg curve (default 0.10)

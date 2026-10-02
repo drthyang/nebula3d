@@ -9,7 +9,8 @@ Subtracting it removes the bulk of the powder ring signal.
 
 Residual rings from the **sample holder** remain after this step because
 the sample holder is present during the sample scan but absent during
-the empty scan.  Those are handled in step 2 (see residual_rings.py).
+the empty scan.  The ring-removal stage subtracts those (see
+:mod:`nebula3d.preprocessing.radial_background`).
 
 Scale factor
 ------------

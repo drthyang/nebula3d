@@ -24,7 +24,8 @@ Env overrides:
                  robust per-|Q| diffuse level, analogous to the ring-removal
                  robust profile logic; catches off-integer satellites /
                  small-domain Bragg.
-    R_HKL        per-axis base punch radii "rh,rk,rl"  (default 0.12,0.12,0.45)
+    SPHERICAL_R  base punch radii "rρ,rθ,rφ" in Å⁻¹ along each peak's radial,
+                 polar and azimuthal axes (default 0.097,0.072,0.115)
     MIN_I        integer-mode detection intensity threshold (default 2.0)
     INTEGER_NMAD optional integer-node per-|Q|-shell threshold in MADs
     INTEGER_Q_STEP
@@ -96,7 +97,7 @@ PRESETS = {
     # H≈0.333/0.666.
     "cc_off": {
         "MODE": "auto",
-        "R_HKL": "0.09,0.12,0.45",
+        "SPHERICAL_R": "0.097,0.072,0.115",
         "SEARCH_NMAD": "4.0",
         # Lowered floor/prominence to capture small Bragg (validated in 3D to
         # preserve the H=0.333/0.667 magnetic diffuse).
@@ -118,7 +119,7 @@ PRESETS = {
     # never punched.
     "cc_on": {
         "MODE": "both",
-        "R_HKL": "0.09,0.12,0.45",
+        "SPHERICAL_R": "0.097,0.072,0.115",
         "MIN_I": "0.8",
         "INTEGER_FIT_POSITION": "1",
         "INTEGER_FIT_SHAPE": "1",
@@ -168,7 +169,8 @@ else:
     in_path = cands[0]
 
 mode = env_default("MODE", "both")
-r_hkl = tuple(float(x) for x in env_default("R_HKL", "0.12,0.12,0.45").split(","))
+spherical_r = tuple(
+    float(x) for x in env_default("SPHERICAL_R", "0.097,0.072,0.115").split(","))
 min_i = float(env_default("MIN_I", "2.0"))
 integer_nmad_env = env_default("INTEGER_NMAD", "")
 integer_nmad = None if integer_nmad_env == "" else float(integer_nmad_env)
@@ -229,7 +231,8 @@ print(f"loading {in_path.name}", flush=True)
 vol = nebula3d.load(in_path)
 
 remover = BraggRemover(
-    mode=mode, punch_radii=r_hkl, min_intensity=min_i, min_prominence=1.0,
+    mode=mode, punch_frame="spherical", punch_spherical_radii=spherical_r,
+    min_intensity=min_i, min_prominence=1.0,
     integer_n_mad=integer_nmad, integer_q_step=integer_q_step,
     integer_optimize_position=integer_fit_position,
     integer_optimize_shape=integer_fit_shape,
@@ -252,7 +255,7 @@ remover = BraggRemover(
     search_exclude_h_half_width=search_exclude_h_width,
     search_exclude_h_fractions=search_exclude_h_fractions,
 )
-print(f"preset={preset_name or 'none'}  mode={mode}  radii={r_hkl}  min_I={min_i}  "
+print(f"preset={preset_name or 'none'}  mode={mode}  spherical_radii={spherical_r}  min_I={min_i}  "
       f"integer_nmad={integer_nmad}  integer_q_step={integer_q_step}  "
       f"integer_fit_position={integer_fit_position}  "
       f"integer_fit_shape={integer_fit_shape}  "

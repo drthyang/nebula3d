@@ -138,10 +138,7 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   volume is masked — a single masked region larger than that is an unmeasured
   coverage gap and gets the `local` fill, noted in the run log. The direct-beam
   fill applies the same cap to its region's bounding box: unmeasured coverage
-  that reaches the origin is not a beam, and gets the generic fill. The older ring-workflow
-  `backfill_ring_shells` — not on this pipeline — builds a KD-tree over every
-  valid voxel; its low-memory path bounds that to a per-H-slab local tree,
-  within ~1e-5 relative of the exact fill.)
+  that reaches the origin is not a beam, and gets the generic fill.)
 
 Local dev for this build: `cd web && npm run dev:pyodide` (loads `.env.pages`,
 base `/`).
