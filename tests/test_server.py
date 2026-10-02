@@ -625,8 +625,12 @@ def test_build_params_qspace_punch_overrides():
     )).punch
     assert cov.integer_fit_covariance is True
     assert cov.integer_fit_unconstrained is True
-    assert base.integer_fit_covariance is False
+    assert base.integer_fit_covariance is True  # the Q-space fit is the default
     assert base.integer_fit_unconstrained is False
+    off = build_params(PipelineRunRequest(
+        dataset_id="x", params=StageParamsIn(punch_fit_covariance=False),
+    )).punch
+    assert off.integer_fit_covariance is False
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+- **The Bragg punch now fits each peak's tilt, in Q.** Before this, the
+  default pipeline fitted three radii along H, K, L, so no integer peak was
+  tilted. The opt-in covariance fit did not follow the data either: it took
+  eigenvectors in HKL, floored them at an HKL bounding box, read the core from
+  a ±0.2 r.l.u. window (±1 voxel along c* here), and used the width of the 35 %
+  core, which is 0.61σ for a Gaussian. On the TbTi3Bi4 100K volume, 44 % of
+  peaks were floored on all three axes, and 0.7 % were set by the data on all
+  three. The covariance fit (`integer_fit_covariance`, now on by default in
+  `BraggRemover` and `PunchParams`):
+  - takes the core's covariance in Q (`Σ_Q = UB·C·UBᵀ`), from a window sized
+    in Å⁻¹, using only voxels connected to the peak;
+  - divides by the Gaussian core-cut factor, so the widths are σ;
+  - clips the ellipsoid to contain the punch frame's resolution ellipsoid and
+    lie inside `max_radius_scale`× it;
+  - leaves peaks whose cut is within `integer_fit_noise_n_mad` (3) noise
+    sigmas of the background at the resolution ellipsoid;
+  - adds the Å⁻¹ `margin` to the principal radii in Q.
+
+  On synthetic tilted peaks on the real UB, the punch's long axis is now
+  3–16° from the truth, where it was 26–31°. On 100K, 99 % of fitted peaks
+  have at least one axis set by the data, and the measured long axes sit a
+  median 38° off the spherical frame's φ̂. The default pipeline punches 4.45 %
+  of voxels, up from 3.75 %; in integer mode it leaves 6.4 % of the
+  strong-peak excess outside the punch, down from 7.1 %. `measure_peak_sigmas`
+  and `measure_peak_covariance` (the profile's measured widths) use the same
+  cut-corrected core, so the width histogram reads 1.65× wider than
+  before. `integer_fit_covariance=False` keeps the legacy diagonal fit. The web
+  switch is on by default and now sends "off" explicitly. The default-punch
+  golden master was regenerated (612 → 489 voxels). Profile JSONs from earlier
+  runs predate this change.
 - **Removed methods with no physical basis.**
   - Generic image inpainting as a backfill: `method="tv"`, `"symmetry"`,
     `"symmetry+tv"` and the `nebula3d.inpainting` package (TV, Laue-symmetry

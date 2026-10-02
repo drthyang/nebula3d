@@ -296,6 +296,13 @@ server `punch_fit_covariance`, and a web punch-card toggle.
 [`tests/test_bragg_qspace_phase3.py`](tests/test_bragg_qspace_phase3.py) — 8 tests
 (diagonal reduction, tilted orientation, φ-tail tangent-only inflation, fit
 integration, Q-mode adaptivity) plus a server `build_params` test.
+**Revised 2026-10-02:** that fit took its eigenvectors in HKL (skewed by
+|a*|:|c*| ≈ 4), floored them at an HKL bounding box, measured the core in a
+±0.2 r.l.u. window (±1 voxel along c*), and used the 35 % core's width (0.61σ).
+On the 100K volume 44 % of peaks were floored on all three axes, and the
+default pipeline ran the diagonal fit anyway. The covariance fit is now in Q,
+cut-corrected, windowed in Å⁻¹, floored at the resolution ellipsoid by
+containment, and on by default; see `docs/algorithms/bragg_cleanup.md`.
 
 Phase 4 (validating): HKL-vs-Q comparison via
 [`examples/compare_punch_frames.py`](examples/compare_punch_frames.py). The
