@@ -63,8 +63,10 @@ from nebula3d.core import HKLVolume
 from nebula3d.core import low_memory as _low_memory
 from nebula3d.preprocessing import (
     GlobalRingConfig,
+    PooledRingConfig,
     confirm_ring_shells_across_h,
     fit_global_rings,
+    fit_pooled_rings,
     flatten_radial_background,
     trim_coverage_edge,
     write_global_ring_diagnostics,
@@ -807,10 +809,51 @@ async def remove_rings_async(
     return out_vol
 
 
+def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
+                         progress: ProgressFn | None) -> HKLVolume:
+    """The ``ring_model="pooled"`` stage: whole-volume, two passes over the stack."""
+    cfg = _SLICE_CONFIGS[p.slice_axis.strip().upper()]
+    _emit(progress, "rings", "start", 0.0,
+          f"ring removal [pooled]: {vol.data.shape[cfg.axis_dim]} {cfg.axis_name} "
+          f"planes (plane={cfg.plane}, |Q| {(p.q_min, p.q_max)}, "
+          f"{p.pooled_sectors} sectors, ±{p.pooled_window_deg}° stack pooling)")
+
+    def _progress(fraction: float, message: str) -> None:
+        _emit(progress, "rings", "progress", fraction, message)
+
+    result = fit_pooled_rings(vol, PooledRingConfig(
+        plane=cfg.plane,
+        q_min=p.q_min,
+        q_max=p.q_max,
+        q_step=p.q_step,
+        n_sectors=p.pooled_sectors,
+        pool_deg=p.pooled_window_deg,
+        pool_sectors=p.pooled_neighbor_sectors,
+        max_fwhm=p.ring_width,
+        min_snr=p.pooled_min_snr,
+        envelope_scale=p.pooled_envelope_scale,
+        amp_cap=p.pooled_amp_cap,
+    ), progress=_progress)
+    out = result.cleaned
+    # Attached transiently (as global_v2 does) so run_pipeline writes the sidecar.
+    setattr(out, "_ring_diagnostics", result.diagnostics)
+    d = result.diagnostics
+    _emit(progress, "rings", "done", 1.0,
+          f"pooled ring removal {d['status']}: {len(d['shells'])} shells "  # type: ignore[arg-type]
+          f"(of {d['n_planes_fitted']}/{d['n_planes']} planes fitted), removed "
+          f"{100.0 * float(d['removed_fraction']):.3g}% of |I|")  # type: ignore[arg-type]
+    return out
+
+
 def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
                  progress: ProgressFn | None = None,
                  max_workers: int | None = None) -> HKLVolume:
     """Subtract powder rings from every plane along the stack axis independently.
+
+    ``ring_model="pooled"`` runs the whole-volume stack-pooled sector model
+    (:func:`~nebula3d.preprocessing.fit_pooled_rings`) and ``"global_v2"`` the
+    sample-only global fitter; the rest of this docstring describes the
+    per-plane models.
 
     Ports the validated per-slice driver of ``examples/remove_rings_3d.py``:
     optionally confirm the real |Q| shells across the stack axis (so a
@@ -825,6 +868,8 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
     either way.
     """
     p = params or RingParams()
+    if p.ring_model.strip().lower() == "pooled":
+        return _remove_rings_pooled(vol, p, progress)
     if p.ring_model.strip().lower() in {"global", "global_v2", "sample_only"}:
         _emit(progress, "rings", "start", 0.0,
               f"sample-only global 3D ring inference (material={p.global_material}, "

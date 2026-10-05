@@ -47,7 +47,7 @@ interface PipelineConfig {
   flatten: boolean;
   pdfEnabled: boolean;
   force: boolean;
-  ringModel: string; // "global_v2" | "patched" | "parametric"
+  ringModel: string; // "pooled" | "global_v2" | "patched" | "parametric"
   ringRadialMode: string; // parametric: "rolling" | "peaks"
   ringNPatches: string;
   ringNFourier: string;
@@ -58,6 +58,8 @@ interface PipelineConfig {
   ringGlobalConfidence: string;
   ringGlobalLmax: string;
   ringGlobalMinSnr: string;
+  ringPooledSectors: string; // pooled: azimuthal sectors
+  ringPooledWindow: string; // pooled: stack-pooling half-width (deg)
   punchMinI: string;
   punchMethod: string;
   punchMode: string;
@@ -122,7 +124,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   flatten: true,
   pdfEnabled: true,
   force: false,
-  ringModel: "patched",
+  ringModel: "pooled",
   ringRadialMode: "rolling",
   ringNPatches: "",
   ringNFourier: "8",
@@ -133,6 +135,8 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   ringGlobalConfidence: "1",
   ringGlobalLmax: "4",
   ringGlobalMinSnr: "5",
+  ringPooledSectors: "",
+  ringPooledWindow: "",
   punchMinI: "",
   punchMethod: "ellipsoid",
   punchMode: "",
@@ -265,6 +269,10 @@ function formToParams(s: PipelineConfig): StageParamsIn {
     }
     if (s.ringGlobalLmax) params.rings_global_angular_lmax = Number(s.ringGlobalLmax);
     if (s.ringGlobalMinSnr) params.rings_global_min_snr = Number(s.ringGlobalMinSnr);
+  }
+  if (s.ringModel === "pooled") {
+    if (s.ringPooledSectors) params.rings_pooled_sectors = Number(s.ringPooledSectors);
+    if (s.ringPooledWindow) params.rings_pooled_window_deg = Number(s.ringPooledWindow);
   }
   if (s.punchMinI) params.punch_min_intensity = Number(s.punchMinI);
   if (s.punchMode) params.punch_mode = s.punchMode;
