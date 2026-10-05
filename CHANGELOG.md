@@ -36,6 +36,11 @@
   restores the previous behaviour. The web Configure page gains "Pooled 3D
   sectors" (sectors, stack window) as the default; the run request gains
   `rings_pooled_sectors` and `rings_pooled_window_deg`.
+- **Side-by-side ring-model viewer**, `examples/compare_ring_modes.py`: one
+  column per model (default `pooled`, `patched`, `parametric`, `global_v2`),
+  the cleaned slice above what each removed, a leftover radial profile per
+  plane, linked zoom and an H/K/L plane slider. Each model runs once through
+  the pipeline path and is cached in `data/processed/ring_modes/`.
 
 - **The Bragg punch now fits each peak's tilt, in Q.** Before this, the
   default pipeline fitted three radii along H, K, L, so no integer peak was
