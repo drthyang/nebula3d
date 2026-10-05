@@ -71,6 +71,10 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
         p.punch = dataclasses.replace(
             p.punch, min_significance=(sp.punch_min_significance
                                        if sp.punch_min_significance > 0 else None))
+    if sp.punch_footprint is not None:
+        p.punch = dataclasses.replace(p.punch, punch_footprint=sp.punch_footprint)
+    if sp.punch_profile_n_sigma is not None:
+        p.punch = dataclasses.replace(p.punch, profile_n_sigma=sp.punch_profile_n_sigma)
     if sp.punch_search_n_mad is not None:
         p.punch = dataclasses.replace(p.punch, search_n_mad=sp.punch_search_n_mad)
     if sp.punch_mode is not None:

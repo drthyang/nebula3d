@@ -59,6 +59,13 @@ Env overrides:
                  window's robust scatter, for volumes without real errors)
     DETECT_WINDOW_Q
                  detection window in Å⁻¹ (blank = 0.2 r.l.u. on every axis)
+    PUNCH_FOOTPRINT
+                 "profile" (presets): each peak punched as far as its tail,
+                 predicted from the data's own stacked Bragg profile, stays above
+                 PROFILE_N_SIGMA × the local noise | "ellipsoid" (the fitted
+                 ellipsoid scaled by the cube root of the intensity; bare default)
+    PROFILE_N_SIGMA
+                 noise level the profile-matched punch stops at (presets: 0.5)
     SEARCH_NMAD  search-mode outlier threshold in MADs (default 6.0)
     SEARCH_MIN_I search-mode absolute intensity floor (default 2.0)
     SEARCH_PROM  search-mode local 3x3x3 prominence floor (default 0.0)
@@ -110,6 +117,9 @@ PRESETS = {
         # Judge every detection against its own error: keeps the noisy
         # high-|Q| coverage edge from being punched as peaks.
         "MIN_SIGNIFICANCE": "5",
+        # Punch each peak as far as its own tail (c-axis mosaic along θ̂).
+        "PUNCH_FOOTPRINT": "profile",
+        "PROFILE_N_SIGMA": "0.5",
         "SEARCH_NMAD": "4.0",
         # Lowered floor/prominence to capture small Bragg (validated in 3D to
         # preserve the H=0.333/0.667 magnetic diffuse).
@@ -138,6 +148,8 @@ PRESETS = {
         "INTEGER_H_GUARD": "0.12",
         "INTEGER_LOCAL_NMAD": "8",
         "MIN_SIGNIFICANCE": "5",
+        "PUNCH_FOOTPRINT": "profile",
+        "PROFILE_N_SIGMA": "0.5",
         "SEARCH_NMAD": "4.0",
         "SEARCH_MIN_I": "0.8",
         "SEARCH_PROM": "0.8",
@@ -224,6 +236,8 @@ min_significance = None if min_significance_env == "" else float(min_significanc
 significance_noise = env_default("SIGNIFICANCE_NOISE", "sigma")
 detect_window_q_env = env_default("DETECT_WINDOW_Q", "")
 detect_window_q = None if detect_window_q_env == "" else float(detect_window_q_env)
+punch_footprint = env_default("PUNCH_FOOTPRINT", "ellipsoid")
+profile_n_sigma = float(env_default("PROFILE_N_SIGMA", "0.5"))
 margin = float(env_default("MARGIN", "0.03"))
 max_scale = float(env_default("MAX_SCALE", "3.0"))
 phi_tail_hkl = float(env_default("PHI_TAIL_HKL", "0.0"))
@@ -262,6 +276,7 @@ remover = BraggRemover(
     integer_local_min_prominence=integer_local_min_prom,
     min_significance=min_significance, significance_noise=significance_noise,
     detect_window_q=detect_window_q,
+    punch_footprint=punch_footprint, profile_n_sigma=profile_n_sigma,
     intensity_scale=True, max_radius_scale=max_scale, margin=margin,
     punch_incident_beam=True, incident_beam_radii=incident_r_hkl,
     incident_beam_margin=incident_margin,
@@ -283,6 +298,7 @@ print(f"preset={preset_name or 'none'}  mode={mode}  spherical_radii={spherical_
       f"integer_local_nmad={integer_local_nmad}  "
       f"min_significance={min_significance} ({significance_noise})  "
       f"detect_window_q={detect_window_q}  "
+      f"footprint={punch_footprint} (k={profile_n_sigma})  "
       f"search_nmad={search_nmad}  search_min_I={search_min_i}  "
       f"search_prom={search_prom}  search_exclude_h={search_exclude_h}  "
       f"search_exclude_fractions={search_exclude_h_fractions}  "

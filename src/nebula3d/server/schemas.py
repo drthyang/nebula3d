@@ -129,6 +129,10 @@ class StageParamsIn(BaseModel):
     punch_min_intensity: float | None = None
     # Noise-aware detection gate (standard errors); 0 or below turns it off.
     punch_min_significance: float | None = None
+    # "profile" (profile-matched punch) | "ellipsoid"; and the noise level (σ)
+    # the profile-matched punch stops at.
+    punch_footprint: str | None = None
+    punch_profile_n_sigma: float | None = None
     punch_search_n_mad: float | None = None
     punch_mode: str | None = None
     punch_margin: float | None = None
