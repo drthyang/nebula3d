@@ -36,8 +36,8 @@
   45 K (shipped code): back-FFT r 0.99898 → 0.99904, nrms 0.0415 → 0.0410,
   H = 0 plane 0.99330 → 0.99721.
 
-  100 K, gate alone with main's punch sizes: H = 0 plane 0.98735 → 0.99261,
-  overall r 0.99837 → 0.99838.
+  100 K (shipped code): back-FFT r 0.99835 → 0.99839, nrms 0.0536 → 0.0533,
+  H = 0 plane 0.98754 → 0.99375.
 
   No change in the tails left past the brightest holes at any of the three.
 
