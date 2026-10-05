@@ -288,6 +288,10 @@ def bragg_profile_from_records(
                 float(peak.local_background)
                 if np.isfinite(peak.local_background) else None
             ),
+            "significance": (
+                float(peak.significance)
+                if np.isfinite(peak.significance) else None
+            ),
             "width_hkl": widths_hkl,
             "width_q": widths_q,
             "measured_width_hkl": measured_width_hkl,
@@ -372,6 +376,17 @@ class PunchParams:
     integer_h_guard_hkl: float | None = 0.12
     integer_local_prominence_n_mad: float | None = 8.0
     integer_local_min_prominence: float = 0.0
+    # Noise-aware gate: every detection (integer node or search summit) must
+    # carry an integrated excess of at least this many standard errors over
+    # half the resolution ellipsoid, judged against the volume's sigma.  Without
+    # it the search pass punches single-voxel noise wherever the noise exceeds
+    # what its |Q| shell implies (the high-|Q| coverage edge).  None = off.
+    min_significance: float | None = 5.0
+    significance_aperture: float = 0.5
+    significance_noise: str = "sigma"
+    # Detection window in Å⁻¹ (None = the BraggRemover default, 0.2 r.l.u. on
+    # every axis).  Off: on 22K it adds ~1,200 integer nodes, unvalidated.
+    detect_window_q: float | None = None
     search_n_mad: float = 4.0
     search_min_intensity: float = 0.8
     search_min_prominence: float = 0.8
@@ -997,13 +1012,9 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
 # ---------------------------------------------------------------------------
 # Stage 2 — Bragg / satellite punch
 # ---------------------------------------------------------------------------
-def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
-                progress: ProgressFn | None = None) -> HKLVolume:
-    """Detect and punch Bragg/satellite peaks; return the masked volume."""
-    p = params or PunchParams()
-    _emit(progress, "punch", "start", None, f"Bragg punch (mode={p.mode})")
-
-    remover = BraggRemover(
+def bragg_remover(p: PunchParams) -> BraggRemover:
+    """The :class:`BraggRemover` the punch stage runs for *p*."""
+    return BraggRemover(
         mode=p.mode, min_intensity=p.min_intensity,
         min_prominence=p.min_prominence,
         integer_n_mad=p.integer_n_mad, integer_q_step=p.integer_q_step,
@@ -1016,6 +1027,10 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         integer_h_guard_hkl=p.integer_h_guard_hkl,
         integer_local_prominence_n_mad=p.integer_local_prominence_n_mad,
         integer_local_min_prominence=p.integer_local_min_prominence,
+        min_significance=p.min_significance,
+        significance_aperture=p.significance_aperture,
+        significance_noise=p.significance_noise,
+        detect_window_q=p.detect_window_q,
         intensity_scale=True, max_radius_scale=p.max_radius_scale, margin=p.margin,
         punch_incident_beam=True, incident_beam_radii=p.incident_beam_radii,
         incident_beam_margin=p.incident_beam_margin,
@@ -1035,9 +1050,17 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         punch_q_radii=p.punch_q_radii,
         punch_spherical_radii=p.punch_spherical_radii,
     )
-    peak_records = remover._detect_peak_records(vol)  # noqa: SLF001 - avoid refitting
-    keep = remover._punch_centers(
-        vol, np.ones(vol.shape, dtype=bool), peak_records)  # noqa: SLF001
+
+
+def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
+                progress: ProgressFn | None = None) -> HKLVolume:
+    """Detect and punch Bragg/satellite peaks; return the masked volume."""
+    p = params or PunchParams()
+    _emit(progress, "punch", "start", None, f"Bragg punch (mode={p.mode})")
+    remover = bragg_remover(p)
+    peak_records, reference = remover._detect(vol)  # noqa: SLF001 - avoid refitting
+    keep = remover._punch_centers(  # noqa: SLF001
+        vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference)
     keep = remover._punch_incident_beam(vol, keep)  # noqa: SLF001
     profile = bragg_profile_from_records(vol, remover, peak_records)
     punched = vol.mask & np.isfinite(vol.data) & ~keep

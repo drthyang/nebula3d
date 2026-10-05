@@ -109,6 +109,9 @@ export interface BraggPeakWidth {
   q_abs: number;
   intensity: number | null;
   local_background: number | null;
+  // Integrated excess over the resolution aperture, in standard errors
+  // (absent in profiles written before the significance gate).
+  significance?: number | null;
   width_hkl: [number, number, number];
   width_q: [number, number, number];
   // Pad-free / floor-free measured peak widths from a local moment fit.
@@ -183,6 +186,8 @@ export interface StageParamsIn {
   rings_pooled_sectors?: number;
   rings_pooled_window_deg?: number;
   punch_min_intensity?: number;
+  // Noise-aware detection gate (standard errors); 0 turns it off.
+  punch_min_significance?: number;
   punch_search_n_mad?: number;
   punch_mode?: string;
   punch_margin?: number;
