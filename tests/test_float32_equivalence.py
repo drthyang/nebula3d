@@ -179,12 +179,13 @@ def test_flattened_volume_close(f32_vs_f64_runs):
 
 
 def test_delta_pdf_close(f32_vs_f64_runs):
-    import h5py
+    from nebula3d.io import load_delta_pdf
 
-    with h5py.File(f32_vs_f64_runs["float64"].delta_pdf, "r") as fh:
-        d64 = fh["data"][()]
-    with h5py.File(f32_vs_f64_runs["float32"].delta_pdf, "r") as fh:
-        d32 = fh["data"][()]
+    # float64 on disk (Mantid's LoadMD requires it); the recorded precision
+    # comes back with dtype=None
+    d64 = load_delta_pdf(f32_vs_f64_runs["float64"].delta_pdf).data
+    d32 = load_delta_pdf(f32_vs_f64_runs["float32"].delta_pdf).data
+    assert d64.dtype == np.float64
     assert d32.dtype == np.float32
     assert _nrms(d32, d64) < 1e-4
     scale = float(np.max(np.abs(d64))) or 1.0

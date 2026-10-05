@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+- **Every HDF5 output is now a Mantid MDHistoWorkspace NeXus file.** The stage
+  volumes (`*_ringremoved.h5`, `*_braggpunched.h5`, `*_backfilled.h5`,
+  `*_flattened.h5`, the web demo) and the 3D-ΔPDF (`*_delta_pdf.h5`,
+  `examples/_delta_pdf.h5`, `*_3dpdf.h5`, the consistency viewer's saved
+  band) were written in two ad-hoc layouts that only NEBULA3D read. They now
+  use the layout Mantid Workbench's `SaveMD` writes (version 2, copied from a
+  CORELLI file), so `LoadMD` and other NeXus tools open them, and the unit cell
+  sits in `experiment0/sample/oriented_lattice` (UB/2π and a, b, c, α, β, γ).
+  File names and extensions are unchanged. Also:
+  - arrays keep their stored order: a volume `(nh, nk, nl)` is D2 = `[H,0,0]`,
+    D1 = `[0,K,0]`, D0 = `[0,0,L]`; a ΔPDF `(na, nb, nc)` is D2 = x, D1 = y,
+    D0 = z in Å (frame General Frame), with the bin edges LoadMD expects;
+  - signal, σ² and `num_events` are float64 and the mask int8 (1 = masked), as
+    LoadMD requires. A float32 run converts slab by slab (no float64 copy of
+    the volume) and records its precision, which `dtype=None` restores. Files
+    of a float32 run grow by ~1 B/voxel (~7 against ~6 compressed); float64
+    files are about the same size;
+  - the ΔPDF provenance (`q_max`, `apodization`, `source_file`,
+    `transform_config`, …) is stored as run logs, so it shows in Workbench's
+    Sample Logs;
+  - what Mantid does not know goes in `MDHistoWorkspace/nebula3d`: the exact
+    bin centres and UB, the precision, the instrument text and the punch
+    record (`punched`, int8). A file NEBULA3D wrote loads back losslessly,
+    values under the mask included, so a pipeline resumed from disk equals one
+    run in memory; a raw Mantid file still has its masked voxels zeroed;
+  - one reader for ΔPDF files, `nebula3d.io.load_delta_pdf`, used by the
+    server, the stale-ΔPDF guard and every viewer; the writer is
+    `nebula3d.io.save_delta_pdf` (and `nebula3d.io.save_mantid_nxs` for
+    volumes). `pipeline.write_cell_attrs` is gone;
+  - older files still load: `/entry/...` volumes (also the NeXus Viewer's
+    hand-off), `/entry/punched`, and root-layout ΔPDFs with `lat_*` attributes.
+  An identity UB (unknown) writes no oriented lattice, and neither does a
+  left-handed one, which Mantid refuses; NEBULA3D keeps it in its own group.
+
 - **New default ring model, `pooled`: stack-pooled sector profiles.** The
   per-plane `patched` model left a visible residual along every powder ring.
   On the TbTi3Bi4 CORELLI volumes a ring's |Q| position and width wander with

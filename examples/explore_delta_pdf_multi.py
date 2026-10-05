@@ -6,8 +6,8 @@ Shows one row per DeltaPDF file × three lattice-plane real-space cuts:
     col 1: x_H – z_L  (at y_K = cut)   drawn at β
     col 2: y_K – z_L  (at x_H = cut)   drawn at α
 
-Each section is drawn at its file's real cell angle (``lat_alpha/beta/gamma``
-attrs, 90° if absent), so on-screen distances are true Å.
+Each section is drawn at its file's real cell angle (its unit cell's α/β/γ,
+90° if absent), so on-screen distances are true Å.
 
 Each column (plane) uses its own colour scale: p<PERCENTILE> of |DeltaPDF| at
 r > 3 Å in that plane's central slice, pooled across all loaded files. Related
@@ -36,13 +36,13 @@ import matplotlib
 SMOKE = bool(int(os.environ.get("SMOKE", "0")))
 matplotlib.use("Agg" if SMOKE else "macosx")
 
-import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.widgets import CheckButtons, Slider
 
 from nebula3d.analysis.delta_pdf import real_space_radius
-from nebula3d.visualization.slices import draw_unit_cell, oblique_transform, read_cell_attrs
+from nebula3d.io import load_delta_pdf
+from nebula3d.visualization.slices import draw_unit_cell, oblique_transform
 
 HERE = Path(__file__).resolve().parent
 PROC = HERE.parent / "data" / "processed"
@@ -87,13 +87,10 @@ for label, p in items:
         sys.exit(f"DeltaPDF file does not exist for {label}: {p}")
     labels.append(label)
     print(f"loading {label}: {p.name} ...", flush=True)
-    with h5py.File(p, "r") as fh:
-        data = fh["data"][...]
-        x = fh["x_axis"][...]
-        y = fh["y_axis"][...]
-        z = fh["z_axis"][...]
-        apod = str(fh.attrs.get("apodization", "?"))
-        lat = read_cell_attrs(fh.attrs)  # (a, b, c, α, β, γ) or None
+    pdf = load_delta_pdf(p)  # either file layout
+    data, x, y, z = pdf.data, pdf.x_axis, pdf.y_axis, pdf.z_axis
+    apod = str(pdf.logs.get("apodization", "?"))
+    lat = pdf.cell  # (a, b, c, α, β, γ) or None
     alpha, beta, gamma = lat[3:] if lat is not None else (90.0, 90.0, 90.0)
     angles = [gamma, beta, alpha]  # per column: x_H–y_K, x_H–z_L, y_K–z_L
     # Crop of the native (oblique) axes that fills the ±RMAX display square: a

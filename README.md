@@ -107,8 +107,11 @@ Place a Mantid-exported NeXus file in `data/raw/`. Either variant works:
 
 Here `cc` means CORELLI correlation chopper, and `sub_bkg` means the empty-can
 background has already been subtracted. **Correlation-chopper (`cc`) and
-properly symmetrised data is recommended.** You can also load nebula3d HDF5
-files written by the package itself.
+properly symmetrised data is recommended.** You can also load the files the
+package writes. Every `.h5` it writes — the stage volumes and the 3D-ΔPDF — is a
+Mantid MDHistoWorkspace NeXus file (the `SaveMD` layout), so Mantid Workbench's
+`LoadMD` opens it, with the unit cell in the oriented lattice; files from older
+versions (`/entry/...`) still load. See [docs/README.md](docs/README.md#file-format).
 
 Bin the volume on the crystal's own H, K, L axes (Mantid projections
 `u=[1,0,0]`, `v=[0,1,0]`, `w=[0,0,1]`, in any order). Non-orthogonal cells such
@@ -340,7 +343,7 @@ Key pages:
 ```text
 src/nebula3d/
 ├── core.py              HKLVolume: 3D array, HKL axes, mask, sigma, UB matrix
-├── io/                  Mantid NeXus, nebula3d HDF5, and ASCII HKL I/O
+├── io/                  Mantid NeXus (read/write), legacy HDF5, ΔPDF files, ASCII HKL
 ├── preprocessing/       powder-ring models, background handling, sampling
 ├── analysis/            Bragg punch/fill and 3D-ΔPDF
 ├── inpainting/          symmetry, TV, RBF, and biharmonic fallbacks

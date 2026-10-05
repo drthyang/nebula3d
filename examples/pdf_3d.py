@@ -13,7 +13,7 @@ subtraction (a ΔPDF axis-cross fix that removes real low-frequency content) is
 **off** by default.
 
 Saved outputs (next to the input .h5 unless OUT_FILE is set; PNGs in this dir):
-    <stem>_3dpdf.h5     3D-PDF volume + axes (viewer-compatible schema)
+    <stem>_3dpdf.h5     3D-PDF volume + axes (the viewers' Mantid MDHistoWorkspace layout)
     _3dpdf_hk0.png      L=0 plane     _3dpdf_h0l.png  K=0     _3dpdf_0kl.png  H=0
 
 Run::
@@ -42,13 +42,12 @@ import os
 import sys
 from pathlib import Path
 
-import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 
 import nebula3d
 from nebula3d.analysis import compute_delta_pdf
-from nebula3d.pipeline import write_cell_attrs
+from nebula3d.io import save_delta_pdf
 
 # ------------------------------------------------------------------
 # locate input (the ring-removed, NON-punched volume — Bragg still present)
@@ -141,22 +140,22 @@ transform_config = ";".join((
 ))
 
 # ------------------------------------------------------------------
-# save (same HDF5 schema as delta_pdf.py, so explore_delta_pdf_ortho.py works)
+# save (same file layout as delta_pdf.py, so explore_delta_pdf_ortho.py works;
+# the source UB/cell gives unit-cell gridlines + each section's real angle)
 # ------------------------------------------------------------------
 _default_out = proc_path.with_name(proc_path.stem + "_3dpdf.h5")
 out_h5 = Path(os.environ.get("OUT_FILE", str(_default_out)))
-with h5py.File(out_h5, "w") as fh:
-    fh.create_dataset("data", data=pdf.data, compression="gzip", compression_opts=4)
-    fh.create_dataset("x_axis", data=pdf.x_axis)
-    fh.create_dataset("y_axis", data=pdf.y_axis)
-    fh.create_dataset("z_axis", data=pdf.z_axis)
-    fh.attrs["q_max"] = pdf.q_max
-    fh.attrs["apodization"] = pdf.apodization
-    fh.attrs["source_file"] = proc_path.name
-    fh.attrs["kind"] = "3D-PDF (total scattering; Bragg kept)"
-    fh.attrs["transform_config"] = transform_config
-    # direct cell (Å, degrees): unit-cell gridlines + each section's real angle
-    write_cell_attrs(fh, vol.ub_matrix)
+save_delta_pdf(
+    out_h5, pdf.data, pdf.x_axis, pdf.y_axis, pdf.z_axis,
+    ub_matrix=vol.ub_matrix,
+    logs={
+        "q_max": float(pdf.q_max),
+        "apodization": pdf.apodization,
+        "source_file": proc_path.name,
+        "kind": "3D-PDF (total scattering; Bragg kept)",
+        "transform_config": transform_config,
+    },
+)
 print(f"saved {out_h5.name}  ({out_h5.stat().st_size / 1e6:.0f} MB)", flush=True)
 
 # ------------------------------------------------------------------

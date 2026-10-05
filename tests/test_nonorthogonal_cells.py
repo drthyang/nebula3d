@@ -302,9 +302,14 @@ def test_delta_pdf_file_stores_the_cell_and_reads_back(tmp_path):
     vol, dpdf = _hex_dpdf()
     path = tmp_path / "hex_delta_pdf.h5"
     write_delta_pdf_h5(dpdf, vol, DeltaPdfParams(), source_name="synthetic", out_path=path)
+    assert read_cell_attrs(path) == pytest.approx((8.0, 8.0, 10.0, 90.0, 90.0, 120.0))
+    # the cell sits in the oriented lattice, where Mantid and the NeXus Viewer read it
     with h5py.File(path, "r") as fh:
-        assert read_cell_attrs(fh.attrs) == pytest.approx((8.0, 8.0, 10.0, 90.0, 90.0, 120.0))
-    # files written before the angles were stored read as 90°
+        lattice = fh["MDHistoWorkspace/experiment0/sample/oriented_lattice"]
+        assert float(lattice["unit_cell_gamma"][0]) == pytest.approx(120.0)
+        np.testing.assert_allclose(lattice["orientation_matrix"][()] * 2 * np.pi,
+                                   vol.ub_matrix)
+    # legacy files: lat_* attrs; written before the angles were stored, 90°
     assert read_cell_attrs({"lat_a": 4.0, "lat_b": 5.0, "lat_c": 6.0}) == (
         4.0, 5.0, 6.0, 90.0, 90.0, 90.0)
     assert read_cell_attrs({}) is None

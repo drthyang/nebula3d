@@ -9,7 +9,8 @@ Saved outputs (in the same directory as this script):
     _delta_pdf_0kl.png     — h=0 plane
     _delta_pdf_linecuts.png — 1-D line cuts (|r|>2 Å)
     _delta_pdf_radial.png  — radial RMS profile
-    _delta_pdf.h5          — saved DeltaPDF arrays for future inspection
+    _delta_pdf.h5          — saved DeltaPDF (Mantid MDHistoWorkspace layout:
+                             LoadMD in Mantid Workbench opens it)
 
 Run::
 
@@ -51,7 +52,7 @@ import numpy as np
 
 import nebula3d
 from nebula3d.analysis import compute_delta_pdf
-from nebula3d.pipeline import write_cell_attrs
+from nebula3d.io import save_delta_pdf
 
 # ------------------------------------------------------------------
 # locate backfilled file
@@ -154,27 +155,26 @@ transform_config = ";".join(
     )
 )
 
-# Save DeltaPDF to HDF5 so it can be reloaded without recomputing
-import h5py
-
+# Save the DeltaPDF so it can be reloaded without recomputing (the viewers'
+# file layout: provenance as run logs, the source UB/cell for unit-cell
+# gridlines and each section's real angle)
 _default_out = Path(__file__).parent / "_delta_pdf.h5"
 out_h5 = Path(os.environ.get("OUT_FILE", str(_default_out)))
-with h5py.File(out_h5, "w") as fh:
-    fh.create_dataset("data", data=dpdf.data, compression="gzip", compression_opts=4)
-    fh.create_dataset("x_axis", data=dpdf.x_axis)
-    fh.create_dataset("y_axis", data=dpdf.y_axis)
-    fh.create_dataset("z_axis", data=dpdf.z_axis)
-    fh.attrs["q_max"]       = dpdf.q_max
-    fh.attrs["apodization"] = dpdf.apodization
-    fh.attrs["source_file"] = proc_path.name
-    fh.attrs["crop_hkl"] = _param_string(crop_hkl)
-    fh.attrs["subtract_smooth_bg"] = _param_string(subtract_bg)
-    fh.attrs["gaussian_sigma"] = gaussian_sigma
-    fh.attrs["zero_pad"] = int(zero_pad)
-    fh.attrs["subtract_mean"] = int(subtract_mean)
-    fh.attrs["transform_config"] = transform_config
-    # direct cell (Å, degrees): unit-cell gridlines + each section's real angle
-    write_cell_attrs(fh, vol.ub_matrix)
+save_delta_pdf(
+    out_h5, dpdf.data, dpdf.x_axis, dpdf.y_axis, dpdf.z_axis,
+    ub_matrix=vol.ub_matrix,
+    logs={
+        "q_max": float(dpdf.q_max),
+        "apodization": dpdf.apodization,
+        "source_file": proc_path.name,
+        "crop_hkl": _param_string(crop_hkl),
+        "subtract_smooth_bg": _param_string(subtract_bg),
+        "gaussian_sigma": float(gaussian_sigma),
+        "zero_pad": int(zero_pad),
+        "subtract_mean": int(subtract_mean),
+        "transform_config": transform_config,
+    },
+)
 print(f"saved {out_h5.name}  ({out_h5.stat().st_size/1e6:.0f} MB)", flush=True)
 
 # Colour scale: set by the p99 of |DeltaPDF| at r>3 Å to avoid the near-origin
