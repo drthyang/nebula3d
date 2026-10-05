@@ -313,6 +313,21 @@ button {
   padding: 2px 6px;
   border-radius: 999px;
 }
+:is(.sidebar-foot, .main-foot) .foot-links {
+  font-size: 11px;
+  white-space: nowrap;
+}
+:is(.sidebar-foot, .main-foot) .foot-links .sep {
+  margin: 0 6px;
+}
+:is(.sidebar-foot, .main-foot) .foot-links a {
+  color: var(--text-2);
+  text-decoration: none;
+}
+:is(.sidebar-foot, .main-foot) .foot-links a:hover {
+  color: var(--accent-hi);
+  text-decoration: underline;
+}
 :is(.sidebar-foot, .main-foot) .copyright {
   font-size: 10.5px;
   color: var(--text-3);
