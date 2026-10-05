@@ -149,8 +149,10 @@ base `/`).
 `nebula3d.demo.demo_volume` (called from `webbridge.make_demo_input`). It is
 named `synthetic_rocksalt` so it can never pass for measured data. The volume is
 a simulated rock-salt-type crystal (cubic, a = 4.2 Å, FCC lattice) on a 161³
-grid over ±4 r.l.u. (step 0.05 r.l.u. = 0.075 Å⁻¹, 4.2 M voxels), stored
-float32. The full chain runs in about 5 s in the browser (Apple-silicon Mac,
+grid over ±4 r.l.u. (step 0.05 r.l.u. = 0.075 Å⁻¹, 4.2 M voxels), generated
+float32. Its file, like every one NEBULA3D writes, is the Mantid layout, float64
+on disk (~7 B/voxel compressed, against ~6 for the former float32 file). The
+full chain runs in about 5 s in the browser (Apple-silicon Mac,
 WebGPU). Generating it peaks at `data` + `sigma` plus one slab (~76 MB; the
 noise is drawn one H plane at a time, in place), below the ring stage's
 ~195 MB, so the demo never sets the WASM heap's high-water mark. Every stage
@@ -179,8 +181,9 @@ The [NeXus Viewer](https://drthyang.github.io/neutron-nexus-viewer/) symmetrizes
 and masks Mantid volumes, which this pipeline expects as input. Its **Open in
 NEBULA3D** button opens this app in a new tab as
 `?import=nexus-viewer&id=<uuid>&from=<viewer origin>`, builds the volume as a
-nebula3d HDF5 file (`/entry/{data, mask, h_axis, k_axis, l_axis, ub_matrix}`,
-padded symmetric about Q = 0) and sends it:
+nebula3d HDF5 file in the legacy layout (`/entry/{data, mask, h_axis, k_axis,
+l_axis, ub_matrix}`, padded symmetric about Q = 0; it still loads, while
+everything this app writes is a Mantid MDHistoWorkspace file) and sends it:
 
 1. this app → viewer: `nebula3d-import-ready`, repeated each second until the file arrives;
 2. viewer → this app, while it builds the file: `nebula3d-import-progress` with a stage

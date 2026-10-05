@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import json
 
-import h5py
 import numpy as np
 import pytest
 
 import nebula3d
 from nebula3d.demo import COMPONENTS, DemoModel, demo_volume
+from nebula3d.io import load_delta_pdf
 from nebula3d.pipeline import PipelineParams, pipeline_paths, run_pipeline
 
 
@@ -114,9 +114,8 @@ def test_pipeline_punches_only_fcc_nodes(demo_run):
 
 
 def test_pipeline_recovers_planted_sro_in_delta_pdf(demo_run):
-    with h5py.File(demo_run.delta_pdf, "r") as fh:
-        d = fh["data"][()]
-        x = fh["x_axis"][()]
+    pdf = load_delta_pdf(demo_run.delta_pdf)
+    d, x = pdf.data, pdf.x_axis
     a = DemoModel().a
 
     def at(v):
