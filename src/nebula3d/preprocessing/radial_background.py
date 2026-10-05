@@ -763,6 +763,7 @@ def confirm_ring_shells_across_h(
     profile_method: str = "median",
     min_voxels_per_bin: int = 8,
     ring_width: float = 0.24,
+    min_snr: float | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Detect the powder-ring |Q| shells that are present *across the stack axis*.
 
@@ -785,7 +786,8 @@ def confirm_ring_shells_across_h(
 
     The historical function name says "across_h", but the implementation follows
     ``plane``: ``"0kl"`` stacks across H, ``"h0l"`` stacks across K, and
-    ``"hk0"`` stacks across L.
+    ``"hk0"`` stacks across L.  ``min_snr`` adds a noise floor to the relative
+    6 %-of-the-strongest-ring cut (see :func:`_detect_rings`).
     """
     stack_axis = {"0kl": 0, "h0l": 1, "hk0": 2}[plane]
 
@@ -814,6 +816,26 @@ def confirm_ring_shells_across_h(
         prof_all[ip] = prof
         samp_all[ip] = cnt
 
+    return _confirm_shells_from_plane_profiles(
+        q_grid, prof_all, samp_all, q_step, ring_width, min_voxels_per_bin, min_snr)
+
+
+def _confirm_shells_from_plane_profiles(
+    q_grid: NDArray,
+    prof_all: NDArray,
+    samp_all: NDArray,
+    q_step: float,
+    ring_width: float,
+    min_voxels_per_bin: int,
+    min_snr: float | None = None,
+    rel_prominence: float = 0.06,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    """The cross-stack half of :func:`confirm_ring_shells_across_h`.
+
+    ``prof_all`` / ``samp_all`` are (planes, bins) all-azimuth robust radial
+    profiles and their voxel counts, one row per stack plane.
+    """
+    n_q = q_grid.size
     # Pool across planes per |Q| bin, using only planes that actually sample it.
     sampled = samp_all >= min_voxels_per_bin
     n_sampled = sampled.sum(axis=0).astype(np.float64)
@@ -822,7 +844,8 @@ def confirm_ring_shells_across_h(
         if n_sampled[b] > 0:
             pooled[b] = np.nanmedian(prof_all[sampled[:, b], b])
 
-    centers, fwhm = _detect_rings(q_grid, pooled, q_step, ring_width, counts=n_sampled)
+    centers, fwhm = _detect_rings(q_grid, pooled, q_step, ring_width, counts=n_sampled,
+                                  min_snr=min_snr, rel_prominence=rel_prominence)
     if centers.size == 0:
         empty = np.array([])
         return empty, empty, empty
@@ -1301,6 +1324,8 @@ def _detect_rings(
     q_step: float,
     base_width: float,
     counts: NDArray | None = None,
+    min_snr: float | None = None,
+    rel_prominence: float = 0.06,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Detect powder rings in a pooled radial profile.
 
@@ -1308,6 +1333,15 @@ def _detect_rings(
     detected ring, sorted by |Q|.  A ring is a *narrow* positive peak (FWHM ≤
     ``base_width``) above the SNIP baseline; broad bumps are diffuse structure
     and are rejected.  Empty arrays are returned when no rings are found.
+
+    A peak must rise ``rel_prominence`` (6 %) of the profile's largest excess.
+    That relative cut alone admits noise when there is no ring at all, and
+    drops weak but real rings when one ring is very strong (on the 22 K
+    TbTi3Bi4 volume the Al 440 and 533 lines at 8.81 and 10.21 Å⁻¹ sit at 5–6 %
+    of the 2.69 Å⁻¹ line yet ~10× the profile noise).  ``min_snr`` adds a noise
+    floor: the peak must also rise ``min_snr`` × the profile's robust noise (the
+    MAD of its bin-to-bin differences, /√2).  ``rel_prominence=0`` with
+    ``min_snr`` leaves the noise cut alone.
     """
     from scipy.signal import find_peaks, peak_widths
 
@@ -1326,7 +1360,10 @@ def _detect_rings(
     exc = np.maximum(0.0, g - rough)
     if not np.any(exc > 0):
         return empty
-    prom = 0.06 * float(np.max(exc))
+    prom = rel_prominence * float(np.max(exc))
+    if min_snr is not None:
+        noise = 1.4826 * float(np.median(np.abs(np.diff(g - rough)))) / np.sqrt(2.0)
+        prom = max(prom, float(min_snr) * noise)
     min_sep = max(1, int(round(0.05 / q_step)))
     peaks, _ = find_peaks(exc, prominence=max(prom, 1e-9), distance=min_sep)
     if peaks.size == 0:
@@ -1395,6 +1432,8 @@ def _snip_baseline(prof: NDArray, n_iter: int | NDArray) -> NDArray[np.float64]:
 
     For i = 1 … n_iter, each INTERIOR bin b (i ≤ b < n−i) is clipped to the
     midpoint of base[b−i] and base[b+i].  Edge bins are never modified.
+    ``prof`` may be N-D: the profile runs along the last axis and every leading
+    row is clipped independently (identical to one call per row).
 
     Using the *average* (not the minimum as in morphological opening) makes the
     algorithm slope-aware: for a purely linear background the midpoint equals
@@ -1409,7 +1448,7 @@ def _snip_baseline(prof: NDArray, n_iter: int | NDArray) -> NDArray[np.float64]:
     (narrow rings don't reach into neighbouring diffuse; broad rings are fully
     captured).
     """
-    n = len(prof)
+    n = prof.shape[-1]
     base = prof.astype(np.float64).copy()
     w = np.asarray(n_iter)
     if w.ndim == 0:
@@ -1421,13 +1460,14 @@ def _snip_baseline(prof: NDArray, n_iter: int | NDArray) -> NDArray[np.float64]:
     for i in range(1, max_iter + 1):
         if 2 * i >= n:
             break
-        mid = 0.5 * (base[: n - 2 * i] + base[2 * i :])   # interior bins i…n-i-1
-        clipped = np.minimum(base[i : n - i], mid)
+        # interior bins i…n-i-1
+        mid = 0.5 * (base[..., : n - 2 * i] + base[..., 2 * i :])
+        clipped = np.minimum(base[..., i : n - i], mid)
         if per_bin is None:
-            base[i : n - i] = clipped
+            base[..., i : n - i] = clipped
         else:
             active = per_bin[i : n - i] >= i              # this bin still clipping
-            base[i : n - i] = np.where(active, clipped, base[i : n - i])
+            base[..., i : n - i] = np.where(active, clipped, base[..., i : n - i])
     return base
 
 

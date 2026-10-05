@@ -48,8 +48,12 @@ __all__ = [
 class RingParams:
     """Powder-ring removal.
 
-    ``ring_model='global_v2'`` is the sample-only, coordinate-independent 3D
-    fitter. ``'patched'`` and ``'parametric'`` retain the legacy per-slice paths.
+    ``ring_model='pooled'`` is the stack-pooled sector model
+    (:func:`~nebula3d.preprocessing.fit_pooled_rings`): non-parametric radial
+    profiles in small solid-angle cells pooled across neighbouring planes, which
+    follows rings whose |Q| position and width wander with direction.
+    ``'global_v2'`` is the sample-only, coordinate-independent 3D fitter.
+    ``'patched'`` and ``'parametric'`` retain the legacy per-slice paths.
     """
 
     q_min: float = 1.5
@@ -63,10 +67,11 @@ class RingParams:
     texture_ridge: float = 0.08
     ring_amp_cap: float = 3.0       # per-shell amplitude ceiling × cross-stack norm
     confirm_rings: bool = True      # confirm real |Q| shells across the stack axis
-    # "global_v2" (sample-only global 3D shells) | "patched" (legacy
-    # non-parametric per-patch) | "parametric" (legacy separable Ring(|Q|) ×
-    # per-shell Fourier texture).
-    ring_model: str = "patched"
+    # "pooled" (stack-pooled sector profiles; default) | "global_v2"
+    # (sample-only global 3D shells) | "patched" (per-plane non-parametric
+    # per-patch, the default before 2026-10) | "parametric" (separable
+    # Ring(|Q|) × per-shell Fourier texture).
+    ring_model: str = "pooled"
     ring_width: float = 0.24        # parametric: ring width / rolling window (Å⁻¹)
     ring_eta0: float = 0.5          # parametric peaks: initial pseudo-Voigt Lorentzian frac
     # parametric radial model: "rolling" (continuous Ring(|Q|), thick window swept
@@ -81,6 +86,13 @@ class RingParams:
     global_confidence_z: float = 1.0
     global_angular_lmax: int = 4
     global_min_snr: float = 5.0
+    # Stack-pooled sector model ("pooled"); ring_width is its maximum ring FWHM.
+    pooled_sectors: int = 72          # azimuthal sectors (5° each)
+    pooled_window_deg: float = 5.0    # stack pooling half-width on the ring sphere
+    pooled_neighbor_sectors: int = 1  # ± sectors pooled with each sector
+    pooled_envelope_scale: float = 1.5  # shell envelope half-width = × FWHM
+    pooled_amp_cap: float = 8.0       # per-shell ceiling × across-stack amplitude
+    pooled_min_snr: float = 6.0       # shell detection threshold (profile noise σ)
 
 
 @dataclass(frozen=True)

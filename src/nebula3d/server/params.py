@@ -60,6 +60,11 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
     if sp.rings_global_min_snr is not None:
         p.rings = dataclasses.replace(
             p.rings, global_min_snr=sp.rings_global_min_snr)
+    if sp.rings_pooled_sectors is not None:
+        p.rings = dataclasses.replace(p.rings, pooled_sectors=sp.rings_pooled_sectors)
+    if sp.rings_pooled_window_deg is not None:
+        p.rings = dataclasses.replace(
+            p.rings, pooled_window_deg=sp.rings_pooled_window_deg)
     if sp.punch_min_intensity is not None:
         p.punch = dataclasses.replace(p.punch, min_intensity=sp.punch_min_intensity)
     if sp.punch_search_n_mad is not None:

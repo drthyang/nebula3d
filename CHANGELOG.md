@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+- **New default ring model, `pooled`: stack-pooled sector profiles.** The
+  per-plane `patched` model left a visible residual along every powder ring.
+  On the TbTi3Bi4 CORELLI volumes a ring's |Q| position and width wander with
+  direction (the 4.39 Å⁻¹ Al line peaks anywhere from 4.30 to 4.51 Å⁻¹ at
+  H = 0), and `patched` smooths each |Q| bin's azimuthal pattern with six
+  damped harmonics, so it subtracts at the wrong |Q|: a bright arc beside a
+  dark one, invisible to the azimuthally averaged removal fraction.
+  `fit_pooled_rings` (`ring_model="pooled"`) assumes no radial line shape.
+  It reads each plane's median radial profile in 72 azimuthal sectors, pools
+  each one with its ±1 neighbouring sectors and the planes within ±5° on the
+  ring sphere by weighted median (Bragg peaks, which fill one sector over a
+  few planes, are outvoted), and subtracts the SNIP excess inside the
+  confirmed shells. Also:
+  - a close doublet (6.79/6.97 Å⁻¹) shares one SNIP window, instead of the
+    broad member being half left in the baseline;
+  - rings must clear the profile noise (≥ 6σ) as well as 6 % of the strongest
+    ring, and a weaker ring is admitted when it sits on an FCC-Al line (22 K:
+    the Al 440 and 533 lines at 8.81 and 10.21 Å⁻¹ were never subtracted);
+  - the shell envelope is 1.5 × FWHM wide and the amplitude cap 8×, both of
+    which clipped real ring before;
+  - on a coarse grid the pooling solid angle widens until it holds 12 voxels.
+
+  On 22 K, held-out ring residual (RMS, fraction of the raw ring) drops from
+  0.22 to 0.12 at 2.69 Å⁻¹, 0.41 → 0.23 at 5.17, 0.54 → 0.35 at the 6.9
+  doublet, 0.55 → 0.34 at 9.3, 0.88 → 0.61 at 9.87. Through the whole
+  pipeline the ΔPDF loses the concentric ring ripples: RMS at 3–10 Å is 0.91×
+  (22 K), 0.76× (45 K) and 0.76× (100 K) of before, with the back-FFT
+  consistency unchanged. Bragg-on-ring inflation is +17 % of the local ring
+  (`patched` +15 %); the subtraction is continuous along the stack axis; the
+  stage takes ~52 s serial on the 48 M-voxel volumes (`patched` ~45 s) and,
+  in low-memory mode, writes in place (~5 B/voxel peak). `ring_model="patched"`
+  restores the previous behaviour. The web Configure page gains "Pooled 3D
+  sectors" (sectors, stack window) as the default; the run request gains
+  `rings_pooled_sectors` and `rings_pooled_window_deg`.
+
 - **The Bragg punch now fits each peak's tilt, in Q.** Before this, the
   default pipeline fitted three radii along H, K, L, so no integer peak was
   tilted. The opt-in covariance fit did not follow the data either: it took

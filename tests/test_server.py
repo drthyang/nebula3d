@@ -514,8 +514,8 @@ def test_build_params_ring_overrides():
     assert overridden.rings.n_patches == 48
     assert overridden.rings.n_fourier == 10
     assert overridden.rings.slice_axis == "L"
-    # ring model defaults to the patched estimator; the parametric one is opt-in
-    assert defaults.rings.ring_model == "patched"
+    # ring model defaults to the stack-pooled sector model; the others are opt-in
+    assert defaults.rings.ring_model == "pooled"
     parametric = build_params(PipelineRunRequest(
         dataset_id="x",
         params=StageParamsIn(rings_model="parametric", rings_ring_width=0.3,
@@ -543,6 +543,14 @@ def test_build_params_ring_overrides():
     assert global_v2.rings.global_confidence_z == 1.5
     assert global_v2.rings.global_angular_lmax == 3
     assert global_v2.rings.global_min_snr == 7.0
+    pooled = build_params(PipelineRunRequest(
+        dataset_id="x",
+        params=StageParamsIn(rings_model="pooled", rings_pooled_sectors=48,
+                             rings_pooled_window_deg=7.5),
+    ))
+    assert pooled.rings.ring_model == "pooled"
+    assert pooled.rings.pooled_sectors == 48
+    assert pooled.rings.pooled_window_deg == 7.5
     # an unrelated stage keeps its default
     from nebula3d.pipeline import PunchParams
     assert overridden.punch.min_intensity == PunchParams().min_intensity
