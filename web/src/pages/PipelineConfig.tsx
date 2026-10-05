@@ -325,11 +325,36 @@ function RingEquation({
   model,
   nFourier,
   nPatches,
+  nSectors,
+  windowDeg,
 }: {
   model: string;
   nFourier: number;
   nPatches: number;
+  nSectors: number;
+  windowDeg: number;
 }) {
+  if (model === "pooled") {
+    return (
+      <div className="ring-eqn">
+        <div className="eq">
+          <i>I</i>
+          <sub>ring</sub>(|<i>Q</i>|,&nbsp;φ) = <span className="op">max</span>(0,&nbsp;
+          <i>P</i>
+          <sub>s</sub>(|<i>Q</i>|) − <span className="op">base</span>
+          <sub>s</sub>(|<i>Q</i>|))&nbsp;·&nbsp;<span className="op">env</span>(|<i>Q</i>|)
+        </div>
+        <div className="eq sub">
+          <i>P</i>
+          <sub>s</sub> = weighted <span className="op">median</span> of sector medians over
+          s&nbsp;±&nbsp;1 × planes within ±{windowDeg}° on the ring sphere
+        </div>
+        <div className="eq sub">
+          <i>s</i> = sector(φ),&nbsp;&nbsp;<i>s</i> = 1…{nSectors}
+        </div>
+      </div>
+    );
+  }
   if (model === "global_v2") {
     return (
       <div className="ring-eqn">
@@ -1148,6 +1173,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       ringGlobalConfidence: st.ringGlobalConfidence,
       ringGlobalLmax: st.ringGlobalLmax,
       ringGlobalMinSnr: st.ringGlobalMinSnr,
+      ringPooledSectors: st.ringPooledSectors,
+      ringPooledWindow: st.ringPooledWindow,
       punchMinI: st.punchMinI,
       punchMethod: st.punchMethod,
       punchMode: st.punchMode,
@@ -1184,6 +1211,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
   const vizPatches = clampInt(s.ringNPatches, 36, 4, 96);
   const vizFourier = clampInt(s.ringNFourier, 8, 0, 40);
   const vizRingWidth = clampFloat(s.ringWidth, 0.24, 0.02, 1.0);
+  const vizSectors = clampInt(s.ringPooledSectors, 72, 8, 144);
+  const vizWindow = clampFloat(s.ringPooledWindow, 5, 0.5, 30);
   const punchFrame = s.punchFrame === "q" ? "q" : "spherical";
   const sphRadii: [number, number, number] = [
     clampFloat(s.punchRho, 0.097, 0.005, 0.6),
@@ -1521,9 +1550,12 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   onToggle={(v) => patch({ ringsEnabled: v })}
                 >
                   <HelpTip>
-                    Global 3D infers powder shells directly from the sample volume
-                    without requiring an empty-environment subtraction. Legacy
-                    patched and parametric models remain available for comparison.
+                    Pooled reads each ring's radial profile in small solid-angle
+                    cells — azimuthal sectors pooled across neighbouring planes —
+                    so it follows rings whose |Q| position and width wander with
+                    direction. Global 3D infers powder shells with a fixed line
+                    shape and a spherical-harmonic texture. The per-plane patched
+                    and parametric models remain available for comparison.
                   </HelpTip>
                 </StageHead>
                 <div className="cfg-stage-grid">
@@ -1532,9 +1564,10 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     <Field label="Model">
                       <select
                         value={s.ringModel}
-                        title="Global 3D: sample-only spherical-shell inference with uncertainty. Patched/parametric: legacy plane-by-plane models."
+                        title="Pooled: per-sector radial profiles pooled across neighbouring planes (follows rings whose radius wanders with direction). Global 3D: sample-only spherical-shell inference with uncertainty. Patched/parametric: legacy plane-by-plane models."
                         onChange={(e) => patch({ ringModel: e.target.value })}
                       >
+                        <option value="pooled">Pooled 3D sectors</option>
                         <option value="global_v2">Global 3D (sample-only)</option>
                         <option value="patched">Patched (per-patch)</option>
                         <option value="parametric">Parametric (pseudo-Voigt)</option>
@@ -1544,7 +1577,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       <Field label="Slice axis">
                         <select
                           value={s.ringSliceAxis}
-                          title="Axis sliced over when fitting the legacy powder-ring models"
+                          title="Stack axis: the planes the per-plane models fit one by one, and that the pooled model pools across"
                           onChange={(e) => patch({ ringSliceAxis: e.target.value })}
                         >
                           <option value="H">H · fit 0kl planes</option>
@@ -1611,6 +1644,32 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         </Field>
                       </>
                     )}
+                    {s.ringModel === "pooled" && (
+                      <>
+                        <Field label="Sectors (n)">
+                          <input
+                            type="number"
+                            min="8"
+                            step="1"
+                            placeholder="72"
+                            value={s.ringPooledSectors}
+                            title="Azimuthal sectors each plane's radial profiles are read in (72 = 5° each)"
+                            onChange={(e) => patch({ ringPooledSectors: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Stack window (°)">
+                          <input
+                            type="number"
+                            min="0.5"
+                            step="0.5"
+                            placeholder="5"
+                            value={s.ringPooledWindow}
+                            title="Half-width, as an angle on the ring sphere, of the neighbouring planes pooled with each plane (the plane window widens with |Q|)"
+                            onChange={(e) => patch({ ringPooledWindow: e.target.value })}
+                          />
+                        </Field>
+                      </>
+                    )}
                     {s.ringModel === "parametric" && (
                       <>
                         <Field label="Radial mode">
@@ -1655,7 +1714,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         />
                       </Field>
                     )}
-                    {s.ringModel !== "global_v2" && (
+                    {(s.ringModel === "patched" || s.ringModel === "parametric") && (
                       <Field label="Fourier order">
                         <input
                           type="number"
@@ -1683,11 +1742,18 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                           radialMode={s.ringRadialMode}
                           ringWidth={vizRingWidth}
                         />
+                      ) : s.ringModel === "pooled" ? (
+                        <RingTextureViz nPatches={vizSectors} nFourier={24} />
                       ) : (
                         <RingTextureViz nPatches={vizPatches} nFourier={vizFourier} />
                       )}
                       <div className="ring-viz-cap">
-                        {s.ringModel === "global_v2" ? (
+                        {s.ringModel === "pooled" ? (
+                          <>
+                            pie = <b>{vizSectors}</b> sectors · pooled ±<b>{vizWindow}</b>° across
+                            planes
+                          </>
+                        ) : s.ringModel === "global_v2" ? (
                           <>
                             full 3D shell texture · spherical degree <b>{s.ringGlobalLmax}</b>
                           </>
@@ -1707,6 +1773,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       model={s.ringModel}
                       nFourier={vizFourier}
                       nPatches={vizPatches}
+                      nSectors={vizSectors}
+                      windowDeg={vizWindow}
                     />
                   </div>
                 </div>

@@ -21,7 +21,12 @@ from nebula3d.analysis import bragg_fill
 from nebula3d.analysis.bragg import BraggRemover
 from nebula3d.analysis.bragg_fill import backfill_bragg
 from nebula3d.core import HKLVolume
-from nebula3d.preprocessing import confirm_ring_shells_across_h, radial_flatten
+from nebula3d.preprocessing import (
+    PooledRingConfig,
+    confirm_ring_shells_across_h,
+    fit_pooled_rings,
+    radial_flatten,
+)
 from nebula3d.preprocessing.radial_background import (
     _offset_q_magnitude,
     _stack_plane_q_magnitude,
@@ -66,6 +71,22 @@ def test_ring_confirmation_computes_q_per_plane():
     _, peak = _traced_peak(confirm_ring_shells_across_h, vol, plane="0kl",
                            q_range=(1.0, q_hi), q_step=0.05)
     assert peak < 8 * vol.data.size  # was ~40 B/voxel: the full |Q| grid
+
+
+def test_pooled_ring_model_works_plane_by_plane(monkeypatch):
+    # |Q|, φ and the profiles are built one plane at a time; the sector profiles
+    # are (planes × sectors × bins), and in low-memory mode the output overwrites
+    # the input, so the output mask is the one volume-sized allocation.
+    monkeypatch.setenv("NEBULA3D_LOW_MEMORY", "1")
+    vol = _topaz_like(shape=(80, 128, 128))  # many planes, as on a real grid
+    q_hi = float(0.45 * vol.q_magnitude().max())
+    cfg = PooledRingConfig(q_min=1.0, q_max=q_hi, q_step=0.05, n_sectors=36)
+    reference = fit_pooled_rings(dataclasses.replace(vol, data=vol.data.copy()), cfg)
+    res, peak = _traced_peak(fit_pooled_rings, vol, cfg)
+    assert res.cleaned.data is vol.data
+    assert np.array_equal(res.cleaned.data, reference.cleaned.data)
+    assert res.cleaned.data.dtype == np.float32
+    assert peak < 8 * vol.data.size
 
 
 def _q_shell_thresholds_whole_volume(vol, q_step, n_mad, min_intensity,

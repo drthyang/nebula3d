@@ -168,7 +168,8 @@ export interface StageParamsIn {
   rings_n_patches?: number;
   rings_n_fourier?: number;
   rings_slice_axis?: string;
-  // "global_v2" (sample-only global 3D) | "patched" | "parametric"
+  // "pooled" (stack-pooled sector profiles) | "global_v2" (sample-only global 3D)
+  // | "patched" | "parametric"
   rings_model?: string;
   rings_ring_width?: number;
   // "rolling" (continuous Ring(|Q|)) | "peaks" (discrete pseudo-Voigt)
@@ -178,6 +179,9 @@ export interface StageParamsIn {
   rings_global_confidence_z?: number;
   rings_global_angular_lmax?: number;
   rings_global_min_snr?: number;
+  // "pooled": azimuthal sectors; stack-pooling half-width (degrees on the ring sphere)
+  rings_pooled_sectors?: number;
+  rings_pooled_window_deg?: number;
   punch_min_intensity?: number;
   punch_search_n_mad?: number;
   punch_mode?: string;

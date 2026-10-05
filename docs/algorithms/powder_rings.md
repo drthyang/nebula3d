@@ -37,6 +37,128 @@ peak structure or azimuthal texture.
 
 ## Current Production Path
 
+### Stack-pooled sector model (`pooled`, default)
+
+`RingParams.ring_model="pooled"` (`nebula3d.preprocessing.fit_pooled_rings`), the
+pipeline, web and `examples/remove_rings_3d.py` default since 2026-10. Select
+`"patched"` for the previous default.
+
+**What the rings actually look like.** On the CORELLI TbTi3Bi4 volumes a powder
+ring is not a sphere whose only direction dependence is its amplitude. Its
+radial position and width wander with direction. At H = 0 the 4.39 Å⁻¹ Al line
+peaks anywhere from 4.30 to 4.51 Å⁻¹ depending on the azimuth, more than its own
+FWHM. The *mmm* symmetrisation overlays several such copies, so along some
+directions the ring is a multi-peaked band 0.25 Å⁻¹ wide. At a fixed |Q| the
+ring intensity traces smooth curved loci over the sphere (an H × φ map at one
+|Q| bin shows them directly). The direction-dependent shift is the
+`delta_q_j(u)` term of the Ring Removal 2.0 target model below.
+
+**Why the other models leave a residual.** `patched` smooths the azimuthal
+pattern of every |Q| bin with a few damped harmonics, and `parametric` /
+`global_v2` tie each ring to one radial line shape. All three subtract the ring
+at the wrong |Q| over much of the sphere, leaving a bright arc beside a dark one
+along every ring. The azimuthally averaged removal fraction cannot see this
+because the two cancel. The per-patch profiles themselves (before the Fourier
+fit) do follow the shifted, multi-peaked ring; the information is lost in the
+smoothing.
+
+**Algorithm.** No radial line shape is assumed; the volume's own stack of planes
+supplies the statistics one plane lacks.
+
+1. Per plane: the median radial profile of every azimuthal sector (72 × 5°) on
+   0.02 Å⁻¹ |Q| bins (never finer than half the voxel |Q| spacing), and the
+   all-azimuth profile.
+2. Shells: rings confirmed across the stack, as `confirm_ring_shells_across_h`
+   does: above 6 % of the strongest ring, and here also ≥ 6σ of the profile
+   noise (the relative cut alone finds "rings" in pure noise). A weaker ring
+   (≥ 6σ) is added only if it sits on an FCC-Al line, the lattice parameter
+   fitted from the strong rings (22 K: a = 4.034 Å). On 22 K the relative cut
+   lost the Al 440 and 533 lines (8.81, 10.21 Å⁻¹; 5–6 % of the 2.69 line,
+   ~10σ). Without the Al condition a pure noise cut also admits sharp diffuse
+   maxima: on the demo volume, the (1 ½ 0) SRO at 1.67 Å⁻¹ (7σ).
+3. Pooling: each plane's sector profile becomes the weighted median over a small
+   solid angle of the ring sphere: ±1 sector and the planes whose direction at
+   that |Q| lies within ±5°. The plane window therefore widens with |Q|, from
+   ±6 planes at 2.7 Å⁻¹ to ±25 at 10.5 Å⁻¹ on the 22 K grid. Weights are voxel
+   count × triangle kernels. Where the grid is too coarse for that solid angle
+   to hold 12 voxels (by geometry), it widens in both directions until it does;
+   empty cells are filled along φ, never along |Q| across a ring. On the
+   CORELLI grid nothing widens; on the coarse demo grid (0.094 Å⁻¹ voxels,
+   rings narrower than a voxel) it must, or the starved cells erase the ring.
+4. Ring excess: SNIP under each pooled profile with one window per ring
+   *cluster*, the same on every plane. A close doublet (6.79/6.97 Å⁻¹) shares a
+   window instead of each member being capped at 0.9 × the separation, which
+   left half the broad member in the baseline. The excess is kept inside the
+   confirmed shells through an envelope 1.5 × FWHM wide (room for the
+   direction-dependent position) and capped at 8 × the shell's across-stack
+   amplitude.
+5. Subtract the excess, interpolated bilinearly over (φ, |Q|) at every voxel.
+   The sampling-mask spokes are masked as in the per-plane models.
+
+**Bragg peaks.** A Bragg peak covers one sector over a few planes, a minority of
+the pooling neighbourhood, so the median rejects it. Pooling over the stack
+alone is not enough at integer H, where the peak spans most of the plane window:
+the ring estimate at Bragg-on-ring voxels rose 42 % above the Bragg-free
+counterfactual, leaving holes. With the ±1-sector pooling it is +17 %, against
++15 % for `patched`.
+
+**Continuity.** Neighbouring planes share most of their pooled data, so the
+subtracted ring is continuous along the stack axis. The per-plane models' plane
+to plane jitter showed up in the ΔPDF as a streak along x_H.
+
+#### Validation (2026-10-05, TbTi3Bi4 22 K / 45 K / 100 K, `*_mmm_cc.nxs`)
+
+*Held-out ring residual* (fit on one checkerboard half of each plane, score on
+the other; per (10° sector, 0.02 Å⁻¹) median minus a linear baseline between the
+ring's flanks, noise subtracted; residual RMS / raw-ring RMS; six blocks of seven
+planes at H = 0, ⅓, 1, 2, −1⅓, 3; lower is better). The scores include
+non-ring structure (Bragg, coverage edges) common to both, so they rank rather
+than measure absolutely:
+
+| ring (Å⁻¹) | 2.69 | 3.11 | 4.39 | 5.17 | 6.79/6.97 | 8.11 | 9.23/9.35 | 9.87 |
+|---|---|---|---|---|---|---|---|---|
+| 22 K `patched` (cc_on defaults) | 0.22 | 0.22 | 0.67 | 0.41 | 0.54 | 0.68 | 0.55 | 0.88 |
+| 22 K `pooled` | 0.12 | 0.11 | 0.58 | 0.23 | 0.35 | 0.62 | 0.34 | 0.61 |
+| 45 K `patched` | 0.22 | 0.22 | 0.64 | 0.44 | 0.80 | 0.55 | 0.58 | 0.84 |
+| 45 K `pooled` | 0.12 | 0.11 | 0.54 | 0.29 | 0.74 | 0.45 | 0.39 | 0.75 |
+| 100 K `patched` | 0.20 | 0.23 | 0.63 | 0.30 | — | — | 0.68 | 0.89 |
+| 100 K `pooled` | 0.10 | 0.11 | 0.52 | 0.16 | — | — | 0.62 | 0.87 |
+
+The 45 K doublet score is dominated by its zone's flank baseline near the edge of
+the K coverage: the all-azimuth radial profile there is flat after `pooled` on
+H = 0, ⅓ and 1, while `patched` leaves both peaks.
+
+*Full pipeline* (rings → punch → backfill → flatten → ΔPDF, everything else at
+defaults). The patched ΔPDFs carry concentric ripples across every section, the
+real-space image of the leftover rings; the pooled ones largely do not. ΔPDF RMS
+by radial shell, pooled / patched:
+
+| r (Å) | 3–10 | 10–20 | 20–40 | 40–60 | 60–85 |
+|---|---|---|---|---|---|
+| 22 K | 0.91 | 0.92 | 0.91 | 0.89 | 0.95 |
+| 45 K | 0.76 | 0.72 | 0.80 | 0.85 | 0.95 |
+| 100 K | 0.76 | 0.84 | 0.94 | 0.95 | 0.96 |
+
+The pooled − patched difference is concentric ripples (the removed rings) plus
+a streak along x_H (the per-plane fits' plane-to-plane jitter). The back-FFT
+consistency check is unchanged (r: 22 K 0.99871 → 0.99872; 45 K 0.99897 →
+0.99896; 100 K 0.99840 → 0.99835).
+
+*Demo volume* (`nebula3d.demo`, ground truth known; 97³ over ±3 r.l.u.):
+ring-zone residual RMS against the ring-free truth is 0.056 (`patched` 0.049;
+raw 0.226), and the full default pipeline still punches only FCC nodes and
+recovers the planted SRO. The ring stage takes 50–55 s serial on the 48 M-voxel
+volumes (M-series laptop), against 43–47 s for `patched` including its
+confirmation pre-pass. In low-memory (browser) mode the output overwrites the
+input and the stage peaks at ~5 B/voxel.
+
+Knobs (`RingParams`): `pooled_sectors` (72), `pooled_window_deg` (5),
+`pooled_neighbor_sectors` (1), `pooled_envelope_scale` (1.5),
+`pooled_amp_cap` (8), `pooled_min_snr` (6); `ring_width` is the maximum ring
+FWHM and `slice_axis` the stack axis. `PooledRingConfig` also has
+`pool_target_count` (12) and `al_prior` (on). The diagnostics sidecar
+(`*_ringremoved_diagnostics.json`) lists each shell with its detection route.
+
 ### Ring Removal 2.0: sample-only global 3D model
 
 `RingParams.ring_model="global_v2"` enables the sample-only global fitter. It is
@@ -75,9 +197,10 @@ The implementation:
    centers/widths, angular coverage, uncertainty, removed energy, negative flips,
    warnings, and fit status.
 
-The legacy models below remain selectable and are still the Python default until
-the global path completes the real-data qualification gates in
-`docs/reports/2026-07-10_al_ring_removal_2_0_plan.md`.
+The global path is selectable but not the default: it ties each shell to one
+pseudo-Voigt line shape, so it cannot follow the direction-dependent ring
+position the `pooled` model handles, and it has not passed the real-data
+qualification gates in `docs/reports/2026-07-10_al_ring_removal_2_0_plan.md`.
 
 #### Initial real-data check (2026-07-10)
 
@@ -118,10 +241,10 @@ radial excess.
 
 Two interchangeable removers expose the same `fit` / `subtract` interface and the
 same cross-stack confirmed-shell guards; select with `RingParams.ring_model`
-(`"patched"` — default | `"parametric"`).
+(`"patched"` | `"parametric"`; the default is now `"pooled"`, above).
 
-- **`PatchedRadialRingModel`** (`"patched"`, default) — the non-parametric
-  per-(azimuthal-patch × |Q|-bin) estimator described above.
+- **`PatchedRadialRingModel`** (`"patched"`, the default until 2026-10) — the
+  non-parametric per-(azimuthal-patch × |Q|-bin) estimator described above.
 - **`ParametricRingModel`** (`"parametric"`) — separable and binning-free:
   `I_ring(|Q|,φ) = Σᵢ Tᵢ(φ)·PVᵢ(|Q|)`, a unit-peak pseudo-Voigt radial line shape
   per ring × that ring's own non-negative Fourier azimuthal texture
@@ -139,8 +262,9 @@ confirmed shells). The two are **close** but fail in *opposite* directions:
 **patched over-subtracts** (digs shallow negative troughs at the ring centres,
 worst at the first ring ≈1.93 Å⁻¹) while **parametric rolling under-subtracts**
 (leaves ring behind, most on the magnetic H=1/3 plane). Judged on the slice
-figures below, **patched hugs the diffuse baseline better overall and is kept as
-the default**; parametric rolling is a validated, selectable alternative.
+figures below, **patched hugs the diffuse baseline better overall and was kept as
+the default** (until `pooled`, 2026-10); parametric rolling is a validated,
+selectable alternative.
 
 ### The dominant residual error is texture-contrast compression
 

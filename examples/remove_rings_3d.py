@@ -1,5 +1,11 @@
 """Full 3D powder-ring removal — promote the slice-validated model to the volume.
 
+By default this runs the stack-pooled sector model (``RING_MODEL=pooled``,
+:func:`nebula3d.preprocessing.fit_pooled_rings`): per-sector radial profiles
+pooled across neighbouring planes, which follows rings whose |Q| position and
+width wander with direction (see docs/algorithms/powder_rings.md).  The rest of
+this docstring describes the per-plane path (``RING_MODEL=patched``/``parametric``).
+
 Applies the slice-validated ``PatchedRadialRingModel`` (current class defaults:
 median profile, per-|Q| azimuthal texture, SNIP baseline, adaptive ring width)
 to every selected principal slice of the volume **independently** and stacks the
@@ -32,6 +38,13 @@ Env overrides:
                 I_ring.
     Q_STEP,N_FOURIER,N_PATCHES,PROFILE_METHOD,TEXTURE_Q_SMOOTH,TEXTURE_RIDGE
                 override the selected preset/model defaults.
+    RING_MODEL  pooled (default) | patched | parametric.  ``pooled`` runs the
+                whole-volume stack-pooled sector model
+                (nebula3d.preprocessing.fit_pooled_rings), the pipeline default;
+                tune it with N_SECTORS (72), POOL_DEG (5), POOL_SECTORS (1),
+                ENV_SCALE (1.5), RING_AMP_CAP (8), MIN_SNR (6).  ``patched`` and
+                ``parametric`` run the per-plane loop below (RING_PRESET applies
+                to them only).
 """
 import matplotlib
 
@@ -49,8 +62,10 @@ import nebula3d
 from nebula3d.preprocessing import (
     ParametricRingModel,
     PatchedRadialRingModel,
+    PooledRingConfig,
     azimuthal_sampling_mask,
     confirm_ring_shells_across_h,
+    fit_pooled_rings,
 )
 from nebula3d.visualization import extract_slice
 
@@ -185,6 +200,65 @@ print(f"volume (H,K,L)=({nh},{nk},{nl})  |Q| fit range {q_range}  "
       f"({slice_cfg.plane_label})",
       flush=True)
 
+
+def _save_and_spot_check(out_vol) -> None:
+    print(f"\nsaving residual volume -> {out_path}", flush=True)
+    nebula3d.save(out_vol, out_path)
+
+    # ---- spot-check PNGs: data vs residual on selected stack slices -----------
+    for value in _spot_values():
+        ip = int(np.argmin(np.abs(axis_values - value)))
+        actual = float(axis_values[ip])
+        before = extract_slice(vol, plane=slice_cfg.plane, value=actual)
+        after = extract_slice(out_vol, plane=slice_cfg.plane, value=actual)
+        fig, axes = plt.subplots(1, 2, figsize=(11, 5), constrained_layout=True)
+        for ax, sd, title in ((axes[0], before, "data"),
+                              (axes[1], after, "residual = data - rings")):
+            im = ax.imshow(sd.data, origin="lower", cmap="viridis",
+                           vmin=0.0, vmax=0.3, aspect="equal",
+                           extent=[sd.x_axis[0], sd.x_axis[-1],
+                                   sd.y_axis[0], sd.y_axis[-1]])
+            ax.set_title(f"{title}  ({slice_cfg.axis_name}={actual:+.3f})")
+            ax.set_xlabel(sd.x_label)
+            ax.set_ylabel(sd.y_label)
+            fig.colorbar(im, ax=ax, shrink=0.8)
+        png = Path("examples") / f"_remove_rings_3d_{slice_cfg.axis_name}{actual:+.3f}.png"
+        fig.savefig(png, dpi=110)
+        plt.close(fig)
+        print(f"  wrote {png}", flush=True)
+
+    print("\n3D ring removal complete.", flush=True)
+
+
+if env_default("RING_MODEL", "pooled").strip().lower() == "pooled":
+    # Whole-volume stack-pooled sector model: no per-plane loop, no separate
+    # confirmation pre-pass (the model confirms its shells across the stack).
+    pooled_cfg = PooledRingConfig(
+        plane=slice_cfg.plane, q_min=q_range[0], q_max=q_range[1],
+        q_step=float(env_default("Q_STEP", "0.02")),
+        n_sectors=int(env_default("N_SECTORS", "72")),
+        pool_deg=float(env_default("POOL_DEG", "5.0")),
+        pool_sectors=int(env_default("POOL_SECTORS", "1")),
+        envelope_scale=float(env_default("ENV_SCALE", "1.5")),
+        amp_cap=float(os.environ.get("RING_AMP_CAP", "8.0")),
+        min_snr=float(env_default("MIN_SNR", "6.0")),
+    )
+    print(f"model: pooled {pooled_cfg}", flush=True)
+    t0 = time.time()
+    result = fit_pooled_rings(
+        vol, pooled_cfg,
+        progress=lambda f, msg: print(f"  [{100 * f:3.0f}%] {msg}", flush=True))
+    diag = result.diagnostics
+    print(f"\ndone in {time.time() - t0:.1f}s  status={diag['status']}  "
+          f"planes fitted {diag['n_planes_fitted']}/{diag['n_planes']}  "
+          f"removed {100 * diag['removed_fraction']:.3g}% of |I|", flush=True)
+    for sh in diag["shells"]:
+        print(f"    |Q|={sh['q_center']:6.3f} Å^-1  FWHM={sh['fwhm']:6.3f}  "
+              f"amp={sh['amplitude']:6.3f}", flush=True)
+    _save_and_spot_check(result.cleaned)
+    raise SystemExit(0)
+
+
 # Pre-pass: confirm the real powder-ring |Q| shells ACROSS the selected stack
 # axis.  A real ring sits at the same 3D |Q| on every plane that samples it; a
 # Bragg-fed phantom (which corrupts only a few index planes) washes out of the
@@ -221,7 +295,7 @@ if confirm:
 # the per-slice profiles never leak between stack planes).  All knobs at class
 # defaults, plus the cross-stack confirmed shells and per-shell amplitude
 # ceilings.
-ring_model_name = env_default("RING_MODEL", "patched").strip().lower()
+ring_model_name = env_default("RING_MODEL", "pooled").strip().lower()
 model: PatchedRadialRingModel | ParametricRingModel
 if ring_model_name == "parametric":
     model = ParametricRingModel(
@@ -325,29 +399,4 @@ print(f"over-subtracted voxels (residual < -0.05): {neg_voxels} "
       f"({100.0 * neg_voxels / max(n_valid, 1):.3f}% of valid)", flush=True)
 
 out_vol = dataclasses.replace(vol, data=res_data, mask=out_mask)
-print(f"\nsaving residual volume -> {out_path}", flush=True)
-nebula3d.save(out_vol, out_path)
-
-# ---- spot-check PNGs: data vs residual on selected stack slices -----------
-for value in _spot_values():
-    ip = int(np.argmin(np.abs(axis_values - value)))
-    actual = float(axis_values[ip])
-    before = extract_slice(vol, plane=slice_cfg.plane, value=actual)
-    after = extract_slice(out_vol, plane=slice_cfg.plane, value=actual)
-    fig, axes = plt.subplots(1, 2, figsize=(11, 5), constrained_layout=True)
-    for ax, sd, title in ((axes[0], before, "data"),
-                          (axes[1], after, "residual = data - rings")):
-        im = ax.imshow(sd.data, origin="lower", cmap="viridis",
-                       vmin=0.0, vmax=0.3, aspect="equal",
-                       extent=[sd.x_axis[0], sd.x_axis[-1],
-                               sd.y_axis[0], sd.y_axis[-1]])
-        ax.set_title(f"{title}  ({slice_cfg.axis_name}={actual:+.3f})")
-        ax.set_xlabel(sd.x_label)
-        ax.set_ylabel(sd.y_label)
-        fig.colorbar(im, ax=ax, shrink=0.8)
-    png = Path("examples") / f"_remove_rings_3d_{slice_cfg.axis_name}{actual:+.3f}.png"
-    fig.savefig(png, dpi=110)
-    plt.close(fig)
-    print(f"  wrote {png}", flush=True)
-
-print("\n3D ring removal complete.", flush=True)
+_save_and_spot_check(out_vol)
