@@ -495,6 +495,20 @@ def test_consistency_check_stale_when_older_than_dpdf(env, tmp_path):
 # ---------------------------------------------------------------------------
 # request → PipelineParams mapping
 # ---------------------------------------------------------------------------
+def test_build_params_punch_significance_override():
+    """The significance gate defaults to 5σ; a value overrides it, 0 turns it off."""
+    from nebula3d.server.params import build_params
+    from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
+
+    def gate(**kw):
+        req = PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw))
+        return build_params(req).punch.min_significance
+
+    assert gate() == 5.0
+    assert gate(punch_min_significance=7.5) == 7.5
+    assert gate(punch_min_significance=0) is None
+
+
 def test_build_params_ring_overrides():
     """Ring-removal overrides reach RingParams; omitted ones keep the defaults."""
     from nebula3d.pipeline import RingParams
