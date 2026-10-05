@@ -77,9 +77,10 @@ def _synthetic_vol() -> HKLVolume:
 # to 0 (superseded by the spherical rφ axis).  Regenerated 2026-10-02 when the
 # default integer-peak fit became the Q-space covariance fit (612 → 489: these
 # single-voxel peaks are too sharp to measure, so they get the spherical
-# resolution ellipsoid instead of a fit spread into the noise).  If a future
-# change is *intended* to alter the default punch geometry, regenerate these
-# deliberately.
+# resolution ellipsoid instead of a fit spread into the noise).  The 5σ
+# significance gate (2026-10-05) keeps all four planted peaks and the punch
+# sizes, so these are unchanged by it.  If a future change is *intended* to
+# alter the default punch geometry, regenerate these deliberately.
 _GOLDEN_DEFAULT_PUNCHED = 489
 _GOLDEN_DEFAULT_KEEP_SHA256 = (
     "78ba8b560b2c866db59d753737db7e29d6fa9aece5a6a87dbc856e9a0ef41cfd"

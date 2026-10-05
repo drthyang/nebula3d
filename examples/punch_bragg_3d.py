@@ -50,6 +50,15 @@ Env overrides:
     INTEGER_LOCAL_MIN_PROM
                  small absolute prominence floor for INTEGER_LOCAL_NMAD (guards
                  against pure noise in flat regions; default 0.0)
+    MIN_SIGNIFICANCE
+                 noise-aware gate for every detection: keep a peak only when its
+                 integrated excess over half the resolution ellipsoid clears this
+                 many standard errors (its sigma).  Presets: 5.  Blank = off.
+    SIGNIFICANCE_NOISE
+                 "sigma" (default: the volume's errors) | "mad" (the detection
+                 window's robust scatter, for volumes without real errors)
+    DETECT_WINDOW_Q
+                 detection window in Å⁻¹ (blank = 0.2 r.l.u. on every axis)
     SEARCH_NMAD  search-mode outlier threshold in MADs (default 6.0)
     SEARCH_MIN_I search-mode absolute intensity floor (default 2.0)
     SEARCH_PROM  search-mode local 3x3x3 prominence floor (default 0.0)
@@ -98,6 +107,9 @@ PRESETS = {
     "cc_off": {
         "MODE": "auto",
         "SPHERICAL_R": "0.097,0.072,0.115",
+        # Judge every detection against its own error: keeps the noisy
+        # high-|Q| coverage edge from being punched as peaks.
+        "MIN_SIGNIFICANCE": "5",
         "SEARCH_NMAD": "4.0",
         # Lowered floor/prominence to capture small Bragg (validated in 3D to
         # preserve the H=0.333/0.667 magnetic diffuse).
@@ -125,6 +137,7 @@ PRESETS = {
         "INTEGER_FIT_SHAPE": "1",
         "INTEGER_H_GUARD": "0.12",
         "INTEGER_LOCAL_NMAD": "8",
+        "MIN_SIGNIFICANCE": "5",
         "SEARCH_NMAD": "4.0",
         "SEARCH_MIN_I": "0.8",
         "SEARCH_PROM": "0.8",
@@ -206,6 +219,11 @@ integer_local_nmad = (
     None if integer_local_nmad_env == "" else float(integer_local_nmad_env)
 )
 integer_local_min_prom = float(env_default("INTEGER_LOCAL_MIN_PROM", "0.0"))
+min_significance_env = env_default("MIN_SIGNIFICANCE", "")
+min_significance = None if min_significance_env == "" else float(min_significance_env)
+significance_noise = env_default("SIGNIFICANCE_NOISE", "sigma")
+detect_window_q_env = env_default("DETECT_WINDOW_Q", "")
+detect_window_q = None if detect_window_q_env == "" else float(detect_window_q_env)
 margin = float(env_default("MARGIN", "0.03"))
 max_scale = float(env_default("MAX_SCALE", "3.0"))
 phi_tail_hkl = float(env_default("PHI_TAIL_HKL", "0.0"))
@@ -242,6 +260,8 @@ remover = BraggRemover(
     integer_h_guard_hkl=integer_h_guard,
     integer_local_prominence_n_mad=integer_local_nmad,
     integer_local_min_prominence=integer_local_min_prom,
+    min_significance=min_significance, significance_noise=significance_noise,
+    detect_window_q=detect_window_q,
     intensity_scale=True, max_radius_scale=max_scale, margin=margin,
     punch_incident_beam=True, incident_beam_radii=incident_r_hkl,
     incident_beam_margin=incident_margin,
@@ -261,6 +281,8 @@ print(f"preset={preset_name or 'none'}  mode={mode}  spherical_radii={spherical_
       f"integer_fit_shape={integer_fit_shape}  "
       f"integer_h_guard={integer_h_guard}  "
       f"integer_local_nmad={integer_local_nmad}  "
+      f"min_significance={min_significance} ({significance_noise})  "
+      f"detect_window_q={detect_window_q}  "
       f"search_nmad={search_nmad}  search_min_I={search_min_i}  "
       f"search_prom={search_prom}  search_exclude_h={search_exclude_h}  "
       f"search_exclude_fractions={search_exclude_h_fractions}  "

@@ -190,6 +190,7 @@ PUNCH_PRESETS = {
     "cc_off": {
         "MODE": "auto",
         "SPHERICAL_R": "0.097,0.072,0.115",  # (rρ, rθ, rφ) Å⁻¹
+        "MIN_SIGNIFICANCE": "5",  # every detection ≥ 5 standard errors
         "SEARCH_NMAD": "4.0",
         # Lower floor + prominence to catch the small Bragg the old 1.0/1.0 missed
         # (validated in 3D: captures ~90% of sharp interior Bragg while the
@@ -207,6 +208,7 @@ PUNCH_PRESETS = {
     "cc_on": {
         "MODE": "auto",
         "SPHERICAL_R": "0.097,0.072,0.115",  # (rρ, rθ, rφ) Å⁻¹
+        "MIN_SIGNIFICANCE": "5",  # every detection ≥ 5 standard errors
         "SEARCH_NMAD": "4.0",
         # Was 1.5/1.0 — too conservative, left ~25% of small Bragg unpunched.
         # 0.8/0.8 captures ~89% of sharp interior Bragg at H=0 with only ~0.7%
@@ -261,6 +263,8 @@ integer_fit_max = (
 )
 integer_h_guard_env = punch_default("INTEGER_H_GUARD", "")
 integer_h_guard = None if integer_h_guard_env == "" else float(integer_h_guard_env)
+min_significance_env = punch_default("MIN_SIGNIFICANCE", "")
+min_significance = None if min_significance_env == "" else float(min_significance_env)
 search_nmad = float(punch_default("SEARCH_NMAD", "4.0"))
 search_min_i = float(punch_default("SEARCH_MIN_I", "1.5"))
 search_prom = float(punch_default("SEARCH_PROM", "1.0"))
@@ -302,6 +306,7 @@ remover = BraggRemover(
     integer_fit_radius_n_sigma=integer_fit_nsigma,
     integer_fit_max_radius_hkl=integer_fit_max,
     integer_h_guard_hkl=integer_h_guard,
+    min_significance=min_significance,
     intensity_scale=True,
     max_radius_scale=max_scale,
     margin=margin,
