@@ -58,6 +58,43 @@ Common generated files:
 
 Generated data and figures are intentionally ignored by Git.
 
+### File format
+
+Every `.h5` volume and ΔPDF above is a Mantid MDHistoWorkspace NeXus file, in
+the layout Mantid Workbench's `SaveMD` writes (version 2), so `LoadMD` (the
+extension does not matter) and other NeXus tools open it, and the unit cell
+sits in the standard place:
+
+```text
+/MDHistoWorkspace                     NXentry, SaveMDVersion = 2
+  coordinate_system                   3 = HKL (volumes), 0 = none (ΔPDF)
+  data/                               NXdata
+    signal          float64 (n_D2, n_D1, n_D0)   the array as stored, not transposed
+    errors_squared  float64           σ² (zero for a ΔPDF)
+    num_events      float64           1 = valid, 0 = masked
+    mask            int8              1 = masked
+    D0, D1, D2      float64 bin edges (n+1), with long_name / units / frame
+  experiment0/
+    logs/W_MATRIX                     column j = direction of Dj
+    logs/<name>                       ΔPDF provenance as run logs (Sample Logs):
+                                      q_max, apodization, source_file, transform_config, …
+    sample/oriented_lattice           UB/2π (crystallographic) and the unit cell
+  nebula3d/                           what Mantid does not know: exact bin centres
+                                      and UB, in-memory dtype, instrument text,
+                                      the punch record (punched, int8, 1 = punched)
+```
+
+A volume `(nh, nk, nl)` has D2 = `[H,0,0]`, D1 = `[0,K,0]`, D0 = `[0,0,L]`
+(r.l.u., frame HKL); a ΔPDF `(na, nb, nc)` has D2 = x along a, D1 = y along b,
+D0 = z along c (Å, frame General Frame). An identity UB (unknown) writes no
+oriented lattice. The arrays are float64 on disk, as `LoadMD` requires; a
+float32 run converts them slab by slab and records its precision, so
+`nebula3d.load(path, dtype=None)` and `nebula3d.io.load_delta_pdf` give it back,
+and a file NEBULA3D wrote loads back losslessly (values under the mask
+included). Files written before this layout (`/entry/{data, sigma, mask, h_axis,
+k_axis, l_axis, ub_matrix}` volumes, root `data`/`x_axis`/… ΔPDFs with `lat_*`
+attributes) still load.
+
 ## Terminology
 
 | Term | Meaning |

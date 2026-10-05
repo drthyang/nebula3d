@@ -10,6 +10,7 @@ coordinate value at which the third axis is cut.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
@@ -367,21 +368,21 @@ def _imshow_extent(
 # ---------------------------------------------------------------------------
 # Oblique real-space sections (matplotlib)
 # ---------------------------------------------------------------------------
-_CELL_ATTRS = ("lat_a", "lat_b", "lat_c", "lat_alpha", "lat_beta", "lat_gamma")
-
-
 def read_cell_attrs(
-    attrs: Mapping[str, object],
+    source: str | Path | Mapping[str, object],
 ) -> tuple[float, float, float, float, float, float] | None:
-    """``(a, b, c, α, β, γ)`` from ΔPDF-file attrs, or ``None`` without a/b/c.
+    """``(a, b, c, α, β, γ)`` of a ΔPDF file, or ``None`` if it records no cell.
 
-    Angles default to 90° for files written before the cell angles were stored.
+    *source* is the file's path (either layout, via
+    :func:`nebula3d.io.load_delta_pdf` — the cell sits in the oriented lattice
+    of a Mantid-layout file) or a legacy file's attrs (``lat_*``).  Angles
+    default to 90° for files written before the cell angles were stored.
     """
-    if not all(k in attrs for k in _CELL_ATTRS[:3]):
-        return None
-    return tuple(  # type: ignore[return-value]
-        float(attrs[k]) if k in attrs else 90.0  # type: ignore[arg-type]
-        for k in _CELL_ATTRS)
+    from nebula3d.io.delta_pdf_file import cell_from_legacy_attrs, load_delta_pdf
+
+    if isinstance(source, str | Path):
+        return load_delta_pdf(source, read_data=False).cell
+    return cell_from_legacy_attrs(source)
 
 
 def oblique_transform(ax: Axes, axes_angle: float) -> Transform:

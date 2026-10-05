@@ -28,7 +28,8 @@ region past `laplace_max_unknowns` (default 2 M) is an unmeasured coverage gap
 rather than a punch — loaders zero and mask those — and gets the `local` fill.
 
 Pass `punched=` (the voxels the punch removed; the pipeline's punch stage
-records them, in memory and as `/entry/punched` in the punch artifact) so a
+records them, in memory and as `/MDHistoWorkspace/nebula3d/punched` in the
+punch artifact) so a
 hole and the unmeasured coverage it touches stay apart. Without it every masked
 voxel is a hole: a hole touching coverage merges with it, and the whole region
 gets one value set by the coverage's rim — on the 64.5 M-voxel Fe3Ge2 TOPAZ
