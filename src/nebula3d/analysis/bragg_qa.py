@@ -104,6 +104,9 @@ class HoleRings:
     count: NDArray[np.int64]
     noise: NDArray[np.float64]
     fill: NDArray[np.float64] | None
+    # Share of each hole's voxels within 1σ (their own sigma) of the hole's
+    # reference level: punched, but indistinguishable from the surroundings.
+    quiet: NDArray[np.float64]
 
     @property
     def reference(self) -> NDArray[np.float64]:
@@ -176,8 +179,15 @@ def hole_rings(
     noise = np.maximum(mad[:, -1], np.finfo(np.float64).tiny)
     fill = (np.asarray(ndimage.median(filled, labels, index), dtype=np.float64)
             if filled is not None else None)
+    ref = np.concatenate([[np.nan], median[:, -1]])
+    sig = np.asarray(vol.sigma, dtype=np.float64)
+    zin = (data[punched].astype(np.float64) - ref[labels[punched]]) / np.where(
+        sig[punched] > 0, sig[punched], np.inf)
+    quiet = (np.bincount(labels[punched], weights=(np.abs(zin) < 1.0).astype(float),
+                         minlength=n + 1)[1:] / np.maximum(size, 1))
     return HoleRings(edges_q=edges, size=size, peak=peak, inside_sum=inside_sum,
-                     median=median, p90=p90, count=count, noise=noise, fill=fill)
+                     median=median, p90=p90, count=count, noise=noise, fill=fill,
+                     quiet=quiet)
 
 
 def summarise_rings(
@@ -186,8 +196,9 @@ def summarise_rings(
 ) -> dict:
     """Leakage and fill step by hole brightness, in noise units.
 
-    Per bin of hole peak (above the reference, in noise units): median ring
-    excess per ring; the median 90th-percentile excess of the first ring and
+    Per bin of hole peak (above the reference, in noise units): the share of
+    punched voxels within 1σ of the reference (``punched_at_background``);
+    median ring excess per ring; the median 90th-percentile excess of the first ring and
     the fraction of holes where it tops 3σ (a tail leaking on one side, which
     a ring median hides); the fill minus the first ring and minus the
     reference.  ``outside_over_inside`` compares, for holes brighter than 100σ,
@@ -205,6 +216,8 @@ def summarise_rings(
 
     def row(sel: NDArray[np.bool_]) -> dict:
         r = {"n_holes": int(sel.sum()),
+             "punched_at_background": float(np.sum(rings.quiet[sel] * rings.size[sel])
+                                            / max(int(rings.size[sel].sum()), 1)),
              "ring_excess_median": [float(v) for v in np.median(ex[sel], axis=0)],
              "ring1_p90_excess_median": float(np.median(p90_z[sel])),
              "frac_ring1_p90_over_3sigma": float(np.mean(p90_z[sel] > 3.0))}
