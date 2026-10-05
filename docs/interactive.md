@@ -127,9 +127,10 @@ python3 examples/explore_delta_pdf.py
 - `LAT_A` / `LAT_B` / `LAT_C` — lattice constants (Å) for the gridlines.
 - `X_VALUE` — initial x_H plane (Å); `PDF_FILE` / `PROC_FILE`; `SMOKE=1`.
 
-Both viewers store the lattice constants (`lat_a/b/c`) directly in the ΔPDF
-`.h5` when written by `examples/delta_pdf.py`, so the gridlines work without any
-fallback on freshly generated transforms.
+The ΔPDF `.h5` (from `examples/delta_pdf.py` or the pipeline) carries the source
+volume's unit cell in its oriented lattice, so the gridlines work without any
+fallback on freshly generated transforms; for older files the viewers read the
+`lat_a/b/c` attributes.
 
 Both use the `macosx` backend and block on `plt.show()` — launch with
 `run_in_background: true`; exit code 0 means the window was closed. For the

@@ -5,7 +5,7 @@ and lets you scrub through the **real-space x_H axis**, showing the y_K–z_L
 correlation plane at each x_H.  This is the proper 3D transform (every plane
 mixes all reciprocal H layers with phase), unlike the per-plane 2D-ΔPDF in
 ``examples/delta_pdf_plane.py``.  The plane is drawn at the cell's real b–c
-angle α (from the file's ``lat_alpha`` attr, 90° if absent), so on-screen
+angle α (from the file's unit cell, 90° if absent), so on-screen
 distances are true Å.
 
 Source: a single ``*_delta_pdf.h5`` in ``data/processed/`` if exactly one is
@@ -34,8 +34,8 @@ Env overrides:
     RMAX        display half-window in Å for K and L axes (default: 25)
     SCALE_MAX   upper |scale| slider multiple of the p99 level (default: 20)
     LAT_A/LAT_B/LAT_C  direct-lattice constants in Å for the unit-cell gridlines
-                (default: ΔPDF file attrs, else the source UB matrix; the env
-                override assumes 90° angles)
+                (default: the ΔPDF file's cell, else the source UB matrix; the
+                env override assumes 90° angles)
     INTERP      imshow interpolation (default: bilinear; "nearest" for raw pixels)
     SMOKE       1 → render the initial frame to PNG and exit (no GUI); used
                 to verify the script headless.
@@ -50,14 +50,15 @@ import matplotlib
 SMOKE = bool(int(os.environ.get("SMOKE", "0")))
 matplotlib.use("Agg" if SMOKE else "macosx")
 
-import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.widgets import CheckButtons, Slider
 
 from nebula3d.analysis.delta_pdf import real_space_radius
+from nebula3d.io import load_delta_pdf
+from nebula3d.io.hkl_reader import load_ub_matrix
 from nebula3d.utils import direct_cell
-from nebula3d.visualization.slices import draw_unit_cell, oblique_transform, read_cell_attrs
+from nebula3d.visualization.slices import draw_unit_cell, oblique_transform
 
 # ------------------------------------------------------------------
 # load or compute the 3D-ΔPDF
@@ -70,15 +71,11 @@ else:
     pdf_file = _cands[0] if len(_cands) == 1 else Path("examples/_delta_pdf.h5")
 
 if pdf_file.exists():
-    import h5py
     print(f"loading ΔPDF {pdf_file.name} ...", flush=True)
-    with h5py.File(pdf_file, "r") as fh:
-        data = fh["data"][...]
-        x_axis = fh["x_axis"][...]
-        y_axis = fh["y_axis"][...]
-        z_axis = fh["z_axis"][...]
-        apodization = fh.attrs.get("apodization", "?")
-        cell_attrs = read_cell_attrs(fh.attrs)
+    pdf = load_delta_pdf(pdf_file)  # either file layout
+    data, x_axis, y_axis, z_axis = pdf.data, pdf.x_axis, pdf.y_axis, pdf.z_axis
+    apodization = pdf.logs.get("apodization", "?")
+    cell_attrs = pdf.cell
 else:
     import nebula3d
     from nebula3d.analysis import compute_delta_pdf
@@ -110,8 +107,8 @@ scale_max = float(os.environ.get("SCALE_MAX", "20.0"))   # |scale| slider headro
 def _resolve_lattice():
     """Direct cell (a, b, c, α, β, γ) in Å and degrees, or None.
 
-    Precedence: env LAT_A/B/C (90°) → ΔPDF-file attrs → source backfilled UB
-    (loaded case) → the in-memory volume's UB (computed case).
+    Precedence: env LAT_A/B/C (90°) → the ΔPDF file's cell → source backfilled
+    UB (loaded case) → the in-memory volume's UB (computed case).
     """
     ev = [os.environ.get(k) for k in ("LAT_A", "LAT_B", "LAT_C")]
     if all(ev):
@@ -119,13 +116,11 @@ def _resolve_lattice():
     if pdf_file.exists():
         if cell_attrs is not None:
             return cell_attrs
-        with h5py.File(pdf_file, "r") as fh:
-            src = str(fh.attrs.get("source_file", ""))
+        src = str(pdf.logs.get("source_file", ""))
         sp = Path("data/processed") / src if src else None
         if sp and sp.exists():
             try:
-                with h5py.File(sp, "r") as fh:
-                    return direct_cell(np.array(fh["entry/ub_matrix"], dtype=float))
+                return direct_cell(load_ub_matrix(sp))  # metadata only, any layout
             except Exception:
                 return None
         return None
