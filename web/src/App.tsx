@@ -76,9 +76,12 @@ const NAV: { id: Tab; label: string; short?: string; desc?: string; icon: ReactN
   },
 ];
 
-// API status, version and copyright.  Sits at the foot of the sidebar; in the
-// compact top-bar layout the sidebar copy is hidden and the one at the end of
-// <main> shows instead (see "Device layouts" in index.css).
+// Source repository; its README is the entry point to the documentation.
+const REPO_URL = "https://github.com/drthyang/nebula3d";
+
+// API status, version, copyright and documentation links.  Sits at the foot of
+// the sidebar; in the compact top-bar layout the sidebar copy is hidden and the
+// one at the end of <main> shows instead (see "Device layouts" in index.css).
 function ConsoleFoot({ className, apiUp }: { className: string; apiUp: boolean }) {
   return (
     <footer className={className}>
@@ -93,6 +96,15 @@ function ConsoleFoot({ className, apiUp }: { className: string; apiUp: boolean }
       <span className="ver">
         <span className="ver-num">v0.3.0</span>
         <span className="ver-tag">beta</span>
+      </span>
+      <span className="foot-links">
+        <a href={`${REPO_URL}#readme`} target="_blank" rel="noopener noreferrer">
+          About &amp; documentation
+        </a>
+        <span className="sep" aria-hidden="true">·</span>
+        <a href={`${REPO_URL}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">
+          AGPLv3
+        </a>
       </span>
       <span className="copyright">© 2026 Tsung-Han Yang</span>
     </footer>
