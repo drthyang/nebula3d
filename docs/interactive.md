@@ -53,6 +53,31 @@ and the initial cut with `{H,K,L}_VALUE` (default `0.3333` for H, else `0.0`).
 Use this viewer to inspect integer-H Bragg cleanup and fractional-H diffuse
 preservation before running the final 3D-ΔPDF transform.
 
+### Ring-model comparison — `examples/compare_ring_modes.py`
+
+Puts the ring-removal models side by side on one volume: one column per model
+(default `pooled,patched,parametric,global_v2`), the cleaned slice on top and
+what each model removed underneath. The bottom-left panel is the all-azimuth
+median radial profile of every cleaned plane (data in grey, confirmed shells as
+faint lines): a leftover ring is a bump, an over-subtraction a dip.
+
+```bash
+TEMP=22K PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 examples/compare_ring_modes.py
+```
+
+All image panels share their axes, so zooming one zooms all, and the zoom holds
+while you scrub the plane slider. The H/K/L selector, vmin/vmax and linear/log₁₀
+controls work as in `explore_slice.py`; "removed max" scales the bottom row.
+
+Each model is computed once through the pipeline's own path
+(`pipeline.load_input` → `pipeline.remove_rings` with that model's default
+`RingParams`) and cached as float32 in `data/processed/ring_modes/` (~250 MB per
+model for a 401×401×301 volume), so later launches open at once. A cache made
+with other parameters is recomputed; `FORCE=1` recomputes everything (do this
+after changing ring code). Env: `TEMP` or `DATA_FILE`, `MODELS` (e.g.
+`pooled,patched,parametric:peaks`), `VIEW_AXIS`, `{H,K,L}_VALUE`,
+`SLIDER_MIN`/`SLIDER_MAX`, `SMOKE=1`.
+
 ## 2. ΔPDF Real-Space Viewers (standard preview)
 
 Three interactive viewers preview the **real-space 3D-ΔPDF** (the FFT of the
