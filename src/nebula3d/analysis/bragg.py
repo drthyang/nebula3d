@@ -60,6 +60,9 @@ class _PeakPunch:
     shape_hkl: NDArray[np.float64] | None = None
     source_node_hkl: tuple[int, int, int] | None = None
     local_background: float = float("nan")
+    # Integrated excess over the resolution aperture in standard errors (see
+    # ``BraggRemover._peak_significance``); NaN when not computed.
+    significance: float = float("nan")
 
     def as_tuple(self) -> tuple[int, int, int, float]:
         return self.ih, self.ik, self.il, self.intensity
@@ -232,12 +235,36 @@ class BraggRemover:
     detect_window_hkl:
         Half-width (HKL) of the window used to locate/centre a peak and estimate
         its local background.
+    detect_window_q:
+        The same window sized in Å⁻¹ instead: the bounding box of a Q-sphere of
+        this radius, capped at 0.3 r.l.u. per axis so it stays in the node's own
+        cell.  Overrides ``detect_window_hkl`` when set.
+    min_significance:
+        Keep a detection (integer node or search summit) only when its
+        integrated excess over the local background clears this many standard
+        errors: ``z = Σ(I − bg) / √Σσ²`` over the voxels inside the resolution
+        ellipsoid (the punch-frame ellipsoid) scaled by
+        ``significance_aperture``, with ``bg`` the median of the detection
+        window.  This is what separates a peak from noise where the noise
+        varies — e.g. at the high-|Q| edge of the coverage, where a threshold
+        set by the whole |Q| shell passes single-voxel noise.  ``None``
+        disables the gate.
+    significance_aperture:
+        Scale of the resolution ellipsoid summed for ``min_significance``.
+    significance_noise:
+        Error model for ``min_significance``.  ``"sigma"`` (default): the
+        volume's per-voxel ``sigma``; voxels without a usable one take the
+        window's robust scatter (1.4826·MAD).  ``"mad"``: the window's robust
+        scatter for every voxel — for volumes whose ``sigma`` is not a real
+        error estimate (``HKLVolume.from_arrays`` falls back to ``√|I|``).
     intensity_scale:
         If True, multiply the punch radii by ``clip((I/intensity_ref)**(1/3), 1,
         max_radius_scale)`` so bright peaks (longer tails) get larger holes.
     intensity_ref:
-        Reference intensity for the scaling.  ``None`` → the median detected-peak
-        intensity (computed once).
+        Reference intensity for the scaling.  ``None`` → the median intensity
+        of every detection candidate, computed once — counting candidates the
+        ``min_significance`` gate rejects, so the gate changes which peaks
+        are punched but not how large.
     max_radius_scale:
         Upper clamp on the intensity radius multiplier.
     margin:
@@ -313,6 +340,11 @@ class BraggRemover:
     integer_fit_max_radius_hkl: tuple[float, float, float] | None = None
     integer_h_guard_hkl: float | None = None
     detect_window_hkl: float = 0.2
+    detect_window_q: float | None = None
+    # --- noise-aware detection gate (integer and search) ---
+    min_significance: float | None = None
+    significance_aperture: float = 0.5
+    significance_noise: str = "sigma"
     intensity_scale: bool = False
     intensity_ref: float | None = None
     max_radius_scale: float = 3.0
@@ -366,6 +398,10 @@ class BraggRemover:
                 f"punch_frame={self.punch_frame!r}: choose 'spherical' or 'q' (radii "
                 f"in Å⁻¹).  The fractional-HKL frame was removed — HKL radii depend "
                 f"on the cell, not on the resolution.")
+        if self.significance_noise not in {"sigma", "mad"}:
+            raise ValueError(
+                f"significance_noise={self.significance_noise!r}: choose 'sigma' "
+                f"or 'mad'")
 
     @staticmethod
     def _shape_matrix_from_q_radii(
@@ -771,6 +807,93 @@ class BraggRemover:
             step(vol.l_axis),
         )
 
+    def _detect_half_widths(self, vol: HKLVolume) -> tuple[int, int, int]:
+        """Voxel half-widths of the detection window along H, K, L.
+
+        ``detect_window_q`` (Å⁻¹) gives the bounding box of a Q-sphere, capped
+        at 0.3 r.l.u. per axis — the window must stay in the node's own cell,
+        where it cannot reach a neighbouring node's peak.  Otherwise
+        ``detect_window_hkl`` is the half-width in r.l.u. along every axis.
+        """
+        steps = np.abs(np.asarray(self._steps(vol)))
+        if self.detect_window_q is None:
+            w = self.detect_window_hkl / steps
+            return tuple(max(1, int(round(float(x)))) for x in w)  # type: ignore[return-value]
+        rho = max(0.0, float(self.detect_window_q))
+        ub = vol.ub_matrix
+        ext = rho * np.sqrt(np.clip(np.diag(np.linalg.inv(ub.T @ ub)), 0.0, None))
+        cap = np.maximum(1, np.floor(0.3 / steps + 1e-9)).astype(int)
+        w = np.maximum(1, np.round(ext / steps).astype(int))
+        return tuple(int(x) for x in np.minimum(w, cap))  # type: ignore[return-value]
+
+    @staticmethod
+    def _box(
+        vol: HKLVolume, idx: tuple[int, int, int], half: tuple[int, int, int],
+    ) -> tuple[slice, slice, slice]:
+        out = [slice(max(0, i - w), min(n, i + w + 1))
+               for i, w, n in zip(idx, half, vol.shape)]
+        return out[0], out[1], out[2]
+
+    def _peak_significance(
+        self,
+        vol: HKLVolume,
+        idx: tuple[int, int, int],
+        local_bg: float,
+        noise: float,
+    ) -> float:
+        """Integrated excess at voxel ``idx`` in standard errors.
+
+        ``z = Σ(I − local_bg) / √Σσ²`` over the valid voxels inside the
+        resolution (punch-frame) ellipsoid scaled by ``significance_aperture``,
+        centred on the voxel; the voxel itself always counts.  ``noise`` (the
+        detection window's 1.4826·MAD) stands in for ``σ`` where the volume has
+        no usable one, and everywhere with ``significance_noise="mad"``.
+        ``inf`` when the error is zero (nothing to judge against) or the frame
+        is undefined (the origin).
+        """
+        center = (float(vol.h_axis[idx[0]]), float(vol.k_axis[idx[1]]),
+                  float(vol.l_axis[idx[2]]))
+        a = self._active_shape_matrix(
+            vol, center, scale=max(float(self.significance_aperture), 1e-6))
+        if a is None:
+            return float("inf")
+        steps = np.abs(np.asarray(self._steps(vol)))
+        ext = self._ellipsoid_bounding_radii(a)
+        half = tuple(int(np.floor(e / s + 1e-9)) for e, s in zip(ext, steps))
+        sl = self._box(vol, idx, half)  # type: ignore[arg-type]
+        hh, kk, ll = np.meshgrid(vol.h_axis[sl[0]] - center[0],
+                                 vol.k_axis[sl[1]] - center[1],
+                                 vol.l_axis[sl[2]] - center[2], indexing="ij")
+        inside = _ellipsoid_inside(hh, kk, ll, shape_matrix=a)
+        inside[idx[0] - sl[0].start, idx[1] - sl[1].start, idx[2] - sl[2].start] = True
+        win = vol.data[sl]
+        use = inside & vol.mask[sl] & np.isfinite(win)
+        if not use.any():
+            return float("-inf")
+        excess = float((win[use].astype(np.float64) - float(local_bg)).sum())
+        noise2 = float(noise) ** 2 if np.isfinite(noise) else 0.0
+        if self.significance_noise == "sigma":
+            s = vol.sigma[sl][use].astype(np.float64)
+            s2 = np.where(np.isfinite(s) & (s > 0), s * s, noise2)
+            var = float(s2.sum())
+        else:
+            var = noise2 * int(use.sum())
+        if var <= 0:  # no error estimate anywhere (e.g. zeroed voxels): keep
+            return float("inf")
+        return excess / float(np.sqrt(var))
+
+    def _window_stats(
+        self, vol: HKLVolume, idx: tuple[int, int, int],
+    ) -> tuple[float, float] | None:
+        """Median and robust scatter (1.4826·MAD) of the detection window at ``idx``."""
+        sl = self._box(vol, idx, self._detect_half_widths(vol))
+        win = vol.data[sl]
+        vals = win[vol.mask[sl] & np.isfinite(win)].astype(np.float64)
+        if vals.size < 3:
+            return None
+        med = float(np.median(vals))
+        return med, 1.4826 * float(np.median(np.abs(vals - med)))
+
     def enumerate_bragg(self, vol: HKLVolume) -> list[tuple[int, int, int]]:
         """Integer (h,k,l) nodes within the grid extent."""
         hs = range(int(np.ceil(vol.h_axis.min())), int(np.floor(vol.h_axis.max())) + 1)
@@ -795,20 +918,49 @@ class BraggRemover:
 
     def _detect_peak_records(self, vol: HKLVolume) -> list[_PeakPunch]:
         """Internal detector dispatch returning rich punch records."""
+        return self._detect(vol)[0]
+
+    def _detect(self, vol: HKLVolume) -> tuple[list[_PeakPunch], float]:
+        """Detected peaks, and the intensity-scaling reference for punching them.
+
+        The reference is the median intensity of every candidate, the ones the
+        ``min_significance`` gate rejected included (see
+        :meth:`_scaling_reference`).
+        """
+        rejected: list[float] = []
         if self.mode == "integer":
-            return self._detect_integer(vol)
-        if self.mode in {"auto", "search"}:
-            return self._detect_search(vol)
-        if self.mode == "both":
+            peaks = self._detect_integer(vol, rejected)
+        elif self.mode in {"auto", "search"}:
+            peaks = self._detect_search(vol, rejected)
+        elif self.mode == "both":
             # Sequential: punch the integer Bragg first, then search on the
             # residual.  With the strong integer peaks already masked out, the
             # per-|Q|-shell statistics are no longer inflated by them, so the
             # off-integer satellites stand out as clean outliers.
-            integer = self._detect_integer(vol)
-            keep = self._punch_centers(vol, np.ones(vol.shape, dtype=bool), integer)
+            integer = self._detect_integer(vol, rejected)
+            keep = self._punch_centers(
+                vol, np.ones(vol.shape, dtype=bool), integer,
+                reference=self._scaling_reference(integer, rejected))
             residual = dataclasses.replace(vol, mask=vol.mask & keep)
-            return integer + self._detect_search(residual)
-        raise ValueError(f"Unknown mode: {self.mode!r}")
+            peaks = integer + self._detect_search(residual, rejected)
+        else:
+            raise ValueError(f"Unknown mode: {self.mode!r}")
+        return peaks, self._scaling_reference(peaks, rejected)
+
+    def _scaling_reference(
+        self, peaks: list[_PeakPunch], rejected: list[float] | None = None,
+    ) -> float:
+        """Reference intensity of the cube-root punch scaling.
+
+        ``intensity_ref`` when set; otherwise the median intensity of *peaks*
+        and of the *rejected* candidates (those the significance gate dropped),
+        so that adding the gate does not resize the punches it keeps.
+        """
+        if self.intensity_ref is not None:
+            return float(self.intensity_ref)
+        ints = [p.intensity for p in peaks] + list(rejected or ())
+        finite = np.array([v for v in ints if np.isfinite(v)])
+        return float(np.median(finite)) if finite.size else 1.0
 
     def _punches_incident_beam(self) -> bool:
         return self.punch_incident_beam if self.force_origin is None else bool(self.force_origin)
@@ -824,16 +976,19 @@ class BraggRemover:
             return None
         return ih, ik, il
 
-    def _detect_integer(self, vol: HKLVolume) -> list[_PeakPunch]:
+    def _detect_integer(
+        self, vol: HKLVolume, rejected: list[float] | None = None,
+    ) -> list[_PeakPunch]:
         """Peaks at integer (h,k,l) nodes.
 
         With ``min_intensity`` and ``integer_n_mad`` unset every node is returned
         at its nearest voxel (legacy punch-all).  When either is set, each node is
         examined in a local window: the peak is re-centred on the window argmax
         and kept only if it clears the requested absolute, local-prominence, and
-        per-|Q|-shell thresholds — extinct nodes are dropped.
+        per-|Q|-shell thresholds — extinct nodes are dropped.  With
+        ``min_significance`` a kept node must also clear the noise-aware gate;
+        the intensities of the nodes it rejects are appended to *rejected*.
         """
-        dh, dk, dl = self._steps(vol)
         nh, nk, nl = vol.shape
         data, valid = vol.data, (vol.mask & np.isfinite(vol.data))
 
@@ -875,9 +1030,7 @@ class BraggRemover:
                 min_shell_size=int(self.integer_min_shell_size),
             )
 
-        wph = max(1, int(round(self.detect_window_hkl / abs(dh))))
-        wpk = max(1, int(round(self.detect_window_hkl / abs(dk))))
-        wpl = max(1, int(round(self.detect_window_hkl / abs(dl))))
+        wph, wpk, wpl = self._detect_half_widths(vol)
         for h, k, l in self.enumerate_bragg(vol):
             ih, ik, il = (nearest(vol.h_axis, h), nearest(vol.k_axis, k),
                           nearest(vol.l_axis, l))
@@ -923,6 +1076,16 @@ class BraggRemover:
 
             if not (ok_abs or ok_rel):
                 continue
+            # Noise-aware gate: the peak's integrated excess must clear
+            # min_significance standard errors (see _peak_significance).
+            z = float("nan")
+            if self.min_significance is not None:
+                noise = float(np.nanmedian(np.abs(wv - local_bg))) * 1.4826
+                z = self._peak_significance(vol, (ph, pk, pl), local_bg, noise)
+                if z < float(self.min_significance):
+                    if rejected is not None:
+                        rejected.append(peak)
+                    continue
             center_hkl = (
                 float(vol.h_axis[ph]),
                 float(vol.k_axis[pk]),
@@ -939,6 +1102,7 @@ class BraggRemover:
                 ih=ph, ik=pk, il=pl, intensity=peak,
                 center_hkl=center_hkl, shape_hkl=shape_hkl,
                 source_node_hkl=(h, k, l), local_background=local_bg,
+                significance=z,
             ))
         return out
 
@@ -1042,7 +1206,9 @@ class BraggRemover:
         thr = np.maximum(thr, min_intensity)
         return bin_idx, thr
 
-    def _detect_search(self, vol: HKLVolume) -> list[_PeakPunch]:
+    def _detect_search(
+        self, vol: HKLVolume, rejected: list[float] | None = None,
+    ) -> list[_PeakPunch]:
         """Peaks found as sharp |Q|-shell outliers (mode-agnostic to hkl).
 
         Reuses the ring-removal insight: at a given |Q| the diffuse is the bulk
@@ -1101,20 +1267,34 @@ class BraggRemover:
                     float(vol.data[ih, ik, il]) - local_bg >= self.search_min_prominence
                 )
             peaks = peaks[np.asarray(keep_peak, dtype=bool)]
-        return [
-            _PeakPunch(
-                ih=int(ih),
-                ik=int(ik),
-                il=int(il),
-                intensity=float(vol.data[ih, ik, il]),
+        out = []
+        for ih, ik, il in peaks:
+            idx = (int(ih), int(ik), int(il))
+            bg = z = float("nan")
+            if self.min_significance is not None:
+                stats = self._window_stats(vol, idx)
+                if stats is None:
+                    continue
+                bg, noise = stats
+                z = self._peak_significance(vol, idx, bg, noise)
+                if z < float(self.min_significance):
+                    if rejected is not None:
+                        rejected.append(float(vol.data[idx]))
+                    continue
+            out.append(_PeakPunch(
+                ih=idx[0],
+                ik=idx[1],
+                il=idx[2],
+                intensity=float(vol.data[idx]),
                 center_hkl=(
-                    float(vol.h_axis[ih]),
-                    float(vol.k_axis[ik]),
-                    float(vol.l_axis[il]),
+                    float(vol.h_axis[idx[0]]),
+                    float(vol.k_axis[idx[1]]),
+                    float(vol.l_axis[idx[2]]),
                 ),
-            )
-            for ih, ik, il in peaks
-        ]
+                local_background=bg,
+                significance=z,
+            ))
+        return out
 
     def _search_excluded_h_mask(self, vol: HKLVolume) -> NDArray[np.bool_]:
         """Return True for voxels protected from hkl-agnostic search punching.
@@ -1155,8 +1335,9 @@ class BraggRemover:
         Built on local windows around each detected peak, so the cost is
         ``n_peaks × small_window`` rather than ``n_peaks × whole_volume``.
         """
+        peaks, reference = self._detect(vol)
         keep = self._punch_centers(
-            vol, np.ones(vol.shape, dtype=bool), self._detect_peak_records(vol))
+            vol, np.ones(vol.shape, dtype=bool), peaks, reference=reference)
         return self._punch_incident_beam(vol, keep)
 
     def _punch_centers(
@@ -1164,17 +1345,21 @@ class BraggRemover:
         vol: HKLVolume,
         keep: NDArray[np.bool_],
         peaks: list[_PeakPunch],
+        *,
+        reference: float | None = None,
     ) -> NDArray[np.bool_]:
         """Punch an anisotropic, intensity-scaled ellipsoid at each peak centre,
-        in place on *keep* (local windows only)."""
+        in place on *keep* (local windows only).
+
+        *reference* is the intensity-scaling reference (:meth:`_detect` returns
+        it); ``None`` takes it from *peaks* alone.
+        """
         # The Q ellipsoid's HKL bounding box: the fallback where the punch
         # frame is undefined (a peak at the origin).
         r_base = self._fit_base_radii(vol)
 
-        ref = self.intensity_ref
-        if self.intensity_scale and ref is None:
-            ints = np.array([p.intensity for p in peaks if np.isfinite(p.intensity)])
-            ref = float(np.median(ints)) if ints.size else 1.0
+        ref = (reference if reference is not None else self._scaling_reference(peaks)
+               ) if self.intensity_scale else None
 
         for peak_rec in peaks:
             s = self._scale_factor(peak_rec.intensity, ref if ref is not None else 1.0)
@@ -1488,17 +1673,15 @@ class BraggRemover:
         """Core moments of the peak at ``center_hkl``, as the covariance fit takes them.
 
         Background (median) and brightest voxel come from the detection window
-        (``detect_window_hkl``) about the nearest voxel; the moments come from
-        :meth:`_core_moments` in the fit's Å⁻¹-sized window.
+        (``detect_window_hkl`` / ``detect_window_q``) about the nearest voxel;
+        the moments come from :meth:`_core_moments` in the fit's Å⁻¹-sized
+        window.
         """
-        dh, dk, dl = self._steps(vol)
         nh, nk, nl = vol.shape
         ih = int(np.argmin(np.abs(vol.h_axis - center_hkl[0])))
         ik = int(np.argmin(np.abs(vol.k_axis - center_hkl[1])))
         il = int(np.argmin(np.abs(vol.l_axis - center_hkl[2])))
-        wph = max(1, int(round(self.detect_window_hkl / abs(dh))))
-        wpk = max(1, int(round(self.detect_window_hkl / abs(dk))))
-        wpl = max(1, int(round(self.detect_window_hkl / abs(dl))))
+        wph, wpk, wpl = self._detect_half_widths(vol)
         hs, he = max(0, ih - wph), min(nh, ih + wph + 1)
         ks, ke = max(0, ik - wpk), min(nk, ik + wpk + 1)
         ls, le = max(0, il - wpl), min(nl, il + wpl + 1)

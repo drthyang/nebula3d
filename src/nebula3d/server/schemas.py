@@ -76,6 +76,8 @@ class BraggPeakWidthOut(BaseModel):
     q_abs: float
     intensity: float | None = None
     local_background: float | None = None
+    # Integrated excess over the resolution aperture, in standard errors.
+    significance: float | None = None
     width_hkl: list[float]
     width_q: list[float]
     measured_width_hkl: list[float] | None = None
@@ -125,6 +127,8 @@ class StageParamsIn(BaseModel):
     rings_pooled_sectors: int | None = None
     rings_pooled_window_deg: float | None = None
     punch_min_intensity: float | None = None
+    # Noise-aware detection gate (standard errors); 0 or below turns it off.
+    punch_min_significance: float | None = None
     punch_search_n_mad: float | None = None
     punch_mode: str | None = None
     punch_margin: float | None = None

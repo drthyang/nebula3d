@@ -2,6 +2,65 @@
 
 ## Unreleased
 
+- **The Bragg punch judges every detection against its own error.** Before,
+  the search pass flagged a voxel when it beat its |Q| shell's median + 4·MAD
+  and an absolute floor of 0.8. Both are set by the whole shell. At the
+  high-|Q| edge of the CORELLI coverage (|K| > 9.7 on TbTi3Bi4), low exposure
+  turns one or two counts into a spike of order 1, with noise three times
+  the interior's.
+  - Half the search peaks were such spikes: 4,349 of 8,572 at 22 K, all
+    below 5σ, median I/σ 1.7. 86 % were single voxels.
+  - Their punches merged into two 139k-voxel holes, 11 % of everything
+    punched, which the `local` fill then filled with one value each.
+
+  Now a detection, integer node or search summit, needs an integrated
+  excess of at least `min_significance` = 5 standard errors (`PunchParams`;
+  `MIN_SIGNIFICANCE=5` in the `cc_on`/`cc_off` presets):
+  - `z = Σ(I − bg)/√Σσ²` over half the resolution ellipsoid, with `bg` the
+    detection window's median and `σ` the volume's errors;
+  - `significance_noise="mad"` uses the window's robust scatter instead,
+    for volumes without real errors;
+  - a voxel without a usable `σ` falls back to the window's robust scatter.
+
+  The scaling reference still counts the candidates the gate rejects, so
+  the punches that stay keep their size.
+
+  On 22 K (shipped code against main, full pipeline):
+  - edge punch 629k → 367k voxels; interior 1.887 M → 1.892 M;
+  - 8 interior integer nodes lost: one mmm-symmetric family at z ≈ 4.5;
+  - back-FFT r 0.99872 → 0.99902, nrms 0.0463 → 0.0414, H = 0 plane
+    0.99730 → 0.99843;
+  - the ΔPDF moves by 2.3 % RMS at the lattice vectors and 5 % within 20 Å,
+    all of it from the restored edge.
+
+  45 K (shipped code): back-FFT r 0.99898 → 0.99904, nrms 0.0415 → 0.0410,
+  H = 0 plane 0.99330 → 0.99721.
+
+  100 K, gate alone with main's punch sizes: H = 0 plane 0.98735 → 0.99261,
+  overall r 0.99837 → 0.99838.
+
+  No change in the tails left past the brightest holes at any of the three.
+
+  The profile JSON gains each peak's `significance`; the run request gains
+  `punch_min_significance` (0 = off). `detect_window_q` sizes the detection
+  window in Å⁻¹ but stays off: on 22 K it adds ~1,200 integer nodes, not yet
+  validated.
+- **Punch / backfill QA**, `nebula3d.analysis.bragg_qa`, two examples:
+  - `examples/qa_punch_fill.py` (real data) reports:
+    - how significant each detection is;
+    - hole sizes and merging;
+    - excess in shells outside each hole by distance in Å⁻¹ (a tail leaking
+      on one side shows in the first shell's 90th percentile);
+    - the fill against those shells.
+  - `examples/benchmark_punch_fill.py` (ground truth) scores the punch and
+    fill on the demo volume, whose components are known: Bragg left, diffuse
+    removed, false detections, fill bias, and 3D-ΔPDF error at the lattice
+    vectors. It has a clean scenario and a low-exposure-edge one. On the
+    edge one the gate cuts false detections 1,284 → 12 and collateral
+    81 % → 59 % (clean: 46 %).
+  - Both already show the next targets on TbTi3Bi4: the `local` fill sits
+    ~0.2σ below each hole's rim, and on the demo it under-fills the thermal
+    diffuse under the nodes by ~75 %.
 - **New default ring model, `pooled`: stack-pooled sector profiles.** The
   per-plane `patched` model left a visible residual along every powder ring.
   On the TbTi3Bi4 CORELLI volumes a ring's |Q| position and width wander with

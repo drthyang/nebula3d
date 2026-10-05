@@ -67,6 +67,10 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
             p.rings, pooled_window_deg=sp.rings_pooled_window_deg)
     if sp.punch_min_intensity is not None:
         p.punch = dataclasses.replace(p.punch, min_intensity=sp.punch_min_intensity)
+    if sp.punch_min_significance is not None:
+        p.punch = dataclasses.replace(
+            p.punch, min_significance=(sp.punch_min_significance
+                                       if sp.punch_min_significance > 0 else None))
     if sp.punch_search_n_mad is not None:
         p.punch = dataclasses.replace(p.punch, search_n_mad=sp.punch_search_n_mad)
     if sp.punch_mode is not None:

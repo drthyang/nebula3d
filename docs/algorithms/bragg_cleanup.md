@@ -122,6 +122,56 @@ setting covers the higher-order satellites (`±4/3`, `±5/3`, …) that a fixed
 centre list misses. This allows `mode="both"` to keep useful off-integer
 satellite detection without punching structured diffuse on any thirds plane.
 
+## Significance Gate
+
+Every detection, integer node or search summit, must also be significant
+against its own error (`min_significance`, pipeline default 5):
+
+```text
+z = Σ (I − bg) / √Σ σ²
+```
+
+The sum runs over the voxels inside the resolution (punch-frame) ellipsoid
+scaled by `significance_aperture` (0.5), centred on the brightest voxel. `bg`
+is the median of the detection window and `σ` the volume's per-voxel error.
+Voxels without a usable `σ` take the window's robust scatter (1.4826·MAD), and
+`significance_noise="mad"` uses that scatter everywhere, for volumes whose
+`sigma` is not a real error estimate. A peak with no error estimate at all is
+kept.
+
+Why it is needed: the search threshold (median + n·MAD per `|Q|` shell, plus
+an absolute floor) is set by the whole shell. Where the noise is higher than
+the shell's, single-voxel noise clears it. On CORELLI this happens at the
+high-`|Q|` edge of the coverage. There, low exposure turns one or two counts
+into a spike of order 1 after normalisation, at I/σ ≈ 1–2.
+
+On TbTi3Bi4 22 K (cc chain), 4,349 of 8,572 search peaks and 128 of 4,549
+integer peaks were below 5σ, all at `|Q|` ≈ 6.9–8.3 Å⁻¹ (|K| > 9.7). They merged
+into two 139k-voxel holes, 11 % of everything punched. The gate removes them
+and leaves the interior alone: 8 integer nodes are lost there, one
+mmm-symmetric family at z ≈ 4.5.
+
+The aperture is half the resolution ellipsoid because a full one can sum a
+weak peak together with the structured background around it. (±2,0,±7) is a
+13σ single-voxel excess: z = 16 at half the ellipsoid, 3.6 at the full one.
+
+The intensity scaling's reference (`intensity_ref=None`, the median intensity
+of the detections) counts the candidates the gate rejects, so the gate changes
+which peaks are punched, not how large. With the gate the reference moves by
+0.9 % (22 K) to 2.5 % (100 K).
+
+The noise peaks had pulled that reference down. Measured on the kept
+detections alone it would rise from 1.64 to 2.69 on 22 K. Even the
+integer-node median shrinks every scaled punch: 4–16 % fewer interior voxels
+punched (22–100 K), and the brightest peaks' tails left outside more often
+(69 → 80 % of holes at 100 K). That is a punch-size question; it belongs with
+the punch shape, not the gate.
+
+`detect_window_q` (Å⁻¹, off by default) sizes the detection window like the
+rest of the punch, capped at 0.3 r.l.u. per axis. It is not the default: on
+22 K it adds ~1,200 integer nodes (864 in the interior) that have not been
+validated.
+
 ## Direct Beam
 
 The direct beam is not a Bragg reflection. It is punched after ordinary peak
@@ -205,12 +255,35 @@ punch. A flat `local` fill still leaves a small step at the hole edge;
 Real-data QA uses `METHOD=local` for ordinary Bragg holes and keeps the special
 direct-beam fill enabled.
 
+## Checking A Punch
+
+Two diagnostics measure a punch + fill without changing it:
+
+- `examples/qa_punch_fill.py` (real data). It reports:
+  - how significant each detection is, and where the ones under 5σ sit in `|Q|`;
+  - hole sizes and how much of the punch is in merged holes;
+  - per hole, the excess in shells outside it by distance in Å⁻¹. A tail
+    leaking on one side shows in the first shell's 90th percentile, not its
+    median;
+  - the fill against those shells.
+- `examples/benchmark_punch_fill.py` (ground truth). It runs on the synthetic
+  demo volume, whose Bragg, diffuse and noise are known, and scores:
+  - the Bragg left behind and the diffuse removed;
+  - false detections;
+  - the fill bias in the holes;
+  - the 3D-ΔPDF error at the lattice vectors.
+
+  It has a clean scenario and a low-exposure-edge one.
+
+The metrics are in `nebula3d.analysis.bragg_qa`.
+
 ## Recommended QA Settings
 
 ```bash
 PUNCH_PRESET=cc_on MODE=both MIN_I=0.8 MIN_PROM=0.8 \
 INTEGER_FIT_POSITION=1 INTEGER_FIT_SHAPE=1 INTEGER_H_GUARD=0.12 \
-SEARCH_EXCLUDE_H=-0.6667,-0.3333,0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \
+MIN_SIGNIFICANCE=5 \
+SEARCH_EXCLUDE_H_FRACTIONS=0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \
 BACKFILL_METHOD=local
 ```
 

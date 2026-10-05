@@ -100,12 +100,19 @@ MIN_PROM=0.8
 INTEGER_FIT_POSITION=1
 INTEGER_FIT_SHAPE=1
 INTEGER_H_GUARD=0.12
-SEARCH_EXCLUDE_H=-0.6667,-0.3333,0.3333,0.6667
+MIN_SIGNIFICANCE=5
+SEARCH_EXCLUDE_H_FRACTIONS=0.3333,0.6667
 SEARCH_EXCLUDE_H_WIDTH=0.08
 BACKFILL_METHOD=local
 ```
 
 Current decisions:
+
+- Every detection, integer node or search summit, must be significant against
+  its own error: an integrated excess over half the resolution ellipsoid of at
+  least 5σ (`min_significance`). Without it, the search punched single-voxel
+  noise at the high-|Q| coverage edge: half the TbTi3Bi4 search peaks, in two
+  139k-voxel holes at 22 K. See `docs/algorithms/bragg_cleanup.md`.
 
 - The direct beam is punched separately as an origin ellipsoid
   `INCIDENT_ELLIPSOID_R_HKL=0.15,0.50,1.00`.
@@ -119,9 +126,25 @@ Current decisions:
   node and leaves spurious ΔPDF features at the lattice vectors.
 - Direct-beam backfill remains a special just-outside-`|Q|` fill.
 
+QA tools (2026-10-05):
+- `examples/qa_punch_fill.py` (real data: detection significance, merged
+  holes, tails leaking past each hole, fill step);
+- `examples/benchmark_punch_fill.py` (ground truth on the demo volume:
+  Bragg left, diffuse removed, fill bias, ΔPDF error at the lattice vectors).
+
 Open validation:
 
 - Confirm guarded `MODE=both` leaves no important small Bragg peaks.
+- Punch shape (2026-10-05 audit): integer punches reach ~5σ of the peak width
+  (~7.5σ for the brightest), yet tails of the brightest still leak on one side,
+  and punches on neighbouring L nodes merge into columns. Planned: grow each
+  punch from the peak by significance instead of an ellipsoid × cube-root
+  intensity scaling.
+- Fill: on the demo volume, `local` under-fills the thermal diffuse that peaks
+  under every node by ~75 % (ΔPDF error ~25 % at the lattice vectors; `laplace`
+  ~23 %). Decide whether the fill should continue that rise into the node.
+- `detect_window_q` (Å⁻¹ detection window) adds ~1,200 integer nodes on 22 K;
+  validate before making it the default.
 - Measure the `q_shell` → `local`/`laplace` change on the real 22/45/100 K
   ΔPDFs at the lattice vectors.
 - Decide whether search exclusions should be derived from known magnetic diffuse
