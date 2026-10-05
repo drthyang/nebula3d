@@ -10,6 +10,10 @@ it identifies narrow persistent spherical shells, fits a full 3D angular field,
 and subtracts conservatively with uncertainty. An empty-environment scan is not
 required and is not assumed to contain the sample holder.
 
+The stack-pooled sector model (``fit_pooled_rings``) reads each ring's radial
+profile non-parametrically in small solid-angle cells pooled across neighbouring
+planes, so it follows rings whose |Q| position and width wander with direction.
+
 The earlier empty-subtraction, per-slice patched/parametric, masking, and backfill
 components remain public for comparison and specialized workflows.
 """
@@ -29,6 +33,11 @@ from nebula3d.preprocessing.parametric_ring import (
     FittedParametricRingModel,
     ParametricRing,
     ParametricRingModel,
+)
+from nebula3d.preprocessing.pooled_rings import (
+    PooledRingConfig,
+    PooledRingResult,
+    fit_pooled_rings,
 )
 from nebula3d.preprocessing.powder_rings import (
     RingProfile,
@@ -63,6 +72,9 @@ __all__ = [
     "fit_global_rings",
     "aluminum_fcc_lines",
     "write_global_ring_diagnostics",
+    "PooledRingConfig",
+    "PooledRingResult",
+    "fit_pooled_rings",
     "PatchedRingModel",
     "RingParams",
     "FittedRingModel",

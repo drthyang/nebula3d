@@ -305,16 +305,18 @@ def test_run_async_without_pool_delegates(tmp_path):
 
 def test_run_async_with_pool_matches_sync_run(tmp_path, monkeypatch):
     """With a (fake) pool installed, run_async fans the ring stage out through
-    nebula3d.ringworker and must reproduce run()'s artifacts bit for bit."""
+    nebula3d.ringworker and must reproduce run()'s artifacts bit for bit.  The
+    pool serves the per-plane models, so this pins ``patched``."""
     import asyncio
 
     import nebula3d
     from tests.test_ring_parallel import FakeExecutor
 
+    params = json.dumps({"rings_model": "patched"})
     # Reference: plain sync run in workspace A.
     webbridge.setup(workdir=str(tmp_path / "a"))
     webbridge.make_demo_input(n=24)
-    webbridge.run("", "{}", flatten_enabled=True, force=True)
+    webbridge.run("", params, flatten_enabled=True, force=True)
     ring_a = sorted((tmp_path / "a" / "processed").glob("*_ringremoved.h5"))[0]
     vol_a = nebula3d.load(ring_a)
 
@@ -330,7 +332,7 @@ def test_run_async_with_pool_matches_sync_run(tmp_path, monkeypatch):
         events.append((stage, status, fraction, message))
 
     datasets = json.loads(asyncio.run(webbridge.run_async(
-        "", "{}", flatten_enabled=True, force=True, progress=progress)))
+        "", params, flatten_enabled=True, force=True, progress=progress)))
     ring_b = sorted((tmp_path / "b" / "processed").glob("*_ringremoved.h5"))[0]
     vol_b = nebula3d.load(ring_b)
 
