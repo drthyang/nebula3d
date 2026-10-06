@@ -1,60 +1,58 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tsung-han Yang
 
-"""Isotropic radial-background flattening by spherical |Q|-shell sweep.
+"""Isotropic radial-background flattening: a fitted ``const + c·F(Q)²`` pedestal.
 
 Motivation
 ----------
 After ring removal, Bragg punching, and backfilling, the volume still carries a
-smooth, (nearly) isotropic radial pedestal: the average intensity drifts with
-|Q| (incoherent/multiple scattering, TDS, an imperfect empty-can subtraction).
-Left in, that pedestal is a broad, slowly-varying background that the ΔPDF
-transform turns into a low-frequency artefact (and it makes plane-to-plane
-intensity comparison harder).
+smooth, isotropic radial pedestal.  Left in, it does not fall to zero at the box
+faces, and the ΔPDF transform turns that step into the cross along the axes.
 
-This step flattens it directly.  Sweeping spherical shells from |Q|=0 to Qmax,
-in each thin shell we
+Physics of the default model
+----------------------------
+The elastic intensity is a sum over site pairs; each pair lands in the ΔPDF at
+its separation vector.  The self terms (a site with itself) have r = 0 and
+carry no correlation information.  They are the pedestal:
 
-    * estimate a single robust **background level** from the shell's intensity
-      distribution — by default the **floor** (a low percentile), which
-      sits *below* the diffuse and the Bragg-residual high tail, so neither
-      enters the estimate, and
-    * subtract that level from every voxel in the shell.
+* **const** — nuclear incoherent scattering (spin + isotope): uncorrelated,
+  elastic, flat in |Q| (apart from the Debye–Waller fall-off, not modelled);
+* **c·F(Q)²** — single-ion paramagnetic scattering,
+  ``(2/3)(γr₀/2)² g²J(J+1) F(Q)²`` for isotropic fluctuations: the shape of
+  the ion's magnetic form factor
+  (:func:`~nebula3d.preprocessing.form_factor.magnetic_form_factor`, dipole
+  approximation) and nothing else.
 
-The per-shell levels are then smoothed along |Q| into one continuous curve
-``bg(|Q|)`` and subtracted at each voxel's exact |Q| (linear interpolation), so
-no shell-edge step is stamped into the result.  The radial pedestal flattens to
-≈0 while the **anisotropic diffuse signal and Bragg residuals are preserved** —
-they rise above the shell floor, so subtracting the floor leaves them standing.
+Both vary on a scale of ≳1 Å⁻¹, so in real space they sit at r ≲ 1–2 Å and
+cannot reach a pair vector.  The flatten measures each thin |Q| shell's
+**floor** (a low percentile, below the diffuse and the Bragg-residual tail),
+fits ``const + c·F(Q)²`` to those floor levels by least squares over
+``fit_q_range``, and subtracts the fitted curve at each voxel's exact |Q|.
 
-This is the isotropic complement to
-:class:`~nebula3d.preprocessing.radial_background.PatchedRadialRingModel`, which
-removes *anisotropic* powder rings per 2D plane.  The two are independent: rings
-are azimuthally smooth peaks at fixed |Q|; this removes the smooth radial level
-underneath everything.
+What the model does *not* remove is the point.  Spin (or displacive)
+correlations at distance r add a shell-averaged ``sin(Qr)/(Qr)`` term with
+period 2π/r (1.7 Å⁻¹ for r = 3.75 Å).  The earlier free-form floor, smoothed at
+0.1 Å⁻¹, followed those oscillations and subtracted them, carving spherical
+shells at 2.5–4 Å into the ΔPDF; a two-term model of fixed shape cannot follow
+them.  Its limits: for anisotropic (Ising-like) moments the self term is
+``F²(1 − (Q̂·ê)²)``, and only its shell average is removed; and a smooth
+background that is not F²-shaped (multiple scattering, sample environment)
+stays in.
 
 Estimator
 ---------
-``estimator='floor'`` (default) keeps diffuse: the floor is the background, and
-anything above it (diffuse, Bragg) survives.  ``'snip'`` builds the per-shell
-median radial profile and takes its SNIP baseline (the floor under broad radial
-humps) — useful when the background itself has broad bumps in |Q|.  The shell
-``median`` and ``mode`` estimators were removed: a shell's median or mode
-includes the diffuse signal itself, so subtracting it removes real diffuse
-scattering (validation found both over-subtract).
+``'model'`` (default) is the fit above; ``ion=None`` fits a constant only (a
+non-magnetic sample).  ``'floor'`` subtracts the smoothed per-shell floor itself
+and ``'snip'`` the SNIP baseline of the per-shell median profile — both are
+free-form, so both remove some isotropic diffuse signal (kept for comparison).
+The shell ``median`` and ``mode`` estimators were removed: they include the
+diffuse signal itself.
 
 Validation
 ----------
-``examples/validate_flatten.py`` is a non-circular real-data QA for this stage
-(the per-shell-median check in ``flatten_background_3d.py`` is nearly tautological
-— the subtraction is built from that statistic).  It tests the two things that
-matter: (1) **isotropy** — is the level we subtract really azimuthally flat?
-(octant-floor spread vs |Q|); and (2) **feature preservation / over-subtraction**
-— background-population residual, negative fraction vs noise, and strong-feature
-contrast retention.  Validation on representative real volumes showed that the
-default ``floor`` is the robust operating point: the shell median and mode
-centred the shell and flagged as over-subtraction, while ``floor`` keeps the
-bulk positive and preserves possibly-real isotropic diffuse.  The subtraction is a function of
+``examples/validate_flatten.py`` is a real-data QA for this stage: (1)
+**isotropy** — is the level we subtract really azimuthally flat? and (2)
+**feature preservation / over-subtraction**.  The subtraction is a function of
 |Q| alone, so it cannot create or distort anisotropic structure (regression:
 ``test_radial_flatten.py``).
 """
@@ -69,12 +67,13 @@ from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter1d
 
 from nebula3d.core import HKLVolume, low_memory, q_bin_indices, q_magnitude_from_axes
+from nebula3d.preprocessing.form_factor import ion_key, magnetic_form_factor
 from nebula3d.preprocessing.radial_background import _estimate_baseline, _fill_nan_1d
 
 #: H planes per |Q| slab (one float64 slab is the only |Q| ever resident).
 _SLAB = 16
 
-ESTIMATORS = ("floor", "snip")
+ESTIMATORS = ("model", "floor", "snip")
 
 
 @dataclass
@@ -98,6 +97,13 @@ class RadialFlattenResult:
         Number of valid voxels in each shell.
     estimator : str
         The estimator used (see module docstring).
+    model_coef : (const, c), optional
+        ``estimator='model'``: the fitted pedestal ``const + c·F(Q)²`` (``c`` is
+        0 without an ion).
+    model_r2 : float, optional
+        ``estimator='model'``: R² of the fit over the fitted shells.
+    ion : str, optional
+        ``estimator='model'``: the magnetic ion whose ``F(Q)`` was used.
     """
 
     volume: HKLVolume
@@ -106,19 +112,24 @@ class RadialFlattenResult:
     raw_levels: NDArray[np.float64]
     counts: NDArray[np.int_]
     estimator: str
+    model_coef: tuple[float, float] | None = None
+    model_r2: float | None = None
+    ion: str | None = None
 
 
 def flatten_radial_background(
     vol: HKLVolume,
     *,
     q_step: float = 0.05,
-    estimator: str = "floor",
+    estimator: str = "model",
     floor_percentile: float = 25.0,
     snip_width: float = 0.3,
     smooth: float = 0.10,
     min_count: int = 20,
     q_range: tuple[float, float] | None = None,
     clip_negative: bool = False,
+    ion: str | None = "Tb3+",
+    fit_q_range: tuple[float, float] | None = (0.8, 10.0),
 ) -> RadialFlattenResult:
     """Subtract a smooth, continuous isotropic radial background from *vol*.
 
@@ -128,30 +139,42 @@ def flatten_radial_background(
         Spherical-shell width (Å⁻¹).  A few times finer than the scale of the
         background drift; the along-|Q| smoothing controls noise, so a fine step
         is safe (default 0.05).
-    estimator : {'floor', 'snip'}
-        How the per-shell background level is estimated (see module docstring).
-        ``'floor'`` (default) preserves diffuse and Bragg.
+    estimator : {'model', 'floor', 'snip'}
+        What is subtracted (see module docstring).  ``'model'`` (default): the
+        ``const + c·F(Q)²`` pedestal fitted to the per-shell floors.
+        ``'floor'``: the smoothed per-shell floor itself.
     floor_percentile : float
-        Percentile used by ``estimator='floor'`` (default 25).  Lower → a more
-        conservative background that removes less and keeps more signal.
+        Percentile giving each shell's floor, for ``'model'`` and ``'floor'``
+        (default 25).
     snip_width : float
         Peak-removal width (Å⁻¹) for ``estimator='snip'`` (default 0.3).
     smooth : float
         σ (Å⁻¹) of the Gaussian smoothing the per-shell levels into a continuous
-        ``bg(|Q|)`` (default 0.10).  This is what makes the subtracted background
-        smooth and continuous across shells.  Set 0 to disable (not for ``snip``,
-        which smooths internally).
+        ``bg(|Q|)`` for ``'floor'`` (default 0.10).  Set 0 to disable (not for
+        ``snip``, which smooths internally; unused by ``'model'``, which is
+        smooth by construction).
     min_count : int
-        Shells with fewer valid voxels get no level (NaN) and are filled by
-        interpolation from their neighbours (default 20).
+        Shells with fewer valid voxels get no level (NaN): ``'model'`` leaves
+        them out of the fit, the free-form estimators interpolate them from
+        their neighbours (default 20).
     q_range : (float, float), optional
         Restrict the swept |Q| range (Å⁻¹).  ``None`` sweeps the full data range.
     clip_negative : bool
         If True, clamp the flattened data at 0 (default False — negative
         residuals below the background are meaningful and kept).
+    ion : str or None
+        ``estimator='model'``: the magnetic ion whose form factor shapes the
+        paramagnetic term (default ``'Tb3+'``, the TbTi3Bi4 sample; see
+        :data:`~nebula3d.preprocessing.form_factor.IONS`).  ``None`` or
+        ``'none'`` fits a constant only.
+    fit_q_range : (float, float), optional
+        ``estimator='model'``: |Q| range (Å⁻¹) of the shells the model is fitted
+        to (default 0.8–10, clear of the beam stop and the sparse high-|Q|
+        corners).  ``None`` fits every shell with a level.
     """
     if estimator not in ESTIMATORS:
         raise ValueError(f"Unknown estimator {estimator!r}; choose one of {ESTIMATORS}.")
+    ion = ion_key(ion) if estimator == "model" else None
 
     data = vol.data
     valid = vol.mask & np.isfinite(data)
@@ -227,14 +250,18 @@ def flatten_radial_background(
             else _shell_level(seg, estimator, floor_percentile)
         )
 
-    filled = _fill_nan_1d(raw)
-    if estimator == "snip":
+    model_coef: tuple[float, float] | None = None
+    model_r2: float | None = None
+    if estimator == "model":
+        model_coef, model_r2 = _fit_pedestal(q_grid, raw, ion, fit_q_range)
+        bg_curve = _pedestal(q_grid, model_coef, ion)
+    elif estimator == "snip":
         # SNIP baseline of the median radial profile: the floor under broad humps.
-        bg_curve = _estimate_baseline(filled, qs, snip_width, smooth)
+        bg_curve = _estimate_baseline(_fill_nan_1d(raw), qs, snip_width, smooth)
     elif smooth > 0:
-        bg_curve = gaussian_filter1d(filled, smooth / qs, mode="nearest")
+        bg_curve = gaussian_filter1d(_fill_nan_1d(raw), smooth / qs, mode="nearest")
     else:
-        bg_curve = filled
+        bg_curve = _fill_nan_1d(raw)
 
     # Subtract the smooth curve at each voxel's exact |Q| (continuous, no shell
     # step), leaving NaN/masked voxels untouched.  Masked ``where=`` ops instead
@@ -243,11 +270,16 @@ def flatten_radial_background(
     # In low-memory mode subtract in place over the (disposable) input instead of
     # allocating a second full volume — the pipeline hands this stage a fresh
     # volume and discards it afterwards.  Same arithmetic, bit-identical output.
+    # The model is evaluated exactly at each |Q| (no clamp outside the swept
+    # range); the free-form curves are interpolated.
     data_out = data if low_memory() else data.copy()
     for lo in range(0, data.shape[0], _SLAB):
         sl = slice(lo, lo + _SLAB)
-        bg_at = np.interp(q_slab(lo), q_grid, bg_curve,
-                          left=float(bg_curve[0]), right=float(bg_curve[-1]))
+        bg_at = (
+            _pedestal(q_slab(lo), model_coef, ion) if model_coef is not None
+            else np.interp(q_slab(lo), q_grid, bg_curve,
+                           left=float(bg_curve[0]), right=float(bg_curve[-1]))
+        )
         finite = np.isfinite(data[sl])
         np.subtract(data[sl], bg_at, out=data_out[sl], where=finite)
         if clip_negative:
@@ -257,13 +289,58 @@ def flatten_radial_background(
     return RadialFlattenResult(
         volume=vol_out, q_grid=q_grid, bg_curve=bg_curve,
         raw_levels=raw, counts=counts, estimator=estimator,
+        model_coef=model_coef, model_r2=model_r2, ion=ion,
     )
+
+
+def _pedestal(
+    q: NDArray[np.floating], coef: tuple[float, float], ion: str | None
+) -> NDArray[np.float64]:
+    """``const + c·F(Q)²`` at *q* (``const`` alone without an ion)."""
+    const, c = coef
+    if ion is None:
+        return np.full(np.shape(q), const, dtype=np.float64)
+    return const + c * magnetic_form_factor(q, ion) ** 2
+
+
+def _fit_pedestal(
+    q_grid: NDArray[np.float64],
+    levels: NDArray[np.float64],
+    ion: str | None,
+    fit_q_range: tuple[float, float] | None,
+) -> tuple[tuple[float, float], float | None]:
+    """Least-squares ``const + c·F(Q)²`` through the per-shell floor *levels*.
+
+    Fits the shells inside *fit_q_range*, or every shell with a level if fewer
+    than two lie there.  Unconstrained: an over-subtracted empty can leaves a
+    negative constant, which must come out too.  Returns ``((const, c), R²)``.
+    """
+    cols = [np.ones_like(q_grid)]
+    if ion is not None:
+        cols.append(magnetic_form_factor(q_grid, ion) ** 2)
+    x = np.column_stack(cols)
+    sel = np.isfinite(levels)
+    if fit_q_range is not None:
+        lo, hi = fit_q_range
+        in_range = sel & (q_grid >= lo) & (q_grid <= hi)
+        if in_range.sum() >= 2:
+            sel = in_range
+    if sel.sum() < x.shape[1]:
+        # Too few shells to fit (a tiny volume): fall back to their mean level.
+        const = float(np.mean(levels[sel])) if sel.any() else 0.0
+        return (const, 0.0), None
+    y = levels[sel]
+    coef, *_ = np.linalg.lstsq(x[sel], y, rcond=None)
+    resid = y - x[sel] @ coef
+    var = float(np.var(y))
+    r2 = 1.0 - float(np.var(resid)) / var if var > 0 else None
+    return (float(coef[0]), float(coef[1]) if coef.size > 1 else 0.0), r2
 
 
 def _shell_level(
     vals: NDArray[np.float64], estimator: str, floor_percentile: float
 ) -> float:
     """Robust per-shell background level for the non-profile estimators."""
-    if estimator == "floor":
+    if estimator in ("model", "floor"):
         return float(np.percentile(vals, floor_percentile))
     raise ValueError(f"Unknown estimator: {estimator!r}")

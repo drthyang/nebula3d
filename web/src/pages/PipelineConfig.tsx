@@ -36,6 +36,14 @@ const DATASET_STAGE_BADGES = [
 
 const DEFAULT_PDF_CROP = { h: 4, k: 8, l: 15 };
 
+// Ions with a tabulated form factor for the flatten model (besides the Tb3+
+// default) — mirrors nebula3d.preprocessing.form_factor.IONS.
+const FLATTEN_IONS = [
+  "Ti3+", "V3+", "V4+", "Cr3+", "Mn2+", "Mn3+", "Mn4+", "Fe2+", "Fe3+",
+  "Co2+", "Co3+", "Ni2+", "Ni3+", "Cu2+",
+  "Pr3+", "Nd3+", "Gd3+", "Dy3+", "Ho3+", "Er3+", "Tm3+", "Yb3+",
+];
+
 // Half-extent (in r.l.u. along the coarsest reciprocal axis) of the orthoslice
 // preview window at zoom = 1.  Shared by the Bragg-punch and 3D-ΔPDF preview
 // grids so both render the same isotropic Q window per plane — at equal zoom the
@@ -1199,6 +1207,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       punchCutL: st.punchCutL,
       backfillMethod: st.backfillMethod,
       flattenEstimator: st.flattenEstimator,
+      flattenIon: st.flattenIon,
       pdfApod: st.pdfApod,
       pdfQMin: st.pdfQMin,
       pdfQMax: st.pdfQMax,
@@ -2072,8 +2081,13 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     onToggle={(v) => patch({ flatten: v })}
                   >
                     <HelpTip>
-                      Optional background flattening of the backfilled volume before
-                      the transform, using the selected baseline estimator.
+                      Subtracts the isotropic pedestal before the transform. The
+                      default model fits const + c·F(Q)² to each |Q| shell&apos;s
+                      floor: nuclear incoherent plus single-ion paramagnetic
+                      scattering, with F the magnetic ion&apos;s form factor. Both
+                      are self scattering, so they only touch the ΔPDF at r ≈ 0.
+                      floor and snip subtract a free-form curve and also remove some
+                      isotropic diffuse.
                     </HelpTip>
                   </StageHead>
                   <div className="cfg-box">
@@ -2083,8 +2097,22 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     disabled={!s.flatten}
                     onChange={(e) => patch({ flattenEstimator: e.target.value })}
                   >
-                    <option value="">floor (default)</option>
+                    <option value="">model: const + c·F(Q)² (default)</option>
+                    <option value="floor">floor</option>
                     <option value="snip">snip</option>
+                  </select>
+                </Field>
+                <Field label="Magnetic ion">
+                  <select
+                    value={s.flattenIon}
+                    disabled={!s.flatten || (s.flattenEstimator !== "" && s.flattenEstimator !== "model")}
+                    onChange={(e) => patch({ flattenIon: e.target.value })}
+                  >
+                    <option value="">Tb3+ (default)</option>
+                    <option value="none">none (constant only)</option>
+                    {FLATTEN_IONS.map((ion) => (
+                      <option key={ion} value={ion}>{ion}</option>
+                    ))}
                   </select>
                 </Field>
                   </div>

@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+- **The flatten subtracts a fitted const + c·F(Q)² pedestal.**
+  - **What it does.** It still takes each |Q| shell's floor (p25). It then
+    fits `const + c·F(Q)²` to those floors over 0.8–10 Å⁻¹ and subtracts the
+    fitted curve, instead of the smoothed floor itself.
+  - **The two terms.** `const` is nuclear incoherent scattering (Ti dominates).
+    `c·F²` is the paramagnetic scattering of each ion by itself, with `F` its
+    magnetic form factor. Both are self scattering, so they change the ΔPDF
+    only at r ≈ 0.
+  - **Why the floor had to go.** The old floor, smoothed at 0.1 Å⁻¹, also
+    followed the isotropic `sin(Qr)/(Qr)` terms of real pair correlations and
+    subtracted them.
+
+  On TbTi3Bi4, each ΔPDF compared with no flatten:
+
+  | | 22 K | 45 K | 100 K |
+  |---|---|---|---|
+  | shell-mean change at 2.75 / 3.75 Å, old floor | −121 / −229 | −48 / −265 | −277 / −138 |
+  | shell-mean change at 2.75 / 3.75 Å, model | +47 / +35 | +46 / +35 | +30 / +19 |
+  | axis-cross ratio: none → old floor → model | 34.8 → 15.2 → 16.1 | 70.4 → 10.9 → 15.8 | 35.0 → 6.2 → 8.2 |
+  | fitted pedestal | 0.031 + 0.121·F² | 0.026 + 0.127·F² | 0.016 + 0.130·F² |
+
+  On the demo ground truth, the old floor's ΔPDF error at 2–5 Å was 42 %,
+  against 13 % with no flatten.
+
+  The model keeps most of the cross suppression. What it leaves is a smooth
+  isotropic part that is not F²-shaped. That part may be real isotropic
+  correlation or a background the model lacks (multiple scattering, the
+  sample environment, the Debye–Waller fall-off of the incoherent constant).
+
+  - **Form factor.** `F` is the dipole form, ⟨j0⟩ + (2/g − 1)⟨j2⟩. It fits the
+    TbTi3Bi4 floors better than ⟨j0⟩ alone: R² 0.88 / 0.90 / 0.94 against
+    0.84 / 0.87 / 0.91 at 22 / 45 / 100 K.
+  - **New module.** `nebula3d.preprocessing.form_factor` has the coefficients
+    for 22 3d and rare-earth ions (International Tables C §4.4.5,
+    cross-checked against Mantid).
+  - **Settings.** `ion` (default `"Tb3+"`; `None`/`"none"` fits a constant
+    only) and `fit_q_range` are new options on `flatten_radial_background` and
+    `FlattenParams`. On the server the ion is `flatten_ion`.
+  - **Where the default changed.** The stage driver, the flatten example, the
+    QA script and the web Configure page now default to the model. The web
+    page gains a Magnetic-ion select. `estimator="floor"` and `"snip"` remain
+    for comparison.
+  - **Limit.** For Ising-like moments the self term is `F²(1 − (Q̂·ê)²)`, and
+    only its shell average is removed.
 - **Laplace is the default backfill, judged on real data.** A new test,
   `bragg_qa.refill_test` (also `REFILL=laplace,local` in
   `examples/qa_punch_fill.py`), measures fill error where the truth is known.
