@@ -18,8 +18,10 @@ Strategy
    exact integer by thermal contraction etc.).
 3. Punch a 3D ellipsoidal hole at each detected peak.  Its size is set in Q
    (Å⁻¹), where the instrument resolution lives — per peak in the local
-   spherical frame (radial, polar, azimuthal) by default, or along a*, b*, c* —
-   and optionally **scales with intensity** (bright peaks have longer tails).
+   spherical frame (radial, polar, azimuthal), or along a*, b*, c*.  With
+   ``punch_footprint="profile"`` each peak is punched along those axes as far
+   as its tail, predicted from the dataset's own stacked Bragg profile, is
+   measurable; otherwise the ellipsoid optionally **scales with intensity**.
    Radii in fractional HKL were removed: they depend on the cell, not on the
    resolution, and are wrong along non-orthogonal axes.
 4. The mask is built on **local windows** around each peak, never a full-volume

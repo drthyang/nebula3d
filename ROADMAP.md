@@ -101,6 +101,8 @@ INTEGER_FIT_POSITION=1
 INTEGER_FIT_SHAPE=1
 INTEGER_H_GUARD=0.12
 MIN_SIGNIFICANCE=5
+PUNCH_FOOTPRINT=profile
+PROFILE_N_SIGMA=0.5
 SEARCH_EXCLUDE_H_FRACTIONS=0.3333,0.6667
 SEARCH_EXCLUDE_H_WIDTH=0.08
 BACKFILL_METHOD=local
@@ -113,6 +115,10 @@ Current decisions:
   least 5σ (`min_significance`). Without it, the search punched single-voxel
   noise at the high-|Q| coverage edge: half the TbTi3Bi4 search peaks, in two
   139k-voxel holes at 22 K. See `docs/algorithms/bragg_cleanup.md`.
+- Each peak is punched as far as its own tail is measurable
+  (`punch_footprint="profile"`, 0.5σ). The tail shape is the dataset's stacked
+  Bragg profile, learned per run from its brightest peaks, not a scaled
+  ellipsoid. On TbTi3Bi4 that halves the brightest peaks' leaking tails.
 
 - The direct beam is punched separately as an origin ellipsoid
   `INCIDENT_ELLIPSOID_R_HKL=0.15,0.50,1.00`.
@@ -135,11 +141,13 @@ QA tools (2026-10-05):
 Open validation:
 
 - Confirm guarded `MODE=both` leaves no important small Bragg peaks.
-- Punch shape (2026-10-05 audit): integer punches reach ~5σ of the peak width
-  (~7.5σ for the brightest), yet tails of the brightest still leak on one side,
-  and punches on neighbouring L nodes merge into columns. Planned: grow each
-  punch from the peak by significance instead of an ellipsoid × cube-root
-  intensity scaling.
+- Punch shape: done 2026-10-06. The profile-matched punch follows each peak's
+  measured tail (c-axis mosaic along θ̂); see
+  `docs/algorithms/bragg_cleanup.md`. Open:
+  - its ~20 % larger, more merged holes;
+  - the H guard leaves the brightest nuclear tails in the H = ±1/3 magnetic
+    planes. Subtracting the predicted tail there, instead of punching, would
+    follow from the learned profile.
 - Fill: on the demo volume, `local` under-fills the thermal diffuse that peaks
   under every node by ~75 % (ΔPDF error ~25 % at the lattice vectors; `laplace`
   ~23 %). Decide whether the fill should continue that rise into the node.
