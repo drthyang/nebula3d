@@ -988,7 +988,8 @@ def build_manual(output_path: str) -> None:
         "sparse block-diagonal system solved by Jacobi-preconditioned conjugate "
         "gradients. The Dirichlet boundary sits <tt>laplace_gap</tt> (default 1) "
         "voxels outside the punch so leaked Bragg tails do not pull the fill up; "
-        "measured voxels in that band are kept."
+        "the band is filled too, so the fill meets the kept data at its "
+        "boundary with no step."
     ))
 
     story.append(H3("4.3.3  Q-Shell Fill (Comparison Only)"))
