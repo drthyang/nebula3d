@@ -30,6 +30,41 @@ def _make_vol(shape=(15, 15, 15), hkl_range=(-2, 2)):
     return HKLVolume.from_arrays(data, (h[0], h[-1]), (k[0], k[-1]), (l[0], l[-1]), ub_matrix=ub)
 
 
+def test_supercell_keeps_integer_nodes_on_the_parent_lattice():
+    vol = _make_vol(shape=(21, 21, 21), hkl_range=(-4, 4))
+    every = BraggRemover().enumerate_bragg(vol)
+    parent = BraggRemover(supercell=(2, 2, 2)).enumerate_bragg(vol)
+    assert len(every) == 9 ** 3 - 1
+    assert len(parent) == 5 ** 3 - 1
+    assert all(h % 2 == 0 and k % 2 == 0 and l % 2 == 0 for h, k, l in parent)
+    only_l = BraggRemover(supercell=(1, 1, 2)).enumerate_bragg(vol)
+    assert {l % 2 for _, _, l in only_l} == {0} and {h % 2 for h, _, _ in only_l} == {0, 1}
+
+
+@pytest.mark.parametrize("cell", [(0, 1, 1), (2, 2), (1.5, 1, 1)])
+def test_supercell_must_be_three_positive_integers(cell):
+    with pytest.raises(ValueError, match="supercell"):
+        BraggRemover(supercell=cell)
+
+
+def test_supercell_integer_mode_punches_only_parent_nodes():
+    # Sharp peaks at every integer node; with a 2×2×2 supercell only the
+    # all-even ones are Bragg, the odd-node peaks stay measured.
+    vol = _make_vol(shape=(41, 41, 41), hkl_range=(-4, 4))
+    idx = {v: int(np.argmin(np.abs(vol.h_axis - v))) for v in range(-3, 4)}
+    for h in range(-3, 4):
+        for k in range(-3, 4):
+            for l in range(-3, 4):
+                if (h, k, l) != (0, 0, 0):
+                    vol.data[idx[h], idx[k], idx[l]] = 200.0
+    keep = BraggRemover(mode="integer", min_intensity=10.0, supercell=(2, 2, 2),
+                        **_q_radii(vol, 0.15, 0.15, 0.15)).build_mask(vol)
+    assert not keep[idx[2], idx[2], idx[0]]
+    assert not keep[idx[-2], idx[0], idx[2]]
+    assert keep[idx[1], idx[2], idx[0]]
+    assert keep[idx[1], idx[1], idx[1]]
+
+
 def test_bragg_mask_removes_integer_positions():
     vol = _make_vol()
     mask = bragg_mask(vol, **_q_radii(vol, 0.4, 0.4, 0.4))
