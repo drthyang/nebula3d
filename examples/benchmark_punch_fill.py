@@ -27,7 +27,7 @@ Env:
     SCENARIOS comma list of clean, edge (default both)
     ARMS      comma list of no_gate, gate, profile_k0.5, profile_k1, profile_k2,
               profile_k3 (default no_gate, gate)
-    BACKFILL  local | laplace (default local)
+    BACKFILL  laplace | local (default laplace)
     PDF       1 (default) also scores the ΔPDF; 0 skips the FFTs
     OUT_JSON  write the results here as JSON
 """
@@ -95,7 +95,7 @@ def main() -> None:
     n = int(os.environ.get("N", "161"))
     scenarios = os.environ.get("SCENARIOS", "clean,edge").split(",")
     arms = os.environ.get("ARMS", "no_gate,gate").split(",")
-    method = os.environ.get("BACKFILL", "local")
+    method = os.environ.get("BACKFILL", "laplace")
     pdf = os.environ.get("PDF", "1") != "0"
     results: dict = {}
     for sc in scenarios:

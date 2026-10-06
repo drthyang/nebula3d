@@ -15,7 +15,9 @@ from nebula3d.analysis.bragg_qa import (
     hole_census,
     hole_rings,
     lattice_points,
+    refill_test,
     score_against_truth,
+    shifted_holes,
     summarise_rings,
 )
 from nebula3d.core import HKLVolume
@@ -111,3 +113,32 @@ def test_truth_score_of_an_oracle_fill():
     s0 = score_against_truth(vol, none, raw, bragg=bragg, diffuse=diffuse, beam=beam)
     assert s0["bragg_left"] == pytest.approx(1.0)
     assert s0["pdf_rel_rms"] > 5 * s["pdf_rel_rms"]
+
+
+def test_shifted_holes_land_on_measured_unpunched_voxels():
+    vol = _flat()
+    punched = _ball((10, 10, 10), 2) | _ball((10, 18, 12), 2) | _ball((10, 38, 10), 2)
+    moved = shifted_holes(vol, punched, (0, 8, 0))
+    target = _ball((10, 18, 10), 2)
+    # the first ball moves onto measured voxels, minus the real hole it now overlaps
+    assert np.array_equal(moved & target, target & ~punched)
+    # the ball near the K edge would wrap around: dropped
+    assert not moved[:, :8, :].any()
+    assert not (moved & punched).any()
+
+
+def test_refill_test_scores_a_flat_fill_against_laplace_on_a_gradient():
+    vol = _flat(noise=0.05)
+    grad = 0.05 * np.arange(N)[None, :, None]  # one σ per voxel along K
+    vol = dataclasses.replace(vol, data=vol.data + grad)
+    punched = np.zeros(vol.shape, dtype=bool)
+    for c in ((10, 8, 10), (10, 8, 30), (30, 8, 10), (30, 8, 30), (20, 8, 20)):
+        punched |= _ball(c, 3)
+    lap = refill_test(vol, punched, shift=(0, 12, 0), method="laplace", delta_pdf=False)
+    flat = refill_test(vol, punched, shift=(0, 12, 0), method="local", delta_pdf=False)
+    assert lap["n_holes"] == flat["n_holes"] == 5
+    # Laplace reproduces a linear field: only the data noise is left
+    assert lap["rmse_sigma"] < 1.2 < flat["rmse_sigma"]
+    assert abs(lap["bias_sigma"]) < 0.2 and abs(flat["bias_sigma"]) < 0.5
+    with_pdf = refill_test(vol, punched, shift=(0, 12, 0), method="laplace")
+    assert set(with_pdf["pdf_error"]) == {"2-5", "5-10", "10-20", "20-40", "40-80"}

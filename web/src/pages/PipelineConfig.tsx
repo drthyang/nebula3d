@@ -2056,8 +2056,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     value={s.backfillMethod}
                     onChange={(e) => patch({ backfillMethod: e.target.value })}
                   >
-                    <option value="">local (default)</option>
-                    <option value="laplace">laplace</option>
+                    <option value="">laplace (default)</option>
+                    <option value="local">local</option>
                     <option value="q_shell">q_shell</option>
                   </select>
                 </Field>
