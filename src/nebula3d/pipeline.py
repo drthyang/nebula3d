@@ -467,10 +467,13 @@ class PunchParams:
 class BackfillParams:
     """Backfill of punched Bragg holes (``backfill_bragg``)."""
 
-    # Fill from the diffuse *around* each hole ("local" or "laplace"), never a
-    # global |Q|-shell level: "q_shell" is biased at every lattice node, which
-    # FTs into spurious ΔPDF features at the lattice vectors.
-    method: str = "local"
+    # Fill from the diffuse *around* each hole, never a global |Q|-shell level:
+    # "q_shell" is biased at every lattice node, which FTs into spurious ΔPDF
+    # features at the lattice vectors.  "laplace" (default) continues the
+    # surrounding diffuse smoothly, also across the long merged holes of the
+    # profile-matched punch; "local" puts one flat value in each hole, a step
+    # below its rim.  Judged on real data by bragg_qa.refill_test.
+    method: str = "laplace"
     local_radius: int = 2
     local_min_count: int = 8
     q_shell_step: float = 0.05
