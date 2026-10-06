@@ -215,10 +215,12 @@ Output:
 data/processed/*_backfilled_flattened.h5
 ```
 
-Sweeps spherical `|Q|` shells and subtracts a smooth, continuous per-shell
-background floor (default estimator `floor`/p25), so the isotropic radial
-pedestal flattens to ≈0 while the anisotropic diffuse and Bragg residuals are
-preserved. This is the explicit background-removal step. Use
+Sweeps spherical `|Q|` shells, fits the isotropic pedestal `const + c·F(Q)²`
+to each shell's floor (p25) and subtracts it. The constant is nuclear incoherent
+scattering and `F` is the magnetic ion's form factor (`ION`, default Tb3+). Both
+terms are self scattering, so the ΔPDF changes only at r ≈ 0, while the
+anisotropic diffuse, the Bragg residuals and isotropic pair correlations are
+kept. This is the explicit background-removal step. Use
 `examples/validate_flatten.py` to check isotropy, feature retention, and
 over-subtraction on your own volumes.
 

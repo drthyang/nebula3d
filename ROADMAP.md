@@ -167,16 +167,31 @@ Open validation:
 ## Phase 3b — Radial-Background Flatten  Implemented (default ON, step 4)
 
 Isotropic complement to the per-plane ring removal: sweeps spherical `|Q|`
-shells and subtracts a smooth, continuous per-shell background **floor** so the
-radial pedestal flattens to ≈0 while anisotropic diffuse and Bragg residuals are
-preserved.
+shells, measures each shell's background **floor** (p25), fits the isotropic
+pedestal `const + c·F(Q)²` to those floors and subtracts the fitted curve.
 
-- `nebula3d.preprocessing.flatten_radial_background` (`src/nebula3d/preprocessing/radial_flatten.py`)
+- `nebula3d.preprocessing.flatten_radial_background` (`src/nebula3d/preprocessing/radial_flatten.py`);
+  form factors in `src/nebula3d/preprocessing/form_factor.py`
 - `examples/flatten_background_3d.py`; the explicit background-removal step 4 in
   `run_pipeline.py`, default ON (disable with `FLATTEN=0`). The ΔPDF's own
   Gaussian `SUBTRACT_BG` blur defaults off — it is the alternative remover, never
   combined with the flatten.
-- Default estimator `floor` (p25); `mode` / `median` / `snip` also available.
+- Default estimator `model`, `ion="Tb3+"` (dipole form factor
+  `⟨j0⟩ + (2/g − 1)⟨j2⟩`), fitted over 0.8–10 Å⁻¹; `ion=None` fits a constant
+  only. `floor` and `snip` (free-form curves) remain for comparison.
+
+**Why the model (2026-10-06).** Both model terms are self (single-site)
+scattering — nuclear incoherent (Ti dominates) and single-ion paramagnetic
+`∝ F(Q)²` — so they reach the ΔPDF only at r ≈ 0. The previous default, the
+p25 floor smoothed at 0.1 Å⁻¹, also followed the isotropic `sin(Qr)/(Qr)`
+terms of real pair correlations and subtracted them: on TbTi3Bi4 it carved
+spherical shells at 2.5–4 Å (22 K shell mean at 3.75 Å moved by −238), and on
+the demo ground truth its ΔPDF error at 2–5 Å was 42 % against 13 % with no
+flatten. Published 3D-ΔPDF practice has no percentile floor; the closest
+precedent subtracts only the uncorrelated paramagnetic scattering (Roth et al.,
+IUCrJ 5, 410, 2018). Limits: for Ising-like moments the self term is
+`F²(1 − (Q̂·ê)²)` and only its shell average is removed; a smooth non-F²
+background stays in.
 
 Use the flatten instead of a K-L `SUBTRACT_BG` blur, not with it. The blur can
 attenuate on-axis real-space signal at the same length scale as the smooth
@@ -186,7 +201,7 @@ and by the round-trip consistency check.
 
 Robustness should be checked with `examples/validate_flatten.py`, a
 **non-circular** QA (the per-shell-median check is nearly tautological). The
-expected diagnostics are:
+2026-09 diagnostics, measured for the `floor` estimator:
 
 - **Background is isotropic** — octant-floor spread / |bg| ≈ 0.10–0.14 (≪ 0.3),
   so subtracting one level per |Q| shell is valid; we are not mislabeling
@@ -195,14 +210,15 @@ expected diagnostics are:
   retained; the subtraction is a function of |Q| alone, so it cannot distort
   anisotropy (only shifts the radial mean).
 - **No over-subtraction** — negative fraction a stable ~24.8% (the p25
-  expectation), deep negatives (< −3σ) only ~1.2–1.7%.
-- **`floor` (p25) is the validated default** — `median`/`mode` centre the shell
-  (~50% negative) and flag as over-subtraction; `floor` keeps the bulk positive
-  and preserves possibly-real isotropic diffuse. No default change warranted.
+  expectation), deep negatives (< −3σ) only ~1.2–1.7%. `median`/`mode` centred
+  the shell (~50% negative) and were removed.
+
 Open validation:
 
 - Caveat (bounded): only ~2–3% of voxels sit beyond the reliably-sampled
-  |Q| ≈ 10 Å⁻¹, where `bg(|Q|)` is tiny and smoothing-extrapolated.
+  |Q| ≈ 10 Å⁻¹; the model is fitted below that and evaluated analytically there.
+- The model omits the Debye–Waller fall-off of the incoherent constant and
+  absorption; compare against the measured-background (`cc_sub_bkg`) inputs.
 - For a 3D-PDF (Bragg-kept) input the flatten also passes, but the un-punched
   direct beam dominates the innermost shells (bg span ~4.3 vs 0.12 backfilled);
   treat the direct beam before flattening if the flatten is used in the PDF path.

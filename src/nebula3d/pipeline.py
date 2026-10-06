@@ -486,9 +486,17 @@ class BackfillParams:
 
 @dataclass
 class FlattenParams:
-    """Isotropic radial-background flatten (``flatten_radial_background``)."""
+    """Isotropic radial-background flatten (``flatten_radial_background``).
 
-    estimator: str = "floor"
+    The default subtracts a fitted ``const + c·F(Q)²`` pedestal (nuclear
+    incoherent + single-ion paramagnetic scattering) with ``F`` the form factor
+    of ``ion`` — Tb³⁺ for the TbTi3Bi4 sample; ``ion=None`` for a non-magnetic
+    sample fits a constant only.
+    """
+
+    estimator: str = "model"
+    ion: str | None = "Tb3+"
+    fit_q_range: tuple[float, float] | None = (0.8, 10.0)
     floor_percentile: float = 25.0
     q_step: float = 0.05
     smooth: float = 0.10
@@ -1165,15 +1173,23 @@ def flatten(vol: HKLVolume, params: FlattenParams | None = None, *,
             progress: ProgressFn | None = None) -> HKLVolume:
     """Subtract the smooth isotropic radial pedestal; return the flattened volume."""
     p = params or FlattenParams()
+    model = f", ion={p.ion}" if p.estimator == "model" else ""
     _emit(progress, "flatten", "start", None,
-          f"radial-background flatten (estimator={p.estimator})")
+          f"radial-background flatten (estimator={p.estimator}{model})")
     res = flatten_radial_background(
         vol, q_step=p.q_step, estimator=p.estimator,
         floor_percentile=p.floor_percentile, snip_width=p.snip_width,
         smooth=p.smooth, min_count=p.min_count, q_range=p.q_range,
+        ion=p.ion, fit_q_range=p.fit_q_range,
     )
-    _emit(progress, "flatten", "done", 1.0,
-          f"flatten complete (bg max {float(np.nanmax(res.bg_curve)):.4g})")
+    if res.model_coef is not None:
+        const, c = res.model_coef
+        r2 = f", R² {res.model_r2:.3f}" if res.model_r2 is not None else ""
+        detail = f"const {const:.4g} + {c:.4g}·F(Q)²{r2}"
+    else:
+        detail = (f"bg max {float(np.nanmax(res.bg_curve)):.4g}"
+                  if res.bg_curve.size else "no valid voxels")
+    _emit(progress, "flatten", "done", 1.0, f"flatten complete ({detail})")
     return res.volume
 
 
