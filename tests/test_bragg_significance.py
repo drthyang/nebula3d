@@ -141,8 +141,8 @@ def test_gate_does_not_resize_the_punches_it_keeps():
     vol = _noisy_edge_volume()
     loose = _search(intensity_scale=True)
     gated = dataclasses.replace(loose, min_significance=5.0)
-    all_peaks, ref_loose = loose._detect(vol)
-    kept, ref_gated = gated._detect(vol)
+    all_peaks, ref_loose, _ = loose._detect(vol)
+    kept, ref_gated, _ = gated._detect(vol)
     assert len(kept) < len(all_peaks)
     assert ref_gated == ref_loose
     # Kept peaks are punched exactly as without the gate.
@@ -161,8 +161,8 @@ def test_gate_reference_in_both_mode_is_close():
     loose = BraggRemover(mode="both", min_intensity=0.25, min_prominence=0.05,
                          search_n_mad=4.0, search_min_intensity=0.25,
                          intensity_scale=True, punch_incident_beam=False)
-    _, ref_loose = loose._detect(vol)
-    _, ref_gated = dataclasses.replace(loose, min_significance=5.0)._detect(vol)
+    _, ref_loose, _ = loose._detect(vol)
+    _, ref_gated, _ = dataclasses.replace(loose, min_significance=5.0)._detect(vol)
     assert ref_gated == pytest.approx(ref_loose, rel=0.01)
 
 

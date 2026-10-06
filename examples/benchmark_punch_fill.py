@@ -25,7 +25,8 @@ Run::
 Env:
     N         grid points per axis (default 161: 0.05 r.l.u., 0.075 Å⁻¹ voxels)
     SCENARIOS comma list of clean, edge (default both)
-    ARMS      comma list of no_gate, gate (default both)
+    ARMS      comma list of no_gate, gate, profile_k0.5, profile_k1, profile_k2,
+              profile_k3 (default no_gate, gate)
     BACKFILL  local | laplace (default local)
     PDF       1 (default) also scores the ΔPDF; 0 skips the FFTs
     OUT_JSON  write the results here as JSON
@@ -52,6 +53,9 @@ BASE = PunchParams(search_exclude_h_fractions=None)
 ARMS = {
     "no_gate": dataclasses.replace(BASE, min_significance=None),
     "gate": dataclasses.replace(BASE, min_significance=5.0),
+    **{f"profile_k{k:g}": dataclasses.replace(BASE, punch_footprint="profile",
+                                              profile_n_sigma=k)
+       for k in (0.5, 1, 2, 3)},
 }
 #: Counts per unit intensity and the residual noise floor of the demo
 #: (DemoModel.counts_per_unit, .residual_noise), and the least exposure at the
@@ -90,7 +94,7 @@ def scenario(name: str, n: int, seed: int = 0) -> tuple[HKLVolume, dict]:
 def main() -> None:
     n = int(os.environ.get("N", "161"))
     scenarios = os.environ.get("SCENARIOS", "clean,edge").split(",")
-    arms = os.environ.get("ARMS", ",".join(ARMS)).split(",")
+    arms = os.environ.get("ARMS", "no_gate,gate").split(",")
     method = os.environ.get("BACKFILL", "local")
     pdf = os.environ.get("PDF", "1") != "0"
     results: dict = {}
