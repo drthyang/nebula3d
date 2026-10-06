@@ -218,6 +218,8 @@ export interface StageParamsIn {
   backfill_method?: string;
   flatten_estimator?: string;
   flatten_floor_percentile?: number;
+  /** Magnetic ion of the flatten's const + c·F(Q)² model; "none" = constant only. */
+  flatten_ion?: string;
   pdf_apodization?: string;
   pdf_gaussian_sigma?: number;
   pdf_crop_h?: number;

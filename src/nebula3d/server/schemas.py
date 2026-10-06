@@ -164,6 +164,8 @@ class StageParamsIn(BaseModel):
     backfill_method: str | None = None
     flatten_estimator: str | None = None
     flatten_floor_percentile: float | None = None
+    # Magnetic ion of the flatten's const + c·F(Q)² model ("none": constant only)
+    flatten_ion: str | None = None
     pdf_apodization: str | None = None
     pdf_gaussian_sigma: float | None = None
     pdf_crop_h: float | None = None

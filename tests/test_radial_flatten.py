@@ -5,6 +5,10 @@ import pytest
 
 from nebula3d.core import HKLVolume
 from nebula3d.preprocessing import flatten_radial_background
+from nebula3d.preprocessing.form_factor import IONS, ion_key, magnetic_form_factor
+
+#: Both subtraction paths: the fitted model (default) and the free-form floor.
+BOTH = pytest.mark.parametrize("estimator", ["model", "floor"])
 
 
 def _base_vol(shape=(41, 41, 41), seed=0, noise=0.05):
@@ -17,6 +21,19 @@ def _base_vol(shape=(41, 41, 41), seed=0, noise=0.05):
     q = vol.q_magnitude()
     bg = 5.0 * np.exp(-q / 3.0) + 0.5
     vol.data[...] = bg + rng.normal(0.0, noise, shape)
+    return vol, q, bg
+
+
+def _model_vol(shape=(41, 41, 41), seed=0, noise=0.05, const=0.5, c=5.0, extra=None):
+    """Volume whose pedestal is exactly ``const + c·F_Tb³⁺(Q)²`` (+ *extra(q)*)."""
+    rng = np.random.default_rng(seed)
+    ub = 2 * np.pi * np.eye(3) / 4.0
+    vol = HKLVolume.from_arrays(
+        np.zeros(shape, dtype=float), (-3, 3), (-3, 3), (-3, 3), ub_matrix=ub
+    )
+    q = vol.q_magnitude()
+    bg = const + c * magnetic_form_factor(q, "Tb3+") ** 2
+    vol.data[...] = bg + (extra(q) if extra is not None else 0.0) + rng.normal(0.0, noise, shape)
     return vol, q, bg
 
 
@@ -42,7 +59,8 @@ def test_flatten_collapses_shell_spread_and_is_continuous():
     valid = vol.mask & np.isfinite(vol.data)
     before = _shell_medians(vol.data, q, valid)
 
-    res = flatten_radial_background(vol, q_step=0.05, smooth=0.2, min_count=15)
+    res = flatten_radial_background(vol, estimator="floor", q_step=0.05, smooth=0.2,
+                                    min_count=15)
     after = _shell_medians(res.volume.data, q, valid)
 
     assert np.nanstd(before) > 0.5                       # a real radial pedestal
@@ -53,7 +71,8 @@ def test_flatten_collapses_shell_spread_and_is_continuous():
     assert np.max(np.abs(np.diff(res.bg_curve))) < 0.1 * span
 
 
-def test_preserves_anisotropic_diffuse_blob():
+@BOTH
+def test_preserves_anisotropic_diffuse_blob(estimator):
     vol, _, _ = _base_vol()
     H, K, L = vol.hkl_grid()
     # localized blob off-origin: it occupies one azimuth of its |Q| shell, so it
@@ -62,18 +81,21 @@ def test_preserves_anisotropic_diffuse_blob():
     vol.data[...] = vol.data + blob
     ic = np.unravel_index(int(np.argmax(blob)), blob.shape)
 
-    res = flatten_radial_background(vol, q_step=0.05, smooth=0.2, min_count=15)
+    res = flatten_radial_background(vol, estimator=estimator, q_step=0.05, smooth=0.2,
+                                    min_count=15)
 
     assert res.volume.data[ic] > 0.6 * 4.0               # blob peak retained
 
 
-def test_bragg_spikes_survive_and_do_not_inflate_bg():
+@BOTH
+def test_bragg_spikes_survive_and_do_not_inflate_bg(estimator):
     vol, _, _ = _base_vol()
     spikes = [(10, 20, 20), (30, 15, 25), (20, 30, 10)]
     for idx in spikes:
         vol.data[idx] += 100.0
 
-    res = flatten_radial_background(vol, q_step=0.05, smooth=0.2, min_count=15)
+    res = flatten_radial_background(vol, estimator=estimator, q_step=0.05, smooth=0.2,
+                                    min_count=15)
 
     for idx in spikes:
         assert res.volume.data[idx] > 90.0               # spike stays in residual
@@ -114,22 +136,25 @@ def test_snip_estimator_runs_and_flattens():
     assert np.nanstd(after) < 0.3 * np.nanstd(before)
 
 
-def test_clip_negative_floors_at_zero():
+@BOTH
+def test_clip_negative_floors_at_zero(estimator):
     vol, _, _ = _base_vol(noise=0.5)
-    res = flatten_radial_background(vol, clip_negative=True, q_step=0.05, smooth=0.2,
-                                    min_count=15)
+    res = flatten_radial_background(vol, estimator=estimator, clip_negative=True,
+                                    q_step=0.05, smooth=0.2, min_count=15)
     fin = np.isfinite(res.volume.data)
     assert (res.volume.data[fin] >= 0.0).all()
 
 
-def test_mask_preserved_and_values_finite():
+@BOTH
+def test_mask_preserved_and_values_finite(estimator):
     vol, _, _ = _base_vol()
     keep = np.ones(vol.shape, dtype=bool)
     keep[:5, :, :] = False                               # mask a slab
     vol.apply_mask(keep)
     before_mask = vol.mask.copy()
 
-    res = flatten_radial_background(vol, q_step=0.05, smooth=0.2, min_count=15)
+    res = flatten_radial_background(vol, estimator=estimator, q_step=0.05, smooth=0.2,
+                                    min_count=15)
 
     assert np.array_equal(res.volume.mask, before_mask)  # mask untouched
     fin = np.isfinite(vol.data)
@@ -147,7 +172,8 @@ def test_all_masked_returns_unchanged():
     assert np.array_equal(res.volume.data, vol.data)
 
 
-def test_subtraction_is_purely_radial_so_anisotropy_is_untouched():
+@BOTH
+def test_subtraction_is_purely_radial_so_anisotropy_is_untouched(estimator):
     """The flatten subtracts a single level per |Q|, so within a thin shell every
     voxel loses the *same* amount.  That is the precise guarantee that it cannot
     distort anisotropic features: any contrast between two voxels at the same |Q|
@@ -160,7 +186,8 @@ def test_subtraction_is_purely_radial_so_anisotropy_is_untouched():
     for h0, k0 in [(1.5, 0.0), (0.0, 1.8), (-1.2, 1.2)]:
         vol.data[...] += 4.0 * np.exp(-((H - h0) ** 2 + (K - k0) ** 2 + L**2) / (2 * 0.25**2))
 
-    res = flatten_radial_background(vol, q_step=0.05, smooth=0.2, min_count=15)
+    res = flatten_radial_background(vol, estimator=estimator, q_step=0.05, smooth=0.2,
+                                    min_count=15)
     delta = vol.data - res.volume.data            # the amount removed at each voxel
 
     bg_span = float(np.nanmax(res.bg_curve) - np.nanmin(res.bg_curve))
@@ -180,9 +207,8 @@ def test_subtraction_is_purely_radial_so_anisotropy_is_untouched():
 
 
 def test_floor_is_conservative():
-    """Why ``floor`` is the validated default: subtracting p25 leaves the shell
-    bulk above zero (≈floor_pct negative), so a possibly-real isotropic-diffuse
-    level is kept; a shell median would centre it (≈50% negative).
+    """Subtracting the p25 floor leaves the shell bulk above zero (≈floor_pct
+    negative); a shell median would centre it (≈50% negative).
     """
     vol, _, _ = _base_vol(noise=0.2)
 
@@ -198,3 +224,96 @@ def test_unknown_estimator_raises():
     for name in ("nope", "median", "mode"):  # median/mode remove real diffuse
         with pytest.raises(ValueError, match="estimator"):
             flatten_radial_background(vol, estimator=name)
+
+
+# ---------------------------------------------------------------------------
+# the const + c·F(Q)² model (default)
+# ---------------------------------------------------------------------------
+def test_model_is_the_default():
+    vol, _, _ = _model_vol()
+    res = flatten_radial_background(vol)
+    assert res.estimator == "model"
+    assert res.ion == "Tb3+"
+
+
+def test_model_recovers_the_pedestal_and_flattens():
+    """On an exact const + c·F² pedestal the fit returns c, and const less the
+    floor's noise offset (p25 of Gaussian noise is 0.674σ below the mean)."""
+    noise = 0.05
+    vol, q, _ = _model_vol(noise=noise)
+    valid = vol.mask & np.isfinite(vol.data)
+
+    res = flatten_radial_background(vol, q_step=0.05, min_count=15)
+    const, c = res.model_coef
+
+    assert c == pytest.approx(5.0, rel=0.02)
+    assert const == pytest.approx(0.5 - 0.674 * noise, abs=0.01)
+    assert res.model_r2 > 0.99
+    after = _shell_medians(res.volume.data, q, valid)
+    assert np.nanstd(after) < 0.01                       # flat: one constant left
+    assert np.nanmedian(after) == pytest.approx(0.674 * noise, abs=0.01)
+
+
+def test_model_keeps_isotropic_correlations_the_floor_removes():
+    """The point of the model.  Pair correlations at distance r add an isotropic
+    ``sin(Qr)/(Qr)`` term to every shell (period 2π/r).  The fixed-shape model
+    cannot follow it, so it survives; the free-form floor follows it and
+    subtracts it — which carved spherical shells into the real ΔPDF.
+    """
+    r0 = 3.75                                            # Å; period 1.68 Å⁻¹
+    def corr(q):
+        x = np.maximum(q, 1e-6) * r0
+        return 0.4 * np.sin(x) / x * magnetic_form_factor(q, "Tb3+") ** 2
+
+    vol, q, _ = _model_vol(shape=(61, 61, 61), extra=corr)
+    valid = vol.mask & np.isfinite(vol.data)
+    edges = np.arange(1.0, 7.0 + 1e-9, 0.15)
+    shell = np.digitize(q[valid], edges) - 1
+    inside = (shell >= 0) & (shell < edges.size - 1)
+    truth = corr(0.5 * (edges[:-1] + edges[1:]))
+    t = truth - truth.mean()
+
+    def retained(res):
+        """Share of the injected correlation term left in the shell medians."""
+        vals = res.volume.data[valid][inside]
+        prof = np.array([np.median(vals[shell[inside] == i]) for i in range(t.size)])
+        return float(np.sum((prof - prof.mean()) * t) / np.sum(t * t))
+
+    model = flatten_radial_background(vol, q_step=0.05, min_count=15)
+    floor = flatten_radial_background(vol, estimator="floor", q_step=0.05, smooth=0.10,
+                                      min_count=15)
+
+    assert retained(model) > 0.8                         # 0.88: F² absorbs a little
+    assert retained(floor) < 0.3                         # 0.07
+
+
+def test_model_without_an_ion_fits_a_constant():
+    vol, _, _ = _base_vol()
+    for ion in (None, "none", ""):
+        res = flatten_radial_background(vol, ion=ion, q_step=0.05, min_count=15)
+        assert res.ion is None
+        assert res.model_coef[1] == 0.0
+        assert np.ptp(res.bg_curve) == 0.0
+        assert res.bg_curve[0] == pytest.approx(res.model_coef[0])
+
+
+def test_unknown_ion_raises():
+    vol, _, _ = _model_vol()
+    with pytest.raises(ValueError, match="form factor"):
+        flatten_radial_background(vol, ion="Xx3+")
+
+
+def test_form_factor_table():
+    """⟨j0⟩(0) = 1 for every tabulated ion (guards the coefficients against a
+    typo), F falls with |Q|, and the dipole ⟨j2⟩ term follows the Landé g."""
+    for name in IONS:
+        assert magnetic_form_factor(0.0, name) == pytest.approx(1.0, abs=2e-3), name
+        f = magnetic_form_factor(np.linspace(0.0, 4.0, 41), name)
+        assert np.all(np.diff(f) < 0), name
+    # spin-only g = 2: no ⟨j2⟩ term; Tb³⁺ (g = 3/2) adds ⅓⟨j2⟩ > 0
+    s2 = (6.0 / (4 * np.pi)) ** 2
+    a, aa, b, bb, c, cc, d = IONS["Tb3+"].j0
+    j0 = a * np.exp(-aa * s2) + b * np.exp(-bb * s2) + c * np.exp(-cc * s2) + d
+    assert magnetic_form_factor(6.0, "Tb3+") > j0
+    for alias in ("Tb3+", "tb3", "Tb^3+", " TB3+ "):
+        assert ion_key(alias) == "Tb3+"
