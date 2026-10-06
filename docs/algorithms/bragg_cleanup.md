@@ -318,8 +318,8 @@ Phase 0/1/2/3 and spherical-frame tests live in
 
 | Method | Use |
 |--------|-----|
-| `local` (default) | Fill each connected component from a local dilated shell median. |
-| `laplace` | Harmonic (Laplace) interpolation of the surrounding diffuse into each hole; boundary taken `laplace_gap` (default 1) voxels outside the punch so leaked Bragg tails do not bias it. Solved in memory-bounded batches; a masked region over `laplace_max_unknowns` (2 M, i.e. unmeasured coverage) gets the `local` fill. |
+| `laplace` (default) | Harmonic (Laplace) interpolation of the surrounding diffuse into each hole; boundary taken `laplace_gap` (default 1) voxels outside the punch so leaked Bragg tails do not bias it. Solved in memory-bounded batches; a masked region over `laplace_max_unknowns` (2 M, i.e. unmeasured coverage) gets the `local` fill. |
+| `local` | Fill each connected component from a local dilated shell median: flat, a step below the rim, one value per merged hole. |
 | `q_shell` | Robust radial background at the same `|Q|` — comparison only, see below. |
 
 `local`, `q_shell` and `laplace` take the punch record (`punched=`, which the
@@ -341,8 +341,44 @@ away. On a synthetic test (short-range order + node-peaked diffuse + Bragg) the
 punch. A flat `local` fill still leaves a small step at the hole edge;
 `laplace` removes it and has the smallest long-range sidelobes.
 
-Real-data QA uses `METHOD=local` for ordinary Bragg holes and keeps the special
-direct-beam fill enabled.
+**Judged on real data: the moved-hole test** (`bragg_qa.refill_test`). The
+punch's own holes are shifted by half a node step along K (8 voxels), into
+measured diffuse between the nodes. They are filled together with the real
+holes and compared with the data actually there. The holes keep the real
+shapes: long θ̂ holes and merged columns. Each sits at the same offset from its
+node, so their fill errors are lattice-periodic, as real ones are.
+
+On TbTi3Bi4 (profile punch, 2,200–3,600 moved holes per temperature):
+
+| | 22 K | 45 K | 100 K |
+|---|---|---|---|
+| per-hole mean error, `local` → `laplace` | +0.036 → +0.015 σ | +0.024 → +0.015 σ | +0.024 → +0.018 σ |
+| ΔPDF error at the lattice vectors, % of the real ΔPDF there (`local` / `laplace`) | 0.6–3.8 / 1.0–3.7 % | 1.2–6.4 / 2.2–6.6 % | 2.9–5.0 / 1.6–5.2 % |
+
+So the fill of ordinary diffuse texture is a minor error source, and the two
+fills are equal in the ΔPDF within the test's scatter. `laplace` is the
+default because:
+
+- its per-voxel bias is smaller at every temperature;
+- it leaves no step at the rim (−0.01σ against `local`'s −0.18σ);
+- it follows gradients across the long merged holes of the profile-matched
+  punch, where `local` puts one flat value.
+
+The strong ΔPDF features *at* the lattice vectors are not fill errors.
+Correlations between the same site in different cells sit exactly there.
+
+**Why not a fill that follows the rise toward the node** (biharmonic, a
+curvature fit)? The first shell outside a hole is 0.2–0.4σ above its
+surroundings, barely more at 100 K than at 22 K, while thermal diffuse would grow
+several-fold. The profile-matched punch stops where the predicted tail falls
+to 0.5σ, so that rise is mostly residual Bragg tail; continuing it would put
+Bragg intensity back under the nodes. The stacked profiles also show no radial
+halo even around the brightest peaks, so the thermal diffuse under the nodes is
+weak here. On a sample with strong thermal diffuse this changes: see the
+demo-volume benchmark, where both fills under-fill node-centred thermal
+diffuse by ~70–75 %.
+
+The direct beam keeps its special just-outside-`|Q|` fill.
 
 ## Checking A Punch
 
@@ -356,7 +392,8 @@ Two diagnostics measure a punch + fill without changing it:
     median;
   - the share of punched voxels within 1σ of their surroundings (background
     punched for nothing);
-  - the fill against those shells.
+  - the fill against those shells;
+  - with `REFILL=laplace,local`, the moved-hole test for each fill (above).
 - `examples/benchmark_punch_fill.py` (ground truth). It runs on the synthetic
   demo volume, whose Bragg, diffuse and noise are known, and scores:
   - the Bragg left behind and the diffuse removed;
@@ -375,7 +412,7 @@ PUNCH_PRESET=cc_on MODE=both MIN_I=0.8 MIN_PROM=0.8 \
 INTEGER_FIT_POSITION=1 INTEGER_FIT_SHAPE=1 INTEGER_H_GUARD=0.12 \
 MIN_SIGNIFICANCE=5 PUNCH_FOOTPRINT=profile PROFILE_N_SIGMA=0.5 \
 SEARCH_EXCLUDE_H_FRACTIONS=0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \
-BACKFILL_METHOD=local
+BACKFILL_METHOD=laplace
 ```
 
 Inspect `H=0` for residual Bragg peaks and `H=±1/3`, `±2/3` for diffuse

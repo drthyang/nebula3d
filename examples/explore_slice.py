@@ -415,7 +415,7 @@ if backfill_file:
     backfilled = nebula3d.load(Path(backfill_file))
 else:
     punch_only = dataclasses.replace(residual, mask=~punched_voxels)
-    backfill_method = os.environ.get("BACKFILL_METHOD", "local")
+    backfill_method = os.environ.get("BACKFILL_METHOD", "laplace")
     backfilled = backfill_bragg(
         punch_only,
         method=backfill_method,
@@ -448,7 +448,7 @@ if not punch_file:
 print(f"Total punched: {int(punched_voxels.sum())} voxels "
       f"({100 * punched_voxels.sum() / max(int(valid.sum()), 1):.2f}% of valid)")
 if not backfill_file:
-    print(f"Backfill: method={os.environ.get('BACKFILL_METHOD', 'local')}")
+    print(f"Backfill: method={os.environ.get('BACKFILL_METHOD', 'laplace')}")
 print("Choose H/K/L to switch slice orientation; drag the HKL plane slider, "
       "drag the vmin/vmax sliders, or toggle linear/log₁₀ (bottom-left). "
       "Close the window to exit.")

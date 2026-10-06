@@ -13,9 +13,10 @@ correlations are.  The |Q|-shell median (``method="q_shell"``) is biased this
 way: pair correlations at lattice-vector separations peak or dip *at* the nodes,
 and a whole-shell median averages that away.
 
-``method="local"`` (default) fills each hole with the median of its own local
-shell; ``method="laplace"`` solves the discrete Laplace equation in each hole so
-the fill continues the surrounding diffuse smoothly, with no step at the edge.
+``method="laplace"`` (default) solves the discrete Laplace equation in each hole
+so the fill continues the surrounding diffuse smoothly, with no step at the
+edge; ``method="local"`` fills each hole with the median of its own local
+shell.
 Generic image inpainting (total variation, symmetry copies) was removed: it has
 no model of diffuse scattering — TV assumes a piecewise-constant image and
 leaves staircase artefacts — and every symmetry copy of a punched Bragg node is
@@ -49,7 +50,7 @@ LAPLACE_MAX_UNKNOWNS = 2_000_000
 
 def backfill_bragg(
     vol: HKLVolume,
-    method: BraggFillMethod = "local",
+    method: BraggFillMethod = "laplace",
     local_radius: int = 2,
     local_min_count: int = 8,
     q_shell_step: float = 0.05,
@@ -64,13 +65,13 @@ def backfill_bragg(
 ) -> HKLVolume:
     """Fill Bragg-punched voxels in *vol*.
 
-    ``method="local"`` (default) fills each connected punched region with the
-    median of nearby valid voxels in a dilated shell around that region — the
-    diffuse level right next to that Bragg peak.  It is robust to Bragg tails
-    that leak past the punch edge, but the fill is flat, so it leaves a small
-    step at the hole edge.
+    ``method="local"`` fills each connected punched region with the median of
+    nearby valid voxels in a dilated shell around that region — the diffuse
+    level right next to that Bragg peak.  It is robust to Bragg tails that leak
+    past the punch edge, but the fill is flat, so it leaves a small step at the
+    hole edge, and a merged hole gets a single value.
 
-    ``method="laplace"`` fills the holes with the harmonic interpolant of the
+    ``method="laplace"`` (default) fills the holes with the harmonic interpolant of the
     surrounding valid data (discrete Laplace equation, 6-neighbour stencil —
     the Laplace fill of NXRefine's punch-and-fill).  The fill follows the local
     diffuse gradient smoothly into the hole.  Because it honours its boundary
@@ -105,7 +106,7 @@ def backfill_bragg(
     vol:
         Volume after Bragg punching (``vol.mask`` marks valid voxels).
     method:
-        ``"local"`` (default), ``"laplace"`` or ``"q_shell"``.
+        ``"laplace"`` (default), ``"local"`` or ``"q_shell"``.
     local_radius:
         Number of binary-dilation iterations used to form the local shell around
         each punched component.
