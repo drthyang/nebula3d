@@ -23,7 +23,10 @@ own dilated shell. `method="laplace"` solves the discrete Laplace equation in
 every hole (a sparse block-diagonal system, one block per hole, solved in
 batches of whole blocks by Jacobi-preconditioned CG so memory stays bounded),
 with its Dirichlet boundary `laplace_gap` voxels outside the punch so Bragg
-tails leaking past the punch edge do not pull the fill up. A single masked
+tails leaking past the punch edge do not pull the fill up. The voxels between
+the punch and that boundary are filled too: they hold the tail the boundary
+skips, and kept they would ring the fill with a rim brighter than the fill
+itself. A single masked
 region past `laplace_max_unknowns` (default 2 M) is an unmeasured coverage gap
 rather than a punch — loaders zero and mask those — and gets the `local` fill.
 
