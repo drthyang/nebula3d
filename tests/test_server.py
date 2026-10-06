@@ -522,6 +522,22 @@ def test_build_params_punch_significance_override():
     assert gate(punch_min_significance=0) is None
 
 
+def test_build_params_flatten_model_overrides():
+    """The flatten defaults to the Tb³⁺ const + c·F(Q)² model; the ion can be
+    changed, or set to "none" for a constant only."""
+    from nebula3d.server.params import build_params
+    from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
+
+    def flat(**kw):
+        req = PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw))
+        return build_params(req).flatten
+
+    assert (flat().estimator, flat().ion) == ("model", "Tb3+")
+    assert flat(flatten_ion="Dy3+").ion == "Dy3+"
+    assert flat(flatten_ion="none").ion is None
+    assert flat(flatten_estimator="floor").estimator == "floor"
+
+
 def test_build_params_ring_overrides():
     """Ring-removal overrides reach RingParams; omitted ones keep the defaults."""
     from nebula3d.pipeline import RingParams

@@ -146,6 +146,10 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
     if sp.flatten_floor_percentile is not None:
         p.flatten = dataclasses.replace(
             p.flatten, floor_percentile=sp.flatten_floor_percentile)
+    if sp.flatten_ion is not None:
+        p.flatten = dataclasses.replace(
+            p.flatten, ion=None if sp.flatten_ion.strip().lower() in ("", "none")
+            else sp.flatten_ion)
 
     dp_kw: dict = {}
     if sp.pdf_apodization is not None:

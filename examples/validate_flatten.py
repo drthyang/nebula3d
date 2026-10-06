@@ -38,7 +38,8 @@ Run::
 
 Env:
     DATA_FILE   backfilled input .h5 (default: auto-detect *_backfilled.h5)
-    ESTIMATOR FLOOR_PCT Q_STEP SMOOTH MIN_COUNT   flatten knobs (production defaults)
+    ESTIMATOR ION FIT_Q_MIN FIT_Q_MAX FLOOR_PCT Q_STEP SMOOTH MIN_COUNT
+                flatten knobs (production defaults: model, Tb3+, 0.8–10 Å⁻¹, p25)
     Q_MIN Q_MAX   restrict the validated |Q| range
     NO_PLOT     1 -> skip the QA PNG
 """
@@ -118,7 +119,10 @@ else:
         raise FileNotFoundError("No *_backfilled.h5 in data/processed; set DATA_FILE.")
     in_path = cands[0]
 
-estimator = os.environ.get("ESTIMATOR", "floor")
+estimator = os.environ.get("ESTIMATOR", "model")
+ion = os.environ.get("ION", "Tb3+")
+fit_q_range = (float(os.environ.get("FIT_Q_MIN", "0.8")),
+               float(os.environ.get("FIT_Q_MAX", "10")))
 floor_pct = float(os.environ.get("FLOOR_PCT", "25"))
 q_step = float(os.environ.get("Q_STEP", "0.05"))
 smooth = float(os.environ.get("SMOOTH", "0.10"))
@@ -140,6 +144,7 @@ print(f"  shape={vol.shape}  valid={valid.mean()*100:.1f}%  "
 res = flatten_radial_background(
     vol, q_step=q_step, estimator=estimator, floor_percentile=floor_pct,
     smooth=smooth, min_count=min_count, q_range=q_range,
+    ion=ion, fit_q_range=fit_q_range,
 )
 qg = res.q_grid
 nb = qg.size

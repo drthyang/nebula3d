@@ -87,6 +87,7 @@ interface PipelineConfig {
   punchCutL: number;
   backfillMethod: string;
   flattenEstimator: string;
+  flattenIon: string;
   pdfApod: string;
   pdfQMin: string;
   pdfQMax: string;
@@ -161,6 +162,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   punchCutL: 0,
   backfillMethod: "",
   flattenEstimator: "",
+  flattenIon: "",
   pdfApod: "",
   pdfQMin: "",
   pdfQMax: "",
@@ -297,6 +299,7 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.incidentBeamFitCovariance) params.incident_beam_fit_covariance = true;
   if (s.backfillMethod) params.backfill_method = s.backfillMethod;
   if (s.flattenEstimator) params.flatten_estimator = s.flattenEstimator;
+  if (s.flattenIon) params.flatten_ion = s.flattenIon;
   if (s.pdfApod) params.pdf_apodization = s.pdfApod;
   if (s.pdfQMin || s.pdfQMax) {
     params.pdf_q_min = s.pdfQMin ? Number(s.pdfQMin) : 0;

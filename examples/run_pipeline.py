@@ -86,11 +86,12 @@ STAGE_DEFAULTS = {
     # vectors.
     "backfill": {"METHOD": "laplace"},
     # isotropic radial-background flatten — the explicit step-4 background
-    # remover (default ON).  floor (p25) keeps diffuse; validate on your data
-    # with examples/validate_flatten.py.
+    # remover (default ON).  model = const + c·F(Q)² (incoherent + single-ion
+    # paramagnetic, Tb³⁺) fitted to the p25 shell floors: it only touches the
+    # ΔPDF at r ≈ 0.  Validate on your data with examples/validate_flatten.py.
     "flatten": {
-        "ESTIMATOR": "floor", "FLOOR_PCT": "25", "Q_STEP": "0.05",
-        "SMOOTH": "0.10", "MIN_COUNT": "20",
+        "ESTIMATOR": "model", "ION": "Tb3+", "FIT_Q_MIN": "0.8", "FIT_Q_MAX": "10",
+        "FLOOR_PCT": "25", "Q_STEP": "0.05", "SMOOTH": "0.10", "MIN_COUNT": "20",
     },
     # SUBTRACT_BG OFF by default: the step-4 flatten is the background remover.
     # The per-H-plane Gaussian blur is the legacy alternative — set it explicitly

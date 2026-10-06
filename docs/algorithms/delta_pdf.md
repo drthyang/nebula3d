@@ -221,7 +221,12 @@ background with an **explicit step 4**, the isotropic radial flatten
 `examples/flatten_background_3d.py`), and leaves the in-FFT `SUBTRACT_BG` **off**
 by default. The flatten subtracts a smooth `bg(|Q|)` per spherical shell without
 touching per-plane DC, so it **preserves the on-axis H signal** while still
-roughly halving the L=0 axis cross. The two are alternatives — never run both
+roughly halving the L=0 axis cross. By default `bg(|Q|)` is the fitted pedestal
+`const + c·F(Q)²` — nuclear incoherent plus single-ion paramagnetic
+scattering, `F` the magnetic ion's form factor — which is pure self
+scattering and so changes the ΔPDF only at r ≈ 0. A free-form per-shell floor
+(`estimator="floor"`) also removes the isotropic part of real pair
+correlations at short r. The two are alternatives — never run both
 (double subtraction, and the blur re-introduces the H-axis loss). Validate the
 flatten on your own inputs with `examples/validate_flatten.py`.
 Judge the effect on the L=0 (H–K) plane, where the methods diverge.
