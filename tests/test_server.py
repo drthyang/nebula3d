@@ -522,6 +522,24 @@ def test_build_params_punch_significance_override():
     assert gate(punch_min_significance=0) is None
 
 
+def test_build_params_punch_supercell_and_h_guard():
+    """A supercell factor per axis (the others stay 1); an H guard, 0 = off."""
+    from nebula3d.server.params import build_params
+    from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
+
+    def punch(**kw):
+        req = PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw))
+        return build_params(req).punch
+
+    assert punch().supercell == (1, 1, 1)
+    assert punch().integer_h_guard_hkl == 0.12
+    assert punch(punch_supercell_h=2, punch_supercell_k=2,
+                 punch_supercell_l=2).supercell == (2, 2, 2)
+    assert punch(punch_supercell_l=3).supercell == (1, 1, 3)
+    assert punch(punch_h_guard=0.2).integer_h_guard_hkl == 0.2
+    assert punch(punch_h_guard=0).integer_h_guard_hkl is None
+
+
 def test_build_params_flatten_model_overrides():
     """The flatten defaults to the Tb³⁺ const + c·F(Q)² model; the ion can be
     changed, or set to "none" for a constant only."""

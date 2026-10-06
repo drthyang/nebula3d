@@ -402,7 +402,13 @@ class PunchParams:
     integer_fit_threshold_frac: float = 0.35
     integer_fit_radius_n_sigma: float = 2.5
     integer_fit_max_radius_hkl: tuple[float, float, float] | None = None
+    # Integer punches stop this far (r.l.u.) from their node's H plane, so
+    # TbTi3Bi4's H = ±1/3 magnetic planes stay unpunched.  None = off: the
+    # brightest Fe3Ge2 peaks reach 3 voxels along H, which the guard leaves.
     integer_h_guard_hkl: float | None = 0.12
+    # The supercell the volume is indexed on, (n_h, n_k, n_l): integer-mode
+    # Bragg nodes are the parent lattice's only (see BraggRemover).
+    supercell: tuple[int, int, int] = (1, 1, 1)
     integer_local_prominence_n_mad: float | None = 8.0
     integer_local_min_prominence: float = 0.0
     # Noise-aware gate: every detection (integer node or search summit) must
@@ -1077,6 +1083,7 @@ def bragg_remover(p: PunchParams) -> BraggRemover:
         integer_fit_radius_n_sigma=p.integer_fit_radius_n_sigma,
         integer_fit_max_radius_hkl=p.integer_fit_max_radius_hkl,
         integer_h_guard_hkl=p.integer_h_guard_hkl,
+        supercell=p.supercell,
         integer_local_prominence_n_mad=p.integer_local_prominence_n_mad,
         integer_local_min_prominence=p.integer_local_min_prominence,
         min_significance=p.min_significance,

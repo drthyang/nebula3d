@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Volumes indexed on a supercell.** New punch setting `supercell` (default
+  1×1×1). With a supercell, integer mode punches only the parent lattice's
+  nodes, those whose h, k, l are multiples of the factors. The Fe3Ge2 TOPAZ
+  volume is indexed 2×2×2. Its odd nodes hold short-range 2×2×2 order (2–3×
+  the Bragg width) or nothing, and `mode="both"` was taking 18 % of that
+  intensity. Run it with `mode="integer"`, `supercell=(2, 2, 2)` and the H
+  guard off: the rods and superlattice nodes then stay intact. The H guard
+  (`integer_h_guard_hkl`, 0.12 r.l.u., set for TbTi3Bi4's H = ±1/3 planes) is
+  now a setting too. On Fe3Ge2 it left a 2.5σ Bragg tail along H. Both are on
+  the server (`punch_supercell_h/k/l`, `punch_h_guard`, 0 = off) and on the web
+  Configure page, whose punch preview marks only the parent nodes. TbTi3Bi4
+  defaults are unchanged.
 - **The flatten subtracts a fitted const + c·F(Q)² pedestal.**
   - **What it does.** It still takes each |Q| shell's floor (p25). It then
     fits `const + c·F(Q)²` to those floors over 0.8–10 Å⁻¹ and subtracts the
