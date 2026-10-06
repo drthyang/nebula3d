@@ -4,11 +4,12 @@
 """Real-space 3D-ΔPDF loading and orthoslice extraction for the API.
 
 ΔPDF ``.h5`` files (written by :func:`nebula3d.pipeline.write_delta_pdf_h5` /
-``examples/delta_pdf.py``) have a different schema from an :class:`HKLVolume`:
-a signed real-space ``data`` array indexed ``[ix, iy, iz]`` with separate
-``x_axis`` (x_H), ``y_axis`` (y_K), ``z_axis`` (z_L) in Å along a, b, c, plus the
-direct cell in the attrs (``lat_a/b/c``; ``lat_alpha/beta/gamma`` since the
-cell angles were stored — older files are treated as 90°).
+``examples/delta_pdf.py``) hold different content from an :class:`HKLVolume`:
+a signed real-space array indexed ``[ix, iy, iz]`` with axes x_H, y_K, z_L in Å
+along a, b, c, plus the direct cell.  :func:`nebula3d.io.load_delta_pdf` reads
+both layouts — the Mantid MDHistoWorkspace one (cell in the oriented lattice)
+and the legacy root one (cell in ``lat_*`` attrs; files without
+``lat_alpha/beta/gamma`` are treated as 90°).
 
 Each slice header carries ``axes_angle`` (the real angle between its two axes:
 γ for xy, β for xz, α for yz) plus ``r_center``/``r_perp``, so the client draws
@@ -35,10 +36,10 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
-import h5py
 import numpy as np
 
 from nebula3d.analysis.delta_pdf import section_geometry
+from nebula3d.io.delta_pdf_file import load_delta_pdf
 
 #: Orthoslice plane keys (and the axis each one fixes).
 DPDF_PLANES: tuple[str, ...] = ("xy", "xz", "yz")
@@ -79,11 +80,6 @@ class DeltaPdfData:
             for v in (self.lat_alpha, self.lat_beta, self.lat_gamma))
 
 
-def _attr(fh: h5py.File, key: str) -> float | None:
-    v = fh.attrs.get(key)
-    return float(v) if v is not None else None
-
-
 def load_dpdf(path: Path) -> DeltaPdfData:
     """Load a ΔPDF ``.h5``, caching by ``(path, mtime)``."""
     key = (str(path), path.stat().st_mtime)
@@ -92,20 +88,23 @@ def load_dpdf(path: Path) -> DeltaPdfData:
         if d is not None:
             _cache.move_to_end(key)
             return d
-    with h5py.File(path, "r") as fh:
-        d = DeltaPdfData(
-            data=np.asarray(fh["data"][()]),  # preserve stored precision
-            x_axis=np.asarray(fh["x_axis"][()], dtype=float),
-            y_axis=np.asarray(fh["y_axis"][()], dtype=float),
-            z_axis=np.asarray(fh["z_axis"][()], dtype=float),
-            lat_a=_attr(fh, "lat_a"),
-            lat_b=_attr(fh, "lat_b"),
-            lat_c=_attr(fh, "lat_c"),
-            q_max=_attr(fh, "q_max"),
-            lat_alpha=_attr(fh, "lat_alpha"),
-            lat_beta=_attr(fh, "lat_beta"),
-            lat_gamma=_attr(fh, "lat_gamma"),
-        )
+    f = load_delta_pdf(path)  # dtype=None: keep the ΔPDF's own precision
+    lat = f.lattice
+    q_max = f.logs.get("q_max")
+    assert f.data is not None
+    d = DeltaPdfData(
+        data=f.data,
+        x_axis=f.x_axis,
+        y_axis=f.y_axis,
+        z_axis=f.z_axis,
+        lat_a=lat["a"],
+        lat_b=lat["b"],
+        lat_c=lat["c"],
+        q_max=float(q_max) if isinstance(q_max, float) else None,
+        lat_alpha=lat["alpha"],
+        lat_beta=lat["beta"],
+        lat_gamma=lat["gamma"],
+    )
     with _lock:
         _cache[key] = d
         _cache.move_to_end(key)

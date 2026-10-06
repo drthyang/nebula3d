@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 import nebula3d
 from nebula3d.core import HKLVolume
+from nebula3d.io import save_delta_pdf
 from nebula3d.pipeline import pipeline_paths
 from nebula3d.server import deltapdf as dpdf_mod
 from nebula3d.server import volumes as vol_mod
@@ -22,6 +23,7 @@ from nebula3d.server.app import create_app
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import discover_datasets
 from nebula3d.server.routers import datasets as datasets_router
+from nebula3d.utils import ub_from_lattice
 from nebula3d.visualization import extract_slice
 
 UB = 2 * np.pi * np.eye(3) / 4.0
@@ -290,12 +292,20 @@ def test_slice_bad_plane_400(env):
 # ---------------------------------------------------------------------------
 # ΔPDF endpoints
 # ---------------------------------------------------------------------------
-def _write_dpdf(path, nx=6, ny=8, nz=10):
+def _write_dpdf(path, nx=6, ny=8, nz=10, *, layout="mantid", angles=None):
+    """A small ΔPDF file: the Mantid MDHistoWorkspace layout NEBULA3D writes, or
+    the legacy root one (data, x/y/z_axis, ``lat_*`` attrs).  *angles* are the
+    cell's (α, β, γ); None means 90° — and no angle attrs in a legacy file, as
+    in files written before the angles were stored."""
     rng = np.random.default_rng(2)
     data = rng.normal(0.0, 1.0, (nx, ny, nz)).astype(np.float64)
     x = np.linspace(-10, 10, nx)
     y = np.linspace(-12, 12, ny)
     z = np.linspace(-15, 15, nz)
+    if layout == "mantid":
+        ub = ub_from_lattice(5.8, 10.4, 24.7, *(angles or (90.0, 90.0, 90.0)))
+        save_delta_pdf(path, data, x, y, z, ub_matrix=ub, logs={"q_max": 11.9})
+        return data, x, y, z
     with h5py.File(path, "w") as fh:
         fh.create_dataset("data", data=data)
         fh.create_dataset("x_axis", data=x)
@@ -305,19 +315,25 @@ def _write_dpdf(path, nx=6, ny=8, nz=10):
         fh.attrs["lat_b"] = 10.4
         fh.attrs["lat_c"] = 24.7
         fh.attrs["q_max"] = 11.9
+        if angles is not None:
+            fh.attrs["lat_alpha"], fh.attrs["lat_beta"], fh.attrs["lat_gamma"] = angles
     return data, x, y, z
 
 
-@pytest.fixture
-def dpdf_env(tmp_path):
+def _dpdf_client(tmp_path, **kw):
     (tmp_path / "raw").mkdir()
     (tmp_path / "processed").mkdir()
     paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
                            proc_dir=tmp_path / "processed")
-    data, x, y, z = _write_dpdf(paths.delta_pdf)
+    data, x, y, z = _write_dpdf(paths.delta_pdf, **kw)
     dpdf_mod.clear_cache()
     app = create_app(ServerConfig(data_root=tmp_path))
     return TestClient(app), data, x, y, z
+
+
+@pytest.fixture(params=["mantid", "legacy"])
+def dpdf_env(tmp_path, request):
+    return _dpdf_client(tmp_path, layout=request.param)
 
 
 def test_dpdf_meta(dpdf_env):
@@ -357,10 +373,10 @@ def test_dpdf_slice_matches_transpose(dpdf_env, plane, fixed_axis, xl, yl):
     assert header["y_label"] == yl
 
 
-def test_dpdf_file_without_angles_is_drawn_at_right_angles(dpdf_env):
+def test_dpdf_file_without_angles_is_drawn_at_right_angles(tmp_path):
     """Files written before the cell angles were stored: no angles in the meta,
     every section drawn at 90°, and the section plane sits |cut| from the origin."""
-    client, _, _, _, z = dpdf_env
+    client, _, _, _, z = _dpdf_client(tmp_path, layout="legacy")
     m = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/meta").json()
     assert m["lattice"]["gamma"] is None
     r = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/slice",
@@ -372,20 +388,17 @@ def test_dpdf_file_without_angles_is_drawn_at_right_angles(dpdf_env):
     assert header["r_perp"] == pytest.approx(abs(cut))
 
 
+@pytest.mark.parametrize("layout", ["mantid", "legacy"])
 @pytest.mark.parametrize("plane,angle", [("xy", 115.0), ("xz", 100.0), ("yz", 75.0)])
-def test_dpdf_slices_carry_the_real_section_angle(dpdf_env, tmp_path, plane, angle):
-    """With lat_alpha/beta/gamma stored, each section reports its own angle
-    (γ for x_H–y_K, β for x_H–z_L, α for y_K–z_L) and the meta lists them."""
-    client, *_ = dpdf_env
-    path = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
-                          proc_dir=tmp_path / "processed").delta_pdf  # dpdf_env's file
-    with h5py.File(path, "a") as fh:
-        fh.attrs["lat_alpha"], fh.attrs["lat_beta"], fh.attrs["lat_gamma"] = 75.0, 100.0, 115.0
-    dpdf_mod.clear_cache()
+def test_dpdf_slices_carry_the_real_section_angle(tmp_path, layout, plane, angle):
+    """With the cell angles stored (the oriented lattice; lat_alpha/beta/gamma
+    in a legacy file), each section reports its own angle (γ for x_H–y_K, β
+    for x_H–z_L, α for y_K–z_L) and the meta lists them."""
+    client, *_ = _dpdf_client(tmp_path, layout=layout, angles=(75.0, 100.0, 115.0))
 
     m = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/meta").json()
     assert (m["lattice"]["alpha"], m["lattice"]["beta"], m["lattice"]["gamma"]) == (
-        75.0, 100.0, 115.0)
+        pytest.approx(75.0), pytest.approx(100.0), pytest.approx(115.0))
     r = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/slice",
                    params={"plane": plane, "value": 0.0})
     header, _ = _parse_envelope(r.content)

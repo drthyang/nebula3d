@@ -249,10 +249,12 @@ def _safe_stem(name: str) -> str:
 def _peek_voxel_count(path: Path) -> tuple[tuple[int, ...], int]:
     """Signal-grid shape + voxel count from HDF5 *metadata* only (no array read).
 
-    Handles both supported layouts — Mantid ``MDHistoWorkspace/data/signal`` and
-    nebula3d ``entry/data``.  Reading ``Dataset.shape`` never loads the data, so this
-    is safe to call on a volume too large to fit in memory.  Returns ``((), 0)``
-    for an unrecognised file (callers then skip the size gate).
+    Handles both supported layouts — Mantid ``MDHistoWorkspace/data/signal`` (raw
+    Mantid files and everything NEBULA3D writes) and the legacy nebula3d
+    ``entry/data`` (the NeXus Viewer's hand-off).  Reading ``Dataset.shape``
+    never loads the data, so this is safe to call on a volume too large to fit
+    in memory.  Returns ``((), 0)`` for an unrecognised file (callers then skip
+    the size gate).
     """
     import h5py
 
@@ -341,7 +343,7 @@ def load_input(name: str, tmp_path: str) -> str:
     """Register an uploaded volume (already written to *tmp_path* in the FS).
 
     Copies it to ``raw/<stem>.nxs`` (``nebula3d.load`` content-detects Mantid vs
-    nebula3d-HDF5, so the ``.nxs`` extension is fine for either) and returns the
+    legacy nebula3d-HDF5, so the ``.nxs`` extension is fine for either) and returns the
     dataset id the viewers will use.  Clears the slice caches so a re-load does
     not serve a previous volume.
     """
@@ -367,10 +369,12 @@ def make_demo_input(n: int = 161) -> str:
     ``n`` points per axis over ±4 r.l.u.: the default 161³ (step 0.05 r.l.u.,
     4.2 M voxels) runs the full chain in seconds; the tests use a coarse grid.
 
-    Stored float32 — what the browser computes in — so the file in MEMFS and
-    the generator's peak (``data`` + ``sigma`` + one slab) stay half the
-    float64 size; on a phone every byte counts toward the one content process
-    the OS kills (and the browser reloads) at its memory limit.
+    Generated float32 — what the browser computes in — so the generator's
+    peak (``data`` + ``sigma`` + one slab) stays half the float64 size; on a
+    phone every byte counts toward the one content process the OS kills (and
+    the browser reloads) at its memory limit.  The file is the Mantid layout,
+    float64 on disk as LoadMD requires (written slab by slab, so no float64
+    copy is made); it records float32, which a ``dtype=None`` load restores.
     """
     from nebula3d.demo import demo_volume
 

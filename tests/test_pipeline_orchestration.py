@@ -23,6 +23,7 @@ import pytest
 import nebula3d
 from nebula3d import pipeline
 from nebula3d.core import HKLVolume
+from nebula3d.io import load_delta_pdf
 
 UB = 2 * np.pi * np.eye(3) / 4.0
 
@@ -345,16 +346,14 @@ def test_disabled_stage_passes_input_through(tmp_path, stubbed):
 
 
 def test_flatten_disabled_routes_backfilled_into_pdf(tmp_path, stubbed):
-    import h5py
-
     inp = _seed_input(tmp_path)
     params = pipeline.PipelineParams(flatten_enabled=False)
     paths = pipeline.run_pipeline(inp, params, proc_dir=tmp_path)
 
     assert not paths.flattened.exists()
     assert "flatten" not in stubbed.calls
-    with h5py.File(paths.delta_pdf, "r") as fh:
-        assert fh.attrs["source_file"] == paths.backfilled.name
+    logs = load_delta_pdf(paths.delta_pdf, read_data=False).logs
+    assert logs["source_file"] == paths.backfilled.name
 
 
 def test_invalid_force_from_raises(tmp_path):
@@ -380,8 +379,6 @@ def _punched_vol(shape=(20, 20, 20)):
 
 
 def test_real_backfill_flatten_pdf_writes_viewer_schema(tmp_path):
-    import h5py
-
     inp = tmp_path / "s.nxs"
     paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path)
     nebula3d.save(_punched_vol(), paths.braggpunched)
@@ -400,14 +397,14 @@ def test_real_backfill_flatten_pdf_writes_viewer_schema(tmp_path):
     assert np.isfinite(filled.data).all()
     assert paths.flattened.exists()
 
-    # ΔPDF written in the schema the viewers read
-    with h5py.File(paths.delta_pdf, "r") as fh:
-        for key in ("data", "x_axis", "y_axis", "z_axis"):
-            assert key in fh
-        assert fh.attrs["source_file"] == paths.flattened.name
-        for latk in ("lat_a", "lat_b", "lat_c"):
-            assert latk in fh.attrs
-            assert np.isclose(float(fh.attrs[latk]), 4.0, atol=1e-6)  # 2π/(2π/4)
+    # ΔPDF written in the layout the viewers read (Mantid MDHistoWorkspace)
+    assert nebula3d.is_mantid_nxs(paths.delta_pdf)
+    pdf = load_delta_pdf(paths.delta_pdf)
+    assert pdf.data.shape == (pdf.x_axis.size, pdf.y_axis.size, pdf.z_axis.size)
+    assert pdf.logs["source_file"] == paths.flattened.name
+    assert pdf.logs["apodization"] == "hann"
+    assert pdf.cell == pytest.approx((4.0, 4.0, 4.0, 90.0, 90.0, 90.0))  # 2π/(2π/4)
+    np.testing.assert_array_equal(pdf.ub_matrix, UB)
 
     # per-stage start/done events fired
     pairs = {(ev[0], ev[1]) for ev in events}

@@ -35,7 +35,7 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import Any, Literal, Protocol
 
 import numpy as np
 
@@ -61,6 +61,8 @@ from nebula3d.analysis import (
 from nebula3d.analysis.delta_pdf import _q_max_from_axes, real_space_radius
 from nebula3d.core import HKLVolume
 from nebula3d.core import low_memory as _low_memory
+from nebula3d.io.delta_pdf_file import load_delta_pdf, save_delta_pdf
+from nebula3d.io.mantid_nxs import NEBULA3D_GROUP
 from nebula3d.preprocessing import (
     GlobalRingConfig,
     PooledRingConfig,
@@ -77,10 +79,6 @@ from nebula3d.preprocessing.radial_background import (
 from nebula3d.preprocessing.radial_background import (
     _offset_q_magnitude as _plane_offset_q_magnitude,
 )
-from nebula3d.utils.reciprocal_space import direct_cell
-
-if TYPE_CHECKING:
-    import h5py
 
     from nebula3d.analysis.bragg import _BraggProfile
 
@@ -340,26 +338,39 @@ def write_bragg_profile_json(profile: dict, out_path: Path) -> None:
     out_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
 
 
-#: The punch record in the punch artifact (bool, True = punched), so a backfill
-#: resumed from disk still tells punch holes from unmeasured coverage.
-_PUNCHED_DATASET = "/entry/punched"
+#: The punch record in the punch artifact (int8, 1 = punched), so a backfill
+#: resumed from disk still tells punch holes from unmeasured coverage.  It sits
+#: in the file's NEBULA3D group (Mantid has no place for it); artifacts written
+#: before the Mantid layout kept it as a bool ``/entry/punched``.
+_PUNCHED_DATASET = f"/MDHistoWorkspace/{NEBULA3D_GROUP}/punched"
+_LEGACY_PUNCHED_DATASET = "/entry/punched"
 
 
 def _write_punched(path: Path, punched: np.ndarray) -> None:
     import h5py
 
+    shape = punched.shape
     with h5py.File(path, "a") as fh:
-        fh.create_dataset(_PUNCHED_DATASET, data=punched, compression="gzip",
-                          compression_opts=1, shuffle=True)
+        ds = fh.create_dataset(
+            _PUNCHED_DATASET, shape=shape, dtype=np.int8, chunks=(1, *shape[1:]),
+            compression="gzip", compression_opts=1, shuffle=True)
+        for i in range(shape[0]):  # slab by slab: no volume-sized int8 copy
+            ds[i] = punched[i].astype(np.int8)
 
 
 def _read_punched(path: Path) -> np.ndarray | None:
-    """The punch record stored in *path*; None if it has none."""
+    """The punch record stored in *path* (either layout); None if it has none."""
     import h5py
 
     with h5py.File(path, "r") as fh:
-        ds = fh.get(_PUNCHED_DATASET)
-        return None if ds is None else np.asarray(ds, dtype=bool)
+        for name in (_PUNCHED_DATASET, _LEGACY_PUNCHED_DATASET):
+            ds = fh.get(name)
+            if ds is not None:
+                out = np.empty(ds.shape, dtype=bool)
+                for i in range(ds.shape[0]):
+                    out[i] = ds[i] != 0
+                return out
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1204,52 +1215,37 @@ def delta_pdf_transform_config(p: DeltaPdfParams) -> str:
     ))
 
 
-def write_cell_attrs(fh: h5py.Group, ub_matrix: np.ndarray) -> None:
-    """Store the direct cell on an open HDF5 file/group as ``lat_a/b/c`` (Å)
-    and ``lat_alpha/beta/gamma`` (degrees); a singular UB writes nothing."""
-    try:
-        cell = direct_cell(ub_matrix)
-    except np.linalg.LinAlgError:
-        return
-    for key, value in zip(("lat_a", "lat_b", "lat_c", "lat_alpha", "lat_beta", "lat_gamma"),
-                          cell):
-        fh.attrs[key] = float(value)
-
-
 def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
                        source_name: str, out_path: Path,
                        r_band: tuple[float, float] | None = None,
                        transform_config: str | None = None) -> None:
-    """Write the ΔPDF to the same HDF5 schema the viewers read.
+    """Write the ΔPDF as a Mantid MDHistoWorkspace NeXus file.
 
-    Mirrors ``examples/delta_pdf.py`` (data + x/y/z axes, provenance attrs, and
-    the direct cell: ``lat_a/b/c`` in Å for unit-cell gridlines and
-    ``lat_alpha/beta/gamma`` in degrees to draw each section at its real angle).
+    The layout of :func:`nebula3d.io.save_delta_pdf` (read back by
+    :func:`nebula3d.io.load_delta_pdf`): data + x/y/z axes, the source
+    volume's UB and unit cell in the oriented lattice (unit-cell gridlines,
+    and each section drawn at its real angle), and the provenance as run logs
+    — the same values ``examples/delta_pdf.py`` writes.
     """
-    import h5py
-
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with h5py.File(out_path, "w") as fh:
-        fh.create_dataset("data", data=dpdf.data, compression="gzip",
-                          compression_opts=4)
-        fh.create_dataset("x_axis", data=dpdf.x_axis)
-        fh.create_dataset("y_axis", data=dpdf.y_axis)
-        fh.create_dataset("z_axis", data=dpdf.z_axis)
-        fh.attrs["q_max"] = dpdf.q_max
-        fh.attrs["apodization"] = dpdf.apodization
-        fh.attrs["source_file"] = source_name
-        fh.attrs["crop_hkl"] = _param_string(p.crop_hkl)
-        fh.attrs["q_band"] = _param_string(p.q_band)
-        fh.attrs["r_band"] = _param_string(r_band)
-        fh.attrs["subtract_smooth_bg"] = _param_string(p.subtract_smooth_bg)
-        fh.attrs["gaussian_sigma"] = p.gaussian_sigma
-        fh.attrs["zero_pad"] = int(p.zero_pad)
-        fh.attrs["subtract_mean"] = int(p.subtract_mean)
-        fh.attrs["transform_config"] = (
-            transform_config if transform_config is not None
-            else delta_pdf_transform_config(p))
-        write_cell_attrs(fh, vol.ub_matrix)
+    save_delta_pdf(
+        out_path, dpdf.data, dpdf.x_axis, dpdf.y_axis, dpdf.z_axis,
+        ub_matrix=vol.ub_matrix,
+        logs={
+            "q_max": float(dpdf.q_max),
+            "apodization": str(dpdf.apodization),
+            "source_file": source_name,
+            "crop_hkl": _param_string(p.crop_hkl),
+            "q_band": _param_string(p.q_band),
+            "r_band": _param_string(r_band),
+            "subtract_smooth_bg": _param_string(p.subtract_smooth_bg),
+            "gaussian_sigma": float(p.gaussian_sigma),
+            "zero_pad": int(p.zero_pad),
+            "subtract_mean": int(p.subtract_mean),
+            "transform_config": (transform_config if transform_config is not None
+                                 else delta_pdf_transform_config(p)),
+        })
 
 
 def _crop_hkl(vol: HKLVolume, crop_hkl: tuple[float, float, float] | None
@@ -1564,18 +1560,16 @@ def _write_consistency_figure(rows: list, out_png: Path) -> None:
 
 
 def _pdf_is_current(pdf_path: Path, expected_src: str, expected_config: str) -> bool:
+    """Whether *pdf_path* was made from *expected_src* with *expected_config*
+    (its provenance only — the ΔPDF array is not read; either file layout)."""
     if not pdf_path.exists():
         return False
     try:
-        import h5py
-
-        with h5py.File(pdf_path, "r") as fh:
-            return (
-                fh.attrs.get("source_file", "") == expected_src
-                and fh.attrs.get("transform_config", "") == expected_config
-            )
+        logs = load_delta_pdf(pdf_path, read_data=False).logs
     except Exception:
         return False
+    return (logs.get("source_file", "") == expected_src
+            and logs.get("transform_config", "") == expected_config)
 
 
 # ---------------------------------------------------------------------------
