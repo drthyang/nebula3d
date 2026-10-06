@@ -13,10 +13,11 @@ Run::
 Env overrides:
     DATA_FILE   punched input .h5
     OUT_FILE    output .h5 (default: <stem>_backfilled.h5)
-    METHOD      "local" | "laplace" | "q_shell"
-                (default local).  "local" fills each hole with the median of
-                its own surrounding shell; "laplace" with the smooth harmonic
-                interpolant of the surrounding diffuse.  "q_shell" (robust
+    METHOD      "laplace" | "local" | "q_shell"
+                (default laplace).  "laplace" fills each hole with the smooth
+                harmonic interpolant of the surrounding diffuse; "local" with
+                the median of its own surrounding shell (flat, a step below the
+                rim).  "q_shell" (robust
                 level at the same |Q|) is kept for comparison only — it is
                 biased at the lattice nodes and leaves ΔPDF artefacts at the
                 lattice vectors.
@@ -54,7 +55,7 @@ else:
 out_file = os.environ.get("OUT_FILE")
 out_path = Path(out_file) if out_file else proc / f"{in_path.stem}_backfilled.h5"
 
-method = os.environ.get("METHOD", "local")
+method = os.environ.get("METHOD", "laplace")
 local_radius = int(os.environ.get("LOCAL_RADIUS", "2"))
 local_min_count = int(os.environ.get("LOCAL_MIN_COUNT", "8"))
 q_shell_step = float(os.environ.get("Q_SHELL_STEP", "0.05"))

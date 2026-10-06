@@ -391,7 +391,7 @@ def test_pipeline_backfill_default_fills_from_surroundings():
     from nebula3d.pipeline import BackfillParams
 
     # never the |Q|-shell level: it is biased at every lattice node
-    assert BackfillParams().method == "local"
+    assert BackfillParams().method == "laplace"
 
 
 def test_q_magnitude_matches_meshgrid_reference():

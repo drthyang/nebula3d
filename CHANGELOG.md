@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- **Laplace is the default backfill, judged on real data.** A new test,
+  `bragg_qa.refill_test` (also `REFILL=laplace,local` in
+  `examples/qa_punch_fill.py`), measures fill error where the truth is known.
+  It moves the punch's own holes half a node step along K, into measured
+  diffuse, fills them, and compares with the data there. The moved holes keep
+  the real shapes and stay lattice-periodic.
+
+  On TbTi3Bi4 (profile punch):
+
+  | | 22 K | 45 K | 100 K |
+  |---|---|---|---|
+  | per-hole mean error, `local` → `laplace` | +0.036 → +0.015σ | +0.024 → +0.015σ | +0.024 → +0.018σ |
+  | ΔPDF error at the lattice vectors, % of the real ΔPDF there | 1–4 % | 1–7 % | 2–5 % |
+
+  The two fills are equal in the ΔPDF within the test's scatter. `laplace`
+  leaves no step at the hole rim (−0.01σ against −0.18σ) and follows gradients
+  across the long merged holes of the profile punch. Fills that continue the
+  rise toward each node are not used: that rise is mostly the residual Bragg
+  tail the punch leaves at 0.5σ.
+
+  Defaults changed in `backfill_bragg`, `BackfillParams`, the stage driver and
+  presets, the preview, the benchmark and the web Configure page;
+  `method="local"` restores the shell median.
 - **The Bragg punch follows each peak's own tail.** Stacked along their local
   axes, the brightest TbTi3Bi4 peaks have:
   - a compact core, the same width in every direction;

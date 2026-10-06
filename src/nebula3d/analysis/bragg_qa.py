@@ -363,3 +363,109 @@ def score_against_truth(
         out["pdf_lattice_rel_rms"] = rms(d[pts]) / (rms(ref.data[pts]) or 1.0)
         out["pdf_origin_rel"] = float(abs(d[origin]) / (abs(ref.data[origin]) or 1.0))
     return out
+
+
+#: |r| bands (Å) the refill test reports the ΔPDF error in.
+PDF_BANDS_A: tuple[tuple[float, float], ...] = ((2.0, 5.0), (5.0, 10.0), (10.0, 20.0),
+                                                (20.0, 40.0), (40.0, 80.0))
+
+
+def shifted_holes(
+    vol: HKLVolume, punched: NDArray[np.bool_], shift: Sequence[int],
+) -> NDArray[np.bool_]:
+    """The punch's holes moved by *shift* voxels, on measured, unpunched voxels.
+
+    Wrapped-around slabs are dropped.  These are holes of the real shapes at
+    positions where the data under them is known.
+    """
+    moved = np.roll(punched, tuple(int(s) for s in shift), axis=(0, 1, 2))
+    for ax, s in enumerate(shift):
+        s = int(s)
+        if s:
+            sl: list[slice] = [slice(None)] * 3
+            sl[ax] = slice(0, s) if s > 0 else slice(s, None)
+            moved[tuple(sl)] = False
+    return moved & vol.mask & np.isfinite(vol.data) & ~punched
+
+
+def refill_test(
+    vol: HKLVolume,
+    punched: NDArray[np.bool_],
+    *,
+    shift: Sequence[int] = (0, 8, 0),
+    method: str = "laplace",
+    fill_kwargs: dict | None = None,
+    delta_pdf: bool = True,
+    pdf_kwargs: dict | None = None,
+) -> dict:
+    """Fill the punch's own holes moved off the nodes and compare with the data.
+
+    *vol* is the punched volume: ``vol.data`` measured everywhere, ``vol.mask``
+    without the holes; *punched* its holes.  The holes, moved by *shift*
+    voxels (default half a reciprocal-lattice step along the second axis on a
+    0.06 r.l.u. grid), land in measured diffuse between the nodes
+    (:func:`shifted_holes`).  They are masked, filled with *method* together
+    with the real holes, and compared with the measured data there.  Because
+    every moved hole sits at the same offset from its node, their fill errors
+    are lattice-periodic, as real fill errors are.
+
+    Returns, with ``σ`` the median ``sigma`` over the test voxels:
+
+    - ``bias_sigma`` — mean (fill − data) / σ; ``rmse_sigma`` — RMS / σ (at
+      least ~1 even for a perfect smooth fill: the data is noisy);
+    - ``hole_bias_sigma`` — per moved hole, the mean error / σ: its median
+      (``…_median``, the coherent bias) and median absolute value;
+    - ``hole_z_abs_median`` — the same in standard errors of each hole's mean;
+    - with *delta_pdf*: the ΔPDF of the error field (fill − data on the test
+      voxels, zero elsewhere) per |r| band (:data:`PDF_BANDS_A`): RMS at the
+      lattice vectors and over the band.  Compare these with the real ΔPDF's.
+    """
+    from nebula3d.analysis.bragg_fill import backfill_bragg
+
+    test = shifted_holes(vol, punched, shift)
+    t_vol = dataclasses.replace(vol, mask=vol.mask & ~test)
+    filled = backfill_bragg(t_vol, method=method,  # type: ignore[arg-type]
+                            punched=punched | test, **(fill_kwargs or {}))
+    truth = np.asarray(vol.data, dtype=np.float64)
+    err_vals = np.asarray(filled.data, dtype=np.float64)[test] - truth[test]
+    sig = np.asarray(vol.sigma, dtype=np.float64)[test]
+    s0 = float(np.median(sig[sig > 0])) if np.any(sig > 0) else 1.0
+    labels, n = ndimage.label(test, structure=np.ones((3, 3, 3), dtype=bool))
+    lab = labels[test]
+    cnt = np.bincount(lab, minlength=n + 1)[1:]
+    mean_err = np.bincount(lab, weights=err_vals, minlength=n + 1)[1:] / np.maximum(cnt, 1)
+    sem = np.sqrt(np.bincount(lab, weights=sig * sig, minlength=n + 1)[1:]) / np.maximum(cnt, 1)
+    ok = cnt >= 5
+    out: dict = {
+        "method": method, "n_voxels": int(test.sum()), "n_holes": int(ok.sum()),
+        "bias_sigma": float(np.mean(err_vals) / s0),
+        "rmse_sigma": float(np.sqrt(np.mean(err_vals ** 2)) / s0),
+        "hole_bias_sigma_median": float(np.median(mean_err[ok] / s0)),
+        "hole_bias_sigma_abs_median": float(np.median(np.abs(mean_err[ok]) / s0)),
+        "hole_z_abs_median": float(np.median(np.abs(mean_err[ok] / np.maximum(sem[ok], 1e-300)))),
+    }
+    if delta_pdf:
+        from nebula3d.analysis.delta_pdf import compute_delta_pdf
+
+        err = np.zeros(vol.shape, dtype=np.float64)
+        err[test] = err_vals
+        kw = {"apodization": "gaussian", "gaussian_sigma": 0.4, **(pdf_kwargs or {}),
+              "real_space_angstrom": False}
+        e_vol = dataclasses.replace(vol, data=err, sigma=np.zeros_like(err),
+                                    mask=np.ones(vol.shape, dtype=bool))
+        d = compute_delta_pdf(e_vol, **kw)
+        lens = np.linalg.norm(2 * np.pi * np.linalg.inv(vol.ub_matrix).T, axis=0)
+        x, y, z = (d.x_axis * lens[0], d.y_axis * lens[1], d.z_axis * lens[2])
+        r = np.sqrt(x[:, None, None] ** 2 + y[None, :, None] ** 2 + z[None, None, :] ** 2)
+        pts = lattice_points(d.data.shape, (d.x_axis, d.y_axis, d.z_axis))
+        rl, vl = r[pts], d.data[pts]
+        bands = {}
+        for lo, hi in PDF_BANDS_A:
+            m = (r >= lo) & (r < hi)
+            ml = (rl >= lo) & (rl < hi)
+            bands[f"{lo:g}-{hi:g}"] = {
+                "rms": float(np.sqrt(np.mean(d.data[m] ** 2))) if m.any() else float("nan"),
+                "lattice_rms": float(np.sqrt(np.mean(vl[ml] ** 2))) if ml.any() else float("nan"),
+            }
+        out["pdf_error"] = bands
+    return out
