@@ -69,6 +69,9 @@ The integer path is lattice-aware:
 
      The diagonal fit it replaced (three radii along H, K, L, no tilt, floored
      at the base ellipsoid's HKL bounding box) was removed.
+
+     With the profile-matched punch (the default, see below) the fit still
+     sets the centre, but the footprint follows the learned Bragg profile.
 6. Punch a continuous-HKL ellipsoid at the fitted centre.
 
 Useful guards:
@@ -172,6 +175,92 @@ rest of the punch, capped at 0.3 r.l.u. per axis. It is not the default: on
 22 K it adds ~1,200 integer nodes (864 in the interior) that have not been
 validated.
 
+## Profile-Matched Punch
+
+The pipeline default (`punch_footprint="profile"`, `profile_n_sigma=0.5`)
+punches each peak as far as its own tail is measurable. The tail shape comes
+from the dataset itself.
+
+**Why.** On TbTi3Bi4 the brightest interior integer peaks, stacked
+(normalised to their peak excess) along each peak's local axes, have:
+
+- a compact core, falling to 10 % within 0.07–0.09 Å⁻¹ in every direction;
+- no tail along ρ̂ (radial, |Q|): at noise by ~0.12 Å⁻¹;
+- an exponential tail along θ̂ (polar, toward c*): 0.3–0.47 Å⁻¹ to 3× the
+  noise, longest for in-plane Q, and a shorter one along φ̂ (azimuthal);
+- a tail that scales with peak intensity, grows with |Q|, and barely changes
+  from 22 to 100 K.
+
+For Q nearly along c* the tail stays along θ̂ rather than ρ̂, so it is not a
+streak along c*. It is the spread in tilt of the crystal's c axis (mosaic).
+That is Bragg intensity, and it should be punched. The ellipsoid punch fitted
+the core, which is the same width in every direction, so it could not see the
+tail; its base radii even had θ̂ as the *shortest* axis. On 22 K, 36–43 % of a
+bright peak's ellipsoid was background, yet 59 % of the brightest holes had a
+tail leaking on one side.
+
+**How.**
+
+1. *Learn the profile* (`BraggRemover._learn_profile`):
+   - take up to `profile_calibration_peaks` (400) of the most significant
+     integer peaks: more than 1 Å⁻¹ from the origin, window ≥ 90 % measured;
+   - for each, sample the excess over its own background (the median beyond
+     0.4 Å⁻¹), divided by its centre excess, in thin cylinders along ρ̂, θ̂ and
+     φ̂; voxels nearer another detected peak are dropped;
+   - take the medians in up to `profile_q_bins` (3) |Q| ranges, each with at
+     least 20 peaks.
+2. *Keep the Bragg part* (`_mosaic_template`). Per axis this is the Gaussian
+   fitted to the core. Across Q (θ̂, φ̂) it also includes the excess of that
+   axis's profile over the radial one. A halo common to every direction, such
+   as thermal diffuse peaked at the node, is not learned.
+3. *Size each peak* (`_with_profile_shape`). Along each of its ρ̂, θ̂, φ̂ the
+   radius is where its predicted tail, the peak excess × the profile
+   (interpolated in |Q|), falls to `profile_n_sigma` × the local noise. That
+   noise is the median `sigma` in the detection window.
+   - The punch-frame radii are the floor and `profile_max_radius_q` (0.5 Å⁻¹)
+     the ceiling, then `margin` is added.
+   - There is no intensity scaling. The integer peak's covariance fit still
+     sets its centre but not its shape.
+   - The H guard still applies.
+   - With fewer than 20 calibration peaks every peak keeps the ellipsoid; the
+     run log says which was used.
+
+**Effect** (old = before the gate; gate = ellipsoid with the 5σ gate; new =
+profile, k = 0.5):
+
+| | 22 K | 45 K | 100 K |
+|---|---|---|---|
+| brightest holes with a one-sided leak, old → gate → new | 59 → 59 → 29 % | 59 → 60 → 38 % | 69 → 70 → 53 % |
+| all holes with a one-sided leak | 30 → 31 → 17 % | 27 → 28 → 22 % | 30 → 29 → 22 % |
+| punched voxels within 1σ of their surroundings | 38 → 34 → 35 % | 40 → 35 → 36 % | 38 → 37 → 37 % |
+| voxels punched (M) | 2.52 → 2.26 → 2.74 | 2.49 → 2.23 → 2.63 | 2.13 → 2.05 → 2.51 |
+| back-FFT r, whole volume | 0.9987 → 0.9990 → 0.9986 | 0.9990 → 0.9990 → 0.9995 | 0.9984 → 0.9984 → 0.9991 |
+| back-FFT r, H = 0 plane | 0.9973 → 0.9984 → 0.99995 | 0.9933 → 0.9972 → 0.9967 | 0.9875 → 0.9938 → 0.9934 |
+
+The ΔPDF changes most beyond 5 Å. Against the gate's ellipsoid on 45 K
+(r = 0.91), its RMS is 11–21 % lower from 5 to 40 Å. At the lattice vectors
+it is 25 % lower at 5–10 Å and 12–17 % lower beyond 20 Å. Less
+lattice-periodic signal is what removing leftover Bragg tails gives; the
+nearest-neighbour range (2–5 Å) moves by 2.5 %.
+
+**Caveats.**
+
+- The punch is ~20 % larger, and more of it is in merged holes: tails join
+  neighbouring L nodes, 0.25 Å⁻¹ apart.
+- It removes anything that rises around a node more across Q than along it. On
+  the synthetic demo volume this includes its thermal diffuse, which streaks
+  transversely, so the demo benchmark scores 2–3× its collateral. On TbTi3Bi4
+  the tail does not change with temperature, so it is mosaic. Check the
+  stacked profile (`footprint_profile` in the Bragg profile JSON) on a new
+  sample or at higher temperature.
+- The H guard stops integer punches at |ΔH| = 0.12 r.l.u., but the brightest
+  peaks' tails reach the H = ±1/3 planes (0.36 Å⁻¹). About a third of the
+  remaining leak voxels sit at the guard faces.
+
+`punch_footprint="ellipsoid"` restores the fitted ellipsoid scaled by the cube
+root of the intensity (driver: `PUNCH_FOOTPRINT=ellipsoid`; run request:
+`punch_footprint`, `punch_profile_n_sigma`).
+
 ## Direct Beam
 
 The direct beam is not a Bragg reflection. It is punched after ordinary peak
@@ -265,6 +354,8 @@ Two diagnostics measure a punch + fill without changing it:
   - per hole, the excess in shells outside it by distance in Å⁻¹. A tail
     leaking on one side shows in the first shell's 90th percentile, not its
     median;
+  - the share of punched voxels within 1σ of their surroundings (background
+    punched for nothing);
   - the fill against those shells.
 - `examples/benchmark_punch_fill.py` (ground truth). It runs on the synthetic
   demo volume, whose Bragg, diffuse and noise are known, and scores:
@@ -282,7 +373,7 @@ The metrics are in `nebula3d.analysis.bragg_qa`.
 ```bash
 PUNCH_PRESET=cc_on MODE=both MIN_I=0.8 MIN_PROM=0.8 \
 INTEGER_FIT_POSITION=1 INTEGER_FIT_SHAPE=1 INTEGER_H_GUARD=0.12 \
-MIN_SIGNIFICANCE=5 \
+MIN_SIGNIFICANCE=5 PUNCH_FOOTPRINT=profile PROFILE_N_SIGMA=0.5 \
 SEARCH_EXCLUDE_H_FRACTIONS=0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \
 BACKFILL_METHOD=local
 ```

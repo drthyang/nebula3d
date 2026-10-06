@@ -35,7 +35,7 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import numpy as np
 
@@ -79,6 +79,9 @@ from nebula3d.preprocessing.radial_background import (
 from nebula3d.preprocessing.radial_background import (
     _offset_q_magnitude as _plane_offset_q_magnitude,
 )
+
+if TYPE_CHECKING:
+    from nebula3d.analysis.bragg import _BraggProfile
 
 __all__ = [
     "RingParams",
@@ -187,8 +190,13 @@ def bragg_profile_from_records(
     vol: HKLVolume,
     remover: BraggRemover,
     peaks: Sequence,
+    footprint: _BraggProfile | None = None,
 ) -> dict:
-    """Summarise detected Bragg peak ellipsoid widths for review charts."""
+    """Summarise detected Bragg peak ellipsoid widths for review charts.
+
+    *footprint* is the learned Bragg profile of the profile-matched punch
+    (``BraggRemover._detect``); it is recorded as ``footprint_profile``.
+    """
     base = remover._fit_base_radii(vol)  # noqa: SLF001 - profile mirrors punch internals
     n_sigma = max(float(remover.integer_fit_radius_n_sigma), 0.0)
     steps = tuple(abs(s) for s in remover._steps(vol))  # noqa: SLF001
@@ -201,7 +209,7 @@ def bragg_profile_from_records(
     for idx, peak in enumerate(peaks):
         if peak.shape_hkl is not None:
             shape = np.asarray(peak.shape_hkl, dtype=float)
-            fit_kind = "tilted"
+            fit_kind = "profile" if getattr(peak, "profile_shape", False) else "tilted"
         elif is_spherical:
             # Fixed spherical punch: report the *real* per-peak ellipsoid so the
             # principal widths/directions follow Q̂ (ρ) and the two transverse axes.
@@ -312,6 +320,16 @@ def bragg_profile_from_records(
         # of profiles written when a diagonal "moment" fit was the default).
         "fit_covariance": bool(remover.integer_optimize_shape),
         "punch_frame": str(remover.punch_frame),
+        "punch_footprint": str(remover.punch_footprint),
+        "footprint_profile": None if footprint is None else {
+            "axes": ["ρ", "θ", "φ"],
+            "q_centers": [float(v) for v in footprint.q_centers],
+            "n_peaks": list(footprint.n_peaks),
+            "distances_q": [float(v) for v in footprint.distances],
+            "template": footprint.profiles.tolist(),
+            "stacked": None if footprint.raw is None else footprint.raw.tolist(),
+            "n_sigma": float(remover.profile_n_sigma),
+        },
         "peaks": rows,
     }
 
@@ -398,6 +416,15 @@ class PunchParams:
     # Detection window in Å⁻¹ (None = the BraggRemover default, 0.2 r.l.u. on
     # every axis).  Off: on 22K it adds ~1,200 integer nodes, unvalidated.
     detect_window_q: float | None = None
+    # "profile" (default): each peak punched as far as its tail, predicted from
+    # the dataset's own stacked Bragg profile along (ρ̂, θ̂, φ̂), stays above
+    # profile_n_sigma × the local noise (see BraggRemover).  On TbTi3Bi4 the
+    # tail is c-axis mosaic along θ̂, which the ellipsoid left: 0.5σ halves the
+    # brightest peaks' one-sided leaks.  "ellipsoid": the fitted / base
+    # ellipsoid scaled by the cube root of the intensity.
+    punch_footprint: str = "profile"
+    profile_n_sigma: float = 0.5
+    profile_max_radius_q: float = 0.5
     search_n_mad: float = 4.0
     search_min_intensity: float = 0.8
     search_min_prominence: float = 0.8
@@ -1042,6 +1069,9 @@ def bragg_remover(p: PunchParams) -> BraggRemover:
         significance_aperture=p.significance_aperture,
         significance_noise=p.significance_noise,
         detect_window_q=p.detect_window_q,
+        punch_footprint=p.punch_footprint,
+        profile_n_sigma=p.profile_n_sigma,
+        profile_max_radius_q=p.profile_max_radius_q,
         intensity_scale=True, max_radius_scale=p.max_radius_scale, margin=p.margin,
         punch_incident_beam=True, incident_beam_radii=p.incident_beam_radii,
         incident_beam_margin=p.incident_beam_margin,
@@ -1069,11 +1099,18 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     p = params or PunchParams()
     _emit(progress, "punch", "start", None, f"Bragg punch (mode={p.mode})")
     remover = bragg_remover(p)
-    peak_records, reference = remover._detect(vol)  # noqa: SLF001 - avoid refitting
+    peak_records, reference, footprint = remover._detect(vol)  # noqa: SLF001 - avoid refitting
+    if p.punch_footprint == "profile":
+        _emit(progress, "punch", "progress", None, (
+            f"profile-matched punch: Bragg profile learned from "
+            f"{sum(footprint.n_peaks)} peaks in {len(footprint.n_peaks)} |Q| range(s)"
+            if footprint is not None else
+            "profile-matched punch: too few bright peaks to learn the Bragg "
+            "profile; every peak gets the ellipsoid punch"))
     keep = remover._punch_centers(  # noqa: SLF001
         vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference)
     keep = remover._punch_incident_beam(vol, keep)  # noqa: SLF001
-    profile = bragg_profile_from_records(vol, remover, peak_records)
+    profile = bragg_profile_from_records(vol, remover, peak_records, footprint)
     punched = vol.mask & np.isfinite(vol.data) & ~keep
     out_vol = dataclasses.replace(vol, mask=vol.mask & keep)
     _emit(progress, "punch", "done", 1.0,

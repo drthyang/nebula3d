@@ -18,8 +18,10 @@ Strategy
    exact integer by thermal contraction etc.).
 3. Punch a 3D ellipsoidal hole at each detected peak.  Its size is set in Q
    (Å⁻¹), where the instrument resolution lives — per peak in the local
-   spherical frame (radial, polar, azimuthal) by default, or along a*, b*, c* —
-   and optionally **scales with intensity** (bright peaks have longer tails).
+   spherical frame (radial, polar, azimuthal), or along a*, b*, c*.  With
+   ``punch_footprint="profile"`` each peak is punched along those axes as far
+   as its tail, predicted from the dataset's own stacked Bragg profile, is
+   measurable; otherwise the ellipsoid optionally **scales with intensity**.
    Radii in fractional HKL were removed: they depend on the cell, not on the
    resolution, and are wrong along non-orthogonal axes.
 4. The mask is built on **local windows** around each peak, never a full-volume
@@ -63,6 +65,9 @@ class _PeakPunch:
     # Integrated excess over the resolution aperture in standard errors (see
     # ``BraggRemover._peak_significance``); NaN when not computed.
     significance: float = float("nan")
+    # ``shape_hkl`` is the final profile-matched footprint (margin included):
+    # punched as is, without intensity scaling.
+    profile_shape: bool = False
 
     def as_tuple(self) -> tuple[int, int, int, float]:
         return self.ih, self.ik, self.il, self.intensity
@@ -152,6 +157,123 @@ def _clip_ellipsoid(
     lam = np.minimum(lam, 1.0) if upper else np.maximum(lam, 1.0)
     out = half @ ((u * lam) @ u.T) @ half
     return np.asarray(0.5 * (out + out.T), dtype=np.float64)
+
+
+def _profile_reach(
+    distances: NDArray[np.float64], profile: NDArray[np.float64], level: float,
+) -> float:
+    """Distance at which a non-increasing profile (1 at 0) falls below *level*.
+
+    Interpolated in log of the profile between grid points; the last distance
+    when it never falls that low, 0 when *level* is at least 1.
+    """
+    if not level < 1.0:
+        return 0.0
+    below = np.flatnonzero(profile < level)
+    if below.size == 0:
+        return float(distances[-1])
+    j = int(below[0])
+    if j == 0:
+        return 0.0
+    p0, p1 = float(profile[j - 1]), float(profile[j])
+    d0, d1 = float(distances[j - 1]), float(distances[j])
+    if p1 <= 0:  # fell to zero: interpolate linearly
+        return d0 + (d1 - d0) * (p0 - level) / max(p0, 1e-300)
+    t = (np.log(p0) - np.log(level)) / max(np.log(p0) - np.log(p1), 1e-12)
+    return d0 + (d1 - d0) * float(np.clip(t, 0.0, 1.0))
+
+
+def _monotone_profile(
+    distances: NDArray[np.float64], med: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """A stacked profile made usable: gaps interpolated, extended past the
+    last sample by its own exponential decay (zero if it is not decaying),
+    clipped to [0, 1] and non-increasing.  ``med[0]`` is the centre (1)."""
+    p = np.asarray(med, dtype=np.float64).copy()
+    valid = np.isfinite(p)
+    out = np.zeros_like(p)
+    out[0] = 1.0
+    if int(valid.sum()) < 2:
+        return out
+    idx = np.flatnonzero(valid)
+    last = int(idx[-1])
+    p[:last + 1] = np.interp(distances[:last + 1], distances[valid], p[valid])
+    if last < p.size - 1:
+        tail = [i for i in idx if p[i] > 0][-5:]
+        slope = (float(np.polyfit(distances[tail], np.log(p[tail]), 1)[0])
+                 if len(tail) >= 2 and p[last] > 0 else 0.0)
+        p[last + 1:] = (p[last] * np.exp(slope * (distances[last + 1:] - distances[last]))
+                        if slope < 0 else 0.0)
+    p = np.clip(p, 0.0, 1.0)
+    p[0] = 1.0
+    return np.minimum.accumulate(p)
+
+
+def _gaussian_core_width(distances: NDArray[np.float64], p: NDArray[np.float64]) -> float:
+    """σ of the Gaussian fitted to a stacked profile's core (where it is ≥ 0.1).
+
+    ``log p = −d²/2σ²`` by least squares through the origin; with fewer than
+    two core points (a sub-voxel core) from the first crossing of 0.5.
+    """
+    core = (distances > 0) & (p >= 0.1)
+    if int(core.sum()) >= 2:
+        x, y = distances[core] ** 2, np.log(p[core])
+        slope = float((x @ y) / (x @ x))
+        if slope < 0:
+            return float(np.sqrt(-0.5 / slope))
+    return max(_profile_reach(distances, p, 0.5), float(distances[1])) / np.sqrt(2 * np.log(2))
+
+
+def _mosaic_template(
+    distances: NDArray[np.float64], raw: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """The Bragg part of the stacked (ρ̂, θ̂, φ̂) profiles of one |Q| bin.
+
+    A Bragg peak is its resolution core plus, from a crystal's mosaic, tails
+    *across* Q (θ̂, φ̂); diffuse scattering that peaks at the node (thermal
+    diffuse) also rises along Q (ρ̂).  So the template is, per axis, the
+    Gaussian fitted to that axis's core, and across Q also the excess of the
+    axis's profile over the radial one — what the radial profile does not
+    show is not a halo common to all directions.  Non-increasing, 1 at 0.
+    """
+    out = np.empty_like(raw)
+    for k in range(3):
+        sig = _gaussian_core_width(distances, raw[k])
+        core = np.exp(-0.5 * (distances / sig) ** 2)
+        tail = np.clip(raw[k] - raw[0], 0.0, None) if k else np.zeros_like(core)
+        t = np.clip(np.maximum(core, tail), 0.0, 1.0)
+        t[0] = 1.0
+        out[k] = np.minimum.accumulate(t)
+    return out
+
+
+@dataclass(frozen=True)
+class _BraggProfile:
+    """A dataset's Bragg peak profile along each peak's (ρ̂, θ̂, φ̂) axes.
+
+    ``raw[b, axis]`` is the stacked, normalised excess of the peaks in |Q|
+    bin ``b`` against distance (Å⁻¹) along that axis; ``profiles[b, axis]``
+    its Bragg part (see :func:`_mosaic_template`): 1 at the centre,
+    non-increasing.  Learned by :meth:`BraggRemover._learn_profile`.
+    """
+
+    q_centers: NDArray[np.float64]  # (n_bins,) median |Q| of each bin (Å⁻¹)
+    distances: NDArray[np.float64]  # (n_dist,) ascending from 0 (Å⁻¹)
+    profiles: NDArray[np.float64]  # (n_bins, 3, n_dist): the Bragg template
+    n_peaks: tuple[int, ...]
+    raw: NDArray[np.float64] | None = None  # the stacked profiles it came from
+
+    def radii(self, q_abs: float, level: float) -> NDArray[np.float64]:
+        """Distances along ρ̂, θ̂, φ̂ at which the profile falls to *level*.
+
+        Linear in |Q| between bins, constant beyond the outer bins.
+        """
+        reach = np.array([[_profile_reach(self.distances, p, level) for p in b]
+                          for b in self.profiles])  # (n_bins, 3)
+        if reach.shape[0] == 1:
+            return reach[0]
+        return np.array([np.interp(q_abs, self.q_centers, reach[:, a])
+                         for a in range(3)])
 
 
 @dataclass
@@ -257,6 +379,26 @@ class BraggRemover:
         window's robust scatter (1.4826·MAD).  ``"mad"``: the window's robust
         scatter for every voxel — for volumes whose ``sigma`` is not a real
         error estimate (``HKLVolume.from_arrays`` falls back to ``√|I|``).
+    punch_footprint:
+        ``"ellipsoid"`` (default): the punch-frame ellipsoid, or the
+        covariance fit of an integer peak, scaled by ``intensity_scale``.
+        ``"profile"``: a profile-matched ellipsoid.  The dataset's own Bragg
+        profile along each peak's (ρ̂, θ̂, φ̂) axes is learned from its
+        brightest integer peaks (see :meth:`_learn_profile`). Each peak's
+        radius along each axis is where that peak's predicted tail (its
+        excess × the profile) falls to ``profile_n_sigma`` × the local noise;
+        the punch-frame ellipsoid is the floor, ``profile_max_radius_q`` the
+        ceiling.  A bright peak is punched as far as its tail is measurable, a
+        weak one at the resolution; there is no intensity scaling.  Falls back
+        to ``"ellipsoid"`` when too few bright peaks are found.
+    profile_n_sigma:
+        Noise level (in local σ) at which the profile-matched punch stops.
+    profile_max_radius_q:
+        Largest profile-matched radius (Å⁻¹); also the reach of the profile.
+    profile_calibration_peaks:
+        How many of the brightest peaks the profile is learned from.
+    profile_q_bins:
+        |Q| ranges the profile is learned in (each needs 20 peaks).
     intensity_scale:
         If True, multiply the punch radii by ``clip((I/intensity_ref)**(1/3), 1,
         max_radius_scale)`` so bright peaks (longer tails) get larger holes.
@@ -345,6 +487,12 @@ class BraggRemover:
     min_significance: float | None = None
     significance_aperture: float = 0.5
     significance_noise: str = "sigma"
+    # --- punch footprint ---
+    punch_footprint: str = "ellipsoid"
+    profile_n_sigma: float = 3.0
+    profile_max_radius_q: float = 0.5
+    profile_calibration_peaks: int = 400
+    profile_q_bins: int = 3
     intensity_scale: bool = False
     intensity_ref: float | None = None
     max_radius_scale: float = 3.0
@@ -398,6 +546,10 @@ class BraggRemover:
                 f"punch_frame={self.punch_frame!r}: choose 'spherical' or 'q' (radii "
                 f"in Å⁻¹).  The fractional-HKL frame was removed — HKL radii depend "
                 f"on the cell, not on the resolution.")
+        if self.punch_footprint not in {"ellipsoid", "profile"}:
+            raise ValueError(
+                f"punch_footprint={self.punch_footprint!r}: choose 'ellipsoid' or "
+                f"'profile'")
         if self.significance_noise not in {"sigma", "mad"}:
             raise ValueError(
                 f"significance_noise={self.significance_noise!r}: choose 'sigma' "
@@ -894,6 +1046,182 @@ class BraggRemover:
         med = float(np.median(vals))
         return med, 1.4826 * float(np.median(np.abs(vals - med)))
 
+    def _window_noise(self, vol: HKLVolume, idx: tuple[int, int, int]) -> float:
+        """Typical per-voxel error in the detection window at ``idx``.
+
+        The median usable ``sigma`` (``significance_noise="sigma"``), else — or
+        when there is none — the window's robust scatter.  NaN if the window
+        is (nearly) empty.
+        """
+        sl = self._box(vol, idx, self._detect_half_widths(vol))
+        win = vol.data[sl]
+        ok = vol.mask[sl] & np.isfinite(win)
+        if self.significance_noise == "sigma":
+            s = vol.sigma[sl][ok].astype(np.float64)
+            s = s[np.isfinite(s) & (s > 0)]
+            if s.size >= 3:
+                return float(np.median(s))
+        stats = self._window_stats(vol, idx)
+        return float("nan") if stats is None else stats[1]
+
+    def _learn_profile(
+        self, vol: HKLVolume, peaks: list[_PeakPunch],
+    ) -> _BraggProfile | None:
+        """Stack the brightest peaks' profiles along their (ρ̂, θ̂, φ̂) axes.
+
+        Calibration peaks are the integer-node peaks (all *peaks* when there
+        are none) with a positive excess, more than twice the reach
+        (``profile_max_radius_q``) from the origin and a ≥ 90 %-measured
+        window, most significant first, at most ``profile_calibration_peaks``.
+        For each, the excess over its own background (the median beyond 0.8 ×
+        the reach), divided by its centre excess, is sampled in thin cylinders
+        along ρ̂, θ̂ and φ̂.  Voxels nearer another peak are left out, so a
+        neighbouring node does not enter the profile.  Per |Q| bin and axis the
+        median is taken, extended exponentially past the last sample, and made
+        non-increasing; the punch follows its Bragg part, the Gaussian core
+        plus the mosaic tails across Q (:func:`_mosaic_template`).  ``None``
+        with fewer than 20 calibration peaks.
+        """
+        from scipy.spatial import cKDTree
+
+        min_per_bin = 20
+        ub = vol.ub_matrix
+        qvox = np.linalg.norm(ub, axis=0) * np.abs(np.asarray(self._steps(vol)))
+        rmax = max(float(self.profile_max_radius_q), float(qvox.max()))
+        half = tuple(int(h) for h in np.ceil(rmax / qvox))
+        step = 0.5 * float(qvox.min())
+        edges = np.arange(0.0, rmax + step, step)
+        n_d = edges.size - 1
+        rc = max(0.03, 0.75 * float(qvox.max()))  # cylinder radius
+        if not peaks:
+            return None
+        centres_q = np.array([ub @ np.asarray(p.center_hkl, dtype=float) for p in peaks])
+        tree = cKDTree(centres_q)
+
+        def excess(p: _PeakPunch) -> float:
+            return float(p.intensity) - float(p.local_background)
+
+        pool = [p for p in peaks if p.source_node_hkl is not None] or list(peaks)
+        pool = [p for p in pool if np.isfinite(excess(p)) and excess(p) > 0
+                and np.linalg.norm(ub @ np.asarray(p.center_hkl, dtype=float)) > 2 * rmax]
+        pool.sort(key=lambda p: p.significance if np.isfinite(p.significance)
+                  else excess(p), reverse=True)
+        axes = (vol.h_axis, vol.k_axis, vol.l_axis)
+        samples: list[tuple[float, NDArray[np.int64], NDArray[np.float64]]] = []
+        for p in pool:
+            if len(samples) >= int(self.profile_calibration_peaks):
+                break
+            c = np.asarray(p.center_hkl, dtype=float)
+            q0 = ub @ c
+            sl = self._box(vol, (p.ih, p.ik, p.il), half)  # type: ignore[arg-type]
+            win = vol.data[sl].astype(np.float64)
+            ok = vol.mask[sl] & np.isfinite(win)
+            if ok.mean() < 0.9:
+                continue
+            frame = self._spherical_frame(vol, (float(c[0]), float(c[1]), float(c[2])))
+            if frame is None:
+                continue
+            grids = np.meshgrid(*(a[s_] - v for a, s_, v in zip(axes, sl, c)),
+                                indexing="ij")
+            dq = np.tensordot(ub, np.array(grids), axes=1).reshape(3, -1).T
+            r = np.linalg.norm(dq, axis=1)
+            own = ok.ravel().copy()
+            for j in tree.query_ball_point(q0, 2 * rmax):
+                d = centres_q[j] - q0
+                if float(d @ d) > 1e-12:
+                    own &= np.linalg.norm(dq - d, axis=1) >= r
+            far = own & (r > 0.8 * rmax)
+            if int(far.sum()) < 30:
+                continue
+            vals = win.ravel()
+            bg = float(np.median(vals[far]))
+            amp = float(p.intensity) - bg
+            if not amp > 0:
+                continue
+            loc = dq @ np.column_stack(frame)
+            e = (vals - bg) / amp
+            keys, values = [], []
+            for k in range(3):
+                perp = np.sqrt(np.sum(np.delete(loc, k, axis=1) ** 2, axis=1))
+                sel = own & (perp < rc) & (np.abs(loc[:, k]) < rmax)
+                b = np.searchsorted(edges, np.abs(loc[sel, k]), side="right") - 1
+                keys.append(k * n_d + b)
+                values.append(e[sel])
+            samples.append((float(np.linalg.norm(q0)), np.concatenate(keys),
+                            np.concatenate(values)))
+        n_bins = min(int(self.profile_q_bins), len(samples) // min_per_bin)
+        if n_bins < 1:
+            return None
+        qs = np.array([s_[0] for s_ in samples])
+        cuts = np.quantile(qs, np.linspace(0.0, 1.0, n_bins + 1)[1:-1])
+        which = np.searchsorted(cuts, qs, side="right")
+        dist = np.concatenate([[0.0], 0.5 * (edges[1:] + edges[:-1])])
+        raw = np.zeros((n_bins, 3, dist.size))
+        q_centers = np.zeros(n_bins)
+        counts = []
+        for b in range(n_bins):
+            members = [s_ for s_, w in zip(samples, which) if w == b]
+            q_centers[b] = float(np.median([m[0] for m in members]))
+            counts.append(len(members))
+            key = np.concatenate([m[1] for m in members])
+            val = np.concatenate([m[2] for m in members])
+            order = np.argsort(key, kind="stable")
+            key, val = key[order], val[order]
+            bounds = np.searchsorted(key, np.arange(3 * n_d + 1))
+            for k in range(3):
+                med = np.full(n_d, np.nan)
+                for d in range(n_d):
+                    seg = val[bounds[k * n_d + d]:bounds[k * n_d + d + 1]]
+                    if seg.size >= 5:
+                        med[d] = float(np.median(seg))
+                raw[b, k] = _monotone_profile(dist, np.concatenate([[1.0], med]))
+        profiles = np.stack([_mosaic_template(dist, raw[b]) for b in range(n_bins)])
+        return _BraggProfile(q_centers=q_centers, distances=dist, profiles=profiles,
+                             n_peaks=tuple(counts), raw=raw)
+
+    def _with_profile_shape(
+        self, vol: HKLVolume, rec: _PeakPunch, profile: _BraggProfile,
+    ) -> _PeakPunch:
+        """*rec* with its profile-matched footprint as ``shape_hkl``.
+
+        Along each of the peak's ρ̂, θ̂, φ̂ the radius is where its predicted
+        tail — its excess times the profile — falls to ``profile_n_sigma`` ×
+        the local noise, floored at the punch-frame (resolution) radii, capped
+        at ``profile_max_radius_q``, plus ``margin``.  Unchanged where the
+        frame is undefined (the origin).
+        """
+        frame = self._spherical_frame(vol, rec.center_hkl)
+        if frame is None:
+            return rec
+        idx = (rec.ih, rec.ik, rec.il)
+        bg = rec.local_background
+        if not np.isfinite(bg):
+            stats = self._window_stats(vol, idx)
+            bg = stats[0] if stats is not None else float("nan")
+        amp = float(rec.intensity) - float(bg)
+        noise = self._window_noise(vol, idx)
+        level = (float(self.profile_n_sigma) * noise / amp
+                 if amp > 0 and np.isfinite(noise) and noise > 0 else np.inf)
+        q_abs = float(np.linalg.norm(vol.ub_matrix @ np.asarray(rec.center_hkl)))
+        floor = np.asarray(self.punch_spherical_radii or (0.097, 0.072, 0.115), float)
+        reach = profile.radii(q_abs, level)
+        radii = np.minimum(np.maximum(reach, floor),
+                           max(float(self.profile_max_radius_q), float(floor.max())))
+        radii = radii + max(0.0, float(self.margin))
+        r_mat = np.column_stack(frame)
+        a_q = (r_mat / radii**2) @ r_mat.T
+        ub = vol.ub_matrix
+        shape = np.asarray(ub.T @ a_q @ ub, dtype=np.float64)
+        return dataclasses.replace(rec, shape_hkl=0.5 * (shape + shape.T),
+                                   profile_shape=True)
+
+    def _profile_footprints(
+        self, vol: HKLVolume, peaks: list[_PeakPunch], profile: _BraggProfile | None,
+    ) -> list[_PeakPunch]:
+        if profile is None:
+            return peaks
+        return [self._with_profile_shape(vol, p, profile) for p in peaks]
+
     def enumerate_bragg(self, vol: HKLVolume) -> list[tuple[int, int, int]]:
         """Integer (h,k,l) nodes within the grid extent."""
         hs = range(int(np.ceil(vol.h_axis.min())), int(np.floor(vol.h_axis.max())) + 1)
@@ -920,32 +1248,50 @@ class BraggRemover:
         """Internal detector dispatch returning rich punch records."""
         return self._detect(vol)[0]
 
-    def _detect(self, vol: HKLVolume) -> tuple[list[_PeakPunch], float]:
-        """Detected peaks, and the intensity-scaling reference for punching them.
+    def _detect(
+        self, vol: HKLVolume,
+    ) -> tuple[list[_PeakPunch], float, _BraggProfile | None]:
+        """Detected peaks, the intensity-scaling reference, and the learned profile.
 
         The reference is the median intensity of every candidate, the ones the
         ``min_significance`` gate rejected included (see
-        :meth:`_scaling_reference`).
+        :meth:`_scaling_reference`).  With ``punch_footprint="profile"`` the
+        dataset's Bragg profile is learned from the integer peaks (see
+        :meth:`_learn_profile`) and every peak carries its profile-matched
+        footprint; the profile is ``None`` otherwise, or when too few bright
+        peaks were found (the peaks then keep the ellipsoid footprint).
         """
         rejected: list[float] = []
+        learn = self.punch_footprint == "profile"
+        profile: _BraggProfile | None = None
         if self.mode == "integer":
             peaks = self._detect_integer(vol, rejected)
+            if learn:
+                profile = self._learn_profile(vol, peaks)
+                peaks = self._profile_footprints(vol, peaks, profile)
         elif self.mode in {"auto", "search"}:
             peaks = self._detect_search(vol, rejected)
+            if learn:
+                profile = self._learn_profile(vol, peaks)
+                peaks = self._profile_footprints(vol, peaks, profile)
         elif self.mode == "both":
             # Sequential: punch the integer Bragg first, then search on the
             # residual.  With the strong integer peaks already masked out, the
             # per-|Q|-shell statistics are no longer inflated by them, so the
             # off-integer satellites stand out as clean outliers.
             integer = self._detect_integer(vol, rejected)
+            if learn:
+                profile = self._learn_profile(vol, integer)
+                integer = self._profile_footprints(vol, integer, profile)
             keep = self._punch_centers(
                 vol, np.ones(vol.shape, dtype=bool), integer,
                 reference=self._scaling_reference(integer, rejected))
             residual = dataclasses.replace(vol, mask=vol.mask & keep)
-            peaks = integer + self._detect_search(residual, rejected)
+            search = self._detect_search(residual, rejected)
+            peaks = integer + self._profile_footprints(vol, search, profile)
         else:
             raise ValueError(f"Unknown mode: {self.mode!r}")
-        return peaks, self._scaling_reference(peaks, rejected)
+        return peaks, self._scaling_reference(peaks, rejected), profile
 
     def _scaling_reference(
         self, peaks: list[_PeakPunch], rejected: list[float] | None = None,
@@ -1335,7 +1681,7 @@ class BraggRemover:
         Built on local windows around each detected peak, so the cost is
         ``n_peaks × small_window`` rather than ``n_peaks × whole_volume``.
         """
-        peaks, reference = self._detect(vol)
+        peaks, reference, _ = self._detect(vol)
         keep = self._punch_centers(
             vol, np.ones(vol.shape, dtype=bool), peaks, reference=reference)
         return self._punch_incident_beam(vol, keep)
@@ -1365,10 +1711,11 @@ class BraggRemover:
             s = self._scale_factor(peak_rec.intensity, ref if ref is not None else 1.0)
             center = (peak_rec.ih, peak_rec.ik, peak_rec.il)
 
-            # (1) Covariance fit (either frame): tilted ellipsoid with the
+            # (1) Profile-matched footprint (final as recorded), or the
+            #     covariance fit (either frame): tilted ellipsoid with the
             #     φ-tail and margin folded into the matrix.
             if peak_rec.shape_hkl is not None:
-                a = self._inflate_for_frame(
+                a = peak_rec.shape_hkl if peak_rec.profile_shape else self._inflate_for_frame(
                     vol,
                     self._fold_phi_tail(
                         vol, peak_rec.shape_hkl / (s * s), peak_rec.center_hkl,

@@ -2,6 +2,59 @@
 
 ## Unreleased
 
+- **The Bragg punch follows each peak's own tail.** Stacked along their local
+  axes, the brightest TbTi3Bi4 peaks have:
+  - a compact core, the same width in every direction;
+  - no radial tail;
+  - an exponential tail along θ̂ (toward c*), out to 0.3–0.47 Å⁻¹ above the
+    noise, and a shorter one along φ̂.
+
+  The tail scales with intensity, grows with |Q| and barely changes from 22 to
+  100 K: the c-axis tilt spread (mosaic). The old punch fitted the core, which
+  cannot see the tail, then grew it by the cube root of the intensity. Its base
+  radii even had θ̂ as the shortest axis. On 22 K, 36–43 % of a bright punch was
+  background, yet 59 % of the brightest holes had a tail leaking on one side.
+
+  `punch_footprint="profile"`, now the default with `profile_n_sigma=0.5`:
+  - learns the dataset's Bragg profile along each peak's (ρ̂, θ̂, φ̂) from its
+    ≤ 400 brightest integer peaks, per |Q| range, with neighbouring peaks
+    masked out;
+  - keeps the Gaussian core plus the excess of the transverse profiles over
+    the radial one, so a halo common to every direction (thermal diffuse) is
+    not learned;
+  - punches each peak along each axis to where its predicted tail falls to
+    0.5 × the local noise, between the resolution radii and 0.5 Å⁻¹. There is
+    no intensity scaling.
+
+  Old → gate → new:
+
+  | | 22 K | 45 K | 100 K |
+  |---|---|---|---|
+  | brightest holes leaking a tail | 59 → 59 → 29 % | 59 → 60 → 38 % | 69 → 70 → 53 % |
+  | all holes leaking a tail | 30 → 31 → 17 % | 27 → 28 → 22 % | 30 → 29 → 22 % |
+  | background share of the punch | 34 → 35 % (gate → new) | 35 → 36 % | 37 → 37 % |
+  | punched voxels | +21 % | +18 % | +22 % |
+  | back-FFT r, whole volume | 0.9990 → 0.9986 | 0.9990 → 0.9995 | 0.9984 → 0.9991 |
+  | back-FFT r, H = 0 | 0.9984 → 0.99995 | 0.9972 → 0.9967 | 0.9938 → 0.9934 |
+
+  (Background share, punched voxels and back-FFT r are gate → new.)
+
+  The 45 K ΔPDF (r = 0.91 against the gate's) loses 11–21 % of its RMS from
+  5 to 40 Å and up to 25 % at the lattice vectors; 2–5 Å moves by 2.5 %.
+
+  Caveats:
+  - more of the punch sits in merged holes, as tails join neighbouring L
+    nodes;
+  - it also removes thermal diffuse that streaks across Q around nodes, like
+    the demo volume's, so the demo benchmark scores 2–3× the collateral. The
+    learned profile is in the Bragg profile JSON (`footprint_profile`) for
+    checking a new sample.
+
+  With too few bright peaks it falls back to the ellipsoid and says so in the
+  run log. `punch_footprint="ellipsoid"` restores the old punch
+  (`PUNCH_FOOTPRINT` / `PROFILE_N_SIGMA` in the driver; `punch_footprint` /
+  `punch_profile_n_sigma` in the run request). `bragg_qa` also reports each
+  hole's background share.
 - **The Bragg punch judges every detection against its own error.** Before,
   the search pass flagged a voxel when it beat its |Q| shell's median + 4·MAD
   and an absolute floor of 0.8. Both are set by the whole shell. At the

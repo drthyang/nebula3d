@@ -188,6 +188,10 @@ export interface StageParamsIn {
   punch_min_intensity?: number;
   // Noise-aware detection gate (standard errors); 0 turns it off.
   punch_min_significance?: number;
+  // "profile" (profile-matched punch, default) | "ellipsoid"; and the noise
+  // level (σ) the profile-matched punch stops at.
+  punch_footprint?: string;
+  punch_profile_n_sigma?: number;
   punch_search_n_mad?: number;
   punch_mode?: string;
   punch_margin?: number;
