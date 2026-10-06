@@ -35,7 +35,7 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import numpy as np
 
@@ -80,6 +80,7 @@ from nebula3d.preprocessing.radial_background import (
     _offset_q_magnitude as _plane_offset_q_magnitude,
 )
 
+if TYPE_CHECKING:
     from nebula3d.analysis.bragg import _BraggProfile
 
 __all__ = [
