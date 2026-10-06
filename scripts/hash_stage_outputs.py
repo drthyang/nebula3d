@@ -5,8 +5,9 @@ Walks a processed directory (default ``data/processed``) and, for each pipeline
 HDF5 artifact (``*_ringremoved.h5``, ``*_braggpunched.h5``, ``*_backfilled.h5``,
 ``*_flattened.h5``, ``*_delta_pdf.h5``), hashes the raw bytes of every dataset
 (sorted by name, so the digest is deterministic and independent of HDF5 chunking
-or compression settings).  Run it before and after a refactor that must be
-bit-exact and diff the output:
+or compression settings) — all but the write-time stamp the Mantid layout
+carries (``…/instrument_parameter_map/date``).  Run it before and after a
+refactor that must be bit-exact and diff the output:
 
     python scripts/hash_stage_outputs.py data/processed > /tmp/before.txt
     ...refactor, rerun pipeline...
@@ -36,6 +37,10 @@ STAGE_SUFFIXES = (
     "_delta_pdf.h5",
 )
 JSON_SUFFIXES = ("_consistency.json", "_profile.json", "_diagnostics.json")
+# Datasets that change on every write (the Mantid layout's timestamp).
+VOLATILE_DATASETS = frozenset({
+    "MDHistoWorkspace/experiment0/instrument/instrument_parameter_map/date",
+})
 
 
 def _hash_h5(path: Path) -> str:
@@ -44,7 +49,8 @@ def _hash_h5(path: Path) -> str:
     with h5py.File(path, "r") as fh:
         names: list[str] = []
         fh.visititems(
-            lambda name, obj: names.append(name) if isinstance(obj, h5py.Dataset) else None
+            lambda name, obj: names.append(name)
+            if isinstance(obj, h5py.Dataset) and name not in VOLATILE_DATASETS else None
         )
         for name in sorted(names):
             ds = fh[name]

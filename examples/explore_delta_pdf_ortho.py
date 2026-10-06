@@ -1,6 +1,6 @@
 """Interactive 3D-PDF / 3D-ΔPDF orthoslice viewer — all three real-space planes at once.
 
-The plot title labels the kind (3D-PDF when the file carries a ``kind`` attr from
+The plot title labels the kind (3D-PDF when the file carries a ``kind`` log from
 ``pdf_3d.py``, else 3D-ΔPDF) and the source label parsed from the filename.
 
 Shows the three lattice-plane cuts through the real-space ΔPDF volume:
@@ -11,7 +11,7 @@ Shows the three lattice-plane cuts through the real-space ΔPDF volume:
 
 Each section is drawn at the cell's real angle (a hexagonal a–b plane shows its
 120°), so distances on screen are true Å; for a 90° cell nothing changes.  The
-angles come from the file's ``lat_alpha/beta/gamma`` attrs (90° if absent).
+angles come from the file's unit cell (90° if absent).
 
 Sliders move each cut position, and a global contrast control scales colour.  Each
 panel auto-scales to its own robust level (so the three very different
@@ -45,7 +45,7 @@ Env overrides:
               per-panel colour limits (defaults 0.1 .. 20; raise CONTRAST_MAX to
               push the colour scale even larger / further de-saturate)
     LAT_A / LAT_B / LAT_C  direct-lattice constants in Å for the unit-cell
-              gridlines (default: read from the ΔPDF file attrs, else the source
+              gridlines (default: read from the ΔPDF file's cell, else the source
               UB matrix; the env override assumes 90° angles)
     SMOKE     1 → render the initial frame to PNG and exit (no GUI).
 """
@@ -59,14 +59,15 @@ import matplotlib
 SMOKE = bool(int(os.environ.get("SMOKE", "0")))
 matplotlib.use("Agg" if SMOKE else "macosx")
 
-import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.widgets import CheckButtons, Slider
 
 from nebula3d.analysis.delta_pdf import real_space_radius
+from nebula3d.io import load_delta_pdf
+from nebula3d.io.hkl_reader import load_ub_matrix
 from nebula3d.utils import direct_cell
-from nebula3d.visualization.slices import draw_unit_cell, oblique_transform, read_cell_attrs
+from nebula3d.visualization.slices import draw_unit_cell, oblique_transform
 
 _pdf_env = os.environ.get("PDF_FILE")
 _match = os.environ.get("MATCH", "")
@@ -91,17 +92,17 @@ else:
     pdf_file = _cands[0]
 
 print(f"loading {pdf_file.name} ...", flush=True)
-with h5py.File(pdf_file, "r") as fh:
-    data = fh["data"][...]
-    x = fh["x_axis"][...]      # x_H (Å)
-    y = fh["y_axis"][...]      # y_K (Å)
-    z = fh["z_axis"][...]      # z_L (Å)
-    apod = fh.attrs.get("apodization", "?")
-    _kind_attr = str(fh.attrs.get("kind", ""))
-    _source = str(fh.attrs.get("source_file", ""))
+pdf = load_delta_pdf(pdf_file)  # either file layout
+data = pdf.data
+x = pdf.x_axis      # x_H (Å)
+y = pdf.y_axis      # y_K (Å)
+z = pdf.z_axis      # z_L (Å)
+apod = pdf.logs.get("apodization", "?")
+_kind_attr = str(pdf.logs.get("kind", ""))
+_source = str(pdf.logs.get("source_file", ""))
 
 # Correct label from the file: 3D-PDF (total scattering, Bragg kept; pdf_3d.py
-# stamps a "kind" attr) vs 3D-ΔPDF (Bragg removed; delta_pdf.py, no such attr).
+# stamps a "kind" log) vs 3D-ΔPDF (Bragg removed; delta_pdf.py, no such log).
 KIND = "3D-PDF" if "3D-PDF" in _kind_attr else "3D-ΔPDF"
 # Optional condition label parsed from the source filename, else "".
 _m = re.search(r"(\d+)\s*K", _source or pdf_file.name)
@@ -118,23 +119,19 @@ CMAX = float(os.environ.get("CONTRAST_MAX", "20.0"))
 def _lattice():
     """Direct cell (a, b, c, α, β, γ) in Å and degrees, or None.
 
-    Order of precedence: ΔPDF-file attrs (lat_*) → env LAT_A/LAT_B/LAT_C (90°)
-    → the source backfilled file's UB matrix (cheap h5py read).
+    Order of precedence: the ΔPDF file's cell → env LAT_A/LAT_B/LAT_C (90°)
+    → the source backfilled file's UB matrix (cheap metadata read).
     """
-    with h5py.File(pdf_file, "r") as fh:
-        cell = read_cell_attrs(fh.attrs)
-        if cell is not None:
-            return cell
-        src = str(fh.attrs.get("source_file", ""))
+    if pdf.cell is not None:
+        return pdf.cell
     ev = [os.environ.get(k) for k in ("LAT_A", "LAT_B", "LAT_C")]
     if all(ev):
         return (*(float(v) for v in ev), 90.0, 90.0, 90.0)
-    if src:
-        sp = Path("data/processed") / src
+    if _source:
+        sp = Path("data/processed") / _source
         if sp.exists():
             try:
-                with h5py.File(sp, "r") as fh:
-                    return direct_cell(np.array(fh["entry/ub_matrix"], dtype=float))
+                return direct_cell(load_ub_matrix(sp))
             except Exception:
                 pass
     return None

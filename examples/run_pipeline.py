@@ -240,14 +240,13 @@ def _pdf_is_current(pdf_path: Path, expected_src: str, expected_config: str) -> 
     if not pdf_path.exists():
         return False
     try:
-        import h5py
-        with h5py.File(pdf_path, "r") as fh:
-            return (
-                fh.attrs.get("source_file", "") == expected_src
-                and fh.attrs.get("transform_config", "") == expected_config
-            )
+        from nebula3d.io import load_delta_pdf  # either ΔPDF file layout
+
+        logs = load_delta_pdf(pdf_path, read_data=False).logs
     except Exception:
         return False
+    return (logs.get("source_file", "") == expected_src
+            and logs.get("transform_config", "") == expected_config)
 
 
 pdf_env = _stage_env("pdf", PROC_FILE=pdf_input, OUT_FILE=pdf_out)

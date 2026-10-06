@@ -63,8 +63,9 @@ oblique, and the point `(x, y, z)` sits at `r = x·â + y·b̂ + z·ĉ`:
     |r|² = x² + y² + z² + 2(xy·cos γ + xz·cos β + yz·cos α)
 
 Nothing is resampled; the cell angles travel with the result instead
-(`DeltaPDF.cell_angles`, and `lat_alpha/beta/gamma` in the `.h5` attrs next to
-`lat_a/b/c`):
+(`DeltaPDF.cell_angles`, and the unit cell in the `.h5` file's oriented lattice,
+`MDHistoWorkspace/experiment0/sample/oriented_lattice`; older files carry
+`lat_a/b/c` and `lat_alpha/beta/gamma` attributes):
 
 - **True distances.** `real_space_radius(x, y, z, cell_angles)` gives the
   metric above. The consistency round trip's r band and `r_data_max` use it.
