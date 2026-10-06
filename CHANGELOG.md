@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **No bright rim around a filled hole.** On the Fe3Ge2 TOPAZ volume, bright
+  nodes came out as "coffee beans": a ring brighter than the fill inside it.
+  There were two causes.
+  - The Laplace fill takes its boundary `laplace_gap` voxels outside the
+    punch, past the Bragg tail left at its edge, but then kept that band's
+    measured values. Every hole was therefore ringed by the tail its fill had
+    skipped: median step 0.27σ on TbTi3Bi4 22 K, 0.63σ on Fe3Ge2. The fill now
+    writes the band too, and meets the kept data only at its boundary.
+  - The profile punch's template dropped a halo common to every direction as
+    thermal diffuse. Fe3Ge2 has one, and it is the peak's own: it falls off
+    exponentially (~0.04 Å⁻¹), and relative to the peak it does not grow with
+    |Q|. The template now follows the measured profile on every axis. On
+    TbTi3Bi4, which has no such halo, the punch grows 2 %.
+
+  | | 22 K | Fe3Ge2 90 K |
+  |---|---|---|
+  | step from the fill to the first kept voxel, median | −0.27 → +0.01σ | −0.63 → +0.04σ |
+  | measured voxels the fill replaces | 0 → 1.41 M | 0 → 1.26 M |
+  | punched voxels | 2.74 → 2.80 M | 1.00 → 1.40 M |
+  | back-FFT r, whole volume | 0.99876 → 0.99912 | 0.99995 → 0.99999 |
+  | ΔPDF r, old vs new, 2–5 / 40–80 Å | 0.999 / 0.934 | 0.988 / 0.976 |
+
+  On the moved-hole test the written band is unbiased (+0.004σ on 22 K) with
+  the scatter of a 3³ box mean. `laplace_gap=0` still changes only the
+  punched voxels. See `docs/algorithms/bragg_cleanup.md`.
 - **Laplace is the default backfill, judged on real data.** A new test,
   `bragg_qa.refill_test` (also `REFILL=laplace,local` in
   `examples/qa_punch_fill.py`), measures fill error where the truth is known.

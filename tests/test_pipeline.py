@@ -212,9 +212,32 @@ def test_bragg_laplace_gap_takes_boundary_past_leaked_bragg_tail():
                           direct_beam_fill=False)
 
     assert adjacent.data[hole].min() > 4.0    # pulled up to the tail level
-    np.testing.assert_allclose(past.data[hole], 1.0, atol=1e-8)
-    # the band is only a boundary offset: its measured values are kept
-    np.testing.assert_array_equal(past.data[tail], 5.0)
+    np.testing.assert_array_equal(adjacent.data[tail], 5.0)  # only the punch changes
+    # the fill also replaces the band it skips, so no bright rim is left
+    # around a fill that never saw it
+    np.testing.assert_allclose(past.data[hole | tail], 1.0, atol=1e-8)
+
+
+def test_bragg_laplace_orphan_hole_keeps_its_measured_band():
+    from scipy import ndimage
+
+    data = np.full((11, 11, 11), 0.5)
+    vol = HKLVolume.from_arrays(data, (-1, 1), (-1, 1), (-1, 1))
+    cross = ndimage.generate_binary_structure(3, 1)
+    hole = np.zeros(vol.shape, dtype=bool)
+    hole[5, 5, 5] = True
+    band = ndimage.binary_dilation(hole, cross) & ~hole
+    wall = ndimage.binary_dilation(hole, cross, iterations=2) & ~band & ~hole
+    vol.data[band] = 2.0
+    vol.data[wall] = np.nan                   # unmeasured all around the band
+    vol.mask[wall | hole] = False
+    vol.data[hole] = 100.0
+
+    filled = backfill_bragg(vol, method="laplace", direct_beam_fill=False)
+
+    # no measured boundary: the hole gets the global median, the band its data
+    assert float(filled.data[5, 5, 5]) == 0.5
+    np.testing.assert_array_equal(filled.data[band], 2.0)
 
 
 def test_bragg_laplace_backfill_orphan_hole_gets_global_median():

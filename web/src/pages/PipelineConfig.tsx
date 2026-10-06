@@ -2042,9 +2042,11 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   >
                     <HelpTip>
                       How punched Bragg / direct-beam holes are filled before the
-                      transform, always from the diffuse around each hole. local
-                      (default) uses the median of the hole's surrounding shell;
-                      laplace interpolates it smoothly into the hole. q_shell
+                      transform, always from the diffuse around each hole.
+                      laplace (default) interpolates it smoothly into the hole,
+                      from one voxel past the punch edge, and fills that voxel
+                      too; local uses the median of the hole's surrounding
+                      shell. q_shell
                       (the |Q|-shell level) is for comparison only: it is biased
                       at the lattice nodes and leaves ΔPDF artefacts at lattice
                       vectors.

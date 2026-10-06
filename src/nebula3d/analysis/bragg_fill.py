@@ -77,11 +77,14 @@ def backfill_bragg(
     diffuse gradient smoothly into the hole.  Because it honours its boundary
     exactly, Bragg tails just outside the punch would pull it up, so the
     boundary values are taken ``laplace_gap`` voxels *outside* the punch: that
-    band is solved together with the hole and then discarded, i.e. its measured
-    values are kept and only punched voxels change.  The holes are solved in
-    batches of at most ``laplace_max_unknowns`` unknowns, so memory stays
-    bounded; a single masked region larger than that (an unmeasured coverage
-    gap, not a Bragg punch) gets the ``local`` fill instead.
+    band is solved together with the hole and written too.  Its measured values
+    hold the tail the boundary skips; kept, they would ring a fill that never
+    saw them, so every bright node would show a rim brighter than its fill.
+    The fill meets measured data only at its boundary, with no step.  The
+    holes are solved in batches of at most ``laplace_max_unknowns`` unknowns,
+    so memory stays bounded; a single masked region larger than that (an
+    unmeasured coverage gap, not a Bragg punch) gets the ``local`` fill
+    instead.
 
     ``method="q_shell"`` fills ordinary Bragg components from the robust radial
     background level at the same ``|Q|`` as each punched voxel.  Kept for
@@ -120,8 +123,9 @@ def backfill_bragg(
         ``method="q_shell"``.
     laplace_gap:
         For ``method="laplace"``: how many voxels outside the punch the
-        Dirichlet boundary sits (default 1).  0 uses the voxels adjacent to the
-        hole — best when the punch fully clears the Bragg tails.
+        Dirichlet boundary sits (default 1); the fill replaces the voxels in
+        between too.  0 uses the voxels adjacent to the hole and changes only
+        the punched ones — best when the punch fully clears the Bragg tails.
     direct_beam_fill:
         If True (default), fill the origin hole from the ``|Q|``-just-outside
         diffuse background instead of the generic dilated shell.
@@ -318,9 +322,9 @@ def _laplace_fill(
     A single block larger than ``max_unknowns`` is not a Bragg punch but an
     unmeasured region (the loader zeroes and masks those, so they arrive here
     as holes); its holes get the ``local`` shell-median fill instead.  With
-    *punched* the unknowns are the punched voxels only: unmeasured coverage is
-    a Neumann boundary of every hole it touches, and gets the ``local`` fill
-    afterwards.
+    *punched* the unknowns are the punched voxels and their gap band only:
+    unmeasured coverage is a Neumann boundary of every hole it touches, and
+    gets the ``local`` fill afterwards.
     """
     holes = (~vol.mask) & np.isfinite(vol.data)
     if not holes.any():
@@ -363,8 +367,8 @@ def _laplace_fill(
         return fill_coverage()
 
     # Unknowns = the holes plus a ``gap``-voxel band of valid data around them;
-    # the band is solved (so the boundary sits past any Bragg tail) and then
-    # discarded — only punched voxels are written.
+    # the band is solved (so the boundary sits past any Bragg tail) and
+    # written, so the fill meets the kept data at its boundary.
     cross = ndimage.generate_binary_structure(3, 1)
     unknown = remaining.copy()
     if gap > 0:
@@ -421,10 +425,12 @@ def _laplace_fill(
         if not sel.any():  # only oversized blocks in this range
             continue
         b_idx = idx[sel]
-        u, u_sig, converged = _laplace_solve_batch(
+        u, u_sig, solved, converged = _laplace_solve_batch(
             b_idx, comp[sel], flat, known, vol.shape, global_fill)
         all_converged &= converged
-        write = todo[b_idx]
+        # A hole with no measured boundary gets the global median, which must
+        # not overwrite the measured band around it.
+        write = todo[b_idx] | solved
         flat[b_idx[write]] = u[write]
         sigma_flat[b_idx[write]] = np.maximum(u_sig[write], global_sigma)
     if not all_converged:
@@ -439,11 +445,13 @@ def _laplace_solve_batch(
     known: NDArray[np.bool_],
     shape: tuple[int, ...],
     global_fill: float,
-) -> tuple[NDArray[np.float64], NDArray[np.float64], bool]:
-    """Solve the Laplace blocks of one batch; return ``(u, sigma, converged)``.
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.bool_], bool]:
+    """Solve the Laplace blocks of one batch.
 
-    *idx* are the batch's unknowns as sorted flat indices and *comp* their
-    block ids — whole blocks only, so every unknown neighbour is in the batch.
+    Returns ``(u, sigma, solved, converged)``; ``solved`` is False in blocks
+    with no measured neighbour, whose ``u`` is *global_fill*.  *idx* are the
+    batch's unknowns as sorted flat indices and *comp* their block ids — whole
+    blocks only, so every unknown neighbour is in the batch.
     """
     m = idx.size
     itype = np.int32 if 7 * m < np.iinfo(np.int32).max else np.int64
@@ -516,7 +524,7 @@ def _laplace_solve_batch(
     if solvable.any():
         u[solvable], converged = _pcg(lap, rhs[solvable], c_mean[lc[solvable]],
                                       1.0 / deg[solvable])
-    return u, c_sig[lc], converged
+    return u, c_sig[lc], solvable, converged
 
 
 def _note(report: Callable[[str], None] | None, message: str) -> None:

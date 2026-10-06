@@ -420,7 +420,8 @@ class PunchParams:
     # the dataset's own stacked Bragg profile along (ρ̂, θ̂, φ̂), stays above
     # profile_n_sigma × the local noise (see BraggRemover).  On TbTi3Bi4 the
     # tail is c-axis mosaic along θ̂, which the ellipsoid left: 0.5σ halves the
-    # brightest peaks' one-sided leaks.  "ellipsoid": the fitted / base
+    # brightest peaks' one-sided leaks.  On Fe3Ge2 it is also a halo along
+    # every axis, which the profile punches too.  "ellipsoid": the fitted / base
     # ellipsoid scaled by the cube root of the intensity.
     punch_footprint: str = "profile"
     profile_n_sigma: float = 0.5
@@ -472,7 +473,9 @@ class BackfillParams:
     # features at the lattice vectors.  "laplace" (default) continues the
     # surrounding diffuse smoothly, also across the long merged holes of the
     # profile-matched punch; "local" puts one flat value in each hole, a step
-    # below its rim.  Judged on real data by bragg_qa.refill_test.
+    # below its rim.  Judged on real data by bragg_qa.refill_test.  laplace
+    # takes its boundary laplace_gap voxels out, past the Bragg tail left at
+    # the punch edge, and replaces the voxels in between too.
     method: str = "laplace"
     local_radius: int = 2
     local_min_count: int = 8

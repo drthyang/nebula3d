@@ -224,24 +224,26 @@ def _gaussian_core_width(distances: NDArray[np.float64], p: NDArray[np.float64])
     return max(_profile_reach(distances, p, 0.5), float(distances[1])) / np.sqrt(2 * np.log(2))
 
 
-def _mosaic_template(
+def _bragg_template(
     distances: NDArray[np.float64], raw: NDArray[np.float64],
 ) -> NDArray[np.float64]:
-    """The Bragg part of the stacked (ρ̂, θ̂, φ̂) profiles of one |Q| bin.
+    """The punch template of the stacked (ρ̂, θ̂, φ̂) profiles of one |Q| bin.
 
-    A Bragg peak is its resolution core plus, from a crystal's mosaic, tails
-    *across* Q (θ̂, φ̂); diffuse scattering that peaks at the node (thermal
-    diffuse) also rises along Q (ρ̂).  So the template is, per axis, the
-    Gaussian fitted to that axis's core, and across Q also the excess of the
-    axis's profile over the radial one — what the radial profile does not
-    show is not a halo common to all directions.  Non-increasing, 1 at 0.
+    Per axis, the Gaussian fitted to that axis's core, or the measured profile
+    where it reaches further: the core plus every tail the stacked peaks show,
+    a halo common to all directions included.  On TbTi3Bi4 that adds only the
+    c-axis mosaic tail across Q.  On Fe3Ge2 every axis also has a halo that is
+    the peak's own: it falls off exponentially (~0.04 Å⁻¹) and keeps the same
+    fraction of the peak from 6 to 11 Å⁻¹, where thermal diffuse would grow as
+    Q².  Left outside the punch, such a halo is a bright rim the fill cannot
+    follow.  Thermal diffuse peaked at the node is punched with it.
+    Non-increasing, 1 at 0.
     """
     out = np.empty_like(raw)
     for k in range(3):
         sig = _gaussian_core_width(distances, raw[k])
         core = np.exp(-0.5 * (distances / sig) ** 2)
-        tail = np.clip(raw[k] - raw[0], 0.0, None) if k else np.zeros_like(core)
-        t = np.clip(np.maximum(core, tail), 0.0, 1.0)
+        t = np.clip(np.maximum(core, raw[k]), 0.0, 1.0)
         t[0] = 1.0
         out[k] = np.minimum.accumulate(t)
     return out
@@ -253,7 +255,7 @@ class _BraggProfile:
 
     ``raw[b, axis]`` is the stacked, normalised excess of the peaks in |Q|
     bin ``b`` against distance (Å⁻¹) along that axis; ``profiles[b, axis]``
-    its Bragg part (see :func:`_mosaic_template`): 1 at the centre,
+    its punch template (see :func:`_bragg_template`): 1 at the centre,
     non-increasing.  Learned by :meth:`BraggRemover._learn_profile`.
     """
 
@@ -1078,9 +1080,9 @@ class BraggRemover:
         along ρ̂, θ̂ and φ̂.  Voxels nearer another peak are left out, so a
         neighbouring node does not enter the profile.  Per |Q| bin and axis the
         median is taken, extended exponentially past the last sample, and made
-        non-increasing; the punch follows its Bragg part, the Gaussian core
-        plus the mosaic tails across Q (:func:`_mosaic_template`).  ``None``
-        with fewer than 20 calibration peaks.
+        non-increasing; the punch follows its template, the Gaussian core or
+        the measured tails where they reach further (:func:`_bragg_template`).
+        ``None`` with fewer than 20 calibration peaks.
         """
         from scipy.spatial import cKDTree
 
@@ -1175,7 +1177,7 @@ class BraggRemover:
                     if seg.size >= 5:
                         med[d] = float(np.median(seg))
                 raw[b, k] = _monotone_profile(dist, np.concatenate([[1.0], med]))
-        profiles = np.stack([_mosaic_template(dist, raw[b]) for b in range(n_bins)])
+        profiles = np.stack([_bragg_template(dist, raw[b]) for b in range(n_bins)])
         return _BraggProfile(q_centers=q_centers, distances=dist, profiles=profiles,
                              n_peaks=tuple(counts), raw=raw)
 

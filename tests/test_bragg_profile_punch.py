@@ -18,8 +18,8 @@ import pytest
 
 from nebula3d.analysis.bragg import (
     BraggRemover,
+    _bragg_template,
     _monotone_profile,
-    _mosaic_template,
     _profile_reach,
 )
 from nebula3d.core import HKLVolume
@@ -110,18 +110,22 @@ def test_monotone_profile_extends_the_tail_exponentially():
     assert p[20] == pytest.approx(np.exp(-d[20] / 0.1), rel=0.05)
 
 
-def test_mosaic_template_drops_a_halo_common_to_all_axes():
+def test_bragg_template_keeps_a_halo_common_to_all_axes():
     d = np.linspace(0, 0.5, 51)
     core = np.exp(-0.5 * (d / 0.03) ** 2)
-    halo = 0.01 / (1 + (d / 0.03) ** 2)  # thermal-diffuse-like, every direction
+    halo = 0.01 * np.exp(-d / 0.04)  # the peak's own halo, every direction (Fe3Ge2)
     tail = 0.02 * np.exp(-d / 0.08)  # mosaic, along θ̂ only
     raw = np.stack([np.maximum(core, halo), np.maximum(core, halo + tail),
                     np.maximum(core, halo)])
-    t = _mosaic_template(d, raw)
-    # along ρ̂ and φ̂ only the core is left; along θ̂ the mosaic tail
-    assert _profile_reach(d, t[0], 1e-3) == pytest.approx(0.03 * np.sqrt(2 * np.log(1e3)), rel=0.1)
-    assert _profile_reach(d, t[2], 1e-3) < 0.13
-    assert _profile_reach(d, t[1], 1e-3) == pytest.approx(DECAY * np.log(20), rel=0.1)
+    t = _bragg_template(d, raw)
+    # the core alone would stop at 0.13 Å⁻¹; the halo carries ρ̂ and φ̂ further
+    assert 0.03 * np.sqrt(2 * np.log(1e4)) < 0.13
+    for axis in (0, 2):
+        assert _profile_reach(d, t[axis], 1e-4) == pytest.approx(0.04 * np.log(100), rel=0.1)
+    # along θ̂ the mosaic tail
+    assert _profile_reach(d, t[1], 1e-4) == pytest.approx(DECAY * np.log(200), rel=0.1)
+    # never narrower than the fitted core
+    assert np.all(t >= np.minimum.accumulate(core) - 1e-12)
 
 
 def test_learned_profile_finds_the_tail_axis(lattice):
