@@ -209,10 +209,9 @@ tail leaking on one side.
      φ̂; voxels nearer another detected peak are dropped;
    - take the medians in up to `profile_q_bins` (3) |Q| ranges, each with at
      least 20 peaks.
-2. *Keep the Bragg part* (`_mosaic_template`). Per axis this is the Gaussian
-   fitted to the core. Across Q (θ̂, φ̂) it also includes the excess of that
-   axis's profile over the radial one. A halo common to every direction, such
-   as thermal diffuse peaked at the node, is not learned.
+2. *Make the template* (`_bragg_template`). Per axis this is the Gaussian
+   fitted to the core, or the measured profile where it reaches further. A
+   halo common to every direction is kept (see *The halo* below).
 3. *Size each peak* (`_with_profile_shape`). Along each of its ρ̂, θ̂, φ̂ the
    radius is where its predicted tail, the peak excess × the profile
    (interpolated in |Q|), falls to `profile_n_sigma` × the local noise. That
@@ -247,15 +246,36 @@ nearest-neighbour range (2–5 Å) moves by 2.5 %.
 
 - The punch is ~20 % larger, and more of it is in merged holes: tails join
   neighbouring L nodes, 0.25 Å⁻¹ apart.
-- It removes anything that rises around a node more across Q than along it. On
-  the synthetic demo volume this includes its thermal diffuse, which streaks
-  transversely, so the demo benchmark scores 2–3× its collateral. On TbTi3Bi4
-  the tail does not change with temperature, so it is mosaic. Check the
-  stacked profile (`footprint_profile` in the Bragg profile JSON) on a new
-  sample or at higher temperature.
+- It removes anything that rises around a node, thermal diffuse included. On
+  the synthetic demo volume, whose thermal diffuse streaks transversely, the
+  demo benchmark scores 2–3× its collateral. On TbTi3Bi4 the tail does not
+  change with temperature, so it is mosaic. Check the stacked profile
+  (`footprint_profile` in the Bragg profile JSON) on a new sample or at
+  higher temperature.
 - The H guard stops integer punches at |ΔH| = 0.12 r.l.u., but the brightest
   peaks' tails reach the H = ±1/3 planes (0.36 Å⁻¹). About a third of the
   remaining leak voxels sit at the guard faces.
+
+**The halo.** Until 2026-10 the template kept only the core along ρ̂, and
+across Q only the excess over the radial profile. The reasoning was that a
+halo common to every direction is thermal diffuse. TbTi3Bi4 has no such halo,
+so this made no difference there.
+
+The Fe3Ge2 TOPAZ volume (90 K, 0.1 r.l.u. voxels) has a halo on every axis.
+The stacked profile is still 0.4 % of the peak 0.17 Å⁻¹ out; for (0,−6,0),
+with an excess of ~9,900 on a background of 33, that is 40 counts. The halo is
+the peak's own:
+
+- it falls off exponentially, over ~0.04 Å⁻¹, where thermal diffuse falls as
+  1/q²;
+- relative to the peak it is the same in all three |Q| bins (5.9, 8.4 and
+  11.4 Å⁻¹), where thermal diffuse would grow as Q², 3.7×.
+
+Left outside the punch, the halo was a bright rim around each bright node.
+The fill took its boundary a voxel further out and skipped it, so these holes
+looked like coffee beans. The template now keeps the halo; for the combined
+effect with the fill change, see *The gap band is filled too* under Backfill
+Modes.
 
 `punch_footprint="ellipsoid"` restores the fitted ellipsoid scaled by the cube
 root of the intensity (driver: `PUNCH_FOOTPRINT=ellipsoid`; run request:
@@ -318,7 +338,7 @@ Phase 0/1/2/3 and spherical-frame tests live in
 
 | Method | Use |
 |--------|-----|
-| `laplace` (default) | Harmonic (Laplace) interpolation of the surrounding diffuse into each hole; boundary taken `laplace_gap` (default 1) voxels outside the punch so leaked Bragg tails do not bias it. Solved in memory-bounded batches; a masked region over `laplace_max_unknowns` (2 M, i.e. unmeasured coverage) gets the `local` fill. |
+| `laplace` (default) | Harmonic (Laplace) interpolation of the surrounding diffuse into each hole; boundary taken `laplace_gap` (default 1) voxels outside the punch so leaked Bragg tails do not bias it, and the voxels in between filled too. Solved in memory-bounded batches; a masked region over `laplace_max_unknowns` (2 M, i.e. unmeasured coverage) gets the `local` fill. |
 | `local` | Fill each connected component from a local dilated shell median: flat, a step below the rim, one value per merged hole. |
 | `q_shell` | Robust radial background at the same `|Q|` — comparison only, see below. |
 
@@ -360,7 +380,7 @@ fills are equal in the ΔPDF within the test's scatter. `laplace` is the
 default because:
 
 - its per-voxel bias is smaller at every temperature;
-- it leaves no step at the rim (−0.01σ against `local`'s −0.18σ);
+- it leaves no step at its boundary (−0.01σ against `local`'s −0.18σ);
 - it follows gradients across the long merged holes of the profile-matched
   punch, where `local` puts one flat value.
 
@@ -377,6 +397,39 @@ halo even around the brightest peaks, so the thermal diffuse under the nodes is
 weak here. On a sample with strong thermal diffuse this changes: see the
 demo-volume benchmark, where both fills under-fill node-centred thermal
 diffuse by ~70–75 %.
+
+**The gap band is filled too (2026-10).** The boundary sits `laplace_gap`
+voxels outside the punch, past the tail left at its edge. That band used to be
+solved and then discarded, so its measured values stayed in the output. They
+hold exactly the tail the boundary skips, so every hole had a rim brighter than
+its fill: a step the fill never saw. On 22 K the first kept voxel sat 0.27σ
+above the fill (median over holes). On the Fe3Ge2 volume, whose punch also
+left the halo outside (see *The halo*), it sat 0.63σ above, and 61 % of the
+holes stepped by more than 0.5σ: its bright nodes looked like coffee beans.
+
+The fill now writes the band too and meets the kept data only at its
+boundary. The hole values do not change (the band was always solved), so the
+moved-hole test above is unchanged. On the moved holes' own bands, the written
+values are unbiased (+0.004σ on 22 K, +0.08σ on Fe3Ge2). Their scatter about
+the data is that of a 3³ box mean of the data.
+
+Old → new, with the halo template (float32 runs, `floor` flatten):
+
+| | 22 K | Fe3Ge2 90 K |
+|---|---|---|
+| punched voxels | 2.74 → 2.80 M | 1.00 → 1.40 M |
+| measured voxels the fill replaces | 0 → 1.41 M | 0 → 1.26 M |
+| step from the fill to the first kept voxel, median | −0.27 → +0.01σ | −0.63 → +0.04σ |
+| holes stepping down by more than 0.5σ | 23 → 0.06 % | 61 → 0.06 % |
+| back-FFT r, whole volume | 0.99876 → 0.99912 | 0.99995 → 0.99999 |
+| back-FFT r, H = 0 plane | 0.99994 → 0.99940 | 0.99991 → 0.99999 |
+| ΔPDF r, old vs new: 2–5 / 10–20 / 40–80 Å | 0.999 / 0.994 / 0.934 | 0.988 / 0.968 / 0.976 |
+| ΔPDF RMS at the lattice vectors: 5–10 / 20–40 / 40–80 Å | +15 / −4 / −6 % | −14 / +13 / −8 % |
+
+The lattice-vector changes have mixed sign, and no truth-free metric yet says
+which is better. Where the search pass chops a diffuse rod (the Fe3Ge2 L-rods),
+the band widens the chop by a voxel. A Laplace fill cannot carry a rod through
+a hole, so the rod dims there.
 
 The direct beam keeps its special just-outside-`|Q|` fill.
 

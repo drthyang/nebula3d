@@ -24,7 +24,8 @@ Env overrides:
     LOCAL_RADIUS     dilation radius for local background shell (default 2)
     LOCAL_MIN_COUNT  minimum shell samples before global-median fallback (default 8)
     LAPLACE_GAP       voxels outside the punch where METHOD=laplace takes its
-                      boundary values, clearing leaked Bragg tails (default 1)
+                      boundary values, clearing leaked Bragg tails; the voxels
+                      in between are filled too (default 1)
     Q_SHELL_STEP      |Q| bin width for METHOD=q_shell (default 0.05 Å^-1)
     Q_SHELL_MIN_COUNT minimum radial-bin samples for METHOD=q_shell (default 20)
 """
