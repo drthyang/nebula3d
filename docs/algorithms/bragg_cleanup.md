@@ -38,7 +38,8 @@ is safe to do so.
 
 The integer path is lattice-aware:
 
-1. Enumerate integer `(h,k,l)` nodes in the volume.
+1. Enumerate integer `(h,k,l)` nodes in the volume: every node, or with
+   `supercell=(n_h, n_k, n_l)` the parent lattice's only (see below).
 2. Inspect a local HKL window around each node.
 3. Keep the node only if a real nearby peak is present:
    - `min_intensity`
@@ -78,8 +79,32 @@ Useful guards:
 
 - `integer_h_guard_hkl`: clips integer-node punches to a slab around the source
   integer-H plane. This prevents strong integer-H Bragg holes from extending into
-  fractional-H diffuse planes such as `H=±1/3` or `H=±2/3`.
+  fractional-H diffuse planes such as `H=±1/3` or `H=±2/3`. The pipeline's
+  0.12 r.l.u. is for TbTi3Bi4. Turn it off (`None`; web: H guard 0) where no
+  fractional-H plane needs it.
 - `integer_fit_max_radius_hkl`: caps fitted per-peak radii.
+
+**A volume indexed on a supercell** (`supercell`; web: Supercell H/K/L). The
+Fe3Ge2 TOPAZ volume is reduced on a 2×2×2 cell, so its Bragg nodes are the
+all-even ones. The other integer nodes fall into two groups:
+
+- with odd L and an odd in-plane index: short-range 2×2×2 order, the maxima
+  of the diffuse L-rods (median excess 15 against 290 at the parent nodes).
+  These peaks are 1.7× the Bragg width in-plane and 3.3× along L;
+- the rest: empty (forbidden positions).
+
+Without the supercell, `mode="both"` took 18 % of the superlattice nodes'
+intensity and 9 % of the rods'. Two settings fix this, and both are needed:
+
+- `supercell=(2, 2, 2)` restricts the integer nodes to the parent lattice;
+- `mode="integer"` stops the search pass, which finds the superlattice maxima
+  on its own.
+
+The H guard must also be off: it stopped the brightest parent peaks one voxel
+along H, which left a 2.5σ tail. With all three settings:
+
+- the rods and superlattice nodes are untouched;
+- the 298 brightest parent peaks leave less than 0.1σ in every direction.
 
 ### Small but sharp weak Bragg (`integer_local_prominence_n_mad`)
 

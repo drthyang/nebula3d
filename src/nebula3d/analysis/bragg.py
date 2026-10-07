@@ -356,6 +356,13 @@ class BraggRemover:
         punches.  When set, fitted/scaled integer punches are clipped to
         ``|H - H_integer| <= integer_h_guard_hkl`` so strong Bragg peaks on
         integer-H planes cannot bleed into fractional-H diffuse planes.
+    supercell:
+        ``(n_h, n_k, n_l)`` when the volume is indexed on that supercell of the
+        Bragg lattice.  Integer-mode nodes are then the parent cell's only:
+        h, k and l multiples of n_h, n_k and n_l.  The other integer nodes hold
+        superstructure or nothing: on Fe3Ge2 indexed 2×2×2 they hold
+        short-range 2×2×2 order, 2–3× broader than the Bragg peaks.  The search
+        pass still finds them, so use ``mode="integer"`` to keep them.
     detect_window_hkl:
         Half-width (HKL) of the window used to locate/centre a peak and estimate
         its local background.
@@ -483,6 +490,7 @@ class BraggRemover:
     integer_fit_radius_n_sigma: float = 2.5
     integer_fit_max_radius_hkl: tuple[float, float, float] | None = None
     integer_h_guard_hkl: float | None = None
+    supercell: tuple[int, int, int] = (1, 1, 1)
     detect_window_hkl: float = 0.2
     detect_window_q: float | None = None
     # --- noise-aware detection gate (integer and search) ---
@@ -556,6 +564,11 @@ class BraggRemover:
             raise ValueError(
                 f"significance_noise={self.significance_noise!r}: choose 'sigma' "
                 f"or 'mad'")
+        cell = tuple(self.supercell)
+        if len(cell) != 3 or any(int(n) != n or n < 1 for n in cell):
+            raise ValueError(
+                f"supercell={self.supercell!r}: three positive integers, e.g. (2, 2, 2)")
+        self.supercell = (int(cell[0]), int(cell[1]), int(cell[2]))
 
     @staticmethod
     def _shape_matrix_from_q_radii(
@@ -1225,10 +1238,17 @@ class BraggRemover:
         return [self._with_profile_shape(vol, p, profile) for p in peaks]
 
     def enumerate_bragg(self, vol: HKLVolume) -> list[tuple[int, int, int]]:
-        """Integer (h,k,l) nodes within the grid extent."""
-        hs = range(int(np.ceil(vol.h_axis.min())), int(np.floor(vol.h_axis.max())) + 1)
-        ks = range(int(np.ceil(vol.k_axis.min())), int(np.floor(vol.k_axis.max())) + 1)
-        ls = range(int(np.ceil(vol.l_axis.min())), int(np.floor(vol.l_axis.max())) + 1)
+        """Integer (h,k,l) nodes of the parent lattice within the grid extent.
+
+        Every integer node, or with ``supercell`` the multiples of its factors.
+        """
+        nh, nk, nl = self.supercell
+
+        def nodes(axis: NDArray[np.float64], n: int) -> list[int]:
+            return [i for i in range(int(np.ceil(axis.min())), int(np.floor(axis.max())) + 1)
+                    if i % n == 0]
+
+        hs, ks, ls = nodes(vol.h_axis, nh), nodes(vol.k_axis, nk), nodes(vol.l_axis, nl)
         return [(h, k, l) for h in hs for k in ks for l in ls
                 if (h, k, l) != (0, 0, 0)]
 
