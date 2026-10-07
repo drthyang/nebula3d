@@ -111,6 +111,11 @@ function clampInt(raw: string, dflt: number, lo: number, hi: number): number {
   if (!Number.isFinite(n)) return dflt;
   return Math.max(lo, Math.min(hi, n));
 }
+const SUPERCELL_TITLE =
+  "Supercell factor along this axis that the volume is indexed on (e.g. 2 for a " +
+  "2×2×2 reduction). Integer-mode Bragg nodes are then the parent lattice's only; " +
+  "use mode 'integer' to keep superstructure diffuse at the other nodes.";
+
 function clampFloat(raw: string, dflt: number, lo: number, hi: number): number {
   const n = raw === "" ? dflt : Number(raw);
   if (!Number.isFinite(n)) return dflt;
@@ -463,6 +468,9 @@ interface PunchGeom {
   sphRadii: [number, number, number];
   margin: number;
   mode: string;
+  // Supercell the volume is indexed on (H, K, L): Bragg nodes are the
+  // parent lattice's, the multiples of these.
+  supercell: [number, number, number];
   isQ: boolean;
   unit: string;
   ax: [string, string, string]; // axis labels, e.g. [H,K,L] or [a*,b*,c*]
@@ -833,10 +841,13 @@ function PunchDataOverlay({
   const qBandOuter = bands && bands[1] > 0
     ? qShellEllipseForPlane(plane, bands[1], lattice, ubMatrix, cutQ)
     : null;
+  // Bragg nodes of the parent lattice only (every node for a 1×1×1 cell).
+  const cellX = geom.supercell[axisIndex(axisX)];
+  const cellY = geom.supercell[axisIndex(axisY)];
   const nodes: { x: number; y: number }[] = [];
   for (let x = Math.ceil(-previewHalfX); x <= Math.floor(previewHalfX); x++) {
     for (let y = Math.ceil(-previewHalfY); y <= Math.floor(previewHalfY); y++) {
-      nodes.push({ x, y });
+      if (x % cellX === 0 && y % cellY === 0) nodes.push({ x, y });
     }
   }
 
@@ -1186,6 +1197,10 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       punchMinI: st.punchMinI,
       punchMethod: st.punchMethod,
       punchMode: st.punchMode,
+      punchSupercellH: st.punchSupercellH,
+      punchSupercellK: st.punchSupercellK,
+      punchSupercellL: st.punchSupercellL,
+      punchHGuard: st.punchHGuard,
       punchFrame: st.punchFrame,
       punchRho: st.punchRho,
       punchTheta: st.punchTheta,
@@ -1237,6 +1252,11 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     sphRadii,
     margin: clampFloat(s.punchMargin, 0.02, 0, 0.5),
     mode: s.punchMode || "both",
+    supercell: [
+      Math.round(clampFloat(s.punchSupercellH, 1, 1, 12)),
+      Math.round(clampFloat(s.punchSupercellK, 1, 1, 12)),
+      Math.round(clampFloat(s.punchSupercellL, 1, 1, 12)),
+    ],
     isQ: true,
     unit: "Å⁻¹",
     ax: punchFrame === "spherical" ? ["ρ", "θ", "φ"] : ["a*", "b*", "c*"],
@@ -1836,6 +1856,54 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     <option value="both">both</option>
                   </select>
                 </Field>
+                </div>
+                <div className="config-grid-3">
+                  <Field label="Supercell H">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      placeholder="1"
+                      value={s.punchSupercellH}
+                      title={SUPERCELL_TITLE}
+                      onChange={(e) => patch({ punchSupercellH: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Supercell K">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      placeholder="1"
+                      value={s.punchSupercellK}
+                      title={SUPERCELL_TITLE}
+                      onChange={(e) => patch({ punchSupercellK: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Supercell L">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      placeholder="1"
+                      value={s.punchSupercellL}
+                      title={SUPERCELL_TITLE}
+                      onChange={(e) => patch({ punchSupercellL: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <div className="config-grid">
+                  <Field label="H guard (r.l.u.)">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.12"
+                      value={s.punchHGuard}
+                      title="Integer punches stop this far from their node's H plane, so the H = ±1/3 magnetic planes stay unpunched (TbTi3Bi4). 0 turns the guard off."
+                      onChange={(e) => patch({ punchHGuard: e.target.value })}
+                    />
+                  </Field>
                 </div>
                   </div>
                   <div className="cfg-box">

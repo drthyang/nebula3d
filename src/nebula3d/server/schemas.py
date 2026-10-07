@@ -135,6 +135,14 @@ class StageParamsIn(BaseModel):
     punch_profile_n_sigma: float | None = None
     punch_search_n_mad: float | None = None
     punch_mode: str | None = None
+    # Supercell the volume is indexed on, per axis (≥ 1): integer-mode Bragg
+    # nodes are the parent lattice's only.
+    punch_supercell_h: int | None = None
+    punch_supercell_k: int | None = None
+    punch_supercell_l: int | None = None
+    # Integer punches stop this far (r.l.u.) from their node's H plane; 0 or
+    # below turns the guard off.
+    punch_h_guard: float | None = None
     punch_margin: float | None = None
     punch_phi_tail_hkl: float | None = None
     # Q-space punch: frame "spherical" (default) = (rρ, rθ, rφ) in the local
