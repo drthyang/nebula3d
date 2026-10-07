@@ -872,7 +872,8 @@ async def _run_pdf_stages_gpu(
             vol, apodization=p.apodization, gaussian_sigma=p.gaussian_sigma,
             zero_pad=p.zero_pad, subtract_mean=p.subtract_mean,
             real_space_angstrom=True, crop_hkl=p.crop_hkl, q_band=p.q_band,
-            subtract_smooth_bg=p.subtract_smooth_bg, fast_len=_five_smooth)
+            subtract_smooth_bg=p.subtract_smooth_bg,
+            window_shape=p.window_shape, fast_len=_five_smooth)
         padded_real = await _gpu_forward(gpu, plan)
         if padded_real is None:
             return None
