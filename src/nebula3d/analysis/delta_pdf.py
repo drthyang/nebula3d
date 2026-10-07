@@ -19,6 +19,7 @@ Simonov, Weber & Steurer, J. Appl. Cryst. 47, 2011–2018 (2014)
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import itertools
 from collections.abc import Callable, Iterator
@@ -27,6 +28,7 @@ from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy import ndimage
 from scipy.fft import fftfreq, fftn, fftshift, ifftn, ifftshift, next_fast_len
 from scipy.ndimage import gaussian_filter
 
@@ -127,9 +129,11 @@ class EllipsoidWindow:
     ``cos²(πρ/2)``, the Gaussian shifted to zero at ``ρ = 1``, or 1 for
     ``"none"`` — and 0 for ``ρ ≥ 1``.  ``form`` comes from
     :func:`_invariant_ellipsoid`, so the window is invariant under the
-    lattice's point symmetry and vanishes on the box faces.  It is never
-    materialised in 3-D: :meth:`planes` yields one H plane at a time, which
-    the forward transform, the weighted mean and the deapodization stream.
+    lattice's point symmetry and vanishes on the box faces — or, fitted to a
+    measured support (:func:`_fit_to_support`), the same ellipsoid shrunk by
+    ``scale``.  It is never materialised in 3-D: :meth:`planes` yields one H
+    plane at a time, which the forward transform, the weighted mean and the
+    deapodization stream.
     """
 
     form: NDArray[np.float64]
@@ -138,9 +142,11 @@ class EllipsoidWindow:
     h_axis: NDArray[np.float64]
     k_axis: NDArray[np.float64]
     l_axis: NDArray[np.float64]
+    # ρ = ρ_box / scale: < 1 when the ellipsoid was shrunk to the support.
+    scale: float = 1.0
 
-    def planes(self) -> Iterator[NDArray[np.float64]]:
-        """The window on each H plane in turn, as ``(nk, nl)`` float64."""
+    def rho2_planes(self) -> Iterator[NDArray[np.float64]]:
+        """``ρ²`` on each H plane in turn, as ``(nk, nl)`` float64."""
         f = self.form
         k = self.k_axis[:, None]
         l_ = self.l_axis[None, :]
@@ -150,13 +156,22 @@ class EllipsoidWindow:
         for h in self.h_axis:
             rho2 = kl + float(h) * lin
             rho2 += f[0, 0] * float(h) * float(h)
+            yield rho2
+
+    def planes(self) -> Iterator[NDArray[np.float64]]:
+        """The window on each H plane in turn, as ``(nk, nl)`` float64."""
+        for rho2 in self.rho2_planes():
             yield _radial_taper(rho2, self.kind, self.sigma)
 
-    def weighted_mean(self, data: NDArray[np.floating]) -> float:
-        """``Σ w·data / Σ w``, accumulated in float64 one plane at a time."""
+    def weighted_mean(
+        self, data: NDArray[np.floating],
+        support: NDArray[np.bool_] | None = None,
+    ) -> float:
+        """``Σ w·data / Σ w`` over *support* (all voxels if None), in float64
+        one plane at a time.  *data* must be zero outside the support."""
         acc = total = 0.0
         for i, w in enumerate(self.planes()):
-            total += float(w.sum())
+            total += float(w.sum() if support is None else w[support[i]].sum())
             acc += float((w * data[i]).sum(dtype=np.float64))
         return acc / total if total else 0.0
 
@@ -212,6 +227,9 @@ class DeltaPDF:
     k_axis_c: NDArray[np.float64] | None = None
     l_axis_c: NDArray[np.float64] | None = None
     ub_matrix: NDArray[np.float64] | None = None
+    # Voxels that carried data (cropped grid); outside it the transform input
+    # was ΔI = 0.  None when every voxel did (no support given, or all True).
+    support: NDArray[np.bool_] | None = None
 
     @property
     def window_shape(self) -> str:
@@ -272,6 +290,7 @@ class _ForwardPlan:
     apodization: str
     real_space_angstrom: bool
     ub_matrix: NDArray[np.float64]
+    support: NDArray[np.bool_] | None = None
 
 
 def _fft_core_forward(plan: _ForwardPlan) -> NDArray[np.floating]:
@@ -353,6 +372,7 @@ def _finish_forward(
         k_axis_c=k_axis,
         l_axis_c=l_axis,
         ub_matrix=plan.ub_matrix.copy(),
+        support=plan.support,
     )
 
 
@@ -367,6 +387,8 @@ def compute_delta_pdf(
     q_band: tuple[float, float] | None = None,
     subtract_smooth_bg: float | tuple[float, float, float] | None = None,
     window_shape: WindowShape = "auto",
+    support: NDArray[np.bool_] | None = None,
+    support_tol: float = 1e-3,
 ) -> DeltaPDF:
     """Compute the 3D-ΔPDF from a diffuse scattering volume.
 
@@ -441,6 +463,24 @@ def compute_delta_pdf(
           ``"separable"``, which the Laue groups of orthogonal, monoclinic
           and triclinic cells already leave unchanged.  ``"none"`` stays
           no window at all.
+    support:
+        Optional boolean mask on *vol*'s grid: True where the volume holds
+        data (measured or filled), False where it does not — e.g. the
+        backfilled volume's ``mask``, False on the unmeasured space it leaves
+        open.  Outside the support the transform input is ``ΔI = 0`` rather
+        than ``I = 0``, and the mean is taken over the support, so a missing
+        region adds no step of ``−c``.  Unsupported space that reaches the box
+        faces is where the coverage ends: the window is then an ellipsoid
+        (``"auto"`` switches to one when the separable window puts more than
+        *support_tol* of its weight there) shrunk until at most *support_tol*
+        of its weight lies on that space, so it tapers to zero at the
+        coverage edge instead of the box faces.  Holes enclosed by data do
+        not shrink it.  ``None``, or a mask that is all True, changes nothing.
+    support_tol:
+        Largest fraction of the window's weight allowed on unsupported space
+        that reaches the box faces.  0 shrinks the ellipsoid until none is
+        inside it; the default ignores thin channels of a few voxels, which
+        would otherwise collapse the window.
 
     Returns
     -------
@@ -452,7 +492,7 @@ def compute_delta_pdf(
         zero_pad=zero_pad, subtract_mean=subtract_mean,
         real_space_angstrom=real_space_angstrom, crop_hkl=crop_hkl,
         q_band=q_band, subtract_smooth_bg=subtract_smooth_bg,
-        window_shape=window_shape)
+        window_shape=window_shape, support=support, support_tol=support_tol)
     delta_pdf = _fft_core_forward(plan)
     return _finish_forward(plan, delta_pdf)
 
@@ -469,6 +509,8 @@ def _prepare_forward(
     q_band: tuple[float, float] | None = None,
     subtract_smooth_bg: float | tuple[float, float, float] | None = None,
     window_shape: WindowShape = "auto",
+    support: NDArray[np.bool_] | None = None,
+    support_tol: float = 1e-3,
     fast_len: Callable[[int], int] = next_fast_len,
 ) -> _ForwardPlan:
     """All pure-Python preparation up to (but excluding) the FFT core.
@@ -479,6 +521,11 @@ def _prepare_forward(
     inverse self-consistent whichever backend produced the result.
     """
     data = vol.masked_data()  # NaN at masked voxels
+    if support is not None:
+        support = np.asarray(support, dtype=bool)
+        if support.shape != data.shape:
+            raise ValueError(f"support has shape {support.shape}, the volume "
+                             f"{data.shape}")
 
     # Crop Q-space symmetrically to ±(h_max, k_max, l_max) in r.l.u.
     h_axis = vol.h_axis.copy()
@@ -490,12 +537,21 @@ def _prepare_forward(
         ik = np.where(np.abs(k_axis) <= k_max)[0]
         il = np.where(np.abs(l_axis) <= l_max)[0]
         data    = data[ih[0]:ih[-1]+1, ik[0]:ik[-1]+1, il[0]:il[-1]+1]
+        if support is not None:
+            support = support[ih[0]:ih[-1]+1, ik[0]:ik[-1]+1, il[0]:il[-1]+1]
         h_axis  = h_axis[ih[0]:ih[-1]+1]
         k_axis  = k_axis[ik[0]:ik[-1]+1]
         l_axis  = l_axis[il[0]:il[-1]+1]
 
-    # Replace NaN with zero (filled volume should have no NaN)
-    data = np.where(np.isfinite(data), data, 0.0)
+    # Replace NaN with zero (filled volume should have no NaN).  With a
+    # support, a voxel carries data only where it is supported and finite;
+    # an all-True support is no support (the transform stays bit-identical).
+    supp: NDArray[np.bool_] | None = None
+    if support is not None:
+        supp = support & np.isfinite(data)
+        if supp.all():
+            supp = None
+    data = np.where(np.isfinite(data) if supp is None else supp, data, 0.0)
 
     # Subtract a smooth (Gaussian-blurred) background BEFORE windowing so that
     # only the oscillatory diffuse modulation transforms.  Without this, the
@@ -548,15 +604,24 @@ def _prepare_forward(
     # its transform, a 3-D sinc sampled off its zeros, drew a dashed line of
     # alternating sign along every grid axis (13–27 % of the strongest
     # correlation on Fe3Ge2 and TbTi3Bi4).  See docs/algorithms/delta_pdf.md.
+    #
+    # Outside the support the input is ΔI = 0: the mean is weighted over the
+    # support only, and those voxels are zeroed after it is subtracted.  Read
+    # as I = 0 instead, a missing region pulls c down and leaves a step of −c
+    # at its edge (raw Fe3Ge2 90 K, 41 % of the box unmeasured, separable
+    # Gaussian: c = 8.81 over the box against 9.37 over the data).
     window_axes, ellipsoid = _apodization_window(
         window_shape, apodization, gaussian_sigma,
-        (h_axis, k_axis, l_axis), vol.ub_matrix)
+        (h_axis, k_axis, l_axis), vol.ub_matrix, support=supp, tol=support_tol)
     subtracted_mean = 0.0
     if subtract_mean:
         subtracted_mean = (
-            ellipsoid.weighted_mean(data) if ellipsoid is not None
-            else _window_weighted_mean(data, window_axes))  # type: ignore[arg-type]
+            ellipsoid.weighted_mean(data, supp) if ellipsoid is not None
+            else _window_weighted_mean(data, window_axes, supp))  # type: ignore[arg-type]
         data -= data.dtype.type(subtracted_mean)
+        if supp is not None:
+            for i in range(data.shape[0]):
+                data[i][~supp[i]] = 0.0
     if ellipsoid is not None:
         ellipsoid.apply(data)  # plane by plane; no 3-D window either
     else:
@@ -622,6 +687,7 @@ def _prepare_forward(
         apodization=apodization,
         real_space_angstrom=real_space_angstrom,
         ub_matrix=vol.ub_matrix,
+        support=supp,
     )
     del data  # the plan owns the compact volume now
     return plan
@@ -734,7 +800,9 @@ def _finish_inverse(
     ``prep`` is the un-padded windowed input ``win·(I − bg − c)``, with ``c``
     the window-weighted mean :func:`compute_delta_pdf` removed — the common
     meeting point of the scipy and WebGPU cores.  ``c`` goes back after the
-    window is divided out (or as ``c·win`` when it is not).
+    window is divided out (or as ``c·win`` when it is not).  Outside
+    ``dpdf.support`` the input was ``ΔI = 0``, not data: those voxels are
+    left out of the reliable ``mask``.
     """
     # invert_delta_pdf validated these; repeat for direct callers + narrowing.
     assert (dpdf.h_axis_c is not None
@@ -763,6 +831,8 @@ def _finish_inverse(
         reliable = np.empty(prep.shape, dtype=bool)
         for i, win_i in enumerate(planes):
             rel_i = win_i >= thr
+            if dpdf.support is not None:
+                rel_i &= dpdf.support[i]  # no data there: ΔI = 0 went in
             np.divide(prep[i], win_i, out=prep[i], where=rel_i)
             prep[i] += mean
             prep[i][~rel_i] = 0.0
@@ -773,7 +843,8 @@ def _finish_inverse(
             for i, win_i in enumerate(planes):
                 prep[i] += mean * win_i.astype(prep.dtype)
         recon = prep
-        reliable = np.ones(recon.shape, dtype=bool)
+        reliable = (np.ones(recon.shape, dtype=bool) if dpdf.support is None
+                    else dpdf.support.copy())
 
     if add_back_smooth_bg and dpdf.smooth_bg is not None:
         recon = recon + dpdf.smooth_bg
@@ -828,14 +899,20 @@ def _window_axes(
 def _window_weighted_mean(
     data: NDArray[np.floating],
     window_axes: tuple[NDArray[np.float64], ...],
+    support: NDArray[np.bool_] | None = None,
 ) -> float:
     """``Σ w·data / Σ w`` for the separable window, accumulated in float64.
 
-    One plane at a time, so neither the 3-D window nor a float64 copy of a
-    float32 volume is ever materialised.
+    Over *support* when given (*data* must be zero outside it).  One plane at
+    a time, so neither the 3-D window nor a float64 copy of a float32 volume
+    is ever materialised.
     """
     wh, wk, wl = window_axes
-    total = float((wh.sum() * wk.sum()) * wl.sum())
+    if support is None:
+        total = float((wh.sum() * wk.sum()) * wl.sum())
+    else:
+        total = sum(float(wh[i]) * float(wk @ (support[i] @ wl))
+                    for i in range(len(wh)) if wh[i] != 0.0)
     if total == 0.0:
         return 0.0
     acc = 0.0
@@ -961,12 +1038,18 @@ def _apodization_window(
     sigma: float,
     axes: tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]],
     ub: NDArray[np.float64],
+    support: NDArray[np.bool_] | None = None,
+    tol: float = 1e-3,
 ) -> tuple[tuple[NDArray[np.float64], ...] | None, EllipsoidWindow | None]:
     """The window for this box: ``(window_axes, None)`` or ``(None, ellipsoid)``.
 
     Single-plane axes take no part: the symmetry is restricted to the
     operations that leave them alone, and ρ ignores them.  The ellipsoid is
-    centred on ``Q = 0``, with half-widths ``min(−axis[0], axis[-1])``.
+    centred on ``Q = 0``, with half-widths ``min(−axis[0], axis[-1])``.  With
+    a *support*, unsupported space that reaches the box faces
+    (:func:`_open_space`) is where the coverage ends: ``"auto"`` takes the
+    ellipsoid when the separable window puts more than *tol* of its weight
+    there, and the ellipsoid is shrunk to it (:func:`_fit_to_support`).
     """
     if window_shape not in ("auto", "separable", "ellipsoid"):
         raise ValueError(f"unknown window_shape {window_shape!r}")
@@ -984,22 +1067,110 @@ def _apodization_window(
     ops = ops[:, active][:, :, active]
     half = np.array([min(-float(axes[i][0]), float(axes[i][-1])) for i in active])
 
+    open_: NDArray[np.bool_] | None = None
     if window_shape == "auto":
         # A product of 1-D tapers is invariant under signed permutations of
-        # equal axes, never under an operation that mixes two axes.
-        mixes = bool(np.any(np.count_nonzero(ops, axis=2) != 1))
-        if not mixes or np.any(half <= 0.0):
+        # equal axes, never under an operation that mixes two axes; and it
+        # cannot follow a coverage edge inside the box.
+        use = bool(np.any(np.count_nonzero(ops, axis=2) != 1))
+        if not use and support is not None:
+            open_ = _open_space(support)
+            separable = _window_axes(shape, kind, sigma)
+            use = _separable_weight_on(separable, open_) > tol
+        if not use or np.any(half <= 0.0):
             return _window_axes(shape, kind, sigma), None
     elif np.any(half <= 0.0):
         raise ValueError("an ellipsoid window needs Q = 0 inside the box")
 
     form = np.zeros((3, 3))
     form[np.ix_(active, active)] = _invariant_ellipsoid(ops, half)
-    return None, EllipsoidWindow(
+    ell = EllipsoidWindow(
         form=form, kind=kind, sigma=float(sigma),
         h_axis=np.asarray(axes[0], dtype=np.float64).copy(),
         k_axis=np.asarray(axes[1], dtype=np.float64).copy(),
         l_axis=np.asarray(axes[2], dtype=np.float64).copy())
+    if support is not None:
+        if open_ is None:
+            open_ = _open_space(support)
+        if open_.any():
+            ell = _fit_to_support(ell, open_, tol)
+    return None, ell
+
+
+def _open_space(support: NDArray[np.bool_]) -> NDArray[np.bool_]:
+    """Unsupported voxels connected to a box face (26-neighbour): where the
+    coverage ends.  Unsupported holes enclosed by supported voxels are not.
+
+    Single-plane axes are dropped first, so a 2-D section's holes are holes.
+    Bool arrays only: ``binary_fill_holes`` needs a few 1-byte volumes.
+    """
+    flat = support.reshape([n for n in support.shape if n > 1])
+    if flat.ndim == 0:
+        return np.zeros(support.shape, dtype=bool)
+    filled = ndimage.binary_fill_holes(
+        flat, structure=np.ones((3,) * flat.ndim, dtype=bool))
+    return np.logical_not(filled, out=filled).reshape(support.shape)
+
+
+def _separable_weight_on(
+    window_axes: tuple[NDArray[np.float64], ...], region: NDArray[np.bool_],
+) -> float:
+    """Fraction of the separable window's weight that lies in *region*."""
+    wh, wk, wl = window_axes
+    total = float((wh.sum() * wk.sum()) * wl.sum())
+    on = sum(float(wh[i]) * float(wk @ (region[i] @ wl))
+             for i in range(len(wh)) if wh[i] != 0.0 and region[i].any())
+    return on / total if total else 0.0
+
+
+#: ρ-histogram bins and scale steps for :func:`_fit_to_support`.
+_FIT_BINS = 4096
+_FIT_SCALES = np.arange(1000, 0, -1) / 1000.0
+
+
+def _fit_to_support(
+    ell: EllipsoidWindow, open_: NDArray[np.bool_], tol: float,
+) -> EllipsoidWindow:
+    """Shrink *ell* until at most *tol* of its weight lies on *open_*.
+
+    One pass over the planes histograms ``ρ`` over all voxels and over the
+    open ones; the open fraction of the weight ``Σ_open f(ρ/s) / Σ f(ρ/s)``
+    is then cheap for any scale ``s``, and the largest ``s`` (in steps of
+    0.001) that meets *tol* is kept.  ``tol = 0`` uses the exact smallest
+    ``ρ`` of an open voxel instead, so no open voxel keeps any weight.  The
+    shrunk window is the same ellipsoid scaled, so it stays invariant.
+    """
+    h, k, l_ = ell.h_axis, ell.k_axis, ell.l_axis
+    corners = np.array([(a, b, c) for a in (h[0], h[-1]) for b in (k[0], k[-1])
+                        for c in (l_[0], l_[-1])])
+    rho_max = float(np.sqrt(np.einsum("ni,ij,nj->n", corners, ell.form, corners).max()))
+    rho_max = max(rho_max, 1.0) * (1.0 + 1e-9)
+    hist_all = np.zeros(_FIT_BINS)
+    hist_open = np.zeros(_FIT_BINS)
+    rho_open_min = np.inf
+    for i, rho2 in enumerate(ell.rho2_planes()):
+        rho = np.sqrt(np.maximum(rho2, 0.0, out=rho2), out=rho2)
+        b = np.minimum((rho * (_FIT_BINS / rho_max)).astype(np.intp), _FIT_BINS - 1)
+        hist_all += np.bincount(b.ravel(), minlength=_FIT_BINS)
+        if open_[i].any():
+            hist_open += np.bincount(b[open_[i]], minlength=_FIT_BINS)
+            rho_open_min = min(rho_open_min, float(rho[open_[i]].min()))
+    if tol <= 0.0:
+        scale = min(1.0, rho_open_min)
+    else:
+        centres = (np.arange(_FIT_BINS) + 0.5) * (rho_max / _FIT_BINS)
+        scale = 0.0
+        for s in _FIT_SCALES:
+            w = _radial_taper((centres / s) ** 2, ell.kind, ell.sigma)
+            total = float(w @ hist_all)
+            if total > 0.0 and float(w @ hist_open) <= tol * total:
+                scale = float(s)
+                break
+    if scale <= 0.0:
+        raise ValueError("the support leaves no region around Q = 0 for the window")
+    if scale >= 1.0:
+        return ell
+    return dataclasses.replace(ell, form=ell.form / scale**2, scale=scale)
 
 
 def _build_window(shape: tuple[int, ...], kind: Window, sigma: float) -> NDArray:

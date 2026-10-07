@@ -10,6 +10,10 @@ along a and b differed from a + b by 0.03–0.05 of the main peak.  The
 ellipsoid window tapers in the radius of the largest lattice-invariant
 ellipsoid inside the box, so symmetry-equivalent directions get the same
 resolution, and it still reaches zero at the box faces and inverts exactly.
+
+With a ``support`` (the backfilled volume's mask), voxels without data enter
+as ΔI = 0 rather than I = 0, and where the coverage ends inside the box the
+ellipsoid shrinks to it, so the window tapers to zero at the coverage edge.
 """
 
 from __future__ import annotations
@@ -22,11 +26,13 @@ import types
 import numpy as np
 import pytest
 
+from nebula3d import pipeline
 from nebula3d.analysis.delta_pdf import (
     _apodization_window,
     _fft_core_forward,
     _finish_forward,
     _lattice_point_group,
+    _open_space,
     _prepare_forward,
     compute_delta_pdf,
     invert_delta_pdf,
@@ -328,18 +334,162 @@ def test_webgpu_core_round_trips_the_ellipsoid(monkeypatch):
     monkeypatch.setitem(sys.modules, "pyodide.ffi", ffi)
 
     vol = _hex_volume(nhk=21, nl=15, dtype=np.float32)
-    data = vol.data.copy()
-    cpu = compute_delta_pdf(vol, apodization="gaussian")
-    plan = _prepare_forward(vol, apodization="gaussian", fast_len=webbridge._five_smooth)
+    support = vol.q_magnitude() <= 1.2      # inside the ellipsoid (1.57, 0.88 Å⁻¹)
+    data = np.where(support, vol.data, 0.0)
+    cpu = compute_delta_pdf(vol, apodization="gaussian", support=support)
+    plan = _prepare_forward(vol, apodization="gaussian", support=support,
+                            fast_len=webbridge._five_smooth)
     gpu = _FakeGpu()
     dp = _finish_forward(plan, asyncio.run(webbridge._gpu_forward(gpu, plan)))
-    assert dp.window_shape == "ellipsoid"
+    assert dp.window_shape == "ellipsoid" and dp.window_ellipsoid.scale < 1.0
     if dp.data.shape == cpu.data.shape:
         np.testing.assert_allclose(dp.data, cpu.data, atol=1e-4 * np.abs(cpu.data).max())
     a, b, ab = _profiles(dp.data)
     assert np.abs(a - ab).max() < 1e-5 * np.abs(dp.data).max()
 
     rec = asyncio.run(webbridge._gpu_inverse(gpu, dp))
-    assert rec.mask.any()
+    assert rec.mask.any() and not (rec.mask & ~support).any()
     scale = float(np.abs(data).max())
     assert np.abs(rec.data[rec.mask] - data[rec.mask]).max() < 1e-4 * scale
+
+
+# ---------------------------------------------------------------------------
+# support: ΔI = 0 where there are no data, and a window fitted to the coverage
+# ---------------------------------------------------------------------------
+def _ortho_volume(n=31, seed=3):
+    rng = np.random.default_rng(seed)
+    ax = np.linspace(-3.0, 3.0, n)
+    data = rng.normal(5.0, 1.0, (n, n, n))
+    data = 0.5 * (data + data[::-1, ::-1, ::-1])
+    return _volume(data, ub_from_lattice(5.0, 6.0, 7.0), (ax, ax, ax.copy()))
+
+
+def _window_weight_outside(dp, support):
+    w = np.stack(list(dp.window_ellipsoid.planes()))
+    return float(w[~support].sum() / w.sum())
+
+
+@pytest.mark.parametrize("make", [_hex_volume, _ortho_volume])
+def test_an_all_true_support_changes_nothing(make):
+    vol = make()
+    ref = compute_delta_pdf(vol, apodization="gaussian")
+    got = compute_delta_pdf(vol, apodization="gaussian",
+                            support=np.ones(vol.data.shape, dtype=bool))
+    assert np.array_equal(ref.data, got.data) and got.support is None
+
+
+def test_unsupported_voxels_enter_as_no_deviation_from_the_mean():
+    """An enclosed hole (a punched peak left unfilled) is ΔI = 0: zero in the
+    windowed input, left out of the mean, and it does not shrink the window."""
+    vol = _ortho_volume()
+    support = np.ones(vol.data.shape, dtype=bool)
+    support[12:16, 14:18, 10:13] = False
+    vol.mask = support.copy()
+    plan = _prepare_forward(vol, apodization="gaussian", support=support)
+    assert plan.window_axes is not None                      # enclosed: separable kept
+    assert not plan.data[~support].any()
+    assert abs(float(plan.data.sum(dtype=np.float64))) < 1e-9 * float(np.abs(plan.data).sum())
+    wh, wk, wl = plan.window_axes
+    w = wh[:, None, None] * wk[None, :, None] * wl[None, None, :]
+    expect = float((w * vol.data)[support].sum() / w[support].sum())
+    assert plan.subtracted_mean == pytest.approx(expect, rel=1e-12)
+    # read as I = 0 instead, the hole pulls the mean down
+    assert _prepare_forward(vol, apodization="gaussian").subtracted_mean < expect
+
+
+@pytest.mark.parametrize("tol", [1e-3, 1e-4, 0.0])
+def test_window_shrinks_to_a_coverage_sphere_and_keeps_its_symmetry(tol):
+    vol = _hex_volume()
+    support = vol.q_magnitude() <= 2.0      # in-plane box faces are at 3.14 Å⁻¹
+    vol.mask = support.copy()
+    dp = compute_delta_pdf(vol, apodization="gaussian", support=support, support_tol=tol)
+    assert 0.6 < dp.window_ellipsoid.scale < 0.7
+    outside = _window_weight_outside(dp, support)
+    assert outside <= tol if tol else outside == 0.0
+    a, b, ab = _profiles(dp.data)
+    assert np.abs(a - ab).max() < 1e-9 * np.abs(dp.data).max()
+    assert _six_fold_residual(dp.data[:, :, dp.data.shape[2] // 2]) < 1e-9
+
+
+def test_auto_takes_the_ellipsoid_where_the_coverage_ends_in_an_orthogonal_box():
+    vol = _ortho_volume()
+    q = vol.q_magnitude()
+    # a sphere just outside the inscribed ellipsoid (faces at 3.77, 3.14,
+    # 2.69 Å⁻¹): only the separable window's corners reach past it
+    outer = q <= 0.7 * q.max()
+    dp = compute_delta_pdf(vol, apodization="gaussian", support=outer)
+    assert dp.window_shape == "ellipsoid" and dp.window_ellipsoid.scale == 1.0
+    # a sphere inside it: the ellipsoid shrinks
+    sphere = q <= 0.5 * q.max()
+    dp = compute_delta_pdf(vol, apodization="gaussian", support=sphere)
+    assert dp.window_shape == "ellipsoid" and dp.window_ellipsoid.scale < 1.0
+    assert _window_weight_outside(dp, sphere) <= 1e-3
+    # explicit separable keeps its shape (ΔI = 0 still applies)
+    sep = compute_delta_pdf(vol, apodization="gaussian", support=sphere,
+                            window_shape="separable")
+    assert sep.window_shape == "separable" and sep.support is not None
+
+
+def test_a_thin_channel_to_the_box_edge_does_not_collapse_the_window():
+    """TbTi3Bi4 22 K: 1 378 unmeasured voxels in a channel reach ρ = 0.95, with
+    1e-6 of the window's weight.  Only the strict tol = 0 follows them in."""
+    vol = _ortho_volume()
+    support = np.ones(vol.data.shape, dtype=bool)
+    support[15, 15, 27:] = False                          # from the L face to ρ = 0.8
+    dp = compute_delta_pdf(vol, apodization="gaussian", support=support)
+    assert dp.window_shape == "separable"                 # auto: weight below tol
+    ell = compute_delta_pdf(vol, apodization="gaussian", support=support,
+                            window_shape="ellipsoid")
+    assert ell.window_ellipsoid.scale == 1.0
+    strict = compute_delta_pdf(vol, apodization="gaussian", support=support,
+                               window_shape="ellipsoid", support_tol=0.0)
+    assert strict.window_ellipsoid.scale == pytest.approx(0.8)
+
+
+@pytest.mark.parametrize("apodization", ["gaussian", "hann", "none"])
+def test_inverse_with_a_support_restores_the_data(apodization):
+    vol = _hex_volume(nhk=21, nl=15)
+    support = vol.q_magnitude() <= 1.2
+    support[10, [9, 11], 7] = False         # an enclosed hole (centrosymmetric pair)
+    vol.mask = support.copy()
+    dp = compute_delta_pdf(vol, apodization=apodization, window_shape="ellipsoid",
+                           support=support)
+    rec = invert_delta_pdf(dp)
+    assert rec.mask.any() and not (rec.mask & ~support).any()
+    np.testing.assert_allclose(rec.data[rec.mask], vol.data[rec.mask], rtol=1e-9)
+
+
+def test_open_space_ignores_enclosed_holes():
+    support = np.ones((9, 9, 9), dtype=bool)
+    support[4, 4, 4] = False                              # enclosed
+    support[0, :, :] = False                              # a face
+    support[1:3, 2, 2] = False                            # reaches the face
+    open_ = _open_space(support)
+    assert not open_[4, 4, 4] and open_[0].all() and open_[1:3, 2, 2].all()
+    # a 2-D section: a hole in the plane is a hole, not open space
+    plane = np.ones((9, 9, 1), dtype=bool)
+    plane[4, 4, 0] = False
+    assert not _open_space(plane).any()
+
+
+def test_pipeline_passes_the_input_mask_as_the_support():
+    vol = _hex_volume(nhk=21, nl=15)
+    vol.mask = vol.q_magnitude() <= 1.2
+    on = pipeline.delta_pdf(vol, pipeline.DeltaPdfParams())
+    assert on.support is not None and on.window_ellipsoid.scale < 1.0
+    off = pipeline.delta_pdf(vol, pipeline.DeltaPdfParams(window_support=False))
+    assert off.support is None and off.window_ellipsoid.scale == 1.0
+
+
+def test_server_maps_the_window_options():
+    from nebula3d.server.params import build_params
+    from nebula3d.server.schemas import PipelineRunRequest
+
+    req = PipelineRunRequest(dataset_id="x", params={
+        "pdf_window_shape": "ellipsoid", "pdf_window_support": False})
+    p = build_params(req).delta_pdf
+    assert p.window_shape == "ellipsoid" and p.window_support is False
+    assert build_params(PipelineRunRequest(dataset_id="x")).delta_pdf.window_support
+    with pytest.raises(ValueError, match="pdf_window_shape"):
+        build_params(PipelineRunRequest(dataset_id="x",
+                                        params={"pdf_window_shape": "sphere"}))

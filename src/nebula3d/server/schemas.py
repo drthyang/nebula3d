@@ -177,6 +177,8 @@ class StageParamsIn(BaseModel):
     pdf_apodization: str | None = None
     # ΔPDF window geometry: "auto" | "separable" | "ellipsoid"
     pdf_window_shape: str | None = None
+    # Taper the ΔPDF window to the measured coverage (the input's mask)
+    pdf_window_support: bool | None = None
     pdf_gaussian_sigma: float | None = None
     pdf_crop_h: float | None = None
     pdf_crop_k: float | None = None
