@@ -1224,6 +1224,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       flattenEstimator: st.flattenEstimator,
       flattenIon: st.flattenIon,
       pdfApod: st.pdfApod,
+      pdfWindowShape: st.pdfWindowShape,
+      pdfWindowSupport: st.pdfWindowSupport,
       pdfQMin: st.pdfQMin,
       pdfQMax: st.pdfQMax,
       running: st.running,
@@ -2213,6 +2215,32 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     <option value="none">none</option>
                   </select>
                 </Field>
+                <Field label="Window shape">
+                  <select
+                    value={s.pdfWindowShape}
+                    title="auto: an ellipsoid that respects the lattice symmetry where a per-axis window would break it (hexagonal cells), else per-axis"
+                    onChange={(e) => patch({ pdfWindowShape: e.target.value })}
+                  >
+                    <option value="">auto (default)</option>
+                    <option value="separable">per-axis (H × K × L)</option>
+                    <option value="ellipsoid">ellipsoid</option>
+                  </select>
+                </Field>
+                <div className="switch-row">
+                  <Switch
+                    label="Taper to the measured coverage"
+                    checked={s.pdfWindowSupport}
+                    onChange={(v) => patch({ pdfWindowSupport: v })}
+                  />
+                  <HelpTip>
+                    Voxels the input leaves masked count as no deviation from
+                    the mean (ΔI = 0) instead of zero intensity, and where the
+                    measured coverage ends inside the box the window becomes an
+                    ellipsoid shrunk to it, so it tapers to zero at the coverage
+                    edge rather than the box faces. Changes nothing when the
+                    whole box holds data.
+                  </HelpTip>
+                </div>
                   </div>
                 </div>
               </div>

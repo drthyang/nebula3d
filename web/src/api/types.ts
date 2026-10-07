@@ -228,6 +228,10 @@ export interface StageParamsIn {
   /** Magnetic ion of the flatten's const + c·F(Q)² model; "none" = constant only. */
   flatten_ion?: string;
   pdf_apodization?: string;
+  /** ΔPDF window geometry: "auto" | "separable" | "ellipsoid". */
+  pdf_window_shape?: string;
+  /** Taper the ΔPDF window to the measured coverage (default true). */
+  pdf_window_support?: boolean;
   pdf_gaussian_sigma?: number;
   pdf_crop_h?: number;
   pdf_crop_k?: number;
