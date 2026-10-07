@@ -180,14 +180,15 @@ def backfill_bragg(
     if unmeasured not in ("enclosed", "all"):
         raise ValueError(
             f"Unknown unmeasured={unmeasured!r}; choose 'enclosed' or 'all'")
-    exterior = None
+    exterior: NDArray[np.bool_] | None = None
     if unmeasured == "enclosed":
         exterior = _open_unmeasured(vol, punched)
-        if report is not None:
-            n_open = int(np.count_nonzero(exterior))
-            if n_open:
-                report(f"{n_open:,} unmeasured voxels reach the edge of the box "
-                       f"(outside the measured support): left masked, not filled")
+        n_open = int(np.count_nonzero(exterior))
+        if not n_open:
+            exterior = None  # nothing open: no volume-sized mask through the fill
+        elif report is not None:
+            report(f"{n_open:,} unmeasured voxels reach the edge of the box "
+                   f"(outside the measured support): left masked, not filled")
     if method == "laplace":
         return _laplace_fill(
             vol, gap=laplace_gap, direct_beam_fill=direct_beam_fill,

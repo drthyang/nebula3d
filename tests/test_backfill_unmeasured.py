@@ -113,6 +113,40 @@ def test_beam_shadow_open_to_the_box_edge_stays_masked():
     np.testing.assert_array_equal(out.data[shadow], 0.0)
 
 
+def test_open_region_test_keeps_the_browser_memory_bound():
+    # TOPAZ-like float32 cube: a |Q| shell measured (~30 %), the box corners
+    # open, the low-|Q| core enclosed.  The label pass that finds the open
+    # region runs before the fill's copies, so the traced peak (numpy reports
+    # to tracemalloc) stays below the old fill of everything.
+    import tracemalloc
+
+    rng = np.random.default_rng(0)
+    ub = 2 * np.pi * (np.eye(3) / 4.0 + 0.02 * rng.normal(size=(3, 3)))
+    vol = HKLVolume.from_arrays(rng.uniform(0.5, 1.5, (40, 48, 56)), (-4, 4),
+                                (-5, 5), (-6, 6), ub_matrix=ub, dtype=np.float32)
+    q = vol.q_magnitude()
+    _unmeasure(vol, ~((q > 1.0) & (q < 0.45 * q.max())))
+    punched = np.zeros(vol.shape, dtype=bool)
+    for c in rng.integers(4, np.array(vol.shape) - 4, size=(60, 3)):
+        punched[c[0] - 1:c[0] + 2, c[1] - 1:c[1] + 2, c[2] - 1:c[2] + 2] = True
+    punched &= vol.mask
+    vol.mask &= ~punched
+
+    peaks = {}
+    for mode in ("all", "enclosed"):
+        tracemalloc.start()
+        try:
+            out = backfill_bragg(vol, method="laplace", punched=punched,
+                                 unmeasured=mode)  # type: ignore[arg-type]
+            peaks[mode] = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+        del out
+
+    assert peaks["enclosed"] < peaks["all"]       # measured 20.7 vs 24.1 B/voxel
+    assert peaks["enclosed"] < 22 * vol.data.size
+
+
 def test_unknown_unmeasured_option_raises():
     vol, _ = _ramp(9)
     with pytest.raises(ValueError, match="unmeasured"):
