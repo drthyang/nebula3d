@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+- **The slice viewers share one workspace, after the NeXus Viewer.**
+  Reciprocal cleanup, 3D-ΔPDF and Q–R now lay out, zoom and set colours the
+  same way, and the same way as the NeXus Viewer.
+  - **Layouts.** *Grid*, *Focus* (one large view, the others as thumbnails;
+    2 × 2 with four) and *Single* (Esc returns), with focus / maximize in each
+    view's header. Remembered per page. Defaults: grid for Cleanup and
+    3D-ΔPDF, focus with Data large for Q–R.
+  - **Zoom and pan on the slice.** *Navigate · Zoom · Move* click modes,
+    double-click to fit, pinch, axes in r.l.u. or Å, a field-of-view chip and a
+    crosshair shared by linked views, with a readout of every stage's value
+    under it. On 3D-ΔPDF a Navigate click moves the other two cuts. These
+    replace the *Zoom* and *Window* sliders, which pointed opposite ways (Zoom
+    ×2 zoomed in on Cleanup but out on the Bragg tiles; a larger Window zoomed
+    out).
+  - **Colour range instead of *Contrast*.** vmin and vmax around a colour bar
+    with the data's histogram and a handle at each limit, *asinh / lin / log*,
+    *Auto* (vmin 0, vmax at p97, softening at the median, as in the NeXus
+    Viewer) and *Brightness* in stops, right brighter. *Contrast* multiplied
+    vmax, so raising it darkened the image.
+  - **The diffuse is visible by default.** Cleanup's shared scale now comes
+    from the output stage. It came from the pooled stages, so raw's Bragg
+    peaks set it: on TbTi3Bi4 100 K the flattened median sat at 0.4 % of the
+    range (3.94) and needed *Contrast* at its ×0.1 minimum.
+  - **Q–R fixes.** *Apply* sits next to each band and no longer snaps both
+    cuts to the centre. The residual has its own ± range on a diverging map;
+    it was drawn from 0 on the data's sequential scale, which hid every
+    negative value. The Q scale is set from the centre cut, so it holds still
+    while the cut moves. The ΔPDF plane follows the Q plane (H ↔ x, …) while
+    *Link orientation* is on; the page opened with 0kl next to xy.
+  - The Bragg tiles take *Brightness* and a *Zoom* that zooms in.
+
 - **The flatten subtracts a fitted const + c·F(Q)² pedestal.**
   - **What it does.** It still takes each |Q| shell's floor (p25). It then
     fits `const + c·F(Q)²` to those floors over 0.8–10 Å⁻¹ and subtracts the

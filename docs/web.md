@@ -219,11 +219,41 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 | View | Replaces | What |
 | --- | --- | --- |
 | **Configure / Run pipeline** | `run_pipeline.py` | Pick a dataset and tune the key parameters per stage — ring removal (azimuthal **patches**, texture **Fourier order**), punch (HKL ↔ Q-space frame), backfill, flatten, ΔPDF, consistency — then run all stages with a live stepper and log. Existing outputs are skipped unless *force* is on. Default landing view. |
-| **Reciprocal cleanup** | `explore_slice.py` | One panel per HKLVolume stage (raw / ring-removed / punched / backfilled / flattened) sharing an H/K/L plane selector, cut, contrast, log, and colormap. All panels share **one fixed global colour scale** (pooled from the centre cut). The cut readout is an **editable box** — type `0.3333` and it snaps to the nearest plane. |
-| **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three linked real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) as square **windows** (adjustable, default 80 Å), each with its own cut slider, plus contrast and a gray dashed unit-cell overlay. |
+| **Reciprocal cleanup** | `explore_slice.py` | One view per HKLVolume stage (raw / ring-removed / punched / backfilled / flattened) on one H/K/L plane and cut, in the [viewer workspace](#viewer-workspace). All views share **one colour range**, set from a reference stage (the output stage by default, or *Each view* to scale each stage on its own), and one linked zoom and crosshair; hovering reads every stage's value at the same (K, L). The cut readout is an **editable box** — type `0.3333` and it snaps to the nearest plane. |
+| **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range and a gray dashed unit-cell overlay. Views open at ±40 Å. In *Navigate* mode a click on one view moves the other two cuts through the point. |
 | **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related ΔPDF files × the three planes as a square grid, sharing cut, window, and contrast; a per-plane colour scale pooled across files. Component retained; unrouted from the sidebar for now. |
-| **Consistency check** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data \| back-FFT \| residual** at a shared plane/cut, with agreement metrics (Pearson r, normalised RMS, per-plane r). Adjustable **\|Q\|** and real-space **r** bands isolate which ranges support a signal. |
+| **Q–R Band Transform** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data, ΔPDF, back-FFT and residual** as four views (focus layout, data large, by default), with agreement metrics (Pearson r, normalised RMS) in the header. Data, back-FFT and residual share one plane, cut, colour range and view; the residual has its own ± range on a diverging map. The ΔPDF plane follows the Q plane (H ↔ x, K ↔ y, L ↔ z) while *Link orientation* is on. **\|Q\|** and real-space **\|R\|** bands, each with its own *Apply* in the view footer, isolate which ranges support a signal; applying a band keeps both cuts. |
 | **AI Assistant** | — (new) | Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini) model and ask it to assess the reduction. Four one-click reviews (ring removal, Bragg punch, backfill, ΔPDF features) plus free chat, all grounded in numeric metrics computed in the browser from the stage volumes. Optional vision opt-in attaches the rendered slice for image-capable models. |
+
+### Viewer workspace
+
+The slice views (Reciprocal cleanup, 3D-ΔPDF, Q–R) share one workspace, after
+the [NeXus Viewer](https://drthyang.github.io/neutron-nexus-viewer/)'s, so the
+two apps work the same way.
+
+- **Layouts** (icons at the right of the workspace header): *Grid* (every view
+  the same size), *Focus* (one large view; the others are thumbnails beside it —
+  2 × 2 with four of them, a column otherwise — and a click on one makes it the
+  large view) and *Single* (one view; Esc returns). Each view's header has
+  *Reset zoom*, *focus* and *maximize*; double-clicking a header maximizes it.
+  The layout is remembered per page. Phones show every view, one per row.
+- **Click modes** (left of the header, remembered): *Navigate* — hover reads
+  values, and on 3D-ΔPDF a click moves the other two cuts through the point;
+  *Zoom* — a click zooms in 2× (Alt-click zooms out), a drag zooms into the box;
+  *Move* — a drag pans. In every mode a double-click returns to the full view
+  and a trackpad or two-finger pinch zooms; a plain scroll wheel still scrolls
+  the page. Views fill their cell: the field of view (the chip in each view's
+  corner, ± Å⁻¹ or ± Å) spans the shorter side, and a wide view shows more.
+- **Display bar**: colormap, then the colour range — vmin, the colour bar with
+  the reference data's histogram behind it and a handle at each limit, vmax —
+  then *asinh / lin / log*, *Auto* and *Brightness*. *Auto* sets vmin 0 (± for
+  signed data), vmax at the 97th percentile and the asinh softening at the
+  median of the positive values, from the centre cut, so the scale holds still
+  while the cut moves. *Brightness* moves vmax in stops about Auto: right is
+  brighter. Typed or dragged limits hold until *Auto* or a dataset change.
+- **Shared settings**: the reciprocal plane, cut, colour range, scale and zoom
+  are shared by Reciprocal cleanup and Q–R; the ΔPDF colour range, colormap,
+  unit cells and zoom by 3D-ΔPDF and Q–R.
 
 ### Screen sizes
 
@@ -288,7 +318,7 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 - **Slices** are extracted with the same `nebula3d.visualization.extract_slice` the
   matplotlib viewers use, returned as a compact binary envelope
   (`[uint32 header_len][JSON header][float32 data]`), and colour-mapped in the
-  browser — so contrast/log/colormap change instantly with no refetch.
+  browser — so the colour range, scale and colormap change instantly with no refetch.
 - **Native** runs `nebula3d.pipeline.run_pipeline` in a separate process
   (`multiprocessing` spawn), streaming progress over Server-Sent Events; cancel
   terminates the worker. Loaded volumes are kept in an LRU cache sized to hold
