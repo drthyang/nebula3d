@@ -191,11 +191,14 @@ def test_subtraction_is_purely_radial_so_anisotropy_is_untouched(estimator):
     delta = vol.data - res.volume.data            # the amount removed at each voxel
 
     bg_span = float(np.nanmax(res.bg_curve) - np.nanmin(res.bg_curve))
+    # a constant background (the model with ion="none") has zero span, so allow
+    # float rounding of the subtraction, scaled to the background level.
+    atol = 1e-9 * max(1.0, float(np.nanmax(np.abs(res.bg_curve))))
     # in a thin |Q| shell the removed amount varies only by the curve's slope ×
     # the shell width — a tiny fraction of the total background span.
     for q0 in (1.0, 2.0, 3.5):
         shell = np.abs(q - q0) < 0.02
-        assert np.ptp(delta[shell]) <= 0.03 * bg_span
+        assert np.ptp(delta[shell]) <= 0.03 * bg_span + atol
 
     # and the blob-to-background contrast within a shell is retained to ~100%
     H1, K1, L1 = vol.hkl_grid()
