@@ -21,18 +21,27 @@ REPO="$(git rev-parse --show-toplevel 2>/dev/null)" \
 cd "$REPO" || exit 1
 export PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-/tmp/mpl}"
-# Interpreter: $PY if set, else the repo venv when present, else python3.
+# Interpreter: $PY if set, else the repo venv, else the main checkout's venv
+# (a linked worktree has none of its own), else python3.
 if [ -z "${PY:-}" ]; then
-    if [ -x "$REPO/.venv/bin/python" ]; then PY="$REPO/.venv/bin/python"; else PY="python3"; fi
+    MAIN="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")"
+    for cand in "$REPO/.venv/bin/python" "$MAIN/.venv/bin/python"; do
+        if [ -x "$cand" ]; then PY="$cand"; break; fi
+    done
+    PY="${PY:-python3}"
 fi
 
 fail=0
+ran=0
+skipped=""
 run() {  # run <label> <module> <args...>; skip if the tool is not importable
     local label="$1" mod="$2"; shift 2
     if ! "$PY" -c "import $mod" >/dev/null 2>&1; then
         echo "[check] $label: '$mod' not installed — skipped"
+        skipped="$skipped $label"
         return 0
     fi
+    ran=$((ran + 1))
     echo "[check] $label ..."
     "$PY" -m "$mod" "$@" || fail=1
 }
@@ -48,5 +57,11 @@ if [ "$fail" -ne 0 ]; then
     echo "[check] FAILED — fix the issues above (bypass a push with: git push --no-verify)" >&2
     exit 1
 fi
-echo "[check] all checks passed."
+if [ "$ran" -eq 0 ]; then
+    echo "[check] no checks ran: none of pytest, ruff, mypy is installed for $PY."
+elif [ -n "$skipped" ]; then
+    echo "[check] passed, but skipped:$skipped (not installed for $PY)."
+else
+    echo "[check] all checks passed."
+fi
 exit 0
