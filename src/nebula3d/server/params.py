@@ -79,6 +79,18 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
         p.punch = dataclasses.replace(p.punch, search_n_mad=sp.punch_search_n_mad)
     if sp.punch_mode is not None:
         p.punch = dataclasses.replace(p.punch, mode=sp.punch_mode)
+    if any(v is not None for v in
+           (sp.punch_supercell_h, sp.punch_supercell_k, sp.punch_supercell_l)):
+        cell = p.punch.supercell
+        p.punch = dataclasses.replace(p.punch, supercell=(
+            sp.punch_supercell_h if sp.punch_supercell_h is not None else cell[0],
+            sp.punch_supercell_k if sp.punch_supercell_k is not None else cell[1],
+            sp.punch_supercell_l if sp.punch_supercell_l is not None else cell[2],
+        ))
+    if sp.punch_h_guard is not None:
+        p.punch = dataclasses.replace(
+            p.punch, integer_h_guard_hkl=(sp.punch_h_guard
+                                          if sp.punch_h_guard > 0 else None))
     if sp.punch_margin is not None:
         p.punch = dataclasses.replace(p.punch, margin=sp.punch_margin)
     if sp.punch_phi_tail_hkl is not None:

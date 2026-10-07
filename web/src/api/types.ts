@@ -194,6 +194,13 @@ export interface StageParamsIn {
   punch_profile_n_sigma?: number;
   punch_search_n_mad?: number;
   punch_mode?: string;
+  // Supercell the volume is indexed on, per axis (≥ 1): integer-mode Bragg
+  // nodes are the parent lattice's only.
+  punch_supercell_h?: number;
+  punch_supercell_k?: number;
+  punch_supercell_l?: number;
+  // Integer-punch H guard (r.l.u.); 0 turns it off.
+  punch_h_guard?: number;
   punch_margin?: number;
   // Q-space punch: frame "spherical" (rρ,rθ,rφ, default) or "q" (a*,b*,c*) (Å⁻¹)
   punch_frame?: string;
