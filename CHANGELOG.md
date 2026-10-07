@@ -689,6 +689,15 @@
   and Configure UI. Pipeline runs write a JSON diagnostic sidecar. Legacy
   patched/parametric models remain available and the default pending full
   real-data qualification.
+- **The backfill no longer invents data outside the measured coverage.** It
+  filled every masked voxel, so on Fe3Ge2 90 K the 41 % of the box past the
+  coverage sphere (|Q| 17–34 Å⁻¹) got its rim's shell median, which then entered
+  the flatten fit, the ΔPDF, the back-FFT check and the viewers. The fill now
+  interpolates and never extrapolates: punch holes, and unmeasured pockets that
+  measured data enclose (the direct-beam shadow, dead voxels), are filled as
+  before; unmeasured regions that reach a face of the box stay masked.
+  `BackfillParams.unmeasured="all"` restores the old fill. See
+  docs/algorithms/inpainting.md.
 
 ## 0.3.0 (beta) — 2026-07-05
 
