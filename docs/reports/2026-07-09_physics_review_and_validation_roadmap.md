@@ -10,7 +10,8 @@ Reviewed: `analysis/delta_pdf.py`, `core.py`, `io/mantid_nxs.py`,
 `preprocessing/radial_background.py`, `analysis/bragg.py`,
 `analysis/bragg_fill.py`, `pipeline.py` (stage order + consistency metrics),
 `server/consistency.py`, the algorithm docs, the 216-function test suite, and
-the `TbTi3Bi4` 22/45/100 K reduction artifacts in `data/processed/`.
+the reduction artifacts of the measured orthorhombic (mmm) volumes in
+`data/processed/`.
 
 ---
 
@@ -31,7 +32,7 @@ model's assumptions**:
 | F1 | The back-FFT "consistency check" is a *self* round-trip; because the Gaussian-window transform is analytically invertible, `r≈1` is guaranteed for correct code **regardless of whether the cleaning was physically right**. There is no validation against a known ground truth. | Validation gap | **P0** |
 | F2 | The centrosymmetry (real-part) assumption is **never checked at runtime**. The docs advertise the imaginary part as a diagnostic, but `‖Im‖/‖Re‖` is not computed or surfaced anywhere in the source. Un-symmetrized input silently loses its antisymmetric part. | Correctness robustness | **P0** |
 | F3 | The ΔPDF is a **relative** map, not absolute. The radial flatten removes the isotropic component (Laue-monotonic + isotropic SRO + incoherent) and the FFT is not normalized to absolute units — so amplitudes are not calibrated occupancies/displacements. | Interpretation (must document) | **P1** |
-| F4 | **Thermal diffuse scattering (TDS) is not separated** from static short-range order. Its anisotropic part passes straight into the ΔPDF. The 22/45/100 K series makes the standard temperature-difference remedy available but it is not offered. | Interpretation (must document) | **P1** |
+| F4 | **Thermal diffuse scattering (TDS) is not separated** from static short-range order. Its anisotropic part passes straight into the ΔPDF. The multi-temperature series on disk makes the standard temperature-difference remedy available but it is not offered. | Interpretation (must document) | **P1** |
 | F5 | Real-space display **assumes orthogonal axes**. For monoclinic/triclinic UB the per-axis Å labels are right but the orthoslice geometry ignores inter-axial angles. Fine for the current `mmm` data; a public tool will meet oblique cells. | Correctness (oblique cells) | **P2** |
 | F6 | **Punch-and-fill bias** under the peaks is un-quantified. Standard in the field and generally small, but it feeds the documented near-origin spike and should be bounded on synthetic data. | Validation gap | **P2** |
 | F7 | Release hygiene: dependencies are lower-bound only; no `CITATION.cff`/DOI; browser-vs-native parity is claimed byte-identical but **not asserted in CI**. | Release engineering | **P2** |
@@ -184,9 +185,9 @@ normalization slip, or over-aggressive crop/apodization would drop `r`. But the
 forward+inverse pair is analytically exact for the Gaussian window, so **`r≈1` is
 guaranteed by construction whenever the code is correct**, independent of whether
 the ring/punch/backfill/flatten stages produced a *physically correct*
-`I_diffuse`. The reduction artifacts confirm this: the shipped runs report
-`r ≈ 0.9996`. That number validates the transform, not the science. Closing this
-is P0 (§3, Tier V1).
+`I_diffuse`. The reduction artifacts confirm this: the shipped runs on measured
+data report `r` indistinguishable from 1. That number validates the transform,
+not the science. Closing this is P0 (§3, Tier V1).
 
 ---
 
@@ -283,14 +284,15 @@ through the Bose factor `n(ω)`. Its anisotropic part survives the radial flatte
 and enters the ΔPDF as phonon correlations, confounding static SRO. The standard
 separation is a temperature difference `I(T_low) − I(T_high)` (or scaled), which
 cancels the T-independent static disorder-free background and isolates the
-ordering component — directly enabled by the 22/45/100 K series already on disk.
+ordering component — directly enabled by the multi-temperature series already on
+disk.
 
 **Change.** Add a difference-map mode (align two reduced volumes on a common grid,
 subtract with an optional scale, then transform) and document that a single-T
 ΔPDF mixes static SRO and TDS.
 
-**Acceptance.** `ΔPDF[I(22 K) − I(100 K)]` isolates the low-T (magnetic/order)
-correlations; regression on the shipped `TbTi3Bi4` volumes.
+**Acceptance.** `ΔPDF[I(T_low) − I(T_high)]` isolates the low-T ordering
+correlations; regression on the measured multi-temperature volumes.
 
 ### P2-A — Oblique-cell real-space geometry (fixes F5)
 
@@ -358,7 +360,7 @@ peak positions and signs; discrepancies explained (window, normalization).
 
 ### Tier V3 — Real-data physical sanity
 
-On the `TbTi3Bi4` 22/45/100 K series: (a) ΔPDF respects the crystal's Laue
+On the measured multi-temperature series: (a) ΔPDF respects the crystal's Laue
 symmetry (`Δρ(r)=Δρ(−r)` and point-group images agree); (b) correlation peaks fall
 on real lattice vectors / bond directions; (c) the temperature-difference map
 (P1-B) sharpens the ordering signal; (d) parameter-sensitivity sweep (punch radius,

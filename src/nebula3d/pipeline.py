@@ -404,8 +404,9 @@ class PunchParams:
     integer_fit_radius_n_sigma: float = 2.5
     integer_fit_max_radius_hkl: tuple[float, float, float] | None = None
     # Integer punches stop this far (r.l.u.) from their node's H plane, so
-    # TbTi3Bi4's H = ±1/3 magnetic planes stay unpunched.  None = off: the
-    # brightest Fe3Ge2 peaks reach 3 voxels along H, which the guard leaves.
+    # satellite planes at fractional H (e.g. a q = 1/3 modulation) stay
+    # unpunched.  None = off, for data without such planes: there the brightest
+    # peaks can reach further along H, and the guard would leave their tails.
     integer_h_guard_hkl: float | None = 0.12
     # The supercell the volume is indexed on, (n_h, n_k, n_l): integer-mode
     # Bragg nodes are the parent lattice's only (see BraggRemover).
@@ -421,15 +422,15 @@ class PunchParams:
     significance_aperture: float = 0.5
     significance_noise: str = "sigma"
     # Detection window in Å⁻¹ (None = the BraggRemover default, 0.2 r.l.u. on
-    # every axis).  Off: on 22K it adds ~1,200 integer nodes, unvalidated.
+    # every axis).  Off: on measured data it adds many integer nodes, unvalidated.
     detect_window_q: float | None = None
     # "profile" (default): each peak punched as far as its tail, predicted from
     # the dataset's own stacked Bragg profile along (ρ̂, θ̂, φ̂), stays above
-    # profile_n_sigma × the local noise (see BraggRemover).  On TbTi3Bi4 the
-    # tail is c-axis mosaic along θ̂, which the ellipsoid left: 0.5σ halves the
-    # brightest peaks' one-sided leaks.  On Fe3Ge2 it is also a halo along
-    # every axis, which the profile punches too.  "ellipsoid": the fitted / base
-    # ellipsoid scaled by the cube root of the intensity.
+    # profile_n_sigma × the local noise (see BraggRemover).  The tail can be a
+    # mosaic spread along θ̂, which the ellipsoid left (0.5σ cuts the brightest
+    # peaks' one-sided leaks), or also a halo along every axis, which the
+    # profile punches too.  "ellipsoid": the fitted / base ellipsoid scaled by
+    # the cube root of the intensity.
     punch_footprint: str = "profile"
     profile_n_sigma: float = 0.5
     profile_max_radius_q: float = 0.5
@@ -502,7 +503,7 @@ class FlattenParams:
     The default subtracts a fitted ``const + c·F(Q)²`` pedestal (nuclear
     incoherent + single-ion paramagnetic scattering) with ``F`` the form factor
     of ``ion``.  The default ``ion=None`` fits a constant only; name the
-    sample's magnetic ion (e.g. ``"Tb3+"`` for TbTi3Bi4) to add the
+    sample's magnetic ion (e.g. ``"Mn2+"``) to add the
     paramagnetic term.
     """
 

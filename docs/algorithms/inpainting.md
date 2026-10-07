@@ -35,8 +35,8 @@ records them, in memory and as `/MDHistoWorkspace/nebula3d/punched` in the
 punch artifact) so a
 hole and the unmeasured coverage it touches stay apart. Without it every masked
 voxel is a hole: a hole touching coverage merges with it, and the whole region
-gets one value set by the coverage's rim — on the 64.5 M-voxel Fe3Ge2 TOPAZ
-volume that was 82 % of the punched voxels. With it each hole is filled only
+gets one value set by the coverage's rim — on a 64.5 M-voxel hexagonal TOPAZ
+volume that was most of the punched voxels. With it each hole is filled only
 from the measured voxels around it (unmeasured neighbours are a free, Neumann
 boundary for `laplace`), and enclosed unmeasured pockets (next section) are
 filled afterwards with their own shell median.
@@ -64,53 +64,52 @@ unmeasured, so a hole that touches an open region stays masked with it. Set
 the behaviour before this change, and the open regions get their rim's shell
 median. Keep it only to compare.
 
-Before the change the pipeline filled every masked voxel. On Fe3Ge2 90 K
-(TOPAZ, 6/m-symmetrised, ±20 r.l.u. box, 401³) the data cover a sphere to
-`|Q|` ≈ 17 Å⁻¹, 59 % of the box. The other **27.9 M voxels (43 % of the box)**
-got a constant plateau of mean 11.9, out to `|Q|` = 33.8 Å⁻¹. It entered the
-flatten statistics, the ΔPDF, the back-FFT check and the viewers. Now they stay
-masked. The 79 enclosed pockets (4,933 voxels, among them the beam shadow at
-`|Q|` < 0.83 Å⁻¹) are still filled. Every voxel the new fill keeps is
-bit-identical (data and σ) to the old fill, on all four volumes below.
+Before the change the pipeline filled every masked voxel. On a hexagonal
+(6/m) TOPAZ dataset (6/m-symmetrised, 401³) the data cover a sphere around
+the origin that fills only part of the box. The rest, **a large fraction of
+the box**, got a constant plateau out to the box corners. It entered the
+flatten statistics, the ΔPDF, the back-FFT check and the viewers. Now it stays
+masked. The enclosed pockets (among them the beam shadow near the origin) are
+still filled. Every voxel the new fill keeps is bit-identical (data and σ) to
+the old fill, on every volume below.
 
-**TbTi3Bi4 22/45/100 K are unaffected.** Their coverage fills the box. 0.20–0.22 %
-of it is open: 98,800–107,508 voxels, 95 % of them within 2 voxels of a K or L
-face, at `|Q|` 7–10.5 Å⁻¹, where the coverage edge meets the box. Only those
-voxels change, from shell medians to masked. The enclosed beam shadow
-(287–303 voxels) and dead voxels are filled as before. The table compares the
-two settings downstream: the same punch artifacts (the 2026-10-06
-`data/processed` reruns; Fe3Ge2 from a fresh default run), backfilled with
+**Orthorhombic data whose coverage fills the box are unaffected** (checked at
+three temperatures). Only a tiny fraction of the box is open, almost all of it
+within 2 voxels of a K or L face, where the coverage edge meets the box. Only
+those voxels change, from shell medians to masked. The enclosed beam shadow
+and dead voxels are filled as before. The table compares the two settings
+downstream: the same punch artifacts (the 2026-10-06 `data/processed` reruns;
+the hexagonal data from a fresh default run), backfilled with
 `unmeasured="enclosed"` and with `"all"`, then flattened and transformed with
 the pipeline defaults in float32 (ΔPDF after the 2026-10-07 DC fix).
 
-| | 22 K | 45 K | 100 K | Fe3Ge2 90 K |
-|---|---|---|---|---|
-| open voxels left masked | 107,508 | 107,444 | 98,800 | 27,893,344 |
-| flatten constant, old → new | 0.0705 → 0.07043 | 0.06755 → 0.06748 | 0.05795 → 0.05789 | 2.88 → 2.88 |
-| ΔPDF change, max / max\|ΔPDF\| (\|r\| ≥ 2 Å) | 2.2·10⁻⁴ | 3.8·10⁻⁴ | 3.4·10⁻⁵ | 6.2·10⁻² |
-| ΔPDF change, RMS / RMS (\|r\| ≥ 2 Å) | 1.1·10⁻³ | 1.8·10⁻³ | 7.9·10⁻⁵ | 3.4·10⁻² |
-| back-FFT check `r` (new) | 0.99990 | 0.99990 | 0.99986 | 0.999995 |
+| | orthorhombic (three temperatures) | hexagonal |
+|---|---|---|
+| open voxels left masked | a tiny fraction of the box | a large fraction of the box |
+| flatten constant, old → new | negligible change | unchanged |
+| ΔPDF change relative to the ΔPDF (\|r\| ≥ 2 Å, max and RMS) | negligible (well below 1 %) | a few % |
+| back-FFT check `r` (new) | near-exact | near-exact |
 
 **What the ΔPDF does with the open region.** It reads masked voxels as zero.
 It then subtracts the window-weighted mean `c` of the whole box and applies the
 window, so an open voxel enters as `−c·w`. The back-FFT check stays exact: the
-inverse returns zero there, the value it was given. On Fe3Ge2 the change is
-not negligible. The box window is still ≈ 0.5 where the coverage ends at
-17 Å⁻¹, so the coverage edge becomes a sharp spherical step. Its truncation
-ripple (period 2π/17 Å⁻¹ ≈ 0.37 Å) sits around the origin: shell RMS of the
-change is 41–48 % of the ΔPDF below 2 Å, 14–18 % at 2–6 Å, 7 % at 10 Å, 3 % at
-20 Å. In the a–b (`z = 0`) and b–c (`x = 0`) sections, against the strongest
-correlation past 1.5 Å, its maximum is 6 % at 2–3 Å, 3.6 % at 3–5 Å, 1.3 % at
-5–8 Å and ≤ 0.7 % beyond. Below 2 Å, around the origin peak, it is as large as
-that correlation. The old plateau hid this step by continuing the rim level
-to the box faces, where the window tapered it, but the plateau itself was
-invented.
+inverse returns zero there, the value it was given. On the hexagonal data the
+change is not negligible. The box window is still far from zero where the
+coverage ends, so the coverage edge becomes a sharp spherical step. Its
+truncation ripple (period 2π/Q_edge, with Q_edge the `|Q|` where the coverage
+ends) sits around the origin: the shell RMS of the change is a large part of
+the ΔPDF below 2 Å and falls off with `r`. In the a–b (`z = 0`) and b–c
+(`x = 0`) sections, against the strongest correlation past 1.5 Å, its maximum
+is a few percent at short `r` and below 1 % at long `r`. Below 2 Å, around the
+origin peak, it is as large as that correlation. The old plateau hid this step
+by continuing the rim level to the box faces, where the window tapered it, but
+the plateau itself was invented.
 
-About 40 % of the change (shell RMS 18 % below 1 Å, 6–7 % at 2–6 Å, 1 % at
-20 Å) comes from the mean. Over the whole box, `c` counts the open region as
-`I = 0` (3.25) rather than `ΔI = 0`, the support-weighted mean 3.48. Measured
-against an ideal input `w·M·(I − c_M)`, with `M` the support and
-`c_M = Σ w·M·I / Σ w·M`, the change is 2.4 % of the maximum.
+A sizeable part of the change comes from the mean. Over the whole box, `c`
+counts the open region as `I = 0` rather than `ΔI = 0`, so it comes out below
+the support-weighted mean. Measured against an ideal input `w·M·(I − c_M)`,
+with `M` the support and `c_M = Σ w·M·I / Σ w·M`, the change is a few percent
+of the maximum.
 
 The remedy belongs in the transform, not in the fill: a window that reaches
 zero at the **edge of the measured support**, not the box, and the mean taken
@@ -121,9 +120,10 @@ needs neither.
 The pipeline also trims the edge of the measured coverage when it loads the raw
 input (`PipelineParams.edge_trim`, default 1 voxel layer;
 `nebula3d.preprocessing.trim_coverage_edge`). A measured voxel next to
-unmeasured space is barely normalised: on the Fe3Ge2 volume those voxels reach
-p99 ≈ 4,000 and a maximum of 5.5·10⁷, while one voxel further in they match the
-interior (p99 ≈ 38 against 34). Left in, they enter the ΔPDF directly and, as
+unmeasured space is barely normalised: on the hexagonal TOPAZ volume those
+voxels reach a p99 about two orders of magnitude above the interior's, and
+maxima far beyond it, while one voxel further in they match the interior.
+Left in, they enter the ΔPDF directly and, as
 Dirichlet data, light up any `laplace` hole that touches them. Trimmed voxels
 become unmeasured coverage: masked and zeroed, as the loader leaves them. The
 volume's own faces are not an edge. In a symmetrised volume

@@ -1,7 +1,7 @@
 """Tests for the stack-pooled sector ring model (``ring_model="pooled"``).
 
 The synthetic volume carries the property that defeats the per-plane models on
-the CORELLI data: the ring's |Q| centre wanders with direction by more than half
+measured data: the ring's |Q| centre wanders with direction by more than half
 its FWHM (``q0 + 0.07·cos 4φ`` for a 0.15 Å⁻¹ ring, at the Al 111 line), with
 ~3 voxels across the ring as on the real grid.  Bragg blobs sit on the ring, and
 a weak Al 200 ring lies below the relative detection cut.
@@ -111,9 +111,9 @@ def test_does_not_eat_bragg_peaks_sitting_on_the_ring():
         return extra / float(np.mean(without.ring[core])), (with_bragg, without)
 
     # A Bragg peak spans a few planes but one sector: pooling the neighbouring
-    # sectors too is what keeps it out of the ring estimate (22 K TbTi3Bi4:
-    # +42 % of the ring at Bragg-on-ring voxels with stack pooling alone, +17 %
-    # with ±1 sector, the patched model's +15 %).
+    # sectors too is what keeps it out of the ring estimate (on measured data,
+    # stack pooling alone inflated the ring markedly at Bragg-on-ring voxels;
+    # ±1 sector brought it down to about the patched model's level).
     rel_stack_only, _ = inflation(0)
     rel, (with_bragg, without) = inflation(1)
     assert rel < 0.75 * rel_stack_only

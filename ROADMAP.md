@@ -74,8 +74,8 @@ Open validation:
 - Decide whether the `cc_on` preset should become the default script preset for
   all available real data.
 - **Texture-contrast compression (both models).** The fitted azimuthal texture
-  `T(φ)` is flattened to ≈half the data-truth contrast at bright shells
-  (|Q|≈2.69, H=0) → bright arcs under-subtracted, dim arcs over-subtracted.
+  `T(φ)` is flattened well below the data's contrast at bright shells
+  (e.g. the Al 111 ring at H=0) → bright arcs under-subtracted, dim arcs over-subtracted.
   Lever is contrast (lower `texture_ridge`, higher `n_fourier`), not a background
   term. The mean removal-% metric is blind to it; judge on the texture overlay
   (`examples/tune_parametric_ring.py`) and the diverging / per-φ residual figures
@@ -113,24 +113,25 @@ Current decisions:
 - Every detection, integer node or search summit, must be significant against
   its own error: an integrated excess over half the resolution ellipsoid of at
   least 5σ (`min_significance`). Without it, the search punched single-voxel
-  noise at the high-|Q| coverage edge: half the TbTi3Bi4 search peaks, in two
-  139k-voxel holes at 22 K. See `docs/algorithms/bragg_cleanup.md`.
+  noise at the high-|Q| coverage edge: about half the search peaks on measured
+  data, merged into two large holes. See `docs/algorithms/bragg_cleanup.md`.
 - Each peak is punched as far as its own tail is measurable
   (`punch_footprint="profile"`, 0.5σ). The tail shape is the dataset's stacked
   Bragg profile, learned per run from its brightest peaks, not a scaled
-  ellipsoid. On TbTi3Bi4 that halves the brightest peaks' leaking tails.
+  ellipsoid. On measured data that clearly reduces the brightest peaks'
+  leaking tails.
 
 - The direct beam is punched separately as an origin ellipsoid
   `INCIDENT_ELLIPSOID_R_HKL=0.15,0.50,1.00`.
 - `MODE=both` is visually preferred over integer-only, but unrestricted search
   can damage fractional-H diffuse planes. Search exclusions protect those planes.
 - Integer-node Bragg holes are guarded in H so they do not bleed from integer-H
-  planes into `H=±1/3` or `H=±2/3` diffuse planes.
+  planes into fractional-H diffuse planes such as `H=±1/3` or `H=±2/3`.
 - Ordinary Bragg holes are filled from the diffuse around each hole by the
   harmonic (Laplace) fill (`method="laplace"`, default since 2026-10-06;
   `method="local"` = the shell median, flat). On the moved-hole test
-  (`bragg_qa.refill_test`) both fills leave ΔPDF errors of 1–7 % of the real
-  signal at the lattice vectors. Laplace has the smaller per-voxel bias and no
+  (`bragg_qa.refill_test`) both fills leave ΔPDF errors of a few per cent of
+  the real signal at the lattice vectors. Laplace has the smaller per-voxel bias and no
   step at the rim. The former `q_shell` default (|Q|-shell level) is biased at
   every lattice node and leaves spurious ΔPDF features at the lattice vectors.
 - Direct-beam backfill remains a special just-outside-`|Q|` fill.
@@ -145,22 +146,23 @@ Open validation:
 
 - Confirm guarded `MODE=both` leaves no important small Bragg peaks.
 - Punch shape: done 2026-10-06. The profile-matched punch follows each peak's
-  measured tail (c-axis mosaic along θ̂); see
+  measured tail (the mosaic tail along θ̂); see
   `docs/algorithms/bragg_cleanup.md`. Open:
-  - its ~20 % larger, more merged holes;
-  - the H guard leaves the brightest nuclear tails in the H = ±1/3 magnetic
-    planes. Subtracting the predicted tail there, instead of punching, would
-    follow from the learned profile.
+  - its larger, more merged holes;
+  - the H guard leaves the brightest Bragg tails in the fractional-H
+    satellite planes it protects. Subtracting the predicted tail there,
+    instead of punching, would follow from the learned profile.
 - Fill (2026-10-06): the moved-hole test shows the fill of ordinary diffuse is
-  a minor error source on TbTi3Bi4, and Laplace is now the default. A fill
-  that continues the rise toward each node is not used: that rise is mostly
-  the residual Bragg tail the profile punch leaves at 0.5σ, and the thermal
-  diffuse under the nodes is weak here. Revisit for samples with strong
-  thermal diffuse: on the demo volume both fills under-fill it by ~70–75 %.
-- `detect_window_q` (Å⁻¹ detection window) adds ~1,200 integer nodes on 22 K;
-  validate before making it the default.
-- Measure the `q_shell` → `local`/`laplace` change on the real 22/45/100 K
-  ΔPDFs at the lattice vectors.
+  a minor error source on the measured data tested, and Laplace is now the
+  default. A fill that continues the rise toward each node is not used: that
+  rise is mostly the residual Bragg tail the profile punch leaves at 0.5σ,
+  and the thermal diffuse under the nodes was weak in the data tested.
+  Revisit for samples with strong thermal diffuse: on the demo volume both
+  fills under-fill it by ~70–75 %.
+- `detect_window_q` (Å⁻¹ detection window) adds many integer nodes on
+  measured data; validate before making it the default.
+- Measure the `q_shell` → `local`/`laplace` change on measured ΔPDFs at the
+  lattice vectors.
 - Decide whether search exclusions should be derived from known magnetic diffuse
   planes rather than passed manually.
 
@@ -176,16 +178,17 @@ pedestal `const + c·F(Q)²` to those floors and subtracts the fitted curve.
   `run_pipeline.py`, default ON (disable with `FLATTEN=0`). The ΔPDF's own
   Gaussian `SUBTRACT_BG` blur defaults off — it is the alternative remover, never
   combined with the flatten.
-- Default estimator `model`, `ion="Tb3+"` (dipole form factor
-  `⟨j0⟩ + (2/g − 1)⟨j2⟩`), fitted over 0.8–10 Å⁻¹; `ion=None` fits a constant
-  only. `floor` and `snip` (free-form curves) remain for comparison.
+- Default estimator `model`, fitted over 0.8–10 Å⁻¹; the default `ion=None`
+  fits a constant only, and naming the sample's magnetic ion adds `c·F(Q)²`
+  with the dipole form factor `⟨j0⟩ + (2/g − 1)⟨j2⟩`. `floor` and `snip`
+  (free-form curves) remain for comparison.
 
 **Why the model (2026-10-06).** Both model terms are self (single-site)
-scattering — nuclear incoherent (Ti dominates) and single-ion paramagnetic
+scattering — nuclear incoherent and single-ion paramagnetic
 `∝ F(Q)²` — so they reach the ΔPDF only at r ≈ 0. The previous default, the
 p25 floor smoothed at 0.1 Å⁻¹, also followed the isotropic `sin(Qr)/(Qr)`
-terms of real pair correlations and subtracted them: on TbTi3Bi4 it carved
-spherical shells at 2.5–4 Å (22 K shell mean at 3.75 Å moved by −238), and on
+terms of real pair correlations and subtracted them: on measured data it
+carved spherical shells into the short-range ΔPDF, and on
 the demo ground truth its ΔPDF error at 2–5 Å was 42 % against 13 % with no
 flatten. Published 3D-ΔPDF practice has no percentile floor; the closest
 precedent subtracts only the uncorrelated paramagnetic scattering (Roth et al.,
@@ -203,27 +206,28 @@ Robustness should be checked with `examples/validate_flatten.py`, a
 **non-circular** QA (the per-shell-median check is nearly tautological). The
 2026-09 diagnostics, measured for the `floor` estimator:
 
-- **Background is isotropic** — octant-floor spread / |bg| ≈ 0.10–0.14 (≪ 0.3),
-  so subtracting one level per |Q| shell is valid; we are not mislabeling
+- **Background is isotropic** — octant-floor spread / |bg| well below the 0.3
+  threshold, so subtracting one level per |Q| shell is valid; we are not mislabeling
   anisotropic structure as background.
 - **Features preserved** — strong anisotropic (Bragg/satellite) contrast 100%
   retained; the subtraction is a function of |Q| alone, so it cannot distort
   anisotropy (only shifts the radial mean).
-- **No over-subtraction** — negative fraction a stable ~24.8% (the p25
-  expectation), deep negatives (< −3σ) only ~1.2–1.7%. `median`/`mode` centred
+- **No over-subtraction** — negative fraction stable at the p25 expectation
+  (~25%), deep negatives (< −3σ) rare. `median`/`mode` centred
   the shell (~50% negative) and were removed.
 
 Open validation:
 
-- Caveat (bounded): only ~2–3% of voxels sit beyond the reliably-sampled
+- Caveat (bounded): only a small fraction of voxels sit beyond the reliably-sampled
   |Q| ≈ 10 Å⁻¹; the model is fitted below that and evaluated analytically there.
 - The model omits the Debye–Waller fall-off of the incoherent constant and
   absorption; compare against the measured-background (`cc_sub_bkg`) inputs.
 - For a 3D-PDF (Bragg-kept) input the flatten also passes, but the un-punched
-  direct beam dominates the innermost shells (bg span ~4.3 vs 0.12 backfilled);
-  treat the direct beam before flattening if the flatten is used in the PDF path.
+  direct beam dominates the innermost shells (a background span far larger
+  than after backfill); treat the direct beam before flattening if the
+  flatten is used in the PDF path.
 - Optional future work: an H-aware residual-cross reduction that lowers the
-  leftover L=0 cross without harming the sharp H-axis peaks.
+  leftover L=0 cross without harming sharp on-axis peaks.
 
 ## Phase 4 — 3D-ΔPDF  Implemented
 
@@ -245,7 +249,7 @@ Implemented API and drivers:
 - `examples/run_pipeline.py` — one-command end-to-end ΔPDF runner (resume-aware)
 
 Correct transform recipe `fftshift(fftn(ifftshift(·)))` with symmetric padding;
-the real part is valid for the centrosymmetric (`mmm`) data.
+the real part is valid for centrosymmetric (Laue-symmetrised) data.
 
 Resolved issues:
 
@@ -262,7 +266,8 @@ Next work / open validation:
   discontinuities, direct-beam punch); consider tapered punch boundaries.
 - Decide whether the principal-axis cross artifact needs masking.
 - Compare apodization choices for peak sharpness vs termination ripple.
-- Interpret the correlation lattice against the structure / H=±1/3 modulation.
+- Interpret the correlation lattice against the average structure and any
+  satellite modulation.
 
 ## Phase 4b — 3D-PDF And Satellite Diagnostic  Implemented
 
@@ -353,11 +358,12 @@ server `punch_fit_covariance`, and a web punch-card toggle.
 [`tests/test_bragg_qspace_phase3.py`](tests/test_bragg_qspace_phase3.py) — 8 tests
 (diagonal reduction, tilted orientation, φ-tail tangent-only inflation, fit
 integration, Q-mode adaptivity) plus a server `build_params` test.
-**Revised 2026-10-02:** that fit took its eigenvectors in HKL (skewed by
-|a*|:|c*| ≈ 4), floored them at an HKL bounding box, measured the core in a
-±0.2 r.l.u. window (±1 voxel along c*), and used the 35 % core's width (0.61σ).
-On the 100K volume 44 % of peaks were floored on all three axes, and the
-default pipeline ran the diagonal fit anyway. The covariance fit is now in Q,
+**Revised 2026-10-02:** that fit took its eigenvectors in HKL (skewed by the
+unequal reciprocal axis lengths), floored them at an HKL bounding box,
+measured the core in a ±0.2 r.l.u. window (±1 voxel along c* on the measured
+grid), and used the 35 % core's width (0.61σ). On measured data almost half
+the peaks were floored on all three axes, and the default pipeline ran the
+diagonal fit anyway. The covariance fit is now in Q,
 cut-corrected, windowed in Å⁻¹, floored at the resolution ellipsoid by
 containment, and the only shape fit (the diagonal fit and the
 `integer_fit_covariance` switch were removed); see
@@ -368,8 +374,8 @@ Phase 4 (validating): HKL-vs-Q comparison via
 validation path compares matched Q radii against the legacy HKL footprint and
 checks whether an isotropic Q radius is justified for a given volume. Two fixes landed:
 (a) Q-mode was silently ignoring `margin` — now applied; (b) Q-mode was
-*fixed-shape* (bypassing the per-peak fit + φ-tail), which would under-punch ~41%
-vs the intended punch — Q-mode is now **adaptive** (`_fit_base_radii` floors
+*fixed-shape* (bypassing the per-peak fit + φ-tail), which would under-punch
+substantially vs the intended punch — Q-mode is now **adaptive** (`_fit_base_radii` floors
 the per-peak fit to the Q resolution, in Å⁻¹; the diagonal fit then punches via
 the same radii path as HKL). The final gate is a **ΔPDF-level A/B** through
 the full pipeline ([`examples/compare_delta_pdf_frames.py`](examples/compare_delta_pdf_frames.py)),
@@ -385,8 +391,9 @@ legacy rlu footprint.
 
 Two findings now encoded as tests / constraints:
 
-- **"Bit-identical" has a caveat.** The real UB is orthogonal only to ~0.5%, so
-  HKL- and Q-axis punches differ at up to ~10 boundary voxels on real data;
+- **"Bit-identical" has a caveat.** A measured UB is only approximately
+  orthogonal, so HKL- and Q-axis punches differ at a few boundary voxels on
+  real data;
   bit-identical masks hold only for an *exactly* diagonal metric.
 - **Phase-1 design constraint:** kernel-equivalence checks must compare
   **continuous quadratic values with a tolerance**, not thresholded boolean
@@ -469,9 +476,9 @@ removal; the ~50 M-voxel float64 ceiling):
   (`PipelineParams.precision`; native default stays float64 and remains
   bit-identical to the historical pipeline).  Mixed-precision rules: axes/UB,
   |Q|-derived decisions (`nebula3d.core.q_bin_indices`), 1-D fits/solves, and
-  large reductions stay float64.  Real-data validation (TbTi3Bi4 22/45/100 K,
-  48.4 M voxels): ΔPDF nrms ≤ 1e-5, |Δr| ≤ 6e-10, ≤ 2 punch-mask flips of
-  48.4 M, identical peak counts, ~15–25 % faster.  Gate: 40 B/voxel measured →
+  large reductions stay float64.  Real-data validation (three measured
+  48.4 M-voxel volumes): ΔPDF nrms ≤ 1e-5, |Δr| ≤ 6e-10, ≤ 2 punch-mask flips
+  per volume, identical peak counts, ~15–25 % faster.  Gate: 40 B/voxel measured →
   **~80 M-voxel ceiling** (401³ = 64.5 M admitted).
 - **WebGPU ΔPDF core** — forward + inverse centred FFTs run on the GPU when
   available (`web/src/gpu/`, mixed-radix Stockham, CPU-precomputed twiddles,

@@ -80,7 +80,7 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   volume arrays and the FFT (float32→complex64) halve, while axes/UB, every
   |Q|-derived bin/band/threshold decision, all 1-D profile fits/solves, and
   every large reduction stay float64.  Validated against the float64 reference
-  on all three real TbTi3Bi4 volumes (22/45/100 K, 48.4 M voxels each): ΔPDF
+  on three measured 401×401×301 volumes (48.4 M voxels each): ΔPDF
   normalised RMS ≤ 1e-5, consistency-r deltas ≤ 6e-10, at most 2 punch-mask
   voxels flipped out of 48.4 M, identical peak counts — and ~15–25 % faster
   (`tests/test_float32_equivalence.py` gates it; a `"precision"` key in the run
@@ -107,8 +107,8 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   Measured as the WASM heap's high-water mark under Pyodide 0.27.7 (float32,
   low-memory; it includes the runtime and allocator fragmentation), a full run
   peaks at 2.9 GiB on a fully measured 79.5 M-voxel volume, 2.8 GiB on a
-  64.5 M-voxel TOPAZ volume that is 73 % unmeasured, and 2.1 GiB on the real
-  48.4 M-voxel volume. The admission gate (`nebula3d.webbridge.inspect_input`,
+  64.5 M-voxel TOPAZ volume that is mostly unmeasured, and 2.1 GiB on a
+  measured 48.4 M-voxel volume. The admission gate (`nebula3d.webbridge.inspect_input`,
   metadata-only so it can't OOM) budgets 40 B/voxel against 3.2 GB → volumes
   up to **~80 M voxels** are admitted (e.g. 401×401×401 = 64.5 M voxels ≈
   2.6 GB estimated peak; 501³ = 125.8 M is still refused with a message
@@ -133,8 +133,9 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   (The default Bragg backfill, `backfill_bragg` with `method="local"`, is
   connected-component / `ndimage`-based and already lean: ~25 B/voxel transient
   vs ~41 for the former `q_shell` default; `laplace` adds ~10 B/voxel on top of
-  `local` on the 22 K volume, and its sparse solve runs in batches of at most
-  2 M unknowns (`LAPLACE_MAX_UNKNOWNS`), so it stays bounded however much of the
+  `local` on a measured 401×401×301 volume, and its sparse solve runs in
+  batches of at most 2 M unknowns (`LAPLACE_MAX_UNKNOWNS`), so it stays
+  bounded however much of the
   volume is masked — a single masked region larger than that is an unmeasured
   coverage gap and gets the `local` fill, noted in the run log. The direct-beam
   fill applies the same cap to its region's bounding box: unmeasured coverage

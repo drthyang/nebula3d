@@ -5,13 +5,13 @@
 
 Why another model
 -----------------
-On the CORELLI TbTi3Bi4 volumes a powder ring is not a sphere whose only
-direction dependence is its amplitude.  Its radial position and width wander
-with direction: at H=0 the 4.39 Å⁻¹ Al line peaks anywhere from 4.30 to
-4.51 Å⁻¹ depending on the azimuth, more than its own FWHM, and the *mmm*
-symmetrisation overlays several such copies, so along some directions a ring
-is a multi-peaked band 0.25 Å⁻¹ wide.  At a fixed |Q| the ring intensity traces
-smooth curved loci over the sphere.  A model that ties each ring to one radial
+On measured volumes a powder ring need not be a sphere whose only direction
+dependence is its amplitude.  Its radial position and width can wander with
+direction: an Al line can peak at a |Q| that shifts with the azimuth by more
+than its own FWHM, and a Laue symmetrisation (e.g. *mmm*) overlays several such
+copies, so along some directions a ring is a multi-peaked band several FWHM
+wide.  At a fixed |Q| the ring intensity traces smooth curved loci over the
+sphere.  A model that ties each ring to one radial
 line shape (``parametric``, ``global_v2``), or smooths the azimuthal pattern of
 every |Q| bin with a few damped harmonics (``patched``), subtracts the ring at
 the wrong |Q|: a bright arc is left beside a dark one along every ring, and the
@@ -573,8 +573,8 @@ def _cluster_windows(
     ring, as the per-plane adaptive window), capped at ``cap_frac`` × the
     distance to the neighbouring cluster and floored at ¾ of the span.  The
     per-ring window of the per-plane models is capped at the distance to the
-    *nearest ring*, so the broad member of a close doublet (6.79/6.97 Å⁻¹ here)
-    got a window narrower than itself and SNIP left half of it in the baseline.
+    *nearest ring*, so the broad member of a close doublet got a window
+    narrower than itself and SNIP left half of it in the baseline.
     """
     out = np.full(q_grid.size, float(base_width))
     if centers.size == 0:

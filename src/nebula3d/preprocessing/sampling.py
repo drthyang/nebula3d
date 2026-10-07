@@ -38,19 +38,20 @@ def trim_coverage_edge(vol: HKLVolume, voxels: int = 1, *,
     """Unmeasure the outer *voxels* layers of the measured coverage, in place.
 
     A measured voxel next to unmeasured space is only partly covered by the
-    detectors, so its normalisation is tiny and its value unreliable.  On a
-    TOPAZ volume (Fe3Ge2, 401³, 73 % unmeasured) the measured voxels touching an
-    unmeasured one reach p99 ≈ 4,000 and a maximum of 5.5·10⁷, while a voxel
-    further in they already match the interior (p99 ≈ 38 against 34).  Trimmed
-    voxels become unmeasured exactly as the loader leaves them: masked, with
-    data and sigma zeroed.  The volume's own faces are not an edge.  Returns
-    the number of voxels trimmed.
+    detectors, so its normalisation is tiny and its value unreliable.  On
+    measured data with much of the box unmeasured, the voxels touching an
+    unmeasured one can be orders of magnitude above the interior, while one
+    voxel further in they already match it.  Trimmed voxels become unmeasured
+    exactly as the loader leaves them: masked, with data and sigma zeroed.
+    The volume's own faces are not an edge.  Returns the number of voxels
+    trimmed.
 
     With the *symmetry* the data were symmetrised with, a voxel is trimmed
     when any equivalent voxel is.  The 3×3×3 neighbourhood is not invariant
-    under operations that mix the grid axes (on Fe3Ge2's 6/m grid 15 % of the
-    trimmed voxels kept a measured partner), and an equivalent voxel can see
-    the coverage edge where this one meets the volume's face.
+    under operations that mix the grid axes (on a hexagonal 6/m grid a
+    sizeable share of the trimmed voxels kept a measured partner), and an
+    equivalent voxel can see the coverage edge where this one meets the
+    volume's face.
     """
     if voxels <= 0 or vol.mask.all():
         return 0

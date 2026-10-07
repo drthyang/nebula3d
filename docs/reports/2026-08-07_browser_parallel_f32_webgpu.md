@@ -83,17 +83,20 @@ Mixed-precision rules (each a no-op at float64):
 | `tv_inpaint` | solves in float64, returns storage dtype |
 | Cancellation-critical flatten subtract | computed at the promoted (f64) dtype, correctly rounded into f32 storage (numpy type promotion) |
 
-Real-data validation (TbTi3Bi4, 401×401×301 = 48.4 M voxels, low-memory,
-float32 vs float64):
+Real-data validation (three measured 401×401×301 = 48.4 M-voxel volumes,
+low-memory, float32 vs float64; worst case over the three):
 
-| Volume | ΔPDF nrms | max rel diff | \|Δ pearson_r\| | punch flips | n_peaks | wall f64 → f32 |
-| --- | --- | --- | --- | --- | --- | --- |
-| 22 K | 1.0e-05 | 6.7e-08 | 3.8e-10 | 1 / 48.4 M | 14087 = 14087 | 229 s → 170 s (−26 %) |
-| 45 K | 5.9e-06 | — | 6.0e-10 | 2 / 48.4 M | equal | 223 s → 174 s (−22 %) |
-| 100 K | 1.7e-07 | — | 7.7e-12 | 0 | equal | 238 s → 207 s (−13 %) |
+| Metric | float32 vs float64 |
+| --- | --- |
+| ΔPDF nrms | ≤ 1e-05 |
+| max rel diff | < 1e-07 (checked on one volume) |
+| \|Δ pearson_r\| | < 1e-09 |
+| punch flips | ≤ 2 / 48.4 M voxels |
+| n_peaks | identical |
+| wall f64 → f32 | −13 % to −26 % (≈ 230 s → 170–207 s) |
 
-Measured per-stage peaks (22 K, low-memory, B/voxel, incl. ~5 B/voxel
-interpreter baseline):
+Measured per-stage peaks (one of these volumes, low-memory, B/voxel, incl.
+~5 B/voxel interpreter baseline):
 
 | stage | f64 | f32 |
 | --- | --- | --- |

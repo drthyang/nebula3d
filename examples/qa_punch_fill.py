@@ -21,7 +21,7 @@ if present, and its Bragg profile JSON, and reports, with nothing changed:
 
 Run::
 
-    PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl DATASET=22K \\
+    PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl DATASET=<tag> \\
       .venv/bin/python examples/qa_punch_fill.py
 
 Env:

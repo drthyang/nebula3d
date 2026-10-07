@@ -48,7 +48,7 @@ from nebula3d.demo import demo_volume
 from nebula3d.pipeline import BackfillParams, PunchParams, backfill, punch_bragg
 
 DIFFUSE = ("background", "sro", "tds", "rods")
-# The demo has no fractional-H modulation: the TbTi3Bi4 thirds protection off.
+# The demo has no fractional-H modulation: the default thirds protection off.
 BASE = PunchParams(search_exclude_h_fractions=None)
 ARMS = {
     "no_gate": dataclasses.replace(BASE, min_significance=None),

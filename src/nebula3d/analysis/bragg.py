@@ -232,11 +232,11 @@ def _bragg_template(
 
     Per axis, the Gaussian fitted to that axis's core, or the measured profile
     where it reaches further: the core plus every tail the stacked peaks show,
-    a halo common to all directions included.  On TbTi3Bi4 that adds only the
-    c-axis mosaic tail across Q.  On Fe3Ge2 every axis also has a halo that is
-    the peak's own: it falls off exponentially (~0.04 Å⁻¹) and keeps the same
-    fraction of the peak from 6 to 11 Å⁻¹, where thermal diffuse would grow as
-    Q².  Left outside the punch, such a halo is a bright rim the fill cannot
+    a halo common to all directions included.  On some data that adds only a
+    mosaic tail (e.g. along c*) across Q.  On other data every axis also has a
+    halo that is the peak's own: it falls off exponentially and keeps the same
+    fraction of the peak at every |Q|, where thermal diffuse would grow as Q².
+    Left outside the punch, such a halo is a bright rim the fill cannot
     follow.  Thermal diffuse peaked at the node is punched with it.
     Non-increasing, 1 at 0.
     """
@@ -361,9 +361,9 @@ class BraggRemover:
         ``(n_h, n_k, n_l)`` when the volume is indexed on that supercell of the
         Bragg lattice.  Integer-mode nodes are then the parent cell's only:
         h, k and l multiples of n_h, n_k and n_l.  The other integer nodes hold
-        superstructure or nothing: on Fe3Ge2 indexed 2×2×2 they hold
-        short-range 2×2×2 order, 2–3× broader than the Bragg peaks.  The search
-        pass still finds them, so use ``mode="integer"`` to keep them.
+        superstructure or nothing (e.g. short-range superstructure order,
+        broader than the Bragg peaks).  The search pass still finds them, so
+        use ``mode="integer"`` to keep them.
     detect_window_hkl:
         Half-width (HKL) of the window used to locate/centre a peak and estimate
         its local background.
