@@ -40,10 +40,14 @@ Step by step (as implemented in `src/nebula3d/analysis/delta_pdf.py`):
    windowing leaves a nonzero windowed sum → a spurious peak at `r=0`; the
    plain mean subtracted *after* windowing leaves a step at the box faces →
    dashed streaks along the axes. See "The dashed axis streaks" below.)
-3. **Apodize**: multiply by a separable window (`gaussian` in the pipeline,
-   `hann`, or `none`) to suppress termination ripples from the finite `|Q|`
-   range. Both tapers reach zero at the box edge: the Gaussian is shifted
-   down by its edge value, `(g − g_edge)/(1 − g_edge)`.
+3. **Apodize**: multiply by a window (`gaussian` in the pipeline, `hann`, or
+   `none`) to suppress termination ripples from the finite `|Q|` range. Both
+   tapers reach zero at the box edge: the Gaussian is shifted down by its
+   edge value, `(g − g_edge)/(1 − g_edge)`. The window is separable (a product
+   of tapers along H, K and L) unless the lattice has a symmetry that no
+   separable window respects — a hexagonal cell — where it is a taper in an
+   ellipsoidal radius instead (`window_shape`; see "The window respects the
+   lattice symmetry" below).
 4. **Zero-pad symmetrically** to the next fast FFT length (5-smooth,
    `scipy.fft.next_fast_len` — just as fast as a power of two but a far
    smaller pad), keeping `Q=0` on the new centre. One-sided padding shifts
@@ -95,8 +99,9 @@ Files written before the angles were stored are drawn at 90°.
 
 The recipe is exactly invertible, so the ΔPDF can be transformed **back** to the
 reciprocal-space diffuse volume it came from — a round-trip consistency check.
-`compute_delta_pdf` records the inverse metadata (pad width, the separable window
-factors, the subtracted mean, the cropped axes) on its result, and
+`compute_delta_pdf` records the inverse metadata (pad width, the window — three
+1-D factors or the ellipsoid's 3×3 form — the subtracted mean, the cropped
+axes) on its result, and
 `invert_delta_pdf` undoes each step:
 
 ```python
@@ -194,9 +199,8 @@ amplitudes drop by 4–10 % (measured 0.96 on TbTi3Bi4 22 K, 0.90 on Fe3Ge2).
 Still open, found in the same diagnosis (Fe3Ge2):
 
 - The **separable index-space window is not 6-fold invariant** for a hexagonal
-  cell, so a/b and a+b get slightly different resolution (a vs a+b mismatch
-  ~0.05 at 6–12 Å). A window in `|Q|` (or an ellipsoid with its axis on c*)
-  that reaches zero at the box faces removes it.
+  cell, so a/b and a+b get different resolution. Fixed by the ellipsoid
+  window; see the next section.
 - The **punch mask is not 6-fold symmetric**: 23 % of punched voxels have an
   unpunched 60° partner (and 15 % of the coverage-edge trim). It puts a
   long-wavelength stripe pattern across the a–b section.
@@ -204,9 +208,165 @@ Still open, found in the same diagnosis (Fe3Ge2):
   Fe3Ge2, out to `|Q|` = 34 Å⁻¹ from data ending at ~17 Å⁻¹). With the
   Gaussian window this barely changes the ΔPDF, but it is invented intensity.
 
-Whether a smooth cross from the residual envelope (next section) remains
-after this fix has not been re-measured: subtracting the separable marginals,
-the evidence below, would also have removed the box step, which is separable.
+Whether a smooth cross from the residual envelope (two sections down)
+remains after this fix has not been re-measured: subtracting the separable
+marginals, the evidence there, would also have removed the box step, which
+is separable.
+
+## The window respects the lattice symmetry (2026-10-07)
+
+The window's Fourier transform is the ΔPDF's resolution function, so
+symmetry-equivalent directions get the same resolution only if the window is
+invariant under the Laue group. A separable window `w_H(h)·w_K(k)·w_L(l)` on
+a symmetric box is invariant under sign flips and under swaps of equal axes.
+That covers every orthogonal Laue group, and also monoclinic `2/m` and
+triclinic `−1`. It does not cover the hexagonal 6-fold
+`(h, k, l) → (−k, h + k, l)`, which mixes H and K. On Fe3Ge2 the separable
+window gave a and b a resolution of 0.41 Å but a+b 0.29 Å (FWHM, Gaussian
+σ = 0.4), although the three directions are equivalent.
+
+`compute_delta_pdf(window_shape=…)` (pipeline `DeltaPdfParams.window_shape`,
+server `pdf_window_shape`, the *Window shape* select in the web app):
+
+- `"separable"`: the product of 1-D tapers, as before.
+- `"ellipsoid"`: the same taper profile as a function of one radius `ρ`,
+  `w = f(ρ)`. `ρ = 1` on the largest ellipsoid that fits in the box and that
+  every symmetry of the lattice maps onto itself. The window is zero for
+  `ρ ≥ 1`, so it vanishes on the box faces as the DC fix requires.
+- `"auto"` (default): `"ellipsoid"` when a lattice symmetry mixes the axes,
+  i.e. is not a signed permutation of H, K, L. This is the case for
+  hexagonal cells in hexagonal axes, which no separable window can follow.
+  Otherwise `"separable"`. Orthogonal, monoclinic and triclinic cells
+  therefore keep the old window bit-for-bit. `apodization="none"` stays no
+  window.
+
+**Finding the ellipsoid.** The lattice point group is read off the UB: the
+integer matrices `R` with entries in {−1, 0, 1} and `Rᵀ G* R = G*`
+(`G* = UBᵀ·UB`), to 5 % of `√(G*_ii G*_jj)`. Refined cells are not exactly
+symmetric. Fe3Ge2's UB has a and b 0.12 % apart and angles up to 0.23° off
+90/90/120, which puts the 24 operations of 6/mmm at ≤ 1.2 % and the next
+candidate at 68 %. Among invariant ellipsoids `xᵀMx ≤ 1` inside the box
+`|x_i| ≤ X_i`, the largest is unique. Its optimality condition makes `M` a
+weighted sum of the box faces averaged over the group,
+`ρ² = Σ_i λ_i ⟨(R·x)_i²⟩_R / X_i²`. The weights are D-optimal-design weights,
+found in a few multiplicative updates. A last rescale makes the ellipsoid
+touch the nearest face. For a hexagonal box this gives
+
+    ρ² = (4/3)(h² + hk + k²)/X² + l²/X_L² = (Q⊥/d_ab)² + (Q∥/d_c)²
+
+with `d = 2π·X/|a_i|` the distances of the box faces from `Q = 0` (15.65 and
+12.53 Å⁻¹ on Fe3Ge2). Without axis-mixing symmetry it is the index-space
+sphere `Σ (x_i/X_i)²`. Axes with a single plane take no part.
+
+**Memory and inversion.** The window is stored as its 3×3 form and evaluated
+one H plane at a time (`EllipsoidWindow.planes()`, ~5 float64 planes of
+temporaries). The forward multiply, the weighted mean and the deapodization
+all stream the same planes, and no 3-D window is ever built. The WebGPU path
+swaps only the FFT core (`webbridge._gpu_forward` / `_gpu_inverse`; the
+window never reaches the GPU), so it inherits the ellipsoid unchanged.
+`invert_delta_pdf` divides out exactly the same `w`, so the round trip stays
+exact.
+
+**Evidence** (Fe3Ge2 90 K, float32, Gaussian σ = 0.4; mismatches relative to
+the strongest correlation at 1.5–15 Å, on the a–b section through the origin;
+`a/b vs a+b` compares the profiles at equal grid steps):
+
+| input | window | a/b vs a+b, 2–6 Å (RMS / max) | 6–12 Å (RMS / max) | 6-fold residual, 1.5–15 Å (RMS / max) |
+|---|---|---|---|---|
+| raw, 6/m-symmetrised | separable | 0.068 / 0.24 | 0.071 / 0.30 | 0.029 / 0.31 |
+| raw, 6/m-symmetrised | ellipsoid | < 10⁻⁷ | < 10⁻⁷ | < 10⁻⁷ |
+| pipeline input (flattened) | separable | 0.069 / 0.31 | 0.051 / 0.22 | 0.030 / 0.42 |
+| pipeline input (flattened) | ellipsoid | 0.024 / 0.084 | 0.028 / 0.070 | 0.018 / 0.084 |
+
+On the exactly symmetric raw volume the ellipsoid leaves only float32
+round-off. The worst separable mismatch sits on the sharp lattice-vector
+peaks (8.3 Å along a: 0.26 against −0.01 along a+b), which fall between grid
+points and so sample the anisotropic resolution function. What remains on
+the pipeline input is the input's own asymmetry: the punch mask and the edge
+trim are not 6-fold symmetric (see the list above).
+
+**Cost.** The ellipsoid leaves out the box corners. Its support is 45 % of
+the box against 98.5 %, and its weight `Σw` is 0.78 of the separable
+Gaussian's (0.71 for Hann). On Fe3Ge2 the resolution FWHM goes from
+0.41/0.41/0.29 Å (a/b/a+b) to 0.44 Å in all three, and along c from 0.51 to
+0.56 Å. ΔPDF amplitudes drop by 10–13 %: the main peak along a falls to 0.90
+(raw) and 0.87 (pipeline input) of its separable value.
+
+**Alternative rejected.** A product of tapers along h, k and h+k,
+`f(h/X)·f(k/X)·f((h+k)/X)·f(l/X_L)`, is also 6-fold invariant and keeps the
+whole hexagon. But three in-plane factors taper faster than one, so on
+Fe3Ge2 its in-plane resolution is worse than the ellipsoid's: 0.49 against
+0.44 Å for the Gaussian, 0.47 against 0.45 Å for Hann.
+
+### The window and the measured coverage (`support`)
+
+A backfill that leaves unmeasured space masked, rather than inventing
+intensity there, hands the transform a volume whose data end inside the box.
+Read as `I = 0`, that region does two things: it pulls the weighted mean `c`
+down, and the box-sized window still weights it. On Fe3Ge2 the separable
+window puts 6 % of its weight on unmeasured space, so the coverage edge
+becomes a step with a truncation ripple (period ≈ 2π/17 Å⁻¹).
+
+`compute_delta_pdf(support=mask)` (pipeline `DeltaPdfParams.window_support`,
+default on, passes the input volume's `mask`; server `pdf_window_support`;
+*Taper to the measured coverage* in the web app):
+
+- **ΔI = 0 off the data.** The mean is weighted over the support only, and
+  voxels outside it are zeroed after it is subtracted. They then add no
+  step of `−c`, and the input still sums to zero.
+- **The window fits the coverage.** Unsupported space that reaches the box
+  faces is where the coverage ends. It is found by `binary_fill_holes`
+  (26-connected; bool arrays only), so holes enclosed by data do not count.
+  The ellipsoid is shrunk until at most `support_tol` (default 10⁻³) of its
+  weight lies there. With `"auto"`, an orthogonal box switches to the
+  ellipsoid when the separable window puts more than that on it. A shrunk
+  ellipsoid is the same ellipsoid scaled, so it stays invariant. The scale
+  is logged as `window_scale`.
+- `invert_delta_pdf` leaves unsupported voxels out of the reliable `mask`.
+- An all-True support (main's Laplace backfill fills the whole box) changes
+  nothing, bit for bit.
+
+The tolerance is not cosmetic. Coverage edges are ragged, and thin channels
+of unmeasured voxels reach far in. On raw Fe3Ge2 the nearest open voxel sits
+at `ρ = 0.78`, although only 4.4·10⁻⁴ of the window's weight is open. On
+TbTi3Bi4 22 K, which has full coverage, a 1 378-voxel channel reaches
+`ρ = 0.945` with 1.2·10⁻⁶ of the weight. Shrinking to the nearest open voxel
+(`support_tol=0`) would shrink Fe3Ge2's window by 22 % (real-space peaks
+~28 % broader) and halve its main peak; the weight criterion ignores such
+channels.
+
+Measured on Fe3Ge2 90 K (the pipeline's flattened input with the unmeasured
+space that reaches the box edge masked, as the unmeasured-aware backfill
+leaves it; Gaussian σ = 0.4; differences at 2–15 Å relative to the strongest
+1.5–15 Å correlation):
+
+| window | `c` | effect of the support | scale |
+|---|---|---|---|
+| separable | 3.31 → 3.52 | 2.1 % max, 0.14 % RMS (the mean's share of the ripple) | — (cannot shrink) |
+| ellipsoid (`auto`) | 2.871 → 2.872 | 0.08 % max, 0.01 % RMS | 1.0 (already inside the coverage) |
+| ellipsoid, `support_tol=0` | 1.94 | main peak halved | 0.78 |
+
+So for this hexagonal cell the ellipsoid already keeps clear of the coverage
+edge, and the support only fixes the mean's handling of the empty region. It
+matters most for an orthogonal cell whose coverage ends inside the box, where
+`"auto"` now moves to a fitted ellipsoid. `_open_space` takes 2–3 s on 401³
+natively and runs only when the support has unsupported voxels.
+
+**Still not symmetric:** `subtract_smooth_bg` blurs isotropically in index
+space, and `h² + k²` is not `h² + hk + k²`, so it too breaks the 6-fold on a
+hexagonal cell. It is off by default.
+
+Tests: `tests/test_delta_pdf_window.py`. On a synthetic 6/m volume they check
+that a, b and a+b agree and that the 6-fold residual is below 10⁻⁹, while the
+separable window shows it above 10⁻³. They also cover the point groups from
+the UB, the hexagonal form against `(Q⊥/d_ab)² + (Q∥/d_c)²`, `auto` on five
+cells, bit-identity on orthorhombic cells, the exact inverse for
+hann/gaussian/none, the plane-sized memory peak in float32, and the WebGPU
+glue with a numpy stand-in for `nebulaGpu`. The support tests cover the
+all-True no-op, ΔI = 0 and the support-weighted mean for an enclosed hole, the
+shrink to a coverage sphere at three tolerances (still 6-fold symmetric), a
+thin channel that does not collapse the window, the inverse's mask, the
+pipeline and server wiring, and the WebGPU glue with a support.
 
 ## The axis cross is the residual diffuse background (diagnosed 2026-06-05)
 

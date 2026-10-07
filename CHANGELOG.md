@@ -698,6 +698,20 @@
   before; unmeasured regions that reach a face of the box stay masked.
   `BackfillParams.unmeasured="all"` restores the old fill. See
   docs/algorithms/inpainting.md.
+- **The 3D-ΔPDF window respects the lattice symmetry and the measured
+  coverage.** The separable window (a product of 1-D tapers along H, K, L) is
+  not invariant under the hexagonal 6-fold, so on Fe3Ge2 (6/m) the ΔPDF along a
+  and b differed from a + b by 0.03–0.05 of the main peak. New `window_shape`
+  (`auto` | `separable` | `ellipsoid`; server `pdf_window_shape`, and a web
+  control): `auto` tapers hexagonal cells on the largest symmetric ellipsoid
+  inside the box, and keeps the separable window bit for bit for orthogonal,
+  monoclinic and triclinic cells. New `support=` (pipeline `window_support`,
+  default on; web "Taper to the measured coverage"): masked voxels enter as
+  ΔI = 0 and the mean is taken over the data only; where the coverage ends
+  inside the box, the ellipsoid shrinks until at most 10⁻³ of its weight lies on
+  unmeasured space. With the backfill now leaving that space masked, Fe3Ge2 90 K
+  changes by at most 0.08 % at 2–15 Å. Cached ΔPDFs are recomputed once. See
+  docs/algorithms/delta_pdf.md.
 
 ## 0.3.0 (beta) — 2026-07-05
 

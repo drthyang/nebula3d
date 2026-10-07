@@ -41,6 +41,7 @@ def _fake_dpdf(shape=(8, 8, 8)):
     return SimpleNamespace(
         data=np.random.default_rng(1).normal(0, 1, shape),
         x_axis=ax, y_axis=ax, z_axis=ax, q_max=3.0, apodization="gaussian",
+        window_shape="separable", window_ellipsoid=None,
     )
 
 
@@ -165,7 +166,7 @@ def test_transform_config_string_format():
     )
     assert cfg == (
         "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;"
-        "crop_hkl=4,8,15;q_band=;subtract_bg="
+        "crop_hkl=4,8,15;q_band=;subtract_bg=;window_shape=auto;window_support=1"
     )
 
 
