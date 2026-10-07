@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The flatten's magnetic ion defaults to none.** The model then subtracts a
+  fitted constant only; choose the sample's ion (Tb3+ for TbTi3Bi4) to add the
+  `c·F(Q)²` paramagnetic term. The Tb³⁺ default put a terbium form factor on
+  every sample: on Fe3Ge2 90 K it fitted c = −2.5, a negative paramagnetic
+  term, to follow a pedestal that rises with |Q|.
 - **The slice viewers share one workspace, after the NeXus Viewer.**
   Reciprocal cleanup, 3D-ΔPDF and Q–R now lay out, zoom and set colours the
   same way, and the same way as the NeXus Viewer.

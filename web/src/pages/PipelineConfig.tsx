@@ -36,10 +36,10 @@ const DATASET_STAGE_BADGES = [
 
 const DEFAULT_PDF_CROP = { h: 4, k: 8, l: 15 };
 
-// Ions with a tabulated form factor for the flatten model (besides the Tb3+
-// default) — mirrors nebula3d.preprocessing.form_factor.IONS.
+// Ions with a tabulated form factor for the flatten model (the default is none:
+// a constant only) — mirrors nebula3d.preprocessing.form_factor.IONS.
 const FLATTEN_IONS = [
-  "Ti3+", "V3+", "V4+", "Cr3+", "Mn2+", "Mn3+", "Mn4+", "Fe2+", "Fe3+",
+  "Tb3+", "Ti3+", "V3+", "V4+", "Cr3+", "Mn2+", "Mn3+", "Mn4+", "Fe2+", "Fe3+",
   "Co2+", "Co3+", "Ni2+", "Ni3+", "Cu2+",
   "Pr3+", "Nd3+", "Gd3+", "Dy3+", "Ho3+", "Er3+", "Tm3+", "Yb3+",
 ];
@@ -2110,8 +2110,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     disabled={!s.flatten || (s.flattenEstimator !== "" && s.flattenEstimator !== "model")}
                     onChange={(e) => patch({ flattenIon: e.target.value })}
                   >
-                    <option value="">Tb3+ (default)</option>
-                    <option value="none">none (constant only)</option>
+                    <option value="">none: constant only (default)</option>
                     {FLATTEN_IONS.map((ion) => (
                       <option key={ion} value={ion}>{ion}</option>
                     ))}

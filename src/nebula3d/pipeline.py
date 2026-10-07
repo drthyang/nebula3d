@@ -490,12 +490,13 @@ class FlattenParams:
 
     The default subtracts a fitted ``const + c·F(Q)²`` pedestal (nuclear
     incoherent + single-ion paramagnetic scattering) with ``F`` the form factor
-    of ``ion`` — Tb³⁺ for the TbTi3Bi4 sample; ``ion=None`` for a non-magnetic
-    sample fits a constant only.
+    of ``ion``.  The default ``ion=None`` fits a constant only; name the
+    sample's magnetic ion (e.g. ``"Tb3+"`` for TbTi3Bi4) to add the
+    paramagnetic term.
     """
 
     estimator: str = "model"
-    ion: str | None = "Tb3+"
+    ion: str | None = None
     fit_q_range: tuple[float, float] | None = (0.8, 10.0)
     floor_percentile: float = 25.0
     q_step: float = 0.05

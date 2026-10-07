@@ -41,8 +41,9 @@ stays in.
 
 Estimator
 ---------
-``'model'`` (default) is the fit above; ``ion=None`` fits a constant only (a
-non-magnetic sample).  ``'floor'`` subtracts the smoothed per-shell floor itself
+``'model'`` (default) is the fit above.  With the default ``ion=None`` it fits
+a constant only (a non-magnetic sample); name the magnetic ion to add the
+``c·F(Q)²`` term.  ``'floor'`` subtracts the smoothed per-shell floor itself
 and ``'snip'`` the SNIP baseline of the per-shell median profile — both are
 free-form, so both remove some isotropic diffuse signal (kept for comparison).
 The shell ``median`` and ``mode`` estimators were removed: they include the
@@ -128,7 +129,7 @@ def flatten_radial_background(
     min_count: int = 20,
     q_range: tuple[float, float] | None = None,
     clip_negative: bool = False,
-    ion: str | None = "Tb3+",
+    ion: str | None = None,
     fit_q_range: tuple[float, float] | None = (0.8, 10.0),
 ) -> RadialFlattenResult:
     """Subtract a smooth, continuous isotropic radial background from *vol*.
@@ -164,9 +165,9 @@ def flatten_radial_background(
         residuals below the background are meaningful and kept).
     ion : str or None
         ``estimator='model'``: the magnetic ion whose form factor shapes the
-        paramagnetic term (default ``'Tb3+'``, the TbTi3Bi4 sample; see
-        :data:`~nebula3d.preprocessing.form_factor.IONS`).  ``None`` or
-        ``'none'`` fits a constant only.
+        paramagnetic term (e.g. ``'Tb3+'`` for TbTi3Bi4; see
+        :data:`~nebula3d.preprocessing.form_factor.IONS`).  ``None`` (default)
+        or ``'none'`` fits a constant only.
     fit_q_range : (float, float), optional
         ``estimator='model'``: |Q| range (Å⁻¹) of the shells the model is fitted
         to (default 0.8–10, clear of the beam stop and the sparse high-|Q|

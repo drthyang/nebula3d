@@ -217,7 +217,9 @@ data/processed/*_backfilled_flattened.h5
 
 Sweeps spherical `|Q|` shells, fits the isotropic pedestal `const + c·F(Q)²`
 to each shell's floor (p25) and subtracts it. The constant is nuclear incoherent
-scattering and `F` is the magnetic ion's form factor (`ION`, default Tb3+). Both
+scattering and `F` is the magnetic ion's form factor (`ION`; this TbTi3Bi4
+script uses Tb3+, while the pipeline and web app default to none, a constant
+only). Both
 terms are self scattering, so the ΔPDF changes only at r ≈ 0, while the
 anisotropic diffuse, the Bragg residuals and isotropic pair correlations are
 kept. This is the explicit background-removal step. Use
