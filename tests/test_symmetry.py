@@ -3,9 +3,9 @@
 A volume symmetrised over 6/m holds the same value at every equivalent voxel,
 so its coverage-edge trim and Bragg punch must be the same there too.  Their
 index-space windows and 3×3×3 neighbourhoods are not invariant under the
-hexagonal 6-fold, which mixes H and K; on Fe3Ge2 (6/m) 22 % of the punched
-voxels had an unpunched 60° partner and 15 % of the trimmed ones a kept
-partner.  The reference orbits here are built from the group's generators
+hexagonal 6-fold, which mixes H and K; on measured 6/m data a sizeable share
+of the punched voxels had an unpunched 60° partner, and of the trimmed ones a
+kept partner.  The reference orbits here are built from the group's generators
 directly, not with ``nebula3d.symmetry``.
 """
 
@@ -22,7 +22,7 @@ from nebula3d.preprocessing.sampling import trim_coverage_edge
 from nebula3d.symmetry import GridSymmetry, parse_symmetry_ops, read_symmetry_ops
 from nebula3d.utils import ub_from_lattice
 
-# The 6/m operations as the NeXus Viewer writes them (Fe3Ge2 90 K file).
+# The 6/m operations as the NeXus Viewer writes them.
 SIX_M = ("h,k,l; h+k,-h,l; -h,-k,-l; k,-h-k,l; -h-k,h,-l; -k,h+k,-l; "
          "-h,-k,l; h,k,-l; -h-k,h,l; h+k,-h,-l; -k,h+k,l; k,-h-k,-l")
 
@@ -76,7 +76,7 @@ def _hex_volume(seed=0):
     """
     rng = np.random.default_rng(seed)
     rot, _ = np.linalg.qr(rng.standard_normal((3, 3)))
-    ub = rot @ ub_from_lattice(8.03, 8.03, 10.03, 90.0, 90.0, 120.0)
+    ub = rot @ ub_from_lattice(8.0, 8.0, 10.0, 90.0, 90.0, 120.0)
     hk = np.linspace(-3.0, 3.0, _SHAPE[0])
     ll = np.linspace(-2.0, 2.0, _SHAPE[2])
     hkl = np.stack(np.meshgrid(hk, hk, ll, indexing="ij")).reshape(3, -1)
@@ -189,7 +189,7 @@ def test_edge_trim_is_symmetric_with_the_declared_symmetry():
 
 
 def test_punch_mask_is_symmetric_with_the_declared_symmetry():
-    # Regression (Fe3Ge2 6/m, 2026-10-07): with the default PunchParams (its
+    # Regression (6/m data, 2026-10-07): with the default PunchParams (its
     # H-only guard and thirds exclusion included) the punch of exactly
     # symmetric data was not symmetric; with the declared operations it is.
     vol = _hex_volume()

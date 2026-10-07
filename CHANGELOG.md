@@ -5,18 +5,20 @@
 - **No more dashed streaks along the 3D-ΔPDF axes.** The transform windowed
   the volume, subtracted the plain mean from the whole box and zero-padded
   it, which left a step of the mean at the box faces; its transform drew a
-  line of alternating sign along every axis, 13–27 % of the strongest
-  correlation on Fe3Ge2 90 K and TbTi3Bi4 22 K. It now subtracts the
-  window-weighted mean before windowing, and the Gaussian window is shifted
-  to reach zero at the box edge (FWHM 3 % narrower in Q; ΔPDF amplitudes
-  4–10 % lower). The streak drops
-  35–45× on Fe3Ge2 and 13–30× on TbTi3Bi4; the back-FFT check stays exact
-  (TbTi3Bi4 22 K r 0.99912 → 0.99988). See docs/algorithms/delta_pdf.md.
+  line of alternating sign along every axis, a sizeable fraction of the
+  strongest correlation on both a hexagonal and an orthorhombic dataset. It
+  now subtracts the window-weighted mean before windowing, and the Gaussian
+  window is shifted to reach zero at the box edge (FWHM 3 % narrower in Q;
+  ΔPDF amplitudes a few per cent lower). The streak drops by more than an
+  order of magnitude on both datasets; the back-FFT check stays near-exact
+  and improves slightly. See docs/algorithms/delta_pdf.md.
 - **The flatten's magnetic ion defaults to none.** The model then subtracts a
-  fitted constant only; choose the sample's ion (Tb3+ for TbTi3Bi4) to add the
-  `c·F(Q)²` paramagnetic term. The Tb³⁺ default put a terbium form factor on
-  every sample: on Fe3Ge2 90 K it fitted c = −2.5, a negative paramagnetic
-  term, to follow a pedestal that rises with |Q|.
+  fitted constant only; choose the sample's magnetic ion to add the
+  `c·F(Q)²` paramagnetic term. The old default ion put its form factor on
+  every sample: on a hexagonal dataset it fitted a negative c, a negative
+  paramagnetic term, to follow a pedestal that rises with |Q|. The example
+  scripts (`run_pipeline.py`, `flatten_background_3d.py`,
+  `validate_flatten.py`) default to none too; set `ION` for a magnetic sample.
 - **The slice viewers share one workspace, after the NeXus Viewer.**
   Reciprocal cleanup, 3D-ΔPDF and Q–R now lay out, zoom and set colours the
   same way, and the same way as the NeXus Viewer.
@@ -38,8 +40,8 @@
     vmax, so raising it darkened the image.
   - **The diffuse is visible by default.** Cleanup's shared scale now comes
     from the output stage. It came from the pooled stages, so raw's Bragg
-    peaks set it: on TbTi3Bi4 100 K the flattened median sat at 0.4 % of the
-    range (3.94) and needed *Contrast* at its ×0.1 minimum.
+    peaks set it: on measured data the flattened median sat at a tiny
+    fraction of the range and needed *Contrast* at its ×0.1 minimum.
   - **Q–R fixes.** *Apply* sits next to each band and no longer snaps both
     cuts to the centre. The residual has its own ± range on a diverging map;
     it was drawn from 0 on the data's sequential scale, which hid every
@@ -50,21 +52,22 @@
 
 - **Volumes indexed on a supercell.** New punch setting `supercell` (default
   1×1×1). With a supercell, integer mode punches only the parent lattice's
-  nodes, those whose h, k, l are multiples of the factors. The Fe3Ge2 TOPAZ
-  volume is indexed 2×2×2. Its odd nodes hold short-range 2×2×2 order (2–3×
-  the Bragg width) or nothing, and `mode="both"` was taking 18 % of that
-  intensity. Run it with `mode="integer"`, `supercell=(2, 2, 2)` and the H
-  guard off: the rods and superlattice nodes then stay intact. The H guard
-  (`integer_h_guard_hkl`, 0.12 r.l.u., set for TbTi3Bi4's H = ±1/3 planes) is
-  now a setting too. On Fe3Ge2 it left a 2.5σ Bragg tail along H. Both are on
-  the server (`punch_supercell_h/k/l`, `punch_h_guard`, 0 = off) and on the web
-  Configure page, whose punch preview marks only the parent nodes. TbTi3Bi4
+  nodes, those whose h, k, l are multiples of the factors. On a volume
+  indexed on a 2×2×2 supercell, `mode="both"` also punched the odd
+  (superlattice) nodes, which carry no parent Bragg peak, and took part of
+  the intensity there. Run such a volume with `mode="integer"`,
+  `supercell=(2, 2, 2)` and the H guard off: the rods and superlattice nodes
+  then stay intact. The H guard (`integer_h_guard_hkl`, 0.12 r.l.u., set to
+  protect satellite planes at fractional H such as H = ±1/3) is now a setting
+  too. On such a volume it left a Bragg tail along H. Both are on the server
+  (`punch_supercell_h/k/l`, `punch_h_guard`, 0 = off) and on the web
+  Configure page, whose punch preview marks only the parent nodes. The
   defaults are unchanged.
 - **The flatten subtracts a fitted const + c·F(Q)² pedestal.**
   - **What it does.** It still takes each |Q| shell's floor (p25). It then
     fits `const + c·F(Q)²` to those floors over 0.8–10 Å⁻¹ and subtracts the
     fitted curve, instead of the smoothed floor itself.
-  - **The two terms.** `const` is nuclear incoherent scattering (Ti dominates).
+  - **The two terms.** `const` is nuclear incoherent scattering.
     `c·F²` is the paramagnetic scattering of each ion by itself, with `F` its
     magnetic form factor. Both are self scattering, so they change the ΔPDF
     only at r ≈ 0.
@@ -72,14 +75,9 @@
     followed the isotropic `sin(Qr)/(Qr)` terms of real pair correlations and
     subtracted them.
 
-  On TbTi3Bi4, each ΔPDF compared with no flatten:
-
-  | | 22 K | 45 K | 100 K |
-  |---|---|---|---|
-  | shell-mean change at 2.75 / 3.75 Å, old floor | −125 / −238 | −49 / −267 | −234 / −112 |
-  | shell-mean change at 2.75 / 3.75 Å, model | +47 / +35 | +46 / +35 | +30 / +19 |
-  | axis-cross ratio: none → old floor → model | 35.4 → 15.6 → 16.5 | 76.5 → 11.4 → 16.7 | 37.4 → 6.0 → 8.2 |
-  | fitted pedestal | 0.032 + 0.120·F² | 0.027 + 0.126·F² | 0.016 + 0.130·F² |
+  On measured data at three temperatures, compared with no flatten, the old
+  floor pulled the ΔPDF's short-range shell means strongly negative, while the
+  model moves them only slightly. Both reduce the axis cross.
 
   On the demo ground truth, the old floor's ΔPDF error at 2–5 Å was 42 %,
   against 13 % with no flatten.
@@ -90,13 +88,11 @@
   sample environment, the Debye–Waller fall-off of the incoherent constant).
 
   - **Form factor.** `F` is the dipole form, ⟨j0⟩ + (2/g − 1)⟨j2⟩. It fits the
-    TbTi3Bi4 floors better than ⟨j0⟩ alone: R² 0.88 / 0.90 / 0.94 against
-    0.84 / 0.87 / 0.91 at 22 / 45 / 100 K (measured before the backfill-band
-    fix; with it the dipole R² is 0.877 / 0.902 / 0.935).
+    measured floors better than ⟨j0⟩ alone at every temperature.
   - **New module.** `nebula3d.preprocessing.form_factor` has the coefficients
     for 22 3d and rare-earth ions (International Tables C §4.4.5,
     cross-checked against Mantid).
-  - **Settings.** `ion` (default `"Tb3+"`; `None`/`"none"` fits a constant
+  - **Settings.** `ion` (the magnetic ion; `None`/`"none"` fits a constant
     only) and `fit_q_range` are new options on `flatten_radial_background` and
     `FlattenParams`. On the server the ion is `flatten_ion`.
   - **Where the default changed.** The stage driver, the flatten example, the
@@ -105,30 +101,28 @@
     for comparison.
   - **Limit.** For Ising-like moments the self term is `F²(1 − (Q̂·ê)²)`, and
     only its shell average is removed.
-- **No bright rim around a filled hole.** On the Fe3Ge2 TOPAZ volume, bright
+- **No bright rim around a filled hole.** On a hexagonal TOPAZ volume, bright
   nodes came out as "coffee beans": a ring brighter than the fill inside it.
   There were two causes.
   - The Laplace fill takes its boundary `laplace_gap` voxels outside the
     punch, past the Bragg tail left at its edge, but then kept that band's
     measured values. Every hole was therefore ringed by the tail its fill had
-    skipped: median step 0.27σ on TbTi3Bi4 22 K, 0.63σ on Fe3Ge2. The fill now
-    writes the band too, and meets the kept data only at its boundary.
+    skipped: a median step of a fraction of σ on both the orthorhombic and
+    the hexagonal data. The fill now writes the band too, and meets the kept
+    data only at its boundary.
   - The profile punch's template dropped a halo common to every direction as
-    thermal diffuse. Fe3Ge2 has one, and it is the peak's own: it falls off
-    exponentially (~0.04 Å⁻¹), and relative to the peak it does not grow with
-    |Q|. The template now follows the measured profile on every axis. On
-    TbTi3Bi4, which has no such halo, the punch grows 2 %.
+    thermal diffuse. A peak can have such a halo of its own: one that falls
+    off exponentially and, relative to the peak, does not grow with |Q|. The
+    template now follows the measured profile on every axis. On data without
+    such a halo, the punch grows only slightly.
 
-  | | 22 K | Fe3Ge2 90 K |
-  |---|---|---|
-  | step from the fill to the first kept voxel, median | −0.27 → +0.01σ | −0.63 → +0.04σ |
-  | measured voxels the fill replaces | 0 → 1.41 M | 0 → 1.26 M |
-  | punched voxels | 2.74 → 2.80 M | 1.00 → 1.40 M |
-  | back-FFT r, whole volume | 0.99876 → 0.99912 | 0.99995 → 0.99999 |
-  | ΔPDF r, old vs new, 2–5 / 40–80 Å | 0.999 / 0.934 | 0.988 / 0.976 |
+  On both datasets the median step from the fill to the first kept voxel
+  falls to about zero. The fill now replaces the band's measured voxels, the
+  punch grows, the back-FFT check improves slightly, and the ΔPDF barely
+  changes at short range.
 
-  On the moved-hole test the written band is unbiased (+0.004σ on 22 K) with
-  the scatter of a 3³ box mean. `laplace_gap=0` still changes only the
+  On the moved-hole test the written band is unbiased, with the scatter of a
+  3³ box mean. `laplace_gap=0` still changes only the
   punched voxels. See `docs/algorithms/bragg_cleanup.md`.
 - **Laplace is the default backfill, judged on real data.** A new test,
   `bragg_qa.refill_test` (also `REFILL=laplace,local` in
@@ -137,15 +131,13 @@
   diffuse, fills them, and compares with the data there. The moved holes keep
   the real shapes and stay lattice-periodic.
 
-  On TbTi3Bi4 (profile punch):
-
-  | | 22 K | 45 K | 100 K |
-  |---|---|---|---|
-  | per-hole mean error, `local` → `laplace` | +0.036 → +0.015σ | +0.024 → +0.015σ | +0.024 → +0.018σ |
-  | ΔPDF error at the lattice vectors, % of the real ΔPDF there | 1–4 % | 1–7 % | 2–5 % |
+  On orthorhombic data at three temperatures (profile punch), the per-hole
+  mean error is a few hundredths of σ for both fills and smaller for
+  `laplace`; the ΔPDF error at the lattice vectors is a few per cent of the
+  real ΔPDF there.
 
   The two fills are equal in the ΔPDF within the test's scatter. `laplace`
-  leaves no step at the hole rim (−0.01σ against −0.18σ) and follows gradients
+  leaves no step at the hole rim (`local` leaves a clear one) and follows gradients
   across the long merged holes of the profile punch. Fills that continue the
   rise toward each node are not used: that rise is mostly the residual Bragg
   tail the punch leaves at 0.5σ.
@@ -154,17 +146,18 @@
   presets, the preview, the benchmark and the web Configure page;
   `method="local"` restores the shell median.
 - **The Bragg punch follows each peak's own tail.** Stacked along their local
-  axes, the brightest TbTi3Bi4 peaks have:
+  axes, the brightest peaks of the orthorhombic data have:
   - a compact core, the same width in every direction;
   - no radial tail;
-  - an exponential tail along θ̂ (toward c*), out to 0.3–0.47 Å⁻¹ above the
-    noise, and a shorter one along φ̂.
+  - an exponential tail along θ̂ (toward c*), out to several tenths of an
+    Å⁻¹ above the noise, and a shorter one along φ̂.
 
-  The tail scales with intensity, grows with |Q| and barely changes from 22 to
-  100 K: the c-axis tilt spread (mosaic). The old punch fitted the core, which
+  The tail scales with intensity, grows with |Q| and is the same in every
+  dataset: the tilt spread (mosaic). The old punch fitted the core, which
   cannot see the tail, then grew it by the cube root of the intensity. Its base
-  radii even had θ̂ as the shortest axis. On 22 K, 36–43 % of a bright punch was
-  background, yet 59 % of the brightest holes had a tail leaking on one side.
+  radii even had θ̂ as the shortest axis. On the low-temperature dataset over
+  a third of a bright punch was background, yet most of the brightest holes
+  had a tail leaking on one side.
 
   `punch_footprint="profile"`, now the default with `profile_n_sigma=0.5`:
   - learns the dataset's Bragg profile along each peak's (ρ̂, θ̂, φ̂) from its
@@ -177,21 +170,14 @@
     0.5 × the local noise, between the resolution radii and 0.5 Å⁻¹. There is
     no intensity scaling.
 
-  Old → gate → new:
+  Against the old punch and the significance gate, on all three datasets the
+  new punch clearly lowers the share of the brightest holes leaking a tail
+  (by about half on the low-temperature one) and of all holes leaking a tail.
+  The background share of the punch stays about the same, more voxels are
+  punched, and the back-FFT check stays near-exact.
 
-  | | 22 K | 45 K | 100 K |
-  |---|---|---|---|
-  | brightest holes leaking a tail | 59 → 59 → 29 % | 59 → 60 → 38 % | 69 → 70 → 53 % |
-  | all holes leaking a tail | 30 → 31 → 17 % | 27 → 28 → 22 % | 30 → 29 → 22 % |
-  | background share of the punch | 34 → 35 % (gate → new) | 35 → 36 % | 37 → 37 % |
-  | punched voxels | +21 % | +18 % | +22 % |
-  | back-FFT r, whole volume | 0.9990 → 0.9986 | 0.9990 → 0.9995 | 0.9984 → 0.9991 |
-  | back-FFT r, H = 0 | 0.9984 → 0.99995 | 0.9972 → 0.9967 | 0.9938 → 0.9934 |
-
-  (Background share, punched voxels and back-FFT r are gate → new.)
-
-  The 45 K ΔPDF (r = 0.91 against the gate's) loses 11–21 % of its RMS from
-  5 to 40 Å and up to 25 % at the lattice vectors; 2–5 Å moves by 2.5 %.
+  In the ΔPDF the change is mostly a loss of RMS from 5 to 40 Å and at the
+  lattice vectors; the short range (2–5 Å) barely moves.
 
   Caveats:
   - more of the punch sits in merged holes, as tails join neighbouring L
@@ -209,13 +195,13 @@
 - **The Bragg punch judges every detection against its own error.** Before,
   the search pass flagged a voxel when it beat its |Q| shell's median + 4·MAD
   and an absolute floor of 0.8. Both are set by the whole shell. At the
-  high-|Q| edge of the CORELLI coverage (|K| > 9.7 on TbTi3Bi4), low exposure
-  turns one or two counts into a spike of order 1, with noise three times
-  the interior's.
-  - Half the search peaks were such spikes: 4,349 of 8,572 at 22 K, all
-    below 5σ, median I/σ 1.7. 86 % were single voxels.
-  - Their punches merged into two 139k-voxel holes, 11 % of everything
-    punched, which the `local` fill then filled with one value each.
+  high-|Q| edge of the CORELLI coverage, low exposure turns one or two
+  counts into a spike of order 1, with noise several times the interior's.
+  - On the low-temperature dataset about half the search peaks were such
+    spikes, all below 5σ, most of them single voxels.
+  - Their punches merged into two large holes, a sizeable share of
+    everything punched, which the `local` fill then filled with one value
+    each.
 
   Now a detection, integer node or search summit, needs an integrated
   excess of at least `min_significance` = 5 standard errors (`PunchParams`;
@@ -229,26 +215,24 @@
   The scaling reference still counts the candidates the gate rejects, so
   the punches that stay keep their size.
 
-  On 22 K (shipped code against main, full pipeline):
-  - edge punch 629k → 367k voxels; interior 1.887 M → 1.892 M;
-  - 8 interior integer nodes lost: one mmm-symmetric family at z ≈ 4.5;
-  - back-FFT r 0.99872 → 0.99902, nrms 0.0463 → 0.0414, H = 0 plane
-    0.99730 → 0.99843;
-  - the ΔPDF moves by 2.3 % RMS at the lattice vectors and 5 % within 20 Å,
-    all of it from the restored edge.
+  On the low-temperature dataset (shipped code against main, full pipeline):
+  - the edge punch shrinks by a large fraction; the interior punch is
+    essentially unchanged;
+  - one mmm-symmetric family of interior integer nodes, just below the gate,
+    is lost;
+  - the back-FFT check improves slightly, most on the H = 0 plane;
+  - the ΔPDF moves by a few per cent RMS at the lattice vectors and within
+    20 Å, all of it from the restored edge.
 
-  45 K (shipped code): back-FFT r 0.99898 → 0.99904, nrms 0.0415 → 0.0410,
-  H = 0 plane 0.99330 → 0.99721.
-
-  100 K (shipped code): back-FFT r 0.99835 → 0.99839, nrms 0.0536 → 0.0533,
-  H = 0 plane 0.98754 → 0.99375.
+  The other two datasets show the same small back-FFT gain, again most on
+  the H = 0 plane.
 
   No change in the tails left past the brightest holes at any of the three.
 
   The profile JSON gains each peak's `significance`; the run request gains
   `punch_min_significance` (0 = off). `detect_window_q` sizes the detection
-  window in Å⁻¹ but stays off: on 22 K it adds ~1,200 integer nodes, not yet
-  validated.
+  window in Å⁻¹ but stays off: on measured data it adds many integer nodes,
+  not yet validated.
 - **Punch / backfill QA**, `nebula3d.analysis.bragg_qa`, two examples:
   - `examples/qa_punch_fill.py` (real data) reports:
     - how significant each detection is;
@@ -262,8 +246,8 @@
     vectors. It has a clean scenario and a low-exposure-edge one. On the
     edge one the gate cuts false detections 1,284 → 12 and collateral
     81 % → 59 % (clean: 46 %).
-  - Both already show the next targets on TbTi3Bi4: the `local` fill sits
-    ~0.2σ below each hole's rim, and on the demo it under-fills the thermal
+  - Both already show the next targets on measured data: the `local` fill
+    sits a fraction of σ below each hole's rim, and on the demo it under-fills the thermal
     diffuse under the nodes by ~75 %.
 - **Every HDF5 output is now a Mantid MDHistoWorkspace NeXus file.** The stage
   volumes (`*_ringremoved.h5`, `*_braggpunched.h5`, `*_backfilled.h5`,
@@ -301,9 +285,9 @@
 
 - **New default ring model, `pooled`: stack-pooled sector profiles.** The
   per-plane `patched` model left a visible residual along every powder ring.
-  On the TbTi3Bi4 CORELLI volumes a ring's |Q| position and width wander with
-  direction (the 4.39 Å⁻¹ Al line peaks anywhere from 4.30 to 4.51 Å⁻¹ at
-  H = 0), and `patched` smooths each |Q| bin's azimuthal pattern with six
+  On measured CORELLI volumes a ring's |Q| position and width wander with
+  direction (within one plane, an Al line's peak moves by several |Q| bins),
+  and `patched` smooths each |Q| bin's azimuthal pattern with six
   damped harmonics, so it subtracts at the wrong |Q|: a bright arc beside a
   dark one, invisible to the azimuthally averaged removal fraction.
   `fit_pooled_rings` (`ring_model="pooled"`) assumes no radial line shape.
@@ -312,23 +296,22 @@
   ring sphere by weighted median (Bragg peaks, which fill one sector over a
   few planes, are outvoted), and subtracts the SNIP excess inside the
   confirmed shells. Also:
-  - a close doublet (6.79/6.97 Å⁻¹) shares one SNIP window, instead of the
-    broad member being half left in the baseline;
+  - a close doublet (the Al 331/420 lines) shares one SNIP window, instead
+    of the broad member being half left in the baseline;
   - rings must clear the profile noise (≥ 6σ) as well as 6 % of the strongest
-    ring, and a weaker ring is admitted when it sits on an FCC-Al line (22 K:
-    the Al 440 and 533 lines at 8.81 and 10.21 Å⁻¹ were never subtracted);
+    ring, and a weaker ring is admitted when it sits on an FCC-Al line (the
+    weak Al 440 and 533 lines were never subtracted before);
   - the shell envelope is 1.5 × FWHM wide and the amplitude cap 8×, both of
     which clipped real ring before;
   - on a coarse grid the pooling solid angle widens until it holds 12 voxels.
 
-  On 22 K, held-out ring residual (RMS, fraction of the raw ring) drops from
-  0.22 to 0.12 at 2.69 Å⁻¹, 0.41 → 0.23 at 5.17, 0.54 → 0.35 at the 6.9
-  doublet, 0.55 → 0.34 at 9.3, 0.88 → 0.61 at 9.87. Through the whole
-  pipeline the ΔPDF loses the concentric ring ripples: RMS at 3–10 Å is 0.91×
-  (22 K), 0.76× (45 K) and 0.76× (100 K) of before, with the back-FFT
-  consistency unchanged. Bragg-on-ring inflation is +17 % of the local ring
-  (`patched` +15 %); the subtraction is continuous along the stack axis; the
-  stage takes ~52 s serial on the 48 M-voxel volumes (`patched` ~45 s) and,
+  On the low-temperature dataset the held-out ring residual (RMS, fraction of
+  the raw ring) drops by roughly a third to a half at every ring, the doublet
+  included. Through the whole pipeline the ΔPDF loses the concentric ring
+  ripples: its RMS at 3–10 Å falls on all three datasets, with the back-FFT
+  consistency unchanged. Bragg-on-ring inflation is about the same as
+  `patched`'s; the subtraction is continuous along the stack axis; the
+  stage takes ~52 s serial on a 48 M-voxel volume (`patched` ~45 s) and,
   in low-memory mode, writes in place (~5 B/voxel peak). `ring_model="patched"`
   restores the previous behaviour. The web Configure page gains "Pooled 3D
   sectors" (sectors, stack window) as the default; the run request gains
@@ -343,10 +326,10 @@
   default pipeline fitted three radii along H, K, L, so no integer peak was
   tilted. The opt-in covariance fit did not follow the data either: it took
   eigenvectors in HKL, floored them at an HKL bounding box, read the core from
-  a ±0.2 r.l.u. window (±1 voxel along c* here), and used the width of the 35 %
-  core, which is 0.61σ for a Gaussian. On the TbTi3Bi4 100K volume, 44 % of
-  peaks were floored on all three axes, and 0.7 % were set by the data on all
-  three. `integer_optimize_shape` is now the covariance fit, in Q (the
+  a ±0.2 r.l.u. window (±1 voxel along c* on the measured grid), and used the
+  width of the 35 % core, which is 0.61σ for a Gaussian. On measured data,
+  almost half the peaks were floored on all three axes, and almost none were
+  set by the data on all three. `integer_optimize_shape` is now the covariance fit, in Q (the
   pipeline default):
   - takes the core's covariance in Q (`Σ_Q = UB·C·UBᵀ`), from a window sized
     in Å⁻¹, using only voxels connected to the peak;
@@ -357,12 +340,12 @@
     sigmas of the background at the resolution ellipsoid;
   - adds the Å⁻¹ `margin` to the principal radii in Q.
 
-  On synthetic tilted peaks on the real UB, the punch's long axis is now
-  3–16° from the truth, where it was 26–31°. On 100K, 99 % of fitted peaks
-  have at least one axis set by the data, and the measured long axes sit a
-  median 38° off the spherical frame's φ̂. The default pipeline punches 4.45 %
-  of voxels, up from 3.75 %; in integer mode it leaves 6.4 % of the
-  strong-peak excess outside the punch, down from 7.1 %. `measure_peak_sigmas`
+  On synthetic tilted peaks on a measured UB, the punch's long axis is now
+  3–16° from the truth, where it was 26–31°. On measured data nearly all
+  fitted peaks have at least one axis set by the data, and the measured long
+  axes sit well off the spherical frame's φ̂. The default pipeline punches
+  somewhat more voxels; in integer mode it leaves less of the strong-peak
+  excess outside the punch. `measure_peak_sigmas`
   and `measure_peak_covariance` (the profile's measured widths) use the same
   cut-corrected core, so the width histogram reads 1.65× wider than
   before. The position-only fit takes the same core's centroid. The
@@ -407,7 +390,7 @@
     band is Å⁻¹ everywhere, including the covariance-fit path, which inflated
     by r.l.u. outside the `"q"` frame. The default direct-beam punch, when no
     beam radii are set, is twice the Bragg punch's HKL bounding box. The
-    default pipeline punch is unchanged: the same mask on the TbTi3Bi4 22K
+    default pipeline punch is unchanged: the same mask on a measured
     volume. `examples/compare_punch_frames.py` and `plot_punch_slices.py`
     (HKL vs Q comparisons) were removed, and the punch examples take
     `SPHERICAL_R` (Å⁻¹) instead of `R_HKL`.
@@ -415,35 +398,37 @@
   The Configure page no longer offers the removed options. Docs, examples and
   the manual source follow.
 - **The edge of the measured coverage is trimmed at load, on by default.** A
-  measured voxel next to unmeasured space is barely normalised. On the 401³
-  Fe3Ge2 TOPAZ volume those voxels reach p99 ≈ 4,000 and a maximum of
-  5.5·10⁷, while one voxel further in they match the interior (p99 ≈ 38
-  against 34). They went straight into the ΔPDF, and as Laplace boundary
+  measured voxel next to unmeasured space is barely normalised. On a
+  hexagonal 401³ TOPAZ volume those voxels reach values orders of magnitude
+  above the interior, while one voxel further in they match it. They went
+  straight into the ΔPDF, and as Laplace boundary
   values they lit up the holes next to them. The pipeline now takes
   `PipelineParams.edge_trim` layers (default 1; 0 keeps them) off the measured
   coverage when it loads the raw input: those voxels become unmeasured, masked
   and zeroed as the loader leaves unmeasured voxels, and the run log says how
-  many. The volume's own faces are not an edge. A fully measured volume such
-  as TbTi3Bi4 22K loses ~7,000 of 48.4 M voxels; Fe3Ge2 loses 2.8 M, and its
-  default punch then finds 52,281 peaks instead of 120,104 (most of the rest
-  were edge voxels), punching 1.59 M voxels instead of 2.97 M. Existing
+  many. The volume's own faces are not an edge. A fully measured volume
+  loses only a few thousand of tens of millions of voxels; the hexagonal
+  TOPAZ volume loses millions, and its default punch then finds less than
+  half as many peaks (most of the rest were edge voxels), punching about half
+  as many voxels. Existing
   outputs are not recomputed by themselves: re-run from the ring stage.
   `nebula3d.preprocessing.trim_coverage_edge`, `nebula3d.pipeline.load_input`,
   `edge_trim` in the run request (+ tests).
 - **Backfill: each punched hole is filled from its own surroundings.** The
   backfill took every masked voxel for a hole, so a punched hole that touched
   unmeasured coverage merged with it, and the whole region (coverage and every
-  hole touching it) got one fill value set by the coverage's rim. On the
-  401³ Fe3Ge2 TOPAZ volume (73 % unmeasured) that was 82 % of the punched
-  voxels, which showed as flat discs that did not match the data around them.
+  hole touching it) got one fill value set by the coverage's rim. On a
+  hexagonal 401³ TOPAZ volume, mostly unmeasured, that was most of the
+  punched voxels, which showed as flat discs that did not match the data
+  around them.
   The punch stage now records which voxels it punched, in memory and as
   `/entry/punched` in `*_braggpunched.h5`, and `backfill_bragg(punched=…)`
   fills each hole only from the measured voxels around it. The coverage is
   filled separately afterwards, with its own shell median. For `laplace`,
-  unmeasured neighbours are a free (Neumann) boundary. On Fe3Ge2, the holes
-  whose mean fill is more than 3 MAD from the median of the measured voxels
-  within 2 voxels of them drop from 6.6 % to 0.0 % (`local`), and the median
-  offset halves. A punch artifact written before this change has no record:
+  unmeasured neighbours are a free (Neumann) boundary. On that volume, the
+  holes whose mean fill is more than 3 MAD from the median of the measured
+  voxels within 2 voxels of them drop from a few per cent to none (`local`),
+  and the median offset shrinks. A punch artifact written before this change has no record:
   the backfill says so in the run log and fills as before. Re-run the punch to
   fix it. `src/nebula3d/analysis/bragg_fill.py`, `src/nebula3d/pipeline.py`
   (+ tests).
@@ -453,17 +438,17 @@
   each built a full float64 |Q| grid with its temporaries, ~25–40 B/voxel on
   top of the volume: the cross-plane ring confirmation, the punch's per-|Q|-shell
   thresholds, the radial flatten and, on that volume, the direct-beam fill. Its
-  unmeasured coverage (73 % of the cube) reaches the origin, so the direct-beam
+  unmeasured coverage (most of the cube) reaches the origin, so the direct-beam
   fill took all of it for the beam. The first three now compute |Q| one plane
   or one 16-plane slab at a time, with identical values. The direct-beam fill
   leaves an origin region whose bounding box is over 2 M voxels (a real beam's
   is ~2,000) to the generic fill. On the TOPAZ volume the old beam fill found
   no clean shell there and filled nothing, so every stage output is
-  byte-identical, as it is on the 48.4 M-voxel TbTi3Bi4 volume. The Laplace
+  byte-identical, as it is on a fully measured 48.4 M-voxel volume. The Laplace
   fill also frees its unknown lists for an oversized region before filling it
   locally (same output). Under Pyodide 0.27.7 the WASM heap now peaks at
   2.8 GiB on the TOPAZ volume (it failed at 3.8 GiB; 2.9 GiB with
-  `method="laplace"`), 2.1 GiB on the TbTi3Bi4 volume (was 2.5 GiB) and
+  `method="laplace"`), 2.1 GiB on the 48.4 M-voxel volume (was 2.5 GiB) and
   2.9 GiB on a fully measured 79.5 M-voxel volume at the limit (the old code
   hit the 4 GiB ceiling there), out of 4 GiB.
   `src/nebula3d/preprocessing/radial_background.py`,
@@ -637,7 +622,7 @@
   order) load; a projected grid such as the orthogonal hexagonal cut
   `[H,0,0]/[-K,2K,0]/[0,0,L]` is rejected with a rebinning hint instead of
   loading with silently wrong |Q| (the old parser took the first H/K/L letter
-  in the label). Loads of the existing TbTi3Bi4 files are bit-identical.
+  in the label). Loads of existing orthorhombic files are bit-identical.
   `tests/test_nonorthogonal_cells.py` pins the guard plus metric-correct ring
   removal and ΔPDF peak placement on hexagonal (γ = 120°) and monoclinic
   (β = 110°) cells.
@@ -666,8 +651,8 @@
   per-plane core in `nebula3d._ringplane` is shared by every backend; pinned by
   `tests/test_ring_parallel.py`), computes with float32 volume storage
   (`PipelineParams.precision`; axes/UB, |Q|-bin decisions, 1-D fits, and large
-  reductions stay float64 — validated on all three real TbTi3Bi4 volumes at
-  ΔPDF nrms ≤ 1e-5 with ≤ 2 punch-mask flips of 48.4 M voxels, ~15–25 %
+  reductions stay float64 — validated on three measured 48.4 M-voxel volumes
+  at ΔPDF nrms ≤ 1e-5 with ≤ 2 punch-mask flips per volume, ~15–25 %
   faster), and runs the ΔPDF forward/inverse FFT cores on WebGPU when available
   (`web/src/gpu/` mixed-radix Stockham with numpy-pinned index math; scipy
   fallback at every rung; `fft=webgpu-f32-p5` cache token). The admission gate
@@ -690,8 +675,8 @@
   patched/parametric models remain available and the default pending full
   real-data qualification.
 - **The backfill no longer invents data outside the measured coverage.** It
-  filled every masked voxel, so on Fe3Ge2 90 K the 41 % of the box past the
-  coverage sphere (|Q| 17–34 Å⁻¹) got its rim's shell median, which then entered
+  filled every masked voxel, so on a hexagonal dataset the large part of the
+  box past the coverage sphere got its rim's shell median, which then entered
   the flatten fit, the ΔPDF, the back-FFT check and the viewers. The fill now
   interpolates and never extrapolates: punch holes, and unmeasured pockets that
   measured data enclose (the direct-beam shadow, dead voxels), are filled as
@@ -700,8 +685,9 @@
   docs/algorithms/inpainting.md.
 - **The 3D-ΔPDF window respects the lattice symmetry and the measured
   coverage.** The separable window (a product of 1-D tapers along H, K, L) is
-  not invariant under the hexagonal 6-fold, so on Fe3Ge2 (6/m) the ΔPDF along a
-  and b differed from a + b by 0.03–0.05 of the main peak. New `window_shape`
+  not invariant under the hexagonal 6-fold, so on a hexagonal (6/m) dataset
+  the ΔPDF along a and b differed from a + b by a few per cent of the main
+  peak. New `window_shape`
   (`auto` | `separable` | `ellipsoid`; server `pdf_window_shape`, and a web
   control): `auto` tapers hexagonal cells on the largest symmetric ellipsoid
   inside the box, and keeps the separable window bit for bit for orthogonal,
@@ -709,15 +695,16 @@
   default on; web "Taper to the measured coverage"): masked voxels enter as
   ΔI = 0 and the mean is taken over the data only; where the coverage ends
   inside the box, the ellipsoid shrinks until at most 10⁻³ of its weight lies on
-  unmeasured space. With the backfill now leaving that space masked, Fe3Ge2 90 K
-  changes by at most 0.08 % at 2–15 Å. Cached ΔPDFs are recomputed once. See
+  unmeasured space. With the backfill now leaving that space masked, the
+  hexagonal data change by well under a per cent at 2–15 Å. Cached ΔPDFs are
+  recomputed once. See
   docs/algorithms/delta_pdf.md.
 - **The Bragg punch and the edge trim follow the declared Laue symmetry.** On a
   symmetrised volume (e.g. 6/m from the NeXus Viewer), the punch mask and the
   coverage-edge trim are now invariant under the operations the file declares
   (`PipelineParams.symmetry="auto"`): a voxel punched at one equivalent position
-  is punched at all of them. On Fe3Ge2, 22 % of punched voxels had an unpunched
-  partner; now none. The H guard and the thirds exclusion hold on every
+  is punched at all of them. On the hexagonal data, a sizeable fraction of
+  punched voxels had an unpunched partner; now none. The H guard and the thirds exclusion hold on every
   equivalent plane, so with 6/m the guard is a hexagonal prism.
   `symmetry=None` restores the old behaviour. See
   docs/algorithms/bragg_cleanup.md.
@@ -770,7 +757,7 @@ low-memory + performance work below.
   ridge systems in one stacked LAPACK call. Every stage artifact verified
   SHA-256-identical before/after at two volume sizes, serial and parallel;
   219 tests, ruff, and mypy clean; in-browser end-to-end run verified
-  (6/6 stages, consistency r = 0.99963, no console errors).
+  (6/6 stages, consistency check near-exact, no console errors).
 - **Milestone: fully static, GitHub Pages-hosted app with feature parity.** The
   browser console now runs the **complete** `nebula3d` reduction — every pipeline
   stage, cleanup, 3D-ΔPDF, multi-volume, and consistency view — entirely

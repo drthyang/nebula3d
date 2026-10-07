@@ -12,7 +12,7 @@ are not, whenever an operation mixes the grid axes: index-space windows and
 neighbourhoods are not invariant under it (the hexagonal 6-fold
 ``(h, k, l) → (−k, h+k, l)`` maps the (1, 1) corner of a 3×3 square to
 (−1, 2), outside the square), and a refined UB is not exactly symmetric either
-(on Fe3Ge2, |a*| and |b*| differ by 0.12 % and γ* is 60.02°).  The operations
+(|a*| and |b*| differ slightly, and γ* is not exactly 60°).  The operations
 are exact on the grid, where the data were symmetrised, so the decisions are
 made invariant there (:meth:`GridSymmetry.orbit_any`).
 """

@@ -5,8 +5,8 @@
 
 The synthetic lattice has CORELLI-like voxels (0.039 Å⁻¹) and peaks of known
 shape: a Gaussian core (σ = 0.03 Å⁻¹) plus an exponential tail along each
-peak's polar axis θ̂ only (2 % of the peak, decay length 0.08 Å⁻¹) — the
-c-axis-mosaic tail of the TbTi3Bi4 data.
+peak's polar axis θ̂ only (2 % of the peak, decay length 0.08 Å⁻¹) — a
+c-axis mosaic tail.
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ def test_monotone_profile_extends_the_tail_exponentially():
 def test_bragg_template_keeps_a_halo_common_to_all_axes():
     d = np.linspace(0, 0.5, 51)
     core = np.exp(-0.5 * (d / 0.03) ** 2)
-    halo = 0.01 * np.exp(-d / 0.04)  # the peak's own halo, every direction (Fe3Ge2)
+    halo = 0.01 * np.exp(-d / 0.04)  # the peak's own halo, every direction
     tail = 0.02 * np.exp(-d / 0.08)  # mosaic, along θ̂ only
     raw = np.stack([np.maximum(core, halo), np.maximum(core, halo + tail),
                     np.maximum(core, halo)])

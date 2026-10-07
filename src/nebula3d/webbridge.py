@@ -115,8 +115,8 @@ __all__ = [
 # heap's high-water mark of full runs under Pyodide 0.27.7 (Node, float32,
 # low-memory; it includes the ~0.1 GiB runtime and allocator fragmentation):
 # 2.87 GiB for a fully measured 79.5 M-voxel volume (binding stage: the punch),
-# 2.79 GiB for a 64.5 M-voxel TOPAZ volume that is 73 % unmeasured, 2.07 GiB
-# for the real 48.4 M-voxel TbTi3Bi4 volume — 39–46 B/voxel all in, so a
+# 2.79 GiB for a 64.5 M-voxel volume that is mostly unmeasured, 2.07 GiB
+# for a real 48.4 M-voxel volume — 39–46 B/voxel all in, so a
 # volume at the 80 M ceiling stays under ~3.5 GiB of the 4 GiB heap.  That
 # holds only while no stage builds a full float64 |Q| grid: one costs ~25–40
 # B/voxel more, and four did (ring confirmation, punch thresholds, flatten,

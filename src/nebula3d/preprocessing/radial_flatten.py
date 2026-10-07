@@ -31,13 +31,13 @@ fits ``const + c·F(Q)²`` to those floor levels by least squares over
 
 What the model does *not* remove is the point.  Spin (or displacive)
 correlations at distance r add a shell-averaged ``sin(Qr)/(Qr)`` term with
-period 2π/r (1.7 Å⁻¹ for r = 3.75 Å).  The earlier free-form floor, smoothed at
-0.1 Å⁻¹, followed those oscillations and subtracted them, carving spherical
-shells at 2.5–4 Å into the ΔPDF; a two-term model of fixed shape cannot follow
-them.  Its limits: for anisotropic (Ising-like) moments the self term is
-``F²(1 − (Q̂·ê)²)``, and only its shell average is removed; and a smooth
-background that is not F²-shaped (multiple scattering, sample environment)
-stays in.
+period 2π/r (about 2.1 Å⁻¹ for r = 3 Å).  The earlier free-form floor, smoothed
+at 0.1 Å⁻¹, followed those oscillations and subtracted them, carving spherical
+shells at the near-neighbour distances into the ΔPDF; a two-term model of fixed
+shape cannot follow them.  Its limits: for anisotropic (Ising-like) moments
+the self term is ``F²(1 − (Q̂·ê)²)``, and only its shell average is removed;
+and a smooth background that is not F²-shaped (multiple scattering, sample
+environment) stays in.
 
 Estimator
 ---------
@@ -165,7 +165,7 @@ def flatten_radial_background(
         residuals below the background are meaningful and kept).
     ion : str or None
         ``estimator='model'``: the magnetic ion whose form factor shapes the
-        paramagnetic term (e.g. ``'Tb3+'`` for TbTi3Bi4; see
+        paramagnetic term (e.g. ``'Mn2+'``; see
         :data:`~nebula3d.preprocessing.form_factor.IONS`).  ``None`` (default)
         or ``'none'`` fits a constant only.
     fit_q_range : (float, float), optional

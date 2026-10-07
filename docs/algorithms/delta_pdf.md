@@ -176,37 +176,38 @@ Evidence:
 - A **constant volume** (`I = 7` on 31³, padded to 32³) transformed to
   1.5·10⁴ on the axis and ~1 off it (Gaussian window); after the fix to
   < 10⁻¹¹. Regression guard: `tests/test_delta_pdf_dc.py`.
-- **Hexagonal symmetry** (Fe3Ge2 90 K, 6/m-symmetrised, so the raw volume is
-  exactly 6-fold symmetric): a, b and a+b are equivalent directions, but only
-  a and b are grid axes. The coherent `(−1)^m` part of the axis lines was
-  0.13 (a, b) and 0.16 (c) of the strongest correlation at 1.5–15 Å, against
-  0.012 along a+b.
-- Subtracting the weighted mean first removed 85–95 % of it on Fe3Ge2 and on
-  TbTi3Bi4 22 K (a/b/c 0.27/0.17/0.19 → 0.014/0.011/0.010). The rest was the
-  Gaussian window still at 4.4 % (σ = 0.4) on the box faces, where the data
-  are cut; shifting it to zero there leaves 0.004/0.004/0.003 (Fe3Ge2) and
-  0.013/0.008/0.006 (TbTi3Bi4), below the a+b level. Hann (zero at the edge)
-  gives the same picture.
-- The back-FFT check stays exact: on TbTi3Bi4 22 K (float32) `r` rose from
-  0.99912 to 0.99988; on Fe3Ge2 `r = 0.99999`. The deapodized region shrinks
-  (98 % → 88 % of the box) because the window is below 10⁻³ of its peak in a
-  thicker shell at the faces; those voxels carry almost no weight in the ΔPDF.
+- **Hexagonal symmetry** (a hexagonal (6/m) dataset, 6/m-symmetrised, so the
+  raw volume is exactly 6-fold symmetric): a, b and a+b are equivalent
+  directions, but only a and b are grid axes. The coherent `(−1)^m` part of
+  the axis lines, relative to the strongest correlation at 1.5–15 Å, was about
+  an order of magnitude larger along a, b and c than along a+b.
+- Subtracting the weighted mean first removed most of it, on the hexagonal
+  data and on an orthorhombic (mmm) dataset alike. The rest was the Gaussian
+  window still at 4.4 % (σ = 0.4) on the box faces, where the data are cut;
+  shifting it to zero there leaves it below the a+b level on both. Hann (zero
+  at the edge) gives the same picture.
+- The back-FFT check stays near-exact on both datasets (float32); on the
+  orthorhombic data `r` even rose slightly. The deapodized region shrinks
+  because the window is below 10⁻³ of its peak in a thicker shell at the
+  faces; those voxels carry almost no weight in the ΔPDF.
 
 The Gaussian change narrows the window's FWHM in `Q` by 3 % (real-space peaks
 ~3 % broader) and lowers its integral by ~10 % (3.4 % per axis), so ΔPDF
-amplitudes drop by 4–10 % (measured 0.96 on TbTi3Bi4 22 K, 0.90 on Fe3Ge2).
+amplitudes drop by up to that much; the measured drop on both datasets stayed
+within it.
 
-Still open, found in the same diagnosis (Fe3Ge2):
+Still open, found in the same diagnosis (hexagonal data):
 
 - The **separable index-space window is not 6-fold invariant** for a hexagonal
   cell, so a/b and a+b get different resolution. Fixed by the ellipsoid
   window; see the next section.
-- The **punch mask is not 6-fold symmetric**: 23 % of punched voxels have an
-  unpunched 60° partner (and 15 % of the coverage-edge trim). It puts a
-  long-wavelength stripe pattern across the a–b section.
-- The **Laplace backfill fills the unmeasured part of the box** (41 % of it on
-  Fe3Ge2, out to `|Q|` = 34 Å⁻¹ from data ending at ~17 Å⁻¹). With the
-  Gaussian window this barely changes the ΔPDF, but it is invented intensity.
+- The **punch mask is not 6-fold symmetric**: a sizeable fraction of punched
+  voxels (and of the coverage-edge trim) have an unpunched 60° partner. It
+  puts a long-wavelength stripe pattern across the a–b section.
+- The **Laplace backfill fills the unmeasured part of the box** (a large
+  fraction of it on the hexagonal data, far beyond the `|Q|` where the data
+  end). With the Gaussian window this barely changes the ΔPDF, but it is
+  invented intensity.
 
 Whether a smooth cross from the residual envelope (two sections down)
 remains after this fix has not been re-measured: subtracting the separable
@@ -221,9 +222,9 @@ invariant under the Laue group. A separable window `w_H(h)·w_K(k)·w_L(l)` on
 a symmetric box is invariant under sign flips and under swaps of equal axes.
 That covers every orthogonal Laue group, and also monoclinic `2/m` and
 triclinic `−1`. It does not cover the hexagonal 6-fold
-`(h, k, l) → (−k, h + k, l)`, which mixes H and K. On Fe3Ge2 the separable
-window gave a and b a resolution of 0.41 Å but a+b 0.29 Å (FWHM, Gaussian
-σ = 0.4), although the three directions are equivalent.
+`(h, k, l) → (−k, h + k, l)`, which mixes H and K. On the hexagonal data the
+separable window gave a+b a markedly finer resolution than a and b (FWHM,
+Gaussian σ = 0.4), although the three directions are equivalent.
 
 `compute_delta_pdf(window_shape=…)` (pipeline `DeltaPdfParams.window_shape`,
 server `pdf_window_shape`, the *Window shape* select in the web app):
@@ -243,9 +244,9 @@ server `pdf_window_shape`, the *Window shape* select in the web app):
 **Finding the ellipsoid.** The lattice point group is read off the UB: the
 integer matrices `R` with entries in {−1, 0, 1} and `Rᵀ G* R = G*`
 (`G* = UBᵀ·UB`), to 5 % of `√(G*_ii G*_jj)`. Refined cells are not exactly
-symmetric. Fe3Ge2's UB has a and b 0.12 % apart and angles up to 0.23° off
-90/90/120, which puts the 24 operations of 6/mmm at ≤ 1.2 % and the next
-candidate at 68 %. Among invariant ellipsoids `xᵀMx ≤ 1` inside the box
+symmetric. On the hexagonal data, whose refined UB is slightly off ideal
+90/90/120, the 24 operations of 6/mmm pass well inside the tolerance and the
+next candidate fails it by far. Among invariant ellipsoids `xᵀMx ≤ 1` inside the box
 `|x_i| ≤ X_i`, the largest is unique. Its optimality condition makes `M` a
 weighted sum of the box faces averaged over the group,
 `ρ² = Σ_i λ_i ⟨(R·x)_i²⟩_R / X_i²`. The weights are D-optimal-design weights,
@@ -254,8 +255,8 @@ touch the nearest face. For a hexagonal box this gives
 
     ρ² = (4/3)(h² + hk + k²)/X² + l²/X_L² = (Q⊥/d_ab)² + (Q∥/d_c)²
 
-with `d = 2π·X/|a_i|` the distances of the box faces from `Q = 0` (15.65 and
-12.53 Å⁻¹ on Fe3Ge2). Without axis-mixing symmetry it is the index-space
+with `d = 2π·X/|a_i|` the distances of the box faces from `Q = 0`. Without
+axis-mixing symmetry it is the index-space
 sphere `Σ (x_i/X_i)²`. Axes with a single plane take no part.
 
 **Memory and inversion.** The window is stored as its 3×3 form and evaluated
@@ -267,45 +268,48 @@ window never reaches the GPU), so it inherits the ellipsoid unchanged.
 `invert_delta_pdf` divides out exactly the same `w`, so the round trip stays
 exact.
 
-**Evidence** (Fe3Ge2 90 K, float32, Gaussian σ = 0.4; mismatches relative to
-the strongest correlation at 1.5–15 Å, on the a–b section through the origin;
-`a/b vs a+b` compares the profiles at equal grid steps):
+**Evidence** (a hexagonal (6/m) dataset, float32, Gaussian σ = 0.4;
+mismatches relative to the strongest correlation at 1.5–15 Å, on the a–b
+section through the origin; `a/b vs a+b` compares the profiles at equal grid
+steps):
 
-| input | window | a/b vs a+b, 2–6 Å (RMS / max) | 6–12 Å (RMS / max) | 6-fold residual, 1.5–15 Å (RMS / max) |
-|---|---|---|---|---|
-| raw, 6/m-symmetrised | separable | 0.068 / 0.24 | 0.071 / 0.30 | 0.029 / 0.31 |
-| raw, 6/m-symmetrised | ellipsoid | < 10⁻⁷ | < 10⁻⁷ | < 10⁻⁷ |
-| pipeline input (flattened) | separable | 0.069 / 0.31 | 0.051 / 0.22 | 0.030 / 0.42 |
-| pipeline input (flattened) | ellipsoid | 0.024 / 0.084 | 0.028 / 0.070 | 0.018 / 0.084 |
+| input | window | a/b vs a+b, 2–6 Å and 6–12 Å | 6-fold residual, 1.5–15 Å |
+|---|---|---|---|
+| raw, 6/m-symmetrised | separable | several % RMS, tens of % at the peaks | a few % RMS, tens of % at the peaks |
+| raw, 6/m-symmetrised | ellipsoid | float32 round-off | float32 round-off |
+| pipeline input (flattened) | separable | several % RMS, tens of % at the peaks | a few % RMS, tens of % at the peaks |
+| pipeline input (flattened) | ellipsoid | reduced severalfold | reduced, not removed |
 
 On the exactly symmetric raw volume the ellipsoid leaves only float32
 round-off. The worst separable mismatch sits on the sharp lattice-vector
-peaks (8.3 Å along a: 0.26 against −0.01 along a+b), which fall between grid
-points and so sample the anisotropic resolution function. What remains on
-the pipeline input is the input's own asymmetry: the punch mask and the edge
-trim are not 6-fold symmetric (see the list above).
+peaks (a strong peak at the lattice vector along a has almost no counterpart
+at the same distance along a+b), which fall between grid points and so sample
+the anisotropic resolution function. What remains on the pipeline input is
+the input's own asymmetry: the punch mask and the edge trim are not 6-fold
+symmetric (see the list above).
 
 **Cost.** The ellipsoid leaves out the box corners. Its support is 45 % of
 the box against 98.5 %, and its weight `Σw` is 0.78 of the separable
-Gaussian's (0.71 for Hann). On Fe3Ge2 the resolution FWHM goes from
-0.41/0.41/0.29 Å (a/b/a+b) to 0.44 Å in all three, and along c from 0.51 to
-0.56 Å. ΔPDF amplitudes drop by 10–13 %: the main peak along a falls to 0.90
-(raw) and 0.87 (pipeline input) of its separable value.
+Gaussian's (0.71 for Hann). On the hexagonal data the resolution becomes the
+same in all three in-plane directions, slightly coarser than the separable
+window's along a and b, and it is slightly coarser along c too. ΔPDF
+amplitudes drop modestly, on the raw volume and on the pipeline input alike.
 
 **Alternative rejected.** A product of tapers along h, k and h+k,
 `f(h/X)·f(k/X)·f((h+k)/X)·f(l/X_L)`, is also 6-fold invariant and keeps the
-whole hexagon. But three in-plane factors taper faster than one, so on
-Fe3Ge2 its in-plane resolution is worse than the ellipsoid's: 0.49 against
-0.44 Å for the Gaussian, 0.47 against 0.45 Å for Hann.
+whole hexagon. But three in-plane factors taper faster than one, so on the
+hexagonal data its in-plane resolution is worse than the ellipsoid's, for the
+Gaussian and for Hann.
 
 ### The window and the measured coverage (`support`)
 
 A backfill that leaves unmeasured space masked, rather than inventing
 intensity there, hands the transform a volume whose data end inside the box.
 Read as `I = 0`, that region does two things: it pulls the weighted mean `c`
-down, and the box-sized window still weights it. On Fe3Ge2 the separable
-window puts 6 % of its weight on unmeasured space, so the coverage edge
-becomes a step with a truncation ripple (period ≈ 2π/17 Å⁻¹).
+down, and the box-sized window still weights it. On the hexagonal data the
+separable window puts a few percent of its weight on unmeasured space, so the
+coverage edge becomes a step with a truncation ripple (period ≈ 2π/Q_edge,
+with Q_edge the `|Q|` where the coverage ends).
 
 `compute_delta_pdf(support=mask)` (pipeline `DeltaPdfParams.window_support`,
 default on, passes the input volume's `mask`; server `pdf_window_support`;
@@ -327,24 +331,25 @@ default on, passes the input volume's `mask`; server `pdf_window_support`;
   nothing, bit for bit.
 
 The tolerance is not cosmetic. Coverage edges are ragged, and thin channels
-of unmeasured voxels reach far in. On raw Fe3Ge2 the nearest open voxel sits
-at `ρ = 0.78`, although only 4.4·10⁻⁴ of the window's weight is open. On
-TbTi3Bi4 22 K, which has full coverage, a 1 378-voxel channel reaches
-`ρ = 0.945` with 1.2·10⁻⁶ of the weight. Shrinking to the nearest open voxel
-(`support_tol=0`) would shrink Fe3Ge2's window by 22 % (real-space peaks
-~28 % broader) and halve its main peak; the weight criterion ignores such
-channels.
+of unmeasured voxels reach far in. On the raw hexagonal data the nearest open
+voxel sits well inside the ellipsoid, although only a tiny fraction of the
+window's weight (below the default tolerance) is open. Even on orthorhombic
+data with full coverage, a thin channel of open voxels reaches inside the
+ellipsoid, with a negligible share of the weight. Shrinking to the
+nearest open voxel (`support_tol=0`) would shrink the hexagonal window
+substantially (real-space peaks markedly broader) and cut its main peak
+sharply; the weight criterion ignores such channels.
 
-Measured on Fe3Ge2 90 K (the pipeline's flattened input with the unmeasured
-space that reaches the box edge masked, as the unmeasured-aware backfill
-leaves it; Gaussian σ = 0.4; differences at 2–15 Å relative to the strongest
-1.5–15 Å correlation):
+Measured on the hexagonal data (the pipeline's flattened input with the
+unmeasured space that reaches the box edge masked, as the unmeasured-aware
+backfill leaves it; Gaussian σ = 0.4; differences at 2–15 Å relative to the
+strongest 1.5–15 Å correlation):
 
 | window | `c` | effect of the support | scale |
 |---|---|---|---|
-| separable | 3.31 → 3.52 | 2.1 % max, 0.14 % RMS (the mean's share of the ripple) | — (cannot shrink) |
-| ellipsoid (`auto`) | 2.871 → 2.872 | 0.08 % max, 0.01 % RMS | 1.0 (already inside the coverage) |
-| ellipsoid, `support_tol=0` | 1.94 | main peak halved | 0.78 |
+| separable | rises | a few % max, well below 1 % RMS (the mean's share of the ripple) | — (cannot shrink) |
+| ellipsoid (`auto`) | essentially unchanged | negligible (≪ 1 %) | 1.0 (already inside the coverage) |
+| ellipsoid, `support_tol=0` | much lower | main peak sharply reduced | shrunk substantially |
 
 So for this hexagonal cell the ellipsoid already keeps clear of the coverage
 edge, and the support only fixes the mean's handling of the empty region. It
@@ -372,7 +377,7 @@ pipeline and server wiring, and the WebGPU glue with a support.
 
 A bright **cross** along the `y_K=0` and `z_L=0` axes appears in the real-space
 map. It is **not** a Bragg/punch/masking artifact: it is present even on planes
-with no Bragg peaks (e.g. `H=1/3`), the input has **0 % masked voxels** along
+with no Bragg peaks (e.g. `H=1/3`), the input has **no masked voxels** along
 the axis lines, and replacing the exact `K=0`/`L=0` input lines with neighbour
 averages changes nothing.
 
@@ -415,8 +420,8 @@ side by side on a shared colour scale for H=0, 1/3, 2/3:
 | **smooth-bg** | `I_new = I − GaussianBlur(I, σ≈1.5 rlu)` | **cross removed, lattice clean** |
 
 Threshold-clip *sparsifies the input* (looks cleaner) but barely changes the
-transform: on H=1/3 even keeping only 10 % of voxels drops the cross ratio from
-~36 to ~11, versus ~6 for smooth-bg. It targets the wrong component — it removes
+transform: on H=1/3 even keeping only 10 % of voxels leaves the cross ratio
+well above what smooth-bg reaches. It targets the wrong component — it removes
 the dim background tails, but the cross is made by the **bright central
 envelope**, which is the highest-intensity region and so survives any threshold.
 It also adds hard-edge termination ripple and discards the negative excursions
@@ -432,7 +437,7 @@ The smooth-bg blur above removes the axis cross most completely, but the
 per-H-plane form (`σ_H=0`, e.g. `0,1.5,1.5`) does so by subtracting each H
 plane's integrated K–L intensity — which **is** the on-axis x_H Fourier
 component. So it also **destroys the H-direction signal** (real lattice-`a`
-peaks drop to ~1–3 %, for any σ; see the `radial_flatten` module and
+peaks almost vanish, for any σ; see the `radial_flatten` module and
 `flatten-vs-subtractbg`).
 
 The production pipeline (`examples/run_pipeline.py`) therefore removes the

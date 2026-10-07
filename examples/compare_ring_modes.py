@@ -20,11 +20,12 @@ recomputed; ``FORCE=1`` recomputes regardless (e.g. after changing the code).
 
 Run::
 
-    TEMP=22K PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl \\
+    TEMP=<T> PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl \\
       python3 examples/compare_ring_modes.py
 
 Env:
-    TEMP        22K | 45K | 100K …: picks data/raw/*_<TEMP>_*_cc.nxs (default 22K)
+    TEMP        <T>: picks data/raw/*_<T>_*_cc.nxs (default: the one
+                data/raw/*_cc.nxs, when there is exactly one)
     DATA_FILE   raw input instead of TEMP
     MODELS      comma-separated (default pooled,patched,parametric,global_v2);
                 "parametric:peaks" selects the parametric peaks mode
@@ -73,11 +74,13 @@ COLORS = ["#0b7f8a", "#d9822b", "#7a4fb5", "#c23b4a", "#4a8c2a", "#8a6d1f"]
 def _raw_path() -> Path:
     if os.environ.get("DATA_FILE"):
         return Path(os.environ["DATA_FILE"])
-    temp = os.environ.get("TEMP", "22K")
-    cands = sorted(p for p in RAW_DIR.glob(f"*_{temp}_*_cc.nxs"))
+    temp = os.environ.get("TEMP", "").strip()
+    pattern = f"*_{temp}_*_cc.nxs" if temp else "*_cc.nxs"
+    cands = sorted(p for p in RAW_DIR.glob(pattern))
     if len(cands) != 1:
-        raise SystemExit(f"TEMP={temp}: expected one data/raw/*_{temp}_*_cc.nxs, "
-                         f"found {len(cands)}; set DATA_FILE")
+        what = f"TEMP={temp}" if temp else "TEMP unset"
+        raise SystemExit(f"{what}: expected one data/raw/{pattern}, "
+                         f"found {len(cands)}; set TEMP or DATA_FILE")
     return cands[0]
 
 

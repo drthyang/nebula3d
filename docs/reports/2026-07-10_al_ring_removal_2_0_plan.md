@@ -145,7 +145,7 @@ Use the following hierarchy:
   uncertainty, shell table, diagnostics, failure status, config, and version.
 - Persist per-plane legacy failures, skipped planes, masks, detected shells, and
   aggregate timings.
-- Capture golden outputs and wall time/RSS for representative 22/45/100 K data.
+- Capture golden outputs and wall time/RSS for representative measured datasets.
 
 Gate: existing outputs remain bit-identical under the legacy modes; all current
 tests pass; web and server display the same effective configuration.
@@ -285,7 +285,7 @@ benchmark tolerance.
 
 Validation cohorts:
 
-- current TbTi3Bi4 22/45/100 K datasets;
+- the current measured multi-temperature datasets;
 - at least two additional CORELLI samples with Al contamination and different
   diffuse topology;
 - paired empty-can/environment datasets;

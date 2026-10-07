@@ -1901,7 +1901,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       min="0"
                       placeholder="0.12"
                       value={s.punchHGuard}
-                      title="Integer punches stop this far from their node's H plane, so the H = ±1/3 magnetic planes stay unpunched (TbTi3Bi4). 0 turns the guard off."
+                      title="Integer punches stop this far from their node's H plane, so satellite planes at fractional H (e.g. H = ±1/3) stay unpunched. 0 turns the guard off."
                       onChange={(e) => patch({ punchHGuard: e.target.value })}
                     />
                   </Field>

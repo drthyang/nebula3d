@@ -5,8 +5,8 @@
 
 A product of 1-D tapers along H, K and L is invariant under the sign flips and
 axis swaps of orthogonal, monoclinic and triclinic Laue groups, but not under
-the hexagonal 6-fold ``(h, k, l) → (−k, h + k, l)``: on Fe3Ge2 (6/m) the ΔPDF
-along a and b differed from a + b by 0.03–0.05 of the main peak.  The
+the hexagonal 6-fold ``(h, k, l) → (−k, h + k, l)``: on a hexagonal (6/m)
+dataset the ΔPDF along a and b differs visibly from that along a + b.  The
 ellipsoid window tapers in the radius of the largest lattice-invariant
 ellipsoid inside the box, so symmetry-equivalent directions get the same
 resolution, and it still reaches zero at the box faces and inverts exactly.
@@ -97,7 +97,7 @@ def _profiles(d):
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize(("cell", "order"), [
     ((8.0, 8.0, 10.0, 90.0, 90.0, 120.0), 24),                # 6/mmm
-    ((8.028, 8.019, 10.03, 90.13, 90.23, 119.98), 24),        # Fe3Ge2 90 K's refined UB
+    ((7.96, 8.04, 10.08, 90.3, 89.6, 120.4), 24),             # 6/mmm, perturbed ~1 %
     ((5.0, 5.0, 9.0, 90.0, 90.0, 90.0), 16),                  # 4/mmm
     ((5.0, 6.0, 9.0, 90.0, 90.0, 90.0), 8),                   # mmm
     ((8.0, 9.0, 10.0, 90.0, 110.0, 90.0), 4),                 # 2/m
@@ -115,7 +115,7 @@ def test_lattice_point_group_from_the_ub(cell, order):
 
 def test_hexagonal_ellipsoid_is_q_perp_and_q_par_over_the_face_distances():
     """ρ² = (Q⊥/d_ab)² + (Q∥/d_c)², d = 2π·X/|a_i| the box-face distances —
-    the window that removed the a vs a + b mismatch on Fe3Ge2."""
+    the window that removes the a vs a + b mismatch on a hexagonal lattice."""
     ax = np.linspace(-20.0, 20.0, 401)
     _, ell = _apodization_window("auto", "hann", 0.4, (ax, ax, ax), HEX)
     assert ell is not None
@@ -431,8 +431,9 @@ def test_auto_takes_the_ellipsoid_where_the_coverage_ends_in_an_orthogonal_box()
 
 
 def test_a_thin_channel_to_the_box_edge_does_not_collapse_the_window():
-    """TbTi3Bi4 22 K: 1 378 unmeasured voxels in a channel reach ρ = 0.95, with
-    1e-6 of the window's weight.  Only the strict tol = 0 follows them in."""
+    """A thin unmeasured channel from a box face deep into the ellipsoid (as
+    measured coverage can have) carries a negligible share of the window's
+    weight.  Only the strict tol = 0 follows it in."""
     vol = _ortho_volume()
     support = np.ones(vol.data.shape, dtype=bool)
     support[15, 15, 27:] = False                          # from the L face to ρ = 0.8

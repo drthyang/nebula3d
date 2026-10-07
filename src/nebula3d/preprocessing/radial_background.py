@@ -1336,12 +1336,11 @@ def _detect_rings(
 
     A peak must rise ``rel_prominence`` (6 %) of the profile's largest excess.
     That relative cut alone admits noise when there is no ring at all, and
-    drops weak but real rings when one ring is very strong (on the 22 K
-    TbTi3Bi4 volume the Al 440 and 533 lines at 8.81 and 10.21 Å⁻¹ sit at 5–6 %
-    of the 2.69 Å⁻¹ line yet ~10× the profile noise).  ``min_snr`` adds a noise
-    floor: the peak must also rise ``min_snr`` × the profile's robust noise (the
-    MAD of its bin-to-bin differences, /√2).  ``rel_prominence=0`` with
-    ``min_snr`` leaves the noise cut alone.
+    drops weak but real rings when one ring is very strong (weak high-order Al
+    lines can sit below the cut yet well above the profile noise).  ``min_snr``
+    adds a noise floor: the peak must also rise ``min_snr`` × the profile's
+    robust noise (the MAD of its bin-to-bin differences, /√2).
+    ``rel_prominence=0`` with ``min_snr`` leaves the noise cut alone.
     """
     from scipy.signal import find_peaks, peak_widths
 

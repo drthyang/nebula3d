@@ -43,12 +43,12 @@ peak structure or azimuthal texture.
 pipeline, web and `examples/remove_rings_3d.py` default since 2026-10. Select
 `"patched"` for the previous default.
 
-**What the rings actually look like.** On the CORELLI TbTi3Bi4 volumes a powder
-ring is not a sphere whose only direction dependence is its amplitude. Its
+**What the rings actually look like.** On measured *mmm* CORELLI volumes a
+powder ring is not a sphere whose only direction dependence is its amplitude. Its
 radial position and width wander with direction. At H = 0 the 4.39 Å⁻¹ Al line
-peaks anywhere from 4.30 to 4.51 Å⁻¹ depending on the azimuth, more than its own
-FWHM. The *mmm* symmetrisation overlays several such copies, so along some
-directions the ring is a multi-peaked band 0.25 Å⁻¹ wide. At a fixed |Q| the
+peaks at a |Q| that moves with the azimuth by more than its own FWHM. The *mmm*
+symmetrisation overlays several such copies, so along some directions the ring
+is a broad multi-peaked band. At a fixed |Q| the
 ring intensity traces smooth curved loci over the sphere (an H × φ map at one
 |Q| bin shows them directly). The direction-dependent shift is the
 `delta_q_j(u)` term of the Ring Removal 2.0 target model below.
@@ -72,22 +72,23 @@ supplies the statistics one plane lacks.
    does: above 6 % of the strongest ring, and here also ≥ 6σ of the profile
    noise (the relative cut alone finds "rings" in pure noise). A weaker ring
    (≥ 6σ) is added only if it sits on an FCC-Al line, the lattice parameter
-   fitted from the strong rings (22 K: a = 4.034 Å). On 22 K the relative cut
-   lost the Al 440 and 533 lines (8.81, 10.21 Å⁻¹; 5–6 % of the 2.69 line,
-   ~10σ). Without the Al condition a pure noise cut also admits sharp diffuse
-   maxima: on the demo volume, the (1 ½ 0) SRO at 1.67 Å⁻¹ (7σ).
+   fitted from the strong rings. On measured data the relative cut lost the
+   weak Al 440 and 533 lines, though they stood well above the noise. Without
+   the Al condition a pure noise cut also admits sharp diffuse maxima: on the
+   demo volume, the (1 ½ 0) SRO at 1.67 Å⁻¹ (7σ).
 3. Pooling: each plane's sector profile becomes the weighted median over a small
    solid angle of the ring sphere: ±1 sector and the planes whose direction at
    that |Q| lies within ±5°. The plane window therefore widens with |Q|, from
-   ±6 planes at 2.7 Å⁻¹ to ±25 at 10.5 Å⁻¹ on the 22 K grid. Weights are voxel
+   ±6 planes at 2.7 Å⁻¹ to ±25 at 10.5 Å⁻¹ on a CORELLI grid. Weights are voxel
    count × triangle kernels. Where the grid is too coarse for that solid angle
    to hold 12 voxels (by geometry), it widens in both directions until it does;
    empty cells are filled along φ, never along |Q| across a ring. On the
    CORELLI grid nothing widens; on the coarse demo grid (0.094 Å⁻¹ voxels,
    rings narrower than a voxel) it must, or the starved cells erase the ring.
 4. Ring excess: SNIP under each pooled profile with one window per ring
-   *cluster*, the same on every plane. A close doublet (6.79/6.97 Å⁻¹) shares a
-   window instead of each member being capped at 0.9 × the separation, which
+   *cluster*, the same on every plane. A close doublet (Al 331/420,
+   ≈ 6.8/6.9 Å⁻¹) shares a window instead of each member being capped at
+   0.9 × the separation, which
    left half the broad member in the baseline. The excess is kept inside the
    confirmed shells through an envelope 1.5 × FWHM wide (room for the
    direction-dependent position) and capped at 8 × the shell's across-stack
@@ -98,51 +99,38 @@ supplies the statistics one plane lacks.
 **Bragg peaks.** A Bragg peak covers one sector over a few planes, a minority of
 the pooling neighbourhood, so the median rejects it. Pooling over the stack
 alone is not enough at integer H, where the peak spans most of the plane window:
-the ring estimate at Bragg-on-ring voxels rose 42 % above the Bragg-free
-counterfactual, leaving holes. With the ±1-sector pooling it is +17 %, against
-+15 % for `patched`.
+the ring estimate at Bragg-on-ring voxels rose far above the Bragg-free
+counterfactual, leaving holes. With the ±1-sector pooling it is about as close
+to it as `patched`.
 
 **Continuity.** Neighbouring planes share most of their pooled data, so the
 subtracted ring is continuous along the stack axis. The per-plane models' plane
 to plane jitter showed up in the ΔPDF as a streak along x_H.
 
-#### Validation (2026-10-05, TbTi3Bi4 22 K / 45 K / 100 K, `*_mmm_cc.nxs`)
+#### Validation (2026-10-05, three measured mmm volumes, `*_mmm_cc.nxs`)
 
 *Held-out ring residual* (fit on one checkerboard half of each plane, score on
 the other; per (10° sector, 0.02 Å⁻¹) median minus a linear baseline between the
 ring's flanks, noise subtracted; residual RMS / raw-ring RMS; six blocks of seven
 planes at H = 0, ⅓, 1, 2, −1⅓, 3; lower is better). The scores include
 non-ring structure (Bragg, coverage edges) common to both, so they rank rather
-than measure absolutely:
+than measure absolutely. Against `patched` (cc_on defaults), `pooled` scored
+lower on every scored ring of every volume, most on the strong low-|Q| Al
+lines.
 
-| ring (Å⁻¹) | 2.69 | 3.11 | 4.39 | 5.17 | 6.79/6.97 | 8.11 | 9.23/9.35 | 9.87 |
-|---|---|---|---|---|---|---|---|---|
-| 22 K `patched` (cc_on defaults) | 0.22 | 0.22 | 0.67 | 0.41 | 0.54 | 0.68 | 0.55 | 0.88 |
-| 22 K `pooled` | 0.12 | 0.11 | 0.58 | 0.23 | 0.35 | 0.62 | 0.34 | 0.61 |
-| 45 K `patched` | 0.22 | 0.22 | 0.64 | 0.44 | 0.80 | 0.55 | 0.58 | 0.84 |
-| 45 K `pooled` | 0.12 | 0.11 | 0.54 | 0.29 | 0.74 | 0.45 | 0.39 | 0.75 |
-| 100 K `patched` | 0.20 | 0.23 | 0.63 | 0.30 | — | — | 0.68 | 0.89 |
-| 100 K `pooled` | 0.10 | 0.11 | 0.52 | 0.16 | — | — | 0.62 | 0.87 |
-
-The 45 K doublet score is dominated by its zone's flank baseline near the edge of
-the K coverage: the all-azimuth radial profile there is flat after `pooled` on
-H = 0, ⅓ and 1, while `patched` leaves both peaks.
+On one volume the doublet score is dominated by its zone's flank baseline near
+the edge of the K coverage: the all-azimuth radial profile there is flat after
+`pooled` on H = 0, ⅓ and 1, while `patched` leaves both peaks.
 
 *Full pipeline* (rings → punch → backfill → flatten → ΔPDF, everything else at
 defaults). The patched ΔPDFs carry concentric ripples across every section, the
-real-space image of the leftover rings; the pooled ones largely do not. ΔPDF RMS
-by radial shell, pooled / patched:
-
-| r (Å) | 3–10 | 10–20 | 20–40 | 40–60 | 60–85 |
-|---|---|---|---|---|---|
-| 22 K | 0.91 | 0.92 | 0.91 | 0.89 | 0.95 |
-| 45 K | 0.76 | 0.72 | 0.80 | 0.85 | 0.95 |
-| 100 K | 0.76 | 0.84 | 0.94 | 0.95 | 0.96 |
+real-space image of the leftover rings; the pooled ones largely do not. The
+ΔPDF RMS by radial shell is lower for pooled than for patched in every shell
+out to 85 Å, on all three volumes.
 
 The pooled − patched difference is concentric ripples (the removed rings) plus
 a streak along x_H (the per-plane fits' plane-to-plane jitter). The back-FFT
-consistency check is unchanged (r: 22 K 0.99871 → 0.99872; 45 K 0.99897 →
-0.99896; 100 K 0.99840 → 0.99835).
+consistency check is unchanged on all three volumes.
 
 *Demo volume* (`nebula3d.demo`, ground truth known; 97³ over ±3 r.l.u.):
 ring-zone residual RMS against the ring-free truth is 0.056 (`patched` 0.049;
@@ -204,17 +192,17 @@ qualification gates in `docs/reports/2026-07-10_al_ring_removal_2_0_plan.md`.
 
 #### Initial real-data check (2026-07-10)
 
-A stride-4 read of the unsubtracted 22 K `TbTi3Bi4 ... mmm_cc.nxs` sample volume
-(76 × 101 × 101; 775,210 valid voxels) exercised the sample-only path without an
+A stride-4 read of an unsubtracted measured `*_mmm_cc.nxs` sample volume
+(76 × 101 × 101 grid) exercised the sample-only path without an
 empty-environment scan. With `material="auto"`, `min_snr=5`, and conservative
 subtraction, it found:
 
-- the strong non-Al shell at approximately 1.92 Å⁻¹;
-- the FCC Al sequence at approximately 2.68, 3.12, 4.40, 5.16, 5.40, 6.24,
-  6.80, 6.96, 7.64, 8.08, 9.24, and 10.32 Å⁻¹;
-- a fitted Al lattice parameter of 4.039 Å (nominal room-temperature prior
-  4.0494 Å);
-- 7.56% of total `|I|` removed and a 2.04% positive-to-negative flip fraction.
+- a strong non-Al shell;
+- the FCC Al sequence from the 111 line out past 10 Å⁻¹;
+- a fitted Al lattice parameter close to the nominal room-temperature prior
+  (4.0494 Å);
+- a few per cent of total `|I|` removed and a small positive-to-negative flip
+  fraction.
 
 This is a smoke/geometry check, not the release qualification: full-resolution
 before/model/after figures, injected-truth retention metrics, and downstream
@@ -260,8 +248,8 @@ same cross-stack confirmed-shell guards; select with `RingParams.ring_model`
 Compared with `examples/compare_ring_models.py` (representative H planes, same
 confirmed shells). The two are **close** but fail in *opposite* directions:
 **patched over-subtracts** (digs shallow negative troughs at the ring centres,
-worst at the first ring ≈1.93 Å⁻¹) while **parametric rolling under-subtracts**
-(leaves ring behind, most on the magnetic H=1/3 plane). Judged on the slice
+worst at the first, non-Al ring) while **parametric rolling under-subtracts**
+(leaves ring behind, most on the H=1/3 plane). Judged on the slice
 figures below, **patched hugs the diffuse baseline better overall and was kept as
 the default** (until `pooled`, 2026-10); parametric rolling is a validated,
 selectable alternative.
@@ -269,9 +257,9 @@ selectable alternative.
 ### The dominant residual error is texture-contrast compression
 
 The main arc-by-arc error in **both** models is that the fitted azimuthal texture
-`T(φ)` is **flattened toward its φ-mean**. At |Q|≈2.69 Å⁻¹ (H=0) the data-truth
-ring excess swings ≈0.04→0.16, but every model reaches only ≈0.078→0.135 —
-roughly half the contrast. So `T(φ)` sits *below* truth at the bright arcs
+`T(φ)` is **flattened toward its φ-mean**. At the Al 111 line (|Q|≈2.69 Å⁻¹,
+H=0) every model reaches only roughly half the azimuthal contrast of the
+data-truth ring excess. So `T(φ)` sits *below* truth at the bright arcs
 (→ under-subtraction / leftover) and *above* it at the dim arcs
 (→ over-subtraction / digs a hole). Cause: the harmonic ridge (`texture_ridge`,
 penalty ∝ order², with the mean `c₀` left free) + Fourier truncation
@@ -281,7 +269,7 @@ lever is texture **contrast** (lower `texture_ridge`, higher `n_fourier`).
 
 > **Metric caveat.** The mean per-shell "ring removed %" is *blind* to this,
 > because the bright-under and dim-over errors cancel in the azimuthal average
-> (parametric scores ≈98% at H=0 with a visibly wrong texture). Judge ring
+> (parametric scores almost perfectly at H=0 with a visibly wrong texture). Judge ring
 > quality on the azimuthal **texture overlay** and the **per-φ / diverging
 > residual** figures, not on the mean %.
 

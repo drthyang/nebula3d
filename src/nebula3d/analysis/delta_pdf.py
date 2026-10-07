@@ -602,14 +602,14 @@ def _prepare_forward(
     # change.  The earlier order (window, then subtract the plain mean)
     # left a step of that mean at the box faces against the zero padding;
     # its transform, a 3-D sinc sampled off its zeros, drew a dashed line of
-    # alternating sign along every grid axis (13–27 % of the strongest
-    # correlation on Fe3Ge2 and TbTi3Bi4).  See docs/algorithms/delta_pdf.md.
+    # alternating sign along every grid axis (a sizeable fraction of the
+    # strongest correlation on measured data).  See docs/algorithms/delta_pdf.md.
     #
     # Outside the support the input is ΔI = 0: the mean is weighted over the
     # support only, and those voxels are zeroed after it is subtracted.  Read
     # as I = 0 instead, a missing region pulls c down and leaves a step of −c
-    # at its edge (raw Fe3Ge2 90 K, 41 % of the box unmeasured, separable
-    # Gaussian: c = 8.81 over the box against 9.37 over the data).
+    # at its edge (the larger the unmeasured share of the box, the further c
+    # falls below the mean over the data).
     window_axes, ellipsoid = _apodization_window(
         window_shape, apodization, gaussian_sigma,
         (h_axis, k_axis, l_axis), vol.ub_matrix, support=supp, tol=support_tol)
@@ -956,9 +956,10 @@ def _radial_taper(
 
 
 #: Relative tolerance on the reciprocal metric when looking for the lattice's
-#: point symmetry.  Refined UBs are not exactly symmetric: on Fe3Ge2 90 K
-#: (a, b differ by 0.12 %, the angles by up to 0.23° from 90/90/120) the 24
-#: operations of 6/mmm are off by ≤ 1.2 %, the nearest other candidate by 68 %.
+#: point symmetry.  Refined UBs are not exactly symmetric: on a hexagonal cell
+#: with a and b 1 % apart and the angles up to 0.4° from 90/90/120 (the
+#: perturbed cell in tests/test_delta_pdf_window.py) the 24 operations of
+#: 6/mmm are off by ≤ 2.2 %, the nearest other candidate by 67 %.
 _LATTICE_TOL = 0.05
 
 
