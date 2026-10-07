@@ -17,6 +17,13 @@ and a whole-shell median averages that away.
 so the fill continues the surrounding diffuse smoothly, with no step at the
 edge; ``method="local"`` fills each hole with the median of its own local
 shell.
+
+The fill interpolates; it never extrapolates.  Voxels that were never measured
+are filled only where measured data enclose them (the direct-beam shadow, a
+dead voxel).  Unmeasured space that reaches the edge of the box — the region
+past the coverage, or a gap where the coverage edge meets a box face — stays
+masked: nothing measured lies beyond it, so any value there would be
+invented, and the ΔPDF reads it as zero, which its window tapers.
 Generic image inpainting (total variation, symmetry copies) was removed: it has
 no model of diffuse scattering — TV assumes a piecewise-constant image and
 leaves staircase artefacts — and every symmetry copy of a punched Bragg node is
@@ -37,6 +44,7 @@ from scipy import ndimage, sparse
 from nebula3d.core import HKLVolume, q_magnitude_from_axes
 
 BraggFillMethod = Literal["local", "q_shell", "laplace"]
+UnmeasuredFill = Literal["enclosed", "all"]
 
 #: Most unknowns one ``method="laplace"`` solve holds.  Caps the solver's
 #: working set (~200 B per unknown, so ≲0.4 GB) however many voxels are masked,
@@ -62,6 +70,7 @@ def backfill_bragg(
     laplace_max_unknowns: int = LAPLACE_MAX_UNKNOWNS,
     report: Callable[[str], None] | None = None,
     punched: NDArray[np.bool_] | None = None,
+    unmeasured: UnmeasuredFill = "enclosed",
 ) -> HKLVolume:
     """Fill Bragg-punched voxels in *vol*.
 
@@ -150,17 +159,42 @@ def backfill_bragg(
         that touches unmeasured coverage merges with it and the whole region
         gets one fill value — on a volume with large coverage gaps, most of
         the punched voxels.
+    unmeasured:
+        Which never-measured voxels (masked, not punched) are filled.
+        ``"enclosed"`` (default): only those enclosed by measured data — the
+        direct-beam shadow, dead voxels — i.e. in a region of unmeasured
+        voxels (26-connected) that does not reach a face of the box.  The
+        regions that do reach one (the space past the coverage, a gap where
+        the coverage edge meets a box face) stay masked, with their data
+        unchanged: no measured data lie beyond them, so a fill would be
+        extrapolation.  ``"all"``: fill them too, with their local shell
+        median — the behaviour before 2026-10, kept for comparison.  Without
+        *punched* every masked voxel counts as unmeasured, so a hole that
+        touches an open region is part of it and stays masked too.
 
     Returns
     -------
-    HKLVolume with Bragg holes filled.
+    HKLVolume with the holes filled and ``mask`` True on every voxel except
+    the unmeasured ones left masked (none with ``unmeasured="all"``).
     """
+    if unmeasured not in ("enclosed", "all"):
+        raise ValueError(
+            f"Unknown unmeasured={unmeasured!r}; choose 'enclosed' or 'all'")
+    exterior = None
+    if unmeasured == "enclosed":
+        exterior = _open_unmeasured(vol, punched)
+        if report is not None:
+            n_open = int(np.count_nonzero(exterior))
+            if n_open:
+                report(f"{n_open:,} unmeasured voxels reach the edge of the box "
+                       f"(outside the measured support): left masked, not filled")
     if method == "laplace":
         return _laplace_fill(
             vol, gap=laplace_gap, direct_beam_fill=direct_beam_fill,
             db_q_gap=direct_beam_q_gap, db_q_width=direct_beam_q_width,
             db_min_count=local_min_count, local_radius=local_radius,
             max_unknowns=laplace_max_unknowns, report=report, punched=punched,
+            exterior=exterior,
         )
     if method in {"local", "q_shell"}:
         return _local_background_fill(
@@ -169,10 +203,40 @@ def backfill_bragg(
             q_shell_min_count=q_shell_min_count,
             direct_beam_fill=direct_beam_fill,
             db_q_gap=direct_beam_q_gap, db_q_width=direct_beam_q_width,
-            punched=punched,
+            punched=punched, exterior=exterior,
         )
     raise ValueError(
         f"Unknown backfill method {method!r}; choose 'local', 'laplace' or 'q_shell'")
+
+
+def _open_unmeasured(
+    vol: HKLVolume, punched: NDArray[np.bool_] | None,
+) -> NDArray[np.bool_]:
+    """The unmeasured voxels in regions that reach a face of the box.
+
+    Unmeasured = masked and not punched (every masked voxel without
+    *punched*).  Its 26-connected regions that touch a face are open: the
+    coverage ends there, not the box.  A region enclosed by measured (or
+    punched) voxels is a hole in the support and is filled like a punch.
+    """
+    unmeasured = ~vol.mask
+    if punched is not None:
+        unmeasured &= ~punched
+    if not unmeasured.any():
+        return unmeasured
+    labels, n = ndimage.label(unmeasured, structure=np.ones((3, 3, 3), dtype=bool))
+    del unmeasured
+    is_open = np.zeros(n + 1, dtype=bool)
+    for axis in range(3):
+        for end in (0, labels.shape[axis] - 1):
+            is_open[np.take(labels, end, axis=axis)] = True
+    is_open[0] = False
+    out = np.empty(vol.shape, dtype=bool)
+    # Plane by plane: the lookup casts its index to intp, which for the whole
+    # int32 label volume would be an 8 B/voxel temporary.
+    for i in range(out.shape[0]):
+        out[i] = is_open[labels[i]]
+    return out
 
 
 def _local_background_fill(
@@ -186,11 +250,17 @@ def _local_background_fill(
     db_q_gap: float = 0.05,
     db_q_width: float = 0.15,
     punched: NDArray[np.bool_] | None = None,
+    exterior: NDArray[np.bool_] | None = None,
 ) -> HKLVolume:
-    """Fill each punched connected component from its local valid shell."""
+    """Fill each punched connected component from its local valid shell.
+
+    *exterior*: unmeasured voxels to leave masked (see :func:`_open_unmeasured`).
+    """
     holes = (~vol.mask) & np.isfinite(vol.data)
+    if exterior is not None:
+        holes &= ~exterior
     if not holes.any():
-        return dataclasses.replace(vol, mask=np.ones(vol.shape, dtype=bool))
+        return dataclasses.replace(vol, mask=_out_mask(vol, exterior))
 
     valid = vol.mask & np.isfinite(vol.data)
     # Fill-value statistics in float64 regardless of storage precision
@@ -220,6 +290,7 @@ def _local_background_fill(
         resolved = _fill_direct_beam(
             vol, data, sigma, holes, valid, global_sigma,
             q_gap=db_q_gap, q_width=db_q_width, min_count=min_count,
+            exterior=exterior,
         )
 
     targets = holes & ~resolved
@@ -234,7 +305,12 @@ def _local_background_fill(
             global_sigma=global_sigma, q_lookup=q_lookup,
         )
     return dataclasses.replace(vol, data=data, sigma=sigma,
-                               mask=np.ones(vol.shape, dtype=bool))
+                               mask=_out_mask(vol, exterior))
+
+
+def _out_mask(vol: HKLVolume, exterior: NDArray[np.bool_] | None) -> NDArray[np.bool_]:
+    """The filled volume's mask: everything but the unmeasured voxels left open."""
+    return np.ones(vol.shape, dtype=bool) if exterior is None else ~exterior
 
 
 def _shell_fill_components(
@@ -307,6 +383,7 @@ def _laplace_fill(
     max_unknowns: int = LAPLACE_MAX_UNKNOWNS,
     report: Callable[[str], None] | None = None,
     punched: NDArray[np.bool_] | None = None,
+    exterior: NDArray[np.bool_] | None = None,
 ) -> HKLVolume:
     """Fill every punched hole with the harmonic interpolant of its surroundings.
 
@@ -324,11 +401,14 @@ def _laplace_fill(
     as holes); its holes get the ``local`` shell-median fill instead.  With
     *punched* the unknowns are the punched voxels and their gap band only:
     unmeasured coverage is a Neumann boundary of every hole it touches, and
-    gets the ``local`` fill afterwards.
+    gets the ``local`` fill afterwards.  Voxels in *exterior* are never
+    filled and stay masked (see :func:`_open_unmeasured`).
     """
     holes = (~vol.mask) & np.isfinite(vol.data)
+    if exterior is not None:
+        holes &= ~exterior
     if not holes.any():
-        return dataclasses.replace(vol, mask=np.ones(vol.shape, dtype=bool))
+        return dataclasses.replace(vol, mask=_out_mask(vol, exterior))
 
     valid = vol.mask & np.isfinite(vol.data)
     global_vals = vol.data[valid].astype(np.float64, copy=False)
@@ -345,6 +425,7 @@ def _laplace_fill(
         resolved = _fill_direct_beam(
             vol, data, sigma, holes, valid, global_sigma,
             q_gap=db_q_gap, q_width=db_q_width, min_count=db_min_count,
+            exterior=exterior,
         )
     remaining = holes & ~resolved
     del holes
@@ -352,7 +433,7 @@ def _laplace_fill(
     if punched is not None:
         coverage = remaining & ~punched
         remaining &= punched
-    out_mask = np.ones(vol.shape, dtype=bool)
+    out_mask = _out_mask(vol, exterior)
 
     def fill_coverage() -> HKLVolume:
         if coverage is not None and coverage.any():
@@ -662,6 +743,7 @@ def _fill_direct_beam(
     q_gap: float,
     q_width: float,
     min_count: int,
+    exterior: NDArray[np.bool_] | None = None,
 ) -> NDArray[np.bool_]:
     """Fill the origin (direct-beam) region from the |Q|-just-outside background.
 
@@ -676,7 +758,9 @@ def _fill_direct_beam(
     Returns a boolean mask of the voxels resolved here (empty if no direct-beam
     region is found, the region is too large to be a beam, or no clean outside
     shell is available — the caller's generic per-component fill then handles
-    those holes instead).
+    those holes instead).  Voxels in *exterior* (unmeasured space open to the
+    box edge) are never part of the beam region: a shadow that reaches the box
+    edge is not enclosed by data, so it stays unfilled.
     """
     resolved = np.zeros(vol.shape, dtype=bool)
     nh, nk, nl = vol.shape
@@ -687,6 +771,8 @@ def _fill_direct_beam(
 
     # The direct beam is punched holes ∪ the unmeasured detector shadow at |Q|≈0.
     beam_like = holes | ~vol.mask
+    if exterior is not None:
+        beam_like &= ~exterior
     structure = np.ones((3, 3, 3), dtype=bool)
     labels, _ = ndimage.label(beam_like, structure=structure)
     lbl = int(labels[ih, ik, il])
@@ -742,6 +828,9 @@ def _fill_direct_beam(
     # diffuse).  The component is confined to small |H| (~0.15 rlu punch), so this
     # cannot reach other H planes.
     solid_box = ndimage.binary_fill_holes(comp_box) & (q_box <= q_beam)
+    if exterior is not None:
+        # fill_holes judges enclosure inside this box only, and 6-connected
+        solid_box &= ~exterior[region]
 
     valid_box = valid[region]
     shell = valid_box & (q_box > q_beam + q_gap) & (q_box <= q_beam + q_gap + q_width)
