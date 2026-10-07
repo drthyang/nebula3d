@@ -533,6 +533,10 @@ class DeltaPdfParams:
     # the lattice-symmetric ellipsoid only where a separable window would
     # break the lattice's symmetry (hexagonal cells).
     window_shape: str = "auto"
+    # Pass the input's mask as compute_delta_pdf's support: masked voxels are
+    # ΔI = 0, and unmeasured space open to the box edge shrinks the window to
+    # the coverage.  A no-op when the mask is all True (a fully filled volume).
+    window_support: bool = True
 
 
 @dataclass
@@ -1220,6 +1224,7 @@ def delta_pdf(vol: HKLVolume, params: DeltaPdfParams | None = None, *,
         real_space_angstrom=True, crop_hkl=p.crop_hkl, q_band=p.q_band,
         subtract_smooth_bg=p.subtract_smooth_bg,
         window_shape=p.window_shape,  # type: ignore[arg-type]
+        support=vol.mask if p.window_support else None,
     )
     _emit(progress, "pdf", "done", 1.0,
           f"ΔPDF complete (|Q|max {dpdf.q_max:.2f} Å⁻¹, shape {dpdf.data.shape})")
@@ -1249,6 +1254,7 @@ def delta_pdf_transform_config(p: DeltaPdfParams) -> str:
         f"q_band={_param_string(p.q_band)}",
         f"subtract_bg={_param_string(p.subtract_smooth_bg)}",
         f"window_shape={p.window_shape}",
+        f"window_support={int(p.window_support)}",
     ))
 
 
@@ -1273,6 +1279,8 @@ def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
             "q_max": float(dpdf.q_max),
             "apodization": str(dpdf.apodization),
             "window_shape": dpdf.window_shape,  # resolved: separable | ellipsoid
+            "window_scale": (dpdf.window_ellipsoid.scale
+                             if dpdf.window_ellipsoid is not None else 1.0),
             "source_file": source_name,
             "crop_hkl": _param_string(p.crop_hkl),
             "q_band": _param_string(p.q_band),
@@ -1506,6 +1514,9 @@ def consistency_reconstruction(
     if _low_memory():
         vol_c = _drop_sigma(vol_c)
     in_band = np.ones(vol_c.data.shape, dtype=bool)
+    # The support is the mask before the band: the band stays a hard cut, and
+    # without one this matches the pipeline's ΔPDF.
+    support = vol_c.mask if p.window_support else None
     # The full per-voxel |Q| grid is only needed to build the band mask.  When no
     # |Q| band is requested, skip it entirely and get the q_data_max scalar from
     # the 8 box corners (exact — |Q| is convex), avoiding a ~48M-voxel meshgrid.
@@ -1522,7 +1533,8 @@ def consistency_reconstruction(
         gaussian_sigma=p.gaussian_sigma, zero_pad=p.zero_pad,
         subtract_mean=p.subtract_mean, real_space_angstrom=True,
         crop_hkl=None, subtract_smooth_bg=p.subtract_smooth_bg,
-        window_shape=p.window_shape)  # type: ignore[arg-type]
+        window_shape=p.window_shape,  # type: ignore[arg-type]
+        support=support)
 
     # max R for the UI scale — farthest real-space corner (Å).  |r| is convex
     # in the oblique (x, y, z), so its maximum over the box is at a corner.

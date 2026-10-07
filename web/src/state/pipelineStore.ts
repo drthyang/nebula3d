@@ -97,6 +97,7 @@ interface PipelineConfig {
   flattenIon: string;
   pdfApod: string;
   pdfWindowShape: string;
+  pdfWindowSupport: boolean; // taper the ΔPDF window to the measured coverage
   pdfQMin: string;
   pdfQMax: string;
 }
@@ -177,6 +178,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   flattenIon: "",
   pdfApod: "",
   pdfWindowShape: "",
+  pdfWindowSupport: true,
   pdfQMin: "",
   pdfQMax: "",
 
@@ -319,6 +321,7 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.flattenIon) params.flatten_ion = s.flattenIon;
   if (s.pdfApod) params.pdf_apodization = s.pdfApod;
   if (s.pdfWindowShape) params.pdf_window_shape = s.pdfWindowShape;
+  if (s.pdfWindowSupport === false) params.pdf_window_support = false;
   if (s.pdfQMin || s.pdfQMax) {
     params.pdf_q_min = s.pdfQMin ? Number(s.pdfQMin) : 0;
     if (s.pdfQMax) params.pdf_q_max = Number(s.pdfQMax);
