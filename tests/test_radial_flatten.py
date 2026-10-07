@@ -195,7 +195,7 @@ def test_subtraction_is_purely_radial_so_anisotropy_is_untouched(estimator):
     # the shell width — a tiny fraction of the total background span.
     for q0 in (1.0, 2.0, 3.5):
         shell = np.abs(q - q0) < 0.02
-        assert np.ptp(delta[shell]) < 0.03 * bg_span
+        assert np.ptp(delta[shell]) <= 0.03 * bg_span
 
     # and the blob-to-background contrast within a shell is retained to ~100%
     H1, K1, L1 = vol.hkl_grid()
@@ -233,7 +233,7 @@ def test_model_is_the_default():
     vol, _, _ = _model_vol()
     res = flatten_radial_background(vol)
     assert res.estimator == "model"
-    assert res.ion == "Tb3+"
+    assert res.ion is None
 
 
 def test_model_recovers_the_pedestal_and_flattens():
@@ -243,7 +243,7 @@ def test_model_recovers_the_pedestal_and_flattens():
     vol, q, _ = _model_vol(noise=noise)
     valid = vol.mask & np.isfinite(vol.data)
 
-    res = flatten_radial_background(vol, q_step=0.05, min_count=15)
+    res = flatten_radial_background(vol, ion="Tb3+", q_step=0.05, min_count=15)
     const, c = res.model_coef
 
     assert c == pytest.approx(5.0, rel=0.02)
@@ -279,7 +279,7 @@ def test_model_keeps_isotropic_correlations_the_floor_removes():
         prof = np.array([np.median(vals[shell[inside] == i]) for i in range(t.size)])
         return float(np.sum((prof - prof.mean()) * t) / np.sum(t * t))
 
-    model = flatten_radial_background(vol, q_step=0.05, min_count=15)
+    model = flatten_radial_background(vol, ion="Tb3+", q_step=0.05, min_count=15)
     floor = flatten_radial_background(vol, estimator="floor", q_step=0.05, smooth=0.10,
                                       min_count=15)
 
