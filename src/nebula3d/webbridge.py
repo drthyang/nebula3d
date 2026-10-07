@@ -21,6 +21,7 @@ Workflow (one dataset per browser session):
 
     setup()                       → create the virtual workspace
     load_input(name, tmp_path)    → register the user's uploaded volume
+    select_input(dataset_id)      → choose which loaded volume the next run reduces
     run(stages, params_json, …)   → run_pipeline (streams per-stage progress)
     datasets_json()               → dataset + per-stage status (for the viewers)
     volume_slice / dpdf_slice / consistency_slice → binary envelopes
@@ -71,6 +72,7 @@ __all__ = [
     "setup",
     "inspect_input",
     "load_input",
+    "select_input",
     "make_demo_input",
     "run",
     "run_async",
@@ -355,6 +357,26 @@ def load_input(name: str, tmp_path: str) -> str:
     _S.dataset_id = _ds._slug(stem)
     _clear_caches()
     return _S.dataset_id
+
+
+def select_input(dataset_id: str) -> str:
+    """Make *dataset_id*'s raw volume the input the next run reduces.
+
+    A run reduces ``_S.input``, which :func:`load_input` points at the most
+    recent load — not necessarily the dataset selected in the UI once several
+    are loaded.  And the JS side can restart this worker (Cancel, or a worker
+    crash), which discards the in-memory workspace while the page keeps the
+    dataset selected.  So the engine names the dataset before each run.
+    Returns JSON ``true`` when the workspace holds its raw volume, ``false``
+    when it does not (the engine then reloads the file and runs).
+    """
+    cfg = _require_cfg()
+    for ds in _ds.discover_datasets(cfg):
+        if ds.id == dataset_id and ds.raw_path.is_file():
+            _S.input = ds.raw_path
+            _S.dataset_id = ds.id
+            return _json(True)
+    return _json(False)
 
 
 def make_demo_input(n: int = 161) -> str:

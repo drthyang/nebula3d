@@ -185,7 +185,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     const stages = enabledStages(s);
 
     if (PYODIDE_MODE) {
-      await runInBrowser(params, s.flatten, s.force, stages, set, get);
+      await runInBrowser(datasetId, params, s.flatten, s.force, stages, set, get);
       return;
     }
 
@@ -316,6 +316,7 @@ type Getter = () => PipelineState;
 // Execution log.  The Worker is never blocked from the main thread's view, so
 // the UI repaints freely throughout.
 async function runInBrowser(
+  datasetId: string,
   params: StageParamsIn,
   flatten: boolean,
   force: boolean,
@@ -327,6 +328,7 @@ async function runInBrowser(
     set({ events: [...get().events, ev], times: [...get().times, Date.now()] });
   try {
     await engine.runPipeline({
+      datasetId,
       paramsJson: JSON.stringify(params),
       flattenEnabled: flatten,
       force,

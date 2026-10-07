@@ -286,21 +286,75 @@ async function sliceCall(method: string, args: unknown[]): Promise<Slice> {
 }
 
 // ---------------------------------------------------------------------------
+// Loaded inputs
+// ---------------------------------------------------------------------------
+// How each dataset's volume reached the worker, so a run can load it again.
+// Cancel and a worker crash both terminate the worker, and its Pyodide
+// workspace goes with it, while the page keeps the dataset selected: without
+// this, the next run reaches a fresh worker with no input loaded.  A File
+// picked from disk is only a handle; one built in memory (the NeXus Viewer
+// hand-off) keeps its bytes alive for the session.
+type InputSource = { kind: "file"; file: File } | { kind: "demo" };
+const inputSources = new Map<string, InputSource>();
+
+async function sendInput(src: InputSource): Promise<string> {
+  if (src.kind === "demo") return (await rpc("load_demo")) as string;
+  let buffer: ArrayBuffer;
+  try {
+    buffer = await src.file.arrayBuffer();
+  } catch (e) {
+    // The file moved or changed on disk since it was picked.
+    throw new Error(
+      `Could not read ${src.file.name} again (${(e as Error).message}). Load the volume again, then run.`,
+    );
+  }
+  return (await rpc("load_file", { name: src.file.name, buffer }, [buffer])) as string;
+}
+
+async function loadInput(src: InputSource): Promise<string> {
+  await ensureBooted();
+  const id = await sendInput(src);
+  inputSources.set(id, src);
+  return id;
+}
+
+// Point the worker's next run at *datasetId*, loading its volume again when
+// the worker no longer holds it (it was restarted since the load).
+async function selectInput(
+  datasetId: string,
+  onProgress?: (ev: PipelineProgressEvent) => void,
+): Promise<void> {
+  if (await jsonCall<boolean>("select_input", [datasetId])) return;
+  const src = inputSources.get(datasetId);
+  if (!src) {
+    throw new Error(
+      `${datasetId} is not loaded in the in-browser engine. Load the volume again, then run.`,
+    );
+  }
+  const name = src.kind === "file" ? src.file.name : "the demo volume";
+  onProgress?.({
+    stage: "",
+    status: "info",
+    fraction: null,
+    message: `The in-browser engine was restarted: loading ${name} again`,
+  });
+  await sendInput(src);
+}
+
+// ---------------------------------------------------------------------------
 // Public engine API (mirrors the FastAPI endpoints; same return types)
 // ---------------------------------------------------------------------------
 export const engine = {
-  async loadFile(file: File): Promise<string> {
-    await ensureBooted();
-    const buffer = await file.arrayBuffer();
-    return (await rpc("load_file", { name: file.name, buffer }, [buffer])) as string;
+  loadFile(file: File): Promise<string> {
+    return loadInput({ kind: "file", file });
   },
 
-  async loadDemo(): Promise<string> {
-    await ensureBooted();
-    return (await rpc("load_demo")) as string;
+  loadDemo(): Promise<string> {
+    return loadInput({ kind: "demo" });
   },
 
   async runPipeline(opts: {
+    datasetId?: string;
     paramsJson: string;
     flattenEnabled: boolean;
     force: boolean;
@@ -309,7 +363,8 @@ export const engine = {
     onProgress?: (ev: PipelineProgressEvent) => void;
   }): Promise<Dataset[]> {
     await ensureBooted();
-    const { paramsJson, flattenEnabled, force, forceFrom, stages, onProgress } = opts;
+    const { datasetId, paramsJson, flattenEnabled, force, forceFrom, stages, onProgress } = opts;
+    if (datasetId) await selectInput(datasetId, onProgress);
     const unsub = onProgress ? subscribeProgress(onProgress) : (): void => {};
     try {
       const json = (await rpc("run_pipeline", {
