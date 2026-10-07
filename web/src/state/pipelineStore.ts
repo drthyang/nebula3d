@@ -89,6 +89,7 @@ interface PipelineConfig {
   flattenEstimator: string;
   flattenIon: string;
   pdfApod: string;
+  pdfWindowShape: string;
   pdfQMin: string;
   pdfQMax: string;
 }
@@ -164,6 +165,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   flattenEstimator: "",
   flattenIon: "",
   pdfApod: "",
+  pdfWindowShape: "",
   pdfQMin: "",
   pdfQMax: "",
 
@@ -301,6 +303,7 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.flattenEstimator) params.flatten_estimator = s.flattenEstimator;
   if (s.flattenIon) params.flatten_ion = s.flattenIon;
   if (s.pdfApod) params.pdf_apodization = s.pdfApod;
+  if (s.pdfWindowShape) params.pdf_window_shape = s.pdfWindowShape;
   if (s.pdfQMin || s.pdfQMax) {
     params.pdf_q_min = s.pdfQMin ? Number(s.pdfQMin) : 0;
     if (s.pdfQMax) params.pdf_q_max = Number(s.pdfQMax);

@@ -19,7 +19,9 @@ Simonov, Weber & Steurer, J. Appl. Cryst. 47, 2011–2018 (2014)
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import functools
+import itertools
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Literal
 
@@ -32,6 +34,7 @@ from nebula3d.core import HKLVolume, q_magnitude_from_axes
 from nebula3d.utils.reciprocal_space import direct_cell
 
 Window = Literal["hann", "gaussian", "none"]
+WindowShape = Literal["auto", "separable", "ellipsoid"]
 
 _AXES = "xyz"  # real-space axes along a, b, c
 
@@ -115,6 +118,54 @@ def section_geometry(
 _FFT_WORKERS = -1
 
 
+@dataclass(frozen=True)
+class EllipsoidWindow:
+    """An apodization window that depends on one ellipsoidal radius ρ.
+
+    ``w = f(ρ)`` with ``ρ² = (h, k, l)·form·(h, k, l)ᵀ`` (h, k, l in r.l.u.)
+    and ``f`` the profile the separable window uses along one axis: Hann
+    ``cos²(πρ/2)``, the Gaussian shifted to zero at ``ρ = 1``, or 1 for
+    ``"none"`` — and 0 for ``ρ ≥ 1``.  ``form`` comes from
+    :func:`_invariant_ellipsoid`, so the window is invariant under the
+    lattice's point symmetry and vanishes on the box faces.  It is never
+    materialised in 3-D: :meth:`planes` yields one H plane at a time, which
+    the forward transform, the weighted mean and the deapodization stream.
+    """
+
+    form: NDArray[np.float64]
+    kind: Window
+    sigma: float
+    h_axis: NDArray[np.float64]
+    k_axis: NDArray[np.float64]
+    l_axis: NDArray[np.float64]
+
+    def planes(self) -> Iterator[NDArray[np.float64]]:
+        """The window on each H plane in turn, as ``(nk, nl)`` float64."""
+        f = self.form
+        k = self.k_axis[:, None]
+        l_ = self.l_axis[None, :]
+        # ρ² = kl + h·lin + f₀₀h²: the two plane-sized terms are shared.
+        kl = f[1, 1] * k * k + 2.0 * f[1, 2] * k * l_ + f[2, 2] * l_ * l_
+        lin = 2.0 * (f[0, 1] * k + f[0, 2] * l_)
+        for h in self.h_axis:
+            rho2 = kl + float(h) * lin
+            rho2 += f[0, 0] * float(h) * float(h)
+            yield _radial_taper(rho2, self.kind, self.sigma)
+
+    def weighted_mean(self, data: NDArray[np.floating]) -> float:
+        """``Σ w·data / Σ w``, accumulated in float64 one plane at a time."""
+        acc = total = 0.0
+        for i, w in enumerate(self.planes()):
+            total += float(w.sum())
+            acc += float((w * data[i]).sum(dtype=np.float64))
+        return acc / total if total else 0.0
+
+    def apply(self, data: NDArray[np.floating]) -> None:
+        """Multiply *data* by the window in place, one plane at a time."""
+        for i, w in enumerate(self.planes()):
+            data[i] *= w
+
+
 @dataclass
 class DeltaPDF:
     """Real-space 3D-ΔPDF result.
@@ -151,7 +202,9 @@ class DeltaPDF:
     # and serialised results stay valid.
     pad_width: tuple[tuple[int, int], ...] | None = None
     cropped_shape: tuple[int, int, int] | None = None
+    # The window: three 1-D factors (separable) or an ellipsoid; one is set.
     window_axes: tuple[NDArray[np.float64], ...] | None = None
+    window_ellipsoid: EllipsoidWindow | None = None
     # Window-weighted mean removed BEFORE windowing (input = w·(I − bg − c)).
     subtracted_mean: float = 0.0
     smooth_bg: NDArray[np.floating] | None = None
@@ -159,6 +212,11 @@ class DeltaPDF:
     k_axis_c: NDArray[np.float64] | None = None
     l_axis_c: NDArray[np.float64] | None = None
     ub_matrix: NDArray[np.float64] | None = None
+
+    @property
+    def window_shape(self) -> str:
+        """The window geometry used: ``"separable"`` or ``"ellipsoid"``."""
+        return "ellipsoid" if self.window_ellipsoid is not None else "separable"
 
     @property
     def cell_angles(self) -> tuple[float, float, float]:
@@ -203,7 +261,8 @@ class _ForwardPlan:
     pad_width: list[tuple[int, int]]
     padded_shape: tuple[int, ...]
     cropped_shape: tuple[int, ...]
-    window_axes: tuple[NDArray[np.float64], ...]
+    window_axes: tuple[NDArray[np.float64], ...] | None
+    window_ellipsoid: EllipsoidWindow | None
     subtracted_mean: float
     smooth_bg: NDArray[np.floating] | None
     h_axis: NDArray[np.float64]
@@ -287,6 +346,7 @@ def _finish_forward(
         pad_width=tuple(tuple(pw) for pw in plan.pad_width),  # type: ignore[misc]
         cropped_shape=plan.cropped_shape,  # type: ignore[arg-type]
         window_axes=plan.window_axes,
+        window_ellipsoid=plan.window_ellipsoid,
         subtracted_mean=plan.subtracted_mean,
         smooth_bg=plan.smooth_bg,
         h_axis_c=h_axis,
@@ -306,6 +366,7 @@ def compute_delta_pdf(
     crop_hkl: tuple[float, float, float] | None = None,
     q_band: tuple[float, float] | None = None,
     subtract_smooth_bg: float | tuple[float, float, float] | None = None,
+    window_shape: WindowShape = "auto",
 ) -> DeltaPDF:
     """Compute the 3D-ΔPDF from a diffuse scattering volume.
 
@@ -364,6 +425,22 @@ def compute_delta_pdf(
         mathematically identical to doing the 2D per-plane background
         subtraction and then a single 3D FFT (subtraction is linear and
         commutes with the transform).
+    window_shape:
+        Geometry of the window whose profile *apodization* sets:
+
+        - ``"separable"``: a product of 1-D tapers along H, K and L, each
+          zero at its own pair of box faces.
+        - ``"ellipsoid"``: the taper as a function of ρ, the radius of the
+          largest ellipsoid that fits in the box and that every symmetry of
+          the lattice (found from the UB) maps onto itself; ``ρ = 1`` on it.
+          For a hexagonal cell, ``ρ² = (Q⊥/d_ab)² + (Q∥/d_c)²`` with ``d`` the
+          distances of the box faces from ``Q = 0``.
+        - ``"auto"``: ``"ellipsoid"`` when a symmetry of the lattice mixes the
+          axes in a way no product of 1-D tapers can follow — the 6-fold axis
+          of a hexagonal cell, ``(h, k, l) → (−k, h + k, l)`` — otherwise
+          ``"separable"``, which the Laue groups of orthogonal, monoclinic
+          and triclinic cells already leave unchanged.  ``"none"`` stays
+          no window at all.
 
     Returns
     -------
@@ -374,7 +451,8 @@ def compute_delta_pdf(
         vol, apodization=apodization, gaussian_sigma=gaussian_sigma,
         zero_pad=zero_pad, subtract_mean=subtract_mean,
         real_space_angstrom=real_space_angstrom, crop_hkl=crop_hkl,
-        q_band=q_band, subtract_smooth_bg=subtract_smooth_bg)
+        q_band=q_band, subtract_smooth_bg=subtract_smooth_bg,
+        window_shape=window_shape)
     delta_pdf = _fft_core_forward(plan)
     return _finish_forward(plan, delta_pdf)
 
@@ -390,6 +468,7 @@ def _prepare_forward(
     crop_hkl: tuple[float, float, float] | None = None,
     q_band: tuple[float, float] | None = None,
     subtract_smooth_bg: float | tuple[float, float, float] | None = None,
+    window_shape: WindowShape = "auto",
     fast_len: Callable[[int], int] = next_fast_len,
 ) -> _ForwardPlan:
     """All pure-Python preparation up to (but excluding) the FFT core.
@@ -469,16 +548,25 @@ def _prepare_forward(
     # its transform, a 3-D sinc sampled off its zeros, drew a dashed line of
     # alternating sign along every grid axis (13–27 % of the strongest
     # correlation on Fe3Ge2 and TbTi3Bi4).  See docs/algorithms/delta_pdf.md.
-    window_axes = _window_axes(data.shape, apodization, gaussian_sigma)
+    window_axes, ellipsoid = _apodization_window(
+        window_shape, apodization, gaussian_sigma,
+        (h_axis, k_axis, l_axis), vol.ub_matrix)
     subtracted_mean = 0.0
     if subtract_mean:
-        subtracted_mean = _window_weighted_mean(data, window_axes)
+        subtracted_mean = (
+            ellipsoid.weighted_mean(data) if ellipsoid is not None
+            else _window_weighted_mean(data, window_axes))  # type: ignore[arg-type]
         data -= data.dtype.type(subtracted_mean)
-    # Apply the separable window as three broadcast in-place multiplies —
-    # never materialising the full 3-D window array (a volume-sized float64).
-    data *= window_axes[0][:, None, None]
-    data *= window_axes[1][None, :, None]
-    data *= window_axes[2][None, None, :]
+    if ellipsoid is not None:
+        ellipsoid.apply(data)  # plane by plane; no 3-D window either
+    else:
+        # Apply the separable window as three broadcast in-place multiplies —
+        # never materialising the full 3-D window array (a volume-sized
+        # float64).
+        assert window_axes is not None
+        data *= window_axes[0][:, None, None]
+        data *= window_axes[1][None, :, None]
+        data *= window_axes[2][None, None, :]
 
     # Zero-pad to the next fast FFT length (11-smooth; scipy.fft.next_fast_len
     # — pocketfft has fast radices up to 11).  pocketfft transforms these just
@@ -524,6 +612,7 @@ def _prepare_forward(
         padded_shape=padded_shape,
         cropped_shape=cropped_shape,
         window_axes=window_axes,
+        window_ellipsoid=ellipsoid,
         subtracted_mean=subtracted_mean,
         smooth_bg=smooth_bg,
         h_axis=h_axis,
@@ -592,11 +681,12 @@ def invert_delta_pdf(
         *window_floor* (the reliably recoverable region).
     """
     if (dpdf.pad_width is None or dpdf.cropped_shape is None
-            or dpdf.window_axes is None or dpdf.h_axis_c is None
+            or (dpdf.window_axes is None and dpdf.window_ellipsoid is None)
+            or dpdf.h_axis_c is None
             or dpdf.k_axis_c is None or dpdf.l_axis_c is None):
         raise ValueError(
             "DeltaPDF is missing the inverse metadata (pad_width / cropped_shape "
-            "/ window_axes / cropped axes); recompute it with compute_delta_pdf "
+            "/ window / cropped axes); recompute it with compute_delta_pdf "
             "from this build before inverting.")
 
     prep_pad = _fft_core_inverse(dpdf, consume=consume)
@@ -647,22 +737,31 @@ def _finish_inverse(
     window is divided out (or as ``c·win`` when it is not).
     """
     # invert_delta_pdf validated these; repeat for direct callers + narrowing.
-    assert (dpdf.window_axes is not None and dpdf.h_axis_c is not None
+    assert (dpdf.h_axis_c is not None
             and dpdf.k_axis_c is not None and dpdf.l_axis_c is not None)
 
-    wh, wk, wl = dpdf.window_axes
+    # The window one H plane at a time, never the full 3-D array.  Separable:
+    # each element is (wh[i]*wk[j])*wl[k], and the maximum of a non-negative
+    # separable product is exactly (wh.max()*wk.max())*wl.max().  Ellipsoid:
+    # the profile peaks at 1 (ρ = 0).
+    planes: Iterator[NDArray[np.float64]]
+    if dpdf.window_ellipsoid is not None:
+        planes = dpdf.window_ellipsoid.planes()
+        peak = 1.0
+    else:
+        assert dpdf.window_axes is not None
+        wh, wk, wl = dpdf.window_axes
+        planes = ((wh[i] * wk)[:, None] * wl[None, :] for i in range(len(wh)))
+        peak = float((wh.max() * wk.max()) * wl.max())
     mean = prep.dtype.type(dpdf.subtracted_mean)
     if deapodize:
         # Deapodize one H-plane at a time instead of materialising the full
         # 3-D window (+ a fresh zero-filled output): peak drops by ~2 volumes.
-        # Each window element is computed as (wh[i]*wk[j])*wl[k], the window
-        # maximum of a non-negative separable product is exactly
-        # (wh.max()*wk.max())*wl.max(), and the where-divide + zero-fill
-        # reproduces ``np.divide(..., out=np.zeros_like(prep), where=reliable)``.
-        thr = window_floor * float((wh.max() * wk.max()) * wl.max())
+        # The where-divide + zero-fill reproduces
+        # ``np.divide(..., out=np.zeros_like(prep), where=reliable)``.
+        thr = window_floor * peak
         reliable = np.empty(prep.shape, dtype=bool)
-        for i in range(prep.shape[0]):
-            win_i = (wh[i] * wk)[:, None] * wl[None, :]
+        for i, win_i in enumerate(planes):
             rel_i = win_i >= thr
             np.divide(prep[i], win_i, out=prep[i], where=rel_i)
             prep[i] += mean
@@ -671,8 +770,8 @@ def _finish_inverse(
         recon = prep
     else:
         if mean:
-            for i in range(prep.shape[0]):
-                prep[i] += mean * ((wh[i] * wk)[:, None] * wl[None, :]).astype(prep.dtype)
+            for i, win_i in enumerate(planes):
+                prep[i] += mean * win_i.astype(prep.dtype)
         recon = prep
         reliable = np.ones(recon.shape, dtype=bool)
 
@@ -744,6 +843,163 @@ def _window_weighted_mean(
         if wh[i] != 0.0:
             acc += float(wh[i]) * float(wk @ (data[i].astype(np.float64) @ wl))
     return acc / total
+
+
+#: ρ² at or above this is on or outside the ellipsoid, where the window is 0.
+#: The ellipsoid touches the box faces at ρ = 1, which the quadratic form may
+#: land a few ulp below; the taper there is ~1e-20, so this changes nothing
+#: but makes the face voxels exactly zero.
+_RHO2_EDGE = 1.0 - 1e-12
+
+
+def _radial_taper(
+    rho2: NDArray[np.float64], kind: Window, sigma: float,
+) -> NDArray[np.float64]:
+    """The window profile at ρ² (overwrites *rho2*), zero for ``ρ ≥ 1``.
+
+    The same profiles as :func:`_window_axes` along one axis: Hann
+    ``cos²(πρ/2)`` (``np.hanning`` is ``cos²(πx/2)`` on ``x ∈ [−1, 1]``), the
+    Gaussian shifted to zero at ``ρ = 1``, and 1 for ``"none"``.
+    """
+    outside = rho2 >= _RHO2_EDGE
+    if kind == "hann":
+        w = np.sqrt(np.clip(rho2, 0.0, 1.0, out=rho2), out=rho2)
+        w *= 0.5 * np.pi
+        np.cos(w, out=w)
+        w *= w
+    elif kind == "gaussian":
+        edge = np.exp(-0.5 / sigma**2)
+        w = np.exp(rho2 * (-0.5 / sigma**2), out=rho2)
+        w -= edge
+        w /= 1.0 - edge
+    else:
+        w = np.ones_like(rho2)
+    w[outside] = 0.0
+    return w
+
+
+#: Relative tolerance on the reciprocal metric when looking for the lattice's
+#: point symmetry.  Refined UBs are not exactly symmetric: on Fe3Ge2 90 K
+#: (a, b differ by 0.12 %, the angles by up to 0.23° from 90/90/120) the 24
+#: operations of 6/mmm are off by ≤ 1.2 %, the nearest other candidate by 68 %.
+_LATTICE_TOL = 0.05
+
+
+@functools.lru_cache(maxsize=1)
+def _unimodular_candidates() -> NDArray[np.int64]:
+    """Every 3×3 matrix with entries in {−1, 0, 1} and determinant ±1."""
+    m = np.array(list(itertools.product((-1, 0, 1), repeat=9)),
+                 dtype=np.int64).reshape(-1, 3, 3)
+    det = np.rint(np.linalg.det(m.astype(np.float64))).astype(np.int64)
+    return m[np.abs(det) == 1]
+
+
+def _lattice_point_group(
+    ub: NDArray[np.float64], tol: float = _LATTICE_TOL,
+) -> NDArray[np.int64]:
+    """The lattice's point symmetry as integer matrices acting on ``(h, k, l)``.
+
+    ``R`` is kept when ``(h, k, l) → R·(h, k, l)`` maps every Q onto a Q of
+    the same length — ``Rᵀ·G*·R = G*`` with ``G* = UBᵀ·UB`` — to within *tol*
+    relative to ``√(G*_ii·G*_jj)``.  Candidates have entries in {−1, 0, 1},
+    which covers conventional and reduced cells (the hexagonal 6-fold is
+    ``(h, k, l) → (−k, h + k, l)``).  Returns an ``(n, 3, 3)`` array; just
+    ±identity for a singular UB.
+    """
+    g = np.asarray(ub, dtype=np.float64).T @ np.asarray(ub, dtype=np.float64)
+    diag = np.diag(g)
+    if not np.all(diag > 0.0):
+        return np.array([np.eye(3, dtype=np.int64), -np.eye(3, dtype=np.int64)])
+    cand = _unimodular_candidates()
+    r = cand.astype(np.float64)
+    moved = np.einsum("nji,jk,nkl->nil", r, g, r)
+    err = (np.abs(moved - g) / np.sqrt(np.outer(diag, diag))).max(axis=(1, 2))
+    return cand[err <= tol]
+
+
+def _invariant_ellipsoid(
+    ops: NDArray[np.int64], half: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """The largest ellipsoid ``xᵀ·M·x ≤ 1`` inside the box ``|x_i| ≤ half[i]``
+    that every operation ``x → R·x`` of the group *ops* maps onto itself.
+
+    Its shape matrix ``A = M⁻¹`` fits the box iff ``A_ii ≤ half_i²`` and is
+    invariant iff ``R·A·Rᵀ = A``.  The largest such ellipsoid (maximum
+    ``det A``) is unique, and its optimality condition makes ``M`` a
+    positive combination of the face terms averaged over the group:
+    ``M = Σ_i λ_i·F_i`` with ``F_i = ⟨r_i r_iᵀ⟩_R / half_i²`` (``r_i`` the
+    i-th row of R), i.e. ``ρ² = Σ_i λ_i·⟨(R·x)_i²⟩_R / half_i²``.  The weights
+    are D-optimal-design weights, found by the monotone multiplicative
+    update ``λ_i ← λ_i·tr(F_i·M⁻¹)``.  A last rescale makes the ellipsoid
+    touch the nearest face exactly, so it fits the box whatever the
+    iteration's residual.  Without symmetry beyond sign flips this is the
+    index-space sphere ``Σ (x_i/half_i)²``; for a hexagonal box (half-widths
+    X, X, X_L) it is ``(4/3)(h² + hk + k²)/X² + l²/X_L²``.
+    """
+    dim = len(half)
+    if dim == 0:
+        return np.zeros((0, 0))
+    r = ops.astype(np.float64)
+    faces = np.einsum("nij,nik->ijk", r, r) / len(r)
+    faces /= (np.asarray(half, dtype=np.float64) ** 2)[:, None, None]
+    lam = np.ones(dim)
+    for _ in range(1000):
+        shape = np.linalg.inv(np.tensordot(lam, faces, axes=1))
+        new = lam * np.einsum("ijk,jk->i", faces, shape)
+        done = float(np.abs(new - lam).max()) < 1e-13
+        lam = new
+        if done:
+            break
+    form = np.tensordot(lam, faces, axes=1)
+    form *= float(np.max(np.diag(np.linalg.inv(form)) / np.asarray(half) ** 2))
+    return 0.5 * (form + form.T)
+
+
+def _apodization_window(
+    window_shape: WindowShape,
+    kind: Window,
+    sigma: float,
+    axes: tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]],
+    ub: NDArray[np.float64],
+) -> tuple[tuple[NDArray[np.float64], ...] | None, EllipsoidWindow | None]:
+    """The window for this box: ``(window_axes, None)`` or ``(None, ellipsoid)``.
+
+    Single-plane axes take no part: the symmetry is restricted to the
+    operations that leave them alone, and ρ ignores them.  The ellipsoid is
+    centred on ``Q = 0``, with half-widths ``min(−axis[0], axis[-1])``.
+    """
+    if window_shape not in ("auto", "separable", "ellipsoid"):
+        raise ValueError(f"unknown window_shape {window_shape!r}")
+    shape = tuple(len(ax) for ax in axes)
+    if window_shape == "separable" or (window_shape == "auto" and kind == "none"):
+        return _window_axes(shape, kind, sigma), None
+
+    active = [i for i, n in enumerate(shape) if n > 1]
+    ops = _lattice_point_group(ub)
+    for j in (i for i in range(3) if i not in active):
+        unit = np.zeros(3, dtype=np.int64)
+        unit[j] = 1
+        ops = ops[(np.abs(ops[:, j, :]) == unit).all(axis=1)
+                  & (np.abs(ops[:, :, j]) == unit).all(axis=1)]
+    ops = ops[:, active][:, :, active]
+    half = np.array([min(-float(axes[i][0]), float(axes[i][-1])) for i in active])
+
+    if window_shape == "auto":
+        # A product of 1-D tapers is invariant under signed permutations of
+        # equal axes, never under an operation that mixes two axes.
+        mixes = bool(np.any(np.count_nonzero(ops, axis=2) != 1))
+        if not mixes or np.any(half <= 0.0):
+            return _window_axes(shape, kind, sigma), None
+    elif np.any(half <= 0.0):
+        raise ValueError("an ellipsoid window needs Q = 0 inside the box")
+
+    form = np.zeros((3, 3))
+    form[np.ix_(active, active)] = _invariant_ellipsoid(ops, half)
+    return None, EllipsoidWindow(
+        form=form, kind=kind, sigma=float(sigma),
+        h_axis=np.asarray(axes[0], dtype=np.float64).copy(),
+        k_axis=np.asarray(axes[1], dtype=np.float64).copy(),
+        l_axis=np.asarray(axes[2], dtype=np.float64).copy())
 
 
 def _build_window(shape: tuple[int, ...], kind: Window, sigma: float) -> NDArray:

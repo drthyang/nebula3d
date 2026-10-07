@@ -167,6 +167,8 @@ class StageParamsIn(BaseModel):
     # Magnetic ion of the flatten's const + c·F(Q)² model ("none": constant only)
     flatten_ion: str | None = None
     pdf_apodization: str | None = None
+    # ΔPDF window geometry: "auto" | "separable" | "ellipsoid"
+    pdf_window_shape: str | None = None
     pdf_gaussian_sigma: float | None = None
     pdf_crop_h: float | None = None
     pdf_crop_k: float | None = None

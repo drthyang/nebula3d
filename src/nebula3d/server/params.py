@@ -154,6 +154,10 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
     dp_kw: dict = {}
     if sp.pdf_apodization is not None:
         dp_kw["apodization"] = sp.pdf_apodization
+    if sp.pdf_window_shape is not None:
+        if sp.pdf_window_shape not in ("auto", "separable", "ellipsoid"):
+            raise ValueError("pdf_window_shape must be auto, separable or ellipsoid")
+        dp_kw["window_shape"] = sp.pdf_window_shape
     if sp.pdf_gaussian_sigma is not None:
         dp_kw["gaussian_sigma"] = sp.pdf_gaussian_sigma
     if any(v is not None for v in (sp.pdf_crop_h, sp.pdf_crop_k, sp.pdf_crop_l)):

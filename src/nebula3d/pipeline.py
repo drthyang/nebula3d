@@ -523,6 +523,10 @@ class DeltaPdfParams:
     q_band: tuple[float, float] | None = None
     # None = off; float = isotropic blur σ; (σ_H, σ_K, σ_L) = per-axis.
     subtract_smooth_bg: float | tuple[float, float, float] | None = None
+    # "auto" | "separable" | "ellipsoid" — see compute_delta_pdf.  "auto" uses
+    # the lattice-symmetric ellipsoid only where a separable window would
+    # break the lattice's symmetry (hexagonal cells).
+    window_shape: str = "auto"
 
 
 @dataclass
@@ -1208,6 +1212,7 @@ def delta_pdf(vol: HKLVolume, params: DeltaPdfParams | None = None, *,
         zero_pad=p.zero_pad, subtract_mean=p.subtract_mean,
         real_space_angstrom=True, crop_hkl=p.crop_hkl, q_band=p.q_band,
         subtract_smooth_bg=p.subtract_smooth_bg,
+        window_shape=p.window_shape,  # type: ignore[arg-type]
     )
     _emit(progress, "pdf", "done", 1.0,
           f"ΔPDF complete (|Q|max {dpdf.q_max:.2f} Å⁻¹, shape {dpdf.data.shape})")
@@ -1236,6 +1241,7 @@ def delta_pdf_transform_config(p: DeltaPdfParams) -> str:
         f"crop_hkl={_param_string(p.crop_hkl)}",
         f"q_band={_param_string(p.q_band)}",
         f"subtract_bg={_param_string(p.subtract_smooth_bg)}",
+        f"window_shape={p.window_shape}",
     ))
 
 
@@ -1259,6 +1265,7 @@ def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
         logs={
             "q_max": float(dpdf.q_max),
             "apodization": str(dpdf.apodization),
+            "window_shape": dpdf.window_shape,  # resolved: separable | ellipsoid
             "source_file": source_name,
             "crop_hkl": _param_string(p.crop_hkl),
             "q_band": _param_string(p.q_band),
@@ -1507,7 +1514,8 @@ def consistency_reconstruction(
         vol_c, apodization=p.apodization,  # type: ignore[arg-type]
         gaussian_sigma=p.gaussian_sigma, zero_pad=p.zero_pad,
         subtract_mean=p.subtract_mean, real_space_angstrom=True,
-        crop_hkl=None, subtract_smooth_bg=p.subtract_smooth_bg)
+        crop_hkl=None, subtract_smooth_bg=p.subtract_smooth_bg,
+        window_shape=p.window_shape)  # type: ignore[arg-type]
 
     # max R for the UI scale — farthest real-space corner (Å).  |r| is convex
     # in the oblique (x, y, z), so its maximum over the box is at a corner.
