@@ -8,9 +8,12 @@
 // (single ΔPDF panel) and in the fluid multi-volume grid cells.
 
 import { unitCellSegments } from "./oblique";
+import { useViewSize } from "./viewSize";
+import { viewExtent, type Viewport } from "./viewport";
 
 interface Props {
   half: number; // half-window in Å (box spans [-half, +half] on both axes)
+  viewport?: Viewport; // a panned / zoomed square view instead of [-half, half]²
   latX: number | null;
   latY: number | null;
   angle?: number; // angle between the displayed axes (deg); the slice header's axes_angle
@@ -18,12 +21,18 @@ interface Props {
 
 const VB = 1000; // normalized viewBox side; stroke stays 1px (non-scaling)
 
-export function UnitCellGrid({ half, latX, latY, angle = 90 }: Props) {
-  const toX = (v: number) => ((v + half) / (2 * half)) * VB;
+export function UnitCellGrid({ half, viewport, latX, latY, angle = 90 }: Props) {
+  const size = useViewSize();
+  const v = viewport ?? { cx: 0, cy: 0, half };
+  // A viewport in a wide or tall view spans more along its longer side.
+  const { hx, hy } = viewport ? viewExtent(v, size.w, size.h) : { hx: v.half, hy: v.half };
+  const toX = (x: number) => ((x - (v.cx - hx)) / (2 * hx)) * VB;
   // canvas y is flipped (smallest y at the bottom), so mirror here too.
-  const toY = (v: number) => VB - ((v + half) / (2 * half)) * VB;
+  const toY = (y: number) => VB - ((y - (v.cy - hy)) / (2 * hy)) * VB;
 
-  const segments = unitCellSegments(half, latX, latY, angle);
+  // Lines over an origin-centred square that covers the whole view; the svg clips.
+  const reach = Math.max(Math.abs(v.cx) + hx, Math.abs(v.cy) + hy);
+  const segments = unitCellSegments(reach, latX, latY, angle);
 
   return (
     <svg

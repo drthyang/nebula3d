@@ -4633,3 +4633,505 @@ h6.md-h {
     height: 32px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   viewer workspace — after the NeXus Viewer: a header with the click mode,
+   plane / cut and layout, a display bar (colour range, scale, Auto,
+   Brightness), then the views in a grid, focus or single layout.
+   --------------------------------------------------------------------------- */
+
+.ws-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.ws-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  min-width: 0;
+}
+.ws-display {
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.ws-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  flex: none;
+}
+.ws-spacer {
+  flex: 1 1 0;
+}
+.ws-cut {
+  flex: 1 1 280px;
+  min-width: 200px;
+}
+.ws-group,
+.ws-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* A display group (Q or R) wraps onto the next line as a whole. */
+.ws-display-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.ws-dim {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.ws-orient {
+  font: 600 11px/1 var(--font-mono);
+  padding: 5px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.ws-orient.ok {
+  color: var(--green);
+  background: var(--green-soft);
+}
+.ws-orient.warn {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+.ws-head select {
+  font-size: 12.5px;
+}
+.segmented.icons button {
+  display: inline-grid;
+  place-items: center;
+  padding: 4px 8px;
+}
+
+/* colour range: vmin · [histogram + colour bar + handles] · vmax */
+.levels-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lv-num {
+  width: 8.5ch;
+  padding: 4px 6px;
+  font: 12px var(--font-mono);
+  text-align: right;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+.lv-track {
+  position: relative;
+  width: 180px;
+  height: 30px;
+  flex: none;
+}
+.lv-hist {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 19px;
+  color: #4b5668; /* histogram fill, read by DisplayBar */
+}
+.lv-ramp {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2px;
+  height: 8px;
+  border-radius: 2px;
+}
+.lv-span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(116, 168, 255, 0.07);
+  border-left: 1px solid var(--accent-hi);
+  border-right: 1px solid var(--accent-hi);
+  pointer-events: none;
+}
+.lv-handle {
+  position: absolute;
+  bottom: -3px;
+  width: 11px;
+  height: 15px;
+  margin-left: -5.5px;
+  padding: 0;
+  border-radius: 3px;
+  background: var(--text);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  cursor: ew-resize;
+  touch-action: none;
+}
+.lv-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.brightness {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.brightness input {
+  width: 96px;
+  accent-color: var(--accent);
+}
+.brightness .readout {
+  min-width: 4ch;
+}
+.btn-auto.on {
+  color: var(--accent-hi);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* layouts */
+.ws {
+  display: grid;
+  gap: 10px;
+}
+.ws--grid[data-n="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.ws--grid[data-n="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ws--grid[data-n="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ws--grid[data-n="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Focus: the large view on the left; with four others they sit 2 × 2 beside it
+   (each about half its size), with two or three they stack in one column. */
+.ws--focus {
+  height: clamp(480px, calc(100dvh - 300px), 900px);
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+}
+.ws--focus > .primary { grid-column: 1; grid-row: 1 / -1; }
+.ws--focus > :not(.primary) { grid-column: 2; }
+.ws--focus[data-n="5"] {
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+.ws--focus[data-n="5"] > :not(.primary) { grid-column: auto; }
+.ws--focus[data-n="3"],
+.ws--focus[data-n="2"] {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+.ws--focus[data-n="2"] { grid-template-rows: minmax(0, 1fr); }
+.ws--single {
+  height: clamp(480px, calc(100dvh - 300px), 1100px);
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+}
+.ws--single > :not(.primary) { display: none; }
+
+/* views */
+.view {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.view-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 4px 0 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex: none;
+  min-width: 0;
+}
+.view-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong);
+  font: 700 10px var(--font-mono);
+  color: var(--text-2);
+  flex: none;
+}
+.view-badge--out {
+  color: var(--green);
+  border-color: rgba(52, 201, 142, 0.5);
+}
+.view-title {
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.view-caption {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font: 11px var(--font-mono);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.view-caption--ref {
+  color: var(--accent-hi);
+}
+.view-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.view-actions .qr-save-btn {
+  padding: 4px 9px;
+  font-size: 11.5px;
+}
+.icon-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  color: var(--text-2);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.icon-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.view-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-raised);
+}
+.ws--grid .view-body {
+  flex: none;
+  aspect-ratio: 1 / 1;
+}
+.view-fill {
+  position: absolute;
+  inset: 0;
+}
+.view-fill > .skeleton,
+.view-fill > .panel-err {
+  position: absolute;
+  inset: 0;
+}
+.view-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 11px;
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+  flex: none;
+}
+.view-foot .field-label {
+  font-size: 10px;
+}
+.ws-band {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.ws-band .field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ws-res-levels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ws-res-levels .lv-track {
+  width: 130px;
+}
+
+/* Focus: the small views are thumbnails — hover highlights, a click enlarges. */
+.ws--focus > .thumb .view-foot,
+.ws--focus > .thumb .vf-fov,
+.ws--focus > .thumb .view-reset,
+.ws--focus > .thumb .view-actions > :not(.layout-btn) {
+  display: none;
+}
+.view.thumb {
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.view.thumb .view-body::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}
+.view.thumb .view-body::after {
+  content: "Click to enlarge";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  transform: translate(-50%, -50%);
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.view.thumb:is(:hover, :focus-visible) {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.view.thumb:is(:hover, :focus-visible) .view-body::after {
+  opacity: 1;
+}
+
+/* the interactive frame around a slice */
+.vf {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.vf--navigate { cursor: crosshair; }
+.vf--zoom { cursor: zoom-in; }
+.vf--move { cursor: grab; }
+.vf--move:active { cursor: grabbing; }
+.vf-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.vf-ticks line {
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 1;
+}
+.vf-overlay text {
+  fill: #fff;
+  font: 10px var(--font-mono);
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.75);
+  stroke-width: 2.5px;
+}
+.vf-overlay text.vf-axis {
+  font-weight: 700;
+  fill: var(--accent-hi);
+}
+.vf-cross line {
+  stroke: rgba(116, 168, 255, 0.85);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.vf-box {
+  fill: rgba(116, 168, 255, 0.12);
+  stroke: var(--accent-hi);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+.vf-fov {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  padding: 2px 5px;
+  font: 10.5px var(--font-mono);
+  color: var(--text-2);
+  background: rgba(11, 13, 16, 0.72);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  pointer-events: none;
+}
+.vf-spin {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+}
+.ws-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  min-height: 34px;
+  padding: 8px 12px;
+  font: 12px var(--font-mono);
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.ws-readout b {
+  color: var(--accent-hi);
+  font-weight: 600;
+}
+.ws-readout i {
+  font-style: normal;
+  color: var(--text-3);
+}
+.ws-readout .muted {
+  color: var(--text-3);
+}
+
+/* Narrower screens: five views in one row get too small; wrap them. */
+@media (max-width: 1099px) {
+  .ws--grid[data-n="5"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ws--grid[data-n="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Phones: every view is shown, one per row, and the layout buttons hide (as in
+   the NeXus Viewer's compact layout). */
+@media (max-width: 599px) {
+  .ws[data-n],
+  .ws--grid[data-n],
+  .ws--focus[data-n],
+  .ws--single[data-n] {
+    height: auto;
+    grid-template: none / minmax(0, 1fr);
+  }
+  .ws > .view {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    display: flex !important;
+  }
+  .ws .view-body {
+    flex: none;
+    aspect-ratio: 1 / 1;
+  }
+  .ws > .thumb .view-foot {
+    display: flex;
+  }
+  .ws > .thumb .view-body::before,
+  .ws > .thumb .view-body::after {
+    display: none;
+  }
+  .layout-control,
+  .layout-btn {
+    display: none !important;
+  }
+  .lv-track {
+    width: 130px;
+  }
+}
