@@ -821,8 +821,8 @@ async def _gpu_inverse(gpu: object, dpdf: object) -> HKLVolume | None:
     if not bool(ok):
         return None
     del data32
-    prep = out + dpdf.subtracted_mean  # type: ignore[attr-defined]
-    return _finish_inverse(dpdf, prep, deapodize=True,  # type: ignore[arg-type]
+    # _finish_inverse adds the subtracted mean back after deapodizing.
+    return _finish_inverse(dpdf, out, deapodize=True,  # type: ignore[arg-type]
                            add_back_smooth_bg=True, window_floor=1e-3)
 
 

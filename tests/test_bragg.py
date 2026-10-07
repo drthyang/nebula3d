@@ -627,8 +627,9 @@ def test_invert_delta_pdf_roundtrip_recovers_input():
     """compute_delta_pdf → invert_delta_pdf reproduces the transformed volume.
 
     Consistency check: with a centrosymmetric input and the gaussian window
-    (nonzero everywhere, so deapodization is exact), the back-FFT must recover
-    I(Q) to numerical precision — including through the zero-padding (n=15→16).
+    (nonzero everywhere but on the box faces, where it reaches zero), the
+    back-FFT must recover I(Q) to numerical precision inside the faces —
+    including through the zero-padding (n=15→16).
     """
     vol = _make_even_vol(15)
     dpdf = compute_delta_pdf(
@@ -637,8 +638,10 @@ def test_invert_delta_pdf_roundtrip_recovers_input():
     recon = invert_delta_pdf(dpdf, deapodize=True)
 
     assert recon.data.shape == vol.data.shape
-    assert recon.mask.all()                              # gaussian → all reliable
-    assert np.allclose(recon.data, vol.data, atol=1e-8)
+    interior = np.zeros(vol.data.shape, dtype=bool)
+    interior[1:-1, 1:-1, 1:-1] = True
+    assert np.array_equal(recon.mask, interior)          # only the faces: w = 0
+    assert np.allclose(recon.data[interior], vol.data[interior], atol=1e-8)
 
 
 def test_invert_delta_pdf_no_deapodize_is_windowed_input():
@@ -649,7 +652,9 @@ def test_invert_delta_pdf_no_deapodize_is_windowed_input():
     unpaired and the round-trip then loses a small asymmetric part by design.
     """
     vol = _make_even_vol(15)
-    win = np.exp(-0.5 * (np.linspace(-1, 1, 15) / 0.5) ** 2)
+    g = np.exp(-0.5 * (np.linspace(-1, 1, 15) / 0.5) ** 2)
+    edge = np.exp(-0.5 / 0.5**2)
+    win = (g - edge) / (1 - edge)                # the Gaussian, zero at the edge
     win3 = win[:, None, None] * win[None, :, None] * win[None, None, :]
     dpdf = compute_delta_pdf(
         vol, apodization="gaussian", gaussian_sigma=0.5, zero_pad=False,

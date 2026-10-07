@@ -103,12 +103,13 @@ def test_deapodize_chunked_matches_materialized_window():
         prep_pad = fftshift(np.ascontiguousarray(ft.real))
         sl = tuple(slice(lo, lo + m)
                    for (lo, _hi), m in zip(dpdf2.pad_width, dpdf2.cropped_shape))
-        prep = prep_pad[sl] + dpdf2.subtracted_mean
+        prep = prep_pad[sl]
         win = (dpdf2.window_axes[0][:, None, None]
                * dpdf2.window_axes[1][None, :, None]
                * dpdf2.window_axes[2][None, None, :])
         reliable = win >= 1e-3 * float(win.max())
         ref = np.divide(prep, win, out=np.zeros_like(prep), where=reliable)
+        ref = np.where(reliable, ref + dpdf2.subtracted_mean, 0.0)
 
         assert np.array_equal(recon.mask, reliable), kind
         assert np.array_equal(recon.data, ref), kind
