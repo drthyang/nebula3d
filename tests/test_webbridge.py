@@ -76,6 +76,27 @@ def test_demo_input_is_labelled_synthetic_and_stored_float32(tmp_path):
     assert vol.data.dtype == np.float32 and vol.sigma.dtype == np.float32
 
 
+def test_select_input_runs_the_named_dataset_not_the_last_loaded(tmp_path):
+    """With two volumes loaded, a run reduces the one the UI names; a dataset
+    the workspace does not hold (the worker was restarted) reports false so
+    the engine reloads it."""
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    demo_id = webbridge.make_demo_input(n=9)
+    demo_raw = tmp_path / "work" / "raw" / "synthetic_rocksalt.nxs"
+    other_id = webbridge.load_input("other_sample.nxs", str(demo_raw))
+    assert webbridge._S.input.name == "other_sample.nxs"
+
+    assert json.loads(webbridge.select_input(demo_id)) is True
+    assert webbridge._S.input == demo_raw
+    assert webbridge._S.dataset_id == demo_id
+
+    assert json.loads(webbridge.select_input(other_id)) is True
+    assert webbridge._S.input.name == "other_sample.nxs"
+
+    webbridge.setup(workdir=str(tmp_path / "fresh"))
+    assert json.loads(webbridge.select_input(demo_id)) is False
+
+
 def test_run_streams_progress_for_every_stage(ran_pipeline):
     _id, _datasets, events = ran_pipeline
     stages_seen = {ev[0] for ev in events}
