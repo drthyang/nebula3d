@@ -63,6 +63,13 @@ interface PipelineConfig {
   punchMinI: string;
   punchMethod: string;
   punchMode: string;
+  // Supercell the volume is indexed on (per axis); blank = 1.  Integer-mode
+  // Bragg nodes are the parent lattice's only.
+  punchSupercellH: string;
+  punchSupercellK: string;
+  punchSupercellL: string;
+  // Integer-punch H guard (r.l.u.); blank = backend default (0.12), 0 = off.
+  punchHGuard: string;
   // Punch ellipsoid frame: "spherical" (rρ,rθ,rφ, default) | "q" (a*,b*,c*)
   punchFrame: string;
   // Spherical-frame radii (Å⁻¹): rρ radial, rθ polar, rφ azimuth; blank = default
@@ -141,6 +148,10 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   punchMinI: "",
   punchMethod: "ellipsoid",
   punchMode: "",
+  punchSupercellH: "",
+  punchSupercellK: "",
+  punchSupercellL: "",
+  punchHGuard: "",
   punchFrame: "spherical",
   punchRho: "",
   punchTheta: "",
@@ -278,6 +289,10 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   }
   if (s.punchMinI) params.punch_min_intensity = Number(s.punchMinI);
   if (s.punchMode) params.punch_mode = s.punchMode;
+  if (s.punchSupercellH) params.punch_supercell_h = Number(s.punchSupercellH);
+  if (s.punchSupercellK) params.punch_supercell_k = Number(s.punchSupercellK);
+  if (s.punchSupercellL) params.punch_supercell_l = Number(s.punchSupercellL);
+  if (s.punchHGuard) params.punch_h_guard = Number(s.punchHGuard);
   if (s.punchMargin) params.punch_margin = Number(s.punchMargin);
   // Punch frame: spherical (rρ,rθ,rφ) by default, or the legacy a*/b*/c* q-frame.
   const frame = s.punchFrame === "q" ? "q" : "spherical";
