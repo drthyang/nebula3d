@@ -482,6 +482,10 @@ class BackfillParams:
     q_shell_step: float = 0.05
     q_shell_min_count: int = 20
     laplace_gap: int = 1
+    # Never-measured voxels are filled only where measured data enclose them
+    # ("enclosed"); unmeasured space reaching the box edge stays masked, read
+    # as zero by the ΔPDF.  "all" also fills it (before 2026-10).
+    unmeasured: str = "enclosed"
 
 
 @dataclass
@@ -1143,11 +1147,12 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
 def backfill(vol: HKLVolume, params: BackfillParams | None = None, *,
              progress: ProgressFn | None = None,
              punched: np.ndarray | None = None) -> HKLVolume:
-    """Fill punched Bragg holes; return an all-valid volume for the FFT.
+    """Fill punched Bragg holes; return the volume for the FFT.
 
     *punched* (default: the record :func:`punch_bragg` attaches) marks the punch
     holes, so each is filled from its own surroundings and never merges with
-    unmeasured coverage; see :func:`backfill_bragg`.
+    unmeasured coverage; see :func:`backfill_bragg`.  Unmeasured space that
+    reaches the box edge stays masked (``params.unmeasured``).
     """
     p = params or BackfillParams()
     if punched is None:
@@ -1162,6 +1167,7 @@ def backfill(vol: HKLVolume, params: BackfillParams | None = None, *,
         report=(None if progress is None else
                 lambda msg: _emit(progress, "backfill", "progress", None, msg)),
         punched=punched,
+        unmeasured=p.unmeasured,  # type: ignore[arg-type]
     )
     _emit(progress, "backfill", "done", 1.0, "backfill complete")
     return filled
