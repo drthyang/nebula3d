@@ -3,7 +3,7 @@
 // three orthoslice planes, with shared cut sliders and a per-plane colour scale
 // pooled across files (so related files are comparable within a column).
 
-import { Fragment, useEffect, useMemo } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 import { keepPreviousData, useQueries } from "@tanstack/react-query";
 
@@ -65,8 +65,10 @@ export function MultiTempViewer() {
   const cutX = useDpdfStore((s) => s.cutX);
   const cutY = useDpdfStore((s) => s.cutY);
   const cutZ = useDpdfStore((s) => s.cutZ);
-  const contrast = useDpdfStore((s) => s.contrast);
-  const windowFull = useDpdfStore((s) => s.windowFull);
+  // Hidden page (not routed): keeps its own contrast and window, outside the
+  // shared real-space store the routed viewers use.
+  const [contrast, setContrast] = useState(1);
+  const [windowFull, setWindowFull] = useState(80);
   const gridlines = useDpdfStore((s) => s.gridlines);
   const colormap = useDpdfStore((s) => s.colormap);
   const setColormap = useDpdfStore((s) => s.setColormap);
@@ -74,8 +76,6 @@ export function MultiTempViewer() {
   const setCutX = useDpdfStore((s) => s.setCutX);
   const setCutY = useDpdfStore((s) => s.setCutY);
   const setCutZ = useDpdfStore((s) => s.setCutZ);
-  const setContrast = useDpdfStore((s) => s.setContrast);
-  const setWindowFull = useDpdfStore((s) => s.setWindowFull);
   const setGridlines = useDpdfStore((s) => s.setGridlines);
   const center = useDpdfStore((s) => s.center);
   const halfWindow = windowFull / 2;
