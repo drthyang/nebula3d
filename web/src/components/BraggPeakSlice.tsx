@@ -25,7 +25,7 @@ interface Props {
   cy: number; // peak centre along the tile y axis (r.l.u.)
   half: number; // window half-extent (r.l.u.)
   lut: Uint8ClampedArray;
-  contrast: number; // 0.5–3.0; higher = brighter
+  brightness: number; // stops about the tile's p99: +1 halves vmax (brighter)
   fitted: Ellipse;
   measured?: Ellipse | null;
   floor?: Ellipse | null;
@@ -50,14 +50,14 @@ function nearest(axis: number[], v: number): number {
 }
 
 // Robust upper colour limit from the window samples (p99 keeps a single hot voxel
-// from blowing out the scale).  vmax = robust × contrast, matching the other
-// viewers: higher contrast raises vmax → a dimmer image.
+// from blowing out the scale).  Brightness moves vmax in stops, as on the other
+// viewer pages: +1 halves vmax, so right on the knob is brighter.
 function windowVmax(
   slice: Slice,
   cx: number,
   cy: number,
   half: number,
-  contrast: number,
+  brightness: number,
 ): number {
   const { nx, x_axis: xs, y_axis: ys } = slice.header;
   const data = slice.data;
@@ -77,7 +77,7 @@ function windowVmax(
   if (vals.length === 0) return 1;
   vals.sort((a, b) => a - b);
   const p99 = vals[Math.min(vals.length - 1, Math.floor(vals.length * 0.99))];
-  return Math.max(p99 * Math.max(contrast, 0.01), 1e-9);
+  return Math.max(p99 * Math.pow(2, -brightness), 1e-9);
 }
 
 function SliceTile({
@@ -86,7 +86,7 @@ function SliceTile({
   cy,
   half,
   lut,
-  contrast,
+  brightness,
   fitted,
   measured,
   floor,
@@ -103,7 +103,7 @@ function SliceTile({
     if (!ctx) return;
     const { nx, x_axis: xs, y_axis: ys } = slice.header;
     const data = slice.data;
-    const vmax = windowVmax(slice, cx, cy, half, contrast);
+    const vmax = windowVmax(slice, cx, cy, half, brightness);
 
     canvas.width = RASTER;
     canvas.height = RASTER;
@@ -134,7 +134,7 @@ function SliceTile({
       }
     }
     ctx.putImageData(img, 0, 0);
-  }, [slice, cx, cy, half, lut, contrast]);
+  }, [slice, cx, cy, half, lut, brightness]);
 
   // SVG overlay in a 0..200 box centred at 100; r.l.u. → px scale = 100/half.
   const C = 100;

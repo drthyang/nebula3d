@@ -449,14 +449,17 @@ function SelectedPeak({
   colormap: string;
   setColormap: (c: string) => void;
 }) {
-  const [contrast, setContrast] = useState(1);
-  const [zoom, setZoom] = useState(1);
+  // Brightness in stops (right is brighter) and zoom in stops (right is closer),
+  // the same directions as the other viewer pages.
+  const [brightness, setBrightness] = useState(0);
+  const [zoomStops, setZoomStops] = useState(0);
+  const zoom = Math.pow(2, zoomStops);
   const lut = COLORMAPS[colormap] ?? COLORMAPS.inferno;
   const [h, k, l] = peak.center_hkl;
 
   const maxW = Math.max(...peak.width_hkl.map(Math.abs), 0.02);
   const baseHalf = Math.min(0.6, Math.max(0.08, maxW * 3.5));
-  const half = baseHalf * zoom; // higher zoom → larger window → zoom out (more context)
+  const half = baseHalf / zoom; // ×2 shows half the width (closer); ×0.1 shows 10× the context
 
   const floorHkl = axes.map((a) => deriveFloor(peaks, a.i, true));
   const ell = (xa: number, ya: number, src: (p: BraggPeakWidth, a: number) => number | null): Ellipse | null => {
@@ -484,23 +487,23 @@ function SelectedPeak({
 
       <div className="bragg-sliders">
         <Slider
-          label="Contrast"
-          readout={`× ${contrast.toFixed(1)}`}
-          min={0.1}
-          max={20}
-          step={0.1}
-          value={contrast}
-          onChange={setContrast}
+          label="Brightness"
+          readout={`${brightness >= 0 ? "+" : "−"}${Math.abs(brightness).toFixed(1)}`}
+          min={-3}
+          max={3}
+          step={0.05}
+          value={brightness}
+          onChange={setBrightness}
           grow
         />
         <Slider
           label="Zoom"
-          readout={`× ${zoom.toFixed(1)}`}
-          min={1}
-          max={10}
-          step={0.5}
-          value={zoom}
-          onChange={setZoom}
+          readout={`× ${zoom < 1 ? zoom.toFixed(2) : zoom.toFixed(1)}`}
+          min={-3.3}
+          max={2}
+          step={0.1}
+          value={zoomStops}
+          onChange={setZoomStops}
           grow
         />
       </div>
@@ -516,7 +519,7 @@ function SelectedPeak({
             cy={t.cy}
             half={half}
             lut={lut}
-            contrast={contrast}
+            brightness={brightness}
             fitted={fittedEllipse(peak, t.xa, t.ya)}
             measured={ell(t.xa, t.ya, measuredHkl)}
             floor={floorEll(t.xa, t.ya)}
