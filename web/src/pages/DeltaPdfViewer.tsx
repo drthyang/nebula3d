@@ -1,23 +1,34 @@
 // Single-temperature 3D-ΔPDF orthoslice viewer — replaces
 // examples/explore_delta_pdf_ortho.py.  Three linked orthogonal real-space cuts
-// with movable cut sliders, a contrast control, and a unit-cell gridline toggle.
+// in a workspace (grid · focus · single), each with its own cut slider, one
+// shared ± colour scale and a unit-cell gridline toggle.  In Navigate mode a
+// click on one view moves the other two cuts through that point.
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useDatasets, useDpdfMeta } from "../api/hooks";
+import { useDatasets, useDpdfMeta, useDpdfSlice } from "../api/hooks";
+import type { Slice } from "../api/types";
 import { COLORMAPS, DIVERGING_NAMES, DIVERGING_NAME } from "../colormaps/luts";
-import { DpdfPanel } from "../components/DpdfPanel";
+import { fmtLevel } from "../components/colorScale";
+import { AutoButton, BrightnessKnob, ClickModeControl, LevelsBar } from "../components/DisplayBar";
+import { latticeLabel } from "../components/oblique";
+import { SliceCanvas } from "../components/SliceCanvas";
 import {
-  ColormapBar,
   EmptyState,
   MetaStrip,
   Slider,
   Switch,
   type ValueInputConfig,
 } from "../components/ui";
-import { latticeLabel } from "../components/oblique";
+import { UnitCellGrid } from "../components/UnitCellGrid";
+import { useLevels } from "../components/useLevels";
+import { ViewFrame } from "../components/ViewFrame";
+import { clampHalf, displayToSlice, sampleIndex, type Viewport } from "../components/viewport";
+import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
+import { LayoutControl, Workspace } from "../components/Workspace";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
-import { useDpdfStore } from "../state/dpdfStore";
+import { defaultDpdfView, useDpdfStore } from "../state/dpdfStore";
+import { useWorkspaceStore } from "../state/workspaceStore";
 
 function axisValue(
   range: [number, number] | undefined,
@@ -42,6 +53,17 @@ function commitAngstrom(
   };
 }
 
+type Ax = "x" | "y" | "z";
+// Each orthoslice: its plane, in-plane axes (h, v) and the axis it is cut along.
+const PLANES: { plane: "xy" | "xz" | "yz"; h: Ax; v: Ax; cut: Ax; badge: string; badgeClass: string; title: string }[] = [
+  { plane: "xy", h: "x", v: "y", cut: "z", badge: "z_L", badgeClass: "qr-rt--qp", title: "x_H – y_K" },
+  { plane: "xz", h: "x", v: "z", cut: "y", badge: "y_K", badgeClass: "qr-rt--r", title: "x_H – z_L" },
+  { plane: "yz", h: "y", v: "z", cut: "x", badge: "x_H", badgeClass: "qr-rt--q", title: "y_K – z_L" },
+];
+const AX_LABEL: Record<Ax, string> = { x: "x_H", y: "y_K", z: "z_L" };
+const AX_HUE: Record<Ax, string> = { x: "dpdf-cut--x", y: "dpdf-cut--y", z: "dpdf-cut--z" };
+const AX_LAT: Record<Ax, string> = { x: "a", y: "b", z: "c" };
+
 export function DeltaPdfViewer() {
   const datasetsQ = useDatasets();
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
@@ -51,23 +73,27 @@ export function DeltaPdfViewer() {
   const cutX = useDpdfStore((s) => s.cutX);
   const cutY = useDpdfStore((s) => s.cutY);
   const cutZ = useDpdfStore((s) => s.cutZ);
-  const contrast = useDpdfStore((s) => s.contrast);
+  const manual = useDpdfStore((s) => s.limit);
   const gridlines = useDpdfStore((s) => s.gridlines);
   const colormap = useDpdfStore((s) => s.colormap);
+  const views = useDpdfStore((s) => s.views);
   const setColormap = useDpdfStore((s) => s.setColormap);
   const centered = useDpdfStore((s) => s.centered);
   const setCutX = useDpdfStore((s) => s.setCutX);
   const setCutY = useDpdfStore((s) => s.setCutY);
   const setCutZ = useDpdfStore((s) => s.setCutZ);
-  const setContrast = useDpdfStore((s) => s.setContrast);
+  const setManual = useDpdfStore((s) => s.setLimit);
   const setGridlines = useDpdfStore((s) => s.setGridlines);
+  const setView = useDpdfStore((s) => s.setView);
   const center = useDpdfStore((s) => s.center);
+  const clickMode = useWorkspaceStore((s) => s.clickMode);
+  const [cursor, setCursor] = useState<{ plane: string; p: [number, number] } | null>(null);
 
-  // Square real-space window (full width in Å) shown for every orthoslice;
-  // shared with the multi-volume viewer via the store.
-  const windowFull = useDpdfStore((s) => s.windowFull);
-  const setWindowFull = useDpdfStore((s) => s.setWindowFull);
-  const halfWindow = windowFull / 2;
+  const [layout, dispatchLayout] = useWorkspaceLayout("dpdf", ["xy", "xz", "yz"], {
+    mode: "grid",
+    primary: "xy",
+    lastMulti: "grid",
+  });
 
   const dataset = datasets.find((d) => d.id === datasetId);
   const volumeId = dataset?.stages.find((s) => s.name === "delta_pdf")?.volume_id;
@@ -87,65 +113,75 @@ export function DeltaPdfViewer() {
   }, [meta, centered, recenter]);
 
   const lut = COLORMAPS[colormap] ?? COLORMAPS[DIVERGING_NAME];
-  const a = meta?.lattice.a ?? null;
-  const b = meta?.lattice.b ?? null;
-  const c = meta?.lattice.c ?? null;
+  const lat: Record<Ax, number | null> = {
+    x: meta?.lattice.a ?? null,
+    y: meta?.lattice.b ?? null,
+    z: meta?.lattice.c ?? null,
+  };
+  const range: Record<Ax, [number, number] | undefined> = { x: meta?.x_range, y: meta?.y_range, z: meta?.z_range };
+  const shape: Record<Ax, number | undefined> = { x: meta?.shape[0], y: meta?.shape[1], z: meta?.shape[2] };
+  const idx: Record<Ax, number> = { x: cutX, y: cutY, z: cutZ };
+  const setIdx: Record<Ax, (i: number) => void> = { x: setCutX, y: setCutY, z: setCutZ };
+  const val = (a: Ax) => axisValue(range[a], shape[a], idx[a]);
+  const centreVal = (a: Ax) => axisValue(range[a], shape[a], shape[a] ? Math.floor(shape[a]! / 2) : 0);
 
-  const xVal = axisValue(meta?.x_range, meta?.shape[0], cutX);
-  const yVal = axisValue(meta?.y_range, meta?.shape[1], cutY);
-  const zVal = axisValue(meta?.z_range, meta?.shape[2], cutZ);
+  // Current slices, and the centre-cut slices that set Auto (so the scale holds
+  // still while the cuts move).  Fixed hook count: one per plane.
+  const sXY = useDpdfSlice(volumeId, "xy", val("z"));
+  const sXZ = useDpdfSlice(volumeId, "xz", val("y"));
+  const sYZ = useDpdfSlice(volumeId, "yz", val("x"));
+  const cXY = useDpdfSlice(volumeId, "xy", centreVal("z")).data;
+  const cXZ = useDpdfSlice(volumeId, "xz", centreVal("y")).data;
+  const cYZ = useDpdfSlice(volumeId, "yz", centreVal("x")).data;
+  const results = { xy: sXY, xz: sXZ, yz: sYZ };
+  const samples = useMemo(
+    () => (cXY && cXZ && cYZ ? [cXY.data, cXZ.data, cYZ.data] : null),
+    [cXY, cXZ, cYZ],
+  );
+  const lv = useLevels({
+    samples,
+    histData: sXY.data?.data,
+    signed: true,
+    manual: manual && manual.dataset === datasetId ? { lo: -manual.value, hi: manual.value } : null,
+  });
+  const setLimit = (hi: number) => datasetId && setManual({ value: Math.abs(hi), dataset: datasetId });
 
   // Two editable boxes per axis: the cut in Å, and the cut divided by the lattice
   // parameter along that direction (a/b/c).  Editing either snaps the cut.
-  const axisInputs = (
-    range: [number, number] | undefined,
-    n: number | undefined,
-    valAng: number,
-    lat: number | null,
-    latLetter: string,
-    setIdx: (i: number) => void,
-  ): ValueInputConfig[] | undefined => {
-    if (!range || !n) return undefined;
-    const commit = commitAngstrom(range, n, setIdx);
-    const inputs: ValueInputConfig[] = [
-      { value: valAng, suffix: "Å", onCommit: commit },
-    ];
-    if (lat != null && lat !== 0) {
-      inputs.push({
-        value: valAng / lat,
-        prefix: `/${latLetter}`,
-        onCommit: (u) => commit(u * lat),
-      });
+  const axisInputs = (a: Ax): ValueInputConfig[] | undefined => {
+    const r = range[a], n = shape[a];
+    if (!r || !n) return undefined;
+    const commit = commitAngstrom(r, n, setIdx[a]);
+    const inputs: ValueInputConfig[] = [{ value: val(a), suffix: "Å", onCommit: commit }];
+    const l = lat[a];
+    if (l != null && l !== 0) {
+      inputs.push({ value: val(a) / l, prefix: `/${AX_LAT[a]}`, onCommit: (u) => commit(u * l) });
     }
     return inputs;
   };
 
-  // Per-axis cut slider rendered into a panel footer; the wrapper hue links the
-  // slider fill + label to that panel's badge (amber x · blue y · green z).
-  const cutSlider = (
-    hue: string,
-    label: string,
-    range: [number, number] | undefined,
-    n: number | undefined,
-    valAng: number,
-    lat: number | null,
-    latLetter: string,
-    value: number,
-    setIdx: (i: number) => void,
-  ) => (
-    <div className={`qr-foot-cut dpdf-cut ${hue}`}>
-      <Slider
-        label={label}
-        readout={meta ? undefined : "—"}
-        valueInputs={axisInputs(range, n, valAng, lat, latLetter, setIdx)}
-        min={0}
-        max={n ? n - 1 : 0}
-        value={value}
-        disabled={!meta}
-        onChange={setIdx}
-      />
-    </div>
-  );
+  const fullHalf = meta
+    ? Math.max(...[meta.x_range, meta.y_range, meta.z_range].map((r) => Math.max(Math.abs(r[0]), Math.abs(r[1]))))
+    : 100;
+  const voxel = meta && meta.shape[0] > 1 ? (meta.x_range[1] - meta.x_range[0]) / (meta.shape[0] - 1) : 0.5;
+  const limit = (h: number) => clampHalf(h, fullHalf, voxel);
+  const fit = defaultDpdfView();
+
+  // Navigate: a click on one view moves the other two cuts through the point.
+  const navigate = (p: (typeof PLANES)[number], slice: Slice | undefined) => (X: number, Y: number) => {
+    const angle = slice?.header.axes_angle ?? 90;
+    const [h, v] = displayToSlice(X, Y, { sx: 1, sy: 1, angle });
+    for (const [a, value] of [[p.h, h], [p.v, v]] as [Ax, number][]) {
+      const r = range[a], n = shape[a];
+      if (r && n) commitAngstrom(r, n, setIdx[a])(value);
+    }
+  };
+
+  const valueAt = (s: Slice | undefined, pt: [number, number]) => {
+    if (!s) return undefined;
+    const ij = sampleIndex(s.header, pt[0], pt[1], { sx: 1, sy: 1, angle: s.header.axes_angle ?? 90 });
+    return ij ? s.data[ij[1] * s.header.nx + ij[0]] : undefined;
+  };
 
   return (
     <div className="page-body qr-page">
@@ -159,65 +195,32 @@ export function DeltaPdfViewer() {
           <span className="qr-rt qr-rt--qp">z</span>
         </div>
         <span className="qr-eyebrow">Orthoslices</span>
-
-        <span className="qr-desc">
-          Three linked real-space cuts about the origin
-        </span>
-
+        <span className="qr-desc">Three linked real-space cuts about the origin</span>
         <div className="qr-header-actions">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={!meta}
-            onClick={recenter}
-          >
+          <button type="button" className="btn btn-ghost" disabled={!meta} onClick={recenter}>
             Recenter cuts
           </button>
         </div>
       </div>
 
-      {/* ── Display-control cluster: window · contrast · unit cells · cmap ── */}
-      <div className="qr-clusters">
-        <div className="qr-cluster">
-          <div className="qr-cluster-head">
-            <span className="qr-cluster-title">Real-space display · 3D-ΔPDF</span>
-            <div className="qr-cluster-toggle">
-              <Switch label="Unit cells" checked={gridlines} onChange={setGridlines} />
-            </div>
-          </div>
-          <div className="qr-cluster-controls">
-            <div className="qr-cluster-slider">
-              <Slider
-                label="Window"
-                readout={`${windowFull.toFixed(0)} Å`}
-                min={10}
-                max={160}
-                step={2}
-                value={windowFull}
-                onChange={setWindowFull}
-              />
-            </div>
-            <div className="qr-cluster-slider">
-              <Slider
-                label="Contrast"
-                readout={`× ${contrast.toFixed(1)}`}
-                min={0.1}
-                max={20}
-                step={0.1}
-                value={contrast}
-                onChange={setContrast}
-              />
-            </div>
-          </div>
-          <div className="qr-cluster-cmap">
-            <span className="field-label">Colormap</span>
-            <select value={colormap} onChange={(e) => setColormap(e.target.value)}>
-              {DIVERGING_NAMES.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-            <ColormapBar lut={lut} />
-          </div>
+      {/* ── Workspace header: click mode · unit cells · layout, then the display bar ── */}
+      <div className="ws-head">
+        <div className="ws-row">
+          <ClickModeControl />
+          <span className="ws-sep" />
+          <Switch label="Unit cells" checked={gridlines} onChange={setGridlines} />
+          <span className="ws-spacer" />
+          <LayoutControl state={layout} dispatch={dispatchLayout} />
+        </div>
+        <div className="ws-row ws-display">
+          <select aria-label="Colormap" value={colormap} onChange={(e) => setColormap(e.target.value)}>
+            {DIVERGING_NAMES.map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+          <LevelsBar lut={lut} levels={lv.levels} domain={lv.domain} hist={lv.hist} symmetric onChange={(l) => setLimit(l.hi)} />
+          <AutoButton active={lv.isAuto} onClick={() => setManual(null)} />
+          <BrightnessKnob autoHi={lv.auto.hi} hi={lv.levels.hi} onChange={setLimit} />
         </div>
       </div>
 
@@ -228,63 +231,98 @@ export function DeltaPdfViewer() {
         />
       )}
 
-      {/* ── Three orthoslice panels — equal siblings, no connectors ──────── */}
       {volumeId && (
-        <div className="qr-flow-row">
-          <DpdfPanel
-            badge="z_L"
-            badgeClass="qr-rt--qp"
-            title="x_H – y_K"
-            tag="fixed z · real"
-            volumeId={volumeId}
-            plane="xy"
-            value={zVal}
-            lut={lut}
-            contrast={contrast}
-            gridlines={gridlines}
-            latX={a}
-            latY={b}
-            windowA={halfWindow}
-            footer={cutSlider(
-              "dpdf-cut--z", "Cut z_L", meta?.z_range, meta?.shape[2], zVal, c, "c", cutZ, setCutZ,
-            )}
-          />
-          <DpdfPanel
-            badge="y_K"
-            badgeClass="qr-rt--r"
-            title="x_H – z_L"
-            tag="fixed y · real"
-            volumeId={volumeId}
-            plane="xz"
-            value={yVal}
-            lut={lut}
-            contrast={contrast}
-            gridlines={gridlines}
-            latX={a}
-            latY={c}
-            windowA={halfWindow}
-            footer={cutSlider(
-              "dpdf-cut--y", "Cut y_K", meta?.y_range, meta?.shape[1], yVal, b, "b", cutY, setCutY,
-            )}
-          />
-          <DpdfPanel
-            badge="x_H"
-            badgeClass="qr-rt--q"
-            title="y_K – z_L"
-            tag="fixed x · real"
-            volumeId={volumeId}
-            plane="yz"
-            value={xVal}
-            lut={lut}
-            contrast={contrast}
-            gridlines={gridlines}
-            latX={b}
-            latY={c}
-            windowA={halfWindow}
-            footer={cutSlider(
-              "dpdf-cut--x", "Cut x_H", meta?.x_range, meta?.shape[0], xVal, a, "a", cutX, setCutX,
-            )}
-          />
+        <Workspace
+          state={layout}
+          dispatch={dispatchLayout}
+          views={PLANES.map((p) => {
+            const r = results[p.plane];
+            const viewport: Viewport = views[p.plane] ?? fit;
+            return {
+              id: p.plane,
+              title: p.title,
+              badge: p.badge,
+              badgeClass: `qr-rt-badge ${p.badgeClass}`,
+              caption: `fixed ${p.cut} · ${val(p.cut).toFixed(2)} Å`,
+              onResetView: () => setView(p.plane, null),
+              footer: (
+                <div className={`qr-foot-cut dpdf-cut ${AX_HUE[p.cut]}`}>
+                  <Slider
+                    label={`Cut ${AX_LABEL[p.cut]}`}
+                    readout={meta ? undefined : "—"}
+                    valueInputs={axisInputs(p.cut)}
+                    min={0}
+                    max={shape[p.cut] ? shape[p.cut]! - 1 : 0}
+                    value={idx[p.cut]}
+                    disabled={!meta}
+                    onChange={setIdx[p.cut]}
+                  />
+                </div>
+              ),
+              children: r.isError ? (
+                <div className="panel-err">{(r.error as Error).message}</div>
+              ) : r.data ? (
+                <ViewFrame
+                  viewport={viewport}
+                  onViewport={(v) => setView(p.plane, v)}
+                  fit={fit}
+                  limit={limit}
+                  mode={clickMode}
+                  axes={{ sx: 1, sy: 1, xLabel: AX_LABEL[p.h], yLabel: AX_LABEL[p.v], unit: "Å", fovUnit: "Å" }}
+                  cursor={cursor?.plane === p.plane ? cursor.p : null}
+                  onCursor={(pt) => setCursor(pt ? { plane: p.plane, p: pt } : null)}
+                  onNavigate={navigate(p, r.data)}
+                >
+                  <SliceCanvas
+                    slice={r.data}
+                    lut={lut}
+                    vmax={lv.levels.hi}
+                    log={false}
+                    diverging
+                    viewport={viewport}
+                  />
+                  {gridlines && (
+                    <UnitCellGrid
+                      half={viewport.half}
+                      viewport={viewport}
+                      latX={lat[p.h]}
+                      latY={lat[p.v]}
+                      angle={r.data.header.axes_angle}
+                    />
+                  )}
+                  {r.isFetching && <span className="spin vf-spin" />}
+                </ViewFrame>
+              ) : (
+                <div className="skeleton" style={{ width: "100%", height: "100%" }} />
+              ),
+            };
+          })}
+        />
+      )}
+
+      {volumeId && (
+        <div className="ws-readout">
+          {cursor ? (
+            (() => {
+              const p = PLANES.find((q) => q.plane === cursor.plane)!;
+              const s = results[p.plane].data;
+              const [h, v] = displayToSlice(cursor.p[0], cursor.p[1], { sx: 1, sy: 1, angle: s?.header.axes_angle ?? 90 });
+              const value = valueAt(s, cursor.p);
+              return (
+                <>
+                  <b>
+                    {AX_LABEL[p.h]} {h.toFixed(2)} · {AX_LABEL[p.v]} {v.toFixed(2)} · {AX_LABEL[p.cut]} {val(p.cut).toFixed(2)} Å
+                  </b>
+                  <span>
+                    <i>ΔPDF</i> {value === undefined ? "—" : fmtLevel(value)}
+                  </span>
+                  {clickMode === "navigate" && <span className="muted">click to move the other two cuts here</span>}
+                </>
+              );
+            })()
+          ) : (
+            <span className="muted">Hover a slice to read the ΔPDF; in Navigate mode a click moves the other two cuts through the point.</span>
+          )}
         </div>
       )}
 
@@ -292,10 +330,7 @@ export function DeltaPdfViewer() {
         <MetaStrip
           items={[
             { key: "Source", value: dataset?.raw_name },
-            {
-              key: "Window",
-              value: `${windowFull.toFixed(0)} × ${windowFull.toFixed(0)} Å`,
-            },
+            { key: "Colour scale", value: `±${fmtLevel(lv.levels.hi)}${lv.isAuto ? " (Auto)" : ""}` },
             { key: "Lattice", value: latticeLabel(meta.lattice) },
             { key: "|Q| max", value: `${meta.q_max?.toFixed(1)} Å⁻¹` },
           ]}
