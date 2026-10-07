@@ -39,7 +39,7 @@ Run::
 Env:
     DATA_FILE   backfilled input .h5 (default: auto-detect *_backfilled.h5)
     ESTIMATOR ION FIT_Q_MIN FIT_Q_MAX FLOOR_PCT Q_STEP SMOOTH MIN_COUNT
-                flatten knobs (production defaults: model, Tb3+, 0.8–10 Å⁻¹, p25)
+                flatten knobs (production defaults: model, ion none, 0.8–10 Å⁻¹, p25)
     Q_MIN Q_MAX   restrict the validated |Q| range
     NO_PLOT     1 -> skip the QA PNG
 """
@@ -120,7 +120,7 @@ else:
     in_path = cands[0]
 
 estimator = os.environ.get("ESTIMATOR", "model")
-ion = os.environ.get("ION", "Tb3+")
+ion = os.environ.get("ION", "none")
 fit_q_range = (float(os.environ.get("FIT_Q_MIN", "0.8")),
                float(os.environ.get("FIT_Q_MAX", "10")))
 floor_pct = float(os.environ.get("FLOOR_PCT", "25"))

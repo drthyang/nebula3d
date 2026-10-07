@@ -62,7 +62,7 @@ median radial profile of every cleaned plane (data in grey, confirmed shells as
 faint lines): a leftover ring is a bump, an over-subtraction a dip.
 
 ```bash
-TEMP=22K PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 examples/compare_ring_modes.py
+TEMP=<T> PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 examples/compare_ring_modes.py
 ```
 
 All image panels share their axes, so zooming one zooms all, and the zoom holds
