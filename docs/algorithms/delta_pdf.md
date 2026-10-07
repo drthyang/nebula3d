@@ -298,6 +298,60 @@ whole hexagon. But three in-plane factors taper faster than one, so on
 Fe3Ge2 its in-plane resolution is worse than the ellipsoid's: 0.49 against
 0.44 Å for the Gaussian, 0.47 against 0.45 Å for Hann.
 
+### The window and the measured coverage (`support`)
+
+A backfill that leaves unmeasured space masked, rather than inventing
+intensity there, hands the transform a volume whose data end inside the box.
+Read as `I = 0`, that region does two things: it pulls the weighted mean `c`
+down, and the box-sized window still weights it. On Fe3Ge2 the separable
+window puts 6 % of its weight on unmeasured space, so the coverage edge
+becomes a step with a truncation ripple (period ≈ 2π/17 Å⁻¹).
+
+`compute_delta_pdf(support=mask)` (pipeline `DeltaPdfParams.window_support`,
+default on, passes the input volume's `mask`; server `pdf_window_support`;
+*Taper to the measured coverage* in the web app):
+
+- **ΔI = 0 off the data.** The mean is weighted over the support only, and
+  voxels outside it are zeroed after it is subtracted. They then add no
+  step of `−c`, and the input still sums to zero.
+- **The window fits the coverage.** Unsupported space that reaches the box
+  faces is where the coverage ends. It is found by `binary_fill_holes`
+  (26-connected; bool arrays only), so holes enclosed by data do not count.
+  The ellipsoid is shrunk until at most `support_tol` (default 10⁻³) of its
+  weight lies there. With `"auto"`, an orthogonal box switches to the
+  ellipsoid when the separable window puts more than that on it. A shrunk
+  ellipsoid is the same ellipsoid scaled, so it stays invariant. The scale
+  is logged as `window_scale`.
+- `invert_delta_pdf` leaves unsupported voxels out of the reliable `mask`.
+- An all-True support (main's Laplace backfill fills the whole box) changes
+  nothing, bit for bit.
+
+The tolerance is not cosmetic. Coverage edges are ragged, and thin channels
+of unmeasured voxels reach far in. On raw Fe3Ge2 the nearest open voxel sits
+at `ρ = 0.78`, although only 4.4·10⁻⁴ of the window's weight is open. On
+TbTi3Bi4 22 K, which has full coverage, a 1 378-voxel channel reaches
+`ρ = 0.945` with 1.2·10⁻⁶ of the weight. Shrinking to the nearest open voxel
+(`support_tol=0`) would shrink Fe3Ge2's window by 22 % (real-space peaks
+~28 % broader) and halve its main peak; the weight criterion ignores such
+channels.
+
+Measured on Fe3Ge2 90 K (the pipeline's flattened input with the unmeasured
+space that reaches the box edge masked, as the unmeasured-aware backfill
+leaves it; Gaussian σ = 0.4; differences at 2–15 Å relative to the strongest
+1.5–15 Å correlation):
+
+| window | `c` | effect of the support | scale |
+|---|---|---|---|
+| separable | 3.31 → 3.52 | 2.1 % max, 0.14 % RMS (the mean's share of the ripple) | — (cannot shrink) |
+| ellipsoid (`auto`) | 2.871 → 2.872 | 0.08 % max, 0.01 % RMS | 1.0 (already inside the coverage) |
+| ellipsoid, `support_tol=0` | 1.94 | main peak halved | 0.78 |
+
+So for this hexagonal cell the ellipsoid already keeps clear of the coverage
+edge, and the support only fixes the mean's handling of the empty region. It
+matters most for an orthogonal cell whose coverage ends inside the box, where
+`"auto"` now moves to a fitted ellipsoid. `_open_space` takes 2–3 s on 401³
+natively and runs only when the support has unsupported voxels.
+
 **Still not symmetric:** `subtract_smooth_bg` blurs isotropically in index
 space, and `h² + k²` is not `h² + hk + k²`, so it too breaks the 6-fold on a
 hexagonal cell. It is off by default.
@@ -308,7 +362,11 @@ separable window shows it above 10⁻³. They also cover the point groups from
 the UB, the hexagonal form against `(Q⊥/d_ab)² + (Q∥/d_c)²`, `auto` on five
 cells, bit-identity on orthorhombic cells, the exact inverse for
 hann/gaussian/none, the plane-sized memory peak in float32, and the WebGPU
-glue with a numpy stand-in for `nebulaGpu`.
+glue with a numpy stand-in for `nebulaGpu`. The support tests cover the
+all-True no-op, ΔI = 0 and the support-weighted mean for an enclosed hole, the
+shrink to a coverage sphere at three tolerances (still 6-fold symmetric), a
+thin channel that does not collapse the window, the inverse's mask, the
+pipeline and server wiring, and the WebGPU glue with a support.
 
 ## The axis cross is the residual diffuse background (diagnosed 2026-06-05)
 
