@@ -49,7 +49,7 @@ def test_axis_widths_finite_for_singular_shape():
 
 
 def test_axis_widths_finite_for_huge_width_shape():
-    """A peak with one extremely large width (the real 22 K failure mode)."""
+    """A peak with one extremely large width (a failure mode seen on measured data)."""
     vol = _vol()
     shape = np.diag([1.0 / 0.1**2, 1.0 / 0.15**2, 1.0 / 1e6**2])
     widths_hkl, widths_q = _axis_widths_from_shape(vol, shape)

@@ -87,10 +87,11 @@ STAGE_DEFAULTS = {
     "backfill": {"METHOD": "laplace"},
     # isotropic radial-background flatten — the explicit step-4 background
     # remover (default ON).  model = const + c·F(Q)² (incoherent + single-ion
-    # paramagnetic, Tb³⁺) fitted to the p25 shell floors: it only touches the
-    # ΔPDF at r ≈ 0.  Validate on your data with examples/validate_flatten.py.
+    # paramagnetic; set ION to the sample's magnetic ion) fitted to the p25 shell
+    # floors: it only touches the ΔPDF at r ≈ 0.  Validate on your data with
+    # examples/validate_flatten.py.
     "flatten": {
-        "ESTIMATOR": "model", "ION": "Tb3+", "FIT_Q_MIN": "0.8", "FIT_Q_MAX": "10",
+        "ESTIMATOR": "model", "ION": "none", "FIT_Q_MIN": "0.8", "FIT_Q_MAX": "10",
         "FLOOR_PCT": "25", "Q_STEP": "0.05", "SMOOTH": "0.10", "MIN_COUNT": "20",
     },
     # SUBTRACT_BG OFF by default: the step-4 flatten is the background remover.
@@ -255,7 +256,8 @@ pdf_env = _stage_env("pdf", PROC_FILE=pdf_input, OUT_FILE=pdf_out)
 # Background removal is step 4 (the radial flatten).  The ΔPDF's own Gaussian
 # SUBTRACT_BG is the *alternative* (legacy) remover and defaults OFF — running
 # both subtracts the background twice, and the per-H-plane blur (σ_H=0) destroys
-# the on-axis H signal the flatten preserves (validated: H-axis peaks → ~1-3%).
+# the on-axis H signal the flatten preserves (validated: the blur all but
+# erases the H-axis peaks).
 _sbg = pdf_env.get("SUBTRACT_BG", "0")
 _sbg_on = any(float(v or 0) != 0 for v in _sbg.split(",")) if _sbg else False
 if FLATTEN and _sbg_on:

@@ -27,7 +27,7 @@ Env overrides:
     OUT_FILE      output .h5 (default: <stem>_flattened.h5)
     ESTIMATOR     model | floor | snip   (default model: const + c·F(Q)²;
                   floor/snip subtract a free-form curve — for comparison)
-    ION           magnetic ion of the model (default Tb3+; none = constant only)
+    ION           magnetic ion of the model, e.g. Mn2+ (default none = constant only)
     FIT_Q_MIN, FIT_Q_MAX  |Q| range Å^-1 the model is fitted over (default 0.8, 10)
     FLOOR_PCT     percentile giving each shell's floor (default 25)
     Q_STEP        |Q| shell width Å^-1 (default 0.05)
@@ -66,7 +66,7 @@ out_file = os.environ.get("OUT_FILE")
 out_path = Path(out_file) if out_file else proc / f"{in_path.stem}_flattened.h5"
 
 estimator = os.environ.get("ESTIMATOR", "model")
-ion = os.environ.get("ION", "Tb3+")
+ion = os.environ.get("ION", "none")
 fit_q_range = (float(os.environ.get("FIT_Q_MIN", "0.8")),
                float(os.environ.get("FIT_Q_MAX", "10")))
 floor_pct = float(os.environ.get("FLOOR_PCT", "25"))
