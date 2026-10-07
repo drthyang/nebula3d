@@ -152,6 +152,7 @@ class DeltaPDF:
     pad_width: tuple[tuple[int, int], ...] | None = None
     cropped_shape: tuple[int, int, int] | None = None
     window_axes: tuple[NDArray[np.float64], ...] | None = None
+    # Window-weighted mean removed BEFORE windowing (input = w·(I − bg − c)).
     subtracted_mean: float = 0.0
     smooth_bg: NDArray[np.floating] | None = None
     h_axis_c: NDArray[np.float64] | None = None
@@ -192,7 +193,7 @@ class _ForwardPlan:
     """Everything between the pure-Python preparation and the FFT core.
 
     ``data`` is the compact (cropped, NaN-filled, background/band-processed,
-    windowed, mean-subtracted) volume that enters the transform; the padded
+    mean-subtracted, windowed) volume that enters the transform; the padded
     array is materialised only inside the FFT core — a replaceable backend
     (scipy here; WebGPU in the browser) that computes
     ``fftshift(real(fftn(ifftshift(pad(data)))))``.
@@ -319,14 +320,17 @@ def compute_delta_pdf(
         Window function applied in Q-space before FFT to suppress
         termination ripples:
         - ``"hann"``: cosine-squared taper (recommended for most cases)
-        - ``"gaussian"``: Gaussian with σ = *gaussian_sigma* × Q_max
+        - ``"gaussian"``: Gaussian with σ = *gaussian_sigma* × the box
+          half-width, shifted to reach zero at the box edge
         - ``"none"``: no window (hard truncation)
     gaussian_sigma:
         Width parameter for Gaussian window (fraction of Q_max).
     zero_pad:
         Pad to the next fast FFT length (5-smooth) for an efficient FFT.
     subtract_mean:
-        Subtract the mean intensity before FFT to suppress the r=0 peak.
+        Subtract the window-weighted mean intensity ``Σ w·I / Σ w`` before
+        windowing, so the transformed input sums to zero (no r=0 spike)
+        and the removed constant lands only at r≈0 (no box-edge streaks).
     real_space_angstrom:
         If True, compute real-space axes in Å using the UB matrix.
         If False, axes are in fractional units (1/HKL step).
@@ -455,25 +459,26 @@ def _prepare_forward(
     # transform — recorded so invert_delta_pdf can un-pad back to it.
     cropped_shape = data.shape
 
-    # Apply apodization window first, then subtract mean of the windowed
-    # data so that the DC component (sum) is exactly zero and the r=0
-    # DeltaPDF peak is suppressed. Subtracting before windowing leaves a
-    # nonzero sum = ∫(data−mean)·w dQ, producing a spurious 10^5-amplitude
-    # spike at r=0 that overwhelms near-origin structure.
+    # Remove the DC term, then apodize.  The constant removed is the
+    # window-weighted mean c = Σ w·I / Σ w, so the windowed input w·(I − c)
+    # sums to exactly zero (no r = 0 spike) and still tapers with the window
+    # at the box faces.  The removed term c·w transforms into the window's
+    # own resolution peak at r = 0, which is all a constant in I(Q) may
+    # change.  The earlier order (window, then subtract the plain mean)
+    # left a step of that mean at the box faces against the zero padding;
+    # its transform, a 3-D sinc sampled off its zeros, drew a dashed line of
+    # alternating sign along every grid axis (13–27 % of the strongest
+    # correlation on Fe3Ge2 and TbTi3Bi4).  See docs/algorithms/delta_pdf.md.
     window_axes = _window_axes(data.shape, apodization, gaussian_sigma)
+    subtracted_mean = 0.0
+    if subtract_mean:
+        subtracted_mean = _window_weighted_mean(data, window_axes)
+        data -= data.dtype.type(subtracted_mean)
     # Apply the separable window as three broadcast in-place multiplies —
     # never materialising the full 3-D window array (a volume-sized float64).
     data *= window_axes[0][:, None, None]
     data *= window_axes[1][None, :, None]
     data *= window_axes[2][None, None, :]
-
-    subtracted_mean = 0.0
-    if subtract_mean:
-        # Explicit float64 accumulator: with float32 storage a native-dtype
-        # mean over ~5e7 elements would drift far beyond round-off, and the
-        # residual DC term shows up as a spurious r=0 spike in the ΔPDF.
-        subtracted_mean = float(data.mean(dtype=np.float64))
-        data -= subtracted_mean
 
     # Zero-pad to the next fast FFT length (11-smooth; scipy.fft.next_fast_len
     # — pocketfft has fast radices up to 11).  pocketfft transforms these just
@@ -596,10 +601,10 @@ def invert_delta_pdf(
 
     prep_pad = _fft_core_inverse(dpdf, consume=consume)
 
-    # Strip the symmetric zero-padding → the windowed, mean-subtracted volume.
+    # Strip the symmetric zero-padding → the windowed input win·(I − bg − c).
     sl = tuple(slice(lo, lo + n)
                for (lo, _hi), n in zip(dpdf.pad_width, dpdf.cropped_shape))
-    prep = prep_pad[sl] + dpdf.subtracted_mean   # restore mean → win·(I − bg)
+    prep = np.array(prep_pad[sl])
     del prep_pad  # the padded inverse is no longer needed
     return _finish_inverse(dpdf, prep, deapodize=deapodize,
                            add_back_smooth_bg=add_back_smooth_bg,
@@ -636,33 +641,38 @@ def _finish_inverse(
 ) -> HKLVolume:
     """Deapodize + rebuild the reciprocal-space HKLVolume (backend-agnostic).
 
-    ``prep`` is the un-padded, mean-restored ``win·(I − bg)`` volume — the
-    common meeting point of the scipy and WebGPU cores.
+    ``prep`` is the un-padded windowed input ``win·(I − bg − c)``, with ``c``
+    the window-weighted mean :func:`compute_delta_pdf` removed — the common
+    meeting point of the scipy and WebGPU cores.  ``c`` goes back after the
+    window is divided out (or as ``c·win`` when it is not).
     """
     # invert_delta_pdf validated these; repeat for direct callers + narrowing.
     assert (dpdf.window_axes is not None and dpdf.h_axis_c is not None
             and dpdf.k_axis_c is not None and dpdf.l_axis_c is not None)
 
+    wh, wk, wl = dpdf.window_axes
+    mean = prep.dtype.type(dpdf.subtracted_mean)
     if deapodize:
         # Deapodize one H-plane at a time instead of materialising the full
         # 3-D window (+ a fresh zero-filled output): peak drops by ~2 volumes.
-        # Bit-identical to the whole-volume version: each window element is
-        # still computed as (wh[i]*wk[j])*wl[k] (same association order), the
-        # window maximum of a non-negative separable product is exactly
-        # (wh.max()*wk.max())*wl.max() (attained at the argmax element, same
-        # arithmetic), and the where-divide + zero-fill reproduces
-        # ``np.divide(..., out=np.zeros_like(prep), where=reliable)``.
-        wh, wk, wl = dpdf.window_axes
+        # Each window element is computed as (wh[i]*wk[j])*wl[k], the window
+        # maximum of a non-negative separable product is exactly
+        # (wh.max()*wk.max())*wl.max(), and the where-divide + zero-fill
+        # reproduces ``np.divide(..., out=np.zeros_like(prep), where=reliable)``.
         thr = window_floor * float((wh.max() * wk.max()) * wl.max())
         reliable = np.empty(prep.shape, dtype=bool)
         for i in range(prep.shape[0]):
             win_i = (wh[i] * wk)[:, None] * wl[None, :]
             rel_i = win_i >= thr
             np.divide(prep[i], win_i, out=prep[i], where=rel_i)
+            prep[i] += mean
             prep[i][~rel_i] = 0.0
             reliable[i] = rel_i
         recon = prep
     else:
+        if mean:
+            for i in range(prep.shape[0]):
+                prep[i] += mean * ((wh[i] * wk)[:, None] * wl[None, :]).astype(prep.dtype)
         recon = prep
         reliable = np.ones(recon.shape, dtype=bool)
 
@@ -692,16 +702,48 @@ def _finish_inverse(
 def _window_axes(
     shape: tuple[int, ...], kind: Window, sigma: float
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
-    """The three separable 1-D apodization factors (kept for exact inversion)."""
+    """The three separable 1-D apodization factors (kept for exact inversion).
+
+    Every window but ``"none"`` reaches zero at the box edge: the data stop
+    there, and a window that does not vanish where the data are cut leaves a
+    step whose transform is a streak along the axis normal to that face.  The
+    Gaussian is therefore shifted down by its edge value and rescaled to peak
+    at 1, ``(g − g_edge) / (1 − g_edge)``; for σ = 0.4 that moves it by at
+    most 4.4 % and narrows its FWHM by 3 %.  A single-plane axis keeps 1.
+    """
     def _1d(n: int) -> NDArray[np.float64]:
+        if n == 1:
+            return np.ones(1, dtype=np.float64)
         if kind == "hann":
             return np.hanning(n).astype(np.float64)
         if kind == "gaussian":
             x = np.linspace(-1, 1, n)
-            return np.exp(-0.5 * (x / sigma) ** 2).astype(np.float64)
+            g = np.exp(-0.5 * (x / sigma) ** 2)
+            edge = np.exp(-0.5 / sigma**2)
+            return np.clip((g - edge) / (1.0 - edge), 0.0, None).astype(np.float64)
         return np.ones(n, dtype=np.float64)
 
     return _1d(shape[0]), _1d(shape[1]), _1d(shape[2])
+
+
+def _window_weighted_mean(
+    data: NDArray[np.floating],
+    window_axes: tuple[NDArray[np.float64], ...],
+) -> float:
+    """``Σ w·data / Σ w`` for the separable window, accumulated in float64.
+
+    One plane at a time, so neither the 3-D window nor a float64 copy of a
+    float32 volume is ever materialised.
+    """
+    wh, wk, wl = window_axes
+    total = float((wh.sum() * wk.sum()) * wl.sum())
+    if total == 0.0:
+        return 0.0
+    acc = 0.0
+    for i in range(data.shape[0]):
+        if wh[i] != 0.0:
+            acc += float(wh[i]) * float(wk @ (data[i].astype(np.float64) @ wl))
+    return acc / total
 
 
 def _build_window(shape: tuple[int, ...], kind: Window, sigma: float) -> NDArray:

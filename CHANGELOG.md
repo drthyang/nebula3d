@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **No more dashed streaks along the 3D-ΔPDF axes.** The transform windowed
+  the volume, subtracted the plain mean from the whole box and zero-padded
+  it, which left a step of the mean at the box faces; its transform drew a
+  line of alternating sign along every axis, 13–27 % of the strongest
+  correlation on Fe3Ge2 90 K and TbTi3Bi4 22 K. It now subtracts the
+  window-weighted mean before windowing, and the Gaussian window is shifted
+  to reach zero at the box edge (FWHM 3 % narrower in Q; ΔPDF amplitudes
+  4–10 % lower). The streak drops
+  35–45× on Fe3Ge2 and 13–30× on TbTi3Bi4; the back-FFT check stays exact
+  (TbTi3Bi4 22 K r 0.99912 → 0.99988). See docs/algorithms/delta_pdf.md.
 - **The flatten's magnetic ion defaults to none.** The model then subtracts a
   fitted constant only; choose the sample's ion (Tb3+ for TbTi3Bi4) to add the
   `c·F(Q)²` paramagnetic term. The Tb³⁺ default put a terbium form factor on

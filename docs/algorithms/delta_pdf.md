@@ -33,11 +33,17 @@ Step by step (as implemented in `src/nebula3d/analysis/delta_pdf.py`):
 
 1. **Fill** masked voxels with 0 (the backfilled volume should already be
    NaN-free).
-2. **Apodize**: multiply by a separable window (`hann` default, or `gaussian` /
-   `none`) to suppress termination ripples from the finite `|Q|` range.
-3. **Remove DC**: subtract the mean *after* windowing so `Σ I = 0` exactly.
-   This zeroes the `r=0` self-correlation spike. (Subtracting before windowing
-   leaves a nonzero windowed sum → a large spurious peak at `r=0`.)
+2. **Remove DC**: subtract the *window-weighted* mean `c = Σ w·I / Σ w`, so
+   the windowed input `w·(I − c)` sums to zero exactly. This zeroes the `r=0`
+   self-correlation spike, and the removed term `c·w` transforms into the
+   window's own resolution peak at `r=0`. (The plain mean subtracted before
+   windowing leaves a nonzero windowed sum → a spurious peak at `r=0`; the
+   plain mean subtracted *after* windowing leaves a step at the box faces →
+   dashed streaks along the axes. See "The dashed axis streaks" below.)
+3. **Apodize**: multiply by a separable window (`gaussian` in the pipeline,
+   `hann`, or `none`) to suppress termination ripples from the finite `|Q|`
+   range. Both tapers reach zero at the box edge: the Gaussian is shifted
+   down by its edge value, `(g − g_edge)/(1 − g_edge)`.
 4. **Zero-pad symmetrically** to the next fast FFT length (5-smooth,
    `scipy.fft.next_fast_len` — just as fast as a power of two but a far
    smaller pad), keeping `Q=0` on the new centre. One-sided padding shifts
@@ -147,6 +153,60 @@ A strong feature at `r < ~3 Å` remains after the fix. It comes from residual
 high-`|Q|` Bragg leakage, the backfill discontinuities at punch boundaries, and
 the direct-beam punch. Plot colour scales are set from the `p99` of `|ΔPDF|` at
 `r > 3 Å` so this near-origin spike does not dominate the display.
+
+## The dashed axis streaks were the DC subtraction (fixed 2026-10-07)
+
+A thin line of **alternating sign, flipping every pixel**, ran along every grid
+axis (`x`, `y`, `z` through the origin). It came from the order of two steps:
+the transform windowed the volume, subtracted the plain mean `μ` from every
+voxel of the box, then zero-padded it to a fast FFT length. That left a step
+of height `μ` at the box faces, against the zero padding. The transform of a
+box is a product of three sincs, and on the padded grid (e.g. 401 → 405) they
+are sampled off their zeros: along each axis the step gives ≈ ±4·μ·N² with the
+sign alternating per pixel, and ~400× less off the axes. A constant in `I(Q)`
+may only change the ΔPDF at `r = 0`, so the streak is purely an artifact.
+
+Evidence:
+
+- A **constant volume** (`I = 7` on 31³, padded to 32³) transformed to
+  1.5·10⁴ on the axis and ~1 off it (Gaussian window); after the fix to
+  < 10⁻¹¹. Regression guard: `tests/test_delta_pdf_dc.py`.
+- **Hexagonal symmetry** (Fe3Ge2 90 K, 6/m-symmetrised, so the raw volume is
+  exactly 6-fold symmetric): a, b and a+b are equivalent directions, but only
+  a and b are grid axes. The coherent `(−1)^m` part of the axis lines was
+  0.13 (a, b) and 0.16 (c) of the strongest correlation at 1.5–15 Å, against
+  0.012 along a+b.
+- Subtracting the weighted mean first removed 85–95 % of it on Fe3Ge2 and on
+  TbTi3Bi4 22 K (a/b/c 0.27/0.17/0.19 → 0.014/0.011/0.010). The rest was the
+  Gaussian window still at 4.4 % (σ = 0.4) on the box faces, where the data
+  are cut; shifting it to zero there leaves 0.004/0.004/0.003 (Fe3Ge2) and
+  0.013/0.008/0.006 (TbTi3Bi4), below the a+b level. Hann (zero at the edge)
+  gives the same picture.
+- The back-FFT check stays exact: on TbTi3Bi4 22 K (float32) `r` rose from
+  0.99912 to 0.99988; on Fe3Ge2 `r = 0.99999`. The deapodized region shrinks
+  (98 % → 88 % of the box) because the window is below 10⁻³ of its peak in a
+  thicker shell at the faces; those voxels carry almost no weight in the ΔPDF.
+
+The Gaussian change narrows the window's FWHM in `Q` by 3 % (real-space peaks
+~3 % broader) and lowers its integral by ~10 % (3.4 % per axis), so ΔPDF
+amplitudes drop by 4–10 % (measured 0.96 on TbTi3Bi4 22 K, 0.90 on Fe3Ge2).
+
+Still open, found in the same diagnosis (Fe3Ge2):
+
+- The **separable index-space window is not 6-fold invariant** for a hexagonal
+  cell, so a/b and a+b get slightly different resolution (a vs a+b mismatch
+  ~0.05 at 6–12 Å). A window in `|Q|` (or an ellipsoid with its axis on c*)
+  that reaches zero at the box faces removes it.
+- The **punch mask is not 6-fold symmetric**: 23 % of punched voxels have an
+  unpunched 60° partner (and 15 % of the coverage-edge trim). It puts a
+  long-wavelength stripe pattern across the a–b section.
+- The **Laplace backfill fills the unmeasured part of the box** (41 % of it on
+  Fe3Ge2, out to `|Q|` = 34 Å⁻¹ from data ending at ~17 Å⁻¹). With the
+  Gaussian window this barely changes the ΔPDF, but it is invented intensity.
+
+Whether a smooth cross from the residual envelope (next section) remains
+after this fix has not been re-measured: subtracting the separable marginals,
+the evidence below, would also have removed the box step, which is separable.
 
 ## The axis cross is the residual diffuse background (diagnosed 2026-06-05)
 
