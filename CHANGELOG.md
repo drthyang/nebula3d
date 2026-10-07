@@ -712,6 +712,15 @@
   unmeasured space. With the backfill now leaving that space masked, Fe3Ge2 90 K
   changes by at most 0.08 % at 2–15 Å. Cached ΔPDFs are recomputed once. See
   docs/algorithms/delta_pdf.md.
+- **The Bragg punch and the edge trim follow the declared Laue symmetry.** On a
+  symmetrised volume (e.g. 6/m from the NeXus Viewer), the punch mask and the
+  coverage-edge trim are now invariant under the operations the file declares
+  (`PipelineParams.symmetry="auto"`): a voxel punched at one equivalent position
+  is punched at all of them. On Fe3Ge2, 22 % of punched voxels had an unpunched
+  partner; now none. The H guard and the thirds exclusion hold on every
+  equivalent plane, so with 6/m the guard is a hexagonal prism.
+  `symmetry=None` restores the old behaviour. See
+  docs/algorithms/bragg_cleanup.md.
 
 ## 0.3.0 (beta) — 2026-07-05
 

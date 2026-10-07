@@ -39,6 +39,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from nebula3d.core import HKLVolume, q_bin_indices, q_magnitude_from_axes
+from nebula3d.symmetry import GridSymmetry
 
 
 @dataclass(frozen=True)
@@ -461,6 +462,19 @@ class BraggRemover:
         Half-width in H around each protected search-exclusion centre.
     subtract_profile:
         Reserved (profile-subtraction path not implemented in this pass).
+    symmetry_ops:
+        The Laue operations (integer HKL matrices, see
+        :func:`nebula3d.symmetry.parse_symmetry_ops`) the volume was
+        symmetrised with, or ``None``.  Symmetrised data hold the same values
+        at every equivalent voxel, so the punch must treat them alike, but its
+        detection windows and neighbourhoods are boxes on the HKL grid, which
+        operations that mix the axes (the hexagonal 6-fold) do not map onto
+        themselves.  With the operations set, every punch decision is shared
+        across the symmetry orbit: a voxel punched at one equivalent position
+        is punched at all of them (the integer pass of ``mode="both"`` before
+        the search runs on its residual), and ``integer_h_guard_hkl`` and the
+        search exclusions protect every plane equivalent to the H planes they
+        name.
     """
 
     mode: str = "integer"
@@ -548,6 +562,11 @@ class BraggRemover:
     # search_exclude_h_half_width.  ``None`` disables.
     search_exclude_h_fractions: tuple[float, ...] | None = None
     subtract_profile: bool = False
+    # Laue operations the data were symmetrised with: punch decisions are
+    # shared across each symmetry orbit (see the class docstring).
+    symmetry_ops: tuple[NDArray[np.int64], ...] | None = None
+    _symmetry_cache: dict[tuple[object, ...], GridSymmetry] = dataclasses.field(
+        default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         frame = str(self.punch_frame).lower()
@@ -745,11 +764,44 @@ class BraggRemover:
             float(np.sqrt(max(inv[2, 2], 0.0))),
         )
 
-    def _h_guard_for(self, peak: _PeakPunch) -> tuple[float, float] | None:
-        """Integer-H guard slab for a peak, or ``None`` if disabled."""
+    def _h_guard_for(
+        self, peak: _PeakPunch,
+    ) -> tuple[tuple[float, float, float], float] | None:
+        """Integer-H guard for a peak: its source node and the slab half-width,
+        or ``None`` if disabled."""
         if peak.source_node_hkl is None or self.integer_h_guard_hkl is None:
             return None
-        return (float(peak.source_node_hkl[0]), float(self.integer_h_guard_hkl))
+        h, k, l = peak.source_node_hkl
+        return ((float(h), float(k), float(l)), float(self.integer_h_guard_hkl))
+
+    def _grid_symmetry(self, vol: HKLVolume) -> GridSymmetry | None:
+        """The declared symmetry on *vol*'s grid, or ``None`` without one."""
+        if self.symmetry_ops is None:
+            return None
+        key = tuple((a.size, float(a[0]), float(a[-1]))
+                    for a in (vol.h_axis, vol.k_axis, vol.l_axis))
+        if key not in self._symmetry_cache:
+            self._symmetry_cache[key] = GridSymmetry.for_volume(vol, self.symmetry_ops)
+        return self._symmetry_cache[key]
+
+    def _h_forms(self, vol: HKLVolume) -> tuple[NDArray[np.int64], ...]:
+        """Coordinates the H-plane rules apply to: H, and with ``symmetry_ops``
+        every image of H under the group (see :meth:`GridSymmetry.h_forms`)."""
+        gs = self._grid_symmetry(vol)
+        return (np.array([1, 0, 0]),) if gs is None else gs.h_forms()
+
+    def _symmetric_keep(
+        self, vol: HKLVolume, keep: NDArray[np.bool_],
+    ) -> NDArray[np.bool_]:
+        """*keep* with every punch shared across its symmetry orbit.
+
+        A voxel is punched when any equivalent voxel is; unchanged without
+        ``symmetry_ops``.
+        """
+        gs = self._grid_symmetry(vol)
+        if gs is None:
+            return keep
+        return ~gs.orbit_any(~keep)
 
     def _fit_base_radii(self, vol: HKLVolume) -> tuple[float, float, float]:
         """The HKL bounding box of the base Q ellipsoid.
@@ -1308,6 +1360,7 @@ class BraggRemover:
             keep = self._punch_centers(
                 vol, np.ones(vol.shape, dtype=bool), integer,
                 reference=self._scaling_reference(integer, rejected))
+            keep = self._symmetric_keep(vol, keep)
             residual = dataclasses.replace(vol, mask=vol.mask & keep)
             search = self._detect_search(residual, rejected)
             peaks = integer + self._profile_footprints(vol, search, profile)
@@ -1673,24 +1726,45 @@ class BraggRemover:
         - ``search_exclude_h_fractions``: fractional parts mod 1 protected
           periodically across the whole range — e.g. ``(1/3, 2/3)`` shields
           every integer±1/3 plane (the q=1/3 satellite family).
+
+        With ``symmetry_ops`` the planes equivalent to them are protected too.
+        The mask broadcasts to the volume's shape.
         """
         half_width = max(float(self.search_exclude_h_half_width), 0.0)
         centers = self.search_exclude_h_centers
         fractions = self.search_exclude_h_fractions
         if half_width <= 0 or (not centers and not fractions):
             return np.zeros(vol.shape, dtype=bool)
-        h_excluded = np.zeros(vol.h_axis.shape, dtype=bool)
-        for h0 in centers or ():
-            h_excluded |= np.abs(vol.h_axis - float(h0)) <= half_width
-        if fractions:
-            frac = np.mod(vol.h_axis, 1.0)  # [0,1); handles negative H naturally
-            for f in fractions:
-                f0 = float(f) % 1.0
-                # circular distance on the unit interval
-                d = np.abs(frac - f0)
-                d = np.minimum(d, 1.0 - d)
-                h_excluded |= d <= half_width
-        return h_excluded[:, None, None]
+        h_excluded = np.zeros((1, 1, 1), dtype=bool)
+        for form in self._h_forms(vol):
+            h = self._form_coordinate(vol, form)
+            for h0 in centers or ():
+                h_excluded = h_excluded | (np.abs(h - float(h0)) <= half_width)
+            if fractions:
+                frac = np.mod(h, 1.0)  # [0,1); handles negative H naturally
+                for f in fractions:
+                    f0 = float(f) % 1.0
+                    # circular distance on the unit interval
+                    d = np.abs(frac - f0)
+                    d = np.minimum(d, 1.0 - d)
+                    h_excluded = h_excluded | (d <= half_width)
+        return h_excluded
+
+    @staticmethod
+    def _form_coordinate(vol: HKLVolume, form: NDArray[np.int64]) -> NDArray[np.float64]:
+        """``form·(H, K, L)`` on the grid, broadcastable to the volume's shape.
+
+        Only the axes the form uses take a dimension, so H alone is
+        ``h_axis[:, None, None]``.
+        """
+        axes = (vol.h_axis[:, None, None], vol.k_axis[None, :, None],
+                vol.l_axis[None, None, :])
+        out: NDArray[np.float64] | None = None
+        for c, ax in zip(form, axes):
+            if c:
+                term = ax if c == 1 else float(c) * ax
+                out = term if out is None else out + term
+        return out if out is not None else np.zeros((1, 1, 1))
 
     def _scale_factor(self, peak: float, ref: float) -> float:
         if not self.intensity_scale or not np.isfinite(peak) or ref <= 0:
@@ -1706,7 +1780,7 @@ class BraggRemover:
         peaks, reference, _ = self._detect(vol)
         keep = self._punch_centers(
             vol, np.ones(vol.shape, dtype=bool), peaks, reference=reference)
-        return self._punch_incident_beam(vol, keep)
+        return self._symmetric_keep(vol, self._punch_incident_beam(vol, keep))
 
     def _punch_centers(
         self,
@@ -1952,7 +2026,7 @@ class BraggRemover:
         radii: tuple[float, float, float],
         phi_tail: float,
         center_hkl: tuple[float, float, float] | None = None,
-        h_guard: tuple[float, float] | None = None,
+        h_guard: tuple[tuple[float, float, float], float] | None = None,
         shape_matrix: NDArray[np.float64] | None = None,
     ) -> NDArray[np.bool_]:
         """Punch one ellipsoid, optionally stretched along the local K-L tangent.
@@ -2005,8 +2079,14 @@ class BraggRemover:
             )
             punch |= phi_ell <= 1.0
         if h_guard is not None:
-            h0, half_width = h_guard
-            punch &= np.abs(HH - h0) <= max(float(half_width), 0.0)
+            node, half_width = h_guard
+            for form in self._h_forms(vol):
+                offset: NDArray[np.float64] | float = 0.0
+                for c, grid, n0 in zip(form, (HH, KK, LL), node):
+                    if c:
+                        d = grid - n0
+                        offset = offset + (d if c == 1 else float(c) * d)
+                punch &= np.abs(offset) <= max(float(half_width), 0.0)
         keep[hs:he, ks:ke, ls:le] &= ~punch
         return keep
 

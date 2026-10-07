@@ -357,6 +357,63 @@ full-pipeline ΔPDF A/B in `examples/compare_delta_pdf_frames.py`.
 Phase 0/1/2/3 and spherical-frame tests live in
 `tests/test_bragg_qspace_*.py`.
 
+## Symmetrised Volumes
+
+A volume symmetrised over a Laue group holds the same value at every
+equivalent voxel, so the punch must treat those voxels alike. On a hexagonal
+grid it did not. The Fe3Ge2 90 K volume is symmetrised over 6/m, and its raw
+data are exactly invariant. Yet 22 % of the punched voxels had an unpunched,
+measured 60° partner. Three things broke the symmetry (measured on the raw
+volume):
+
+- **The H-only rules.** `integer_h_guard_hkl` clips punches to an H slab, and
+  `search_exclude_h_fractions` protects H planes, but the 6-fold maps H planes
+  onto K and H+K planes. With both off, 3 % of the punched voxels stayed
+  asymmetric instead of 22 %.
+- **Boxes on the HKL grid.** The detection windows and the 3×3×3 neighbourhoods
+  are not mapped onto themselves by the 6-fold, which sends the (1, 1) corner
+  of a 3×3 square to (−1, 2). Partners got different window backgrounds:
+  180 integer nodes passed the 5σ gate while a partner failed it (z ≈ 5.15
+  against 4.86). Search summits failed the local-maximum test at their partner.
+- **The refined UB.** It is 0.4 % off hexagonal: |a*| and |b*| differ by
+  0.12 %, and γ* = 60.02°. Partners then fall in different |Q| shells.
+
+No footprint built in Q can remove the last cause. The data were symmetrised
+on the grid, so the punch is made invariant there.
+`PipelineParams.symmetry="auto"` (the default) reads the operations the input
+declares; the NeXus Viewer writes them as `/entry@symmetry_ops`.
+`BraggRemover.symmetry_ops` then shares every punch decision across the orbit:
+
+- A voxel punched at one equivalent position is punched at all of them. In
+  `mode="both"` this also applies to the integer pass, before the search runs
+  on its residual.
+- `integer_h_guard_hkl` and the search exclusions hold on every plane
+  equivalent to the H planes they name. With 6/m the guard becomes a hexagonal
+  prism: |ΔH|, |ΔK|, |Δ(H+K)| ≤ 0.12.
+
+The punch takes the union, not the intersection: a Bragg tail left in the data
+does more harm than a voxel of diffuse that the backfill fills. The coverage-edge
+trim is shared the same way. On Fe3Ge2 (float32, rings + punch):
+
+| run | punched | with an unpunched partner | added by the orbit |
+|-----|--------:|--------------------------:|-------------------:|
+| before | 1,399,376 | 308,989 (22 %) | — |
+| symmetry, default guards | 1,368,518 | 0 | 77,625 |
+| symmetry, H guard and thirds off | 1,545,632 | 0 | 80,191 |
+
+The edge trim went from 1,302,270 voxels (15 % with a kept partner) to
+1,632,010, none of them with a kept partner. Mirror and inversion partners
+agree too.
+
+`symmetry=None` ignores a declaration and reproduces the earlier punch bit for
+bit. Under `"auto"`, operations that do not map the grid onto itself are
+reported and ignored; the 6-fold, for example, needs equal H and K steps. The
+H guard and the thirds exclusion are TbTi3Bi4 settings; turn them off for
+Fe3Ge2 (see the supercell notes above). The ring stage still breaks the
+symmetry where it subtracts: after it, 3.6 % of the voxels differ from their
+partner. The punch mask no longer depends on that. Tests:
+`tests/test_symmetry.py`.
+
 ## Backfill Modes
 
 `backfill_bragg` supports:
