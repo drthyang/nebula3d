@@ -232,6 +232,8 @@ Implemented API and drivers:
 - `nebula3d.analysis.compute_delta_pdf` (algorithm: `docs/algorithms/delta_pdf.md`)
 - apodization: `hann`, `gaussian`, `none`; optional mean subtraction; symmetric
   zero padding; real-space axes from the UB matrix
+- window shape: separable, or an ellipsoid invariant under the lattice's point
+  group (`window_shape="auto"` picks it for hexagonal cells)
 - `examples/delta_pdf.py` — full 3D transform; slice/line-cut/radial PNGs and a
   `_delta_pdf.h5` cache
 - `examples/delta_pdf_plane.py` — single reciprocal H-plane 2D-ΔPDF
