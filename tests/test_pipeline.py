@@ -103,13 +103,15 @@ def test_full_pipeline_runs_and_produces_finite_dpdf():
 
     # (3) Bragg punch (the ring model's SNR mask stays masked too).
     b_keep = bragg_mask(vol2, punch_frame="q", punch_q_radius=0.35 * np.pi / 2)
+    punched = vol2.mask & ~b_keep
     vol2.apply_mask(b_keep)
     assert not vol2.mask.all()
 
-    # (4) Backfill every hole from its surroundings.
-    vol_diffuse = backfill_bragg(vol2, method="laplace")
+    # (4) Backfill every punched hole from its surroundings.  The box corners
+    # the ring model left unmodelled reach the box edge, so they stay masked.
+    vol_diffuse = backfill_bragg(vol2, method="laplace", punched=punched)
     assert np.isfinite(vol_diffuse.data).all()
-    assert vol_diffuse.mask.all()
+    assert vol_diffuse.mask[punched | vol2.mask].all()
 
     # (5) 3D-ΔPDF.
     dpdf = compute_delta_pdf(vol_diffuse, apodization="hann", zero_pad=False)
@@ -280,8 +282,9 @@ def test_bragg_laplace_backfill_oversized_region_gets_local_fill():
     # gets the local shell median (bounded memory), and says so; ordinary
     # holes are still Laplace-filled.
     vol, truth = _ramp_vol(21)
-    vol.mask[:, :, 16:] = False               # unmeasured slab (zeroed)
-    vol.data[:, :, 16:] = 0.0
+    gap = (slice(3, 18), slice(3, 18), slice(12, 18))
+    vol.mask[gap] = False                     # unmeasured block, enclosed (zeroed)
+    vol.data[gap] = 0.0
     vol.mask[5:8, 5:8, 4:7] = False           # a Bragg punch
     vol.data[5:8, 5:8, 4:7] = 100.0
     notes: list[str] = []
@@ -292,7 +295,7 @@ def test_bragg_laplace_backfill_oversized_region_gets_local_fill():
 
     assert filled.mask.all()
     assert len(notes) == 1 and "local shell median" in notes[0]
-    np.testing.assert_array_equal(filled.data[:, :, 16:], local.data[:, :, 16:])
+    np.testing.assert_array_equal(filled.data[gap], local.data[gap])
     np.testing.assert_allclose(filled.data[5:8, 5:8, 4:7],
                                truth[5:8, 5:8, 4:7], atol=1e-8)
 
@@ -316,11 +319,14 @@ def test_bragg_backfill_fills_each_punched_hole_from_its_own_surroundings():
              & ~punched & vol.mask)
     notes: list[str] = []
 
+    # unmeasured="all": the slab reaches the box edge, so by default it would
+    # stay masked; here it is filled, to compare the hole with it.
     for method, kw in (("local", {}), ("laplace", {"laplace_max_unknowns": 1000})):
         merged = backfill_bragg(vol, method=method, direct_beam_fill=False,
-                                report=notes.append, **kw)
+                                report=notes.append, unmeasured="all", **kw)
         apart = backfill_bragg(vol, method=method, direct_beam_fill=False,
-                               punched=punched, report=notes.append, **kw)
+                               punched=punched, report=notes.append,
+                               unmeasured="all", **kw)
 
         assert np.all(merged.data[punched] == merged.data[10, 10, 18]), method
         assert abs(float(merged.data[punched].mean()) - hole_level) > 0.5, method
@@ -391,6 +397,12 @@ def test_pipeline_backfill_logs_laplace_notes(monkeypatch):
     with warnings.catch_warnings():
         warnings.simplefilter("error")        # routed to the log, not warned
         backfill(vol, BackfillParams(method="laplace"),
+                 progress=lambda s, st, f, m: events.append((s, st, m)))
+        # the slab reaches the box edge: left masked, and the log says so
+        assert any(st == "progress" and "left masked" in m
+                   for _, st, m in events)
+        events.clear()
+        backfill(vol, BackfillParams(method="laplace", unmeasured="all"),
                  progress=lambda s, st, f, m: events.append((s, st, m)))
 
     assert any(st == "progress" and "local shell median" in m

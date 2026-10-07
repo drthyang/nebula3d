@@ -372,6 +372,14 @@ pipeline's punch stage stores in its artifact), so a hole that touches
 unmeasured coverage is still filled from its own surroundings instead of merging
 with the coverage; see [inpainting.md](inpainting.md).
 
+All three fill only inside the measured support: punch holes, and unmeasured
+pockets that measured data enclose (the direct-beam shadow, dead voxels).
+Unmeasured space that reaches the box edge (past the coverage, or a gap where
+the coverage edge meets a box face) stays masked, and the ΔPDF reads it as
+zero (`unmeasured="enclosed"`, the default since 2026-10-07; `"all"` restores
+the old fill of everything). See *What is filled* in
+[inpainting.md](inpainting.md).
+
 Holes must be filled from the diffuse **around** them (the 3D-ΔPDF
 punch-and-fill convention: NXRefine's Laplace/Matérn fill, Mantid
 `DeltaPDF3D`'s convolution fill, KAREN), not from a global background level.
