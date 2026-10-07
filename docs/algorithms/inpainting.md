@@ -126,7 +126,9 @@ p99 ≈ 4,000 and a maximum of 5.5·10⁷, while one voxel further in they match
 interior (p99 ≈ 38 against 34). Left in, they enter the ΔPDF directly and, as
 Dirichlet data, light up any `laplace` hole that touches them. Trimmed voxels
 become unmeasured coverage: masked and zeroed, as the loader leaves them. The
-volume's own faces are not an edge. `method="q_shell"`
+volume's own faces are not an edge. In a symmetrised volume
+(`PipelineParams.symmetry`) a voxel is trimmed when any equivalent voxel is,
+see *Symmetrised Volumes* in `bragg_cleanup.md`. `method="q_shell"`
 (the robust radial level at the same `|Q|`) is kept only for comparison: it is
 biased at the lattice nodes and leaves ΔPDF artefacts at the lattice vectors
 (see [bragg_cleanup.md](bragg_cleanup.md)).

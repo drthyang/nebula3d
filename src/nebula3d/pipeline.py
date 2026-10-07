@@ -79,6 +79,7 @@ from nebula3d.preprocessing.radial_background import (
 from nebula3d.preprocessing.radial_background import (
     _offset_q_magnitude as _plane_offset_q_magnitude,
 )
+from nebula3d.symmetry import GridSymmetry, parse_symmetry_ops, read_symmetry_ops
 
 if TYPE_CHECKING:
     from nebula3d.analysis.bragg import _BraggProfile
@@ -576,20 +577,59 @@ class PipelineParams:
     # next to unmeasured space are barely normalised and can be 10⁶× the
     # interior.  0 keeps them.
     edge_trim: int = 1
+    # The Laue symmetry the input was symmetrised with.  "auto": the
+    # operations the input file declares (the NeXus Viewer writes them as
+    # /entry@symmetry_ops), none if it declares none; None: ignore them; or the
+    # operations themselves, "h,k,l; -k,h+k,l; ...".  The coverage-edge trim
+    # and the punch then treat symmetry-equivalent voxels alike
+    # (see nebula3d.symmetry).
+    symmetry: str | None = "auto"
 
     def np_dtype(self) -> type:
         return np.float64 if self.precision == "float64" else np.float32
 
 
+def input_symmetry(vol: HKLVolume, p: PipelineParams, input_path: str | Path, *,
+                   progress: ProgressFn | None = None,
+                   stage: str = "rings") -> GridSymmetry | None:
+    """The symmetry of the run's input (``p.symmetry``) on *vol*'s grid.
+
+    ``"auto"`` reads the operations *input_path* declares; when they do not
+    map the grid onto itself the run goes on without them and says so.
+    ``None`` when there is no symmetry to apply.
+    """
+    if p.symmetry is None or str(p.symmetry).strip().lower() in {"", "none"}:
+        return None
+    auto = str(p.symmetry).strip().lower() == "auto"
+    ops = read_symmetry_ops(input_path) if auto else parse_symmetry_ops(str(p.symmetry))
+    if ops is None:
+        return None
+    try:
+        return GridSymmetry.for_volume(vol, ops)
+    except ValueError as exc:
+        if not auto:
+            raise
+        _emit(progress, stage, "progress", None,
+              f"ignoring the symmetry {Path(input_path).name} declares: {exc}")
+        return None
+
+
 def load_input(path: str | Path, p: PipelineParams, *,
                progress: ProgressFn | None = None, stage: str = "rings") -> HKLVolume:
-    """Load the raw input in the run's precision and trim its coverage edge."""
+    """Load the raw input in the run's precision and trim its coverage edge.
+
+    With a declared symmetry (``p.symmetry``) the trim is shared across each
+    symmetry orbit.
+    """
     vol = nebula3d.load(path, dtype=p.np_dtype())
-    n = trim_coverage_edge(vol, p.edge_trim)
+    symmetry = input_symmetry(vol, p, path, progress=progress, stage=stage)
+    n = trim_coverage_edge(vol, p.edge_trim, symmetry=symmetry)
     if n:
+        shared = ("" if symmetry is None else
+                  f", shared across {symmetry.order} symmetry operations")
         _emit(progress, stage, "progress", None,
               f"trimmed {n:,} voxels at the edge of the measured coverage "
-              f"(edge_trim={p.edge_trim})")
+              f"(edge_trim={p.edge_trim}{shared})")
     return vol
 
 
@@ -1128,11 +1168,18 @@ def bragg_remover(p: PunchParams) -> BraggRemover:
 
 
 def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
-                progress: ProgressFn | None = None) -> HKLVolume:
-    """Detect and punch Bragg/satellite peaks; return the masked volume."""
+                progress: ProgressFn | None = None,
+                symmetry: GridSymmetry | None = None) -> HKLVolume:
+    """Detect and punch Bragg/satellite peaks; return the masked volume.
+
+    With the *symmetry* the data were symmetrised with, every punch decision
+    is shared across the symmetry orbit (``BraggRemover.symmetry_ops``).
+    """
     p = params or PunchParams()
     _emit(progress, "punch", "start", None, f"Bragg punch (mode={p.mode})")
     remover = bragg_remover(p)
+    if symmetry is not None:
+        remover = dataclasses.replace(remover, symmetry_ops=symmetry.ops)
     peak_records, reference, footprint = remover._detect(vol)  # noqa: SLF001 - avoid refitting
     if p.punch_footprint == "profile":
         _emit(progress, "punch", "progress", None, (
@@ -1144,6 +1191,13 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     keep = remover._punch_centers(  # noqa: SLF001
         vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference)
     keep = remover._punch_incident_beam(vol, keep)  # noqa: SLF001
+    if symmetry is not None:
+        before = int((vol.mask & ~keep).sum())
+        keep = remover._symmetric_keep(vol, keep)  # noqa: SLF001
+        _emit(progress, "punch", "progress", None,
+              f"punch shared across {symmetry.order} symmetry operations: "
+              f"{int((vol.mask & ~keep).sum()) - before:,} more voxels punched "
+              f"at positions equivalent to punched ones")
     profile = bragg_profile_from_records(vol, remover, peak_records, footprint)
     punched = vol.mask & np.isfinite(vol.data) & ~keep
     out_vol = dataclasses.replace(vol, mask=vol.mask & keep)
@@ -1843,7 +1897,10 @@ def run_pipeline(
                   f"{paths.braggpunched.name} exists")
         else:
             vol = stage_load(stage_input("punch"), "punch")
-            out = punch_bragg(vol, p.punch, progress=progress)
+            symmetry = input_symmetry(vol, p, paths.input, progress=progress,
+                                      stage="punch")
+            out = (punch_bragg(vol, p.punch, progress=progress) if symmetry is None
+                   else punch_bragg(vol, p.punch, progress=progress, symmetry=symmetry))
             nebula3d.save(out, paths.braggpunched)
             punch_record = getattr(out, "_punched", None)
             if punch_record is not None:
