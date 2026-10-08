@@ -60,7 +60,8 @@ interface PipelineConfig {
   ringGlobalMinSnr: string;
   ringPooledSectors: string; // pooled: azimuthal sectors
   ringPooledWindow: string; // pooled: stack-pooling half-width (deg)
-  punchMinI: string;
+  // Significance (standard errors) a peak must reach; blank = backend default (5).
+  punchMinSig: string;
   punchMethod: string;
   punchMode: string;
   // Supercell the volume is indexed on (per axis); blank = 1.  Integer-mode
@@ -147,7 +148,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   ringGlobalMinSnr: "5",
   ringPooledSectors: "",
   ringPooledWindow: "",
-  punchMinI: "",
+  punchMinSig: "",
   punchMethod: "ellipsoid",
   punchMode: "",
   punchSupercellH: "",
@@ -291,7 +292,7 @@ function formToParams(s: PipelineConfig): StageParamsIn {
     if (s.ringPooledSectors) params.rings_pooled_sectors = Number(s.ringPooledSectors);
     if (s.ringPooledWindow) params.rings_pooled_window_deg = Number(s.ringPooledWindow);
   }
-  if (s.punchMinI) params.punch_min_intensity = Number(s.punchMinI);
+  if (s.punchMinSig) params.punch_min_significance = Number(s.punchMinSig);
   if (s.punchMode) params.punch_mode = s.punchMode;
   if (s.punchSupercellH) params.punch_supercell_h = Number(s.punchSupercellH);
   if (s.punchSupercellK) params.punch_supercell_k = Number(s.punchSupercellK);

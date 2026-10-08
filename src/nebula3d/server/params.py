@@ -68,9 +68,13 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
     if sp.punch_min_intensity is not None:
         p.punch = dataclasses.replace(p.punch, min_intensity=sp.punch_min_intensity)
     if sp.punch_min_significance is not None:
-        p.punch = dataclasses.replace(
-            p.punch, min_significance=(sp.punch_min_significance
-                                       if sp.punch_min_significance > 0 else None))
+        if sp.punch_min_significance > 0:
+            p.punch = dataclasses.replace(
+                p.punch, min_significance=sp.punch_min_significance)
+        else:
+            # Gate off: integer nodes need another test, the intensity floors.
+            p.punch = dataclasses.replace(
+                p.punch, min_significance=None, integer_detect="floors")
     if sp.punch_footprint is not None:
         p.punch = dataclasses.replace(p.punch, punch_footprint=sp.punch_footprint)
     if sp.punch_profile_n_sigma is not None:

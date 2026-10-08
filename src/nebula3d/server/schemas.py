@@ -126,8 +126,10 @@ class StageParamsIn(BaseModel):
     # the ring sphere).
     rings_pooled_sectors: int | None = None
     rings_pooled_window_deg: float | None = None
+    # The intensity floor of the "floors" integer-node test (data units).
     punch_min_intensity: float | None = None
-    # Noise-aware detection gate (standard errors); 0 or below turns it off.
+    # Noise-aware detection gate (standard errors), the whole integer-node test
+    # by default; 0 or below turns it off and the nodes fall back to the floors.
     punch_min_significance: float | None = None
     # "profile" (profile-matched punch) | "ellipsoid"; and the noise level (σ)
     # the profile-matched punch stops at.

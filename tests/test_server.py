@@ -522,6 +522,22 @@ def test_build_params_punch_significance_override():
     assert gate(punch_min_significance=0) is None
 
 
+def test_build_params_gate_off_falls_back_to_the_floors():
+    """Integer nodes are judged by significance; with the gate off, by the floors."""
+    from nebula3d.pipeline import bragg_remover
+    from nebula3d.server.params import build_params
+    from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
+
+    def punch(**kw):
+        req = PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw))
+        return build_params(req).punch
+
+    assert punch().integer_detect == "significance"
+    off = punch(punch_min_significance=0)
+    assert off.integer_detect == "floors"
+    bragg_remover(off)  # a valid remover: the floors need no gate
+
+
 def test_build_params_punch_supercell_and_h_guard():
     """A supercell factor per axis (the others stay 1); an H guard, 0 = off."""
     from nebula3d.server.params import build_params

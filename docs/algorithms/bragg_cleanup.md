@@ -41,10 +41,14 @@ The integer path is lattice-aware:
 1. Enumerate integer `(h,k,l)` nodes in the volume: every node, or with
    `supercell=(n_h, n_k, n_l)` the parent lattice's only (see below).
 2. Inspect a local HKL window around each node.
-3. Keep the node only if a real nearby peak is present:
-   - `min_intensity`
-   - `min_prominence`
-   - optional `integer_n_mad` against a robust per-`|Q|` shell level.
+3. Keep the node only if a real nearby peak is present (`integer_detect`, see
+   [Scale-free node test](#scale-free-node-test)):
+   - `"significance"` (pipeline default): the excess at the window's brightest
+     voxel over its own background shell is significant;
+   - `"floors"` (the `BraggRemover` default, and the pipeline's before 2026-10):
+     `min_intensity` and `min_prominence` in data units, optional
+     `integer_n_mad` against a robust per-`|Q|` shell level, or the local-MAD
+     catch below, then the significance gate.
 4. Recenter to the measured local peak.
 5. Optionally fit peak position and shape:
    - `integer_optimize_position=True` moves the centre to the core's centroid.
@@ -106,7 +110,79 @@ along H, which left a significant tail. With all three settings:
 - the rods and superlattice nodes are untouched;
 - the brightest parent peaks leave no significant tail in any direction.
 
+### Scale-free node test
+
+Detector, source and normalisation set the intensity units: X-ray count
+rates and neutron counts differ by orders of magnitude, and so do two runs on
+one instrument. Floors in data units (`min_intensity = 0.8`,
+`min_prominence = 1.0`) mean something different on every dataset. Measured
+examples:
+
+- A volume far above the scale they were tuned on cleared them at every
+  node, diffuse or not.
+- On an X-ray volume whose background varies from run to run, highly
+  significant sharp reflections at the supercell nodes stood below the
+  prominence floor. The 8-MAD catch failed them too: the background's own
+  variation inflates the window MAD.
+
+No single rescaling of the floors works either. The data's typical Bragg
+peak, or its diffuse scatter, would raise those floors on that X-ray volume,
+not lower them. And the typical Bragg peak follows the physics of the weak
+reflections, not the intensity scale. On one sample measured at two
+temperatures, the strongest peaks agreed closely while the weak ones grew
+severalfold.
+
+`integer_detect="significance"` drops the floors and judges each node as
+peak integration does:
+
+- **Background.** The node's background is the median of the shell between 1×
+  and 2× the resolution (punch-frame) ellipsoid around the window's brightest
+  voxel.
+- **Significance.** `z = Σ(I − bg_shell) / √Σσ²` over the gate's aperture (half
+  the resolution ellipsoid), with the volume's `sigma`.
+- **Threshold.** `z` must reach `min_significance` corrected for picking the
+  brightest of the window's `n` voxels. The threshold is the z whose one-sided
+  tail is that of `min_significance` divided by `n`: 5.9 for 5σ and 125
+  voxels, 6.0 for 343.
+
+Both refinements are needed:
+
+- **The shell.** Against the window median, a broad diffuse maximum at a node
+  is significant on good counting statistics. On the synthetic demo volume,
+  the short-range-order maxima at all 58 forbidden fcc nodes pass that test.
+  Against its shell, a broad maximum stands no higher than its surroundings.
+- **The correction.** Without it, the brightest of a few hundred voxels is now
+  and then a 5σ noise spike on such a maximum: 2 of the 58 forbidden nodes on
+  the demo. With it, none pass, and every allowed node still passes.
+
+Scaling the data and `sigma` by any factor leaves the test unchanged. The
+pipeline's punch with this test and the search floors in units of the
+diffuse scatter (below) gives the same mask at any scale. On the demo
+volume, the data-unit floors punched 4,181 voxels at its own scale and
+10,463 at ×1024; the scale-free punch punches 4,513 at every scale.
+
+Measured effects, against the floors:
+
+- **Orthorhombic (mmm) neutron volumes.** More integer nodes, all weak ones;
+  the punched volume changes by a few per cent at most.
+- **Hexagonal neutron volume on a 2×2×2 cell.** Fewer nodes. Nearly all of
+  them are non-parent nodes whose short-range-order maxima the floors had
+  punched: on that volume's scale the floors were inactive. The rest are
+  weak parent nodes at the threshold.
+- **X-ray volume above.** Most of the sharp supercell reflections are now
+  punched.
+
+The test requires `min_significance`. With the gate off (web: Min σ 0), the
+pipeline falls back to the floors.
+
+`significance_noise="sigma"` assumes `sigma` is a real error estimate. A
+volume without one (`HKLVolume.from_arrays`, a legacy HDF5 or ASCII file
+without errors) gets `√|I|`, which does not scale with the data. Use
+`significance_noise="mad"` there.
+
 ### Small but sharp weak Bragg (`integer_local_prominence_n_mad`)
+
+This catch belongs to the floors test (`integer_detect="floors"`).
 
 Weak Bragg peaks at integer nodes can sit below the absolute `min_intensity` /
 `min_prominence` floors yet still be sharp, local outliers. A purely
@@ -130,8 +206,21 @@ data, all at lattice nodes).
 ## Search Path
 
 Search mode is hkl-agnostic. At each `|Q|`, it estimates a robust background
-(`median + n*MAD`) and keeps local maxima above that level and the absolute
-floor.
+(`median + n*MAD`) and keeps local maxima above that level and two floors:
+`search_min_intensity` on the value, and `search_min_prominence` above the
+median of the 3×3×3 neighbourhood.
+
+The floors keep strong structured diffuse, which clears `median + n*MAD`
+easily, from being chopped. The pipeline gives them in units of the diffuse
+scatter (`search_floor_unit="scatter"`): the median over `|Q|` shells,
+weighted by voxel count, of each shell's robust scatter 1.4826·MAD.
+
+- **Default.** 27 × that scatter for both floors. That is the data-unit floor
+  (0.8) they replaced on the neutron volume it was tuned on.
+- **Scale.** The floors follow the data's intensity scale.
+- **Units in the log.** The run log prints the scatter and the floors in data
+  units.
+- **Before 2026-10.** `search_floor_unit="data"` reads them in data units.
 
 Because search does not know the lattice or the diffuse planes, protect
 known fractional-H diffuse planes. Either an explicit centre list or — preferred
@@ -169,8 +258,13 @@ Voxels without a usable `σ` take the window's robust scatter (1.4826·MAD), and
 `sigma` is not a real error estimate. A peak with no error estimate at all is
 kept.
 
+With `integer_detect="significance"` the gate is the whole integer-node test,
+judged against the node's background shell and corrected for the window
+search (see [Scale-free node test](#scale-free-node-test)). Search summits
+keep the window median.
+
 Why it is needed: the search threshold (median + n·MAD per `|Q|` shell, plus
-an absolute floor) is set by the whole shell. Where the noise is higher than
+the floors) is set by the whole shell. Where the noise is higher than
 the shell's, single-voxel noise clears it. On CORELLI this happens at the
 high-`|Q|` edge of the coverage. There, low exposure turns one or two counts
 into a spike of order 1 after normalisation, at I/σ ≈ 1–2.

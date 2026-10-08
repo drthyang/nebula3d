@@ -185,8 +185,10 @@ export interface StageParamsIn {
   // "pooled": azimuthal sectors; stack-pooling half-width (degrees on the ring sphere)
   rings_pooled_sectors?: number;
   rings_pooled_window_deg?: number;
+  // Intensity floor of the "floors" integer-node test (data units).
   punch_min_intensity?: number;
-  // Noise-aware detection gate (standard errors); 0 turns it off.
+  // Noise-aware detection gate (standard errors), the whole integer-node test by
+  // default; 0 turns it off and the nodes fall back to the intensity floors.
   punch_min_significance?: number;
   // "profile" (profile-matched punch, default) | "ellipsoid"; and the noise
   // level (σ) the profile-matched punch stops at.
