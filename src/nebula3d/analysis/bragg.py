@@ -304,11 +304,29 @@ class BraggRemover:
         (rρ, rθ, rφ) half-radii in Å⁻¹ for the spherical frame.
     punch_q_radius, punch_q_radii:
         Isotropic, or per-a*/b*/c*, half-radii in Å⁻¹ for the ``"q"`` frame.
+    integer_detect:
+        How an integer node is judged to carry a Bragg peak.  ``"floors"``
+        (default): the thresholds below — ``min_intensity`` and
+        ``min_prominence`` (absolute, in the data's intensity units), the
+        optional per-|Q|-shell ``integer_n_mad``, or the local
+        ``integer_local_prominence_n_mad`` catch — then the
+        ``min_significance`` gate.  ``"significance"``: significance alone; a
+        node is a Bragg peak when the integrated excess at its window's
+        brightest voxel (the gate's aperture) over that voxel's own background
+        — the median of a shell between 1× and 2× the resolution ellipsoid, as
+        in peak integration — clears ``min_significance`` standard errors,
+        corrected for picking the brightest of the window's voxels (see
+        :meth:`_window_threshold`).  The shell keeps a broad diffuse maximum at
+        a node, which stands no higher than its own surroundings, from passing
+        on good counting statistics.  Nothing in the test depends on the
+        intensity units, so data of any scale (X-ray rates, neutron counts)
+        are judged alike; requires ``min_significance``.
     min_intensity:
         Detection threshold.  ``None`` (default) punches **every** integer node
         (legacy behaviour).  When set, only nodes whose local peak intensity
         exceeds this value (and the local background by ``min_prominence``) are
-        punched — the data-driven path that skips systematic absences.
+        punched — the data-driven path that skips systematic absences.  Unused
+        with ``integer_detect="significance"``.
     min_prominence:
         A detected peak must exceed its local-window median by at least this.
     integer_n_mad:
@@ -454,6 +472,17 @@ class BraggRemover:
         Extra tangential half-width in the K-L plane, along the local powder-ring
         φ direction.  Use this when Bragg tails smear along rings rather than
         along the H/K/L grid axes.
+    search_min_intensity, search_min_prominence:
+        Floors of the search pass: a candidate must exceed
+        ``search_min_intensity`` and stand ``search_min_prominence`` above the
+        median of its 3×3×3 neighbourhood, besides the per-|Q|-shell
+        ``search_n_mad`` threshold.  In units set by ``search_floor_unit``.
+    search_floor_unit:
+        ``"data"`` (default): the search floors are in the data's intensity
+        units.  ``"scatter"``: they are multiples of the diffuse scatter, the
+        median over |Q| shells (weighted by voxel count) of each shell's robust
+        scatter 1.4826·MAD.  The floors then follow the data's scale, so a
+        volume multiplied by any factor is punched the same.
     search_exclude_h_centers:
         Optional H-plane centres excluded from the hkl-agnostic search stage.
         Use this to protect known fractional-H diffuse planes while still using
@@ -478,6 +507,7 @@ class BraggRemover:
     """
 
     mode: str = "integer"
+    integer_detect: str = "floors"
     min_intensity: float | None = None
     min_prominence: float = 1.0
     integer_n_mad: float | None = None
@@ -554,6 +584,7 @@ class BraggRemover:
     search_n_mad: float = 8.0
     search_min_intensity: float = 2.0
     search_min_prominence: float = 0.0
+    search_floor_unit: str = "data"
     search_exclude_h_centers: tuple[float, ...] | None = None
     search_exclude_h_half_width: float = 0.0
     # Periodic H protection: fractional parts (mod 1, in [0,1)) of H to protect
@@ -566,6 +597,10 @@ class BraggRemover:
     # shared across each symmetry orbit (see the class docstring).
     symmetry_ops: tuple[NDArray[np.int64], ...] | None = None
     _symmetry_cache: dict[tuple[object, ...], GridSymmetry] = dataclasses.field(
+        default_factory=dict, init=False, repr=False, compare=False)
+    # What the last search pass measured and used: the diffuse scatter and the
+    # floors in data units (see ``search_floor_unit``), for the run log.
+    _search_report: dict[str, float] = dataclasses.field(
         default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -583,6 +618,18 @@ class BraggRemover:
             raise ValueError(
                 f"significance_noise={self.significance_noise!r}: choose 'sigma' "
                 f"or 'mad'")
+        if self.integer_detect not in {"floors", "significance"}:
+            raise ValueError(
+                f"integer_detect={self.integer_detect!r}: choose 'floors' or "
+                f"'significance'")
+        if self.integer_detect == "significance" and self.min_significance is None:
+            raise ValueError(
+                'integer_detect="significance" needs min_significance: it is the '
+                "only test of an integer node")
+        if self.search_floor_unit not in {"data", "scatter"}:
+            raise ValueError(
+                f"search_floor_unit={self.search_floor_unit!r}: choose 'data' or "
+                f"'scatter'")
         cell = tuple(self.supercell)
         if len(cell) != 3 or any(int(n) != n or n < 1 for n in cell):
             raise ValueError(
@@ -1409,15 +1456,23 @@ class BraggRemover:
         per-|Q|-shell thresholds — extinct nodes are dropped.  With
         ``min_significance`` a kept node must also clear the noise-aware gate;
         the intensities of the nodes it rejects are appended to *rejected*.
+
+        With ``integer_detect="significance"`` significance is the whole test:
+        a node is kept when its excess over its shell background is
+        significant, whatever its size in data units.  Every node is a
+        candidate there, so none is appended to *rejected* (the scaling
+        reference is the median of the kept peaks).
         """
         nh, nk, nl = vol.shape
         data, valid = vol.data, (vol.mask & np.isfinite(vol.data))
+        by_significance = self.integer_detect == "significance"
 
         def nearest(axis: NDArray, val: int) -> int:
             return int(np.argmin(np.abs(axis - val)))
 
         out: list[_PeakPunch] = []
-        if self.min_intensity is None and self.integer_n_mad is None:
+        if (not by_significance and self.min_intensity is None
+                and self.integer_n_mad is None):
             for h, k, l in self.enumerate_bragg(vol):
                 ih = nearest(vol.h_axis, h)
                 ik = nearest(vol.k_axis, k)
@@ -1440,7 +1495,7 @@ class BraggRemover:
 
         shell_thr = None
         shell_bins = None
-        if self.integer_n_mad is not None:
+        if self.integer_n_mad is not None and not by_significance:
             shell_bins, shell_thr = self._q_shell_thresholds(
                 vol,
                 q_step=self.integer_q_step or self.search_q_step,
@@ -1473,6 +1528,20 @@ class BraggRemover:
             ph = int(hs + int(off[0]))
             pk = int(ks + int(off[1]))
             pl = int(ls + int(off[2]))
+
+            if by_significance:
+                # A window whose maximum is its median holds no excess at all.
+                if not prom > 0:
+                    continue
+                noise = float(np.nanmedian(np.abs(wv - local_bg))) * 1.4826
+                shell_bg = self._shell_background(vol, (ph, pk, pl))
+                z = self._peak_significance(
+                    vol, (ph, pk, pl), local_bg if shell_bg is None else shell_bg, noise)
+                if not z >= self._window_threshold(int(wval.sum())):
+                    continue
+                out.append(self._integer_record(
+                    vol, (h, k, l), (ph, pk, pl), peak, local_bg, z))
+                continue
 
             # Relative path: small-but-sharp peak, prominent in LOCAL-MAD units.
             # Catches weak Bragg at nodes that the absolute floors miss.
@@ -1507,25 +1576,77 @@ class BraggRemover:
                     if rejected is not None:
                         rejected.append(peak)
                     continue
-            center_hkl = (
-                float(vol.h_axis[ph]),
-                float(vol.k_axis[pk]),
-                float(vol.l_axis[pl]),
-            )
-            shape_hkl = None
-            if self.integer_optimize_position or self.integer_optimize_shape:
-                center_hkl, shape_hkl = self._fit_integer_peak(
-                    vol, (ph, pk, pl), local_bg)
-                ph = int(np.argmin(np.abs(vol.h_axis - center_hkl[0])))
-                pk = int(np.argmin(np.abs(vol.k_axis - center_hkl[1])))
-                pl = int(np.argmin(np.abs(vol.l_axis - center_hkl[2])))
-            out.append(_PeakPunch(
-                ih=ph, ik=pk, il=pl, intensity=peak,
-                center_hkl=center_hkl, shape_hkl=shape_hkl,
-                source_node_hkl=(h, k, l), local_background=local_bg,
-                significance=z,
-            ))
+            out.append(self._integer_record(
+                vol, (h, k, l), (ph, pk, pl), peak, local_bg, z))
         return out
+
+    def _shell_background(
+        self, vol: HKLVolume, idx: tuple[int, int, int],
+    ) -> float | None:
+        """Median of the valid voxels between 1× and 2× the resolution ellipsoid
+        around voxel *idx*: the peak's own background, as in a peak-integration
+        annulus.  ``None`` with fewer than 8 such voxels, or at the origin."""
+        center = (float(vol.h_axis[idx[0]]), float(vol.k_axis[idx[1]]),
+                  float(vol.l_axis[idx[2]]))
+        a = self._active_shape_matrix(vol, center)
+        if a is None:
+            return None
+        steps = np.abs(np.asarray(self._steps(vol)))
+        ext = self._ellipsoid_bounding_radii(a / 4.0)
+        half = tuple(int(np.floor(e / s + 1e-9)) for e, s in zip(ext, steps))
+        sl = self._box(vol, idx, half)  # type: ignore[arg-type]
+        hh, kk, ll = np.meshgrid(vol.h_axis[sl[0]] - center[0],
+                                 vol.k_axis[sl[1]] - center[1],
+                                 vol.l_axis[sl[2]] - center[2], indexing="ij")
+        quad = (a[0, 0] * hh * hh + a[1, 1] * kk * kk + a[2, 2] * ll * ll
+                + 2.0 * a[0, 1] * hh * kk + 2.0 * a[0, 2] * hh * ll
+                + 2.0 * a[1, 2] * kk * ll)
+        win = vol.data[sl]
+        shell = (quad > 1.0) & (quad <= 4.0) & vol.mask[sl] & np.isfinite(win)
+        if int(shell.sum()) < 8:
+            return None
+        return float(np.median(win[shell].astype(np.float64)))
+
+    def _window_threshold(self, n_voxels: int) -> float:
+        """``min_significance`` corrected for picking the brightest of
+        *n_voxels*: the z whose one-sided tail is ``min_significance``'s
+        divided by *n_voxels* (≈ 5.9 for 5σ and 125 voxels, 6.0 for 343).
+        Without it a noise spike on a broad diffuse maximum, the brightest of
+        a few hundred voxels, passes a 5σ test now and then."""
+        from scipy.special import ndtr, ndtri
+
+        z0 = float(self.min_significance)  # type: ignore[arg-type]
+        return float(-ndtri(ndtr(-z0) / max(int(n_voxels), 1)))
+
+    def _integer_record(
+        self,
+        vol: HKLVolume,
+        node: tuple[int, int, int],
+        idx: tuple[int, int, int],
+        peak: float,
+        local_bg: float,
+        z: float,
+    ) -> _PeakPunch:
+        """The punch record of an accepted integer-node peak at voxel *idx*,
+        with its fitted centre and shape when those are optimised."""
+        ph, pk, pl = idx
+        center_hkl = (
+            float(vol.h_axis[ph]),
+            float(vol.k_axis[pk]),
+            float(vol.l_axis[pl]),
+        )
+        shape_hkl = None
+        if self.integer_optimize_position or self.integer_optimize_shape:
+            center_hkl, shape_hkl = self._fit_integer_peak(vol, idx, local_bg)
+            ph = int(np.argmin(np.abs(vol.h_axis - center_hkl[0])))
+            pk = int(np.argmin(np.abs(vol.k_axis - center_hkl[1])))
+            pl = int(np.argmin(np.abs(vol.l_axis - center_hkl[2])))
+        return _PeakPunch(
+            ih=ph, ik=pk, il=pl, intensity=peak,
+            center_hkl=center_hkl, shape_hkl=shape_hkl,
+            source_node_hkl=node, local_background=local_bg,
+            significance=z,
+        )
 
     def _fit_integer_peak(
         self,
@@ -1575,9 +1696,41 @@ class BraggRemover:
         min_shell_size: int = 20,
     ) -> tuple[NDArray[np.int32], NDArray[np.float64]]:
         """Robust per-|Q|-shell high-tail threshold arrays ``(bin_idx, thr)``."""
+        bin_idx, med, scale, _ = BraggRemover._q_shell_stats(
+            vol, q_step, min_shell_size)
+        thr = np.where(np.isfinite(med), med + n_mad * scale, np.inf)
+        return bin_idx, np.maximum(thr, min_intensity)
+
+    @staticmethod
+    def _diffuse_scatter(scale: NDArray[np.float64], count: NDArray[np.int64]) -> float:
+        """The diffuse scatter: the per-shell robust scatters' median, each shell
+        weighted by its voxel count.  NaN when no shell was measured."""
+        ok = np.isfinite(scale) & (count > 0)
+        if not ok.any():
+            return float("nan")
+        s, w = scale[ok], count[ok].astype(np.float64)
+        order = np.argsort(s, kind="stable")
+        cum = np.cumsum(w[order])
+        return float(s[order][int(np.searchsorted(cum, 0.5 * cum[-1]))])
+
+    @staticmethod
+    def _q_shell_stats(
+        vol: HKLVolume,
+        q_step: float,
+        min_shell_size: int = 20,
+    ) -> tuple[NDArray[np.int32], NDArray[np.float64], NDArray[np.float64],
+               NDArray[np.int64]]:
+        """Per-|Q|-shell robust level and scatter of the valid voxels.
+
+        Returns ``(bin_idx, median, scale, count)``: each voxel's shell index,
+        and per shell the median, the robust scatter 1.4826·MAD (the standard
+        deviation where the MAD is zero) and the voxel count.  Shells with
+        fewer than *min_shell_size* voxels have a NaN median and scale.
+        """
         valid = vol.mask & np.isfinite(vol.data)
         if not valid.any():
-            return np.zeros(vol.shape, dtype=np.int32), np.full(1, np.inf)
+            return (np.zeros(vol.shape, dtype=np.int32), np.full(1, np.nan),
+                    np.full(1, np.nan), np.zeros(1, dtype=np.int64))
         qs = float(q_step)
         # |Q| one H-slab at a time, for the valid range and then the bins: the
         # full float64 |Q| grid and its digitize/clip temporaries (~5 volumes
@@ -1612,7 +1765,9 @@ class BraggRemover:
         del order
         bounds = np.searchsorted(sb, np.arange(nb + 1))
         del sb
-        thr = np.full(nb, np.inf)
+        meds = np.full(nb, np.nan)
+        scales = np.full(nb, np.nan)
+        counts = np.diff(bounds).astype(np.int64)
         for b in range(nb):
             # Threshold arithmetic in float64 regardless of storage precision
             # (astype is a no-op on float64 input): a float32 median/MAD would
@@ -1622,10 +1777,9 @@ class BraggRemover:
                 continue
             med = float(np.median(seg))
             mad = float(np.median(np.abs(seg - med)))
-            scale = 1.4826 * mad if mad > 0 else (float(np.std(seg)) or 1.0)
-            thr[b] = med + n_mad * scale
-        thr = np.maximum(thr, min_intensity)
-        return bin_idx, thr
+            meds[b] = med
+            scales[b] = 1.4826 * mad if mad > 0 else (float(np.std(seg)) or 1.0)
+        return bin_idx, meds, scales, counts
 
     def _detect_search(
         self, vol: HKLVolume, rejected: list[float] | None = None,
@@ -1636,22 +1790,34 @@ class BraggRemover:
         and any Bragg / satellite reflection is a sharp high-tail outlier.  For
         each |Q| shell (width ``search_q_step``) the robust level (median) and
         scale (MAD) are measured over the valid voxels; a voxel is a peak
-        candidate when it exceeds ``median + search_n_mad · 1.4826·MAD`` (and an
-        absolute floor).  Candidates are grouped into connected components and
-        each component's brightest voxel is returned as a peak centre — so the
-        shared ellipsoid punch removes the whole peak, not just its hottest voxel.
+        candidate when it exceeds ``median + search_n_mad · 1.4826·MAD`` (and the
+        floors, see ``search_floor_unit``).  Candidates are grouped into
+        connected components and each component's brightest voxel is returned
+        as a peak centre — so the shared ellipsoid punch removes the whole
+        peak, not just its hottest voxel.
         """
         from scipy import ndimage
 
+        self._search_report.clear()
         valid = (vol.mask & np.isfinite(vol.data)) & ~self._search_excluded_h_mask(vol)
         if not valid.any():
             return []
-        bin_idx, thr = self._q_shell_thresholds(
-            vol,
-            q_step=self.search_q_step,
-            n_mad=self.search_n_mad,
-            min_intensity=self.search_min_intensity,
-        )
+        bin_idx, med, scale, count = self._q_shell_stats(vol, self.search_q_step)
+        # The floors in data units: as given, or as multiples of the diffuse
+        # scatter (``search_floor_unit="scatter"``).
+        unit = 1.0
+        if self.search_floor_unit == "scatter":
+            scatter = self._diffuse_scatter(scale, count)
+            unit = scatter if np.isfinite(scatter) else 0.0
+            self._search_report["diffuse_scatter"] = unit
+        min_intensity = float(self.search_min_intensity) * unit
+        min_prominence = float(self.search_min_prominence) * unit
+        self._search_report["min_intensity"] = min_intensity
+        self._search_report["min_prominence"] = min_prominence
+        thr = np.maximum(
+            np.where(np.isfinite(med), med + float(self.search_n_mad) * scale, np.inf),
+            min_intensity)
+        del med, scale, count
 
         # Slab-wise compare: elementwise (bit-identical to the whole-volume
         # form) and never materialises the full-volume thr[bin_idx] lookup.
@@ -1671,7 +1837,7 @@ class BraggRemover:
         local_max = ndimage.maximum_filter(scored, size=3, mode="nearest")
         peaks = np.argwhere(cand & (scored >= local_max))
         del scored, local_max, cand  # free the full-volume temporaries
-        if self.search_min_prominence > 0 and peaks.size:
+        if min_prominence > 0 and peaks.size:
             keep_peak = []
             nh, nk, nl = vol.shape
             for ih, ik, il in peaks:
@@ -1685,7 +1851,7 @@ class BraggRemover:
                     continue
                 local_bg = float(np.median(w[m]))
                 keep_peak.append(
-                    float(vol.data[ih, ik, il]) - local_bg >= self.search_min_prominence
+                    float(vol.data[ih, ik, il]) - local_bg >= min_prominence
                 )
             peaks = peaks[np.asarray(keep_peak, dtype=bool)]
         out = []

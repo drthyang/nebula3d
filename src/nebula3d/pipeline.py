@@ -392,6 +392,17 @@ class PunchParams:
     """
 
     mode: str = "both"
+    # How an integer node is judged to hold a Bragg peak.  "significance"
+    # (default): its excess over its own background shell clears
+    # min_significance standard errors (corrected for searching the window),
+    # nothing else, so the test is the same for data of any intensity scale
+    # (X-ray rates, neutron counts).  "floors": the absolute min_intensity /
+    # min_prominence floors (data units) or the local-MAD catch, then the
+    # gate — the default before 2026-10, whose floors only suit data on the
+    # scale they were tuned on.
+    integer_detect: str = "significance"
+    # The "floors" node test only (with integer_n_mad and the
+    # integer_local_* catch below).
     min_intensity: float = 0.8
     min_prominence: float = 1.0
     integer_n_mad: float | None = None
@@ -417,7 +428,9 @@ class PunchParams:
     # carry an integrated excess of at least this many standard errors over
     # half the resolution ellipsoid, judged against the volume's sigma.  Without
     # it the search pass punches single-voxel noise wherever the noise exceeds
-    # what its |Q| shell implies (the high-|Q| coverage edge).  None = off.
+    # what its |Q| shell implies (the high-|Q| coverage edge).  With
+    # integer_detect="significance" it is the whole integer-node test, so it
+    # cannot be off there.  None = off.
     min_significance: float | None = 5.0
     significance_aperture: float = 0.5
     significance_noise: str = "sigma"
@@ -435,8 +448,15 @@ class PunchParams:
     profile_n_sigma: float = 0.5
     profile_max_radius_q: float = 0.5
     search_n_mad: float = 4.0
-    search_min_intensity: float = 0.8
-    search_min_prominence: float = 0.8
+    # The search floors, in units of search_floor_unit.  "scatter" (default):
+    # multiples of the diffuse scatter (the voxel-weighted median over |Q|
+    # shells of each shell's 1.4826·MAD), so they follow the data's scale.
+    # The factor keeps the data-unit floor (0.8) these replaced on a measured
+    # neutron volume.  "data": the volume's own intensity units, as before
+    # 2026-10.
+    search_floor_unit: str = "scatter"
+    search_min_intensity: float = 27.0
+    search_min_prominence: float = 27.0
     search_exclude_h_centers: tuple[float, ...] | None = None
     search_exclude_h_half_width: float = 0.08
     search_exclude_h_fractions: tuple[float, ...] | None = (0.3333, 0.6667)
@@ -1127,7 +1147,7 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
 def bragg_remover(p: PunchParams) -> BraggRemover:
     """The :class:`BraggRemover` the punch stage runs for *p*."""
     return BraggRemover(
-        mode=p.mode, min_intensity=p.min_intensity,
+        mode=p.mode, integer_detect=p.integer_detect, min_intensity=p.min_intensity,
         min_prominence=p.min_prominence,
         integer_n_mad=p.integer_n_mad, integer_q_step=p.integer_q_step,
         integer_optimize_position=p.integer_optimize_position,
@@ -1159,6 +1179,7 @@ def bragg_remover(p: PunchParams) -> BraggRemover:
         phi_tail_hkl=p.phi_tail_hkl,
         search_n_mad=p.search_n_mad, search_min_intensity=p.search_min_intensity,
         search_min_prominence=p.search_min_prominence,
+        search_floor_unit=p.search_floor_unit,
         search_exclude_h_centers=p.search_exclude_h_centers,
         search_exclude_h_half_width=p.search_exclude_h_half_width,
         search_exclude_h_fractions=p.search_exclude_h_fractions,
@@ -1182,6 +1203,22 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     if symmetry is not None:
         remover = dataclasses.replace(remover, symmetry_ops=symmetry.ops)
     peak_records, reference, footprint = remover._detect(vol)  # noqa: SLF001 - avoid refitting
+    n_integer = sum(r.source_node_hkl is not None for r in peak_records)
+    if p.mode in {"integer", "both"}:
+        test = (f"excess over its shell ≥ {p.min_significance:g}σ after the "
+                f"window search, no intensity floor"
+                if p.integer_detect == "significance" else "intensity floors")
+        _emit(progress, "punch", "progress", None,
+              f"integer nodes ({test}): {n_integer} peaks")
+    found = remover._search_report  # noqa: SLF001 - what the search pass used
+    if "min_intensity" in found:
+        floors = (f"{found['min_intensity']:.4g} intensity, "
+                  f"{found['min_prominence']:.4g} prominence")
+        if "diffuse_scatter" in found:
+            floors = (f"{p.search_min_intensity:g} / {p.search_min_prominence:g} × "
+                      f"diffuse scatter {found['diffuse_scatter']:.4g} = {floors}")
+        _emit(progress, "punch", "progress", None,
+              f"search floors {floors}: {len(peak_records) - n_integer} peaks")
     if p.punch_footprint == "profile":
         _emit(progress, "punch", "progress", None, (
             f"profile-matched punch: Bragg profile learned from "

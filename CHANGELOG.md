@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+- **The Bragg punch no longer depends on the data's intensity units.** Its
+  floors were numbers in data units (0.8, 1.0). On data of another scale,
+  such as X-ray rates against neutron counts, or two runs on one instrument,
+  they either rejected real Bragg peaks or stopped protecting the diffuse.
+  The pipeline now does three things:
+  - **Integer nodes by significance alone** (`integer_detect="significance"`).
+    The excess at the window's brightest voxel over its own background shell
+    (1–2× the resolution ellipsoid, as in peak integration) must reach
+    `min_significance`, corrected for picking the brightest of the window's
+    voxels (5σ becomes ≈ 6σ). The shell leaves broad diffuse maxima at nodes
+    alone. On a synthetic volume, none of the forbidden-node short-range-order
+    maxima are punched, and every Bragg node is.
+  - **Search floors in units of the diffuse scatter**
+    (`search_floor_unit="scatter"`, 27 × the per-shell 1.4826·MAD). That is
+    the old 0.8 on the data it was tuned on. The run log prints the scatter
+    and the floors.
+  - **Same mask at any scale.** Multiplying the data and `sigma` by any factor
+    gives the same mask.
+
+  Effects:
+  - On an X-ray volume, sharp supercell reflections the floors had rejected
+    are punched.
+  - On a hexagonal neutron volume, the short-range-order maxima at its
+    non-parent nodes, which the floors had punched, are left alone.
+  - On orthorhombic neutron volumes the punched volume changes by a few per
+    cent.
+
+  To keep the earlier behaviour, set `integer_detect="floors"`,
+  `search_floor_unit="data"` and the search floors to 0.8.
+
+  The web Configure page's *Min I* field becomes *Min σ*, the significance a
+  peak must reach. With the gate off (Min σ 0), integer nodes fall back to
+  the floors. See docs/algorithms/bragg_cleanup.md.
 - **No more dashed streaks along the 3D-ΔPDF axes.** The transform windowed
   the volume, subtracted the plain mean from the whole box and zero-padded
   it, which left a step of the mean at the box faces; its transform drew a
