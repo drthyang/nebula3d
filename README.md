@@ -309,6 +309,7 @@ remover = BraggRemover(
     punch_spherical_radii=(0.097, 0.072, 0.115),  # Å⁻¹: radial, polar, azimuthal
     integer_detect="significance",  # nodes by significance, no intensity floor
     min_significance=5.0,
+    integer_max_shell_fraction=0.15,  # and no broader than a Bragg peak
     integer_optimize_position=True,
     integer_optimize_shape=True,
     integer_h_guard_hkl=0.12,
