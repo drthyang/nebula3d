@@ -14,6 +14,12 @@
     voxels (5σ becomes ≈ 6σ). The shell leaves broad diffuse maxima at nodes
     alone. On a synthetic volume, none of the forbidden-node short-range-order
     maxima are punched, and every Bragg node is.
+  - **No broader than a Bragg peak** (`integer_max_shell_fraction=0.15`). A
+    node is also rejected when the 1–2× shell still holds over 15 % of its
+    core's excess (against a 3–4× shell), by more than two standard errors.
+    Bragg peaks keep a few per cent there. Maxima a few times wider pass the
+    shell test on good statistics, and a punch sized for a peak would take
+    their core and leave their skirt.
   - **Search floors in units of the diffuse scatter**
     (`search_floor_unit="scatter"`, 27 × the per-shell 1.4826·MAD). That is
     the old 0.8 on the data it was tuned on. The run log prints the scatter
@@ -22,8 +28,9 @@
     gives the same mask.
 
   Effects:
-  - On an X-ray volume, sharp supercell reflections the floors had rejected
-    are punched.
+  - On X-ray volumes on a 2×2×2 cell, every strong parent reflection is
+    punched as before, and more of the weaker ones than with the floors. The
+    broad maxima at the supercell nodes are left whole.
   - On a hexagonal neutron volume, the short-range-order maxima at its
     non-parent nodes, which the floors had punched, are left alone.
   - On orthorhombic neutron volumes the punched volume changes by a few per

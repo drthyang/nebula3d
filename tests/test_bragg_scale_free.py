@@ -117,6 +117,36 @@ def test_broad_diffuse_maximum_at_a_node_is_not_bragg():
     assert r._peak_significance(vol, idx, float(np.median(vol.data[sl])), 0.0) > 5.0
 
 
+def _two_peaks(width: float, *, noise: float = 0.005) -> HKLVolume:
+    """A sharp peak at (-1, 0, 1) and an equally high maximum *width* r.l.u.
+    wide at (1, 1, 0)."""
+    rng = np.random.default_rng(3)
+    data = (np.full((N, N, N), BG) + 0.4 * _gaussian((-1, 0, 1), 0.025)
+            + 0.4 * _gaussian((1, 1, 0), width)
+            + noise * rng.standard_normal((N, N, N)))
+    return HKLVolume.from_arrays(
+        data, (-EXTENT, EXTENT), (-EXTENT, EXTENT), (-EXTENT, EXTENT),
+        sigma=np.full_like(data, noise), ub_matrix=(2 * np.pi / A) * np.eye(3))
+
+
+def test_a_maximum_a_few_times_wider_than_bragg_is_not_bragg():
+    # 0.1 r.l.u. is two voxels: about three times the resolution here.  It
+    # stands above its 1–2× shell, so the shell test alone takes it; the
+    # width test sees that the shell still holds much of its excess.
+    vol = _two_peaks(0.10)
+    assert _nodes(_significance()._detect_peak_records(vol)) == {(-1, 0, 1), (1, 1, 0)}
+    width = _significance(integer_max_shell_fraction=0.15)
+    assert _nodes(width._detect_peak_records(vol)) == {(-1, 0, 1)}
+
+
+def test_width_test_keeps_weak_sharp_peaks_at_any_scale():
+    planted = ((1, 0, 0), (0, 1, 1), (-1, 1, 0))
+    vol = _volume(sharp=[(n, 0.2) for n in planted])
+    r = _significance(integer_max_shell_fraction=0.15)
+    for factor in (1.0, 1e-4, 1e4):
+        assert _nodes(r._detect_peak_records(_scaled(vol, factor))) == set(planted)
+
+
 def test_window_threshold_corrects_for_picking_the_brightest_voxel():
     r = _significance()
     assert r._window_threshold(1) == pytest.approx(5.0)

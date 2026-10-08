@@ -321,6 +321,15 @@ class BraggRemover:
         on good counting statistics.  Nothing in the test depends on the
         intensity units, so data of any scale (X-ray rates, neutron counts)
         are judged alike; requires ``min_significance``.
+    integer_max_shell_fraction:
+        With ``integer_detect="significance"``, also reject a node whose excess
+        is resolvably broader than a Bragg peak (see
+        :meth:`_broader_than_bragg`): of the core's excess over a far shell
+        (3×–4× the resolution ellipsoid), more than this fraction is still
+        there in the 1×–2× shell, by over two standard errors.  Bragg peaks
+        keep a few per cent; broad superlattice or short-range-order maxima
+        at nodes keep a large share, and a punch that takes only their core
+        leaves the skirt.  ``None`` (default) skips the test.
     min_intensity:
         Detection threshold.  ``None`` (default) punches **every** integer node
         (legacy behaviour).  When set, only nodes whose local peak intensity
@@ -508,6 +517,7 @@ class BraggRemover:
 
     mode: str = "integer"
     integer_detect: str = "floors"
+    integer_max_shell_fraction: float | None = None
     min_intensity: float | None = None
     min_prominence: float = 1.0
     integer_n_mad: float | None = None
@@ -1539,6 +1549,9 @@ class BraggRemover:
                     vol, (ph, pk, pl), local_bg if shell_bg is None else shell_bg, noise)
                 if not z >= self._window_threshold(int(wval.sum())):
                     continue
+                if (self.integer_max_shell_fraction is not None
+                        and self._broader_than_bragg(vol, (ph, pk, pl), noise)):
+                    continue
                 out.append(self._integer_record(
                     vol, (h, k, l), (ph, pk, pl), peak, local_bg, z))
                 continue
@@ -1606,6 +1619,68 @@ class BraggRemover:
         if int(shell.sum()) < 8:
             return None
         return float(np.median(win[shell].astype(np.float64)))
+
+    def _broader_than_bragg(
+        self, vol: HKLVolume, idx: tuple[int, int, int], noise: float,
+    ) -> bool:
+        """Whether the excess at voxel *idx* is resolvably broader than a Bragg peak.
+
+        Against the median of a far shell (3×–4× the resolution ellipsoid), the
+        fraction of the core's excess (the gate's aperture) that the 1×–2×
+        shell still holds: a resolution-limited peak has fallen off there, a
+        maximum a few times wider has not.  True when that fraction exceeds
+        ``integer_max_shell_fraction`` by more than two standard errors, so a
+        weak peak, whose fraction is poorly measured, is not judged broad on
+        noise.  ``noise`` stands in for ``sigma`` where the volume has none.
+        False when a shell is (nearly) unmeasured or there is no core excess.
+        """
+        center = (float(vol.h_axis[idx[0]]), float(vol.k_axis[idx[1]]),
+                  float(vol.l_axis[idx[2]]))
+        a = self._active_shape_matrix(vol, center)
+        if a is None:
+            return False
+        steps = np.abs(np.asarray(self._steps(vol)))
+        ext = self._ellipsoid_bounding_radii(a / 16.0)
+        half = tuple(int(np.floor(e / s + 1e-9)) for e, s in zip(ext, steps))
+        sl = self._box(vol, idx, half)  # type: ignore[arg-type]
+        hh, kk, ll = np.meshgrid(vol.h_axis[sl[0]] - center[0],
+                                 vol.k_axis[sl[1]] - center[1],
+                                 vol.l_axis[sl[2]] - center[2], indexing="ij")
+        quad = (a[0, 0] * hh * hh + a[1, 1] * kk * kk + a[2, 2] * ll * ll
+                + 2.0 * a[0, 1] * hh * kk + 2.0 * a[0, 2] * hh * ll
+                + 2.0 * a[1, 2] * kk * ll)
+        win = vol.data[sl].astype(np.float64)
+        ok = vol.mask[sl] & np.isfinite(win)
+        sig = vol.sigma[sl].astype(np.float64)
+        usable = np.isfinite(sig) & (sig > 0)
+        sig = np.where(usable, sig, noise if np.isfinite(noise) else 0.0)
+        aperture = max(float(self.significance_aperture), 1e-6)
+        core = ok & (quad <= aperture * aperture)
+        loc = (idx[0] - sl[0].start, idx[1] - sl[1].start, idx[2] - sl[2].start)
+        core[loc] = ok[loc]
+
+        def shell(lo: float, hi: float) -> tuple[float, float] | None:
+            m = ok & (quad > lo * lo) & (quad <= hi * hi)
+            n = int(m.sum())
+            if n < 8:
+                return None
+            # Standard error of a median: √(π/2) σ/√n.
+            return (float(np.median(win[m])),
+                    1.2533 * float(np.median(sig[m])) / np.sqrt(n))
+
+        near, far = shell(1.0, 2.0), shell(3.0, 4.0)
+        n_core = int(core.sum())
+        if near is None or far is None or n_core == 0:
+            return False
+        c = float(win[core].mean())
+        c_err = float(np.sqrt(np.sum(sig[core] ** 2))) / n_core
+        excess = c - far[0]
+        if not excess > 0:
+            return False
+        frac = (near[0] - far[0]) / excess
+        err = float(np.sqrt(near[1] ** 2 + (far[1] * (1.0 - frac)) ** 2
+                            + (frac * c_err) ** 2)) / excess
+        return bool(frac - float(self.integer_max_shell_fraction) > 2.0 * err)  # type: ignore[arg-type]
 
     def _window_threshold(self, n_voxels: int) -> float:
         """``min_significance`` corrected for picking the brightest of

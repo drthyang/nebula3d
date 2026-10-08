@@ -401,6 +401,13 @@ class PunchParams:
     # gate — the default before 2026-10, whose floors only suit data on the
     # scale they were tuned on.
     integer_detect: str = "significance"
+    # With "significance": a node whose excess is resolvably broader than a
+    # Bragg peak is not one.  Over 0.15 of its core excess (above a 3–4×
+    # resolution shell) is still there 1–2× out, by over 2 standard errors:
+    # Bragg peaks keep a few per cent; broad superlattice / short-range-order
+    # maxima keep far more, and punching their core would leave the skirt.
+    # None turns the test off.
+    integer_max_shell_fraction: float | None = 0.15
     # The "floors" node test only (with integer_n_mad and the
     # integer_local_* catch below).
     min_intensity: float = 0.8
@@ -1147,7 +1154,9 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
 def bragg_remover(p: PunchParams) -> BraggRemover:
     """The :class:`BraggRemover` the punch stage runs for *p*."""
     return BraggRemover(
-        mode=p.mode, integer_detect=p.integer_detect, min_intensity=p.min_intensity,
+        mode=p.mode, integer_detect=p.integer_detect,
+        integer_max_shell_fraction=p.integer_max_shell_fraction,
+        min_intensity=p.min_intensity,
         min_prominence=p.min_prominence,
         integer_n_mad=p.integer_n_mad, integer_q_step=p.integer_q_step,
         integer_optimize_position=p.integer_optimize_position,
@@ -1205,8 +1214,11 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     peak_records, reference, footprint = remover._detect(vol)  # noqa: SLF001 - avoid refitting
     n_integer = sum(r.source_node_hkl is not None for r in peak_records)
     if p.mode in {"integer", "both"}:
+        width = ("" if p.integer_max_shell_fraction is None else
+                 f", no broader than a Bragg peak (shell fraction "
+                 f"≤ {p.integer_max_shell_fraction:g})")
         test = (f"excess over its shell ≥ {p.min_significance:g}σ after the "
-                f"window search, no intensity floor"
+                f"window search{width}, no intensity floor"
                 if p.integer_detect == "significance" else "intensity floors")
         _emit(progress, "punch", "progress", None,
               f"integer nodes ({test}): {n_integer} peaks")

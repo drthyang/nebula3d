@@ -878,7 +878,11 @@ def build_manual(output_path: str) -> None:
          "picking the brightest of the window's voxels. Nothing in this test depends on "
          "the intensity units, so X-ray rates and neutron counts are judged alike, and "
          "a broad diffuse maximum at a node, no higher than its own surroundings, is "
-         "left alone. <tt>integer_detect=\"floors\"</tt> keeps the earlier test: the "
+         "left alone. With <tt>integer_max_shell_fraction</tt> (pipeline 0.15) a node "
+         "is also rejected when it is resolvably broader than a Bragg peak: its 1×–2× "
+         "shell still holds more than that fraction of its core's excess over a 3×–4× "
+         "shell. A punch sized for a peak would take the core of such a maximum and "
+         "leave its skirt. <tt>integer_detect=\"floors\"</tt> keeps the earlier test: the "
          "peak exceeds <tt>min_intensity</tt> and the local median by "
          "<tt>min_prominence</tt>, in data units."),
         ("Recentre",
@@ -1348,6 +1352,7 @@ def build_manual(output_path: str) -> None:
         "    punch_spherical_radii=(0.097, 0.072, 0.115),  # Å⁻¹\n"
         "    integer_detect=\"significance\",  # no intensity floor at the nodes\n"
         "    min_significance=5.0,\n"
+        "    integer_max_shell_fraction=0.15,  # no broader than a Bragg peak\n"
         "    integer_optimize_position=True,\n"
         "    integer_optimize_shape=True,\n"
         "    integer_h_guard_hkl=0.12,\n"
