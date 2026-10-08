@@ -120,10 +120,10 @@ examples:
 
 - A volume far above the scale they were tuned on cleared them at every
   node, diffuse or not.
-- On an X-ray volume whose background varies from run to run, highly
-  significant sharp reflections at the supercell nodes stood below the
-  prominence floor. The 8-MAD catch failed them too: the background's own
-  variation inflates the window MAD.
+- On an X-ray volume whose background varies from run to run, weaker but
+  clearly significant parent reflections stood below the prominence floor.
+  The 8-MAD catch failed them too: the background's own variation inflates
+  the window MAD.
 
 No single rescaling of the floors works either. The data's typical Bragg
 peak, or its diffuse scatter, would raise those floors on that X-ray volume,
@@ -144,8 +144,19 @@ peak integration does:
   brightest of the window's `n` voxels. The threshold is the z whose one-sided
   tail is that of `min_significance` divided by `n`: 5.9 for 5σ and 125
   voxels, 6.0 for 343.
+- **Width** (`integer_max_shell_fraction`, pipeline 0.15). The peak must not
+  be resolvably broader than a Bragg peak:
+  - against the median of a far shell (3–4× the resolution ellipsoid),
+    measure the fraction of the core's excess that the 1–2× shell still
+    holds;
+  - reject the node when that fraction exceeds 0.15 by more than two
+    standard errors.
 
-Both refinements are needed:
+  Bragg peaks keep a few per cent there: the median is 1–3 % on every
+  dataset tried, X-ray and neutron. Superlattice and short-range-order
+  maxima a few times wider than the resolution keep far more.
+
+The first three are needed against diffuse maxima much wider than a peak:
 
 - **The shell.** Against the window median, a broad diffuse maximum at a node
   is significant on good counting statistics. On the synthetic demo volume,
@@ -154,6 +165,24 @@ Both refinements are needed:
 - **The correction.** Without it, the brightest of a few hundred voxels is now
   and then a 5σ noise spike on such a maximum: 2 of the 58 forbidden nodes on
   the demo. With it, none pass, and every allowed node still passes.
+
+The width test is needed against maxima only a few times wider than a peak.
+These stand above their 1–2× shell, so on good counting statistics they pass
+the shell test. A punch sized for a Bragg peak then takes their core and
+leaves their skirt, which is worse than leaving them whole.
+
+An X-ray volume on a 2×2×2 cell shows this. Its supercell nodes hold broad
+maxima with a sharp-looking top. The shell test took the cores of about half
+of the strongest. With the width test:
+- nearly all of them are left whole;
+- every parent Bragg peak is still punched.
+
+An independent check integrated each node, as in the reconstruction's own
+validation: the inner 5×5×5 voxels against the median of the outer layer of
+a 7×7×7 box. On it:
+- every parent node of ≥ 20σ is punched, and after the fill none keeps a
+  peak, only a smooth gradient of a few per cent;
+- more of the 5–20σ parent nodes are punched than with the floors.
 
 Scaling the data and `sigma` by any factor leaves the test unchanged. The
 pipeline's punch with this test and the search floors in units of the
@@ -169,8 +198,10 @@ Measured effects, against the floors:
   them are non-parent nodes whose short-range-order maxima the floors had
   punched: on that volume's scale the floors were inactive. The rest are
   weak parent nodes at the threshold.
-- **X-ray volume above.** Most of the sharp supercell reflections are now
-  punched.
+- **X-ray volumes on a 2×2×2 cell.**
+  - Every strong parent reflection is punched, as before.
+  - More of the weaker parent reflections are punched than with the floors.
+  - The broad maxima at the supercell nodes are left whole.
 
 The test requires `min_significance`. With the gate off (web: Min σ 0), the
 pipeline falls back to the floors.
