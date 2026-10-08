@@ -871,8 +871,16 @@ def build_manual(output_path: str) -> None:
         ("Enumerate", "All integer (h, k, l) nodes within the HKL volume extent are listed."),
         ("Detect",
          "A local HKL window of half-width <tt>detect_window_hkl</tt> is inspected around "
-         "each node. The node is retained only if the local peak exceeds "
-         "<tt>min_intensity</tt> and the local median by <tt>min_prominence</tt>."),
+         "each node. By default (<tt>integer_detect=\"significance\"</tt>) the node is "
+         "retained when the excess at the window's brightest voxel over its own "
+         "background, the median of a shell between 1× and 2× the resolution "
+         "ellipsoid, reaches <tt>min_significance</tt> standard errors, corrected for "
+         "picking the brightest of the window's voxels. Nothing in this test depends on "
+         "the intensity units, so X-ray rates and neutron counts are judged alike, and "
+         "a broad diffuse maximum at a node, no higher than its own surroundings, is "
+         "left alone. <tt>integer_detect=\"floors\"</tt> keeps the earlier test: the "
+         "peak exceeds <tt>min_intensity</tt> and the local median by "
+         "<tt>min_prominence</tt>, in data units."),
         ("Recentre",
          "The punch centre is moved to the measured local maximum within the detection window."),
         ("Fit shape (optional)",
@@ -893,7 +901,8 @@ def build_manual(output_path: str) -> None:
 
     story.append(H3("4.2.2  Weak Bragg at Integer Nodes"))
     story.append(P(
-        "Weak peaks at integer nodes can fall below the absolute "
+        "With the floors test (<tt>integer_detect=\"floors\"</tt>), weak peaks at "
+        "integer nodes can fall below the absolute "
         "<tt>min_intensity</tt> and <tt>min_prominence</tt> floors but still be "
         "sharp local outliers. The parameter <tt>integer_local_prominence_n_mad</tt> "
         "catches these by requiring the prominence to exceed a multiple of the local "
@@ -912,8 +921,12 @@ def build_manual(output_path: str) -> None:
     ))
     story.append(math_block("bg_threshold = median(I_shell) + n_mad × MAD(I_shell)"))
     story.append(P(
-        "Local maxima above this threshold and the absolute floor "
-        "<tt>search_min_intensity</tt> are retained as punch centres. Because the "
+        "Local maxima above this threshold and the floors "
+        "<tt>search_min_intensity</tt> and <tt>search_min_prominence</tt> are "
+        "retained as punch centres. The pipeline gives the floors in units of the "
+        "diffuse scatter (<tt>search_floor_unit=\"scatter\"</tt>: the median over "
+        "|<b>Q</b>| shells of each shell's 1.4826·MAD), so they follow the data's "
+        "intensity scale. Because the "
         "search does not know the crystal lattice, structured diffuse planes must be "
         "explicitly protected:"
     ))
@@ -1333,13 +1346,15 @@ def build_manual(output_path: str) -> None:
         "remover = BraggRemover(\n"
         "    mode=\"both\",\n"
         "    punch_spherical_radii=(0.097, 0.072, 0.115),  # Å⁻¹\n"
-        "    min_intensity=0.8,\n"
-        "    min_prominence=0.8,\n"
+        "    integer_detect=\"significance\",  # no intensity floor at the nodes\n"
+        "    min_significance=5.0,\n"
         "    integer_optimize_position=True,\n"
         "    integer_optimize_shape=True,\n"
         "    integer_h_guard_hkl=0.12,\n"
-        "    integer_local_prominence_n_mad=8.0,\n"
         "    search_n_mad=4.0,\n"
+        "    search_floor_unit=\"scatter\",  # floors × the diffuse scatter\n"
+        "    search_min_intensity=27.0,\n"
+        "    search_min_prominence=27.0,\n"
         "    search_exclude_h_fractions=(1/3, 2/3),\n"
         "    search_exclude_h_half_width=0.08,\n"
         "    incident_beam_ellipsoid_radii_hkl=(0.15, 0.50, 1.00),\n"
