@@ -4050,7 +4050,7 @@ h6.md-h {
     min-height: 90px;
   }
 }
-/* Punch "Detection" (method · min I · mode): two selects and an input do not
+/* Punch "Detection" (method · min σ · mode): two selects and an input do not
    fit three-up in a narrow box, so the mode select takes its own row. */
 .cfg-box:has(> .punch-basis) {
   container-type: inline-size;

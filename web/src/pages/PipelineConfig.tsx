@@ -1194,7 +1194,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       ringGlobalMinSnr: st.ringGlobalMinSnr,
       ringPooledSectors: st.ringPooledSectors,
       ringPooledWindow: st.ringPooledWindow,
-      punchMinI: st.punchMinI,
+      punchMinSig: st.punchMinSig,
       punchMethod: st.punchMethod,
       punchMode: st.punchMode,
       punchSupercellH: st.punchSupercellH,
@@ -1819,7 +1819,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   onToggle={(v) => patch({ punchEnabled: v })}
                 >
                   <HelpTip>
-                    Detection method, the intensity floor above background, and
+                    Detection method, the significance a peak must reach, and
                     which peaks to punch — integer nodes, |Q|-shell search, or both.
                   </HelpTip>
                 </StageHead>
@@ -1836,14 +1836,20 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     <option value="ellipsoid">Ellipsoid</option>
                   </select>
                 </Field>
-                <Field label="Min I">
+                <Field label="Min σ">
                   <input
                     type="number"
-                    step="0.1"
-                    placeholder="0.8"
-                    value={s.punchMinI}
-                    title="Minimum intensity above background for a voxel to be punched as Bragg"
-                    onChange={(e) => patch({ punchMinI: e.target.value })}
+                    step="0.5"
+                    min="0.5"
+                    placeholder="5"
+                    value={s.punchMinSig}
+                    title={
+                      "Significance a peak must reach, in standard errors of its " +
+                      "excess over its own background. Integer nodes are judged by " +
+                      "this alone, so it means the same for data of any intensity " +
+                      "scale (X-ray rates, neutron counts)."
+                    }
+                    onChange={(e) => patch({ punchMinSig: e.target.value })}
                   />
                 </Field>
                 <Field label="Mode">
