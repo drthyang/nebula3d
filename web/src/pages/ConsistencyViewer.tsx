@@ -25,6 +25,7 @@ import {
 } from "../components/DisplayBar";
 import { qSection, reciprocalMetric } from "../components/reciprocal";
 import { SliceCanvas } from "../components/SliceCanvas";
+import { StructureHits, StructureOverlay } from "../components/StructureOverlay";
 import { EmptyState, IconAlert, RangeSlider, Segmented, Slider, Switch } from "../components/ui";
 import { UnitCellGrid } from "../components/UnitCellGrid";
 import { useLevels } from "../components/useLevels";
@@ -45,7 +46,9 @@ import {
   type RealAxis,
   useViewerStore,
 } from "../state/viewerStore";
+import { useStructureStore } from "../state/structureStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
+import { markersNear, usePlaneMarkers, useStructureModel, type PlaneAxis } from "../structure/useStructure";
 
 const AXES: FixedAxis[] = ["H", "K", "L"];
 const REAL_AXES: RealAxis[] = ["X", "Y", "Z"];
@@ -266,6 +269,26 @@ export function ConsistencyViewer() {
   const resSamples = useMemo(() => (cRes ? [cRes.data] : null), [cRes]);
   const rCentreData = rCentreResult.data;
   const rSamples = useMemo(() => (rCentreData ? [rCentreData.data] : null), [rCentreData]);
+
+  // The 3D-ΔPDF page's structure overlay, on this page's ΔPDF view.
+  const structure = useStructureModel(meta?.lattice);
+  const showStructure = useStructureStore((s) => s.show) && structure !== null;
+  const setShowStructure = useStructureStore((s) => s.setShow);
+  const rDepth = useStructureStore((s) => s.depth) ?? (dpdfAxisInfo?.step ?? 0) / 2;
+  const rHeader = rResult.data?.header;
+  const rMarkers = usePlaneMarkers(
+    structure,
+    meta?.lattice,
+    {
+      h: rx as PlaneAxis,
+      v: ry as PlaneAxis,
+      cut: dpdfFixedAxis.toLowerCase() as PlaneAxis,
+      value: dpdfValue,
+      hRange: rHeader ? [rHeader.x_axis[0], rHeader.x_axis[rHeader.x_axis.length - 1]] : null,
+      vRange: rHeader ? [rHeader.y_axis[0], rHeader.y_axis[rHeader.y_axis.length - 1]] : null,
+    },
+    rDepth,
+  );
 
   const qLv = useLevels({
     samples: qSamples,
@@ -498,6 +521,7 @@ export function ConsistencyViewer() {
             <LevelsBar lut={divLut} levels={rLv.levels} domain={rLv.domain} hist={rLv.hist} symmetric onChange={(l) => setRLimit(l.hi)} />
             <AutoButton active={rLv.isAuto} onClick={() => setRManual(null)} />
             <Switch label="Unit cells" checked={gridlines} onChange={setGridlines} />
+            <Switch label="Structure" checked={showStructure} disabled={!structure} onChange={setShowStructure} />
           </div>
         </div>
       </div>
@@ -660,6 +684,15 @@ export function ConsistencyViewer() {
                       angle={s.header.axes_angle}
                     />
                   )}
+                  {showStructure && structure && (
+                    <StructureOverlay
+                      markers={rMarkers}
+                      elements={structure.elements}
+                      angle={s.header.axes_angle ?? 90}
+                      viewport={rViewport}
+                      depth={rDepth}
+                    />
+                  )}
                 </ViewFrame>
               )),
             },
@@ -728,6 +761,14 @@ export function ConsistencyViewer() {
                 <>
                   <b>{rx} {h.toFixed(2)} · {ry} {v.toFixed(2)} Å</b>
                   <span><i>ΔPDF</i> {val === undefined ? "—" : fmtLevel(val)}</span>
+                  {showStructure && structure && (
+                    <StructureHits
+                      hits={markersNear(rMarkers, rCursor[0], rCursor[1], s?.header.axes_angle ?? 90, rViewport.half * 0.035)}
+                      elements={structure.elements}
+                      lat={[a, b, c]}
+                      angles={[meta?.lattice.alpha ?? 90, meta?.lattice.beta ?? 90, meta?.lattice.gamma ?? 90]}
+                    />
+                  )}
                 </>
               );
             })()

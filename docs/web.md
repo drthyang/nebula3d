@@ -221,7 +221,7 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 | --- | --- | --- |
 | **Configure / Run pipeline** | `run_pipeline.py` | Pick a dataset and tune the key parameters per stage — ring removal (azimuthal **patches**, texture **Fourier order**), punch (HKL ↔ Q-space frame), backfill, flatten, ΔPDF, consistency — then run all stages with a live stepper and log. Existing outputs are skipped unless *force* is on. Default landing view. |
 | **Reciprocal cleanup** | `explore_slice.py` | One view per HKLVolume stage (raw / ring-removed / punched / backfilled / flattened) on one H/K/L plane and cut, in the [viewer workspace](#viewer-workspace). All views share **one colour range**, set from a reference stage (the output stage by default, or *Each view* to scale each stage on its own), and one linked zoom and crosshair; hovering reads every stage's value at the same (K, L). The cut readout is an **editable box** — type `0.3333` and it snaps to the nearest plane. |
-| **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range and a gray dashed unit-cell overlay. Views open at ±40 Å. In *Navigate* mode a click on one view moves the other two cuts through the point. |
+| **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range, a gray dashed unit-cell overlay and an optional [structure overlay](#structure-overlay) of interatomic vectors. Views open at ±40 Å. In *Navigate* mode a click on one view moves the other two cuts through the point. |
 | **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related ΔPDF files × the three planes as a square grid, sharing cut, window, and contrast; a per-plane colour scale pooled across files. Component retained; unrouted from the sidebar for now. |
 | **Q–R Band Transform** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data, ΔPDF, back-FFT and residual** as four views (focus layout, data large, by default), with agreement metrics (Pearson r, normalised RMS) in the header. Data, back-FFT and residual share one plane, cut, colour range and view; the residual has its own ± range on a diverging map. The ΔPDF plane follows the Q plane (H ↔ x, K ↔ y, L ↔ z) while *Link orientation* is on. **\|Q\|** and real-space **\|R\|** bands, each with its own *Apply* in the view footer, isolate which ranges support a signal; applying a band keeps both cuts. The \|Q\| band is drawn as its true contour on the r.l.u. axes: a circle for an orthogonal cell, a tilted ellipse (centred off the origin where the cut axis is not normal to the plane) for any other. |
 | **AI Assistant** | — (new) | Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini) model and ask it to assess the reduction. Four one-click reviews (ring removal, Bragg punch, backfill, ΔPDF features) plus free chat, all grounded in numeric metrics computed in the browser from the stage volumes. Optional vision opt-in attaches the rendered slice for image-capable models. |
@@ -255,6 +255,28 @@ two apps work the same way.
 - **Shared settings**: the reciprocal plane, cut, colour range, scale and zoom
   are shared by Reciprocal cleanup and Q–R; the ΔPDF colour range, colormap,
   unit cells and zoom by 3D-ΔPDF and Q–R.
+
+### Structure overlay
+
+A 3D-ΔPDF is a map of interatomic vectors u = r_j − r_i + R, not of atoms, so
+the overlay marks those vectors. *Add structure…* on the 3D-ΔPDF page opens a
+panel: load a CIF (cell, sites and the `_space_group_symop_operation_xyz` /
+`_symmetry_equiv_pos_as_xyz` list), or enter sites by hand with symmetry
+operations as x,y,z triplets plus a lattice centring. The operations are closed
+into the full group, so generators are enough. The CIF's cell is checked against
+the ΔPDF's (3 %, 1°); a CIF in another axis setting can be mapped onto the
+data's a, b, c, and a structure whose cell does not match is not drawn. Vectors
+are placed on the ΔPDF's own cell.
+
+Each element pair has its own glyph: the colour names one element, the shape
+the other, and a chip per pair in the workspace header hides or shows it.
+*Vectors from* keeps only the vectors that start on one site, i.e. the
+structure seen from that atom. A vector is marked on a slice when it lies
+within ± *depth* of the cut (default: half a voxel) and fades with its distance
+from the plane. Hovering a marker reads its pairs and how many per cell, |u|,
+u in lattice units and its offset from the cut. The Q–R page's ΔPDF view shows
+the same overlay. The structure stays in this browser (localStorage); it is
+never sent to the server or written to a dataset.
 
 ### Screen sizes
 

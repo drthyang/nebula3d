@@ -1,8 +1,9 @@
 // Single-temperature 3D-ΔPDF orthoslice viewer — replaces
 // examples/explore_delta_pdf_ortho.py.  Three linked orthogonal real-space cuts
 // in a workspace (grid · focus · single), each with its own cut slider, one
-// shared ± colour scale and a unit-cell gridline toggle.  In Navigate mode a
-// click on one view moves the other two cuts through that point.
+// shared ± colour scale, a unit-cell gridline toggle and an optional overlay of
+// a crystal structure's pair vectors.  In Navigate mode a click on one view
+// moves the other two cuts through that point.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -13,6 +14,8 @@ import { fmtLevel } from "../components/colorScale";
 import { AutoButton, BrightnessKnob, ClickModeControl, LevelsBar } from "../components/DisplayBar";
 import { latticeLabel } from "../components/oblique";
 import { SliceCanvas } from "../components/SliceCanvas";
+import { StructureHits, StructureOverlay } from "../components/StructureOverlay";
+import { StructureLegend, StructurePanel } from "../components/StructurePanel";
 import {
   EmptyState,
   MetaStrip,
@@ -28,7 +31,10 @@ import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
 import { LayoutControl, Workspace } from "../components/Workspace";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { defaultDpdfView, useDpdfStore } from "../state/dpdfStore";
+import { useStructureStore } from "../state/structureStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
+import type { Marker } from "../structure/pairs";
+import { markersNear, usePlaneMarkers, useStructureModel } from "../structure/useStructure";
 
 function axisValue(
   range: [number, number] | undefined,
@@ -167,6 +173,31 @@ export function DeltaPdfViewer() {
   const limit = (h: number) => clampHalf(h, fullHalf, voxel);
   const fit = defaultDpdfView();
 
+  // Structure overlay: pair vectors within ± depth of each cut (default half a
+  // voxel along the cut axis, i.e. the vectors this slice holds).
+  const structure = useStructureModel(meta?.lattice);
+  const showStructure = useStructureStore((s) => s.show) && structure !== null;
+  const setShowStructure = useStructureStore((s) => s.setShow);
+  const storedDepth = useStructureStore((s) => s.depth);
+  const [structurePanel, setStructurePanel] = useState(false);
+  const depthFor = (a: Ax) => {
+    const r = range[a], n = shape[a];
+    return storedDepth ?? (r && n && n > 1 ? (r[1] - r[0]) / (n - 1) / 2 : 0);
+  };
+  const planeMarkers = (p: (typeof PLANES)[number]) => ({
+    h: p.h, v: p.v, cut: p.cut, value: val(p.cut), hRange: range[p.h] ?? null, vRange: range[p.v] ?? null,
+  });
+  const markers: Record<string, Marker[]> = {
+    xy: usePlaneMarkers(structure, meta?.lattice, planeMarkers(PLANES[0]), depthFor("z")),
+    xz: usePlaneMarkers(structure, meta?.lattice, planeMarkers(PLANES[1]), depthFor("y")),
+    yz: usePlaneMarkers(structure, meta?.lattice, planeMarkers(PLANES[2]), depthFor("x")),
+  };
+  const cellAngles: [number, number, number] = [
+    meta?.lattice.alpha ?? 90,
+    meta?.lattice.beta ?? 90,
+    meta?.lattice.gamma ?? 90,
+  ];
+
   // Navigate: a click on one view moves the other two cuts through the point.
   const navigate = (p: (typeof PLANES)[number], slice: Slice | undefined) => (X: number, Y: number) => {
     const angle = slice?.header.axes_angle ?? 90;
@@ -209,9 +240,23 @@ export function DeltaPdfViewer() {
           <ClickModeControl />
           <span className="ws-sep" />
           <Switch label="Unit cells" checked={gridlines} onChange={setGridlines} />
+          <Switch label="Structure" checked={showStructure} disabled={!structure} onChange={setShowStructure} />
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            aria-expanded={structurePanel}
+            onClick={() => setStructurePanel((o) => !o)}
+          >
+            {structure ? "Edit structure…" : "Add structure…"}
+          </button>
           <span className="ws-spacer" />
           <LayoutControl state={layout} dispatch={dispatchLayout} />
         </div>
+        {showStructure && structure && (
+          <div className="ws-row">
+            <StructureLegend model={structure} />
+          </div>
+        )}
         <div className="ws-row ws-display">
           <select aria-label="Colormap" value={colormap} onChange={(e) => setColormap(e.target.value)}>
             {DIVERGING_NAMES.map((name) => (
@@ -223,6 +268,15 @@ export function DeltaPdfViewer() {
           <BrightnessKnob autoHi={lv.auto.hi} hi={lv.levels.hi} onChange={setLimit} />
         </div>
       </div>
+
+      {structurePanel && (
+        <StructurePanel
+          model={structure}
+          lattice={meta?.lattice}
+          halfVoxel={voxel / 2}
+          onClose={() => setStructurePanel(false)}
+        />
+      )}
 
       {datasetsQ.isSuccess && !volumeId && (
         <EmptyState
@@ -290,6 +344,15 @@ export function DeltaPdfViewer() {
                       angle={r.data.header.axes_angle}
                     />
                   )}
+                  {showStructure && structure && (
+                    <StructureOverlay
+                      markers={markers[p.plane]}
+                      elements={structure.elements}
+                      angle={r.data.header.axes_angle ?? 90}
+                      viewport={viewport}
+                      depth={depthFor(p.cut)}
+                    />
+                  )}
                   {r.isFetching && <span className="spin vf-spin" />}
                 </ViewFrame>
               ) : (
@@ -308,6 +371,10 @@ export function DeltaPdfViewer() {
               const s = results[p.plane].data;
               const [h, v] = displayToSlice(cursor.p[0], cursor.p[1], { sx: 1, sy: 1, angle: s?.header.axes_angle ?? 90 });
               const value = valueAt(s, cursor.p);
+              const vp = views[p.plane] ?? fit;
+              const hits = showStructure && structure
+                ? markersNear(markers[p.plane], cursor.p[0], cursor.p[1], s?.header.axes_angle ?? 90, vp.half * 0.035)
+                : [];
               return (
                 <>
                   <b>
@@ -316,12 +383,22 @@ export function DeltaPdfViewer() {
                   <span>
                     <i>ΔPDF</i> {value === undefined ? "—" : fmtLevel(value)}
                   </span>
-                  {clickMode === "navigate" && <span className="muted">click to move the other two cuts here</span>}
+                  {structure && (
+                    <StructureHits
+                      hits={hits}
+                      elements={structure.elements}
+                      lat={[lat.x ?? 1, lat.y ?? 1, lat.z ?? 1]}
+                      angles={cellAngles}
+                    />
+                  )}
+                  {clickMode === "navigate" && hits.length === 0 && (
+                    <span className="muted">click to move the other two cuts here</span>
+                  )}
                 </>
               );
             })()
           ) : (
-            <span className="muted">Hover a slice to read the ΔPDF; in Navigate mode a click moves the other two cuts through the point.</span>
+            <span className="muted">Hover a slice to read the ΔPDF{showStructure ? " and the pair vectors under the pointer" : ""}; in Navigate mode a click moves the other two cuts through the point.</span>
           )}
         </div>
       )}
@@ -333,6 +410,9 @@ export function DeltaPdfViewer() {
             { key: "Colour scale", value: `±${fmtLevel(lv.levels.hi)}${lv.isAuto ? " (Auto)" : ""}` },
             { key: "Lattice", value: latticeLabel(meta.lattice) },
             { key: "|Q| max", value: `${meta.q_max?.toFixed(1)} Å⁻¹` },
+            ...(structure
+              ? [{ key: "Structure", value: `${structure.def.name} · ${structure.atoms.length} atoms per cell` }]
+              : []),
           ]}
         />
       )}
