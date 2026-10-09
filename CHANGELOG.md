@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **\|Q\| boundaries are drawn correctly for non-orthogonal cells.** The Q–R
+  page drew the \|Q\| band as circles on the r.l.u. axes, which is right only
+  for an orthogonal cell; it now draws the true contour under the reciprocal
+  metric, a tilted ellipse (off-centre where the cut axis is not normal to the
+  plane) that bounds the band-limited data. The punch preview's \|Q\| band,
+  which was already tilted, now also moves its centre for an off-origin cut,
+  and the ΔPDF \|Q\|-band slider takes its maximum from the true metric. The
+  computation was already right; only the drawing changed.
+
 - **`main` now reports version `0.4.0.dev0`** (web: `0.4.0-dev.0`), not
   `0.3.0`. Default results have changed since the 0.3.0 beta, so files written
   from `main` no longer claim to come from that release.
