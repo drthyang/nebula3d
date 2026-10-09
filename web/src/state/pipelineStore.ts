@@ -38,7 +38,7 @@ export type PunchPlane = "hk" | "hl" | "kl";
 
 // All editable configuration form values.  Strings mirror the raw <input>
 // values (empty = "use the backend default"); the run action converts them.
-interface PipelineConfig {
+export interface PipelineConfig {
   // per-stage enable toggles; a disabled stage is skipped and its input passes
   // straight through to the next enabled stage (stage 4 = `flatten`).
   ringsEnabled: boolean;
@@ -116,6 +116,10 @@ interface PipelineState extends PipelineConfig {
   // actions
   patch: (p: Partial<PipelineConfig>) => void;
   run: () => Promise<void>;
+  // Recompute just `stages` with the current settings (outputs on disk are
+  // overwritten) and resolve with how the job ended: "done" | "error" |
+  // "cancelled".  The assistant's tuning run drives the pipeline through this.
+  runStages: (stages: string[]) => Promise<string>;
   cancel: () => Promise<void>;
 }
 
@@ -191,54 +195,26 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
 
   patch: (p) => set(p),
 
-  run: async () => {
+  run: () => {
     const s = get();
-    const datasetId = useDatasetStore.getState().datasetId ?? "";
-    closeStream();
-    set({ events: [], times: [], terminal: null, running: true, jobId: null });
+    return start(enabledStages(s), s.force, set, get);
+  },
 
-    const params = formToParams(s);
-    const stages = enabledStages(s);
-
-    if (PYODIDE_MODE) {
-      await runInBrowser(datasetId, params, s.flatten, s.force, stages, set, get);
-      return;
-    }
-
-    try {
-      const job = await runPipeline({
-        dataset_id: datasetId,
-        flatten_enabled: s.flatten,
-        force: s.force,
-        stages,
-        params,
-      });
-      set({ jobId: job.id });
-
-      es = new EventSource(`/api/pipeline/jobs/${job.id}/events`);
-      es.onmessage = (e) => {
-        const ev = JSON.parse(e.data) as JobEvent;
-        if (["done", "error", "cancelled"].includes(ev.type)) {
-          set({ terminal: ev.type, running: false });
-          closeStream();
-        } else {
-          set({ events: [...get().events, ev], times: [...get().times, Date.now()] });
-        }
-      };
-      es.onerror = () => {
-        closeStream();
-        set({ running: false });
-      };
-    } catch (e) {
-      set({
-        terminal: "error",
-        running: false,
-        events: [
-          { type: "progress", status: "error", message: (e as Error).message },
-        ],
-        times: [Date.now()],
+  runStages: async (stages) => {
+    await start(stages, true, set, get);
+    // The native job reports its end over SSE, after start() returns.
+    if (get().running) {
+      await new Promise<void>((resolve) => {
+        const unsub = usePipelineStore.subscribe((st) => {
+          if (!st.running) {
+            unsub();
+            resolve();
+          }
+        });
       });
     }
+    await queryClient.invalidateQueries();
+    return get().terminal ?? "error";
   },
 
   cancel: async () => {
@@ -251,6 +227,60 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     if (jobId) await cancelJob(jobId).catch(() => undefined);
   },
 }));
+
+type Setter = (p: Partial<PipelineState>) => void;
+type Getter = () => PipelineState;
+
+// Launch `stages` with the current form settings; native runs stream their
+// progress (and their end) over SSE after this returns.
+async function start(stages: string[], force: boolean, set: Setter, get: Getter): Promise<void> {
+  const s = get();
+  const datasetId = useDatasetStore.getState().datasetId ?? "";
+  closeStream();
+  set({ events: [], times: [], terminal: null, running: true, jobId: null });
+
+  const params = formToParams(s);
+
+  if (PYODIDE_MODE) {
+    await runInBrowser(datasetId, params, s.flatten, force, stages, set, get);
+    return;
+  }
+
+  try {
+    const job = await runPipeline({
+      dataset_id: datasetId,
+      flatten_enabled: s.flatten,
+      force,
+      stages,
+      params,
+    });
+    set({ jobId: job.id });
+
+    es = new EventSource(`/api/pipeline/jobs/${job.id}/events`);
+    es.onmessage = (e) => {
+      const ev = JSON.parse(e.data) as JobEvent;
+      if (["done", "error", "cancelled"].includes(ev.type)) {
+        set({ terminal: ev.type, running: false });
+        closeStream();
+      } else {
+        set({ events: [...get().events, ev], times: [...get().times, Date.now()] });
+      }
+    };
+    es.onerror = () => {
+      closeStream();
+      set({ running: false });
+    };
+  } catch (e) {
+    set({
+      terminal: "error",
+      running: false,
+      events: [
+        { type: "progress", status: "error", message: (e as Error).message },
+      ],
+      times: [Date.now()],
+    });
+  }
+}
 
 // The subset of STAGES to run, from the per-stage enable toggles.  A disabled
 // stage is omitted; the backend passes its input straight through to the next
@@ -329,9 +359,6 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   }
   return params;
 }
-
-type Setter = (p: Partial<PipelineState>) => void;
-type Getter = () => PipelineState;
 
 // Drive the pipeline locally via Pyodide (Worker).  Boot progress appears in
 // the Configure page's dedicated boot panel; stage progress streams into the

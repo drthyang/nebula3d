@@ -224,7 +224,7 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 | **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range, a gray dashed unit-cell overlay and an optional [structure overlay](#structure-overlay) of interatomic vectors. Views open at ±40 Å. In *Navigate* mode a click on one view moves the other two cuts through the point. |
 | **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related ΔPDF files × the three planes as a square grid, sharing cut, window, and contrast; a per-plane colour scale pooled across files. Component retained; unrouted from the sidebar for now. |
 | **Q–R Band Transform** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data, ΔPDF, back-FFT and residual** as four views (focus layout, data large, by default), with agreement metrics (Pearson r, normalised RMS) in the header. Data, back-FFT and residual share one plane, cut, colour range and view; the residual has its own ± range on a diverging map. The ΔPDF plane follows the Q plane (H ↔ x, K ↔ y, L ↔ z) while *Link orientation* is on. **\|Q\|** and real-space **\|R\|** bands, each with its own *Apply* in the view footer, isolate which ranges support a signal; applying a band keeps both cuts. The \|Q\| band is drawn as its true contour on the r.l.u. axes: a circle for an orthogonal cell, a tilted ellipse (centred off the origin where the cut axis is not normal to the plane) for any other. |
-| **AI Assistant** | — (new) | Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini) model and ask it to assess the reduction. Four one-click reviews (ring removal, Bragg punch, backfill, ΔPDF features) plus free chat, all grounded in numeric metrics computed in the browser from the stage volumes. Optional vision opt-in attaches the rendered slice for image-capable models. |
+| **AI Assistant** | — (new) | A panel docked beside every page (opened from the sidebar; it slides over the page on narrow screens). Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini) model. **Chat**: five one-click reviews (ring removal, Bragg punch, backfill, flatten, ΔPDF features) plus free chat, grounded in metrics computed in the browser; with **Tools** on, the model measures any cut, takes line profiles, reads the Bragg profile and back-FFT check, compares datasets and opens the viewer beside the chat. **Tune pipeline**: runs the pipeline one stage at a time, tries the user's settings and a few the model proposes, and keeps the best for each stage. Optional vision opt-in attaches the rendered slice for image-capable models. |
 
 ### Viewer workspace
 
@@ -306,27 +306,68 @@ The assistant lives entirely in the browser (`web/src/llm/`) and follows a
 *metrics-compute-the-truth, the-LLM-narrates* design: deterministic pure
 functions derive real diagnostic numbers from the same slice envelopes the
 viewers already fetch, and those numbers (never the raw volume) are sent to the
-model as a compact JSON context. Nothing leaves the machine except the chat call
-to the model server the user configured — local providers keep everything
-on-device; cloud providers are gated behind a data-leaves-your-device warning.
+model as compact JSON. Nothing leaves the machine except the chat calls to the
+model server the user configured — local providers keep everything on-device;
+cloud providers are gated behind a data-leaves-your-device warning.
+
+It is a panel docked beside every page (`components/AssistantPanel.tsx`), so it
+can move the viewer while the conversation stays in view. The conversation and
+any reply still streaming live in module-scoped stores (`chatStore.ts`,
+`session.ts`), so closing the panel or changing pages does not stop them.
 
 - **`metrics/`** — one pure module per judgment, each unit-tested
   (`vitest`, `npm --prefix web run test`):
-  - `rings.ts` — residual powder-ring energy (localized bumps in the azimuthal
-    radial profile) before vs after, over-subtraction fraction, and a suggested
-    robust display ceiling for inspecting leftover rings at optimal contrast.
+  - `rings.ts` — residual powder-ring energy (localized bumps in the radial
+    profile of shell **medians**, so Bragg peaks left before the punch do not
+    dominate; sparse shells near the origin and in the box corners are left
+    out) before vs after, over-subtraction fraction, and a suggested display
+    ceiling. Shells are binned in true |Q| under the reciprocal metric
+    (`qRadius` in `context/pipelineContext.ts`), so rings stay round on
+    hexagonal and monoclinic cells. Its floor is not 0: on the synthetic demo
+    volume a perfect removal gives 0.42–0.55, which the ring stage reaches.
   - `punch.ts` — scans the *punched* slice for sharp maxima left unpunched
     (bright finite spikes away from the NaN holes) and summarises the fitted
     `BraggProfile` (resolution-limited fraction, measured widths, anisotropy).
   - `backfill.ts` — hole-rim seam magnitude (σ units), bright residual plugs, and
     a checkerboard-fraction that flags periodic interpolation artefacts.
+  - `flatten.ts` — the per-|Q|-shell floors (25th percentile) before and after
+    the flatten, in thirds of |Q|, the largest leftover floor in σ, and the
+    pedestal removed.
   - `dpdf.ts` — feature SNR vs background, strong-feature anisotropy (covariance
     ratio + orientation), radial trend, and back-FFT consistency pass-through.
-- **`context/pipelineContext.ts`** — folds the per-stage metrics into the budgeted
-  JSON context; **`prompts/`** — the nebula3d domain system prompt + per-stage
-  message builders; **`provider/`** — a dependency-free streaming
-  OpenAI-compatible client; **`settings.ts`** — a localStorage store (provider,
-  model, key, temperature, vision opt-in).
+- **`context/`** — `loadContext.ts` fetches one cut through every stage (H–K at
+  L=0 and the ΔPDF z=0 section by default, any cut on request) plus the run's
+  records; `pipelineContext.ts` folds the metrics into the budgeted JSON
+  context. **`prompts/`** — the domain system prompt (plus a tools section when
+  tools are on) and the per-stage message builders. **`provider/`** — a
+  dependency-free streaming OpenAI-compatible client with function calling.
+  **`settings.ts`** — a localStorage store (provider, model, key, temperature,
+  vision and tools opt-ins).
+- **Tools** (`tools/`, `agent.ts`) — with *Tools* on, a reply is an agent loop:
+  the model may call `describe_dataset`, `current_view`,
+  `measure_reciprocal_cut`, `measure_dpdf_cut`, `line_profile`, `bragg_peaks`,
+  `consistency_details`, `compare_datasets`, `configure_settings` and
+  `show_in_viewer`; the browser runs each call against the same API the viewers
+  use, sends the JSON back, and the model continues — up to six rounds. Every
+  argument is checked; a bad call comes back to the model as an error it can
+  correct. None changes data or settings; `show_in_viewer` only moves the
+  console's view. The transcript lists each call, which opens to its arguments
+  and result. A model or server that refuses tools gets the plain request and a
+  note saying so.
+- **Tune pipeline** (`tune/`) — runs the pipeline one stage at a time (rings →
+  punch → backfill → flatten → ΔPDF). For each stage it runs the user's
+  settings, asks the model for up to *n − 1* alternatives, runs each, measures
+  every trial on the three principal planes (`tune/evaluate.ts`), and asks the
+  model which trial best meets the stage's goal (`tune/prompts.ts` states each
+  goal and its trade-off, e.g. no leftover peaks *without* punching more
+  diffuse). The chosen settings go to the Configure page and the chosen trial's
+  output is left on disk (re-run if it was not the last trial), so the next
+  stage builds on it. Untuned stages between tuned ones are re-run once. The
+  model can only change the settings in `tune/catalog.ts` — method choices and
+  thresholds, not facts about the sample (supercell, magnetic ion, |Q| band) —
+  and every proposal is checked against it before anything runs. **Each trial
+  rewrites the dataset's processed files**, like a Configure-page run; the raw
+  input is never touched. The setup card says so before *Start*.
 - **Vision** (`render/sliceImage.ts`) — when enabled and the model is
   vision-capable, the rendered slice PNG is attached to stage reviews so the
   model can literally assess the image alongside the numbers.

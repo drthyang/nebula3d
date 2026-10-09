@@ -23,7 +23,7 @@ Mantid / symmetrised HKL volume
   5. 3D-ΔPDF transform              examples/delta_pdf.py
   6. back-FFT consistency check     examples/delta_pdf_consistency.py
   7. cleanup / ΔPDF viewers         examples/explore_slice.py, examples/explore_delta_pdf_ortho.py
-  8. AI reasoning review (optional) web AI Assistant — local or cloud LLM
+  8. AI review and tuning (optional) web AI Assistant — local or cloud LLM
 ```
 
 For a **3D-PDF** (total scattering with the Bragg peaks *kept* — a Patterson-like
@@ -53,11 +53,13 @@ static, hosted app is a first-class way to run nebula3d, not a reduced demo.
 A sidebar console drives everything from one place — a global dataset switcher,
 a pipeline runner (the default landing view), reciprocal-space cleanup, a Bragg
 profile view, 3D-ΔPDF orthoslices, and the back-FFT consistency check — plus an
-**AI Assistant** that connects to your **selected LLM**, local (Ollama / LM
-Studio) or cloud (OpenAI / Gemini), and **reasons over the reduction** — grading
-ring removal, the Bragg punch, backfill, and the ΔPDF from metrics computed in
-the browser (nothing leaves your machine but the chat call to your own model
-server). See
+**AI Assistant**, a panel beside every page, that connects to your **selected
+LLM**, local (Ollama / LM Studio) or cloud (OpenAI / Gemini), and **reasons over
+the reduction**: it grades each stage from metrics computed in the browser,
+measures any cut it needs, opens the viewer where its point shows, and can
+**tune the pipeline stage by stage**, keeping the best of a few settings for
+each (nothing leaves your machine but the chat calls to your own model server).
+See
 [QUICKSTART.md](QUICKSTART.md) to get running and [docs/web.md](docs/web.md) for
 the reference, architecture, and development workflow.
 

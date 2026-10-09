@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+- **The AI Assistant can act: it measures, looks up and shows.** With *Tools*
+  on, the model can measure the stage metrics on any reciprocal cut or ΔPDF
+  section (the opening context covers only L=0 and z=0), take a line profile
+  through any stage, read the fitted Bragg peaks and the full back-FFT check,
+  compare datasets, read the run settings, and open the viewer at the cut that
+  makes its point. The browser runs each call and sends the result back; every
+  argument is checked, and the transcript lists each call with its result. No
+  tool changes data or settings. A model that cannot call tools still answers
+  from the opening metrics, with a note saying so.
+- **The assistant can tune the pipeline, one stage at a time.** *Tune
+  pipeline* runs each stage with your settings and with up to four the model
+  proposes, measures every trial on the three principal planes, and keeps the
+  trial the model judges best against the stage's stated goal and trade-off.
+  The chosen settings go to the Configure page and the chosen output stays on
+  disk, so each stage builds on the best result of the one before. The model
+  can change only method choices and thresholds from a fixed list, never facts
+  about the sample. Each trial rewrites the dataset's processed files, as a
+  Configure-page run does; the raw data is untouched.
+- **The assistant is a panel beside every page**, opened from the sidebar
+  instead of a page of its own, so it can open a viewer while the conversation
+  stays in view. A reply keeps running when the panel closes. On narrow screens
+  the panel slides over the page.
+- **The ring-removal metric now sees the rings.** It averaged each |Q| shell,
+  and before the punch a shell's mean is mostly Bragg peaks, with the
+  incident-beam spot in the few voxels near the origin: on the synthetic demo
+  volume it gave a ratio of 1.00 both for the ring-removed volume and for the
+  same volume generated without rings. It now uses shell medians and leaves out
+  sparse shells: 0.42–0.50 for the ring-removed volume against 0.42–0.55 for
+  the ring-free truth, on the three principal planes. Its shells also follow
+  true |Q| under the reciprocal metric, so rings stay in one shell on
+  hexagonal and monoclinic cells (they were binned as if a* ⊥ b*).
+- **The assistant sees the flatten stage.** Its context and a new *Check
+  flatten* review report the per-|Q|-shell floors before and after the
+  flatten; the ΔPDF is built from the flattened volume by default.
+
 - **Structure overlay on the 3D-ΔPDF.** Load a CIF, or enter sites and
   symmetry operations by hand, and the 3D-ΔPDF page (and the Q–R page's ΔPDF
   view) marks the structure's interatomic vectors r_j − r_i + R on each slice:
