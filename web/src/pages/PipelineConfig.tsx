@@ -16,6 +16,8 @@ import {
 } from "../api/pyodideEngine";
 import { useBootStatus, useDataRoot, useDatasets } from "../api/hooks";
 import { COLORMAPS } from "../colormaps/luts";
+import type { Lattice } from "../api/types";
+import { boxQMax, metricFromUb, qContour, qSection, reciprocalMetric, type Ellipse } from "../components/reciprocal";
 import { SliceCanvas } from "../components/SliceCanvas";
 import { Field, HelpTip, RangeSlider, Slider, Switch } from "../components/ui";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
@@ -122,24 +124,21 @@ function clampFloat(raw: string, dflt: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
 
+// The largest |Q| in the ΔPDF crop box, under the cell's own metric (the
+// farthest corner: for a non-orthogonal cell it is not the orthogonal sum).
 function qSpanFromMeta(meta: {
   h_range: [number, number];
   k_range: [number, number];
   l_range: [number, number];
-  lattice: { a: number | null; b: number | null; c: number | null };
+  lattice: Lattice;
+  ub_matrix?: number[][];
 } | null | undefined): number {
   if (!meta) return 0;
   const h = Math.min(DEFAULT_PDF_CROP.h, Math.max(Math.abs(meta.h_range[0]), Math.abs(meta.h_range[1])));
   const k = Math.min(DEFAULT_PDF_CROP.k, Math.max(Math.abs(meta.k_range[0]), Math.abs(meta.k_range[1])));
   const l = Math.min(DEFAULT_PDF_CROP.l, Math.max(Math.abs(meta.l_range[0]), Math.abs(meta.l_range[1])));
-  const a = meta.lattice.a ?? 1;
-  const b = meta.lattice.b ?? 1;
-  const c = meta.lattice.c ?? 1;
-  return Math.sqrt(
-    (h * 2 * Math.PI / a) ** 2 +
-    (k * 2 * Math.PI / b) ** 2 +
-    (l * 2 * Math.PI / c) ** 2,
-  );
+  const G = metricFromUb(meta.ub_matrix) ?? reciprocalMetric({ ...meta.lattice, a: meta.lattice.a ?? 1, b: meta.lattice.b ?? 1, c: meta.lattice.c ?? 1 });
+  return G ? boxQMax(G, [h, k, l]) : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -484,7 +483,7 @@ function planeHklAxes(p: PunchPlane): [HklAxis, HklAxis] {
   return ["K", "L"];
 }
 
-type LatticeLike = { a: number | null; b: number | null; c: number | null };
+type LatticeLike = Lattice; // a, b, c (Å) and, when known, α, β, γ (°)
 type Matrix3 = [[number, number, number], [number, number, number], [number, number, number]];
 
 function axisLattice(axis: HklAxis, lattice?: LatticeLike): number | null | undefined {
@@ -715,40 +714,26 @@ function ellipseForNode(
 }
 
 // |Q| = R boundary on a plane, in the same physical-Å⁻¹ overlay coordinates as
-// the Bragg footprint.  The locus is the reciprocal-metric quadratic form
-// Xᵀ·M·X = R² (M built from the UB columns), so it is a correctly *tilted*
-// ellipse for oblique lattices and a true circle for orthogonal ones.  For an
-// off-origin cut the in-plane radius shrinks by the perpendicular distance
-// (exact for orthogonal axes — meta carries only a, b, c, not lattice angles).
+// the Bragg footprint (X = h·2π/a, …).  Under the reciprocal metric (from the
+// UB, else the cell) the locus is an ellipse: tilted for oblique lattices,
+// centred on the plane's point nearest the origin for an off-origin cut — off
+// the origin where the cut axis is not normal to the plane — and a circle about
+// the origin for orthogonal cells.  See components/reciprocal.ts.
 function qShellEllipseForPlane(
   plane: PunchPlane,
   radiusQ: number,
   lattice: LatticeLike,
   ubMatrix?: number[][],
-  cutQ = 0,
-): { rx: number; ry: number; angle: number } | null {
+  cut = 0,
+): Ellipse | null {
   if (!(radiusQ > 0)) return null;
-  const reff2 = radiusQ * radiusQ - cutQ * cutQ;
-  if (reff2 <= 0) return null;
-  const reff = Math.sqrt(reff2);
   const [axisX, axisY] = planeHklAxes(plane);
-  const latX = axisLattice(axisX, lattice) ?? 1;
-  const latY = axisLattice(axisY, lattice) ?? 1;
-  const qScaleX = (2 * Math.PI) / latX;
-  const qScaleY = (2 * Math.PI) / latY;
-  if (!ubMatrix) return { rx: reff, ry: reff, angle: 0 };
-  const ix = axisIndex(axisX);
-  const iy = axisIndex(axisY);
-  const ax = [ubMatrix[0][ix], ubMatrix[1][ix], ubMatrix[2][ix]];
-  const ay = [ubMatrix[0][iy], ubMatrix[1][iy], ubMatrix[2][iy]];
-  const dot = (p: number[], q: number[]) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
-  const e = ellipseFromQuadratic(
-    dot(ax, ax) / (qScaleX * qScaleX),
-    dot(ax, ay) / (qScaleX * qScaleY),
-    dot(ay, ay) / (qScaleY * qScaleY),
-    { rx: 1, ry: 1, angle: 0 },
-  );
-  return { rx: e.rx * reff, ry: e.ry * reff, angle: e.angle };
+  const qScaleX = (2 * Math.PI) / (axisLattice(axisX, lattice) ?? 1);
+  const qScaleY = (2 * Math.PI) / (axisLattice(axisY, lattice) ?? 1);
+  const G = metricFromUb(ubMatrix) ?? reciprocalMetric(lattice);
+  if (!G) return null;
+  const sec = qSection(G, axisIndex(axisX), axisIndex(axisY), cut, qScaleX, qScaleY);
+  return sec ? qContour(sec, radiusQ) : null;
 }
 
 function axisRange(
@@ -831,15 +816,12 @@ function PunchDataOverlay({
   const ib = qEllipseForPlane(plane, directBeamGeom, lattice, ubMatrix);
   const showMargin = !geom.isQ && geom.margin > 0;
   const showSat = geom.mode !== "integer";
-  // |Q| transform band as origin-centred inner/outer boundaries on this plane,
-  // shrunk for the slice's off-origin cut.
-  const qScaleCut = 2 * Math.PI / (axisLattice(spec.cutAxis, lattice) ?? 1);
-  const cutQ = (cutValue ?? 0) * qScaleCut;
+  // |Q| transform band as inner/outer boundaries on this plane at its cut.
   const qBandInner = bands && bands[0] > 0
-    ? qShellEllipseForPlane(plane, bands[0], lattice, ubMatrix, cutQ)
+    ? qShellEllipseForPlane(plane, bands[0], lattice, ubMatrix, cutValue ?? 0)
     : null;
   const qBandOuter = bands && bands[1] > 0
-    ? qShellEllipseForPlane(plane, bands[1], lattice, ubMatrix, cutQ)
+    ? qShellEllipseForPlane(plane, bands[1], lattice, ubMatrix, cutValue ?? 0)
     : null;
   // Bragg nodes of the parent lattice only (every node for a 1×1×1 cell).
   const cellX = geom.supercell[axisIndex(axisX)];
@@ -876,22 +858,22 @@ function PunchDataOverlay({
           <g transform="scale(1, -1)">
             {qBandOuter && (
               <ellipse
-                cx={0}
-                cy={0}
+                cx={qBandOuter.cx}
+                cy={qBandOuter.cy}
                 rx={qBandOuter.rx}
                 ry={qBandOuter.ry}
-                transform={`rotate(${qBandOuter.angle.toFixed(2)} 0 0)`}
+                transform={`rotate(${qBandOuter.angle.toFixed(2)} ${qBandOuter.cx} ${qBandOuter.cy})`}
                 className="punch-qband"
                 vectorEffect="non-scaling-stroke"
               />
             )}
             {qBandInner && (
               <ellipse
-                cx={0}
-                cy={0}
+                cx={qBandInner.cx}
+                cy={qBandInner.cy}
                 rx={qBandInner.rx}
                 ry={qBandInner.ry}
-                transform={`rotate(${qBandInner.angle.toFixed(2)} 0 0)`}
+                transform={`rotate(${qBandInner.angle.toFixed(2)} ${qBandInner.cx} ${qBandInner.cy})`}
                 className="punch-qband"
                 vectorEffect="non-scaling-stroke"
               />

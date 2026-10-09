@@ -24,6 +24,7 @@ import { useEffect, useRef } from "react";
 import type { Slice } from "../api/types";
 import { makeScaler, type ScaleKind } from "./colorScale";
 import { axesTrig } from "./oblique";
+import { qContour, type Ellipse, type QSection } from "./reciprocal";
 import { useViewSize } from "./viewSize";
 import type { Viewport } from "./viewport";
 
@@ -52,6 +53,10 @@ interface Props {
   bands?: [number, number]; // [min, max] band for circle overlays
   cutDistance?: number; // distance from origin for intersection
   reciprocalAxes?: boolean; // x/y/cut coordinates are r.l.u.; convert to Å^-1
+  // With reciprocalAxes: the slice as a section of reciprocal space under the
+  // cell's own metric, so |Q| bands are drawn as their true (elliptical, maybe
+  // off-centre) contours rather than circles — see reciprocal.ts.
+  qSection?: QSection | null;
   latX?: number;
   latY?: number;
   latCut?: number;
@@ -80,6 +85,7 @@ export function SliceCanvas({
   bands,
   cutDistance,
   reciprocalAxes = false,
+  qSection,
   latX,
   latY,
   latCut,
@@ -267,10 +273,18 @@ export function SliceCanvas({
   const angled = viewport ? !reciprocalAxes : oblique;
 
   // Band circles: |r| = R cuts this section in a circle of radius √(R² − d²)
-  // about the point nearest the origin (d = the plane's distance from it).
+  // about the point nearest the origin (d = the plane's distance from it).  A
+  // reciprocal slice drawn on r.l.u. axes is not metric-true for a
+  // non-orthogonal cell, so with a `qSection` |Q| = R is drawn as its contour.
   const [circleX, circleY] = angled ? (slice.header.r_center ?? [0, 0]) : [0, 0];
   const circles: number[] = [];
-  if (bands && cutDistance != null) {
+  const contours: Ellipse[] = [];
+  if (bands && reciprocalAxes && qSection) {
+    for (const R of bands) {
+      const e = R > 0 ? qContour(qSection, R) : null;
+      if (e) contours.push(e);
+    }
+  } else if (bands && cutDistance != null) {
     const [bMin, bMax] = bands;
     const cutPhys = angled && slice.header.r_perp != null
       ? slice.header.r_perp
@@ -294,7 +308,7 @@ export function SliceCanvas({
         className="slice-canvas"
         style={{ width: "100%", height: fit && !contain && !viewport ? "auto" : "100%", display: "block", imageRendering: "auto" }}
       />
-      {circles.length > 0 && (
+      {(circles.length > 0 || contours.length > 0) && (
         <svg
           style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}
           viewBox={`${vX} ${vTop} ${vW} ${Math.abs(vH)}`}
@@ -321,6 +335,15 @@ export function SliceCanvas({
                 />
               </g>
             ))}
+            {contours.map((e, i) => {
+              const rot = `rotate(${e.angle} ${e.cx} ${e.cy})`;
+              return (
+                <g key={`e${i}`} transform={rot}>
+                  <ellipse cx={e.cx} cy={e.cy} rx={e.rx} ry={e.ry} fill="none" stroke="rgba(0, 0, 0, 0.8)" strokeWidth={stroke / 100} />
+                  <ellipse cx={e.cx} cy={e.cy} rx={e.rx} ry={e.ry} fill="none" stroke="rgba(255, 255, 255, 0.9)" strokeWidth={stroke / 150} />
+                </g>
+              );
+            })}
           </g>
         </svg>
       )}
