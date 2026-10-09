@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { qRadius } from "../context/pipelineContext";
 import { backfillMetrics } from "../metrics/backfill";
 import { dpdfMetrics } from "../metrics/dpdf";
+import { flattenMetrics } from "../metrics/flatten";
 import { ringEnergy, ringMetrics } from "../metrics/rings";
 import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
 import { percentile, robustStats } from "../metrics/sliceStats";
@@ -41,6 +43,18 @@ describe("ring removal metrics", () => {
     expect(m.ring_energy_ratio).not.toBeNull();
     expect(m.ring_energy_ratio!).toBeLessThan(0.5);
     expect(m.after_negative_fraction).toBe(0);
+  });
+
+  it("sees the ring under Bragg peaks and an incident-beam spot the ring stage leaves in place", () => {
+    // A cut before the punch: sharp peaks (150×) on every integer node, a beam
+    // spot at the origin, and an Al-like ring at r = 4.3; step 0.1 like a real cut.
+    const d = (a: number) => Math.abs(a - Math.round(a));
+    const rest = (x: number, y: number) =>
+      150 * Math.exp(-(d(x) ** 2 + d(y) ** 2) / (2 * 0.06 ** 2)) + 200 * Math.exp(-(x * x + y * y) / (2 * 0.3 ** 2)) + 1;
+    const ring = (x: number, y: number) => 8 * Math.exp(-((Math.hypot(x, y) - 4.3) ** 2) / (2 * 0.08 ** 2));
+    const raw = makeSlice(161, 161, (x, y) => rest(x, y) + ring(x, y), { half: 8 });
+    const cleaned = makeSlice(161, 161, rest, { half: 8 });
+    expect(ringMetrics(raw, cleaned).ring_energy_ratio!).toBeLessThan(0.3);
   });
 
   it("flags over-subtraction when positive voxels flip negative", () => {
@@ -153,5 +167,61 @@ describe("delta pdf metrics", () => {
     })!;
     expect(m.consistency_pearson_r).toBe(0.97);
     expect(m.feature_snr).toBeNull();
+  });
+});
+
+describe("ring metrics on a hexagonal cell", () => {
+  // a = b = 4 Å, γ = 120°: on the H–K plane the r.l.u. axes meet at 60°, so a
+  // powder ring (one |Q|) is an ellipse in (H, K), not a circle.
+  const meta = { lattice: { a: 4, b: 4, c: 6, alpha: 90, beta: 90, gamma: 120 } };
+  const q = qRadius("hk0", 0, meta)!;
+  const R = 3; // Å⁻¹
+  const ring = makeSlice(121, 121, (h, k) => 1 + 8 * Math.exp(-((q(h, k) - R) ** 2) / (2 * 0.03 ** 2)), { half: 3 });
+  // What the context used before: |Q| as if a* ⊥ b*, |a*| = 2π/a.
+  const s = (2 * Math.PI) / 4;
+  const orthogonal = (h: number, k: number) => Math.hypot(h * s, k * s);
+
+  it("|Q| follows the reciprocal metric", () => {
+    // |a*| = 2π / (a sin γ), and a*, b* meet at γ* = 60°: |a* − b*| = |a*|,
+    // |a* + b*| = √3·|a*|.
+    const aStar = (2 * Math.PI) / (4 * Math.sin((120 * Math.PI) / 180));
+    expect(q(1, 0)).toBeCloseTo(aStar, 10);
+    expect(q(1, -1)).toBeCloseTo(aStar, 10);
+    expect(q(1, 1)).toBeCloseTo(Math.sqrt(3) * aStar, 10);
+  });
+
+  it("keeps a ring in one radial shell, where orthogonal axes smear it", () => {
+    const sharp = ringEnergy(ring, q);
+    const smeared = ringEnergy(ring, orthogonal);
+    expect(sharp).toBeGreaterThan(2 * smeared);
+    const flat = makeSlice(121, 121, () => 1, { half: 3 });
+    expect(ringMetrics(ring, flat, q).ring_energy_ratio!).toBeLessThan(0.05);
+  });
+
+  it("puts an off-zero cut's |Q| above the plane's distance from the origin", () => {
+    const qc = qRadius("hk0", 0.5, meta)!;
+    expect(qc(0, 0)).toBeCloseTo((2 * Math.PI) / 6 * 0.5, 10); // c* ⊥ the H–K plane here
+  });
+});
+
+describe("flatten metrics", () => {
+  const pedestal = (x: number, y: number) => 5 + 0.5 * Math.hypot(x, y);
+  // Diffuse texture with its 25th percentile near 0 in every shell.
+  const diffuse = (x: number, y: number) => Math.sin(3 * x) * Math.cos(2 * y);
+  const before = makeSlice(81, 81, (x, y) => pedestal(x, y) + diffuse(x, y));
+  const good = makeSlice(81, 81, (x, y) => diffuse(x, y));
+  const partial = makeSlice(81, 81, (x, y) => 0.5 * (pedestal(x, y) - 5) + diffuse(x, y));
+
+  it("a flatten that removes the pedestal leaves a flat floor", () => {
+    const m = flattenMetrics(before, good);
+    expect(m.after_floor_max_sigma!).toBeLessThan(1);
+    expect(m.removed_fraction!).toBeGreaterThan(0.9);
+    expect(m.floor_before![2]).toBeGreaterThan(m.floor_before![0]); // the pedestal rises with |Q|
+  });
+
+  it("a leftover |Q| trend shows up as a high floor", () => {
+    const m = flattenMetrics(before, partial);
+    expect(m.after_floor_max_sigma!).toBeGreaterThan(3);
+    expect(m.floor_after![2]).toBeGreaterThan(m.floor_after![0]);
   });
 });

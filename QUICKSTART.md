@@ -61,8 +61,9 @@ reads it from there. A session typically runs top to bottom:
 3. **3D-ΔPDF** — three linked real-space orthoslices with a unit-cell overlay.
 4. **Consistency check** — inverse-FFT the ΔPDF back to reciprocal space and
    compare *data | back-FFT | residual*, with `|Q|` and real-space `r` bands.
-5. **AI Assistant** — connect a local (Ollama / LM Studio) or cloud (OpenAI /
-   Gemini) model to assess the reduction from metrics computed in the browser.
+5. **AI Assistant** — open it from the sidebar; it docks beside every page.
+   Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini) model to
+   assess the reduction, or let it tune the pipeline stage by stage.
 
 ## Going further
 

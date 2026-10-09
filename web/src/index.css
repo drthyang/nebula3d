@@ -3295,22 +3295,97 @@ input[type="range"]::-moz-range-track {
 
 /* ============================================================ AI Assistant */
 
-/* Fills the height <main> has left (at least 460px), and grows past it when
-   the settings drawer is open instead of overflowing onto what follows: the
-   flex item's automatic minimum keeps it at least as tall as its content. */
-.ai-page {
+/* The assistant is a panel docked to the right of every page: a third grid
+   column beside <main> while open.  On the compact layouts (sidebar folded
+   into a top bar) it slides over the page instead. */
+:root {
+  --dock-w: clamp(360px, 27vw, 480px);
+}
+.app.dock-open {
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--dock-w);
+}
+.ai-side {
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  flex: 1 0 460px;
+  background: var(--bg-raised);
+  border-left: 1px solid var(--border);
+  padding: 14px 14px max(14px, env(safe-area-inset-bottom));
+}
+.ai-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+/* stays in view (with the close button) while long tuning results scroll */
+.ai-panel-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
+  background: var(--bg-raised);
+}
+.ai-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+}
+.ai-panel-title svg {
+  color: var(--accent-hi);
+}
+.ai-panel-title .nav-beta {
+  margin-left: 2px;
+}
+.ai-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.ai-panel-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+/* the AI Assistant nav item opens the panel; set apart from the pages */
+@media (min-width: 1100px) {
+  .nav .nav-assistant {
+    margin-top: 10px;
+    position: relative;
+  }
+  .nav .nav-assistant::before {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: -6px;
+    border-top: 1px solid var(--border);
+  }
 }
 
-/* — top toolbar: dataset picker + compact connection — */
+/* — compact connection toolbar — */
 .ai-topbar {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 9px 14px;
+  padding: 8px 10px;
   background: linear-gradient(180deg, var(--surface), var(--bg-raised));
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -3334,13 +3409,15 @@ input[type="range"]::-moz-range-track {
 }
 .ai-model-select {
   margin-left: auto;
+  flex: 0 1 auto;
+  min-width: 0;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: 999px;
   color: var(--text);
   padding: 6px 12px;
   font-size: 12.5px;
-  max-width: 260px;
+  max-width: 200px;
   cursor: pointer;
 }
 .ai-model-select:hover:not(:disabled) {
@@ -3677,6 +3754,394 @@ input[type="range"]::-moz-range-track {
   overflow-y: auto;
 }
 
+/* — Chat / Tune pipeline switch — */
+.ai-modes {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.ai-modes button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ai-modes button.on {
+  background: var(--accent-soft);
+  color: var(--accent-hi);
+}
+.ai-modes .nav-dot {
+  margin-left: 0;
+}
+
+/* — tuning run — */
+.tune {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.tune-setup,
+.tune-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tune-lead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.tune-stage-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.tune-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.tune-pick.off {
+  color: var(--text-3);
+}
+.tune-trials-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.tune-trials-input select {
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 4px 8px;
+}
+.tune-start {
+  align-self: flex-start;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #08111f;
+  font-weight: 650;
+}
+.tune-start:hover:not(:disabled) {
+  background: var(--accent-hi);
+}
+.tune-start:disabled {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+.tune-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.tune-stop {
+  background: var(--amber-soft);
+  border-color: rgba(232, 180, 84, 0.45);
+  color: var(--amber);
+  padding: 4px 12px;
+}
+.tune-link {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-hi);
+  font-size: 12px;
+  cursor: pointer;
+}
+.tune-link:hover {
+  text-decoration: underline;
+}
+.tune-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.tune-stage.tune-skipped {
+  opacity: 0.6;
+}
+.tune-stage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tune-stage-name {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+}
+.tune-status {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-3);
+}
+.tune-status.busy {
+  color: var(--amber);
+}
+.tune-done .tune-status {
+  color: var(--green);
+}
+.tune-failed .tune-status {
+  color: var(--red);
+}
+.tune-msg {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+.tune-trials {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tune-trial {
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  font-size: 12px;
+}
+.tune-trial.chosen {
+  border-color: rgba(52, 201, 142, 0.55);
+  background: var(--green-soft);
+}
+.tune-trial-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.tune-trial-n {
+  font-weight: 700;
+  color: var(--text-3);
+}
+.tune-trial-what {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--text-2);
+}
+.tune-trial-what code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  color: var(--text);
+}
+.tune-chosen {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+.tune-trial-metrics {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text);
+}
+.tune-trial-running .tune-trial-metrics,
+.tune-trial-pending .tune-trial-metrics {
+  color: var(--amber);
+}
+.tune-trial-error .tune-trial-metrics {
+  color: var(--red);
+  font-family: inherit;
+}
+.tune-secs {
+  color: var(--text-3);
+}
+.tune-why,
+.tune-verdict {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.tune-verdict {
+  margin-top: 0;
+  padding-left: 9px;
+  border-left: 2px solid var(--green);
+}
+.tune-detail summary {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.tune-detail pre {
+  margin: 4px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 7px 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+/* — tool steps: what the model looked up, one line each — */
+.ai-steps {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 12px;
+}
+.ai-steps > summary {
+  cursor: pointer;
+  padding: 6px 11px;
+  color: var(--text-2);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  list-style: none;
+  user-select: none;
+}
+.ai-steps > summary::-webkit-details-marker {
+  display: none;
+}
+.ai-steps > summary::before {
+  content: "▸ ";
+  color: var(--text-3);
+}
+.ai-steps[open] > summary::before {
+  content: "▾ ";
+}
+.ai-step-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 8px 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ai-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.ai-step > details {
+  flex: 1;
+  min-width: 0;
+}
+.ai-step summary {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 3px 4px;
+  border-radius: 5px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-2);
+}
+.ai-step summary::-webkit-details-marker {
+  display: none;
+}
+.ai-step summary:hover {
+  background: var(--surface-2);
+}
+.ai-step-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--green);
+  align-self: center;
+}
+.ai-step-running .ai-step-dot {
+  background: var(--amber);
+  animation: ai-blink 1s steps(2) infinite;
+}
+.ai-step-error .ai-step-dot {
+  background: var(--red);
+}
+.ai-step-name {
+  flex: none;
+  font-weight: 600;
+  color: var(--text);
+}
+.ai-step-summary {
+  min-width: 0;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-step-detail {
+  margin: 2px 0 6px 17px;
+  padding: 7px 9px;
+  max-height: 200px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ai-step-open {
+  flex: none;
+  margin-top: 1px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 143, 247, 0.4);
+  background: var(--accent-soft);
+  color: var(--accent-hi);
+  font-size: 11px;
+  cursor: pointer;
+}
+.ai-step-open:hover {
+  border-color: var(--accent);
+}
+.ai-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+  font-style: italic;
+}
+
 /* — dock: review chips + composer, pinned under the transcript — */
 .ai-dock {
   display: flex;
@@ -3708,8 +4173,15 @@ input[type="range"]::-moz-range-track {
   opacity: 0.45;
   cursor: not-allowed;
 }
-.ai-vision-chip {
+.ai-toggles {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ai-toggles .ai-clear {
   margin-left: auto;
+}
+.ai-vision-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -4116,15 +4588,6 @@ h6.md-h {
   }
 }
 
-/* AI Assistant: keep the transcript at a readable measure on wide screens */
-@media (min-width: 1440px) {
-  .ai-chat {
-    width: 100%;
-    max-width: 1040px;
-    margin-inline: auto;
-  }
-}
-
 /* — desktop (1920-class: 4K at 200 %, 1080p/1200p monitors) — */
 @media (min-width: 1800px) {
   :root {
@@ -4140,9 +4603,6 @@ h6.md-h {
   }
   .exec-log {
     max-height: 560px;
-  }
-  .ai-chat {
-    max-width: 1120px;
   }
 }
 
@@ -4173,9 +4633,6 @@ h6.md-h {
   .exec-log {
     max-height: 720px;
   }
-  .ai-chat {
-    max-width: 1200px;
-  }
 }
 
 /* — ultra (4K panel at 100–125 %): scale the whole console so text and
@@ -4204,6 +4661,17 @@ h6.md-h {
   .app {
     display: flex;
     flex-direction: column;
+  }
+  /* the assistant slides over the page instead of taking a column */
+  .ai-side {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    width: min(100vw, 440px);
+    padding-top: calc(env(safe-area-inset-top) + 12px);
+    box-shadow: var(--shadow-2);
   }
   .sidebar {
     flex: none;
@@ -4473,9 +4941,6 @@ h6.md-h {
   }
 
   /* AI Assistant */
-  .ai-page {
-    flex-basis: 420px;
-  }
   .ai-topbar {
     padding: 8px 10px;
   }
@@ -4524,9 +4989,6 @@ h6.md-h {
   }
   .page-head {
     margin-bottom: 12px;
-  }
-  .ai-page {
-    flex-basis: 300px;
   }
   .exec-log {
     min-height: 220px;

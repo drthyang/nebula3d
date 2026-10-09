@@ -110,10 +110,20 @@ export function ReciprocalViewer() {
   }, [meta, fixedAxis]);
 
   // Centre the cut when the axis or dataset changes (axisInfo is re-memoised
-  // only when meta or the fixed axis changes, not while scrubbing the slider).
+  // only when meta or the fixed axis changes, not while scrubbing the slider) —
+  // unless a cut was asked for (the assistant's "show in viewer"), which the
+  // next effect opens instead, whether or not this page was already showing.
+  const focus = useViewerStore((s) => s.focus);
+  const setFocus = useViewerStore((s) => s.setFocus);
   useEffect(() => {
-    if (axisInfo) setCutIndex(Math.floor(axisInfo.n / 2));
+    if (axisInfo && !useViewerStore.getState().focus) setCutIndex(Math.floor(axisInfo.n / 2));
   }, [axisInfo, setCutIndex]);
+  useEffect(() => {
+    if (!axisInfo || !focus || focus.axis !== fixedAxis) return;
+    const v = Math.max(axisInfo.min, Math.min(focus.value, axisInfo.max));
+    setCutIndex(axisInfo.step > 0 ? Math.round((v - axisInfo.min) / axisInfo.step) : 0);
+    setFocus(null);
+  }, [axisInfo, focus, fixedAxis, setCutIndex, setFocus]);
 
   const idx = axisInfo ? Math.min(cutIndex, axisInfo.n - 1) : 0;
   const value = axisInfo ? axisInfo.min + idx * axisInfo.step : 0;

@@ -1,12 +1,17 @@
-// The conversation surface: a transcript with collapsible model "thinking",
-// markdown-rendered answers, a prompt box, and the four one-click stage reviews.
-// Every request re-sends the compact diagnostic context; stage reviews optionally
-// attach the rendered slice image when the vision opt-in is on.
+// The conversation surface: a transcript with collapsible model "thinking", the
+// tool calls the model made (each a one-line step that opens to its result),
+// markdown-rendered answers, a prompt box, and the one-click stage reviews.
+// Every request re-sends the compact diagnostic context; stage reviews
+// optionally attach the rendered slice image when the vision opt-in is on.
+// The reply itself is driven by session.ts, so it outlives this component.
 
 import { useCallback, useEffect, useRef } from "react";
 
 import { COLORMAPS } from "../../colormaps/luts";
 import type { Slice } from "../../api/types";
+import { BrandGlyph } from "../../components/ui";
+import { toolsKnownUnsupported, type AgentStep } from "../agent";
+import { useChatStore } from "../chatStore";
 import {
   buildChatMessages,
   buildStageReviewMessages,
@@ -14,11 +19,11 @@ import {
   type ReviewStage,
 } from "../prompts/templates";
 import { renderSliceToDataUrl } from "../render/sliceImage";
+import { askAssistant, stopAssistant } from "../session";
 import { saveSettings, type LlmSettings } from "../settings";
+import { CHAT_TOOLS, type ToolContext } from "../tools";
+import { openView } from "../tools/openView";
 import type { AssistantContext } from "../useAssistant";
-import { useStreamedReply } from "../useStreamedReply";
-import { useChatStore } from "../chatStore";
-import { BrandGlyph } from "../../components/ui";
 import { Markdown } from "./Markdown";
 
 // Pick the slice + colour mapping to render for a given stage review.
@@ -32,6 +37,7 @@ function stageImage(stage: ReviewStage, ac: AssistantContext): string | null {
     },
     punch: { slice: ac.slices.braggpunched, diverging: false, cmap: "inferno" },
     backfill: { slice: ac.slices.backfilled, diverging: false, cmap: "inferno" },
+    flatten: { slice: ac.slices.flattened, diverging: true, cmap: "RdBu_r" },
     dpdf: { slice: ac.slices.dpdf, diverging: true, cmap: "RdBu_r" },
   };
   const p = pick[stage];
@@ -62,67 +68,128 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
   );
 }
 
+const TOOL_LABELS: Record<string, string> = {
+  describe_dataset: "Read the dataset",
+  current_view: "Checked your view",
+  measure_reciprocal_cut: "Measured a reciprocal cut",
+  measure_dpdf_cut: "Measured a ΔPDF section",
+  line_profile: "Took a line profile",
+  bragg_peaks: "Looked up Bragg peaks",
+  consistency_details: "Read the back-FFT check",
+  compare_datasets: "Compared datasets",
+  configure_settings: "Read the run settings",
+  show_in_viewer: "Opened the viewer",
+};
+
+// The tool calls of one reply: a compact list, each row opening to the
+// arguments and the JSON the model read.  A viewer step can be reopened.
+function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
+  if (!steps.length) return null;
+  const running = steps.find((s) => s.status === "running");
+  return (
+    <details className="ai-steps" open={live}>
+      <summary>
+        {running
+          ? `${TOOL_LABELS[running.name] ?? running.name}…`
+          : `Used ${steps.length} tool${steps.length > 1 ? "s" : ""}`}
+      </summary>
+      <ol className="ai-step-list">
+        {steps.map((s) => (
+          <li key={s.id} className={`ai-step ai-step-${s.status}`}>
+            <details>
+              <summary>
+                <span className="ai-step-dot" aria-hidden="true" />
+                <span className="ai-step-name">{TOOL_LABELS[s.name] ?? s.name}</span>
+                {s.summary && <span className="ai-step-summary">{s.summary}</span>}
+              </summary>
+              <pre className="ai-step-detail">
+                {JSON.stringify(s.args)}
+                {s.result ? `\n→ ${s.result}` : ""}
+              </pre>
+            </details>
+            {s.view && (
+              <button type="button" className="ai-step-open" onClick={() => openView(s.view!)}>
+                Show
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
 export function ChatView({
   assistant,
   connected,
   settings,
+  toolContext,
   contextLoading = false,
 }: {
   assistant: AssistantContext | undefined;
   connected: boolean;
   settings: LlmSettings;
+  toolContext: ToolContext | null;
   contextLoading?: boolean;
 }) {
   const turns = useChatStore((s) => s.turns);
   const draft = useChatStore((s) => s.draft);
-  const addTurn = useChatStore((s) => s.addTurn);
+  const busy = useChatStore((s) => s.busy);
+  const live = useChatStore((s) => s.live);
+  const error = useChatStore((s) => s.error);
   const setDraft = useChatStore((s) => s.setDraft);
   const clearChat = useChatStore((s) => s.clear);
-  const reply = useStreamedReply();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const scrollDown = useCallback(() => {
-    requestAnimationFrame(() => {
-      const el = scrollRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
-    });
+  // Follow the conversation as it grows, unless the user scrolled up to read.
+  const pinned = useRef(true);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [turns, live]);
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
   }, []);
 
-  const sendChat = useCallback(async () => {
+  const tools = settings.useTools && !toolsKnownUnsupported(settings);
+
+  const sendChat = useCallback(() => {
     const text = draft.trim();
-    if (!text || !assistant || reply.streaming) return;
+    if (!text || !assistant || busy) return;
     setDraft("");
+    pinned.current = true;
     const history = turns.map(({ role, content }) => ({ role, content }));
-    addTurn({ role: "user", content: text });
-    scrollDown();
-    const messages = buildChatMessages(assistant.context, history, text);
-    const { content, reasoning } = await reply.run(messages);
-    if (content) addTurn({ role: "assistant", content, reasoning });
-    scrollDown();
-  }, [draft, assistant, turns, reply, addTurn, setDraft, scrollDown]);
+    void askAssistant({
+      label: text,
+      messages: buildChatMessages(assistant.context, history, text, null, { tools }),
+      tools: settings.useTools ? CHAT_TOOLS : [],
+      ctx: toolContext,
+    });
+  }, [draft, assistant, busy, turns, setDraft, tools, settings.useTools, toolContext]);
 
   const runReview = useCallback(
-    async (stage: ReviewStage) => {
-      if (!assistant || reply.streaming) return;
+    (stage: ReviewStage) => {
+      if (!assistant || busy) return;
       const image = settings.attachImages ? stageImage(stage, assistant) : null;
-      const label = STAGE_REVIEW_LABELS[stage] + (image ? " (with image)" : "");
-      addTurn({ role: "user", content: label });
-      scrollDown();
-      const messages = buildStageReviewMessages(assistant.context, stage, image);
-      const { content, reasoning } = await reply.run(messages);
-      if (content) addTurn({ role: "assistant", content, reasoning });
-      scrollDown();
+      pinned.current = true;
+      void askAssistant({
+        label: STAGE_REVIEW_LABELS[stage] + (image ? " (with image)" : ""),
+        messages: buildStageReviewMessages(assistant.context, stage, image, { tools }),
+        tools: settings.useTools ? CHAT_TOOLS : [],
+        ctx: toolContext,
+      });
     },
-    [assistant, reply, settings.attachImages, addTurn, scrollDown],
+    [assistant, busy, settings.attachImages, settings.useTools, tools, toolContext],
   );
 
-  const stages: ReviewStage[] = ["rings", "punch", "backfill", "dpdf"];
+  const stages: ReviewStage[] = ["rings", "punch", "backfill", "flatten", "dpdf"];
   const disabled = !connected || !assistant;
-  const empty = turns.length === 0 && !reply.streaming;
+  const empty = turns.length === 0 && !busy;
 
   return (
     <div className="ai-chat">
-      <div className="ai-transcript" ref={scrollRef}>
+      <div className="ai-transcript" ref={scrollRef} onScroll={onScroll}>
         {empty && (
           <div className="ai-placeholder">
             <span className="ai-placeholder-title">
@@ -141,7 +208,9 @@ export function ChatView({
                   ? contextLoading
                     ? "Reading the stage volumes and computing quality metrics."
                     : "Its stage outputs feed the assistant's context."
-                  : "Answers are grounded in metrics computed from the current cut — or use a one-click review below."}
+                  : tools
+                    ? "It can measure any cut, look up the fitted peaks and the back-FFT check, and open the viewer where it matters — or use a one-click review below."
+                    : "Answers are grounded in metrics computed from the current cut — or use a one-click review below."}
             </span>
           </div>
         )}
@@ -157,26 +226,31 @@ export function ChatView({
               </span>
               <div className="ai-msg-main">
                 {t.reasoning ? <Thinking text={t.reasoning} /> : null}
-                <div className="ai-answer">
-                  <Markdown text={t.content} />
-                </div>
+                {t.steps?.length ? <Steps steps={t.steps} /> : null}
+                {t.content && (
+                  <div className="ai-answer">
+                    <Markdown text={t.content} />
+                  </div>
+                )}
+                {t.note && <div className="ai-note">{t.note}</div>}
               </div>
             </div>
           ),
         )}
-        {reply.streaming && (
+        {busy && live && (
           <div className="ai-msg ai-msg-assistant">
             <span className="ai-avatar ai-avatar-spin" aria-hidden="true">
               <BrandGlyph size={22} />
             </span>
             <div className="ai-msg-main">
-              <Thinking text={reply.reasoning} live />
-              {reply.content ? (
+              <Thinking text={live.reasoning} live />
+              <Steps steps={live.steps} live />
+              {live.content ? (
                 <div className="ai-answer">
-                  <Markdown text={reply.content} />
+                  <Markdown text={live.content} />
                   <span className="ai-caret" />
                 </div>
-              ) : !reply.reasoning ? (
+              ) : !live.reasoning && !live.steps.some((s) => s.status === "running") ? (
                 <div className="ai-answer ai-answer-waiting">
                   <span className="ai-caret" />
                 </div>
@@ -184,7 +258,7 @@ export function ChatView({
             </div>
           </div>
         )}
-        {reply.error && <div className="ai-conn-alert">{reply.error}</div>}
+        {error && <div className="ai-conn-alert">{error}</div>}
       </div>
 
       <div className="ai-dock">
@@ -194,13 +268,37 @@ export function ChatView({
               key={s}
               type="button"
               className="ai-chip"
-              disabled={disabled || reply.streaming}
+              disabled={disabled || busy}
               onClick={() => runReview(s)}
               title={disabled ? "Connect a model and select a dataset first" : undefined}
             >
               {STAGE_REVIEW_LABELS[s]}
             </button>
           ))}
+        </div>
+        <div className="ai-toggles">
+          <button
+            type="button"
+            className={`ai-vision-chip${settings.useTools ? " on" : ""}`}
+            onClick={() => saveSettings({ useTools: !settings.useTools })}
+            aria-pressed={settings.useTools}
+            title={
+              settings.useTools
+                ? "Tools on: the model can measure other cuts, look things up and open the viewer. Needs a tool-capable model."
+                : "Tools off: the model answers from the fixed-cut metrics only."
+            }
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M10.2 2.3a3.3 3.3 0 0 0-4.1 4.3L2.4 10.3a1.4 1.4 0 0 0 2 2l3.7-3.7a3.3 3.3 0 0 0 4.3-4.1l-2 2-1.7-.4-.4-1.7 1.9-2.1Z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Tools
+          </button>
           <button
             type="button"
             className={`ai-vision-chip${settings.attachImages ? " on" : ""}`}
@@ -228,7 +326,7 @@ export function ChatView({
               type="button"
               className="ai-clear"
               onClick={clearChat}
-              disabled={reply.streaming}
+              disabled={busy}
               title="Clear the conversation"
             >
               Clear
@@ -246,12 +344,12 @@ export function ChatView({
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                void sendChat();
+                sendChat();
               }
             }}
           />
-          {reply.streaming ? (
-            <button type="button" className="ai-send is-stop" onClick={reply.cancel} title="Stop">
+          {busy ? (
+            <button type="button" className="ai-send is-stop" onClick={stopAssistant} title="Stop">
               <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
                 <rect x="3" y="3" width="8" height="8" rx="1.5" fill="currentColor" />
               </svg>

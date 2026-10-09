@@ -12,10 +12,13 @@ import type {
   Slice,
   VolumeMeta,
 } from "../../api/types";
+import { metricFromUb, qNorm, reciprocalMetric } from "../../components/reciprocal";
 import { backfillMetrics } from "../metrics/backfill";
 import { dpdfMetrics } from "../metrics/dpdf";
+import { flattenMetrics } from "../metrics/flatten";
 import { ringMetrics } from "../metrics/rings";
 import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
+import type { RadiusFn } from "../metrics/sliceStats";
 
 // The slices, keyed by pipeline stage, taken at one shared reciprocal cut (plus
 // one real-space ΔPDF orthoslice).  Any of them may be absent.
@@ -24,6 +27,7 @@ export interface StageSlices {
   ringremoved?: Slice | null;
   braggpunched?: Slice | null;
   backfilled?: Slice | null;
+  flattened?: Slice | null;
   dpdf?: Slice | null;
 }
 
@@ -51,29 +55,36 @@ export interface PipelineContext {
     peak_profile: ReturnType<typeof summarizePeakProfile>;
   };
   backfill?: ReturnType<typeof backfillMetrics>;
+  flatten?: ReturnType<typeof flattenMetrics>;
   delta_pdf?: ReturnType<typeof dpdfMetrics>;
   notes?: string[];
 }
 
-const TWO_PI = 2 * Math.PI;
-const qScale = (latticeLen: number | null | undefined): number =>
-  latticeLen && latticeLen > 0 ? TWO_PI / latticeLen : 1;
+// The in-plane (x, y) reciprocal axes of each plane alias, as H/K/L indices.
+const PLANE_HKL_AXES: Record<string, [number, number]> = {
+  hk0: [0, 1],
+  h0l: [0, 2],
+  "0kl": [1, 2],
+};
 
-// Which lattice constants map to the in-plane x/y axes of a Mantid plane alias.
-const planeAxisLattice = (
+// |Q| (Å⁻¹) of the point (x, y) r.l.u. on the reciprocal cut `plane` at `cut`,
+// under the reciprocal metric G* (from the UB when present, else the cell), so
+// a powder ring is one radius for any cell.  Undefined without a cell.
+export const qRadius = (
   plane: string,
-  lat: { a: number | null; b: number | null; c: number | null },
-): [number | null, number | null] => {
-  switch (plane) {
-    case "hk0":
-      return [lat.a, lat.b];
-    case "h0l":
-      return [lat.a, lat.c];
-    case "0kl":
-      return [lat.b, lat.c];
-    default:
-      return [lat.a, lat.b];
-  }
+  cut: number,
+  meta: Pick<VolumeMeta, "lattice" | "ub_matrix"> | null | undefined,
+): RadiusFn | undefined => {
+  const G = metricFromUb(meta?.ub_matrix) ?? reciprocalMetric(meta?.lattice);
+  const axes = PLANE_HKL_AXES[plane];
+  if (!G || !axes) return undefined;
+  const [ix, iy] = axes;
+  const hkl: [number, number, number] = [cut, cut, cut];
+  return (x, y) => {
+    hkl[ix] = x;
+    hkl[iy] = y;
+    return qNorm(G, hkl);
+  };
 };
 
 export const buildPipelineContext = (input: BuildContextInput): PipelineContext => {
@@ -92,13 +103,11 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
   }
   if (hklMeta?.shape) ctx.grid = hklMeta.shape;
 
-  const [latX, latY] = lat ? planeAxisLattice(plane, lat) : [null, null];
-  const sx = qScale(latX);
-  const sy = qScale(latY);
+  const radius = qRadius(plane, cutValue, hklMeta ?? (lat ? { lattice: lat } : null));
 
   // 1. Ring removal — raw vs ring-removed radial profiles.
   if (slices.raw || slices.ringremoved) {
-    ctx.ring_removal = ringMetrics(slices.raw ?? null, slices.ringremoved ?? null, sx, sy);
+    ctx.ring_removal = ringMetrics(slices.raw ?? null, slices.ringremoved ?? null, radius);
   } else {
     notes.push("ring removal: no raw/ring-removed slice available at this cut");
   }
@@ -122,7 +131,12 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
     notes.push("backfill: needs both punched and backfilled slices at this cut");
   }
 
-  // 4. 3D-ΔPDF — feature/anisotropy/trend on the real-space orthoslice.
+  // 4. Flatten — the per-|Q|-shell floors, backfilled vs flattened.
+  if (slices.flattened) {
+    ctx.flatten = flattenMetrics(slices.backfilled ?? null, slices.flattened, radius);
+  }
+
+  // 5. 3D-ΔPDF — feature/anisotropy/trend on the real-space orthoslice.
   if (slices.dpdf) {
     ctx.delta_pdf = dpdfMetrics(slices.dpdf, { consistency: consistency ?? null });
   } else if (consistency) {

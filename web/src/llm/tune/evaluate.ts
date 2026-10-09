@@ -1,0 +1,151 @@
+// Measures one stage's output for the tuning run: that stage's metrics on the
+// three principal planes through the origin (plus the volume-wide records the
+// stage writes), so a trial is judged on more than one cut.  The numbers are
+// the same pure metrics the chat context uses.
+
+import { fetchBraggProfile, fetchConsistencyCheck, fetchMeta } from "../../api/client";
+import type { Dataset } from "../../api/types";
+import { loadPipelineContext, safe, hklVolumeId, type Cut } from "../context/loadContext";
+import { roundSig } from "../metrics/sliceStats";
+import type { TuneStage } from "./catalog";
+
+const RECIP_CUTS: Cut[] = [
+  { plane: "hk0", value: 0 },
+  { plane: "h0l", value: 0 },
+  { plane: "0kl", value: 0 },
+];
+const DPDF_CUTS: Cut[] = [
+  { plane: "xy", value: 0 },
+  { plane: "xz", value: 0 },
+  { plane: "yz", value: 0 },
+];
+
+export type StageEvaluation = Record<string, unknown>;
+
+// Fraction of the voxels measured before the punch that the punch removed.
+function punchedFraction(before: Float32Array | undefined, after: Float32Array | undefined): number | null {
+  if (!before || !after || before.length !== after.length) return null;
+  let measured = 0;
+  let punched = 0;
+  for (let i = 0; i < before.length; i++) {
+    if (!Number.isFinite(before[i])) continue;
+    measured += 1;
+    if (!Number.isFinite(after[i])) punched += 1;
+  }
+  return measured ? roundSig(punched / measured) : null;
+}
+
+const mean = (xs: (number | null | undefined)[]): number | null => {
+  const v = xs.filter((x): x is number => typeof x === "number" && Number.isFinite(x));
+  return v.length ? roundSig(v.reduce((s, x) => s + x, 0) / v.length) : null;
+};
+const max = (xs: (number | null | undefined)[]): number | null => {
+  const v = xs.filter((x): x is number => typeof x === "number" && Number.isFinite(x));
+  return v.length ? roundSig(Math.max(...v)) : null;
+};
+
+export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise<StageEvaluation> {
+  if (stage === "pdf") {
+    const [check, ...sections] = await Promise.all([
+      safe(fetchConsistencyCheck(dataset.id)),
+      ...DPDF_CUTS.map((dpdf) => loadPipelineContext(dataset, { recip: null, dpdf, records: false })),
+    ]);
+    const perPlane = Object.fromEntries(
+      sections.map((s, i) => {
+        const d = s.context.delta_pdf;
+        return [
+          DPDF_CUTS[i].plane,
+          d && {
+            feature_snr: d.feature_snr,
+            strong_feature_fraction: d.strong_feature_fraction,
+            positive_fraction: d.positive_fraction,
+            anisotropy_ratio: d.anisotropy_ratio,
+          },
+        ];
+      }),
+    );
+    const m = check?.has_check ? check.metrics : null;
+    return {
+      back_fft_pearson_r: m ? roundSig(m.pearson_r, 5) : null,
+      back_fft_normalized_rms: m ? roundSig(m.normalized_rms, 4) : null,
+      back_fft_per_plane_r: m?.per_plane_r ?? null,
+      mean_feature_snr: mean(Object.values(perPlane).map((p) => p?.feature_snr)),
+      per_plane: perPlane,
+    };
+  }
+
+  // Cuts outside the grid (an L range not containing 0) are skipped.
+  const metaId = hklVolumeId(dataset);
+  const meta = metaId ? await safe(fetchMeta(metaId)) : null;
+  const ranges = meta ? [meta.h_range, meta.k_range, meta.l_range] : null;
+  const fixed: Record<string, number> = { hk0: 2, h0l: 1, "0kl": 0 };
+  const cuts = RECIP_CUTS.filter((c) => {
+    const r = ranges?.[fixed[c.plane]];
+    return !r || (c.value >= r[0] && c.value <= r[1]);
+  });
+  const contexts = await Promise.all(cuts.map((recip) => loadPipelineContext(dataset, { recip, dpdf: null, records: false })));
+  const per = (f: (i: number) => unknown) => Object.fromEntries(cuts.map((c, i) => [c.plane, f(i)]));
+
+  if (stage === "rings") {
+    const r = contexts.map((c) => c.context.ring_removal);
+    return {
+      mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),
+      max_over_subtraction_fraction: max(r.map((x) => x?.over_subtraction_fraction)),
+      per_plane: per((i) => r[i] && {
+        ring_energy_ratio: r[i]!.ring_energy_ratio,
+        after_ring_energy: r[i]!.after_ring_energy,
+        over_subtraction_fraction: r[i]!.over_subtraction_fraction,
+        after_negative_fraction: r[i]!.after_negative_fraction,
+      }),
+    };
+  }
+  if (stage === "punch") {
+    const profile = await safe(fetchBraggProfile(dataset.id));
+    const leftovers = contexts.map((c) => c.context.bragg_punch?.leftover);
+    const fractions = contexts.map((c) =>
+      punchedFraction(c.slices.ringremoved?.data, c.slices.braggpunched?.data),
+    );
+    return {
+      total_leftover_peaks: leftovers.reduce((s, l) => s + (l?.n_suspicious ?? 0), 0),
+      mean_punched_fraction: mean(fractions),
+      fitted_peaks: profile?.has_profile ? profile.n_peaks : null,
+      per_plane: per((i) => ({
+        leftover_peaks: leftovers[i]?.n_suspicious ?? null,
+        strongest_leftover: leftovers[i]?.suspicious_peaks[0] ?? null,
+        punched_fraction: fractions[i],
+      })),
+    };
+  }
+  if (stage === "backfill") {
+    const b = contexts.map((c) => c.context.backfill);
+    return {
+      mean_median_seam_sigma: mean(b.map((x) => x?.median_seam_sigma)),
+      max_bright_fill_fraction: max(b.map((x) => x?.bright_fill_fraction)),
+      per_plane: per((i) => b[i] ?? null),
+    };
+  }
+  // flatten
+  const f = contexts.map((c) => c.context.flatten);
+  return {
+    max_after_floor_sigma: max(f.map((x) => x?.after_floor_max_sigma)),
+    per_plane: per((i) => f[i] ?? null),
+  };
+}
+
+/** A one-line headline of an evaluation, for the trial table. */
+export function headline(stage: TuneStage, e: StageEvaluation | undefined): string {
+  if (!e) return "—";
+  const v = (k: string) => (e[k] == null ? "–" : String(e[k]));
+  switch (stage) {
+    case "rings":
+      return `ring ratio ${v("mean_ring_energy_ratio")} · over-sub ≤ ${v("max_over_subtraction_fraction")}`;
+    case "punch":
+      return `${v("total_leftover_peaks")} leftover · punched ${v("mean_punched_fraction")}`;
+    case "backfill":
+      return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;
+    case "flatten":
+      return `floor ≤ ${v("max_after_floor_sigma")}σ`;
+    case "pdf":
+      return `r ${v("back_fft_pearson_r")} · RMS ${v("back_fft_normalized_rms")} · SNR ${v("mean_feature_snr")}`;
+  }
+}

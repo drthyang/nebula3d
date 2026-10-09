@@ -5,14 +5,25 @@
 // over-shot into negatives, and recommend a robust display ceiling so any
 // leftover ring is actually visible at optimal contrast.
 
-import type { GridSlice } from "./sliceStats";
-import { percentile, radialProfile, robustStats, rollingBaseline, roundSig } from "./sliceStats";
+import type { GridSlice, RadiusFn } from "./sliceStats";
+import { median, percentile, radialProfile, robustStats, rollingBaseline, roundSig } from "./sliceStats";
 
-// Fraction of the azimuthally-averaged radial intensity that sits in localized
+// Fraction of the azimuthal-median radial intensity that sits in localized
 // bumps above the rolling baseline — the "ring energy" of a slice.  Near zero
-// means a smooth, ring-free radial profile.
-export const ringEnergy = (grid: GridSlice, scaleX = 1, scaleY = 1): number => {
-  const { intensity, counts } = radialProfile(grid, 64, scaleX, scaleY);
+// means a smooth, ring-free radial profile.  Two guards keep it about rings:
+// - the median, not the mean: ring removal runs before the Bragg punch, and a
+//   shell's mean is dominated by the few Bragg-peak voxels in it (see
+//   radialProfile);
+// - sparse shells are left out (under a quarter of the typical shell's voxels):
+//   the few voxels nearest the origin sit on the incident beam, and the partial
+//   shells in the box corners are mostly edge.  Either would otherwise swamp
+//   the sum with bumps that are not rings.
+export const ringEnergy = (grid: GridSlice, radius?: RadiusFn): number => {
+  const profile = radialProfile(grid, 64, radius, "median");
+  const filled = profile.counts.filter((c) => c > 0);
+  const minCount = filled.length ? 0.25 * median(filled) : 0;
+  const intensity = profile.intensity.map((v, i) => (profile.counts[i] >= minCount ? v : NaN));
+  const counts = profile.counts;
   const baseline = rollingBaseline(intensity, 4);
   let excess = 0;
   let total = 0;
@@ -41,16 +52,15 @@ export interface RingMetrics {
 }
 
 // `before` is the raw slice, `after` the ring-removed slice at the same cut.
-// Either may be absent (metrics degrade to what is computable).  The scale args
-// convert axis r.l.u. toward Å⁻¹ so the radial shells are physically round.
+// Either may be absent (metrics degrade to what is computable).  `radius` is the
+// |Q| of an in-plane point, so the radial shells follow the rings for any cell.
 export const ringMetrics = (
   before: GridSlice | null,
   after: GridSlice | null,
-  scaleX = 1,
-  scaleY = 1,
+  radius?: RadiusFn,
 ): RingMetrics => {
-  const beforeEnergy = before ? ringEnergy(before, scaleX, scaleY) : null;
-  const afterEnergy = after ? ringEnergy(after, scaleX, scaleY) : null;
+  const beforeEnergy = before ? ringEnergy(before, radius) : null;
+  const afterEnergy = after ? ringEnergy(after, radius) : null;
   const afterStats = after ? robustStats(after.data) : null;
 
   let overSub: number | null = null;

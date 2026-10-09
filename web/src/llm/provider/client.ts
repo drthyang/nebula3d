@@ -3,7 +3,8 @@
 // SDK, no SSE library — so the whole provider surface stays in one readable file
 // and adds zero runtime dependencies.  Ported from rmc-toolkits, extended with
 // multimodal content parts so a rendered slice image can ride along for
-// vision-capable models.
+// vision-capable models, and with function calling ("tools") so the model can
+// ask the app to measure, look up or show something mid-answer.
 
 // A message's content is either plain text or a list of parts (text +
 // image_url), the OpenAI vision shape that Ollama/LM Studio/Gemini also accept.
@@ -11,9 +12,26 @@ export type ContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
 
+// One function call the model asked for; `arguments` is a JSON string.
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+// A function the model may call, described by a JSON Schema for its arguments.
+export interface ToolSpec {
+  type: "function";
+  function: { name: string; description: string; parameters: Record<string, unknown> };
+}
+
+// An assistant message that called tools carries `tool_calls`; each result goes
+// back as a `tool` message naming the call it answers.
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string | ContentPart[];
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
 }
 
 const trimBase = (baseUrl: string): string => (baseUrl || "").replace(/\/+$/, "");
@@ -38,7 +56,7 @@ const unreachableHint = (baseUrl: string): string => {
   );
 };
 
-interface HttpError extends Error {
+export interface HttpError extends Error {
   status?: number;
 }
 
@@ -111,29 +129,100 @@ interface PostChatArgs {
   stream: boolean;
   signal?: AbortSignal;
   apiKey?: string;
+  // Functions the model may call; "none" asks it to answer without calling.
+  tools?: ToolSpec[];
+  toolChoice?: "auto" | "none";
 }
 
-const postChat = async ({ baseUrl, model, messages, temperature, stream, signal, apiKey }: PostChatArgs): Promise<Response> => {
+const postChat = async ({
+  baseUrl,
+  model,
+  messages,
+  temperature,
+  stream,
+  signal,
+  apiKey,
+  tools,
+  toolChoice,
+}: PostChatArgs): Promise<Response> => {
+  const body: Record<string, unknown> = { model, messages, temperature, stream };
+  if (tools?.length) {
+    body.tools = tools;
+    if (toolChoice) body.tool_choice = toolChoice;
+  }
   const response = await fetch(`${trimBase(baseUrl)}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
-    body: JSON.stringify({ model, messages, temperature, stream }),
+    body: JSON.stringify(body),
     signal,
   });
-  if (!response.ok) throw new Error(await describeHttpError(response));
+  if (!response.ok) {
+    const error = new Error(await describeHttpError(response)) as HttpError;
+    error.status = response.status;
+    throw error;
+  }
   return response;
+};
+
+// A server that cannot do function calling answers a request with `tools` with
+// an error naming them (Ollama: "<model> does not support tools").
+export const isToolsUnsupported = (error: unknown): boolean => {
+  const { status, message } = (error ?? {}) as HttpError;
+  return status !== undefined && status >= 400 && status < 500 && /tool|function/i.test(message ?? "");
 };
 
 export interface StreamDelta {
   content?: string;
   reasoning?: string;
+  // Emitted once, after the stream ends, when the model called tools.
+  toolCalls?: ToolCall[];
+}
+
+interface ToolCallDelta {
+  index?: number;
+  id?: string;
+  function?: { name?: string; arguments?: string | Record<string, unknown> };
+}
+
+// Assembles streamed tool calls.  OpenAI sends each call's id and name once and
+// its `arguments` JSON in fragments, keyed by `index`; Ollama sends each call
+// whole in one chunk; some servers omit `index`, so a part with a new id opens
+// the next slot and a part with neither continues the last one.
+export class ToolCallAssembler {
+  private slots: { id: string; name: string; args: string }[] = [];
+
+  add(part: ToolCallDelta): void {
+    let slot: number;
+    if (typeof part.index === "number") slot = part.index;
+    else if (part.id) {
+      const known = this.slots.findIndex((c) => c?.id === part.id);
+      slot = known >= 0 ? known : this.slots.length;
+    } else slot = Math.max(0, this.slots.length - 1);
+    const call = (this.slots[slot] ??= { id: "", name: "", args: "" });
+    if (part.id) call.id = part.id;
+    if (part.function?.name && !call.name) call.name = part.function.name;
+    const args = part.function?.arguments;
+    if (typeof args === "string") call.args += args;
+    else if (args && typeof args === "object") call.args += JSON.stringify(args);
+  }
+
+  calls(): ToolCall[] {
+    return this.slots
+      .filter((c) => c && c.name)
+      .map((c, i) => ({
+        id: c.id || `call_${i}`,
+        type: "function" as const,
+        function: { name: c.name, arguments: c.args || "{}" },
+      }));
+  }
 }
 
 // Stream a chat completion, yielding `{ content }` or `{ reasoning }` deltas as
-// they arrive.  The SSE body is `data: {json}` lines terminated by `data:
-// [DONE]`; chunks can split mid-line, so incomplete tail lines are buffered
-// across reads.  Reasoning models stream their chain-of-thought in a separate
-// `reasoning`/`reasoning_content` field before the answer arrives in `content`.
+// they arrive, then `{ toolCalls }` if the model called tools.  The SSE body is
+// `data: {json}` lines terminated by `data: [DONE]`; chunks can split mid-line,
+// so incomplete tail lines are buffered across reads.  Reasoning models stream
+// their chain-of-thought in a separate `reasoning`/`reasoning_content` field
+// before the answer arrives in `content`.
 export async function* streamChat({
   baseUrl,
   model,
@@ -141,14 +230,27 @@ export async function* streamChat({
   temperature = 0.2,
   signal,
   apiKey,
+  tools,
+  toolChoice,
 }: Omit<PostChatArgs, "stream">): AsyncGenerator<StreamDelta> {
-  const response = await postChat({ baseUrl, model, messages, temperature, stream: true, signal, apiKey });
+  const response = await postChat({
+    baseUrl,
+    model,
+    messages,
+    temperature,
+    stream: true,
+    signal,
+    apiKey,
+    tools,
+    toolChoice,
+  });
   if (!response.body) throw new Error("The server returned no response body to stream");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  const assembler = new ToolCallAssembler();
   let buffer = "";
   try {
-    for (;;) {
+    read: for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
@@ -158,7 +260,7 @@ export async function* streamChat({
         if (!line.startsWith("data:")) continue;
         const data = line.slice(5).trim();
         if (!data) continue;
-        if (data === "[DONE]") return;
+        if (data === "[DONE]") break read;
         let parsed;
         try {
           parsed = JSON.parse(data);
@@ -170,11 +272,14 @@ export async function* streamChat({
         if (delta.content) yield { content: delta.content };
         const reasoning = delta.reasoning ?? delta.reasoning_content;
         if (reasoning) yield { reasoning };
+        for (const part of delta.tool_calls ?? []) assembler.add(part);
       }
     }
   } finally {
     reader.cancel().catch(() => {});
   }
+  const toolCalls = assembler.calls();
+  if (toolCalls.length) yield { toolCalls };
 }
 
 // Non-streaming completion, used where the whole reply is parsed at once.
