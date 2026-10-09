@@ -1,12 +1,15 @@
 // The tuning run's surface in the assistant panel: a setup card (which stages,
-// how many trials, and a plain warning that trials rewrite the processed
-// files), then one card per stage with its trials — the settings each changed,
-// the headline metrics, the model's reason — and the trial it chose.
+// how many trials, and where the trials are written), then one card per stage
+// with its trials — the settings each changed, the headline metrics, the
+// model's reason — and the trial it chose; at the end, a link to the tuned
+// result, which opens as a dataset of its own.
 
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
+import { queryClient } from "../../api/queryClient";
 import type { Dataset } from "../../api/types";
+import { useDatasetStore } from "../../state/datasetStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import type { LlmSettings } from "../settings";
@@ -19,7 +22,7 @@ const STATUS_LABEL: Record<StageRun["status"], string> = {
   running: "running",
   proposing: "asking for settings",
   judging: "choosing",
-  applying: "re-running the choice",
+  applying: "keeping the choice",
   done: "done",
   skipped: "skipped",
   failed: "stopped",
@@ -86,7 +89,7 @@ export function TunePanel({
   connected: boolean;
   settings: LlmSettings;
 }) {
-  const { active, stages, error, finishedNote, datasetLabel } = useTuneStore();
+  const { active, stages, error, finishedNote, datasetLabel, run } = useTuneStore();
   // Only the stage switches and the running flag — not the streaming log.
   const cfg = usePipelineStore(
     useShallow((s) => ({
@@ -107,6 +110,12 @@ export function TunePanel({
   const canStart = connected && Boolean(dataset) && !cfg.running && !active && chosen.length > 0;
   const label = dataset ? (dataset.temperature ?? dataset.stem) : "—";
   const runs = chosen.length * trials;
+  const openResult = async () => {
+    if (!run) return;
+    await queryClient.invalidateQueries({ queryKey: ["datasets"] });
+    useDatasetStore.getState().setDataset(run.dataset_id);
+    setTab("reciprocal");
+  };
 
   return (
     <div className="tune">
@@ -140,10 +149,11 @@ export function TunePanel({
               ))}
             </select>
           </label>
-          <div className="ai-conn-warn">
-            Each trial re-runs its stage on <b>{label}</b> and overwrites that dataset&apos;s processed files (about{" "}
-            {runs} run{runs === 1 ? "" : "s"}, plus re-runs of untuned stages in between). The raw data is not touched.
-            The chosen settings are written to the Configure page.
+          <div className="tune-note">
+            Trials of <b>{label}</b> run in their own folder, <code>tuning/</code> beside <code>processed/</code>{" "}
+            (about {runs} run{runs === 1 ? "" : "s"}, plus re-runs of untuned stages in between). Your processed files
+            are not changed. Each stage&apos;s chosen output is kept there and opens as a dataset of its own; the chosen
+            settings go to the Configure page.
           </div>
           <button
             type="button"
@@ -176,7 +186,7 @@ export function TunePanel({
                 Stop
               </button>
             ) : (
-              <button type="button" className="ai-clear" onClick={() => useTuneStore.setState({ stages: [], finishedNote: null, error: null })}>
+              <button type="button" className="ai-clear" onClick={() => useTuneStore.setState({ stages: [], run: null, finishedNote: null, error: null })}>
                 Clear
               </button>
             )}
@@ -191,6 +201,11 @@ export function TunePanel({
           ))}
           {error && <div className="ai-conn-alert">{error}</div>}
           {finishedNote && <div className="tune-msg">{finishedNote}</div>}
+          {!active && run && stages.some((r) => r.status === "done") && (
+            <button type="button" className="tune-link" onClick={() => void openResult()}>
+              Open the tuned result
+            </button>
+          )}
           {!active && finishedNote && !error && (
             <button type="button" className="tune-link" onClick={() => setTab("config")}>
               Open the Configure page

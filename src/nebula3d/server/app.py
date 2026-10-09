@@ -20,6 +20,7 @@ from nebula3d.server.routers import datasets as datasets_router
 from nebula3d.server.routers import deltapdf as deltapdf_router
 from nebula3d.server.routers import pipeline as pipeline_router
 from nebula3d.server.routers import slices as slices_router
+from nebula3d.server.routers import tuning as tuning_router
 
 #: Vite dev-server origins allowed during local development.
 DEV_ORIGINS = [
@@ -56,6 +57,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
     app.include_router(pipeline_router.router)
     app.include_router(consistency_router.router)
     app.include_router(bragg_router.router)
+    app.include_router(tuning_router.router)
 
     @app.get("/api/health")
     def health() -> dict:

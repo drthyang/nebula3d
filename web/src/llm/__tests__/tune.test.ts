@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
-import { usePipelineStore } from "../../state/pipelineStore";
+import { usePipelineStore, type RunOptions } from "../../state/pipelineStore";
 import { DEFAULT_SETTINGS } from "../settings";
 import { currentStageSettings, proposalToPatch, ProposalError, toFormValue } from "../tune/catalog";
 import { parseJsonReply } from "../tune/prompts";
@@ -17,6 +17,11 @@ vi.mock("../provider/client", async (importOriginal) => ({
   completeChat: llm.completeChat,
 }));
 const evaluate = vi.hoisted(() => ({ evaluateStage: vi.fn() }));
+const api = vi.hoisted(() => ({ startTuningRun: vi.fn(), promoteTrial: vi.fn(), fetchDataset: vi.fn() }));
+vi.mock("../../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/client")>()),
+  ...api,
+}));
 vi.mock("../tune/evaluate", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../tune/evaluate")>()),
   evaluateStage: evaluate.evaluateStage,
@@ -62,13 +67,17 @@ describe("parseJsonReply", () => {
 
 describe("startTuning", () => {
   const dataset = { id: "demo", temperature: "T1", stem: "demo", raw_name: "demo.nxs", stages: [] } as Dataset;
-  const runs: { stages: string[]; minSig: string; method: string }[] = [];
+  const RUN = { run_id: "20261009T120000-abcd", dataset_id: "demo~tune~20261009T120000-abcd" };
+  const runs: { stages: string[]; trial: string | undefined; minSig: string; method: string }[] = [];
   const initial = usePipelineStore.getState();
 
   beforeEach(() => {
     runs.length = 0;
     llm.completeChat.mockReset();
     evaluate.evaluateStage.mockReset();
+    api.startTuningRun.mockReset().mockResolvedValue(RUN);
+    api.promoteTrial.mockReset().mockResolvedValue({ ...RUN, trial: "", files: [] });
+    api.fetchDataset.mockReset().mockImplementation(async (id: string) => ({ ...dataset, id }));
     usePipelineStore.setState({
       ...initial,
       ringsEnabled: false,
@@ -79,13 +88,14 @@ describe("startTuning", () => {
       punchMinSig: "",
       backfillMethod: "",
       running: false,
-      runStages: vi.fn(async (stages: string[]) => {
+      runStages: vi.fn(async (stages: string[], opts?: RunOptions) => {
         const s = usePipelineStore.getState();
-        runs.push({ stages, minSig: s.punchMinSig, method: s.backfillMethod });
+        expect(opts?.datasetId).toBe("demo");
+        runs.push({ stages, trial: opts?.tuning?.trial, minSig: s.punchMinSig, method: s.backfillMethod });
         return "done";
       }),
     });
-    useTuneStore.setState({ active: false, stages: [], error: null, finishedNote: null });
+    useTuneStore.setState({ active: false, run: null, stages: [], error: null, finishedNote: null });
     // Leftover peaks fall as the significance gate drops; the punched fraction rises.
     evaluate.evaluateStage.mockImplementation(async (stage: string) => {
       const s = usePipelineStore.getState();
@@ -97,7 +107,9 @@ describe("startTuning", () => {
     });
   });
 
-  it("tries, picks and keeps the best settings for each stage in order", async () => {
+  const promoted = () => api.promoteTrial.mock.calls.map(([, trial]) => trial);
+
+  it("tries each stage in its own trial folder and keeps the best", async () => {
     llm.completeChat
       // punch: propose two, one of them invalid, then pick trial 2
       .mockResolvedValueOnce(
@@ -110,9 +122,11 @@ describe("startTuning", () => {
 
     await startTuning({ dataset, stages: ["punch", "backfill"], trialsPerStage: 3, llm: DEFAULT_SETTINGS });
 
-    const { stages, error, finishedNote } = useTuneStore.getState();
+    const { stages, error, finishedNote, run } = useTuneStore.getState();
     expect(error).toBeNull();
-    expect(finishedNote).toMatch(/^Done/);
+    expect(finishedNote).toMatch(/processed files are unchanged/);
+    expect(run).toEqual(RUN);
+    expect(api.startTuningRun).toHaveBeenCalledWith("demo", "punch");
     const [punch, backfill] = stages;
     // The invalid candidate (min σ 1 < 3) was dropped, not run.
     expect(punch.trials.map((t) => t.changes)).toEqual([{}, { punchMinSig: 4 }]);
@@ -122,15 +136,17 @@ describe("startTuning", () => {
     // Configure keeps the chosen settings.
     expect(usePipelineStore.getState().punchMinSig).toBe("4");
     expect(usePipelineStore.getState().backfillMethod).toBe("");
-    // punch: user, σ=4 (chosen, last → no re-run); backfill: user, local, then the
-    // user's settings again so the chosen output is the one on disk.
+    // Every run is a trial in its own folder (none writes processed/), and the
+    // chosen trial is kept by copying it — never by running it again.
     expect(runs).toEqual([
-      { stages: ["punch"], minSig: "", method: "" },
-      { stages: ["punch"], minSig: "4", method: "" },
-      { stages: ["backfill"], minSig: "4", method: "" },
-      { stages: ["backfill"], minSig: "4", method: "local" },
-      { stages: ["backfill"], minSig: "4", method: "" },
+      { stages: ["punch"], trial: "punch-1", minSig: "", method: "" },
+      { stages: ["punch"], trial: "punch-2", minSig: "4", method: "" },
+      { stages: ["backfill"], trial: "backfill-1", minSig: "4", method: "" },
+      { stages: ["backfill"], trial: "backfill-2", minSig: "4", method: "local" },
     ]);
+    expect(promoted()).toEqual(["punch-2", "backfill-1"]);
+    // Each trial is measured through its own view.
+    expect(api.fetchDataset).toHaveBeenCalledWith(`${RUN.dataset_id}~punch-2`);
   });
 
   it("keeps the user's settings when the model proposes nothing", async () => {
@@ -139,14 +155,16 @@ describe("startTuning", () => {
     const [backfill] = useTuneStore.getState().stages;
     expect(backfill.trials).toHaveLength(1);
     expect(backfill.best).toBe(1);
-    expect(runs).toHaveLength(1);
+    expect(runs.map((r) => r.trial)).toEqual(["backfill-1"]);
+    expect(promoted()).toEqual(["backfill-1"]);
   });
 
-  it("re-runs untuned stages between tuned ones", async () => {
+  it("re-runs untuned stages between tuned ones, into the run", async () => {
     llm.completeChat.mockResolvedValue('{"candidates": []}');
     usePipelineStore.setState({ ringsEnabled: true });
     await startTuning({ dataset, stages: ["rings", "backfill"], trialsPerStage: 2, llm: DEFAULT_SETTINGS });
-    expect(runs.map((r) => r.stages.join())).toEqual(["rings", "punch", "backfill"]);
+    expect(runs.map((r) => r.trial)).toEqual(["rings-1", "punch-1", "backfill-1"]);
+    expect(promoted()).toEqual(["rings-1", "punch-1", "backfill-1"]);
     const punch = useTuneStore.getState().stages.find((r) => r.stage === "punch")!;
     expect(punch.tuned).toBe(false);
     expect(punch.status).toBe("done");
@@ -160,5 +178,6 @@ describe("startTuning", () => {
     expect(error).toMatch(/punch: the run with the current settings failed/);
     expect(stages[0].status).toBe("failed");
     expect(llm.completeChat).not.toHaveBeenCalled();
+    expect(api.promoteTrial).not.toHaveBeenCalled();
   });
 });

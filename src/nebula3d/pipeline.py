@@ -32,7 +32,7 @@ import dataclasses
 import json
 import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
@@ -1818,6 +1818,7 @@ def run_pipeline(
     force_from: str | None = None,
     progress: ProgressFn | None = None,
     carry_in: tuple[Path, HKLVolume] | None = None,
+    inputs: Mapping[str, Path] | None = None,
 ) -> PipelinePaths:
     """Run the full pipeline, resuming from existing outputs.
 
@@ -1844,6 +1845,14 @@ def run_pipeline(
         to ``artifact_path``.  Seeds the in-memory pass-through so the next
         stage consumes the volume directly instead of re-reading the
         compressed HDF5 (bit-identical either way; the reload is lossless).
+    inputs:
+        Where to read an upstream cleanup stage's output (``"rings"``,
+        ``"punch"``, ``"backfill"``, ``"flatten"`` → path) when that stage is
+        not run in this call, instead of from ``proc_dir``.  A stage left out
+        of the mapping counts as absent.  Lets a run write its outputs to one
+        directory while reading its inputs from others — a tuning trial
+        writes into its own folder and never touches the processed outputs it
+        builds on.
 
     Returns
     -------
@@ -1878,13 +1887,16 @@ def run_pipeline(
     def stage_input(stage: str) -> Path:
         # Walk back from the immediate predecessor: take the most recent stage
         # that is enabled this run (its output is produced), or — for a partial
-        # re-run where an upstream output already exists on disk — that file;
-        # otherwise keep passing through, falling back to the raw input.
+        # re-run where an upstream output already exists on disk — that file
+        # (from `inputs` when given); otherwise keep passing through, falling
+        # back to the raw input.
         upto = (_cleanup_chain.index(stage)
                 if stage in _cleanup_chain else len(_cleanup_chain))
         for prev in reversed(_cleanup_chain[:upto]):
-            out = _stage_output[prev]
-            if _produces(prev) or out.exists():
+            if _produces(prev):
+                return _stage_output[prev]
+            out = _stage_output[prev] if inputs is None else inputs.get(prev)
+            if out is not None and out.exists():
                 return out
         return paths.input
 
@@ -1971,8 +1983,9 @@ def run_pipeline(
             src = stage_input("backfill")
             vol = stage_load(src, "backfill")
             # A volume reloaded from disk lost the punch record punch_bragg
-            # attached; read it back from the punch artifact.
-            if getattr(vol, "_punched", None) is None and src == paths.braggpunched:
+            # attached; read it back from the punch artifact (by name: it may
+            # come from another directory, see `inputs`).
+            if getattr(vol, "_punched", None) is None and src.name == paths.braggpunched.name:
                 record = _read_punched(src)
                 if record is None:
                     _emit(progress, "backfill", "progress", None,

@@ -9,9 +9,8 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from nebula3d.pipeline import pipeline_paths
 from nebula3d.server.config import ServerConfig
-from nebula3d.server.datasets import find_dataset
+from nebula3d.server.datasets import artifact_path, find_dataset
 from nebula3d.server.deps import get_config
 from nebula3d.server.schemas import BraggProfileOut
 
@@ -28,8 +27,7 @@ def profile(
     if ds is None:
         raise HTTPException(404, f"unknown dataset id {dataset_id!r}")
 
-    paths = pipeline_paths(ds.raw_path, proc_dir=cfg.processed_dir)
-    path = paths.bragg_profile_json
+    path = artifact_path(cfg, ds, "bragg_profile_json")
     if not path.exists():
         return BraggProfileOut(
             dataset_id=dataset_id,

@@ -61,6 +61,7 @@ from nebula3d.preprocessing import write_global_ring_diagnostics
 from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
 from nebula3d.server import deltapdf as _dpdf
+from nebula3d.server import tuning as _tune
 from nebula3d.server import volumes as _vol
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.params import build_params
@@ -451,6 +452,25 @@ def _apply_browser_precision(params: object, params_json: str) -> None:
         explicit if explicit in ("float64", "float32") else _BROWSER_PRECISION)
 
 
+def _run_target(
+    stages: tuple[str, ...], force: bool,
+    tuning_run: str | None, tuning_trial: str | None,
+) -> tuple[Path, dict[str, Path] | None, bool]:
+    """``(proc_dir, inputs, force)`` for a run: ``processed/``, or — for a
+    tuning trial — the trial's own folder, reading its inputs from the run
+    (mirrors the native ``POST /api/pipeline/run`` with ``tuning``)."""
+    cfg = _require_cfg()
+    if not tuning_run and not tuning_trial:
+        return cfg.processed_dir, None, force
+    if not tuning_run or not tuning_trial:
+        raise ValueError("a tuning trial needs both a run id and a trial")
+    stage, _ = _tune.parse_trial(tuning_trial)
+    if set(stages) - set(_tune.TRIAL_PIPELINE_STAGES[stage]):
+        raise ValueError(f"a {stage} trial runs only {_tune.TRIAL_PIPELINE_STAGES[stage]}")
+    _run, proc_dir, inputs = _tune.trial_target(cfg, tuning_run, tuning_trial)
+    return proc_dir, inputs, True
+
+
 def run(
     stages_csv: str,
     params_json: str,
@@ -458,6 +478,8 @@ def run(
     force: bool = False,
     force_from: str | None = None,
     progress: Callable[[str, str, float | None, str], None] | None = None,
+    tuning_run: str | None = None,
+    tuning_trial: str | None = None,
 ) -> str:
     """Run the selected pipeline *stages* on the loaded input; return datasets JSON.
 
@@ -466,8 +488,9 @@ def run(
     and repaint between stages.  *params_json* is the curated ``StageParamsIn``
     override dict; *progress* is an optional JS callback
     ``progress(stage, status, fraction, message)`` streamed during the run.
+    *tuning_run* + *tuning_trial* run one tuning trial into its own folder
+    (see :mod:`nebula3d.server.tuning`); ``processed/`` is then only read.
     """
-    cfg = _require_cfg()
     if _S.input is None:
         raise RuntimeError("no input loaded; call load_input() first")
     # Free any volumes the slice viewers have cached: the pipeline needs the
@@ -476,6 +499,7 @@ def run(
     _clear_caches()
     stages = tuple(s for s in (stages_csv.split(",") if stages_csv else [])
                    if s) or STAGES
+    proc_dir, inputs, force = _run_target(stages, bool(force), tuning_run, tuning_trial)
     params = build_params(_make_request(params_json, flatten_enabled))
     params.pdf_check_figure = False  # browser: no matplotlib, nothing reads the PNG
     _apply_browser_precision(params, params_json)
@@ -486,8 +510,8 @@ def run(
             progress(stage, status, fraction, message)  # type: ignore[misc]
 
     run_pipeline(
-        _S.input, params, proc_dir=cfg.processed_dir, stages=stages,
-        force=bool(force), force_from=force_from, progress=cb,
+        _S.input, params, proc_dir=proc_dir, stages=stages,
+        force=bool(force), force_from=force_from, progress=cb, inputs=inputs,
     )
     return datasets_json()
 
@@ -627,6 +651,8 @@ async def run_async(
     force: bool = False,
     force_from: str | None = None,
     progress: Callable[[str, str, float | None, str], None] | None = None,
+    tuning_run: str | None = None,
+    tuning_trial: str | None = None,
 ) -> str:
     """Async twin of :func:`run` that fans the ring stage out over the browser
     ring-worker pool when one is available (bit-identical results either way).
@@ -635,9 +661,9 @@ async def run_async(
     progress events — matches :func:`run` exactly: when the pool is absent,
     empty, the ring model is a global one, or the ring stage would be skipped
     anyway (`ring_stage_pending` is the shared gate), this delegates to the
-    very same single ``run_pipeline`` call ``run`` makes.
+    very same single ``run_pipeline`` call ``run`` makes.  A tuning trial
+    (*tuning_run* + *tuning_trial*) writes into its own folder on every path.
     """
-    cfg = _require_cfg()
     if _S.input is None:
         raise RuntimeError("no input loaded; call load_input() first")
     # Validate up front, exactly like run_pipeline does at its top — the
@@ -648,6 +674,7 @@ async def run_async(
     _clear_caches()
     stages = tuple(s for s in (stages_csv.split(",") if stages_csv else [])
                    if s) or STAGES
+    proc_dir, inputs, force = _run_target(stages, bool(force), tuning_run, tuning_trial)
     params = build_params(_make_request(params_json, flatten_enabled))
     params.pdf_check_figure = False  # browser: no matplotlib, nothing reads the PNG
     _apply_browser_precision(params, params_json)
@@ -662,7 +689,7 @@ async def run_async(
     if (
         pool is not None
         and params.rings.ring_model.strip().lower() in {"patched", "parametric"}
-        and ring_stage_pending(_S.input, params, proc_dir=cfg.processed_dir,
+        and ring_stage_pending(_S.input, params, proc_dir=proc_dir,
                                stages=stages, force=bool(force),
                                force_from=force_from)
     ):
@@ -684,14 +711,14 @@ async def run_async(
 
     if executor is None:
         run_pipeline(
-            _S.input, params, proc_dir=cfg.processed_dir, stages=cpu_stages,
-            force=bool(force), force_from=force_from, progress=cb,
+            _S.input, params, proc_dir=proc_dir, stages=cpu_stages,
+            force=bool(force), force_from=force_from, progress=cb, inputs=inputs,
         )
     else:
         # Ring stage out-of-band (mirrors run_pipeline's stage-1 block: save
         # the artifact + optional diagnostics sidecar), then the remaining CPU
         # stages in one call with the ring output handed over in memory.
-        paths = pipeline_paths(_S.input, proc_dir=cfg.processed_dir,
+        paths = pipeline_paths(_S.input, proc_dir=proc_dir,
                                flatten_enabled=params.flatten_enabled)
         paths.delta_pdf.parent.mkdir(parents=True, exist_ok=True)
         vol = _load_run_input(paths.input, params, progress=cb)
@@ -704,25 +731,27 @@ async def run_async(
             write_global_ring_diagnostics(
                 ring_diagnostics, paths.ring_diagnostics_json)
         run_pipeline(
-            _S.input, params, proc_dir=cfg.processed_dir,
+            _S.input, params, proc_dir=proc_dir,
             stages=tuple(st for st in cpu_stages if st != "rings"),
             force=bool(force), force_from=force_from, progress=cb,
-            carry_in=(paths.ringremoved, out),
+            carry_in=(paths.ringremoved, out), inputs=inputs,
         )
 
     if split_pdf:
         done = False
         try:
             done = await _run_pdf_stages_gpu(
-                params, stages, bool(force), force_from, cb, gpu)
+                params, stages, bool(force), force_from, cb, gpu,
+                proc_dir=proc_dir, inputs=inputs)
         except Exception as exc:  # noqa: BLE001 - GPU must never fail the run
             _cb_emit(cb, "pdf", "progress", None,
                      f"WebGPU ΔPDF failed ({exc}); recomputing with the CPU FFT")
         if not done:
             run_pipeline(
-                _S.input, params, proc_dir=cfg.processed_dir,
+                _S.input, params, proc_dir=proc_dir,
                 stages=tuple(st for st in stages if st in ("pdf", "pdf_check")),
                 force=bool(force), force_from=force_from, progress=cb,
+                inputs=inputs,
             )
     return datasets_json()
 
@@ -835,6 +864,7 @@ def _cb_emit(cb: object, stage: str, status: str, fraction: float | None,
 async def _run_pdf_stages_gpu(
     params: object, stages: tuple[str, ...], force: bool,
     force_from: str | None, cb: object, gpu: object,
+    proc_dir: Path | None = None, inputs: dict[str, Path] | None = None,
 ) -> bool:
     """pdf + pdf_check with the GPU FFT core (mirrors run_pipeline's blocks).
 
@@ -851,7 +881,7 @@ async def _run_pdf_stages_gpu(
 
     cfg = _require_cfg()
     assert _S.input is not None
-    paths = pipeline_paths(_S.input, proc_dir=cfg.processed_dir,
+    paths = pipeline_paths(_S.input, proc_dir=proc_dir or cfg.processed_dir,
                            flatten_enabled=params.flatten_enabled)  # type: ignore[attr-defined]
     p = params.delta_pdf  # type: ignore[attr-defined]
 
@@ -863,6 +893,9 @@ async def _run_pdf_stages_gpu(
         return False
 
     pdf_input = paths.pdf_input
+    if inputs is not None:  # a tuning trial: the input lives in the run
+        upstream = inputs.get("flatten" if params.flatten_enabled else "backfill")  # type: ignore[attr-defined]
+        pdf_input = upstream if upstream is not None else pdf_input
     if not pdf_input.exists():
         return False  # pass-through subtleties → CPU path resolves them
     gpu_cfg = delta_pdf_transform_config(p) + _GPU_FFT_TOKEN
@@ -962,21 +995,54 @@ def _json(obj: object) -> str:
 # ---------------------------------------------------------------------------
 # Datasets
 # ---------------------------------------------------------------------------
+def _dataset_dict(ds: _ds.Dataset) -> dict[str, object]:
+    stages = [
+        {"name": s.name, "exists": s.exists, "kind": s.kind,
+         "volume_id": f"{ds.id}.{s.name}"}
+        for s in ds.stages
+    ]
+    return {
+        "id": ds.id, "temperature": ds.temperature, "raw_name": ds.raw_name,
+        "stem": ds.stem, "stages": stages,
+    }
+
+
 def datasets_json() -> str:
     """List discovered datasets + per-stage status (mirrors GET /api/datasets)."""
     cfg = _require_cfg()
-    out = []
-    for ds in _ds.discover_datasets(cfg):
-        stages = [
-            {"name": s.name, "exists": s.exists, "kind": s.kind,
-             "volume_id": f"{ds.id}.{s.name}"}
-            for s in ds.stages
-        ]
-        out.append({
-            "id": ds.id, "temperature": ds.temperature, "raw_name": ds.raw_name,
-            "stem": ds.stem, "stages": stages,
-        })
-    return _json(out)
+    return _json([_dataset_dict(ds) for ds in _ds.discover_datasets(cfg)])
+
+
+def dataset_json(dataset_id: str) -> str:
+    """One dataset, tuning views included (mirrors GET /api/datasets/{id})."""
+    ds = _ds.find_dataset(_require_cfg(), dataset_id)
+    if ds is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    return _json(_dataset_dict(ds))
+
+
+# ---------------------------------------------------------------------------
+# Tuning runs (mirror the native /api/tuning endpoints)
+# ---------------------------------------------------------------------------
+def tuning_start_json(dataset_id: str, first_stage: str) -> str:
+    """Create a tuning-run folder; JSON ``{run_id, dataset_id}``."""
+    cfg = _require_cfg()
+    ds = _ds.find_dataset(cfg, dataset_id)
+    if ds is None or _tune.parse_view_id(dataset_id) is not None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    run = _tune.new_run(cfg, ds.id, ds.raw_path, first_stage)
+    return _json({"run_id": run.id, "dataset_id": _tune.view_id(ds.id, run.id)})
+
+
+def tuning_promote_json(run_id: str, trial: str) -> str:
+    """Copy a trial into its run's chain; JSON ``{run_id, trial, files, dataset_id}``."""
+    cfg = _require_cfg()
+    files = _tune.promote(cfg, run_id, trial)
+    run = _tune.load_run(cfg, run_id)
+    assert run is not None
+    _clear_caches()  # the chain's volumes changed under any cached slices
+    return _json({"run_id": run_id, "trial": trial, "files": files,
+                  "dataset_id": _tune.view_id(run.dataset_id, run_id)})
 
 
 def bragg_profile_json(dataset_id: str) -> str:
@@ -991,7 +1057,7 @@ def bragg_profile_json(dataset_id: str) -> str:
     ds = _ds.find_dataset(cfg, dataset_id)
     if ds is None:
         raise KeyError(f"unknown dataset id {dataset_id!r}")
-    path = pipeline_paths(ds.raw_path, proc_dir=cfg.processed_dir).bragg_profile_json
+    path = _ds.artifact_path(cfg, ds, "bragg_profile_json")
     if not path.exists():
         return _json({
             "dataset_id": dataset_id, "profile_path": str(path),

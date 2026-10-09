@@ -12,6 +12,8 @@ import type {
   PipelineRunRequest,
   Slice,
   SliceHeader,
+  TuningPromote,
+  TuningRun,
   VolumeMeta,
 } from "./types";
 
@@ -54,6 +56,38 @@ export function fetchHealth(): Promise<{ status: string }> {
 export function fetchDatasets(): Promise<Dataset[]> {
   if (PYODIDE_MODE) return engine.datasets();
   return getJSON<Dataset[]>("/api/datasets");
+}
+
+// One dataset by id — including a tuning run's view of it
+// ("<id>~tune~<run>" or "<id>~tune~<run>~<stage>-<n>").
+export function fetchDataset(datasetId: string): Promise<Dataset> {
+  if (PYODIDE_MODE) return engine.dataset(datasetId);
+  return getJSON<Dataset>(`/api/datasets/${encodeURIComponent(datasetId)}`);
+}
+
+async function postJSON<T>(url: string, body: unknown): Promise<T> {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const detail = await r.json().then((d) => d?.detail, () => null);
+    throw new Error(detail ? String(detail) : `${r.status} ${r.statusText}: ${url}`);
+  }
+  return (await r.json()) as T;
+}
+
+// A tuning run's folder (tuning/<run>/ beside processed/), starting at a stage.
+export function startTuningRun(datasetId: string, firstStage: string): Promise<TuningRun> {
+  if (PYODIDE_MODE) return engine.tuningStart(datasetId, firstStage);
+  return postJSON<TuningRun>("/api/tuning/runs", { dataset_id: datasetId, first_stage: firstStage });
+}
+
+// Keep a trial: copy its output into the run's chain, drop the stage's trials.
+export function promoteTrial(runId: string, trial: string): Promise<TuningPromote> {
+  if (PYODIDE_MODE) return engine.tuningPromote(runId, trial);
+  return postJSON<TuningPromote>(`/api/tuning/runs/${encodeURIComponent(runId)}/promote`, { trial });
 }
 
 export async function fetchDataRoot(): Promise<DataRoot> {

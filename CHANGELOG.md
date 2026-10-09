@@ -15,11 +15,18 @@
   pipeline* runs each stage with your settings and with up to four the model
   proposes, measures every trial on the three principal planes, and keeps the
   trial the model judges best against the stage's stated goal and trade-off.
-  The chosen settings go to the Configure page and the chosen output stays on
-  disk, so each stage builds on the best result of the one before. The model
-  can change only method choices and thresholds from a fixed list, never facts
-  about the sample. Each trial rewrites the dataset's processed files, as a
-  Configure-page run does; the raw data is untouched.
+  The chosen settings go to the Configure page, and each stage builds on the
+  best result of the one before. The model can change only method choices and
+  thresholds from a fixed list, never facts about the sample.
+- **Tuning never writes to `processed/`.** Each trial runs into its own folder,
+  `tuning/<run>/trials/<stage>-<n>/` beside `processed/`, reading its input
+  from the run's own chain of kept outputs; the chosen trial is copied into
+  `tuning/<run>/processed/` and the stage's other trials are deleted. The tuned
+  result opens as a dataset of its own (*"… · tuned HH:MM"* in the sidebar).
+  Natively and in the browser build, a test runs a tuning run and checks that
+  every file in `processed/` is byte-identical afterwards; on the synthetic
+  demo volume a five-stage, fifteen-trial run through the app left all nine
+  processed files byte-identical (sha256).
 - **The assistant is a panel beside every page**, opened from the sidebar
   instead of a page of its own, so it can open a viewer while the conversation
   stays in view. A reply keeps running when the panel closes. On narrow screens

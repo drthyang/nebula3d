@@ -30,6 +30,9 @@ import type {
   DeltaPdfMeta,
   Slice,
   SliceHeader,
+  TuningPromote,
+  TuningRun,
+  TuningTrial,
   VolumeMeta,
 } from "./types";
 
@@ -360,10 +363,11 @@ export const engine = {
     force: boolean;
     forceFrom?: string | null;
     stages?: string[];
+    tuning?: TuningTrial;
     onProgress?: (ev: PipelineProgressEvent) => void;
   }): Promise<Dataset[]> {
     await ensureBooted();
-    const { datasetId, paramsJson, flattenEnabled, force, forceFrom, stages, onProgress } = opts;
+    const { datasetId, paramsJson, flattenEnabled, force, forceFrom, stages, tuning, onProgress } = opts;
     if (datasetId) await selectInput(datasetId, onProgress);
     const unsub = onProgress ? subscribeProgress(onProgress) : (): void => {};
     try {
@@ -373,6 +377,8 @@ export const engine = {
         force,
         forceFrom: forceFrom ?? null,
         stages: stages ?? null,
+        tuningRun: tuning?.run_id ?? null,
+        tuningTrial: tuning?.trial ?? null,
       })) as string;
       return JSON.parse(json) as Dataset[];
     } finally {
@@ -382,6 +388,15 @@ export const engine = {
 
   datasets(): Promise<Dataset[]> {
     return jsonCall<Dataset[]>("datasets_json", []);
+  },
+  dataset(datasetId: string): Promise<Dataset> {
+    return jsonCall<Dataset>("dataset_json", [datasetId]);
+  },
+  tuningStart(datasetId: string, firstStage: string): Promise<TuningRun> {
+    return jsonCall<TuningRun>("tuning_start_json", [datasetId, firstStage]);
+  },
+  tuningPromote(runId: string, trial: string): Promise<TuningPromote> {
+    return jsonCall<TuningPromote>("tuning_promote_json", [runId, trial]);
   },
   volumeMeta(volumeId: string): Promise<VolumeMeta> {
     return jsonCall<VolumeMeta>("volume_meta_json", [volumeId]);

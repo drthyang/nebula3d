@@ -360,14 +360,26 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
   every trial on the three principal planes (`tune/evaluate.ts`), and asks the
   model which trial best meets the stage's goal (`tune/prompts.ts` states each
   goal and its trade-off, e.g. no leftover peaks *without* punching more
-  diffuse). The chosen settings go to the Configure page and the chosen trial's
-  output is left on disk (re-run if it was not the last trial), so the next
-  stage builds on it. Untuned stages between tuned ones are re-run once. The
-  model can only change the settings in `tune/catalog.ts` — method choices and
-  thresholds, not facts about the sample (supercell, magnetic ion, |Q| band) —
-  and every proposal is checked against it before anything runs. **Each trial
-  rewrites the dataset's processed files**, like a Configure-page run; the raw
-  input is never touched. The setup card says so before *Start*.
+  diffuse). The chosen settings go to the Configure page. The model can only
+  change the settings in `tune/catalog.ts` — method choices and thresholds, not
+  facts about the sample (supercell, magnetic ion, |Q| band) — and every
+  proposal is checked against it before anything runs.
+  **Trials never touch `processed/`** (`nebula3d.server.tuning`). Each run gets
+  a folder beside it, `tuning/<run>/`; each trial runs into
+  `tuning/<run>/trials/<stage>-<n>/`, reading its input from the run's own
+  chain, `tuning/<run>/processed/` (or from `processed/` for the stages before
+  the run's first one — `run_pipeline(inputs=…)`). Keeping a trial copies its
+  files into the chain, where the next stage reads them, and deletes the
+  stage's trial folders; untuned stages between tuned ones are re-run once into
+  the chain. A trial is measured through a dataset view of it,
+  `<id>~tune~<run>~<stage>-<n>`, so every slice, Bragg-profile and
+  back-FFT-check endpoint serves it unchanged; the chain, `<id>~tune~<run>`, is
+  listed after its dataset in the sidebar once a stage is kept. The browser
+  build does the same in its virtual file system (`webbridge.run`/`run_async`
+  with `tuning_run`/`tuning_trial`, `tuning_start_json`,
+  `tuning_promote_json`). `tests/test_tuning_runs.py` checks, through the
+  library, the server's job processes and the bridge, that a tuning run leaves
+  every file in `processed/` byte-identical.
 - **Vision** (`render/sliceImage.ts`) — when enabled and the model is
   vision-capable, the rendered slice PNG is attached to stage reviews so the
   model can literally assess the image alongside the numbers.
@@ -402,7 +414,8 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/datasets` | discovered datasets with per-stage output status |
+| GET | `/api/datasets` | discovered datasets with per-stage output status (tuning runs' chains included) |
+| GET | `/api/datasets/{id}` | one dataset, or a tuning view: `<id>~tune~<run>` (the run's chain) or `<id>~tune~<run>~<stage>-<n>` (one trial) |
 | GET | `/api/volumes/{id}/meta` | HKLVolume shape, axis ranges, lattice |
 | GET | `/api/volumes/{id}/slice?plane=&value=&interp=` | binary 2D slice |
 | GET | `/api/deltapdf/{id}/meta` | ΔPDF shape, ranges, lattice, \|Q\|max |
@@ -410,7 +423,9 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 | GET | `/api/consistency/{dataset_id}/meta?q_min=&q_max=&r_min=&r_max=` | back-FFT metadata and metrics |
 | GET | `/api/consistency/{dataset_id}/check` | the pipeline's saved back-FFT check metrics (no FFT) |
 | GET | `/api/consistency/{dataset_id}/slice?panel=data\|recon\|residual\|dpdf&...` | binary consistency slice |
-| POST | `/api/pipeline/run` | start a job; returns `{id, status, ...}` |
+| POST | `/api/pipeline/run` | start a job; returns `{id, status, ...}`. With `tuning: {run_id, trial}` the job is one tuning trial: it runs only that stage, into the trial's folder |
+| POST | `/api/tuning/runs` | `{dataset_id, first_stage}` → a tuning-run folder, `{run_id, dataset_id}` |
+| POST | `/api/tuning/runs/{run_id}/promote` | `{trial}` → copy the trial into the run's chain, drop the stage's trials |
 | GET | `/api/pipeline/jobs/{id}/events` | SSE progress stream |
 | POST | `/api/pipeline/jobs/{id}/cancel` | terminate a running job |
 
