@@ -13,10 +13,12 @@ absent), so the UI still works on a checkout that only has the processed outputs
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from nebula3d.pipeline import pipeline_paths
+from nebula3d.server import tuning
 from nebula3d.server.config import ServerConfig
 
 # Stage name -> PipelinePaths attribute.  "raw" is handled separately.
@@ -55,6 +57,16 @@ class Dataset:
     raw_name: str
     raw_path: Path
     stages: list[StageStatus]
+    # PipelinePaths field → path, for a tuning view whose artifacts live in
+    # several folders (see nebula3d.server.tuning); None = all in processed/.
+    artifacts: Mapping[str, Path] | None = None
+
+
+def artifact_path(cfg: ServerConfig, ds: Dataset, attr: str) -> Path:
+    """Where *ds* keeps the pipeline artifact *attr* (a PipelinePaths field)."""
+    if ds.artifacts is not None:
+        return ds.artifacts[attr]
+    return getattr(pipeline_paths(ds.raw_path, proc_dir=cfg.processed_dir), attr)
 
 
 def _slug(stem: str) -> str:
@@ -132,10 +144,47 @@ def discover_datasets(cfg: ServerConfig) -> list[Dataset]:
             id=_slug(stem), stem=stem, temperature=_detect_temp(stem),
             raw_name=raw.name, raw_path=raw, stages=stages,
         ))
+    # Each tuning run with a chosen stage is listed after its dataset.
+    by_id = {d.id: d for d in datasets}
+    for run in tuning.list_runs(cfg):
+        parent = by_id.get(run.dataset_id)
+        if parent is not None and any(run.chain.iterdir()):
+            view = _tuning_view(cfg, parent, run, None)
+            datasets.insert(datasets.index(parent) + 1, view)
     return datasets
 
 
+def _tuning_view(cfg: ServerConfig, base: Dataset, run: tuning.Run,
+                 trial: str | None) -> Dataset:
+    """*base* as seen through a tuning run's chain, or through one trial."""
+    artifacts = tuning.artifact_paths(cfg, run, trial)
+    stages = [StageStatus("raw", base.raw_path.exists(), base.raw_path, "hkl")]
+    for name, attr in _STAGE_ATTRS.items():
+        path = artifacts[attr]
+        stages.append(StageStatus(name, path.exists(), path,
+                                  "delta_pdf" if name in _DELTA_PDF_STAGES else "hkl"))
+    tag = f"tuned {run.label_time}" + (f" · trial {trial}" if trial else "")
+    return Dataset(
+        id=tuning.view_id(base.id, run.id, trial),
+        stem=f"{base.stem} · {tag}",
+        temperature=f"{base.temperature} · {tag}" if base.temperature else None,
+        raw_name=base.raw_name, raw_path=base.raw_path, stages=stages,
+        artifacts=artifacts,
+    )
+
+
 def find_dataset(cfg: ServerConfig, dataset_id: str) -> Dataset | None:
+    view = tuning.parse_view_id(dataset_id)
+    if view is not None:
+        base_id, run_id, trial = view
+        run = tuning.load_run(cfg, run_id)
+        base = next((d for d in discover_datasets(cfg) if d.id == base_id), None)
+        if run is None or base is None or run.dataset_id != base_id:
+            return None
+        try:
+            return _tuning_view(cfg, base, run, trial)
+        except ValueError:  # malformed trial
+            return None
     return next((d for d in discover_datasets(cfg) if d.id == dataset_id), None)
 
 

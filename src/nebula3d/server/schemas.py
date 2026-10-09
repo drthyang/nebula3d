@@ -189,6 +189,13 @@ class StageParamsIn(BaseModel):
     pdf_q_max: float | None = None
 
 
+class TuningTrialIn(BaseModel):
+    """Run as one trial of a tuning run (outputs in its own folder)."""
+
+    run_id: str
+    trial: str  # "<stage>-<n>", e.g. "punch-2"
+
+
 class PipelineRunRequest(BaseModel):
     dataset_id: str
     flatten_enabled: bool = True
@@ -196,6 +203,30 @@ class PipelineRunRequest(BaseModel):
     force_from: str | None = None
     stages: list[str] | None = None  # enabled-stage subset; None → all stages
     params: StageParamsIn = StageParamsIn()
+    # A tuning trial: the stage runs into tuning/<run>/trials/<trial>/ and
+    # reads its inputs from the run, never writing to processed/.
+    tuning: TuningTrialIn | None = None
+
+
+class TuningRunIn(BaseModel):
+    dataset_id: str
+    first_stage: str
+
+
+class TuningRunOut(BaseModel):
+    run_id: str
+    dataset_id: str  # the run's chain, viewable as a dataset
+
+
+class TuningPromoteIn(BaseModel):
+    trial: str
+
+
+class TuningPromoteOut(BaseModel):
+    run_id: str
+    trial: str
+    files: list[str]
+    dataset_id: str
 
 
 class JobOut(BaseModel):

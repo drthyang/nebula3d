@@ -144,18 +144,28 @@ def browse_data_root(
     return _switch_data_root(selected, request)
 
 
+def _dataset_out(ds: ds_mod.Dataset) -> DatasetOut:
+    stages = [
+        StageStatusOut(name=s.name, exists=s.exists, kind=s.kind,
+                       volume_id=f"{ds.id}.{s.name}")
+        for s in ds.stages
+    ]
+    return DatasetOut(
+        id=ds.id, temperature=ds.temperature, raw_name=ds.raw_name,
+        stem=ds.stem, stages=stages,
+    )
+
+
 @router.get("/datasets", response_model=list[DatasetOut])
 def list_datasets(cfg: ServerConfig = Depends(get_config)) -> list[DatasetOut]:
     """List datasets grouped by raw input, with per-stage output status."""
-    out: list[DatasetOut] = []
-    for ds in ds_mod.discover_datasets(cfg):
-        stages = [
-            StageStatusOut(name=s.name, exists=s.exists, kind=s.kind,
-                           volume_id=f"{ds.id}.{s.name}")
-            for s in ds.stages
-        ]
-        out.append(DatasetOut(
-            id=ds.id, temperature=ds.temperature, raw_name=ds.raw_name,
-            stem=ds.stem, stages=stages,
-        ))
-    return out
+    return [_dataset_out(ds) for ds in ds_mod.discover_datasets(cfg)]
+
+
+@router.get("/datasets/{dataset_id}", response_model=DatasetOut)
+def get_dataset(dataset_id: str, cfg: ServerConfig = Depends(get_config)) -> DatasetOut:
+    """One dataset — including a tuning view (``<id>~tune~<run>[~<trial>]``)."""
+    ds = ds_mod.find_dataset(cfg, dataset_id)
+    if ds is None:
+        raise HTTPException(404, f"unknown dataset id {dataset_id!r}")
+    return _dataset_out(ds)

@@ -42,6 +42,8 @@ type WorkerRequest =
       force: boolean;
       forceFrom: string | null;
       stages: string[] | null;
+      tuningRun: string | null;
+      tuningTrial: string | null;
     }
   | { id: number; type: "json_call"; method: string; args: unknown[] }
   | { id: number; type: "slice_call"; method: string; args: unknown[] };
@@ -152,7 +154,7 @@ async function dispatch(req: WorkerRequest): Promise<void> {
       }
 
       case "run_pipeline": {
-        const { paramsJson, flattenEnabled, force, forceFrom, stages } = req;
+        const { paramsJson, flattenEnabled, force, forceFrom, stages, tuningRun, tuningTrial } = req;
         const progress = (
           stage: string,
           status: string,
@@ -176,6 +178,8 @@ async function dispatch(req: WorkerRequest): Promise<void> {
           force,
           forceFrom ?? null,
           progress,
+          tuningRun ?? null,
+          tuningTrial ?? null,
         );
         reply(json);
         break;

@@ -28,11 +28,10 @@ from pathlib import Path
 from nebula3d.pipeline import (
     DeltaPdfParams,
     consistency_reconstruction,
-    pipeline_paths,
     write_delta_pdf_h5,
 )
 from nebula3d.server.config import ServerConfig
-from nebula3d.server.datasets import find_dataset
+from nebula3d.server.datasets import artifact_path, find_dataset
 from nebula3d.server.volumes import PLANES, lattice_parameters, load_volume, pack_slice
 from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import extract_slice_dpdf
@@ -93,12 +92,11 @@ def saved_check(cfg: ServerConfig, dataset_id: str) -> dict | None:
     ds = find_dataset(cfg, dataset_id)
     if ds is None:
         return None
-    paths = pipeline_paths(ds.raw_path, proc_dir=cfg.processed_dir)
-    path = paths.pdf_check_json
+    path = artifact_path(cfg, ds, "pdf_check_json")
+    dpdf = artifact_path(cfg, ds, "delta_pdf")
     metrics = None
     if path.exists() and not (
-        paths.delta_pdf.exists()
-        and paths.delta_pdf.stat().st_mtime > path.stat().st_mtime
+        dpdf.exists() and dpdf.stat().st_mtime > path.stat().st_mtime
     ):
         metrics = _finite(json.loads(path.read_text(encoding="utf-8")))
     return {

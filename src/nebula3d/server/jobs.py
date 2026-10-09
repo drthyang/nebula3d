@@ -19,7 +19,7 @@ import multiprocessing as mp
 import multiprocessing.queues
 import threading
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -36,6 +36,7 @@ def _worker(
     stages: Sequence[str],
     force: bool,
     force_from: str | None,
+    inputs: Mapping[str, Path] | None = None,
 ) -> None:
     """Process entry point: run the pipeline, streaming progress onto the queue."""
     # The ring-removal stage parallelises across a nested process pool, but a
@@ -55,7 +56,8 @@ def _worker(
 
     try:
         run_pipeline(input_path, params, proc_dir=proc_dir, stages=tuple(stages),
-                     force=force, force_from=force_from, progress=progress)
+                     force=force, force_from=force_from, progress=progress,
+                     inputs=inputs)
         queue.put({"type": "done"})
     except Exception as exc:  # noqa: BLE001 - report any failure to the client
         queue.put({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
@@ -102,6 +104,7 @@ class JobManager:
         stages: Sequence[str] = STAGES,
         force: bool = False,
         force_from: str | None = None,
+        inputs: Mapping[str, Path] | None = None,
     ) -> Job:
         jid = uuid.uuid4().hex[:12]
         queue = _ctx.Queue()
@@ -110,7 +113,8 @@ class JobManager:
             target=_worker,
             args=(queue, str(input_path), params,
                   str(proc_dir) if proc_dir is not None else None,
-                  tuple(stages), force, force_from),
+                  tuple(stages), force, force_from,
+                  dict(inputs) if inputs is not None else None),
             daemon=True,
         )
         job._process = proc

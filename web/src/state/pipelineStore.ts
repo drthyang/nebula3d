@@ -11,7 +11,7 @@ import { create } from "zustand";
 import { cancelJob, runPipeline } from "../api/client";
 import { cancelPipeline, engine, PYODIDE_MODE } from "../api/pyodideEngine";
 import { queryClient } from "../api/queryClient";
-import type { JobEvent, StageParamsIn } from "../api/types";
+import type { JobEvent, StageParamsIn, TuningTrial } from "../api/types";
 import { useDatasetStore } from "./datasetStore";
 
 // Mirrors nebula3d.pipeline.STAGES (incl. the 6th back-FFT consistency check) so the
@@ -116,10 +116,12 @@ interface PipelineState extends PipelineConfig {
   // actions
   patch: (p: Partial<PipelineConfig>) => void;
   run: () => Promise<void>;
-  // Recompute just `stages` with the current settings (outputs on disk are
-  // overwritten) and resolve with how the job ended: "done" | "error" |
-  // "cancelled".  The assistant's tuning run drives the pipeline through this.
-  runStages: (stages: string[]) => Promise<string>;
+  // Recompute just `stages` with the current settings and resolve with how the
+  // job ended: "done" | "error" | "cancelled".  With `tuning`, the run is one
+  // trial of the assistant's tuning run: its outputs go to the trial's own
+  // folder and processed/ is only read.  `datasetId` defaults to the
+  // sidebar's selection.
+  runStages: (stages: string[], opts?: RunOptions) => Promise<string>;
   cancel: () => Promise<void>;
 }
 
@@ -200,8 +202,8 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     return start(enabledStages(s), s.force, set, get);
   },
 
-  runStages: async (stages) => {
-    await start(stages, true, set, get);
+  runStages: async (stages, opts) => {
+    await start(stages, true, set, get, opts);
     // The native job reports its end over SSE, after start() returns.
     if (get().running) {
       await new Promise<void>((resolve) => {
@@ -233,16 +235,27 @@ type Getter = () => PipelineState;
 
 // Launch `stages` with the current form settings; native runs stream their
 // progress (and their end) over SSE after this returns.
-async function start(stages: string[], force: boolean, set: Setter, get: Getter): Promise<void> {
+export interface RunOptions {
+  tuning?: TuningTrial;
+  datasetId?: string;
+}
+
+async function start(
+  stages: string[],
+  force: boolean,
+  set: Setter,
+  get: Getter,
+  opts: RunOptions = {},
+): Promise<void> {
   const s = get();
-  const datasetId = useDatasetStore.getState().datasetId ?? "";
+  const datasetId = opts.datasetId ?? useDatasetStore.getState().datasetId ?? "";
   closeStream();
   set({ events: [], times: [], terminal: null, running: true, jobId: null });
 
   const params = formToParams(s);
 
   if (PYODIDE_MODE) {
-    await runInBrowser(datasetId, params, s.flatten, force, stages, set, get);
+    await runInBrowser(datasetId, params, s.flatten, force, stages, set, get, opts.tuning);
     return;
   }
 
@@ -253,6 +266,7 @@ async function start(stages: string[], force: boolean, set: Setter, get: Getter)
       force,
       stages,
       params,
+      tuning: opts.tuning,
     });
     set({ jobId: job.id });
 
@@ -372,6 +386,7 @@ async function runInBrowser(
   stages: string[],
   set: Setter,
   get: Getter,
+  tuning?: TuningTrial,
 ): Promise<void> {
   const log = (ev: JobEvent) =>
     set({ events: [...get().events, ev], times: [...get().times, Date.now()] });
@@ -382,6 +397,7 @@ async function runInBrowser(
       flattenEnabled: flatten,
       force,
       stages,
+      tuning,
       onProgress: (ev) =>
         log({
           type: "progress",

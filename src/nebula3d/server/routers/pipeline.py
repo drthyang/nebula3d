@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from nebula3d.pipeline import STAGES
+from nebula3d.server import tuning
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import find_dataset
 from nebula3d.server.deps import get_config
@@ -51,10 +52,25 @@ def run(req: PipelineRunRequest, request: Request,
         params = build_params(req)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    stages = tuple(req.stages) if req.stages is not None else STAGES
+    proc_dir, inputs, force = cfg.processed_dir, None, req.force
+    if req.tuning is not None:
+        # A trial recomputes its own stage only, into its own folder.
+        try:
+            stage, _ = tuning.parse_trial(req.tuning.trial)
+            if set(stages) - set(tuning.TRIAL_PIPELINE_STAGES[stage]):
+                raise ValueError(f"a {stage} trial runs only "
+                                 f"{tuning.TRIAL_PIPELINE_STAGES[stage]}")
+            trial_run = tuning.load_run(cfg, req.tuning.run_id)
+            if trial_run is not None and trial_run.dataset_id != ds.id.split(tuning.VIEW_SEP)[0]:
+                raise ValueError(f"run {trial_run.id} belongs to {trial_run.dataset_id!r}")
+            _, proc_dir, inputs = tuning.trial_target(cfg, req.tuning.run_id, req.tuning.trial)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        force = True
     job = _jobs(request).start(
-        ds.raw_path, params, proc_dir=cfg.processed_dir,
-        stages=tuple(req.stages) if req.stages is not None else STAGES,
-        force=req.force, force_from=req.force_from)
+        ds.raw_path, params, proc_dir=proc_dir, stages=stages,
+        force=force, force_from=req.force_from, inputs=inputs)
     return JobOut(**job.snapshot())
 
 

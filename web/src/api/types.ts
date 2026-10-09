@@ -242,6 +242,12 @@ export interface StageParamsIn {
   pdf_q_max?: number;
 }
 
+/** One trial of a tuning run: its stage runs into tuning/<run>/trials/<trial>/. */
+export interface TuningTrial {
+  run_id: string;
+  trial: string; // "<stage>-<n>", e.g. "punch-2"
+}
+
 export interface PipelineRunRequest {
   dataset_id: string;
   flatten_enabled: boolean;
@@ -249,6 +255,18 @@ export interface PipelineRunRequest {
   force_from?: string | null;
   stages?: string[]; // enabled-stage subset; omitted → all stages run
   params: StageParamsIn;
+  tuning?: TuningTrial; // a tuning trial: never writes to processed/
+}
+
+/** A tuning run's folder; `dataset_id` views its chain of kept outputs. */
+export interface TuningRun {
+  run_id: string;
+  dataset_id: string;
+}
+
+export interface TuningPromote extends TuningRun {
+  trial: string;
+  files: string[];
 }
 
 export interface JobOut {

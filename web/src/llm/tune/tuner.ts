@@ -1,17 +1,21 @@
 // The tuning run: the pipeline, one stage at a time.  For each stage the app
 // runs the user's settings first, asks the model for a few alternatives (checked
 // against the catalog), runs each, asks the model which trial best meets the
-// stage's goal, leaves that trial's output on disk and its settings on the
+// stage's goal, keeps that trial's output and puts its settings on the
 // Configure page, and moves on — so every stage builds on the best result of
 // the one before.  The loop is ordinary code; the model only proposes and picks.
 //
-// Trials run through the same path as a Configure-page run, so each one
-// rewrites the dataset's processed files (the raw input is never touched).
+// Every trial runs into its own folder, tuning/<run>/trials/<stage>-<n>/, and
+// is measured through the server's view of it; keeping a trial copies it into
+// the run's own chain, tuning/<run>/processed/, which the next stage reads.
+// The dataset's processed/ files are never written (nebula3d.server.tuning).
 // State lives in a module-scoped store so the run survives the panel closing.
 
 import { create } from "zustand";
 
-import type { Dataset } from "../../api/types";
+import { fetchDataset, promoteTrial, startTuningRun } from "../../api/client";
+import { queryClient } from "../../api/queryClient";
+import type { Dataset, TuningRun } from "../../api/types";
 import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { completeChat, type ChatMessage } from "../provider/client";
 import type { LlmSettings } from "../settings";
@@ -63,6 +67,7 @@ export interface StageRun {
 interface TuneState {
   active: boolean;
   datasetLabel: string | null;
+  run: TuningRun | null; // run.dataset_id views the run's kept outputs
   stages: StageRun[];
   error: string | null;
   finishedNote: string | null;
@@ -71,10 +76,13 @@ interface TuneState {
 export const useTuneStore = create<TuneState>(() => ({
   active: false,
   datasetLabel: null,
+  run: null,
   stages: [],
   error: null,
   finishedNote: null,
 }));
+
+const trialKey = (stage: TuneStage, n: number) => `${stage}-${n}`;
 
 const setStage = (stage: TuneStage, patch: Partial<StageRun>) =>
   useTuneStore.setState((s) => ({ stages: s.stages.map((r) => (r.stage === stage ? { ...r, ...patch } : r)) }));
@@ -115,12 +123,23 @@ async function ask(messages: ChatMessage[], llm: LlmSettings, signal: AbortSigna
   return parseJsonReply(text);
 }
 
-// Run the stage with the form as it stands and measure the result.
-async function runTrial(stage: TuneStage, n: number, dataset: Dataset, signal: AbortSignal): Promise<boolean> {
+// Run the stage as trial n of the run, with the form as it stands, into the
+// trial's own folder; measure it through the server's view of that trial.
+async function runTrial(
+  stage: TuneStage,
+  n: number,
+  dataset: Dataset,
+  run: TuningRun,
+  signal: AbortSignal,
+): Promise<boolean> {
   checkStop(signal);
   setTrial(stage, n, { status: "running" });
   const t0 = performance.now();
-  const end = await pipeline().runStages(TRIAL_STAGES[stage]);
+  const trial = trialKey(stage, n);
+  const end = await pipeline().runStages(TRIAL_STAGES[stage], {
+    datasetId: dataset.id,
+    tuning: { run_id: run.run_id, trial },
+  });
   checkStop(signal);
   const seconds = Math.round((performance.now() - t0) / 100) / 10;
   if (end !== "done") {
@@ -128,7 +147,8 @@ async function runTrial(stage: TuneStage, n: number, dataset: Dataset, signal: A
     return false;
   }
   try {
-    const evaluation = await evaluateStage(stage, dataset);
+    const view = await fetchDataset(`${run.dataset_id}~${trial}`);
+    const evaluation = await evaluateStage(stage, view);
     setTrial(stage, n, { status: "done", evaluation, seconds });
     return true;
   } catch (e) {
@@ -145,9 +165,17 @@ const records = (run: StageRun): TrialRecord[] =>
 const sameSettings = (a: Record<string, ParamValue>, b: Record<string, ParamValue>) =>
   Object.keys({ ...a, ...b }).every((k) => a[k] === b[k]);
 
+// Keep trial n: copy it into the run's chain, where the next stage reads it.
+async function keep(stage: TuneStage, n: number, run: TuningRun, signal: AbortSignal): Promise<void> {
+  await promoteTrial(run.run_id, trialKey(stage, n));
+  checkStop(signal);
+  await queryClient.invalidateQueries();
+}
+
 async function tuneStage(
   stage: TuneStage,
   dataset: Dataset,
+  run: TuningRun,
   trialsPerStage: number,
   earlier: Record<string, Record<string, ParamValue>>,
   llm: LlmSettings,
@@ -162,7 +190,7 @@ async function tuneStage(
         : r,
     ),
   }));
-  if (!(await runTrial(stage, 1, dataset, signal))) {
+  if (!(await runTrial(stage, 1, dataset, run, signal))) {
     setStage(stage, { status: "failed", message: "The run with your settings failed; tuning stopped here." });
     throw new Error(`${stage}: the run with the current settings failed`);
   }
@@ -229,7 +257,7 @@ async function tuneStage(
     }
     for (const [i, cand] of accepted.entries()) {
       pipeline().patch({ ...base, ...cand.patch });
-      await runTrial(stage, i + 2, dataset, signal);
+      await runTrial(stage, i + 2, dataset, run, signal);
     }
 
     // Pick the best trial.
@@ -251,20 +279,15 @@ async function tuneStage(
       why = "The model proposed nothing it judged better, so your settings are kept.";
     }
 
-    // Leave the best trial's output on disk and its settings in Configure.  The
-    // files are from the last trial that ran; re-run the chosen one otherwise.
+    // Keep the best trial's output in the run's chain and its settings in Configure.
     const chosen = best === 1 ? {} : accepted[best - 2].patch;
     pipeline().patch({ ...base, ...chosen });
-    const trials = getStage(stage).trials;
-    if (best !== trials[trials.length - 1].n) {
-      setStage(stage, { status: "applying", best, why });
-      const end = await pipeline().runStages(TRIAL_STAGES[stage]);
-      checkStop(signal);
-      if (end !== "done") throw new Error(`${stage}: re-running the chosen settings failed (${end})`);
-    }
+    setStage(stage, { status: "applying", best, why });
+    await keep(stage, best, run, signal);
     setStage(stage, { status: "done", best, why });
     return;
   }
+  await keep(stage, 1, run, signal);
   setStage(stage, { status: "done", best: 1, why: "One trial per stage: your settings were run and kept." });
 }
 
@@ -287,6 +310,7 @@ export async function startTuning({ dataset, stages, trialsPerStage, llm }: Tune
   useTuneStore.setState({
     active: true,
     datasetLabel: dataset.temperature ?? dataset.stem,
+    run: null,
     error: null,
     finishedNote: null,
     stages: order.map((stage) => ({
@@ -299,28 +323,37 @@ export async function startTuning({ dataset, stages, trialsPerStage, llm }: Tune
   });
   const earlier: Record<string, Record<string, ParamValue>> = {};
   try {
+    const firstRun = order.find((s) => stageEnabled(s, cfg));
+    if (!firstRun) throw new Error("none of the chosen stages is switched on");
+    const run = await startTuningRun(dataset.id, firstRun);
+    useTuneStore.setState({ run });
     for (const stage of order) {
       if (!stageEnabled(stage, pipeline())) continue;
       if (stages.includes(stage)) {
-        await tuneStage(stage, dataset, trialsPerStage, earlier, llm, abort.signal);
+        await tuneStage(stage, dataset, run, trialsPerStage, earlier, llm, abort.signal);
       } else {
-        setStage(stage, { status: "running", message: "Re-run with your settings (not tuned)." });
-        const end = await pipeline().runStages(TRIAL_STAGES[stage]);
-        checkStop(abort.signal);
-        if (end !== "done") throw new Error(`${stage}: the run ended: ${end}`);
-        setStage(stage, { status: "done" });
+        setStage(stage, {
+          status: "running",
+          message: "Re-run with your settings (not tuned), on the stages kept before it.",
+          trials: [{ n: 1, changes: {}, settings: currentStageSettings(stage, pipeline()), status: "pending" }],
+        });
+        if (!(await runTrial(stage, 1, dataset, run, abort.signal))) {
+          throw new Error(`${stage}: the run with your settings failed`);
+        }
+        await keep(stage, 1, run, abort.signal);
+        setStage(stage, { status: "done", best: 1 });
       }
       earlier[stage] = currentStageSettings(stage, pipeline());
     }
     useTuneStore.setState({
-      finishedNote: "Done. The chosen settings are on the Configure page and their outputs are on disk.",
+      finishedNote:
+        "Done. Your processed files are unchanged; the tuned outputs are in this run's own folder (open them below), and the chosen settings are on the Configure page.",
     });
   } catch (e) {
     if (e instanceof Stopped || (e as Error).name === "AbortError") {
       if (pipeline().running) await pipeline().cancel();
       useTuneStore.setState({
-        finishedNote:
-          "Stopped. The files on disk are from the last finished trial, which may not be the chosen one; run the pipeline to make them consistent.",
+        finishedNote: "Stopped. Your processed files are unchanged; the stages kept so far are in this run's own folder.",
       });
     } else {
       useTuneStore.setState({ error: (e as Error).message });
