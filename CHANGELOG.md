@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **`main` now reports version `0.4.0.dev0`** (web: `0.4.0-dev.0`), not
+  `0.3.0`. Default results have changed since the 0.3.0 beta, so files written
+  from `main` no longer claim to come from that release.
 - **The Bragg punch no longer depends on the data's intensity units.** Its
   floors were numbers in data units (0.8, 1.0). On data of another scale,
   such as X-ray rates against neutron counts, or two runs on one instrument,

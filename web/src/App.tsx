@@ -94,8 +94,8 @@ function ConsoleFoot({ className, apiUp }: { className: string; apiUp: boolean }
             : "API offline"}
       </span>
       <span className="ver">
-        <span className="ver-num">v0.3.0</span>
-        <span className="ver-tag">beta</span>
+        <span className="ver-num">v0.4.0</span>
+        <span className="ver-tag">dev</span>
       </span>
       <span className="foot-links">
         <a href={`${REPO_URL}#readme`} target="_blank" rel="noopener noreferrer">
