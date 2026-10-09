@@ -23,6 +23,7 @@ import {
   LevelsBar,
   ScaleControl,
 } from "../components/DisplayBar";
+import { qSection, reciprocalMetric } from "../components/reciprocal";
 import { SliceCanvas } from "../components/SliceCanvas";
 import { EmptyState, IconAlert, RangeSlider, Segmented, Slider, Switch } from "../components/ui";
 import { UnitCellGrid } from "../components/UnitCellGrid";
@@ -221,6 +222,13 @@ export function ConsistencyViewer() {
 
   const idx = axisInfo ? Math.min(cutIndex, axisInfo.n - 1) : 0;
   const value = axisInfo ? axisInfo.min + idx * axisInfo.step : 0;
+  // The Q slice as a section of reciprocal space, so the |Q| band is drawn as
+  // its true contour: a tilted ellipse for a non-orthogonal cell.
+  const lattice = meta?.lattice;
+  const qSec = useMemo(() => {
+    const G = reciprocalMetric(lattice);
+    return G ? qSection(G, AXIS_INDEX[qx], AXIS_INDEX[qy], value, qGeom.sx, qGeom.sy) : null;
+  }, [lattice, qx, qy, value, qGeom]);
   const plane = AXIS_TO_PLANE[fixedAxis];
   const dpdfIdx = dpdfAxisInfo ? Math.min(dpdfCutIndex, dpdfAxisInfo.n - 1) : 0;
   const dpdfValue = dpdfAxisInfo ? dpdfAxisInfo.min + dpdfIdx * dpdfAxisInfo.step : 0;
@@ -370,6 +378,7 @@ export function ConsistencyViewer() {
         bands={opts.bands ? [draftQ.min, draftQ.max] : undefined}
         cutDistance={value}
         reciprocalAxes
+        qSection={qSec}
         latX={latX}
         latY={latY}
         latCut={latCut}
