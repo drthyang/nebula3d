@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import { useDatasets, useHealth } from "./api/hooks";
 import { PYODIDE_MODE } from "./api/pyodideEngine";
@@ -21,9 +21,9 @@ import { PipelineConfig } from "./pages/PipelineConfig";
 import { PipelineExecution } from "./pages/PipelineExecution";
 import { ReciprocalViewer } from "./pages/ReciprocalViewer";
 import { useDatasetStore, useInitializeDataset } from "./state/datasetStore";
+import { useNavStore, type Tab } from "./state/navStore";
 import { usePipelineStore } from "./state/pipelineStore";
 
-export type Tab = "config" | "execution" | "reciprocal" | "bragg" | "dpdf" | "consistency" | "assistant";
 
 // `short` is the label used by the compact top bar (phones and iPad portrait),
 // where the nav runs as one row of pills instead of the sidebar list.
@@ -66,13 +66,6 @@ const NAV: { id: Tab; label: string; short?: string; desc?: string; icon: ReactN
     short: "Q–R",
     desc: "Inverse-FFT the ΔPDF back to reciprocal space and compare to the data; band-limit |Q| to separate low- vs high-frequency signal.",
     icon: <IconTransform />,
-  },
-  {
-    id: "assistant",
-    label: "AI Assistant",
-    short: "Assistant",
-    desc: "Ask a local or cloud model to assess the reduction, grounded in metrics from the volumes.",
-    icon: <IconSpark />,
   },
 ];
 
@@ -125,15 +118,18 @@ function renderPage(tab: Tab, setTab: (t: Tab) => void): ReactNode {
       return <DeltaPdfViewer />;
     case "consistency":
       return <ConsistencyViewer />;
-    case "assistant":
-      return <AssistantPanel />;
   }
 }
 
 export function App() {
-  const [tab, setTab] = useState<Tab>("config");
+  const tab = useNavStore((s) => s.tab);
+  const setTab = useNavStore((s) => s.setTab);
+  // The assistant is a panel docked beside every page, not a page of its own,
+  // so it can open a viewer next to the conversation.
+  const dockOpen = useNavStore((s) => s.dockOpen);
+  const setDockOpen = useNavStore((s) => s.setDockOpen);
   // A volume sent by the NeXus Viewer lands on the Configure page.
-  const showConfig = useCallback(() => setTab("config"), []);
+  const showConfig = useCallback(() => setTab("config"), [setTab]);
   const health = useHealth();
   const apiUp = health.isSuccess;
   const running = usePipelineStore((s) => s.running);
@@ -161,7 +157,7 @@ export function App() {
   }, [tab]);
 
   return (
-    <div className="app">
+    <div className={`app${dockOpen ? " dock-open" : ""}`}>
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-glyph">
@@ -218,12 +214,23 @@ export function App() {
               {n.icon}
               <span className="nav-label">{n.label}</span>
               <span className="nav-label-short">{n.short ?? n.label}</span>
-              {n.id === "assistant" && <span className="nav-beta">Beta</span>}
               {n.id === "execution" && running && (
                 <span className="nav-dot" title="a job is running" />
               )}
             </button>
           ))}
+          <button
+            type="button"
+            className={`nav-assistant${dockOpen ? " active" : ""}`}
+            onClick={() => setDockOpen(!dockOpen)}
+            aria-pressed={dockOpen}
+            title={dockOpen ? "Close the AI Assistant" : "Open the AI Assistant beside this page"}
+          >
+            <IconSpark />
+            <span className="nav-label">AI Assistant</span>
+            <span className="nav-label-short">Assistant</span>
+            <span className="nav-beta">Beta</span>
+          </button>
         </nav>
 
         <ConsoleFoot className="sidebar-foot" apiUp={apiUp} />
@@ -238,6 +245,12 @@ export function App() {
         {renderPage(tab, setTab)}
         <ConsoleFoot className="main-foot" apiUp={apiUp} />
       </main>
+
+      {dockOpen && (
+        <aside className="ai-side" aria-label="AI Assistant">
+          <AssistantPanel onClose={() => setDockOpen(false)} />
+        </aside>
+      )}
     </div>
   );
 }

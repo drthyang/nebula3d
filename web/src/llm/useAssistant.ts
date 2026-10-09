@@ -1,100 +1,18 @@
 // Assistant orchestration: settings + the connection probe (with auto-connect
-// and model auto-pick), and the diagnostic-context query that fetches one shared
-// reciprocal cut across the pipeline stages plus a ΔPDF orthoslice, then folds
-// them into the compact PipelineContext the model reasons over.  Nothing leaves
-// the machine here except a GET to the user's own model server.
+// and model auto-pick), and the diagnostic-context query that folds one shared
+// reciprocal cut across the pipeline stages plus a ΔPDF orthoslice into the
+// compact PipelineContext the model reasons over (context/loadContext.ts).
+// Nothing leaves the machine here except a GET to the user's own model server.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import {
-  fetchBraggProfile,
-  fetchConsistencyCheck,
-  fetchDpdfMeta,
-  fetchDpdfSlice,
-  fetchMeta,
-  fetchSlice,
-} from "../api/client";
 import type { Dataset } from "../api/types";
+import { loadPipelineContext } from "./context/loadContext";
 import { checkConnection, type ConnectionResult } from "./provider/client";
-import {
-  buildPipelineContext,
-  type PipelineContext,
-  type StageSlices,
-} from "./context/pipelineContext";
 import { saveSettings, useLlmSettings } from "./settings";
 
-// The reciprocal cut every stage metric is computed on: the L=0 plane through
-// the origin, where rings, punched peaks and diffuse are all most visible.
-const RECIP_PLANE = "hk0";
-const RECIP_VALUE = 0;
-// The ΔPDF orthoslice: the z=0 real-space plane through the origin.
-const DPDF_PLANE = "xy";
-const DPDF_VALUE = 0;
-
-const safe = async <T>(p: Promise<T>): Promise<T | null> => {
-  try {
-    return await p;
-  } catch {
-    return null;
-  }
-};
-
-const stageVolumeId = (dataset: Dataset, name: string): string | undefined =>
-  dataset.stages.find((s) => s.name === name && s.exists)?.volume_id;
-
-// The context plus the raw fetched slices/metadata, so the UI can also render a
-// slice image for the vision path without re-fetching.
-export interface AssistantContext {
-  context: PipelineContext;
-  slices: StageSlices;
-  lattice: { a: number | null; b: number | null; c: number | null } | null;
-}
-
-// Fetch the slices + metadata the context needs and assemble it.  Every fetch is
-// independent and failure-tolerant: a missing stage just omits its metrics.
-export async function loadPipelineContext(dataset: Dataset): Promise<AssistantContext> {
-  const hklVolId =
-    stageVolumeId(dataset, "raw") ??
-    dataset.stages.find((s) => s.kind === "hkl" && s.exists)?.volume_id;
-  const dpdfVolId = dataset.stages.find((s) => s.kind === "delta_pdf" && s.exists)?.volume_id;
-
-  const hklMeta = hklVolId ? await safe(fetchMeta(hklVolId)) : null;
-  const dpdfMeta = dpdfVolId ? await safe(fetchDpdfMeta(dpdfVolId)) : null;
-
-  const getRecip = (name: string) => {
-    const id = stageVolumeId(dataset, name);
-    return id ? safe(fetchSlice(id, RECIP_PLANE, RECIP_VALUE)) : Promise.resolve(null);
-  };
-
-  const [raw, ringremoved, braggpunched, backfilled, dpdf, braggProfile, consistencyCheck] =
-    await Promise.all([
-      getRecip("raw"),
-      getRecip("ringremoved"),
-      getRecip("braggpunched"),
-      getRecip("backfilled"),
-      dpdfVolId ? safe(fetchDpdfSlice(dpdfVolId, DPDF_PLANE, DPDF_VALUE)) : Promise.resolve(null),
-      safe(fetchBraggProfile(dataset.id)),
-      // The run's own back-FFT check, not the consistency viewer's recompute:
-      // it is a file read, and it describes the ΔPDF the context reports on.
-      dpdfVolId ? safe(fetchConsistencyCheck(dataset.id)) : Promise.resolve(null),
-    ]);
-
-  const slices: StageSlices = { raw, ringremoved, braggpunched, backfilled, dpdf };
-
-  const context = buildPipelineContext({
-    datasetLabel: dataset.temperature ?? dataset.stem ?? dataset.id,
-    plane: RECIP_PLANE,
-    cutValue: RECIP_VALUE,
-    hklMeta,
-    dpdfMeta,
-    braggProfile,
-    consistency: consistencyCheck?.metrics ?? null,
-    slices,
-  });
-
-  return { context, slices, lattice: hklMeta?.lattice ?? dpdfMeta?.lattice ?? null };
-}
+export type { AssistantContext } from "./context/loadContext";
 
 export interface ConnectionState extends ConnectionResult {
   status: "idle" | "testing" | "ok" | "error";

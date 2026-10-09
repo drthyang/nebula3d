@@ -38,9 +38,18 @@ export interface ManualLevels {
   dataset: string;
 }
 
+/** A cut another part of the console asked the cleanup page to open. */
+export interface CutFocus {
+  axis: FixedAxis;
+  value: number; // r.l.u. along the fixed axis
+}
+
 interface ViewerState {
   fixedAxis: FixedAxis;
   cutIndex: number; // index along the fixed axis
+  // Applied (and cleared) by the cleanup page once its axis metadata is in,
+  // in place of centring the cut — the assistant's "show in viewer".
+  focus: CutFocus | null;
   scale: ScaleKind;
   levels: ManualLevels | null; // null → Auto
   scaleRef: string; // cleanup: the stage that sets the shared scale, or "panel"
@@ -49,6 +58,7 @@ interface ViewerState {
   divColormap: string;
   setFixedAxis: (a: FixedAxis) => void;
   setCutIndex: (i: number) => void;
+  setFocus: (f: CutFocus | null) => void;
   setScale: (s: ScaleKind) => void;
   setLevels: (l: ManualLevels | null) => void;
   setScaleRef: (r: string) => void;
@@ -60,6 +70,7 @@ interface ViewerState {
 export const useViewerStore = create<ViewerState>((set) => ({
   fixedAxis: "H",
   cutIndex: 0,
+  focus: null,
   scale: "lin",
   levels: null,
   scaleRef: "flattened",
@@ -68,6 +79,7 @@ export const useViewerStore = create<ViewerState>((set) => ({
   divColormap: "RdBu_r",
   setFixedAxis: (fixedAxis) => set({ fixedAxis }),
   setCutIndex: (cutIndex) => set({ cutIndex }),
+  setFocus: (focus) => set({ focus }),
   setScale: (scale) => set({ scale }),
   setLevels: (levels) => set({ levels }),
   setScaleRef: (scaleRef) => set({ scaleRef }),

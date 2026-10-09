@@ -17,6 +17,10 @@ export interface LlmSettings {
   // attached to stage-review prompts so the model can literally assess the
   // image. Off by default — keeps the metrics-only path fully text/private.
   attachImages: boolean;
+  // When true, the model may call the assistant's tools (measure other cuts,
+  // look up the Bragg profile, open a viewer, …).  Models that cannot call
+  // tools fall back to the fixed-cut metrics on their own.
+  useTools: boolean;
 }
 
 export const DEFAULT_SETTINGS: LlmSettings = {
@@ -25,6 +29,7 @@ export const DEFAULT_SETTINGS: LlmSettings = {
   apiKey: "",
   temperature: 0.2,
   attachImages: false,
+  useTools: true,
 };
 
 const readStorage = (): LlmSettings => {

@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
-import type { Tab } from "../App";
+import type { Tab } from "../state/navStore";
 import { useDatasets } from "../api/hooks";
 import type { JobEvent } from "../api/types";
 import { useDatasetStore } from "../state/datasetStore";

@@ -94,57 +94,100 @@ export const robustStats = (data: Float32Array | number[]): RobustStats | null =
   };
 };
 
-// Azimuthally-averaged radial profile I(r) over `nbins` shells, where the radius
-// of pixel (ix, iy) is sqrt((x·sx)^2 + (y·sy)^2) about the origin.  Powder rings
-// (Al, sample-environment) are azimuthally-uniform bumps in this profile, so its
-// shape before vs after ring removal is the direct evidence of how well they
-// were subtracted.  `scaleX/scaleY` convert axis units (r.l.u.) toward Å⁻¹ so
-// the shells are physically round; they default to 1 (index/rlu space).
+// The radius of the in-plane point (x, y), in the slice's own axis units.  For a
+// reciprocal cut it is |Q| under the reciprocal metric (see qRadius in
+// context/pipelineContext.ts); the default treats the axes as orthogonal.
+export type RadiusFn = (x: number, y: number) => number;
+export const planarRadius: RadiusFn = (x, y) => Math.hypot(x, y);
+
+// Azimuthally-averaged radial profile I(r) over `nbins` shells of `radius`.
+// Powder rings (Al, sample-environment) are azimuthally-uniform bumps in this
+// profile, so its shape before vs after ring removal is the direct evidence of
+// how well they were subtracted.  The shells are only round when `radius` is
+// the true |Q|: on a hexagonal H–K plane the r.l.u. axes meet at 60°, and an
+// orthogonal radius smears every ring across several shells.
+//
+// `stat: "median"` takes each shell's median instead of its mean.  Before the
+// Bragg punch a few bright peak voxels dominate a shell's mean, so the mean
+// profile is mostly Bragg peaks; the median ignores them (they fill a small
+// share of the shell) but still follows a ring, which covers the whole shell.
 export interface RadialProfile {
   r: number[]; // shell-centre radius
-  intensity: number[]; // azimuthal mean intensity in the shell (NaN if empty)
+  intensity: number[]; // azimuthal mean (or median) intensity in the shell (NaN if empty)
   counts: number[];
 }
 
 export const radialProfile = (
   grid: GridSlice,
   nbins = 64,
-  scaleX = 1,
-  scaleY = 1,
+  radius: RadiusFn = planarRadius,
+  stat: "mean" | "median" = "mean",
 ): RadialProfile => {
   const { nx, ny, x_axis, y_axis } = grid.header;
   const data = grid.data;
   let rMax = 0;
   for (let iy = 0; iy < ny; iy++) {
-    const yr = (y_axis[iy] ?? 0) * scaleY;
     for (let ix = 0; ix < nx; ix++) {
-      const xr = (x_axis[ix] ?? 0) * scaleX;
-      const r = Math.sqrt(xr * xr + yr * yr);
+      const r = radius(x_axis[ix] ?? 0, y_axis[iy] ?? 0);
       if (r > rMax) rMax = r;
     }
   }
   const sums = new Array(nbins).fill(0);
   const counts = new Array(nbins).fill(0);
   const rSums = new Array(nbins).fill(0);
+  const shells: number[][] | null = stat === "median" ? Array.from({ length: nbins }, () => []) : null;
   const binScale = rMax > 0 ? nbins / rMax : 0;
   for (let iy = 0; iy < ny; iy++) {
-    const yr = (y_axis[iy] ?? 0) * scaleY;
     const row = iy * nx;
     for (let ix = 0; ix < nx; ix++) {
       const v = data[row + ix];
       if (!Number.isFinite(v)) continue;
-      const xr = (x_axis[ix] ?? 0) * scaleX;
-      const r = Math.sqrt(xr * xr + yr * yr);
+      const r = radius(x_axis[ix] ?? 0, y_axis[iy] ?? 0);
       let b = Math.floor(r * binScale);
       if (b >= nbins) b = nbins - 1;
       sums[b] += v;
       rSums[b] += r;
       counts[b] += 1;
+      shells?.[b].push(v);
     }
   }
-  const intensity = sums.map((s, i) => (counts[i] ? s / counts[i] : NaN));
+  const intensity = shells
+    ? shells.map((s) => (s.length ? median(s) : NaN))
+    : sums.map((s, i) => (counts[i] ? s / counts[i] : NaN));
   const r = rSums.map((s, i) => (counts[i] ? s / counts[i] : ((i + 0.5) * rMax) / nbins));
   return { r, intensity, counts };
+};
+
+// The low floor of each radial shell: the `p` percentile of its finite voxels,
+// NaN for a shell with fewer than `minCount`.  The flatten stage fits its
+// pedestal to such floors, so they are what a good flatten brings to zero.
+// Shells span 0 … the largest radius on the grid, so two slices on the same
+// grid share their shells.
+export const radialFloors = (
+  grid: GridSlice,
+  nbins = 32,
+  radius: RadiusFn = planarRadius,
+  p = 0.25,
+  minCount = 20,
+): number[] => {
+  const { nx, ny, x_axis, y_axis } = grid.header;
+  const radii = new Float64Array(nx * ny);
+  let rMax = 0;
+  for (let iy = 0; iy < ny; iy++) {
+    for (let ix = 0; ix < nx; ix++) {
+      const r = radius(x_axis[ix] ?? 0, y_axis[iy] ?? 0);
+      radii[iy * nx + ix] = r;
+      if (r > rMax) rMax = r;
+    }
+  }
+  const shells: number[][] = Array.from({ length: nbins }, () => []);
+  const binScale = rMax > 0 ? nbins / rMax : 0;
+  for (let i = 0; i < nx * ny; i++) {
+    const v = grid.data[i];
+    if (!Number.isFinite(v)) continue;
+    shells[Math.min(nbins - 1, Math.floor(radii[i] * binScale))].push(v);
+  }
+  return shells.map((s) => (s.length >= minCount ? percentile(s, p) : NaN));
 };
 
 // A smooth radial baseline: rolling median of the profile over a ±`half`-bin
