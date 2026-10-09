@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ConsistencyCheck, Dataset } from "../../api/types";
-import { loadPipelineContext } from "../useAssistant";
+import { loadPipelineContext } from "../context/loadContext";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
