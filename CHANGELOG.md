@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Structure overlay on the 3D-ΔPDF.** Load a CIF, or enter sites and
+  symmetry operations by hand, and the 3D-ΔPDF page (and the Q–R page's ΔPDF
+  view) marks the structure's interatomic vectors r_j − r_i + R on each slice:
+  one glyph per element pair, a filter for the vectors from one site, a depth
+  around the cut, and a hover readout of the pairs, |u| and u. The CIF's cell
+  is checked against the ΔPDF's, with an axis mapping for another setting. The
+  structure stays in the browser. On a synthetic rock-salt volume with ordering
+  planted on the cation sublattice, the markers fall on the planted ΔPDF
+  features (negative at ⟨½ ½ 0⟩, positive at ⟨1 ½ ½⟩ and ⟨2 0 0⟩).
 - **\|Q\| boundaries are drawn correctly for non-orthogonal cells.** The Q–R
   page drew the \|Q\| band as circles on the r.l.u. axes, which is right only
   for an orthogonal cell; it now draws the true contour under the reciprocal

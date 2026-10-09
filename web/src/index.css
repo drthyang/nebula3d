@@ -5096,6 +5096,177 @@ h6.md-h {
   color: var(--text-3);
 }
 
+/* Structure overlay: the panel that defines it, its legend and readout. */
+.struct-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.struct-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.struct-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.struct-sub {
+  font-size: 12px;
+  color: var(--text-2);
+}
+.struct-sub b {
+  font-weight: 600;
+  color: var(--text);
+}
+.struct-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+.struct-note.ok {
+  border-left-color: var(--green);
+}
+.struct-note.warn {
+  border-left-color: var(--amber);
+}
+.struct-note.err {
+  color: var(--text);
+  border-left-color: var(--red);
+}
+.struct-body {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(220px, 1fr) minmax(200px, 280px);
+  gap: 16px 20px;
+  align-items: start;
+}
+@media (max-width: 1099px) {
+  .struct-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.struct-sites,
+.struct-ops,
+.struct-show {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.struct-ops,
+.struct-show {
+  align-items: stretch;
+}
+.struct-sites {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.struct-table {
+  border-collapse: collapse;
+}
+.struct-table th {
+  padding: 0 4px 4px 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--text-3);
+}
+.struct-table td {
+  padding: 2px 4px 2px 0;
+}
+.struct-table input.struct-cell {
+  padding: 4px 6px;
+  font: 12px var(--font-mono);
+}
+.struct-table input.struct-cell.num {
+  text-align: right;
+}
+.struct-x {
+  padding: 0 4px;
+  font-size: 15px;
+  color: var(--text-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.struct-x:hover {
+  color: var(--red);
+}
+.struct-textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  padding: 6px 8px;
+  font: 12px/1.5 var(--font-mono);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+.struct-hint {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+.struct-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.struct-inline select {
+  padding: 4px 26px 4px 8px;
+  font-size: 12px;
+}
+.struct-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.struct-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  font: 12px var(--font-mono);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.struct-chip:hover {
+  border-color: var(--text-3);
+}
+.struct-chip.off {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.ws-readout .struct-hit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+}
+
 /* Narrower screens: five views in one row get too small; wrap them. */
 @media (max-width: 1099px) {
   .ws--grid[data-n="5"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
