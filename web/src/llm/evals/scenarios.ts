@@ -126,7 +126,10 @@ export const SCENARIOS: Scenario[] = [
     checks: [
       answers,
       ...noActions,
-      mentions(/\b(keep|stay with|stick with|don't|do not|wouldn't|would not|not recommend|recommend against|advise against|avoid|no,)/i, "to keep the ellipsoid window"),
+      mentions(
+        /\b(keep|stay with|stick with|don't|do not|wouldn't|would not|shouldn't|should not|not recommend|recommend against|advise against|avoid|no need|not necessary|unnecessary|no reason)\b|^no\b/i,
+        "to keep the ellipsoid window",
+      ),
       asserts(
         /\b(unmeasured|outside|beyond|past)\b[^.]*\b(coverage|measured|data|box|space)|\bcorner\w*|\bsymmetr\w*|\bbackfill\w*|\bguess\w*/i,
         "that a separable window would reach unmeasured space or break the symmetry",

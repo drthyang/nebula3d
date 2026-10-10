@@ -22,7 +22,7 @@ export interface EvalRun {
   note?: string;
   error?: string;
   latencyMs: number;
-  usage: { input: number; output: number; requests: number } | null; // null: the server did not say
+  usage: { input: number; output: number; cacheRead?: number; cacheWrite?: number; requests: number } | null; // null: the server did not say
 }
 
 export interface Grade {

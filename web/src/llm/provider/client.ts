@@ -304,6 +304,8 @@ export interface StreamDelta {
 export interface TokenUsage {
   input: number; // prompt tokens (an Anthropic request: input plus cache reads and writes)
   output: number; // completion tokens, thinking included
+  cacheRead?: number; // of input, read from the prompt cache (Anthropic)
+  cacheWrite?: number; // of input, written to it
 }
 
 interface ToolCallDelta {

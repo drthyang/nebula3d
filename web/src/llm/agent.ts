@@ -121,7 +121,7 @@ export async function runAgent({
   };
 
   let retries = 0;
-  const tokens = { input: 0, output: 0, requests: 0 }; // over the requests that reported them
+  const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 }; // over the requests that reported them
   let requests = 0;
   for (let round = 0; ; round++) {
     const last = round >= maxRounds;
@@ -145,6 +145,8 @@ export async function runAgent({
         if (delta.usage) {
           tokens.input += delta.usage.input;
           tokens.output += delta.usage.output;
+          tokens.cacheRead += delta.usage.cacheRead ?? 0;
+          tokens.cacheWrite += delta.usage.cacheWrite ?? 0;
           tokens.requests += 1;
         }
         if (delta.content) roundText += delta.content;
