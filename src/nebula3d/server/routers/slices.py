@@ -39,6 +39,8 @@ def meta(volume_id: str, cfg: ServerConfig = Depends(get_config)) -> VolumeMetaO
         l_range=m["l_range"], lattice=LatticeOut(**m["lattice"]),
         ub_matrix=m.get("ub_matrix"),
         planes=m["planes"],
+        symmetry=m.get("symmetry"),
+        symmetry_ops=m.get("symmetry_ops"),
     )
 
 

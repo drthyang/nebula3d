@@ -422,6 +422,14 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
     operations (hexagonal: six-, three-, two-fold and the a ↔ b mirror;
     orthogonal: the mirrors and the two-fold), on the FFT's oblique grid; an
     operation the data were symmetrised with holds to ~10⁻³ or better.
+    `grain_check` (`metrics/grains.ts`) takes the off-lattice peaks the
+    punch's search recorded and groups them into orbits of the declared
+    symmetry (from the volume's metadata). It tests the strongest two ways:
+    against the Bragg nodes, where an orbit within a quarter of the node
+    spacing is a displaced Bragg peak whose offset over |Q| bounds the
+    rotation from below; and as a rotated copy of the Bragg lattice, a second
+    grain, judged against the same search at random directions. A rotation
+    under 2° is the UB, not a grain.
   - *Display*: `dpdf_contrast` optimises the 3D-ΔPDF viewer's colour range in
     one call (the page's Auto rule, measured on the centre sections), reports the
     robust σ, the strongest feature and what the 99.5th and 99.97th percentiles
@@ -520,7 +528,7 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 | --- | --- | --- |
 | GET | `/api/datasets` | discovered datasets with per-stage output status (tuning runs' chains included) |
 | GET | `/api/datasets/{id}` | one dataset, or a tuning view: `<id>~tune~<run>` (the run's chain) or `<id>~tune~<run>~<stage>-<n>` (one trial) |
-| GET | `/api/volumes/{id}/meta` | HKLVolume shape, axis ranges, lattice |
+| GET | `/api/volumes/{id}/meta` | HKLVolume shape, axis ranges, lattice, UB, and the symmetry the file declares (`symmetry`, `symmetry_ops`) |
 | GET | `/api/volumes/{id}/slice?plane=&value=&interp=` | binary 2D slice |
 | GET | `/api/volumes/{id}/coverage` | where the counts begin and end in \|Q\|: the share of each shell's voxels holding counts, the edges where it crosses ½, and the box's nearest face |
 | GET | `/api/deltapdf/{id}/meta` | ΔPDF shape, ranges, lattice, \|Q\|max |

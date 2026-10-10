@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **NEBULA Pilot can tell a second grain from displaced Bragg peaks.**
+  `grain_check` groups the off-lattice peaks the punch's search found into
+  symmetry orbits and tests the strongest two ways:
+  - against the Bragg nodes: an orbit within a quarter of the node spacing
+    is a Bragg peak displaced, and its offset over |Q| bounds the rotation
+    from below;
+  - as a rotated copy of the Bragg lattice (a second grain), against the
+    same search at random directions. A rotation under 2° is the UB, not a
+    grain.
+
+  On a measured hexagonal volume there is no second grain: a rotated copy
+  indexes 2 of the 40 strongest orbits (random directions: 4). 35 of the 40
+  sit next to Bragg nodes at a median 0.85°. They are Bragg peaks
+  symmetrised from data whose UB is off by about a degree; 5 remain
+  unexplained. A volume's metadata now carries the symmetry its file
+  declares. The agent's context counts the peaks the search punched off the
+  lattice: a model had read the leftover count, which is only what the
+  punch missed on one cut, as "no off-lattice peaks".
 - **NEBULA Pilot writes an analysis report.** A reply that assessed, tuned
   or ran the pipeline gets a *Report* button. The report reads in the app
   and exports as a self-contained HTML page, which prints to PDF, or as
