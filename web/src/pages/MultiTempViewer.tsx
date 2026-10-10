@@ -23,6 +23,7 @@ import {
 import { latticeLabel } from "../components/oblique";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useDpdfStore } from "../state/dpdfStore";
+import { datasetName } from "../api/datasetName";
 
 const PLANES = [
   { key: "xy", label: "x_H – y_K" },
@@ -146,7 +147,7 @@ export function MultiTempViewer() {
           >
             {datasets.map((d) => (
               <option key={d.id} value={d.id} title={d.raw_name}>
-                {d.temperature ?? d.stem}
+                {datasetName(d, datasets)}
               </option>
             ))}
           </select>

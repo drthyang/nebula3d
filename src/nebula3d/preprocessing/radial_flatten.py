@@ -39,6 +39,17 @@ the self term is ``F²(1 − (Q̂·ê)²)``, and only its shell average is remov
 and a smooth background that is not F²-shaped (multiple scattering, sample
 environment) stays in.
 
+A third term, ``b·Q²`` (``q2_term=True``), takes the smooth rise of the
+multiphonon and thermal background, whose leading |Q| dependence is the
+Debye–Waller exponent 2W ∝ Q².  It too varies only on the scale of the whole
+|Q| range, so it cannot follow a correlation's oscillation; on a warm or
+light-element sample the floor can otherwise climb several-fold across the
+coverage, leaving a pedestal that steps down at the coverage edge.  Q² is only
+the leading term — the true rise saturates as ``1 − e^(−2W)`` — so past the
+end of ``fit_q_range`` the term is held at its value there instead of
+extrapolated (on a measured volume the extrapolation over-subtracted the
+partial shells at the coverage edge).
+
 Estimator
 ---------
 ``'model'`` (default) is the fit above.  With the default ``ion=None`` it fits
@@ -101,6 +112,11 @@ class RadialFlattenResult:
     model_coef : (const, c), optional
         ``estimator='model'``: the fitted pedestal ``const + c·F(Q)²`` (``c`` is
         0 without an ion).
+    model_q2 : float, optional
+        ``estimator='model'`` with ``q2_term``: the fitted ``b`` of ``b·Q²``.
+    model_q2_cap : float, optional
+        The |Q| past which ``b·Q²`` is held at its value (the fit range's end;
+        None when the fit had no upper end).
     model_r2 : float, optional
         ``estimator='model'``: R² of the fit over the fitted shells.
     ion : str, optional
@@ -116,6 +132,8 @@ class RadialFlattenResult:
     model_coef: tuple[float, float] | None = None
     model_r2: float | None = None
     ion: str | None = None
+    model_q2: float | None = None
+    model_q2_cap: float | None = None
 
 
 def flatten_radial_background(
@@ -131,6 +149,7 @@ def flatten_radial_background(
     clip_negative: bool = False,
     ion: str | None = None,
     fit_q_range: tuple[float, float] | None = (0.8, 10.0),
+    q2_term: bool = False,
 ) -> RadialFlattenResult:
     """Subtract a smooth, continuous isotropic radial background from *vol*.
 
@@ -172,6 +191,9 @@ def flatten_radial_background(
         ``estimator='model'``: |Q| range (Å⁻¹) of the shells the model is fitted
         to (default 0.8–10, clear of the beam stop and the sparse high-|Q|
         corners).  ``None`` fits every shell with a level.
+    q2_term : bool
+        ``estimator='model'``: also fit ``b·Q²`` (multiphonon / thermal
+        background; see the module docstring).  Default False.
     """
     if estimator not in ESTIMATORS:
         raise ValueError(f"Unknown estimator {estimator!r}; choose one of {ESTIMATORS}.")
@@ -253,9 +275,11 @@ def flatten_radial_background(
 
     model_coef: tuple[float, float] | None = None
     model_r2: float | None = None
+    q2 = 0.0
+    q2_cap = fit_q_range[1] if (q2_term and fit_q_range is not None) else None
     if estimator == "model":
-        model_coef, model_r2 = _fit_pedestal(q_grid, raw, ion, fit_q_range)
-        bg_curve = _pedestal(q_grid, model_coef, ion)
+        model_coef, q2, model_r2 = _fit_pedestal(q_grid, raw, ion, fit_q_range, q2_term)
+        bg_curve = _pedestal(q_grid, model_coef, ion, q2, q2_cap)
     elif estimator == "snip":
         # SNIP baseline of the median radial profile: the floor under broad humps.
         bg_curve = _estimate_baseline(_fill_nan_1d(raw), qs, snip_width, smooth)
@@ -277,7 +301,7 @@ def flatten_radial_background(
     for lo in range(0, data.shape[0], _SLAB):
         sl = slice(lo, lo + _SLAB)
         bg_at = (
-            _pedestal(q_slab(lo), model_coef, ion) if model_coef is not None
+            _pedestal(q_slab(lo), model_coef, ion, q2, q2_cap) if model_coef is not None
             else np.interp(q_slab(lo), q_grid, bg_curve,
                            left=float(bg_curve[0]), right=float(bg_curve[-1]))
         )
@@ -291,17 +315,27 @@ def flatten_radial_background(
         volume=vol_out, q_grid=q_grid, bg_curve=bg_curve,
         raw_levels=raw, counts=counts, estimator=estimator,
         model_coef=model_coef, model_r2=model_r2, ion=ion,
+        model_q2=q2 if (estimator == "model" and q2_term) else None,
+        model_q2_cap=q2_cap if estimator == "model" else None,
     )
 
 
 def _pedestal(
-    q: NDArray[np.floating], coef: tuple[float, float], ion: str | None
+    q: NDArray[np.floating], coef: tuple[float, float], ion: str | None, q2: float = 0.0,
+    q2_cap: float | None = None,
 ) -> NDArray[np.float64]:
-    """``const + c·F(Q)²`` at *q* (``const`` alone without an ion)."""
+    """``const + c·F(Q)² + b·Q²`` at *q* (no F² term without an ion), with
+    ``Q`` in the last term held at *q2_cap* beyond it."""
     const, c = coef
-    if ion is None:
-        return np.full(np.shape(q), const, dtype=np.float64)
-    return const + c * magnetic_form_factor(q, ion) ** 2
+    out = np.full(np.shape(q), const, dtype=np.float64)
+    if ion is not None:
+        out = out + c * magnetic_form_factor(q, ion) ** 2
+    if q2:
+        qq = np.asarray(q, dtype=np.float64)
+        if q2_cap is not None:
+            qq = np.minimum(qq, q2_cap)
+        out = out + q2 * np.square(qq)
+    return out
 
 
 def _fit_pedestal(
@@ -309,16 +343,21 @@ def _fit_pedestal(
     levels: NDArray[np.float64],
     ion: str | None,
     fit_q_range: tuple[float, float] | None,
-) -> tuple[tuple[float, float], float | None]:
-    """Least-squares ``const + c·F(Q)²`` through the per-shell floor *levels*.
+    q2_term: bool = False,
+) -> tuple[tuple[float, float], float, float | None]:
+    """Least-squares ``const + c·F(Q)² (+ b·Q²)`` through the per-shell floor
+    *levels*.
 
     Fits the shells inside *fit_q_range*, or every shell with a level if fewer
     than two lie there.  Unconstrained: an over-subtracted empty can leaves a
-    negative constant, which must come out too.  Returns ``((const, c), R²)``.
+    negative constant, which must come out too.  Returns ``((const, c), b, R²)``
+    (``c`` 0 without an ion, ``b`` 0 without *q2_term*).
     """
     cols = [np.ones_like(q_grid)]
     if ion is not None:
         cols.append(magnetic_form_factor(q_grid, ion) ** 2)
+    if q2_term:
+        cols.append(np.square(q_grid))
     x = np.column_stack(cols)
     sel = np.isfinite(levels)
     if fit_q_range is not None:
@@ -329,13 +368,15 @@ def _fit_pedestal(
     if sel.sum() < x.shape[1]:
         # Too few shells to fit (a tiny volume): fall back to their mean level.
         const = float(np.mean(levels[sel])) if sel.any() else 0.0
-        return (const, 0.0), None
+        return (const, 0.0), 0.0, None
     y = levels[sel]
     coef, *_ = np.linalg.lstsq(x[sel], y, rcond=None)
     resid = y - x[sel] @ coef
     var = float(np.var(y))
     r2 = 1.0 - float(np.var(resid)) / var if var > 0 else None
-    return (float(coef[0]), float(coef[1]) if coef.size > 1 else 0.0), r2
+    c = float(coef[1]) if ion is not None else 0.0
+    b = float(coef[-1]) if q2_term else 0.0
+    return (float(coef[0]), c), b, r2
 
 
 def _shell_level(

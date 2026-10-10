@@ -62,20 +62,41 @@ export type Block =
   | { type: "blockquote"; inline: Inline[] }
   | { type: "hr" };
 
-// Earliest of: `code`, **strong**, __strong__, *em*, _em_, [text](href).
-const INLINE_RE =
-  /(`[^`]+`)|(\*\*[\s\S]+?\*\*)|(__[\s\S]+?__)|(\*[\s\S]+?\*)|(_[\s\S]+?_)|(\[[^\]]+\]\([^)]+\))/;
+// Earliest of: `code`, **strong**, __strong__, *em*, _em_, [text](href).  As in
+// CommonMark, a delimiter must touch its text (`5 * 3 * 2` is not emphasis), and
+// an underscore inside a word is a literal: models write field names such as
+// ring_energy_ratio without backticks, and those must not turn into italics.
+const INLINE_SOURCE =
+  /(`[^`]+`)|(\*\*(?=\S)[\s\S]*?\S\*\*)|(__(?=\S)[\s\S]*?\S__(?!_*[\p{L}\p{N}]))|(\*(?=[^\s*])[\s\S]*?[^\s*]\*)|(_(?=[^\s_])[\s\S]*?[^\s_]_(?!_*[\p{L}\p{N}]))|(\[[^\]]+\]\([^)]+\))/u
+    .source;
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+// Whether the underscore run holding text[at] follows a letter or digit.
+const opensInWord = (text: string, at: number): boolean => {
+  let i = at - 1;
+  while (i >= 0 && text[i] === "_") i -= 1;
+  return i >= 0 && WORD_CHAR.test(text[i]);
+};
 
 export function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
-  let rest = text;
+  // A regex of its own per call: parseInline recurses, and a global regex
+  // would share its lastIndex between the levels.
+  const re = new RegExp(INLINE_SOURCE, "gu");
+  let pos = 0; // the start of the text not yet emitted
   for (;;) {
-    const m = INLINE_RE.exec(rest);
+    const m = re.exec(text);
     if (!m) {
-      if (rest) out.push({ type: "text", value: rest });
+      if (pos < text.length) out.push({ type: "text", value: text.slice(pos) });
       break;
     }
-    if (m.index > 0) out.push({ type: "text", value: rest.slice(0, m.index) });
+    // An underscore run that opens inside a word is a literal: search again
+    // after it, and let the text around it run on.
+    if ((m[3] || m[5]) && opensInWord(text, m.index)) {
+      re.lastIndex = m.index + 1;
+      continue;
+    }
+    if (m.index > pos) out.push({ type: "text", value: text.slice(pos, m.index) });
     const tok = m[0];
     if (m[1]) {
       out.push({ type: "code", value: tok.slice(1, -1) });
@@ -88,7 +109,7 @@ export function parseInline(text: string): Inline[] {
       if (link) out.push({ type: "link", href: link[2], children: parseInline(link[1]) });
       else out.push({ type: "text", value: tok });
     }
-    rest = rest.slice(m.index + tok.length);
+    pos = m.index + tok.length;
   }
   return out;
 }

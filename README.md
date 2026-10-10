@@ -23,7 +23,7 @@ Mantid / symmetrised HKL volume
   5. 3D-ΔPDF transform              examples/delta_pdf.py
   6. back-FFT consistency check     examples/delta_pdf_consistency.py
   7. cleanup / ΔPDF viewers         examples/explore_slice.py, examples/explore_delta_pdf_ortho.py
-  8. AI review and tuning (optional) web AI Assistant — local or cloud LLM
+  8. AI review and tuning (optional) web NEBULA Pilot — local or cloud LLM
 ```
 
 For a **3D-PDF** (total scattering with the Bragg peaks *kept* — a Patterson-like
@@ -52,8 +52,8 @@ static, hosted app is a first-class way to run nebula3d, not a reduced demo.
 
 A sidebar console drives everything from one place — a global dataset switcher,
 a pipeline runner (the default landing view), reciprocal-space cleanup, a Bragg
-profile view, 3D-ΔPDF orthoslices, and the back-FFT consistency check — plus an
-**AI Assistant**, a panel beside every page, that connects to your **selected
+profile view, 3D-ΔPDF orthoslices, and the back-FFT consistency check — plus
+**NEBULA Pilot**, an AI assistant in a panel beside every page, that connects to your **selected
 LLM**, local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic), and **reasons over
 the reduction**: it grades each stage from metrics computed in the browser,
 measures any cut it needs, opens the viewer where its point shows, and can
@@ -224,8 +224,11 @@ sample's magnetic ion, while the pipeline and web app default to none, a
 constant only). Both
 terms are self scattering, so the ΔPDF changes only at r ≈ 0, while the
 anisotropic diffuse, the Bragg residuals and isotropic pair correlations are
-kept. This is the explicit background-removal step. Use
-`examples/validate_flatten.py` to check isotropy, feature retention, and
+kept. This is the explicit background-removal step. A background that
+rises with |Q| (multiphonon and thermal scattering, leading term ∝ Q²) is not
+F²-shaped: `Q2=1` adds a `b·Q²` term, held at its value past the fit range's
+end, and `FIT_Q_MAX` carries the fit to the data's coverage (default 10 Å⁻¹).
+Use `examples/validate_flatten.py` to check isotropy, feature retention, and
 over-subtraction on your own volumes.
 
 ### 5. Compute The 3D-ΔPDF
@@ -377,7 +380,7 @@ back-FFT consistency check: powder-ring removal, Bragg cleanup, Bragg-hole
 backfill, radial flatten, 3D-ΔPDF transform, consistency QA, and interactive
 viewers. The complete pipeline also runs **fully client-side** in the static
 GitHub Pages app, at full-resolution float64 with feature parity to the native
-backend, and the browser console now includes an **AI Assistant** that grades the
+backend, and the browser console now includes **NEBULA Pilot**, an AI assistant that grades the
 reduction from in-browser metrics. The package remains pre-1.0/beta while the
 public API and file formats continue to evolve.
 

@@ -62,7 +62,8 @@ export interface PipelineConfig {
   ringPooledWindow: string; // pooled: stack-pooling half-width (deg)
   // Significance (standard errors) a peak must reach; blank = backend default (5).
   punchMinSig: string;
-  punchMethod: string;
+  punchFootprint: string; // "" = profile-matched (the backend default) | "ellipsoid"
+  punchProfileNSigma: string; // profile footprint: punch out to where the profile falls to this × the noise
   punchMode: string;
   // Supercell the volume is indexed on (per axis); blank = 1.  Integer-mode
   // Bragg nodes are the parent lattice's only.
@@ -71,6 +72,12 @@ export interface PipelineConfig {
   punchSupercellL: string;
   // Integer-punch H guard (r.l.u.); blank = backend default (0.12), 0 = off.
   punchHGuard: string;
+  // The off-lattice search: its floor (× the diffuse scatter), and the H planes
+  // it leaves alone ("1/3, 2/3", "none"; blank = the backend default).
+  punchSearchFloor: string;
+  punchProtectH: string;
+  punchProtectHalfWidth: string;
+  punchSearchMaxWidth: string; // search: leave candidates broader than this × the Bragg width
   // Punch ellipsoid frame: "spherical" (rρ,rθ,rφ, default) | "q" (a*,b*,c*)
   punchFrame: string;
   // Spherical-frame radii (Å⁻¹): rρ radial, rθ polar, rφ azimuth; blank = default
@@ -96,6 +103,8 @@ export interface PipelineConfig {
   backfillMethod: string;
   flattenEstimator: string;
   flattenIon: string;
+  flattenQ2: boolean; // model: also fit b·Q² (multiphonon / thermal background)
+  flattenFitQMax: string; // model: end of the fit's |Q| range (Å⁻¹; blank = 10)
   pdfApod: string;
   pdfWindowShape: string;
   pdfWindowSupport: boolean; // taper the ΔPDF window to the measured coverage
@@ -155,12 +164,17 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   ringPooledSectors: "",
   ringPooledWindow: "",
   punchMinSig: "",
-  punchMethod: "ellipsoid",
+  punchFootprint: "",
+  punchProfileNSigma: "",
   punchMode: "",
   punchSupercellH: "",
   punchSupercellK: "",
   punchSupercellL: "",
   punchHGuard: "",
+  punchSearchFloor: "",
+  punchProtectH: "",
+  punchProtectHalfWidth: "",
+  punchSearchMaxWidth: "",
   punchFrame: "spherical",
   punchRho: "",
   punchTheta: "",
@@ -183,6 +197,8 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   backfillMethod: "",
   flattenEstimator: "",
   flattenIon: "",
+  flattenQ2: false,
+  flattenFitQMax: "",
   pdfApod: "",
   pdfWindowShape: "",
   pdfWindowSupport: true,
@@ -343,6 +359,13 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.punchSupercellK) params.punch_supercell_k = Number(s.punchSupercellK);
   if (s.punchSupercellL) params.punch_supercell_l = Number(s.punchSupercellL);
   if (s.punchHGuard) params.punch_h_guard = Number(s.punchHGuard);
+  if (s.punchSearchFloor) params.punch_search_floor = Number(s.punchSearchFloor);
+  const protect = parseFractions(s.punchProtectH);
+  if (protect) params.punch_search_protect_h = protect;
+  if (s.punchProtectHalfWidth) params.punch_search_protect_half_width = Number(s.punchProtectHalfWidth);
+  if (s.punchSearchMaxWidth) params.punch_search_max_width_ratio = Number(s.punchSearchMaxWidth);
+  if (s.punchFootprint) params.punch_footprint = s.punchFootprint;
+  if (s.punchProfileNSigma) params.punch_profile_n_sigma = Number(s.punchProfileNSigma);
   if (s.punchMargin) params.punch_margin = Number(s.punchMargin);
   // Punch frame: spherical (rρ,rθ,rφ) by default, or the legacy a*/b*/c* q-frame.
   const frame = s.punchFrame === "q" ? "q" : "spherical";
@@ -365,6 +388,8 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.backfillMethod) params.backfill_method = s.backfillMethod;
   if (s.flattenEstimator) params.flatten_estimator = s.flattenEstimator;
   if (s.flattenIon) params.flatten_ion = s.flattenIon;
+  if (s.flattenQ2) params.flatten_q2 = true;
+  if (s.flattenFitQMax) params.flatten_fit_q_max = Number(s.flattenFitQMax);
   if (s.pdfApod) params.pdf_apodization = s.pdfApod;
   if (s.pdfWindowShape) params.pdf_window_shape = s.pdfWindowShape;
   if (s.pdfWindowSupport === false) params.pdf_window_support = false;
@@ -373,6 +398,23 @@ function formToParams(s: PipelineConfig): StageParamsIn {
     if (s.pdfQMax) params.pdf_q_max = Number(s.pdfQMax);
   }
   return params;
+}
+
+// H fractions as typed: "1/3, 2/3" → [0.3333, 0.6667], "none" → [] (protect
+// nothing), blank → undefined (the backend default).  Each is taken mod 1.
+export function parseFractions(text: string): number[] | undefined {
+  const t = text.trim().toLowerCase();
+  if (!t) return undefined;
+  if (t === "none" || t === "off") return [];
+  const values = t
+    .split(/[\s,;]+/)
+    .filter(Boolean)
+    .map((part) => {
+      const [a, b] = part.split("/");
+      return b === undefined ? Number(a) : Number(a) / Number(b);
+    });
+  if (!values.every(Number.isFinite)) return undefined;
+  return values.map((v) => Math.round((((v % 1) + 1) % 1) * 1e4) / 1e4);
 }
 
 // Drive the pipeline locally via Pyodide (Worker).  Boot progress appears in

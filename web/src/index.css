@@ -2691,7 +2691,7 @@ input[type="range"]::-moz-range-track {
   animation: nav-pulse 1.6s ease-out infinite;
 }
 
-/* "Beta" badge on the AI Assistant nav item — in amber, the warm complement of
+/* "Beta" badge on the NEBULA Pilot nav item — in amber, the warm complement of
    the cobalt accent, so it reads as a distinct tag against the blue selection. */
 .nav-beta {
   margin-left: auto;
@@ -3295,7 +3295,7 @@ input[type="range"]::-moz-range-track {
   min-width: 180px;
 }
 
-/* ============================================================ AI Assistant */
+/* ============================================================ NEBULA Pilot */
 
 /* The assistant is a panel docked to the right of every page: a third grid
    column beside <main> while open.  On the compact layouts (sidebar folded
@@ -3366,7 +3366,7 @@ input[type="range"]::-moz-range-track {
   background: var(--surface-2);
   color: var(--text);
 }
-/* the AI Assistant nav item opens the panel; set apart from the pages */
+/* the NEBULA Pilot nav item opens the panel; set apart from the pages */
 @media (min-width: 1100px) {
   .nav .nav-assistant {
     margin-top: 10px;
@@ -4852,7 +4852,7 @@ h6.md-h {
     display: none; /* fit kind — the stat strip already names it */
   }
 
-  /* AI Assistant */
+  /* NEBULA Pilot */
   .ai-topbar {
     padding: 8px 10px;
   }
@@ -5692,8 +5692,23 @@ h6.md-h {
   outline-offset: -2px;
   animation: ai-breathe 2.4s ease-in-out infinite;
 }
+/* An Execution stage row has no padding of its own (its 18 px bottom padding
+   spaces the rows), so its ring is drawn on a frame set around the row:
+   10 px clear of the node and the text on every side. */
 .exec-stage.ai-glow {
+  position: relative;
+  outline: none;
+  animation: none;
+}
+.exec-stage.ai-glow::before {
+  content: "";
+  position: absolute;
+  inset: -9px -12px 9px -12px;
   border-radius: var(--radius-sm);
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  animation: ai-breathe 2.4s ease-in-out infinite;
+  pointer-events: none;
 }
 @keyframes ai-breathe {
   0%,
@@ -5708,8 +5723,12 @@ h6.md-h {
 }
 @media (prefers-reduced-motion: reduce) {
   .ai-glow,
-  .cfg-stage.ai-glow-within .cfg-box {
+  .cfg-stage.ai-glow-within .cfg-box,
+  .exec-stage.ai-glow::before {
     animation: none;
     outline-color: var(--accent);
+  }
+  .exec-stage.ai-glow {
+    outline: none;
   }
 }

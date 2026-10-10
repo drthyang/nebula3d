@@ -28,6 +28,7 @@ import {
 import { loadSettings } from "../settings";
 import {
   displayValue,
+  SAMPLE_PARAMS,
   TUNE_PARAMS,
   TUNE_STAGE_LABELS,
   TUNE_STAGES,
@@ -35,7 +36,7 @@ import {
   type TuneParam,
   type TuneStage,
 } from "../tune/catalog";
-import { evaluateStage, headline } from "../tune/evaluate";
+import { evaluateStage, headline, type StageEvaluation } from "../tune/evaluate";
 import { STAGE_GOALS } from "../tune/prompts";
 import { startTuning, stopTuning, useTuneStore, type StageRun } from "../tune/tuner";
 import { AXIS_INDEX, AXIS_TO_PLANE, useViewerStore, type FixedAxis } from "../../state/viewerStore";
@@ -53,7 +54,8 @@ import type { ToolCall, ToolSpec } from "../provider/client";
 import { openView, type ViewTarget } from "./openView";
 
 export type { ViewTarget } from "./openView";
-import { COVERAGE_SHELLS, coverageMetrics } from "../metrics/coverage";
+import { COVERAGE_SHELLS, coverageMetrics, OPEN_WEIGHT_OK } from "../metrics/coverage";
+import { sectionSymmetry, SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { median, radialProfile, roundSig } from "../metrics/sliceStats";
 import { textureMetrics } from "../metrics/texture";
 
@@ -195,7 +197,10 @@ async function measureRecip(dataset: Dataset, plane: string, value: number) {
 const recipSummary = (m: Awaited<ReturnType<typeof measureRecip>>): string =>
   [
     m.ring_removal?.ring_energy_ratio != null && `ring ratio ${m.ring_removal.ring_energy_ratio}`,
-    m.bragg_punch_leftover && `${m.bragg_punch_leftover.n_suspicious} leftover peak(s)`,
+    m.bragg_punch_leftover &&
+      (m.bragg_punch_leftover.n_at_nodes != null
+        ? `${m.bragg_punch_leftover.n_at_nodes} missed at nodes, ${(m.bragg_punch_leftover.n_off_nodes ?? 0) - (m.bragg_punch_leftover.n_broad_off_nodes ?? 0)} sharp off-lattice, ${m.bragg_punch_leftover.n_broad_off_nodes ?? 0} broad maxima`
+        : `${m.bragg_punch_leftover.n_suspicious} leftover peak(s)`),
     m.backfill?.median_seam_sigma != null && `seam ${m.backfill.median_seam_sigma}σ`,
     m.flatten?.after_floor_max_sigma != null && `floor ≤ ${m.flatten.after_floor_max_sigma}σ`,
   ]
@@ -275,7 +280,7 @@ const describeDataset: AgentTool = {
     ]);
     const stages = dataset.stages.filter((s) => s.exists).map((s) => s.name);
     const result = {
-      dataset: datasetLabel(dataset),
+      dataset: datasetLabel(dataset, datasets),
       id: dataset.id,
       stages,
       reciprocal: meta && {
@@ -294,7 +299,7 @@ const describeDataset: AgentTool = {
         q_max: r4(dmeta.q_max),
         planes: DPDF_PLANES,
       },
-      other_datasets: datasets.filter((d) => d.id !== dataset.id).map((d) => ({ id: d.id, label: datasetLabel(d) })),
+      other_datasets: datasets.filter((d) => d.id !== dataset.id).map((d) => ({ id: d.id, label: datasetLabel(d, datasets) })),
     };
     return { result, summary: `${result.dataset}: ${stages.join(", ")}` };
   },
@@ -525,7 +530,7 @@ const compareDatasets: AgentTool = {
           if (kind === "reciprocal") {
             const m = await measureRecip(d, plane, value);
             return {
-              dataset: datasetLabel(d),
+              dataset: datasetLabel(d, datasets),
               ring_energy_ratio: m.ring_removal?.ring_energy_ratio ?? null,
               over_subtraction_fraction: m.ring_removal?.over_subtraction_fraction ?? null,
               leftover_peaks: m.bragg_punch_leftover?.n_suspicious ?? null,
@@ -537,7 +542,7 @@ const compareDatasets: AgentTool = {
           const [m, check] = await Promise.all([measureDpdf(d, plane, value), safe(fetchConsistencyCheck(d.id))]);
           const p = m.delta_pdf;
           return {
-            dataset: datasetLabel(d),
+            dataset: datasetLabel(d, datasets),
             feature_snr: p.feature_snr,
             strong_feature_fraction: p.strong_feature_fraction,
             positive_fraction: p.positive_fraction,
@@ -547,7 +552,7 @@ const compareDatasets: AgentTool = {
             back_fft_r: check?.metrics ? r4(check.metrics.pearson_r) : null,
           };
         } catch (e) {
-          return { dataset: datasetLabel(d), error: (e as Error).message };
+          return { dataset: datasetLabel(d, datasets), error: (e as Error).message };
         }
       }),
     );
@@ -654,7 +659,7 @@ const ASSESS_CHOICES = [...TUNE_STAGES, "all"] as const;
 // The per-plane number that is worse when larger, for each reciprocal stage.
 const WORSE_WHEN_LARGER: Partial<Record<TuneStage, string>> = {
   rings: "ring_energy_ratio",
-  punch: "leftover_peaks",
+  punch: "at_nodes",
   backfill: "median_seam_sigma",
   flatten: "after_floor_max_sigma",
 };
@@ -690,12 +695,15 @@ const assessStage: AgentTool = {
     const result: Record<string, unknown> = {};
     const lines: string[] = [];
     let view: ViewTarget | undefined;
+    let measuredOn: string[] | undefined;
     for (const stage of stages) {
       if (!stageVolumeId(dataset, STAGE_OUTPUT[stage])) {
         result[stage] = { missing: `no ${STAGE_OUTPUT[stage]} output yet; run_pipeline computes it` };
         continue;
       }
       const evaluation = await evaluateStage(stage, dataset);
+      const planes = Object.keys((evaluation.per_plane as object | undefined) ?? {});
+      if (!measuredOn && planes.length) measuredOn = planes.map((p) => planeLabel(p, 0));
       if (!view) {
         const plane = stage === "pdf" ? null : worstPlane(stage, evaluation);
         if (plane) view = cleanupView(plane, 0);
@@ -706,6 +714,7 @@ const assessStage: AgentTool = {
       result[stage] = { headline: headline(stage, evaluation), ...evaluation, goal: STAGE_GOALS[stage] };
       lines.push(`${TUNE_STAGE_LABELS[stage]}: ${headline(stage, evaluation)}`);
     }
+    if (measuredOn) result.measured_on = measuredOn;
     return { result, summary: lines.join(" · ") || "no stage outputs yet", view };
   },
 };
@@ -844,6 +853,9 @@ const textureCheck: AgentTool = {
   },
 };
 
+// A share, in exponent form when it is tiny (3.2e-6, not 0.0000032).
+const share = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(roundSig(x, 2)));
+
 // How far the forward transform reaches in |Q|, from the Configure page: an
 // explicit |Q| band; else the box corners for a flat separable window (no
 // apodization), where every voxel counts at full weight; else the box faces
@@ -863,10 +875,52 @@ function windowReach(
   return { reach: q.box, how: "the window tapers to zero at the box faces" };
 }
 
+// Two evaluations with the same numbers: the change had no measurable effect.
+const sameNumbers = (a: StageEvaluation | undefined, b: StageEvaluation | undefined): boolean =>
+  !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+
+const symmetryCheck: AgentTool = {
+  name: "symmetry_check",
+  description:
+    "Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell: an x–y section (default z = 0) compared with its image under each in-plane operation (hexagonal: six-, three-, two-fold and the a ↔ b mirror; orthogonal: the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b), as the RMS of the difference over the section's RMS. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it; a larger share means a stage broke it, or the sample lacks that operation. Which operations the sample has is the user's to say.",
+  parameters: {
+    type: "object",
+    properties: { z: { type: "number", description: "Height of the x–y section along c, in Å (default 0)" } },
+  },
+  run: async (args, { dataset }) => {
+    const z = args.z === undefined ? 0 : num(args, "z");
+    const meta = await dpdfMeta(dataset);
+    const slice = await fetchDpdfSlice(dpdfVolumeId(dataset)!, "xy", z);
+    const { a, b } = meta.lattice ?? {};
+    const sym = a && b ? sectionSymmetry(slice, { a, b }) : null;
+    if (!sym) {
+      return {
+        result: { note: "no in-plane symmetry to test: the cell is neither hexagonal nor orthogonal, or the section is not centred on the origin" },
+        summary: "nothing to test",
+      };
+    }
+    const holds = sym.ops.filter((o) => o.rms_difference <= SYMMETRY_HOLDS).map((o) => o.op);
+    const broken = sym.ops.filter((o) => o.rms_difference > SYMMETRY_HOLDS).map((o) => `${o.op} (${o.rms_difference})`);
+    return {
+      result: {
+        section: `ΔPDF x–y section at z = ${z} Å`,
+        cell: sym.kind,
+        ops: sym.ops,
+        holds,
+        verdict: broken.length
+          ? `not kept: ${broken.join(", ")}; a symmetry the data were symmetrised with should hold to ~${SYMMETRY_HOLDS} or better`
+          : `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better`,
+      },
+      summary: broken.length ? `not kept: ${broken.join(", ")}` : "every in-plane operation holds",
+      view: dpdfView(meta, "xy", z),
+    };
+  },
+};
+
 const qmaxCoverage: AgentTool = {
   name: "qmax_coverage",
   description:
-    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk.",
+    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk.",
   parameters: { type: "object", properties: {} },
   run: async (_args, { dataset }) => {
     const meta = await recipMeta(dataset);
@@ -896,9 +950,26 @@ const qmaxCoverage: AgentTool = {
     // The ΔPDF records max |Q| over its grid: the box corner.
     const cornerQ = dmeta?.q_max ?? null;
     const s = usePipelineStore.getState();
-    const { reach, how } = windowReach(s, { corner: cornerQ, box: boxQ, full: fullQ });
+    const settled = windowReach(s, { corner: cornerQ, box: boxQ, full: fullQ });
+    // An ellipsoid window (what a lattice whose symmetry mixes axes gets) is
+    // inscribed in the box: its reach varies with direction, and only the
+    // recorded weight on unmeasured space says whether it stays measured.
+    const { reach, how } =
+      dmeta?.window_shape === "ellipsoid" && !s.pdfQMax
+        ? { reach: settled.reach, how: "an ellipsoid window inscribed in the box (its reach varies with direction; box_face_q is the nearest face)" }
+        : settled;
     const shell = boxQ != null ? boxQ / COVERAGE_SHELLS : 0; // the coverage edge is known to one shell
-    const verdict = !qRadius("hk0", 0, meta)
+    // The ΔPDF on disk records its window and the share of the window's weight
+    // on unmeasured space: the direct measure of a reach past the coverage.
+    const openWeight = dmeta?.window_open_weight ?? null;
+    const windowNote = dmeta?.window_shape
+      ? `the ΔPDF's ${dmeta.window_shape} window${dmeta.window_scale != null && dmeta.window_scale < 1 ? ` (shrunk to ${roundSig(dmeta.window_scale, 3)} × to fit the coverage)` : ""}`
+      : "the ΔPDF's window";
+    const verdict = openWeight != null
+      ? openWeight <= OPEN_WEIGHT_OK
+        ? `clean: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space`
+        : `too far: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`
+      : !qRadius("hk0", 0, meta)
       ? "no unit cell: |Q| is unknown, so the reach cannot be compared"
       : fullQ == null
         ? "no |Q| shell is fully measured on these planes"
@@ -910,6 +981,9 @@ const qmaxCoverage: AgentTool = {
     return {
       result: {
         verdict,
+        window_weight_on_unmeasured: openWeight,
+        window_shape: dmeta?.window_shape ?? null,
+        window_scale: dmeta?.window_scale ?? null,
         transform_reach_q: reach == null ? null : roundSig(reach, 4),
         reach_from: how,
         full_coverage_q: fullQ,
@@ -950,23 +1024,28 @@ const checkIdle = () => {
   if (useTuneStore.getState().active) throw new Error("a tuning run is in progress; wait for it to end");
 };
 
-const findParam = (key: string): TuneParam | undefined => TUNE_PARAMS.find((p) => p.key === key);
+const SETTABLE = [...TUNE_PARAMS, ...SAMPLE_PARAMS];
+const findParam = (key: string): TuneParam | undefined => SETTABLE.find((p) => p.key === key);
 
 const allowedValues = (p: TuneParam): string =>
   p.kind === "enum"
     ? p.options!.map((o) => o.name).join("|")
     : p.kind === "boolean"
       ? "true|false"
-      : `${p.kind} ${p.min}–${p.max}`;
+      : p.kind === "fractions"
+        ? 'H fractions like "1/3, 2/3", or none'
+        : `${p.kind} ${p.min}–${p.max}`;
 
 const updateSettings: AgentTool = {
   name: "update_settings",
   description:
     "Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. " +
-    "Only these method choices and thresholds can be changed, not facts about the sample (supercell, magnetic ion, " +
-    `|Q| band): ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
-    "Change them when the user asks for a change, or asks you to improve or tune the result. Returns each change " +
-    "and the stage to rerun from.",
+    `These method choices and thresholds can be changed: ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
+    `These facts about the sample only when the user asks for that change, never to improve a result: ${SAMPLE_PARAMS.map((p) => `${p.key} (${allowedValues(p)}; ${p.help})`).join(" ")} ` +
+    "The magnetic ion and |Q| band stay with the user. " +
+    "Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings " +
+    "the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings " +
+    "already at the value are left as they are. Returns each change and the stage to rerun from.",
   parameters: {
     type: "object",
     properties: {
@@ -983,14 +1062,17 @@ const updateSettings: AgentTool = {
     const patch: Record<string, string | boolean> = {};
     for (const [key, value] of Object.entries(changes)) {
       const p = findParam(key);
-      if (!p) throw new ToolArgError(`${key} cannot be changed; these can: ${TUNE_PARAMS.map((q) => q.key).join(", ")}`);
+      if (!p) throw new ToolArgError(`${key} cannot be changed; these can: ${SETTABLE.map((q) => q.key).join(", ")}`);
       try {
-        patch[key] = toFormValue(key, value, p.stage);
+        patch[key] = toFormValue(key, value, p.stage, { sample: true });
       } catch (e) {
         throw new ToolArgError((e as Error).message);
       }
     }
     const before = usePipelineStore.getState();
+    // A setting already at the value is no change: leave it out of the patch.
+    const unchanged = Object.keys(patch).filter((key) => before[key as keyof PipelineConfig] === patch[key]);
+    for (const key of unchanged) delete patch[key];
     before.patch(patch as Partial<PipelineConfig>);
     const after = usePipelineStore.getState();
     const changed = Object.keys(patch).map((key) => {
@@ -1004,8 +1086,10 @@ const updateSettings: AgentTool = {
     });
     const rerunFrom = TUNE_STAGES.find((st) => changed.some((c) => findParam(c.setting)!.stage === st));
     return {
-      result: { changed, rerun_from: rerunFrom },
-      summary: changed.map((c) => `${c.setting} ${c.from} → ${c.to}`).join(", "),
+      result: { changed, ...(unchanged.length ? { already_set: unchanged } : {}), rerun_from: rerunFrom ?? null },
+      summary: changed.length
+        ? changed.map((c) => `${c.setting} ${c.from} → ${c.to}`).join(", ")
+        : `no change: ${unchanged.join(", ")} already set`,
     };
   },
 };
@@ -1115,8 +1199,9 @@ const tunePipeline: AgentTool = {
     "propose alternatives, runs each, judges which best meets the stage's goal, keeps it and moves on, so later " +
     "stages build on the best earlier ones. Trials run in a tuning folder: the dataset's own outputs are not " +
     "changed, and the chosen settings end up on the Configure page. The user watches the trials in the chat, under " +
-    "this reply, and each run on the Execution page. Takes minutes (one run per trial). Returns each stage's chosen " +
-    "trial, its changes and why.",
+    "this reply, and each run on the Execution page. Takes minutes (one run per trial). Returns every trial's changes " +
+    "and numbers (a trial that matched the current settings' numbers exactly is marked no_effect), and each stage's " +
+    "chosen trial and why: quote these, never numbers the result does not hold.",
   parameters: {
     type: "object",
     properties: {
@@ -1174,14 +1259,30 @@ const tunePipeline: AgentTool = {
             changes: best.changes,
             result: headline(r.stage, best.evaluation),
           }),
+          // Every trial, so the comparison can be quoted rather than recalled.
+          ...(r.tuned && r.trials.length > 1 && {
+            trials: r.trials.map((t) => ({
+              n: t.n,
+              changes: t.changes,
+              ...(t.evaluation
+                ? {
+                    result: headline(r.stage, t.evaluation),
+                    ...(t.n !== 1 && sameNumbers(t.evaluation, r.trials[0].evaluation) && { no_effect: true }),
+                  }
+                : { status: t.status, ...(t.error && { error: t.error }) }),
+            })),
+          }),
           ...(r.why && { why: r.why }),
           ...(r.message && { message: r.message }),
         };
       }),
       note: tune.finishedNote,
-      write_outputs_with: { tool: "run_pipeline", from_stage: TUNE_STAGES.find((st) => stages.includes(st)) },
     };
     const changed = result.stages.filter((r) => r.changes && Object.keys(r.changes).length).length;
+    // Writing the dataset's outputs is worth it only when a stage's settings changed.
+    if (changed) {
+      Object.assign(result, { write_outputs_with: { tool: "run_pipeline", from_stage: TUNE_STAGES.find((st) => stages.includes(st)) } });
+    }
     return { result, summary: `${minutes} min · settings changed on ${changed} of ${stages.length} stages` };
   },
 };
@@ -1194,6 +1295,7 @@ export const CHAT_TOOLS: AgentTool[] = [
   assessStage,
   textureCheck,
   qmaxCoverage,
+  symmetryCheck,
   radialProfileTool,
   lineProfile,
   braggPeaks,

@@ -4,10 +4,59 @@
 // stay with the user.  Each entry says what the model may set it to; whatever
 // the model proposes is checked against this before anything runs.
 
-import type { PipelineConfig } from "../../state/pipelineStore";
+import { parseFractions, type PipelineConfig } from "../../state/pipelineStore";
 
 export const TUNE_STAGES = ["rings", "punch", "backfill", "flatten", "pdf"] as const;
 export type TuneStage = (typeof TUNE_STAGES)[number];
+
+// Facts about the sample that the user may ask the assistant to set, by name.
+// Never tuned: whether the H = n ± 1/3 planes hold real satellites is physics,
+// not a threshold to trade against a metric.
+export const SAMPLE_PARAMS: TuneParam[] = [
+  {
+    key: "punchProtectH",
+    stage: "punch",
+    kind: "fractions",
+    defaultValue: "1/3, 2/3",
+    help: "H fractions the off-lattice search leaves alone (its protected planes, e.g. real satellites at H = n ± 1/3); none protects nothing.",
+  },
+  {
+    key: "punchProtectHalfWidth",
+    stage: "punch",
+    kind: "number",
+    min: 0,
+    max: 0.25,
+    defaultValue: 0.08,
+    help: "Half width (r.l.u.) of each protected H plane.",
+  },
+  {
+    key: "punchSupercellH",
+    stage: "punch",
+    kind: "integer",
+    min: 1,
+    max: 6,
+    defaultValue: 1,
+    help: "The punch's indexing cell along H: the Bragg nodes are the multiples of this H (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.",
+  },
+  {
+    key: "punchSupercellK",
+    stage: "punch",
+    kind: "integer",
+    min: 1,
+    max: 6,
+    defaultValue: 1,
+    help: "The punch's indexing cell along K: the Bragg nodes are the multiples of this K (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.",
+  },
+  {
+    key: "punchSupercellL",
+    stage: "punch",
+    kind: "integer",
+    min: 1,
+    max: 6,
+    defaultValue: 1,
+    help: "The punch's indexing cell along L: the Bragg nodes are the multiples of this L (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.",
+  },
+];
 
 export const TUNE_STAGE_LABELS: Record<TuneStage, string> = {
   rings: "Ring removal",
@@ -37,7 +86,8 @@ export type ParamValue = string | number | boolean;
 export interface TuneParam {
   key: Key;
   stage: TuneStage;
-  kind: "enum" | "number" | "integer" | "boolean";
+  // fractions: H fractions as the form's text, "1/3, 2/3" or "none" (blank = default)
+  kind: "enum" | "number" | "integer" | "boolean" | "fractions";
   // enum: the form value ("" = the backend default) and the name the model uses
   options?: { value: string; name: string }[];
   min?: number;
@@ -133,7 +183,46 @@ export const TUNE_PARAMS: TuneParam[] = [
     min: 0,
     max: 0.3,
     defaultValue: 0.12,
-    help: "Integer punches stop this far (r.l.u.) from their node's H plane so satellite planes at fractional H stay unpunched; 0 turns the guard off.",
+    help: "Integer-node punches only: each node's punch stops this far (r.l.u.) from the node's H plane, so the H planes between nodes (e.g. satellites at H = n ± 1/3) stay unpunched. 0 turns the guard off and lets every node's punch run along H, discarding the diffuse there. Not the off-lattice search's protected H planes, which are a fact about the sample set on the Configure page.",
+  },
+  {
+    key: "punchSearchFloor",
+    stage: "punch",
+    kind: "number",
+    min: 3,
+    max: 60,
+    defaultValue: 27,
+    help: "Off-lattice search floor, in units of the diffuse scatter: a peak off the integer nodes must stand this far above its |Q| shell and its neighbourhood. Lower punches weaker spurious peaks; too low punches diffuse maxima.",
+  },
+  {
+    key: "punchFootprint",
+    stage: "punch",
+    kind: "enum",
+    options: [
+      { value: "", name: "profile" },
+      { value: "ellipsoid", name: "ellipsoid" },
+    ],
+    defaultValue: "profile",
+    help: "Punch footprint. profile (default): each peak punched along each axis as far as the dataset's learned Bragg profile stays above the noise, so strong peaks get wide punches. ellipsoid: the fixed resolution ellipsoid scaled with intensity.",
+  },
+  {
+    key: "punchProfileNSigma",
+    stage: "punch",
+    kind: "number",
+    min: 0.1,
+    max: 3,
+    defaultValue: 0.5,
+    help: "profile footprint only: punch out to where the profile falls to this × the local noise. Lower reaches further down the wings of very strong peaks (fewer wing pieces left for the search), at the cost of more punched diffuse; higher punches tighter.",
+    appliesWhen: (s) => s.punchFootprint !== "ellipsoid",
+  },
+  {
+    key: "punchSearchMaxWidth",
+    stage: "punch",
+    kind: "number",
+    min: 1,
+    max: 6,
+    defaultValue: 0,
+    help: "Off-lattice search width test: a candidate broader than this × the dataset's Bragg width along any axis is left as diffuse (a short-range-order maximum) instead of punched. 0 (blank) is off and punches every candidate; spurious reflections are as sharp as Bragg peaks, so 2 keeps them punched while broad diffuse maxima stay.",
   },
   {
     key: "punchMargin",
@@ -149,7 +238,8 @@ export const TUNE_PARAMS: TuneParam[] = [
     stage: "punch",
     kind: "boolean",
     defaultValue: false,
-    help: "Do not floor/cap the Bragg covariance-fit radii at the resolution limits.",
+    help: "ellipsoid footprint only: do not floor/cap the Bragg covariance-fit radii at the resolution limits. The profile footprint replaces those radii with the profile's, so there it changes nothing.",
+    appliesWhen: (s) => s.punchFootprint === "ellipsoid",
   },
   // — backfill —
   {
@@ -165,6 +255,24 @@ export const TUNE_PARAMS: TuneParam[] = [
     help: "How punched holes are filled. laplace (default): smooth harmonic fill from the hole rim. local: the local surrounding diffuse. q_shell: the |Q|-shell background.",
   },
   // — flatten —
+  {
+    key: "flattenQ2",
+    stage: "flatten",
+    kind: "boolean",
+    defaultValue: false,
+    help: "model only: also fit b·Q², the smooth rise of the multiphonon / thermal background. Use it when the shell floors climb with |Q| after the flatten (floor_trend near 1); it varies too slowly to follow pair correlations.",
+    appliesWhen: (s) => s.flattenEstimator === "" || s.flattenEstimator === "model",
+  },
+  {
+    key: "flattenFitQMax",
+    stage: "flatten",
+    kind: "number",
+    min: 3,
+    max: 25,
+    defaultValue: 10,
+    help: "model only: end (Å⁻¹) of the |Q| range the model is fitted to (from 0.8). Raise it toward the data's coverage when the background keeps changing past 10 Å⁻¹.",
+    appliesWhen: (s) => s.flattenEstimator === "" || s.flattenEstimator === "model",
+  },
   {
     key: "flattenEstimator",
     stage: "flatten",
@@ -200,7 +308,7 @@ export const TUNE_PARAMS: TuneParam[] = [
       { value: "ellipsoid", name: "ellipsoid" },
     ],
     defaultValue: "auto",
-    help: "Window geometry: separable (per axis), ellipsoid (lattice-invariant), auto (default; ellipsoid for non-orthogonal cells).",
+    help: "Window geometry: separable (per axis: it reaches into the box corners, and on an oblique cell it does not keep the cell's in-plane symmetry), ellipsoid (lattice-invariant), auto (default; ellipsoid for non-orthogonal cells, and wherever the separable one would put weight on unmeasured space).",
   },
   {
     key: "pdfWindowSupport",
@@ -214,7 +322,8 @@ export const TUNE_PARAMS: TuneParam[] = [
 export const stageParams = (stage: TuneStage, s?: PipelineConfig): TuneParam[] =>
   TUNE_PARAMS.filter((p) => p.stage === stage && (!s || !p.appliesWhen || p.appliesWhen(s)));
 
-const findParam = (key: string): TuneParam | undefined => TUNE_PARAMS.find((p) => p.key === key);
+const findParam = (key: string, sample = false): TuneParam | undefined =>
+  TUNE_PARAMS.find((p) => p.key === key) ?? (sample ? SAMPLE_PARAMS.find((p) => p.key === key) : undefined);
 
 // A setting as the model sees it: enum names, numbers, booleans; a blank form
 // field shows as its default value.
@@ -222,6 +331,7 @@ export function displayValue(p: TuneParam, formValue: unknown): ParamValue {
   if (p.kind === "enum") return p.options!.find((o) => o.value === formValue)?.name ?? String(p.defaultValue);
   if (p.kind === "boolean") return Boolean(formValue);
   if (formValue === "" || formValue == null) return p.defaultValue;
+  if (p.kind === "fractions") return String(formValue);
   return Number(formValue);
 }
 
@@ -233,10 +343,17 @@ export function currentStageSettings(stage: TuneStage, s: PipelineConfig): Recor
 /** Rejected proposal, with the reason the model reads back. */
 export class ProposalError extends Error {}
 
-// Turn a value the model proposed into the form value, or throw.
-export function toFormValue(key: string, value: unknown, stage: TuneStage): string | boolean {
-  const p = findParam(key);
+// Turn a value the model proposed into the form value, or throw.  `sample`
+// admits the sample facts too (a change the user asked for, never a tuning).
+export function toFormValue(key: string, value: unknown, stage: TuneStage, { sample = false } = {}): string | boolean {
+  const p = findParam(key, sample);
   if (!p || p.stage !== stage) throw new ProposalError(`${key} is not a ${stage} setting that can be tuned`);
+  if (p.kind === "fractions") {
+    const text = (Array.isArray(value) ? value.join(", ") : String(value ?? "")).trim();
+    if (!text || text.toLowerCase() === "default" || text === p.defaultValue) return "";
+    if (parseFractions(text) === undefined) throw new ProposalError(`${key} must be H fractions like "1/3, 2/3", or none`);
+    return text;
+  }
   if (p.kind === "enum") {
     const opt = p.options!.find((o) => o.name === value || (o.value !== "" && o.value === value));
     if (!opt) throw new ProposalError(`${key} must be one of ${p.options!.map((o) => o.name).join(", ")}`);
@@ -272,7 +389,9 @@ export function describeStageParams(stage: TuneStage): string {
           ? `one of ${p.options!.map((o) => o.name).join(" | ")}`
           : p.kind === "boolean"
             ? "true | false"
-            : `${p.kind} in [${p.min}, ${p.max}]`;
+            : p.kind === "fractions"
+              ? 'H fractions like "1/3, 2/3", or none'
+              : `${p.kind} in [${p.min}, ${p.max}]`;
       return `- ${p.key} (${allowed}; default ${p.defaultValue}): ${p.help}`;
     })
     .join("\n");

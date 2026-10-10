@@ -7,6 +7,7 @@ import { flattenMetrics } from "../metrics/flatten";
 import { ringEnergy, ringMetrics } from "../metrics/rings";
 import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
 import { percentile, robustStats } from "../metrics/sliceStats";
+import { sectionSymmetry } from "../metrics/symmetry";
 import type { BraggProfile } from "../../api/types";
 import { makeSlice } from "./helpers";
 
@@ -23,6 +24,62 @@ describe("sliceStats", () => {
     expect(percentile([0, 10], 0.5)).toBe(5);
     expect(percentile([1, 2, 3, 4, 5], 0)).toBe(1);
     expect(percentile([1, 2, 3, 4, 5], 1)).toBe(5);
+  });
+});
+
+describe("section symmetry", () => {
+  // On the oblique hexagonal grid, cos u + cos v + cos(u − v) is invariant under
+  // the six-fold (u, v) → (u − v, u) and the mirror (u, v) → (v, u).
+  const hex = (extra: (u: number, v: number) => number) => {
+    const s = makeSlice(41, 41, (u, v) => Math.cos(0.7 * u) + Math.cos(0.7 * v) + Math.cos(0.7 * (u - v)) + extra(u, v));
+    s.header.axes_angle = 120;
+    return s;
+  };
+  const cell = { a: 8, b: 8 };
+
+  it("finds a hexagonally symmetric section symmetric under every operation", () => {
+    const sym = sectionSymmetry(hex(() => 0), cell)!;
+    expect(sym.kind).toBe("hexagonal");
+    expect(sym.ops.map((o) => o.op)).toEqual(["six-fold (60°)", "three-fold (120°)", "two-fold (180°)", "mirror (a ↔ b)"]);
+    for (const o of sym.ops) expect(o.rms_difference).toBeLessThan(1e-9);
+  });
+
+  it("sees a break, and which operations it breaks", () => {
+    // A term even under the two-fold but not under the six-fold or the mirror.
+    const sym = sectionSymmetry(hex((u) => 0.3 * Math.cos(0.5 * u)), cell)!;
+    const by = Object.fromEntries(sym.ops.map((o) => [o.op, o.rms_difference]));
+    expect(by["two-fold (180°)"]).toBeLessThan(1e-9);
+    expect(by["six-fold (60°)"]).toBeGreaterThan(1e-2);
+    expect(by["mirror (a ↔ b)"]).toBeGreaterThan(1e-2);
+  });
+
+  it("tests the mirrors of an orthogonal cell, and nothing on a cell it cannot", () => {
+    const ortho = makeSlice(21, 21, (x, y) => Math.cos(x) * Math.cos(2 * y));
+    expect(sectionSymmetry(ortho, { a: 4, b: 6 })!.ops.map((o) => o.op)).toEqual(["mirror ⊥ a", "mirror ⊥ b", "two-fold (180°)"]);
+    const oblique = makeSlice(21, 21, () => 1);
+    oblique.header.axes_angle = 105;
+    expect(sectionSymmetry(oblique, { a: 4, b: 6 })).toBeNull();
+  });
+});
+
+describe("flatten trend", () => {
+  // Diffuse on a level of 4; the flatten left a floor rising with r (a pedestal
+  // the model missed) or took it all.
+  const lumpy = (x: number, y: number) => 0.8 * Math.cos(1.3 * x) * Math.cos(1.1 * y);
+  const before = makeSlice(81, 81, (x, y) => 4 + 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y), { half: 10 });
+  const rising = makeSlice(81, 81, (x, y) => 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y), { half: 10 });
+  const level = makeSlice(81, 81, (x, y) => lumpy(x, y), { half: 10 });
+
+  it("sees a floor still rising with |Q|, however small it reads in σ", () => {
+    const m = flattenMetrics(before, rising, undefined, [1, 6]);
+    expect(m.floor_trend!).toBeGreaterThan(0.9);
+    expect(m.floor_span_fraction!).toBeGreaterThan(0.5);
+  });
+
+  it("calls a level floor level", () => {
+    const m = flattenMetrics(before, level, undefined, [1, 6]);
+    expect(Math.abs(m.floor_trend!)).toBeLessThan(0.6);
+    expect(m.floor_span_fraction!).toBeLessThan(0.2);
   });
 });
 
@@ -45,6 +102,53 @@ describe("ring removal metrics", () => {
     expect(m.after_negative_fraction).toBe(0);
   });
 
+  describe("ring residuals, judged at the raw rings", () => {
+    // A finer grid, so the 128 radial bins each hold enough voxels.
+    const fine = (f: (r: number) => number) => makeSlice(161, 161, (x, y) => f(Math.hypot(x, y)), { half: 20 });
+    const ring = (r: number) => Math.exp(-((r - ringR) ** 2) / 0.5);
+    const raw = fine((r) => 1 + 8 * ring(r));
+
+    it("finds the ring and calls a clean removal level", () => {
+      const m = ringMetrics(raw, fine(() => 1));
+      expect(m.ring_residuals!.map((x) => x.at)).toEqual([expect.closeTo(ringR, 0)]);
+      expect(Math.abs(m.ring_residuals![0].residual_fraction)).toBeLessThan(0.01);
+      expect(m.worst_ring_dent).toBeNull();
+    });
+
+    it("sees a dent where the removal over-shot, though nothing goes negative", () => {
+      // 20 % too much subtracted at the ring: the diffuse dips to 0.8 there.
+      const m = ringMetrics(raw, fine((r) => 1 - 0.2 * ring(r)));
+      expect(m.over_subtraction_fraction).toBe(0);
+      expect(m.worst_ring_dent!.at).toBeCloseTo(ringR, 0);
+      expect(m.worst_ring_dent!.residual_fraction).toBeLessThan(-0.05);
+      expect(m.worst_ring_left).toBeNull();
+    });
+
+    it("calls a dent within the diffuse's own wiggle noise", () => {
+      // A 3 % dent where the diffuse beside the ring ripples by ±5 %.
+      const m = ringMetrics(raw, fine((r) => 1 + 0.05 * Math.sin(7 * r) - 0.03 * ring(r)));
+      const [res] = m.ring_residuals!;
+      expect(res.noise_fraction).toBeGreaterThan(0.02);
+      expect(res.significant).toBe(false);
+      expect(m.worst_ring_dent).toBeNull();
+    });
+
+    it("sees a ring left over", () => {
+      const m = ringMetrics(raw, fine((r) => 1 + 2 * ring(r)));
+      expect(m.worst_ring_left!.residual_fraction).toBeGreaterThan(0.2);
+      expect(m.worst_ring_dent).toBeNull();
+    });
+
+    it("takes neither a dip away from the rings nor the coverage edge for a dent", () => {
+      // The removal is clean at the ring; the diffuse sags at r ≈ 12 and falls off
+      // past r = 18, where the raw cut has no ring.
+      const after = fine((r) => (r > 18 ? 0.5 : 1 - 0.3 * Math.exp(-((r - 12) ** 2) / 0.5)));
+      const m = ringMetrics(raw, after);
+      expect(m.ring_residuals).toHaveLength(1);
+      expect(m.worst_ring_dent).toBeNull();
+    });
+  });
+
   it("sees the ring under Bragg peaks and an incident-beam spot the ring stage leaves in place", () => {
     // A cut before the punch: sharp peaks (150×) on every integer node, a beam
     // spot at the origin, and an Al-like ring at r = 4.3; step 0.1 like a real cut.
@@ -65,15 +169,91 @@ describe("ring removal metrics", () => {
 });
 
 describe("bragg punch metrics", () => {
-  it("detects a bright spike left unpunched", () => {
-    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => {
-      if (ix === 20 && iy === 20) return 100; // an un-punched peak
-      return 1 + 0.01 * ((ix * 7 + iy * 13) % 5); // mild texture
-    });
+  // Deterministic noise in [-1, 1).
+  const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;
+  // A peak a few voxels wide at (cx, cy) on a noisy field.
+  const peakAt = (cx: number, cy: number, height: number) => (ix: number, iy: number) =>
+    height * Math.exp(-((ix - cx) ** 2 + (iy - cy) ** 2) / 2);
+
+  it("finds a resolved peak left unpunched, judged against its own neighbourhood", () => {
+    const bump = peakAt(20, 20, 2);
+    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + bump(ix, iy));
     const scan = scanLeftoverPeaks(slice);
-    expect(scan.n_suspicious).toBeGreaterThanOrEqual(1);
-    expect(scan.suspicious_peaks[0].sigma).toBeGreaterThan(6);
+    expect(scan.n_suspicious).toBe(1);
+    expect(scan.suspicious_peaks[0].sigma).toBeGreaterThan(8);
     expect(scan.suspicious_peaks[0].xy).toEqual([0, 0]);
+  });
+
+  it("takes a one-voxel spike for noise, and skips a noisy region", () => {
+    const spike = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + (ix === 20 && iy === 20 ? 5 : 0));
+    expect(scanLeftoverPeaks(spike).n_suspicious).toBe(0);
+    // A loud band (x > 30) with a resolved bump in it: skipped, not reported.
+    const bump = peakAt(35, 20, 6);
+    const edge = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + (ix > 28 ? 0.6 : 0.02) * noise(ix, iy) + bump(ix, iy));
+    const scan = scanLeftoverPeaks(edge);
+    expect(scan.n_suspicious).toBe(0);
+  });
+
+  it("skips an event among sparse counts, where the local scatter is all but 0", () => {
+    // Past x = 28 the counts are sparse: 30 % exact zeros, the rest ±0.002, so the
+    // median is 0 and an event of 2 would read ~700 σ.
+    const sparse = (ix: number, iy: number) => {
+      const r = (ix + 3 * iy) % 10;
+      return r < 3 ? 0 : r < 7 ? -0.002 : 0.002;
+    };
+    const blob = (ix: number, iy: number) => (Math.abs(ix - 35) <= 1 && Math.abs(iy - 20) <= 1 ? (ix === 35 && iy === 20 ? 2 : 1.5) : 0);
+    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => (ix > 28 ? sparse(ix, iy) + blob(ix, iy) : 1 + 0.02 * noise(ix, iy)));
+    const scan = scanLeftoverPeaks(slice);
+    expect(scan.n_suspicious).toBe(0);
+    expect(scan.n_skipped_noisy).toBeGreaterThan(0);
+    // Background-subtracted: the empty edge sits near, not at, zero.
+    const subtracted = makeSlice(41, 41, (_x, _y, ix, iy) =>
+      ix > 28 ? -0.003 + 0.001 * noise(ix, iy) + blob(ix, iy) : 1 + 0.02 * noise(ix, iy),
+    );
+    expect(scanLeftoverPeaks(subtracted).n_suspicious).toBe(0);
+  });
+
+  it("classes a peak at a lattice node or off-lattice when the cut is known", () => {
+    // x, y span -2..2 r.l.u.: (1, 1) is a node, (0.5, -1) is not.
+    const at = peakAt(30, 30, 2);
+    const off = peakAt(25, 10, 2);
+    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + at(ix, iy) + off(ix, iy), { half: 2 });
+    const scan = scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0] });
+    expect(scan.n_at_nodes).toBe(1);
+    expect(scan.n_off_nodes).toBe(1);
+    const byNode = Object.fromEntries(scan.suspicious_peaks.map((p) => [String(p.at_node), p.hkl]));
+    expect(byNode.true).toEqual([1, 1, 0]);
+    expect(byNode.false).toEqual([0.5, -1, 0]);
+    // On a 2× supercell, (1, 1) is no longer a parent node.
+    expect(scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], supercell: [2, 2, 1] }).n_at_nodes).toBe(0);
+  });
+
+  it("tells a broad diffuse maximum from a sharp off-lattice leftover", () => {
+    // x, y span -2..2 r.l.u. (0.1 per voxel): a sharp peak at (0.5, -1) and,
+    // at (-0.5, 0.5), a maximum broad along y (FWHM about 8 voxels).
+    const sharp = peakAt(25, 10, 2);
+    const broad = (ix: number, iy: number) => 2 * Math.exp(-((ix - 15) ** 2) / 1.2 - ((iy - 25) ** 2) / 24);
+    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + sharp(ix, iy) + broad(ix, iy), { half: 2 });
+    const scan = scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0] });
+    const byHkl = Object.fromEntries(scan.suspicious_peaks.map((p) => [p.hkl!.slice(0, 2).join(","), p]));
+    expect(byHkl["0.5,-1"].broad).toBe(false);
+    expect(byHkl["-0.5,0.5"].broad).toBe(true);
+    expect(byHkl["-0.5,0.5"].fwhm_voxels[1]).toBeGreaterThanOrEqual(5);
+    expect(scan.n_broad_off_nodes).toBe(1);
+  });
+
+  it("tells off-lattice leftovers on the search's protected H planes from the rest", () => {
+    // (0.3, -1.5) lies on the H = 1/3 plane (± 0.08); (0.5, -1) does not.
+    const sat = peakAt(23, 5, 2);
+    const off = peakAt(25, 10, 2);
+    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + sat(ix, iy) + off(ix, iy), { half: 2 });
+    const scan = scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], protectedH: { fractions: [1 / 3, 2 / 3], halfWidth: 0.08 } });
+    expect(scan.n_off_nodes).toBe(2);
+    expect(scan.n_on_protected).toBe(1);
+    const onPlane = Object.fromEntries(scan.suspicious_peaks.map((p) => [String(p.on_protected_plane), p.hkl![0]]));
+    expect(onPlane).toEqual({ true: 0.3, false: 0.5 });
+    // Nothing protected: none of them is.
+    expect(scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], protectedH: { fractions: [], halfWidth: 0.08 } }).n_on_protected).toBe(0);
   });
 
   it("finds nothing on a punched (NaN-holed) smooth field", () => {
@@ -223,5 +403,14 @@ describe("flatten metrics", () => {
     const m = flattenMetrics(before, partial);
     expect(m.after_floor_max_sigma!).toBeGreaterThan(3);
     expect(m.floor_after![2]).toBeGreaterThan(m.floor_after![0]);
+  });
+
+  it("judges only the shells inside the fit range", () => {
+    // A smooth offset in the direct-beam core (r < 6) is outside the 8–40 range.
+    const core = makeSlice(81, 81, (x, y) => diffuse(x, y) + (Math.hypot(x, y) < 6 ? 6 : 0));
+    expect(flattenMetrics(before, core).after_floor_max_sigma!).toBeGreaterThan(3);
+    expect(flattenMetrics(before, core, undefined, [8, 40]).after_floor_max_sigma!).toBeLessThan(1);
+    // A misfit inside the range still shows.
+    expect(flattenMetrics(before, partial, undefined, [8, 40]).after_floor_max_sigma!).toBeGreaterThan(2);
   });
 });

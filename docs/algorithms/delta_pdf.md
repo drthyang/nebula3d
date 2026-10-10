@@ -326,6 +326,14 @@ default on, passes the input volume's `mask`; server `pdf_window_support`;
   ellipsoid when the separable window puts more than that on it. A shrunk
   ellipsoid is the same ellipsoid scaled, so it stays invariant. The scale
   is logged as `window_scale`.
+- **The weight left there is recorded.** The share of the window's weight on
+  that open space is `DeltaPDF.window_open_weight`, logged as
+  `window_open_weight` beside `window_scale` and served with the ΔPDF's
+  metadata (`/api/deltapdf/{id}/meta`, `dpdf_meta_json`). The web app's
+  coverage check reports it: the measure of a transform reaching past the
+  data, whatever the window's shape. On a hexagonal volume (box 18 Å⁻¹
+  in-plane, 12.5 Å⁻¹ along c*) the auto window, an ellipsoid at scale 1.0,
+  kept 3.2 × 10⁻⁶ there and nothing on a box face.
 - `invert_delta_pdf` leaves unsupported voxels out of the reliable `mask`.
 - An all-True support (main's Laplace backfill fills the whole box) changes
   nothing, bit for bit.

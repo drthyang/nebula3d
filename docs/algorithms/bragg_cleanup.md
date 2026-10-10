@@ -272,6 +272,44 @@ setting covers the higher-order satellites (`±4/3`, `±5/3`, …) that a fixed
 centre list misses. This allows `mode="both"` to keep useful off-integer
 satellite detection without punching structured diffuse on any thirds plane.
 
+### Broad maxima are left to the diffuse (`search_max_width_ratio`)
+
+The search judges a candidate by its height alone. Short-range order puts
+broad maxima off the Bragg nodes, and a tall one clears every floor. On a
+hexagonal neutron volume indexed on a doubled cell, with Bragg peaks only at
+the even nodes, the search took the strongest of the superstructure maxima:
+the very signal the ΔPDF is for.
+
+What separates them is width. Line cuts through the peak along H, K and L,
+with the half maximum taken above a straight baseline through the points
+five voxels either side (`_FWHM_REACH`), measured on that volume:
+
+| feature | FWHM along l (r.l.u.) | in-plane |
+| --- | --- | --- |
+| Bragg peaks (strongest 40) | 0.1–0.3 | one voxel |
+| spurious reflections (a second grain) | ≤ 0.2 | ≤ 0.2 |
+| short-range-order maxima | 0.5–0.6 | 0.1–0.2 |
+
+Spurious reflections were as sharp as Bragg peaks on every volume measured,
+the orthorhombic ones included. With `search_max_width_ratio` set (`mode="both"`),
+a search candidate broader than that many Bragg widths along any axis is left
+unpunched:
+
+- **The Bragg width** is the per-axis median over the strongest integer peaks
+  (up to 40, at least 5), floored at one voxel.
+- **A Bragg wing is punched anyway.** A candidate within a quarter of the node
+  spacing (per axis, honouring `supercell`) of a punched node belongs to that
+  peak: very strong peaks reach past their punch, and their wings measure
+  broad. On the doubled-cell volume the wings were most of the candidates
+  (6,868 punched and 3,798 left before this rule).
+- **The baseline matters.** A sharp spurious peak on the flank of a broad
+  maximum measures sharp only above a local baseline; core moments read the
+  pair as one broad feature and kept it.
+- **Default off** (`None`). The run log says how many candidates were left
+  as diffuse. Set it from the server (`punch_search_max_width_ratio`), the
+  web app (*Search width ×Bragg*), or `SEARCH_MAX_WIDTH` in the examples; 2
+  separates the classes above.
+
 ## Significance Gate
 
 Every detection, integer node or search summit, must also be significant
@@ -527,9 +565,31 @@ bit. Under `"auto"`, operations that do not map the grid onto itself are
 reported and ignored; the 6-fold, for example, needs equal H and K steps. The
 H guard and the thirds exclusion are meant for data with fractional-H planes
 at thirds; turn them off where there are none (see the supercell notes above).
-The ring stage still breaks the symmetry where it subtracts: after it, some
-voxels differ from their partner. The punch mask no longer depends on that.
-Tests: `tests/test_symmetry.py`.
+
+**Every stage keeps the symmetry, so the ΔPDF does.** The punch was not the
+only stage computed on index-space neighbourhoods. On a measured 6/mmm volume
+the ΔPDF had lost 12.6 % (RMS) of its six-fold symmetry, while the raw data
+were exact:
+
+- **Ring removal.** The pooled model fits sectors of 0kl planes stacked along
+  H; its subtraction differed between partners by up to a few units in the Al
+  shells. Its output is averaged over each orbit, and the voxels it masks
+  (under-sampled spokes) are closed under the group
+  (`pipeline.share_ring_removal`).
+- **Backfill.** The Laplace fill is solved on a 6-neighbour stencil, and its
+  gap band (the measured voxels next to a hole it rewrites, to drop the Bragg
+  tail) is a 6-neighbour dilation: equivalent peaks kept tails of up to ~1000
+  counts on one side and replaced them on the other. The band is closed under
+  the group before it is solved, and every voxel the fill writes is averaged
+  over its orbit.
+- **Flatten.** Its pedestal follows |Q| from the refined UB, which is not
+  exactly symmetric; the output is averaged too.
+
+The averaging is `GridSymmetry.orbit_mean`, which gathers whole L rows for
+groups that map L to ±L alone (a few seconds on 401³). With all three, the
+ΔPDF's six-fold, three-fold, two-fold and mirror partners agree to rounding.
+`symmetry=None` turns all of it off. Tests: `tests/test_symmetry.py`, end to
+end in `test_a_symmetrised_input_gives_a_symmetric_delta_pdf`.
 
 ## Backfill Modes
 

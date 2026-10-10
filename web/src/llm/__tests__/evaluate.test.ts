@@ -54,7 +54,68 @@ describe("evaluateStage", () => {
     expect(api.fetchSlice).not.toHaveBeenCalledWith(expect.anything(), "hk0", expect.anything());
     expect(e.mean_punched_fraction).toBe(0.04);
     expect(e.total_leftover_peaks).toBe(0);
+    expect(e.leftover_at_nodes).toBe(0);
     expect(e.fitted_peaks).toBe(12);
-    expect(headline("punch", e)).toBe("0 leftover · punched 0.04");
+    expect(e.leftover_on_protected_planes).toBe(0);
+    expect(headline("punch", e)).toBe("0 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.04");
+  });
+
+  it("counts a ring only where two planes see it; a one-plane bump is crystal scattering", async () => {
+    const g = (r: number, r0: number) => Math.exp(-((r - r0) ** 2) / 0.5);
+    // Raw: a powder ring at r = 6 on every plane, and on h0l alone a bump at
+    // r = 12.  Ring-removed: the ring over-shot by 20 %, the h0l bump left.
+    api.fetchSlice.mockImplementation(async (id: string, plane: string) =>
+      makeSlice(161, 161, (x, y) => {
+        const r = Math.hypot(x, y);
+        const bump = plane === "h0l" ? 4 * g(r, 12) : 0;
+        return id.endsWith("raw") ? 1 + 8 * g(r, 6) + bump : 1 - 0.2 * g(r, 6) + bump;
+      }, { half: 20 }),
+    );
+    const e = await evaluateStage("rings", dataset);
+    const dent = e.worst_ring_dent as { at: number; plane: string };
+    expect(dent).not.toBeNull();
+    expect(e.max_ring_left).toBe(0); // the h0l-only bump is not a ring left over
+    const bumps = e.single_plane_bumps as { plane: string; at: number }[];
+    expect(bumps.map((b) => b.plane)).toEqual(["h0l"]);
+    expect(bumps[0].at).toBeGreaterThan(dent.at);
+    // The plane's own detail agrees: its bump is marked, and is not its worst ring.
+    type Plane = { worst_ring_left: unknown; worst_ring_dent: { at: number } | null; ring_residuals: { at: number; single_plane_bump?: boolean }[] };
+    const h0l = (e.per_plane as Record<string, Plane>).h0l;
+    expect(h0l.worst_ring_left).toBeNull();
+    expect(h0l.worst_ring_dent?.at).toBe(dent.at);
+    expect(h0l.ring_residuals.find((x) => x.at > dent.at)?.single_plane_bump).toBe(true);
+    expect(h0l.ring_residuals.find((x) => x.at === dent.at)?.single_plane_bump).toBeUndefined();
+  });
+
+  it("reports the ΔPDF window's weight on unmeasured space and the section's symmetry", async () => {
+    const withPdf: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" }],
+    };
+    api.fetchConsistencyCheck.mockResolvedValue({ has_check: false });
+    api.fetchDpdfMeta.mockResolvedValue({ lattice: { a: 8, b: 8, c: 10 }, window_open_weight: 0.0572, window_shape: "separable" });
+    // A section that changes sign under the two-fold: not symmetric.
+    api.fetchDpdfSlice.mockImplementation(async () => {
+      const s = makeSlice(21, 21, (x) => x);
+      return { ...s, header: { ...s.header, axes_angle: 120 } };
+    });
+    const e = await evaluateStage("pdf", withPdf);
+    expect(e.window_weight_on_unmeasured).toBe(0.057);
+    expect(e.window_shape).toBe("separable");
+    expect(e.max_symmetry_break as number).toBeGreaterThan(1);
+    expect(typeof e.worst_symmetry_op).toBe("string");
+    expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.057 · symmetry off ≤ \d/);
+  });
+
+  it("names the plane and |Q| of the worst ring residual in the headline", () => {
+    const e = {
+      mean_ring_energy_ratio: 0.24,
+      max_over_subtraction_fraction: 0.03,
+      max_ring_dent: 0.233,
+      max_ring_left: 0,
+      worst_ring_dent: { plane: "h0l", at: 7.58, residual_fraction: -0.233 },
+      worst_ring_left: null,
+    };
+    expect(headline("rings", e)).toBe("ring ratio 0.24 · over-sub ≤ 0.03 · ring dent ≤ 0.233 (h0l, 7.58 Å⁻¹) · left ≤ 0");
   });
 });

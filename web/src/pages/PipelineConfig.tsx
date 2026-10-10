@@ -27,6 +27,7 @@ import {
   type PunchPlane,
 } from "../state/pipelineStore";
 import { useHighlightKeys } from "../llm/highlight";
+import { datasetName } from "../api/datasetName";
 
 const DATASET_STAGE_BADGES = [
   { key: "raw", label: "Raw", group: "Input" },
@@ -1179,12 +1180,17 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       ringPooledSectors: st.ringPooledSectors,
       ringPooledWindow: st.ringPooledWindow,
       punchMinSig: st.punchMinSig,
-      punchMethod: st.punchMethod,
+      punchFootprint: st.punchFootprint,
+      punchProfileNSigma: st.punchProfileNSigma,
       punchMode: st.punchMode,
       punchSupercellH: st.punchSupercellH,
       punchSupercellK: st.punchSupercellK,
       punchSupercellL: st.punchSupercellL,
       punchHGuard: st.punchHGuard,
+      punchSearchFloor: st.punchSearchFloor,
+      punchProtectH: st.punchProtectH,
+      punchProtectHalfWidth: st.punchProtectHalfWidth,
+      punchSearchMaxWidth: st.punchSearchMaxWidth,
       punchFrame: st.punchFrame,
       punchRho: st.punchRho,
       punchTheta: st.punchTheta,
@@ -1207,6 +1213,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       backfillMethod: st.backfillMethod,
       flattenEstimator: st.flattenEstimator,
       flattenIon: st.flattenIon,
+      flattenQ2: st.flattenQ2,
+      flattenFitQMax: st.flattenFitQMax,
       pdfApod: st.pdfApod,
       pdfWindowShape: st.pdfWindowShape,
       pdfWindowSupport: st.pdfWindowSupport,
@@ -1538,7 +1546,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
           <div className="dataset-panel">
             <Field label="Dataset">
               <div className="dataset-current" title="Switch datasets from the sidebar">
-                {selectedDataset ? (selectedDataset.temperature ?? selectedDataset.stem) : "—"}
+                {selectedDataset ? datasetName(selectedDataset, datasets) : "—"}
               </div>
             </Field>
             <div className="dataset-meta">
@@ -1806,12 +1814,13 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   <div className="cfg-box">
                     <span className="cfg-box-eyebrow">Detection</span>
                 <div className="config-grid-3 punch-basis">
-                  <Field label="Method">
+                  <Field label="Footprint">
                   <select
-                    value={s.punchMethod}
-                    title="Bragg-punch algorithm (more shapes coming)"
-                    onChange={(e) => patch({ punchMethod: e.target.value })}
+                    value={s.punchFootprint}
+                    title="How far each peak is punched. Profile-matched (default): along each axis as far as the dataset's learned Bragg profile stays above the noise. Ellipsoid: the fixed resolution ellipsoid below, scaled with intensity."
+                    onChange={(e) => patch({ punchFootprint: e.target.value })}
                   >
+                    <option value="">Profile-matched (default)</option>
                     <option value="ellipsoid">Ellipsoid</option>
                   </select>
                 </Field>
@@ -1888,6 +1897,64 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       value={s.punchHGuard}
                       title="Integer punches stop this far from their node's H plane, so satellite planes at fractional H (e.g. H = ±1/3) stay unpunched. 0 turns the guard off."
                       onChange={(e) => patch({ punchHGuard: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <div className="config-grid-3">
+                  <Field label="Search floor ×σ">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      placeholder="27"
+                      value={s.punchSearchFloor}
+                      title="Off-lattice search: a peak must stand this many diffuse-scatter units above its shell and its neighbourhood. Lower catches weaker spurious peaks, and risks punching diffuse maxima."
+                      onChange={(e) => patch({ punchSearchFloor: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Search skips H">
+                    <input
+                      type="text"
+                      placeholder="1/3, 2/3"
+                      value={s.punchProtectH}
+                      title="Fractional H planes the off-lattice search leaves alone (real satellites, e.g. 1/3, 2/3 for q = (1/3, 0, 0)). 'none' lets the search punch everywhere; blank keeps 1/3, 2/3."
+                      onChange={(e) => patch({ punchProtectH: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="± width (r.l.u.)">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.08"
+                      value={s.punchProtectHalfWidth}
+                      title="Half width of each skipped H plane."
+                      onChange={(e) => patch({ punchProtectHalfWidth: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <div className="config-grid-3">
+                  <Field label="Search width ×Bragg">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      placeholder="off"
+                      value={s.punchSearchMaxWidth}
+                      title="Off-lattice search: leave a candidate broader than this × the dataset's Bragg width (along any axis) as diffuse — a short-range-order maximum, not a spurious reflection. Spurious peaks are as sharp as Bragg peaks; 2 keeps them punched. Blank punches every candidate."
+                      onChange={(e) => patch({ punchSearchMaxWidth: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Profile reach ×σ">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      placeholder="0.5"
+                      value={s.punchProfileNSigma}
+                      disabled={s.punchFootprint === "ellipsoid"}
+                      title="Profile-matched footprint: each peak is punched out to where its profile falls to this × the local noise. Lower reaches further down the wings of very strong peaks; higher punches tighter."
+                      onChange={(e) => patch({ punchProfileNSigma: e.target.value })}
                     />
                   </Field>
                 </div>
@@ -2171,6 +2238,32 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     ))}
                   </select>
                 </Field>
+                <Field label="Fit to |Q| (Å⁻¹)">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    placeholder="10"
+                    value={s.flattenFitQMax}
+                    disabled={!s.flatten || (s.flattenEstimator !== "" && s.flattenEstimator !== "model")}
+                    title="The model is fitted to the shell floors from 0.8 Å⁻¹ up to here. Raise it to the data's coverage when the background keeps changing beyond 10 Å⁻¹."
+                    onChange={(e) => patch({ flattenFitQMax: e.target.value })}
+                  />
+                </Field>
+                <div className="switch-row">
+                  <Switch
+                    label="+ b·Q² term"
+                    checked={s.flattenQ2}
+                    onChange={(v) => patch({ flattenQ2: v })}
+                  />
+                  <HelpTip>
+                    Adds b·Q² to the model: the smooth rise of the multiphonon and
+                    thermal background (Debye–Waller exponent 2W ∝ Q²). Like the
+                    other two terms it varies only on the scale of the whole |Q|
+                    range, so it cannot follow a pair correlation&apos;s oscillation.
+                    Use it when the floors climb across the coverage.
+                  </HelpTip>
+                </div>
                   </div>
                 </div>
 

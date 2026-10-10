@@ -14,6 +14,7 @@ import {
   listAnthropicModels,
   streamAnthropic,
 } from "./anthropic";
+import { isLocalUrl, providerForUrl } from "./presets";
 
 // A message's content is either plain text or a list of parts (text +
 // image_url), the OpenAI vision shape that Ollama/LM Studio/Gemini also accept.
@@ -72,6 +73,34 @@ export interface HttpError extends Error {
   status?: number;
 }
 
+// A local server whose model has too small a context window fails the request
+// (LM Studio fixes the window when it loads the model; the chat endpoint cannot
+// change it).  The raw message does not say what to do about it.
+const CONTEXT_OVERFLOW = /context (length|window|size)|n_ctx|maximum context|too many tokens|exceeds? the (model's )?context|prompt is too long|tokens to keep/i;
+export const withContextHint = (message: string): string =>
+  CONTEXT_OVERFLOW.test(message)
+    ? `${message} — the model's context window is full. In LM Studio, raise the model's Context Length in its load settings to 32k and reload it; start Ollama with OLLAMA_CONTEXT_LENGTH=32768. With Tools on, the first request alone is about 8k tokens, and a full assessment reaches about 18k; Tools off, or Clear, also helps.`
+    : message;
+
+// A local model that writes a reply its own server cannot parse — most often a
+// tool call in the wrong syntax — fails the stream (LM Studio: "does not match
+// the expected … format"; Ollama: "error parsing tool call").  It is a sampling
+// slip: the same request usually goes through when asked again.
+const MALFORMED_OUTPUT = /does not match the expected [\w -]*format|error parsing tool call|failed to parse (the )?(model|tool)/i;
+export const isMalformedOutput = (error: unknown): boolean => MALFORMED_OUTPUT.test((error as Error)?.message ?? "");
+
+const streamedError = (raw: unknown): HttpError => {
+  const e = (raw && typeof raw === "object" ? raw : { message: String(raw) }) as { message?: unknown; code?: unknown; status?: unknown };
+  const message = typeof e.message === "string" && e.message ? e.message : String(raw);
+  const hinted = MALFORMED_OUTPUT.test(message)
+    ? `${message} — the model wrote a reply its server could not parse (often a tool call in the wrong syntax); asking again usually works, and a model that keeps doing it is better replaced`
+    : withContextHint(message);
+  const error = new Error(hinted) as HttpError;
+  const status = Number(e.code ?? e.status);
+  if (Number.isInteger(status) && status >= 400) error.status = status;
+  return error;
+};
+
 const describeHttpError = async (response: Response): Promise<string> => {
   let detail = "";
   try {
@@ -80,7 +109,7 @@ const describeHttpError = async (response: Response): Promise<string> => {
   } catch {
     // Non-JSON error bodies are fine; the status code is enough.
   }
-  return `HTTP ${response.status}${detail ? `: ${detail}` : ""}`;
+  return withContextHint(`HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
 };
 
 const httpHint = (status?: number): string | null => {
@@ -111,6 +140,54 @@ export const listModels = async (
   }
   const payload = await response.json();
   return (payload.data || []).map((entry: { id?: string }) => entry.id).filter(Boolean) as string[];
+};
+
+export interface ModelContext {
+  loaded: number; // the context length the model was loaded with
+  max: number | null; // the most it supports
+}
+
+// LM Studio's own REST API reports the context length a model was loaded with,
+// which the OpenAI-style /models list leaves out.  Null wherever it cannot be
+// read: another server, a model not loaded yet (LM Studio loads it on the
+// first request, with its default settings), an older LM Studio.
+export const loadedContext = async (
+  baseUrl: string,
+  model: string,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<ModelContext | null> => {
+  if (!model || !isLocalUrl(baseUrl) || providerForUrl(baseUrl)?.id === "ollama") return null;
+  try {
+    const response = await fetch(`${trimBase(baseUrl).replace(/\/v1$/, "")}/api/v0/models`, { signal });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as {
+      data?: { id?: string; state?: string; loaded_context_length?: unknown; max_context_length?: unknown }[];
+    };
+    const entry = payload.data?.find((m) => m.id === model);
+    const loaded = entry?.state === "loaded" ? entry.loaded_context_length : null;
+    if (typeof loaded !== "number" || !(loaded > 0)) return null;
+    const max = entry?.max_context_length;
+    return { loaded, max: typeof max === "number" && max > 0 ? max : null };
+  } catch (error) {
+    if ((error as Error)?.name === "AbortError") throw error;
+    return null;
+  }
+};
+
+// With Tools on, the first request alone is about 8k tokens, and a full
+// assessment reaches about 18k (measured with LM Studio, 2026-10).
+export const TOOLS_CONTEXT = 32768;
+
+/** What to do about a model loaded with less context than Tools need, or null. */
+export const contextWarning = (context: ModelContext | null, model: string): string | null => {
+  if (!context || context.loaded >= TOOLS_CONTEXT) return null;
+  const n = (x: number) => x.toLocaleString("en-US");
+  const target = context.max != null ? Math.min(TOOLS_CONTEXT, context.max) : TOOLS_CONTEXT;
+  return (
+    `${model} is loaded with a ${n(context.loaded)}-token context. With Tools on, the first request alone is about 8k ` +
+    `tokens and a full assessment reaches about 18k, so ${context.loaded < 12000 ? "replies will be cut off" : "long replies may be cut off"}. ` +
+    `In LM Studio, load it again with a Context Length of ${n(target)}${context.max != null ? ` (it supports up to ${n(context.max)})` : ""}.`
+  );
 };
 
 // Probe the server and translate failures into actionable setup hints.
@@ -171,12 +248,18 @@ const postChat = async ({
     signal,
   });
   if (!response.ok) {
-    const error = new Error(await describeHttpError(response)) as HttpError;
+    const message = await describeHttpError(response);
+    const error = new Error(response.status === 500 ? `${message} — ${SERVER_ERROR_HINT}` : message) as HttpError;
     error.status = response.status;
     throw error;
   }
   return response;
 };
+
+// LM Studio answers a conversation its model's chat template cannot render
+// with a bare 500 page: the message alone does not say what to do.
+const SERVER_ERROR_HINT =
+  "the model server failed before it could reply. With a local server this is usually the model's chat template failing on the conversation, often after a reply was cut off by a full context window: press Clear and ask again, and load the model with a larger Context Length.";
 
 // A server that cannot do function calling answers a request with `tools` with
 // an error naming them (Ollama: "<model> does not support tools").
@@ -192,6 +275,10 @@ export interface StreamDelta {
   toolCalls?: ToolCall[];
   // With toolCalls: the provider's own form of the turn (ChatMessage.native).
   native?: unknown;
+  // Emitted once, after the stream ends, when the model stopped because it ran
+  // out of room (finish_reason "length": its context window or output limit),
+  // so its last text or tool call may be cut off.
+  truncated?: boolean;
 }
 
 interface ToolCallDelta {
@@ -269,6 +356,7 @@ export async function* streamChat({
   const decoder = new TextDecoder();
   const assembler = new ToolCallAssembler();
   let buffer = "";
+  let finish: string | undefined;
   try {
     read: for (;;) {
       const { done, value } = await reader.read();
@@ -287,8 +375,10 @@ export async function* streamChat({
         } catch {
           continue;
         }
-        // A failure after the 200 (Ollama, OpenRouter) arrives as an error chunk.
-        if (parsed.error) throw new Error(parsed.error.message || String(parsed.error));
+        // A failure after the 200 (Ollama, OpenRouter, LM Studio) arrives as an error chunk.
+        if (parsed.error) throw streamedError(parsed.error);
+        const reason = parsed.choices?.[0]?.finish_reason;
+        if (reason) finish = reason;
         const delta = parsed.choices?.[0]?.delta;
         if (!delta) continue;
         if (delta.content) yield { content: delta.content };
@@ -302,6 +392,7 @@ export async function* streamChat({
   }
   const toolCalls = assembler.calls();
   if (toolCalls.length) yield { toolCalls };
+  if (finish === "length") yield { truncated: true };
 }
 
 // Non-streaming completion, used where the whole reply is parsed at once.

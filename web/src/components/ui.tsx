@@ -455,7 +455,7 @@ export function IconGear({ size = 16 }: IconProps) {
   );
 }
 
-/* four-point spark — the AI assistant */
+/* four-point spark — NEBULA Pilot */
 export function IconSpark({ size = 17 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 18 18" {...stroke}>

@@ -39,4 +39,25 @@ describe("askAssistant", () => {
     await ask();
     expect(useChatStore.getState().turns[1].note).toMatch(/empty reply/);
   });
+
+  it("keeps the steps of a reply that ended with an error, with the error", async () => {
+    const step = { id: "0:a", name: "tune_pipeline", args: {}, status: "done" as const, summary: "Tuned" };
+    agent.runAgent.mockImplementation(async ({ onProgress }) => {
+      onProgress({ content: "Tuning done; now", reasoning: "", steps: [step] });
+      throw new Error("Engine protocol predict stream returned an error");
+    });
+    await ask();
+    const { turns, error, busy } = useChatStore.getState();
+    expect(turns[1]).toMatchObject({ role: "assistant", content: "Tuning done; now", steps: [step] });
+    expect(turns[1].note).toMatch(/ended with an error: Engine protocol predict stream/);
+    expect(error).toBeNull();
+    expect(busy).toBe(false);
+  });
+
+  it("shows an error that came before anything was written as the chat's error", async () => {
+    agent.runAgent.mockRejectedValue(new Error("HTTP 500"));
+    await ask();
+    expect(useChatStore.getState().turns).toHaveLength(1);
+    expect(useChatStore.getState().error).toBe("HTTP 500");
+  });
 });

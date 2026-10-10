@@ -2,6 +2,228 @@
 
 ## Unreleased
 
+- **NEBULA Pilot warns before a small context window cuts replies off.**
+  LM Studio loads a model with a fixed context length, often 4k or 8k. With
+  Tools on, NEBULA Pilot's first request alone is about 8k tokens, so such a
+  model broke off its first reply. NEBULA Pilot now reads the length the
+  model was loaded with from LM Studio. Below 32k it shows above the chat
+  how far to raise it, up to what the model supports. It reads the length
+  again on connecting, on a model change, and when the page regains focus.
+  The connection help gives the Context Length for LM Studio and
+  `OLLAMA_CONTEXT_LENGTH` for Ollama.
+- **Tuning no longer trades a clean ΔPDF for a higher SNR.** The ΔPDF
+  stage was judged on feature SNR and the round trip alone, though its
+  goal requires the transform to stay inside the measured coverage. On a
+  hexagonal volume a tuning run chose a separable window for 4 % more SNR.
+  That window put 5.7 % of its weight on unmeasured reciprocal space
+  (against 3 × 10⁻⁶ for the ellipsoid window) and broke the ΔPDF's
+  six-fold symmetry (RMS 0.44). The stage's evaluation now reports the
+  window's weight on unmeasured space and the x–y section's worst
+  symmetry break. A trial past the backend's own limit (10⁻³, where its
+  automatic window gives up the separable shape) is not a candidate while
+  your settings stay inside it, and the reason is given.
+- **Tuning no longer tries a punch setting that cannot act.** With the
+  default profile footprint, the punch replaces the covariance fit's radii
+  with the learned profile's, so freeing those radii from their bounds
+  changed nothing: the trial's output was byte-identical. The tuning
+  catalog now offers that setting only with the ellipsoid footprint.
+- **A reply that fails keeps what it did.** An error from the model server
+  late in a reply emptied it from the chat: after a 23-minute tuning run,
+  LM Studio rejected the final report mid-stream, and the transcript kept
+  only the question and the error. The run's steps, the tuning card and the
+  text written so far now stay, with the error as the reply's note. When
+  the error is the model writing a reply its server cannot parse (LM
+  Studio: "does not match the expected … format", here a tool call in the
+  wrong syntax; Ollama: "error parsing tool call"), the same request is
+  sent again, up to twice, before the reply gives up. No tool runs twice.
+- **Each plane's ring verdict follows the cross-plane rule.** A bump seen
+  on one plane only is the crystal's own scattering, and the ring review's
+  totals already left it out. Each plane's detail still named it as that
+  plane's worst leftover ring, and a model reported three such bumps as
+  misses of the ring removal. Each plane's residuals now mark them
+  `single_plane_bump`, and its worst dent and leftover skip them.
+- **Names keep their underscores in the chat.** Models often write field
+  names such as `ring_energy_ratio` without backticks, and the chat's
+  Markdown took the underscores for italics: the name read
+  "ringenergyratio". As in CommonMark, an underscore inside a word is now
+  a literal, and `*` or `_` makes emphasis only where it touches its text
+  (`5 * 3 * 2` stays as written).
+- **A reply cut off by a full context no longer breaks the conversation.**
+  When a local model ran out of room in the middle of a tool call, NEBULA
+  Pilot sent the half-written call back with the next request, and LM
+  Studio failed that request and every later one with a bare HTTP 500.
+  A reply that stopped for lack of room now ends the turn with a note on
+  how to give the model more room, and none of its tool calls run. A call
+  whose arguments are not JSON is sent back as `{}`. A bare HTTP 500 from
+  the model server now says what usually causes it.
+- **NEBULA Pilot can check the ΔPDF's symmetry.** `symmetry_check`
+  compares a ΔPDF section with its images under the cell's in-plane
+  operations and says which hold. Five expert reviews of a hexagonal
+  volume had missed a 12.6 % break of its six-fold symmetry, which no tool
+  could see.
+- **A symmetrised volume gives a symmetric ΔPDF.** The ring removal, the
+  backfill and the flatten each work on index-space neighbourhoods that the
+  hexagonal six-fold does not map onto themselves. On a measured 6/mmm
+  volume the ΔPDF lost 12.6 % (RMS) of its six-fold symmetry: equivalent
+  Bragg peaks kept tails of up to ~1000 counts on one side of the backfill
+  and not the other. With the declared symmetry (\`symmetry="auto"\`, the
+  default), these stages now average their output over each orbit (and the
+  backfill's band and the ring stage's spoke mask are closed under the
+  group). The ΔPDF's partners agree to rounding, and its strongest
+  equivalent features to one count in 2.5 million.
+- **The conversation survives a reload.** Reloading the page emptied
+  NEBULA Pilot's transcript and the unsent draft. Both are now kept for the
+  tab (sessionStorage, up to about 1 MB of the newest turns) and come back
+  after a reload; *Clear* forgets them. A reply still being written is lost,
+  and its question says it was cut off.
+- **A full context window says how to fix it.** When a local model's
+  context window is too small, NEBULA Pilot showed the server's raw
+  message. It now adds what to do: in LM Studio, raise the model's Context
+  Length in its load settings to 32k and reload it; start Ollama with
+  `OLLAMA_CONTEXT_LENGTH=32768`. With Tools on, the first request alone
+  is about 8k tokens, and a full assessment reaches about 18k.
+- **A tuning run's report holds every trial.** It returned only the chosen
+  trial, so asked for each trial's numbers the model made one up ("12
+  sharp leftovers" for a trial whose numbers matched the baseline's
+  exactly). The report now lists every trial's changes and numbers. A
+  trial whose numbers equal the current settings' is marked `no_effect`.
+  When no setting changed, it no longer suggests rewriting the outputs.
+- **The coverage check reads the window that actually ran.** It judged the
+  transform by one reach radius from the Configure page's settings: on a
+  hexagonal box (18 Å⁻¹ in-plane, 12.5 Å⁻¹ along c*) it reported a box-face
+  taper that was not used. The ΔPDF now records the share of its window's
+  weight on unmeasured reciprocal space (`window_open_weight` in its
+  provenance and in the ΔPDF metadata, with the window's shape and scale).
+  `qmax_coverage` gives that share as its verdict: 3.2 × 10⁻⁶ on the
+  measured volume, clean.
+- **The flatten can take a background that rises with |Q|.** Its model
+  fitted a constant (plus the magnetic form factor), so on a measured
+  hexagonal volume the diffuse floor still climbed from −1 to +10 across
+  1–17 Å⁻¹ after the flatten. That is the multiphonon / thermal background,
+  which rises as Q². A *+ b·Q² term* switch (`flatten_q2`) adds it to the
+  model. Like the other terms it varies only on the scale of the whole
+  range, so pair correlations survive. Q² is only the leading term of a
+  rise that saturates, so past the fit range's end the term is held at its
+  value there. *Fit to |Q|* (`flatten_fit_q_max`) carries the fit past its
+  old 10 Å⁻¹ end. The examples take `Q2=1` and `FIT_Q_MAX`; the punch
+  example takes `SEARCH_MAX_WIDTH`. With both, the floor sat within
+  ±0.5 of zero across the coverage. The ΔPDF changed only inside 1.5 Å,
+  where the self term lands: RMS 3.3× lower there, every pair vector
+  unchanged. NEBULA Pilot can turn both on.
+- **The flatten check sees a leftover pedestal.** It judged floors in
+  units of the slice's scatter and only inside the fit range. Beside
+  strong diffuse structure, a pedestal spanning twice the diffuse level
+  read 0.39σ, "flat". It now also reports `floor_trend` (the floors' rank
+  correlation with |Q| across the whole coverage) and
+  `floor_span_fraction` (their range against the diffuse level). Partial
+  shells at the coverage edge are left out.
+- **Leftover peaks are told apart by width.** The punch review counted
+  every off-lattice leftover alike, so the short-range-order maxima kept on
+  purpose read as missed peaks. On one plane of a measured volume that was
+  176 of 188. Each leftover now carries its FWHM in voxels. Broad ones
+  (5 voxels or more along a slice axis) are reported as diffuse maxima
+  kept, and only the sharp ones as punch candidates. The headline states
+  both counts.
+- **The off-lattice search can leave broad maxima alone.** It punched any
+  candidate tall enough, so on a hexagonal volume whose superstructure is
+  short-range order (maxima about 4 × broader along l than the Bragg
+  peaks), it cut out the strongest of the very signal a 3D-ΔPDF images.
+  *Search width ×Bragg* (`punch_search_max_width_ratio`, off by default)
+  leaves a candidate broader than that many Bragg widths along any axis.
+  The Bragg width is measured at the strongest integer peaks. A candidate
+  within a quarter of the node spacing of a punched Bragg node is that
+  peak's wing and is punched anyway. Spurious reflections are as sharp as
+  Bragg peaks on every volume measured, so 2 keeps them punched. Widths
+  come from line cuts above a straight baseline through the points five
+  voxels either side, so a sharp spurious peak on a broad maximum's flank
+  still measures sharp.
+- **The Configure page shows the punch footprint that runs.** Its "Method"
+  select offered only *Ellipsoid* and was never sent, while the pipeline
+  punched with the profile-matched footprint. *Footprint* now offers
+  profile-matched (the default) and ellipsoid, with the profile's reach
+  (*Profile reach ×σ*). NEBULA Pilot can change both, and can set the punch
+  cell when asked.
+- **A new sample starts from the default settings.** A dataset seen for
+  the first time used to inherit the form as it stood, so a second compound
+  started with the first one's magnetic ion and protected planes. Another
+  temperature of the same sample still carries the settings over.
+- **Only rings seen on two planes count as rings.** A powder ring is
+  isotropic. A bump on one plane only is the crystal's own scattering,
+  which the ring removal must leave. It was read as a ring "left over".
+  It is now listed apart.
+- **The back-FFT check is described for what it is.** Without a band or
+  crop the round trip is the identity, so r ≈ 1 only shows the transform
+  ran correctly. The model was told it showed the ΔPDF was trustworthy.
+- **The AI Assistant is now NEBULA Pilot.** The sidebar, the panel and the
+  model's own introduction use the new name.
+- **Ring removal is judged at each ring.** For every powder ring in the raw
+  cut, assessments and tuning report whether the ring-removed profile ends
+  level with the diffuse beside it: a dent (the subtraction over-shot,
+  though no voxel need go negative) or a ring left over, as a share of the
+  diffuse there. A residual counts only beyond 3 × that diffuse's own
+  scatter on the plane. A dip in a shell's low percentiles is not proof of
+  a dent: on a measured volume it was the rings' counting noise, which
+  widened the shells' spread by 30–60 % while their medians stayed level.
+  Only the strongest Al line kept a real dent, about 2–3 %.
+- **Configure remembers its settings for each dataset**, and the console
+  remembers the selected dataset across reloads. Facts about one sample,
+  such as its protected satellite planes, no longer carry over to the next.
+- **The leftover-peak scan sets sparse counts aside.** Near the coverage
+  edge most voxels are empty, so the local scatter is all but 0 and a
+  single count reads tens to thousands of σ. On three measured volumes,
+  every leftover the scan reported on the H = 0 plane was such a count at
+  the K edge (75 at 28 K), and so were the two "missed lattice peaks" it
+  reported at 45 K. A would-be peak whose surroundings are a quarter exact
+  zeros, or sit below a tenth of the slice's median level, is now counted
+  with the noisy spikes.
+- **Leftovers on the search's protected planes are counted apart.** The
+  punch review reports how many off-lattice leftovers sit on the protected
+  H planes, where they stay by design, so the model no longer takes every
+  off-lattice leftover for a protected satellite. The stage summaries also
+  name the plane and |Q| of the worst ring dent or leftover, and the
+  strongest leftover peak.
+- **NEBULA Pilot can set the search's protected H planes when asked.** It
+  refused to, though they are on the Configure page, because the settings
+  it may change left out every fact about the sample. Asked by name, it now
+  sets *Search skips H* and its half width. A tuning run still never
+  proposes them: whether those planes hold real satellites is physics, not
+  a threshold to trade against a metric.
+- **A tuning run stops once its tuned stages keep your settings.** It used
+  to re-run every later stage anyway, reproducing the processed outputs: a
+  few minutes of work on a 401×401×301 volume.
+- **The leftover-peak scan no longer takes noise for peaks, or misses real
+  ones.** It judged each spike against the whole slice's noise and accepted
+  single voxels. On a measured 401×401×301 volume, 675 of its 697 hits on
+  one plane were noise at the coverage edge, while resolved peaks with a
+  contrast below 4 went unflagged. A peak now has to stand out in its own
+  neighbourhood (8 local robust σ) and span more than one voxel. Spikes in
+  noisy regions are counted apart. With the cut known, each peak is classed
+  at a lattice node (a missed Bragg peak, honouring the punch supercell) or
+  off-lattice (a satellite or a spurious peak). Assessments and tuning
+  report the two separately.
+- **The off-lattice search's floor and protected H planes are settings.**
+  The punch protects the H = n ± 1/3 planes from its search, and needs a
+  peak to clear 27 × the diffuse scatter. Both were fixed, so twin or
+  harmonic peaks on those planes, some at ~700σ, could not be punched from
+  the app. *Search floor ×σ*, *Search skips H* (`1/3, 2/3`, `none`) and its
+  half width are on the Configure page and in the API
+  (`punch_search_floor`, `punch_search_protect_h`,
+  `punch_search_protect_half_width`). The floor is also on the tuning list.
+- **The flatten is judged over its own fit range (0.8–10 Å⁻¹).** The floor
+  check included the direct-beam core, which is punched and smoothly filled,
+  so a clean flatten could read 2σ.
+- **The assistant changes only the settings you ask for.** Asked to turn
+  off the search's protected planes, it set the integer punch's H guard to
+  0 instead. That ran every node's punch along H and discarded diffuse: 49 %
+  more voxels punched. The H guard's description now says what it is, and
+  `update_settings` tells the model to ask when unsure. A setting already at
+  the value is reported as no change.
+- **Assess the run** names the tool for each check, so the model runs the
+  texture and coverage checks instead of guessing. It also reports any
+  other stage that misses its goal, such as the flatten. `assess_stage`
+  says which planes it measured.
+- **Two datasets at one temperature have distinct names** ("22K · cc",
+  "22K · sub bkg") in the sidebar, Configure and the assistant.
 - **The cards the assistant is on breathe a blue edge.** While a step runs,
   the cards for what it works on glow. A pipeline run or a tuning run lights
   the stage it is on. While the answer is written, the cards it mentions
@@ -22,7 +244,7 @@
   A *Follow* chip beside *Tools* turns this off. Each step's *Show* button
   reopens its figure either way. The transcript also names the assessment
   steps, instead of showing their tool names.
-- **Anthropic is a provider for the AI Assistant.** Pick *Anthropic* in the
+- **Anthropic is a provider for NEBULA Pilot.** Pick *Anthropic* in the
   connection settings and paste a Claude API key. The model list puts Claude
   Opus 5.5 first. Claude runs through Anthropic's official SDK, called from
   the browser like the other cloud providers, with the key kept in this
@@ -88,7 +310,7 @@
   thinks, or returns nothing, now leaves a note in the chat instead of
   silence. An error a server streams after its first response chunk now
   shows as an error.
-- **The AI Assistant can act: it measures, looks up and shows.** With *Tools*
+- **NEBULA Pilot can act: it measures, looks up and shows.** With *Tools*
   on, the model can measure the stage metrics on any reciprocal cut or ΔPDF
   section (the opening context covers only L=0 and z=0), take a line profile
   through any stage, read the fitted Bragg peaks and the full back-FFT check,

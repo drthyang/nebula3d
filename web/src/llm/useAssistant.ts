@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { Dataset } from "../api/types";
 import { loadPipelineContext } from "./context/loadContext";
-import { checkConnection, type ConnectionResult } from "./provider/client";
+import { checkConnection, loadedContext, type ConnectionResult, type ModelContext } from "./provider/client";
 import { saveSettings, useLlmSettings } from "./settings";
 
 export type { AssistantContext } from "./context/loadContext";
@@ -62,6 +62,28 @@ export function useAssistant(dataset: Dataset | undefined, enabled = true) {
     void probe(false);
   }, [enabled, settings.baseUrl, probe]);
 
+  // The context length a local server loaded the model with, where it says
+  // (LM Studio): read again on connecting, on a new model, and when the page
+  // regains focus — the user may have just reloaded the model there.
+  const [modelContext, setModelContext] = useState<ModelContext | null>(null);
+  const [focusTick, setFocusTick] = useState(0);
+  useEffect(() => {
+    const onFocus = () => setFocusTick((t) => t + 1);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+  useEffect(() => {
+    if (!enabled || connection.status !== "ok" || !settings.model) {
+      setModelContext(null);
+      return;
+    }
+    const abort = new AbortController();
+    loadedContext(settings.baseUrl, settings.model, { signal: abort.signal })
+      .then(setModelContext)
+      .catch(() => {});
+    return () => abort.abort();
+  }, [enabled, connection, settings.baseUrl, settings.model, focusTick]);
+
   const contextQuery = useQuery({
     queryKey: ["assistantContext", dataset?.id, dataset?.stages.map((s) => s.name).join(",")],
     queryFn: () => loadPipelineContext(dataset as Dataset),
@@ -71,5 +93,5 @@ export function useAssistant(dataset: Dataset | undefined, enabled = true) {
 
   const connected = connection.status === "ok" && Boolean(settings.model);
 
-  return { settings, saveSettings, connection, connected, runTest, contextQuery };
+  return { settings, saveSettings, connection, connected, runTest, contextQuery, modelContext };
 }

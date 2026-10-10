@@ -39,6 +39,28 @@ describe("parseInline", () => {
   it("leaves plain text (with underscores in code) untouched", () => {
     expect(parseInline("plain text")).toEqual([{ type: "text", value: "plain text" }]);
   });
+
+  it("keeps the underscores of names written without backticks", () => {
+    const line = "ring_energy_ratio 0.954, after_floor_max_sigma 0.41, stages ring_removed, bragg_punched";
+    expect(parseInline(line)).toEqual([{ type: "text", value: line }]);
+    expect(parseInline("σ_bg and x__y__z")).toEqual([{ type: "text", value: "σ_bg and x__y__z" }]);
+    // Emphasis still opens and closes at word edges, around such names too.
+    expect(parseInline("an _italic_ word")).toEqual([
+      { type: "text", value: "an " },
+      { type: "em", children: [{ type: "text", value: "italic" }] },
+      { type: "text", value: " word" },
+    ]);
+    expect(parseInline("_the ring_energy_ratio_ and __bold__")).toEqual([
+      { type: "em", children: [{ type: "text", value: "the ring_energy_ratio" }] },
+      { type: "text", value: " and " },
+      { type: "strong", children: [{ type: "text", value: "bold" }] },
+    ]);
+  });
+
+  it("does not take spaced asterisks for emphasis", () => {
+    expect(parseInline("5 * 3 * 2")).toEqual([{ type: "text", value: "5 * 3 * 2" }]);
+    expect(parseInline("** loose **")).toEqual([{ type: "text", value: "** loose **" }]);
+  });
 });
 
 describe("parseBlocks", () => {
