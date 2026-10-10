@@ -193,6 +193,67 @@ def volume_coverage(path: Path) -> dict:
     return out
 
 
+_ub_cache: dict[tuple, dict] = {}
+
+
+def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
+                    q_max: float | None = None) -> dict:
+    """Whether the volume's UB puts its Bragg peaks on their nodes
+    (:mod:`nebula3d.analysis.ub_refine`), cached by ``(path, mtime, cell, q_max)``.
+
+    The fit is :func:`~nebula3d.analysis.ub_refine.auto_fit`'s: only the
+    changes that commute with the declared operations on a volume symmetrised
+    under them, else the rotation and the cell together.  ``radial`` gives the
+    peaks' offsets along Q relative to |Q| per |Q| band and direction.
+    """
+    from nebula3d.analysis.ub_refine import auto_fit, radial_offsets, refine_ub
+    from nebula3d.symmetry import read_symmetry_ops
+
+    key = (str(path), path.stat().st_mtime, tuple(cell), q_max)
+    with _lock:
+        hit = _ub_cache.get(key)
+    if hit is not None:
+        return hit
+    vol = load_volume(path)
+    ops = read_symmetry_ops(path)
+    fit, broken = auto_fit(vol, ops)
+    r = refine_ub(vol, fit=fit, ops=ops, cell=cell, q_max=q_max)
+    f = r.fit
+
+    def rounded(m: np.ndarray) -> list:
+        return np.round(np.asarray(m, dtype=float), 8).tolist()
+
+    out = {
+        "fit": fit,
+        "cell_nodes": list(cell),
+        "operations": None if ops is None else len(ops),
+        "symmetry_break": broken,
+        "symmetrised": None if broken is None else fit == "symmetric",
+        "passes": [{"q_max": p.q_max, "n_found": p.n_found, "n_used": p.n_used,
+                    "rms_start": p.rms_start, "rms": p.rms, "angle_deg": p.angle_deg}
+                   for p in r.passes],
+        "n_searched": r.centres.n_searched,
+        "n_used": f.n_used,
+        "n_rejected": f.n_rejected,
+        "rms_start": f.rms_start,
+        "rms": f.rms,
+        "angle_deg": f.angle_deg,
+        "axis_uvw": rounded(f.axis_uvw),
+        "cell_start": [float(x) for x in f.cell_start],
+        "cell": [float(x) for x in f.cell],
+        "transform": rounded(f.transform),
+        "ub_start": rounded(f.ub_start),
+        "ub": rounded(f.ub),
+        "radial": [{"q_lo": o.q_lo, "q_hi": o.q_hi if np.isfinite(o.q_hi) else None,
+                    "direction": o.direction, "n": o.n, "before": o.before, "after": o.after}
+                   for o in radial_offsets(f, r.centres)],
+    }
+    with _lock:
+        _ub_cache.clear()  # one volume's check at a time
+        _ub_cache[key] = out
+    return out
+
+
 def slice_envelope(path: Path, plane: str, value: float, interp: bool) -> bytes:
     """Extract a 2D slice and pack it into the binary wire format above."""
     vol = load_volume(path)

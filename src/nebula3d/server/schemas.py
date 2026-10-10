@@ -74,6 +74,49 @@ class CoverageOut(BaseModel):
     box_corner_q: float
 
 
+class UbPassOut(BaseModel):
+    q_max: float
+    n_found: int
+    n_used: int
+    rms_start: float
+    rms: float
+    angle_deg: float
+
+
+class UbRadialOut(BaseModel):
+    q_lo: float
+    q_hi: float | None
+    direction: str
+    n: int
+    before: float
+    after: float
+
+
+class UbCheckOut(BaseModel):
+    """Whether a volume's UB puts its Bragg peaks on their nodes (see
+    analysis.ub_refine)."""
+    id: str
+    fit: str
+    cell_nodes: list[int]
+    operations: int | None
+    symmetry_break: float | None
+    symmetrised: bool | None
+    passes: list[UbPassOut]
+    n_searched: int
+    n_used: int
+    n_rejected: int
+    rms_start: float
+    rms: float
+    angle_deg: float
+    axis_uvw: list[float]
+    cell_start: list[float]
+    cell: list[float]
+    transform: list[list[float]]
+    ub_start: list[list[float]]
+    ub: list[list[float]]
+    radial: list[UbRadialOut]
+
+
 class DeltaPdfMetaOut(BaseModel):
     id: str
     shape: list[int]

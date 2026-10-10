@@ -42,6 +42,17 @@ On a synthetic hexagonal crystal with the cell 1 % off and the nodes on grid
 points, the half-height centroid gave a = 4.0537 Å for a true 4.04 Å. The
 windowed centroid gives 4.0399 Å, and a 0.5° rotation to within 0.001°.
 
+No centroid can centre a peak narrower than about half a voxel (σ): the grid
+aliases it, by up to a tenth of a voxel. On the demo crystal (a = 4.2 Å, peaks
+σ ≈ 0.03 Å⁻¹) the cell comes out within 0.02 % on the default 161³ grid and
+0.07 % on 101³, but 0.7 % off on 48³.
+
+The background is the shell's median, a level one. A plane fitted through the
+shell did worse: a peak's tails reaching into the shell tilt the plane toward
+the peak. Peak strength is a check on a sloping background. A slope pulls a
+weak peak's centre uphill more than a strong one's, so offsets that are the
+same for weak and strong peaks rule it out.
+
 ## The fits
 
 `fit_ub` minimises Σ w·|Q − UB′·node|² over the UB′ each fit allows. Q is a

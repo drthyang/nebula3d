@@ -16,13 +16,12 @@ import type { LlmSettings } from "../settings";
 import { CHAT_TOOLS, type ToolContext } from "../tools";
 import { currentStageSettings, displayValue, SAMPLE_PARAMS, TUNE_STAGES, type ParamValue } from "../tune/catalog";
 import { headline } from "../tune/evaluate";
-import { STAGE_GOALS } from "../tune/prompts";
 import { useTuneStore } from "../tune/tuner";
 import { fullHalf, pngDataUrl, rasterize } from "./figures";
 import { buildReport, type Measured, type Report, type ReportFigure, type ReportTuningStage } from "./report";
 
 // The tools whose replies make a reply an analysis worth a report.
-export const REPORT_TOOLS = new Set(["assess_stage", "tune_pipeline", "run_pipeline", "texture_check", "qmax_coverage", "symmetry_check"]);
+export const REPORT_TOOLS = new Set(["assess_stage", "tune_pipeline", "run_pipeline", "texture_check", "qmax_coverage", "symmetry_check", "grain_check"]);
 export const reportable = (turn: ChatTurn): boolean =>
   turn.role === "assistant" && Boolean(turn.steps?.some((s) => REPORT_TOOLS.has(s.name) && s.status === "done"));
 
@@ -54,12 +53,14 @@ async function measure(ctx: ToolContext): Promise<Measured> {
       return null;
     }
   };
-  const [describe, all, texture, coverage, symmetry] = await Promise.all([
+  const punched = ctx.dataset.stages.some((s) => s.name === "braggpunched" && s.exists);
+  const [describe, all, texture, coverage, symmetry, grains] = await Promise.all([
     run("describe_dataset"),
     run("assess_stage", { stage: "all" }),
     run("texture_check"),
     run("qmax_coverage"),
     dpdfVolumeId(ctx.dataset) ? run("symmetry_check") : Promise.resolve(null),
+    punched ? run("grain_check") : Promise.resolve(null),
   ]);
   const stage = (k: string): Obj | null => {
     const s = all?.[k];
@@ -75,6 +76,7 @@ async function measure(ctx: ToolContext): Promise<Measured> {
     texture,
     coverage,
     symmetry,
+    grains,
   };
 }
 
@@ -170,6 +172,5 @@ export async function collectReport({ dataset, datasets, turn, question, llm }: 
     tuning: tuningRecord(turn),
     measured,
     figures: figs,
-    goals: { ...STAGE_GOALS },
   });
 }
