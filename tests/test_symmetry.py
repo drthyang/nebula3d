@@ -339,7 +339,8 @@ def test_orbit_mean_makes_equivalent_values_equal_and_leaves_the_rest():
         np.testing.assert_allclose(values.ravel()[on], values.ravel()[img[on]], rtol=1e-12)
     # every voxel took its orbit's mean
     i = tuple(np.argwhere(where)[0])
-    orbit = [j for j in (_images(_SHAPE, op)[np.ravel_multi_index(i, _SHAPE)] for op in _six_m_ops())
+    flat = np.ravel_multi_index(i, _SHAPE)
+    orbit = [j for j in (_images(_SHAPE, op)[flat] for op in _six_m_ops())
              if j >= 0 and where.ravel()[j]]
     assert values[i] == pytest.approx(before.ravel()[sorted(set(orbit))].mean())
 

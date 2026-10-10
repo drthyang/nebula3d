@@ -343,8 +343,9 @@ def test_q2_term_takes_a_rising_phonon_pedestal_and_keeps_correlations():
                                         q2_term=True)
     assert with_q2.model_q2 == pytest.approx(0.05, rel=0.1)
     assert const_only.model_q2 is None
-    span = lambda res: np.nanmax(_shell_medians(res.volume.data, q, valid)) - np.nanmin(
-        _shell_medians(res.volume.data, q, valid))
+    def span(res) -> float:
+        medians = _shell_medians(res.volume.data, q, valid)
+        return float(np.nanmax(medians) - np.nanmin(medians))
     assert span(const_only) > 1.0          # the rise is left in
     assert span(with_q2) < 0.6             # only the correlation term's swing remains
 

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -638,7 +639,7 @@ class BraggRemover:
         default_factory=dict, init=False, repr=False, compare=False)
     # What the last search pass measured and used: the diffuse scatter and the
     # floors in data units (see ``search_floor_unit``), for the run log.
-    _search_report: dict[str, float] = dataclasses.field(
+    _search_report: dict[str, Any] = dataclasses.field(
         default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -1447,7 +1448,8 @@ class BraggRemover:
                 reference=self._scaling_reference(integer, rejected))
             keep = self._symmetric_keep(vol, keep)
             residual = dataclasses.replace(vol, mask=vol.mask & keep)
-            search = self._sharp_only(vol, residual, self._detect_search(residual, rejected), integer)
+            search = self._sharp_only(
+                vol, residual, self._detect_search(residual, rejected), integer)
             peaks = integer + self._profile_footprints(vol, search, profile)
         else:
             raise ValueError(f"Unknown mode: {self.mode!r}")
@@ -1512,7 +1514,7 @@ class BraggRemover:
             c = idx[axis]
             if c - n < 0 or c + n >= len(ax):
                 continue
-            sl = list(idx)
+            sl: list[int | slice] = list(idx)
             sl[axis] = slice(c - n, c + n + 1)
             line = np.asarray(vol.data[tuple(sl)], dtype=np.float64)
             ok = np.asarray(vol.mask[tuple(sl)], dtype=bool) & np.isfinite(line)
