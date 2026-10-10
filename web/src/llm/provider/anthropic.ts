@@ -151,6 +151,7 @@ interface TurnArgs {
   signal?: AbortSignal;
   tools?: ToolSpec[];
   toolChoice?: "auto" | "none";
+  includeUsage?: boolean; // report the turn's token counts (the evals)
 }
 
 // The request body: no sampling parameters (current Claude models reject
@@ -252,6 +253,15 @@ export async function* streamAnthropic(args: TurnArgs): AsyncGenerator<StreamDel
     } catch (e) {
       if (!(e instanceof AnthropicClient.APIError) && !args.signal?.aborted && !streamed && attempt < 2) continue;
       throw await asHttpError(e);
+    }
+    if (args.includeUsage) {
+      const u = message.usage;
+      yield {
+        usage: {
+          input: u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
+          output: u.output_tokens,
+        },
+      };
     }
 
     if (message.stop_reason === "refusal") {
