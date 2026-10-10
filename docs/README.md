@@ -22,7 +22,10 @@ viewers, and reproducible command recipes in more detail.
    radial-background flatten (the default step-4 background removal), the
    alternative smooth-background subtraction, real-space viewer assumptions, and
    the back-FFT consistency check.
-9. [Interactive exploration](interactive.md) - the standalone matplotlib cleanup
+9. [UB refinement](algorithms/ub_refinement.md) - fitting the UB to where the
+   Bragg peaks sit, what a symmetrised volume can still show, and regridding
+   onto the refined UB.
+10. [Interactive exploration](interactive.md) - the standalone matplotlib cleanup
    QA viewers, ΔPDF viewers, and plotting primitives.
 
 ## Pages
@@ -36,6 +39,7 @@ viewers, and reproducible command recipes in more detail.
 | [algorithms/bragg_cleanup.md](algorithms/bragg_cleanup.md) | Tune Bragg punching, satellite search, or q-shell backfill. |
 | [algorithms/delta_pdf.md](algorithms/delta_pdf.md) | Understand the FFT, centring, apodization, background subtraction, and round-trip consistency check. |
 | [algorithms/inpainting.md](algorithms/inpainting.md) | Compare general inpainting fallbacks such as symmetry and TV. |
+| [algorithms/ub_refinement.md](algorithms/ub_refinement.md) | Refine the UB from the Bragg peaks' centres, or regrid a volume onto a refined UB. |
 | [interactive.md](interactive.md) | Use the cleanup and ΔPDF viewers or the plotting API. |
 | [../CHANGELOG.md](../CHANGELOG.md) | Review release notes and version history. |
 

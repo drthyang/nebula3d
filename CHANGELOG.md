@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **The UB can be refined from where the Bragg peaks sit.**
+  `nebula3d.analysis.ub_refine` (and `examples/refine_ub.py`) finds each
+  Bragg node's peak and fits one of four UB changes:
+  - a rotation;
+  - the cell, with the parameters the symmetry leaves free;
+  - both;
+  - only what commutes with the symmetry operations.
+
+  The fit works from low |Q| outward, and the volume can then be regridded
+  onto the refined UB. A volume symmetrised under its operations hides a
+  misorientation as rings around the nodes, so it takes the last fit alone;
+  the orientation needs the unsymmetrised data. Peak centres are windowed
+  centroids. A centroid of the voxels above half height overstated sub-voxel
+  offsets by a third, which read a cell 1 % off as 1.3 % off. See
+  [docs/algorithms/ub_refinement.md](docs/algorithms/ub_refinement.md).
+  On a measured hexagonal volume (symmetrised), the Bragg peaks sit
+  0.2–0.5 % of |Q| outside their nodes, the same for weak and strong peaks.
+  In-plane the offset grows with |Q|, which no UB can produce.
 - **Each peak is punched to its own width.** The punch's default footprint
   is now `own`: along H, K and L each peak's line-cut FWHM (half-maximum
   crossings interpolated) defines a Gaussian, punched out to where it falls
