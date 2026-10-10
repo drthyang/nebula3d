@@ -61,9 +61,15 @@ reads it from there. A session typically runs top to bottom:
 3. **3D-ΔPDF** — three linked real-space orthoslices with a unit-cell overlay.
 4. **Consistency check** — inverse-FFT the ΔPDF back to reciprocal space and
    compare *data | back-FFT | residual*, with `|Q|` and real-space `r` bands.
-5. **AI Assistant** — open it from the sidebar; it docks beside every page.
-   Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini) model to
-   assess the reduction, or let it tune the pipeline stage by stage.
+5. **NEBULA Pilot** — open it from the sidebar; it docks beside every page.
+   Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic)
+   model. Ask it to *Assess the run* or *Tune for the best result*, or ask
+   anything about the reduction: with *Tools* on it measures cuts, judges each
+   stage, runs and tunes the pipeline, and opens the figures it talks about.
+   A local model needs room: load it with a **32k context** (in LM Studio, set
+   the model's default Context Length, which it uses whenever it reloads an idle
+   model; start Ollama with `OLLAMA_CONTEXT_LENGTH=32768`). With *Tools* on, the
+   first request alone is about 8k tokens.
 
 ## Going further
 
