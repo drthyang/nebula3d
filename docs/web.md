@@ -429,7 +429,16 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
     spacing is a displaced Bragg peak whose offset over |Q| bounds the
     rotation from below; and as a rotated copy of the Bragg lattice, a second
     grain, judged against the same search at random directions. A rotation
-    under 2° is the UB, not a grain.
+    under 2° is the UB, not a grain. `ub_check`
+    (`analysis/ub_refine.py`, `GET /api/volumes/{id}/ub?cell=…&q_max=…`)
+    measures each Bragg node's peak centre on the raw volume (the punch cell
+    gives the nodes) and fits the UB that puts the centres on their nodes.
+    On a volume symmetrised under its declared operations it fits only the
+    changes that commute with them, since a misorientation is hidden there
+    as rings. Elsewhere it fits the rotation and the cell. It reports the
+    peaks' offset along Q relative to |Q| by |Q| band and direction: an offset
+    that changes with |Q| along a direction is not a UB error (see
+    [UB refinement](algorithms/ub_refinement.md)).
   - *Display*: `dpdf_contrast` optimises the 3D-ΔPDF viewer's colour range in
     one call (the page's Auto rule, measured on the centre sections), reports the
     robust σ, the strongest feature and what the 99.5th and 99.97th percentiles

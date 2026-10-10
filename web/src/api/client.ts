@@ -14,6 +14,7 @@ import type {
   SliceHeader,
   TuningPromote,
   TuningRun,
+  UbCheck,
   VolumeCoverage,
   VolumeMeta,
 } from "./types";
@@ -138,6 +139,21 @@ export function fetchMeta(volumeId: string): Promise<VolumeMeta> {
 export function fetchVolumeCoverage(volumeId: string): Promise<VolumeCoverage> {
   if (PYODIDE_MODE) return engine.volumeCoverage(volumeId);
   return getJSON<VolumeCoverage>(`/api/volumes/${encodeURIComponent(volumeId)}/coverage`);
+}
+
+/** Whether the volume's UB puts its Bragg peaks (nodes every `cell`) on their nodes. */
+export async function fetchUbCheck(volumeId: string, cell: [number, number, number], qMax: number | null = null): Promise<UbCheck> {
+  if (PYODIDE_MODE) return engine.ubCheck(volumeId, cell.join(","), qMax);
+  const q = new URLSearchParams({ cell: cell.join(",") });
+  if (qMax != null) q.set("q_max", String(qMax));
+  const url = `/api/volumes/${encodeURIComponent(volumeId)}/ub?${q}`;
+  const r = await fetch(url);
+  if (!r.ok) {
+    // A fit with too few peaks says so (422); pass its reason on.
+    const detail = await r.json().then((b: { detail?: unknown }) => (typeof b?.detail === "string" ? b.detail : null)).catch(() => null);
+    throw new Error(detail ?? `${r.status} ${r.statusText}: ${url}`);
+  }
+  return (await r.json()) as UbCheck;
 }
 
 export function fetchSlice(

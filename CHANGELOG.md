@@ -20,6 +20,12 @@
   On a measured hexagonal volume (symmetrised), the Bragg peaks sit
   0.2–0.5 % of |Q| outside their nodes, the same for weak and strong peaks.
   In-plane the offset grows with |Q|, which no UB can produce.
+- **NEBULA Pilot can check the UB.** `ub_check` (and
+  `GET /api/volumes/{id}/ub`) runs the UB refinement on the raw volume, with
+  the punch cell as the Bragg nodes. It reports how far the peaks sat from
+  their nodes before and after, the cell, the rotation, and the peaks'
+  radial offsets by |Q| band. On a symmetrised volume it says that only what
+  the symmetry keeps could be fitted.
 - **Each peak is punched to its own width.** The punch's default footprint
   is now `own`: along H, K and L each peak's line-cut FWHM (half-maximum
   crossings interpolated) defines a Gaussian, punched out to where it falls

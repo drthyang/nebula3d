@@ -21,6 +21,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
   fetchSlice: vi.fn(),
+  fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
@@ -582,6 +583,39 @@ describe("grain_check", () => {
   it("says so when there is no punch record yet", async () => {
     api.fetchBraggProfile.mockResolvedValue({ has_profile: false, peaks: [] });
     expect((await run("grain_check", {})).text).toMatch(/no punch record yet/);
+  });
+});
+
+describe("ub_check", () => {
+  const check = {
+    id: "demo.raw", fit: "symmetric", cell_nodes: [2, 2, 2], operations: 24, symmetry_break: 0, symmetrised: true,
+    passes: [{ q_max: 5.33, n_found: 178, n_used: 178, rms_start: 0.0146, rms: 0.0102, angle_deg: 0 }],
+    n_searched: 4330, n_used: 3010, n_rejected: 952, rms_start: 0.05551, rms: 0.03969, angle_deg: 0, axis_uvw: [0, 0, 0],
+    cell_start: [8.02853, 8.01912, 10.02971, 90.1336, 90.2317, 119.9787], cell: [7.99421, 7.98485, 10.01769, 90.1336, 90.2317, 119.9787],
+    transform: [[1.004284, 0, 0], [0, 1.004284, 0], [0, 0, 1.0012]], ub_start: [], ub: [],
+    radial: [
+      { q_lo: 0, q_hi: 4, direction: "in-plane", n: 18, before: 0.003012, after: -0.001311 },
+      { q_lo: 16, q_hi: null, direction: "oblique", n: 5, before: 0.0041, after: 0.0002 },
+    ],
+  };
+
+  it("checks the raw volume's UB with the punch cell as the Bragg nodes", async () => {
+    api.fetchUbCheck.mockResolvedValue(check);
+    usePipelineStore.setState({ punchSupercellH: "2", punchSupercellK: "2", punchSupercellL: "2" });
+    const r = await run("ub_check", { q_max: 16 });
+    expect(r.ok).toBe(true);
+    expect(api.fetchUbCheck).toHaveBeenLastCalledWith("demo.raw", [2, 2, 2], 16);
+    const out = JSON.parse(r.text);
+    expect(out.fit).toBe("symmetric");
+    expect(out.cell_start).toBe("8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°");
+    expect(out.transform_diagonal).toEqual([1.004284, 1.004284, 1.0012]);
+    expect(out.radial).toEqual([
+      { q: "0–4", direction: "in-plane", n: 18, before: 0.003, after: -0.0013 },
+      { q: "≥ 16", direction: "oblique", n: 5, before: 0.0041, after: 0.0002 },
+    ]);
+    expect(out.reading).toMatch(/symmetrised: only the UB changes that commute/);
+    expect(r.summary).toBe("symmetric: RMS 0.0555 → 0.0397 Å⁻¹ over 3010 peaks; a 8.029 → 7.994 Å, c 10.030 → 10.018 Å; turned 0.000°");
+    expect((await run("ub_check", { q_max: -1 })).text).toMatch(/q_max must be positive/);
   });
 });
 
