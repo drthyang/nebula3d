@@ -80,6 +80,7 @@ __all__ = [
     "datasets_json",
     "volume_meta_json",
     "volume_slice",
+    "volume_coverage_json",
     "dpdf_meta_json",
     "dpdf_slice",
     "consistency_meta_json",
@@ -1117,6 +1118,14 @@ def volume_slice(volume_id: str, plane: str, value: float, interp: bool = False
 # ---------------------------------------------------------------------------
 # Real-space ΔPDF
 # ---------------------------------------------------------------------------
+def volume_coverage_json(volume_id: str) -> str:
+    """Where an HKL stage's counts begin and end in |Q| (mirrors
+    GET /api/volumes/{id}/coverage)."""
+    stage = _resolve(volume_id, "hkl")
+    m = _vol.volume_coverage(stage.path)
+    return _json({**m, "id": volume_id})
+
+
 def dpdf_meta_json(volume_id: str) -> str:
     """Metadata for a ΔPDF stage (mirrors GET /api/deltapdf/{id}/meta)."""
     _release_other_caches("dpdf")  # entering the ΔPDF view: drop cleanup/consistency

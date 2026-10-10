@@ -197,6 +197,15 @@ def test_volume_meta(env):
     assert "hk" in m["planes"] and "0kl" in m["planes"]
 
 
+def test_volume_coverage(env):
+    client, vol = env
+    c = client.get(f"/api/volumes/{SLUG}.ringremoved/coverage").json()
+    assert c["id"] == f"{SLUG}.ringremoved"
+    assert len(c["q"]) == len(c["counted"])  # a 7×9×11 volume has no 50-voxel shell
+    assert 0 < c["box_q"] < c["box_corner_q"]
+    assert client.get("/api/volumes/nope.ringremoved/coverage").status_code == 404
+
+
 def test_bragg_profile_missing_returns_empty_state(env):
     client, _ = env
     r = client.get(f"/api/bragg/{SLUG}/profile")

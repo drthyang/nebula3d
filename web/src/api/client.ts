@@ -14,6 +14,7 @@ import type {
   SliceHeader,
   TuningPromote,
   TuningRun,
+  VolumeCoverage,
   VolumeMeta,
 } from "./types";
 
@@ -132,6 +133,11 @@ export async function browseDataRoot(): Promise<DataRoot> {
 export function fetchMeta(volumeId: string): Promise<VolumeMeta> {
   if (PYODIDE_MODE) return engine.volumeMeta(volumeId);
   return getJSON<VolumeMeta>(`/api/volumes/${encodeURIComponent(volumeId)}/meta`);
+}
+
+export function fetchVolumeCoverage(volumeId: string): Promise<VolumeCoverage> {
+  if (PYODIDE_MODE) return engine.volumeCoverage(volumeId);
+  return getJSON<VolumeCoverage>(`/api/volumes/${encodeURIComponent(volumeId)}/coverage`);
 }
 
 export function fetchSlice(
