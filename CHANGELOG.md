@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **NEBULA Pilot warns before a small context window cuts replies off.**
+  LM Studio loads a model with a fixed context length, often 4k or 8k. With
+  Tools on, NEBULA Pilot's first request alone is about 8k tokens, so such a
+  model broke off its first reply. NEBULA Pilot now reads the length the
+  model was loaded with from LM Studio. Below 32k it shows above the chat
+  how far to raise it, up to what the model supports. It reads the length
+  again on connecting, on a model change, and when the page regains focus.
+  The connection help gives the Context Length for LM Studio and
+  `OLLAMA_CONTEXT_LENGTH` for Ollama.
 - **Tuning no longer trades a clean ΔPDF for a higher SNR.** The ΔPDF
   stage was judged on feature SNR and the round trip alone, though its
   goal requires the transform to stay inside the measured coverage. On a
@@ -70,8 +79,9 @@
 - **A full context window says how to fix it.** When a local model's
   context window is too small, NEBULA Pilot showed the server's raw
   message. It now adds what to do: in LM Studio, raise the model's Context
-  Length in its load settings (16k at least) and reload it. With Tools on,
-  a request needs about 6k tokens before the question.
+  Length in its load settings to 32k and reload it; start Ollama with
+  `OLLAMA_CONTEXT_LENGTH=32768`. With Tools on, the first request alone
+  is about 8k tokens, and a full assessment reaches about 18k.
 - **A tuning run's report holds every trial.** It returned only the chosen
   trial, so asked for each trial's numbers the model made one up ("12
   sharp leftovers" for a trial whose numbers matched the baseline's

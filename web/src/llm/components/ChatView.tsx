@@ -167,12 +167,15 @@ export function ChatView({
   settings,
   toolContext,
   contextLoading = false,
+  contextNote = null,
 }: {
   assistant: AssistantContext | undefined;
   connected: boolean;
   settings: LlmSettings;
   toolContext: ToolContext | null;
   contextLoading?: boolean;
+  // Why replies may be cut off: the model's context is too small for Tools.
+  contextNote?: string | null;
 }) {
   const turns = useChatStore((s) => s.turns);
   const draft = useChatStore((s) => s.draft);
@@ -319,6 +322,7 @@ export function ChatView({
       </div>
 
       <div className="ai-dock">
+        {connected && contextNote && <div className="ai-conn-warn">{contextNote}</div>}
         <div className="ai-reviews">
           {tools &&
             ACTIONS.map((a) => (

@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isMalformedOutput, isToolsUnsupported, streamChat, ToolCallAssembler, type HttpError, type StreamDelta, withContextHint } from "../provider/client";
+import { contextWarning, isMalformedOutput, isToolsUnsupported, loadedContext, streamChat, ToolCallAssembler, type HttpError, type StreamDelta, withContextHint } from "../provider/client";
 
 const sse = (chunks: string[]): Response => {
   const enc = new TextEncoder();
@@ -124,6 +124,33 @@ describe("streamChat", () => {
     expect(error.status).toBe(500);
     expect(isMalformedOutput(error)).toBe(true);
     expect(isMalformedOutput(new Error("HTTP 500"))).toBe(false);
+  });
+
+  it("reads the context length LM Studio loaded the model with, and warns when Tools need more", async () => {
+    const models = {
+      data: [
+        { id: "small", state: "loaded", loaded_context_length: 8192, max_context_length: 131072 },
+        { id: "roomy", state: "loaded", loaded_context_length: 70656, max_context_length: 131072 },
+        { id: "idle", state: "not-loaded", max_context_length: 262144 },
+      ],
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(models), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const small = await loadedContext("http://localhost:1234/v1", "small");
+    expect(small).toEqual({ loaded: 8192, max: 131072 });
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:1234/api/v0/models", expect.anything());
+    expect(contextWarning(small, "small")).toMatch(
+      /^small is loaded with a 8,192-token context\. .* replies will be cut off\. In LM Studio, load it again with a Context Length of 32,768 \(it supports up to 131,072\)\.$/,
+    );
+    expect(contextWarning(await loadedContext("http://localhost:1234/v1", "roomy"), "roomy")).toBeNull();
+    expect(await loadedContext("http://localhost:1234/v1", "idle")).toBeNull(); // loads on first use, settings unknown
+    // Not asked of Ollama or of a cloud provider; a server without the API says nothing.
+    fetchMock.mockClear();
+    expect(await loadedContext("http://localhost:11434/v1", "small")).toBeNull();
+    expect(await loadedContext("https://api.openai.com/v1", "small")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
+    expect(await loadedContext("http://localhost:8080/v1", "small")).toBeNull();
   });
 
   it("explains a bare HTTP 500 from the model server", async () => {

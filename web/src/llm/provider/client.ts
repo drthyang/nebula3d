@@ -14,6 +14,7 @@ import {
   listAnthropicModels,
   streamAnthropic,
 } from "./anthropic";
+import { isLocalUrl, providerForUrl } from "./presets";
 
 // A message's content is either plain text or a list of parts (text +
 // image_url), the OpenAI vision shape that Ollama/LM Studio/Gemini also accept.
@@ -78,7 +79,7 @@ export interface HttpError extends Error {
 const CONTEXT_OVERFLOW = /context (length|window|size)|n_ctx|maximum context|too many tokens|exceeds? the (model's )?context|prompt is too long|tokens to keep/i;
 export const withContextHint = (message: string): string =>
   CONTEXT_OVERFLOW.test(message)
-    ? `${message} — the model's context window is full. In LM Studio, raise the model's Context Length in its load settings (16k at least, 32k to be comfortable) and reload it. With Tools on, a request needs about 6k tokens before your question; Tools off, or Clear, also helps.`
+    ? `${message} — the model's context window is full. In LM Studio, raise the model's Context Length in its load settings to 32k and reload it; start Ollama with OLLAMA_CONTEXT_LENGTH=32768. With Tools on, the first request alone is about 8k tokens, and a full assessment reaches about 18k; Tools off, or Clear, also helps.`
     : message;
 
 // A local model that writes a reply its own server cannot parse — most often a
@@ -139,6 +140,54 @@ export const listModels = async (
   }
   const payload = await response.json();
   return (payload.data || []).map((entry: { id?: string }) => entry.id).filter(Boolean) as string[];
+};
+
+export interface ModelContext {
+  loaded: number; // the context length the model was loaded with
+  max: number | null; // the most it supports
+}
+
+// LM Studio's own REST API reports the context length a model was loaded with,
+// which the OpenAI-style /models list leaves out.  Null wherever it cannot be
+// read: another server, a model not loaded yet (LM Studio loads it on the
+// first request, with its default settings), an older LM Studio.
+export const loadedContext = async (
+  baseUrl: string,
+  model: string,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<ModelContext | null> => {
+  if (!model || !isLocalUrl(baseUrl) || providerForUrl(baseUrl)?.id === "ollama") return null;
+  try {
+    const response = await fetch(`${trimBase(baseUrl).replace(/\/v1$/, "")}/api/v0/models`, { signal });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as {
+      data?: { id?: string; state?: string; loaded_context_length?: unknown; max_context_length?: unknown }[];
+    };
+    const entry = payload.data?.find((m) => m.id === model);
+    const loaded = entry?.state === "loaded" ? entry.loaded_context_length : null;
+    if (typeof loaded !== "number" || !(loaded > 0)) return null;
+    const max = entry?.max_context_length;
+    return { loaded, max: typeof max === "number" && max > 0 ? max : null };
+  } catch (error) {
+    if ((error as Error)?.name === "AbortError") throw error;
+    return null;
+  }
+};
+
+// With Tools on, the first request alone is about 8k tokens, and a full
+// assessment reaches about 18k (measured with LM Studio, 2026-10).
+export const TOOLS_CONTEXT = 32768;
+
+/** What to do about a model loaded with less context than Tools need, or null. */
+export const contextWarning = (context: ModelContext | null, model: string): string | null => {
+  if (!context || context.loaded >= TOOLS_CONTEXT) return null;
+  const n = (x: number) => x.toLocaleString("en-US");
+  const target = context.max != null ? Math.min(TOOLS_CONTEXT, context.max) : TOOLS_CONTEXT;
+  return (
+    `${model} is loaded with a ${n(context.loaded)}-token context. With Tools on, the first request alone is about 8k ` +
+    `tokens and a full assessment reaches about 18k, so ${context.loaded < 12000 ? "replies will be cut off" : "long replies may be cut off"}. ` +
+    `In LM Studio, load it again with a Context Length of ${n(target)}${context.max != null ? ` (it supports up to ${n(context.max)})` : ""}.`
+  );
 };
 
 // Probe the server and translate failures into actionable setup hints.
