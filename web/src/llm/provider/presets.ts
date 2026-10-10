@@ -1,4 +1,5 @@
-// OpenAI-compatible servers this module can talk to.  Local servers (Ollama, LM
+// The model servers the assistant can talk to: OpenAI-compatible ones, and
+// Anthropic through its own SDK (anthropic.ts).  Local servers (Ollama, LM
 // Studio) expose GET /models and POST /chat/completions under a /v1 prefix with
 // no API key, so the browser calls them directly and run data never leaves the
 // machine.  Cloud providers speak the same dialect but need a Bearer key — and,
@@ -47,6 +48,15 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     cloud: true,
     keyUrl: "https://aistudio.google.com/apikey",
     hint: "Needs a Google AI Studio (Gemini) API key. Your run-derived metrics (and, if you enable image assessment, the rendered slice) are sent to Google — they do not stay on your device.",
+  },
+  {
+    // Not OpenAI-compatible here: the client hands this URL to Anthropic's
+    // SDK (anthropic.ts), which calls the Messages API from the browser.
+    id: "anthropic",
+    label: "Anthropic",
+    baseUrl: "https://api.anthropic.com",
+    cloud: true,
+    hint: "Needs a Claude API key from the Claude Console. Your run-derived metrics (and, if you enable image assessment, the rendered slice) are sent to Anthropic — they do not stay on your device.",
   },
 ];
 

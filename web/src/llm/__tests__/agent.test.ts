@@ -139,6 +139,15 @@ describe("runAgent", () => {
     expect(r.steps[0]).toMatchObject({ status: "done", summary: "finished", progress: undefined });
   });
 
+  it("sends a tool-calling turn back in the provider's own form", async () => {
+    const native = [{ type: "thinking", thinking: "", signature: "sig" }, { type: "tool_use", id: "c1", name: "echo", input: { x: 1 } }];
+    const seen = script([[{ toolCalls: [call("c1", "echo", { x: 1 })], native }], [{ content: "x is 1." }]]);
+    await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal });
+    const replayed = seen[1].messages[seen[1].messages.length - 2];
+    expect(replayed).toMatchObject({ role: "assistant", tool_calls: [{ id: "c1" }] });
+    expect(replayed.native).toBe(native);
+  });
+
   it("propagates other errors", async () => {
     script([new Error("HTTP 500: boom")]);
     await expect(
