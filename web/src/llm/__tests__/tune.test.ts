@@ -54,6 +54,9 @@ describe("catalog", () => {
     const pooled = currentStageSettings("rings", { ...s, ringModel: "pooled" });
     expect(pooled).toHaveProperty("ringPooledSectors", 72);
     expect(pooled).not.toHaveProperty("ringNFourier");
+    // The covariance-fit bounds only shape the ellipsoid footprint's punches.
+    expect(currentStageSettings("punch", { ...s, punchFootprint: "" })).not.toHaveProperty("punchFitUnconstrained");
+    expect(currentStageSettings("punch", { ...s, punchFootprint: "ellipsoid" })).toHaveProperty("punchFitUnconstrained", false);
   });
 });
 
@@ -160,6 +163,25 @@ describe("startTuning", () => {
     expect(backfill.best).toBe(1);
     expect(runs.map((r) => r.trial)).toEqual(["backfill-1"]);
     expect(promoted()).toEqual(["backfill-1"]);
+  });
+
+  it("does not choose a ΔPDF window that reaches unmeasured space, whatever its SNR", async () => {
+    usePipelineStore.setState({ punchEnabled: false, backfillEnabled: false, pdfEnabled: true, pdfWindowShape: "" });
+    evaluate.evaluateStage.mockImplementation(async () => {
+      const separable = usePipelineStore.getState().pdfWindowShape === "separable";
+      return { mean_feature_snr: separable ? 1230 : 1180, window_weight_on_unmeasured: separable ? 0.057 : 3.2e-6 };
+    });
+    llm.completeChat
+      .mockResolvedValueOnce('{"candidates": [{"changes": {"pdfWindowShape": "separable"}, "why": "more SNR"}]}')
+      .mockResolvedValueOnce('{"best": 2, "why": "higher SNR"}'); // never asked
+    await startTuning({ dataset, stages: ["pdf"], trialsPerStage: 2, llm: DEFAULT_SETTINGS });
+    const [pdf] = useTuneStore.getState().stages;
+    expect(pdf.trials).toHaveLength(2);
+    expect(pdf.best).toBe(1);
+    expect(pdf.why).toMatch(/Trial 2 was not a candidate: its window puts 0\.057 of its weight on unmeasured reciprocal space/);
+    expect(llm.completeChat).toHaveBeenCalledTimes(1); // no judging between one candidate
+    expect(promoted()).toEqual(["pdf-1"]);
+    expect(usePipelineStore.getState().pdfWindowShape).toBe("");
   });
 
   it("re-runs untuned stages between tuned ones, into the run", async () => {

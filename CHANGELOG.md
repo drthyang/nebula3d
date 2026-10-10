@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Tuning no longer trades a clean ΔPDF for a higher SNR.** The ΔPDF
+  stage was judged on feature SNR and the round trip alone, though its
+  goal requires the transform to stay inside the measured coverage. On a
+  hexagonal volume a tuning run chose a separable window for 4 % more SNR.
+  That window put 5.7 % of its weight on unmeasured reciprocal space
+  (against 3 × 10⁻⁶ for the ellipsoid window) and broke the ΔPDF's
+  six-fold symmetry (RMS 0.44). The stage's evaluation now reports the
+  window's weight on unmeasured space and the x–y section's worst
+  symmetry break. A trial past the backend's own limit (10⁻³, where its
+  automatic window gives up the separable shape) is not a candidate while
+  your settings stay inside it, and the reason is given.
+- **Tuning no longer tries a punch setting that cannot act.** With the
+  default profile footprint, the punch replaces the covariance fit's radii
+  with the learned profile's, so freeing those radii from their bounds
+  changed nothing: the trial's output was byte-identical. The tuning
+  catalog now offers that setting only with the ellipsoid footprint.
 - **A reply that fails keeps what it did.** An error from the model server
   late in a reply emptied it from the chat: after a 23-minute tuning run,
   LM Studio rejected the final report mid-stream, and the transcript kept

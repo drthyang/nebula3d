@@ -15,6 +15,10 @@
 import type { GridSlice } from "./sliceStats";
 import { roundSig } from "./sliceStats";
 
+// A symmetry the data were symmetrised with holds to rounding when every
+// stage treats equivalent voxels alike; past this share it was broken.
+export const SYMMETRY_HOLDS = 1e-3;
+
 export interface SectionSymmetry {
   op: string;
   rms_difference: number; // RMS(v − v∘op) / RMS(v) over the pairs
