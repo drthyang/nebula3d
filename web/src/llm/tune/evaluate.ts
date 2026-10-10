@@ -137,7 +137,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     const fractions = contexts.map((c) =>
       punchedFraction(c.slices.ringremoved?.data, c.slices.braggpunched?.data),
     );
-    const total = (key: "n_suspicious" | "n_at_nodes" | "n_off_nodes" | "n_on_protected" | "n_skipped_noisy") =>
+    const total = (key: "n_suspicious" | "n_at_nodes" | "n_off_nodes" | "n_on_protected" | "n_broad_off_nodes" | "n_skipped_noisy") =>
       leftovers.reduce((s, l) => s + (l?.[key] ?? 0), 0);
     // The strongest leftover over the planes, with its plane.
     const strongest = cuts.reduce<Record<string, unknown> | null>((best, c, i) => {
@@ -148,8 +148,11 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       total_leftover_peaks: total("n_suspicious"),
       leftover_at_nodes: total("n_at_nodes"),
       leftover_off_lattice: total("n_off_nodes"),
-      // Of those, on the H planes the search leaves alone (protected satellites).
+      // Of those, on the H planes the search leaves alone (protected satellites),
+      // and broad enough to be diffuse maxima rather than reflections.
       leftover_on_protected_planes: total("n_on_protected"),
+      leftover_off_lattice_broad: total("n_broad_off_nodes"),
+      leftover_off_lattice_sharp: total("n_off_nodes") - total("n_broad_off_nodes"),
       strongest_leftover: strongest,
       noisy_spikes_skipped: total("n_skipped_noisy"),
       mean_punched_fraction: mean(fractions),
@@ -159,6 +162,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
         at_nodes: leftovers[i]?.n_at_nodes ?? null,
         off_lattice: leftovers[i]?.n_off_nodes ?? null,
         on_protected_planes: leftovers[i]?.n_on_protected ?? null,
+        off_lattice_broad: leftovers[i]?.n_broad_off_nodes ?? null,
         strongest_leftover: leftovers[i]?.suspicious_peaks[0] ?? null,
         punched_fraction: fractions[i],
       })),
@@ -193,7 +197,7 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
     case "rings":
       return `ring ratio ${v("mean_ring_energy_ratio")} · over-sub ≤ ${v("max_over_subtraction_fraction")} · ring dent ≤ ${v("max_ring_dent")}${where("worst_ring_dent")} · left ≤ ${v("max_ring_left")}${where("worst_ring_left")}`;
     case "punch":
-      return `${v("leftover_at_nodes")} missed at nodes · ${v("leftover_off_lattice")} off-lattice (${v("leftover_on_protected_planes")} on protected planes) · punched ${v("mean_punched_fraction")}`;
+      return `${v("leftover_at_nodes")} missed at nodes · ${v("leftover_off_lattice_sharp")} sharp off-lattice · ${v("leftover_off_lattice_broad")} broad maxima kept · punched ${v("mean_punched_fraction")}`;
     case "backfill":
       return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;
     case "flatten":

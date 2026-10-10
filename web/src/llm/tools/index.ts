@@ -198,7 +198,7 @@ const recipSummary = (m: Awaited<ReturnType<typeof measureRecip>>): string =>
     m.ring_removal?.ring_energy_ratio != null && `ring ratio ${m.ring_removal.ring_energy_ratio}`,
     m.bragg_punch_leftover &&
       (m.bragg_punch_leftover.n_at_nodes != null
-        ? `${m.bragg_punch_leftover.n_at_nodes} missed at nodes, ${m.bragg_punch_leftover.n_off_nodes} off-lattice`
+        ? `${m.bragg_punch_leftover.n_at_nodes} missed at nodes, ${(m.bragg_punch_leftover.n_off_nodes ?? 0) - (m.bragg_punch_leftover.n_broad_off_nodes ?? 0)} sharp off-lattice, ${m.bragg_punch_leftover.n_broad_off_nodes ?? 0} broad maxima`
         : `${m.bragg_punch_leftover.n_suspicious} leftover peak(s)`),
     m.backfill?.median_seam_sigma != null && `seam ${m.backfill.median_seam_sigma}σ`,
     m.flatten?.after_floor_max_sigma != null && `floor ≤ ${m.flatten.after_floor_max_sigma}σ`,

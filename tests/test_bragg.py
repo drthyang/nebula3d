@@ -728,15 +728,18 @@ def _bragg_with_offnode_peaks():
     vol.data += blob(sharp, 80.0, (0.06, 0.06, 0.06))
     vol.data += blob(broad, 80.0, (0.06, 0.06, 0.3))
     vol.data += blob(wing, 80.0, (0.06, 0.06, 0.3))  # a broad wing of (2, 0, 0)
-    return vol, sharp, broad, wing
+    flank = (1.5, 0.5, 1.95)  # a sharp peak on the broad maximum's flank
+    vol.data += blob(flank, 120.0, (0.06, 0.06, 0.06))
+    return vol, sharp, broad, wing, flank
 
 
 def test_search_max_width_ratio_leaves_broad_maxima():
     """The width test keeps the search to Bragg-sharp peaks: a spurious peak as
     sharp as the Bragg peaks is punched, a short-range-order maximum three
     times broader along l is left — and without the test both are punched.
-    A broad wing beside a punched Bragg node is punched all the same."""
-    vol, sharp, broad, wing = _bragg_with_offnode_peaks()
+    A broad wing beside a punched Bragg node is punched all the same, and so
+    is a sharp peak on the broad maximum's flank."""
+    vol, sharp, broad, wing, flank = _bragg_with_offnode_peaks()
     at = lambda c: tuple(int(np.argmin(np.abs(a - x))) for a, x in
                          zip((vol.h_axis, vol.k_axis, vol.l_axis), c))
     common = dict(mode="both", **_q_radii(vol, 0.15, 0.15, 0.15), min_intensity=10.0,
@@ -749,4 +752,5 @@ def test_search_max_width_ratio_leaves_broad_maxima():
     assert not keep[at(sharp)]          # spurious, Bragg-sharp: punched
     assert keep[at(broad)]              # broad along l: left as diffuse
     assert not keep[at(wing)]           # broad, but a Bragg peak's wing: punched
+    assert not keep[at(flank)]          # sharp, though it sits on a broad maximum
     assert gated._search_report["broad_kept"] >= 1  # noqa: SLF001

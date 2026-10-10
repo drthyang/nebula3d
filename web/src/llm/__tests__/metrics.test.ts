@@ -171,6 +171,20 @@ describe("bragg punch metrics", () => {
     expect(scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], supercell: [2, 2, 1] }).n_at_nodes).toBe(0);
   });
 
+  it("tells a broad diffuse maximum from a sharp off-lattice leftover", () => {
+    // x, y span -2..2 r.l.u. (0.1 per voxel): a sharp peak at (0.5, -1) and,
+    // at (-0.5, 0.5), a maximum broad along y (FWHM about 8 voxels).
+    const sharp = peakAt(25, 10, 2);
+    const broad = (ix: number, iy: number) => 2 * Math.exp(-((ix - 15) ** 2) / 1.2 - ((iy - 25) ** 2) / 24);
+    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + sharp(ix, iy) + broad(ix, iy), { half: 2 });
+    const scan = scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0] });
+    const byHkl = Object.fromEntries(scan.suspicious_peaks.map((p) => [p.hkl!.slice(0, 2).join(","), p]));
+    expect(byHkl["0.5,-1"].broad).toBe(false);
+    expect(byHkl["-0.5,0.5"].broad).toBe(true);
+    expect(byHkl["-0.5,0.5"].fwhm_voxels[1]).toBeGreaterThanOrEqual(5);
+    expect(scan.n_broad_off_nodes).toBe(1);
+  });
+
   it("tells off-lattice leftovers on the search's protected H planes from the rest", () => {
     // (0.3, -1.5) lies on the H = 1/3 plane (± 0.08); (0.5, -1) does not.
     const sat = peakAt(23, 5, 2);
