@@ -260,7 +260,7 @@ export const TUNE_PARAMS: TuneParam[] = [
     stage: "flatten",
     kind: "boolean",
     defaultValue: false,
-    help: "model only: also fit b·Q², the smooth rise of the multiphonon / thermal background. Use it when the shell floors climb with |Q| after the flatten (floor_trend near 1); it varies too slowly to follow pair correlations.",
+    help: "model only: also fit b·Q², the smooth rise of an inelastic background (thermal diffuse; with X-rays also Compton). Use it when the shell floors climb with |Q| after the flatten (floor_trend near 1); it varies too slowly to follow pair correlations.",
     appliesWhen: (s) => s.flattenEstimator === "" || s.flattenEstimator === "model",
   },
   {

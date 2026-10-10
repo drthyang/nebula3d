@@ -62,7 +62,7 @@ export const SYSTEM_PROMPT = [
   "floor_trend (rank correlation of the floors with |Q|, over the whole coverage) and",
   "floor_span_fraction (their range as a share of the diffuse level) catch a pedestal the σ",
   "test hides beside strong diffuse: a trend near ±1 with a span near 1 is a leftover",
-  "background (a rising one is multiphonon/thermal: the model's b·Q² term).",
+  "background (a rising one is inelastic: thermal diffuse, and Compton with X-rays; the model's b·Q² term).",
   "",
   "- delta_pdf: feature_snr is the strongest feature amplitude in background-σ units (the",
   "origin self-correlation peak is excluded); ≳ 5 means clear structured signal above noise.",

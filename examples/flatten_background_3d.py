@@ -29,7 +29,7 @@ Env overrides:
                   floor/snip subtract a free-form curve — for comparison)
     ION           magnetic ion of the model, e.g. Mn2+ (default none = constant only)
     FIT_Q_MIN, FIT_Q_MAX  |Q| range Å^-1 the model is fitted over (default 0.8, 10)
-    Q2            1 -> also fit b·Q² (multiphonon / thermal background), held
+    Q2            1 -> also fit b·Q² (inelastic background rising with |Q|), held
                   past FIT_Q_MAX (default 0)
     FLOOR_PCT     percentile giving each shell's floor (default 25)
     Q_STEP        |Q| shell width Å^-1 (default 0.05)

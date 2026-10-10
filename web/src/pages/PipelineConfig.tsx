@@ -2208,7 +2208,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       Subtracts the isotropic pedestal before the transform. The
                       default model fits const + c·F(Q)² to each |Q| shell&apos;s
                       floor: nuclear incoherent plus single-ion paramagnetic
-                      scattering, with F the magnetic ion&apos;s form factor. Both
+                      scattering, with F the magnetic ion&apos;s form factor (neutron
+                      data only: X-rays carry no magnetic scattering). Both
                       are self scattering, so they only touch the ΔPDF at r ≈ 0.
                       floor and snip subtract a free-form curve and also remove some
                       isotropic diffuse.
@@ -2257,8 +2258,9 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     onChange={(v) => patch({ flattenQ2: v })}
                   />
                   <HelpTip>
-                    Adds b·Q² to the model: the smooth rise of the multiphonon and
-                    thermal background (Debye–Waller exponent 2W ∝ Q²). Like the
+                    Adds b·Q² to the model: the smooth rise of the inelastic
+                    background (thermal diffuse scattering, Debye–Waller exponent
+                    2W ∝ Q²; with X-rays also Compton scattering). Like the
                     other two terms it varies only on the scale of the whole |Q|
                     range, so it cannot follow a pair correlation&apos;s oscillation.
                     Use it when the floors climb across the coverage.
