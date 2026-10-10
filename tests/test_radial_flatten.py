@@ -355,3 +355,21 @@ def test_q2_term_takes_a_rising_phonon_pedestal_and_keeps_correlations():
     vals = with_q2.volume.data[valid][inside]
     prof = np.array([np.median(vals[shell[inside] == i]) for i in range(t.size)])
     assert float(np.sum((prof - prof.mean()) * t) / np.sum(t * t)) > 0.8
+
+
+def test_q2_term_is_held_past_the_fit_range():
+    """Q² is only the leading term of a rise that saturates: past the fit
+    range's end the subtracted b·Q² keeps its value there."""
+    ub = 2 * np.pi * np.eye(3) / 4.0
+    vol = HKLVolume.from_arrays(np.zeros((41, 41, 41)), (-3, 3), (-3, 3), (-3, 3), ub_matrix=ub)
+    q = vol.q_magnitude()
+    vol.data[...] = 0.5 + 0.05 * q ** 2 + np.random.default_rng(2).normal(0.0, 0.02, q.shape)
+    res = flatten_radial_background(vol, q_step=0.05, min_count=15, fit_q_range=(0.5, 3.0),
+                                    q2_term=True)
+    assert res.model_q2_cap == 3.0
+    past = res.q_grid > 3.0
+    assert past.any()
+    at_cap = res.bg_curve[np.argmin(np.abs(res.q_grid - 3.0))]
+    assert np.allclose(res.bg_curve[past], at_cap, atol=0.01)
+    inside = (res.q_grid > 1.0) & (res.q_grid < 3.0)
+    assert np.ptp(res.bg_curve[inside]) > 0.3      # it still rises inside the range

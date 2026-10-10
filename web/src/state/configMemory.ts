@@ -72,7 +72,11 @@ export function rememberConfig(): () => void {
     const known = readSaved()[id] ?? (previous && sampleOf(previous) !== sampleOf(id) ? defaults : null);
     if (known) {
       applying = true;
-      usePipelineStore.getState().patch(known);
+      // Only the settings the form still has: a key a newer build retired
+      // (e.g. punchMethod) is dropped, and the next save forgets it.
+      usePipelineStore.getState().patch(
+        Object.fromEntries(Object.entries(known).filter(([k]) => k in defaults)) as Partial<PipelineConfig>,
+      );
       applying = false;
     }
     if (!readSaved()[id]) save();

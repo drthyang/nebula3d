@@ -44,7 +44,11 @@ multiphonon and thermal background, whose leading |Q| dependence is the
 Debye–Waller exponent 2W ∝ Q².  It too varies only on the scale of the whole
 |Q| range, so it cannot follow a correlation's oscillation; on a warm or
 light-element sample the floor can otherwise climb several-fold across the
-coverage, leaving a pedestal that steps down at the coverage edge.
+coverage, leaving a pedestal that steps down at the coverage edge.  Q² is only
+the leading term — the true rise saturates as ``1 − e^(−2W)`` — so past the
+end of ``fit_q_range`` the term is held at its value there instead of
+extrapolated (on a measured volume the extrapolation over-subtracted the
+partial shells at the coverage edge).
 
 Estimator
 ---------
@@ -110,6 +114,9 @@ class RadialFlattenResult:
         0 without an ion).
     model_q2 : float, optional
         ``estimator='model'`` with ``q2_term``: the fitted ``b`` of ``b·Q²``.
+    model_q2_cap : float, optional
+        The |Q| past which ``b·Q²`` is held at its value (the fit range's end;
+        None when the fit had no upper end).
     model_r2 : float, optional
         ``estimator='model'``: R² of the fit over the fitted shells.
     ion : str, optional
@@ -126,6 +133,7 @@ class RadialFlattenResult:
     model_r2: float | None = None
     ion: str | None = None
     model_q2: float | None = None
+    model_q2_cap: float | None = None
 
 
 def flatten_radial_background(
@@ -268,9 +276,10 @@ def flatten_radial_background(
     model_coef: tuple[float, float] | None = None
     model_r2: float | None = None
     q2 = 0.0
+    q2_cap = fit_q_range[1] if (q2_term and fit_q_range is not None) else None
     if estimator == "model":
         model_coef, q2, model_r2 = _fit_pedestal(q_grid, raw, ion, fit_q_range, q2_term)
-        bg_curve = _pedestal(q_grid, model_coef, ion, q2)
+        bg_curve = _pedestal(q_grid, model_coef, ion, q2, q2_cap)
     elif estimator == "snip":
         # SNIP baseline of the median radial profile: the floor under broad humps.
         bg_curve = _estimate_baseline(_fill_nan_1d(raw), qs, snip_width, smooth)
@@ -292,7 +301,7 @@ def flatten_radial_background(
     for lo in range(0, data.shape[0], _SLAB):
         sl = slice(lo, lo + _SLAB)
         bg_at = (
-            _pedestal(q_slab(lo), model_coef, ion, q2) if model_coef is not None
+            _pedestal(q_slab(lo), model_coef, ion, q2, q2_cap) if model_coef is not None
             else np.interp(q_slab(lo), q_grid, bg_curve,
                            left=float(bg_curve[0]), right=float(bg_curve[-1]))
         )
@@ -307,19 +316,25 @@ def flatten_radial_background(
         raw_levels=raw, counts=counts, estimator=estimator,
         model_coef=model_coef, model_r2=model_r2, ion=ion,
         model_q2=q2 if (estimator == "model" and q2_term) else None,
+        model_q2_cap=q2_cap if estimator == "model" else None,
     )
 
 
 def _pedestal(
     q: NDArray[np.floating], coef: tuple[float, float], ion: str | None, q2: float = 0.0,
+    q2_cap: float | None = None,
 ) -> NDArray[np.float64]:
-    """``const + c·F(Q)² + b·Q²`` at *q* (no F² term without an ion)."""
+    """``const + c·F(Q)² + b·Q²`` at *q* (no F² term without an ion), with
+    ``Q`` in the last term held at *q2_cap* beyond it."""
     const, c = coef
     out = np.full(np.shape(q), const, dtype=np.float64)
     if ion is not None:
         out = out + c * magnetic_form_factor(q, ion) ** 2
     if q2:
-        out = out + q2 * np.square(np.asarray(q, dtype=np.float64))
+        qq = np.asarray(q, dtype=np.float64)
+        if q2_cap is not None:
+            qq = np.minimum(qq, q2_cap)
+        out = out + q2 * np.square(qq)
     return out
 
 

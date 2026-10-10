@@ -1321,7 +1321,9 @@ def flatten(vol: HKLVolume, params: FlattenParams | None = None, *,
     if res.model_coef is not None:
         const, c = res.model_coef
         r2 = f", R² {res.model_r2:.3f}" if res.model_r2 is not None else ""
-        q2 = f" + {res.model_q2:.4g}·Q²" if res.model_q2 is not None else ""
+        q2 = (f" + {res.model_q2:.4g}·Q²"
+              + (f" (held past {res.model_q2_cap:g} Å⁻¹)" if res.model_q2_cap is not None else "")
+              if res.model_q2 is not None else "")
         detail = f"const {const:.4g} + {c:.4g}·F(Q)²{q2}{r2}"
     else:
         detail = (f"bg max {float(np.nanmax(res.bg_curve)):.4g}"

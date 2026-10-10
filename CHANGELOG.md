@@ -27,8 +27,11 @@
   1–17 Å⁻¹ after the flatten. That is the multiphonon / thermal background,
   which rises as Q². A *+ b·Q² term* switch (`flatten_q2`) adds it to the
   model. Like the other terms it varies only on the scale of the whole
-  range, so pair correlations survive. *Fit to |Q|* (`flatten_fit_q_max`)
-  carries the fit past its old 10 Å⁻¹ end. With both, the floor sat within
+  range, so pair correlations survive. Q² is only the leading term of a
+  rise that saturates, so past the fit range's end the term is held at its
+  value there. *Fit to |Q|* (`flatten_fit_q_max`) carries the fit past its
+  old 10 Å⁻¹ end. The examples take `Q2=1` and `FIT_Q_MAX`; the punch
+  example takes `SEARCH_MAX_WIDTH`. With both, the floor sat within
   ±0.5 of zero across the coverage. The ΔPDF changed only inside 1.5 Å,
   where the self term lands: RMS 3.3× lower there, every pair vector
   unchanged. NEBULA Pilot can turn both on.
