@@ -267,6 +267,8 @@ export async function* streamChat({
         } catch {
           continue;
         }
+        // A failure after the 200 (Ollama, OpenRouter) arrives as an error chunk.
+        if (parsed.error) throw new Error(parsed.error.message || String(parsed.error));
         const delta = parsed.choices?.[0]?.delta;
         if (!delta) continue;
         if (delta.content) yield { content: delta.content };

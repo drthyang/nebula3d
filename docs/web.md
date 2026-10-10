@@ -224,7 +224,7 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 | **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range, a gray dashed unit-cell overlay and an optional [structure overlay](#structure-overlay) of interatomic vectors. Views open at ±40 Å. In *Navigate* mode a click on one view moves the other two cuts through the point. |
 | **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related ΔPDF files × the three planes as a square grid, sharing cut, window, and contrast; a per-plane colour scale pooled across files. Component retained; unrouted from the sidebar for now. |
 | **Q–R Band Transform** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data, ΔPDF, back-FFT and residual** as four views (focus layout, data large, by default), with agreement metrics (Pearson r, normalised RMS) in the header. Data, back-FFT and residual share one plane, cut, colour range and view; the residual has its own ± range on a diverging map. The ΔPDF plane follows the Q plane (H ↔ x, K ↔ y, L ↔ z) while *Link orientation* is on. **\|Q\|** and real-space **\|R\|** bands, each with its own *Apply* in the view footer, isolate which ranges support a signal; applying a band keeps both cuts. The \|Q\| band is drawn as its true contour on the r.l.u. axes: a circle for an orthogonal cell, a tilted ellipse (centred off the origin where the cut axis is not normal to the plane) for any other. |
-| **AI Assistant** | — (new) | A panel docked beside every page (opened from the sidebar; it slides over the page on narrow screens). Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini) model. **Chat**: five one-click reviews (ring removal, Bragg punch, backfill, flatten, ΔPDF features) plus free chat, grounded in metrics computed in the browser; with **Tools** on, the model measures any cut, takes line profiles, reads the Bragg profile and back-FFT check, compares datasets and opens the viewer beside the chat. **Tune pipeline**: runs the pipeline one stage at a time, tries the user's settings and a few the model proposes, and keeps the best for each stage. Optional vision opt-in attaches the rendered slice for image-capable models. |
+| **AI Assistant** | — (new) | A panel docked beside every page (opened from the sidebar; it slides over the page on narrow screens). Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini) model. One **chat**: free questions, five one-click stage reviews, and two one-click requests (*Assess the run*, *Tune for the best result*), grounded in metrics computed in the browser. With **Tools** on, the model measures any cut, judges each stage on three planes, checks the punch and backfill for texture and the ΔPDF's Qmax against the data coverage, reads the Bragg profile, back-FFT check and run log, compares datasets, opens the viewer beside the chat, and acts: it runs the pipeline (shown live on the Execution page and in the chat), changes settings, and tunes the pipeline one stage at a time, keeping the best settings for each. Optional vision opt-in attaches the rendered slice for image-capable models. |
 
 ### Viewer workspace
 
@@ -344,17 +344,36 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
   **`settings.ts`** — a localStorage store (provider, model, key, temperature,
   vision and tools opt-ins).
 - **Tools** (`tools/`, `agent.ts`) — with *Tools* on, a reply is an agent loop:
-  the model may call `describe_dataset`, `current_view`,
-  `measure_reciprocal_cut`, `measure_dpdf_cut`, `line_profile`, `bragg_peaks`,
-  `consistency_details`, `compare_datasets`, `configure_settings` and
-  `show_in_viewer`; the browser runs each call against the same API the viewers
-  use, sends the JSON back, and the model continues — up to six rounds. Every
+  the browser runs each call the model makes against the same API the viewers
+  use, sends the JSON back, and the model continues — up to twelve rounds. Every
   argument is checked; a bad call comes back to the model as an error it can
-  correct. None changes data or settings; `show_in_viewer` only moves the
-  console's view. The transcript lists each call, which opens to its arguments
-  and result. A model or server that refuses tools gets the plain request and a
-  note saying so.
-- **Tune pipeline** (`tune/`) — runs the pipeline one stage at a time (rings →
+  correct. The transcript lists each call, which opens to its arguments and
+  result, and a long one shows a live line while it runs. A model or server that
+  refuses tools gets the plain request and a note saying so.
+  - *Reading*: `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
+    `measure_dpdf_cut`, `line_profile`, `bragg_peaks`, `consistency_details`,
+    `compare_datasets`, `configure_settings`, `run_log` (the last run's log).
+  - *Assessing* — the four checks the system prompt asks of every run:
+    `assess_stage` judges a stage against its goal on the three principal
+    planes (the tuning run's own evaluation, `tune/evaluate.ts`);
+    `radial_profile` puts the stages' |Q|-shell medians side by side (rings
+    left or diffuse dented); `texture_check` (`metrics/texture.ts`) asks
+    whether the fills sit systematically above or below their rims (a
+    lattice-periodic pattern; flagged at a median ≥ 0.5σ with ≥ 75 % of holes
+    one way) and whether the punch and backfill add variation around each |Q|
+    shell; `qmax_coverage` (`metrics/coverage.ts`) compares how far the forward
+    transform's window reaches in |Q| (the |Q| band if set, else the box faces,
+    the coverage edge when tapered to it, or the box corners for a flat
+    separable window) with the |Q| where shells stop being 95 % measured.
+  - *Acting*: `update_settings` (only the settings in `tune/catalog.ts`),
+    `run_pipeline` (as the Run button: the console moves to the Execution page;
+    without `from_stage` it computes what is missing, with it it recomputes from
+    that stage on), `tune_pipeline` (below), and `show_in_viewer`. Neither run
+    starts while another is going, and *Stop* cancels the one the model
+    started.
+- **Tuning** (`tune/`, the `tune_pipeline` tool) — the chat starts it when asked
+  for the best result, and shows each stage's trials under that reply
+  (`components/TuneProgress.tsx`). It runs the pipeline one stage at a time (rings →
   punch → backfill → flatten → ΔPDF). For each stage it runs the user's
   settings, asks the model for up to *n − 1* alternatives, runs each, measures
   every trial on the three principal planes (`tune/evaluate.ts`), and asks the

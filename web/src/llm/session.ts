@@ -37,11 +37,24 @@ export async function askAssistant({
       signal: abort.signal,
       onProgress: (live) => useChatStore.setState({ live }),
     });
-    if (result.content || result.steps.length) useChatStore.getState().addTurn({ role: "assistant", ...result });
+    // A reply without an answer still gets a turn — its thinking, or a note that
+    // it came back empty — so a question never ends in silence.
+    const empty = !result.content && !result.steps.length;
+    useChatStore.getState().addTurn({
+      role: "assistant",
+      ...result,
+      note:
+        result.note ??
+        (empty
+          ? result.reasoning
+            ? "The model stopped after thinking, without an answer. Ask again, or try another model."
+            : "The model sent back an empty reply. Ask again, or try another model."
+          : undefined),
+    });
   } catch (e) {
     const live = useChatStore.getState().live;
     if ((e as Error).name === "AbortError") {
-      if (live && (live.content || live.steps.length)) {
+      if (live && (live.content || live.reasoning || live.steps.length)) {
         useChatStore.getState().addTurn({ role: "assistant", ...live, note: "Stopped." });
       }
     } else {
