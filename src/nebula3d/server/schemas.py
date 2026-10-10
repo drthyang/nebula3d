@@ -56,6 +56,9 @@ class VolumeMetaOut(BaseModel):
     lattice: LatticeOut
     ub_matrix: list[list[float]] | None = None
     planes: list[str]
+    # The point group the file declares its data were symmetrised with.
+    symmetry: str | None = None
+    symmetry_ops: list[list[list[int]]] | None = None
 
 
 class CoverageOut(BaseModel):
