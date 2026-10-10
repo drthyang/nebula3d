@@ -29,6 +29,8 @@ Env overrides:
                   floor/snip subtract a free-form curve — for comparison)
     ION           magnetic ion of the model, e.g. Mn2+ (default none = constant only)
     FIT_Q_MIN, FIT_Q_MAX  |Q| range Å^-1 the model is fitted over (default 0.8, 10)
+    Q2            1 -> also fit b·Q² (multiphonon / thermal background), held
+                  past FIT_Q_MAX (default 0)
     FLOOR_PCT     percentile giving each shell's floor (default 25)
     Q_STEP        |Q| shell width Å^-1 (default 0.05)
     SMOOTH        Gaussian sigma Å^-1 smoothing the floor curve (ESTIMATOR=floor;
@@ -69,6 +71,7 @@ estimator = os.environ.get("ESTIMATOR", "model")
 ion = os.environ.get("ION", "none")
 fit_q_range = (float(os.environ.get("FIT_Q_MIN", "0.8")),
                float(os.environ.get("FIT_Q_MAX", "10")))
+q2_term = os.environ.get("Q2", "0").strip().lower() in {"1", "true", "yes", "on"}
 floor_pct = float(os.environ.get("FLOOR_PCT", "25"))
 q_step = float(os.environ.get("Q_STEP", "0.05"))
 smooth = float(os.environ.get("SMOOTH", "0.10"))
@@ -104,11 +107,13 @@ print(f"volume {vol.shape}; estimator={estimator} ion={ion} fit_q_range={fit_q_r
 res = flatten_radial_background(
     vol, q_step=q_step, estimator=estimator, floor_percentile=floor_pct,
     snip_width=snip_width, smooth=smooth, min_count=min_count, q_range=q_range,
-    ion=ion, fit_q_range=fit_q_range,
+    ion=ion, fit_q_range=fit_q_range, q2_term=q2_term,
 )
 if res.model_coef is not None:
+    q2 = (f"  b={res.model_q2:.4g} (·Q², held past {res.model_q2_cap} Å⁻¹)"
+          if res.model_q2 is not None else "")
     print(f"model: const={res.model_coef[0]:.4g}  c={res.model_coef[1]:.4g} "
-          f"(·F(Q)², ion={res.ion})  R²={res.model_r2}", flush=True)
+          f"(·F(Q)², ion={res.ion}){q2}  R²={res.model_r2}", flush=True)
 
 # Flatness QA: the spread of the per-shell median across |Q| should collapse —
 # that is exactly "the background is now flat and continuous".

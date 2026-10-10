@@ -51,6 +51,18 @@ describe("rememberConfig", () => {
     stop();
   });
 
+  it("drops settings the form no longer has when it restores a dataset's", () => {
+    store.set("nebula3d.configByDataset.v1", JSON.stringify({ "S-22K-b": { punchProtectH: "none", punchMethod: "ellipsoid" } }));
+    const stop = rememberConfig();
+    useDatasetStore.getState().setDataset("S-22K-b");
+    const state = usePipelineStore.getState() as unknown as Record<string, unknown>;
+    expect(state.punchProtectH).toBe("none");
+    expect(state).not.toHaveProperty("punchMethod");
+    usePipelineStore.getState().patch({ flattenIon: "Tb3+" }); // a save
+    expect(JSON.parse(store.get("nebula3d.configByDataset.v1")!)["S-22K-b"]).not.toHaveProperty("punchMethod");
+    stop();
+  });
+
   it("names the sample before the temperature", () => {
     expect(sampleOf("Fe3Ge2-90K-all-hex-h-k-0")).toBe("Fe3Ge2");
     expect(sampleOf("TbTi3Bi4-22K-mmm-0-k-l")).toBe("TbTi3Bi4");
