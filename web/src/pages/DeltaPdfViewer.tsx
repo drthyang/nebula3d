@@ -35,6 +35,7 @@ import { useStructureStore } from "../state/structureStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import type { Marker } from "../structure/pairs";
 import { markersNear, usePlaneMarkers, useStructureModel } from "../structure/useStructure";
+import { useGlow } from "../llm/highlight";
 
 function axisValue(
   range: [number, number] | undefined,
@@ -71,6 +72,7 @@ const AX_HUE: Record<Ax, string> = { x: "dpdf-cut--x", y: "dpdf-cut--y", z: "dpd
 const AX_LAT: Record<Ax, string> = { x: "a", y: "b", z: "c" };
 
 export function DeltaPdfViewer() {
+  const pdfLit = useGlow("pdf");
   const datasetsQ = useDatasets();
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
   useInitializeDataset(datasets);
@@ -294,6 +296,7 @@ export function DeltaPdfViewer() {
             const viewport: Viewport = views[p.plane] ?? fit;
             return {
               id: p.plane,
+              glow: pdfLit,
               title: p.title,
               badge: p.badge,
               badgeClass: `qr-rt-badge ${p.badgeClass}`,

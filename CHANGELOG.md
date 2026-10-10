@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **The cards the assistant is on breathe a blue edge.** While a step runs,
+  the cards for what it works on glow. A pipeline run or a tuning run lights
+  the stage it is on. While the answer is written, the cards it mentions
+  glow, for 8 seconds after the reply ends. This covers the cleanup panels,
+  the 3D-ΔPDF and Q–R views, the Bragg profile panels, the Execution stages
+  and log, and the Configure stage boxes, and only while the assistant panel
+  is open. The edge holds still for users who ask for reduced motion.
 - **The console follows the assistant to each figure it assesses.** As a
   measurement or assessment finishes, the console moves to the figure it
   looked at, so you see what the model sees:
