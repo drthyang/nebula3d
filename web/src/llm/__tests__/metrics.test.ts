@@ -7,6 +7,7 @@ import { flattenMetrics } from "../metrics/flatten";
 import { ringEnergy, ringMetrics } from "../metrics/rings";
 import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
 import { percentile, robustStats } from "../metrics/sliceStats";
+import { sectionSymmetry } from "../metrics/symmetry";
 import type { BraggProfile } from "../../api/types";
 import { makeSlice } from "./helpers";
 
@@ -23,6 +24,41 @@ describe("sliceStats", () => {
     expect(percentile([0, 10], 0.5)).toBe(5);
     expect(percentile([1, 2, 3, 4, 5], 0)).toBe(1);
     expect(percentile([1, 2, 3, 4, 5], 1)).toBe(5);
+  });
+});
+
+describe("section symmetry", () => {
+  // On the oblique hexagonal grid, cos u + cos v + cos(u − v) is invariant under
+  // the six-fold (u, v) → (u − v, u) and the mirror (u, v) → (v, u).
+  const hex = (extra: (u: number, v: number) => number) => {
+    const s = makeSlice(41, 41, (u, v) => Math.cos(0.7 * u) + Math.cos(0.7 * v) + Math.cos(0.7 * (u - v)) + extra(u, v));
+    s.header.axes_angle = 120;
+    return s;
+  };
+  const cell = { a: 8, b: 8 };
+
+  it("finds a hexagonally symmetric section symmetric under every operation", () => {
+    const sym = sectionSymmetry(hex(() => 0), cell)!;
+    expect(sym.kind).toBe("hexagonal");
+    expect(sym.ops.map((o) => o.op)).toEqual(["six-fold (60°)", "three-fold (120°)", "two-fold (180°)", "mirror (a ↔ b)"]);
+    for (const o of sym.ops) expect(o.rms_difference).toBeLessThan(1e-9);
+  });
+
+  it("sees a break, and which operations it breaks", () => {
+    // A term even under the two-fold but not under the six-fold or the mirror.
+    const sym = sectionSymmetry(hex((u) => 0.3 * Math.cos(0.5 * u)), cell)!;
+    const by = Object.fromEntries(sym.ops.map((o) => [o.op, o.rms_difference]));
+    expect(by["two-fold (180°)"]).toBeLessThan(1e-9);
+    expect(by["six-fold (60°)"]).toBeGreaterThan(1e-2);
+    expect(by["mirror (a ↔ b)"]).toBeGreaterThan(1e-2);
+  });
+
+  it("tests the mirrors of an orthogonal cell, and nothing on a cell it cannot", () => {
+    const ortho = makeSlice(21, 21, (x, y) => Math.cos(x) * Math.cos(2 * y));
+    expect(sectionSymmetry(ortho, { a: 4, b: 6 })!.ops.map((o) => o.op)).toEqual(["mirror ⊥ a", "mirror ⊥ b", "two-fold (180°)"]);
+    const oblique = makeSlice(21, 21, () => 1);
+    oblique.header.axes_angle = 105;
+    expect(sectionSymmetry(oblique, { a: 4, b: 6 })).toBeNull();
   });
 });
 

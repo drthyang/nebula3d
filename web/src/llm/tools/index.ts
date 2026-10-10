@@ -55,6 +55,7 @@ import { openView, type ViewTarget } from "./openView";
 
 export type { ViewTarget } from "./openView";
 import { COVERAGE_SHELLS, coverageMetrics } from "../metrics/coverage";
+import { sectionSymmetry } from "../metrics/symmetry";
 import { median, radialProfile, roundSig } from "../metrics/sliceStats";
 import { textureMetrics } from "../metrics/texture";
 
@@ -881,6 +882,48 @@ function windowReach(
 const sameNumbers = (a: StageEvaluation | undefined, b: StageEvaluation | undefined): boolean =>
   !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
 
+// A symmetry the data were symmetrised with holds to rounding when every
+// stage treats equivalent voxels alike; past this share it was broken.
+const SYMMETRY_HOLDS = 1e-3;
+
+const symmetryCheck: AgentTool = {
+  name: "symmetry_check",
+  description:
+    "Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell: an x–y section (default z = 0) compared with its image under each in-plane operation (hexagonal: six-, three-, two-fold and the a ↔ b mirror; orthogonal: the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b), as the RMS of the difference over the section's RMS. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it; a larger share means a stage broke it, or the sample lacks that operation. Which operations the sample has is the user's to say.",
+  parameters: {
+    type: "object",
+    properties: { z: { type: "number", description: "Height of the x–y section along c, in Å (default 0)" } },
+  },
+  run: async (args, { dataset }) => {
+    const z = args.z === undefined ? 0 : num(args, "z");
+    const meta = await dpdfMeta(dataset);
+    const slice = await fetchDpdfSlice(dpdfVolumeId(dataset)!, "xy", z);
+    const { a, b } = meta.lattice ?? {};
+    const sym = a && b ? sectionSymmetry(slice, { a, b }) : null;
+    if (!sym) {
+      return {
+        result: { note: "no in-plane symmetry to test: the cell is neither hexagonal nor orthogonal, or the section is not centred on the origin" },
+        summary: "nothing to test",
+      };
+    }
+    const holds = sym.ops.filter((o) => o.rms_difference <= SYMMETRY_HOLDS).map((o) => o.op);
+    const broken = sym.ops.filter((o) => o.rms_difference > SYMMETRY_HOLDS).map((o) => `${o.op} (${o.rms_difference})`);
+    return {
+      result: {
+        section: `ΔPDF x–y section at z = ${z} Å`,
+        cell: sym.kind,
+        ops: sym.ops,
+        holds,
+        verdict: broken.length
+          ? `not kept: ${broken.join(", ")}; a symmetry the data were symmetrised with should hold to ~${SYMMETRY_HOLDS} or better`
+          : `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better`,
+      },
+      summary: broken.length ? `not kept: ${broken.join(", ")}` : "every in-plane operation holds",
+      view: dpdfView(meta, "xy", z),
+    };
+  },
+};
+
 const qmaxCoverage: AgentTool = {
   name: "qmax_coverage",
   description:
@@ -1259,6 +1302,7 @@ export const CHAT_TOOLS: AgentTool[] = [
   assessStage,
   textureCheck,
   qmaxCoverage,
+  symmetryCheck,
   radialProfileTool,
   lineProfile,
   braggPeaks,

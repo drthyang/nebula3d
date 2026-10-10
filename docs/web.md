@@ -399,7 +399,11 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
     it compares how far the forward transform's window reaches in |Q| (the |Q|
     band if set, else the box faces, the coverage edge when tapered to it, or
     the box corners for a flat separable window) with the |Q| where shells
-    stop being 95 % measured.
+    stop being 95 % measured. `symmetry_check` (`metrics/symmetry.ts`)
+    compares a ΔPDF x–y section with its images under the cell's in-plane
+    operations (hexagonal: six-, three-, two-fold and the a ↔ b mirror;
+    orthogonal: the mirrors and the two-fold), on the FFT's oblique grid; an
+    operation the data were symmetrised with holds to ~10⁻³ or better.
   - *Acting*: `update_settings` (the method choices and thresholds in
     `tune/catalog.ts`, and, when the user names them, the sample facts the
     tuner never proposes: the search's protected planes and the punch cell),

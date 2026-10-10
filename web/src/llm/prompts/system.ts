@@ -124,6 +124,8 @@ export const TOOLS_PROMPT = [
   "near 0σ with about half the holes brighter, azimuthal ratio near 1).",
   "(4) Qmax is not past the data coverage: qmax_coverage says how far the forward transform's",
   "window reaches in |Q| and whether that stays inside the fully measured shells.",
+  "On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane",
+  "symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.",
   "assess_stage pdf gives the back-FFT r and RMS; run_log says what a stage did or why it",
   "failed. When a change improves one number, check that it did not break another: a higher",
   "ΔPDF feature SNR with a lower back-FFT r, or with Qmax past the coverage, is ripple, not",

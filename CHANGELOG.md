@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **NEBULA Pilot can check the ΔPDF's symmetry.** `symmetry_check`
+  compares a ΔPDF section with its images under the cell's in-plane
+  operations and says which hold. Five expert reviews of a hexagonal
+  volume had missed a 12.6 % break of its six-fold symmetry, which no tool
+  could see.
 - **A symmetrised volume gives a symmetric ΔPDF.** The ring removal, the
   backfill and the flatten each work on index-space neighbourhoods that the
   hexagonal six-fold does not map onto themselves. On a measured 6/mmm
