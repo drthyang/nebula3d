@@ -40,8 +40,10 @@ and a smooth background that is not F²-shaped (multiple scattering, sample
 environment) stays in.
 
 A third term, ``b·Q²`` (``q2_term=True``), takes the smooth rise of the
-multiphonon and thermal background, whose leading |Q| dependence is the
-Debye–Waller exponent 2W ∝ Q².  It too varies only on the scale of the whole
+inelastic background: thermal diffuse scattering (multiphonon, with
+neutrons), whose leading |Q| dependence is the Debye–Waller exponent
+2W ∝ Q², and with X-rays Compton scattering, which also starts out as Q².
+It too varies only on the scale of the whole
 |Q| range, so it cannot follow a correlation's oscillation; on a warm or
 light-element sample the floor can otherwise climb several-fold across the
 coverage, leaving a pedestal that steps down at the coverage edge.  Q² is only
@@ -192,8 +194,8 @@ def flatten_radial_background(
         to (default 0.8–10, clear of the beam stop and the sparse high-|Q|
         corners).  ``None`` fits every shell with a level.
     q2_term : bool
-        ``estimator='model'``: also fit ``b·Q²`` (multiphonon / thermal
-        background; see the module docstring).  Default False.
+        ``estimator='model'``: also fit ``b·Q²`` (an inelastic background
+        rising with |Q|; see the module docstring).  Default False.
     """
     if estimator not in ESTIMATORS:
         raise ValueError(f"Unknown estimator {estimator!r}; choose one of {ESTIMATORS}.")
