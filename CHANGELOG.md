@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Names keep their underscores in the chat.** Models often write field
+  names such as `ring_energy_ratio` without backticks, and the chat's
+  Markdown took the underscores for italics: the name read
+  "ringenergyratio". As in CommonMark, an underscore inside a word is now
+  a literal, and `*` or `_` makes emphasis only where it touches its text
+  (`5 * 3 * 2` stays as written).
 - **A reply cut off by a full context no longer breaks the conversation.**
   When a local model ran out of room in the middle of a tool call, NEBULA
   Pilot sent the half-written call back with the next request, and LM
