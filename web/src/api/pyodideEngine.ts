@@ -33,6 +33,7 @@ import type {
   TuningPromote,
   TuningRun,
   TuningTrial,
+  VolumeCoverage,
   VolumeMeta,
 } from "./types";
 
@@ -400,6 +401,9 @@ export const engine = {
   },
   volumeMeta(volumeId: string): Promise<VolumeMeta> {
     return jsonCall<VolumeMeta>("volume_meta_json", [volumeId]);
+  },
+  volumeCoverage(volumeId: string): Promise<VolumeCoverage> {
+    return jsonCall<VolumeCoverage>("volume_coverage_json", [volumeId]);
   },
   volumeSlice(volumeId: string, plane: string, value: number, interp: boolean): Promise<Slice> {
     return sliceCall("volume_slice", [volumeId, plane, value, interp]);
