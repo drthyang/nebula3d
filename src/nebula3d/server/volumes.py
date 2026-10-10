@@ -196,6 +196,36 @@ def volume_coverage(path: Path) -> dict:
 _ub_cache: dict[tuple, dict] = {}
 
 
+def symmetry_ops_for(path: Path) -> tuple[tuple[np.ndarray, ...] | None, str | None]:
+    """The symmetry operations *path* declares, else those of a symmetrised
+    export in the same folder that names *path* as its source (the NeXus
+    Viewer's ``/entry`` ``source_file``), with the name of the file they came
+    from; ``(None, None)`` when neither declares any."""
+    import h5py
+
+    from nebula3d.symmetry import read_symmetry_ops
+
+    ops = read_symmetry_ops(path)
+    if ops is not None:
+        return ops, path.name
+    for other in sorted(path.parent.iterdir()):
+        if other == path or other.suffix.lower() not in {".nxs", ".h5", ".hdf5"}:
+            continue
+        try:
+            with h5py.File(other, "r") as f:
+                entry = f.get("entry")
+                source = entry.attrs.get("source_file") if isinstance(entry, h5py.Group) else None
+        except OSError:
+            continue
+        if isinstance(source, bytes):
+            source = source.decode("utf-8")
+        if source == path.name:
+            ops = read_symmetry_ops(other)
+            if ops is not None:
+                return ops, other.name
+    return None, None
+
+
 def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
                     q_max: float | None = None) -> dict:
     """Whether the volume's UB puts its Bragg peaks on their nodes
@@ -203,11 +233,12 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
 
     The fit is :func:`~nebula3d.analysis.ub_refine.auto_fit`'s: only the
     changes that commute with the declared operations on a volume symmetrised
-    under them, else the rotation and the cell together.  ``radial`` gives the
+    under them, else the rotation and the cell together.  An unsymmetrised
+    volume takes its operations from its symmetrised export
+    (:func:`symmetry_ops_for`), to constrain the cell.  ``radial`` gives the
     peaks' offsets along Q relative to |Q| per |Q| band and direction.
     """
     from nebula3d.analysis.ub_refine import auto_fit, radial_offsets, refine_ub
-    from nebula3d.symmetry import read_symmetry_ops
 
     key = (str(path), path.stat().st_mtime, tuple(cell), q_max)
     with _lock:
@@ -215,7 +246,7 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
     if hit is not None:
         return hit
     vol = load_volume(path)
-    ops = read_symmetry_ops(path)
+    ops, ops_from = symmetry_ops_for(path)
     fit, broken = auto_fit(vol, ops)
     r = refine_ub(vol, fit=fit, ops=ops, cell=cell, q_max=q_max)
     f = r.fit
@@ -227,6 +258,7 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
         "fit": fit,
         "cell_nodes": list(cell),
         "operations": None if ops is None else len(ops),
+        "operations_from": ops_from,
         "symmetry_break": broken,
         "symmetrised": None if broken is None else fit == "symmetric",
         "passes": [{"q_max": p.q_max, "n_found": p.n_found, "n_used": p.n_used,

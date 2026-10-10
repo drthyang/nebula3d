@@ -99,6 +99,7 @@ class UbCheckOut(BaseModel):
     fit: str
     cell_nodes: list[int]
     operations: int | None
+    operations_from: str | None  # the file that declared them (this one, or its symmetrised export)
     symmetry_break: float | None
     symmetrised: bool | None
     passes: list[UbPassOut]
