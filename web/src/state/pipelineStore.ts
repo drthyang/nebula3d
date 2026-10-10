@@ -120,7 +120,7 @@ interface PipelineState extends PipelineConfig {
   // job ended: "done" | "error" | "cancelled".  With `tuning`, the run is one
   // trial of the assistant's tuning run: its outputs go to the trial's own
   // folder and processed/ is only read.  `datasetId` defaults to the
-  // sidebar's selection.
+  // sidebar's selection; `force: false` reuses outputs that already exist.
   runStages: (stages: string[], opts?: RunOptions) => Promise<string>;
   cancel: () => Promise<void>;
 }
@@ -203,7 +203,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   },
 
   runStages: async (stages, opts) => {
-    await start(stages, true, set, get, opts);
+    await start(stages, opts?.force ?? true, set, get, opts);
     // The native job reports its end over SSE, after start() returns.
     if (get().running) {
       await new Promise<void>((resolve) => {
@@ -238,6 +238,7 @@ type Getter = () => PipelineState;
 export interface RunOptions {
   tuning?: TuningTrial;
   datasetId?: string;
+  force?: boolean; // runStages: recompute outputs that exist (default true)
 }
 
 async function start(
@@ -299,7 +300,7 @@ async function start(
 // The subset of STAGES to run, from the per-stage enable toggles.  A disabled
 // stage is omitted; the backend passes its input straight through to the next
 // enabled stage.  The consistency check rides along with the ΔPDF transform.
-function enabledStages(s: PipelineConfig): string[] {
+export function enabledStages(s: PipelineConfig): string[] {
   return [
     s.ringsEnabled && "rings",
     s.punchEnabled && "punch",
