@@ -4,7 +4,16 @@
 // and adds zero runtime dependencies.  Ported from rmc-toolkits, extended with
 // multimodal content parts so a rendered slice image can ride along for
 // vision-capable models, and with function calling ("tools") so the model can
-// ask the app to measure, look up or show something mid-answer.
+// ask the app to measure, look up or show something mid-answer.  Claude goes
+// through Anthropic's own SDK instead (anthropic.ts), behind the same calls.
+
+import {
+  checkAnthropicConnection,
+  completeAnthropic,
+  isAnthropicUrl,
+  listAnthropicModels,
+  streamAnthropic,
+} from "./anthropic";
 
 // A message's content is either plain text or a list of parts (text +
 // image_url), the OpenAI vision shape that Ollama/LM Studio/Gemini also accept.
@@ -32,6 +41,9 @@ export interface ChatMessage {
   content: string | ContentPart[];
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  // The provider's own form of an assistant turn that called tools, replayed
+  // unchanged with their results (Claude: its content blocks, thinking included).
+  native?: unknown;
 }
 
 const trimBase = (baseUrl: string): string => (baseUrl || "").replace(/\/+$/, "");
@@ -90,6 +102,7 @@ export const listModels = async (
   baseUrl: string,
   { signal, apiKey }: { signal?: AbortSignal; apiKey?: string } = {},
 ): Promise<string[]> => {
+  if (isAnthropicUrl(baseUrl)) return listAnthropicModels({ baseUrl, apiKey, signal });
   const response = await fetch(`${trimBase(baseUrl)}/models`, { signal, headers: authHeaders(apiKey) });
   if (!response.ok) {
     const error = new Error(await describeHttpError(response)) as HttpError;
@@ -106,6 +119,7 @@ export const checkConnection = async (
   baseUrl: string,
   { signal, apiKey }: { signal?: AbortSignal; apiKey?: string } = {},
 ): Promise<ConnectionResult> => {
+  if (isAnthropicUrl(baseUrl)) return checkAnthropicConnection(baseUrl, apiKey);
   try {
     const models = await listModels(baseUrl, { signal, apiKey });
     return { ok: true, models, error: null, hint: null };
@@ -176,6 +190,8 @@ export interface StreamDelta {
   reasoning?: string;
   // Emitted once, after the stream ends, when the model called tools.
   toolCalls?: ToolCall[];
+  // With toolCalls: the provider's own form of the turn (ChatMessage.native).
+  native?: unknown;
 }
 
 interface ToolCallDelta {
@@ -233,6 +249,10 @@ export async function* streamChat({
   tools,
   toolChoice,
 }: Omit<PostChatArgs, "stream">): AsyncGenerator<StreamDelta> {
+  if (isAnthropicUrl(baseUrl)) {
+    yield* streamAnthropic({ baseUrl, model, messages, apiKey, signal, tools, toolChoice });
+    return;
+  }
   const response = await postChat({
     baseUrl,
     model,
@@ -293,6 +313,7 @@ export const completeChat = async ({
   signal,
   apiKey,
 }: Omit<PostChatArgs, "stream">): Promise<string> => {
+  if (isAnthropicUrl(baseUrl)) return completeAnthropic({ baseUrl, model, messages, apiKey, signal });
   const response = await postChat({ baseUrl, model, messages, temperature, stream: false, signal, apiKey });
   const payload = await response.json();
   const content = payload.choices?.[0]?.message?.content;

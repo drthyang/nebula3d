@@ -84,6 +84,7 @@ export async function runAgent({
     const last = round >= maxRounds;
     let roundText = "";
     let calls: ToolCall[] = [];
+    let native: unknown;
     try {
       for await (const delta of streamChat({
         baseUrl: settings.baseUrl,
@@ -98,6 +99,7 @@ export async function runAgent({
         if (delta.content) roundText += delta.content;
         if (delta.reasoning) reasoning += delta.reasoning;
         if (delta.toolCalls) calls = delta.toolCalls;
+        if (delta.native) native = delta.native;
         emit(roundText);
       }
     } catch (e) {
@@ -118,7 +120,7 @@ export async function runAgent({
       break;
     }
 
-    convo.push({ role: "assistant", content: roundText, tool_calls: calls });
+    convo.push({ role: "assistant", content: roundText, tool_calls: calls, ...(native ? { native } : {}) });
     for (const call of calls) {
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
       const id = `${steps.length}:${call.id}`; // servers may reuse call ids across rounds
