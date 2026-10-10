@@ -31,7 +31,7 @@ viewers, and reproducible command recipes in more detail.
 | --- | --- |
 | [../QUICKSTART.md](../QUICKSTART.md) | Get the app running (native or in-browser). |
 | [commands.md](commands.md) | Run batch workflows and viewers from the CLI. |
-| [web.md](web.md) | Launch, use, or develop the browser console (both run modes + consistency check). |
+| [web.md](web.md) | Launch, use, or develop the browser console (both run modes + consistency check), and NEBULA Pilot, its agent: tools, tuning, local models. |
 | [algorithms/powder_rings.md](algorithms/powder_rings.md) | Understand or tune powder-ring subtraction. |
 | [algorithms/bragg_cleanup.md](algorithms/bragg_cleanup.md) | Tune Bragg punching, satellite search, or q-shell backfill. |
 | [algorithms/delta_pdf.md](algorithms/delta_pdf.md) | Understand the FFT, centring, apodization, background subtraction, and round-trip consistency check. |
