@@ -81,6 +81,7 @@ __all__ = [
     "volume_meta_json",
     "volume_slice",
     "volume_coverage_json",
+    "volume_ub_check_json",
     "dpdf_meta_json",
     "dpdf_slice",
     "consistency_meta_json",
@@ -1123,6 +1124,18 @@ def volume_coverage_json(volume_id: str) -> str:
     GET /api/volumes/{id}/coverage)."""
     stage = _resolve(volume_id, "hkl")
     m = _vol.volume_coverage(stage.path)
+    return _json({**m, "id": volume_id})
+
+
+def volume_ub_check_json(volume_id: str, cell: str = "1,1,1",
+                         q_max: float | None = None) -> str:
+    """Whether an HKL stage's UB puts its Bragg peaks on their nodes (mirrors
+    GET /api/volumes/{id}/ub)."""
+    stage = _resolve(volume_id, "hkl")
+    nodes = tuple(int(x) for x in str(cell).split(","))
+    if len(nodes) != 3 or min(nodes) < 1:
+        raise ValueError(f"cell must be three positive integers, not {cell!r}")
+    m = _vol.volume_ub_check(stage.path, nodes, None if q_max is None else float(q_max))  # type: ignore[arg-type]
     return _json({**m, "id": volume_id})
 
 

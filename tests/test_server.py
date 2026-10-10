@@ -224,6 +224,55 @@ def test_volume_coverage(env):
     assert client.get("/api/volumes/nope.ringremoved/coverage").status_code == 404
 
 
+def test_volume_ub_check(tmp_path):
+    """The UB check on a NeXus Viewer export: a volume symmetrised under the
+    operations it declares takes the symmetric fit, which finds the cell the
+    peaks were put on."""
+    from nebula3d.symmetry import GridSymmetry, parse_symmetry_ops
+
+    a, c, a_true, c_true = 4.0, 5.0, 4.04, 4.95
+
+    def hex_ub(a_, c_):
+        astar = 4 * np.pi / (np.sqrt(3) * a_)
+        return np.array([[astar, astar / 2, 0], [0, astar * np.sqrt(3) / 2, 0],
+                         [0, 0, 2 * np.pi / c_]])
+
+    ub, ub_true = hex_ub(a, c), hex_ub(a_true, c_true)
+    vol = HKLVolume.from_arrays(np.full((61, 61, 61), 10.0), (-3, 3), (-3, 3), (-3, 3),
+                                ub_matrix=ub)
+    axes = (vol.h_axis, vol.k_axis, vol.l_axis)
+    grids = np.meshgrid(*axes, indexing="ij")
+    hkl = np.stack(grids, axis=-1)
+    for g in np.array(np.meshgrid(*[np.arange(-3, 4)] * 3, indexing="ij")).reshape(3, -1).T:
+        if g.any():
+            d = (hkl - np.linalg.inv(ub) @ ub_true @ g) @ ub.T
+            vol.data += 500 * np.exp(-(d ** 2).sum(-1) / (2 * 0.15 ** 2))
+    text = "h,k,l; h+k,-h,l; k,h,l; h,k,-l"
+    GridSymmetry.for_volume(vol, parse_symmetry_ops(text)).orbit_mean(vol.data, vol.mask.copy())
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    with h5py.File(tmp_path / "raw" / f"{STEM}.nxs", "w") as f:
+        entry = f.create_group("entry")
+        for name, values in (("data", vol.data), ("mask", vol.mask), ("h_axis", vol.h_axis),
+                             ("k_axis", vol.k_axis), ("l_axis", vol.l_axis), ("ub_matrix", ub)):
+            entry.create_dataset(name, data=values)
+        entry.attrs["symmetry_ops"] = text
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    r = client.get(f"/api/volumes/{SLUG}.raw/ub", params={"cell": "1,1,1"})
+    assert r.status_code == 200, r.text
+    u = r.json()
+    assert u["fit"] == "symmetric" and u["symmetrised"] is True and u["operations"] == 4
+    assert u["cell"][:3] == pytest.approx([a_true, a_true, c_true], abs=2e-3)
+    assert u["rms"] < 0.01 < u["rms_start"]
+    # A cell error: the same relative offset at every |Q| along a direction, gone after.
+    in_plane = [o for o in u["radial"] if o["direction"] == "in-plane"]
+    assert in_plane
+    assert all(o["before"] == pytest.approx(a / a_true - 1, abs=1e-3) for o in in_plane)
+    assert all(abs(o["after"]) < 1e-3 for o in u["radial"])
+    assert client.get(f"/api/volumes/{SLUG}.raw/ub", params={"cell": "2,0,2"}).status_code == 400
+
+
 def test_bragg_profile_missing_returns_empty_state(env):
     client, _ = env
     r = client.get(f"/api/bragg/{SLUG}/profile")

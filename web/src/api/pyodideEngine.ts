@@ -33,6 +33,7 @@ import type {
   TuningPromote,
   TuningRun,
   TuningTrial,
+  UbCheck,
   VolumeCoverage,
   VolumeMeta,
 } from "./types";
@@ -404,6 +405,9 @@ export const engine = {
   },
   volumeCoverage(volumeId: string): Promise<VolumeCoverage> {
     return jsonCall<VolumeCoverage>("volume_coverage_json", [volumeId]);
+  },
+  ubCheck(volumeId: string, cell: string, qMax: number | null): Promise<UbCheck> {
+    return jsonCall<UbCheck>("volume_ub_check_json", [volumeId, cell, qMax]);
   },
   volumeSlice(volumeId: string, plane: string, value: number, interp: boolean): Promise<Slice> {
     return sliceCall("volume_slice", [volumeId, plane, value, interp]);

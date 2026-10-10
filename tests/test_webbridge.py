@@ -209,6 +209,20 @@ def test_bragg_profile_json_unknown_dataset(ran_pipeline):
         webbridge.bragg_profile_json("nope")
 
 
+def test_volume_ub_check_json(tmp_path):
+    """The UB check through the bridge, on the demo crystal (a = 4.2 Å, its UB
+    right): no symmetry declared, so the rotation and a triclinic cell are fitted."""
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    ds = webbridge.make_demo_input(n=101)
+    out = json.loads(webbridge.volume_ub_check_json(f"{ds}.raw", "1,1,1"))
+    assert out["id"] == f"{ds}.raw"
+    assert out["fit"] == "both" and out["symmetrised"] is None
+    assert out["cell"][:3] == pytest.approx([4.2, 4.2, 4.2], rel=2e-3)
+    assert out["angle_deg"] < 0.05
+    with pytest.raises(ValueError, match="cell must be"):
+        webbridge.volume_ub_check_json(f"{ds}.raw", "0,1,1")
+
+
 def test_save_dpdf_envelope(ran_pipeline):
     dataset_id, _datasets, _events = ran_pipeline
     env = bytes(webbridge.save_dpdf(dataset_id, q_min=0.5, q_max=3.0))

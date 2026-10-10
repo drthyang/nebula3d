@@ -27,8 +27,7 @@ Run::
 Env:
     VOLUME      the volume (.nxs/.h5; default: the first data/raw/*.nxs)
     FIT         orientation | lattice | both | symmetric (default: symmetric
-                when VOLUME is symmetrised under the operations, else
-                orientation)
+                when VOLUME is symmetrised under the operations, else both)
     OPS         auto (the operations VOLUME declares; default) | none |
                 triplets, e.g. "h,k,l; h+k,-h,l; k,h,l; h,k,-l"
     OPS_FROM    take the operations another file declares instead
@@ -52,10 +51,16 @@ import h5py
 import numpy as np
 
 import nebula3d
-from nebula3d.analysis.ub_refine import SYMMETRISED, refine_ub, regrid, symmetry_break
+from nebula3d.analysis.ub_refine import (
+    OFFSET_BANDS,
+    OFFSET_DIRECTIONS,
+    SYMMETRISED,
+    auto_fit,
+    radial_offsets,
+    refine_ub,
+    regrid,
+)
 from nebula3d.symmetry import GridSymmetry, parse_symmetry_ops
-
-BANDS = ((0.0, 4.0), (4.0, 8.0), (8.0, 12.0), (12.0, 16.0), (16.0, np.inf))
 
 
 def env_float(name: str) -> float | None:
@@ -80,29 +85,21 @@ def operations(volume: str) -> tuple[tuple[np.ndarray, ...] | None, str | None]:
     return (parse_symmetry_ops(text), text) if text.strip() else (None, None)
 
 
-def radial_offsets(fit, centres, ub_vol: np.ndarray) -> None:
-    """Median offset along Q, relative to |Q|, by |Q| band: in-plane (within 13°
-    of the plane ⊥ the third reciprocal axis), out of plane, and along it."""
-    q_obs = centres.hkl @ ub_vol.T
-    axis = fit.ub[:, 2] / np.linalg.norm(fit.ub[:, 2])
+def print_offsets(fit, centres) -> None:
+    """The peaks' median offset along Q relative to |Q|, by |Q| band and
+    direction (``ub_refine.radial_offsets``), before → after the fit."""
+    rows = radial_offsets(fit, centres)
+    names = [name for name, _a, _b in OFFSET_DIRECTIONS]
     print("\nthe peaks' offset along Q from their nodes, relative to |Q| (median), "
           "before → after the fit")
-    print(f"{'|Q| (Å⁻¹)':>12}  {'in-plane':>24}  {'oblique':>24}  {'near the 3rd axis':>24}")
-    for lo, hi in BANDS:
+    print(f"{'|Q| (Å⁻¹)':>12}  " + "  ".join(f"{n:>26}" for n in names))
+    for lo, hi in OFFSET_BANDS:
         cells = []
-        for a, b in ((0.0, 0.05), (0.05, 0.7), (0.7, 1.01)):
-            parts = []
-            for ub in (fit.ub_start, fit.ub):
-                q_node = centres.nodes @ ub.T
-                qn = np.linalg.norm(q_node, axis=1)
-                cos2 = (q_node @ axis / qn) ** 2
-                rel = np.sum((q_obs - q_node) * q_node, axis=1) / qn ** 2
-                sel = fit.used & (qn >= lo) & (qn < hi) & (cos2 >= a) & (cos2 < b)
-                parts.append((np.median(rel[sel]), int(sel.sum())) if sel.sum() >= 3 else None)
-            cells.append(f"{parts[0][0]:+.1e} → {parts[1][0]:+.1e} ({parts[1][1]:4d})"
-                         if parts[0] and parts[1] else "")
+        for name in names:
+            o = next((o for o in rows if o.q_lo == lo and o.direction == name), None)
+            cells.append(f"{o.before:+.1e} → {o.after:+.1e} ({o.n:4d})" if o else "")
         band = f"{lo:g}–{hi:g}" if np.isfinite(hi) else f"≥ {lo:g}"
-        print(f"{band:>12}  " + "  ".join(c.rjust(24) for c in cells))
+        print(f"{band:>12}  " + "  ".join(c.rjust(26) for c in cells))
 
 
 def write_entry(vol, path: str, *, source: str, ops_text: str | None, note: str) -> None:
@@ -125,15 +122,13 @@ def main() -> None:
     ops, ops_text = operations(volume)
     cell = tuple(int(x) for x in os.environ.get("CELL", "1,1,1").split(","))
     print(f"volume: {Path(volume).name} {vol.shape}")
-    broken = None
-    if ops is not None:
-        broken = symmetry_break(vol, ops)
+    chosen, broken = auto_fit(vol, ops)
+    if ops is not None and broken is not None:
         state = "symmetrised" if broken < SYMMETRISED else "not symmetrised"
         order = GridSymmetry.for_volume(vol, ops).order
         print(f"operations: a group of {order}; the volume differs from its images by "
               f"{broken:.1e} ({state})")
-    fit = os.environ.get("FIT") or (
-        "symmetric" if broken is not None and broken < SYMMETRISED else "orientation")
+    fit = os.environ.get("FIT") or chosen
     r = refine_ub(vol, fit=fit, ops=ops, cell=cell,  # type: ignore[arg-type]
                   q_min=env_float("Q_MIN") or 0.0, q_max=env_float("Q_MAX"),
                   reach=env_float("REACH") or 0.25, min_significance=env_float("MIN_SIG") or 10.0)
@@ -149,7 +144,7 @@ def main() -> None:
     print(f"orientation change: {f.angle_deg:.3f}° about [{axis}]")
     print("UB_start⁻¹·UB:\n" + np.array2string(f.transform, precision=6, suppress_small=True))
     print("refined UB:\n" + np.array2string(f.ub, precision=6, suppress_small=True))
-    radial_offsets(f, r.centres, np.asarray(vol.ub_matrix))
+    print_offsets(f, r.centres)
 
     out = os.environ.get("OUT", "").strip()
     if not out:
