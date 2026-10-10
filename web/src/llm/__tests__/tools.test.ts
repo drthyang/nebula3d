@@ -486,6 +486,22 @@ describe("qmax_coverage", () => {
   });
 });
 
+describe("symmetry_check", () => {
+  it("reports each in-plane operation of a hexagonal ΔPDF section", async () => {
+    const meta = await api.fetchDpdfMeta();
+    api.fetchDpdfMeta.mockResolvedValue({ ...meta, lattice: { a: 8, b: 8, c: 10, alpha: 90, beta: 90, gamma: 120 } });
+    const section = makeSlice(41, 41, (u, v) => Math.cos(0.7 * u) + Math.cos(0.7 * v) + Math.cos(0.7 * (u - v)) + 0.3 * Math.cos(0.5 * u));
+    section.header.axes_angle = 120;
+    api.fetchDpdfSlice.mockResolvedValue(section);
+    const r = await runOn(full, "symmetry_check", {});
+    const out = JSON.parse(r.text);
+    expect(out.cell).toBe("hexagonal");
+    expect(out.holds).toEqual(["two-fold (180°)"]);
+    expect(out.verdict).toMatch(/^not kept: six-fold/);
+    expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xy", 0);
+  });
+});
+
 describe("texture_check", () => {
   // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs.
   const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;
