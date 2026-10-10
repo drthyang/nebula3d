@@ -13,7 +13,7 @@ import {
   fetchSlice,
 } from "../../api/client";
 import type { Dataset } from "../../api/types";
-import { usePipelineStore } from "../../state/pipelineStore";
+import { parseFractions, usePipelineStore } from "../../state/pipelineStore";
 import { buildPipelineContext, type PipelineContext, type StageSlices } from "./pipelineContext";
 import { datasetName } from "../../api/datasetName";
 
@@ -21,6 +21,14 @@ import { datasetName } from "../../api/datasetName";
 const punchSupercell = (): [number, number, number] => {
   const s = usePipelineStore.getState();
   return [s.punchSupercellH, s.punchSupercellK, s.punchSupercellL].map((v) => Number(v) || 1) as [number, number, number];
+};
+
+// The off-lattice search's protected H planes as the Configure page has them
+// (blank = the backend's 1/3, 2/3 ± 0.08).
+const punchProtectedH = (): { fractions: number[]; halfWidth: number } => {
+  const s = usePipelineStore.getState();
+  const half = Number(s.punchProtectHalfWidth);
+  return { fractions: parseFractions(s.punchProtectH) ?? [1 / 3, 2 / 3], halfWidth: s.punchProtectHalfWidth && Number.isFinite(half) ? half : 0.08 };
 };
 
 export interface Cut {
@@ -113,6 +121,7 @@ export async function loadPipelineContext(
     consistency: consistencyCheck?.metrics ?? null,
     slices,
     supercell: punchSupercell(),
+    protectedH: punchProtectedH(),
   });
 
   return { context, slices, lattice: hklMeta?.lattice ?? dpdfMeta?.lattice ?? null };

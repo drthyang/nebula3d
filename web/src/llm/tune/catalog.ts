@@ -4,10 +4,32 @@
 // stay with the user.  Each entry says what the model may set it to; whatever
 // the model proposes is checked against this before anything runs.
 
-import type { PipelineConfig } from "../../state/pipelineStore";
+import { parseFractions, type PipelineConfig } from "../../state/pipelineStore";
 
 export const TUNE_STAGES = ["rings", "punch", "backfill", "flatten", "pdf"] as const;
 export type TuneStage = (typeof TUNE_STAGES)[number];
+
+// Facts about the sample that the user may ask the assistant to set, by name.
+// Never tuned: whether the H = n ± 1/3 planes hold real satellites is physics,
+// not a threshold to trade against a metric.
+export const SAMPLE_PARAMS: TuneParam[] = [
+  {
+    key: "punchProtectH",
+    stage: "punch",
+    kind: "fractions",
+    defaultValue: "1/3, 2/3",
+    help: "H fractions the off-lattice search leaves alone (its protected planes, e.g. real satellites at H = n ± 1/3); none protects nothing.",
+  },
+  {
+    key: "punchProtectHalfWidth",
+    stage: "punch",
+    kind: "number",
+    min: 0,
+    max: 0.25,
+    defaultValue: 0.08,
+    help: "Half width (r.l.u.) of each protected H plane.",
+  },
+];
 
 export const TUNE_STAGE_LABELS: Record<TuneStage, string> = {
   rings: "Ring removal",
@@ -37,7 +59,8 @@ export type ParamValue = string | number | boolean;
 export interface TuneParam {
   key: Key;
   stage: TuneStage;
-  kind: "enum" | "number" | "integer" | "boolean";
+  // fractions: H fractions as the form's text, "1/3, 2/3" or "none" (blank = default)
+  kind: "enum" | "number" | "integer" | "boolean" | "fractions";
   // enum: the form value ("" = the backend default) and the name the model uses
   options?: { value: string; name: string }[];
   min?: number;
@@ -223,7 +246,8 @@ export const TUNE_PARAMS: TuneParam[] = [
 export const stageParams = (stage: TuneStage, s?: PipelineConfig): TuneParam[] =>
   TUNE_PARAMS.filter((p) => p.stage === stage && (!s || !p.appliesWhen || p.appliesWhen(s)));
 
-const findParam = (key: string): TuneParam | undefined => TUNE_PARAMS.find((p) => p.key === key);
+const findParam = (key: string, sample = false): TuneParam | undefined =>
+  TUNE_PARAMS.find((p) => p.key === key) ?? (sample ? SAMPLE_PARAMS.find((p) => p.key === key) : undefined);
 
 // A setting as the model sees it: enum names, numbers, booleans; a blank form
 // field shows as its default value.
@@ -231,6 +255,7 @@ export function displayValue(p: TuneParam, formValue: unknown): ParamValue {
   if (p.kind === "enum") return p.options!.find((o) => o.value === formValue)?.name ?? String(p.defaultValue);
   if (p.kind === "boolean") return Boolean(formValue);
   if (formValue === "" || formValue == null) return p.defaultValue;
+  if (p.kind === "fractions") return String(formValue);
   return Number(formValue);
 }
 
@@ -242,10 +267,17 @@ export function currentStageSettings(stage: TuneStage, s: PipelineConfig): Recor
 /** Rejected proposal, with the reason the model reads back. */
 export class ProposalError extends Error {}
 
-// Turn a value the model proposed into the form value, or throw.
-export function toFormValue(key: string, value: unknown, stage: TuneStage): string | boolean {
-  const p = findParam(key);
+// Turn a value the model proposed into the form value, or throw.  `sample`
+// admits the sample facts too (a change the user asked for, never a tuning).
+export function toFormValue(key: string, value: unknown, stage: TuneStage, { sample = false } = {}): string | boolean {
+  const p = findParam(key, sample);
   if (!p || p.stage !== stage) throw new ProposalError(`${key} is not a ${stage} setting that can be tuned`);
+  if (p.kind === "fractions") {
+    const text = (Array.isArray(value) ? value.join(", ") : String(value ?? "")).trim();
+    if (!text || text.toLowerCase() === "default" || text === p.defaultValue) return "";
+    if (parseFractions(text) === undefined) throw new ProposalError(`${key} must be H fractions like "1/3, 2/3", or none`);
+    return text;
+  }
   if (p.kind === "enum") {
     const opt = p.options!.find((o) => o.name === value || (o.value !== "" && o.value === value));
     if (!opt) throw new ProposalError(`${key} must be one of ${p.options!.map((o) => o.name).join(", ")}`);
@@ -281,7 +313,9 @@ export function describeStageParams(stage: TuneStage): string {
           ? `one of ${p.options!.map((o) => o.name).join(" | ")}`
           : p.kind === "boolean"
             ? "true | false"
-            : `${p.kind} in [${p.min}, ${p.max}]`;
+            : p.kind === "fractions"
+              ? 'H fractions like "1/3, 2/3", or none'
+              : `${p.kind} in [${p.min}, ${p.max}]`;
       return `- ${p.key} (${allowed}; default ${p.defaultValue}): ${p.help}`;
     })
     .join("\n");

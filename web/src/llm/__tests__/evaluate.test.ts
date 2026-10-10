@@ -56,6 +56,19 @@ describe("evaluateStage", () => {
     expect(e.total_leftover_peaks).toBe(0);
     expect(e.leftover_at_nodes).toBe(0);
     expect(e.fitted_peaks).toBe(12);
-    expect(headline("punch", e)).toBe("0 missed at nodes · 0 off-lattice · punched 0.04");
+    expect(e.leftover_on_protected_planes).toBe(0);
+    expect(headline("punch", e)).toBe("0 missed at nodes · 0 off-lattice (0 on protected planes) · punched 0.04");
+  });
+
+  it("names the plane and |Q| of the worst ring residual in the headline", () => {
+    const e = {
+      mean_ring_energy_ratio: 0.24,
+      max_over_subtraction_fraction: 0.03,
+      max_ring_dent: 0.233,
+      max_ring_left: 0,
+      worst_ring_dent: { plane: "h0l", at: 7.58, residual_fraction: -0.233 },
+      worst_ring_left: null,
+    };
+    expect(headline("rings", e)).toBe("ring ratio 0.24 · over-sub ≤ 0.03 · ring dent ≤ 0.233 (h0l, 7.58 Å⁻¹) · left ≤ 0");
   });
 });

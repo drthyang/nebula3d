@@ -204,6 +204,17 @@ describe("update_settings", () => {
     expect(range.text).toMatch(/punchMinSig must be within/);
     expect(usePipelineStore.getState().punchMinSig).toBe("");
   });
+
+  it("sets a fact about the sample the user asks for: the search's protected planes", async () => {
+    usePipelineStore.setState({ punchProtectH: "none" });
+    const r = await run("update_settings", { changes: { punchProtectH: "1/3, 2/3" } });
+    expect(usePipelineStore.getState().punchProtectH).toBe(""); // the default
+    expect(JSON.parse(r.text).changed).toEqual([{ setting: "punchProtectH", from: "none", to: "1/3, 2/3" }]);
+    await run("update_settings", { changes: { punchProtectH: [0.5] } });
+    expect(usePipelineStore.getState().punchProtectH).toBe("0.5");
+    const bad = await run("update_settings", { changes: { punchProtectH: "thirds" } });
+    expect(bad.text).toMatch(/H fractions/);
+  });
 });
 
 describe("run_pipeline", () => {

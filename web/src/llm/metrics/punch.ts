@@ -19,6 +19,7 @@ export interface SuspiciousPeak {
   xy: [number, number]; // physical (x, y) coordinate in the slice plane (r.l.u.)
   hkl?: [number, number, number]; // with the cut known
   at_node?: boolean; // within NODE_TOL of a lattice node (of the punch supercell)
+  on_protected_plane?: boolean; // off-lattice, on an H plane the search leaves alone
   intensity: number;
   local_background: number;
   // intensity / local_background — how far above its surroundings the peak is.
@@ -33,15 +34,17 @@ const robustScatter = (vals: number[], level: number): number => 1.4826 * median
 // Chebyshev radius) of finite voxels around (ix, iy): the background a peak is
 // judged against.  `loudest` is the largest scatter of the annulus's four
 // sides (left, right, below, above): near the border of a noisy region one
-// side is loud though the whole annulus, mostly quiet, is not.  Null with too
-// few voxels to judge.
+// side is loud though the whole annulus, mostly quiet, is not.  `zeros` is the
+// share of exact zeros: sparse counts (most voxels empty, a few single events,
+// as at the coverage edge), where the MAD is 0 and any event reads thousands of
+// σ.  Null with too few voxels to judge.
 const annulusStats = (
   grid: GridSlice,
   ix: number,
   iy: number,
   inner = 3,
   outer = 6,
-): { level: number; scatter: number; loudest: number } | null => {
+): { level: number; scatter: number; loudest: number; zeros: number } | null => {
   const { nx, ny } = grid.header;
   const data = grid.data;
   const vals: number[] = [];
@@ -66,7 +69,8 @@ const annulusStats = (
   if (vals.length < 20) return null;
   const level = median(vals);
   const loudest = Math.max(...sides.filter((side) => side.length >= 6).map((side) => robustScatter(side, median(side))));
-  return { level, scatter: robustScatter(vals, level), loudest };
+  const zeros = vals.filter((v) => v === 0).length / vals.length;
+  return { level, scatter: robustScatter(vals, level), loudest, zeros };
 };
 
 // Is (ix, iy) a strict local maximum over its 8-neighbourhood, with no NaN
@@ -103,16 +107,26 @@ const neighboursAbove = (grid: GridSlice, ix: number, iy: number, floor: number)
   return n;
 };
 
+// Sparse counts, not a measured level, around a would-be peak: an annulus this
+// share exact zeros (a fraction of a percent of a well-measured volume), or one
+// whose level is below this share of the slice's median — background-subtracted
+// data leave the empty edge near, not at, zero, and a count there reads tens of
+// local σ.
+const SPARSE_ZEROS = 0.25;
+const SPARSE_LEVEL = 0.1;
+
 // A peak this close (r.l.u., per axis) to a lattice node counts as at the node.
 export const NODE_TOL = 0.12;
 
 export interface LeftoverScan {
   suspicious_peaks: SuspiciousPeak[];
   n_suspicious: number;
-  // With the cut known: missed lattice peaks, and off-lattice ones.
+  // With the cut known: missed lattice peaks, and off-lattice ones — of which
+  // n_on_protected sit on the H planes the off-lattice search leaves alone.
   n_at_nodes?: number;
   n_off_nodes?: number;
-  // Spikes in noisy regions (e.g. the coverage edge), not counted as peaks.
+  n_on_protected?: number;
+  // Spikes in noisy or sparse-count regions (e.g. the coverage edge), not counted as peaks.
   n_skipped_noisy: number;
   scan_sigma_threshold: number;
 }
@@ -124,13 +138,22 @@ export interface LeftoverScanOptions {
   topK?: number;
   toHkl?: (x: number, y: number) => [number, number, number];
   supercell?: [number, number, number]; // the volume's indexing cell, per axis
+  // The off-lattice search's protected planes: H fractions and their half width.
+  protectedH?: { fractions: number[]; halfWidth: number };
 }
+
+// Whether H lies within halfWidth of one of the fractions, modulo 1.
+const onProtectedPlane = (h: number, { fractions, halfWidth }: { fractions: number[]; halfWidth: number }): boolean =>
+  fractions.some((f) => {
+    const d = Math.abs((((h - f) % 1) + 1) % 1);
+    return Math.min(d, 1 - d) <= halfWidth;
+  });
 
 // Scan the punched slice for peaks the punch missed; returns the strongest
 // `topK` with the counts.
 export const scanLeftoverPeaks = (
   grid: GridSlice,
-  { sigmaThreshold = 8, noisyFactor = 4, minNeighbours = 2, topK = 8, toHkl, supercell = [1, 1, 1] }: LeftoverScanOptions = {},
+  { sigmaThreshold = 8, noisyFactor = 4, minNeighbours = 2, topK = 8, toHkl, supercell = [1, 1, 1], protectedH }: LeftoverScanOptions = {},
 ): LeftoverScan => {
   const stats = robustStats(grid.data);
   const empty: LeftoverScan = {
@@ -139,6 +162,7 @@ export const scanLeftoverPeaks = (
     n_skipped_noisy: 0,
     scan_sigma_threshold: sigmaThreshold,
     ...(toHkl ? { n_at_nodes: 0, n_off_nodes: 0 } : {}),
+    ...(toHkl && protectedH ? { n_on_protected: 0 } : {}),
   };
   if (!stats || stats.sigma <= 0) return empty;
   const { nx, ny } = grid.header;
@@ -153,7 +177,12 @@ export const scanLeftoverPeaks = (
       if (!Number.isFinite(v) || v < floor) continue;
       if (!isCleanLocalMax(grid, ix, iy)) continue;
       const bg = annulusStats(grid, ix, iy);
-      if (!bg || !(bg.scatter > 0)) continue;
+      if (!bg) continue;
+      if (bg.zeros >= SPARSE_ZEROS || (stats.median > 0 && bg.level < SPARSE_LEVEL * stats.median)) {
+        noisy += 1;
+        continue;
+      }
+      if (!(bg.scatter > 0)) continue;
       const sigma = (v - bg.level) / bg.scatter;
       if (sigma < sigmaThreshold) continue;
       if (neighboursAbove(grid, ix, iy, bg.level + 3 * bg.scatter) < minNeighbours) continue;
@@ -173,6 +202,7 @@ export const scanLeftoverPeaks = (
         const hkl = toHkl(x, y);
         peak.hkl = hkl.map((c) => roundSig(c, 4)) as [number, number, number];
         peak.at_node = hkl.every((c, i) => Math.abs(c - supercell[i] * Math.round(c / supercell[i])) <= NODE_TOL);
+        if (protectedH && !peak.at_node) peak.on_protected_plane = onProtectedPlane(hkl[0], protectedH);
       }
       found.push(peak);
     }
@@ -183,6 +213,7 @@ export const scanLeftoverPeaks = (
     suspicious_peaks: found.slice(0, topK),
     n_suspicious: found.length,
     ...(toHkl ? { n_at_nodes: atNodes, n_off_nodes: found.length - atNodes } : {}),
+    ...(toHkl && protectedH ? { n_on_protected: found.filter((p) => p.on_protected_plane).length } : {}),
     n_skipped_noisy: noisy,
     scan_sigma_threshold: sigmaThreshold,
   };
