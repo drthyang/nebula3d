@@ -250,7 +250,11 @@ two apps work the same way.
   then *asinh / lin / log*, *Auto* and *Brightness*. *Auto* sets vmin 0 (± for
   signed data), vmax at the 97th percentile and the asinh softening at the
   median of the positive values, from the centre cut, so the scale holds still
-  while the cut moves. *Brightness* moves vmax in stops about Auto: right is
+  while the cut moves. On the 3D-ΔPDF page Auto takes the 99.9th percentile of
+  |ΔPDF| over the three centre sections, the origin's self-correlation disk left
+  out (`components/dpdfLevels.ts`): a ΔPDF section is mostly FFT ripple, so the
+  97th percentile sits on the ripple and saturates every feature.
+  *Brightness* moves vmax in stops about Auto: right is
   brighter. Typed or dragged limits hold until *Auto* or a dataset change.
 - **Shared settings**: the reciprocal plane, cut, colour range, scale and zoom
   are shared by Reciprocal cleanup and Q–R; the ΔPDF colour range, colormap,
@@ -412,6 +416,11 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
     operations (hexagonal: six-, three-, two-fold and the a ↔ b mirror;
     orthogonal: the mirrors and the two-fold), on the FFT's oblique grid; an
     operation the data were symmetrised with holds to ~10⁻³ or better.
+  - *Display*: `dpdf_contrast` optimises the 3D-ΔPDF viewer's colour range in
+    one call (the page's Auto rule, measured on the centre sections), reports the
+    robust σ, the strongest feature and what the 99.5th and 99.97th percentiles
+    would give, and warns when a range the user asks for is brighter than the
+    optimum, where the FFT ripple shows.
   - *Acting*: `update_settings` (the method choices and thresholds in
     `tune/catalog.ts`, and, when the user names them, the sample facts the
     tuner never proposes: the search's protected planes and the punch cell),

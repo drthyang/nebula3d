@@ -6,7 +6,8 @@
 //
 // Auto sets vmin 0 (log: vmax/1000; signed data: −vmax), vmax at the 97th
 // percentile of the positive values (|v| for signed data) and the softening at
-// their median.  Brightness is vmax in stops about Auto: +1 halves vmax.
+// their median.  The 3D-ΔPDF page asks for the 99.9th instead (dpdfLevels.ts).
+// Brightness is vmax in stops about Auto: +1 halves vmax.
 
 export type ScaleKind = "asinh" | "lin" | "log";
 
@@ -64,15 +65,15 @@ function positives(data: ArrayLike<number>, signed: boolean, maxSamples = 60000)
 const quantile = (sorted: number[], q: number) =>
   sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(q * sorted.length)))];
 
-/** NeXus-style Auto over one or more slices' values. */
+/** NeXus-style Auto over one or more slices' values; vmax at `percentile`. */
 export function autoLevels(
   samples: ArrayLike<number>[],
-  { signed = false, scale = "lin" as ScaleKind } = {},
+  { signed = false, scale = "lin" as ScaleKind, percentile = 0.97 } = {},
 ): AutoLevels {
   const pos: number[] = [];
   for (const s of samples) for (const v of positives(s, signed)) pos.push(v);
   pos.sort((a, b) => a - b);
-  const hi = pos.length ? quantile(pos, 0.97) : 1;
+  const hi = pos.length ? quantile(pos, percentile) : 1;
   const soft = pos.length ? quantile(pos, 0.5) : hi / 20;
   const lo = signed ? -hi : scale === "log" ? hi / 1000 : 0;
   return { lo, hi: hi > 0 ? hi : 1, soft: soft > 0 ? soft : hi / 20 };

@@ -143,14 +143,16 @@ export const listModels = async (
 };
 
 export interface ModelContext {
-  loaded: number; // the context length the model was loaded with
+  // The context length the model was loaded with; null while it is not loaded
+  // (LM Studio then loads it on the next request with the model's defaults).
+  loaded: number | null;
   max: number | null; // the most it supports
 }
 
 // LM Studio's own REST API reports the context length a model was loaded with,
 // which the OpenAI-style /models list leaves out.  Null wherever it cannot be
-// read: another server, a model not loaded yet (LM Studio loads it on the
-// first request, with its default settings), an older LM Studio.
+// read: another server, a model it does not list, an older LM Studio.  A model
+// it lists but has not loaded comes back with `loaded: null`.
 export const loadedContext = async (
   baseUrl: string,
   model: string,
@@ -164,10 +166,11 @@ export const loadedContext = async (
       data?: { id?: string; state?: string; loaded_context_length?: unknown; max_context_length?: unknown }[];
     };
     const entry = payload.data?.find((m) => m.id === model);
-    const loaded = entry?.state === "loaded" ? entry.loaded_context_length : null;
-    if (typeof loaded !== "number" || !(loaded > 0)) return null;
-    const max = entry?.max_context_length;
-    return { loaded, max: typeof max === "number" && max > 0 ? max : null };
+    if (!entry) return null;
+    const max = typeof entry.max_context_length === "number" && entry.max_context_length > 0 ? entry.max_context_length : null;
+    if (entry.state !== "loaded") return { loaded: null, max };
+    const loaded = entry.loaded_context_length;
+    return typeof loaded === "number" && loaded > 0 ? { loaded, max } : null;
   } catch (error) {
     if ((error as Error)?.name === "AbortError") throw error;
     return null;
@@ -179,14 +182,23 @@ export const loadedContext = async (
 export const TOOLS_CONTEXT = 32768;
 
 /** What to do about a model loaded with less context than Tools need, or null. */
+// LM Studio unloads an idle model and loads it again on the next request with
+// the model's default load settings, so a length set by hand does not last:
+// the default is what to change.
 export const contextWarning = (context: ModelContext | null, model: string): string | null => {
-  if (!context || context.loaded >= TOOLS_CONTEXT) return null;
+  if (!context || (context.loaded != null && context.loaded >= TOOLS_CONTEXT)) return null;
   const n = (x: number) => x.toLocaleString("en-US");
   const target = context.max != null ? Math.min(TOOLS_CONTEXT, context.max) : TOOLS_CONTEXT;
+  const fix =
+    `In LM Studio, set this model's default Context Length to ${n(target)}${context.max != null ? ` (it supports up to ${n(context.max)})` : ""}: ` +
+    "it loads an idle model again with its defaults.";
+  const need = "With Tools on, the first request alone is about 8k tokens and a full assessment reaches about 18k";
+  if (context.loaded == null) {
+    return `${model} is not loaded: LM Studio will load it with its default Context Length on the next request. ${need}. ${fix}`;
+  }
   return (
-    `${model} is loaded with a ${n(context.loaded)}-token context. With Tools on, the first request alone is about 8k ` +
-    `tokens and a full assessment reaches about 18k, so ${context.loaded < 12000 ? "replies will be cut off" : "long replies may be cut off"}. ` +
-    `In LM Studio, load it again with a Context Length of ${n(target)}${context.max != null ? ` (it supports up to ${n(context.max)})` : ""}.`
+    `${model} is loaded with a ${n(context.loaded)}-token context. ${need}, so ` +
+    `${context.loaded < 12000 ? "replies will be cut off" : "long replies may be cut off"}. ${fix}`
   );
 };
 

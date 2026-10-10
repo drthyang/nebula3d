@@ -502,6 +502,41 @@ describe("symmetry_check", () => {
   });
 });
 
+describe("dpdf_contrast", () => {
+  // Ripple of amplitude 1 everywhere, a huge origin peak, and four compact
+  // features of 100: the limit must land on the features.
+  const section = makeSlice(81, 81, (u, v) => {
+    if (Math.hypot(u, v) < 1) return 1e6;
+    const feature = [[20, 0], [-20, 0], [0, 20], [0, -20]].some(([a, b]) => Math.hypot(u - a, v - b) < 1.5);
+    return feature ? 100 : Math.sin(3 * u) * Math.cos(3 * v);
+  });
+
+  it("sets the viewer's ± limit on the features, not the ripple or the origin peak", async () => {
+    api.fetchDpdfSlice.mockResolvedValue(section);
+    useDpdfStore.setState({ limit: null });
+    const r = await run("dpdf_contrast", {});
+    expect(r.ok).toBe(true);
+    const out = JSON.parse(r.text);
+    expect(out.applied).toMatchObject({ limit: 100, share_of_strongest: 1, from: expect.stringMatching(/^optimised/) });
+    expect(out.note).toBeUndefined();
+    expect(Object.keys(out.not_applied)).toEqual(["99.5th percentile", "99.97th percentile"]);
+    expect(useDpdfStore.getState().limit).toEqual({ value: 100, dataset: "demo" });
+    expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "yz", 0);
+    expect(r.view).toMatchObject({ view: "dpdf", plane: "xy" });
+  });
+
+  it("takes a limit in σ, refuses a percentile out of range, and goes back to Auto", async () => {
+    api.fetchDpdfSlice.mockResolvedValue(section);
+    const out = JSON.parse((await run("dpdf_contrast", { limit_sigma: 3 })).text);
+    expect(out.applied.limit_sigma).toBe(3);
+    expect(out.note).toMatch(/brighter than the optimum .* the FFT ripple around the features will show/);
+    expect(useDpdfStore.getState().limit?.value).toBeCloseTo(3 * out.robust_sigma, 1);
+    expect((await run("dpdf_contrast", { percentile: 90 })).text).toMatch(/percentile must be within \[99, 99.99\]/);
+    await run("dpdf_contrast", { reset: true });
+    expect(useDpdfStore.getState().limit).toBeNull();
+  });
+});
+
 describe("texture_check", () => {
   // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs.
   const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;
