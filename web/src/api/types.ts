@@ -35,6 +35,19 @@ export interface Lattice {
   gamma?: number | null;
 }
 
+/** Where a volume's counts begin and end in |Q| (GET /api/volumes/{id}/coverage). */
+export interface VolumeCoverage {
+  id: string;
+  q: number[]; // shell centres (Å⁻¹)
+  counted: number[]; // share of each shell's voxels holding counts
+  q_min_edge: number | null; // where that share first rises through ½ (null: from 0)
+  q_max_edge: number | null; // where it last falls through ½ (null: to the corner)
+  full_q_min: number | null; // first shell ≥ 95 %
+  full_q_max: number | null; // last shell ≥ 95 %
+  box_q: number; // the nearest face of the box
+  box_corner_q: number;
+}
+
 export interface VolumeMeta {
   id: string;
   stage: string;

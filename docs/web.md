@@ -411,7 +411,13 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
     it compares how far the forward transform's window reaches in |Q| (the |Q|
     band if set, else the box faces, the coverage edge when tapered to it, or
     the box corners for a flat separable window) with the |Q| where shells
-    stop being 95 % measured. `symmetry_check` (`metrics/symmetry.ts`)
+    stop being 95 % measured. From the raw volume (`analysis/coverage.py`,
+    `GET /api/volumes/{id}/coverage`) it also gives where the counts begin
+    and end in |Q|, where a shell's voxels stop being mostly measured,
+    finite and non-zero, with the box's nearest face. It suggests the |Q| band
+    they allow, and checks a band that is set. The Configure page shows the
+    same edges under its |Q| band, with a *From raw data* button that sets
+    the band to them. `symmetry_check` (`metrics/symmetry.ts`)
     compares a ΔPDF x–y section with its images under the cell's in-plane
     operations (hexagonal: six-, three-, two-fold and the a ↔ b mirror;
     orthogonal: the mirrors and the two-fold), on the FFT's oblique grid; an
@@ -504,6 +510,7 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 | GET | `/api/datasets/{id}` | one dataset, or a tuning view: `<id>~tune~<run>` (the run's chain) or `<id>~tune~<run>~<stage>-<n>` (one trial) |
 | GET | `/api/volumes/{id}/meta` | HKLVolume shape, axis ranges, lattice |
 | GET | `/api/volumes/{id}/slice?plane=&value=&interp=` | binary 2D slice |
+| GET | `/api/volumes/{id}/coverage` | where the counts begin and end in \|Q\|: the share of each shell's voxels holding counts, the edges where it crosses ½, and the box's nearest face |
 | GET | `/api/deltapdf/{id}/meta` | ΔPDF shape, ranges, lattice, \|Q\|max |
 | GET | `/api/deltapdf/{id}/slice?plane=xy\|xz\|yz&value=` | binary ΔPDF orthoslice |
 | GET | `/api/consistency/{dataset_id}/meta?q_min=&q_max=&r_min=&r_max=` | back-FFT metadata and metrics |

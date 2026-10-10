@@ -14,8 +14,9 @@ import {
   fetchDpdfSlice,
   fetchMeta,
   fetchSlice,
+  fetchVolumeCoverage,
 } from "../../api/client";
-import type { Dataset, DeltaPdfMeta, JobEvent, Slice, VolumeMeta } from "../../api/types";
+import type { Dataset, DeltaPdfMeta, JobEvent, Slice, VolumeCoverage, VolumeMeta } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import {
@@ -1003,11 +1004,12 @@ const dpdfContrast: AgentTool = {
 const qmaxCoverage: AgentTool = {
   name: "qmax_coverage",
   description:
-    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk.",
+    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. From the raw volume, raw_counts gives where its counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts.",
   parameters: { type: "object", properties: {} },
   run: async (_args, { dataset }) => {
     const meta = await recipMeta(dataset);
     const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset)!;
+    const rawCounts = safe(fetchVolumeCoverage(rawId));
     const planes = RECIP_PLANES.filter((p) => {
       const r = recipRange(meta, RECIP_FIXED[p]);
       return r[0] <= 0 && r[1] >= 0;
@@ -1073,6 +1075,7 @@ const qmaxCoverage: AgentTool = {
         box_face_q: boxQ,
         box_corner_q: cornerQ == null ? null : roundSig(cornerQ, 4),
         low_q_gap: pick("low_q_gap").length ? Math.max(...pick("low_q_gap")) : null,
+        ...rawBand(await rawCounts, s.pdfQMin, s.pdfQMax),
         q_unit: "Å⁻¹",
         settings: {
           pdfQMin: s.pdfQMin || "(default)",
@@ -1098,6 +1101,38 @@ const qmaxCoverage: AgentTool = {
     };
   },
 };
+
+// Where the raw counts begin and end in |Q| (most voxels past an edge hold no
+// counts), the band that keeps inside them, and whether the band that is set
+// does.  The box can end first along one axis: past box_face_q the window,
+// not the band, limits the reach in that direction.
+function rawBand(c: VolumeCoverage | null, qMinSet: string, qMaxSet: string) {
+  if (!c) return {};
+  const lo = c.q_min_edge != null ? Math.ceil(c.q_min_edge * 20) / 20 : 0;
+  const hi = c.q_max_edge != null ? Math.floor(c.q_max_edge * 20) / 20 : null;
+  const qMin = qMinSet ? Number(qMinSet) : null;
+  const qMax = qMaxSet ? Number(qMaxSet) : null;
+  const problems: string[] = [];
+  if (qMax != null) {
+    if (qMin == null || qMin < lo - 0.025) problems.push(`Qmin below the counts' lower edge (${roundSig(c.q_min_edge ?? 0, 3)} Å⁻¹): the beam stop's empty voxels enter the transform`);
+    if (hi != null && qMax > hi + 0.025) problems.push(`Qmax past the counts' upper edge (${roundSig(c.q_max_edge!, 4)} Å⁻¹): empty voxels enter the transform`);
+  }
+  return {
+    raw_counts: {
+      q_min_edge: c.q_min_edge == null ? null : roundSig(c.q_min_edge, 3),
+      q_max_edge: c.q_max_edge == null ? null : roundSig(c.q_max_edge, 4),
+      fully_measured: c.full_q_min != null && c.full_q_max != null ? [roundSig(c.full_q_min, 3), roundSig(c.full_q_max, 4)] : null,
+      box_face_q: roundSig(c.box_q, 4),
+    },
+    suggested_band: hi != null ? [lo, hi] : null,
+    band_check:
+      qMax == null
+        ? "no |Q| band is set: the transform takes every voxel, empty ones included, up to the window's reach"
+        : problems.length
+          ? problems.join("; ")
+          : `the band ${qMin ?? 0}–${qMax} Å⁻¹ stays inside the counts`,
+  };
+}
 
 // ---------------------------------------------------------------- actions
 

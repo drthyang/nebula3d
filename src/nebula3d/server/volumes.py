@@ -139,6 +139,34 @@ def pack_slice(sd: SliceData) -> bytes:
     return struct.pack("<I", len(hb)) + hb + data.tobytes()
 
 
+_coverage_cache: dict[tuple[str, float], dict] = {}
+
+
+def volume_coverage(path: Path) -> dict:
+    """The share of voxels holding counts per |Q| shell, and where the counts
+    begin and end (:func:`nebula3d.analysis.coverage.q_coverage`), cached by
+    ``(path, mtime)``."""
+    from nebula3d.analysis.coverage import q_coverage
+
+    key = (str(path), path.stat().st_mtime)
+    with _lock:
+        hit = _coverage_cache.get(key)
+    if hit is not None:
+        return hit
+    c = q_coverage(load_volume(path))
+    out = {
+        "q": [round(float(x), 4) for x in c.q],
+        "counted": [round(float(x), 4) for x in c.counted],
+        "q_min_edge": c.q_min_edge, "q_max_edge": c.q_max_edge,
+        "full_q_min": c.full_q_min, "full_q_max": c.full_q_max,
+        "box_q": c.box_q, "box_corner_q": c.box_corner_q,
+    }
+    with _lock:
+        _coverage_cache.clear()  # one volume's worth: they are small, but unbounded otherwise
+        _coverage_cache[key] = out
+    return out
+
+
 def slice_envelope(path: Path, plane: str, value: float, interp: bool) -> bytes:
     """Extract a 2D slice and pack it into the binary wire format above."""
     vol = load_volume(path)

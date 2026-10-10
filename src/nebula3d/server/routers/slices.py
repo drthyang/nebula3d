@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import StageStatus, resolve_volume
 from nebula3d.server.deps import get_config
-from nebula3d.server.schemas import LatticeOut, VolumeMetaOut
-from nebula3d.server.volumes import PLANES, slice_envelope, volume_meta
+from nebula3d.server.schemas import CoverageOut, LatticeOut, VolumeMetaOut
+from nebula3d.server.volumes import PLANES, slice_envelope, volume_coverage, volume_meta
 
 router = APIRouter(prefix="/api/volumes", tags=["volumes"])
 
@@ -40,6 +40,13 @@ def meta(volume_id: str, cfg: ServerConfig = Depends(get_config)) -> VolumeMetaO
         ub_matrix=m.get("ub_matrix"),
         planes=m["planes"],
     )
+
+
+@router.get("/{volume_id}/coverage", response_model=CoverageOut)
+def coverage(volume_id: str, cfg: ServerConfig = Depends(get_config)) -> CoverageOut:
+    """Where the volume's counts begin and end in |Q|: the ΔPDF band's limits."""
+    stage = _resolve_hkl(cfg, volume_id)
+    return CoverageOut(id=volume_id, **volume_coverage(stage.path))
 
 
 @router.get("/{volume_id}/slice")

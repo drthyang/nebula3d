@@ -58,6 +58,19 @@ class VolumeMetaOut(BaseModel):
     planes: list[str]
 
 
+class CoverageOut(BaseModel):
+    """Where a volume's counts begin and end in |Q| (see analysis.coverage)."""
+    id: str
+    q: list[float]
+    counted: list[float]
+    q_min_edge: float | None
+    q_max_edge: float | None
+    full_q_min: float | None
+    full_q_max: float | None
+    box_q: float
+    box_corner_q: float
+
+
 class DeltaPdfMetaOut(BaseModel):
     id: str
     shape: list[int]
