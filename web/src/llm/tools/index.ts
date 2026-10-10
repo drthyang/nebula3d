@@ -1038,9 +1038,9 @@ const tunePipeline: AgentTool = {
     "Search for the best settings, one stage at a time: for each stage it runs the current settings, has you " +
     "propose alternatives, runs each, judges which best meets the stage's goal, keeps it and moves on, so later " +
     "stages build on the best earlier ones. Trials run in a tuning folder: the dataset's own outputs are not " +
-    "changed, and the chosen settings end up on the Configure page. The user watches it in the Tune pipeline tab " +
-    "and on the Execution page. Takes minutes (one run per trial). Returns each stage's chosen trial, its changes " +
-    "and why.",
+    "changed, and the chosen settings end up on the Configure page. The user watches the trials in the chat, under " +
+    "this reply, and each run on the Execution page. Takes minutes (one run per trial). Returns each stage's chosen " +
+    "trial, its changes and why.",
   parameters: {
     type: "object",
     properties: {
