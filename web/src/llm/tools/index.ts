@@ -14,6 +14,7 @@ import {
   fetchDpdfSlice,
   fetchMeta,
   fetchSlice,
+  fetchUbCheck,
   fetchVolumeCoverage,
 } from "../../api/client";
 import type { Dataset, DeltaPdfMeta, JobEvent, Slice, VolumeCoverage, VolumeMeta } from "../../api/types";
@@ -1032,6 +1033,52 @@ const grainCheckTool: AgentTool = {
   },
 };
 
+const sig2 = (x: number): number => Number(x.toPrecision(2));
+
+const ubCheckTool: AgentTool = {
+  name: "ub_check",
+  description:
+    "Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit: a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it. About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, and what radial shows.",
+  parameters: {
+    type: "object",
+    properties: { q_max: { type: "number", description: "The nodes' |Q| limit in Å⁻¹ (default: everything the box holds)" } },
+  },
+  run: async (args, { dataset }) => {
+    const qMax = args.q_max == null ? null : num(args, "q_max", 0);
+    if (qMax != null && !(qMax > 0)) throw new ToolArgError("q_max must be positive");
+    const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset);
+    if (!rawId) throw new Error("this dataset has no raw volume");
+    const s = usePipelineStore.getState();
+    const cell = [s.punchSupercellH, s.punchSupercellK, s.punchSupercellL].map((v) => Number(v) || 1) as [number, number, number];
+    const u = await fetchUbCheck(rawId, cell, qMax);
+    const cellText = (c: number[]) => `${c.slice(0, 3).map((x) => x.toFixed(4)).join(", ")} Å; ${c.slice(3).map((x) => x.toFixed(3)).join("°, ")}°`;
+    const result = {
+      fit: u.fit,
+      bragg_nodes_every: u.cell_nodes,
+      symmetrised: u.symmetrised,
+      symmetry_break: u.symmetry_break == null ? null : sig2(u.symmetry_break),
+      peaks: { searched: u.n_searched, used: u.n_used, rejected: u.n_rejected },
+      rms_start: Number(u.rms_start.toFixed(4)),
+      rms: Number(u.rms.toFixed(4)),
+      cell_start: cellText(u.cell_start),
+      cell: cellText(u.cell),
+      orientation_change_deg: Number(u.angle_deg.toFixed(3)),
+      axis_uvw: u.axis_uvw.map((x) => Number(x.toFixed(3))),
+      transform_diagonal: u.transform.map((row, i) => Number(row[i].toFixed(6))),
+      passes: u.passes.map((p) => ({ q_max: Number(p.q_max.toFixed(2)), found: p.n_found, used: p.n_used, rms: `${p.rms_start.toFixed(4)} → ${p.rms.toFixed(4)}` })),
+      radial: u.radial.map((o) => ({ q: o.q_hi == null ? `≥ ${o.q_lo}` : `${o.q_lo}–${o.q_hi}`, direction: o.direction, n: o.n, before: sig2(o.before), after: sig2(o.after) })),
+      reading:
+        u.fit === "symmetric"
+          ? "The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data."
+          : "The rotation and the cell were fitted together.",
+    };
+    return {
+      result,
+      summary: `${u.fit}: RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹ over ${u.n_used} peaks; a ${u.cell_start[0].toFixed(3)} → ${u.cell[0].toFixed(3)} Å, c ${u.cell_start[2].toFixed(3)} → ${u.cell[2].toFixed(3)} Å; turned ${u.angle_deg.toFixed(3)}°`,
+    };
+  },
+};
+
 const qmaxCoverage: AgentTool = {
   name: "qmax_coverage",
   description:
@@ -1447,6 +1494,7 @@ export const CHAT_TOOLS: AgentTool[] = [
   symmetryCheck,
   dpdfContrast,
   grainCheckTool,
+  ubCheckTool,
   radialProfileTool,
   lineProfile,
   braggPeaks,

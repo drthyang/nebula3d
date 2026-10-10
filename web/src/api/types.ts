@@ -48,6 +48,30 @@ export interface VolumeCoverage {
   box_corner_q: number;
 }
 
+export interface UbCheck {
+  id: string;
+  fit: "orientation" | "lattice" | "both" | "symmetric";
+  cell_nodes: number[]; // the Bragg nodes' spacing (the punch cell)
+  operations: number | null; // the declared operations, if any
+  symmetry_break: number | null; // RMS difference from the images under them, relative
+  symmetrised: boolean | null;
+  passes: { q_max: number; n_found: number; n_used: number; rms_start: number; rms: number; angle_deg: number }[];
+  n_searched: number;
+  n_used: number;
+  n_rejected: number;
+  rms_start: number; // RMS distance of the peak centres from their nodes with the volume's UB (Å⁻¹)
+  rms: number; // ... with the refined UB
+  angle_deg: number; // the orientation's change
+  axis_uvw: number[];
+  cell_start: number[]; // a, b, c (Å), α, β, γ (°)
+  cell: number[];
+  transform: number[][]; // UB_start⁻¹·UB
+  ub_start: number[][];
+  ub: number[][];
+  // The peaks' median offset along Q from their nodes relative to |Q|, per |Q| band and direction.
+  radial: { q_lo: number; q_hi: number | null; direction: string; n: number; before: number; after: number }[];
+}
+
 export interface VolumeMeta {
   id: string;
   stage: string;

@@ -10,8 +10,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import StageStatus, resolve_volume
 from nebula3d.server.deps import get_config
-from nebula3d.server.schemas import CoverageOut, LatticeOut, VolumeMetaOut
-from nebula3d.server.volumes import PLANES, slice_envelope, volume_coverage, volume_meta
+from nebula3d.server.schemas import CoverageOut, LatticeOut, UbCheckOut, VolumeMetaOut
+from nebula3d.server.volumes import (
+    PLANES,
+    slice_envelope,
+    volume_coverage,
+    volume_meta,
+    volume_ub_check,
+)
 
 router = APIRouter(prefix="/api/volumes", tags=["volumes"])
 
@@ -49,6 +55,34 @@ def coverage(volume_id: str, cfg: ServerConfig = Depends(get_config)) -> Coverag
     """Where the volume's counts begin and end in |Q|: the ΔPDF band's limits."""
     stage = _resolve_hkl(cfg, volume_id)
     return CoverageOut(id=volume_id, **volume_coverage(stage.path))
+
+
+def parse_cell(text: str) -> tuple[int, int, int]:
+    """``"2,2,2"`` → (2, 2, 2): the Bragg nodes' spacing, positive integers."""
+    try:
+        cell = tuple(int(x) for x in text.split(","))
+    except ValueError as exc:
+        raise HTTPException(400, f"cell must be three integers, not {text!r}") from exc
+    if len(cell) != 3 or min(cell) < 1:
+        raise HTTPException(400, f"cell must be three positive integers, not {text!r}")
+    return cell  # type: ignore[return-value]
+
+
+@router.get("/{volume_id}/ub", response_model=UbCheckOut)
+def ub_check(
+    volume_id: str,
+    cell: str = Query("1,1,1"),
+    q_max: float | None = Query(None, gt=0),
+    cfg: ServerConfig = Depends(get_config),
+) -> UbCheckOut:
+    """Whether the volume's UB puts its Bragg peaks (nodes every *cell*) on
+    their nodes, and the refined UB."""
+    stage = _resolve_hkl(cfg, volume_id)
+    try:
+        out = volume_ub_check(stage.path, parse_cell(cell), q_max)
+    except ValueError as exc:  # too few peaks to fit
+        raise HTTPException(422, str(exc)) from exc
+    return UbCheckOut(id=volume_id, **out)
 
 
 @router.get("/{volume_id}/slice")

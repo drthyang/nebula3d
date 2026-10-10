@@ -119,6 +119,19 @@ class RefinePass:
 
 
 @dataclass(frozen=True)
+class RadialOffset:
+    """The peaks' median offset along Q from their nodes, relative to |Q|, in
+    one |Q| band and one direction class (see :func:`radial_offsets`)."""
+
+    q_lo: float
+    q_hi: float
+    direction: str  # "in-plane", "oblique" or "near the third axis"
+    n: int
+    before: float  # with the start UB
+    after: float  # with the refined UB
+
+
+@dataclass(frozen=True)
 class Refinement:
     """:func:`refine_ub`'s result: the last pass's fit and centres, every pass,
     and how far the volume is from symmetric under the operations given."""
@@ -359,6 +372,54 @@ def fit_ub(
         rms_start=float(np.sqrt(np.mean(start_residual[used] ** 2))),
         rms=float(np.sqrt(np.mean(residual[used] ** 2))),
     )
+
+
+#: |Q| bands (Å⁻¹) for :func:`radial_offsets`.
+OFFSET_BANDS = ((0.0, 4.0), (4.0, 8.0), (8.0, 12.0), (12.0, 16.0), (16.0, float("inf")))
+
+#: Direction classes for :func:`radial_offsets`: cos² of a node's angle from
+#: the third reciprocal axis (c* for a hexagonal or tetragonal cell).
+OFFSET_DIRECTIONS = (("in-plane", 0.0, 0.05), ("oblique", 0.05, 0.7),
+                     ("near the third axis", 0.7, 1.0 + 1e-9))
+
+
+def auto_fit(vol: HKLVolume, ops: Ops | None) -> tuple[str, float | None]:
+    """The fit a UB check takes, and the volume's :func:`symmetry_break`:
+    ``"symmetric"`` on a volume symmetrised under *ops*, else ``"both"`` (the
+    cell constrained by *ops*, triclinic without them)."""
+    broken = None if ops is None else symmetry_break(vol, ops)
+    return ("symmetric" if broken is not None and broken < SYMMETRISED else "both"), broken
+
+
+def radial_offsets(fit: UBFit, centres: Centres, *, min_peaks: int = 3) -> list[RadialOffset]:
+    """The peaks' offset along Q from their nodes relative to |Q| (median), per
+    |Q| band (:data:`OFFSET_BANDS`) and direction (:data:`OFFSET_DIRECTIONS`),
+    with the start UB and the refined one, over the centres the fit kept.
+
+    A UB maps HKL to Q linearly, so a UB error gives a relative offset that
+    depends on direction but is the same at every |Q| along it: one that
+    changes with |Q| is not a UB error, and refining the UB only averages it.
+    Classes with fewer than *min_peaks* peaks are left out.
+    """
+    q_obs = centres.hkl @ fit.ub_start.T
+    axis = fit.ub[:, 2] / np.linalg.norm(fit.ub[:, 2])
+    rel, cos2, qn = {}, None, None
+    for key, ub in (("before", fit.ub_start), ("after", fit.ub)):
+        q_node = centres.nodes @ ub.T
+        norm = np.linalg.norm(q_node, axis=1)
+        rel[key] = np.sum((q_obs - q_node) * q_node, axis=1) / norm ** 2
+        if key == "after":
+            qn, cos2 = norm, (q_node @ axis / norm) ** 2
+    assert qn is not None and cos2 is not None
+    out = []
+    for lo, hi in OFFSET_BANDS:
+        for name, a, b in OFFSET_DIRECTIONS:
+            sel = fit.used & (qn >= lo) & (qn < hi) & (cos2 >= a) & (cos2 < b)
+            if int(sel.sum()) >= min_peaks:
+                out.append(RadialOffset(q_lo=lo, q_hi=hi, direction=name, n=int(sel.sum()),
+                                        before=float(np.median(rel["before"][sel])),
+                                        after=float(np.median(rel["after"][sel]))))
+    return out
 
 
 def refine_ub(
