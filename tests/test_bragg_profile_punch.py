@@ -191,9 +191,21 @@ def test_unknown_footprint_is_rejected():
 
 
 def test_pipeline_records_the_learned_profile(lattice):
-    out = punch_bragg(lattice, PunchParams(search_exclude_h_fractions=None))
+    out = punch_bragg(lattice, PunchParams(search_exclude_h_fractions=None,
+                                           punch_footprint="profile"))
     prof = out._bragg_profile  # type: ignore[attr-defined]
     assert prof["punch_footprint"] == "profile"
     fp = prof["footprint_profile"]
     assert fp is not None and fp["axes"] == ["ρ", "θ", "φ"]
     assert {r["fit_kind"] for r in prof["peaks"]} == {"profile"}
+
+
+def test_pipeline_default_punches_each_peak_to_its_own_width(lattice):
+    """The default footprint is each peak's own width; the profile is still
+    learned, for the peaks whose width cannot be measured."""
+    out = punch_bragg(lattice, PunchParams(search_exclude_h_fractions=None))
+    prof = out._bragg_profile  # type: ignore[attr-defined]
+    assert prof["punch_footprint"] == "own"
+    assert prof["footprint_profile"] is not None
+    kinds = [r["fit_kind"] for r in prof["peaks"]]
+    assert "own" in kinds and set(kinds) <= {"own", "profile"}

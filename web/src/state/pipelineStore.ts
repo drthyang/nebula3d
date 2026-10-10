@@ -62,7 +62,7 @@ export interface PipelineConfig {
   ringPooledWindow: string; // pooled: stack-pooling half-width (deg)
   // Significance (standard errors) a peak must reach; blank = backend default (5).
   punchMinSig: string;
-  punchFootprint: string; // "" = profile-matched (the backend default) | "ellipsoid"
+  punchFootprint: string; // "" = own width (the backend default) | "profile" | "ellipsoid"
   punchProfileNSigma: string; // profile footprint: punch out to where the profile falls to this × the noise
   punchMode: string;
   // Supercell the volume is indexed on (per axis); blank = 1.  Integer-mode
