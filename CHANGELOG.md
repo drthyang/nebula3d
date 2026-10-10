@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Each plane's ring verdict follows the cross-plane rule.** A bump seen
+  on one plane only is the crystal's own scattering, and the ring review's
+  totals already left it out. Each plane's detail still named it as that
+  plane's worst leftover ring, and a model reported three such bumps as
+  misses of the ring removal. Each plane's residuals now mark them
+  `single_plane_bump`, and its worst dent and leftover skip them.
 - **Names keep their underscores in the chat.** Models often write field
   names such as `ring_energy_ratio` without backticks, and the chat's
   Markdown took the underscores for italics: the name read
