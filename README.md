@@ -14,11 +14,11 @@ pipeline client-side; nothing is uploaded.
 
 - **NEBULA Pilot, an agent for the reduction.** Connect a local model (Ollama,
   LM Studio) or a cloud one (OpenAI, Gemini, Anthropic). With *Tools* on, the
-  model works through 20 tools that run in your browser. It measures any cut,
+  model works through 21 tools that run in your browser. It measures any cut,
   judges each stage against its goal on three planes, and checks the punch and
   backfill for texture. It checks the ΔPDF's window against the measured
-  coverage and the ΔPDF against the cell's symmetry, and sets the ΔPDF view's
-  contrast. It runs the pipeline and tunes it stage by stage. Every number comes
+  coverage and the ΔPDF against the cell's symmetry, tells a second grain from
+  displaced Bragg peaks, and sets the ΔPDF view's contrast. It runs the pipeline and tunes it stage by stage. Every number comes
   from deterministic, unit-tested metrics; the model reads and explains them.
 - **Tuning that cannot touch your results.** Each trial runs in its own folder,
   never in `processed/`. The model proposes settings from a checked catalog,
