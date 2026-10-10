@@ -14,6 +14,7 @@ import {
 } from "./components/ui";
 import { ViewerImportBanner } from "./components/ViewerImportBanner";
 import { AssistantPanel } from "./llm";
+import { useAgentHighlights } from "./llm/highlight";
 import { ConsistencyViewer } from "./pages/ConsistencyViewer";
 import { BraggProfileViewer } from "./pages/BraggProfileViewer";
 import { DeltaPdfViewer } from "./pages/DeltaPdfViewer";
@@ -127,6 +128,7 @@ export function App() {
   // The assistant is a panel docked beside every page, not a page of its own,
   // so it can open a viewer next to the conversation.
   const dockOpen = useNavStore((s) => s.dockOpen);
+  useAgentHighlights();
   const setDockOpen = useNavStore((s) => s.setDockOpen);
   // A volume sent by the NeXus Viewer lands on the Configure page.
   const showConfig = useCallback(() => setTab("config"), [setTab]);

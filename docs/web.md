@@ -358,7 +358,12 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
   stage's worst plane for `assess_stage`, the strongest fill bias for
   `texture_check`), the 3D-ΔPDF at its section, the Bragg profile with its peak
   selected, the Q–R band transform for the back-FFT check, or the Execution
-  page for the run log. Each step's *Show* reopens its figure. A model or server
+  page for the run log. Each step's *Show* reopens its figure. While the panel
+  is open, the cards the agent is on breathe a blue edge (`llm/highlight.ts`,
+  `.ai-glow`): those a running step works on (narrowed to the stage a run or a
+  tuning run is on), then those its answer mentions, for 8 s after the reply.
+  The cleanup, 3D-ΔPDF and Q–R views, the Bragg profile panels, the Execution
+  stages and log, and the Configure stage boxes all take it. A model or server
   that refuses tools gets the plain request and a note saying so.
   - *Reading*: `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
     `measure_dpdf_cut`, `line_profile`, `bragg_peaks`, `consistency_details`,

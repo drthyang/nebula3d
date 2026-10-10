@@ -15,6 +15,7 @@ import { useDatasets } from "../api/hooks";
 import type { JobEvent } from "../api/types";
 import { useDatasetStore } from "../state/datasetStore";
 import { STAGES, STAGE_LABELS, usePipelineStore } from "../state/pipelineStore";
+import { litStage, useHighlightKeys } from "../llm/highlight";
 
 type Phase = "idle" | "running" | "done" | "cancelled" | "error";
 type NodeState = "done" | "active" | "failed" | "cancelled" | "pending";
@@ -83,6 +84,7 @@ function condense(events: JobEvent[], times: number[]): { ev: JobEvent; t: numbe
 }
 
 export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
+  const lit = useHighlightKeys();
   const { events, times, terminal, running, flatten, jobId } = usePipelineStore(
     useShallow((s) => ({
       events: s.events,
@@ -289,7 +291,7 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
       ns === "done" ? "✓" : ns === "failed" ? "✕" : ns === "cancelled" ? "–" : ns === "active" ? "" : String(stepNo);
     const connectorDone = ns === "done";
     return (
-      <div className="exec-stage" key={stage}>
+      <div className={`exec-stage${litStage(lit, stage) ? " ai-glow" : ""}`} key={stage}>
         <div className="exec-stage-rail">
           <div className={`exec-node ${ns}`}>{nodeContent}</div>
           {idx < visibleStages.length - 1 && (
@@ -478,7 +480,7 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
           </div>
 
           {/* log */}
-          <div className="exec-panel">
+          <div className={`exec-panel${lit.includes("log") ? " ai-glow" : ""}`}>
             <div className="exec-panel-head">
               <span className="exec-panel-title">Event log</span>
               {phase === "running" && (

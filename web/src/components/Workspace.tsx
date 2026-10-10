@@ -19,6 +19,7 @@ export interface WorkspaceView {
   actions?: ReactNode; // extra header buttons, before the layout buttons
   footer?: ReactNode;
   onResetView?: () => void;
+  glow?: boolean; // the assistant is on this view: a breathing edge
   children: ReactNode; // the view body
 }
 
@@ -105,7 +106,7 @@ export function Workspace({
         return (
           <section
             key={v.id}
-            className={`view${isPrimary ? " primary" : ""}${thumb ? " thumb" : ""}`}
+            className={`view${isPrimary ? " primary" : ""}${thumb ? " thumb" : ""}${v.glow ? " ai-glow" : ""}`}
             tabIndex={thumb ? 0 : undefined}
             aria-label={thumb ? "Show this view large" : undefined}
             onClickCapture={(e) => {
