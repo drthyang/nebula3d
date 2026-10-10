@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The conversation survives a reload.** Reloading the page emptied
+  NEBULA Pilot's transcript and the unsent draft. Both are now kept for the
+  tab (sessionStorage, up to about 1 MB of the newest turns) and come back
+  after a reload; *Clear* forgets them. A reply still being written is lost,
+  and its question says it was cut off.
 - **A full context window says how to fix it.** When a local model's
   context window is too small, NEBULA Pilot showed the server's raw
   message. It now adds what to do: in LM Studio, raise the model's Context
