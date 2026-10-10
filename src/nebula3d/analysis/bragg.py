@@ -279,6 +279,16 @@ class _BraggProfile:
                          for a in range(3)])
 
 
+# The Bragg width a search candidate is compared with (search_max_width_ratio):
+# measured at up to this many of the strongest integer peaks, and used only
+# when there are at least _WIDTH_REFERENCE_MIN of them.
+_WIDTH_REFERENCE_PEAKS = 40
+_WIDTH_REFERENCE_MIN = 5
+# A search candidate within this share of the node spacing (per axis) of a
+# punched Bragg node is that peak's wing, punched whatever its width.
+_WING_REACH = 0.25
+
+
 @dataclass
 class BraggRemover:
     """Detect and punch Bragg reflections in an HKLVolume.
@@ -498,6 +508,18 @@ class BraggRemover:
         ``mode="both"`` for integer Bragg plus off-integer satellites elsewhere.
     search_exclude_h_half_width:
         Half-width in H around each protected search-exclusion centre.
+    search_max_width_ratio:
+        Keep the search to peaks as sharp as Bragg peaks (``mode="both"``): a
+        search candidate whose measured RMS width (:meth:`measure_peak_sigmas`)
+        exceeds this × the dataset's Bragg width along any axis is a broad
+        maximum — short-range-order diffuse, not a spurious reflection — and is
+        left unpunched.  The Bragg width is the per-axis median over the
+        strongest integer peaks (needs at least five), floored at one voxel: a
+        resolution-limited peak measures 0, or too sharp to measure at all.
+        A candidate within a quarter of the node spacing of a punched Bragg
+        node is that peak's wing and is punched whatever its width: very strong
+        peaks reach past their punch, and their wings measure broad.
+        ``None`` (default) punches every candidate.
     subtract_profile:
         Reserved (profile-subtraction path not implemented in this pass).
     symmetry_ops:
@@ -602,6 +624,7 @@ class BraggRemover:
     # (the q=1/3 satellite family) — not just a fixed centre list.  Uses the same
     # search_exclude_h_half_width.  ``None`` disables.
     search_exclude_h_fractions: tuple[float, ...] | None = None
+    search_max_width_ratio: float | None = None
     subtract_profile: bool = False
     # Laue operations the data were symmetrised with: punch decisions are
     # shared across each symmetry orbit (see the class docstring).
@@ -1419,11 +1442,57 @@ class BraggRemover:
                 reference=self._scaling_reference(integer, rejected))
             keep = self._symmetric_keep(vol, keep)
             residual = dataclasses.replace(vol, mask=vol.mask & keep)
-            search = self._detect_search(residual, rejected)
+            search = self._sharp_only(vol, residual, self._detect_search(residual, rejected), integer)
             peaks = integer + self._profile_footprints(vol, search, profile)
         else:
             raise ValueError(f"Unknown mode: {self.mode!r}")
         return peaks, self._scaling_reference(peaks, rejected), profile
+
+    def _sharp_only(
+        self, vol: HKLVolume, residual: HKLVolume,
+        search: list[_PeakPunch], integer: list[_PeakPunch],
+    ) -> list[_PeakPunch]:
+        """The *search* peaks no broader than ``search_max_width_ratio`` × the
+        Bragg width on every axis (see that parameter).
+
+        The Bragg width is measured on *vol* at the strongest *integer* peaks;
+        each candidate on the *residual* (the integer punches masked), so a
+        nearby Bragg tail does not widen it.  A candidate that cannot be
+        measured, or that lies on a punched node's wing, is kept as a peak.
+        """
+        ratio = self.search_max_width_ratio
+        if ratio is None or not search:
+            return search
+        steps = np.array([
+            abs(float(a[1] - a[0])) if len(a) > 1 else np.inf
+            for a in (vol.h_axis, vol.k_axis, vol.l_axis)])
+        strongest = sorted(integer, key=lambda r: -r.intensity)[:_WIDTH_REFERENCE_PEAKS]
+        if len(strongest) < _WIDTH_REFERENCE_MIN:
+            self._search_report["width_reference"] = None
+            return search
+        # A Bragg peak too sharp for the core measurement is resolution-limited:
+        # it counts as 0, which the one-voxel floor then lifts.
+        widths = np.array([
+            w if w is not None else (0.0, 0.0, 0.0)
+            for w in (self.measure_peak_sigmas(vol, r.center_hkl) for r in strongest)],
+            dtype=np.float64)
+        reference = np.maximum(np.median(widths, axis=0), steps)
+        self._search_report["width_reference"] = tuple(float(w) for w in reference)
+        # The punched Bragg nodes, and how near one a wing lies (per axis).
+        nodes = np.array([r.source_node_hkl for r in integer if r.source_node_hkl is not None],
+                         dtype=np.float64).reshape(-1, 3)
+        reach = _WING_REACH * np.asarray(self.supercell, dtype=np.float64)
+        sharp = []
+        for peak in search:
+            centre = np.asarray(peak.center_hkl, dtype=np.float64)
+            if nodes.size and bool(np.any(np.all(np.abs(nodes - centre) <= reach, axis=1))):
+                sharp.append(peak)  # a Bragg wing
+                continue
+            w = self.measure_peak_sigmas(residual, peak.center_hkl)
+            if w is None or bool(np.all(np.asarray(w) <= float(ratio) * reference)):
+                sharp.append(peak)
+        self._search_report["broad_kept"] = len(search) - len(sharp)
+        return sharp
 
     def _scaling_reference(
         self, peaks: list[_PeakPunch], rejected: list[float] | None = None,

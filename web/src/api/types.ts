@@ -208,6 +208,7 @@ export interface StageParamsIn {
   punch_search_floor?: number;
   punch_search_protect_h?: number[];
   punch_search_protect_half_width?: number;
+  punch_search_max_width_ratio?: number;
   punch_margin?: number;
   // Q-space punch: frame "spherical" (rρ,rθ,rφ, default) or "q" (a*,b*,c*) (Å⁻¹)
   punch_frame?: string;

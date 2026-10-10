@@ -1,9 +1,10 @@
 // The Configure form follows its dataset: switching back brings back the
-// settings last used with it, and a dataset seen first keeps the form.
+// settings last used with it; a dataset seen first keeps the form when it is
+// the same sample, and starts from the defaults when it is another.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { rememberConfig } from "../configMemory";
+import { rememberConfig, sampleOf } from "../configMemory";
 import { savedDatasetId, useDatasetStore } from "../datasetStore";
 import { usePipelineStore } from "../pipelineStore";
 
@@ -16,7 +17,7 @@ beforeEach(() => {
     setItem: (k: string, v: string) => void store.set(k, v),
     removeItem: (k: string) => void store.delete(k),
   });
-  useDatasetStore.setState({ datasetId: "45K" });
+  useDatasetStore.setState({ datasetId: "S-45K-a" });
   usePipelineStore.setState({ punchProtectH: "", flattenIon: "" });
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -25,16 +26,35 @@ describe("rememberConfig", () => {
   it("brings back each dataset's settings when switching between them", () => {
     const stop = rememberConfig();
     usePipelineStore.getState().patch({ punchProtectH: "none", flattenIon: "Tb3+" });
-    useDatasetStore.getState().setDataset("22K");
+    useDatasetStore.getState().setDataset("S-22K-b");
     // first seen: keeps the form as it stands
     expect(usePipelineStore.getState()).toMatchObject({ punchProtectH: "none", flattenIon: "Tb3+" });
     usePipelineStore.getState().patch({ punchProtectH: "1/3, 2/3" });
-    useDatasetStore.getState().setDataset("45K");
+    useDatasetStore.getState().setDataset("S-45K-a");
     expect(usePipelineStore.getState().punchProtectH).toBe("none");
-    useDatasetStore.getState().setDataset("22K");
+    useDatasetStore.getState().setDataset("S-22K-b");
     expect(usePipelineStore.getState().punchProtectH).toBe("1/3, 2/3");
-    expect(savedDatasetId()).toBe("22K");
+    expect(savedDatasetId()).toBe("S-22K-b");
     stop();
+  });
+
+  it("starts another sample from the defaults, not the last sample's facts", () => {
+    const stop = rememberConfig();
+    usePipelineStore.getState().patch({ punchProtectH: "none", flattenIon: "Tb3+", punchSupercellH: "1" });
+    useDatasetStore.getState().setDataset("Other-90K-hex");
+    expect(usePipelineStore.getState()).toMatchObject({ punchProtectH: "", flattenIon: "", punchSupercellH: "" });
+    usePipelineStore.getState().patch({ punchSupercellH: "2" });
+    useDatasetStore.getState().setDataset("S-45K-a");
+    expect(usePipelineStore.getState()).toMatchObject({ flattenIon: "Tb3+", punchSupercellH: "1" });
+    useDatasetStore.getState().setDataset("Other-90K-hex");
+    expect(usePipelineStore.getState().punchSupercellH).toBe("2");
+    stop();
+  });
+
+  it("names the sample before the temperature", () => {
+    expect(sampleOf("Fe3Ge2-90K-all-hex-h-k-0")).toBe("Fe3Ge2");
+    expect(sampleOf("TbTi3Bi4-22K-mmm-0-k-l")).toBe("TbTi3Bi4");
+    expect(sampleOf("demo")).toBe("demo");
   });
 
   it("ignores job events, which are not settings", () => {
@@ -42,7 +62,7 @@ describe("rememberConfig", () => {
     const before = store.get("nebula3d.configByDataset.v1");
     usePipelineStore.setState({ events: [{ type: "progress", message: "x" }] });
     expect(store.get("nebula3d.configByDataset.v1")).toBe(before);
-    expect(JSON.parse(before!)["45K"]).not.toHaveProperty("events");
+    expect(JSON.parse(before!)["S-45K-a"]).not.toHaveProperty("events");
     stop();
   });
 });

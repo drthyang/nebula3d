@@ -1,8 +1,10 @@
 // The Configure form remembered per dataset, in this browser.  Switching to a
-// dataset brings back the settings last used with it (one seen for the first
-// time keeps the form as it stands), and a reload keeps both the dataset and
-// its settings.  Facts about a sample — the protected satellite planes, the
-// magnetic ion — then stay with their dataset instead of leaking to the next.
+// dataset brings back the settings last used with it, and a reload keeps both
+// the dataset and its settings.  A dataset seen for the first time keeps the
+// form as it stands when it is the same sample at another temperature, and
+// starts from the defaults when it is another sample.  Facts about a sample —
+// the protected satellite planes, the magnetic ion, the punch cell — then stay
+// with their sample instead of leaking to the next.
 
 import { useEffect } from "react";
 
@@ -33,6 +35,13 @@ const writeSaved = (saved: Saved): void => {
   }
 };
 
+/** The sample a dataset id names: the part before its temperature token
+ * ("Fe3Ge2-90K-…" → "Fe3Ge2"), else its first segment. */
+export function sampleOf(id: string): string {
+  const m = /^(.*?)-?\d+(?:\.\d+)?K(?:-|$)/i.exec(id);
+  return m ? m[1] : id.split("-")[0];
+}
+
 /** The settings in the pipeline store's state (no job state, no actions). */
 export function configOf(state: object): Partial<PipelineConfig> {
   return Object.fromEntries(
@@ -50,7 +59,9 @@ export function rememberConfig(): () => void {
     saved[current] = configOf(usePipelineStore.getState());
     writeSaved(saved);
   };
+  const defaults = configOf(usePipelineStore.getInitialState());
   const switchTo = (id: string | undefined) => {
+    const previous = current;
     current = id;
     if (!id) return;
     try {
@@ -58,14 +69,13 @@ export function rememberConfig(): () => void {
     } catch {
       // not remembered
     }
-    const known = readSaved()[id];
+    const known = readSaved()[id] ?? (previous && sampleOf(previous) !== sampleOf(id) ? defaults : null);
     if (known) {
       applying = true;
       usePipelineStore.getState().patch(known);
       applying = false;
-    } else {
-      save();
     }
+    if (!readSaved()[id]) save();
   };
   switchTo(current);
   const offDataset = useDatasetStore.subscribe((s) => {

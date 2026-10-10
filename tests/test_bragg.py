@@ -705,3 +705,48 @@ def test_invert_delta_pdf_requires_metadata():
         z_axis=np.arange(4), q_max=1.0, apodization="none")
     with pytest.raises(ValueError, match="inverse metadata"):
         invert_delta_pdf(bare)
+
+
+def _bragg_with_offnode_peaks():
+    """Sharp Gaussian Bragg peaks at integer nodes, plus two off-node maxima of
+    the same height: one as sharp as the Bragg peaks (a spurious reflection),
+    one three times broader along l (a short-range-order maximum)."""
+    rng = np.random.default_rng(3)
+    ax = np.round(np.arange(-4.0, 4.0 + 1e-9, 0.1), 6)
+    data = rng.uniform(0.5, 1.5, (ax.size,) * 3)
+    vol = HKLVolume.from_arrays(data, (ax[0], ax[-1]), (ax[0], ax[-1]), (ax[0], ax[-1]),
+                               ub_matrix=2 * np.pi * np.eye(3) / 4.0)
+    H, K, L = np.meshgrid(vol.h_axis, vol.k_axis, vol.l_axis, indexing="ij")
+
+    def blob(c, amp, s):
+        return amp * np.exp(-0.5 * (((H - c[0]) / s[0]) ** 2 + ((K - c[1]) / s[1]) ** 2
+                                    + ((L - c[2]) / s[2]) ** 2))
+    for node in [(1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (1, 0, 1), (0, 1, 1),
+                 (2, 0, 0), (0, 2, 0), (1, 1, 1), (-1, 1, 0)]:
+        vol.data += blob(node, 300.0, (0.06, 0.06, 0.06))
+    sharp, broad, wing = (0.5, 1.5, 2.5), (1.5, 0.5, 1.5), (2.0, 0.0, 0.2)
+    vol.data += blob(sharp, 80.0, (0.06, 0.06, 0.06))
+    vol.data += blob(broad, 80.0, (0.06, 0.06, 0.3))
+    vol.data += blob(wing, 80.0, (0.06, 0.06, 0.3))  # a broad wing of (2, 0, 0)
+    return vol, sharp, broad, wing
+
+
+def test_search_max_width_ratio_leaves_broad_maxima():
+    """The width test keeps the search to Bragg-sharp peaks: a spurious peak as
+    sharp as the Bragg peaks is punched, a short-range-order maximum three
+    times broader along l is left — and without the test both are punched.
+    A broad wing beside a punched Bragg node is punched all the same."""
+    vol, sharp, broad, wing = _bragg_with_offnode_peaks()
+    at = lambda c: tuple(int(np.argmin(np.abs(a - x))) for a, x in
+                         zip((vol.h_axis, vol.k_axis, vol.l_axis), c))
+    common = dict(mode="both", **_q_radii(vol, 0.15, 0.15, 0.15), min_intensity=10.0,
+                  search_n_mad=6.0, search_min_intensity=10.0, search_q_step=0.25,
+                  force_origin=False)
+    plain = BraggRemover(**common).build_mask(vol)
+    assert not plain[at(sharp)] and not plain[at(broad)]
+    gated = BraggRemover(**common, search_max_width_ratio=2.0)
+    keep = gated.build_mask(vol)
+    assert not keep[at(sharp)]          # spurious, Bragg-sharp: punched
+    assert keep[at(broad)]              # broad along l: left as diffuse
+    assert not keep[at(wing)]           # broad, but a Bragg peak's wing: punched
+    assert gated._search_report["broad_kept"] >= 1  # noqa: SLF001

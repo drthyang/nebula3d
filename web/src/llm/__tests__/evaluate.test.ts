@@ -60,6 +60,26 @@ describe("evaluateStage", () => {
     expect(headline("punch", e)).toBe("0 missed at nodes · 0 off-lattice (0 on protected planes) · punched 0.04");
   });
 
+  it("counts a ring only where two planes see it; a one-plane bump is crystal scattering", async () => {
+    const g = (r: number, r0: number) => Math.exp(-((r - r0) ** 2) / 0.5);
+    // Raw: a powder ring at r = 6 on every plane, and on h0l alone a bump at
+    // r = 12.  Ring-removed: the ring over-shot by 20 %, the h0l bump left.
+    api.fetchSlice.mockImplementation(async (id: string, plane: string) =>
+      makeSlice(161, 161, (x, y) => {
+        const r = Math.hypot(x, y);
+        const bump = plane === "h0l" ? 4 * g(r, 12) : 0;
+        return id.endsWith("raw") ? 1 + 8 * g(r, 6) + bump : 1 - 0.2 * g(r, 6) + bump;
+      }, { half: 20 }),
+    );
+    const e = await evaluateStage("rings", dataset);
+    const dent = e.worst_ring_dent as { at: number; plane: string };
+    expect(dent).not.toBeNull();
+    expect(e.max_ring_left).toBe(0); // the h0l-only bump is not a ring left over
+    const bumps = e.single_plane_bumps as { plane: string; at: number }[];
+    expect(bumps.map((b) => b.plane)).toEqual(["h0l"]);
+    expect(bumps[0].at).toBeGreaterThan(dent.at);
+  });
+
   it("names the plane and |Q| of the worst ring residual in the headline", () => {
     const e = {
       mean_ring_energy_ratio: 0.24,

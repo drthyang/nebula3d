@@ -198,8 +198,8 @@ describe("update_settings", () => {
   });
 
   it("refuses settings outside the catalog and values out of range", async () => {
-    const unknown = await run("update_settings", { changes: { punchSupercellH: 2 } });
-    expect(unknown.text).toMatch(/invalid arguments — punchSupercellH cannot be changed/);
+    const unknown = await run("update_settings", { changes: { flattenIon: "Fe2+" } });
+    expect(unknown.text).toMatch(/invalid arguments — flattenIon cannot be changed/);
     const range = await run("update_settings", { changes: { punchMinSig: 1000 } });
     expect(range.text).toMatch(/punchMinSig must be within/);
     expect(usePipelineStore.getState().punchMinSig).toBe("");
@@ -214,6 +214,9 @@ describe("update_settings", () => {
     expect(usePipelineStore.getState().punchProtectH).toBe("0.5");
     const bad = await run("update_settings", { changes: { punchProtectH: "thirds" } });
     expect(bad.text).toMatch(/H fractions/);
+    // The punch cell, for a volume indexed on a doubled cell.
+    await run("update_settings", { changes: { punchSupercellH: 2, punchSupercellK: 2, punchSupercellL: 2 } });
+    expect(usePipelineStore.getState()).toMatchObject({ punchSupercellH: "2", punchSupercellK: "2", punchSupercellL: "2" });
   });
 });
 

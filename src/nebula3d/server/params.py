@@ -98,6 +98,13 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
             raise ValueError("punch_search_protect_half_width must not be negative")
         p.punch = dataclasses.replace(
             p.punch, search_exclude_h_half_width=sp.punch_search_protect_half_width)
+    if sp.punch_search_max_width_ratio is not None:
+        # 0 switches the width test off; a ratio below 1 would leave even
+        # Bragg-sharp candidates.
+        ratio = sp.punch_search_max_width_ratio
+        if ratio != 0 and ratio < 1:
+            raise ValueError("punch_search_max_width_ratio must be 0 (off) or at least 1")
+        p.punch = dataclasses.replace(p.punch, search_max_width_ratio=ratio or None)
     if sp.punch_mode is not None:
         p.punch = dataclasses.replace(p.punch, mode=sp.punch_mode)
     if any(v is not None for v in

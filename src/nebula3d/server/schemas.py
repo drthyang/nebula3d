@@ -144,6 +144,7 @@ class StageParamsIn(BaseModel):
     # their half width in r.l.u.
     punch_search_protect_h: list[float] | None = None
     punch_search_protect_half_width: float | None = None
+    punch_search_max_width_ratio: float | None = None
     punch_mode: str | None = None
     # Supercell the volume is indexed on, per axis (≥ 1): integer-mode Bragg
     # nodes are the parent lattice's only.
