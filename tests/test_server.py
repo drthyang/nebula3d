@@ -684,8 +684,12 @@ def test_build_params_punch_search_floor_and_protected_planes():
     q = punch()
     assert q.search_exclude_h_fractions == base.search_exclude_h_fractions
     assert q.search_min_intensity == base.search_min_intensity
+    assert punch(punch_search_max_width_ratio=2.5).search_max_width_ratio == 2.5
+    assert punch(punch_search_max_width_ratio=0).search_max_width_ratio is None  # 0 = off
+    assert q.search_max_width_ratio is None
     for bad in ({"punch_search_floor": 0.0}, {"punch_search_protect_h": [1.2]},
-                {"punch_search_protect_half_width": -0.1}):
+                {"punch_search_protect_half_width": -0.1},
+                {"punch_search_max_width_ratio": 0.5}):
         with pytest.raises(ValueError):
             punch(**bad)
 

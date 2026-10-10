@@ -1180,7 +1180,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       ringPooledSectors: st.ringPooledSectors,
       ringPooledWindow: st.ringPooledWindow,
       punchMinSig: st.punchMinSig,
-      punchMethod: st.punchMethod,
+      punchFootprint: st.punchFootprint,
+      punchProfileNSigma: st.punchProfileNSigma,
       punchMode: st.punchMode,
       punchSupercellH: st.punchSupercellH,
       punchSupercellK: st.punchSupercellK,
@@ -1189,6 +1190,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       punchSearchFloor: st.punchSearchFloor,
       punchProtectH: st.punchProtectH,
       punchProtectHalfWidth: st.punchProtectHalfWidth,
+      punchSearchMaxWidth: st.punchSearchMaxWidth,
       punchFrame: st.punchFrame,
       punchRho: st.punchRho,
       punchTheta: st.punchTheta,
@@ -1810,12 +1812,13 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   <div className="cfg-box">
                     <span className="cfg-box-eyebrow">Detection</span>
                 <div className="config-grid-3 punch-basis">
-                  <Field label="Method">
+                  <Field label="Footprint">
                   <select
-                    value={s.punchMethod}
-                    title="Bragg-punch algorithm (more shapes coming)"
-                    onChange={(e) => patch({ punchMethod: e.target.value })}
+                    value={s.punchFootprint}
+                    title="How far each peak is punched. Profile-matched (default): along each axis as far as the dataset's learned Bragg profile stays above the noise. Ellipsoid: the fixed resolution ellipsoid below, scaled with intensity."
+                    onChange={(e) => patch({ punchFootprint: e.target.value })}
                   >
+                    <option value="">Profile-matched (default)</option>
                     <option value="ellipsoid">Ellipsoid</option>
                   </select>
                 </Field>
@@ -1925,6 +1928,31 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       value={s.punchProtectHalfWidth}
                       title="Half width of each skipped H plane."
                       onChange={(e) => patch({ punchProtectHalfWidth: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <div className="config-grid-3">
+                  <Field label="Search width ×Bragg">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      placeholder="off"
+                      value={s.punchSearchMaxWidth}
+                      title="Off-lattice search: leave a candidate broader than this × the dataset's Bragg width (along any axis) as diffuse — a short-range-order maximum, not a spurious reflection. Spurious peaks are as sharp as Bragg peaks; 2 keeps them punched. Blank punches every candidate."
+                      onChange={(e) => patch({ punchSearchMaxWidth: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Profile reach ×σ">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      placeholder="0.5"
+                      value={s.punchProfileNSigma}
+                      disabled={s.punchFootprint === "ellipsoid"}
+                      title="Profile-matched footprint: each peak is punched out to where its profile falls to this × the local noise. Lower reaches further down the wings of very strong peaks; higher punches tighter."
+                      onChange={(e) => patch({ punchProfileNSigma: e.target.value })}
                     />
                   </Field>
                 </div>

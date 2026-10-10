@@ -62,7 +62,8 @@ export interface PipelineConfig {
   ringPooledWindow: string; // pooled: stack-pooling half-width (deg)
   // Significance (standard errors) a peak must reach; blank = backend default (5).
   punchMinSig: string;
-  punchMethod: string;
+  punchFootprint: string; // "" = profile-matched (the backend default) | "ellipsoid"
+  punchProfileNSigma: string; // profile footprint: punch out to where the profile falls to this × the noise
   punchMode: string;
   // Supercell the volume is indexed on (per axis); blank = 1.  Integer-mode
   // Bragg nodes are the parent lattice's only.
@@ -76,6 +77,7 @@ export interface PipelineConfig {
   punchSearchFloor: string;
   punchProtectH: string;
   punchProtectHalfWidth: string;
+  punchSearchMaxWidth: string; // search: leave candidates broader than this × the Bragg width
   // Punch ellipsoid frame: "spherical" (rρ,rθ,rφ, default) | "q" (a*,b*,c*)
   punchFrame: string;
   // Spherical-frame radii (Å⁻¹): rρ radial, rθ polar, rφ azimuth; blank = default
@@ -160,7 +162,8 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   ringPooledSectors: "",
   ringPooledWindow: "",
   punchMinSig: "",
-  punchMethod: "ellipsoid",
+  punchFootprint: "",
+  punchProfileNSigma: "",
   punchMode: "",
   punchSupercellH: "",
   punchSupercellK: "",
@@ -169,6 +172,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   punchSearchFloor: "",
   punchProtectH: "",
   punchProtectHalfWidth: "",
+  punchSearchMaxWidth: "",
   punchFrame: "spherical",
   punchRho: "",
   punchTheta: "",
@@ -355,6 +359,9 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   const protect = parseFractions(s.punchProtectH);
   if (protect) params.punch_search_protect_h = protect;
   if (s.punchProtectHalfWidth) params.punch_search_protect_half_width = Number(s.punchProtectHalfWidth);
+  if (s.punchSearchMaxWidth) params.punch_search_max_width_ratio = Number(s.punchSearchMaxWidth);
+  if (s.punchFootprint) params.punch_footprint = s.punchFootprint;
+  if (s.punchProfileNSigma) params.punch_profile_n_sigma = Number(s.punchProfileNSigma);
   if (s.punchMargin) params.punch_margin = Number(s.punchMargin);
   // Punch frame: spherical (rρ,rθ,rφ) by default, or the legacy a*/b*/c* q-frame.
   const frame = s.punchFrame === "q" ? "q" : "spherical";

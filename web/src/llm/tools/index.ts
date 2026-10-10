@@ -976,7 +976,7 @@ const updateSettings: AgentTool = {
     "Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. " +
     `These method choices and thresholds can be changed: ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
     `These facts about the sample only when the user asks for that change, never to improve a result: ${SAMPLE_PARAMS.map((p) => `${p.key} (${allowedValues(p)}; ${p.help})`).join(" ")} ` +
-    "The supercell, magnetic ion and |Q| band stay with the user. " +
+    "The magnetic ion and |Q| band stay with the user. " +
     "Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings " +
     "the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings " +
     "already at the value are left as they are. Returns each change and the stage to rerun from.",

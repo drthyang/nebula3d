@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- **The off-lattice search can leave broad maxima alone.** It punched any
+  candidate tall enough, so on a hexagonal volume whose superstructure is
+  short-range order (maxima about 4 × broader along l than the Bragg
+  peaks), it cut out the strongest of the very signal a 3D-ΔPDF images.
+  *Search width ×Bragg* (`punch_search_max_width_ratio`, off by default)
+  leaves a candidate broader than that many Bragg widths along any axis.
+  The Bragg width is measured at the strongest integer peaks. A candidate
+  within a quarter of the node spacing of a punched Bragg node is that
+  peak's wing and is punched anyway. Spurious reflections are as sharp as
+  Bragg peaks on every volume measured, so 2 keeps them punched.
+- **The Configure page shows the punch footprint that runs.** Its "Method"
+  select offered only *Ellipsoid* and was never sent, while the pipeline
+  punched with the profile-matched footprint. *Footprint* now offers
+  profile-matched (the default) and ellipsoid, with the profile's reach
+  (*Profile reach ×σ*). NEBULA Pilot can change both, and can set the punch
+  cell when asked.
+- **A new sample starts from the default settings.** A dataset seen for
+  the first time used to inherit the form as it stood, so a second compound
+  started with the first one's magnetic ion and protected planes. Another
+  temperature of the same sample still carries the settings over.
+- **Only rings seen on two planes count as rings.** A powder ring is
+  isotropic. A bump on one plane only is the crystal's own scattering,
+  which the ring removal must leave. It was read as a ring "left over".
+  It is now listed apart.
+- **The back-FFT check is described for what it is.** Without a band or
+  crop the round trip is the identity, so r ≈ 1 only shows the transform
+  ran correctly. The model was told it showed the ΔPDF was trustworthy.
 - **The AI Assistant is now NEBULA Pilot.** The sidebar, the panel and the
   model's own introduction use the new name.
 - **Ring removal is judged at each ring.** For every powder ring in the raw

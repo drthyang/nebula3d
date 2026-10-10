@@ -22,6 +22,9 @@ const DPDF_CUTS: Cut[] = [
 
 export type StageEvaluation = Record<string, unknown>;
 
+// Two planes' rings within this |Q| (Å⁻¹) are the same powder ring.
+const RING_MATCH_Q = 0.1;
+
 // Fraction of the voxels measured before the punch that the punch removed.
 function punchedFraction(before: Float32Array | undefined, after: Float32Array | undefined): number | null {
   if (!before || !after || before.length !== after.length) return null;
@@ -88,22 +91,35 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
 
   if (stage === "rings") {
     const r = contexts.map((c) => c.context.ring_removal);
-    // The largest significant dent / leftover over the planes, with where it is.
-    const worst = (key: "worst_ring_dent" | "worst_ring_left") =>
-      cuts.reduce<{ plane: string; at: number; residual_fraction: number } | null>((best, c, i) => {
-        const w = r[i]?.[key];
-        return w && (!best || Math.abs(w.residual_fraction) > Math.abs(best.residual_fraction))
-          ? { plane: c.plane, at: w.at, residual_fraction: w.residual_fraction }
-          : best;
-      }, null);
+    // A powder ring is isotropic: it shows at one |Q| on every plane.  A bump on
+    // a single plane is the crystal's own scattering (Bragg tails, a diffuse
+    // shell), which the ring stage rightly leaves, so only rings seen on two or
+    // more planes count when more than one plane was measured.
+    const all = cuts.flatMap((c, i) => (r[i]?.ring_residuals ?? []).map((x) => ({ plane: c.plane, ...x })));
+    const planesMeasured = r.filter((x) => x?.ring_residuals).length;
+    const isRing = (x: { plane: string; at: number }) =>
+      planesMeasured < 2 || new Set(all.filter((y) => Math.abs(y.at - x.at) <= RING_MATCH_Q).map((y) => y.plane)).size >= 2;
+    const rings = all.filter((x) => x.significant && isRing(x));
+    const worst = (sign: 1 | -1) =>
+      rings.reduce<{ plane: string; at: number; residual_fraction: number } | null>(
+        (best, x) =>
+          sign * x.residual_fraction > 0 && (!best || sign * x.residual_fraction > sign * best.residual_fraction)
+            ? { plane: x.plane, at: x.at, residual_fraction: x.residual_fraction }
+            : best,
+        null,
+      );
+    const dent = worst(-1);
+    const left = worst(1);
     return {
       mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),
       max_over_subtraction_fraction: max(r.map((x) => x?.over_subtraction_fraction)),
       // The deepest dent and largest leftover at the raw rings, over the planes.
-      max_ring_dent: max(r.map((x) => (x?.worst_ring_dent ? -x.worst_ring_dent.residual_fraction : 0))),
-      max_ring_left: max(r.map((x) => x?.worst_ring_left?.residual_fraction ?? 0)),
-      worst_ring_dent: worst("worst_ring_dent"),
-      worst_ring_left: worst("worst_ring_left"),
+      max_ring_dent: planesMeasured ? roundSig(dent ? -dent.residual_fraction : 0) : null,
+      max_ring_left: planesMeasured ? roundSig(left ? left.residual_fraction : 0) : null,
+      worst_ring_dent: dent,
+      worst_ring_left: left,
+      // Significant bumps on one plane only: crystal scattering, not rings.
+      single_plane_bumps: all.filter((x) => x.significant && !isRing(x)).map(({ plane, at, residual_fraction }) => ({ plane, at, residual_fraction })),
       per_plane: per((i) => r[i] && {
         ring_energy_ratio: r[i]!.ring_energy_ratio,
         after_ring_energy: r[i]!.after_ring_energy,

@@ -467,6 +467,9 @@ class PunchParams:
     search_exclude_h_centers: tuple[float, ...] | None = None
     search_exclude_h_half_width: float = 0.08
     search_exclude_h_fractions: tuple[float, ...] | None = (0.3333, 0.6667)
+    # Search candidates broader than this × the Bragg width (any axis) are left
+    # unpunched as short-range-order maxima; None punches them all.
+    search_max_width_ratio: float | None = None
     margin: float = 0.02
     max_radius_scale: float = 2.0
     # K–L powder-ring φ-tail: superseded by the spherical frame's rφ (azimuthal)
@@ -1192,6 +1195,7 @@ def bragg_remover(p: PunchParams) -> BraggRemover:
         search_exclude_h_centers=p.search_exclude_h_centers,
         search_exclude_h_half_width=p.search_exclude_h_half_width,
         search_exclude_h_fractions=p.search_exclude_h_fractions,
+        search_max_width_ratio=p.search_max_width_ratio,
         punch_frame=p.punch_frame, punch_q_radius=p.punch_q_radius,
         punch_q_radii=p.punch_q_radii,
         punch_spherical_radii=p.punch_spherical_radii,
@@ -1229,8 +1233,11 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         if "diffuse_scatter" in found:
             floors = (f"{p.search_min_intensity:g} / {p.search_min_prominence:g} × "
                       f"diffuse scatter {found['diffuse_scatter']:.4g} = {floors}")
+        broad = found.get("broad_kept")
         _emit(progress, "punch", "progress", None,
-              f"search floors {floors}: {len(peak_records) - n_integer} peaks")
+              f"search floors {floors}: {len(peak_records) - n_integer} peaks"
+              + (f" ({broad} broader than {p.search_max_width_ratio:g} × the Bragg "
+                 "width left as diffuse)" if broad else ""))
     if p.punch_footprint == "profile":
         _emit(progress, "punch", "progress", None, (
             f"profile-matched punch: Bragg profile learned from "
