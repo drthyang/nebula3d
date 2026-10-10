@@ -109,9 +109,20 @@ spreading them into rings.
   negative lobes. A peak one voxel wide loses height and gains width where its
   centre falls between voxels.
 - **Mask:** a voxel counts as measured only when every voxel it is interpolated
-  from is measured.
+  from is measured. The rest is left as the loader leaves unmeasured space:
+  masked, with data and σ zero.
 - **σ:** interpolated like the data. This overstates it a little, because
   interpolating averages the neighbours' noise.
+
+**Trim the coverage edge first.** Voxels on the edge of the measured coverage
+are barely covered by the detectors and can sit orders of magnitude above the
+interior. On a measured unsymmetrised hexagonal volume, 90–99 % of the voxels
+above 2·10³–10⁵ were on the outermost layer, the largest at 5.5·10⁷, against
+1.7·10⁴ for the strongest Bragg peak. Interpolating and symmetrising carry
+them inward, out of reach of the pipeline's own trim at load (`edge_trim`).
+Skipping the trim once left that volume's 3D-ΔPDF dominated by them. The
+script therefore trims first (`EDGE_TRIM`, one layer by default, as the
+pipeline does), and the UB check trims a copy.
 
 `examples/refine_ub.py` writes the regridded volume in the NeXus Viewer's
 layout, optionally symmetrised (`SYMMETRISE=1`) with the operations declared in

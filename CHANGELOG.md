@@ -11,7 +11,9 @@
   - only what commutes with the symmetry operations.
 
   The fit works from low |Q| outward, and the volume can then be regridded
-  onto the refined UB. A volume symmetrised under its operations hides a
+  onto the refined UB, after the coverage edge is trimmed (its voxels can sit
+  orders of magnitude above the interior, and symmetrising would spread
+  them). A volume symmetrised under its operations hides a
   misorientation as rings around the nodes, so it takes the last fit alone;
   the orientation needs the unsymmetrised data. Peak centres are windowed
   centroids. A centroid of the voxels above half height overstated sub-voxel
@@ -25,7 +27,9 @@
   the punch cell as the Bragg nodes. It reports how far the peaks sat from
   their nodes before and after, the cell, the rotation, and the peaks'
   radial offsets by |Q| band. On a symmetrised volume it says that only what
-  the symmetry keeps could be fitted.
+  the symmetry keeps could be fitted. An unsymmetrised volume takes its
+  symmetry from the symmetrised export that names it as its source, to
+  constrain the cell.
 - **Each peak is punched to its own width.** The punch's default footprint
   is now `own`: along H, K and L each peak's line-cut FWHM (half-maximum
   crossings interpolated) defines a Gaussian, punched out to where it falls
