@@ -140,10 +140,14 @@ describe("streamChat", () => {
     expect(small).toEqual({ loaded: 8192, max: 131072 });
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:1234/api/v0/models", expect.anything());
     expect(contextWarning(small, "small")).toMatch(
-      /^small is loaded with a 8,192-token context\. .* replies will be cut off\. In LM Studio, load it again with a Context Length of 32,768 \(it supports up to 131,072\)\.$/,
+      /^small is loaded with a 8,192-token context\. .* replies will be cut off\. In LM Studio, set this model's default Context Length to 32,768 \(it supports up to 131,072\)/,
     );
     expect(contextWarning(await loadedContext("http://localhost:1234/v1", "roomy"), "roomy")).toBeNull();
-    expect(await loadedContext("http://localhost:1234/v1", "idle")).toBeNull(); // loads on first use, settings unknown
+    // Not loaded: LM Studio will load it with its defaults, which is what to change.
+    const idle = await loadedContext("http://localhost:1234/v1", "idle");
+    expect(idle).toEqual({ loaded: null, max: 262144 });
+    expect(contextWarning(idle, "idle")).toMatch(/^idle is not loaded: LM Studio will load it with its default Context Length/);
+    expect(await loadedContext("http://localhost:1234/v1", "unlisted")).toBeNull();
     // Not asked of Ollama or of a cloud provider; a server without the API says nothing.
     fetchMock.mockClear();
     expect(await loadedContext("http://localhost:11434/v1", "small")).toBeNull();
