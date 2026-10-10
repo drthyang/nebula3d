@@ -13,7 +13,15 @@ import {
   fetchSlice,
 } from "../../api/client";
 import type { Dataset } from "../../api/types";
+import { usePipelineStore } from "../../state/pipelineStore";
 import { buildPipelineContext, type PipelineContext, type StageSlices } from "./pipelineContext";
+import { datasetName } from "../../api/datasetName";
+
+// The punch's indexing supercell as the Configure page has it (blank = 1).
+const punchSupercell = (): [number, number, number] => {
+  const s = usePipelineStore.getState();
+  return [s.punchSupercellH, s.punchSupercellK, s.punchSupercellL].map((v) => Number(v) || 1) as [number, number, number];
+};
 
 export interface Cut {
   plane: string;
@@ -46,7 +54,9 @@ export const hklVolumeId = (dataset: Dataset): string | undefined =>
 export const dpdfVolumeId = (dataset: Dataset): string | undefined =>
   dataset.stages.find((s) => s.kind === "delta_pdf" && s.exists)?.volume_id;
 
-export const datasetLabel = (dataset: Dataset): string => dataset.temperature ?? dataset.stem ?? dataset.id;
+// The short name the assistant uses; with `all`, two datasets at one
+// temperature are told apart (see api/datasetName).
+export const datasetLabel = (dataset: Dataset, all: readonly Dataset[] = []): string => datasetName(dataset, all);
 
 // The context plus the raw fetched slices/metadata, so the UI can also render a
 // slice image for the vision path without re-fetching.
@@ -102,6 +112,7 @@ export async function loadPipelineContext(
     braggProfile,
     consistency: consistencyCheck?.metrics ?? null,
     slices,
+    supercell: punchSupercell(),
   });
 
   return { context, slices, lattice: hklMeta?.lattice ?? dpdfMeta?.lattice ?? null };

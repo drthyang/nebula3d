@@ -195,7 +195,10 @@ async function measureRecip(dataset: Dataset, plane: string, value: number) {
 const recipSummary = (m: Awaited<ReturnType<typeof measureRecip>>): string =>
   [
     m.ring_removal?.ring_energy_ratio != null && `ring ratio ${m.ring_removal.ring_energy_ratio}`,
-    m.bragg_punch_leftover && `${m.bragg_punch_leftover.n_suspicious} leftover peak(s)`,
+    m.bragg_punch_leftover &&
+      (m.bragg_punch_leftover.n_at_nodes != null
+        ? `${m.bragg_punch_leftover.n_at_nodes} missed at nodes, ${m.bragg_punch_leftover.n_off_nodes} off-lattice`
+        : `${m.bragg_punch_leftover.n_suspicious} leftover peak(s)`),
     m.backfill?.median_seam_sigma != null && `seam ${m.backfill.median_seam_sigma}σ`,
     m.flatten?.after_floor_max_sigma != null && `floor ≤ ${m.flatten.after_floor_max_sigma}σ`,
   ]
@@ -275,7 +278,7 @@ const describeDataset: AgentTool = {
     ]);
     const stages = dataset.stages.filter((s) => s.exists).map((s) => s.name);
     const result = {
-      dataset: datasetLabel(dataset),
+      dataset: datasetLabel(dataset, datasets),
       id: dataset.id,
       stages,
       reciprocal: meta && {
@@ -294,7 +297,7 @@ const describeDataset: AgentTool = {
         q_max: r4(dmeta.q_max),
         planes: DPDF_PLANES,
       },
-      other_datasets: datasets.filter((d) => d.id !== dataset.id).map((d) => ({ id: d.id, label: datasetLabel(d) })),
+      other_datasets: datasets.filter((d) => d.id !== dataset.id).map((d) => ({ id: d.id, label: datasetLabel(d, datasets) })),
     };
     return { result, summary: `${result.dataset}: ${stages.join(", ")}` };
   },
@@ -525,7 +528,7 @@ const compareDatasets: AgentTool = {
           if (kind === "reciprocal") {
             const m = await measureRecip(d, plane, value);
             return {
-              dataset: datasetLabel(d),
+              dataset: datasetLabel(d, datasets),
               ring_energy_ratio: m.ring_removal?.ring_energy_ratio ?? null,
               over_subtraction_fraction: m.ring_removal?.over_subtraction_fraction ?? null,
               leftover_peaks: m.bragg_punch_leftover?.n_suspicious ?? null,
@@ -537,7 +540,7 @@ const compareDatasets: AgentTool = {
           const [m, check] = await Promise.all([measureDpdf(d, plane, value), safe(fetchConsistencyCheck(d.id))]);
           const p = m.delta_pdf;
           return {
-            dataset: datasetLabel(d),
+            dataset: datasetLabel(d, datasets),
             feature_snr: p.feature_snr,
             strong_feature_fraction: p.strong_feature_fraction,
             positive_fraction: p.positive_fraction,
@@ -547,7 +550,7 @@ const compareDatasets: AgentTool = {
             back_fft_r: check?.metrics ? r4(check.metrics.pearson_r) : null,
           };
         } catch (e) {
-          return { dataset: datasetLabel(d), error: (e as Error).message };
+          return { dataset: datasetLabel(d, datasets), error: (e as Error).message };
         }
       }),
     );
@@ -654,7 +657,7 @@ const ASSESS_CHOICES = [...TUNE_STAGES, "all"] as const;
 // The per-plane number that is worse when larger, for each reciprocal stage.
 const WORSE_WHEN_LARGER: Partial<Record<TuneStage, string>> = {
   rings: "ring_energy_ratio",
-  punch: "leftover_peaks",
+  punch: "at_nodes",
   backfill: "median_seam_sigma",
   flatten: "after_floor_max_sigma",
 };
@@ -690,12 +693,15 @@ const assessStage: AgentTool = {
     const result: Record<string, unknown> = {};
     const lines: string[] = [];
     let view: ViewTarget | undefined;
+    let measuredOn: string[] | undefined;
     for (const stage of stages) {
       if (!stageVolumeId(dataset, STAGE_OUTPUT[stage])) {
         result[stage] = { missing: `no ${STAGE_OUTPUT[stage]} output yet; run_pipeline computes it` };
         continue;
       }
       const evaluation = await evaluateStage(stage, dataset);
+      const planes = Object.keys((evaluation.per_plane as object | undefined) ?? {});
+      if (!measuredOn && planes.length) measuredOn = planes.map((p) => planeLabel(p, 0));
       if (!view) {
         const plane = stage === "pdf" ? null : worstPlane(stage, evaluation);
         if (plane) view = cleanupView(plane, 0);
@@ -706,6 +712,7 @@ const assessStage: AgentTool = {
       result[stage] = { headline: headline(stage, evaluation), ...evaluation, goal: STAGE_GOALS[stage] };
       lines.push(`${TUNE_STAGE_LABELS[stage]}: ${headline(stage, evaluation)}`);
     }
+    if (measuredOn) result.measured_on = measuredOn;
     return { result, summary: lines.join(" · ") || "no stage outputs yet", view };
   },
 };
@@ -965,8 +972,9 @@ const updateSettings: AgentTool = {
     "Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. " +
     "Only these method choices and thresholds can be changed, not facts about the sample (supercell, magnetic ion, " +
     `|Q| band): ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
-    "Change them when the user asks for a change, or asks you to improve or tune the result. Returns each change " +
-    "and the stage to rerun from.",
+    "Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings " +
+    "the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings " +
+    "already at the value are left as they are. Returns each change and the stage to rerun from.",
   parameters: {
     type: "object",
     properties: {
@@ -991,6 +999,9 @@ const updateSettings: AgentTool = {
       }
     }
     const before = usePipelineStore.getState();
+    // A setting already at the value is no change: leave it out of the patch.
+    const unchanged = Object.keys(patch).filter((key) => before[key as keyof PipelineConfig] === patch[key]);
+    for (const key of unchanged) delete patch[key];
     before.patch(patch as Partial<PipelineConfig>);
     const after = usePipelineStore.getState();
     const changed = Object.keys(patch).map((key) => {
@@ -1004,8 +1015,10 @@ const updateSettings: AgentTool = {
     });
     const rerunFrom = TUNE_STAGES.find((st) => changed.some((c) => findParam(c.setting)!.stage === st));
     return {
-      result: { changed, rerun_from: rerunFrom },
-      summary: changed.map((c) => `${c.setting} ${c.from} → ${c.to}`).join(", "),
+      result: { changed, ...(unchanged.length ? { already_set: unchanged } : {}), rerun_from: rerunFrom ?? null },
+      summary: changed.length
+        ? changed.map((c) => `${c.setting} ${c.from} → ${c.to}`).join(", ")
+        : `no change: ${unchanged.join(", ")} already set`,
     };
   },
 };

@@ -27,6 +27,7 @@ import {
   type PunchPlane,
 } from "../state/pipelineStore";
 import { useHighlightKeys } from "../llm/highlight";
+import { datasetName } from "../api/datasetName";
 
 const DATASET_STAGE_BADGES = [
   { key: "raw", label: "Raw", group: "Input" },
@@ -1185,6 +1186,9 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       punchSupercellK: st.punchSupercellK,
       punchSupercellL: st.punchSupercellL,
       punchHGuard: st.punchHGuard,
+      punchSearchFloor: st.punchSearchFloor,
+      punchProtectH: st.punchProtectH,
+      punchProtectHalfWidth: st.punchProtectHalfWidth,
       punchFrame: st.punchFrame,
       punchRho: st.punchRho,
       punchTheta: st.punchTheta,
@@ -1538,7 +1542,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
           <div className="dataset-panel">
             <Field label="Dataset">
               <div className="dataset-current" title="Switch datasets from the sidebar">
-                {selectedDataset ? (selectedDataset.temperature ?? selectedDataset.stem) : "—"}
+                {selectedDataset ? datasetName(selectedDataset, datasets) : "—"}
               </div>
             </Field>
             <div className="dataset-meta">
@@ -1888,6 +1892,39 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       value={s.punchHGuard}
                       title="Integer punches stop this far from their node's H plane, so satellite planes at fractional H (e.g. H = ±1/3) stay unpunched. 0 turns the guard off."
                       onChange={(e) => patch({ punchHGuard: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <div className="config-grid-3">
+                  <Field label="Search floor ×σ">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      placeholder="27"
+                      value={s.punchSearchFloor}
+                      title="Off-lattice search: a peak must stand this many diffuse-scatter units above its shell and its neighbourhood. Lower catches weaker spurious peaks, and risks punching diffuse maxima."
+                      onChange={(e) => patch({ punchSearchFloor: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Search skips H">
+                    <input
+                      type="text"
+                      placeholder="1/3, 2/3"
+                      value={s.punchProtectH}
+                      title="Fractional H planes the off-lattice search leaves alone (real satellites, e.g. 1/3, 2/3 for q = (1/3, 0, 0)). 'none' lets the search punch everywhere; blank keeps 1/3, 2/3."
+                      onChange={(e) => patch({ punchProtectH: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="± width (r.l.u.)">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.08"
+                      value={s.punchProtectHalfWidth}
+                      title="Half width of each skipped H plane."
+                      onChange={(e) => patch({ punchProtectHalfWidth: e.target.value })}
                     />
                   </Field>
                 </div>

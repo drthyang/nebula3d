@@ -105,12 +105,19 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     const fractions = contexts.map((c) =>
       punchedFraction(c.slices.ringremoved?.data, c.slices.braggpunched?.data),
     );
+    const total = (key: "n_suspicious" | "n_at_nodes" | "n_off_nodes" | "n_skipped_noisy") =>
+      leftovers.reduce((s, l) => s + (l?.[key] ?? 0), 0);
     return {
-      total_leftover_peaks: leftovers.reduce((s, l) => s + (l?.n_suspicious ?? 0), 0),
+      total_leftover_peaks: total("n_suspicious"),
+      leftover_at_nodes: total("n_at_nodes"),
+      leftover_off_lattice: total("n_off_nodes"),
+      noisy_spikes_skipped: total("n_skipped_noisy"),
       mean_punched_fraction: mean(fractions),
       fitted_peaks: profile?.has_profile ? profile.n_peaks : null,
       per_plane: per((i) => ({
         leftover_peaks: leftovers[i]?.n_suspicious ?? null,
+        at_nodes: leftovers[i]?.n_at_nodes ?? null,
+        off_lattice: leftovers[i]?.n_off_nodes ?? null,
         strongest_leftover: leftovers[i]?.suspicious_peaks[0] ?? null,
         punched_fraction: fractions[i],
       })),
@@ -140,7 +147,7 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
     case "rings":
       return `ring ratio ${v("mean_ring_energy_ratio")} · over-sub ≤ ${v("max_over_subtraction_fraction")}`;
     case "punch":
-      return `${v("total_leftover_peaks")} leftover · punched ${v("mean_punched_fraction")}`;
+      return `${v("leftover_at_nodes")} missed at nodes · ${v("leftover_off_lattice")} off-lattice · punched ${v("mean_punched_fraction")}`;
     case "backfill":
       return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;
     case "flatten":

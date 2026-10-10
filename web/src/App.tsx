@@ -24,6 +24,7 @@ import { ReciprocalViewer } from "./pages/ReciprocalViewer";
 import { useDatasetStore, useInitializeDataset } from "./state/datasetStore";
 import { useNavStore, type Tab } from "./state/navStore";
 import { usePipelineStore } from "./state/pipelineStore";
+import { datasetName } from "./api/datasetName";
 
 
 // `short` is the label used by the compact top bar (phones and iPad portrait),
@@ -182,7 +183,7 @@ export function App() {
               {!datasets.length && <option value="">—</option>}
               {datasets.map((d) => (
                 <option key={d.id} value={d.id} title={d.raw_name}>
-                  {d.temperature ?? d.stem}
+                  {datasetName(d, datasets)}
                 </option>
               ))}
             </select>

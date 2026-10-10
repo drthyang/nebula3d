@@ -65,15 +65,44 @@ describe("ring removal metrics", () => {
 });
 
 describe("bragg punch metrics", () => {
-  it("detects a bright spike left unpunched", () => {
-    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => {
-      if (ix === 20 && iy === 20) return 100; // an un-punched peak
-      return 1 + 0.01 * ((ix * 7 + iy * 13) % 5); // mild texture
-    });
+  // Deterministic noise in [-1, 1).
+  const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;
+  // A peak a few voxels wide at (cx, cy) on a noisy field.
+  const peakAt = (cx: number, cy: number, height: number) => (ix: number, iy: number) =>
+    height * Math.exp(-((ix - cx) ** 2 + (iy - cy) ** 2) / 2);
+
+  it("finds a resolved peak left unpunched, judged against its own neighbourhood", () => {
+    const bump = peakAt(20, 20, 2);
+    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + bump(ix, iy));
     const scan = scanLeftoverPeaks(slice);
-    expect(scan.n_suspicious).toBeGreaterThanOrEqual(1);
-    expect(scan.suspicious_peaks[0].sigma).toBeGreaterThan(6);
+    expect(scan.n_suspicious).toBe(1);
+    expect(scan.suspicious_peaks[0].sigma).toBeGreaterThan(8);
     expect(scan.suspicious_peaks[0].xy).toEqual([0, 0]);
+  });
+
+  it("takes a one-voxel spike for noise, and skips a noisy region", () => {
+    const spike = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + (ix === 20 && iy === 20 ? 5 : 0));
+    expect(scanLeftoverPeaks(spike).n_suspicious).toBe(0);
+    // A loud band (x > 30) with a resolved bump in it: skipped, not reported.
+    const bump = peakAt(35, 20, 6);
+    const edge = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + (ix > 28 ? 0.6 : 0.02) * noise(ix, iy) + bump(ix, iy));
+    const scan = scanLeftoverPeaks(edge);
+    expect(scan.n_suspicious).toBe(0);
+  });
+
+  it("classes a peak at a lattice node or off-lattice when the cut is known", () => {
+    // x, y span -2..2 r.l.u.: (1, 1) is a node, (0.5, -1) is not.
+    const at = peakAt(30, 30, 2);
+    const off = peakAt(25, 10, 2);
+    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + at(ix, iy) + off(ix, iy), { half: 2 });
+    const scan = scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0] });
+    expect(scan.n_at_nodes).toBe(1);
+    expect(scan.n_off_nodes).toBe(1);
+    const byNode = Object.fromEntries(scan.suspicious_peaks.map((p) => [String(p.at_node), p.hkl]));
+    expect(byNode.true).toEqual([1, 1, 0]);
+    expect(byNode.false).toEqual([0.5, -1, 0]);
+    // On a 2× supercell, (1, 1) is no longer a parent node.
+    expect(scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], supercell: [2, 2, 1] }).n_at_nodes).toBe(0);
   });
 
   it("finds nothing on a punched (NaN-holed) smooth field", () => {
@@ -223,5 +252,14 @@ describe("flatten metrics", () => {
     const m = flattenMetrics(before, partial);
     expect(m.after_floor_max_sigma!).toBeGreaterThan(3);
     expect(m.floor_after![2]).toBeGreaterThan(m.floor_after![0]);
+  });
+
+  it("judges only the shells inside the fit range", () => {
+    // A smooth offset in the direct-beam core (r < 6) is outside the 8–40 range.
+    const core = makeSlice(81, 81, (x, y) => diffuse(x, y) + (Math.hypot(x, y) < 6 ? 6 : 0));
+    expect(flattenMetrics(before, core).after_floor_max_sigma!).toBeGreaterThan(3);
+    expect(flattenMetrics(before, core, undefined, [8, 40]).after_floor_max_sigma!).toBeLessThan(1);
+    // A misfit inside the range still shows.
+    expect(flattenMetrics(before, partial, undefined, [8, 40]).after_floor_max_sigma!).toBeGreaterThan(2);
   });
 });

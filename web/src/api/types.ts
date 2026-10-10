@@ -203,6 +203,11 @@ export interface StageParamsIn {
   punch_supercell_l?: number;
   // Integer-punch H guard (r.l.u.); 0 turns it off.
   punch_h_guard?: number;
+  // Off-lattice search: floor (× diffuse scatter), protected H fractions ([]
+  // = none) and their half width (r.l.u.).
+  punch_search_floor?: number;
+  punch_search_protect_h?: number[];
+  punch_search_protect_half_width?: number;
   punch_margin?: number;
   // Q-space punch: frame "spherical" (rρ,rθ,rφ, default) or "q" (a*,b*,c*) (Å⁻¹)
   punch_frame?: string;

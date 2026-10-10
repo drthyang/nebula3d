@@ -22,7 +22,7 @@ export const STAGE_GOALS: Record<TuneStage, string> = {
   rings:
     "Remove powder/Al rings: mean_ring_energy_ratio as low as the trials reach on every plane (its floor is set by the diffuse, not 0; near 0.4–0.5 can be ring-free), while over_subtraction_fraction and after_negative_fraction stay small (a few percent from noise). Lower ring energy bought by over-subtracting (negatives rising) is worse, not better.",
   punch:
-    "Remove every sharp Bragg/satellite peak (leftover_peaks → 0 on every plane) while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance punches noise and diffuse, raising it leaves weak peaks.",
+    "Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) are satellites or spurious peaks the search punches unless their H planes are protected, so fewer is better only where they are spurious. Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.",
   backfill:
     "Fill punched holes seamlessly: median_seam_sigma ≲ 1, bright_fill_fraction small (no bright plugs where peaks were), checkerboard_fraction near 0.5 (near 1 is a periodic interpolation artefact).",
   flatten:

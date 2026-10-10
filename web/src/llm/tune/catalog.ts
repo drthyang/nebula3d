@@ -133,7 +133,16 @@ export const TUNE_PARAMS: TuneParam[] = [
     min: 0,
     max: 0.3,
     defaultValue: 0.12,
-    help: "Integer punches stop this far (r.l.u.) from their node's H plane so satellite planes at fractional H stay unpunched; 0 turns the guard off.",
+    help: "Integer-node punches only: each node's punch stops this far (r.l.u.) from the node's H plane, so the H planes between nodes (e.g. satellites at H = n ± 1/3) stay unpunched. 0 turns the guard off and lets every node's punch run along H, discarding the diffuse there. Not the off-lattice search's protected H planes, which are a fact about the sample set on the Configure page.",
+  },
+  {
+    key: "punchSearchFloor",
+    stage: "punch",
+    kind: "number",
+    min: 3,
+    max: 60,
+    defaultValue: 27,
+    help: "Off-lattice search floor, in units of the diffuse scatter: a peak off the integer nodes must stand this far above its |Q| shell and its neighbourhood. Lower punches weaker spurious peaks; too low punches diffuse maxima.",
   },
   {
     key: "punchMargin",

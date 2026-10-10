@@ -54,7 +54,8 @@ describe("evaluateStage", () => {
     expect(api.fetchSlice).not.toHaveBeenCalledWith(expect.anything(), "hk0", expect.anything());
     expect(e.mean_punched_fraction).toBe(0.04);
     expect(e.total_leftover_peaks).toBe(0);
+    expect(e.leftover_at_nodes).toBe(0);
     expect(e.fitted_peaks).toBe(12);
-    expect(headline("punch", e)).toBe("0 leftover · punched 0.04");
+    expect(headline("punch", e)).toBe("0 missed at nodes · 0 off-lattice · punched 0.04");
   });
 });
