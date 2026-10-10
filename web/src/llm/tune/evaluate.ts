@@ -3,10 +3,12 @@
 // stage writes), so a trial is judged on more than one cut.  The numbers are
 // the same pure metrics the chat context uses.
 
-import { fetchBraggProfile, fetchConsistencyCheck, fetchMeta } from "../../api/client";
+import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta } from "../../api/client";
 import type { Dataset } from "../../api/types";
-import { loadPipelineContext, safe, hklVolumeId, type Cut } from "../context/loadContext";
+import { dpdfVolumeId, loadPipelineContext, safe, hklVolumeId, type Cut } from "../context/loadContext";
+import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { roundSig } from "../metrics/sliceStats";
+import { sectionSymmetry, type SectionSymmetry } from "../metrics/symmetry";
 import type { TuneStage } from "./catalog";
 
 const RECIP_CUTS: Cut[] = [
@@ -49,10 +51,18 @@ const max = (xs: (number | null | undefined)[]): number | null => {
 
 export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise<StageEvaluation> {
   if (stage === "pdf") {
-    const [check, ...sections] = await Promise.all([
+    const dId = dpdfVolumeId(dataset);
+    const [check, dmeta, ...sections] = await Promise.all([
       safe(fetchConsistencyCheck(dataset.id)),
+      dId ? safe(fetchDpdfMeta(dId)) : Promise.resolve(null),
       ...DPDF_CUTS.map((dpdf) => loadPipelineContext(dataset, { recip: null, dpdf, records: false })),
     ]);
+    // The x–y section through the origin against its images under the cell's
+    // in-plane operations (symmetry_check's numbers): the worst one.
+    const xy = sections[0];
+    const cell = xy?.lattice;
+    const sym = xy?.slices.dpdf && cell?.a && cell?.b ? sectionSymmetry(xy.slices.dpdf, { a: cell.a, b: cell.b }) : null;
+    const worstOp = (sym?.ops ?? []).reduce<SectionSymmetry | null>((w, o) => (!w || o.rms_difference > w.rms_difference ? o : w), null);
     const perPlane = Object.fromEntries(
       sections.map((s, i) => {
         const d = s.context.delta_pdf;
@@ -68,11 +78,18 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       }),
     );
     const m = check?.has_check ? check.metrics : null;
+    const open = dmeta?.window_open_weight;
     return {
       back_fft_pearson_r: m ? roundSig(m.pearson_r, 5) : null,
       back_fft_normalized_rms: m ? roundSig(m.normalized_rms, 4) : null,
       back_fft_per_plane_r: m?.per_plane_r ?? null,
       mean_feature_snr: mean(Object.values(perPlane).map((p) => p?.feature_snr)),
+      // The share of the window's weight on unmeasured reciprocal space
+      // (qmax_coverage's verdict), and the window's shape.
+      window_weight_on_unmeasured: typeof open === "number" ? roundSig(open, 2) : null,
+      window_shape: dmeta?.window_shape ?? null,
+      max_symmetry_break: worstOp ? worstOp.rms_difference : null,
+      worst_symmetry_op: worstOp?.op ?? null,
       per_plane: perPlane,
     };
   }
@@ -217,7 +234,27 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
       return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;
     case "flatten":
       return `floor ≤ ${v("max_after_floor_sigma")}σ · trend ≤ ${v("max_floor_trend")} · span ≤ ${v("max_floor_span_fraction")}`;
-    case "pdf":
-      return `r ${v("back_fft_pearson_r")} · RMS ${v("back_fft_normalized_rms")} · SNR ${v("mean_feature_snr")}`;
+    case "pdf": {
+      const open = e.window_weight_on_unmeasured;
+      const broken = e.max_symmetry_break;
+      return (
+        `r ${v("back_fft_pearson_r")} · RMS ${v("back_fft_normalized_rms")} · SNR ${v("mean_feature_snr")}` +
+        (typeof open === "number" ? ` · unmeasured ${tiny(open)}` : "") +
+        (typeof broken === "number" ? ` · symmetry off ≤ ${tiny(broken)}` : "")
+      );
+    }
   }
+}
+
+// A share in exponent form when it is tiny (3.2e-6, not 0.0000032).
+const tiny = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(x));
+
+/** Why a trial's output breaks a hard limit of its stage, or null.  The tuning
+ * run does not choose such a trial while the user's settings keep the limit. */
+export function outOfBounds(stage: TuneStage, e: StageEvaluation | undefined): string | null {
+  const open = e?.window_weight_on_unmeasured;
+  if (stage === "pdf" && typeof open === "number" && open > OPEN_WEIGHT_OK) {
+    return `its window puts ${tiny(open)} of its weight on unmeasured reciprocal space, past the ${OPEN_WEIGHT_OK} the backend's own window allows`;
+  }
+  return null;
 }

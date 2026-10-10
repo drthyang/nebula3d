@@ -54,8 +54,8 @@ import type { ToolCall, ToolSpec } from "../provider/client";
 import { openView, type ViewTarget } from "./openView";
 
 export type { ViewTarget } from "./openView";
-import { COVERAGE_SHELLS, coverageMetrics } from "../metrics/coverage";
-import { sectionSymmetry } from "../metrics/symmetry";
+import { COVERAGE_SHELLS, coverageMetrics, OPEN_WEIGHT_OK } from "../metrics/coverage";
+import { sectionSymmetry, SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { median, radialProfile, roundSig } from "../metrics/sliceStats";
 import { textureMetrics } from "../metrics/texture";
 
@@ -853,17 +853,14 @@ const textureCheck: AgentTool = {
   },
 };
 
+// A share, in exponent form when it is tiny (3.2e-6, not 0.0000032).
+const share = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(roundSig(x, 2)));
+
 // How far the forward transform reaches in |Q|, from the Configure page: an
 // explicit |Q| band; else the box corners for a flat separable window (no
 // apodization), where every voxel counts at full weight; else the box faces
 // where the window tapers to zero, or the coverage edge when it is tapered to
 // the measured coverage.
-// The share of the window's weight on unmeasured space a transform may keep
-// (the backend's support tolerance).
-const OPEN_WEIGHT_OK = 1e-3;
-// A share, in exponent form when it is tiny (3.2e-6, not 0.0000032).
-const share = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(roundSig(x, 2)));
-
 function windowReach(
   s: PipelineConfig,
   q: { corner: number | null; box: number | null; full: number | null },
@@ -881,10 +878,6 @@ function windowReach(
 // Two evaluations with the same numbers: the change had no measurable effect.
 const sameNumbers = (a: StageEvaluation | undefined, b: StageEvaluation | undefined): boolean =>
   !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
-
-// A symmetry the data were symmetrised with holds to rounding when every
-// stage treats equivalent voxels alike; past this share it was broken.
-const SYMMETRY_HOLDS = 1e-3;
 
 const symmetryCheck: AgentTool = {
   name: "symmetry_check",

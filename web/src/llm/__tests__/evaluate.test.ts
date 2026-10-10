@@ -87,6 +87,26 @@ describe("evaluateStage", () => {
     expect(h0l.ring_residuals.find((x) => x.at === dent.at)?.single_plane_bump).toBeUndefined();
   });
 
+  it("reports the ΔPDF window's weight on unmeasured space and the section's symmetry", async () => {
+    const withPdf: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" }],
+    };
+    api.fetchConsistencyCheck.mockResolvedValue({ has_check: false });
+    api.fetchDpdfMeta.mockResolvedValue({ lattice: { a: 8, b: 8, c: 10 }, window_open_weight: 0.0572, window_shape: "separable" });
+    // A section that changes sign under the two-fold: not symmetric.
+    api.fetchDpdfSlice.mockImplementation(async () => {
+      const s = makeSlice(21, 21, (x) => x);
+      return { ...s, header: { ...s.header, axes_angle: 120 } };
+    });
+    const e = await evaluateStage("pdf", withPdf);
+    expect(e.window_weight_on_unmeasured).toBe(0.057);
+    expect(e.window_shape).toBe("separable");
+    expect(e.max_symmetry_break as number).toBeGreaterThan(1);
+    expect(typeof e.worst_symmetry_op).toBe("string");
+    expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.057 · symmetry off ≤ \d/);
+  });
+
   it("names the plane and |Q| of the worst ring residual in the headline", () => {
     const e = {
       mean_ring_energy_ratio: 0.24,

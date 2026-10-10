@@ -30,7 +30,7 @@ import {
   type ParamValue,
   type TuneStage,
 } from "./catalog";
-import { evaluateStage, type StageEvaluation } from "./evaluate";
+import { evaluateStage, outOfBounds, type StageEvaluation } from "./evaluate";
 import { buildJudgeMessages, buildProposeMessages, parseJsonReply, type TrialRecord } from "./prompts";
 
 export interface Trial {
@@ -260,24 +260,37 @@ async function tuneStage(
       await runTrial(stage, i + 2, dataset, run, signal);
     }
 
-    // Pick the best trial.
+    // Pick the best trial.  A trial past a hard limit of its stage (a ΔPDF
+    // window on unmeasured space) is no candidate while your settings keep it.
     const done = getStage(stage).trials.filter((t) => t.status === "done");
+    const baseOut = outOfBounds(stage, done.find((t) => t.n === 1)?.evaluation);
+    const barred = new Map(
+      baseOut ? [] : done.flatMap((t) => {
+        const reason = outOfBounds(stage, t.evaluation);
+        return reason ? [[t.n, reason] as const] : [];
+      }),
+    );
+    const eligible = done.filter((t) => !barred.has(t.n));
     let best = 1;
     let why = "Only your settings ran, so they are kept.";
-    if (done.length > 1) {
+    if (eligible.length > 1) {
       setStage(stage, { status: "judging" });
-      const reply = await ask(buildJudgeMessages({ stage, trials: records(getStage(stage)) }), llm, signal);
+      const trials = records(getStage(stage)).filter((r) => !barred.has(r.trial));
+      const reply = await ask(buildJudgeMessages({ stage, trials }), llm, signal);
       checkStop(signal);
       const pick = Number(reply?.best);
-      if (done.some((t) => t.n === pick)) {
+      if (eligible.some((t) => t.n === pick)) {
         best = pick;
         why = typeof reply?.why === "string" ? reply.why : "";
       } else {
         why = "The model's choice could not be read, so your settings are kept.";
       }
+    } else if (barred.size) {
+      why = "Your settings are kept.";
     } else if (!accepted.length) {
       why = "The model proposed nothing it judged better, so your settings are kept.";
     }
+    for (const [n, reason] of barred) why += ` Trial ${n} was not a candidate: ${reason}.`;
 
     // Keep the best trial's output in the run's chain and its settings in Configure.
     const chosen = best === 1 ? {} : accepted[best - 2].patch;
