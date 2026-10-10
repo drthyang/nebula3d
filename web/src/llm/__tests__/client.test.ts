@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isToolsUnsupported, streamChat, ToolCallAssembler, type HttpError } from "../provider/client";
+import { isToolsUnsupported, streamChat, ToolCallAssembler, type HttpError, withContextHint } from "../provider/client";
 
 const sse = (chunks: string[]): Response => {
   const enc = new TextEncoder();
@@ -104,6 +104,20 @@ describe("streamChat", () => {
     };
     await expect(run()).rejects.toMatchObject({ status: 400 });
     await run().catch((e) => expect(isToolsUnsupported(e)).toBe(true));
+  });
+
+  it("says how to fix a context window that is too small", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ error: { message: "Trying to keep the first 6012 tokens when context length is 4096" } }), { status: 400 }),
+      ),
+    );
+    const run = async () => {
+      for await (const d of streamChat({ baseUrl: "u", model: "m", messages: [], temperature: 0 })) void d;
+    };
+    await expect(run()).rejects.toThrow(/context window is full\. In LM Studio, raise the model's Context Length/);
+    expect(withContextHint("model crashed")).toBe("model crashed");
   });
 
   it("raises an error the server streams after the 200", async () => {

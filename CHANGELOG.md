@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **A full context window says how to fix it.** When a local model's
+  context window is too small, NEBULA Pilot showed the server's raw
+  message. It now adds what to do: in LM Studio, raise the model's Context
+  Length in its load settings (16k at least) and reload it. With Tools on,
+  a request needs about 6k tokens before the question.
 - **A tuning run's report holds every trial.** It returned only the chosen
   trial, so asked for each trial's numbers the model made one up ("12
   sharp leftovers" for a trial whose numbers matched the baseline's
