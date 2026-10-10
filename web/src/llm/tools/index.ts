@@ -1055,6 +1055,7 @@ const ubCheckTool: AgentTool = {
     const result = {
       fit: u.fit,
       bragg_nodes_every: u.cell_nodes,
+      symmetry_from: u.operations_from,
       symmetrised: u.symmetrised,
       symmetry_break: u.symmetry_break == null ? null : sig2(u.symmetry_break),
       peaks: { searched: u.n_searched, used: u.n_used, rejected: u.n_rejected },
@@ -1070,7 +1071,9 @@ const ubCheckTool: AgentTool = {
       reading:
         u.fit === "symmetric"
           ? "The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data."
-          : "The rotation and the cell were fitted together.",
+          : u.operations_from
+            ? `The rotation and the cell were fitted together, the cell constrained by the operations ${u.operations_from} declares.`
+            : "The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).",
     };
     return {
       result,

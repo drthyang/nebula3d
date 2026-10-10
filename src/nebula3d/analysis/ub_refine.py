@@ -492,10 +492,17 @@ def regrid(vol: HKLVolume, ub: NDArray[np.floating], *, chunk: int = 8) -> HKLVo
     UB_vol⁻¹·UB·h in *vol*'s HKL, interpolated trilinearly: no ringing beside
     sharp peaks and no negative lobes, but a peak a voxel wide loses height
     and gains width where its centre falls between voxels.  A voxel counts as
-    measured when every voxel it is interpolated from does; σ is interpolated
-    like the data, which overstates it a little (interpolating averages the
-    neighbours' noise).  Same axes and dtype; the UB becomes *ub*.  Worked
-    through *chunk* H planes at a time, each from the input sub-box it needs.
+    measured when every voxel it is interpolated from does; the others are left
+    as the loader leaves unmeasured space, masked with data and σ zero.  σ is
+    interpolated like the data, which overstates it a little (interpolating
+    averages the neighbours' noise).  Same axes and dtype; the UB becomes
+    *ub*.  Worked through *chunk* H planes at a time, each from the input
+    sub-box it needs.
+
+    Trim the coverage edge first (:func:`nebula3d.preprocessing.sampling.
+    trim_coverage_edge`): its voxels, barely covered by the detectors, can sit
+    orders of magnitude above the interior, and interpolation and symmetrising
+    carry them inward, where no later trim reaches them.
     """
     from scipy import ndimage
 
@@ -509,8 +516,8 @@ def regrid(vol: HKLVolume, ub: NDArray[np.floating], *, chunk: int = 8) -> HKLVo
     offset = ((t - np.eye(3)) @ start) / step  # S⁻¹·(T − I)·a₀
 
     dtype = vol.data.dtype
-    data = np.full(vol.shape, np.nan, dtype=dtype)
-    sigma = np.full(vol.shape, np.nan, dtype=vol.sigma.dtype)
+    data = np.zeros(vol.shape, dtype=dtype)
+    sigma = np.zeros(vol.shape, dtype=vol.sigma.dtype)
     mask = np.zeros(vol.shape, dtype=bool)
     for j0 in range(0, int(shape[0]), max(1, chunk)):
         j1 = min(int(shape[0]), j0 + max(1, chunk))
@@ -538,8 +545,8 @@ def regrid(vol: HKLVolume, ub: NDArray[np.floating], *, chunk: int = 8) -> HKLVo
         ok = weight >= 1.0 - 1e-6
         value = resample(np.where(valid, sub, 0.0))
         err = resample(np.where(valid, sub_sigma, 0.0))
-        data[j0:j1] = np.where(ok, value, np.nan).astype(dtype)
-        sigma[j0:j1] = np.where(ok, err, np.nan).astype(vol.sigma.dtype)
+        data[j0:j1] = np.where(ok, value, 0.0).astype(dtype)
+        sigma[j0:j1] = np.where(ok, err, 0.0).astype(vol.sigma.dtype)
         mask[j0:j1] = ok
     return HKLVolume(data=data, sigma=sigma, mask=mask, h_axis=axes[0].copy(),
                      k_axis=axes[1].copy(), l_axis=axes[2].copy(), ub_matrix=ub_new,

@@ -37,6 +37,10 @@ Env:
     REACH       how far from its predicted place a peak is looked for (Å⁻¹, 0.25)
     MIN_SIG     how far above the local background a peak must stand, in robust
                 noise sigmas (default 10)
+    EDGE_TRIM   voxel layers trimmed off the measured coverage's edge first
+                (default 1, the pipeline's own default): edge voxels can sit
+                orders of magnitude above the interior, and regridding and
+                symmetrising would carry them inward
     OUT         write the regridded volume here
     SYMMETRISE  1 to symmetrise OUT under the operations
 """
@@ -60,6 +64,7 @@ from nebula3d.analysis.ub_refine import (
     refine_ub,
     regrid,
 )
+from nebula3d.preprocessing.sampling import trim_coverage_edge
 from nebula3d.symmetry import GridSymmetry, parse_symmetry_ops
 
 
@@ -68,21 +73,22 @@ def env_float(name: str) -> float | None:
     return float(value) if value else None
 
 
-def operations(volume: str) -> tuple[tuple[np.ndarray, ...] | None, str | None]:
-    """The operations to use and their text, from OPS / OPS_FROM."""
+def operations(volume: str) -> tuple[tuple[np.ndarray, ...] | None, str | None, str | None]:
+    """The operations to use, their text and the point group's name (when the
+    file gives one), from OPS / OPS_FROM."""
     spec = os.environ.get("OPS", "auto").strip()
     source = os.environ.get("OPS_FROM", "").strip() or volume
     if spec.lower() == "none":
-        return None, None
+        return None, None, None
     if spec.lower() != "auto":
-        return parse_symmetry_ops(spec), spec
+        return parse_symmetry_ops(spec), spec, None
     with h5py.File(source, "r") as f:
         entry = f.get("entry")
-        text = entry.attrs.get("symmetry_ops") if isinstance(entry, h5py.Group) else None
-    if text is None:
-        return None, None
-    text = text.decode() if isinstance(text, bytes) else str(text)
-    return (parse_symmetry_ops(text), text) if text.strip() else (None, None)
+        attrs = entry.attrs if isinstance(entry, h5py.Group) else {}
+        text, label = attrs.get("symmetry_ops"), attrs.get("symmetry")
+    text = text.decode() if isinstance(text, bytes) else (None if text is None else str(text))
+    label = label.decode() if isinstance(label, bytes) else (None if label is None else str(label))
+    return (parse_symmetry_ops(text), text, label) if text and text.strip() else (None, None, None)
 
 
 def print_offsets(fit, centres) -> None:
@@ -102,7 +108,8 @@ def print_offsets(fit, centres) -> None:
         print(f"{band:>12}  " + "  ".join(c.rjust(26) for c in cells))
 
 
-def write_entry(vol, path: str, *, source: str, ops_text: str | None, note: str) -> None:
+def write_entry(vol, path: str, *, source: str, ops_text: str | None, note: str,
+                label: str | None = None) -> None:
     """*vol* in the NeXus Viewer's layout."""
     with h5py.File(path, "w") as f:
         entry = f.create_group("entry")
@@ -114,14 +121,25 @@ def write_entry(vol, path: str, *, source: str, ops_text: str | None, note: str)
         entry.attrs["ub_refinement"] = note
         if ops_text:
             entry.attrs["symmetry_ops"] = ops_text
+            if label:
+                entry.attrs["symmetry"] = label
 
 
 def main() -> None:
     volume = os.environ.get("VOLUME") or sorted(glob.glob("data/raw/*.nxs"))[0]
     vol = nebula3d.load(volume, dtype=np.float32)
-    ops, ops_text = operations(volume)
+    ops, ops_text, label = operations(volume)
     cell = tuple(int(x) for x in os.environ.get("CELL", "1,1,1").split(","))
     print(f"volume: {Path(volume).name} {vol.shape}")
+    trim = int(os.environ.get("EDGE_TRIM", "1"))
+    if trim > 0:
+        sym = None
+        if ops is not None:
+            sym = GridSymmetry.for_volume(vol, ops)
+            if auto_fit(vol, ops)[0] != "symmetric":
+                sym = None  # an unsymmetrised volume's trim is its own
+        n = trim_coverage_edge(vol, trim, symmetry=sym)
+        print(f"trimmed {n:,} voxels at the edge of the measured coverage (EDGE_TRIM={trim})")
     chosen, broken = auto_fit(vol, ops)
     if ops is not None and broken is not None:
         state = "symmetrised" if broken < SYMMETRISED else "not symmetrised"
@@ -155,15 +173,17 @@ def main() -> None:
         sym = GridSymmetry.for_volume(new, ops)  # type: ignore[arg-type]
         valid = new.mask & np.isfinite(new.data)
         where = sym.orbit_any(valid)
-        new.data[~valid] = np.nan
+        new.data[~valid] = np.nan  # left out of the orbit means
         sym.orbit_mean(new.data, where)
         var = np.where(valid, new.sigma.astype(np.float64) ** 2, np.nan).astype(new.sigma.dtype)
         sym.orbit_mean(var, where)  # the orbit's RMS σ: the mean's own is smaller
-        new.sigma = np.sqrt(var)
         new.mask = where & np.isfinite(new.data)
+        new.data[~new.mask] = 0.0  # unmeasured as the loader leaves it
+        new.sigma = np.where(new.mask, np.sqrt(var), 0.0).astype(new.sigma.dtype)
     note = (f"refine_ub fit={fit} cell={cell} from {Path(volume).name}: "
             f"RMS {f.rms_start:.4f} -> {f.rms:.4f} 1/A over {f.n_used} peaks")
-    write_entry(new, out, source=volume, ops_text=ops_text if symmetrise else None, note=note)
+    write_entry(new, out, source=volume, ops_text=ops_text if symmetrise else None, note=note,
+                label=label)
     print(f"\nwrote {out}" + (" (symmetrised)" if symmetrise else ""))
 
 

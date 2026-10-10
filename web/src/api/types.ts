@@ -53,6 +53,7 @@ export interface UbCheck {
   fit: "orientation" | "lattice" | "both" | "symmetric";
   cell_nodes: number[]; // the Bragg nodes' spacing (the punch cell)
   operations: number | null; // the declared operations, if any
+  operations_from: string | null; // the file that declared them: this one, or its symmetrised export
   symmetry_break: number | null; // RMS difference from the images under them, relative
   symmetrised: boolean | null;
   passes: { q_max: number; n_found: number; n_used: number; rms_start: number; rms: number; angle_deg: number }[];

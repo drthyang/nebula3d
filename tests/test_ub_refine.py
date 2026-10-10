@@ -180,6 +180,8 @@ def test_regrid_onto_the_same_ub_changes_nothing():
     out = regrid(vol, vol.ub_matrix)
     assert np.array_equal(out.mask, vol.mask)
     assert np.allclose(out.data[out.mask], vol.data[vol.mask])
+    # Unmeasured space as the loader leaves it: masked, data and σ zero.
+    assert not out.data[~out.mask].any() and not out.sigma[~out.mask].any()
 
 
 def test_refine_finds_a_misorientation_and_regridding_puts_the_peaks_back():

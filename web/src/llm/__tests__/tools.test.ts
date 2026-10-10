@@ -588,7 +588,7 @@ describe("grain_check", () => {
 
 describe("ub_check", () => {
   const check = {
-    id: "demo.raw", fit: "symmetric", cell_nodes: [2, 2, 2], operations: 24, symmetry_break: 0, symmetrised: true,
+    id: "demo.raw", fit: "symmetric", cell_nodes: [2, 2, 2], operations: 24, operations_from: "demo.nxs", symmetry_break: 0, symmetrised: true,
     passes: [{ q_max: 5.33, n_found: 178, n_used: 178, rms_start: 0.0146, rms: 0.0102, angle_deg: 0 }],
     n_searched: 4330, n_used: 3010, n_rejected: 952, rms_start: 0.05551, rms: 0.03969, angle_deg: 0, axis_uvw: [0, 0, 0],
     cell_start: [8.02853, 8.01912, 10.02971, 90.1336, 90.2317, 119.9787], cell: [7.99421, 7.98485, 10.01769, 90.1336, 90.2317, 119.9787],
