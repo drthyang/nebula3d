@@ -53,10 +53,17 @@ export async function askAssistant({
     });
   } catch (e) {
     const live = useChatStore.getState().live;
+    const kept = live && (live.content || live.reasoning || live.steps.length);
     if ((e as Error).name === "AbortError") {
-      if (live && (live.content || live.reasoning || live.steps.length)) {
-        useChatStore.getState().addTurn({ role: "assistant", ...live, note: "Stopped." });
-      }
+      if (kept) useChatStore.getState().addTurn({ role: "assistant", ...live, note: "Stopped." });
+    } else if (kept) {
+      // The steps already ran (a tuning run, a pipeline run): keep them, and
+      // what was written, with the error that ended the reply.
+      useChatStore.getState().addTurn({
+        role: "assistant",
+        ...live,
+        note: `The reply ended with an error: ${(e as Error).message.replace(/\.$/, "")}. The steps above ran; ask again to continue from them.`,
+      });
     } else {
       useChatStore.setState({ error: (e as Error).message });
     }

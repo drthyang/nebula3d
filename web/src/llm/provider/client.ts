@@ -81,6 +81,25 @@ export const withContextHint = (message: string): string =>
     ? `${message} — the model's context window is full. In LM Studio, raise the model's Context Length in its load settings (16k at least, 32k to be comfortable) and reload it. With Tools on, a request needs about 6k tokens before your question; Tools off, or Clear, also helps.`
     : message;
 
+// A local model that writes a reply its own server cannot parse — most often a
+// tool call in the wrong syntax — fails the stream (LM Studio: "does not match
+// the expected … format"; Ollama: "error parsing tool call").  It is a sampling
+// slip: the same request usually goes through when asked again.
+const MALFORMED_OUTPUT = /does not match the expected [\w -]*format|error parsing tool call|failed to parse (the )?(model|tool)/i;
+export const isMalformedOutput = (error: unknown): boolean => MALFORMED_OUTPUT.test((error as Error)?.message ?? "");
+
+const streamedError = (raw: unknown): HttpError => {
+  const e = (raw && typeof raw === "object" ? raw : { message: String(raw) }) as { message?: unknown; code?: unknown; status?: unknown };
+  const message = typeof e.message === "string" && e.message ? e.message : String(raw);
+  const hinted = MALFORMED_OUTPUT.test(message)
+    ? `${message} — the model wrote a reply its server could not parse (often a tool call in the wrong syntax); asking again usually works, and a model that keeps doing it is better replaced`
+    : withContextHint(message);
+  const error = new Error(hinted) as HttpError;
+  const status = Number(e.code ?? e.status);
+  if (Number.isInteger(status) && status >= 400) error.status = status;
+  return error;
+};
+
 const describeHttpError = async (response: Response): Promise<string> => {
   let detail = "";
   try {
@@ -307,8 +326,8 @@ export async function* streamChat({
         } catch {
           continue;
         }
-        // A failure after the 200 (Ollama, OpenRouter) arrives as an error chunk.
-        if (parsed.error) throw new Error(withContextHint(parsed.error.message || String(parsed.error)));
+        // A failure after the 200 (Ollama, OpenRouter, LM Studio) arrives as an error chunk.
+        if (parsed.error) throw streamedError(parsed.error);
         const reason = parsed.choices?.[0]?.finish_reason;
         if (reason) finish = reason;
         const delta = parsed.choices?.[0]?.delta;

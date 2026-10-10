@@ -197,4 +197,21 @@ describe("runAgent", () => {
       runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal }),
     ).rejects.toThrow("boom");
   });
+
+  it("asks again when the server could not parse the model's reply", async () => {
+    const malformed = () =>
+      new Error('Engine protocol predict stream returned an error: {"code":500,"message":"The model produced output that does not match the expected peg-native format"}');
+    const seen = script([malformed(), [{ content: "Clean." }]]);
+    const result = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal });
+    expect(result.content).toBe("Clean.");
+    expect(result.note).toBeUndefined();
+    expect(seen).toHaveLength(2);
+    expect(seen[1].messages).toEqual(seen[0].messages); // the same request again
+
+    // A model that keeps doing it ends the reply after the retries.
+    script([malformed(), malformed(), malformed(), [{ content: "never" }]]);
+    await expect(
+      runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal }),
+    ).rejects.toThrow(/peg-native format/);
+  });
 });
