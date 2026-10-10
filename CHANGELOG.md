@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **A reply cut off by a full context no longer breaks the conversation.**
+  When a local model ran out of room in the middle of a tool call, NEBULA
+  Pilot sent the half-written call back with the next request, and LM
+  Studio failed that request and every later one with a bare HTTP 500.
+  A reply that stopped for lack of room now ends the turn with a note on
+  how to give the model more room, and none of its tool calls run. A call
+  whose arguments are not JSON is sent back as `{}`. A bare HTTP 500 from
+  the model server now says what usually causes it.
 - **NEBULA Pilot can check the ΔPDF's symmetry.** `symmetry_check`
   compares a ΔPDF section with its images under the cell's in-plane
   operations and says which hold. Five expert reviews of a hexagonal

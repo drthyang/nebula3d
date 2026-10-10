@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isToolsUnsupported, streamChat, ToolCallAssembler, type HttpError, withContextHint } from "../provider/client";
+import { isToolsUnsupported, streamChat, ToolCallAssembler, type HttpError, type StreamDelta, withContextHint } from "../provider/client";
 
 const sse = (chunks: string[]): Response => {
   const enc = new TextEncoder();
@@ -104,6 +104,21 @@ describe("streamChat", () => {
     };
     await expect(run()).rejects.toMatchObject({ status: 400 });
     await run().catch((e) => expect(isToolsUnsupported(e)).toBe(true));
+  });
+
+  it("reports a reply that stopped because it ran out of room", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => sse([line({ content: "Che" }), `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "length" }] })}\n`])));
+    const got: StreamDelta[] = [];
+    for await (const d of streamChat({ baseUrl: "u", model: "m", messages: [], temperature: 0 })) got.push(d);
+    expect(got[got.length - 1]).toEqual({ truncated: true });
+  });
+
+  it("explains a bare HTTP 500 from the model server", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<pre>Internal Server Error</pre>", { status: 500 })));
+    const run = async () => {
+      for await (const d of streamChat({ baseUrl: "u", model: "m", messages: [], temperature: 0 })) void d;
+    };
+    await expect(run()).rejects.toThrow(/^HTTP 500 — the model server failed before it could reply.*chat template/);
   });
 
   it("says how to fix a context window that is too small", async () => {
