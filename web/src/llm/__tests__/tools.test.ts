@@ -341,6 +341,36 @@ describe("tune_pipeline", () => {
     expect(useNavStore.getState().tab).toBe("execution");
   });
 
+  it("returns every trial's numbers, marks a trial with no effect, and asks for no write when nothing changed", async () => {
+    const same = { leftover_at_nodes: 16, leftover_off_lattice_sharp: 8, leftover_off_lattice_broad: 360, mean_punched_fraction: 0.099 };
+    tuner.startTuning.mockImplementation(async () => {
+      useTuneStore.setState({
+        active: false,
+        finishedNote: "Done. Your settings won every tuned stage, so nothing changed.",
+        stages: [
+          stage({
+            stage: "punch",
+            status: "done",
+            best: 1,
+            why: "the others did no better",
+            trials: [
+              { n: 1, changes: {}, settings: {}, status: "done", evaluation: same },
+              { n: 2, changes: { punchMinSig: 3 }, settings: {}, status: "done", evaluation: { ...same } },
+              { n: 3, changes: { punchSearchFloor: 20 }, settings: {}, status: "done", evaluation: { ...same, mean_punched_fraction: 0.102 } },
+            ],
+          }),
+        ],
+      });
+    });
+    const out = JSON.parse((await runToolCall(call({ stages: ["punch"] }), CHAT_TOOLS, { ...ctx })).text);
+    const trials = out.stages[0].trials;
+    expect(trials.map((t: { n: number }) => t.n)).toEqual([1, 2, 3]);
+    expect(trials[1]).toMatchObject({ changes: { punchMinSig: 3 }, no_effect: true });
+    expect(trials[2].no_effect).toBeUndefined();
+    expect(trials[2].result).toMatch(/punched 0.102/);
+    expect(out.write_outputs_with).toBeUndefined();
+  });
+
   it("reports a tuning run that stopped on an error", async () => {
     tuner.startTuning.mockImplementation(async () => useTuneStore.setState({ error: "the run with your settings failed" }));
     const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx });

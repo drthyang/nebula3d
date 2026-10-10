@@ -36,7 +36,7 @@ import {
   type TuneParam,
   type TuneStage,
 } from "../tune/catalog";
-import { evaluateStage, headline } from "../tune/evaluate";
+import { evaluateStage, headline, type StageEvaluation } from "../tune/evaluate";
 import { STAGE_GOALS } from "../tune/prompts";
 import { startTuning, stopTuning, useTuneStore, type StageRun } from "../tune/tuner";
 import { AXIS_INDEX, AXIS_TO_PLANE, useViewerStore, type FixedAxis } from "../../state/viewerStore";
@@ -877,6 +877,10 @@ function windowReach(
   return { reach: q.box, how: "the window tapers to zero at the box faces" };
 }
 
+// Two evaluations with the same numbers: the change had no measurable effect.
+const sameNumbers = (a: StageEvaluation | undefined, b: StageEvaluation | undefined): boolean =>
+  !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+
 const qmaxCoverage: AgentTool = {
   name: "qmax_coverage",
   description:
@@ -1159,8 +1163,9 @@ const tunePipeline: AgentTool = {
     "propose alternatives, runs each, judges which best meets the stage's goal, keeps it and moves on, so later " +
     "stages build on the best earlier ones. Trials run in a tuning folder: the dataset's own outputs are not " +
     "changed, and the chosen settings end up on the Configure page. The user watches the trials in the chat, under " +
-    "this reply, and each run on the Execution page. Takes minutes (one run per trial). Returns each stage's chosen " +
-    "trial, its changes and why.",
+    "this reply, and each run on the Execution page. Takes minutes (one run per trial). Returns every trial's changes " +
+    "and numbers (a trial that matched the current settings' numbers exactly is marked no_effect), and each stage's " +
+    "chosen trial and why: quote these, never numbers the result does not hold.",
   parameters: {
     type: "object",
     properties: {
@@ -1218,14 +1223,30 @@ const tunePipeline: AgentTool = {
             changes: best.changes,
             result: headline(r.stage, best.evaluation),
           }),
+          // Every trial, so the comparison can be quoted rather than recalled.
+          ...(r.tuned && r.trials.length > 1 && {
+            trials: r.trials.map((t) => ({
+              n: t.n,
+              changes: t.changes,
+              ...(t.evaluation
+                ? {
+                    result: headline(r.stage, t.evaluation),
+                    ...(t.n !== 1 && sameNumbers(t.evaluation, r.trials[0].evaluation) && { no_effect: true }),
+                  }
+                : { status: t.status, ...(t.error && { error: t.error }) }),
+            })),
+          }),
           ...(r.why && { why: r.why }),
           ...(r.message && { message: r.message }),
         };
       }),
       note: tune.finishedNote,
-      write_outputs_with: { tool: "run_pipeline", from_stage: TUNE_STAGES.find((st) => stages.includes(st)) },
     };
     const changed = result.stages.filter((r) => r.changes && Object.keys(r.changes).length).length;
+    // Writing the dataset's outputs is worth it only when a stage's settings changed.
+    if (changed) {
+      Object.assign(result, { write_outputs_with: { tool: "run_pipeline", from_stage: TUNE_STAGES.find((st) => stages.includes(st)) } });
+    }
     return { result, summary: `${minutes} min · settings changed on ${changed} of ${stages.length} stages` };
   },
 };
