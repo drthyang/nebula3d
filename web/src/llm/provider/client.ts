@@ -235,6 +235,9 @@ interface PostChatArgs {
   // Functions the model may call; "none" asks it to answer without calling.
   tools?: ToolSpec[];
   toolChoice?: "auto" | "none";
+  // Ask a streaming server for the request's token counts (stream_options);
+  // the evals record them, the app does not.
+  includeUsage?: boolean;
 }
 
 const postChat = async ({
@@ -247,8 +250,10 @@ const postChat = async ({
   apiKey,
   tools,
   toolChoice,
+  includeUsage,
 }: PostChatArgs): Promise<Response> => {
   const body: Record<string, unknown> = { model, messages, temperature, stream };
+  if (stream && includeUsage) body.stream_options = { include_usage: true };
   if (tools?.length) {
     body.tools = tools;
     if (toolChoice) body.tool_choice = toolChoice;
@@ -291,6 +296,14 @@ export interface StreamDelta {
   // out of room (finish_reason "length": its context window or output limit),
   // so its last text or tool call may be cut off.
   truncated?: boolean;
+  // Emitted once, after the stream ends, when the server reported the
+  // request's token counts (includeUsage).
+  usage?: TokenUsage;
+}
+
+export interface TokenUsage {
+  input: number; // prompt tokens (an Anthropic request: input plus cache reads and writes)
+  output: number; // completion tokens, thinking included
 }
 
 interface ToolCallDelta {
@@ -347,9 +360,10 @@ export async function* streamChat({
   apiKey,
   tools,
   toolChoice,
+  includeUsage,
 }: Omit<PostChatArgs, "stream">): AsyncGenerator<StreamDelta> {
   if (isAnthropicUrl(baseUrl)) {
-    yield* streamAnthropic({ baseUrl, model, messages, apiKey, signal, tools, toolChoice });
+    yield* streamAnthropic({ baseUrl, model, messages, apiKey, signal, tools, toolChoice, includeUsage });
     return;
   }
   const response = await postChat({
@@ -362,6 +376,7 @@ export async function* streamChat({
     apiKey,
     tools,
     toolChoice,
+    includeUsage,
   });
   if (!response.body) throw new Error("The server returned no response body to stream");
   const reader = response.body.getReader();
@@ -369,6 +384,7 @@ export async function* streamChat({
   const assembler = new ToolCallAssembler();
   let buffer = "";
   let finish: string | undefined;
+  let usage: TokenUsage | undefined;
   try {
     read: for (;;) {
       const { done, value } = await reader.read();
@@ -389,6 +405,10 @@ export async function* streamChat({
         }
         // A failure after the 200 (Ollama, OpenRouter, LM Studio) arrives as an error chunk.
         if (parsed.error) throw streamedError(parsed.error);
+        // The token counts come in the last chunk (with no choices) when asked for.
+        if (parsed.usage && typeof parsed.usage.prompt_tokens === "number") {
+          usage = { input: parsed.usage.prompt_tokens, output: parsed.usage.completion_tokens ?? 0 };
+        }
         const reason = parsed.choices?.[0]?.finish_reason;
         if (reason) finish = reason;
         const delta = parsed.choices?.[0]?.delta;
@@ -405,6 +425,7 @@ export async function* streamChat({
   const toolCalls = assembler.calls();
   if (toolCalls.length) yield { toolCalls };
   if (finish === "length") yield { truncated: true };
+  if (usage) yield { usage };
 }
 
 // Non-streaming completion, used where the whole reply is parsed at once.

@@ -8,6 +8,7 @@ import {
   isToolsUnsupported,
   streamChat,
   type ChatMessage,
+  type TokenUsage,
   type ToolCall,
 } from "./provider/client";
 import type { LlmSettings } from "./settings";
@@ -33,6 +34,9 @@ export interface AgentProgress {
 
 export interface AgentResult extends AgentProgress {
   note?: string;
+  // With `usage`: the reply's token counts over all its requests, when the
+  // server reported them (null when it did not).
+  usage?: (TokenUsage & { requests: number }) | null;
 }
 
 // Rounds of tool calls before the model is asked to answer with what it has;
@@ -91,6 +95,7 @@ export async function runAgent({
   signal,
   onProgress,
   maxRounds = MAX_TOOL_ROUNDS,
+  usage: wantUsage = false,
 }: {
   messages: ChatMessage[];
   tools: AgentTool[];
@@ -99,6 +104,7 @@ export async function runAgent({
   signal: AbortSignal;
   onProgress?: (p: AgentProgress) => void;
   maxRounds?: number;
+  usage?: boolean; // count the reply's tokens (the evals)
 }): Promise<AgentResult> {
   const convo = [...messages];
   // The tools may refresh the dataset (run_pipeline does); keep that to this reply.
@@ -115,6 +121,8 @@ export async function runAgent({
   };
 
   let retries = 0;
+  const tokens = { input: 0, output: 0, requests: 0 }; // over the requests that reported them
+  let requests = 0;
   for (let round = 0; ; round++) {
     const last = round >= maxRounds;
     let roundText = "";
@@ -132,7 +140,13 @@ export async function runAgent({
         signal,
         tools: useTools ? toolSpecs(tools) : undefined,
         toolChoice: useTools && last ? "none" : undefined,
+        includeUsage: wantUsage,
       })) {
+        if (delta.usage) {
+          tokens.input += delta.usage.input;
+          tokens.output += delta.usage.output;
+          tokens.requests += 1;
+        }
         if (delta.content) roundText += delta.content;
         if (delta.reasoning) reasoning += delta.reasoning;
         if (delta.toolCalls) calls = delta.toolCalls;
@@ -140,6 +154,7 @@ export async function runAgent({
         if (delta.truncated) cutOff = true;
         emit(roundText);
       }
+      requests += 1;
     } catch (e) {
       if (useTools && round === 0 && !roundText && isToolsUnsupported(e)) {
         noTools.add(`${settings.baseUrl}|${settings.model}`);
@@ -194,5 +209,7 @@ export async function runAgent({
     }
   }
 
-  return { content, reasoning, steps, note };
+  // A server that reported some requests' counts but not all leaves the total unknown.
+  const usage = wantUsage ? (tokens.requests > 0 && tokens.requests === requests ? tokens : null) : undefined;
+  return { content, reasoning, steps, note, ...(wantUsage ? { usage } : {}) };
 }
