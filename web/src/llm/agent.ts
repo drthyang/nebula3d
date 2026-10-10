@@ -4,6 +4,7 @@
 // that cannot call tools gets the same request without them.
 
 import {
+  isMalformedOutput,
   isToolsUnsupported,
   streamChat,
   type ChatMessage,
@@ -48,7 +49,28 @@ export const toolsKnownUnsupported = (s: Pick<LlmSettings, "baseUrl" | "model">)
 export const TOOLS_UNSUPPORTED_NOTE =
   "This model cannot call tools, so it answered from the fixed-cut metrics only. Pick a tool-capable model (Ollama and LM Studio mark them) to let it measure other cuts.";
 
+export const CUT_OFF_NOTE =
+  "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (32k: with Tools on, the first request alone is about 8k tokens, and a full assessment reaches about 18k), or turn Tools off; Clear starts a shorter conversation.";
+
+// A reply its server could not parse ran none of its tools, so the same request
+// is sent again, at most this many times in one reply.
+export const MALFORMED_RETRIES = 2;
+
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
+
+// A call whose arguments are not a JSON object goes back to the model with {}
+// (its result says what was wrong): a server that renders the history through
+// the model's chat template parses them, and fails the whole request on a
+// call cut off mid-way (LM Studio: HTTP 500).
+const replayable = (call: ToolCall): ToolCall => {
+  try {
+    const args: unknown = JSON.parse(call.function.arguments || "{}");
+    if (args && typeof args === "object" && !Array.isArray(args)) return call;
+  } catch {
+    // not JSON at all
+  }
+  return { ...call, function: { ...call.function, arguments: "{}" } };
+};
 
 // A call's arguments as soon as it starts, so the console can show what the
 // step works on while it runs (the tool checks them properly).
@@ -92,11 +114,14 @@ export async function runAgent({
     emit();
   };
 
+  let retries = 0;
   for (let round = 0; ; round++) {
     const last = round >= maxRounds;
     let roundText = "";
     let calls: ToolCall[] = [];
     let native: unknown;
+    let cutOff = false;
+    const reasoningBefore = reasoning;
     try {
       for await (const delta of streamChat({
         baseUrl: settings.baseUrl,
@@ -112,6 +137,7 @@ export async function runAgent({
         if (delta.reasoning) reasoning += delta.reasoning;
         if (delta.toolCalls) calls = delta.toolCalls;
         if (delta.native) native = delta.native;
+        if (delta.truncated) cutOff = true;
         emit(roundText);
       }
     } catch (e) {
@@ -122,17 +148,29 @@ export async function runAgent({
         round = -1; // the same request again, without tools
         continue;
       }
+      if (isMalformedOutput(e) && retries < MALFORMED_RETRIES && !signal.aborted) {
+        retries += 1;
+        reasoning = reasoningBefore; // the failed attempt's thinking goes with it
+        round -= 1; // the same request again
+        emit();
+        continue;
+      }
       throw e;
     }
     content = joinText(content, roundText);
 
+    // A reply that ran out of room may end mid-call: never run that round's tools.
+    if (cutOff) {
+      note = CUT_OFF_NOTE;
+      break;
+    }
     if (!calls.length || !useTools) break;
     if (last) {
       note = `Stopped after ${maxRounds} rounds of tool calls; the answer uses what was gathered so far.`;
       break;
     }
 
-    convo.push({ role: "assistant", content: roundText, tool_calls: calls, ...(native ? { native } : {}) });
+    convo.push({ role: "assistant", content: roundText, tool_calls: calls.map(replayable), ...(native ? { native } : {}) });
     for (const call of calls) {
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
       const id = `${steps.length}:${call.id}`; // servers may reuse call ids across rounds

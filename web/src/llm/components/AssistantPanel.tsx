@@ -1,4 +1,4 @@
-// The AI Assistant panel, docked beside every page: a title row, the compact
+// The NEBULA Pilot panel, docked beside every page: a title row, the compact
 // model connection, an optional connection-settings drawer, and the chat, where
 // the model answers from the dataset the pages show and acts on it: it
 // measures and assesses, opens the viewer, runs the pipeline, and tunes it.
@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { useDatasets } from "../../api/hooks";
 import { BrandGlyph, EmptyState, IconAlert } from "../../components/ui";
 import { useDatasetStore } from "../../state/datasetStore";
+import { contextWarning } from "../provider/client";
 import type { ToolContext } from "../tools";
 import { useAssistant } from "../useAssistant";
 import { ChatView } from "./ChatView";
@@ -20,7 +21,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const datasetId = useDatasetStore((s) => s.datasetId);
   const dataset = datasets.find((d) => d.id === datasetId);
 
-  const { settings, connection, connected, runTest, contextQuery } = useAssistant(dataset);
+  const { settings, connection, connected, runTest, contextQuery, modelContext } = useAssistant(dataset);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const ready = Boolean(contextQuery.data);
   const toolContext = useMemo<ToolContext | null>(
@@ -33,10 +34,10 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       <div className="ai-panel-head">
         <span className="ai-panel-title">
           <BrandGlyph size={16} />
-          AI Assistant
+          NEBULA Pilot
           <span className="nav-beta">Beta</span>
         </span>
-        <button type="button" className="ai-panel-close" onClick={onClose} title="Close the assistant" aria-label="Close the assistant">
+        <button type="button" className="ai-panel-close" onClick={onClose} title="Close NEBULA Pilot" aria-label="Close NEBULA Pilot">
           <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
             <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
           </svg>
@@ -67,7 +68,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       {dataset && !ready && contextQuery.isError && (
         <EmptyState
           title="Could not build the diagnostic context"
-          hint="Run the pipeline for this dataset first — the assistant reads its stage outputs."
+          hint="Run the pipeline for this dataset first — NEBULA Pilot reads its stage outputs."
         />
       )}
 
@@ -77,6 +78,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         settings={settings}
         toolContext={toolContext}
         contextLoading={contextQuery.isFetching}
+        contextNote={settings.useTools ? contextWarning(modelContext, settings.model) : null}
       />
     </div>
   );

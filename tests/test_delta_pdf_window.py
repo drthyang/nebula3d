@@ -478,8 +478,14 @@ def test_pipeline_passes_the_input_mask_as_the_support():
     vol.mask = vol.q_magnitude() <= 1.2
     on = pipeline.delta_pdf(vol, pipeline.DeltaPdfParams())
     assert on.support is not None and on.window_ellipsoid.scale < 1.0
+    # the shrunk window keeps no more than the tolerance on unmeasured space
+    assert on.window_open_weight is not None and on.window_open_weight <= 1e-3
     off = pipeline.delta_pdf(vol, pipeline.DeltaPdfParams(window_support=False))
     assert off.support is None and off.window_ellipsoid.scale == 1.0
+    assert off.window_open_weight is None
+    # a separable window over the same coverage: much of its weight is past it
+    sep = pipeline.delta_pdf(vol, pipeline.DeltaPdfParams(window_shape="separable"))
+    assert sep.window_open_weight is not None and sep.window_open_weight > 1e-3
 
 
 def test_server_maps_the_window_options():

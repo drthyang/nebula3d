@@ -57,6 +57,12 @@ export interface DeltaPdfMeta {
   lattice: Lattice;
   q_max: number | null;
   planes: string[];
+  // The transform's window from the ΔPDF's provenance: "ellipsoid" or
+  // "separable", its scale (< 1: shrunk to the coverage), and the share of its
+  // weight on unmeasured space reaching a box face.  Absent on older files.
+  window_shape?: string | null;
+  window_scale?: number | null;
+  window_open_weight?: number | null;
 }
 
 export interface ConsistencyMetrics {
@@ -203,6 +209,12 @@ export interface StageParamsIn {
   punch_supercell_l?: number;
   // Integer-punch H guard (r.l.u.); 0 turns it off.
   punch_h_guard?: number;
+  // Off-lattice search: floor (× diffuse scatter), protected H fractions ([]
+  // = none) and their half width (r.l.u.).
+  punch_search_floor?: number;
+  punch_search_protect_h?: number[];
+  punch_search_protect_half_width?: number;
+  punch_search_max_width_ratio?: number;
   punch_margin?: number;
   // Q-space punch: frame "spherical" (rρ,rθ,rφ, default) or "q" (a*,b*,c*) (Å⁻¹)
   punch_frame?: string;
@@ -229,6 +241,8 @@ export interface StageParamsIn {
   flatten_floor_percentile?: number;
   /** Magnetic ion of the flatten's const + c·F(Q)² model; "none" = constant only. */
   flatten_ion?: string;
+  flatten_q2?: boolean;
+  flatten_fit_q_max?: number;
   pdf_apodization?: string;
   /** ΔPDF window geometry: "auto" | "separable" | "ellipsoid". */
   pdf_window_shape?: string;

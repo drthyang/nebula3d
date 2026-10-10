@@ -320,3 +320,57 @@ def test_form_factor_table():
     assert magnetic_form_factor(6.0, "Tb3+") > j0
     for alias in ("Tb3+", "tb3", "Tb^3+", " TB3+ "):
         assert ion_key(alias) == "Tb3+"
+
+
+def test_q2_term_takes_a_rising_phonon_pedestal_and_keeps_correlations():
+    """A floor rising as b·Q² (multiphonon) stays after a constant-only model,
+    and goes with ``q2_term``; a pair correlation's sin(Qr)/(Qr) term survives
+    the extra term, which varies only on the scale of the whole range."""
+    r0 = 3.75
+    def corr(q):
+        x = np.maximum(q, 1e-6) * r0
+        return 0.4 * np.sin(x) / x
+
+    rng = np.random.default_rng(1)
+    ub = 2 * np.pi * np.eye(3) / 4.0
+    vol = HKLVolume.from_arrays(np.zeros((61, 61, 61)), (-3, 3), (-3, 3), (-3, 3), ub_matrix=ub)
+    q = vol.q_magnitude()
+    vol.data[...] = 0.5 + 0.05 * q ** 2 + corr(q) + rng.normal(0.0, 0.05, q.shape)
+    valid = vol.mask & np.isfinite(vol.data)
+
+    const_only = flatten_radial_background(vol, q_step=0.05, min_count=15, fit_q_range=None)
+    with_q2 = flatten_radial_background(vol, q_step=0.05, min_count=15, fit_q_range=None,
+                                        q2_term=True)
+    assert with_q2.model_q2 == pytest.approx(0.05, rel=0.1)
+    assert const_only.model_q2 is None
+    def span(res) -> float:
+        medians = _shell_medians(res.volume.data, q, valid)
+        return float(np.nanmax(medians) - np.nanmin(medians))
+    assert span(const_only) > 1.0          # the rise is left in
+    assert span(with_q2) < 0.6             # only the correlation term's swing remains
+
+    edges = np.arange(1.0, 7.0 + 1e-9, 0.15)
+    shell = np.digitize(q[valid], edges) - 1
+    inside = (shell >= 0) & (shell < edges.size - 1)
+    t = corr(0.5 * (edges[:-1] + edges[1:])); t = t - t.mean()
+    vals = with_q2.volume.data[valid][inside]
+    prof = np.array([np.median(vals[shell[inside] == i]) for i in range(t.size)])
+    assert float(np.sum((prof - prof.mean()) * t) / np.sum(t * t)) > 0.8
+
+
+def test_q2_term_is_held_past_the_fit_range():
+    """Q² is only the leading term of a rise that saturates: past the fit
+    range's end the subtracted b·Q² keeps its value there."""
+    ub = 2 * np.pi * np.eye(3) / 4.0
+    vol = HKLVolume.from_arrays(np.zeros((41, 41, 41)), (-3, 3), (-3, 3), (-3, 3), ub_matrix=ub)
+    q = vol.q_magnitude()
+    vol.data[...] = 0.5 + 0.05 * q ** 2 + np.random.default_rng(2).normal(0.0, 0.02, q.shape)
+    res = flatten_radial_background(vol, q_step=0.05, min_count=15, fit_q_range=(0.5, 3.0),
+                                    q2_term=True)
+    assert res.model_q2_cap == 3.0
+    past = res.q_grid > 3.0
+    assert past.any()
+    at_cap = res.bg_curve[np.argmin(np.abs(res.q_grid - 3.0))]
+    assert np.allclose(res.bg_curve[past], at_cap, atol=0.01)
+    inside = (res.q_grid > 1.0) & (res.q_grid < 3.0)
+    assert np.ptp(res.bg_curve[inside]) > 0.3      # it still rises inside the range

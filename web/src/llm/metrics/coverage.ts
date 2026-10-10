@@ -28,6 +28,11 @@ const FULL = 0.95;
 const HALF = 0.5;
 export const COVERAGE_SHELLS = 40; // so a coverage edge is known to within box_q / 40
 
+// The share of the ΔPDF window's weight that may lie on unmeasured reciprocal
+// space: the backend's support tolerance, past which its "auto" window gives up
+// the separable box for an ellipsoid tapered to the coverage.
+export const OPEN_WEIGHT_OK = 1e-3;
+
 export const coverageMetrics = (raw: GridSlice | null, radius: RadiusFn = planarRadius, nbins = COVERAGE_SHELLS): CoverageMetrics | null => {
   if (!raw) return null;
   const { nx, ny, x_axis, y_axis } = raw.header;

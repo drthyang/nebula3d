@@ -169,7 +169,16 @@ export const radialFloors = (
   radius: RadiusFn = planarRadius,
   p = 0.25,
   minCount = 20,
-): number[] => {
+): number[] => radialFloorShells(grid, nbins, radius, p, minCount).floors;
+
+/** The radial floors with each shell's centre radius. */
+export const radialFloorShells = (
+  grid: GridSlice,
+  nbins = 32,
+  radius: RadiusFn = planarRadius,
+  p = 0.25,
+  minCount = 20,
+): { floors: number[]; centres: number[]; counts: number[] } => {
   const { nx, ny, x_axis, y_axis } = grid.header;
   const radii = new Float64Array(nx * ny);
   let rMax = 0;
@@ -187,7 +196,11 @@ export const radialFloors = (
     if (!Number.isFinite(v)) continue;
     shells[Math.min(nbins - 1, Math.floor(radii[i] * binScale))].push(v);
   }
-  return shells.map((s) => (s.length >= minCount ? percentile(s, p) : NaN));
+  return {
+    floors: shells.map((s) => (s.length >= minCount ? percentile(s, p) : NaN)),
+    centres: shells.map((_s, i) => ((i + 0.5) * rMax) / nbins),
+    counts: shells.map((s) => s.length),
+  };
 };
 
 // A smooth radial baseline: rolling median of the profile over a ±`half`-bin

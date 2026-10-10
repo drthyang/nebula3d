@@ -69,6 +69,10 @@ class DeltaPdfData:
     lat_c: float | None
     q_max: float | None
     lat_alpha: float | None = None
+    # The transform's window as recorded in the provenance (None if absent).
+    window_shape: str | None = None
+    window_scale: float | None = None
+    window_open_weight: float | None = None
     lat_beta: float | None = None
     lat_gamma: float | None = None
 
@@ -104,6 +108,9 @@ def load_dpdf(path: Path) -> DeltaPdfData:
         lat_alpha=lat["alpha"],
         lat_beta=lat["beta"],
         lat_gamma=lat["gamma"],
+        window_shape=str(f.logs["window_shape"]) if "window_shape" in f.logs else None,
+        window_scale=_float_log(f.logs, "window_scale"),
+        window_open_weight=_float_log(f.logs, "window_open_weight"),
     )
     with _lock:
         _cache[key] = d
@@ -111,6 +118,11 @@ def load_dpdf(path: Path) -> DeltaPdfData:
         while len(_cache) > _CACHE_MAX:
             _cache.popitem(last=False)
     return d
+
+
+def _float_log(logs: dict, key: str) -> float | None:
+    v = logs.get(key)
+    return float(v) if isinstance(v, (int, float)) else None
 
 
 def clear_cache() -> None:
@@ -129,6 +141,9 @@ def dpdf_meta(path: Path) -> dict:
                     "alpha": d.lat_alpha, "beta": d.lat_beta, "gamma": d.lat_gamma},
         "q_max": d.q_max,
         "planes": list(DPDF_PLANES),
+        "window_shape": d.window_shape,
+        "window_scale": d.window_scale,
+        "window_open_weight": d.window_open_weight,
     }
 
 

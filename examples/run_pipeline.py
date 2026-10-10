@@ -79,6 +79,8 @@ STAGE_DEFAULTS = {
         # protect the whole q=1/3 satellite family (integer±1/3) periodically
         "SEARCH_EXCLUDE_H_FRACTIONS": "0.3333,0.6667",
         "SEARCH_EXCLUDE_H_WIDTH": "0.08", "PREVIEW": "0",
+        # off: set e.g. 2 to leave broad short-range-order maxima unpunched
+        "SEARCH_MAX_WIDTH": "",
     },
     # fill each hole from the diffuse around it ("laplace" = smooth harmonic
     # fill; "local" = its shell median).  "q_shell" (|Q|-shell level) is biased
@@ -92,6 +94,7 @@ STAGE_DEFAULTS = {
     # examples/validate_flatten.py.
     "flatten": {
         "ESTIMATOR": "model", "ION": "none", "FIT_Q_MIN": "0.8", "FIT_Q_MAX": "10",
+        "Q2": "0",  # 1: also fit b·Q² (a background rising with |Q|)
         "FLOOR_PCT": "25", "Q_STEP": "0.05", "SMOOTH": "0.10", "MIN_COUNT": "20",
     },
     # SUBTRACT_BG OFF by default: the step-4 flatten is the background remover.

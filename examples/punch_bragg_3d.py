@@ -77,6 +77,10 @@ Env overrides:
                  fractional parts mod 1 to protect periodically across the whole
                  H range, e.g. "0.3333,0.6667" shields every integer±1/3 plane
                  (the q=1/3 satellite family) from search punching
+    SEARCH_MAX_WIDTH
+                 leave search candidates broader than this x the Bragg width
+                 (along any axis) unpunched, as short-range-order maxima; Bragg
+                 wings are punched anyway (MODE=both; default empty = off)
     MARGIN       guard band added to every radius (default 0.03)
     MAX_SCALE    max intensity radius multiplier (default 3.0)
     PHI_TAIL_HKL extra Bragg-punch width along the local powder-ring direction
@@ -226,6 +230,10 @@ search_exclude_h_fractions = (
     tuple(float(x) for x in search_exclude_frac_env.split(",") if x.strip())
     if search_exclude_frac_env else None
 )
+search_max_width_env = env_default("SEARCH_MAX_WIDTH", "")
+search_max_width = (
+    float(search_max_width_env) if search_max_width_env.strip() not in {"", "0"} else None
+)
 integer_local_nmad_env = env_default("INTEGER_LOCAL_NMAD", "")
 integer_local_nmad = (
     None if integer_local_nmad_env == "" else float(integer_local_nmad_env)
@@ -289,6 +297,7 @@ remover = BraggRemover(
     search_exclude_h_centers=search_exclude_h,
     search_exclude_h_half_width=search_exclude_h_width,
     search_exclude_h_fractions=search_exclude_h_fractions,
+    search_max_width_ratio=search_max_width,
 )
 print(f"preset={preset_name or 'none'}  mode={mode}  spherical_radii={spherical_r}  min_I={min_i}  "
       f"integer_nmad={integer_nmad}  integer_q_step={integer_q_step}  "
@@ -302,7 +311,8 @@ print(f"preset={preset_name or 'none'}  mode={mode}  spherical_radii={spherical_
       f"search_nmad={search_nmad}  search_min_I={search_min_i}  "
       f"search_prom={search_prom}  search_exclude_h={search_exclude_h}  "
       f"search_exclude_fractions={search_exclude_h_fractions}  "
-      f"search_exclude_width={search_exclude_h_width}  phi_tail={phi_tail_hkl}",
+      f"search_exclude_width={search_exclude_h_width}  "
+      f"search_max_width={search_max_width}  phi_tail={phi_tail_hkl}",
       flush=True)
 print(f"incident beam: radii={incident_r_hkl} margin={incident_margin} "
       f"phi_tail={incident_phi_tail} "

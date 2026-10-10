@@ -15,6 +15,7 @@ import {
 import { ViewerImportBanner } from "./components/ViewerImportBanner";
 import { AssistantPanel } from "./llm";
 import { useAgentHighlights } from "./llm/highlight";
+import { useRememberedConfig } from "./state/configMemory";
 import { ConsistencyViewer } from "./pages/ConsistencyViewer";
 import { BraggProfileViewer } from "./pages/BraggProfileViewer";
 import { DeltaPdfViewer } from "./pages/DeltaPdfViewer";
@@ -24,6 +25,7 @@ import { ReciprocalViewer } from "./pages/ReciprocalViewer";
 import { useDatasetStore, useInitializeDataset } from "./state/datasetStore";
 import { useNavStore, type Tab } from "./state/navStore";
 import { usePipelineStore } from "./state/pipelineStore";
+import { datasetName } from "./api/datasetName";
 
 
 // `short` is the label used by the compact top bar (phones and iPad portrait),
@@ -129,6 +131,7 @@ export function App() {
   // so it can open a viewer next to the conversation.
   const dockOpen = useNavStore((s) => s.dockOpen);
   useAgentHighlights();
+  useRememberedConfig();
   const setDockOpen = useNavStore((s) => s.setDockOpen);
   // A volume sent by the NeXus Viewer lands on the Configure page.
   const showConfig = useCallback(() => setTab("config"), [setTab]);
@@ -182,7 +185,7 @@ export function App() {
               {!datasets.length && <option value="">—</option>}
               {datasets.map((d) => (
                 <option key={d.id} value={d.id} title={d.raw_name}>
-                  {d.temperature ?? d.stem}
+                  {datasetName(d, datasets)}
                 </option>
               ))}
             </select>
@@ -226,11 +229,11 @@ export function App() {
             className={`nav-assistant${dockOpen ? " active" : ""}`}
             onClick={() => setDockOpen(!dockOpen)}
             aria-pressed={dockOpen}
-            title={dockOpen ? "Close the AI Assistant" : "Open the AI Assistant beside this page"}
+            title={dockOpen ? "Close NEBULA Pilot" : "Open NEBULA Pilot beside this page"}
           >
             <IconSpark />
-            <span className="nav-label">AI Assistant</span>
-            <span className="nav-label-short">Assistant</span>
+            <span className="nav-label">NEBULA Pilot</span>
+            <span className="nav-label-short">Pilot</span>
             <span className="nav-beta">Beta</span>
           </button>
         </nav>
@@ -249,7 +252,7 @@ export function App() {
       </main>
 
       {dockOpen && (
-        <aside className="ai-side" aria-label="AI Assistant">
+        <aside className="ai-side" aria-label="NEBULA Pilot">
           <AssistantPanel onClose={() => setDockOpen(false)} />
         </aside>
       )}

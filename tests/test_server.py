@@ -662,6 +662,58 @@ def test_build_params_punch_overrides():
     assert defaults.punch_frame == "spherical"
 
 
+def test_build_params_punch_search_floor_and_protected_planes():
+    """The search floor and the protected H planes reach PunchParams; [] turns
+    the protection off, and bad values are refused."""
+    from nebula3d.pipeline import PunchParams
+    from nebula3d.server.routers.pipeline import build_params
+    from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
+
+    base = PunchParams()
+    assert base.search_exclude_h_fractions  # protected by default
+
+    def punch(**kw):
+        return build_params(PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw))).punch
+
+    p = punch(punch_search_floor=8.0, punch_search_protect_h=[],
+              punch_search_protect_half_width=0.05)
+    assert p.search_min_intensity == 8.0 and p.search_min_prominence == 8.0
+    assert p.search_exclude_h_fractions is None
+    assert p.search_exclude_h_half_width == 0.05
+    assert punch(punch_search_protect_h=[0.5]).search_exclude_h_fractions == (0.5,)
+    # unset fields keep the defaults
+    q = punch()
+    assert q.search_exclude_h_fractions == base.search_exclude_h_fractions
+    assert q.search_min_intensity == base.search_min_intensity
+    assert punch(punch_search_max_width_ratio=2.5).search_max_width_ratio == 2.5
+    assert punch(punch_search_max_width_ratio=0).search_max_width_ratio is None  # 0 = off
+    assert q.search_max_width_ratio is None
+    for bad in ({"punch_search_floor": 0.0}, {"punch_search_protect_h": [1.2]},
+                {"punch_search_protect_half_width": -0.1},
+                {"punch_search_max_width_ratio": 0.5}):
+        with pytest.raises(ValueError):
+            punch(**bad)
+
+
+def test_build_params_flatten_q2_and_fit_range():
+    """The b·Q² term and the fit range's end reach FlattenParams; a fit range
+    ending before it starts is refused."""
+    from nebula3d.pipeline import FlattenParams
+    from nebula3d.server.routers.pipeline import build_params
+    from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
+
+    def flat(**kw):
+        return build_params(PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw))).flatten
+
+    base = FlattenParams()
+    assert not base.q2_term
+    f = flat(flatten_q2=True, flatten_fit_q_max=16.0)
+    assert f.q2_term and f.fit_q_range == (base.fit_q_range[0], 16.0)
+    assert flat().fit_q_range == base.fit_q_range
+    with pytest.raises(ValueError):
+        flat(flatten_fit_q_max=0.5)
+
+
 def test_build_params_qspace_punch_overrides():
     """Q-space punch overrides (frame + isotropic / per-axis radii) reach PunchParams."""
     from nebula3d.pipeline import PunchParams
