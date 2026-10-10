@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
-from nebula3d.core import HKLVolume
+from nebula3d.core import HKLVolume, low_memory
 
 _TERM = re.compile(r"([+-]?)(\d*)([hkl])")
 
@@ -192,18 +192,28 @@ class GridSymmetry:
 
         The invariant part of *values* on *where*: equivalent voxels end up
         equal, and voxels outside *where* are left alone.  Equivalents off the
-        grid do not count.  Works through *where*'s voxels *chunk* at a time,
-        so the temporaries stay a few times the chunk.  Returns the number of
-        voxels averaged.
+        grid do not count.  On the general path each mean is written to the
+        whole orbit at once, so a member reached later finds equal values and
+        keeps them, and the temporaries stay a few times *chunk*.  Returns the
+        number of voxels in *where*.
         """
         where = np.asarray(where, dtype=bool)
         if where.shape != self.shape or values.shape != self.shape:
             raise ValueError(f"shapes {values.shape}, {where.shape} != grid shape {self.shape}")
         if all(_l_separate(r) for r, _t in self.index_ops):
-            return self._orbit_mean_rows(values, where)
+            self._orbit_mean_rows(values, where, in_place=low_memory())
+            return int(where.sum())
         idx_all = np.argwhere(where)
         shape = np.asarray(self.shape)
-        means = np.empty(len(idx_all), dtype=np.float64)
+
+        def images(idx: NDArray[np.int64], r: NDArray[np.int64], t: NDArray[np.int64]):
+            img = idx @ r.T + t
+            on = np.all((img >= 0) & (img < shape), axis=1)
+            pos = np.nonzero(on)[0]
+            img = img[on]
+            inside = where[img[:, 0], img[:, 1], img[:, 2]]
+            return pos[inside], img[inside]
+
         for lo in range(0, len(idx_all), chunk):
             idx = idx_all[lo:lo + chunk]
             own = values[idx[:, 0], idx[:, 1], idx[:, 2]].astype(np.float64)
@@ -211,33 +221,33 @@ class GridSymmetry:
             total = np.where(finite, own, 0.0)
             count = finite.astype(np.int64)
             for r, t in self.index_ops[1:]:
-                img = idx @ r.T + t
-                on = np.all((img >= 0) & (img < shape), axis=1)
-                pos = np.nonzero(on)[0]
-                img = img[on]
-                inside = where[img[:, 0], img[:, 1], img[:, 2]]
-                pos, img = pos[inside], img[inside]
+                pos, img = images(idx, r, t)
                 v = values[img[:, 0], img[:, 1], img[:, 2]].astype(np.float64)
                 ok = np.isfinite(v)
                 total[pos[ok]] += v[ok]   # each voxel has one image per operation
                 count[pos[ok]] += 1
-            means[lo:lo + len(idx)] = np.where(count > 0, total / np.maximum(count, 1), own)
-        values[idx_all[:, 0], idx_all[:, 1], idx_all[:, 2]] = means
+            mean = np.where(count > 0, total / np.maximum(count, 1), own).astype(values.dtype)
+            for r, t in self.index_ops:
+                pos, img = images(idx, r, t)
+                values[img[:, 0], img[:, 1], img[:, 2]] = mean[pos]
         return len(idx_all)
-
 
     def _orbit_mean_rows(
         self, values: NDArray[np.floating], where: NDArray[np.bool_], block: int = 8,
-    ) -> int:
+        in_place: bool = False,
+    ) -> None:
         """:meth:`orbit_mean` for a group whose operations map L to ±L alone
         (every hexagonal, tetragonal, orthorhombic and monoclinic one): whole L
         rows are gathered a block of H planes at a time, much faster than voxel
-        indices on a full volume.  The means are kept until every block is done,
-        since the blocks read each other's voxels."""
+        indices on a full volume.  The blocks read each other's voxels, so the
+        means are kept until every block is done (one value per voxel of
+        *where*); with *in_place* (the browser's low-memory mode) each block's
+        means are written to their whole orbits at once instead, which keeps
+        nothing but takes about twice as long."""
         nh, nk, nl = self.shape
         j = np.arange(nk)[None, :]
         lidx = np.arange(nl)
-        out: list[tuple[int, NDArray[np.bool_], NDArray[np.floating]]] = []
+        deferred: list[tuple[int, NDArray[np.bool_], NDArray[np.floating]]] = []
         for lo in range(0, nh, block):
             i = np.arange(lo, min(nh, lo + block))[:, None]
             sel = where[lo:lo + len(i)]
@@ -245,6 +255,7 @@ class GridSymmetry:
                 continue
             total = np.zeros(sel.shape, dtype=np.float64)
             count = np.zeros(sel.shape, dtype=np.int32)
+            maps = []
             for r, t in self.index_ops:
                 si = r[0, 0] * i + r[0, 1] * j + t[0]
                 sj = r[1, 0] * i + r[1, 1] * j + t[1]
@@ -252,22 +263,29 @@ class GridSymmetry:
                 okl = (sl >= 0) & (sl < nl)
                 ok = (si >= 0) & (si < nh) & (sj >= 0) & (sj < nk)
                 rows = values[si[ok], sj[ok]][:, sl[okl]].astype(np.float64)
-                use = where[si[ok], sj[ok]][:, sl[okl]] & np.isfinite(rows)
+                inside = where[si[ok], sj[ok]][:, sl[okl]]
+                use = inside & np.isfinite(rows)
                 tot = total[ok]
                 cnt = count[ok]
                 tot[:, okl] += np.where(use, rows, 0.0)
                 cnt[:, okl] += use
                 total[ok] = tot
                 count[ok] = cnt
-            own = values[lo:lo + len(i)]
-            mean = np.where(count > 0, total / np.maximum(count, 1), own)
-            out.append((lo, sel, mean[sel].astype(values.dtype, copy=False)))
-        n = 0
-        for lo, sel, mean in out:
-            block_vals = values[lo:lo + sel.shape[0]]
-            block_vals[sel] = mean
-            n += int(sel.sum())
-        return n
+                if in_place:
+                    maps.append((si[ok], sj[ok], sl[okl], ok, okl, inside))
+            mean = np.where(count > 0, total / np.maximum(count, 1),
+                            values[lo:lo + len(i)]).astype(values.dtype)
+            if not in_place:
+                deferred.append((lo, sel, mean[sel]))
+                continue
+            for si_ok, sj_ok, sl_ok, ok, okl, inside in maps:
+                put = sel[ok][:, okl] & inside
+                if not put.any():
+                    continue
+                rr, ll = np.nonzero(put)
+                values[si_ok[rr], sj_ok[rr], sl_ok[ll]] = mean[ok][:, okl][put]
+        for lo, sel, mean in deferred:
+            values[lo:lo + sel.shape[0]][sel] = mean
 
 
 def _l_separate(r: NDArray[np.int64]) -> bool:
