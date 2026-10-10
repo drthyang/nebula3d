@@ -46,6 +46,7 @@ Regenerate those files by rerunning the scripts below.
 | `investigate_bragg_diffuse.py` | Separate Bragg from co-located diffuse scattering: line-cut peak-shape fits, resolution `σ(\|Q\|)`, correlation length ξ, diffuse fraction, and optional series overlays. |
 | `validate_flatten.py` | Robustness QA for the step-4 flatten (non-circular): background isotropy, feature-contrast retention, over-subtraction, high-`\|Q\|` coverage. |
 | `qa_punch_fill.py` | Real-data QA of a Bragg punch + backfill: detection significance, hole sizes and merging, Bragg tails leaking past each hole (by distance in Å⁻¹), and the fill against each hole's surroundings. |
+| `refine_ub.py` | Refine the UB from the Bragg peaks' centres (orientation, cell, both, or the changes a symmetrised volume can show), report the peaks' radial offsets by \|Q\| band, and optionally write the volume regridded onto the refined UB, symmetrised or not. |
 | `benchmark_punch_fill.py` | Ground-truth benchmark of the punch + backfill on the synthetic demo volume (known Bragg, diffuse and noise): Bragg left, diffuse removed, false detections, fill bias, 3D-ΔPDF error at the lattice vectors; a clean and a low-exposure-edge scenario. |
 
 ## Typical Commands
