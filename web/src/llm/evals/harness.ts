@@ -7,6 +7,7 @@
 // and real models against a running backend (live.test.ts).
 
 import type { Dataset } from "../../api/types";
+import { configOf } from "../../state/configMemory";
 import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { runAgent, type AgentStep } from "../agent";
 import { loadPipelineContext } from "../context/loadContext";
@@ -53,6 +54,26 @@ export interface ScenarioResult {
   run: EvalRun;
 }
 
+/** Tools that start pipeline runs on the backend: an eval never runs them. */
+export const ACTIONS = new Set(["run_pipeline", "tune_pipeline"]);
+
+/**
+ * *tools* with the actions stubbed: a call is recorded (and graded) but fails
+ * without reaching the backend, so a model that acts on a question cannot
+ * change the datasets the next scenario reads.
+ */
+export const readOnly = (tools: AgentTool[]): AgentTool[] =>
+  tools.map((t) =>
+    ACTIONS.has(t.name)
+      ? {
+          ...t,
+          run: async () => {
+            throw new Error("not run: the evals never start a pipeline run (the call is recorded)");
+          },
+        }
+      : t,
+  );
+
 export function pickDataset(datasets: Dataset[], suffix: string): Dataset {
   const hits = datasets.filter((d) => d.id.endsWith(suffix));
   if (hits.length !== 1) throw new Error(`${hits.length} datasets end with ${JSON.stringify(suffix)}`);
@@ -81,6 +102,9 @@ export async function runScenario(
   },
 ): Promise<ScenarioResult> {
   const dataset = pickDataset(datasets, scenario.dataset);
+  // Every scenario starts from the defaults plus its dataset's settings: a
+  // setting an earlier run changed (update_settings) does not carry over.
+  usePipelineStore.getState().patch(configOf(usePipelineStore.getInitialState()));
   usePipelineStore.getState().patch(scenario.config);
   const ctx = context ?? (await loadPipelineContext(dataset)).context;
   const messages = buildChatMessages(ctx, [], scenario.question, null, { tools: true });
@@ -89,7 +113,7 @@ export async function runScenario(
   try {
     const result = await runAgent({
       messages,
-      tools,
+      tools: readOnly(tools),
       ctx: { dataset, datasets },
       settings: { ...settings, attachImages: false, useTools: true, followViews: false },
       signal,
