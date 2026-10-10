@@ -20,6 +20,10 @@ export interface SuspiciousPeak {
   hkl?: [number, number, number]; // with the cut known
   at_node?: boolean; // within NODE_TOL of a lattice node (of the punch supercell)
   on_protected_plane?: boolean; // off-lattice, on an H plane the search leaves alone
+  // Full width at half maximum above the local level, in voxels along the
+  // slice's x and y; broad when either reaches BROAD_VOXELS.
+  fwhm_voxels: [number, number];
+  broad: boolean;
   intensity: number;
   local_background: number;
   // intensity / local_background — how far above its surroundings the peak is.
@@ -115,6 +119,27 @@ const neighboursAbove = (grid: GridSlice, ix: number, iy: number, floor: number)
 const SPARSE_ZEROS = 0.25;
 const SPARSE_LEVEL = 0.1;
 
+// A leftover this wide (FWHM in voxels, along either slice axis) is a broad
+// diffuse maximum, not a reflection: Bragg and spurious peaks span 1–4 voxels
+// FWHM on the measured grids, short-range-order maxima 5–12 along their broad
+// axis.
+const BROAD_VOXELS = 5;
+
+// Full width at half maximum, in voxels, through (ix, iy) along (dx, dy).
+const fwhmVoxels = (grid: GridSlice, ix: number, iy: number, dx: number, dy: number, half: number): number => {
+  const { nx, ny } = grid.header;
+  const above = (k: number) => {
+    const x = ix + k * dx;
+    const y = iy + k * dy;
+    return x >= 0 && x < nx && y >= 0 && y < ny && grid.data[y * nx + x] > half;
+  };
+  let lo = 0;
+  while (lo < 15 && above(-(lo + 1))) lo++;
+  let hi = 0;
+  while (hi < 15 && above(hi + 1)) hi++;
+  return lo + hi + 1;
+};
+
 // A peak this close (r.l.u., per axis) to a lattice node counts as at the node.
 export const NODE_TOL = 0.12;
 
@@ -126,6 +151,9 @@ export interface LeftoverScan {
   n_at_nodes?: number;
   n_off_nodes?: number;
   n_on_protected?: number;
+  // Off-lattice leftovers broad enough to be diffuse maxima (short-range order),
+  // not sharp reflections.
+  n_broad_off_nodes?: number;
   // Spikes in noisy or sparse-count regions (e.g. the coverage edge), not counted as peaks.
   n_skipped_noisy: number;
   scan_sigma_threshold: number;
@@ -163,6 +191,7 @@ export const scanLeftoverPeaks = (
     scan_sigma_threshold: sigmaThreshold,
     ...(toHkl ? { n_at_nodes: 0, n_off_nodes: 0 } : {}),
     ...(toHkl && protectedH ? { n_on_protected: 0 } : {}),
+    ...(toHkl ? { n_broad_off_nodes: 0 } : {}),
   };
   if (!stats || stats.sigma <= 0) return empty;
   const { nx, ny } = grid.header;
@@ -191,12 +220,16 @@ export const scanLeftoverPeaks = (
         continue;
       }
       const [x, y] = pixelCoord(grid, ix, iy);
+      const halfMax = bg.level + (v - bg.level) / 2;
+      const fwhm: [number, number] = [fwhmVoxels(grid, ix, iy, 1, 0, halfMax), fwhmVoxels(grid, ix, iy, 0, 1, halfMax)];
       const peak: SuspiciousPeak = {
         xy: [roundSig(x, 4), roundSig(y, 4)],
         intensity: roundSig(v),
         local_background: roundSig(bg.level),
         contrast: roundSig(bg.level !== 0 ? v / bg.level : Infinity),
         sigma: roundSig(sigma),
+        fwhm_voxels: fwhm,
+        broad: Math.max(...fwhm) >= BROAD_VOXELS,
       };
       if (toHkl) {
         const hkl = toHkl(x, y);
@@ -214,6 +247,7 @@ export const scanLeftoverPeaks = (
     n_suspicious: found.length,
     ...(toHkl ? { n_at_nodes: atNodes, n_off_nodes: found.length - atNodes } : {}),
     ...(toHkl && protectedH ? { n_on_protected: found.filter((p) => p.on_protected_plane).length } : {}),
+    ...(toHkl ? { n_broad_off_nodes: found.filter((p) => !p.at_node && p.broad).length } : {}),
     n_skipped_noisy: noisy,
     scan_sigma_threshold: sigmaThreshold,
   };

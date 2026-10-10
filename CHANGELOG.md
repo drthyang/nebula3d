@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Leftover peaks are told apart by width.** The punch review counted
+  every off-lattice leftover alike, so the short-range-order maxima kept on
+  purpose read as missed peaks. On one plane of a measured volume that was
+  176 of 188. Each leftover now carries its FWHM in voxels. Broad ones
+  (5 voxels or more along a slice axis) are reported as diffuse maxima
+  kept, and only the sharp ones as punch candidates. The headline states
+  both counts.
 - **The off-lattice search can leave broad maxima alone.** It punched any
   candidate tall enough, so on a hexagonal volume whose superstructure is
   short-range order (maxima about 4 × broader along l than the Bragg
@@ -11,7 +18,10 @@
   The Bragg width is measured at the strongest integer peaks. A candidate
   within a quarter of the node spacing of a punched Bragg node is that
   peak's wing and is punched anyway. Spurious reflections are as sharp as
-  Bragg peaks on every volume measured, so 2 keeps them punched.
+  Bragg peaks on every volume measured, so 2 keeps them punched. Widths
+  come from line cuts above a straight baseline through the points five
+  voxels either side, so a sharp spurious peak on a broad maximum's flank
+  still measures sharp.
 - **The Configure page shows the punch footprint that runs.** Its "Method"
   select offered only *Ellipsoid* and was never sent, while the pipeline
   punched with the profile-matched footprint. *Footprint* now offers

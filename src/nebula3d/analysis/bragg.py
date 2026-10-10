@@ -287,6 +287,8 @@ _WIDTH_REFERENCE_MIN = 5
 # A search candidate within this share of the node spacing (per axis) of a
 # punched Bragg node is that peak's wing, punched whatever its width.
 _WING_REACH = 0.25
+# Voxels either side of a peak through which the width test's baseline runs.
+_FWHM_REACH = 5
 
 
 @dataclass
@@ -510,12 +512,15 @@ class BraggRemover:
         Half-width in H around each protected search-exclusion centre.
     search_max_width_ratio:
         Keep the search to peaks as sharp as Bragg peaks (``mode="both"``): a
-        search candidate whose measured RMS width (:meth:`measure_peak_sigmas`)
-        exceeds this × the dataset's Bragg width along any axis is a broad
-        maximum — short-range-order diffuse, not a spurious reflection — and is
-        left unpunched.  The Bragg width is the per-axis median over the
-        strongest integer peaks (needs at least five), floored at one voxel: a
-        resolution-limited peak measures 0, or too sharp to measure at all.
+        search candidate whose full width at half maximum exceeds this × the
+        dataset's Bragg width along any axis is a broad maximum —
+        short-range-order diffuse, not a spurious reflection — and is left
+        unpunched.  Widths come from line cuts through the peak, the half
+        maximum taken above a straight baseline through the points
+        ``_FWHM_REACH`` voxels either side, so a sharp peak on the flank of a
+        broad maximum still measures sharp.  The Bragg width is the per-axis
+        median over the strongest integer peaks (needs at least five),
+        floored at one voxel.
         A candidate within a quarter of the node spacing of a punched Bragg
         node is that peak's wing and is punched whatever its width: very strong
         peaks reach past their punch, and their wings measure broad.
@@ -1457,8 +1462,9 @@ class BraggRemover:
 
         The Bragg width is measured on *vol* at the strongest *integer* peaks;
         each candidate on the *residual* (the integer punches masked), so a
-        nearby Bragg tail does not widen it.  A candidate that cannot be
-        measured, or that lies on a punched node's wing, is kept as a peak.
+        nearby Bragg tail does not widen it.  An axis that cannot be measured
+        does not count as broad, and a candidate on a punched node's wing is
+        kept as a peak.
         """
         ratio = self.search_max_width_ratio
         if ratio is None or not search:
@@ -1470,13 +1476,8 @@ class BraggRemover:
         if len(strongest) < _WIDTH_REFERENCE_MIN:
             self._search_report["width_reference"] = None
             return search
-        # A Bragg peak too sharp for the core measurement is resolution-limited:
-        # it counts as 0, which the one-voxel floor then lifts.
-        widths = np.array([
-            w if w is not None else (0.0, 0.0, 0.0)
-            for w in (self.measure_peak_sigmas(vol, r.center_hkl) for r in strongest)],
-            dtype=np.float64)
-        reference = np.maximum(np.median(widths, axis=0), steps)
+        widths = np.array([self._line_fwhm(vol, (r.ih, r.ik, r.il)) for r in strongest])
+        reference = np.maximum(np.nan_to_num(np.nanmedian(widths, axis=0), nan=0.0), steps)
         self._search_report["width_reference"] = tuple(float(w) for w in reference)
         # The punched Bragg nodes, and how near one a wing lies (per axis).
         nodes = np.array([r.source_node_hkl for r in integer if r.source_node_hkl is not None],
@@ -1488,11 +1489,48 @@ class BraggRemover:
             if nodes.size and bool(np.any(np.all(np.abs(nodes - centre) <= reach, axis=1))):
                 sharp.append(peak)  # a Bragg wing
                 continue
-            w = self.measure_peak_sigmas(residual, peak.center_hkl)
-            if w is None or bool(np.all(np.asarray(w) <= float(ratio) * reference)):
+            w = self._line_fwhm(residual, (peak.ih, peak.ik, peak.il))
+            if not bool(np.any(w > float(ratio) * reference)):  # NaN axes never broad
                 sharp.append(peak)
         self._search_report["broad_kept"] = len(search) - len(sharp)
         return sharp
+
+    @staticmethod
+    def _line_fwhm(vol: HKLVolume, idx: tuple[int, int, int]) -> NDArray[np.float64]:
+        """Per-axis full width at half maximum (r.l.u.) of the peak at voxel *idx*.
+
+        Line cuts through the voxel along H, K and L, the half maximum taken
+        above a straight baseline through the points ``_FWHM_REACH`` voxels
+        either side, so a sharp peak on the flank of a broad maximum measures
+        sharp.  NaN for an axis whose cut leaves the grid or meets a masked
+        voxel at its ends, or where the voxel stands no higher than the
+        baseline.
+        """
+        out = np.full(3, np.nan)
+        n = _FWHM_REACH
+        for axis, ax in enumerate((vol.h_axis, vol.k_axis, vol.l_axis)):
+            c = idx[axis]
+            if c - n < 0 or c + n >= len(ax):
+                continue
+            sl = list(idx)
+            sl[axis] = slice(c - n, c + n + 1)
+            line = np.asarray(vol.data[tuple(sl)], dtype=np.float64)
+            ok = np.asarray(vol.mask[tuple(sl)], dtype=bool) & np.isfinite(line)
+            if not (ok[0] and ok[-1] and ok[n]):
+                continue
+            base = 0.5 * (line[0] + line[-1])
+            top = line[n]
+            if not top > base:
+                continue
+            half = base + 0.5 * (top - base)
+            lo = n
+            while lo > 0 and ok[lo - 1] and line[lo - 1] > half:
+                lo -= 1
+            hi = n
+            while hi < 2 * n and ok[hi + 1] and line[hi + 1] > half:
+                hi += 1
+            out[axis] = (hi - lo + 1) * abs(float(ax[1] - ax[0]))
+        return out
 
     def _scaling_reference(
         self, peaks: list[_PeakPunch], rejected: list[float] | None = None,

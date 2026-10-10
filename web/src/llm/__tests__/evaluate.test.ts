@@ -57,7 +57,7 @@ describe("evaluateStage", () => {
     expect(e.leftover_at_nodes).toBe(0);
     expect(e.fitted_peaks).toBe(12);
     expect(e.leftover_on_protected_planes).toBe(0);
-    expect(headline("punch", e)).toBe("0 missed at nodes · 0 off-lattice (0 on protected planes) · punched 0.04");
+    expect(headline("punch", e)).toBe("0 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.04");
   });
 
   it("counts a ring only where two planes see it; a one-plane bump is crystal scattering", async () => {
