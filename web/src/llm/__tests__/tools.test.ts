@@ -376,10 +376,10 @@ describe("assess_stage", () => {
     const r = await run("assess_stage", {});
     const out = JSON.parse(r.text);
     expect(out.rings.missing).toMatch(/no ringremoved output yet/);
-    expect(out.flatten).toMatchObject({ headline: "floor ≤ 0.8σ", max_after_floor_sigma: 0.8 });
+    expect(out.flatten).toMatchObject({ headline: "floor ≤ 0.8σ · trend ≤ – · span ≤ –", max_after_floor_sigma: 0.8 });
     expect(out.flatten.goal).toMatch(/floor/);
     expect(out.flatten).not.toHaveProperty("per_plane");
-    expect(r.summary).toBe("Flatten: floor ≤ 0.8σ · 3D-ΔPDF: r 0.99 · RMS 0.1 · SNR 40");
+    expect(r.summary).toBe("Flatten: floor ≤ 0.8σ · trend ≤ – · span ≤ – · 3D-ΔPDF: r 0.99 · RMS 0.1 · SNR 40");
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
   });
 

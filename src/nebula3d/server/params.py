@@ -186,6 +186,13 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
     if sp.flatten_floor_percentile is not None:
         p.flatten = dataclasses.replace(
             p.flatten, floor_percentile=sp.flatten_floor_percentile)
+    if sp.flatten_q2 is not None:
+        p.flatten = dataclasses.replace(p.flatten, q2_term=bool(sp.flatten_q2))
+    if sp.flatten_fit_q_max is not None:
+        lo = p.flatten.fit_q_range[0] if p.flatten.fit_q_range else 0.0
+        if not sp.flatten_fit_q_max > lo:
+            raise ValueError(f"flatten_fit_q_max must exceed the fit range's start ({lo:g} Å⁻¹)")
+        p.flatten = dataclasses.replace(p.flatten, fit_q_range=(lo, sp.flatten_fit_q_max))
     if sp.flatten_ion is not None:
         p.flatten = dataclasses.replace(
             p.flatten, ion=None if sp.flatten_ion.strip().lower() in ("", "none")

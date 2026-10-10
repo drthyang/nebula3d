@@ -1213,6 +1213,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       backfillMethod: st.backfillMethod,
       flattenEstimator: st.flattenEstimator,
       flattenIon: st.flattenIon,
+      flattenQ2: st.flattenQ2,
+      flattenFitQMax: st.flattenFitQMax,
       pdfApod: st.pdfApod,
       pdfWindowShape: st.pdfWindowShape,
       pdfWindowSupport: st.pdfWindowSupport,
@@ -2236,6 +2238,32 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     ))}
                   </select>
                 </Field>
+                <Field label="Fit to |Q| (Å⁻¹)">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    placeholder="10"
+                    value={s.flattenFitQMax}
+                    disabled={!s.flatten || (s.flattenEstimator !== "" && s.flattenEstimator !== "model")}
+                    title="The model is fitted to the shell floors from 0.8 Å⁻¹ up to here. Raise it to the data's coverage when the background keeps changing beyond 10 Å⁻¹."
+                    onChange={(e) => patch({ flattenFitQMax: e.target.value })}
+                  />
+                </Field>
+                <div className="switch-row">
+                  <Switch
+                    label="+ b·Q² term"
+                    checked={s.flattenQ2}
+                    onChange={(v) => patch({ flattenQ2: v })}
+                  />
+                  <HelpTip>
+                    Adds b·Q² to the model: the smooth rise of the multiphonon and
+                    thermal background (Debye–Waller exponent 2W ∝ Q²). Like the
+                    other two terms it varies only on the scale of the whole |Q|
+                    range, so it cannot follow a pair correlation&apos;s oscillation.
+                    Use it when the floors climb across the coverage.
+                  </HelpTip>
+                </div>
                   </div>
                 </div>
 

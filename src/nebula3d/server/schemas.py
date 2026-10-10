@@ -185,6 +185,8 @@ class StageParamsIn(BaseModel):
     flatten_floor_percentile: float | None = None
     # Magnetic ion of the flatten's const + c·F(Q)² model ("none": constant only)
     flatten_ion: str | None = None
+    flatten_q2: bool | None = None
+    flatten_fit_q_max: float | None = None
     pdf_apodization: str | None = None
     # ΔPDF window geometry: "auto" | "separable" | "ellipsoid"
     pdf_window_shape: str | None = None

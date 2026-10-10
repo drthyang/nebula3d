@@ -26,7 +26,7 @@ export const STAGE_GOALS: Record<TuneStage, string> = {
   backfill:
     "Fill punched holes seamlessly: median_seam_sigma ≲ 1, bright_fill_fraction small (no bright plugs where peaks were), checkerboard_fraction near 0.5 (near 1 is a periodic interpolation artefact).",
   flatten:
-    "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds, after_floor_max_sigma ≲ 1) without over-subtracting (floors well below 0).",
+    "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds, after_floor_max_sigma ≲ 1) without over-subtracting (floors well below 0), and leave no pedestal across the whole coverage: max_floor_trend (|rank correlation| of the floors with |Q|) well below 1 and max_floor_span_fraction well below 1. A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ: a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations.",
   pdf:
     "The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage. back_fft_pearson_r must stay near 1, but without a band or crop the round trip is the identity, so it cannot rank trials: a drop below ~0.999 only flags a transform problem. Apodization trades real-space resolution against truncation ripples; prefer the default unless another is clearly better on feature_snr without the reach leaving the coverage.",
 };

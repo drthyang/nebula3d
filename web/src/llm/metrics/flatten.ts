@@ -25,7 +25,34 @@ export interface FlattenMetrics {
   // ≲ 1 is flat, several σ is a leftover trend or an over-subtraction.
   after_floor_max_sigma: number | null;
   after_negative_fraction: number | null;
+  // Over every measured shell from the fit range's start out to the coverage
+  // (not only the fit range): how the floor after the flatten follows |Q|.
+  // floor_trend is the floors' rank correlation with |Q| — near ±1 a pedestal
+  // the model left (a rising or falling background), near 0 level or only
+  // oscillating.  floor_span_fraction is the floors' range as a share of the
+  // backfilled slice's median level.  A trend near 1 with a span near or above
+  // 1 is a leftover background, however small it reads in σ beside strong
+  // diffuse structure.
+  floor_trend: number | null;
+  floor_span_fraction: number | null;
 }
+
+// Spearman rank correlation of y with its index (the shells' |Q| order).
+const rankTrend = (y: number[]): number | null => {
+  const n = y.length;
+  if (n < 5) return null;
+  const order = y.map((v, i) => [v, i] as const).sort((a, b) => a[0] - b[0]);
+  const rank = new Array<number>(n);
+  order.forEach(([, i], r) => (rank[i] = r));
+  const m = (n - 1) / 2;
+  let sxy = 0;
+  let sxx = 0;
+  for (let i = 0; i < n; i++) {
+    sxy += (i - m) * (rank[i] - m);
+    sxx += (i - m) ** 2;
+  }
+  return sxx > 0 ? sxy / sxx : null;
+};
 
 const NBINS = 30;
 
@@ -62,14 +89,27 @@ export const flattenMetrics = (
     floor_after: null,
     after_floor_max_sigma: null,
     after_negative_fraction: null,
+    floor_trend: null,
+    floor_span_fraction: null,
   };
   if (!after) return nulls;
   const afterStats = robustStats(after.data);
   const floorsAfter = floorsIn(after, radius, qRange);
   const sigma = afterStats && afterStats.sigma > 0 ? afterStats.sigma : null;
   const finiteAfter = floorsAfter.filter(Number.isFinite);
+  // Every well-measured shell past the fit range's start (the direct-beam
+  // core): the partial shells at the coverage edge, under a quarter of the
+  // typical shell's voxels, would otherwise set the span.
+  const shells = radialFloorShells(after, NBINS, radius);
+  const filled = shells.counts.filter((c) => c > 0);
+  const minCount = filled.length ? 0.25 * median(filled) : 0;
+  const outward = shells.floors.filter(
+    (f, i) => Number.isFinite(f) && shells.counts[i] >= minCount && (!qRange || shells.centres[i] >= qRange[0]),
+  );
+  const trend = rankTrend(outward);
   const out: FlattenMetrics = {
     ...nulls,
+    floor_trend: trend != null ? roundSig(trend) : null,
     floor_after: thirds(floorsAfter),
     after_floor_max_sigma:
       sigma && finiteAfter.length ? roundSig(Math.max(...finiteAfter.map(Math.abs)) / sigma) : null,
@@ -89,5 +129,8 @@ export const flattenMetrics = (
   }
   const base = level.length ? median(level) : 0;
   if (removed.length && base > 0) out.removed_fraction = roundSig(median(removed) / base);
+  if (outward.length >= 5 && base > 0) {
+    out.floor_span_fraction = roundSig((Math.max(...outward) - Math.min(...outward)) / base);
+  }
   return out;
 };
