@@ -4,7 +4,7 @@
 // histograms, a sortable peak table, and a selected-peak detail with the real
 // intensity around the peak in three orthogonal slices + fit ellipses.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useBraggProfile, useDatasets, useMeta } from "../api/hooks";
 import type { BraggPeakWidth } from "../api/types";
@@ -617,6 +617,22 @@ export function BraggProfileViewer() {
 
   const lat = meta.data?.lattice;
   const grid = meta.data?.shape;
+
+  // The assistant pointed at a peak: select the fitted peak nearest that HKL,
+  // showing fractional entries too when it is one of them, then clear the ask.
+  const peakFocus = useViewerStore((s) => s.peakFocus);
+  useEffect(() => {
+    if (!peakFocus || !rawPeaks.length) return;
+    const dist = (hkl: number[]) => Math.hypot(...hkl.map((v, i) => v - peakFocus[i]));
+    const nearest = rawPeaks.reduce((best, p) => (dist(p.center_hkl) < dist(best.center_hkl) ? p : best));
+    const at = peaks.indexOf(nearest);
+    if (at < 0) {
+      setIntegerHklOnly(false); // the next pass finds it among all peaks
+      return;
+    }
+    setSelected(at);
+    useViewerStore.getState().setPeakFocus(null);
+  }, [peakFocus, rawPeaks, peaks]);
 
   // Keep selection in range when the dataset / profile changes.
   const selPeak = peaks[selected] ?? peaks[Math.floor(peaks.length / 2)];

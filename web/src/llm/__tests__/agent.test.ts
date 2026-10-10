@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
+import { useNavStore } from "../../state/navStore";
 import { runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";
@@ -146,6 +147,25 @@ describe("runAgent", () => {
     const replayed = seen[1].messages[seen[1].messages.length - 2];
     expect(replayed).toMatchObject({ role: "assistant", tool_calls: [{ id: "c1" }] });
     expect(replayed.native).toBe(native);
+  });
+
+  it("moves the console to each step's figure while Follow is on", async () => {
+    const look: AgentTool = {
+      name: "look",
+      description: "looks at the run log",
+      parameters: { type: "object", properties: {} },
+      run: async () => ({ result: {}, summary: "looked", view: { view: "execution", label: "the run log" } }),
+    };
+    const signal = new AbortController().signal;
+    useNavStore.setState({ tab: "config" });
+    script([[{ toolCalls: [call("c1", "look", {})] }], [{ content: "ok" }]]);
+    const r = await runAgent({ messages: base, tools: [look], ctx, settings, signal });
+    expect(useNavStore.getState().tab).toBe("execution");
+    expect(r.steps[0].view).toEqual({ view: "execution", label: "the run log" });
+    useNavStore.setState({ tab: "config" });
+    script([[{ toolCalls: [call("c2", "look", {})] }], [{ content: "ok" }]]);
+    await runAgent({ messages: base, tools: [look], ctx, settings: { ...settings, followViews: false }, signal });
+    expect(useNavStore.getState().tab).toBe("config");
   });
 
   it("propagates other errors", async () => {

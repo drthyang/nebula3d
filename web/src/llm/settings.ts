@@ -21,6 +21,9 @@ export interface LlmSettings {
   // look up the Bragg profile, open a viewer, …).  Models that cannot call
   // tools fall back to the fixed-cut metrics on their own.
   useTools: boolean;
+  // When true, the console moves to the figure each measuring or assessing
+  // tool call looked at, as it finishes, so the user sees what the model sees.
+  followViews: boolean;
 }
 
 export const DEFAULT_SETTINGS: LlmSettings = {
@@ -30,6 +33,7 @@ export const DEFAULT_SETTINGS: LlmSettings = {
   temperature: 0.2,
   attachImages: false,
   useTools: true,
+  followViews: true,
 };
 
 const readStorage = (): LlmSettings => {

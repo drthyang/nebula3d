@@ -94,6 +94,11 @@ const TOOL_LABELS: Record<string, string> = {
   consistency_details: "Read the back-FFT check",
   compare_datasets: "Compared datasets",
   configure_settings: "Read the run settings",
+  assess_stage: "Assessed a stage",
+  radial_profile: "Took a radial profile",
+  texture_check: "Checked for texture",
+  qmax_coverage: "Checked Qmax against coverage",
+  run_log: "Read the run log",
   update_settings: "Changed settings",
   run_pipeline: "Ran the pipeline",
   tune_pipeline: "Tuned the pipeline",
@@ -364,6 +369,26 @@ export function ChatView({
             </svg>
             Tools
           </button>
+          {tools && (
+            <button
+              type="button"
+              className={`ai-vision-chip${settings.followViews ? " on" : ""}`}
+              onClick={() => saveSettings({ followViews: !settings.followViews })}
+              aria-pressed={settings.followViews}
+              title={
+                settings.followViews
+                  ? "Follow on: the console moves to the figure each measurement or assessment looks at."
+                  : "Follow off: the console stays put; each step's Show button opens its figure."
+              }
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                <circle cx="8" cy="8" r="1.8" fill="currentColor" />
+                <path d="M8 0.8v2.4M8 12.8v2.4M0.8 8h2.4M12.8 8h2.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+              Follow
+            </button>
+          )}
           <button
             type="button"
             className={`ai-vision-chip${settings.attachImages ? " on" : ""}`}
