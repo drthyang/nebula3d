@@ -1742,11 +1742,6 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     )}
                   </div>
                   </div>
-                  <div className="cfg-box cfg-box--plot" aria-hidden="true">
-                    <span className="ring-removal-spacer-hint">
-                      radial PV fit · ring-width estimate
-                    </span>
-                  </div>
                   <div className="cfg-box ring-removal-figure">
                     <div className="ring-removal-viz">
                       {s.ringModel === "parametric" || s.ringModel === "global_v2" ? (

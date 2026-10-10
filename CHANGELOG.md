@@ -12,6 +12,12 @@
   - A request a safety classifier declines is re-run on another Claude
     model in the same call (server-side fallback).
   - A declined reply never runs its tool calls.
+- **A shorter Ring removal stage on the web Configure page.** The empty
+  "radial PV fit · ring-width estimate" placeholder is gone. The texture
+  figure takes its place and sets its equations beside the schematic, so the
+  pooled model's equation is no longer cut off. The ring parameters sit
+  two-up under the model, which takes the Global 3D controls from seven rows
+  to four.
 - **Ask the assistant to run and tune the analysis, and watch it work.**
   Asked to process the data, the model used to explain the steps and tell you
   to press Run, because no tool could start one. It now has three:
