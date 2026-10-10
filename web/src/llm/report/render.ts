@@ -40,7 +40,7 @@ export function reportMarkdown(r: Report): string {
   out.push(mdTable(["Check", "Verdict", "Numbers"], r.checks.map((c) => [c.title, VERDICT_LABEL[c.verdict], c.headline])), "");
   for (const c of r.checks) {
     out.push(`### ${c.title} — ${VERDICT_LABEL[c.verdict]}`, "");
-    if (c.goal) out.push(`*Goal:* ${c.goal}`, "");
+    if (c.criterion) out.push(`*Judged by:* ${c.criterion}`, "");
     out.push(mdTable(["Measure", "Value"], c.details), "");
   }
 
@@ -147,7 +147,7 @@ const checkCard = (c: ReportCheck): string =>
 
 const checkSection = (c: ReportCheck): string =>
   `<section class="check-detail"><div class="card-head"><h3>${esc(c.title)}</h3>${chip(c.verdict)}</div>` +
-  (c.goal ? `<p class="goal"><span>Goal</span> ${esc(c.goal)}</p>` : "") +
+  (c.criterion ? `<p class="goal"><span>Judged by</span> ${esc(c.criterion)}</p>` : "") +
   table(c.details, ["Measure", "Value"]) +
   "</section>";
 

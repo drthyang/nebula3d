@@ -1,5 +1,5 @@
 // The analysis report: assembled from measured tool results (never from the
-// model's text), judged by each stage's stated goal, and rendered as a
+// model's text), judged by each check's stated criterion, and rendered as a
 // self-contained HTML page and as Markdown with every piece of text escaped.
 
 import { describe, expect, it } from "vitest";
@@ -45,18 +45,17 @@ const input = (over: Partial<ReportInput> = {}): ReportInput => ({
     { title: "Raw, H–K plane at L = 0", caption: "shared scale", dataUrl: PNG },
     { title: "Not a PNG", caption: "dropped", dataUrl: "javascript:alert(1)" },
   ],
-  goals: { rings: "Remove powder rings.", punch: "Missed lattice peaks must reach 0." },
   ...over,
 });
 
 describe("buildReport", () => {
-  it("judges each stage by its stated goal, from the measured numbers", () => {
+  it("judges each stage by its stated criterion, from the measured numbers", () => {
     const r = buildReport(input());
     const verdict = Object.fromEntries(r.checks.map((c) => [c.title, c.verdict]));
     expect(verdict).toEqual({ "Ring removal": "attention", "Bragg punch": "attention", Backfill: "pass", Flatten: "pass", "3D-ΔPDF": "pass" });
     expect(r.kind).toBe("Assessment");
     expect(r.checks[0].headline).toContain("left ≤ 0.408 (0kl, 10.3 Å⁻¹)");
-    expect(r.checks[0].goal).toBe("Remove powder rings.");
+    expect(r.checks[0].criterion).toMatch(/^No powder ring left above, or dented below, three times its plane's noise/);
     expect(r.dataset.cell).toBe("a = 8.03 Å, b = 8.02 Å, c = 10.03 Å; α, β, γ = 90°, 90°, 120°");
     expect(r.dataset.grid).toBe("401 × 401 × 401");
     // Every miss becomes a caveat, with its numbers; the narrative is labelled the model's.
@@ -86,6 +85,33 @@ describe("buildReport", () => {
     expect(r.caveats).toContain("Not measured (no output, or the measurement failed): Flatten.");
     expect(r.caveats.some((c) => /Tuning, 3D-ΔPDF: .*Trial 2 was not a candidate/.test(c))).toBe(true);
     expect(r.caveats.some((c) => /Tuning, Bragg punch: the model's proposal punchMinSig=3 replaced your settings/.test(c))).toBe(true);
+  });
+
+  it("reports the second-grain test, and flags displaced Bragg peaks as well as a grain", () => {
+    const grains = {
+      off_lattice_peaks: 1200,
+      off_lattice_orbits: 96,
+      judged: 40,
+      near_bragg_nodes: 35,
+      near_offset_angle_deg: { median: 0.86, quartiles: [0.6, 1.1] },
+      far: [{ q: 7.98 }, { q: 4.21 }],
+      rotated_copy: { indexed: 2, misorientation_deg: 31.2 },
+      random_control: 4,
+      verdict: "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits (random directions: 4). 35 of them sit within a quarter of the node spacing of a Bragg node",
+    };
+    const r = buildReport(input({ measured: { ...input().measured, grains } }));
+    const g = r.checks.find((c) => c.title === "Second grain")!;
+    expect(r.checks.map((c) => c.title).indexOf("Second grain")).toBe(2); // after the punch
+    expect(g.verdict).toBe("attention");
+    expect(g.headline).toBe("one grain, UB off · 35 of 40 orbits beside Bragg nodes (≥ 0.86°) · one rotation indexes 2, random 4");
+    expect(g.details).toContainEqual(["Farther from any node (strongest, |Q| in Å⁻¹)", "7.98, 4.21"]);
+    expect(g.criterion).toMatch(/^One grain, its UB right/);
+
+    const clean = buildReport(input({ measured: { ...input().measured, grains: { ...grains, near_bragg_nodes: 3, near_offset_angle_deg: null, verdict: "no second grain of this phase: …" } } }));
+    expect(clean.checks.find((c) => c.title === "Second grain")!.verdict).toBe("pass");
+    const twin = buildReport(input({ measured: { ...input().measured, grains: { ...grains, near_bragg_nodes: 1, verdict: "a second grain: one rotation …" } } }));
+    expect(twin.checks.find((c) => c.title === "Second grain")!.headline.startsWith("a second grain")).toBe(true);
+    expect(twin.caveats.some((c) => c.startsWith("Second grain: a second grain"))).toBe(true);
   });
 
   it("prints tiny and huge numbers in exponent form", () => {
