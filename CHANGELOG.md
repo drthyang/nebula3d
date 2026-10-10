@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **A tuning run's report holds every trial.** It returned only the chosen
+  trial, so asked for each trial's numbers the model made one up ("12
+  sharp leftovers" for a trial whose numbers matched the baseline's
+  exactly). The report now lists every trial's changes and numbers. A
+  trial whose numbers equal the current settings' is marked `no_effect`.
+  When no setting changed, it no longer suggests rewriting the outputs.
 - **The coverage check reads the window that actually ran.** It judged the
   transform by one reach radius from the Configure page's settings: on a
   hexagonal box (18 Å⁻¹ in-plane, 12.5 Å⁻¹ along c*) it reported a box-face
