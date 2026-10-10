@@ -362,6 +362,14 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
   only when Anthropic is picked): system messages become the system prompt,
   a round's tool results go back in one user message, and a turn that called
   tools is replayed exactly as Claude returned it, thinking included.
+  With Tools on, the first request alone is about 8k tokens and a full
+  assessment reaches about 18k, so on LM Studio the chat reads the context
+  length the model was loaded with (`/api/v0/models`) and, below 32k, says
+  how far to raise it (`loadedContext`, `contextWarning`). A reply that runs
+  out of room ends with a note and runs none of its cut-off calls. A reply
+  the server could not parse (a tool call in the wrong syntax) is asked
+  again, up to twice. A reply that still ends in an error keeps its steps
+  and text, with the error as its note.
   **`settings.ts`** — a localStorage store (provider, model, key, temperature,
   vision and tools opt-ins).
 - **Tools** (`tools/`, `agent.ts`) — with *Tools* on, a reply is an agent loop:
@@ -426,7 +434,12 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
   band) — and every proposal is checked against it before anything runs.
   The tool's report holds every trial's changes and numbers, marking a trial
   whose numbers equal the current settings' as `no_effect`, so the model
-  quotes the comparison rather than recalling it. When every tuned stage
+  quotes the comparison rather than recalling it. A trial past a hard limit
+  of its stage is no candidate while the user's settings keep it
+  (`outOfBounds`). Today that is a ΔPDF window with more than 10⁻³ of its
+  weight on unmeasured reciprocal space, the limit the backend's own window
+  keeps. The ΔPDF stage also reports its x–y section's worst in-plane
+  symmetry break, and the stage's note says why a trial was left out. When every tuned stage
   keeps the current settings, the later stages are not re-run.
   **Trials never touch `processed/`** (`nebula3d.server.tuning`). Each run gets
   a folder beside it, `tuning/<run>/`; each trial runs into
