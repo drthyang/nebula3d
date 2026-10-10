@@ -16,6 +16,26 @@
 - **Configure remembers its settings for each dataset**, and the console
   remembers the selected dataset across reloads. Facts about one sample,
   such as its protected satellite planes, no longer carry over to the next.
+- **The leftover-peak scan sets sparse counts aside.** Near the coverage
+  edge most voxels are empty, so the local scatter is all but 0 and a
+  single count reads tens to thousands of σ. On three measured volumes,
+  every leftover the scan reported on the H = 0 plane was such a count at
+  the K edge (75 at 28 K), and so were the two "missed lattice peaks" it
+  reported at 45 K. A would-be peak whose surroundings are a quarter exact
+  zeros, or sit below a tenth of the slice's median level, is now counted
+  with the noisy spikes.
+- **Leftovers on the search's protected planes are counted apart.** The
+  punch review reports how many off-lattice leftovers sit on the protected
+  H planes, where they stay by design, so the model no longer takes every
+  off-lattice leftover for a protected satellite. The stage summaries also
+  name the plane and |Q| of the worst ring dent or leftover, and the
+  strongest leftover peak.
+- **NEBULA Pilot can set the search's protected H planes when asked.** It
+  refused to, though they are on the Configure page, because the settings
+  it may change left out every fact about the sample. Asked by name, it now
+  sets *Search skips H* and its half width. A tuning run still never
+  proposes them: whether those planes hold real satellites is physics, not
+  a threshold to trade against a metric.
 - **A tuning run stops once its tuned stages keep your settings.** It used
   to re-run every later stage anyway, reproducing the processed outputs: a
   few minutes of work on a 401×401×301 volume.

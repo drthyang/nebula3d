@@ -137,6 +137,25 @@ describe("bragg punch metrics", () => {
     expect(scan.n_suspicious).toBe(0);
   });
 
+  it("skips an event among sparse counts, where the local scatter is all but 0", () => {
+    // Past x = 28 the counts are sparse: 30 % exact zeros, the rest ±0.002, so the
+    // median is 0 and an event of 2 would read ~700 σ.
+    const sparse = (ix: number, iy: number) => {
+      const r = (ix + 3 * iy) % 10;
+      return r < 3 ? 0 : r < 7 ? -0.002 : 0.002;
+    };
+    const blob = (ix: number, iy: number) => (Math.abs(ix - 35) <= 1 && Math.abs(iy - 20) <= 1 ? (ix === 35 && iy === 20 ? 2 : 1.5) : 0);
+    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => (ix > 28 ? sparse(ix, iy) + blob(ix, iy) : 1 + 0.02 * noise(ix, iy)));
+    const scan = scanLeftoverPeaks(slice);
+    expect(scan.n_suspicious).toBe(0);
+    expect(scan.n_skipped_noisy).toBeGreaterThan(0);
+    // Background-subtracted: the empty edge sits near, not at, zero.
+    const subtracted = makeSlice(41, 41, (_x, _y, ix, iy) =>
+      ix > 28 ? -0.003 + 0.001 * noise(ix, iy) + blob(ix, iy) : 1 + 0.02 * noise(ix, iy),
+    );
+    expect(scanLeftoverPeaks(subtracted).n_suspicious).toBe(0);
+  });
+
   it("classes a peak at a lattice node or off-lattice when the cut is known", () => {
     // x, y span -2..2 r.l.u.: (1, 1) is a node, (0.5, -1) is not.
     const at = peakAt(30, 30, 2);
@@ -150,6 +169,20 @@ describe("bragg punch metrics", () => {
     expect(byNode.false).toEqual([0.5, -1, 0]);
     // On a 2× supercell, (1, 1) is no longer a parent node.
     expect(scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], supercell: [2, 2, 1] }).n_at_nodes).toBe(0);
+  });
+
+  it("tells off-lattice leftovers on the search's protected H planes from the rest", () => {
+    // (0.3, -1.5) lies on the H = 1/3 plane (± 0.08); (0.5, -1) does not.
+    const sat = peakAt(23, 5, 2);
+    const off = peakAt(25, 10, 2);
+    const slice = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + sat(ix, iy) + off(ix, iy), { half: 2 });
+    const scan = scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], protectedH: { fractions: [1 / 3, 2 / 3], halfWidth: 0.08 } });
+    expect(scan.n_off_nodes).toBe(2);
+    expect(scan.n_on_protected).toBe(1);
+    const onPlane = Object.fromEntries(scan.suspicious_peaks.map((p) => [String(p.on_protected_plane), p.hkl![0]]));
+    expect(onPlane).toEqual({ true: 0.3, false: 0.5 });
+    // Nothing protected: none of them is.
+    expect(scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], protectedH: { fractions: [], halfWidth: 0.08 } }).n_on_protected).toBe(0);
   });
 
   it("finds nothing on a punched (NaN-holed) smooth field", () => {

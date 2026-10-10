@@ -43,6 +43,9 @@ export interface BuildContextInput {
   // The punch's indexing supercell, so leftover peaks are classed at a lattice
   // node or off-lattice against the right nodes (default 1×1×1).
   supercell?: [number, number, number];
+  // The off-lattice search's protected H planes, so leftovers on them are told
+  // from leftovers the search should have punched.
+  protectedH?: { fractions: number[]; halfWidth: number };
 }
 
 export interface PipelineContext {
@@ -129,7 +132,7 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
       : undefined;
     ctx.bragg_punch = {
       leftover: punchSlice
-        ? scanLeftoverPeaks(punchSlice, { toHkl, supercell: input.supercell })
+        ? scanLeftoverPeaks(punchSlice, { toHkl, supercell: input.supercell, protectedH: input.protectedH })
         : { suspicious_peaks: [], n_suspicious: 0, n_skipped_noisy: 0, scan_sigma_threshold: 8 },
       peak_profile: summarizePeakProfile(braggProfile),
     };

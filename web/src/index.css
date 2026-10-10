@@ -5692,8 +5692,23 @@ h6.md-h {
   outline-offset: -2px;
   animation: ai-breathe 2.4s ease-in-out infinite;
 }
+/* An Execution stage row has no padding of its own (its 18 px bottom padding
+   spaces the rows), so its ring is drawn on a frame set around the row:
+   10 px clear of the node and the text on every side. */
 .exec-stage.ai-glow {
+  position: relative;
+  outline: none;
+  animation: none;
+}
+.exec-stage.ai-glow::before {
+  content: "";
+  position: absolute;
+  inset: -9px -12px 9px -12px;
   border-radius: var(--radius-sm);
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  animation: ai-breathe 2.4s ease-in-out infinite;
+  pointer-events: none;
 }
 @keyframes ai-breathe {
   0%,
@@ -5708,8 +5723,12 @@ h6.md-h {
 }
 @media (prefers-reduced-motion: reduce) {
   .ai-glow,
-  .cfg-stage.ai-glow-within .cfg-box {
+  .cfg-stage.ai-glow-within .cfg-box,
+  .exec-stage.ai-glow::before {
     animation: none;
     outline-color: var(--accent);
+  }
+  .exec-stage.ai-glow {
+    outline: none;
   }
 }

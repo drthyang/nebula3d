@@ -88,12 +88,22 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
 
   if (stage === "rings") {
     const r = contexts.map((c) => c.context.ring_removal);
+    // The largest significant dent / leftover over the planes, with where it is.
+    const worst = (key: "worst_ring_dent" | "worst_ring_left") =>
+      cuts.reduce<{ plane: string; at: number; residual_fraction: number } | null>((best, c, i) => {
+        const w = r[i]?.[key];
+        return w && (!best || Math.abs(w.residual_fraction) > Math.abs(best.residual_fraction))
+          ? { plane: c.plane, at: w.at, residual_fraction: w.residual_fraction }
+          : best;
+      }, null);
     return {
       mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),
       max_over_subtraction_fraction: max(r.map((x) => x?.over_subtraction_fraction)),
       // The deepest dent and largest leftover at the raw rings, over the planes.
       max_ring_dent: max(r.map((x) => (x?.worst_ring_dent ? -x.worst_ring_dent.residual_fraction : 0))),
       max_ring_left: max(r.map((x) => x?.worst_ring_left?.residual_fraction ?? 0)),
+      worst_ring_dent: worst("worst_ring_dent"),
+      worst_ring_left: worst("worst_ring_left"),
       per_plane: per((i) => r[i] && {
         ring_energy_ratio: r[i]!.ring_energy_ratio,
         after_ring_energy: r[i]!.after_ring_energy,
@@ -111,12 +121,20 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     const fractions = contexts.map((c) =>
       punchedFraction(c.slices.ringremoved?.data, c.slices.braggpunched?.data),
     );
-    const total = (key: "n_suspicious" | "n_at_nodes" | "n_off_nodes" | "n_skipped_noisy") =>
+    const total = (key: "n_suspicious" | "n_at_nodes" | "n_off_nodes" | "n_on_protected" | "n_skipped_noisy") =>
       leftovers.reduce((s, l) => s + (l?.[key] ?? 0), 0);
+    // The strongest leftover over the planes, with its plane.
+    const strongest = cuts.reduce<Record<string, unknown> | null>((best, c, i) => {
+      const p = leftovers[i]?.suspicious_peaks[0];
+      return p && (!best || p.sigma > (best.sigma as number)) ? { plane: c.plane, ...p } : best;
+    }, null);
     return {
       total_leftover_peaks: total("n_suspicious"),
       leftover_at_nodes: total("n_at_nodes"),
       leftover_off_lattice: total("n_off_nodes"),
+      // Of those, on the H planes the search leaves alone (protected satellites).
+      leftover_on_protected_planes: total("n_on_protected"),
+      strongest_leftover: strongest,
       noisy_spikes_skipped: total("n_skipped_noisy"),
       mean_punched_fraction: mean(fractions),
       fitted_peaks: profile?.has_profile ? profile.n_peaks : null,
@@ -124,6 +142,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
         leftover_peaks: leftovers[i]?.n_suspicious ?? null,
         at_nodes: leftovers[i]?.n_at_nodes ?? null,
         off_lattice: leftovers[i]?.n_off_nodes ?? null,
+        on_protected_planes: leftovers[i]?.n_on_protected ?? null,
         strongest_leftover: leftovers[i]?.suspicious_peaks[0] ?? null,
         punched_fraction: fractions[i],
       })),
@@ -149,11 +168,16 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
 export function headline(stage: TuneStage, e: StageEvaluation | undefined): string {
   if (!e) return "—";
   const v = (k: string) => (e[k] == null ? "–" : String(e[k]));
+  // " (h0l, 7.58 Å⁻¹)" for a residual that names its plane and |Q|.
+  const where = (k: string) => {
+    const w = e[k] as { plane?: string; at?: number } | null | undefined;
+    return w?.plane ? ` (${w.plane}, ${w.at} Å⁻¹)` : "";
+  };
   switch (stage) {
     case "rings":
-      return `ring ratio ${v("mean_ring_energy_ratio")} · over-sub ≤ ${v("max_over_subtraction_fraction")} · ring dent ≤ ${v("max_ring_dent")} · left ≤ ${v("max_ring_left")}`;
+      return `ring ratio ${v("mean_ring_energy_ratio")} · over-sub ≤ ${v("max_over_subtraction_fraction")} · ring dent ≤ ${v("max_ring_dent")}${where("worst_ring_dent")} · left ≤ ${v("max_ring_left")}${where("worst_ring_left")}`;
     case "punch":
-      return `${v("leftover_at_nodes")} missed at nodes · ${v("leftover_off_lattice")} off-lattice · punched ${v("mean_punched_fraction")}`;
+      return `${v("leftover_at_nodes")} missed at nodes · ${v("leftover_off_lattice")} off-lattice (${v("leftover_on_protected_planes")} on protected planes) · punched ${v("mean_punched_fraction")}`;
     case "backfill":
       return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;
     case "flatten":

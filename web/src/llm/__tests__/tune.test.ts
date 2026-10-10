@@ -42,6 +42,9 @@ describe("catalog", () => {
     expect(() => proposalToPatch("punch", { backfillMethod: "local" })).toThrow(ProposalError);
     // Physical facts about the sample are not tunable.
     expect(() => proposalToPatch("flatten", { flattenIon: "Mn2+" })).toThrow(/not a flatten setting/);
+    // Facts about the sample are never tuned, though the user may set them.
+    expect(() => proposalToPatch("punch", { punchProtectH: "none" })).toThrow(/not a punch setting/);
+    expect(toFormValue("punchProtectH", "none", "punch", { sample: true })).toBe("none");
     expect(() => proposalToPatch("punch", { punchSupercellH: 3 })).toThrow(ProposalError);
   });
 

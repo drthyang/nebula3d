@@ -28,6 +28,7 @@ import {
 import { loadSettings } from "../settings";
 import {
   displayValue,
+  SAMPLE_PARAMS,
   TUNE_PARAMS,
   TUNE_STAGE_LABELS,
   TUNE_STAGES,
@@ -957,21 +958,25 @@ const checkIdle = () => {
   if (useTuneStore.getState().active) throw new Error("a tuning run is in progress; wait for it to end");
 };
 
-const findParam = (key: string): TuneParam | undefined => TUNE_PARAMS.find((p) => p.key === key);
+const SETTABLE = [...TUNE_PARAMS, ...SAMPLE_PARAMS];
+const findParam = (key: string): TuneParam | undefined => SETTABLE.find((p) => p.key === key);
 
 const allowedValues = (p: TuneParam): string =>
   p.kind === "enum"
     ? p.options!.map((o) => o.name).join("|")
     : p.kind === "boolean"
       ? "true|false"
-      : `${p.kind} ${p.min}–${p.max}`;
+      : p.kind === "fractions"
+        ? 'H fractions like "1/3, 2/3", or none'
+        : `${p.kind} ${p.min}–${p.max}`;
 
 const updateSettings: AgentTool = {
   name: "update_settings",
   description:
     "Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. " +
-    "Only these method choices and thresholds can be changed, not facts about the sample (supercell, magnetic ion, " +
-    `|Q| band): ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
+    `These method choices and thresholds can be changed: ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
+    `These facts about the sample only when the user asks for that change, never to improve a result: ${SAMPLE_PARAMS.map((p) => `${p.key} (${allowedValues(p)}; ${p.help})`).join(" ")} ` +
+    "The supercell, magnetic ion and |Q| band stay with the user. " +
     "Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings " +
     "the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings " +
     "already at the value are left as they are. Returns each change and the stage to rerun from.",
@@ -991,9 +996,9 @@ const updateSettings: AgentTool = {
     const patch: Record<string, string | boolean> = {};
     for (const [key, value] of Object.entries(changes)) {
       const p = findParam(key);
-      if (!p) throw new ToolArgError(`${key} cannot be changed; these can: ${TUNE_PARAMS.map((q) => q.key).join(", ")}`);
+      if (!p) throw new ToolArgError(`${key} cannot be changed; these can: ${SETTABLE.map((q) => q.key).join(", ")}`);
       try {
-        patch[key] = toFormValue(key, value, p.stage);
+        patch[key] = toFormValue(key, value, p.stage, { sample: true });
       } catch (e) {
         throw new ToolArgError((e as Error).message);
       }
