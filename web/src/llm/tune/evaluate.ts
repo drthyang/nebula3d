@@ -180,6 +180,10 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
   const f = contexts.map((c) => c.context.flatten);
   return {
     max_after_floor_sigma: max(f.map((x) => x?.after_floor_max_sigma)),
+    // The strongest leftover |Q| trend of the floors (by |rank correlation|),
+    // and the widest floor span, over the planes.
+    max_floor_trend: max(f.map((x) => (x?.floor_trend != null ? Math.abs(x.floor_trend) : null))),
+    max_floor_span_fraction: max(f.map((x) => x?.floor_span_fraction)),
     per_plane: per((i) => f[i] ?? null),
   };
 }
@@ -201,7 +205,7 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
     case "backfill":
       return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;
     case "flatten":
-      return `floor ≤ ${v("max_after_floor_sigma")}σ`;
+      return `floor ≤ ${v("max_after_floor_sigma")}σ · trend ≤ ${v("max_floor_trend")} · span ≤ ${v("max_floor_span_fraction")}`;
     case "pdf":
       return `r ${v("back_fft_pearson_r")} · RMS ${v("back_fft_normalized_rms")} · SNR ${v("mean_feature_snr")}`;
   }

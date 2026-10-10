@@ -255,6 +255,24 @@ export const TUNE_PARAMS: TuneParam[] = [
   },
   // — flatten —
   {
+    key: "flattenQ2",
+    stage: "flatten",
+    kind: "boolean",
+    defaultValue: false,
+    help: "model only: also fit b·Q², the smooth rise of the multiphonon / thermal background. Use it when the shell floors climb with |Q| after the flatten (floor_trend near 1); it varies too slowly to follow pair correlations.",
+    appliesWhen: (s) => s.flattenEstimator === "" || s.flattenEstimator === "model",
+  },
+  {
+    key: "flattenFitQMax",
+    stage: "flatten",
+    kind: "number",
+    min: 3,
+    max: 25,
+    defaultValue: 10,
+    help: "model only: end (Å⁻¹) of the |Q| range the model is fitted to (from 0.8). Raise it toward the data's coverage when the background keeps changing past 10 Å⁻¹.",
+    appliesWhen: (s) => s.flattenEstimator === "" || s.flattenEstimator === "model",
+  },
+  {
     key: "flattenEstimator",
     stage: "flatten",
     kind: "enum",

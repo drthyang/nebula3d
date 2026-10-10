@@ -694,6 +694,25 @@ def test_build_params_punch_search_floor_and_protected_planes():
             punch(**bad)
 
 
+def test_build_params_flatten_q2_and_fit_range():
+    """The b·Q² term and the fit range's end reach FlattenParams; a fit range
+    ending before it starts is refused."""
+    from nebula3d.pipeline import FlattenParams
+    from nebula3d.server.routers.pipeline import build_params
+    from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
+
+    def flat(**kw):
+        return build_params(PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw))).flatten
+
+    base = FlattenParams()
+    assert not base.q2_term
+    f = flat(flatten_q2=True, flatten_fit_q_max=16.0)
+    assert f.q2_term and f.fit_q_range == (base.fit_q_range[0], 16.0)
+    assert flat().fit_q_range == base.fit_q_range
+    with pytest.raises(ValueError):
+        flat(flatten_fit_q_max=0.5)
+
+
 def test_build_params_qspace_punch_overrides():
     """Q-space punch overrides (frame + isotropic / per-axis radii) reach PunchParams."""
     from nebula3d.pipeline import PunchParams

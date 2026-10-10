@@ -103,6 +103,8 @@ export interface PipelineConfig {
   backfillMethod: string;
   flattenEstimator: string;
   flattenIon: string;
+  flattenQ2: boolean; // model: also fit b·Q² (multiphonon / thermal background)
+  flattenFitQMax: string; // model: end of the fit's |Q| range (Å⁻¹; blank = 10)
   pdfApod: string;
   pdfWindowShape: string;
   pdfWindowSupport: boolean; // taper the ΔPDF window to the measured coverage
@@ -195,6 +197,8 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   backfillMethod: "",
   flattenEstimator: "",
   flattenIon: "",
+  flattenQ2: false,
+  flattenFitQMax: "",
   pdfApod: "",
   pdfWindowShape: "",
   pdfWindowSupport: true,
@@ -384,6 +388,8 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.backfillMethod) params.backfill_method = s.backfillMethod;
   if (s.flattenEstimator) params.flatten_estimator = s.flattenEstimator;
   if (s.flattenIon) params.flatten_ion = s.flattenIon;
+  if (s.flattenQ2) params.flatten_q2 = true;
+  if (s.flattenFitQMax) params.flatten_fit_q_max = Number(s.flattenFitQMax);
   if (s.pdfApod) params.pdf_apodization = s.pdfApod;
   if (s.pdfWindowShape) params.pdf_window_shape = s.pdfWindowShape;
   if (s.pdfWindowSupport === false) params.pdf_window_support = false;

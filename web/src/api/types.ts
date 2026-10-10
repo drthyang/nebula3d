@@ -235,6 +235,8 @@ export interface StageParamsIn {
   flatten_floor_percentile?: number;
   /** Magnetic ion of the flatten's const + c·F(Q)² model; "none" = constant only. */
   flatten_ion?: string;
+  flatten_q2?: boolean;
+  flatten_fit_q_max?: number;
   pdf_apodization?: string;
   /** ΔPDF window geometry: "auto" | "separable" | "ellipsoid". */
   pdf_window_shape?: string;

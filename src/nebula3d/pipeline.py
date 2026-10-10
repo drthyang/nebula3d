@@ -540,6 +540,8 @@ class FlattenParams:
     estimator: str = "model"
     ion: str | None = None
     fit_q_range: tuple[float, float] | None = (0.8, 10.0)
+    # Also fit b·Q² (multiphonon / thermal background) in the model.
+    q2_term: bool = False
     floor_percentile: float = 25.0
     q_step: float = 0.05
     smooth: float = 0.10
@@ -1306,19 +1308,21 @@ def flatten(vol: HKLVolume, params: FlattenParams | None = None, *,
             progress: ProgressFn | None = None) -> HKLVolume:
     """Subtract the smooth isotropic radial pedestal; return the flattened volume."""
     p = params or FlattenParams()
-    model = f", ion={p.ion}" if p.estimator == "model" else ""
+    model = (f", ion={p.ion}" + (", + b·Q²" if p.q2_term else "")
+             if p.estimator == "model" else "")
     _emit(progress, "flatten", "start", None,
           f"radial-background flatten (estimator={p.estimator}{model})")
     res = flatten_radial_background(
         vol, q_step=p.q_step, estimator=p.estimator,
         floor_percentile=p.floor_percentile, snip_width=p.snip_width,
         smooth=p.smooth, min_count=p.min_count, q_range=p.q_range,
-        ion=p.ion, fit_q_range=p.fit_q_range,
+        ion=p.ion, fit_q_range=p.fit_q_range, q2_term=p.q2_term,
     )
     if res.model_coef is not None:
         const, c = res.model_coef
         r2 = f", R² {res.model_r2:.3f}" if res.model_r2 is not None else ""
-        detail = f"const {const:.4g} + {c:.4g}·F(Q)²{r2}"
+        q2 = f" + {res.model_q2:.4g}·Q²" if res.model_q2 is not None else ""
+        detail = f"const {const:.4g} + {c:.4g}·F(Q)²{q2}{r2}"
     else:
         detail = (f"bg max {float(np.nanmax(res.bg_curve)):.4g}"
                   if res.bg_curve.size else "no valid voxels")

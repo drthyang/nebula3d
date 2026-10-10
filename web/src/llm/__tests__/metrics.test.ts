@@ -26,6 +26,27 @@ describe("sliceStats", () => {
   });
 });
 
+describe("flatten trend", () => {
+  // Diffuse on a level of 4; the flatten left a floor rising with r (a pedestal
+  // the model missed) or took it all.
+  const lumpy = (x: number, y: number) => 0.8 * Math.cos(1.3 * x) * Math.cos(1.1 * y);
+  const before = makeSlice(81, 81, (x, y) => 4 + 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y), { half: 10 });
+  const rising = makeSlice(81, 81, (x, y) => 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y), { half: 10 });
+  const level = makeSlice(81, 81, (x, y) => lumpy(x, y), { half: 10 });
+
+  it("sees a floor still rising with |Q|, however small it reads in σ", () => {
+    const m = flattenMetrics(before, rising, undefined, [1, 6]);
+    expect(m.floor_trend!).toBeGreaterThan(0.9);
+    expect(m.floor_span_fraction!).toBeGreaterThan(0.5);
+  });
+
+  it("calls a level floor level", () => {
+    const m = flattenMetrics(before, level, undefined, [1, 6]);
+    expect(Math.abs(m.floor_trend!)).toBeLessThan(0.6);
+    expect(m.floor_span_fraction!).toBeLessThan(0.2);
+  });
+});
+
 describe("ring removal metrics", () => {
   const ringR = 6;
   const withRing = makeSlice(41, 41, (x, y) => {

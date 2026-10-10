@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **The flatten can take a background that rises with |Q|.** Its model
+  fitted a constant (plus the magnetic form factor), so on a measured
+  hexagonal volume the diffuse floor still climbed from −1 to +10 across
+  1–17 Å⁻¹ after the flatten. That is the multiphonon / thermal background,
+  which rises as Q². A *+ b·Q² term* switch (`flatten_q2`) adds it to the
+  model. Like the other terms it varies only on the scale of the whole
+  range, so pair correlations survive. *Fit to |Q|* (`flatten_fit_q_max`)
+  carries the fit past its old 10 Å⁻¹ end. With both, the floor sat within
+  ±0.5 of zero across the coverage. The ΔPDF changed only inside 1.5 Å,
+  where the self term lands: RMS 3.3× lower there, every pair vector
+  unchanged. NEBULA Pilot can turn both on.
+- **The flatten check sees a leftover pedestal.** It judged floors in
+  units of the slice's scatter and only inside the fit range. Beside
+  strong diffuse structure, a pedestal spanning twice the diffuse level
+  read 0.39σ, "flat". It now also reports `floor_trend` (the floors' rank
+  correlation with |Q| across the whole coverage) and
+  `floor_span_fraction` (their range against the diffuse level). Partial
+  shells at the coverage edge are left out.
 - **Leftover peaks are told apart by width.** The punch review counted
   every off-lattice leftover alike, so the short-range-order maxima kept on
   purpose read as missed peaks. On one plane of a measured volume that was
