@@ -45,6 +45,53 @@ describe("ring removal metrics", () => {
     expect(m.after_negative_fraction).toBe(0);
   });
 
+  describe("ring residuals, judged at the raw rings", () => {
+    // A finer grid, so the 128 radial bins each hold enough voxels.
+    const fine = (f: (r: number) => number) => makeSlice(161, 161, (x, y) => f(Math.hypot(x, y)), { half: 20 });
+    const ring = (r: number) => Math.exp(-((r - ringR) ** 2) / 0.5);
+    const raw = fine((r) => 1 + 8 * ring(r));
+
+    it("finds the ring and calls a clean removal level", () => {
+      const m = ringMetrics(raw, fine(() => 1));
+      expect(m.ring_residuals!.map((x) => x.at)).toEqual([expect.closeTo(ringR, 0)]);
+      expect(Math.abs(m.ring_residuals![0].residual_fraction)).toBeLessThan(0.01);
+      expect(m.worst_ring_dent).toBeNull();
+    });
+
+    it("sees a dent where the removal over-shot, though nothing goes negative", () => {
+      // 20 % too much subtracted at the ring: the diffuse dips to 0.8 there.
+      const m = ringMetrics(raw, fine((r) => 1 - 0.2 * ring(r)));
+      expect(m.over_subtraction_fraction).toBe(0);
+      expect(m.worst_ring_dent!.at).toBeCloseTo(ringR, 0);
+      expect(m.worst_ring_dent!.residual_fraction).toBeLessThan(-0.05);
+      expect(m.worst_ring_left).toBeNull();
+    });
+
+    it("calls a dent within the diffuse's own wiggle noise", () => {
+      // A 3 % dent where the diffuse beside the ring ripples by ±5 %.
+      const m = ringMetrics(raw, fine((r) => 1 + 0.05 * Math.sin(7 * r) - 0.03 * ring(r)));
+      const [res] = m.ring_residuals!;
+      expect(res.noise_fraction).toBeGreaterThan(0.02);
+      expect(res.significant).toBe(false);
+      expect(m.worst_ring_dent).toBeNull();
+    });
+
+    it("sees a ring left over", () => {
+      const m = ringMetrics(raw, fine((r) => 1 + 2 * ring(r)));
+      expect(m.worst_ring_left!.residual_fraction).toBeGreaterThan(0.2);
+      expect(m.worst_ring_dent).toBeNull();
+    });
+
+    it("takes neither a dip away from the rings nor the coverage edge for a dent", () => {
+      // The removal is clean at the ring; the diffuse sags at r ≈ 12 and falls off
+      // past r = 18, where the raw cut has no ring.
+      const after = fine((r) => (r > 18 ? 0.5 : 1 - 0.3 * Math.exp(-((r - 12) ** 2) / 0.5)));
+      const m = ringMetrics(raw, after);
+      expect(m.ring_residuals).toHaveLength(1);
+      expect(m.worst_ring_dent).toBeNull();
+    });
+  });
+
   it("sees the ring under Bragg peaks and an incident-beam spot the ring stage leaves in place", () => {
     // A cut before the punch: sharp peaks (150×) on every integer node, a beam
     // spot at the origin, and an Al-like ring at r = 4.3; step 0.1 like a real cut.

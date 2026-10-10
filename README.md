@@ -23,7 +23,7 @@ Mantid / symmetrised HKL volume
   5. 3D-ΔPDF transform              examples/delta_pdf.py
   6. back-FFT consistency check     examples/delta_pdf_consistency.py
   7. cleanup / ΔPDF viewers         examples/explore_slice.py, examples/explore_delta_pdf_ortho.py
-  8. AI review and tuning (optional) web AI Assistant — local or cloud LLM
+  8. AI review and tuning (optional) web NEBULA Pilot — local or cloud LLM
 ```
 
 For a **3D-PDF** (total scattering with the Bragg peaks *kept* — a Patterson-like
@@ -52,8 +52,8 @@ static, hosted app is a first-class way to run nebula3d, not a reduced demo.
 
 A sidebar console drives everything from one place — a global dataset switcher,
 a pipeline runner (the default landing view), reciprocal-space cleanup, a Bragg
-profile view, 3D-ΔPDF orthoslices, and the back-FFT consistency check — plus an
-**AI Assistant**, a panel beside every page, that connects to your **selected
+profile view, 3D-ΔPDF orthoslices, and the back-FFT consistency check — plus
+**NEBULA Pilot**, an AI assistant in a panel beside every page, that connects to your **selected
 LLM**, local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic), and **reasons over
 the reduction**: it grades each stage from metrics computed in the browser,
 measures any cut it needs, opens the viewer where its point shows, and can
@@ -377,7 +377,7 @@ back-FFT consistency check: powder-ring removal, Bragg cleanup, Bragg-hole
 backfill, radial flatten, 3D-ΔPDF transform, consistency QA, and interactive
 viewers. The complete pipeline also runs **fully client-side** in the static
 GitHub Pages app, at full-resolution float64 with feature parity to the native
-backend, and the browser console now includes an **AI Assistant** that grades the
+backend, and the browser console now includes **NEBULA Pilot**, an AI assistant that grades the
 reduction from in-browser metrics. The package remains pre-1.0/beta while the
 public API and file formats continue to evolve.
 

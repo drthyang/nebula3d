@@ -91,11 +91,17 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     return {
       mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),
       max_over_subtraction_fraction: max(r.map((x) => x?.over_subtraction_fraction)),
+      // The deepest dent and largest leftover at the raw rings, over the planes.
+      max_ring_dent: max(r.map((x) => (x?.worst_ring_dent ? -x.worst_ring_dent.residual_fraction : 0))),
+      max_ring_left: max(r.map((x) => x?.worst_ring_left?.residual_fraction ?? 0)),
       per_plane: per((i) => r[i] && {
         ring_energy_ratio: r[i]!.ring_energy_ratio,
         after_ring_energy: r[i]!.after_ring_energy,
         over_subtraction_fraction: r[i]!.over_subtraction_fraction,
         after_negative_fraction: r[i]!.after_negative_fraction,
+        worst_ring_dent: r[i]!.worst_ring_dent,
+        worst_ring_left: r[i]!.worst_ring_left,
+        ring_residuals: r[i]!.ring_residuals,
       }),
     };
   }
@@ -145,7 +151,7 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
   const v = (k: string) => (e[k] == null ? "–" : String(e[k]));
   switch (stage) {
     case "rings":
-      return `ring ratio ${v("mean_ring_energy_ratio")} · over-sub ≤ ${v("max_over_subtraction_fraction")}`;
+      return `ring ratio ${v("mean_ring_energy_ratio")} · over-sub ≤ ${v("max_over_subtraction_fraction")} · ring dent ≤ ${v("max_ring_dent")} · left ≤ ${v("max_ring_left")}`;
     case "punch":
       return `${v("leftover_at_nodes")} missed at nodes · ${v("leftover_off_lattice")} off-lattice · punched ${v("mean_punched_fraction")}`;
     case "backfill":

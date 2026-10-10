@@ -262,7 +262,7 @@ export function ChatView({
                 : !assistant
                   ? contextLoading
                     ? "Reading the stage volumes and computing quality metrics."
-                    : "Its stage outputs feed the assistant's context."
+                    : "Its stage outputs feed NEBULA Pilot's context."
                   : tools
                     ? "It can run and tune the pipeline while you watch, assess each stage, measure any cut, and open the viewer where it matters — or use a one-click request below."
                     : "Answers are grounded in metrics computed from the current cut — or use a one-click review below."}
