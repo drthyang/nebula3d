@@ -613,9 +613,10 @@ class PipelineParams:
     # The Laue symmetry the input was symmetrised with.  "auto": the
     # operations the input file declares (the NeXus Viewer writes them as
     # /entry@symmetry_ops), none if it declares none; None: ignore them; or the
-    # operations themselves, "h,k,l; -k,h+k,l; ...".  The coverage-edge trim
-    # and the punch then treat symmetry-equivalent voxels alike
-    # (see nebula3d.symmetry).
+    # operations themselves, "h,k,l; -k,h+k,l; ...".  The coverage-edge trim,
+    # the ring removal, the punch, the backfill and the flatten then treat
+    # symmetry-equivalent voxels alike (see nebula3d.symmetry), so a
+    # symmetrised input gives a symmetric ΔPDF.
     symmetry: str | None = "auto"
 
     def np_dtype(self) -> type:
@@ -628,12 +629,15 @@ def input_symmetry(vol: HKLVolume, p: PipelineParams, input_path: str | Path, *,
     """The symmetry of the run's input (``p.symmetry``) on *vol*'s grid.
 
     ``"auto"`` reads the operations *input_path* declares; when they do not
-    map the grid onto itself the run goes on without them and says so.
+    map the grid onto itself the run goes on without them and says so.  A run
+    resumed from processed files whose raw input is gone declares none.
     ``None`` when there is no symmetry to apply.
     """
     if p.symmetry is None or str(p.symmetry).strip().lower() in {"", "none"}:
         return None
     auto = str(p.symmetry).strip().lower() == "auto"
+    if auto and not Path(input_path).exists():
+        return None
     ops = read_symmetry_ops(input_path) if auto else parse_symmetry_ops(str(p.symmetry))
     if ops is None:
         return None
@@ -645,6 +649,26 @@ def input_symmetry(vol: HKLVolume, p: PipelineParams, input_path: str | Path, *,
         _emit(progress, stage, "progress", None,
               f"ignoring the symmetry {Path(input_path).name} declares: {exc}")
         return None
+
+
+def share_ring_removal(out: HKLVolume, input_mask: np.ndarray, symmetry: GridSymmetry, *,
+                       progress: ProgressFn | None = None) -> None:
+    """Make the ring stage's output as symmetric as its input, in place.
+
+    The ring models work plane by plane in one stacking direction (sectors of
+    0kl planes stacked along H, for the pooled model), which an operation that
+    mixes the grid axes does not respect: on symmetrised hexagonal data the
+    subtraction differed between equivalent voxels by up to a few units in
+    the Al shells, about 7 % of the ΔPDF's six-fold symmetry.  The voxels the
+    stage masks (azimuthally under-sampled spokes) are closed under the group,
+    and the ring-removed values averaged over each orbit
+    (:meth:`GridSymmetry.orbit_mean`), the symmetric part of the subtraction.
+    """
+    dropped = input_mask & ~out.mask
+    out.mask = out.mask & ~symmetry.orbit_any(dropped)
+    n = symmetry.orbit_mean(out.data, out.mask & np.isfinite(out.data))
+    _emit(progress, "rings", "progress", None,
+          f"ring removal averaged over {symmetry.order} symmetry operations ({n:,} voxels)")
 
 
 def load_input(path: str | Path, p: PipelineParams, *,
@@ -1274,13 +1298,22 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
 # ---------------------------------------------------------------------------
 def backfill(vol: HKLVolume, params: BackfillParams | None = None, *,
              progress: ProgressFn | None = None,
-             punched: np.ndarray | None = None) -> HKLVolume:
+             punched: np.ndarray | None = None,
+             symmetry: GridSymmetry | None = None) -> HKLVolume:
     """Fill punched Bragg holes; return the volume for the FFT.
 
     *punched* (default: the record :func:`punch_bragg` attaches) marks the punch
     holes, so each is filled from its own surroundings and never merges with
     unmeasured coverage; see :func:`backfill_bragg`.  Unmeasured space that
     reaches the box edge stays masked (``params.unmeasured``).
+
+    With the *symmetry* the data were symmetrised with, the Laplace fill's gap
+    band is closed under the group, and every voxel the fill wrote (the holes
+    and their band) is averaged over its symmetry orbit
+    (:meth:`GridSymmetry.orbit_mean`): the fill is solved on an index-space
+    stencil, which an operation that mixes the grid axes (the hexagonal
+    6-fold) does not map onto itself, so equivalent peaks were filled — and
+    their Bragg tails replaced — differently.
     """
     p = params or BackfillParams()
     if punched is None:
@@ -1296,7 +1329,16 @@ def backfill(vol: HKLVolume, params: BackfillParams | None = None, *,
                 lambda msg: _emit(progress, "backfill", "progress", None, msg)),
         punched=punched,
         unmeasured=p.unmeasured,  # type: ignore[arg-type]
+        **({"symmetry": symmetry} if symmetry is not None else {}),
     )
+    if symmetry is not None and symmetry.order > 1:
+        measured = vol.mask & np.isfinite(vol.data)
+        written = (filled.mask & np.isfinite(filled.data)
+                   & (~measured | (filled.data != vol.data)))
+        n = symmetry.orbit_mean(filled.data, written)
+        _emit(progress, "backfill", "progress", None,
+              f"fills averaged over {symmetry.order} symmetry operations "
+              f"({n:,} voxels)")
     _emit(progress, "backfill", "done", 1.0, "backfill complete")
     return filled
 
@@ -1960,6 +2002,10 @@ def run_pipeline(
         else:
             vol = load_input(paths.input, p, progress=progress)
             out = remove_rings(vol, p.rings, progress=progress)
+            symmetry = input_symmetry(out, p, paths.input, progress=progress,
+                                      stage="rings")
+            if symmetry is not None:
+                share_ring_removal(out, vol.mask, symmetry, progress=progress)
             nebula3d.save(out, paths.ringremoved)
             ring_diagnostics = getattr(out, "_ring_diagnostics", None)
             if ring_diagnostics is not None:
@@ -2011,7 +2057,10 @@ def run_pipeline(
                           f"fill each hole from its own surroundings")
                 setattr(vol, "_punched", record)
                 del record
-            out = backfill(vol, p.backfill, progress=progress)
+            symmetry = input_symmetry(vol, p, paths.input, progress=progress,
+                                      stage="backfill")
+            out = (backfill(vol, p.backfill, progress=progress) if symmetry is None
+                   else backfill(vol, p.backfill, progress=progress, symmetry=symmetry))
             nebula3d.save(out, paths.backfilled)
             carry, carry_path = out, paths.backfilled
             del vol, out  # free the input; `carry` hands the output onward
@@ -2024,6 +2073,16 @@ def run_pipeline(
         else:
             vol = stage_load(stage_input("flatten"), "flatten")
             out = flatten(vol, p.flatten, progress=progress)
+            symmetry = input_symmetry(out, p, paths.input, progress=progress,
+                                      stage="flatten")
+            if symmetry is not None:
+                # The pedestal is a function of |Q| from the refined UB, which
+                # is not exactly symmetric (|a*| ≠ |b*| by 0.1 %, γ* ≠ 60°):
+                # equivalent voxels lost slightly different amounts.
+                n = symmetry.orbit_mean(out.data, out.mask & np.isfinite(out.data))
+                _emit(progress, "flatten", "progress", None,
+                      f"flatten averaged over {symmetry.order} symmetry operations "
+                      f"({n:,} voxels)")
             nebula3d.save(out, paths.flattened)
             carry, carry_path = out, paths.flattened
             del vol, out  # free the input; `carry` hands the output onward

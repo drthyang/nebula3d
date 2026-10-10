@@ -565,9 +565,31 @@ bit. Under `"auto"`, operations that do not map the grid onto itself are
 reported and ignored; the 6-fold, for example, needs equal H and K steps. The
 H guard and the thirds exclusion are meant for data with fractional-H planes
 at thirds; turn them off where there are none (see the supercell notes above).
-The ring stage still breaks the symmetry where it subtracts: after it, some
-voxels differ from their partner. The punch mask no longer depends on that.
-Tests: `tests/test_symmetry.py`.
+
+**Every stage keeps the symmetry, so the ΔPDF does.** The punch was not the
+only stage computed on index-space neighbourhoods. On a measured 6/mmm volume
+the ΔPDF had lost 12.6 % (RMS) of its six-fold symmetry, while the raw data
+were exact:
+
+- **Ring removal.** The pooled model fits sectors of 0kl planes stacked along
+  H; its subtraction differed between partners by up to a few units in the Al
+  shells. Its output is averaged over each orbit, and the voxels it masks
+  (under-sampled spokes) are closed under the group
+  (`pipeline.share_ring_removal`).
+- **Backfill.** The Laplace fill is solved on a 6-neighbour stencil, and its
+  gap band (the measured voxels next to a hole it rewrites, to drop the Bragg
+  tail) is a 6-neighbour dilation: equivalent peaks kept tails of up to ~1000
+  counts on one side and replaced them on the other. The band is closed under
+  the group before it is solved, and every voxel the fill writes is averaged
+  over its orbit.
+- **Flatten.** Its pedestal follows |Q| from the refined UB, which is not
+  exactly symmetric; the output is averaged too.
+
+The averaging is `GridSymmetry.orbit_mean`, which gathers whole L rows for
+groups that map L to ±L alone (a few seconds on 401³). With all three, the
+ΔPDF's six-fold, three-fold, two-fold and mirror partners agree to rounding.
+`symmetry=None` turns all of it off. Tests: `tests/test_symmetry.py`, end to
+end in `test_a_symmetrised_input_gives_a_symmetric_delta_pdf`.
 
 ## Backfill Modes
 
