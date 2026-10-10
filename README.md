@@ -54,7 +54,7 @@ A sidebar console drives everything from one place — a global dataset switcher
 a pipeline runner (the default landing view), reciprocal-space cleanup, a Bragg
 profile view, 3D-ΔPDF orthoslices, and the back-FFT consistency check — plus an
 **AI Assistant**, a panel beside every page, that connects to your **selected
-LLM**, local (Ollama / LM Studio) or cloud (OpenAI / Gemini), and **reasons over
+LLM**, local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic), and **reasons over
 the reduction**: it grades each stage from metrics computed in the browser,
 measures any cut it needs, opens the viewer where its point shows, and can
 **tune the pipeline stage by stage**, keeping the best of a few settings for

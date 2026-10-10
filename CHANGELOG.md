@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Anthropic is a provider for the AI Assistant.** Pick *Anthropic* in the
+  connection settings and paste a Claude API key. The model list puts Claude
+  Opus 5.5 first. Claude runs through Anthropic's official SDK, called from
+  the browser like the other cloud providers, with the key kept in this
+  browser. The SDK loads only when Anthropic is picked (59 kB gzipped). Chat,
+  tools, stage reviews and tuning all work with it.
+  - The model's reasoning streams into the *Thinking* panel.
+  - A request a safety classifier declines is re-run on another Claude
+    model in the same call (server-side fallback).
+  - A declined reply never runs its tool calls.
 - **Ask the assistant to run and tune the analysis, and watch it work.**
   Asked to process the data, the model used to explain the steps and tell you
   to press Run, because no tool could start one. It now has three:
