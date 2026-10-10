@@ -155,6 +155,27 @@ async function dpdfMeta(dataset: Dataset): Promise<DeltaPdfMeta> {
   return meta;
 }
 
+// The figure a cut is drawn in: the cleanup page (every stage side by side)
+// at a reciprocal plane, or the 3D-ΔPDF page at a real-space section, centred
+// in the other two axes.
+const cleanupView = (plane: string, value: number): ViewTarget => ({
+  view: "cleanup",
+  plane,
+  value,
+  label: planeLabel(plane, value),
+  axis: HKL[RECIP_FIXED[plane]] as FixedAxis,
+});
+
+const dpdfView = (meta: DeltaPdfMeta, plane: string, value: number): ViewTarget => {
+  const fixed = DPDF_FIXED[plane];
+  const index = meta.shape.map((n, i) => {
+    if (i !== fixed) return Math.floor(n / 2);
+    const [lo, hi] = dpdfRange(meta, i);
+    return n > 1 ? Math.round(((value - lo) / (hi - lo)) * (n - 1)) : 0;
+  }) as [number, number, number];
+  return { view: "dpdf", plane, value, label: planeLabel(plane, value), index };
+};
+
 // ---------------------------------------------------------------- measuring
 
 async function measureRecip(dataset: Dataset, plane: string, value: number) {
@@ -209,7 +230,7 @@ const measureReciprocalCut: AgentTool = {
     const plane = oneOf(args, "plane", RECIP_PLANES);
     const value = num(args, "value");
     const result = await measureRecip(dataset, plane, value);
-    return { result, summary: `${result.cut}: ${recipSummary(result)}` };
+    return { result, summary: `${result.cut}: ${recipSummary(result)}`, view: cleanupView(plane, value) };
   },
 };
 
@@ -233,6 +254,7 @@ const measureDpdfCut: AgentTool = {
     return {
       result,
       summary: `${result.cut}: SNR ${d.feature_snr ?? "–"}, anisotropy ${d.anisotropy_ratio ?? "–"}`,
+      view: dpdfView(await dpdfMeta(dataset), plane, value),
     };
   },
 };
@@ -313,11 +335,13 @@ const lineProfile: AgentTool = {
 
     let slice: Slice | null;
     let plane: string;
+    let view: ViewTarget;
     if (real) {
       const meta = await dpdfMeta(dataset);
       plane = DPDF_PLANES.find((p) => DPDF_FIXED[p] === fixed)!;
       checkInRange(axes[fixed], coord(fixed), dpdfRange(meta, fixed));
       slice = await safe(fetchDpdfSlice(dpdfVolumeId(dataset)!, plane, coord(fixed)));
+      view = dpdfView(meta, plane, coord(fixed));
     } else {
       const meta = await recipMeta(dataset);
       const id = stageVolumeId(dataset, stage);
@@ -325,6 +349,7 @@ const lineProfile: AgentTool = {
       plane = RECIP_PLANES.find((p) => RECIP_FIXED[p] === fixed)!;
       checkInRange(axes[fixed], coord(fixed), recipRange(meta, fixed));
       slice = await safe(fetchSlice(id, plane, coord(fixed)));
+      view = cleanupView(plane, coord(fixed));
     }
     if (!slice) throw new Error(`could not read the ${stage} slice`);
 
@@ -379,6 +404,7 @@ const lineProfile: AgentTool = {
     return {
       result,
       summary: `${stage} along ${along} at ${where}: max ${result.max?.value ?? "–"} at ${result.max?.at ?? "–"}`,
+      view,
     };
   },
 };
@@ -434,7 +460,16 @@ const braggPeaks: AgentTool = {
       sorted_by: near ? `distance to ${near.join(", ")}` : sortBy,
       peaks: peaks.slice(0, limit),
     };
-    return { result, summary: `${profile.n_peaks} fitted peaks; top ${result.peaks.length} by ${result.sorted_by}` };
+    const top = result.peaks[0];
+    return {
+      result,
+      summary: `${profile.n_peaks} fitted peaks; top ${result.peaks.length} by ${result.sorted_by}`,
+      view: top && {
+        view: "bragg",
+        hkl: top.hkl as [number, number, number],
+        label: `the peak at (${top.hkl.join(", ")})`,
+      },
+    };
   },
 };
 
@@ -455,7 +490,11 @@ const consistencyDetails: AgentTool = {
       normalized_rms: r4(m.normalized_rms),
       per_plane_r: Object.fromEntries(Object.entries(m.per_plane_r ?? {}).map(([k, v]) => [k, r4(v)])),
     };
-    return { result, summary: `r = ${result.pearson_r}, normalised RMS = ${result.normalized_rms}` };
+    return {
+      result,
+      summary: `r = ${result.pearson_r}, normalised RMS = ${result.normalized_rms}`,
+      view: { view: "consistency", label: "the back-FFT check" },
+    };
   },
 };
 
@@ -586,20 +625,13 @@ const showInViewer: AgentTool = {
     if (view === "cleanup") {
       const plane = oneOf(args, "plane", RECIP_PLANES);
       const meta = await recipMeta(dataset);
-      const fixed = RECIP_FIXED[plane];
-      checkInRange(HKL[fixed], value, recipRange(meta, fixed));
-      target = { view, plane, value, label: planeLabel(plane, value), axis: HKL[fixed] as FixedAxis };
+      checkInRange(HKL[RECIP_FIXED[plane]], value, recipRange(meta, RECIP_FIXED[plane]));
+      target = cleanupView(plane, value);
     } else {
       const plane = oneOf(args, "plane", DPDF_PLANES);
       const meta = await dpdfMeta(dataset);
-      const fixed = DPDF_FIXED[plane];
-      checkInRange(XYZ[fixed], value, dpdfRange(meta, fixed));
-      const index = meta.shape.map((n, i) => {
-        if (i !== fixed) return Math.floor(n / 2);
-        const [lo, hi] = dpdfRange(meta, i);
-        return n > 1 ? Math.round(((value - lo) / (hi - lo)) * (n - 1)) : 0;
-      }) as [number, number, number];
-      target = { view, plane, value, label: planeLabel(plane, value), index };
+      checkInRange(XYZ[DPDF_FIXED[plane]], value, dpdfRange(meta, DPDF_FIXED[plane]));
+      target = dpdfView(meta, plane, value);
     }
     openView(target);
     return { result: { opened: target.label }, summary: `Opened ${target.label}`, view: target };
@@ -619,6 +651,29 @@ const STAGE_OUTPUT: Record<TuneStage, string> = {
 
 const ASSESS_CHOICES = [...TUNE_STAGES, "all"] as const;
 
+// The per-plane number that is worse when larger, for each reciprocal stage.
+const WORSE_WHEN_LARGER: Partial<Record<TuneStage, string>> = {
+  rings: "ring_energy_ratio",
+  punch: "leftover_peaks",
+  backfill: "median_seam_sigma",
+  flatten: "after_floor_max_sigma",
+};
+
+// The plane where a stage did worst, to show it there; the first plane when
+// none stands out.
+function worstPlane(stage: TuneStage, evaluation: Record<string, unknown>): string | null {
+  const per = evaluation.per_plane as Record<string, Record<string, unknown> | null> | undefined;
+  const key = WORSE_WHEN_LARGER[stage];
+  if (!per || !key) return null;
+  let worst: string | null = null;
+  let worstValue = -Infinity;
+  for (const [plane, m] of Object.entries(per)) {
+    const v = m?.[key];
+    if (typeof v === "number" && v > worstValue) [worst, worstValue] = [plane, v];
+  }
+  return worst ?? Object.keys(per)[0] ?? null;
+}
+
 const assessStage: AgentTool = {
   name: "assess_stage",
   description:
@@ -634,18 +689,24 @@ const assessStage: AgentTool = {
     const stages: TuneStage[] = pick === "all" ? [...TUNE_STAGES] : [pick];
     const result: Record<string, unknown> = {};
     const lines: string[] = [];
+    let view: ViewTarget | undefined;
     for (const stage of stages) {
       if (!stageVolumeId(dataset, STAGE_OUTPUT[stage])) {
         result[stage] = { missing: `no ${STAGE_OUTPUT[stage]} output yet; run_pipeline computes it` };
         continue;
       }
       const evaluation = await evaluateStage(stage, dataset);
+      if (!view) {
+        const plane = stage === "pdf" ? null : worstPlane(stage, evaluation);
+        if (plane) view = cleanupView(plane, 0);
+        else if (stage === "pdf") view = { view: "consistency", label: "the back-FFT check" };
+      }
       // All five stages' per-plane detail would overflow the result.
       if (pick === "all") delete evaluation.per_plane;
       result[stage] = { headline: headline(stage, evaluation), ...evaluation, goal: STAGE_GOALS[stage] };
       lines.push(`${TUNE_STAGE_LABELS[stage]}: ${headline(stage, evaluation)}`);
     }
-    return { result, summary: lines.join(" · ") || "no stage outputs yet" };
+    return { result, summary: lines.join(" · ") || "no stage outputs yet", view };
   },
 };
 
@@ -703,6 +764,7 @@ const radialProfileTool: AgentTool = {
         rows,
       },
       summary: `${planeLabel(plane, value)}: ${rows.length} shells × ${stages.length} stages`,
+      view: cleanupView(plane, value),
     };
   },
 };
@@ -729,7 +791,11 @@ const runLog: AgentTool = {
       .slice(-limit)
       .map((e) => ({ stage: e.stage ?? null, status: e.status ?? null, message: e.message }));
     const ended = running ? "still running" : (terminal ?? "unknown");
-    return { result: { ended, lines }, summary: `${lines.length} line${lines.length === 1 ? "" : "s"} · ${ended}` };
+    return {
+      result: { ended, lines },
+      summary: `${lines.length} line${lines.length === 1 ? "" : "s"} · ${ended}`,
+      view: { view: "execution", label: "the run log" },
+    };
   },
 };
 
@@ -765,12 +831,15 @@ const textureCheck: AgentTool = {
       }),
     );
     const biased = rows.filter((r) => r.systematic_fill_bias).length;
+    const bias = (i: number) => Math.abs(rows[i].median_fill_bias_sigma ?? 0);
+    const strongest = rows.reduce((best, _r, i) => (bias(i) > bias(best) ? i : best), 0);
     const ratios = rows.map((r) => r.azimuthal_ratio).filter((x): x is number => x != null);
     return {
       result: { per_cut: rows },
       summary:
         `${biased ? `systematic fill bias on ${biased} of ${rows.length} cut(s)` : "no systematic fill bias"}` +
         (ratios.length ? ` · azimuthal ratio ${Math.min(...ratios)}–${Math.max(...ratios)}` : ""),
+      view: cleanupView(cuts[strongest].plane, cuts[strongest].value),
     };
   },
 };
@@ -816,6 +885,12 @@ const qmaxCoverage: AgentTool = {
       per.map(([, m]) => m?.[k]).filter((x): x is number => typeof x === "number");
     const fullQ = pick("full_coverage_q").length ? Math.min(...pick("full_coverage_q")) : null;
     const boxQ = pick("box_q").length ? Math.min(...pick("box_q")) : null;
+    // The plane where full coverage ends first, to show it there.
+    let shortest = planes[0] as string | undefined;
+    let shortestQ = Infinity;
+    for (const [plane, m] of per) {
+      if (m?.full_coverage_q != null && m.full_coverage_q < shortestQ) [shortest, shortestQ] = [plane, m.full_coverage_q];
+    }
     const dId = dpdfVolumeId(dataset);
     const dmeta = dId ? await safe(fetchDpdfMeta(dId)) : null;
     // The ΔPDF records max |Q| over its grid: the box corner.
@@ -862,6 +937,7 @@ const qmaxCoverage: AgentTool = {
         ),
       },
       summary: verdict,
+      view: shortest ? cleanupView(shortest, 0) : undefined,
     };
   },
 };

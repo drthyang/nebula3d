@@ -359,6 +359,7 @@ describe("assess_stage", () => {
     expect(out.flatten.goal).toMatch(/floor/);
     expect(out.flatten).not.toHaveProperty("per_plane");
     expect(r.summary).toBe("Flatten: floor ≤ 0.8σ · 3D-ΔPDF: r 0.99 · RMS 0.1 · SNR 40");
+    expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
   });
 
   it("keeps the per-plane detail for one stage", async () => {
@@ -441,6 +442,7 @@ describe("texture_check", () => {
     expect(out.per_cut).toHaveLength(3);
     expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, brighter_fraction: 1 });
     expect(r.summary).toMatch(/^systematic fill bias on 3 of 3 cut\(s\)/);
+    expect(r.view?.label).toBe("H–K plane at L = 0");
   });
 
   it("needs the punched and backfilled outputs", async () => {
@@ -458,5 +460,48 @@ describe("radial_profile", () => {
     expect(Object.keys(out.rows[0])).toEqual(["q", "raw", "flattened"]);
     expect(out.rows[0].raw - out.rows[0].flattened).toBeCloseTo(8, 5);
     expect(out.rows[out.rows.length - 1].q).toBeGreaterThan(out.rows[0].q);
+  });
+});
+
+describe("the figure each step looked at", () => {
+  it("is the cut a measurement was taken on", async () => {
+    api.fetchSlice.mockResolvedValue(makeSlice(21, 21, () => 1, { half: 2 }));
+    const r = await run("measure_reciprocal_cut", { plane: "h0l", value: 0.5 });
+    expect(r.view).toEqual({ view: "cleanup", plane: "h0l", value: 0.5, label: "H–L plane at K = 0.5", axis: "K" });
+  });
+
+  it("is the plane a stage did worst on, or the back-FFT check for the ΔPDF", async () => {
+    evaluate.evaluateStage.mockResolvedValue({
+      mean_ring_energy_ratio: 0.5,
+      per_plane: { hk0: { ring_energy_ratio: 0.4 }, h0l: { ring_energy_ratio: 0.7 }, "0kl": { ring_energy_ratio: 0.5 } },
+    });
+    expect((await runOn(full, "assess_stage", { stage: "rings" })).view).toMatchObject({ view: "cleanup", plane: "h0l", value: 0, axis: "K" });
+    evaluate.evaluateStage.mockResolvedValue({ back_fft_pearson_r: 0.99, per_plane: {} });
+    expect((await runOn(full, "assess_stage", { stage: "pdf" })).view).toEqual({ view: "consistency", label: "the back-FFT check" });
+  });
+
+  it("is the top peak on the Bragg page, the run log on the Execution page", async () => {
+    api.fetchBraggProfile.mockResolvedValue({
+      has_profile: true,
+      n_peaks: 1,
+      punch_frame: "spherical",
+      peaks: [{ center_hkl: [2, 0, 0], q_abs: 1, intensity: 9, local_background: 1, significance: 20, fit_kind: "covariance" }],
+    } as unknown as BraggProfile);
+    expect((await run("bragg_peaks", {})).view).toEqual({ view: "bragg", hkl: [2, 0, 0], label: "the peak at (2, 0, 0)" });
+    usePipelineStore.setState({ running: false, terminal: "done", events: [{ type: "progress", stage: "rings", status: "done", message: "ok" }] });
+    expect((await run("run_log", {})).view).toEqual({ view: "execution", label: "the run log" });
+  });
+});
+
+describe("openView", () => {
+  it("selects a peak on the Bragg page and opens the back-FFT check and the run log", async () => {
+    const { openView } = await import("../tools/openView");
+    openView({ view: "bragg", hkl: [1, 1, 1], label: "the peak at (1, 1, 1)" });
+    expect(useViewerStore.getState().peakFocus).toEqual([1, 1, 1]);
+    expect(useNavStore.getState().tab).toBe("bragg");
+    openView({ view: "consistency", label: "the back-FFT check" });
+    expect(useNavStore.getState().tab).toBe("consistency");
+    openView({ view: "execution", label: "the run log" });
+    expect(useNavStore.getState().tab).toBe("execution");
   });
 });

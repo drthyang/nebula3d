@@ -50,6 +50,9 @@ interface ViewerState {
   // Applied (and cleared) by the cleanup page once its axis metadata is in,
   // in place of centring the cut — the assistant's "show in viewer".
   focus: CutFocus | null;
+  // Applied (and cleared) by the Bragg page: select the fitted peak nearest
+  // this HKL — the assistant pointing at a peak.
+  peakFocus: [number, number, number] | null;
   scale: ScaleKind;
   levels: ManualLevels | null; // null → Auto
   scaleRef: string; // cleanup: the stage that sets the shared scale, or "panel"
@@ -59,6 +62,7 @@ interface ViewerState {
   setFixedAxis: (a: FixedAxis) => void;
   setCutIndex: (i: number) => void;
   setFocus: (f: CutFocus | null) => void;
+  setPeakFocus: (hkl: [number, number, number] | null) => void;
   setScale: (s: ScaleKind) => void;
   setLevels: (l: ManualLevels | null) => void;
   setScaleRef: (r: string) => void;
@@ -71,6 +75,7 @@ export const useViewerStore = create<ViewerState>((set) => ({
   fixedAxis: "H",
   cutIndex: 0,
   focus: null,
+  peakFocus: null,
   scale: "lin",
   levels: null,
   scaleRef: "flattened",
@@ -80,6 +85,7 @@ export const useViewerStore = create<ViewerState>((set) => ({
   setFixedAxis: (fixedAxis) => set({ fixedAxis }),
   setCutIndex: (cutIndex) => set({ cutIndex }),
   setFocus: (focus) => set({ focus }),
+  setPeakFocus: (peakFocus) => set({ peakFocus }),
   setScale: (scale) => set({ scale }),
   setLevels: (levels) => set({ levels }),
   setScaleRef: (scaleRef) => set({ scaleRef }),
