@@ -180,12 +180,18 @@ const postChat = async ({
     signal,
   });
   if (!response.ok) {
-    const error = new Error(await describeHttpError(response)) as HttpError;
+    const message = await describeHttpError(response);
+    const error = new Error(response.status === 500 ? `${message} — ${SERVER_ERROR_HINT}` : message) as HttpError;
     error.status = response.status;
     throw error;
   }
   return response;
 };
+
+// LM Studio answers a conversation its model's chat template cannot render
+// with a bare 500 page: the message alone does not say what to do.
+const SERVER_ERROR_HINT =
+  "the model server failed before it could reply. With a local server this is usually the model's chat template failing on the conversation, often after a reply was cut off by a full context window: press Clear and ask again, and load the model with a larger Context Length.";
 
 // A server that cannot do function calling answers a request with `tools` with
 // an error naming them (Ollama: "<model> does not support tools").
@@ -201,6 +207,10 @@ export interface StreamDelta {
   toolCalls?: ToolCall[];
   // With toolCalls: the provider's own form of the turn (ChatMessage.native).
   native?: unknown;
+  // Emitted once, after the stream ends, when the model stopped because it ran
+  // out of room (finish_reason "length": its context window or output limit),
+  // so its last text or tool call may be cut off.
+  truncated?: boolean;
 }
 
 interface ToolCallDelta {
@@ -278,6 +288,7 @@ export async function* streamChat({
   const decoder = new TextDecoder();
   const assembler = new ToolCallAssembler();
   let buffer = "";
+  let finish: string | undefined;
   try {
     read: for (;;) {
       const { done, value } = await reader.read();
@@ -298,6 +309,8 @@ export async function* streamChat({
         }
         // A failure after the 200 (Ollama, OpenRouter) arrives as an error chunk.
         if (parsed.error) throw new Error(withContextHint(parsed.error.message || String(parsed.error)));
+        const reason = parsed.choices?.[0]?.finish_reason;
+        if (reason) finish = reason;
         const delta = parsed.choices?.[0]?.delta;
         if (!delta) continue;
         if (delta.content) yield { content: delta.content };
@@ -311,6 +324,7 @@ export async function* streamChat({
   }
   const toolCalls = assembler.calls();
   if (toolCalls.length) yield { toolCalls };
+  if (finish === "length") yield { truncated: true };
 }
 
 // Non-streaming completion, used where the whole reply is parsed at once.

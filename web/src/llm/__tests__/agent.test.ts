@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { useNavStore } from "../../state/navStore";
-import { runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
+import { CUT_OFF_NOTE, runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";
 import type { AgentTool } from "../tools";
@@ -86,6 +86,29 @@ describe("runAgent", () => {
     expect(r.steps[0].status).toBe("error");
     expect(r.steps[0].result).toMatch(/no tool named nope/);
     expect(r.content).toBe("Sorry.");
+  });
+
+  it("replays a call whose arguments are not JSON with {}, so the history still renders", async () => {
+    // Regression (LM Studio, 2026-10-10): a call cut off mid-way went back
+    // verbatim, and the server failed the next request rendering it (HTTP 500).
+    const broken = { id: "c1", type: "function" as const, function: { name: "echo", arguments: '{"x":' } };
+    const seen = script([[{ toolCalls: [broken] }], [{ content: "Sorry." }]]);
+    const r = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal });
+    expect(r.steps[0].status).toBe("error");
+    expect(r.steps[0].result).toMatch(/not a JSON object: \{"x":/);
+    const replayed = seen[1].messages.find((m) => m.role === "assistant" && m.tool_calls);
+    expect(replayed?.tool_calls?.[0].function.arguments).toBe("{}");
+    expect(r.content).toBe("Sorry.");
+  });
+
+  it("stops without running the tools of a reply cut off by a full context", async () => {
+    const run = vi.fn(echo.run);
+    const seen = script([[{ content: "Let me look" }, { toolCalls: [call("c1", "echo", { x: 1 })] }, { truncated: true }]]);
+    const r = await runAgent({ messages: base, tools: [{ ...echo, run }], ctx, settings, signal: new AbortController().signal });
+    expect(run).not.toHaveBeenCalled();
+    expect(seen).toHaveLength(1);
+    expect(r.content).toBe("Let me look");
+    expect(r.note).toBe(CUT_OFF_NOTE);
   });
 
   it("retries without tools when the server refuses them, and remembers", async () => {
