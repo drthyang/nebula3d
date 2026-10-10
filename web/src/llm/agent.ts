@@ -50,6 +50,17 @@ export const TOOLS_UNSUPPORTED_NOTE =
 
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
+// A call's arguments as soon as it starts, so the console can show what the
+// step works on while it runs (the tool checks them properly).
+const startArgs = (call: ToolCall): Record<string, unknown> => {
+  try {
+    const a = JSON.parse(call.function.arguments || "{}");
+    return a && typeof a === "object" && !Array.isArray(a) ? a : {};
+  } catch {
+    return {};
+  }
+};
+
 export async function runAgent({
   messages,
   tools,
@@ -125,7 +136,7 @@ export async function runAgent({
     for (const call of calls) {
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
       const id = `${steps.length}:${call.id}`; // servers may reuse call ids across rounds
-      steps = [...steps, { id, name: call.function.name, args: {}, status: "running" }];
+      steps = [...steps, { id, name: call.function.name, args: startArgs(call), status: "running" }];
       emit();
       const run = await runToolCall(call, tools, toolCtx!, {
         signal,

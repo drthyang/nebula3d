@@ -40,6 +40,7 @@ import {
 } from "../state/viewerStore";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
+import { litStage, useHighlightKeys } from "../llm/highlight";
 
 const STAGE_ORDER = ["raw", "ringremoved", "braggpunched", "backfilled", "flattened"];
 const STAGE_LABELS: Record<string, string> = {
@@ -64,6 +65,7 @@ function cachedAuto(s: Slice, scale: ScaleKind): AutoLevels {
 }
 
 export function ReciprocalViewer() {
+  const lit = useHighlightKeys();
   const datasetsQ = useDatasets();
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
   useInitializeDataset(datasets);
@@ -310,6 +312,7 @@ export function ReciprocalViewer() {
             const hi = own ? own.hi : lv.levels.hi;
             return {
               id: s.name,
+              glow: litStage(lit, s.name),
               title: STAGE_LABELS[s.name] ?? s.name,
               badge: i + 1,
               badgeClass: i === stages.length - 1 ? "view-badge--out" : "",

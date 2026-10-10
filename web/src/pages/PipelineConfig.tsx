@@ -26,6 +26,7 @@ import {
   usePipelineStore,
   type PunchPlane,
 } from "../state/pipelineStore";
+import { useHighlightKeys } from "../llm/highlight";
 
 const DATASET_STAGE_BADGES = [
   { key: "raw", label: "Raw", group: "Input" },
@@ -1111,6 +1112,7 @@ function BootProgressPanel({ status }: { status: BootStatus }) {
 // ---------------------------------------------------------------------------
 
 export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
+  const lit = useHighlightKeys();
   const datasetsQ = useDatasets();
   const dataRootQ = useDataRoot();
   const queryClient = useQueryClient();
@@ -1555,7 +1557,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
         >
           <div className="punch-workspace">
             <div className="punch-controls">
-              <div className={`cfg-stage${s.ringsEnabled ? "" : " cfg-stage--off"}`}>
+              <div className={`cfg-stage${s.ringsEnabled ? "" : " cfg-stage--off"}${lit.includes("rings") ? " ai-glow-within" : ""}`}>
                 <StageHead
                   no={STAGE_NO.rings}
                   title="Ring removal"
@@ -1788,7 +1790,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 </div>
               </div>
 
-              <div className={`cfg-stage${s.punchEnabled ? "" : " cfg-stage--off"}`}>
+              <div className={`cfg-stage${s.punchEnabled ? "" : " cfg-stage--off"}${lit.includes("punch") ? " ai-glow-within" : ""}`}>
                 <StageHead
                   no={STAGE_NO.punch}
                   title="Punch"
@@ -2095,7 +2097,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               </div>
 
               <div className="cfg-stage-row">
-                <div className={`cfg-stage${s.backfillEnabled ? "" : " cfg-stage--off"}`}>
+                <div className={`cfg-stage${s.backfillEnabled ? "" : " cfg-stage--off"}${lit.includes("backfill") ? " ai-glow-within" : ""}`}>
                   <StageHead
                     no={STAGE_NO.backfill}
                     title="Backfill"
@@ -2128,7 +2130,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   </div>
                 </div>
 
-                <div className={`cfg-stage${s.flatten ? "" : " cfg-stage--off"}`}>
+                <div className={`cfg-stage${s.flatten ? "" : " cfg-stage--off"}${lit.includes("flatten") ? " ai-glow-within" : ""}`}>
                   <StageHead
                     no={STAGE_NO.flatten}
                     title="Flatten"
@@ -2172,7 +2174,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   </div>
                 </div>
 
-                <div className={`cfg-stage${s.pdfEnabled ? "" : " cfg-stage--off"}`}>
+                <div className={`cfg-stage${s.pdfEnabled ? "" : " cfg-stage--off"}${lit.includes("pdf") ? " ai-glow-within" : ""}`}>
                   <StageHead
                     no={STAGE_NO.pdf}
                     title="Transform (3D-ΔPDF)"
