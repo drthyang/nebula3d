@@ -21,6 +21,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
   fetchSlice: vi.fn(),
+  fetchVolumeCoverage: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -464,6 +465,24 @@ describe("qmax_coverage", () => {
     const out = await check();
     expect(out.transform_reach_q).toBe(out.box_face_q);
     expect(out.verdict).toMatch(/^too far: .* tapers to zero at the box faces/);
+  });
+
+  it("gives where the raw counts begin and end, the band they allow, and checks a band that is set", async () => {
+    api.fetchVolumeCoverage.mockResolvedValue({
+      id: "demo.raw", q: [], counted: [], q_min_edge: 0.519, q_max_edge: 16.704,
+      full_q_min: 0.65, full_q_max: 15.85, box_q: 12.53, box_corner_q: 33.8,
+    });
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
+    const none = await check();
+    expect(none.raw_counts).toEqual({ q_min_edge: 0.519, q_max_edge: 16.7, fully_measured: [0.65, 15.85], box_face_q: 12.53 });
+    expect(none.suggested_band).toEqual([0.55, 16.7]);
+    expect(none.band_check).toMatch(/^no \|Q\| band is set/);
+    usePipelineStore.setState({ pdfQMin: "0.55", pdfQMax: "16.7" });
+    expect((await check()).band_check).toBe("the band 0.55–16.7 Å⁻¹ stays inside the counts");
+    usePipelineStore.setState({ pdfQMin: "0.2", pdfQMax: "18" });
+    expect((await check()).band_check).toMatch(/^Qmin below the counts' lower edge .*; Qmax past the counts' upper edge/);
+    expect(api.fetchVolumeCoverage).toHaveBeenCalledWith("demo.raw");
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
   });
 
   it("judges an explicit |Q| band, and a flat window by the box corners", async () => {

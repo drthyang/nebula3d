@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
 
-import { browseDataRoot, fetchMeta, fetchSlice, setDataRoot } from "../api/client";
+import { browseDataRoot, fetchMeta, fetchSlice, fetchVolumeCoverage, setDataRoot } from "../api/client";
 import {
   bootPercent,
   engine,
@@ -37,8 +37,6 @@ const DATASET_STAGE_BADGES = [
   { key: "flattened", label: "Background flattened", group: "Cleanup" },
   { key: "delta_pdf", label: "3D-ΔPDF", group: "Output" },
 ] as const;
-
-const DEFAULT_PDF_CROP = { h: 4, k: 8, l: 15 };
 
 // Ions with a tabulated form factor for the flatten model (the default is none:
 // a constant only) — mirrors nebula3d.preprocessing.form_factor.IONS.
@@ -126,8 +124,9 @@ function clampFloat(raw: string, dflt: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
 
-// The largest |Q| in the ΔPDF crop box, under the cell's own metric (the
+// The largest |Q| in the volume's box, under the cell's own metric (the
 // farthest corner: for a non-orthogonal cell it is not the orthogonal sum).
+// The ΔPDF takes the whole box (no crop) unless one is set.
 function qSpanFromMeta(meta: {
   h_range: [number, number];
   k_range: [number, number];
@@ -136,9 +135,9 @@ function qSpanFromMeta(meta: {
   ub_matrix?: number[][];
 } | null | undefined): number {
   if (!meta) return 0;
-  const h = Math.min(DEFAULT_PDF_CROP.h, Math.max(Math.abs(meta.h_range[0]), Math.abs(meta.h_range[1])));
-  const k = Math.min(DEFAULT_PDF_CROP.k, Math.max(Math.abs(meta.k_range[0]), Math.abs(meta.k_range[1])));
-  const l = Math.min(DEFAULT_PDF_CROP.l, Math.max(Math.abs(meta.l_range[0]), Math.abs(meta.l_range[1])));
+  const h = Math.max(Math.abs(meta.h_range[0]), Math.abs(meta.h_range[1]));
+  const k = Math.max(Math.abs(meta.k_range[0]), Math.abs(meta.k_range[1]));
+  const l = Math.max(Math.abs(meta.l_range[0]), Math.abs(meta.l_range[1]));
   const G = metricFromUb(meta.ub_matrix) ?? reciprocalMetric({ ...meta.lattice, a: meta.lattice.a ?? 1, b: meta.lattice.b ?? 1, c: meta.lattice.c ?? 1 });
   return G ? boxQMax(G, [h, k, l]) : 0;
 }
@@ -1275,6 +1274,15 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     queryFn: () => fetchMeta(punchInputId as string),
     enabled: Boolean(punchInputId),
   });
+  // Where the raw counts begin and end in |Q|: past either edge most voxels hold
+  // no counts, so the ΔPDF's |Q| band belongs inside them.
+  const rawCoverageQ = useQuery({
+    queryKey: ["coverage", punchInputId],
+    queryFn: () => fetchVolumeCoverage(punchInputId as string),
+    enabled: Boolean(punchInputId) && punchPreviewStage?.name === "raw",
+    staleTime: Infinity,
+  });
+  const rawEdges = rawCoverageQ.data;
   const punchCuts: Record<HklAxis, number> = {
     H: s.punchCutH,
     K: s.punchCutK,
@@ -2363,7 +2371,28 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   disabled={!pdfQSpanMax}
                   onChange={updatePdfQBand}
                 />
+                {rawEdges?.q_max_edge != null && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    title="Set the band to where the raw data's counts begin and end"
+                    onClick={() =>
+                      updatePdfQBand(
+                        rawEdges.q_min_edge != null ? Math.ceil(rawEdges.q_min_edge * 20) / 20 : 0,
+                        Math.floor(rawEdges.q_max_edge! * 20) / 20,
+                      )
+                    }
+                  >
+                    From raw data
+                  </button>
+                )}
               </div>
+              {rawEdges?.q_max_edge != null && (
+                <div className="ring-viz-cap">
+                  raw counts <b>{(rawEdges.q_min_edge ?? 0).toFixed(2)} … {rawEdges.q_max_edge.toFixed(2)} Å⁻¹</b>
+                  {" "}(most voxels outside hold none) · box face <b>{rawEdges.box_q.toFixed(2)} Å⁻¹</b>
+                </div>
+              )}
               <PunchPreviewGrid
                 geom={punchGeom}
                 slices={punchSlices}

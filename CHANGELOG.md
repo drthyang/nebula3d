@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **The ΔPDF's |Q| band can come from the raw data.** The data's own Qmin and
+  Qmax are where the counts begin and end: past either edge most voxels
+  hold none. `GET /api/volumes/{id}/coverage` measures, per |Q| shell, the
+  share of voxels holding counts (measured, finite and non-zero), and where
+  it crosses one half. On a measured hexagonal volume that gave 0.52 and
+  16.70 Å⁻¹, with the box's nearest face at 12.53 Å⁻¹. The Configure page
+  shows the edges under the |Q| band, with a *From raw data* button that
+  sets the band to them. `qmax_coverage` reports them, suggests the band,
+  and says whether a band that is set stays inside the counts.
+- **The |Q| band slider spans the whole box.** It stopped at the corner of a
+  ±(4, 8, 15) r.l.u. crop that the ΔPDF does not apply: on a ±20 r.l.u.
+  volume it ended at 13.5 Å⁻¹, while the counts reach 16.7.
 - **The 3D-ΔPDF page's Auto shows the features, not the FFT ripple.** Auto
   put the colour limit at the 97th percentile of |ΔPDF|, but a ΔPDF section
   is mostly ripple around a few compact features, so that percentile
