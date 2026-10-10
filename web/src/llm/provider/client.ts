@@ -72,6 +72,15 @@ export interface HttpError extends Error {
   status?: number;
 }
 
+// A local server whose model has too small a context window fails the request
+// (LM Studio fixes the window when it loads the model; the chat endpoint cannot
+// change it).  The raw message does not say what to do about it.
+const CONTEXT_OVERFLOW = /context (length|window|size)|n_ctx|maximum context|too many tokens|exceeds? the (model's )?context|prompt is too long|tokens to keep/i;
+export const withContextHint = (message: string): string =>
+  CONTEXT_OVERFLOW.test(message)
+    ? `${message} — the model's context window is full. In LM Studio, raise the model's Context Length in its load settings (16k at least, 32k to be comfortable) and reload it. With Tools on, a request needs about 6k tokens before your question; Tools off, or Clear, also helps.`
+    : message;
+
 const describeHttpError = async (response: Response): Promise<string> => {
   let detail = "";
   try {
@@ -80,7 +89,7 @@ const describeHttpError = async (response: Response): Promise<string> => {
   } catch {
     // Non-JSON error bodies are fine; the status code is enough.
   }
-  return `HTTP ${response.status}${detail ? `: ${detail}` : ""}`;
+  return withContextHint(`HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
 };
 
 const httpHint = (status?: number): string | null => {
@@ -288,7 +297,7 @@ export async function* streamChat({
           continue;
         }
         // A failure after the 200 (Ollama, OpenRouter) arrives as an error chunk.
-        if (parsed.error) throw new Error(parsed.error.message || String(parsed.error));
+        if (parsed.error) throw new Error(withContextHint(parsed.error.message || String(parsed.error)));
         const delta = parsed.choices?.[0]?.delta;
         if (!delta) continue;
         if (delta.content) yield { content: delta.content };
