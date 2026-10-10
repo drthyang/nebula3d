@@ -1319,6 +1319,8 @@ def backfill(vol: HKLVolume, params: BackfillParams | None = None, *,
     if punched is None:
         punched = getattr(vol, "_punched", None)
     _emit(progress, "backfill", "start", None, f"backfill (method={p.method})")
+    # the symmetry goes only to a backfill that takes it
+    sym_kw: dict[str, Any] = {"symmetry": symmetry} if symmetry is not None else {}
     filled = backfill_bragg(
         vol, method=p.method,  # type: ignore[arg-type]
         local_radius=p.local_radius, local_min_count=p.local_min_count,
@@ -1329,7 +1331,7 @@ def backfill(vol: HKLVolume, params: BackfillParams | None = None, *,
                 lambda msg: _emit(progress, "backfill", "progress", None, msg)),
         punched=punched,
         unmeasured=p.unmeasured,  # type: ignore[arg-type]
-        **({"symmetry": symmetry} if symmetry is not None else {}),
+        **sym_kw,
     )
     if symmetry is not None and symmetry.order > 1:
         measured = vol.mask & np.isfinite(vol.data)

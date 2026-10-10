@@ -740,8 +740,9 @@ def test_search_max_width_ratio_leaves_broad_maxima():
     A broad wing beside a punched Bragg node is punched all the same, and so
     is a sharp peak on the broad maximum's flank."""
     vol, sharp, broad, wing, flank = _bragg_with_offnode_peaks()
-    at = lambda c: tuple(int(np.argmin(np.abs(a - x))) for a, x in
-                         zip((vol.h_axis, vol.k_axis, vol.l_axis), c))
+    def at(c: tuple[float, float, float]) -> tuple[int, ...]:
+        return tuple(int(np.argmin(np.abs(a - x))) for a, x in
+                     zip((vol.h_axis, vol.k_axis, vol.l_axis), c))
     common = dict(mode="both", **_q_radii(vol, 0.15, 0.15, 0.15), min_intensity=10.0,
                   search_n_mad=6.0, search_min_intensity=10.0, search_q_step=0.25,
                   force_origin=False)

@@ -206,7 +206,8 @@ class GridSymmetry:
         idx_all = np.argwhere(where)
         shape = np.asarray(self.shape)
 
-        def images(idx: NDArray[np.int64], r: NDArray[np.int64], t: NDArray[np.int64]):
+        def images(idx: NDArray[np.int64], r: NDArray[np.int64],
+                   t: NDArray[np.int64]) -> tuple[NDArray[np.intp], NDArray[np.int64]]:
             img = idx @ r.T + t
             on = np.all((img >= 0) & (img < shape), axis=1)
             pos = np.nonzero(on)[0]

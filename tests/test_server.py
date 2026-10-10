@@ -675,7 +675,8 @@ def test_build_params_punch_search_floor_and_protected_planes():
     def punch(**kw):
         return build_params(PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw))).punch
 
-    p = punch(punch_search_floor=8.0, punch_search_protect_h=[], punch_search_protect_half_width=0.05)
+    p = punch(punch_search_floor=8.0, punch_search_protect_h=[],
+              punch_search_protect_half_width=0.05)
     assert p.search_min_intensity == 8.0 and p.search_min_prominence == 8.0
     assert p.search_exclude_h_fractions is None
     assert p.search_exclude_h_half_width == 0.05
