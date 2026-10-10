@@ -49,6 +49,7 @@ import {
 import { useStructureStore } from "../state/structureStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { markersNear, usePlaneMarkers, useStructureModel, type PlaneAxis } from "../structure/useStructure";
+import { useGlow } from "../llm/highlight";
 
 const AXES: FixedAxis[] = ["H", "K", "L"];
 const REAL_AXES: RealAxis[] = ["X", "Y", "Z"];
@@ -60,6 +61,8 @@ const R_PLANE_AXES: Record<RealAxis, [string, string]> = { X: ["y", "z"], Y: ["z
 type Band = { min: number; max: number };
 
 export function ConsistencyViewer() {
+  const checkLit = useGlow("check");
+  const pdfLit = useGlow("pdf");
   const datasetsQ = useDatasets();
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
   useInitializeDataset(datasets);
@@ -562,6 +565,7 @@ export function ConsistencyViewer() {
           views={[
             {
               id: "data",
+              glow: checkLit,
               title: "Data",
               badge: "Q",
               badgeClass: "qr-rt-badge qr-rt--q",
@@ -591,6 +595,7 @@ export function ConsistencyViewer() {
             },
             {
               id: "dpdf",
+              glow: checkLit || pdfLit,
               title: "3D-ΔPDF",
               badge: "R",
               badgeClass: "qr-rt-badge qr-rt--r",
@@ -698,6 +703,7 @@ export function ConsistencyViewer() {
             },
             {
               id: "recon",
+              glow: checkLit,
               title: "Back-FFT  IFFT[ΔPDF]",
               badge: "Q′",
               badgeClass: "qr-rt-badge qr-rt--qp",
@@ -718,6 +724,7 @@ export function ConsistencyViewer() {
             },
             {
               id: "residual",
+              glow: checkLit,
               title: "Residual",
               badge: "Δ",
               badgeClass: "qr-rt-badge qr-rt--r",

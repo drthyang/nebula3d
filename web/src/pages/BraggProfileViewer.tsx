@@ -13,6 +13,7 @@ import { ColormapBar, EmptyState, IconAlert, IconLattice, Slider, Switch } from 
 import { COLORMAPS, SEQUENTIAL_NAMES } from "../colormaps/luts";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useViewerStore } from "../state/viewerStore";
+import { useGlow } from "../llm/highlight";
 
 // Axis colour-coding shared across the whole page (matches Configure / Reciprocal).
 // Labels are profile-driven: the spherical punch reports widths along (ρ, θ, φ),
@@ -225,8 +226,9 @@ function Scatter({
   const stride = Math.max(1, Math.ceil(peaks.length / MAX_DOTS));
   const sample = peaks.map((_, i) => i).filter((i) => i % stride === 0 || i === selected);
 
+  const glow = useGlow("bragg", "punch");
   return (
-    <div className="bragg-panel bragg-scatter">
+    <div className={`bragg-panel bragg-scatter${glow ? " ai-glow" : ""}`}>
       <div className="bragg-panel-head">
         <span className="bragg-eyebrow">Resolution function · width vs |Q|</span>
         <div className="bragg-legend">
@@ -308,8 +310,9 @@ function Histograms({ peaks, axes, showMeasured }: { peaks: BraggPeakWidth[]; ax
   hi = Math.max(hi, lo + 1e-6);
   const domain: [number, number] = [lo, hi];
   const N = 40;
+  const glow = useGlow("bragg", "punch");
   return (
-    <div className="bragg-panel bragg-hist">
+    <div className={`bragg-panel bragg-hist${glow ? " ai-glow" : ""}`}>
       <div className="bragg-panel-head">
         <span className="bragg-eyebrow">Width distribution / axis</span>
         <div className="bragg-legend">
@@ -378,8 +381,9 @@ function PeakTable({
   onSort: (k: SortKey) => void;
   onSelect: (i: number) => void;
 }) {
+  const glow = useGlow("bragg", "punch");
   return (
-    <div className="bragg-panel bragg-table">
+    <div className={`bragg-panel bragg-table${glow ? " ai-glow" : ""}`}>
       <div className="bragg-panel-head">
         <span className="bragg-eyebrow">Peak table · {peaks.length} peaks</span>
         <div className="bragg-sort">
@@ -475,8 +479,9 @@ function SelectedPeak({
     { label: "b*·c*", color: "#74a8ff", plane: "0kl", value: h, cx: k, cy: l, xa: 1, ya: 2 },
   ];
 
+  const glow = useGlow("bragg", "punch");
   return (
-    <div className="bragg-panel bragg-detail">
+    <div className={`bragg-panel bragg-detail${glow ? " ai-glow" : ""}`}>
       <div className="bragg-panel-head">
         <span className="bragg-eyebrow">Selected peak · intensity slices + fit</span>
         <span className="bragg-sel-hkl">{hklStr(peak.center_hkl)}</span>

@@ -5680,3 +5680,36 @@ h6.md-h {
     width: 130px;
   }
 }
+
+/* — the agent's highlight: a breathing edge on the card it is working on or
+   talking about (llm/highlight.ts).  A 2 px ring just inside the card's edge
+   (an outline, so no layout shift, and drawn over the figure so a parent's
+   overflow never clips it) with a soft glow outside; held still when the user
+   asks for less motion. — */
+.ai-glow,
+.cfg-stage.ai-glow-within .cfg-box {
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  animation: ai-breathe 2.4s ease-in-out infinite;
+}
+.exec-stage.ai-glow {
+  border-radius: var(--radius-sm);
+}
+@keyframes ai-breathe {
+  0%,
+  100% {
+    outline-color: rgba(79, 143, 247, 0.3);
+    box-shadow: 0 0 6px 0 rgba(79, 143, 247, 0.15);
+  }
+  50% {
+    outline-color: rgba(116, 168, 255, 0.95);
+    box-shadow: 0 0 20px 3px rgba(79, 143, 247, 0.45);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-glow,
+  .cfg-stage.ai-glow-within .cfg-box {
+    animation: none;
+    outline-color: var(--accent);
+  }
+}
