@@ -231,7 +231,10 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
     """Whether the volume's UB puts its Bragg peaks on their nodes
     (:mod:`nebula3d.analysis.ub_refine`), cached by ``(path, mtime, cell, q_max)``.
 
-    The fit is :func:`~nebula3d.analysis.ub_refine.auto_fit`'s: only the
+    The coverage edge is trimmed first, one voxel layer (the pipeline's
+    ``edge_trim`` default, on a copy): its voxels can sit orders of magnitude
+    above the interior and pass for peaks.  The fit is
+    :func:`~nebula3d.analysis.ub_refine.auto_fit`'s: only the
     changes that commute with the declared operations on a volume symmetrised
     under them, else the rotation and the cell together.  An unsymmetrised
     volume takes its operations from its symmetrised export
@@ -245,9 +248,18 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
         hit = _ub_cache.get(key)
     if hit is not None:
         return hit
-    vol = load_volume(path)
+    from dataclasses import replace
+
+    from nebula3d.preprocessing.sampling import trim_coverage_edge
+    from nebula3d.symmetry import GridSymmetry
+
+    cached = load_volume(path)
+    vol = replace(cached, data=cached.data.copy(), sigma=cached.sigma.copy(),
+                  mask=cached.mask.copy())
     ops, ops_from = symmetry_ops_for(path)
     fit, broken = auto_fit(vol, ops)
+    sym = GridSymmetry.for_volume(vol, ops) if ops is not None and fit == "symmetric" else None
+    trim_coverage_edge(vol, 1, symmetry=sym)
     r = refine_ub(vol, fit=fit, ops=ops, cell=cell, q_max=q_max)
     f = r.fit
 
