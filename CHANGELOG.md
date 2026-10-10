@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **The console follows the assistant to each figure it assesses.** As a
+  measurement or assessment finishes, the console moves to the figure it
+  looked at, so you see what the model sees:
+  - the cleanup page at the cut, at a stage's worst plane, or at the
+    strongest fill bias;
+  - the 3D-ΔPDF section;
+  - the Bragg profile, with the peak selected;
+  - the Q–R band transform, for the back-FFT check;
+  - the Execution page, for the run log.
+
+  A *Follow* chip beside *Tools* turns this off. Each step's *Show* button
+  reopens its figure either way. The transcript also names the assessment
+  steps, instead of showing their tool names.
 - **Anthropic is a provider for the AI Assistant.** Pick *Anthropic* in the
   connection settings and paste a Claude API key. The model list puts Claude
   Opus 5.5 first. Claude runs through Anthropic's official SDK, called from

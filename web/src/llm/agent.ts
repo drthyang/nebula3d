@@ -11,6 +11,7 @@ import {
 } from "./provider/client";
 import type { LlmSettings } from "./settings";
 import { runToolCall, toolSpecs, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
+import { openView } from "./tools/openView";
 
 export interface AgentStep {
   id: string;
@@ -138,6 +139,8 @@ export async function runAgent({
         result: run.text,
         view: run.view,
       });
+      // The console follows what the model looked at, step by step.
+      if (run.ok && run.view && settings.followViews) openView(run.view);
       convo.push({ role: "tool", tool_call_id: call.id, content: run.text });
     }
   }

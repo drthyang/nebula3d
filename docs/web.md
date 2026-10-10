@@ -352,8 +352,14 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
   use, sends the JSON back, and the model continues — up to twelve rounds. Every
   argument is checked; a bad call comes back to the model as an error it can
   correct. The transcript lists each call, which opens to its arguments and
-  result, and a long one shows a live line while it runs. A model or server that
-  refuses tools gets the plain request and a note saying so.
+  result, and a long one shows a live line while it runs. As each measuring or
+  assessing call finishes, the console moves to the figure it looked at
+  (*Follow*, on by default; `tools/openView.ts`): the cleanup page at its cut (a
+  stage's worst plane for `assess_stage`, the strongest fill bias for
+  `texture_check`), the 3D-ΔPDF at its section, the Bragg profile with its peak
+  selected, the Q–R band transform for the back-FFT check, or the Execution
+  page for the run log. Each step's *Show* reopens its figure. A model or server
+  that refuses tools gets the plain request and a note saying so.
   - *Reading*: `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
     `measure_dpdf_cut`, `line_profile`, `bragg_peaks`, `consistency_details`,
     `compare_datasets`, `configure_settings`, `run_log` (the last run's log).
