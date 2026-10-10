@@ -15,10 +15,11 @@
 import { describe, expect, it } from "vitest";
 
 import { fetchDatasets } from "../../api/client";
+import type { AgentStep } from "../agent";
 import { isAnthropicUrl } from "../provider/anthropic";
 import { isLocalUrl, providerForUrl } from "../provider/presets";
-import { backendUrl, env, useBackend, writeText } from "./backend";
-import { runScenario, transcript, type ScenarioResult } from "./harness";
+import { backendUrl, env, readText, useBackend, writeText } from "./backend";
+import { grade, runScenario, transcript, type EvalRun, type ScenarioResult } from "./harness";
 import { SCENARIOS } from "./scenarios";
 
 const live = env("NEBULA_EVAL") === "1";
@@ -79,7 +80,7 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
           grades: r.grades,
           latency_ms: Math.round(r.run.latencyMs),
           usage: r.run.usage,
-          steps: r.run.steps.map((s) => ({ name: s.name, args: s.args, status: s.status, summary: s.summary })),
+          steps: r.run.steps.map((s) => ({ name: s.name, args: s.args, status: s.status, summary: s.summary, result: s.result })),
           answer: r.run.content,
           note: r.run.note ?? null,
           error: r.run.error ?? null,
@@ -90,3 +91,51 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
     for (const r of results) expect.soft(r.passed, `${r.scenario}`).toBe(true);
   }, 6 * 3600_000);
 });
+
+// Grades recorded runs again with the current checks (NEBULA_EVAL_REGRADE=<results.json>,
+// relative to the working directory), rewriting their grades and summary in place.
+const regrade = env("NEBULA_EVAL_REGRADE");
+
+describe.skipIf(!regrade)("NEBULA Pilot evals, re-graded", () => {
+  it("grades the recorded runs with the current checks", async () => {
+    const url = new URL(regrade!, `file://${env("PWD") ?? ""}/`);
+    const record = JSON.parse(await readText(url)) as RecordFile;
+    for (const r of record.runs) {
+      const scenario = SCENARIOS.find((s) => s.id === r.scenario);
+      if (!scenario) continue;
+      const run: EvalRun = {
+        scenario: r.scenario,
+        steps: r.steps.map((s, i) => ({ id: String(i), ...s })),
+        content: r.answer,
+        note: r.note ?? undefined,
+        error: r.error ?? undefined,
+        latencyMs: r.latency_ms,
+        usage: r.usage,
+      };
+      const g = grade(scenario, run);
+      r.passed = g.passed;
+      r.grades = g.grades;
+    }
+    record.summary = record.summary.map((s) => {
+      const runs = record.runs.filter((r) => r.scenario === s.id);
+      return { ...s, passed: runs.filter((r) => r.passed).length, runs: runs.length };
+    });
+    await writeText(url, JSON.stringify(record, null, 1) + "\n");
+    console.log(record.summary.map((s) => `${s.passed}/${s.runs} ${s.id}`).join("\n"));
+  });
+});
+
+interface RecordFile {
+  summary: { id: string; passed: number; runs: number }[];
+  runs: {
+    scenario: string;
+    passed: boolean;
+    grades: unknown;
+    latency_ms: number;
+    usage: EvalRun["usage"];
+    steps: Omit<AgentStep, "id">[];
+    answer: string;
+    note: string | null;
+    error: string | null;
+  }[];
+}

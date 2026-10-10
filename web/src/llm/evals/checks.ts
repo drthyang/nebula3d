@@ -38,13 +38,19 @@ export function sentences(text: string): string[] {
 
 const SUPERSCRIPT: Record<string, string> = { "⁻": "-", "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9" };
 
-/** Every number the text writes: decimals, exponents (1e-3, 1×10⁻³, 1 x 10^-3) and percentages as written. */
+/** Every number the text writes: decimals, exponents (1e-3, 1×10⁻³, 1 x 10^-3, LaTeX 1 \times 10^{-3}) and percentages as written. */
 export function numbers(text: string): number[] {
   const flat = text
+    .replace(/\$/g, "")
+    .replace(/\\(times|cdot)/g, "×")
+    .replace(/\^\{([^}]*)\}/g, "^$1")
     .replace(/[⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (m) => "^" + [...m].map((c) => SUPERSCRIPT[c]).join(""))
     .replace(/(\d)\s*[×x·]\s*10\s*\^?\s*\(?([-+−]?\d+)\)?/g, (_m, a, e) => `${a}e${String(e).replace("−", "-")}`)
     .replace(/−/g, "-");
-  return [...flat.matchAll(/[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi)].map((m) => Number(m[0])).filter(Number.isFinite);
+  // A sign counts only where nothing alphanumeric precedes it: "0.55-16.7" is a range, not −16.7.
+  return [...flat.matchAll(/(?<![\w)\]}.])[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?|\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi)]
+    .map((m) => Number(m[0]))
+    .filter(Number.isFinite);
 }
 
 /** The model called *name* (and, with *args*, with arguments it accepts). */

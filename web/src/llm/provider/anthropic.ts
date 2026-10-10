@@ -156,14 +156,19 @@ interface TurnArgs {
 
 // The request body: no sampling parameters (current Claude models reject
 // them), adaptive thinking with a readable summary where the model has it,
-// and tools that stream their input as it is written.
+// and tools that stream their input as it is written.  Two cache
+// breakpoints: one after the system prompt, so every conversation shares the
+// tools and the prompt, and the automatic one (top level), which moves to the
+// end of the conversation so each round of tool calls reads the last round's
+// prefix from the cache.
 function requestBody(
   { model, messages, tools, toolChoice }: TurnArgs,
   maxTokens: number,
 ): Anthropic.Beta.MessageCreateParamsNonStreaming {
   const { system, messages: converted } = toAnthropicMessages(messages);
   const body: Anthropic.Beta.MessageCreateParamsNonStreaming = { model, max_tokens: maxTokens, messages: converted };
-  if (system) body.system = system;
+  if (system) body.system = [{ type: "text", text: system, cache_control: { type: "ephemeral" } }];
+  (body as unknown as Record<string, unknown>).cache_control = { type: "ephemeral" };
   if (adaptiveThinking(model)) body.thinking = { type: "adaptive", display: "summarized" };
   if (tools?.length) {
     body.tools = tools.map((t) => ({
@@ -256,12 +261,9 @@ export async function* streamAnthropic(args: TurnArgs): AsyncGenerator<StreamDel
     }
     if (args.includeUsage) {
       const u = message.usage;
-      yield {
-        usage: {
-          input: u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
-          output: u.output_tokens,
-        },
-      };
+      const cacheRead = u.cache_read_input_tokens ?? 0;
+      const cacheWrite = u.cache_creation_input_tokens ?? 0;
+      yield { usage: { input: u.input_tokens + cacheRead + cacheWrite, output: u.output_tokens, cacheRead, cacheWrite } };
     }
 
     if (message.stop_reason === "refusal") {

@@ -18,6 +18,13 @@ export function useBackend(base = backendUrl()): void {
     real(typeof input === "string" && input.startsWith("/") ? new URL(input, base) : input, init)) as typeof fetch;
 }
 
+/** Reads a text file in the test process. */
+export async function readText(url: URL): Promise<string> {
+  const spec = "node:fs";
+  const fs = (await import(/* @vite-ignore */ spec)) as { readFileSync(p: URL, e: "utf8"): string };
+  return fs.readFileSync(url, "utf8");
+}
+
 /** Writes a text file from the test process. */
 export async function writeText(url: URL, text: string): Promise<void> {
   const spec = "node:fs";
