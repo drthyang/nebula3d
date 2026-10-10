@@ -67,6 +67,10 @@ class DeltaPdfMetaOut(BaseModel):
     lattice: LatticeOut
     q_max: float | None
     planes: list[str]
+    # The transform's window, from the ΔPDF's provenance (None if not recorded).
+    window_shape: str | None = None
+    window_scale: float | None = None
+    window_open_weight: float | None = None
 
 
 class BraggPeakWidthOut(BaseModel):

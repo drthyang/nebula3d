@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **The coverage check reads the window that actually ran.** It judged the
+  transform by one reach radius from the Configure page's settings: on a
+  hexagonal box (18 Å⁻¹ in-plane, 12.5 Å⁻¹ along c*) it reported a box-face
+  taper that was not used. The ΔPDF now records the share of its window's
+  weight on unmeasured reciprocal space (`window_open_weight` in its
+  provenance and in the ΔPDF metadata, with the window's shape and scale).
+  `qmax_coverage` gives that share as its verdict: 3.2 × 10⁻⁶ on the
+  measured volume, clean.
 - **The flatten can take a background that rises with |Q|.** Its model
   fitted a constant (plus the magnetic form factor), so on a measured
   hexagonal volume the diffuse floor still climbed from −1 to +10 across

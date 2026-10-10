@@ -34,7 +34,8 @@ def meta(volume_id: str, cfg: ServerConfig = Depends(get_config)) -> DeltaPdfMet
     return DeltaPdfMetaOut(
         id=volume_id, shape=m["shape"], x_range=m["x_range"], y_range=m["y_range"],
         z_range=m["z_range"], lattice=LatticeOut(**m["lattice"]), q_max=m["q_max"],
-        planes=m["planes"],
+        planes=m["planes"], window_shape=m["window_shape"], window_scale=m["window_scale"],
+        window_open_weight=m["window_open_weight"],
     )
 
 

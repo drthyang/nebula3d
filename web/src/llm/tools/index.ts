@@ -857,6 +857,12 @@ const textureCheck: AgentTool = {
 // apodization), where every voxel counts at full weight; else the box faces
 // where the window tapers to zero, or the coverage edge when it is tapered to
 // the measured coverage.
+// The share of the window's weight on unmeasured space a transform may keep
+// (the backend's support tolerance).
+const OPEN_WEIGHT_OK = 1e-3;
+// A share, in exponent form when it is tiny (3.2e-6, not 0.0000032).
+const share = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(roundSig(x, 2)));
+
 function windowReach(
   s: PipelineConfig,
   q: { corner: number | null; box: number | null; full: number | null },
@@ -874,7 +880,7 @@ function windowReach(
 const qmaxCoverage: AgentTool = {
   name: "qmax_coverage",
   description:
-    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk.",
+    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk.",
   parameters: { type: "object", properties: {} },
   run: async (_args, { dataset }) => {
     const meta = await recipMeta(dataset);
@@ -904,9 +910,26 @@ const qmaxCoverage: AgentTool = {
     // The ΔPDF records max |Q| over its grid: the box corner.
     const cornerQ = dmeta?.q_max ?? null;
     const s = usePipelineStore.getState();
-    const { reach, how } = windowReach(s, { corner: cornerQ, box: boxQ, full: fullQ });
+    const settled = windowReach(s, { corner: cornerQ, box: boxQ, full: fullQ });
+    // An ellipsoid window (what a lattice whose symmetry mixes axes gets) is
+    // inscribed in the box: its reach varies with direction, and only the
+    // recorded weight on unmeasured space says whether it stays measured.
+    const { reach, how } =
+      dmeta?.window_shape === "ellipsoid" && !s.pdfQMax
+        ? { reach: settled.reach, how: "an ellipsoid window inscribed in the box (its reach varies with direction; box_face_q is the nearest face)" }
+        : settled;
     const shell = boxQ != null ? boxQ / COVERAGE_SHELLS : 0; // the coverage edge is known to one shell
-    const verdict = !qRadius("hk0", 0, meta)
+    // The ΔPDF on disk records its window and the share of the window's weight
+    // on unmeasured space: the direct measure of a reach past the coverage.
+    const openWeight = dmeta?.window_open_weight ?? null;
+    const windowNote = dmeta?.window_shape
+      ? `the ΔPDF's ${dmeta.window_shape} window${dmeta.window_scale != null && dmeta.window_scale < 1 ? ` (shrunk to ${roundSig(dmeta.window_scale, 3)} × to fit the coverage)` : ""}`
+      : "the ΔPDF's window";
+    const verdict = openWeight != null
+      ? openWeight <= OPEN_WEIGHT_OK
+        ? `clean: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space`
+        : `too far: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`
+      : !qRadius("hk0", 0, meta)
       ? "no unit cell: |Q| is unknown, so the reach cannot be compared"
       : fullQ == null
         ? "no |Q| shell is fully measured on these planes"
@@ -918,6 +941,9 @@ const qmaxCoverage: AgentTool = {
     return {
       result: {
         verdict,
+        window_weight_on_unmeasured: openWeight,
+        window_shape: dmeta?.window_shape ?? null,
+        window_scale: dmeta?.window_scale ?? null,
         transform_reach_q: reach == null ? null : roundSig(reach, 4),
         reach_from: how,
         full_coverage_q: fullQ,
