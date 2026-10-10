@@ -755,3 +755,39 @@ def test_search_max_width_ratio_leaves_broad_maxima():
     assert not keep[at(wing)]           # broad, but a Bragg peak's wing: punched
     assert not keep[at(flank)]          # sharp, though it sits on a broad maximum
     assert gated._search_report["broad_kept"] >= 1  # noqa: SLF001
+
+
+def test_own_width_footprint_keeps_the_maximum_under_a_sharp_spike():
+    """Punched to its own width, a sharp spike on a broad maximum's flank takes a
+    compact punch, within a few of its own widths, that leaves the maximum; the
+    Bragg peaks are still punched clean."""
+    vol, _sharp, broad, _wing, flank = _bragg_with_offnode_peaks()
+
+    def at(c: tuple[float, float, float]) -> tuple[int, ...]:
+        return tuple(int(np.argmin(np.abs(a - x))) for a, x in
+                     zip((vol.h_axis, vol.k_axis, vol.l_axis), c))
+    common = dict(mode="both", **_q_radii(vol, 0.15, 0.15, 0.15), min_intensity=10.0,
+                  search_n_mad=6.0, search_min_intensity=10.0, search_q_step=0.25,
+                  force_origin=False, search_max_width_ratio=2.0,
+                  profile_n_sigma=0.5)  # the pipeline's stopping level
+    own = BraggRemover(**common, punch_footprint="own").build_mask(vol)
+    assert not own[at(flank)]                  # the spike is punched
+    assert own[at(broad)]                      # the maximum is left
+    i, j, k = at(flank)
+    box = (slice(i - 6, i + 7), slice(j - 6, j + 7), slice(k - 6, k + 7))
+    hh, kk, ll = np.meshgrid(vol.h_axis[box[0]], vol.k_axis[box[1]], vol.l_axis[box[2]],
+                             indexing="ij")
+    reach = np.sqrt((hh - flank[0]) ** 2 + (kk - flank[1]) ** 2 + (ll - flank[2]) ** 2)
+    # The spike's σ is 0.06 r.l.u.: its punch (the punched region around it)
+    # lies within 5σ of it.
+    from scipy import ndimage
+    labels, _ = ndimage.label(~own[box])
+    spike = labels == labels[6, 6, 6]
+    assert spike.any() and reach[spike].max() <= 0.3 + 1e-9
+    # Between the maximum and the spike, the maximum survives the own-width punch.
+    assert own[at((1.5, 0.5, 1.6))]
+    # Every Bragg node is punched, with nothing above 10 × the noise left at it.
+    for node in [(1, 0, 0), (0, 1, 1), (2, 0, 0), (1, 1, 1)]:
+        a, b, c = at(node)
+        core = (slice(a - 1, a + 2), slice(b - 1, b + 2), slice(c - 1, c + 2))
+        assert not own[core].any()

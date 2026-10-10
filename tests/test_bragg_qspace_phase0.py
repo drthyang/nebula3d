@@ -81,9 +81,15 @@ def _synthetic_vol() -> HKLVolume:
 # significance gate (2026-10-05) keeps all four planted peaks and the punch
 # sizes, so these are unchanged by it.  If a future change is *intended* to
 # alter the default punch geometry, regenerate these deliberately.
-_GOLDEN_DEFAULT_PUNCHED = 489
-_GOLDEN_DEFAULT_KEEP_SHA256 = (
+# The profile-matched footprint (the default until the own-width one).
+_GOLDEN_PROFILE_PUNCHED = 489
+_GOLDEN_PROFILE_KEEP_SHA256 = (
     "78ba8b560b2c866db59d753737db7e29d6fa9aece5a6a87dbc856e9a0ef41cfd"
+)
+# The default: each peak to its own width.
+_GOLDEN_DEFAULT_PUNCHED = 411
+_GOLDEN_DEFAULT_KEEP_SHA256 = (
+    "1cb77bcfa213e508a77325a3b1df6e38e4d0139e09d8a776a4792aa793df3338"
 )
 _GOLDEN_INTEGER_ONLY_PUNCHED = 57
 _GOLDEN_SEARCH_ONLY_PUNCHED = 76
@@ -91,6 +97,15 @@ _GOLDEN_SEARCH_ONLY_PUNCHED = 76
 # fractional-HKL frame itself was removed.
 _RADII_Q = tuple(float(r) for r in
                  np.asarray((0.09, 0.12, 0.45)) * np.linalg.norm(UB_REFERENCE, axis=0))
+
+
+def test_golden_profile_punch_mask_is_unchanged():
+    """The profile-matched punch keep-mask is byte-for-byte stable."""
+    vol = _synthetic_vol()
+    keep = punch_bragg(vol, PunchParams(punch_footprint="profile")).mask
+    assert int((~keep).sum()) == _GOLDEN_PROFILE_PUNCHED
+    digest = hashlib.sha256(np.ascontiguousarray(keep).tobytes()).hexdigest()
+    assert digest == _GOLDEN_PROFILE_KEEP_SHA256
 
 
 def test_golden_default_punch_mask_is_unchanged():
