@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import type { Dataset } from "../api/types";
+import { useChatStore } from "./chatStore";
 import { loadPipelineContext } from "./context/loadContext";
 import { checkConnection, loadedContext, type ConnectionResult, type ModelContext } from "./provider/client";
 import { saveSettings, useLlmSettings } from "./settings";
@@ -63,10 +64,12 @@ export function useAssistant(dataset: Dataset | undefined, enabled = true) {
   }, [enabled, settings.baseUrl, probe]);
 
   // The context length a local server loaded the model with, where it says
-  // (LM Studio): read again on connecting, on a new model, and when the page
-  // regains focus — the user may have just reloaded the model there.
+  // (LM Studio): read again on connecting, on a new model, when a reply starts
+  // or ends (LM Studio may have loaded it again with its defaults), and when
+  // the page regains focus (the user may have just reloaded it there).
   const [modelContext, setModelContext] = useState<ModelContext | null>(null);
   const [focusTick, setFocusTick] = useState(0);
+  const busy = useChatStore((s) => s.busy);
   useEffect(() => {
     const onFocus = () => setFocusTick((t) => t + 1);
     window.addEventListener("focus", onFocus);
@@ -82,7 +85,7 @@ export function useAssistant(dataset: Dataset | undefined, enabled = true) {
       .then(setModelContext)
       .catch(() => {});
     return () => abort.abort();
-  }, [enabled, connection, settings.baseUrl, settings.model, focusTick]);
+  }, [enabled, connection, settings.baseUrl, settings.model, focusTick, busy]);
 
   const contextQuery = useQuery({
     queryKey: ["assistantContext", dataset?.id, dataset?.stages.map((s) => s.name).join(",")],
