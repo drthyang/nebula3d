@@ -11,7 +11,9 @@
   - only what commutes with the symmetry operations.
 
   The fit works from low |Q| outward, and the volume can then be regridded
-  onto the refined UB. A volume symmetrised under its operations hides a
+  onto the refined UB, after the coverage edge is trimmed (its voxels can sit
+  orders of magnitude above the interior, and symmetrising would spread
+  them). A volume symmetrised under its operations hides a
   misorientation as rings around the nodes, so it takes the last fit alone;
   the orientation needs the unsymmetrised data. Peak centres are windowed
   centroids. A centroid of the voxels above half height overstated sub-voxel
