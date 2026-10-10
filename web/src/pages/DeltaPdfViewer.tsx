@@ -12,6 +12,7 @@ import type { Slice } from "../api/types";
 import { COLORMAPS, DIVERGING_NAMES, DIVERGING_NAME } from "../colormaps/luts";
 import { fmtLevel } from "../components/colorScale";
 import { AutoButton, BrightnessKnob, ClickModeControl, LevelsBar } from "../components/DisplayBar";
+import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../components/dpdfLevels";
 import { latticeLabel } from "../components/oblique";
 import { SliceCanvas } from "../components/SliceCanvas";
 import { StructureHits, StructureOverlay } from "../components/StructureOverlay";
@@ -142,14 +143,16 @@ export function DeltaPdfViewer() {
   const cXZ = useDpdfSlice(volumeId, "xz", centreVal("y")).data;
   const cYZ = useDpdfSlice(volumeId, "yz", centreVal("x")).data;
   const results = { xy: sXY, xz: sXZ, yz: sYZ };
+  // Auto reads the features, not the FFT ripple around them (dpdfLevels.ts).
   const samples = useMemo(
-    () => (cXY && cXZ && cYZ ? [cXY.data, cXZ.data, cYZ.data] : null),
+    () => (cXY && cXZ && cYZ ? [cXY, cXZ, cYZ].map(withoutOrigin) : null),
     [cXY, cXZ, cYZ],
   );
   const lv = useLevels({
     samples,
     histData: sXY.data?.data,
     signed: true,
+    percentile: DPDF_AUTO_PERCENTILE,
     manual: manual && manual.dataset === datasetId ? { lo: -manual.value, hi: manual.value } : null,
   });
   const setLimit = (hi: number) => datasetId && setManual({ value: Math.abs(hi), dataset: datasetId });

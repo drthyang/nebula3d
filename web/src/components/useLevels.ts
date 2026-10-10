@@ -33,16 +33,18 @@ export function useLevels({
   histData,
   signed = false,
   scale = "lin",
+  percentile,
   manual,
 }: {
   samples: ArrayLike<number>[] | null;
   histData?: ArrayLike<number> | null;
   signed?: boolean;
   scale?: ScaleKind;
+  percentile?: number; // where Auto puts vmax (default: the 97th)
   manual: Levels | null;
 }): LevelsModel {
   const src = samples ?? EMPTY;
-  const auto = useMemo(() => autoLevels(src, { signed, scale }), [src, signed, scale]);
+  const auto = useMemo(() => autoLevels(src, { signed, scale, percentile }), [src, signed, scale, percentile]);
   const levels = manual
     ? signed
       ? { lo: -Math.abs(manual.hi), hi: Math.abs(manual.hi) }
