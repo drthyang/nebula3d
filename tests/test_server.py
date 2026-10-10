@@ -662,6 +662,34 @@ def test_build_params_punch_overrides():
     assert defaults.punch_frame == "spherical"
 
 
+def test_build_params_punch_search_floor_and_protected_planes():
+    """The search floor and the protected H planes reach PunchParams; [] turns
+    the protection off, and bad values are refused."""
+    from nebula3d.pipeline import PunchParams
+    from nebula3d.server.routers.pipeline import build_params
+    from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
+
+    base = PunchParams()
+    assert base.search_exclude_h_fractions  # protected by default
+
+    def punch(**kw):
+        return build_params(PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw))).punch
+
+    p = punch(punch_search_floor=8.0, punch_search_protect_h=[], punch_search_protect_half_width=0.05)
+    assert p.search_min_intensity == 8.0 and p.search_min_prominence == 8.0
+    assert p.search_exclude_h_fractions is None
+    assert p.search_exclude_h_half_width == 0.05
+    assert punch(punch_search_protect_h=[0.5]).search_exclude_h_fractions == (0.5,)
+    # unset fields keep the defaults
+    q = punch()
+    assert q.search_exclude_h_fractions == base.search_exclude_h_fractions
+    assert q.search_min_intensity == base.search_min_intensity
+    for bad in ({"punch_search_floor": 0.0}, {"punch_search_protect_h": [1.2]},
+                {"punch_search_protect_half_width": -0.1}):
+        with pytest.raises(ValueError):
+            punch(**bad)
+
+
 def test_build_params_qspace_punch_overrides():
     """Q-space punch overrides (frame + isotropic / per-axis radii) reach PunchParams."""
     from nebula3d.pipeline import PunchParams

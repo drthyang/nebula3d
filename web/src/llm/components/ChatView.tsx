@@ -34,7 +34,7 @@ const ACTIONS = [
   {
     label: "Assess the run",
     prompt:
-      "Assess this reduction: is the ring removal clean, are the Bragg peaks removed cleanly, did the punch and backfill add texture in reciprocal space, and is the ΔPDF’s Qmax inside the data coverage? Run the pipeline first if outputs are missing.",
+      "Assess this reduction on four checks, each with its tool: (1) is the ring removal clean (assess_stage rings, radial_profile); (2) are the Bragg peaks removed cleanly (assess_stage punch); (3) did the punch and backfill add texture to reciprocal space (texture_check); (4) is Qmax inside the data coverage (qmax_coverage). Also report any other stage that misses its goal, such as the flatten floor. Run the pipeline first if outputs are missing.",
   },
   {
     label: "Tune for the best result",

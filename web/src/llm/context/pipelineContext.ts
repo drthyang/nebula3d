@@ -15,7 +15,7 @@ import type {
 import { metricFromUb, qNorm, reciprocalMetric } from "../../components/reciprocal";
 import { backfillMetrics } from "../metrics/backfill";
 import { dpdfMetrics } from "../metrics/dpdf";
-import { flattenMetrics } from "../metrics/flatten";
+import { FLATTEN_FIT_Q, flattenMetrics } from "../metrics/flatten";
 import { ringMetrics } from "../metrics/rings";
 import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
 import type { RadiusFn } from "../metrics/sliceStats";
@@ -40,6 +40,9 @@ export interface BuildContextInput {
   braggProfile?: BraggProfile | null;
   consistency?: Pick<ConsistencyMetrics, "pearson_r" | "normalized_rms"> | null;
   slices: StageSlices;
+  // The punch's indexing supercell, so leftover peaks are classed at a lattice
+  // node or off-lattice against the right nodes (default 1×1×1).
+  supercell?: [number, number, number];
 }
 
 export interface PipelineContext {
@@ -115,10 +118,19 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
   // 2. Bragg punch — leftover-peak scan on the punched slice + fitted profile.
   const punchSlice = slices.braggpunched;
   if (punchSlice || braggProfile) {
+    const axes = PLANE_HKL_AXES[plane];
+    const toHkl = axes
+      ? (x: number, y: number): [number, number, number] => {
+          const hkl: [number, number, number] = [cutValue, cutValue, cutValue];
+          hkl[axes[0]] = x;
+          hkl[axes[1]] = y;
+          return hkl;
+        }
+      : undefined;
     ctx.bragg_punch = {
       leftover: punchSlice
-        ? scanLeftoverPeaks(punchSlice)
-        : { suspicious_peaks: [], n_suspicious: 0, scan_sigma_threshold: 6, scan_contrast_threshold: 4 },
+        ? scanLeftoverPeaks(punchSlice, { toHkl, supercell: input.supercell })
+        : { suspicious_peaks: [], n_suspicious: 0, n_skipped_noisy: 0, scan_sigma_threshold: 8 },
       peak_profile: summarizePeakProfile(braggProfile),
     };
     if (!punchSlice) notes.push("bragg punch: no punched slice at this cut; leftover-peak scan skipped");
@@ -133,7 +145,7 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
 
   // 4. Flatten — the per-|Q|-shell floors, backfilled vs flattened.
   if (slices.flattened) {
-    ctx.flatten = flattenMetrics(slices.backfilled ?? null, slices.flattened, radius);
+    ctx.flatten = flattenMetrics(slices.backfilled ?? null, slices.flattened, radius, radius ? FLATTEN_FIT_Q : undefined);
   }
 
   // 5. 3D-ΔPDF — feature/anisotropy/trend on the real-space orthoslice.

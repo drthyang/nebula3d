@@ -190,6 +190,13 @@ describe("update_settings", () => {
     expect(JSON.parse(r.text)).toEqual({ changed: [{ setting: "punchMinSig", from: 5, to: 6 }], rerun_from: "punch" });
   });
 
+  it("leaves a setting already at the value alone", async () => {
+    usePipelineStore.setState({ punchMinSig: "6" });
+    const r = await run("update_settings", { changes: { punchMinSig: 6 } });
+    expect(JSON.parse(r.text)).toEqual({ changed: [], already_set: ["punchMinSig"], rerun_from: null });
+    expect(r.summary).toBe("no change: punchMinSig already set");
+  });
+
   it("refuses settings outside the catalog and values out of range", async () => {
     const unknown = await run("update_settings", { changes: { punchSupercellH: 2 } });
     expect(unknown.text).toMatch(/invalid arguments — punchSupercellH cannot be changed/);

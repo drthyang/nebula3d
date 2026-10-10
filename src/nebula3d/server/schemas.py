@@ -136,6 +136,14 @@ class StageParamsIn(BaseModel):
     punch_footprint: str | None = None
     punch_profile_n_sigma: float | None = None
     punch_search_n_mad: float | None = None
+    # The |Q|-shell search's intensity and prominence floors, as multiples of
+    # the diffuse scatter (both; > 0).
+    punch_search_floor: float | None = None
+    # H planes the search leaves alone, as fractional parts of H (e.g. [1/3,
+    # 2/3] for a q = (1/3, 0, 0) satellite family; [] protects none), and
+    # their half width in r.l.u.
+    punch_search_protect_h: list[float] | None = None
+    punch_search_protect_half_width: float | None = None
     punch_mode: str | None = None
     # Supercell the volume is indexed on, per axis (≥ 1): integer-mode Bragg
     # nodes are the parent lattice's only.

@@ -81,6 +81,23 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
         p.punch = dataclasses.replace(p.punch, profile_n_sigma=sp.punch_profile_n_sigma)
     if sp.punch_search_n_mad is not None:
         p.punch = dataclasses.replace(p.punch, search_n_mad=sp.punch_search_n_mad)
+    if sp.punch_search_floor is not None:
+        if sp.punch_search_floor <= 0:
+            raise ValueError("punch_search_floor must be positive")
+        p.punch = dataclasses.replace(
+            p.punch, search_min_intensity=sp.punch_search_floor,
+            search_min_prominence=sp.punch_search_floor)
+    if sp.punch_search_protect_h is not None:
+        fractions = tuple(float(f) for f in sp.punch_search_protect_h)
+        if any(not 0.0 <= f < 1.0 for f in fractions):
+            raise ValueError("punch_search_protect_h takes fractions in [0, 1)")
+        p.punch = dataclasses.replace(
+            p.punch, search_exclude_h_fractions=fractions or None)
+    if sp.punch_search_protect_half_width is not None:
+        if sp.punch_search_protect_half_width < 0:
+            raise ValueError("punch_search_protect_half_width must not be negative")
+        p.punch = dataclasses.replace(
+            p.punch, search_exclude_h_half_width=sp.punch_search_protect_half_width)
     if sp.punch_mode is not None:
         p.punch = dataclasses.replace(p.punch, mode=sp.punch_mode)
     if any(v is not None for v in

@@ -71,6 +71,11 @@ export interface PipelineConfig {
   punchSupercellL: string;
   // Integer-punch H guard (r.l.u.); blank = backend default (0.12), 0 = off.
   punchHGuard: string;
+  // The off-lattice search: its floor (× the diffuse scatter), and the H planes
+  // it leaves alone ("1/3, 2/3", "none"; blank = the backend default).
+  punchSearchFloor: string;
+  punchProtectH: string;
+  punchProtectHalfWidth: string;
   // Punch ellipsoid frame: "spherical" (rρ,rθ,rφ, default) | "q" (a*,b*,c*)
   punchFrame: string;
   // Spherical-frame radii (Å⁻¹): rρ radial, rθ polar, rφ azimuth; blank = default
@@ -161,6 +166,9 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   punchSupercellK: "",
   punchSupercellL: "",
   punchHGuard: "",
+  punchSearchFloor: "",
+  punchProtectH: "",
+  punchProtectHalfWidth: "",
   punchFrame: "spherical",
   punchRho: "",
   punchTheta: "",
@@ -343,6 +351,10 @@ function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.punchSupercellK) params.punch_supercell_k = Number(s.punchSupercellK);
   if (s.punchSupercellL) params.punch_supercell_l = Number(s.punchSupercellL);
   if (s.punchHGuard) params.punch_h_guard = Number(s.punchHGuard);
+  if (s.punchSearchFloor) params.punch_search_floor = Number(s.punchSearchFloor);
+  const protect = parseFractions(s.punchProtectH);
+  if (protect) params.punch_search_protect_h = protect;
+  if (s.punchProtectHalfWidth) params.punch_search_protect_half_width = Number(s.punchProtectHalfWidth);
   if (s.punchMargin) params.punch_margin = Number(s.punchMargin);
   // Punch frame: spherical (rρ,rθ,rφ) by default, or the legacy a*/b*/c* q-frame.
   const frame = s.punchFrame === "q" ? "q" : "spherical";
@@ -373,6 +385,23 @@ function formToParams(s: PipelineConfig): StageParamsIn {
     if (s.pdfQMax) params.pdf_q_max = Number(s.pdfQMax);
   }
   return params;
+}
+
+// H fractions as typed: "1/3, 2/3" → [0.3333, 0.6667], "none" → [] (protect
+// nothing), blank → undefined (the backend default).  Each is taken mod 1.
+export function parseFractions(text: string): number[] | undefined {
+  const t = text.trim().toLowerCase();
+  if (!t) return undefined;
+  if (t === "none" || t === "off") return [];
+  const values = t
+    .split(/[\s,;]+/)
+    .filter(Boolean)
+    .map((part) => {
+      const [a, b] = part.split("/");
+      return b === undefined ? Number(a) : Number(a) / Number(b);
+    });
+  if (!values.every(Number.isFinite)) return undefined;
+  return values.map((v) => Math.round((((v % 1) + 1) % 1) * 1e4) / 1e4);
 }
 
 // Drive the pipeline locally via Pyodide (Worker).  Boot progress appears in

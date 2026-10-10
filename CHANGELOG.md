@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+- **The leftover-peak scan no longer takes noise for peaks, or misses real
+  ones.** It judged each spike against the whole slice's noise and accepted
+  single voxels. On a measured 401×401×301 volume, 675 of its 697 hits on
+  one plane were noise at the coverage edge, while resolved peaks with a
+  contrast below 4 went unflagged. A peak now has to stand out in its own
+  neighbourhood (8 local robust σ) and span more than one voxel. Spikes in
+  noisy regions are counted apart. With the cut known, each peak is classed
+  at a lattice node (a missed Bragg peak, honouring the punch supercell) or
+  off-lattice (a satellite or a spurious peak). Assessments and tuning
+  report the two separately.
+- **The off-lattice search's floor and protected H planes are settings.**
+  The punch protects the H = n ± 1/3 planes from its search, and needs a
+  peak to clear 27 × the diffuse scatter. Both were fixed, so twin or
+  harmonic peaks on those planes, some at ~700σ, could not be punched from
+  the app. *Search floor ×σ*, *Search skips H* (`1/3, 2/3`, `none`) and its
+  half width are on the Configure page and in the API
+  (`punch_search_floor`, `punch_search_protect_h`,
+  `punch_search_protect_half_width`). The floor is also on the tuning list.
+- **The flatten is judged over its own fit range (0.8–10 Å⁻¹).** The floor
+  check included the direct-beam core, which is punched and smoothly filled,
+  so a clean flatten could read 2σ.
+- **The assistant changes only the settings you ask for.** Asked to turn
+  off the search's protected planes, it set the integer punch's H guard to
+  0 instead. That ran every node's punch along H and discarded diffuse: 49 %
+  more voxels punched. The H guard's description now says what it is, and
+  `update_settings` tells the model to ask when unsure. A setting already at
+  the value is reported as no change.
+- **Assess the run** names the tool for each check, so the model runs the
+  texture and coverage checks instead of guessing. It also reports any
+  other stage that misses its goal, such as the flatten. `assess_stage`
+  says which planes it measured.
+- **Two datasets at one temperature have distinct names** ("22K · cc",
+  "22K · sub bkg") in the sidebar, Configure and the assistant.
 - **The cards the assistant is on breathe a blue edge.** While a step runs,
   the cards for what it works on glow. A pipeline run or a tuning run lights
   the stage it is on. While the answer is written, the cards it mentions

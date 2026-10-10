@@ -4,10 +4,15 @@
 // compare the per-shell floors (25th percentile) before and after: after a good
 // flatten they are near zero and the same at every |Q|.  A floor that still
 // rises or falls with |Q| means the pedestal model missed; a floor well below
-// zero means it over-subtracted.
+// zero means it over-subtracted.  Only the shells inside the flatten's own fit
+// range are judged (with the true |Q| known): the direct-beam core, punched and
+// smoothly filled, and the box corners beyond the coverage say nothing of the fit.
 
 import type { GridSlice, RadiusFn } from "./sliceStats";
-import { median, radialFloors, robustStats, roundSig } from "./sliceStats";
+import { median, radialFloorShells, robustStats, roundSig } from "./sliceStats";
+
+// The flatten's default fit range in |Q| (Å⁻¹), as nebula3d.pipeline.FlattenParams.fit_q_range.
+export const FLATTEN_FIT_Q: [number, number] = [0.8, 10.0];
 
 export interface FlattenMetrics {
   // Median pedestal removed (before − after) as a share of the backfilled
@@ -37,11 +42,19 @@ const thirds = (floors: number[]): [number, number, number] | null => {
   return out as [number, number, number];
 };
 
-// `before` = the backfilled slice, `after` = the flattened slice at the same cut.
+// The floors of the shells inside `qRange` (all of them without one).
+const floorsIn = (grid: GridSlice, radius?: RadiusFn, qRange?: [number, number]): number[] => {
+  const { floors, centres } = radialFloorShells(grid, NBINS, radius);
+  return qRange ? floors.filter((_f, i) => centres[i] >= qRange[0] && centres[i] <= qRange[1]) : floors;
+};
+
+// `before` = the backfilled slice, `after` = the flattened slice at the same cut;
+// `qRange` limits the judged shells when `radius` is the true |Q|.
 export const flattenMetrics = (
   before: GridSlice | null,
   after: GridSlice | null,
   radius?: RadiusFn,
+  qRange?: [number, number],
 ): FlattenMetrics => {
   const nulls: FlattenMetrics = {
     removed_fraction: null,
@@ -52,7 +65,7 @@ export const flattenMetrics = (
   };
   if (!after) return nulls;
   const afterStats = robustStats(after.data);
-  const floorsAfter = radialFloors(after, NBINS, radius);
+  const floorsAfter = floorsIn(after, radius, qRange);
   const sigma = afterStats && afterStats.sigma > 0 ? afterStats.sigma : null;
   const finiteAfter = floorsAfter.filter(Number.isFinite);
   const out: FlattenMetrics = {
@@ -64,7 +77,7 @@ export const flattenMetrics = (
   };
   if (!before || before.data.length !== after.data.length) return out;
 
-  out.floor_before = thirds(radialFloors(before, NBINS, radius));
+  out.floor_before = thirds(floorsIn(before, radius, qRange));
   const removed: number[] = [];
   const level: number[] = [];
   for (let i = 0; i < before.data.length; i++) {
