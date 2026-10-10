@@ -5,7 +5,7 @@
 // optionally attach the rendered slice image when the vision opt-in is on.
 // The reply itself is driven by session.ts, so it outlives this component.
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { COLORMAPS } from "../../colormaps/luts";
 import type { Slice } from "../../api/types";
@@ -25,7 +25,9 @@ import { saveSettings, type LlmSettings } from "../settings";
 import { CHAT_TOOLS, type ToolContext } from "../tools";
 import { openView } from "../tools/openView";
 import type { AssistantContext } from "../useAssistant";
+import { reportable } from "../report/collect";
 import { Markdown } from "./Markdown";
+import { ReportView } from "./ReportView";
 import { TuneProgress } from "./TuneProgress";
 
 // One-click requests that have the model act: assess the run on the four
@@ -185,6 +187,8 @@ export function ChatView({
   const setDraft = useChatStore((s) => s.setDraft);
   const clearChat = useChatStore((s) => s.clear);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // The reply whose analysis report is open (its turn id).
+  const [reportFor, setReportFor] = useState<number | null>(null);
 
   // Follow the conversation as it grows, unless the user scrolled up to read.
   const pinned = useRef(true);
@@ -247,6 +251,22 @@ export function ChatView({
 
   return (
     <div className="ai-chat">
+      {reportFor != null && toolContext && (() => {
+        const i = turns.findIndex((x) => x.id === reportFor);
+        const turn = turns[i];
+        if (!turn) return null;
+        const question = [...turns.slice(0, i)].reverse().find((x) => x.role === "user")?.content ?? "";
+        return (
+          <ReportView
+            dataset={toolContext.dataset}
+            datasets={toolContext.datasets}
+            turn={turn}
+            question={question}
+            settings={settings}
+            onClose={() => setReportFor(null)}
+          />
+        );
+      })()}
       <div className="ai-transcript" ref={scrollRef} onScroll={onScroll}>
         {empty && (
           <div className="ai-placeholder">
@@ -292,6 +312,16 @@ export function ChatView({
                   </div>
                 )}
                 {t.note && <div className="ai-note">{t.note}</div>}
+                {reportable(t) && toolContext && !busy && (
+                  <button
+                    type="button"
+                    className="ai-report-btn"
+                    onClick={() => setReportFor(t.id)}
+                    title="Measure the reduction again and open a report you can read and export (HTML, Markdown, PDF)"
+                  >
+                    Report
+                  </button>
+                )}
               </div>
             </div>
           ),

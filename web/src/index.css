@@ -5732,3 +5732,80 @@ h6.md-h {
     outline: none;
   }
 }
+
+/* NEBULA Pilot: the analysis report button and its overlay */
+.ai-report-btn {
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 143, 247, 0.4);
+  background: var(--accent-soft);
+  color: var(--accent-hi);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ai-report-btn:hover {
+  border-color: var(--accent);
+}
+.report-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(5, 8, 14, 0.66);
+}
+.report-shell {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 100%);
+  height: 100%;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.report-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.report-bar-title {
+  font-weight: 650;
+}
+.report-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.report-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #f5f7fb;
+}
+.report-wait {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-2);
+}
+@media (max-width: 640px) {
+  .report-overlay {
+    padding: 0;
+  }
+  .report-shell {
+    border-radius: 0;
+  }
+}

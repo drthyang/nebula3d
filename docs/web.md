@@ -435,6 +435,18 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
     that stage on), `tune_pipeline` (below), and `show_in_viewer`. Neither run
     starts while another is going, and *Stop* cancels the one the model
     started.
+- **Report** (`report/`, `components/ReportView.tsx`) — a reply that assessed,
+  tuned or ran the pipeline gets a *Report* button. The report is measured
+  afresh when opened (`report/collect.ts` runs the agent's own tools:
+  `describe_dataset`, `assess_stage` for every stage, `texture_check`,
+  `qmax_coverage`, `symmetry_check`), so its numbers never depend on which tools
+  the model called or on its wording. `report/report.ts` judges each stage by
+  its stated goal (`tune/prompts.ts`) and lists every miss as a caveat.
+  `report/figures.ts` draws the cleanup stages on one shared scale and the
+  ΔPDF sections with the page's Auto, axes at their real angle.
+  `report/render.ts` writes it as a self-contained HTML page (inline styles
+  and PNGs; *Print / PDF* uses the browser's print) and as Markdown. The
+  model's answer is included as a labelled summary.
 - **Tuning** (`tune/`, the `tune_pipeline` tool) — the chat starts it when asked
   for the best result, and shows each stage's trials under that reply
   (`components/TuneProgress.tsx`). It runs the pipeline one stage at a time (rings →
