@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **A symmetrised volume gives a symmetric ΔPDF.** The ring removal, the
+  backfill and the flatten each work on index-space neighbourhoods that the
+  hexagonal six-fold does not map onto themselves. On a measured 6/mmm
+  volume the ΔPDF lost 12.6 % (RMS) of its six-fold symmetry: equivalent
+  Bragg peaks kept tails of up to ~1000 counts on one side of the backfill
+  and not the other. With the declared symmetry (\`symmetry="auto"\`, the
+  default), these stages now average their output over each orbit (and the
+  backfill's band and the ring stage's spoke mask are closed under the
+  group). The ΔPDF's partners agree to rounding, and its strongest
+  equivalent features to one count in 2.5 million.
 - **The conversation survives a reload.** Reloading the page emptied
   NEBULA Pilot's transcript and the unsent draft. Both are now kept for the
   tab (sessionStorage, up to about 1 MB of the newest turns) and come back

@@ -35,13 +35,16 @@ from __future__ import annotations
 import dataclasses
 import warnings
 from collections.abc import Callable
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy import ndimage, sparse
 
 from nebula3d.core import HKLVolume, q_magnitude_from_axes
+
+if TYPE_CHECKING:
+    from nebula3d.symmetry import GridSymmetry
 
 BraggFillMethod = Literal["local", "q_shell", "laplace"]
 UnmeasuredFill = Literal["enclosed", "all"]
@@ -71,6 +74,7 @@ def backfill_bragg(
     report: Callable[[str], None] | None = None,
     punched: NDArray[np.bool_] | None = None,
     unmeasured: UnmeasuredFill = "enclosed",
+    symmetry: GridSymmetry | None = None,
 ) -> HKLVolume:
     """Fill Bragg-punched voxels in *vol*.
 
@@ -159,6 +163,13 @@ def backfill_bragg(
         that touches unmeasured coverage merges with it and the whole region
         gets one fill value — on a volume with large coverage gaps, most of
         the punched voxels.
+    symmetry:
+        For ``method="laplace"``: the Laue symmetry the data were symmetrised
+        with.  The gap band is a 6-neighbour dilation in index space, which an
+        operation that mixes the grid axes (the hexagonal 6-fold) does not map
+        onto itself: equivalent holes got different bands, one keeping a Bragg
+        tail its partner had replaced.  The band is closed under the group
+        (:meth:`GridSymmetry.orbit_any`) before it is solved.
     unmeasured:
         Which never-measured voxels (masked, not punched) are filled.
         ``"enclosed"`` (default): only those enclosed by measured data — the
@@ -195,7 +206,7 @@ def backfill_bragg(
             db_q_gap=direct_beam_q_gap, db_q_width=direct_beam_q_width,
             db_min_count=local_min_count, local_radius=local_radius,
             max_unknowns=laplace_max_unknowns, report=report, punched=punched,
-            exterior=exterior,
+            exterior=exterior, symmetry=symmetry,
         )
     if method in {"local", "q_shell"}:
         return _local_background_fill(
@@ -385,6 +396,7 @@ def _laplace_fill(
     report: Callable[[str], None] | None = None,
     punched: NDArray[np.bool_] | None = None,
     exterior: NDArray[np.bool_] | None = None,
+    symmetry: GridSymmetry | None = None,
 ) -> HKLVolume:
     """Fill every punched hole with the harmonic interpolant of its surroundings.
 
@@ -454,9 +466,12 @@ def _laplace_fill(
     cross = ndimage.generate_binary_structure(3, 1)
     unknown = remaining.copy()
     if gap > 0:
-        unknown |= (ndimage.binary_dilation(remaining, structure=cross,
-                                            iterations=int(gap))
-                    & valid & ~resolved)
+        band = (ndimage.binary_dilation(remaining, structure=cross, iterations=int(gap))
+                & valid & ~resolved)
+        if symmetry is not None:
+            band = symmetry.orbit_any(band) & valid & ~resolved
+        unknown |= band
+        del band
     known = (valid & ~unknown).reshape(-1)
     # The stencil's connected blocks are the 6-connected components of the
     # unknowns; labels come out in raster order of each block's first voxel.

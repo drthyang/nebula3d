@@ -14,7 +14,9 @@ neighbourhoods are not invariant under it (the hexagonal 6-fold
 (−1, 2), outside the square), and a refined UB is not exactly symmetric either
 (|a*| and |b*| differ slightly, and γ* is not exactly 60°).  The operations
 are exact on the grid, where the data were symmetrised, so the decisions are
-made invariant there (:meth:`GridSymmetry.orbit_any`).
+made invariant there (:meth:`GridSymmetry.orbit_any`).  Values computed voxel
+by voxel — a backfill solved on an index-space stencil — are made invariant
+the same way, by averaging them over each orbit (:meth:`GridSymmetry.orbit_mean`).
 """
 
 from __future__ import annotations
@@ -179,6 +181,98 @@ class GridSymmetry:
         for r, t in self.index_ops[1:]:
             _or_pullback(out, mask, r, t)
         return out
+
+
+    def orbit_mean(
+        self, values: NDArray[np.floating], where: NDArray[np.bool_],
+        chunk: int = 1_000_000,
+    ) -> int:
+        """Replace each voxel of *where* by the mean of its symmetry-equivalent
+        voxels that are also in *where* and finite, **in place**.
+
+        The invariant part of *values* on *where*: equivalent voxels end up
+        equal, and voxels outside *where* are left alone.  Equivalents off the
+        grid do not count.  Works through *where*'s voxels *chunk* at a time,
+        so the temporaries stay a few times the chunk.  Returns the number of
+        voxels averaged.
+        """
+        where = np.asarray(where, dtype=bool)
+        if where.shape != self.shape or values.shape != self.shape:
+            raise ValueError(f"shapes {values.shape}, {where.shape} != grid shape {self.shape}")
+        if all(_l_separate(r) for r, _t in self.index_ops):
+            return self._orbit_mean_rows(values, where)
+        idx_all = np.argwhere(where)
+        shape = np.asarray(self.shape)
+        means = np.empty(len(idx_all), dtype=np.float64)
+        for lo in range(0, len(idx_all), chunk):
+            idx = idx_all[lo:lo + chunk]
+            own = values[idx[:, 0], idx[:, 1], idx[:, 2]].astype(np.float64)
+            finite = np.isfinite(own)
+            total = np.where(finite, own, 0.0)
+            count = finite.astype(np.int64)
+            for r, t in self.index_ops[1:]:
+                img = idx @ r.T + t
+                on = np.all((img >= 0) & (img < shape), axis=1)
+                pos = np.nonzero(on)[0]
+                img = img[on]
+                inside = where[img[:, 0], img[:, 1], img[:, 2]]
+                pos, img = pos[inside], img[inside]
+                v = values[img[:, 0], img[:, 1], img[:, 2]].astype(np.float64)
+                ok = np.isfinite(v)
+                total[pos[ok]] += v[ok]   # each voxel has one image per operation
+                count[pos[ok]] += 1
+            means[lo:lo + len(idx)] = np.where(count > 0, total / np.maximum(count, 1), own)
+        values[idx_all[:, 0], idx_all[:, 1], idx_all[:, 2]] = means
+        return len(idx_all)
+
+
+    def _orbit_mean_rows(
+        self, values: NDArray[np.floating], where: NDArray[np.bool_], block: int = 8,
+    ) -> int:
+        """:meth:`orbit_mean` for a group whose operations map L to ±L alone
+        (every hexagonal, tetragonal, orthorhombic and monoclinic one): whole L
+        rows are gathered a block of H planes at a time, much faster than voxel
+        indices on a full volume.  The means are kept until every block is done,
+        since the blocks read each other's voxels."""
+        nh, nk, nl = self.shape
+        j = np.arange(nk)[None, :]
+        lidx = np.arange(nl)
+        out: list[tuple[int, NDArray[np.bool_], NDArray[np.floating]]] = []
+        for lo in range(0, nh, block):
+            i = np.arange(lo, min(nh, lo + block))[:, None]
+            sel = where[lo:lo + len(i)]
+            if not sel.any():
+                continue
+            total = np.zeros(sel.shape, dtype=np.float64)
+            count = np.zeros(sel.shape, dtype=np.int32)
+            for r, t in self.index_ops:
+                si = r[0, 0] * i + r[0, 1] * j + t[0]
+                sj = r[1, 0] * i + r[1, 1] * j + t[1]
+                sl = r[2, 2] * lidx + t[2]
+                okl = (sl >= 0) & (sl < nl)
+                ok = (si >= 0) & (si < nh) & (sj >= 0) & (sj < nk)
+                rows = values[si[ok], sj[ok]][:, sl[okl]].astype(np.float64)
+                use = where[si[ok], sj[ok]][:, sl[okl]] & np.isfinite(rows)
+                tot = total[ok]
+                cnt = count[ok]
+                tot[:, okl] += np.where(use, rows, 0.0)
+                cnt[:, okl] += use
+                total[ok] = tot
+                count[ok] = cnt
+            own = values[lo:lo + len(i)]
+            mean = np.where(count > 0, total / np.maximum(count, 1), own)
+            out.append((lo, sel, mean[sel].astype(values.dtype, copy=False)))
+        n = 0
+        for lo, sel, mean in out:
+            block_vals = values[lo:lo + sel.shape[0]]
+            block_vals[sel] = mean
+            n += int(sel.sum())
+        return n
+
+
+def _l_separate(r: NDArray[np.int64]) -> bool:
+    """Whether the index operation maps L to ±L alone (and H, K among themselves)."""
+    return bool(r[2, 0] == 0 and r[2, 1] == 0 and r[0, 2] == 0 and r[1, 2] == 0)
 
 
 def _triplet(m: NDArray[np.int64]) -> str:

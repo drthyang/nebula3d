@@ -317,3 +317,119 @@ def test_auto_symmetry_that_does_not_fit_the_grid_is_reported_not_fatal(tmp_path
     assert any("ignoring the symmetry" in str(e[3]) for e in events)
     with pytest.raises(ValueError, match="does not map"):
         load_input(path, PipelineParams(symmetry=SIX_M))
+
+
+def test_orbit_mean_makes_equivalent_values_equal_and_leaves_the_rest():
+    vol = _hex_volume()
+    gs = GridSymmetry.for_volume(vol, parse_symmetry_ops(SIX_M))
+    rng = np.random.default_rng(5)
+    values = rng.normal(0.0, 1.0, _SHAPE)
+    where = np.zeros(_SHAPE, dtype=bool)
+    where[25:36, 25:36, 15:26] = True
+    where = gs.orbit_any(where) & vol.mask
+    before = values.copy()
+    n = gs.orbit_mean(values, where)
+    assert n == int(where.sum())
+    np.testing.assert_array_equal(values[~where], before[~where])
+    for op in _six_m_ops():
+        img = _images(_SHAPE, op)
+        flat = where.ravel()
+        on = flat & (img >= 0)
+        on[on] &= flat[img[on]]
+        np.testing.assert_allclose(values.ravel()[on], values.ravel()[img[on]], rtol=1e-12)
+    # every voxel took its orbit's mean
+    i = tuple(np.argwhere(where)[0])
+    orbit = [j for j in (_images(_SHAPE, op)[np.ravel_multi_index(i, _SHAPE)] for op in _six_m_ops())
+             if j >= 0 and where.ravel()[j]]
+    assert values[i] == pytest.approx(before.ravel()[sorted(set(orbit))].mean())
+
+
+def test_backfill_is_symmetric_with_the_declared_symmetry():
+    # Regression (6/mmm data, 2026-10-10): the Laplace fill is solved on an
+    # index-space stencil, which the hexagonal 6-fold does not map onto
+    # itself, so equivalent holes were filled differently (the ΔPDF lost 12 %
+    # of its six-fold symmetry); with the declared operations the fills agree.
+    from nebula3d.pipeline import BackfillParams, backfill
+    vol = _hex_volume()
+    gs = GridSymmetry.for_volume(vol, parse_symmetry_ops(SIX_M))
+    punched = punch_bragg(vol, PunchParams(), symmetry=gs)
+    holes = vol.mask & ~punched.mask
+
+    def spread(out):
+        """Largest difference between a filled voxel and a filled image."""
+        worst = 0.0
+        d, h = out.data.ravel(), holes.ravel()
+        for op in _six_m_ops():
+            img = _images(_SHAPE, op)
+            on = h & (img >= 0)
+            on[on] &= h[img[on]]
+            worst = max(worst, float(np.max(np.abs(d[on] - d[img[on]]), initial=0.0)))
+        return worst
+
+    plain = backfill(punched, BackfillParams())
+    assert spread(plain) > 1e-6
+    out = backfill(punched, BackfillParams(), symmetry=gs)
+    assert spread(out) < 1e-9
+    # The fill also rewrites a band of measured voxels around each hole (the
+    # Bragg tail): that band, and the values written in it, are symmetric too.
+    measured = vol.mask & punched.mask
+    written = holes | (measured & (out.data != punched.data))
+    assert _asymmetric(written, vol.mask) == 0
+    d, w = out.data.ravel(), written.ravel()
+    for op in _six_m_ops():
+        img = _images(_SHAPE, op)
+        on = w & (img >= 0)
+        on[on] &= w[img[on]]
+        assert np.max(np.abs(d[on] - d[img[on]]), initial=0.0) < 1e-9
+    # measured voxels outside the band keep their data
+    kept = measured & ~written
+    np.testing.assert_array_equal(out.data[kept], punched.data[kept])
+
+
+def test_ring_removal_output_is_made_symmetric():
+    # Regression (6/mmm data, 2026-10-10): the pooled ring model works in 0kl
+    # planes stacked along H, so its subtraction differed between equivalent
+    # voxels in the ring shells, and its spoke mask nearly so.
+    from nebula3d.pipeline import share_ring_removal
+    vol = _hex_volume()
+    gs = GridSymmetry.for_volume(vol, parse_symmetry_ops(SIX_M))
+    out = dataclasses.replace(vol, data=vol.data.copy(), mask=vol.mask.copy())
+    rng = np.random.default_rng(9)
+    out.data += np.where(vol.mask, rng.normal(0.0, 0.5, vol.data.shape), 0.0)  # asymmetric
+    out.mask[30, 31, 20] = False                                              # one spoke voxel
+    share_ring_removal(out, vol.mask, gs)
+    valid = out.mask & np.isfinite(out.data)
+    assert _asymmetric(~out.mask & vol.mask, vol.mask) == 0
+    d, v = out.data.ravel(), valid.ravel()
+    for op in _six_m_ops():
+        img = _images(_SHAPE, op)
+        on = v & (img >= 0)
+        on[on] &= v[img[on]]
+        np.testing.assert_allclose(d[on], d[img[on]], atol=1e-12)
+
+
+def test_a_symmetrised_input_gives_a_symmetric_delta_pdf(tmp_path):
+    # End to end (2026-10-10): every stage keeps the declared symmetry — on
+    # measured 6/mmm data the ΔPDF had lost 12 % of its six-fold symmetry to
+    # the ring removal and the backfill's index-space stencils.
+    from nebula3d.io import load_delta_pdf
+    from nebula3d.pipeline import run_pipeline
+    vol = _hex_volume()
+    path = tmp_path / "hex_sym6m.nxs"
+    _write_viewer_file(path, vol, SIX_M)
+
+    def asymmetry(params, out):
+        paths = run_pipeline(path, params, proc_dir=tmp_path / out,
+                             stages=("rings", "punch", "backfill", "flatten", "pdf"))
+        d = np.asarray(load_delta_pdf(paths.delta_pdf).data, dtype=np.float64)
+        n = d.shape[0]
+        c = n // 2
+        i, j = np.meshgrid(np.arange(n) - c, np.arange(n) - c, indexing="ij")
+        ii, jj = i - j, i  # the six-fold on the oblique real-space grid
+        ok = (np.abs(ii) <= c) & (np.abs(jj) <= c)
+        a = np.concatenate([d[:, :, k][ok] for k in range(d.shape[2])])
+        b = np.concatenate([d[:, :, k][ii[ok] + c, jj[ok] + c] for k in range(d.shape[2])])
+        return np.sqrt(np.mean((a - b) ** 2)) / np.sqrt(np.mean(a ** 2))
+
+    assert asymmetry(PipelineParams(), "auto") <= 1e-6
+    assert asymmetry(PipelineParams(symmetry=None), "off") > 1e-3  # the test can tell
