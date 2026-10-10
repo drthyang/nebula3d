@@ -401,6 +401,7 @@ Key pages:
 | [docs/algorithms/powder_rings.md](docs/algorithms/powder_rings.md) | Powder-ring model and subtraction strategy. |
 | [docs/algorithms/bragg_cleanup.md](docs/algorithms/bragg_cleanup.md) | Bragg/satellite detection, punching, and backfill. |
 | [docs/algorithms/delta_pdf.md](docs/algorithms/delta_pdf.md) | 3D-ΔPDF transform, centring, background subtraction, and consistency checks. |
+| [docs/algorithms/ub_refinement.md](docs/algorithms/ub_refinement.md) | UB refinement from the Bragg peaks' centres, and regridding onto it. |
 | [QUICKSTART.md](QUICKSTART.md) | Get the app running (native or in-browser) in a few commands. |
 | [docs/commands.md](docs/commands.md) | Concise CLI command recipes for batch workflows and viewers. |
 | [docs/web.md](docs/web.md) | Browser console: run modes, viewers, architecture, dev workflow. |
