@@ -433,3 +433,21 @@ def test_a_symmetrised_input_gives_a_symmetric_delta_pdf(tmp_path):
 
     assert asymmetry(PipelineParams(), "auto") <= 1e-6
     assert asymmetry(PipelineParams(symmetry=None), "off") > 1e-3  # the test can tell
+
+
+def test_orbit_mean_general_path_matches_brute_force():
+    # A three-fold about [111] mixes L with H and K, so the voxel path runs.
+    vol = HKLVolume.from_arrays(np.zeros((11, 11, 11)), (-1, 1), (-1, 1), (-1, 1),
+                                ub_matrix=np.eye(3))
+    gs = GridSymmetry.for_volume(vol, parse_symmetry_ops("h,k,l; l,h,k; k,l,h"))
+    rng = np.random.default_rng(4)
+    values = rng.normal(0.0, 1.0, (11, 11, 11))
+    where = rng.random((11, 11, 11)) < 0.7
+    expect = values.copy()
+    for i, j, k in np.argwhere(where):
+        orbit = {(i, j, k), (k, i, j), (j, k, i)}
+        vals = [values[o] for o in orbit if where[o]]
+        expect[i, j, k] = np.mean(vals)
+    got = values.copy()
+    assert gs.orbit_mean(got, where, chunk=97) == int(where.sum())
+    np.testing.assert_allclose(got, expect, atol=1e-12)
