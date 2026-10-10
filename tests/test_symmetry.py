@@ -451,3 +451,17 @@ def test_orbit_mean_general_path_matches_brute_force():
     got = values.copy()
     assert gs.orbit_mean(got, where, chunk=97) == int(where.sum())
     np.testing.assert_allclose(got, expect, atol=1e-12)
+
+
+def test_orbit_mean_in_place_rows_match_the_deferred_ones():
+    # The browser's low-memory mode writes each block's means to their orbits
+    # at once instead of keeping them: the same result.
+    vol = _hex_volume()
+    gs = GridSymmetry.for_volume(vol, parse_symmetry_ops(SIX_M))
+    rng = np.random.default_rng(6)
+    base = rng.normal(0.0, 1.0, _SHAPE)
+    where = vol.mask.copy()
+    a, b = base.copy(), base.copy()
+    gs._orbit_mean_rows(a, where)                 # noqa: SLF001
+    gs._orbit_mean_rows(b, where, in_place=True)  # noqa: SLF001
+    np.testing.assert_allclose(a, b, atol=1e-12)
