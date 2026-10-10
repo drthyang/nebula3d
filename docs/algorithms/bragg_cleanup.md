@@ -365,11 +365,44 @@ rest of the punch, capped at 0.3 r.l.u. per axis. It is not the default: on
 measured data it adds many integer nodes, most in the interior, that have not
 been validated.
 
+## Own-Width Punch
+
+The pipeline default (`punch_footprint="own"`, `profile_n_sigma=0.5`) punches
+each peak to its own width.
+
+- Along H, K and L the peak's line-cut FWHM is measured above a straight
+  baseline, as the search's width test measures it. The half-maximum
+  crossings are interpolated, so a peak narrower than the grid measures its
+  own width rather than one voxel. The FWHM is at least the Bragg reference
+  width.
+- That FWHM defines a Gaussian. The radius is where the Gaussian of the
+  peak's excess falls to `profile_n_sigma` × the local noise, at least half
+  the FWHM and capped at `profile_max_radius_q`.
+- A peak whose width cannot be measured on every axis keeps the
+  profile-matched footprint below.
+
+**Why.** The profile-matched footprint gives every peak the shape of the
+dataset's Bragg profile, scaled to its height. A sharp spike on a broad
+maximum (a spurious reflection on a short-range-order maximum, say) then
+takes the wide punch of a Bragg peak of its height and removes the maximum
+with it. On a measured hexagonal volume, whose short-range-order maxima sit
+on the doubled cell's odd positions:
+
+| Footprint | Punched | SRO positions punched | SRO positions over half punched | Bragg nodes with residue > 8σ |
+| --- | --- | --- | --- | --- |
+| profile | 4.36 % | 0.65 % | 32 | 2,068 of 3,764 |
+| own | 4.66 % | 0.30 % | 0 | 1,960 of 3,764 |
+
+There, 15,037 of the 16,409 peaks were punched to their own width; the rest
+fell back to the profile. The residue count is a loose 3D criterion and also
+counts the copies a slightly misoriented UB leaves beside the nodes, so only
+the comparison between the rows is meaningful.
+
 ## Profile-Matched Punch
 
-The pipeline default (`punch_footprint="profile"`, `profile_n_sigma=0.5`)
-punches each peak as far as its own tail is measurable. The tail shape comes
-from the dataset itself.
+With `punch_footprint="profile"` every peak shares one shape, a consistent
+width (the default until the own-width footprint), and is punched as far as
+its tail is measurable. The tail shape comes from the dataset itself.
 
 **Why.** The brightest interior integer peaks of a mosaic crystal, stacked
 (normalised to their peak excess) along each peak's local axes, can have:
