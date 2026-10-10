@@ -224,8 +224,11 @@ sample's magnetic ion, while the pipeline and web app default to none, a
 constant only). Both
 terms are self scattering, so the ΔPDF changes only at r ≈ 0, while the
 anisotropic diffuse, the Bragg residuals and isotropic pair correlations are
-kept. This is the explicit background-removal step. Use
-`examples/validate_flatten.py` to check isotropy, feature retention, and
+kept. This is the explicit background-removal step. A background that
+rises with |Q| (multiphonon and thermal scattering, leading term ∝ Q²) is not
+F²-shaped: `Q2=1` adds a `b·Q²` term, held at its value past the fit range's
+end, and `FIT_Q_MAX` carries the fit to the data's coverage (default 10 Å⁻¹).
+Use `examples/validate_flatten.py` to check isotropy, feature retention, and
 over-subtraction on your own volumes.
 
 ### 5. Compute The 3D-ΔPDF

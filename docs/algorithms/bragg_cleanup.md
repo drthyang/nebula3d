@@ -272,6 +272,44 @@ setting covers the higher-order satellites (`±4/3`, `±5/3`, …) that a fixed
 centre list misses. This allows `mode="both"` to keep useful off-integer
 satellite detection without punching structured diffuse on any thirds plane.
 
+### Broad maxima are left to the diffuse (`search_max_width_ratio`)
+
+The search judges a candidate by its height alone. Short-range order puts
+broad maxima off the Bragg nodes, and a tall one clears every floor. On a
+hexagonal neutron volume indexed on a doubled cell, with Bragg peaks only at
+the even nodes, the search took the strongest of the superstructure maxima:
+the very signal the ΔPDF is for.
+
+What separates them is width. Line cuts through the peak along H, K and L,
+with the half maximum taken above a straight baseline through the points
+five voxels either side (`_FWHM_REACH`), measured on that volume:
+
+| feature | FWHM along l (r.l.u.) | in-plane |
+| --- | --- | --- |
+| Bragg peaks (strongest 40) | 0.1–0.3 | one voxel |
+| spurious reflections (a second grain) | ≤ 0.2 | ≤ 0.2 |
+| short-range-order maxima | 0.5–0.6 | 0.1–0.2 |
+
+Spurious reflections were as sharp as Bragg peaks on every volume measured,
+the orthorhombic ones included. With `search_max_width_ratio` set (`mode="both"`),
+a search candidate broader than that many Bragg widths along any axis is left
+unpunched:
+
+- **The Bragg width** is the per-axis median over the strongest integer peaks
+  (up to 40, at least 5), floored at one voxel.
+- **A Bragg wing is punched anyway.** A candidate within a quarter of the node
+  spacing (per axis, honouring `supercell`) of a punched node belongs to that
+  peak: very strong peaks reach past their punch, and their wings measure
+  broad. On the doubled-cell volume the wings were most of the candidates
+  (6,868 punched and 3,798 left before this rule).
+- **The baseline matters.** A sharp spurious peak on the flank of a broad
+  maximum measures sharp only above a local baseline; core moments read the
+  pair as one broad feature and kept it.
+- **Default off** (`None`). The run log says how many candidates were left
+  as diffuse. Set it from the server (`punch_search_max_width_ratio`), the
+  web app (*Search width ×Bragg*), or `SEARCH_MAX_WIDTH` in the examples; 2
+  separates the classes above.
+
 ## Significance Gate
 
 Every detection, integer node or search summit, must also be significant
