@@ -2691,7 +2691,7 @@ input[type="range"]::-moz-range-track {
   animation: nav-pulse 1.6s ease-out infinite;
 }
 
-/* "Beta" badge on the AI Assistant nav item — in amber, the warm complement of
+/* "Beta" badge on the NEBULA Pilot nav item — in amber, the warm complement of
    the cobalt accent, so it reads as a distinct tag against the blue selection. */
 .nav-beta {
   margin-left: auto;
@@ -3295,7 +3295,7 @@ input[type="range"]::-moz-range-track {
   min-width: 180px;
 }
 
-/* ============================================================ AI Assistant */
+/* ============================================================ NEBULA Pilot */
 
 /* The assistant is a panel docked to the right of every page: a third grid
    column beside <main> while open.  On the compact layouts (sidebar folded
@@ -3366,7 +3366,7 @@ input[type="range"]::-moz-range-track {
   background: var(--surface-2);
   color: var(--text);
 }
-/* the AI Assistant nav item opens the panel; set apart from the pages */
+/* the NEBULA Pilot nav item opens the panel; set apart from the pages */
 @media (min-width: 1100px) {
   .nav .nav-assistant {
     margin-top: 10px;
@@ -4852,7 +4852,7 @@ h6.md-h {
     display: none; /* fit kind — the stat strip already names it */
   }
 
-  /* AI Assistant */
+  /* NEBULA Pilot */
   .ai-topbar {
     padding: 8px 10px;
   }

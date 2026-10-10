@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **The AI Assistant is now NEBULA Pilot.** The sidebar, the panel and the
+  model's own introduction use the new name.
+- **Ring removal is judged at each ring.** For every powder ring in the raw
+  cut, assessments and tuning report whether the ring-removed profile ends
+  level with the diffuse beside it: a dent (the subtraction over-shot,
+  though no voxel need go negative) or a ring left over, as a share of the
+  diffuse there. A residual counts only beyond 3 × that diffuse's own
+  scatter on the plane. A dip in a shell's low percentiles is not proof of
+  a dent: on a measured volume it was the rings' counting noise, which
+  widened the shells' spread by 30–60 % while their medians stayed level.
+  Only the strongest Al line kept a real dent, about 2–3 %.
+- **Configure remembers its settings for each dataset**, and the console
+  remembers the selected dataset across reloads. Facts about one sample,
+  such as its protected satellite planes, no longer carry over to the next.
+- **A tuning run stops once its tuned stages keep your settings.** It used
+  to re-run every later stage anyway, reproducing the processed outputs: a
+  few minutes of work on a 401×401×301 volume.
 - **The leftover-peak scan no longer takes noise for peaks, or misses real
   ones.** It judged each spike against the whole slice's noise and accepted
   single voxels. On a measured 401×401×301 volume, 675 of its 697 hits on
@@ -55,7 +72,7 @@
   A *Follow* chip beside *Tools* turns this off. Each step's *Show* button
   reopens its figure either way. The transcript also names the assessment
   steps, instead of showing their tool names.
-- **Anthropic is a provider for the AI Assistant.** Pick *Anthropic* in the
+- **Anthropic is a provider for NEBULA Pilot.** Pick *Anthropic* in the
   connection settings and paste a Claude API key. The model list puts Claude
   Opus 5.5 first. Claude runs through Anthropic's official SDK, called from
   the browser like the other cloud providers, with the key kept in this
@@ -121,7 +138,7 @@
   thinks, or returns nothing, now leaves a note in the chat instead of
   silence. An error a server streams after its first response chunk now
   shows as an error.
-- **The AI Assistant can act: it measures, looks up and shows.** With *Tools*
+- **NEBULA Pilot can act: it measures, looks up and shows.** With *Tools*
   on, the model can measure the stage metrics on any reciprocal cut or ΔPDF
   section (the opening context covers only L=0 and z=0), take a line profile
   through any stage, read the fitted Bragg peaks and the full back-FFT check,

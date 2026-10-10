@@ -170,6 +170,27 @@ describe("startTuning", () => {
     expect(punch.status).toBe("done");
   });
 
+  it("does not re-run the later stages when the tuned stages kept the user's settings", async () => {
+    llm.completeChat.mockResolvedValue('{"candidates": []}');
+    usePipelineStore.setState({ ringsEnabled: true });
+    await startTuning({ dataset, stages: ["rings"], trialsPerStage: 2, llm: DEFAULT_SETTINGS });
+    expect(runs.map((r) => r.trial)).toEqual(["rings-1"]);
+    const { stages, finishedNote } = useTuneStore.getState();
+    const punch = stages.find((r) => r.stage === "punch")!;
+    expect(punch.status).toBe("skipped");
+    expect(punch.message).toMatch(/kept your settings/);
+    expect(finishedNote).toMatch(/nothing changed/);
+  });
+
+  it("re-runs the later stages when a tuned stage changed its settings", async () => {
+    llm.completeChat
+      .mockResolvedValueOnce('{"candidates": [{"changes": {"punchMinSig": 4}}]}')
+      .mockResolvedValueOnce('{"best": 2, "why": "0 leftover peaks"}');
+    await startTuning({ dataset, stages: ["punch"], trialsPerStage: 2, llm: DEFAULT_SETTINGS });
+    expect(runs.map((r) => r.trial)).toEqual(["punch-1", "punch-2", "backfill-1"]);
+    expect(useTuneStore.getState().finishedNote).toMatch(/processed files are unchanged/);
+  });
+
   it("stops with an error when the user's settings fail to run", async () => {
     usePipelineStore.setState({ runStages: vi.fn(async () => "error") });
     await startTuning({ dataset, stages: ["punch"], trialsPerStage: 3, llm: DEFAULT_SETTINGS });

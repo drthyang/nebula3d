@@ -307,6 +307,10 @@ export async function startTuning({ dataset, stages, trialsPerStage, llm }: Tune
   // others in between once, so each tuned stage reads up-to-date inputs.
   const first = TUNE_STAGES.findIndex((s) => stages.includes(s));
   const order = first < 0 ? [] : TUNE_STAGES.slice(first);
+  // The stages after the last tuned one are re-run only if a tuned stage changed
+  // its settings: otherwise they would only reproduce the processed outputs.
+  const lastTuned = order.reduce((at, s, i) => (stages.includes(s) ? i : at), -1);
+  let changed = false;
   useTuneStore.setState({
     active: true,
     datasetLabel: dataset.temperature ?? dataset.stem,
@@ -327,10 +331,19 @@ export async function startTuning({ dataset, stages, trialsPerStage, llm }: Tune
     if (!firstRun) throw new Error("none of the chosen stages is switched on");
     const run = await startTuningRun(dataset.id, firstRun);
     useTuneStore.setState({ run });
-    for (const stage of order) {
+    for (const [i, stage] of order.entries()) {
       if (!stageEnabled(stage, pipeline())) continue;
+      if (i > lastTuned && !changed) {
+        setStage(stage, {
+          status: "skipped",
+          message: "Not re-run: the tuned stages kept your settings, so your processed output stands.",
+        });
+        continue;
+      }
       if (stages.includes(stage)) {
         await tuneStage(stage, dataset, run, trialsPerStage, earlier, llm, abort.signal);
+        const kept = useTuneStore.getState().stages.find((r) => r.stage === stage)?.best ?? 1;
+        if (kept !== 1) changed = true;
       } else {
         setStage(stage, {
           status: "running",
@@ -346,8 +359,9 @@ export async function startTuning({ dataset, stages, trialsPerStage, llm }: Tune
       earlier[stage] = currentStageSettings(stage, pipeline());
     }
     useTuneStore.setState({
-      finishedNote:
-        "Done. Your processed files are unchanged; the tuned outputs are in this run's own folder (open them below), and the chosen settings are on the Configure page.",
+      finishedNote: changed
+        ? "Done. Your processed files are unchanged; the tuned outputs are in this run's own folder (open them below), and the chosen settings are on the Configure page."
+        : "Done. Your settings won every tuned stage, so nothing changed: your processed files and settings stand, and the later stages were not re-run.",
     });
   } catch (e) {
     if (e instanceof Stopped || (e as Error).name === "AbortError") {

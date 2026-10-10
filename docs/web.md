@@ -1,7 +1,7 @@
 # Web UI
 
 `nebula3d` ships **one** browser console — a React + TypeScript SPA (Vite)
-that unifies the cleanup, 3D-ΔPDF, and consistency views, adds an AI Assistant,
+that unifies the cleanup, 3D-ΔPDF, and consistency views, adds an AI assistant (NEBULA Pilot),
 and drives the whole reduction pipeline. It has two interchangeable run modes
 that share the same UI and the same `nebula3d` reduction code:
 
@@ -224,7 +224,7 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 | **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range, a gray dashed unit-cell overlay and an optional [structure overlay](#structure-overlay) of interatomic vectors. Views open at ±40 Å. In *Navigate* mode a click on one view moves the other two cuts through the point. |
 | **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related ΔPDF files × the three planes as a square grid, sharing cut, window, and contrast; a per-plane colour scale pooled across files. Component retained; unrouted from the sidebar for now. |
 | **Q–R Band Transform** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data, ΔPDF, back-FFT and residual** as four views (focus layout, data large, by default), with agreement metrics (Pearson r, normalised RMS) in the header. Data, back-FFT and residual share one plane, cut, colour range and view; the residual has its own ± range on a diverging map. The ΔPDF plane follows the Q plane (H ↔ x, K ↔ y, L ↔ z) while *Link orientation* is on. **\|Q\|** and real-space **\|R\|** bands, each with its own *Apply* in the view footer, isolate which ranges support a signal; applying a band keeps both cuts. The \|Q\| band is drawn as its true contour on the r.l.u. axes: a circle for an orthogonal cell, a tilted ellipse (centred off the origin where the cut axis is not normal to the plane) for any other. |
-| **AI Assistant** | — (new) | A panel docked beside every page (opened from the sidebar; it slides over the page on narrow screens). Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic) model. One **chat**: free questions, five one-click stage reviews, and two one-click requests (*Assess the run*, *Tune for the best result*), grounded in metrics computed in the browser. With **Tools** on, the model measures any cut, judges each stage on three planes, checks the punch and backfill for texture and the ΔPDF's Qmax against the data coverage, reads the Bragg profile, back-FFT check and run log, compares datasets, opens the viewer beside the chat, and acts: it runs the pipeline (shown live on the Execution page and in the chat), changes settings, and tunes the pipeline one stage at a time, keeping the best settings for each. Optional vision opt-in attaches the rendered slice for image-capable models. |
+| **NEBULA Pilot** | — (new) | A panel docked beside every page (opened from the sidebar; it slides over the page on narrow screens). Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic) model. One **chat**: free questions, five one-click stage reviews, and two one-click requests (*Assess the run*, *Tune for the best result*), grounded in metrics computed in the browser. With **Tools** on, the model measures any cut, judges each stage on three planes, checks the punch and backfill for texture and the ΔPDF's Qmax against the data coverage, reads the Bragg profile, back-FFT check and run log, compares datasets, opens the viewer beside the chat, and acts: it runs the pipeline (shown live on the Execution page and in the chat), changes settings, and tunes the pipeline one stage at a time, keeping the best settings for each. Optional vision opt-in attaches the rendered slice for image-capable models. |
 
 ### Viewer workspace
 
@@ -300,7 +300,7 @@ switches, buttons and help icons are enlarged to finger size. The Configure work
 container queries, so its column count follows the width it actually gets,
 including the narrower column in the 4K side-by-side layout.
 
-## AI Assistant
+## NEBULA Pilot (AI assistant)
 
 The assistant lives entirely in the browser (`web/src/llm/`) and follows a
 *metrics-compute-the-truth, the-LLM-narrates* design: deterministic pure
