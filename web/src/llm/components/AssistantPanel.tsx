@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { useDatasets } from "../../api/hooks";
 import { BrandGlyph, EmptyState, IconAlert } from "../../components/ui";
 import { useDatasetStore } from "../../state/datasetStore";
+import { contextWarning } from "../provider/client";
 import type { ToolContext } from "../tools";
 import { useAssistant } from "../useAssistant";
 import { ChatView } from "./ChatView";
@@ -20,7 +21,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const datasetId = useDatasetStore((s) => s.datasetId);
   const dataset = datasets.find((d) => d.id === datasetId);
 
-  const { settings, connection, connected, runTest, contextQuery } = useAssistant(dataset);
+  const { settings, connection, connected, runTest, contextQuery, modelContext } = useAssistant(dataset);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const ready = Boolean(contextQuery.data);
   const toolContext = useMemo<ToolContext | null>(
@@ -77,6 +78,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         settings={settings}
         toolContext={toolContext}
         contextLoading={contextQuery.isFetching}
+        contextNote={settings.useTools ? contextWarning(modelContext, settings.model) : null}
       />
     </div>
   );
