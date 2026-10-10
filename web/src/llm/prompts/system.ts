@@ -90,7 +90,10 @@ export const SYSTEM_PROMPT = [
 export const TOOLS_PROMPT = [
   "",
   "You can call tools that read this dataset, and you should: the context above comes from",
-  "one H–K plane at L=0 and one ΔPDF section at z=0. Before a verdict on a stage, measure at",
+  "one H–K plane at L=0 and one ΔPDF section at z=0, measured when this request started. Once",
+  "you change settings or run the pipeline it describes the outputs before that run: measure",
+  "again, and compare new numbers with your own earlier tool results, not with the context.",
+  "Before a verdict on a stage, measure at",
   "least one other cut (another plane, or an off-zero cut such as L=0.5) and say whether the",
   "picture holds. Look things up instead of guessing: describe_dataset for ranges and other",
   "datasets, current_view for what the user is looking at, line_profile through a feature,",
