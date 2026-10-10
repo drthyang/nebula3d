@@ -444,6 +444,16 @@ describe("qmax_coverage", () => {
     expect(flat.transform_reach_q).toBe(6); // the ΔPDF's recorded q_max, the box corner
     expect(flat.verdict).toMatch(/^too far: .* out to the box corners/);
   });
+
+  it("judges by the window's recorded weight on unmeasured space when the ΔPDF has it", async () => {
+    const meta = await api.fetchDpdfMeta();
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 1, window_open_weight: 3.2e-6 });
+    const clean = await check();
+    expect(clean.window_weight_on_unmeasured).toBe(3.2e-6);
+    expect(clean.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight/);
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 0.04 });
+    expect((await check()).verdict).toMatch(/^too far: the ΔPDF's separable window puts 0.04/);
+  });
 });
 
 describe("texture_check", () => {

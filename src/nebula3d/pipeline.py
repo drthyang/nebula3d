@@ -1402,6 +1402,9 @@ def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
             "window_shape": dpdf.window_shape,  # resolved: separable | ellipsoid
             "window_scale": (dpdf.window_ellipsoid.scale
                              if dpdf.window_ellipsoid is not None else 1.0),
+            **({"window_open_weight": float(open_weight)}
+               if (open_weight := getattr(dpdf, "window_open_weight", None)) is not None
+               else {}),
             "source_file": source_name,
             "crop_hkl": _param_string(p.crop_hkl),
             "q_band": _param_string(p.q_band),

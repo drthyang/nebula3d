@@ -230,6 +230,10 @@ class DeltaPDF:
     # Voxels that carried data (cropped grid); outside it the transform input
     # was ΔI = 0.  None when every voxel did (no support given, or all True).
     support: NDArray[np.bool_] | None = None
+    # Share of the window's weight on unmeasured space reaching a box face
+    # (where the coverage ends): ~0 means the transform never reached past the
+    # measured reciprocal space.  None without a support.
+    window_open_weight: float | None = None
 
     @property
     def window_shape(self) -> str:
@@ -291,6 +295,7 @@ class _ForwardPlan:
     real_space_angstrom: bool
     ub_matrix: NDArray[np.float64]
     support: NDArray[np.bool_] | None = None
+    window_open_weight: float | None = None
 
 
 def _fft_core_forward(plan: _ForwardPlan) -> NDArray[np.floating]:
@@ -373,6 +378,7 @@ def _finish_forward(
         l_axis_c=l_axis,
         ub_matrix=plan.ub_matrix.copy(),
         support=plan.support,
+        window_open_weight=plan.window_open_weight,
     )
 
 
@@ -613,6 +619,8 @@ def _prepare_forward(
     window_axes, ellipsoid = _apodization_window(
         window_shape, apodization, gaussian_sigma,
         (h_axis, k_axis, l_axis), vol.ub_matrix, support=supp, tol=support_tol)
+    open_weight = (_window_weight_on(window_axes, ellipsoid, _open_space(supp))
+                   if supp is not None else None)
     subtracted_mean = 0.0
     if subtract_mean:
         subtracted_mean = (
@@ -688,6 +696,7 @@ def _prepare_forward(
         real_space_angstrom=real_space_angstrom,
         ub_matrix=vol.ub_matrix,
         support=supp,
+        window_open_weight=open_weight,
     )
     del data  # the plan owns the compact volume now
     return plan
@@ -1111,6 +1120,26 @@ def _open_space(support: NDArray[np.bool_]) -> NDArray[np.bool_]:
     filled = ndimage.binary_fill_holes(
         flat, structure=np.ones((3,) * flat.ndim, dtype=bool))
     return np.logical_not(filled, out=filled).reshape(support.shape)
+
+
+def _window_weight_on(
+    window_axes: tuple[NDArray[np.float64], ...] | None,
+    ellipsoid: EllipsoidWindow | None,
+    region: NDArray[np.bool_],
+) -> float:
+    """Fraction of the window's weight (separable or ellipsoid) in *region*."""
+    if not region.any():
+        return 0.0
+    if ellipsoid is None:
+        assert window_axes is not None
+        return _separable_weight_on(window_axes, region)
+    total = on = 0.0
+    for i, rho2 in enumerate(ellipsoid.rho2_planes()):
+        w = _radial_taper(rho2, ellipsoid.kind, ellipsoid.sigma)
+        total += float(w.sum())
+        if region[i].any():
+            on += float(w[region[i]].sum())
+    return on / total if total else 0.0
 
 
 def _separable_weight_on(

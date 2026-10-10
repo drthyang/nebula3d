@@ -57,6 +57,12 @@ export interface DeltaPdfMeta {
   lattice: Lattice;
   q_max: number | null;
   planes: string[];
+  // The transform's window from the ΔPDF's provenance: "ellipsoid" or
+  // "separable", its scale (< 1: shrunk to the coverage), and the share of its
+  // weight on unmeasured space reaching a box face.  Absent on older files.
+  window_shape?: string | null;
+  window_scale?: number | null;
+  window_open_weight?: number | null;
 }
 
 export interface ConsistencyMetrics {
