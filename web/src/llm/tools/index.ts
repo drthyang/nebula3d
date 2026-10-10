@@ -57,6 +57,7 @@ import { openView, type ViewTarget } from "./openView";
 export type { ViewTarget } from "./openView";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
 import { COVERAGE_SHELLS, coverageMetrics, OPEN_WEIGHT_OK } from "../metrics/coverage";
+import { grainCheck } from "../metrics/grains";
 import { sectionSymmetry, SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { median, radialProfile, roundSig } from "../metrics/sliceStats";
 import { textureMetrics } from "../metrics/texture";
@@ -1001,6 +1002,36 @@ const dpdfContrast: AgentTool = {
   },
 };
 
+const grainCheckTool: AgentTool = {
+  name: "grain_check",
+  description:
+    "Is there a second grain, and what are the sharp off-lattice peaks the punch's search found? It takes the punch's peak record, groups the off-lattice peaks into symmetry orbits (the declared point group), and tests the strongest two ways. Against the Bragg nodes: an orbit within a quarter of the node spacing of one is that peak displaced, and its offset over |Q| is a rotation angle (symmetrising data whose UB is slightly off makes such copies; the angle is a lower bound). As a rotated copy of the Bragg lattice: a second grain is one rotation that indexes most strong orbits, judged against the same search at random directions; a rotation under 2° is the UB, not a grain. Run the punch first. Quote its verdict and numbers.",
+  parameters: {
+    type: "object",
+    properties: { top: { type: "number", description: "How many of the strongest orbits to test, 8–120 (default 40)" } },
+  },
+  run: async (args, { dataset }) => {
+    const top = Math.round(num(args, "top", 40));
+    if (!(top >= 8 && top <= 120)) throw new ToolArgError("top must be within [8, 120]");
+    const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset);
+    const [profile, meta] = await Promise.all([safe(fetchBraggProfile(dataset.id)), rawId ? safe(fetchMeta(rawId)) : null]);
+    if (!profile?.has_profile) throw new Error("no punch record yet: run the punch first");
+    if (!meta?.ub_matrix) throw new Error("the raw volume carries no UB matrix");
+    const peaks = profile.peaks
+      .filter((p) => p.source_node_hkl == null && p.intensity != null)
+      .map((p) => ({ hkl: p.center_hkl, intensity: (p.intensity as number) - (p.local_background ?? 0) }));
+    const identity = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    const ops = (meta.symmetry_ops?.length ? meta.symmetry_ops : [identity]) as Parameters<typeof grainCheck>[0]["ops"];
+    const s = usePipelineStore.getState();
+    const cell = [s.punchSupercellH, s.punchSupercellK, s.punchSupercellL].map((v) => Number(v) || 1) as [number, number, number];
+    const g = grainCheck({ peaks, ub: meta.ub_matrix as Parameters<typeof grainCheck>[0]["ub"], ops, cell, top });
+    return {
+      result: { ...g, off_lattice_peaks: peaks.length, declared_symmetry: meta.symmetry ?? null, punch_cell: cell },
+      summary: g.verdict.length > 160 ? `${g.verdict.slice(0, 157)}…` : g.verdict,
+    };
+  },
+};
+
 const qmaxCoverage: AgentTool = {
   name: "qmax_coverage",
   description:
@@ -1415,6 +1446,7 @@ export const CHAT_TOOLS: AgentTool[] = [
   qmaxCoverage,
   symmetryCheck,
   dpdfContrast,
+  grainCheckTool,
   radialProfileTool,
   lineProfile,
   braggPeaks,

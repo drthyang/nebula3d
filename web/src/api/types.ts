@@ -59,6 +59,9 @@ export interface VolumeMeta {
   lattice: Lattice;
   ub_matrix?: number[][];
   planes: string[];
+  // The point group the file declares its data were symmetrised with.
+  symmetry?: string | null;
+  symmetry_ops?: number[][][] | null;
 }
 
 export interface DeltaPdfMeta {

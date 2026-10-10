@@ -255,6 +255,11 @@ export const scanLeftoverPeaks = (
 
 export interface PeakProfileSummary {
   n_peaks: number;
+  // Of those, punched at Bragg nodes, and punched off them by the search (the
+  // leftover scan counts only what was missed; grain_check says what these are).
+  n_at_lattice_nodes: number;
+  n_search_off_lattice: number;
+  search_note?: string;
   fit_kinds: Record<string, number>;
   // Fraction of peaks flagged resolution-limited on at least one axis (they sag
   // to the half-voxel floor — the punch radius, not the peak, sets their width).
@@ -295,8 +300,14 @@ export const summarizePeakProfile = (profile: BraggProfile | null | undefined): 
     }
   }
 
+  const offLattice = peaks.filter((p) => p.source_node_hkl == null).length;
   return {
     n_peaks: peaks.length,
+    n_at_lattice_nodes: peaks.length - offLattice,
+    n_search_off_lattice: offLattice,
+    ...(offLattice
+      ? { search_note: "peaks the search punched off the Bragg nodes; grain_check says whether they are a second grain or displaced Bragg peaks" }
+      : {}),
     fit_kinds: fitKinds,
     resolution_limited_fraction: resKnown ? roundSig(resLimited / resKnown) : null,
     median_measured_width_q: axisWidths.map((w) =>
