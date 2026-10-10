@@ -2,14 +2,64 @@
 
 ## Unreleased
 
+- **Ask the assistant to run and tune the analysis, and watch it work.**
+  Asked to process the data, the model used to explain the steps and tell you
+  to press Run, because no tool could start one. It now has three:
+  - `run_pipeline` runs the pipeline as the Run button does: it computes the
+    missing outputs, or recomputes from a given stage on. The console moves to
+    the Execution page, and the chat step shows the stage, its progress and
+    the latest log line. The model then measures the new outputs.
+  - `tune_pipeline` runs the stage-by-stage tuning and reports each stage's
+    trials live. It reports what it kept, then writes the outputs with the
+    chosen settings unless you said otherwise.
+  - `update_settings` changes a method choice or threshold from the tuning
+    list, when you ask for a change or ask it to improve the result.
+
+  *Stop* also cancels the run or the tuning run the model started. A reply
+  can now use up to twelve rounds of tool calls instead of six. With
+  gemma4:26b on Ollama, "Please process the data for me" ran all six stages
+  of the synthetic demo volume and then reported metrics from its outputs.
+  "Tune the knobs to get the best results" tuned all five stages (12 min),
+  reran the pipeline with the chosen settings, and reported the change in
+  each stage's numbers.
+- **One chat instead of Chat and Tune pipeline tabs.** The trials table of a
+  tuning run now appears in the chat, under the reply that started it, with
+  the link to the tuned result. Two one-click requests join the stage
+  reviews: *Assess the run* and *Tune for the best result*.
+- **The assistant judges every run on four checks, with tools to settle
+  them.**
+  1. Is the ring removal clean?
+  2. Are the Bragg peaks removed cleanly?
+  3. Did the punch and backfill add texture to reciprocal space?
+  4. Is Qmax past the data coverage?
+
+  New tools:
+  - `assess_stage` judges a stage against its goal on the three principal
+    planes, with the evaluation the tuning run uses.
+  - `radial_profile` puts each stage's |Q|-shell medians side by side.
+  - `texture_check` flags fills that sit systematically above or below their
+    rims: a median of at least 0.5σ, with at least 75 % of holes the same
+    way. It also flags variation the punch and backfill add around each |Q|
+    shell.
+  - `qmax_coverage` compares how far the forward transform's window reaches
+    in |Q| with where shells stop being 95 % measured.
+  - `run_log` reads the last run's log.
+
+  A higher ΔPDF feature SNR no longer counts as a gain if the back-FFT r falls
+  or the window reaches past the coverage. Each stage review also calls that
+  stage's assessment tools.
+- **A reply without an answer is no longer dropped.** A model that only
+  thinks, or returns nothing, now leaves a note in the chat instead of
+  silence. An error a server streams after its first response chunk now
+  shows as an error.
 - **The AI Assistant can act: it measures, looks up and shows.** With *Tools*
   on, the model can measure the stage metrics on any reciprocal cut or ΔPDF
   section (the opening context covers only L=0 and z=0), take a line profile
   through any stage, read the fitted Bragg peaks and the full back-FFT check,
   compare datasets, read the run settings, and open the viewer at the cut that
   makes its point. The browser runs each call and sends the result back; every
-  argument is checked, and the transcript lists each call with its result. No
-  tool changes data or settings. A model that cannot call tools still answers
+  argument is checked, and the transcript lists each call with its result.
+  These tools only read. A model that cannot call tools still answers
   from the opening metrics, with a note saying so.
 - **The assistant can tune the pipeline, one stage at a time.** *Tune
   pipeline* runs each stage with your settings and with up to four the model

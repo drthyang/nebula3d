@@ -105,6 +105,19 @@ describe("streamChat", () => {
     await expect(run()).rejects.toMatchObject({ status: 400 });
     await run().catch((e) => expect(isToolsUnsupported(e)).toBe(true));
   });
+
+  it("raises an error the server streams after the 200", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sse([line({ content: "Che" }), `data: ${JSON.stringify({ error: { message: "model crashed" } })}\n`])),
+    );
+    const got: string[] = [];
+    const run = async () => {
+      for await (const d of streamChat({ baseUrl: "u", model: "m", messages: [], temperature: 0 })) got.push(d.content ?? "");
+    };
+    await expect(run()).rejects.toThrow("model crashed");
+    expect(got).toEqual(["Che"]);
+  });
 });
 
 describe("isToolsUnsupported", () => {

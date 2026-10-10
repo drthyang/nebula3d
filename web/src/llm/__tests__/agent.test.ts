@@ -115,6 +115,30 @@ describe("runAgent", () => {
     expect(r.note).toMatch(/Stopped after 2 rounds/);
   });
 
+  it("shows a running tool's live line on its step, then clears it", async () => {
+    script([[{ toolCalls: [call("c1", "slow", {})] }], [{ content: "Done." }]]);
+    const slow: AgentTool = {
+      name: "slow",
+      description: "reports progress",
+      parameters: { type: "object", properties: {} },
+      run: async (_args, _ctx, io) => {
+        io.progress?.("halfway");
+        return { result: {}, summary: "finished" };
+      },
+    };
+    const lines: (string | undefined)[] = [];
+    const r = await runAgent({
+      messages: base,
+      tools: [slow],
+      ctx,
+      settings,
+      signal: new AbortController().signal,
+      onProgress: (p) => lines.push(p.steps[0]?.progress),
+    });
+    expect(lines).toContain("halfway");
+    expect(r.steps[0]).toMatchObject({ status: "done", summary: "finished", progress: undefined });
+  });
+
   it("propagates other errors", async () => {
     script([new Error("HTTP 500: boom")]);
     await expect(

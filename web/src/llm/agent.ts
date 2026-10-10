@@ -18,6 +18,7 @@ export interface AgentStep {
   args: Record<string, unknown>;
   status: "running" | "done" | "error";
   summary?: string;
+  progress?: string; // a running tool's live line (run_pipeline: stage, %, log)
   result?: string; // the JSON the model read
   view?: ViewTarget;
 }
@@ -33,8 +34,9 @@ export interface AgentResult extends AgentProgress {
 }
 
 // Rounds of tool calls before the model is asked to answer with what it has;
-// each round may call several tools.
-export const MAX_TOOL_ROUNDS = 6;
+// each round may call several tools.  Enough to change a setting, rerun and
+// measure a few times over.
+export const MAX_TOOL_ROUNDS = 12;
 
 // Servers known (this session) to refuse `tools`, keyed by base URL + model, so
 // the next request goes straight to the plain path.
@@ -65,6 +67,8 @@ export async function runAgent({
   maxRounds?: number;
 }): Promise<AgentResult> {
   const convo = [...messages];
+  // The tools may refresh the dataset (run_pipeline does); keep that to this reply.
+  const toolCtx = ctx && { ...ctx };
   let useTools = tools.length > 0 && ctx !== null && !toolsKnownUnsupported(settings);
   let content = "";
   let reasoning = "";
@@ -120,8 +124,12 @@ export async function runAgent({
       const id = `${steps.length}:${call.id}`; // servers may reuse call ids across rounds
       steps = [...steps, { id, name: call.function.name, args: {}, status: "running" }];
       emit();
-      const run = await runToolCall(call, tools, ctx!);
+      const run = await runToolCall(call, tools, toolCtx!, {
+        signal,
+        progress: (progress) => setStep(id, { progress }),
+      });
       setStep(id, {
+        progress: undefined,
         args: run.args,
         status: run.ok ? "done" : "error",
         summary: run.summary,

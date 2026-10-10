@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { COLORMAPS } from "../../colormaps/luts";
 import type { Slice } from "../../api/types";
 import { BrandGlyph } from "../../components/ui";
+import { useNavStore } from "../../state/navStore";
 import { toolsKnownUnsupported, type AgentStep } from "../agent";
 import { useChatStore } from "../chatStore";
 import {
@@ -25,6 +26,21 @@ import { CHAT_TOOLS, type ToolContext } from "../tools";
 import { openView } from "../tools/openView";
 import type { AssistantContext } from "../useAssistant";
 import { Markdown } from "./Markdown";
+import { TuneProgress } from "./TuneProgress";
+
+// One-click requests that have the model act: assess the run on the four
+// checks that decide whether it can be trusted, or tune it.
+const ACTIONS = [
+  {
+    label: "Assess the run",
+    prompt:
+      "Assess this reduction: is the ring removal clean, are the Bragg peaks removed cleanly, did the punch and backfill add texture in reciprocal space, and is the ΔPDF’s Qmax inside the data coverage? Run the pipeline first if outputs are missing.",
+  },
+  {
+    label: "Tune for the best result",
+    prompt: "Tune the pipeline for the best result, then process the data with the chosen settings and assess it.",
+  },
+];
 
 // Pick the slice + colour mapping to render for a given stage review.
 function stageImage(stage: ReviewStage, ac: AssistantContext): string | null {
@@ -78,20 +94,31 @@ const TOOL_LABELS: Record<string, string> = {
   consistency_details: "Read the back-FFT check",
   compare_datasets: "Compared datasets",
   configure_settings: "Read the run settings",
+  update_settings: "Changed settings",
+  run_pipeline: "Ran the pipeline",
+  tune_pipeline: "Tuned the pipeline",
   show_in_viewer: "Opened the viewer",
 };
 
+// Tools long enough to be watched get a present-tense label while they run.
+const RUNNING_LABELS: Record<string, string> = {
+  run_pipeline: "Running the pipeline",
+  tune_pipeline: "Tuning the pipeline",
+};
+
+const stepLabel = (s: AgentStep): string =>
+  (s.status === "running" ? RUNNING_LABELS[s.name] : undefined) ?? TOOL_LABELS[s.name] ?? s.name;
+
 // The tool calls of one reply: a compact list, each row opening to the
-// arguments and the JSON the model read.  A viewer step can be reopened.
+// arguments and the JSON the model read.  A viewer step can be reopened; a
+// run or a tuning run opens the Execution page, live while it goes.
 function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
   if (!steps.length) return null;
   const running = steps.find((s) => s.status === "running");
   return (
     <details className="ai-steps" open={live}>
       <summary>
-        {running
-          ? `${TOOL_LABELS[running.name] ?? running.name}…`
-          : `Used ${steps.length} tool${steps.length > 1 ? "s" : ""}`}
+        {running ? `${stepLabel(running)}…` : `Used ${steps.length} tool${steps.length > 1 ? "s" : ""}`}
       </summary>
       <ol className="ai-step-list">
         {steps.map((s) => (
@@ -99,8 +126,8 @@ function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
             <details>
               <summary>
                 <span className="ai-step-dot" aria-hidden="true" />
-                <span className="ai-step-name">{TOOL_LABELS[s.name] ?? s.name}</span>
-                {s.summary && <span className="ai-step-summary">{s.summary}</span>}
+                <span className="ai-step-name">{stepLabel(s)}</span>
+                {(s.progress ?? s.summary) && <span className="ai-step-summary">{s.progress ?? s.summary}</span>}
               </summary>
               <pre className="ai-step-detail">
                 {JSON.stringify(s.args)}
@@ -110,6 +137,16 @@ function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
             {s.view && (
               <button type="button" className="ai-step-open" onClick={() => openView(s.view!)}>
                 Show
+              </button>
+            )}
+            {(s.name === "run_pipeline" || s.name === "tune_pipeline") && (
+              <button
+                type="button"
+                className="ai-step-open"
+                onClick={() => useNavStore.getState().setTab("execution")}
+                title="Open the Execution page"
+              >
+                {s.status === "running" ? "Watch" : "Log"}
               </button>
             )}
           </li>
@@ -154,19 +191,27 @@ export function ChatView({
 
   const tools = settings.useTools && !toolsKnownUnsupported(settings);
 
+  const ask = useCallback(
+    (text: string) => {
+      if (!text || !assistant || busy) return;
+      pinned.current = true;
+      const history = turns.map(({ role, content }) => ({ role, content }));
+      void askAssistant({
+        label: text,
+        messages: buildChatMessages(assistant.context, history, text, null, { tools }),
+        tools: settings.useTools ? CHAT_TOOLS : [],
+        ctx: toolContext,
+      });
+    },
+    [assistant, busy, turns, tools, settings.useTools, toolContext],
+  );
+
   const sendChat = useCallback(() => {
     const text = draft.trim();
-    if (!text || !assistant || busy) return;
+    if (!text) return;
     setDraft("");
-    pinned.current = true;
-    const history = turns.map(({ role, content }) => ({ role, content }));
-    void askAssistant({
-      label: text,
-      messages: buildChatMessages(assistant.context, history, text, null, { tools }),
-      tools: settings.useTools ? CHAT_TOOLS : [],
-      ctx: toolContext,
-    });
-  }, [draft, assistant, busy, turns, setDraft, tools, settings.useTools, toolContext]);
+    ask(text);
+  }, [draft, setDraft, ask]);
 
   const runReview = useCallback(
     (stage: ReviewStage) => {
@@ -186,6 +231,11 @@ export function ChatView({
   const stages: ReviewStage[] = ["rings", "punch", "backfill", "flatten", "dpdf"];
   const disabled = !connected || !assistant;
   const empty = turns.length === 0 && !busy;
+  // The tuning store holds one run: its card goes under the reply that started
+  // it — the live one while it runs, else the last turn that called it.
+  const tunes = (steps?: AgentStep[]) => Boolean(steps?.some((s) => s.name === "tune_pipeline"));
+  const liveTunes = busy && tunes(live?.steps);
+  const tuneTurn = liveTunes ? null : [...turns].reverse().find((t) => tunes(t.steps))?.id;
 
   return (
     <div className="ai-chat">
@@ -209,7 +259,7 @@ export function ChatView({
                     ? "Reading the stage volumes and computing quality metrics."
                     : "Its stage outputs feed the assistant's context."
                   : tools
-                    ? "It can measure any cut, look up the fitted peaks and the back-FFT check, and open the viewer where it matters — or use a one-click review below."
+                    ? "It can run and tune the pipeline while you watch, assess each stage, measure any cut, and open the viewer where it matters — or use a one-click request below."
                     : "Answers are grounded in metrics computed from the current cut — or use a one-click review below."}
             </span>
           </div>
@@ -227,6 +277,7 @@ export function ChatView({
               <div className="ai-msg-main">
                 {t.reasoning ? <Thinking text={t.reasoning} /> : null}
                 {t.steps?.length ? <Steps steps={t.steps} /> : null}
+                {t.id === tuneTurn && <TuneProgress />}
                 {t.content && (
                   <div className="ai-answer">
                     <Markdown text={t.content} />
@@ -245,6 +296,7 @@ export function ChatView({
             <div className="ai-msg-main">
               <Thinking text={live.reasoning} live />
               <Steps steps={live.steps} live />
+              {liveTunes && <TuneProgress />}
               {live.content ? (
                 <div className="ai-answer">
                   <Markdown text={live.content} />
@@ -263,6 +315,19 @@ export function ChatView({
 
       <div className="ai-dock">
         <div className="ai-reviews">
+          {tools &&
+            ACTIONS.map((a) => (
+              <button
+                key={a.label}
+                type="button"
+                className="ai-chip ai-chip-act"
+                disabled={disabled || busy}
+                onClick={() => ask(a.prompt)}
+                title={disabled ? "Connect a model and select a dataset first" : a.prompt}
+              >
+                {a.label}
+              </button>
+            ))}
           {stages.map((s) => (
             <button
               key={s}

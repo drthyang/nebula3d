@@ -67,9 +67,17 @@ const STAGE_INSTRUCTION: Record<ReviewStage, string> = {
   dpdf: "Analyse the 3D-ΔPDF features from delta_pdf. Are there features clearly stronger than the background noise (feature_snr, strong_feature_fraction)? Are the correlations anisotropic, and along what direction (anisotropy_ratio, anisotropy_angle_deg)? What is the trend with distance (radial_trend), and is the ΔPDF trustworthy (consistency_pearson_r)? If an image is attached, describe the pattern you see. Summarise the correlation picture in a few sentences.",
 };
 
-// With tools, a review must look beyond the opening cut before its verdict.
-const TOOLS_REVIEW_SUFFIX =
-  " Before your verdict, use the tools to check at least one other cut, and show the most telling cut in the viewer.";
+// With tools, a review must look beyond the opening cut before its verdict,
+// with the tools that judge that stage.
+const REVIEW_TOOLS: Record<ReviewStage, string> = {
+  rings: "assess_stage rings and radial_profile",
+  punch: "assess_stage punch and an off-zero cut",
+  backfill: "assess_stage backfill and texture_check",
+  flatten: "assess_stage flatten and radial_profile",
+  dpdf: "assess_stage pdf and qmax_coverage",
+};
+const toolsReviewSuffix = (stage: ReviewStage): string =>
+  ` Before your verdict, look beyond this cut with ${REVIEW_TOOLS[stage]}, and show the most telling cut in the viewer.`;
 
 export const buildStageReviewMessages = (
   context: PipelineContext,
@@ -85,7 +93,7 @@ export const buildStageReviewMessages = (
       ? "Understood. I will assess the requested stage from the metrics above, checking other cuts with the tools."
       : "Understood. I will assess the requested stage using only the metrics above and any attached image.",
   },
-  { role: "user", content: withImage(STAGE_INSTRUCTION[stage] + (tools ? TOOLS_REVIEW_SUFFIX : ""), imageDataUrl) },
+  { role: "user", content: withImage(STAGE_INSTRUCTION[stage] + (tools ? toolsReviewSuffix(stage) : ""), imageDataUrl) },
 ];
 
 export const STAGE_REVIEW_LABELS: Record<ReviewStage, string> = {
