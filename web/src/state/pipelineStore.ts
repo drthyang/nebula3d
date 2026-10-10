@@ -103,7 +103,7 @@ export interface PipelineConfig {
   backfillMethod: string;
   flattenEstimator: string;
   flattenIon: string;
-  flattenQ2: boolean; // model: also fit b·Q² (multiphonon / thermal background)
+  flattenQ2: boolean; // model: also fit b·Q² (an inelastic background rising with |Q|)
   flattenFitQMax: string; // model: end of the fit's |Q| range (Å⁻¹; blank = 10)
   pdfApod: string;
   pdfWindowShape: string;
