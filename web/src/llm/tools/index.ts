@@ -1,21 +1,43 @@
 // The assistant's tools: functions the model may call mid-answer to measure,
 // look up or show something, instead of reasoning only from the one default
 // cut it was handed.  Each validates its arguments (a model can send anything),
-// reads through the same API the viewers use, and returns compact JSON.  None
-// changes data or settings; show_in_viewer only moves the console's view.
+// reads through the same API the viewers use, and returns compact JSON.  Two
+// act instead of reading: update_settings edits the Configure page and
+// run_pipeline runs it, as the Run button does; show_in_viewer only moves the
+// console's view.
 
 import {
   fetchBraggProfile,
   fetchConsistencyCheck,
+  fetchDataset,
   fetchDpdfMeta,
   fetchDpdfSlice,
   fetchMeta,
   fetchSlice,
 } from "../../api/client";
-import type { Dataset, DeltaPdfMeta, Slice, VolumeMeta } from "../../api/types";
+import type { Dataset, DeltaPdfMeta, JobEvent, Slice, VolumeMeta } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
-import { usePipelineStore } from "../../state/pipelineStore";
+import {
+  enabledStages,
+  STAGE_LABELS,
+  STAGES,
+  usePipelineStore,
+  type PipelineConfig,
+} from "../../state/pipelineStore";
+import { loadSettings } from "../settings";
+import {
+  displayValue,
+  TUNE_PARAMS,
+  TUNE_STAGE_LABELS,
+  TUNE_STAGES,
+  toFormValue,
+  type TuneParam,
+  type TuneStage,
+} from "../tune/catalog";
+import { evaluateStage, headline } from "../tune/evaluate";
+import { STAGE_GOALS } from "../tune/prompts";
+import { startTuning, stopTuning, useTuneStore, type StageRun } from "../tune/tuner";
 import { AXIS_INDEX, AXIS_TO_PLANE, useViewerStore, type FixedAxis } from "../../state/viewerStore";
 import {
   datasetLabel,
@@ -26,12 +48,17 @@ import {
   safe,
   stageVolumeId,
 } from "../context/loadContext";
+import { qRadius } from "../context/pipelineContext";
 import type { ToolCall, ToolSpec } from "../provider/client";
 import { openView, type ViewTarget } from "./openView";
 
 export type { ViewTarget } from "./openView";
-import { median, roundSig } from "../metrics/sliceStats";
+import { COVERAGE_SHELLS, coverageMetrics } from "../metrics/coverage";
+import { median, radialProfile, roundSig } from "../metrics/sliceStats";
+import { textureMetrics } from "../metrics/texture";
 
+// The dataset the tools read.  run_pipeline replaces `dataset` with its fresh
+// listing after a run, so the tools called after it see the new outputs.
 export interface ToolContext {
   dataset: Dataset;
   datasets: Dataset[];
@@ -44,11 +71,18 @@ export interface ToolOutcome {
   view?: ViewTarget;
 }
 
+// What a long tool gets besides its arguments: the reply's abort signal, and a
+// live line for its transcript step while it runs.
+export interface ToolIO {
+  signal?: AbortSignal;
+  progress?: (text: string) => void;
+}
+
 export interface AgentTool {
   name: string;
   description: string;
   parameters: Record<string, unknown>; // JSON Schema of the arguments
-  run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolOutcome>;
+  run: (args: Record<string, unknown>, ctx: ToolContext, io: ToolIO) => Promise<ToolOutcome>;
 }
 
 /** Bad arguments: the message goes back to the model so it can correct itself. */
@@ -572,16 +606,528 @@ const showInViewer: AgentTool = {
   },
 };
 
+// ---------------------------------------------------------------- assessing
+
+// The output each stage writes, as the dataset lists it.
+const STAGE_OUTPUT: Record<TuneStage, string> = {
+  rings: "ringremoved",
+  punch: "braggpunched",
+  backfill: "backfilled",
+  flatten: "flattened",
+  pdf: "delta_pdf",
+};
+
+const ASSESS_CHOICES = [...TUNE_STAGES, "all"] as const;
+
+const assessStage: AgentTool = {
+  name: "assess_stage",
+  description:
+    "Judge a stage's output against its goal, on the three principal planes through the origin plus the records the stage writes — the evaluation the tuning run judges trials by. rings: ring-energy ratio and over-subtraction per plane; punch: leftover peaks, punched fraction, fitted peaks; backfill: seam σ and bright fills; flatten: shell floors in σ; pdf: back-FFT r and RMS, feature SNR per section. Returns the stage's goal with the numbers. stage=all gives each stage's headline numbers; one stage adds the per-plane detail. Use it for a verdict on a stage, after a run, and before and after a change.",
+  parameters: {
+    type: "object",
+    properties: {
+      stage: { type: "string", enum: ASSESS_CHOICES, description: "The stage to judge, or all (default)" },
+    },
+  },
+  run: async (args, { dataset }) => {
+    const pick = oneOf(args, "stage", ASSESS_CHOICES, "all");
+    const stages: TuneStage[] = pick === "all" ? [...TUNE_STAGES] : [pick];
+    const result: Record<string, unknown> = {};
+    const lines: string[] = [];
+    for (const stage of stages) {
+      if (!stageVolumeId(dataset, STAGE_OUTPUT[stage])) {
+        result[stage] = { missing: `no ${STAGE_OUTPUT[stage]} output yet; run_pipeline computes it` };
+        continue;
+      }
+      const evaluation = await evaluateStage(stage, dataset);
+      // All five stages' per-plane detail would overflow the result.
+      if (pick === "all") delete evaluation.per_plane;
+      result[stage] = { headline: headline(stage, evaluation), ...evaluation, goal: STAGE_GOALS[stage] };
+      lines.push(`${TUNE_STAGE_LABELS[stage]}: ${headline(stage, evaluation)}`);
+    }
+    return { result, summary: lines.join(" · ") || "no stage outputs yet" };
+  },
+};
+
+const radialProfileTool: AgentTool = {
+  name: "radial_profile",
+  description:
+    "The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings, which are bumps in raw that ring removal should take out without denting the diffuse; after flatten the floor should sit near 0 at every |Q|. Use it to see where in |Q| a stage left or removed signal.",
+  parameters: {
+    type: "object",
+    properties: {
+      plane: { type: "string", enum: RECIP_PLANES, description: "hk0 (default), h0l or 0kl" },
+      value: { type: "number", description: "Cut position along the fixed axis, in r.l.u. (default 0)" },
+      stages: {
+        type: "array",
+        items: { type: "string", enum: RECIP_STAGES },
+        description: "Stages to compare (default every one that exists)",
+      },
+      bins: { type: "integer", minimum: 8, maximum: 64, description: "Number of |Q| shells (default 32)" },
+    },
+  },
+  run: async (args, { dataset }) => {
+    const plane = oneOf(args, "plane", RECIP_PLANES, "hk0");
+    const value = num(args, "value", 0);
+    const bins = Math.round(num(args, "bins", 32));
+    if (bins < 8 || bins > 64) throw new ToolArgError("bins must be within [8, 64]");
+    let stages = RECIP_STAGES.filter((s) => stageVolumeId(dataset, s));
+    if (args.stages !== undefined) {
+      if (!Array.isArray(args.stages) || !args.stages.length) throw new ToolArgError("stages must be a non-empty list");
+      const wanted = args.stages.map((s) => oneOf({ stage: s }, "stage", RECIP_STAGES));
+      stages = stages.filter((s) => wanted.includes(s));
+    }
+    if (!stages.length) throw new Error("none of those stage outputs exist yet; run_pipeline computes them");
+    const meta = await recipMeta(dataset);
+    checkInRange(HKL[RECIP_FIXED[plane]], value, recipRange(meta, RECIP_FIXED[plane]));
+    const radius = qRadius(plane, value, meta);
+    const slices = await Promise.all(stages.map((s) => fetchSlice(stageVolumeId(dataset, s)!, plane, value)));
+    // The stages share one grid, so their shells line up.
+    const profiles = slices.map((s) => radialProfile(s, bins, radius, "median"));
+    const rows = profiles[0].r
+      .map((r, i) => ({
+        q: roundSig(r, 3),
+        ...Object.fromEntries(
+          stages.map((s, j) => {
+            const v = profiles[j].intensity[i];
+            return [s, Number.isFinite(v) ? roundSig(v, 3) : null];
+          }),
+        ),
+      }))
+      .filter((row) => stages.some((s) => (row as Record<string, number | null>)[s] != null));
+    return {
+      result: {
+        cut: planeLabel(plane, value),
+        q_unit: radius ? "|Q| in Å⁻¹" : "in-plane radius in r.l.u. (no cell)",
+        stat: "median per shell",
+        rows,
+      },
+      summary: `${planeLabel(plane, value)}: ${rows.length} shells × ${stages.length} stages`,
+    };
+  },
+};
+
+const runLog: AgentTool = {
+  name: "run_log",
+  description:
+    "The log of the last pipeline run in this session: each stage's start, skip, result and error lines (how many ring shells were fitted, peaks punched, voxels left unmeasured, the back-FFT r, …) and how the run ended. Use it to explain a result or a failure.",
+  parameters: {
+    type: "object",
+    properties: {
+      stage: { type: "string", enum: STAGES, description: "Only this stage's lines (default all)" },
+      limit: { type: "integer", minimum: 1, maximum: 60, description: "The last N lines (default 30)" },
+    },
+  },
+  run: async (args) => {
+    const { events, terminal, running } = usePipelineStore.getState();
+    if (!events.length) throw new Error("no pipeline run in this session yet");
+    const stage = args.stage === undefined ? null : oneOf(args, "stage", STAGES);
+    const limit = Math.round(num(args, "limit", 30));
+    if (limit < 1 || limit > 60) throw new ToolArgError("limit must be within [1, 60]");
+    const lines = events
+      .filter((e) => e.message && (!stage || e.stage === stage))
+      .slice(-limit)
+      .map((e) => ({ stage: e.stage ?? null, status: e.status ?? null, message: e.message }));
+    const ended = running ? "still running" : (terminal ?? "unknown");
+    return { result: { ended, lines }, summary: `${lines.length} line${lines.length === 1 ? "" : "s"} · ${ended}` };
+  },
+};
+
+const textureCheck: AgentTool = {
+  name: "texture_check",
+  description:
+    "Check whether the punch and backfill printed a pattern of their own into reciprocal space, on a cut (default: the three principal planes through the origin). Fill bias: each filled hole against the unpunched voxels on its rim, signed, in rim σ; a median near 0 with about half the holes brighter is clean, while holes filled systematically brighter or darker add a lattice-periodic texture that the ΔPDF turns into features at lattice vectors. Azimuthal texture: per |Q| shell, how much the sector means vary around the shell before the punch (unpunched voxels) and after the backfill; a ratio near 1 adds none.",
+  parameters: {
+    type: "object",
+    properties: {
+      plane: { type: "string", enum: RECIP_PLANES, description: "One plane instead of all three" },
+      value: { type: "number", description: "Cut position for that plane, in r.l.u. (default 0)" },
+    },
+  },
+  run: async (args, { dataset }) => {
+    const ids = (["ringremoved", "braggpunched", "backfilled"] as const).map((s) => stageVolumeId(dataset, s));
+    if (!ids[1] || !ids[2]) throw new Error("this needs the punched and backfilled outputs; run_pipeline computes them");
+    const meta = await recipMeta(dataset);
+    const cuts =
+      args.plane === undefined
+        ? RECIP_PLANES.filter((p) => {
+            const r = recipRange(meta, RECIP_FIXED[p]);
+            return r[0] <= 0 && r[1] >= 0;
+          }).map((plane) => ({ plane, value: 0 }))
+        : [{ plane: oneOf(args, "plane", RECIP_PLANES), value: num(args, "value", 0) }];
+    for (const c of cuts) checkInRange(HKL[RECIP_FIXED[c.plane]], c.value, recipRange(meta, RECIP_FIXED[c.plane]));
+    const rows = await Promise.all(
+      cuts.map(async ({ plane, value }) => {
+        const [before, punched, filled] = await Promise.all(
+          ids.map((id) => (id ? safe(fetchSlice(id, plane, value)) : Promise.resolve(null))),
+        );
+        return { cut: planeLabel(plane, value), ...textureMetrics(before, punched, filled, qRadius(plane, value, meta)) };
+      }),
+    );
+    const biased = rows.filter((r) => r.systematic_fill_bias).length;
+    const ratios = rows.map((r) => r.azimuthal_ratio).filter((x): x is number => x != null);
+    return {
+      result: { per_cut: rows },
+      summary:
+        `${biased ? `systematic fill bias on ${biased} of ${rows.length} cut(s)` : "no systematic fill bias"}` +
+        (ratios.length ? ` · azimuthal ratio ${Math.min(...ratios)}–${Math.max(...ratios)}` : ""),
+    };
+  },
+};
+
+// How far the forward transform reaches in |Q|, from the Configure page: an
+// explicit |Q| band; else the box corners for a flat separable window (no
+// apodization), where every voxel counts at full weight; else the box faces
+// where the window tapers to zero, or the coverage edge when it is tapered to
+// the measured coverage.
+function windowReach(
+  s: PipelineConfig,
+  q: { corner: number | null; box: number | null; full: number | null },
+): { reach: number | null; how: string } {
+  if (s.pdfQMax) return { reach: Number(s.pdfQMax), how: "the |Q| band set on the Configure page" };
+  if (s.pdfApod === "none" && s.pdfWindowShape !== "ellipsoid") {
+    return { reach: q.corner, how: "apodization off: a flat separable window counts the data out to the box corners" };
+  }
+  if (s.pdfWindowSupport && q.full != null && q.box != null && q.full < q.box) {
+    return { reach: q.full, how: "the window is tapered to the measured coverage" };
+  }
+  return { reach: q.box, how: "the window tapers to zero at the box faces" };
+}
+
+const qmaxCoverage: AgentTool = {
+  name: "qmax_coverage",
+  description:
+    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk.",
+  parameters: { type: "object", properties: {} },
+  run: async (_args, { dataset }) => {
+    const meta = await recipMeta(dataset);
+    const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset)!;
+    const planes = RECIP_PLANES.filter((p) => {
+      const r = recipRange(meta, RECIP_FIXED[p]);
+      return r[0] <= 0 && r[1] >= 0;
+    });
+    const per = await Promise.all(
+      planes.map(async (plane) => {
+        const slice = await safe(fetchSlice(rawId, plane, 0));
+        return [plane, coverageMetrics(slice, qRadius(plane, 0, meta))] as const;
+      }),
+    );
+    const pick = (k: "full_coverage_q" | "box_q" | "low_q_gap") =>
+      per.map(([, m]) => m?.[k]).filter((x): x is number => typeof x === "number");
+    const fullQ = pick("full_coverage_q").length ? Math.min(...pick("full_coverage_q")) : null;
+    const boxQ = pick("box_q").length ? Math.min(...pick("box_q")) : null;
+    const dId = dpdfVolumeId(dataset);
+    const dmeta = dId ? await safe(fetchDpdfMeta(dId)) : null;
+    // The ΔPDF records max |Q| over its grid: the box corner.
+    const cornerQ = dmeta?.q_max ?? null;
+    const s = usePipelineStore.getState();
+    const { reach, how } = windowReach(s, { corner: cornerQ, box: boxQ, full: fullQ });
+    const shell = boxQ != null ? boxQ / COVERAGE_SHELLS : 0; // the coverage edge is known to one shell
+    const verdict = !qRadius("hk0", 0, meta)
+      ? "no unit cell: |Q| is unknown, so the reach cannot be compared"
+      : fullQ == null
+        ? "no |Q| shell is fully measured on these planes"
+        : reach == null
+          ? "no ΔPDF yet to read the box corner from"
+          : reach <= fullQ + shell
+            ? `the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), inside full coverage at ${fullQ} Å⁻¹`
+            : `too far: the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), past full coverage at ${fullQ} Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage`;
+    return {
+      result: {
+        verdict,
+        transform_reach_q: reach == null ? null : roundSig(reach, 4),
+        reach_from: how,
+        full_coverage_q: fullQ,
+        box_face_q: boxQ,
+        box_corner_q: cornerQ == null ? null : roundSig(cornerQ, 4),
+        low_q_gap: pick("low_q_gap").length ? Math.max(...pick("low_q_gap")) : null,
+        q_unit: "Å⁻¹",
+        settings: {
+          pdfQMin: s.pdfQMin || "(default)",
+          pdfQMax: s.pdfQMax || "(default)",
+          pdfApod: s.pdfApod || "(default)",
+          pdfWindowShape: s.pdfWindowShape || "(default)",
+          pdfWindowSupport: s.pdfWindowSupport,
+        },
+        per_plane: Object.fromEntries(
+          per.map(([plane, m]) => [
+            plane,
+            m && {
+              full_coverage_q: m.full_coverage_q,
+              half_coverage_q: m.half_coverage_q,
+              box_q: m.box_q,
+              shells: m.shells.filter((_x, i) => i % 4 === 3), // every fourth shell
+            },
+          ]),
+        ),
+      },
+      summary: verdict,
+    };
+  },
+};
+
+// ---------------------------------------------------------------- actions
+
+// Neither acts while a run or a tuning run is going: both own the pipeline.
+const checkIdle = () => {
+  if (usePipelineStore.getState().running) throw new Error("a pipeline run is in progress; wait for it to end");
+  if (useTuneStore.getState().active) throw new Error("a tuning run is in progress; wait for it to end");
+};
+
+const findParam = (key: string): TuneParam | undefined => TUNE_PARAMS.find((p) => p.key === key);
+
+const allowedValues = (p: TuneParam): string =>
+  p.kind === "enum"
+    ? p.options!.map((o) => o.name).join("|")
+    : p.kind === "boolean"
+      ? "true|false"
+      : `${p.kind} ${p.min}–${p.max}`;
+
+const updateSettings: AgentTool = {
+  name: "update_settings",
+  description:
+    "Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. " +
+    "Only these method choices and thresholds can be changed, not facts about the sample (supercell, magnetic ion, " +
+    `|Q| band): ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
+    "Change them when the user asks for a change, or asks you to improve or tune the result. Returns each change " +
+    "and the stage to rerun from.",
+  parameters: {
+    type: "object",
+    properties: {
+      changes: { type: "object", description: 'Setting → new value, e.g. {"punchMinSig": 6}' },
+    },
+    required: ["changes"],
+  },
+  run: async (args) => {
+    checkIdle();
+    const changes = args.changes;
+    if (!changes || typeof changes !== "object" || Array.isArray(changes) || !Object.keys(changes).length) {
+      throw new ToolArgError("changes must be an object of setting → value");
+    }
+    const patch: Record<string, string | boolean> = {};
+    for (const [key, value] of Object.entries(changes)) {
+      const p = findParam(key);
+      if (!p) throw new ToolArgError(`${key} cannot be changed; these can: ${TUNE_PARAMS.map((q) => q.key).join(", ")}`);
+      try {
+        patch[key] = toFormValue(key, value, p.stage);
+      } catch (e) {
+        throw new ToolArgError((e as Error).message);
+      }
+    }
+    const before = usePipelineStore.getState();
+    before.patch(patch as Partial<PipelineConfig>);
+    const after = usePipelineStore.getState();
+    const changed = Object.keys(patch).map((key) => {
+      const p = findParam(key)!;
+      return {
+        setting: key,
+        from: displayValue(p, before[p.key]),
+        to: displayValue(p, after[p.key]),
+        ...(p.appliesWhen && !p.appliesWhen(after) ? { note: "no effect with the current model" } : {}),
+      };
+    });
+    const rerunFrom = TUNE_STAGES.find((st) => changed.some((c) => findParam(c.setting)!.stage === st));
+    return {
+      result: { changed, rerun_from: rerunFrom },
+      summary: changed.map((c) => `${c.setting} ${c.from} → ${c.to}`).join(", "),
+    };
+  },
+};
+
+const stageLabel = (stage?: string): string => (stage ? STAGE_LABELS[stage] ?? stage : "");
+
+// One log line: "Bragg punch 45% · fitting 312 peaks".
+const eventLine = (ev: JobEvent): string =>
+  [
+    stageLabel(ev.stage) + (ev.fraction != null && ev.status === "progress" ? ` ${Math.round(ev.fraction * 100)}%` : ""),
+    ev.message,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+const runPipeline: AgentTool = {
+  name: "run_pipeline",
+  description:
+    "Run the reduction pipeline on the selected dataset with the Configure page's settings, as the Run button does: " +
+    "it writes the dataset's stage outputs, and the console shows the run on its Execution page while it goes. " +
+    "Without from_stage, outputs that already exist are reused (unless the user switched Force on), so it computes " +
+    "what is missing. With from_stage, that stage and every enabled stage after it are recomputed: use it after " +
+    "update_settings. A run takes seconds to minutes. Returns how it ended, which stages were computed or reused, " +
+    "and the outputs that now exist; measure them afterwards.",
+  parameters: {
+    type: "object",
+    properties: {
+      from_stage: {
+        type: "string",
+        enum: TUNE_STAGES,
+        description: "Recompute from this stage on; omit to compute only what is missing",
+      },
+    },
+  },
+  run: async (args, ctx, io) => {
+    checkIdle();
+    const from = args.from_stage === undefined ? null : oneOf(args, "from_stage", TUNE_STAGES);
+    const pipe = usePipelineStore.getState();
+    const stages = enabledStages(pipe).filter(
+      (st) => !from || STAGES.indexOf(st as (typeof STAGES)[number]) >= STAGES.indexOf(from),
+    );
+    if (!stages.length) throw new Error(`every stage${from ? ` from ${stageLabel(from)} on` : ""} is switched off`);
+    const force = from ? true : pipe.force;
+
+    useNavStore.getState().setTab("execution");
+    let seen = 0;
+    const unsubscribe = usePipelineStore.subscribe(({ events }) => {
+      if (events.length === seen) return;
+      seen = events.length;
+      const ev = events[events.length - 1];
+      const at = ev.stage ? stages.indexOf(ev.stage) : -1;
+      io.progress?.((at >= 0 ? `${at + 1}/${stages.length} ` : "") + eventLine(ev));
+    });
+    const cancel = () => void usePipelineStore.getState().cancel();
+    io.signal?.addEventListener("abort", cancel);
+    const t0 = performance.now();
+    let ended: string;
+    try {
+      ended = await usePipelineStore.getState().runStages(stages, { datasetId: ctx.dataset.id, force });
+    } finally {
+      unsubscribe();
+      io.signal?.removeEventListener("abort", cancel);
+    }
+    const seconds = Math.round((performance.now() - t0) / 100) / 10;
+    const events = usePipelineStore.getState().events;
+
+    if (ended !== "done") {
+      const failed = [...events].reverse().find((e) => e.status === "error");
+      throw new Error(`the run ${ended === "cancelled" ? "was cancelled" : "failed"}${failed ? `: ${eventLine(failed)}` : ""}`);
+    }
+    // The last word on each stage: done = computed, skip = its output was reused.
+    const outcome: Record<string, string> = {};
+    for (const e of events) {
+      if (e.stage && (e.status === "done" || e.status === "skip")) outcome[e.stage] = e.status === "done" ? "computed" : "reused";
+    }
+    const fresh = await safe(fetchDataset(ctx.dataset.id));
+    if (fresh) ctx.dataset = fresh;
+    const computed = Object.values(outcome).filter((o) => o === "computed").length;
+    const result = {
+      ended,
+      seconds,
+      stages: outcome,
+      outputs: ctx.dataset.stages.filter((s) => s.exists).map((s) => s.name),
+      log_tail: events.filter((e) => e.message).slice(-5).map(eventLine),
+    };
+    return {
+      result,
+      summary: `done in ${seconds} s · ${computed} computed, ${Object.keys(outcome).length - computed} reused`,
+    };
+  },
+};
+
+// A tuning run's state as one live line: "2/5 Bragg punch · trial 3/4 running".
+const tuneLine = (stages: StageRun[]): string => {
+  const i = stages.findIndex((r) => !["waiting", "done", "skipped", "failed"].includes(r.status));
+  if (i < 0) return "";
+  const r = stages[i];
+  const t = r.trials.find((x) => x.status === "running");
+  const what = t ? `trial ${t.n}/${r.trials.length} running` : r.status;
+  return `${i + 1}/${stages.length} ${TUNE_STAGE_LABELS[r.stage]} · ${what}`;
+};
+
+const tunePipeline: AgentTool = {
+  name: "tune_pipeline",
+  description:
+    "Search for the best settings, one stage at a time: for each stage it runs the current settings, has you " +
+    "propose alternatives, runs each, judges which best meets the stage's goal, keeps it and moves on, so later " +
+    "stages build on the best earlier ones. Trials run in a tuning folder: the dataset's own outputs are not " +
+    "changed, and the chosen settings end up on the Configure page. The user watches it in the Tune pipeline tab " +
+    "and on the Execution page. Takes minutes (one run per trial). Returns each stage's chosen trial, its changes " +
+    "and why.",
+  parameters: {
+    type: "object",
+    properties: {
+      stages: {
+        type: "array",
+        items: { type: "string", enum: TUNE_STAGES },
+        description: "Stages to tune (default all); the stages between them are re-run once with their settings",
+      },
+      trials_per_stage: {
+        type: "integer",
+        minimum: 2,
+        maximum: 5,
+        description: "Trials per tuned stage, the current settings included (default 3)",
+      },
+    },
+  },
+  run: async (args, ctx, io) => {
+    checkIdle();
+    let stages: TuneStage[] = [...TUNE_STAGES];
+    if (args.stages !== undefined) {
+      if (!Array.isArray(args.stages) || !args.stages.length) throw new ToolArgError("stages must be a non-empty list");
+      stages = args.stages.map((st) => oneOf({ stage: st }, "stage", TUNE_STAGES));
+    }
+    const trials = Math.round(num(args, "trials_per_stage", 3));
+    if (trials < 2 || trials > 5) throw new ToolArgError("trials_per_stage must be within [2, 5]");
+
+    useNavStore.getState().setTab("execution");
+    let last = "";
+    const unsubscribe = useTuneStore.subscribe(({ stages: runs }) => {
+      const line = tuneLine(runs);
+      if (line && line !== last) io.progress?.((last = line));
+    });
+    io.signal?.addEventListener("abort", stopTuning);
+    const t0 = performance.now();
+    try {
+      await startTuning({ dataset: ctx.dataset, stages, trialsPerStage: trials, llm: loadSettings() });
+    } finally {
+      unsubscribe();
+      io.signal?.removeEventListener("abort", stopTuning);
+    }
+    const minutes = Math.round((performance.now() - t0) / 6000) / 10;
+    const tune = useTuneStore.getState();
+    if (tune.error) throw new Error(`tuning stopped: ${tune.error}`);
+    const result = {
+      minutes,
+      stages: tune.stages.map((r) => {
+        const best = r.trials.find((t) => t.n === r.best);
+        return {
+          stage: r.stage,
+          status: r.status,
+          tuned: r.tuned,
+          ...(best && {
+            chosen_trial: best.n,
+            of: r.trials.length,
+            changes: best.changes,
+            result: headline(r.stage, best.evaluation),
+          }),
+          ...(r.why && { why: r.why }),
+          ...(r.message && { message: r.message }),
+        };
+      }),
+      note: tune.finishedNote,
+      write_outputs_with: { tool: "run_pipeline", from_stage: TUNE_STAGES.find((st) => stages.includes(st)) },
+    };
+    const changed = result.stages.filter((r) => r.changes && Object.keys(r.changes).length).length;
+    return { result, summary: `${minutes} min · settings changed on ${changed} of ${stages.length} stages` };
+  },
+};
+
 export const CHAT_TOOLS: AgentTool[] = [
   describeDataset,
   currentView,
   measureReciprocalCut,
   measureDpdfCut,
+  assessStage,
+  textureCheck,
+  qmaxCoverage,
+  radialProfileTool,
   lineProfile,
   braggPeaks,
   consistencyDetails,
+  runLog,
   compareDatasets,
   configureSettings,
+  updateSettings,
+  runPipeline,
+  tunePipeline,
   showInViewer,
 ];
 
@@ -604,7 +1150,12 @@ export interface ToolRun {
 
 // Run one call the model made.  Never throws: a bad call becomes an error
 // message the model reads and can correct.
-export async function runToolCall(call: ToolCall, tools: AgentTool[], ctx: ToolContext): Promise<ToolRun> {
+export async function runToolCall(
+  call: ToolCall,
+  tools: AgentTool[],
+  ctx: ToolContext,
+  io: ToolIO = {},
+): Promise<ToolRun> {
   let args: Args = {};
   try {
     const parsed = JSON.parse(call.function.arguments || "{}");
@@ -620,7 +1171,7 @@ export async function runToolCall(call: ToolCall, tools: AgentTool[], ctx: ToolC
     return { ok: false, args, text, summary: `unknown tool ${call.function.name}` };
   }
   try {
-    const out = await tool.run(args, ctx);
+    const out = await tool.run(args, ctx, io);
     let text = JSON.stringify(out.result);
     if (text.length > MAX_RESULT_CHARS) text = `${text.slice(0, MAX_RESULT_CHARS)}… [truncated]`;
     return { ok: true, args, text, summary: out.summary, view: out.view };

@@ -1,8 +1,7 @@
 // The AI Assistant panel, docked beside every page: a title row, the compact
-// model connection, an optional connection-settings drawer, and two modes —
-// Chat, where the model answers (and measures, looks up, opens the viewer)
-// from the dataset the pages show, and Tune, where it runs the pipeline one
-// stage at a time and keeps the best settings for each.
+// model connection, an optional connection-settings drawer, and the chat, where
+// the model answers from the dataset the pages show and acts on it: it
+// measures and assesses, opens the viewer, runs the pipeline, and tunes it.
 
 import { useMemo, useState } from "react";
 
@@ -10,12 +9,10 @@ import { useDatasets } from "../../api/hooks";
 import { BrandGlyph, EmptyState, IconAlert } from "../../components/ui";
 import { useDatasetStore } from "../../state/datasetStore";
 import type { ToolContext } from "../tools";
-import { useTuneStore } from "../tune/tuner";
 import { useAssistant } from "../useAssistant";
 import { ChatView } from "./ChatView";
 import { ConnectionBar } from "./ConnectionBar";
 import { ConnectionSettings } from "./ConnectionSettings";
-import { TunePanel } from "./TunePanel";
 
 export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const datasetsQ = useDatasets();
@@ -25,8 +22,6 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
 
   const { settings, connection, connected, runTest, contextQuery } = useAssistant(dataset);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const tuning = useTuneStore((s) => s.active);
-  const [mode, setMode] = useState<"chat" | "tune">(tuning ? "tune" : "chat");
   const ready = Boolean(contextQuery.data);
   const toolContext = useMemo<ToolContext | null>(
     () => (dataset ? { dataset, datasets } : null),
@@ -69,40 +64,20 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           hint="Start the API server (or wait for the in-browser engine) and reload."
         />
       )}
-      {mode === "chat" && dataset && !ready && contextQuery.isError && (
+      {dataset && !ready && contextQuery.isError && (
         <EmptyState
           title="Could not build the diagnostic context"
           hint="Run the pipeline for this dataset first — the assistant reads its stage outputs."
         />
       )}
 
-      <div className="ai-modes" role="tablist">
-        {(["chat", "tune"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            role="tab"
-            aria-selected={mode === m}
-            className={mode === m ? "on" : ""}
-            onClick={() => setMode(m)}
-          >
-            {m === "chat" ? "Chat" : "Tune pipeline"}
-            {m === "tune" && tuning && <span className="nav-dot" title="tuning is running" />}
-          </button>
-        ))}
-      </div>
-
-      {mode === "chat" ? (
-        <ChatView
-          assistant={contextQuery.data}
-          connected={connected}
-          settings={settings}
-          toolContext={toolContext}
-          contextLoading={contextQuery.isFetching}
-        />
-      ) : (
-        <TunePanel dataset={dataset} connected={connected} settings={settings} />
-      )}
+      <ChatView
+        assistant={contextQuery.data}
+        connected={connected}
+        settings={settings}
+        toolContext={toolContext}
+        contextLoading={contextQuery.isFetching}
+      />
     </div>
   );
 }

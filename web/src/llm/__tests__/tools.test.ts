@@ -1,25 +1,40 @@
 // The assistant's tools against a mocked API: argument checking, the line
-// profile's row/column pick, the Bragg-peak sort, and show_in_viewer moving
-// the console's stores.
+// profile's row/column pick, the Bragg-peak sort, show_in_viewer moving the
+// console's stores, and the two that act: update_settings and run_pipeline.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BraggProfile, Dataset, VolumeMeta } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
+import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
+import { useTuneStore, type StageRun } from "../tune/tuner";
 import { CHAT_TOOLS, runToolCall, type ToolContext } from "../tools";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
   fetchConsistencyCheck: vi.fn(),
+  fetchDataset: vi.fn(),
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
   fetchSlice: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
+
+const evaluate = vi.hoisted(() => ({ evaluateStage: vi.fn() }));
+vi.mock("../tune/evaluate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../tune/evaluate")>()),
+  evaluateStage: evaluate.evaluateStage,
+}));
+
+const tuner = vi.hoisted(() => ({ startTuning: vi.fn() }));
+vi.mock("../tune/tuner", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../tune/tuner")>()),
+  startTuning: tuner.startTuning,
+}));
 
 const dataset: Dataset = {
   id: "demo",
@@ -162,5 +177,286 @@ describe("show_in_viewer", () => {
     // z ∈ [-10, 10] over 21 points → z = 5 is index 15; x and y stay centred.
     expect([s.cutX, s.cutY, s.cutZ]).toEqual([20, 20, 15]);
     expect(useNavStore.getState().tab).toBe("dpdf");
+  });
+});
+
+describe("update_settings", () => {
+  beforeEach(() => usePipelineStore.setState({ punchMinSig: "", ringModel: "pooled", running: false }));
+
+  it("puts a checked change on the Configure page and says where to rerun from", async () => {
+    const r = await run("update_settings", { changes: { punchMinSig: 6 } });
+    expect(r.ok).toBe(true);
+    expect(usePipelineStore.getState().punchMinSig).toBe("6");
+    expect(JSON.parse(r.text)).toEqual({ changed: [{ setting: "punchMinSig", from: 5, to: 6 }], rerun_from: "punch" });
+  });
+
+  it("refuses settings outside the catalog and values out of range", async () => {
+    const unknown = await run("update_settings", { changes: { punchSupercellH: 2 } });
+    expect(unknown.text).toMatch(/invalid arguments — punchSupercellH cannot be changed/);
+    const range = await run("update_settings", { changes: { punchMinSig: 1000 } });
+    expect(range.text).toMatch(/punchMinSig must be within/);
+    expect(usePipelineStore.getState().punchMinSig).toBe("");
+  });
+});
+
+describe("run_pipeline", () => {
+  const events = [
+    { type: "progress", stage: "rings", status: "skip", message: "ring-removed output exists" },
+    { type: "progress", stage: "punch", status: "start", message: "Bragg punch" },
+    { type: "progress", stage: "punch", status: "progress", fraction: 0.5, message: "fitting peaks" },
+    { type: "progress", stage: "punch", status: "done", fraction: 1, message: "punch complete" },
+  ];
+  // A run that streams `events` into the store, then ends `ending`.
+  const fakeRun = (ending: string, evs = events) =>
+    vi.fn(async () => {
+      usePipelineStore.setState({ running: true, events: [] });
+      for (const ev of evs) usePipelineStore.setState((s) => ({ events: [...s.events, ev] }));
+      usePipelineStore.setState({ running: false, terminal: ending });
+      return ending;
+    });
+  const call = (args: object) => ({ id: "c", type: "function" as const, function: { name: "run_pipeline", arguments: JSON.stringify(args) } });
+
+  beforeEach(() => {
+    usePipelineStore.setState({ running: false, force: false, flatten: true, pdfEnabled: true, events: [] });
+    useNavStore.setState({ tab: "config" });
+  });
+
+  it("runs the enabled stages, streams its progress, and reads the fresh dataset", async () => {
+    const runStages = fakeRun("done");
+    usePipelineStore.setState({ runStages });
+    const fresh = { ...dataset, stages: [...dataset.stages, { name: "braggpunched", exists: true, kind: "hkl", volume_id: "demo.braggpunched" }] };
+    api.fetchDataset.mockResolvedValue(fresh);
+    const own = { ...ctx };
+    const lines: string[] = [];
+    const r = await runToolCall(call({}), CHAT_TOOLS, own, { progress: (t) => lines.push(t) });
+    expect(r.ok).toBe(true);
+    expect(runStages).toHaveBeenCalledWith(["rings", "punch", "backfill", "flatten", "pdf", "pdf_check"], { datasetId: "demo", force: false });
+    expect(useNavStore.getState().tab).toBe("execution");
+    expect(lines).toContain("2/6 Bragg punch 50% · fitting peaks");
+    const out = JSON.parse(r.text);
+    expect(out.stages).toEqual({ rings: "reused", punch: "computed" });
+    expect(out.outputs).toContain("braggpunched");
+    expect(own.dataset).toBe(fresh);
+    expect(r.summary).toMatch(/^done in .* s · 1 computed, 1 reused$/);
+  });
+
+  it("recomputes from a stage on", async () => {
+    const runStages = fakeRun("done");
+    usePipelineStore.setState({ runStages, flatten: false });
+    api.fetchDataset.mockResolvedValue(dataset);
+    await runToolCall(call({ from_stage: "punch" }), CHAT_TOOLS, { ...ctx });
+    expect(runStages).toHaveBeenCalledWith(["punch", "backfill", "pdf", "pdf_check"], { datasetId: "demo", force: true });
+  });
+
+  it("reports a failed run as an error with its last error line", async () => {
+    usePipelineStore.setState({
+      runStages: fakeRun("error", [{ type: "progress", stage: "backfill", status: "error", message: "out of memory" }]),
+    });
+    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx });
+    expect(r.ok).toBe(false);
+    expect(r.text).toBe("Error: the run failed: Backfill · out of memory");
+  });
+
+  it("will not start while another run is going", async () => {
+    const runStages = vi.fn();
+    usePipelineStore.setState({ running: true, runStages });
+    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx });
+    expect(r.text).toMatch(/a pipeline run is in progress/);
+    expect(runStages).not.toHaveBeenCalled();
+  });
+
+  it("cancels the run when the reply is stopped", async () => {
+    const abort = new AbortController();
+    const cancel = vi.fn(async () => undefined);
+    usePipelineStore.setState({
+      cancel,
+      runStages: vi.fn(async () => {
+        abort.abort();
+        return "cancelled";
+      }),
+    });
+    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx }, { signal: abort.signal });
+    expect(cancel).toHaveBeenCalled();
+    expect(r.text).toMatch(/the run was cancelled/);
+  });
+});
+
+describe("tune_pipeline", () => {
+  const stage = (s: Partial<StageRun> & Pick<StageRun, "stage">): StageRun => ({ tuned: true, status: "waiting", trials: [], ...s });
+  const call = (args: object) => ({ id: "c", type: "function" as const, function: { name: "tune_pipeline", arguments: JSON.stringify(args) } });
+
+  beforeEach(() => {
+    usePipelineStore.setState({ running: false });
+    useTuneStore.setState({ active: false, stages: [], error: null, finishedNote: null });
+  });
+
+  it("tunes the chosen stages, streams its trials, and returns what it kept", async () => {
+    tuner.startTuning.mockImplementation(async () => {
+      useTuneStore.setState({
+        active: true,
+        stages: [
+          stage({ stage: "punch", status: "running", trials: [{ n: 1, changes: {}, settings: {}, status: "done" }, { n: 2, changes: { punchMinSig: 6 }, settings: {}, status: "running" }] }),
+          stage({ stage: "backfill", tuned: false }),
+        ],
+      });
+      useTuneStore.setState({
+        active: false,
+        finishedNote: "Done.",
+        stages: [
+          stage({ stage: "punch", status: "done", best: 2, why: "fewer leftover peaks", trials: [{ n: 1, changes: {}, settings: {}, status: "done" }, { n: 2, changes: { punchMinSig: 6 }, settings: {}, status: "done" }] }),
+          stage({ stage: "backfill", tuned: false, status: "done", best: 1, trials: [{ n: 1, changes: {}, settings: {}, status: "done" }] }),
+        ],
+      });
+    });
+    const lines: string[] = [];
+    const r = await runToolCall(call({ stages: ["backfill", "punch"], trials_per_stage: 2 }), CHAT_TOOLS, { ...ctx }, { progress: (t) => lines.push(t) });
+    expect(r.ok).toBe(true);
+    expect(tuner.startTuning).toHaveBeenCalledWith(expect.objectContaining({ dataset, stages: ["backfill", "punch"], trialsPerStage: 2 }));
+    expect(lines).toEqual(["1/2 Bragg punch · trial 2/2 running"]);
+    const out = JSON.parse(r.text);
+    expect(out.stages[0]).toMatchObject({ stage: "punch", chosen_trial: 2, of: 2, changes: { punchMinSig: 6 }, why: "fewer leftover peaks" });
+    expect(out.write_outputs_with).toEqual({ tool: "run_pipeline", from_stage: "punch" });
+    expect(r.summary).toMatch(/settings changed on 1 of 2 stages$/);
+    expect(useNavStore.getState().tab).toBe("execution");
+  });
+
+  it("reports a tuning run that stopped on an error", async () => {
+    tuner.startTuning.mockImplementation(async () => useTuneStore.setState({ error: "the run with your settings failed" }));
+    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx });
+    expect(r.text).toBe("Error: tuning stopped: the run with your settings failed");
+  });
+
+  it("checks its arguments before starting", async () => {
+    const r = await runToolCall(call({ trials_per_stage: 9 }), CHAT_TOOLS, { ...ctx });
+    expect(r.text).toMatch(/trials_per_stage must be within \[2, 5\]/);
+    expect(tuner.startTuning).not.toHaveBeenCalled();
+  });
+});
+
+// Every stage on disk, for the tools that compare stages.
+const STAGE_NAMES = ["raw", "ringremoved", "braggpunched", "backfilled", "flattened"];
+const full: Dataset = {
+  ...dataset,
+  stages: [
+    ...STAGE_NAMES.map((name) => ({ name, exists: true, kind: "hkl" as const, volume_id: `demo.${name}` })),
+    { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" },
+  ],
+};
+const runOn = (ds: Dataset, name: string, args: object) =>
+  runToolCall({ id: "c", type: "function", function: { name, arguments: JSON.stringify(args) } }, CHAT_TOOLS, { dataset: ds, datasets: [ds] });
+
+describe("assess_stage", () => {
+  it("judges each stage that exists against its goal, headline numbers only for all", async () => {
+    evaluate.evaluateStage.mockImplementation(async (stage: string) =>
+      stage === "flatten"
+        ? { max_after_floor_sigma: 0.8, per_plane: { hk0: {} } }
+        : { back_fft_pearson_r: 0.99, back_fft_normalized_rms: 0.1, mean_feature_snr: 40, per_plane: {} },
+    );
+    const r = await run("assess_stage", {});
+    const out = JSON.parse(r.text);
+    expect(out.rings.missing).toMatch(/no ringremoved output yet/);
+    expect(out.flatten).toMatchObject({ headline: "floor ≤ 0.8σ", max_after_floor_sigma: 0.8 });
+    expect(out.flatten.goal).toMatch(/floor/);
+    expect(out.flatten).not.toHaveProperty("per_plane");
+    expect(r.summary).toBe("Flatten: floor ≤ 0.8σ · 3D-ΔPDF: r 0.99 · RMS 0.1 · SNR 40");
+  });
+
+  it("keeps the per-plane detail for one stage", async () => {
+    evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, per_plane: { hk0: { after_floor_max_sigma: 0.8 } } });
+    const out = JSON.parse((await run("assess_stage", { stage: "flatten" })).text);
+    expect(out.flatten.per_plane.hk0).toEqual({ after_floor_max_sigma: 0.8 });
+  });
+});
+
+describe("run_log", () => {
+  it("returns the last run's lines, for one stage on request", async () => {
+    usePipelineStore.setState({
+      running: false,
+      terminal: "done",
+      events: [
+        { type: "progress", stage: "rings", status: "done", message: "9 shells fitted" },
+        { type: "progress", stage: "punch", status: "progress", fraction: 0.5 },
+        { type: "progress", stage: "punch", status: "done", message: "188 peaks punched" },
+      ],
+    });
+    const all = JSON.parse((await run("run_log", {})).text);
+    expect(all.ended).toBe("done");
+    expect(all.lines.map((l: { message: string }) => l.message)).toEqual(["9 shells fitted", "188 peaks punched"]);
+    const punch = JSON.parse((await run("run_log", { stage: "punch" })).text);
+    expect(punch.lines).toEqual([{ stage: "punch", status: "done", message: "188 peaks punched" }]);
+  });
+
+  it("says when there is no run yet", async () => {
+    usePipelineStore.setState({ events: [] });
+    expect((await run("run_log", {})).text).toMatch(/no pipeline run in this session yet/);
+  });
+});
+
+describe("qmax_coverage", () => {
+  // Measured out to 1.5 r.l.u. of the origin on every plane; the box ends at 2.
+  beforeEach(() => {
+    api.fetchSlice.mockResolvedValue(makeSlice(21, 21, (x, y) => (Math.hypot(x, y) < 1.5 ? 1 : NaN), { half: 2 }));
+    usePipelineStore.setState({ pdfQMax: "", pdfApod: "", pdfWindowShape: "", pdfWindowSupport: true });
+  });
+  const check = async () => JSON.parse((await run("qmax_coverage", {})).text);
+
+  it("passes a window tapered to the measured coverage", async () => {
+    const out = await check();
+    expect(out.full_coverage_q).toBeLessThan(out.box_face_q);
+    expect(out.reach_from).toBe("the window is tapered to the measured coverage");
+    expect(out.verdict).toMatch(/^the transform reaches .* inside full coverage/);
+  });
+
+  it("flags a window that tapers only at the box faces past the coverage", async () => {
+    usePipelineStore.setState({ pdfWindowSupport: false });
+    const out = await check();
+    expect(out.transform_reach_q).toBe(out.box_face_q);
+    expect(out.verdict).toMatch(/^too far: .* tapers to zero at the box faces/);
+  });
+
+  it("judges an explicit |Q| band, and a flat window by the box corners", async () => {
+    usePipelineStore.setState({ pdfQMax: "0.1" });
+    expect((await check()).verdict).toMatch(/inside full coverage/);
+    usePipelineStore.setState({ pdfQMax: "", pdfApod: "none" });
+    const flat = await check();
+    expect(flat.transform_reach_q).toBe(6); // the ΔPDF's recorded q_max, the box corner
+    expect(flat.verdict).toMatch(/^too far: .* out to the box corners/);
+  });
+});
+
+describe("texture_check", () => {
+  // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs.
+  const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;
+  const hole = (ix: number, iy: number) => ix > 2 && iy > 2 && ix < 18 && iy < 18 && [4, 0, 1].includes(ix % 5) && [4, 0, 1].includes(iy % 5);
+  const slices: Record<string, ReturnType<typeof makeSlice>> = {
+    "demo.ringremoved": makeSlice(21, 21, (_x, _y, ix, iy) => 100 + 4 * noise(ix, iy)),
+    "demo.braggpunched": makeSlice(21, 21, (_x, _y, ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy))),
+    "demo.backfilled": makeSlice(21, 21, (_x, _y, ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? 30 : 0)),
+  };
+
+  it("flags fills that sit above their rims on every plane", async () => {
+    api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
+    const r = await runOn(full, "texture_check", {});
+    const out = JSON.parse(r.text);
+    expect(out.per_cut).toHaveLength(3);
+    expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, brighter_fraction: 1 });
+    expect(r.summary).toMatch(/^systematic fill bias on 3 of 3 cut\(s\)/);
+  });
+
+  it("needs the punched and backfilled outputs", async () => {
+    expect((await run("texture_check", {})).text).toMatch(/needs the punched and backfilled outputs/);
+  });
+});
+
+describe("radial_profile", () => {
+  it("puts the stages' shell medians side by side", async () => {
+    api.fetchSlice.mockImplementation(async (id: string) =>
+      makeSlice(21, 21, (x, y) => (id === "demo.raw" ? 10 : 2) + Math.hypot(x, y), { half: 2 }),
+    );
+    const out = JSON.parse((await runOn(full, "radial_profile", { stages: ["raw", "flattened"], bins: 8 })).text);
+    expect(out.q_unit).toBe("|Q| in Å⁻¹");
+    expect(Object.keys(out.rows[0])).toEqual(["q", "raw", "flattened"]);
+    expect(out.rows[0].raw - out.rows[0].flattened).toBeCloseTo(8, 5);
+    expect(out.rows[out.rows.length - 1].q).toBeGreaterThan(out.rows[0].q);
   });
 });

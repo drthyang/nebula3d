@@ -3754,115 +3754,11 @@ input[type="range"]::-moz-range-track {
   overflow-y: auto;
 }
 
-/* — Chat / Tune pipeline switch — */
-.ai-modes {
-  display: flex;
-  gap: 4px;
-  padding: 3px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-}
-.ai-modes button {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-2);
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.ai-modes button.on {
-  background: var(--accent-soft);
-  color: var(--accent-hi);
-}
-.ai-modes .nav-dot {
-  margin-left: 0;
-}
-
-/* — tuning run — */
-.tune {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-}
-.tune-setup,
+/* — tuning run: its card in the chat, under the reply that started it — */
 .tune-progress {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-.tune-lead {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--text-2);
-}
-.tune-stage-picks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-}
-.tune-pick {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--text);
-}
-.tune-pick.off {
-  color: var(--text-3);
-}
-.tune-trials-input {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--text-2);
-}
-.tune-trials-input select {
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  padding: 4px 8px;
-}
-.tune-note {
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 8px 11px;
-  border-radius: var(--radius-sm);
-  background: var(--accent-soft);
-  color: var(--text-2);
-  border: 1px solid rgba(79, 143, 247, 0.28);
-}
-.tune-note code {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text);
-}
-.tune-start {
-  align-self: flex-start;
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #08111f;
-  font-weight: 650;
-}
-.tune-start:hover:not(:disabled) {
-  background: var(--accent-hi);
-}
-.tune-start:disabled {
-  background: var(--surface-3);
-  border-color: var(--border-strong);
-  color: var(--text-3);
-  cursor: not-allowed;
 }
 .tune-progress-head {
   display: flex;
@@ -3871,12 +3767,6 @@ input[type="range"]::-moz-range-track {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-2);
-}
-.tune-stop {
-  background: var(--amber-soft);
-  border-color: rgba(232, 180, 84, 0.45);
-  color: var(--amber);
-  padding: 4px 12px;
 }
 .tune-link {
   align-self: flex-start;
@@ -4186,6 +4076,11 @@ input[type="range"]::-moz-range-track {
 .ai-chip:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+/* requests that have the model act (assess the run, tune it) */
+.ai-chip-act {
+  border-color: rgba(79, 143, 247, 0.4);
+  color: var(--accent-hi);
 }
 .ai-toggles {
   display: flex;
