@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isToolsUnsupported, streamChat, ToolCallAssembler, type HttpError, type StreamDelta, withContextHint } from "../provider/client";
+import { isMalformedOutput, isToolsUnsupported, streamChat, ToolCallAssembler, type HttpError, type StreamDelta, withContextHint } from "../provider/client";
 
 const sse = (chunks: string[]): Response => {
   const enc = new TextEncoder();
@@ -111,6 +111,19 @@ describe("streamChat", () => {
     const got: StreamDelta[] = [];
     for await (const d of streamChat({ baseUrl: "u", model: "m", messages: [], temperature: 0 })) got.push(d);
     expect(got[got.length - 1]).toEqual({ truncated: true });
+  });
+
+  it("explains a streamed error the model's own output caused, and keeps its status", async () => {
+    const body = `data: ${JSON.stringify({ error: { code: 500, message: "The model produced output that does not match the expected peg-native format" } })}\n\n`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status: 200 })));
+    const run = async () => {
+      for await (const d of streamChat({ baseUrl: "u", model: "m", messages: [], temperature: 0 })) void d;
+    };
+    const error = (await run().catch((e: unknown) => e)) as Error & { status?: number };
+    expect(error.message).toMatch(/could not parse .* asking again usually works/);
+    expect(error.status).toBe(500);
+    expect(isMalformedOutput(error)).toBe(true);
+    expect(isMalformedOutput(new Error("HTTP 500"))).toBe(false);
   });
 
   it("explains a bare HTTP 500 from the model server", async () => {

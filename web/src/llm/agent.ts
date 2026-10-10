@@ -4,6 +4,7 @@
 // that cannot call tools gets the same request without them.
 
 import {
+  isMalformedOutput,
   isToolsUnsupported,
   streamChat,
   type ChatMessage,
@@ -50,6 +51,10 @@ export const TOOLS_UNSUPPORTED_NOTE =
 
 export const CUT_OFF_NOTE =
   "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (16k at least: with Tools on, a request needs about 6k tokens before your question), or turn Tools off; Clear starts a shorter conversation.";
+
+// A reply its server could not parse ran none of its tools, so the same request
+// is sent again, at most this many times in one reply.
+export const MALFORMED_RETRIES = 2;
 
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
@@ -109,12 +114,14 @@ export async function runAgent({
     emit();
   };
 
+  let retries = 0;
   for (let round = 0; ; round++) {
     const last = round >= maxRounds;
     let roundText = "";
     let calls: ToolCall[] = [];
     let native: unknown;
     let cutOff = false;
+    const reasoningBefore = reasoning;
     try {
       for await (const delta of streamChat({
         baseUrl: settings.baseUrl,
@@ -139,6 +146,13 @@ export async function runAgent({
         useTools = false;
         note = TOOLS_UNSUPPORTED_NOTE;
         round = -1; // the same request again, without tools
+        continue;
+      }
+      if (isMalformedOutput(e) && retries < MALFORMED_RETRIES && !signal.aborted) {
+        retries += 1;
+        reasoning = reasoningBefore; // the failed attempt's thinking goes with it
+        round -= 1; // the same request again
+        emit();
         continue;
       }
       throw e;

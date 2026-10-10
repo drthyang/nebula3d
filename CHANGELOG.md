@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **A reply that fails keeps what it did.** An error from the model server
+  late in a reply emptied it from the chat: after a 23-minute tuning run,
+  LM Studio rejected the final report mid-stream, and the transcript kept
+  only the question and the error. The run's steps, the tuning card and the
+  text written so far now stay, with the error as the reply's note. When
+  the error is the model writing a reply its server cannot parse (LM
+  Studio: "does not match the expected … format", here a tool call in the
+  wrong syntax; Ollama: "error parsing tool call"), the same request is
+  sent again, up to twice, before the reply gives up. No tool runs twice.
 - **Each plane's ring verdict follows the cross-plane rule.** A bump seen
   on one plane only is the crystal's own scattering, and the ring review's
   totals already left it out. Each plane's detail still named it as that
