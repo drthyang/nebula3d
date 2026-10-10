@@ -540,7 +540,7 @@ class FlattenParams:
     estimator: str = "model"
     ion: str | None = None
     fit_q_range: tuple[float, float] | None = (0.8, 10.0)
-    # Also fit b·Q² (multiphonon / thermal background) in the model.
+    # Also fit b·Q² (an inelastic background rising with |Q|) in the model.
     q2_term: bool = False
     floor_percentile: float = 25.0
     q_step: float = 0.05

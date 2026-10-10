@@ -99,8 +99,9 @@
 - **The flatten can take a background that rises with |Q|.** Its model
   fitted a constant (plus the magnetic form factor), so on a measured
   hexagonal volume the diffuse floor still climbed from −1 to +10 across
-  1–17 Å⁻¹ after the flatten. That is the multiphonon / thermal background,
-  which rises as Q². A *+ b·Q² term* switch (`flatten_q2`) adds it to the
+  1–17 Å⁻¹ after the flatten. Inelastic background rises like that
+  (thermal diffuse scattering, and with X-rays Compton scattering), starting
+  out as Q². A *+ b·Q² term* switch (`flatten_q2`) adds it to the
   model. Like the other terms it varies only on the scale of the whole
   range, so pair correlations survive. Q² is only the leading term of a
   rise that saturates, so past the fit range's end the term is held at its
