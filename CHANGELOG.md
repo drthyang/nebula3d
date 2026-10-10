@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **NEBULA Pilot writes an analysis report.** A reply that assessed, tuned
+  or ran the pipeline gets a *Report* button. The report reads in the app
+  and exports as a self-contained HTML page, which prints to PDF, or as
+  Markdown. Its numbers come from a fresh measurement pass with the agent's
+  own tools, never from the model's text. It holds:
+  - the five stage checks, each judged by its stated goal;
+  - the coverage, the raw counts' |Q| edges and the symmetry;
+  - figures of the cleanup stages and the 3D-ΔPDF sections, drawn as the
+    viewers draw them;
+  - the dataset, the settings and sample facts, what the agent did, and the
+    tuning trials with why each was kept or refused;
+  - the caveats: every check that misses its goal.
+  The model's answer appears as a labelled summary, with the model and
+  provider named.
 - **The ΔPDF's |Q| band can come from the raw data.** The data's own Qmin and
   Qmax are where the counts begin and end: past either edge most voxels
   hold none. `GET /api/volumes/{id}/coverage` measures, per |Q| shell, the
