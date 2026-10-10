@@ -435,7 +435,10 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
     gives the nodes) and fits the UB that puts the centres on their nodes.
     On a volume symmetrised under its declared operations it fits only the
     changes that commute with them, since a misorientation is hidden there
-    as rings. Elsewhere it fits the rotation and the cell. It reports the
+    as rings. Elsewhere it fits the rotation and the cell. The cell is
+    constrained by the declared symmetry; an unsymmetrised export declares
+    none, so it takes the symmetry of the symmetrised export that names it
+    as its `source_file`. It reports the
     peaks' offset along Q relative to |Q| by |Q| band and direction: an offset
     that changes with |Q| along a direction is not a UB error (see
     [UB refinement](algorithms/ub_refinement.md)).

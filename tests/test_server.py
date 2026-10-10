@@ -224,45 +224,59 @@ def test_volume_coverage(env):
     assert client.get("/api/volumes/nope.ringremoved/coverage").status_code == 404
 
 
-def test_volume_ub_check(tmp_path):
-    """The UB check on a NeXus Viewer export: a volume symmetrised under the
-    operations it declares takes the symmetric fit, which finds the cell the
-    peaks were put on."""
+SIX_MMM_TEXT = "h,k,l; h+k,-h,l; k,h,l; h,k,-l"
+
+
+def _hex_ub(a, c):
+    astar = 4 * np.pi / (np.sqrt(3) * a)
+    return np.array([[astar, astar / 2, 0], [0, astar * np.sqrt(3) / 2, 0], [0, 0, 2 * np.pi / c]])
+
+
+def _hex_crystal(ub, ub_true, symmetrise=False):
+    """A 61³ volume indexed with *ub* whose Bragg peaks sit at the nodes of *ub_true*."""
     from nebula3d.symmetry import GridSymmetry, parse_symmetry_ops
 
-    a, c, a_true, c_true = 4.0, 5.0, 4.04, 4.95
-
-    def hex_ub(a_, c_):
-        astar = 4 * np.pi / (np.sqrt(3) * a_)
-        return np.array([[astar, astar / 2, 0], [0, astar * np.sqrt(3) / 2, 0],
-                         [0, 0, 2 * np.pi / c_]])
-
-    ub, ub_true = hex_ub(a, c), hex_ub(a_true, c_true)
     vol = HKLVolume.from_arrays(np.full((61, 61, 61), 10.0), (-3, 3), (-3, 3), (-3, 3),
                                 ub_matrix=ub)
-    axes = (vol.h_axis, vol.k_axis, vol.l_axis)
-    grids = np.meshgrid(*axes, indexing="ij")
-    hkl = np.stack(grids, axis=-1)
+    hkl = np.stack(np.meshgrid(vol.h_axis, vol.k_axis, vol.l_axis, indexing="ij"), axis=-1)
     for g in np.array(np.meshgrid(*[np.arange(-3, 4)] * 3, indexing="ij")).reshape(3, -1).T:
         if g.any():
             d = (hkl - np.linalg.inv(ub) @ ub_true @ g) @ ub.T
             vol.data += 500 * np.exp(-(d ** 2).sum(-1) / (2 * 0.15 ** 2))
-    text = "h,k,l; h+k,-h,l; k,h,l; h,k,-l"
-    GridSymmetry.for_volume(vol, parse_symmetry_ops(text)).orbit_mean(vol.data, vol.mask.copy())
-    (tmp_path / "raw").mkdir()
-    (tmp_path / "processed").mkdir()
-    with h5py.File(tmp_path / "raw" / f"{STEM}.nxs", "w") as f:
+    if symmetrise:
+        sym = GridSymmetry.for_volume(vol, parse_symmetry_ops(SIX_MMM_TEXT))
+        sym.orbit_mean(vol.data, vol.mask.copy())
+    return vol
+
+
+def _write_entry(path, vol, **attrs):
+    """*vol* in the NeXus Viewer's layout, with /entry attributes."""
+    with h5py.File(path, "w") as f:
         entry = f.create_group("entry")
         for name, values in (("data", vol.data), ("mask", vol.mask), ("h_axis", vol.h_axis),
-                             ("k_axis", vol.k_axis), ("l_axis", vol.l_axis), ("ub_matrix", ub)):
+                             ("k_axis", vol.k_axis), ("l_axis", vol.l_axis),
+                             ("ub_matrix", vol.ub_matrix)):
             entry.create_dataset(name, data=values)
-        entry.attrs["symmetry_ops"] = text
+        for key, value in attrs.items():
+            entry.attrs[key] = value
+
+
+def test_volume_ub_check(tmp_path):
+    """The UB check on a NeXus Viewer export: a volume symmetrised under the
+    operations it declares takes the symmetric fit, which finds the cell the
+    peaks were put on."""
+    a, c, a_true, c_true = 4.0, 5.0, 4.04, 4.95
+    vol = _hex_crystal(_hex_ub(a, c), _hex_ub(a_true, c_true), symmetrise=True)
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    _write_entry(tmp_path / "raw" / f"{STEM}.nxs", vol, symmetry_ops=SIX_MMM_TEXT)
     vol_mod.clear_cache()
     client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
     r = client.get(f"/api/volumes/{SLUG}.raw/ub", params={"cell": "1,1,1"})
     assert r.status_code == 200, r.text
     u = r.json()
     assert u["fit"] == "symmetric" and u["symmetrised"] is True and u["operations"] == 4
+    assert u["operations_from"] == f"{STEM}.nxs"
     assert u["cell"][:3] == pytest.approx([a_true, a_true, c_true], abs=2e-3)
     assert u["rms"] < 0.01 < u["rms_start"]
     # A cell error: the same relative offset at every |Q| along a direction, gone after.
@@ -271,6 +285,30 @@ def test_volume_ub_check(tmp_path):
     assert all(o["before"] == pytest.approx(a / a_true - 1, abs=1e-3) for o in in_plane)
     assert all(abs(o["after"]) < 1e-3 for o in u["radial"])
     assert client.get(f"/api/volumes/{SLUG}.raw/ub", params={"cell": "2,0,2"}).status_code == 400
+
+
+def test_volume_ub_check_takes_the_symmetry_of_the_export(tmp_path):
+    """An unsymmetrised volume declares no symmetry; its symmetrised export,
+    which names it as its source, does: the check fits the rotation and a cell
+    constrained by the export's operations."""
+    from scipy.spatial.transform import Rotation
+
+    turn = Rotation.from_rotvec(np.radians(0.5) * np.array([1, 2, 3]) / np.sqrt(14)).as_matrix()
+    ub = _hex_ub(4.0, 5.0)
+    vol = _hex_crystal(ub, turn @ _hex_ub(4.02, 4.98))
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    _write_entry(tmp_path / "raw" / f"{STEM}.nxs", vol)
+    _write_entry(tmp_path / "raw" / f"{STEM}_sym6mmm.nxs", _hex_crystal(ub, ub, symmetrise=True),
+                 symmetry_ops=SIX_MMM_TEXT, source_file=f"{STEM}.nxs")
+    assert vol_mod.symmetry_ops_for(tmp_path / "raw" / f"{STEM}.nxs")[1] == f"{STEM}_sym6mmm.nxs"
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    u = client.get(f"/api/volumes/{SLUG}.raw/ub", params={"cell": "1,1,1"}).json()
+    assert u["operations_from"] == f"{STEM}_sym6mmm.nxs" and u["operations"] == 4
+    assert u["fit"] == "both" and u["symmetrised"] is False
+    assert u["angle_deg"] == pytest.approx(0.5, abs=0.02)
+    assert u["cell"] == pytest.approx([4.02, 4.02, 4.98, 90, 90, 120], abs=2e-3)
 
 
 def test_bragg_profile_missing_returns_empty_state(env):

@@ -25,7 +25,9 @@
   the punch cell as the Bragg nodes. It reports how far the peaks sat from
   their nodes before and after, the cell, the rotation, and the peaks'
   radial offsets by |Q| band. On a symmetrised volume it says that only what
-  the symmetry keeps could be fitted.
+  the symmetry keeps could be fitted. An unsymmetrised volume takes its
+  symmetry from the symmetrised export that names it as its source, to
+  constrain the cell.
 - **Each peak is punched to its own width.** The punch's default footprint
   is now `own`: along H, K and L each peak's line-cut FWHM (half-maximum
   crossings interpolated) defines a Gaussian, punched out to where it falls
