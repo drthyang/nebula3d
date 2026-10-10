@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Each peak is punched to its own width.** The punch's default footprint
+  is now `own`: along H, K and L each peak's line-cut FWHM (half-maximum
+  crossings interpolated) defines a Gaussian, punched out to where it falls
+  to the stopping level over the local noise. The shared Bragg profile,
+  kept as `punch_footprint="profile"` (*Profile-matched (shared width)* on
+  the Configure page), gave a sharp spike on a broad maximum the wide punch
+  of a Bragg peak of its height. On a measured hexagonal volume, own widths
+  halved the share of the short-range-order maxima punched (0.65 % → 0.30 %),
+  so no maximum lost half its box, where 32 had. They left no more Bragg
+  residue, at 4.66 % of the volume punched against 4.36 %. 92 % of the
+  peaks were measured; the rest keep the shared profile. **This changes
+  the default punch mask.**
 - **NEBULA Pilot can tell a second grain from displaced Bragg peaks.**
   `grain_check` groups the off-lattice peaks the punch's search found into
   symmetry orbits and tests the strongest two ways:

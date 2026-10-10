@@ -199,11 +199,12 @@ export const TUNE_PARAMS: TuneParam[] = [
     stage: "punch",
     kind: "enum",
     options: [
-      { value: "", name: "profile" },
+      { value: "", name: "own" },
+      { value: "profile", name: "profile" },
       { value: "ellipsoid", name: "ellipsoid" },
     ],
-    defaultValue: "profile",
-    help: "Punch footprint. profile (default): each peak punched along each axis as far as the dataset's learned Bragg profile stays above the noise, so strong peaks get wide punches. ellipsoid: the fixed resolution ellipsoid scaled with intensity.",
+    defaultValue: "own",
+    help: "Punch footprint. own (default): each peak punched to its own measured width, as far as it stays above the noise, so a sharp spike on a broad maximum takes a small punch. profile: every peak shares the dataset's learned Bragg profile (a consistent width), so strong peaks, spikes included, get wide punches. ellipsoid: the fixed resolution ellipsoid scaled with intensity.",
   },
   {
     key: "punchProfileNSigma",
@@ -212,7 +213,7 @@ export const TUNE_PARAMS: TuneParam[] = [
     min: 0.1,
     max: 3,
     defaultValue: 0.5,
-    help: "profile footprint only: punch out to where the profile falls to this × the local noise. Lower reaches further down the wings of very strong peaks (fewer wing pieces left for the search), at the cost of more punched diffuse; higher punches tighter.",
+    help: "own and profile footprints: punch out to where each peak's tail falls to this × the local noise. Lower reaches further down the wings of very strong peaks (fewer wing pieces left for the search), at the cost of more punched diffuse; higher punches tighter.",
     appliesWhen: (s) => s.punchFootprint !== "ellipsoid",
   },
   {

@@ -1825,10 +1825,11 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   <Field label="Footprint">
                   <select
                     value={s.punchFootprint}
-                    title="How far each peak is punched. Profile-matched (default): along each axis as far as the dataset's learned Bragg profile stays above the noise. Ellipsoid: the fixed resolution ellipsoid below, scaled with intensity."
+                    title="How far each peak is punched. Own width (default): each peak to its own measured width, as far as that peak stays above the noise, so a sharp spike on a broad maximum takes a small punch. Profile-matched: every peak shares the dataset's learned Bragg profile (a consistent width), punched as far as it stays above the noise. Ellipsoid: the fixed resolution ellipsoid below, scaled with intensity."
                     onChange={(e) => patch({ punchFootprint: e.target.value })}
                   >
-                    <option value="">Profile-matched (default)</option>
+                    <option value="">Own width (default)</option>
+                    <option value="profile">Profile-matched (shared width)</option>
                     <option value="ellipsoid">Ellipsoid</option>
                   </select>
                 </Field>
@@ -1961,7 +1962,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       placeholder="0.5"
                       value={s.punchProfileNSigma}
                       disabled={s.punchFootprint === "ellipsoid"}
-                      title="Profile-matched footprint: each peak is punched out to where its profile falls to this × the local noise. Lower reaches further down the wings of very strong peaks; higher punches tighter."
+                      title="Own-width and profile-matched footprints: each peak is punched out to where its tail falls to this × the local noise. Lower reaches further down the wings of very strong peaks; higher punches tighter."
                       onChange={(e) => patch({ punchProfileNSigma: e.target.value })}
                     />
                   </Field>

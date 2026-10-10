@@ -70,6 +70,9 @@ class _PeakPunch:
     # ``shape_hkl`` is the final profile-matched footprint (margin included):
     # punched as is, without intensity scaling.
     profile_shape: bool = False
+    # Which final footprint ``shape_hkl`` is: "profile" (the shared Bragg
+    # profile) or "own" (the peak's own measured width); None otherwise.
+    footprint_kind: str | None = None
 
     def as_tuple(self) -> tuple[int, int, int, float]:
         return self.ih, self.ik, self.il, self.intensity
@@ -440,7 +443,15 @@ class BraggRemover:
         the punch-frame ellipsoid is the floor, ``profile_max_radius_q`` the
         ceiling.  A bright peak is punched as far as its tail is measurable, a
         weak one at the resolution; there is no intensity scaling.  Falls back
-        to ``"ellipsoid"`` when too few bright peaks are found.
+        to ``"ellipsoid"`` when too few bright peaks are found.  Every peak
+        shares the profile's shape: a sharp spike on a broad maximum gets the
+        wide punch of a Bragg peak of its height.
+        ``"own"``: each peak punched to its own width.  Along H, K and L its
+        line-cut FWHM (above a straight baseline, as the search's width test
+        measures it; at least the Bragg reference width) defines a Gaussian,
+        punched out to where it falls to ``profile_n_sigma`` × the local noise,
+        capped at ``profile_max_radius_q``.  A peak whose width cannot be
+        measured on every axis keeps the profile footprint.
     profile_n_sigma:
         Noise level (in local σ) at which the profile-matched punch stops.
     profile_max_radius_q:
@@ -649,10 +660,10 @@ class BraggRemover:
                 f"punch_frame={self.punch_frame!r}: choose 'spherical' or 'q' (radii "
                 f"in Å⁻¹).  The fractional-HKL frame was removed — HKL radii depend "
                 f"on the cell, not on the resolution.")
-        if self.punch_footprint not in {"ellipsoid", "profile"}:
+        if self.punch_footprint not in {"ellipsoid", "profile", "own"}:
             raise ValueError(
-                f"punch_footprint={self.punch_footprint!r}: choose 'ellipsoid' or "
-                f"'profile'")
+                f"punch_footprint={self.punch_footprint!r}: choose 'ellipsoid', "
+                f"'profile' or 'own'")
         if self.significance_noise not in {"sigma", "mad"}:
             raise ValueError(
                 f"significance_noise={self.significance_noise!r}: choose 'sigma' "
@@ -1366,7 +1377,69 @@ class BraggRemover:
         ub = vol.ub_matrix
         shape = np.asarray(ub.T @ a_q @ ub, dtype=np.float64)
         return dataclasses.replace(rec, shape_hkl=0.5 * (shape + shape.T),
-                                   profile_shape=True)
+                                   profile_shape=True, footprint_kind="profile")
+
+    def _with_own_width(
+        self, vol: HKLVolume, rec: _PeakPunch, profile: _BraggProfile | None,
+        reference: NDArray[np.float64],
+    ) -> _PeakPunch:
+        """*rec* punched to its own width (``punch_footprint="own"``).
+
+        Along H, K and L the peak's line-cut FWHM (at least *reference*, the
+        Bragg width) gives a Gaussian σ; the radius is where that Gaussian of
+        the peak's excess falls to ``profile_n_sigma`` × the local noise, at
+        least half the FWHM, capped at ``profile_max_radius_q``, plus
+        ``margin`` (both in Å⁻¹, taken along each axis).  A peak whose width
+        cannot be measured on every axis keeps the profile footprint.
+        """
+        idx = (rec.ih, rec.ik, rec.il)
+        fwhm = self._line_fwhm(vol, idx, interpolate=True)
+        if not np.all(np.isfinite(fwhm)):
+            return self._with_profile_shape(vol, rec, profile) if profile is not None else rec
+        width = np.maximum(fwhm, reference)
+        bg = rec.local_background
+        if not np.isfinite(bg):
+            stats = self._window_stats(vol, idx)
+            bg = stats[0] if stats is not None else float("nan")
+        amp = float(rec.intensity) - float(bg)
+        noise = self._window_noise(vol, idx)
+        level = (float(self.profile_n_sigma) * noise
+                 if np.isfinite(noise) and noise > 0 else np.nan)
+        sigma = width / (2.0 * np.sqrt(2.0 * np.log(2.0)))
+        reach = (sigma * np.sqrt(2.0 * np.log(amp / level))
+                 if np.isfinite(level) and amp > level else 0.5 * width)
+        q_per_rlu = np.linalg.norm(np.asarray(vol.ub_matrix, dtype=np.float64), axis=0)
+        cap = float(self.profile_max_radius_q) / q_per_rlu
+        radii = np.minimum(np.maximum(reach, 0.5 * width), np.maximum(cap, 0.5 * width))
+        radii = radii + max(0.0, float(self.margin)) / q_per_rlu
+        return dataclasses.replace(rec, shape_hkl=np.diag(1.0 / radii**2),
+                                   profile_shape=True, footprint_kind="own")
+
+    def _bragg_width(self, vol: HKLVolume, integer: list[_PeakPunch]) -> NDArray[np.float64] | None:
+        """Median line-cut FWHM (r.l.u., per H/K/L axis) of the strongest
+        integer peaks, at least one voxel; None when too few were found."""
+        steps = np.array([
+            abs(float(a[1] - a[0])) if len(a) > 1 else np.inf
+            for a in (vol.h_axis, vol.k_axis, vol.l_axis)])
+        strongest = sorted(integer, key=lambda r: -r.intensity)[:_WIDTH_REFERENCE_PEAKS]
+        if len(strongest) < _WIDTH_REFERENCE_MIN:
+            return None
+        widths = np.array([self._line_fwhm(vol, (r.ih, r.ik, r.il), interpolate=True)
+                           for r in strongest])
+        return np.maximum(np.nan_to_num(np.nanmedian(widths, axis=0), nan=0.0), 0.5 * steps)
+
+    def _footprints(
+        self, vol: HKLVolume, peaks: list[_PeakPunch], profile: _BraggProfile | None,
+        reference: NDArray[np.float64] | None = None,
+    ) -> list[_PeakPunch]:
+        """The final footprint of each peak, by ``punch_footprint``."""
+        if self.punch_footprint == "own":
+            if reference is None:
+                reference = np.array([
+                    abs(float(a[1] - a[0])) if len(a) > 1 else 0.0
+                    for a in (vol.h_axis, vol.k_axis, vol.l_axis)])
+            return [self._with_own_width(vol, p, profile, reference) for p in peaks]
+        return self._profile_footprints(vol, peaks, profile)
 
     def _profile_footprints(
         self, vol: HKLVolume, peaks: list[_PeakPunch], profile: _BraggProfile | None,
@@ -1422,27 +1495,30 @@ class BraggRemover:
         peaks were found (the peaks then keep the ellipsoid footprint).
         """
         rejected: list[float] = []
-        learn = self.punch_footprint == "profile"
+        # The own-width footprint falls back to the profile for a peak it
+        # cannot measure, so it learns the profile too.
+        learn = self.punch_footprint in {"profile", "own"}
         profile: _BraggProfile | None = None
         if self.mode == "integer":
             peaks = self._detect_integer(vol, rejected)
             if learn:
                 profile = self._learn_profile(vol, peaks)
-                peaks = self._profile_footprints(vol, peaks, profile)
+                peaks = self._footprints(vol, peaks, profile, self._bragg_width(vol, peaks))
         elif self.mode in {"auto", "search"}:
             peaks = self._detect_search(vol, rejected)
             if learn:
                 profile = self._learn_profile(vol, peaks)
-                peaks = self._profile_footprints(vol, peaks, profile)
+                peaks = self._footprints(vol, peaks, profile)
         elif self.mode == "both":
             # Sequential: punch the integer Bragg first, then search on the
             # residual.  With the strong integer peaks already masked out, the
             # per-|Q|-shell statistics are no longer inflated by them, so the
             # off-integer satellites stand out as clean outliers.
             integer = self._detect_integer(vol, rejected)
+            reference = self._bragg_width(vol, integer) if learn else None
             if learn:
                 profile = self._learn_profile(vol, integer)
-                integer = self._profile_footprints(vol, integer, profile)
+                integer = self._footprints(vol, integer, profile, reference)
             keep = self._punch_centers(
                 vol, np.ones(vol.shape, dtype=bool), integer,
                 reference=self._scaling_reference(integer, rejected))
@@ -1450,7 +1526,9 @@ class BraggRemover:
             residual = dataclasses.replace(vol, mask=vol.mask & keep)
             search = self._sharp_only(
                 vol, residual, self._detect_search(residual, rejected), integer)
-            peaks = integer + self._profile_footprints(vol, search, profile)
+            if learn:
+                search = self._footprints(vol, search, profile, reference)
+            peaks = integer + search
         else:
             raise ValueError(f"Unknown mode: {self.mode!r}")
         return peaks, self._scaling_reference(peaks, rejected), profile
@@ -1498,7 +1576,8 @@ class BraggRemover:
         return sharp
 
     @staticmethod
-    def _line_fwhm(vol: HKLVolume, idx: tuple[int, int, int]) -> NDArray[np.float64]:
+    def _line_fwhm(vol: HKLVolume, idx: tuple[int, int, int],
+                   interpolate: bool = False) -> NDArray[np.float64]:
         """Per-axis full width at half maximum (r.l.u.) of the peak at voxel *idx*.
 
         Line cuts through the voxel along H, K and L, the half maximum taken
@@ -1506,7 +1585,10 @@ class BraggRemover:
         either side, so a sharp peak on the flank of a broad maximum measures
         sharp.  NaN for an axis whose cut leaves the grid or meets a masked
         voxel at its ends, or where the voxel stands no higher than the
-        baseline.
+        baseline.  The width counts the voxels above half maximum (whole
+        voxels, as the width test compares them); ``interpolate`` places the
+        half-maximum crossings between voxels instead, so a peak narrower
+        than the grid measures its own width rather than one voxel.
         """
         out = np.full(3, np.nan)
         n = _FWHM_REACH
@@ -1531,7 +1613,15 @@ class BraggRemover:
             hi = n
             while hi < 2 * n and ok[hi + 1] and line[hi + 1] > half:
                 hi += 1
-            out[axis] = (hi - lo + 1) * abs(float(ax[1] - ax[0]))
+            step = abs(float(ax[1] - ax[0]))
+            if not interpolate:
+                out[axis] = (hi - lo + 1) * step
+                continue
+            left = (lo - 1 + (half - line[lo - 1]) / (line[lo] - line[lo - 1])
+                    if lo > 0 and ok[lo - 1] and line[lo] > line[lo - 1] else lo - 0.5)
+            right = (hi + (line[hi] - half) / (line[hi] - line[hi + 1])
+                     if hi < 2 * n and ok[hi + 1] and line[hi] > line[hi + 1] else hi + 0.5)
+            out[axis] = (right - left) * step
         return out
 
     def _scaling_reference(

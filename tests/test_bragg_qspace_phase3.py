@@ -348,10 +348,10 @@ def test_margin_grows_each_principal_radius_in_q():
         assert float(np.sqrt(axis @ m_q @ axis)) == pytest.approx(r + 0.02, rel=1e-9)
 
 
-def test_pipeline_default_punches_fitted_tilted_ellipsoids():
+def test_pipeline_ellipsoid_footprint_punches_fitted_tilted_ellipsoids():
     assert PunchParams().integer_optimize_shape is True
     _, cov_q = _tilted_cov_q((1.0, 1.0, 1.0))
     vol = _q_peak_vol([((1.0, 0.0, 0.0), cov_q, 100.0)])
-    out = punch_bragg(vol, PunchParams(mode="integer"))
+    out = punch_bragg(vol, PunchParams(mode="integer", punch_footprint="ellipsoid"))
     kinds = {p["fit_kind"] for p in out._bragg_profile["peaks"]}
     assert kinds == {"tilted"}

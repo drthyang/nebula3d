@@ -210,7 +210,8 @@ def bragg_profile_from_records(
     for idx, peak in enumerate(peaks):
         if peak.shape_hkl is not None:
             shape = np.asarray(peak.shape_hkl, dtype=float)
-            fit_kind = "profile" if getattr(peak, "profile_shape", False) else "tilted"
+            fit_kind = (getattr(peak, "footprint_kind", None)
+                        or ("profile" if getattr(peak, "profile_shape", False) else "tilted"))
         elif is_spherical:
             # Fixed spherical punch: report the *real* per-peak ellipsoid so the
             # principal widths/directions follow Q̂ (ρ) and the two transverse axes.
@@ -444,14 +445,18 @@ class PunchParams:
     # Detection window in Å⁻¹ (None = the BraggRemover default, 0.2 r.l.u. on
     # every axis).  Off: on measured data it adds many integer nodes, unvalidated.
     detect_window_q: float | None = None
-    # "profile" (default): each peak punched as far as its tail, predicted from
-    # the dataset's own stacked Bragg profile along (ρ̂, θ̂, φ̂), stays above
-    # profile_n_sigma × the local noise (see BraggRemover).  The tail can be a
-    # mosaic spread along θ̂, which the ellipsoid left (0.5σ cuts the brightest
-    # peaks' one-sided leaks), or also a halo along every axis, which the
-    # profile punches too.  "ellipsoid": the fitted / base ellipsoid scaled by
-    # the cube root of the intensity.
-    punch_footprint: str = "profile"
+    # "own" (default): each peak punched to its own width, a Gaussian of its
+    # measured line-cut FWHM out to profile_n_sigma × the local noise (the
+    # shared profile where a width cannot be measured).  On a measured
+    # hexagonal volume it halved the share of the short-range-order maxima the
+    # punch took (0.65 % → 0.30 %; no maximum lost half its box, where 32 had)
+    # and left no more Bragg residue: the shared profile gives a sharp spike
+    # on a broad maximum the wide punch of a Bragg peak of its height.
+    # "profile": every peak shares the dataset's stacked Bragg profile along
+    # (ρ̂, θ̂, φ̂), punched as far as its tail stays above profile_n_sigma × the
+    # local noise (see BraggRemover).  "ellipsoid": the fitted / base ellipsoid
+    # scaled by the cube root of the intensity.
+    punch_footprint: str = "own"
     profile_n_sigma: float = 0.5
     profile_max_radius_q: float = 0.5
     search_n_mad: float = 4.0
@@ -1271,6 +1276,12 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
             if footprint is not None else
             "profile-matched punch: too few bright peaks to learn the Bragg "
             "profile; every peak gets the ellipsoid punch"))
+    elif p.punch_footprint == "own":
+        own = sum(1 for r in peak_records if getattr(r, "footprint_kind", None) == "own")
+        _emit(progress, "punch", "progress", None,
+              f"own-width punch: {own:,} of {len(peak_records):,} peaks punched to their "
+              f"own measured width, the rest to the "
+              + ("shared Bragg profile" if footprint is not None else "ellipsoid"))
     keep = remover._punch_centers(  # noqa: SLF001
         vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference)
     keep = remover._punch_incident_beam(vol, keep)  # noqa: SLF001
