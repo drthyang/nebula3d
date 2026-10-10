@@ -63,7 +63,9 @@
     tuning trials with why each was kept or refused;
   - the caveats: every check that misses its goal.
   The model's answer appears as a labelled summary, with the model and
-  provider named.
+  provider named. Each check states, in a sentence, the rule its verdict
+  follows. When the punch has run, the report also tests for a second
+  grain: it flags a grain, or Bragg peaks displaced by a UB that is off.
 - **The ΔPDF's |Q| band can come from the raw data.** The data's own Qmin and
   Qmax are where the counts begin and end: past either edge most voxels
   hold none. `GET /api/volumes/{id}/coverage` measures, per |Q| shell, the

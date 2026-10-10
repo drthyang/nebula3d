@@ -12,7 +12,7 @@ export interface ReportCheck {
   title: string;
   verdict: Verdict;
   headline: string; // one line of numbers
-  goal?: string; // the stated criterion the numbers are judged by
+  criterion?: string; // what the verdict is judged by, in words
   details: [string, string][];
 }
 
@@ -84,6 +84,7 @@ export interface Measured {
   texture?: Record<string, unknown> | null;
   coverage?: Record<string, unknown> | null;
   symmetry?: Record<string, unknown> | null;
+  grains?: Record<string, unknown> | null;
 }
 
 export interface ReportInput {
@@ -98,7 +99,6 @@ export interface ReportInput {
   tuning: ReportTuningStage[] | null;
   measured: Measured;
   figures: ReportFigure[];
-  goals: Record<string, string>;
 }
 
 // ---------------------------------------------------------------- helpers
@@ -133,7 +133,19 @@ const rangeText = (v: unknown): string => (Array.isArray(v) && v.length === 2 ? 
 
 // ---------------------------------------------------------------- checks
 
-function ringsCheck(m: Obj | null | undefined, goal?: string): ReportCheck | null {
+// What each check's verdict is judged by: the rules in the builders below, in words.
+export const CRITERIA: Record<string, string> = {
+  rings:
+    "No powder ring left above, or dented below, three times its plane's noise. Only rings seen on two or more planes count: a bump on one plane is the crystal's own scattering.",
+  punch: "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice. Broad maxima are diffuse scattering, and stay.",
+  grains:
+    "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.",
+  backfill: "The fills meet their surroundings: a median seam of 1σ or less, and no cut whose fill is biased one way.",
+  flatten: "No floor left above 1σ, and no pedestal across the coverage: a floor trend and a span both 0.8 or more.",
+  pdf: "A back-FFT r of 0.999 or more, at most 1e-3 of the window's weight on unmeasured space, and the declared symmetry kept.",
+};
+
+function ringsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
   if (!m) return null;
   const left = num(m.max_ring_left);
   const dent = num(m.max_ring_dent);
@@ -144,7 +156,7 @@ function ringsCheck(m: Obj | null | undefined, goal?: string): ReportCheck | nul
     title: "Ring removal",
     verdict: left == null || dent == null ? "info" : clean ? "pass" : "attention",
     headline: `ring ratio ${fmt(m.mean_ring_energy_ratio)} · over-sub ≤ ${fmt(m.max_over_subtraction_fraction)} · dent ≤ ${fmt(dent)}${where(m.worst_ring_dent)} · left ≤ ${fmt(left)}${where(m.worst_ring_left)}`,
-    goal,
+    criterion,
     details: [
       ["Mean ring-energy ratio", fmt(m.mean_ring_energy_ratio)],
       ["Largest over-subtraction fraction", fmt(m.max_over_subtraction_fraction)],
@@ -155,7 +167,7 @@ function ringsCheck(m: Obj | null | undefined, goal?: string): ReportCheck | nul
   };
 }
 
-function punchCheck(m: Obj | null | undefined, goal?: string): ReportCheck | null {
+function punchCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
   if (!m) return null;
   const atNodes = num(m.leftover_at_nodes);
   const sharp = num(m.leftover_off_lattice_sharp);
@@ -163,7 +175,7 @@ function punchCheck(m: Obj | null | undefined, goal?: string): ReportCheck | nul
     title: "Bragg punch",
     verdict: atNodes == null ? "info" : atNodes === 0 && (sharp ?? 0) === 0 ? "pass" : "attention",
     headline: `${fmt(atNodes)} missed at nodes · ${fmt(sharp)} sharp off-lattice · ${fmt(m.leftover_off_lattice_broad)} broad maxima kept · punched ${fmt(m.mean_punched_fraction)}`,
-    goal,
+    criterion,
     details: [
       ["Missed lattice peaks (at nodes)", fmt(atNodes)],
       ["Sharp off-lattice leftovers", fmt(sharp)],
@@ -175,7 +187,40 @@ function punchCheck(m: Obj | null | undefined, goal?: string): ReportCheck | nul
   };
 }
 
-function backfillCheck(m: Obj | null | undefined, texture: Obj | null | undefined, goal?: string): ReportCheck | null {
+// The second-grain test on the punch's off-lattice peaks (grain_check's result).
+function grainsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
+  if (!m || typeof m.verdict !== "string") return null;
+  const verdict = m.verdict as string;
+  const judged = num(m.judged) ?? 0;
+  const near = num(m.near_bragg_nodes) ?? 0;
+  const copy = obj(m.rotated_copy);
+  const angle = obj(m.near_offset_angle_deg);
+  const far = Array.isArray(m.far) ? (m.far as Obj[]) : [];
+  const grain = verdict.startsWith("a second grain");
+  const ubOff = verdict.includes("with the UB off") || (judged > 0 && near >= judged / 2);
+  const state = !judged ? "no off-lattice peaks" : grain ? "a second grain" : ubOff ? "one grain, UB off" : "one grain";
+  const details: [string, string][] = [
+    ["Off-lattice peaks the punch's search found", fmt(m.off_lattice_peaks)],
+    ["Their symmetry orbits", fmt(m.off_lattice_orbits)],
+    ["Strongest orbits tested", fmt(judged)],
+    ["Beside a Bragg node (within ¼ of the node spacing)", angle ? `${fmt(near)}, offset by a median ${fmt(angle.median)}° of rotation (a lower bound)` : fmt(near)],
+    ["Indexed by one rotation of the Bragg lattice", copy ? `${fmt(copy.indexed)}${copy.misorientation_deg != null ? `, turned ${fmt(copy.misorientation_deg)}°` : ""}` : "–"],
+    ["The same search at random directions", fmt(m.random_control)],
+  ];
+  if (far.length) details.push(["Farther from any node (strongest, |Q| in Å⁻¹)", far.slice(0, 5).map((f) => fmt(f.q)).join(", ")]);
+  details.push(["Verdict", verdict]);
+  return {
+    title: "Second grain",
+    verdict: grain || ubOff ? "attention" : "pass",
+    headline: judged
+      ? `${state} · ${fmt(near)} of ${fmt(judged)} orbits beside Bragg nodes${angle ? ` (≥ ${fmt(angle.median)}°)` : ""} · one rotation indexes ${fmt(copy?.indexed ?? 0)}, random ${fmt(m.random_control)}`
+      : state,
+    criterion,
+    details,
+  };
+}
+
+function backfillCheck(m: Obj | null | undefined, texture: Obj | null | undefined, criterion?: string): ReportCheck | null {
   if (!m) return null;
   const seam = num(m.mean_median_seam_sigma);
   const cuts = Array.isArray(texture?.per_cut) ? (texture!.per_cut as Obj[]) : [];
@@ -189,12 +234,12 @@ function backfillCheck(m: Obj | null | undefined, texture: Obj | null | undefine
     title: "Backfill",
     verdict: seam == null ? "info" : seam <= 1 && biased === 0 ? "pass" : "attention",
     headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${texture ? ` · fill bias on ${biased} of ${cuts.length} cuts` : ""}`,
-    goal,
+    criterion,
     details,
   };
 }
 
-function flattenCheck(m: Obj | null | undefined, goal?: string): ReportCheck | null {
+function flattenCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
   if (!m) return null;
   const floor = num(m.max_after_floor_sigma);
   const trend = num(m.max_floor_trend);
@@ -205,7 +250,7 @@ function flattenCheck(m: Obj | null | undefined, goal?: string): ReportCheck | n
     title: "Flatten",
     verdict: floor == null ? "info" : floor <= 1 && !pedestal ? "pass" : "attention",
     headline: `floor ≤ ${fmt(floor)}σ · trend ≤ ${fmt(trend)} · span ≤ ${fmt(span)}`,
-    goal,
+    criterion,
     details: [
       ["Largest leftover floor", `${fmt(floor)} σ`],
       ["Largest floor trend with |Q|", fmt(trend)],
@@ -214,7 +259,7 @@ function flattenCheck(m: Obj | null | undefined, goal?: string): ReportCheck | n
   };
 }
 
-function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: Obj | null | undefined, goal?: string): ReportCheck | null {
+function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: Obj | null | undefined, criterion?: string): ReportCheck | null {
   if (!m && !cov && !sym) return null;
   const r = num(m?.back_fft_pearson_r);
   const open = num(m?.window_weight_on_unmeasured) ?? num(cov?.window_weight_on_unmeasured);
@@ -237,7 +282,7 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
     title: "3D-ΔPDF",
     verdict: m || cov || sym ? (ok ? "pass" : "attention") : "info",
     headline: `r ${fmt(r)} · SNR ${fmt(m?.mean_feature_snr)} · unmeasured ${fmt(open)}${symVerdict ? ` · symmetry ${symVerdict.startsWith("kept") ? "kept" : "broken"}` : ""}`,
-    goal,
+    criterion,
     details,
   };
 }
@@ -261,16 +306,17 @@ const kindOf = (steps: ReportStep[]): string => {
 };
 
 export function buildReport(input: ReportInput): Report {
-  const { measured: m, goals } = input;
+  const m = input.measured;
   const d = m.describe ?? null;
   const recip = obj(d?.reciprocal);
   const dpdf = obj(d?.delta_pdf);
   const checks = [
-    ringsCheck(m.rings, goals.rings),
-    punchCheck(m.punch, goals.punch),
-    backfillCheck(m.backfill, m.texture, goals.backfill),
-    flattenCheck(m.flatten, goals.flatten),
-    pdfCheck(m.pdf, m.coverage, m.symmetry, goals.pdf),
+    ringsCheck(m.rings, CRITERIA.rings),
+    punchCheck(m.punch, CRITERIA.punch),
+    grainsCheck(m.grains, CRITERIA.grains),
+    backfillCheck(m.backfill, m.texture, CRITERIA.backfill),
+    flattenCheck(m.flatten, CRITERIA.flatten),
+    pdfCheck(m.pdf, m.coverage, m.symmetry, CRITERIA.pdf),
   ].filter((c): c is ReportCheck => c != null);
 
   const caveats: string[] = [];
