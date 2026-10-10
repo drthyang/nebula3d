@@ -197,6 +197,24 @@ def test_volume_meta(env):
     assert "hk" in m["planes"] and "0kl" in m["planes"]
 
 
+def test_declared_symmetry(tmp_path):
+    """A NeXus Viewer file's /entry symmetry and symmetry_ops reach the volume meta."""
+    import h5py
+
+    path = tmp_path / "viewer.nxs"
+    with h5py.File(path, "w") as f:
+        entry = f.create_group("entry")
+        entry.attrs["symmetry"] = "-1"
+        entry.attrs["symmetry_ops"] = "h,k,l; -h,-k,-l"
+    label, ops = vol_mod.declared_symmetry(path)
+    assert label == "-1"
+    assert ops == [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]]
+    plain = tmp_path / "plain.h5"
+    with h5py.File(plain, "w") as f:
+        f.create_group("entry")
+    assert vol_mod.declared_symmetry(plain) == (None, None)
+
+
 def test_volume_coverage(env):
     client, vol = env
     c = client.get(f"/api/volumes/{SLUG}.ringremoved/coverage").json()

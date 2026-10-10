@@ -556,6 +556,35 @@ describe("dpdf_contrast", () => {
   });
 });
 
+describe("grain_check", () => {
+  it("reads the punch's off-lattice peaks with the raw volume's UB and symmetry", async () => {
+    const ub = [[2 * Math.PI / 4, 0, 0], [0, 2 * Math.PI / 4, 0], [0, 0, 2 * Math.PI / 6]];
+    api.fetchMeta.mockResolvedValue({ ...META, ub_matrix: ub, symmetry: "mmm", symmetry_ops: [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]] });
+    // Off-lattice peaks displaced 0.03 r.l.u. from Bragg nodes, plus a node peak the search did not record.
+    const peaks = [
+      { index: 0, source_node_hkl: [1, 0, 0], center_hkl: [1, 0, 0], q_abs: 1.6, intensity: 500, local_background: 0 },
+      ...[[2, 1, 0], [1, 2, 1], [0, 1, 2], [2, 2, 1], [3, 0, 1], [1, 1, 3], [2, 0, 2], [0, 3, 1]].map(([h, k, l], i) => ({
+        index: i + 1, source_node_hkl: null, center_hkl: [h + 0.03, k, l], q_abs: 2, intensity: 100 - i, local_background: 1,
+      })),
+    ];
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: peaks.length, peaks });
+    usePipelineStore.setState({ punchSupercellH: "", punchSupercellK: "", punchSupercellL: "" }); // the parent cell
+    const r = await run("grain_check", { top: 8 });
+    expect(r.ok).toBe(true);
+    const out = JSON.parse(r.text);
+    expect(out.off_lattice_peaks).toBe(8);
+    expect(out.declared_symmetry).toBe("mmm");
+    expect(out.near_bragg_nodes).toBe(8);
+    expect(out.verdict).not.toMatch(/^a second grain/);
+    expect((await run("grain_check", { top: 3 })).text).toMatch(/top must be within \[8, 120\]/);
+  });
+
+  it("says so when there is no punch record yet", async () => {
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: false, peaks: [] });
+    expect((await run("grain_check", {})).text).toMatch(/no punch record yet/);
+  });
+});
+
 describe("texture_check", () => {
   // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs.
   const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;

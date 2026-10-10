@@ -97,9 +97,33 @@ def lattice_parameters(vol: HKLVolume) -> dict[str, float | None]:
     return {k: float(v) for k, v in zip(_CELL_KEYS, cell)}
 
 
+def declared_symmetry(path: Path) -> tuple[str | None, list[list[list[int]]] | None]:
+    """The point group a file says its data were symmetrised with (``/entry``
+    ``symmetry`` and ``symmetry_ops`` attributes, the NeXus Viewer's layout),
+    or ``(None, None)``."""
+    from nebula3d.symmetry import read_symmetry_ops
+
+    label = None
+    try:
+        import h5py
+
+        with h5py.File(path, "r") as f:
+            entry = f.get("entry")
+            raw = entry.attrs.get("symmetry") if isinstance(entry, h5py.Group) else None
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        label = str(raw) if raw else None
+        ops = read_symmetry_ops(path)
+    except (OSError, ValueError):
+        return None, None
+    return label, ([np.asarray(op, dtype=int).tolist() for op in ops] if ops else None)
+
+
 def volume_meta(path: Path) -> dict:
-    """Compact metadata for a volume: shape, axis ranges, lattice."""
+    """Compact metadata for a volume: shape, axis ranges, lattice, and the
+    symmetry its file declares."""
     vol = load_volume(path)
+    symmetry, symmetry_ops = declared_symmetry(path)
     return {
         "shape": [int(n) for n in vol.data.shape],
         "h_range": [float(vol.h_axis[0]), float(vol.h_axis[-1])],
@@ -108,6 +132,8 @@ def volume_meta(path: Path) -> dict:
         "lattice": lattice_parameters(vol),
         "ub_matrix": np.asarray(vol.ub_matrix, dtype=float).tolist(),
         "planes": list(PLANES),
+        "symmetry": symmetry,
+        "symmetry_ops": symmetry_ops,
     }
 
 
