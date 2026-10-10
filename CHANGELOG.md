@@ -2,13 +2,33 @@
 
 ## Unreleased
 
+- **The 3D-ΔPDF page's Auto shows the features, not the FFT ripple.** Auto
+  put the colour limit at the 97th percentile of |ΔPDF|, but a ΔPDF section
+  is mostly ripple around a few compact features, so that percentile
+  measured the ripple. On a measured hexagonal volume it set the limit at
+  8–17 × the sections' robust σ (0.5–3 % of the strongest feature): every
+  feature saturated and the ripple filled the colour range. Auto now takes
+  the 99.9th percentile over the three centre sections, with the origin's
+  self-correlation disk left out (275 σ there). The features carry the
+  colour and the ripple stays near the neutral colour.
+- **NEBULA Pilot can optimise the ΔPDF view's contrast.** `dpdf_contrast`
+  sets the 3D-ΔPDF viewer's limit by the same rule in one call. It reports
+  the robust σ, the strongest feature, and what other percentiles would
+  give and in which direction. It warns when a range the user asks for is
+  brighter than the optimum. In a first version every call applied its
+  limit, so a model trying a 5σ limit left the viewer there; now only the
+  chosen limit is applied.
 - **NEBULA Pilot warns before a small context window cuts replies off.**
   LM Studio loads a model with a fixed context length, often 4k or 8k. With
   Tools on, NEBULA Pilot's first request alone is about 8k tokens, so such a
   model broke off its first reply. NEBULA Pilot now reads the length the
   model was loaded with from LM Studio. Below 32k it shows above the chat
-  how far to raise it, up to what the model supports. It reads the length
-  again on connecting, on a model change, and when the page regains focus.
+  how far to raise it, up to what the model supports. LM Studio unloads an
+  idle model and loads it again on the next request with the model's default
+  settings (here 8k again, hours after a manual 70k load), so the warning also
+  covers a model that is not loaded, names the model's default Context Length
+  as what to change, and is read again whenever a reply starts or ends, on
+  connecting, on a model change and when the page regains focus.
   The connection help gives the Context Length for LM Studio and
   `OLLAMA_CONTEXT_LENGTH` for Ollama.
 - **Tuning no longer trades a clean ΔPDF for a higher SNR.** The ΔPDF

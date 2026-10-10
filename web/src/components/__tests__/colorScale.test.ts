@@ -85,6 +85,11 @@ describe("autoLevels", () => {
     expect(a.lo).toBeCloseTo(a.hi / 1000);
   });
 
+  it("puts vmax at another percentile when asked (the 3D-ΔPDF page's 99.9th)", () => {
+    expect(autoLevels([ramp], { percentile: 0.999 }).hi).toBe(1000);
+    expect(autoLevels([ramp], { percentile: 0.5 }).hi).toBe(501);
+  });
+
   it("pools several slices", () => {
     const a = autoLevels([Float32Array.from([1, 2]), Float32Array.from([100, 200])]);
     expect(a.hi).toBe(200);
