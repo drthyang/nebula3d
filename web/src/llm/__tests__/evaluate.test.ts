@@ -78,6 +78,13 @@ describe("evaluateStage", () => {
     const bumps = e.single_plane_bumps as { plane: string; at: number }[];
     expect(bumps.map((b) => b.plane)).toEqual(["h0l"]);
     expect(bumps[0].at).toBeGreaterThan(dent.at);
+    // The plane's own detail agrees: its bump is marked, and is not its worst ring.
+    type Plane = { worst_ring_left: unknown; worst_ring_dent: { at: number } | null; ring_residuals: { at: number; single_plane_bump?: boolean }[] };
+    const h0l = (e.per_plane as Record<string, Plane>).h0l;
+    expect(h0l.worst_ring_left).toBeNull();
+    expect(h0l.worst_ring_dent?.at).toBe(dent.at);
+    expect(h0l.ring_residuals.find((x) => x.at > dent.at)?.single_plane_bump).toBe(true);
+    expect(h0l.ring_residuals.find((x) => x.at === dent.at)?.single_plane_bump).toBeUndefined();
   });
 
   it("names the plane and |Q| of the worst ring residual in the headline", () => {

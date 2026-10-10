@@ -100,16 +100,24 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     const isRing = (x: { plane: string; at: number }) =>
       planesMeasured < 2 || new Set(all.filter((y) => Math.abs(y.at - x.at) <= RING_MATCH_Q).map((y) => y.plane)).size >= 2;
     const rings = all.filter((x) => x.significant && isRing(x));
-    const worst = (sign: 1 | -1) =>
-      rings.reduce<{ plane: string; at: number; residual_fraction: number } | null>(
+    const worstOf = <T extends { at: number; residual_fraction: number }>(xs: T[], sign: 1 | -1) =>
+      xs.reduce<T | null>(
         (best, x) =>
-          sign * x.residual_fraction > 0 && (!best || sign * x.residual_fraction > sign * best.residual_fraction)
-            ? { plane: x.plane, at: x.at, residual_fraction: x.residual_fraction }
-            : best,
+          sign * x.residual_fraction > 0 && (!best || sign * x.residual_fraction > sign * best.residual_fraction) ? x : best,
         null,
       );
+    const worst = (sign: 1 | -1) => {
+      const x = worstOf(rings, sign);
+      return x && { plane: x.plane, at: x.at, residual_fraction: x.residual_fraction };
+    };
     const dent = worst(-1);
     const left = worst(1);
+    // Each plane's residuals with its one-plane bumps marked, and its extremes
+    // picked among the rings alone, so the plane agrees with the totals.
+    const planeResiduals = (i: number) =>
+      r[i]?.ring_residuals?.map((x) => (isRing({ plane: cuts[i].plane, at: x.at }) ? x : { ...x, single_plane_bump: true })) ?? null;
+    const planeWorst = (xs: ReturnType<typeof planeResiduals>, sign: 1 | -1) =>
+      worstOf((xs ?? []).filter((x) => x.significant && !("single_plane_bump" in x)), sign);
     return {
       mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),
       max_over_subtraction_fraction: max(r.map((x) => x?.over_subtraction_fraction)),
@@ -120,14 +128,17 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       worst_ring_left: left,
       // Significant bumps on one plane only: crystal scattering, not rings.
       single_plane_bumps: all.filter((x) => x.significant && !isRing(x)).map(({ plane, at, residual_fraction }) => ({ plane, at, residual_fraction })),
-      per_plane: per((i) => r[i] && {
-        ring_energy_ratio: r[i]!.ring_energy_ratio,
-        after_ring_energy: r[i]!.after_ring_energy,
-        over_subtraction_fraction: r[i]!.over_subtraction_fraction,
-        after_negative_fraction: r[i]!.after_negative_fraction,
-        worst_ring_dent: r[i]!.worst_ring_dent,
-        worst_ring_left: r[i]!.worst_ring_left,
-        ring_residuals: r[i]!.ring_residuals,
+      per_plane: per((i) => {
+        const residuals = planeResiduals(i);
+        return r[i] && {
+          ring_energy_ratio: r[i]!.ring_energy_ratio,
+          after_ring_energy: r[i]!.after_ring_energy,
+          over_subtraction_fraction: r[i]!.over_subtraction_fraction,
+          after_negative_fraction: r[i]!.after_negative_fraction,
+          worst_ring_dent: planeWorst(residuals, -1),
+          worst_ring_left: planeWorst(residuals, 1),
+          ring_residuals: residuals,
+        };
       }),
     };
   }
