@@ -219,7 +219,7 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 
 | View | Replaces | What |
 | --- | --- | --- |
-| **Configure / Run pipeline** | `run_pipeline.py` | Pick a dataset and tune the key parameters per stage — ring removal (azimuthal **patches**, texture **Fourier order**), punch (HKL ↔ Q-space frame), backfill, flatten, ΔPDF, consistency — then run all stages with a live stepper and log. Existing outputs are skipped unless *force* is on. Default landing view. |
+| **Configure / Run pipeline** | `run_pipeline.py` | Pick a dataset and tune the key parameters per stage — ring removal (azimuthal **patches**, texture **Fourier order**), punch (HKL ↔ Q-space frame), backfill, flatten, ΔPDF, consistency — then run all stages with a live stepper and log. Existing outputs are skipped unless *force* is on. The form is remembered per dataset in the browser, with the selected dataset: another temperature of the same sample starts from the form as it stands, another sample from the defaults (`state/configMemory.ts`). Default landing view. |
 | **Reciprocal cleanup** | `explore_slice.py` | One view per HKLVolume stage (raw / ring-removed / punched / backfilled / flattened) on one H/K/L plane and cut, in the [viewer workspace](#viewer-workspace). All views share **one colour range**, set from a reference stage (the output stage by default, or *Each view* to scale each stage on its own), and one linked zoom and crosshair; hovering reads every stage's value at the same (K, L). The cut readout is an **editable box** — type `0.3333` and it snaps to the nearest plane. |
 | **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range, a gray dashed unit-cell overlay and an optional [structure overlay](#structure-overlay) of interatomic vectors. Views open at ±40 Å. In *Navigate* mode a click on one view moves the other two cuts through the point. |
 | **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related ΔPDF files × the three planes as a square grid, sharing cut, window, and contrast; a per-plane colour scale pooled across files. Component retained; unrouted from the sidebar for now. |
@@ -325,14 +325,31 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
     (`qRadius` in `context/pipelineContext.ts`), so rings stay round on
     hexagonal and monoclinic cells. Its floor is not 0: on the synthetic demo
     volume a perfect removal gives 0.42–0.55, which the ring stage reaches.
-  - `punch.ts` — scans the *punched* slice for sharp maxima left unpunched
-    (bright finite spikes away from the NaN holes) and summarises the fitted
-    `BraggProfile` (resolution-limited fraction, measured widths, anisotropy).
+    It also judges the removal at each ring of the raw cut: the ring-removed
+    profile across the ring against a line through the diffuse beside it, as
+    a share of that diffuse (negative: a dent, the subtraction over-shot;
+    positive: a ring left over), significant only beyond 3 × the flanks' own
+    scatter. `assess_stage` counts a ring only where two planes see it at one
+    |Q| (a bump on one plane is the crystal's own scattering) and names the
+    plane and |Q| of the worst.
+  - `punch.ts` — scans the *punched* slice for peaks the punch missed: each
+    must stand 8 local σ above its own neighbourhood and span more than one
+    voxel. Spikes in noisy or sparse-count regions (the coverage edge: a
+    neighbourhood a quarter exact zeros, or below a tenth of the slice's
+    median level) are counted apart. With the cut known, each peak is classed
+    at a lattice node (honouring the punch cell) or off-lattice, on the
+    search's protected planes or not, and sharp or broad by its FWHM: a broad
+    one (≥ 5 voxels along a slice axis) is a diffuse maximum kept, not a punch
+    candidate. It also summarises the fitted `BraggProfile`
+    (resolution-limited fraction, measured widths, anisotropy).
   - `backfill.ts` — hole-rim seam magnitude (σ units), bright residual plugs, and
     a checkerboard-fraction that flags periodic interpolation artefacts.
   - `flatten.ts` — the per-|Q|-shell floors (25th percentile) before and after
     the flatten, in thirds of |Q|, the largest leftover floor in σ, and the
-    pedestal removed.
+    pedestal removed. Over every well-measured shell out to the coverage
+    edge, `floor_trend` (the floors' rank correlation with |Q|) and
+    `floor_span_fraction` (their range against the diffuse level) catch a
+    pedestal the σ test hides beside strong diffuse structure.
   - `dpdf.ts` — feature SNR vs background, strong-feature anisotropy (covariance
     ratio + orientation), radial trend, and back-FFT consistency pass-through.
 - **`context/`** — `loadContext.ts` fetches one cut through every stage (H–K at
@@ -376,11 +393,16 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
     whether the fills sit systematically above or below their rims (a
     lattice-periodic pattern; flagged at a median ≥ 0.5σ with ≥ 75 % of holes
     one way) and whether the punch and backfill add variation around each |Q|
-    shell; `qmax_coverage` (`metrics/coverage.ts`) compares how far the forward
-    transform's window reaches in |Q| (the |Q| band if set, else the box faces,
-    the coverage edge when tapered to it, or the box corners for a flat
-    separable window) with the |Q| where shells stop being 95 % measured.
-  - *Acting*: `update_settings` (only the settings in `tune/catalog.ts`),
+    shell; `qmax_coverage` (`metrics/coverage.ts`) gives the share of the
+    ΔPDF window's weight on unmeasured space, read from the ΔPDF's provenance
+    (≲ 10⁻³ is clean), with the window's shape and scale. On a file without it,
+    it compares how far the forward transform's window reaches in |Q| (the |Q|
+    band if set, else the box faces, the coverage edge when tapered to it, or
+    the box corners for a flat separable window) with the |Q| where shells
+    stop being 95 % measured.
+  - *Acting*: `update_settings` (the method choices and thresholds in
+    `tune/catalog.ts`, and, when the user names them, the sample facts the
+    tuner never proposes: the search's protected planes and the punch cell),
     `run_pipeline` (as the Run button: the console moves to the Execution page;
     without `from_stage` it computes what is missing, with it it recomputes from
     that stage on), `tune_pipeline` (below), and `show_in_viewer`. Neither run
@@ -396,8 +418,12 @@ any reply still streaming live in module-scoped stores (`chatStore.ts`,
   goal and its trade-off, e.g. no leftover peaks *without* punching more
   diffuse). The chosen settings go to the Configure page. The model can only
   change the settings in `tune/catalog.ts` — method choices and thresholds, not
-  facts about the sample (supercell, magnetic ion, |Q| band) — and every
-  proposal is checked against it before anything runs.
+  facts about the sample (supercell, protected planes, magnetic ion, |Q|
+  band) — and every proposal is checked against it before anything runs.
+  The tool's report holds every trial's changes and numbers, marking a trial
+  whose numbers equal the current settings' as `no_effect`, so the model
+  quotes the comparison rather than recalling it. When every tuned stage
+  keeps the current settings, the later stages are not re-run.
   **Trials never touch `processed/`** (`nebula3d.server.tuning`). Each run gets
   a folder beside it, `tuning/<run>/`; each trial runs into
   `tuning/<run>/trials/<stage>-<n>/`, reading its input from the run's own
