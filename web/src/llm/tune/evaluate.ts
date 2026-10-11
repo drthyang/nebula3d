@@ -220,7 +220,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
 export function headline(stage: TuneStage, e: StageEvaluation | undefined): string {
   if (!e) return "—";
   const v = (k: string) => (e[k] == null ? "–" : String(e[k]));
-  // " (h0l, 7.58 Å⁻¹)" for a residual that names its plane and |Q|.
+  // " (<plane>, <|Q|> Å⁻¹)" for a residual that names its plane and |Q|.
   const where = (k: string) => {
     const w = e[k] as { plane?: string; at?: number } | null | undefined;
     return w?.plane ? ` (${w.plane}, ${w.at} Å⁻¹)` : "";
@@ -246,7 +246,7 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
   }
 }
 
-// A share in exponent form when it is tiny (3.2e-6, not 0.0000032).
+// A share in exponent form when it is tiny (1.5e-6, not 0.0000015).
 const tiny = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(x));
 
 /** Why a trial's output breaks a hard limit of its stage, or null.  The tuning

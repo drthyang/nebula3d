@@ -331,9 +331,9 @@ default on, passes the input volume's `mask`; server `pdf_window_support`;
   `window_open_weight` beside `window_scale` and served with the ΔPDF's
   metadata (`/api/deltapdf/{id}/meta`, `dpdf_meta_json`). The web app's
   coverage check reports it: the measure of a transform reaching past the
-  data, whatever the window's shape. On a hexagonal volume (box 18 Å⁻¹
-  in-plane, 12.5 Å⁻¹ along c*) the auto window, an ellipsoid at scale 1.0,
-  kept 3.2 × 10⁻⁶ there and nothing on a box face.
+  data, whatever the window's shape. On a measured volume the auto window, an
+  ellipsoid at scale 1.0, kept a negligible share there and nothing on a box
+  face.
 - `invert_delta_pdf` leaves unsupported voxels out of the reliable `mask`.
 - An all-True support (main's Laplace backfill fills the whole box) changes
   nothing, bit for bit.
@@ -466,8 +466,8 @@ Judge the effect on the L=0 (H–K) plane, where the methods diverge.
 
 #### A background that rises with |Q|, and what the literature does
 
-On a measured X-ray volume the diffuse floor still climbed about six-fold
-from 1 to 17 Å⁻¹ after the constant model. The flatten's `b·Q²` term
+On a measured X-ray volume the diffuse floor still climbed steadily across the
+coverage after the constant model. The flatten's `b·Q²` term
 (`q2_term`, held at its value past the fit range's end) removes that rise.
 It varies only on the scale of the whole |Q| range, so like the other two
 terms it changes the ΔPDF only near r = 0.

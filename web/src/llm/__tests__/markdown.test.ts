@@ -10,7 +10,7 @@ describe("deLatex", () => {
     expect(deLatex("\\text{SNR} = 156")).toBe("SNR = 156");
     expect(deLatex("of the \\DeltaPDF weight, \\sigmaN")).toBe("of the ΔPDF weight, σN");
     expect(deLatex("\\leftarrow, but \\deltax")).toBe("←, but \\deltax");
-    expect(deLatex("0.55--16.7\\ Å^-1")).toBe("0.55--16.7 Å^-1");
+    expect(deLatex("0.6--14.2\\ Å^-1")).toBe("0.6--14.2 Å^-1");
   });
   it("leaves plain text unchanged", () => {
     expect(deLatex("no math here")).toBe("no math here");
@@ -44,7 +44,7 @@ describe("parseInline", () => {
   });
 
   it("keeps the underscores of names written without backticks", () => {
-    const line = "ring_energy_ratio 0.954, after_floor_max_sigma 0.41, stages ring_removed, bragg_punched";
+    const line = "ring_energy_ratio 0.912, after_floor_max_sigma 0.35, stages ring_removed, bragg_punched";
     expect(parseInline(line)).toEqual([{ type: "text", value: line }]);
     expect(parseInline("σ_bg and x__y__z")).toEqual([{ type: "text", value: "σ_bg and x__y__z" }]);
     // Emphasis still opens and closes at word edges, around such names too.

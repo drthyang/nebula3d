@@ -9,17 +9,17 @@ const ds = (id: string, temperature: string | null, stem: string): Dataset =>
   ({ id, temperature, stem, raw_name: `${stem}.nxs`, stages: [] }) as unknown as Dataset;
 
 describe("datasetName", () => {
-  const a = ds("a", "22K", "X_22K_mmm_cc");
-  const b = ds("b", "22K", "X_22K_mmm_cc_sub_bkg");
-  const c = ds("c", "45K", "X_45K_mmm_cc_sub_bkg");
+  const a = ds("a", "15K", "X_15K_mmm_cc");
+  const b = ds("b", "15K", "X_15K_mmm_cc_sub_bkg");
+  const c = ds("c", "60K", "X_60K_mmm_cc_sub_bkg");
 
   it("is the temperature when it is unique", () => {
-    expect(datasetName(c, [a, b, c])).toBe("45K");
-    expect(datasetName(a)).toBe("22K");
+    expect(datasetName(c, [a, b, c])).toBe("60K");
+    expect(datasetName(a)).toBe("15K");
   });
 
   it("adds what sets the stem apart when two share a temperature", () => {
-    expect(datasetName(b, [a, b, c])).toBe("22K · sub bkg");
-    expect(datasetName(a, [a, b, c])).toBe("22K · cc");
+    expect(datasetName(b, [a, b, c])).toBe("15K · sub bkg");
+    expect(datasetName(a, [a, b, c])).toBe("15K · cc");
   });
 });

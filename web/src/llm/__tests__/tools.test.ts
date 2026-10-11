@@ -470,16 +470,16 @@ describe("qmax_coverage", () => {
 
   it("gives where the raw counts begin and end, the band they allow, and checks a band that is set", async () => {
     api.fetchVolumeCoverage.mockResolvedValue({
-      id: "demo.raw", q: [], counted: [], q_min_edge: 0.519, q_max_edge: 16.704,
-      full_q_min: 0.65, full_q_max: 15.85, box_q: 12.53, box_corner_q: 33.8,
+      id: "demo.raw", q: [], counted: [], q_min_edge: 0.61, q_max_edge: 14.204,
+      full_q_min: 0.74, full_q_max: 13.6, box_q: 11.05, box_corner_q: 29.4,
     });
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
     const none = await check();
-    expect(none.raw_counts).toEqual({ q_min_edge: 0.519, q_max_edge: 16.7, fully_measured: [0.65, 15.85], box_face_q: 12.53 });
-    expect(none.suggested_band).toEqual([0.55, 16.7]);
+    expect(none.raw_counts).toEqual({ q_min_edge: 0.61, q_max_edge: 14.2, fully_measured: [0.74, 13.6], box_face_q: 11.05 });
+    expect(none.suggested_band).toEqual([0.65, 14.2]);
     expect(none.band_check).toMatch(/^no \|Q\| band is set/);
-    usePipelineStore.setState({ pdfQMin: "0.55", pdfQMax: "16.7" });
-    expect((await check()).band_check).toBe("the band 0.55–16.7 Å⁻¹ stays inside the counts");
+    usePipelineStore.setState({ pdfQMin: "0.65", pdfQMax: "14.2" });
+    expect((await check()).band_check).toBe("the band 0.65–14.2 Å⁻¹ stays inside the counts");
     usePipelineStore.setState({ pdfQMin: "0.2", pdfQMax: "18" });
     expect((await check()).band_check).toMatch(/^Qmin below the counts' lower edge .*; Qmax past the counts' upper edge/);
     expect(api.fetchVolumeCoverage).toHaveBeenCalledWith("demo.raw");
@@ -497,10 +497,10 @@ describe("qmax_coverage", () => {
 
   it("judges by the window's recorded weight on unmeasured space when the ΔPDF has it", async () => {
     const meta = await api.fetchDpdfMeta();
-    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 1, window_open_weight: 3.2e-6 });
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 1, window_open_weight: 4.1e-6 });
     const clean = await check();
-    expect(clean.window_weight_on_unmeasured).toBe(3.2e-6);
-    expect(clean.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight/);
+    expect(clean.window_weight_on_unmeasured).toBe(4.1e-6);
+    expect(clean.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window puts 4.1e-6 of its weight/);
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 0.04 });
     expect((await check()).verdict).toMatch(/^too far: the ΔPDF's separable window puts 0.04/);
   });
@@ -589,32 +589,32 @@ describe("grain_check", () => {
 describe("ub_check", () => {
   const check = {
     id: "demo.raw", fit: "symmetric", cell_nodes: [2, 2, 2], operations: 24, operations_from: "demo.nxs", symmetry_break: 0, symmetrised: true,
-    passes: [{ q_max: 5.33, n_found: 178, n_used: 178, rms_start: 0.0146, rms: 0.0102, angle_deg: 0 }],
-    n_searched: 4330, n_used: 3010, n_rejected: 952, rms_start: 0.05551, rms: 0.03969, angle_deg: 0, axis_uvw: [0, 0, 0],
-    cell_start: [8.02853, 8.01912, 10.02971, 90.1336, 90.2317, 119.9787], cell: [7.99421, 7.98485, 10.01769, 90.1336, 90.2317, 119.9787],
-    transform: [[1.004284, 0, 0], [0, 1.004284, 0], [0, 0, 1.0012]], ub_start: [], ub: [],
+    passes: [{ q_max: 4.71, n_found: 152, n_used: 152, rms_start: 0.0131, rms: 0.0094, angle_deg: 0 }],
+    n_searched: 3912, n_used: 2655, n_rejected: 811, rms_start: 0.04872, rms: 0.03416, angle_deg: 0, axis_uvw: [0, 0, 0],
+    cell_start: [6.12407, 6.11593, 9.41236, 90.0812, 90.1544, 119.9861], cell: [6.09922, 6.09111, 9.40151, 90.0812, 90.1544, 119.9861],
+    transform: [[1.004073, 0, 0], [0, 1.004073, 0], [0, 0, 1.001154]], ub_start: [], ub: [],
     radial: [
-      { q_lo: 0, q_hi: 4, direction: "in-plane", n: 18, before: 0.003012, after: -0.001311 },
-      { q_lo: 16, q_hi: null, direction: "oblique", n: 5, before: 0.0041, after: 0.0002 },
+      { q_lo: 0, q_hi: 4, direction: "in-plane", n: 16, before: 0.002611, after: -0.001054 },
+      { q_lo: 14, q_hi: null, direction: "oblique", n: 5, before: 0.0036, after: 0.0003 },
     ],
   };
 
   it("checks the raw volume's UB with the punch cell as the Bragg nodes", async () => {
     api.fetchUbCheck.mockResolvedValue(check);
     usePipelineStore.setState({ punchSupercellH: "2", punchSupercellK: "2", punchSupercellL: "2" });
-    const r = await run("ub_check", { q_max: 16 });
+    const r = await run("ub_check", { q_max: 14 });
     expect(r.ok).toBe(true);
-    expect(api.fetchUbCheck).toHaveBeenLastCalledWith("demo.raw", [2, 2, 2], 16);
+    expect(api.fetchUbCheck).toHaveBeenLastCalledWith("demo.raw", [2, 2, 2], 14);
     const out = JSON.parse(r.text);
     expect(out.fit).toBe("symmetric");
-    expect(out.cell_start).toBe("8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°");
-    expect(out.transform_diagonal).toEqual([1.004284, 1.004284, 1.0012]);
+    expect(out.cell_start).toBe("6.1241, 6.1159, 9.4124 Å; 90.081°, 90.154°, 119.986°");
+    expect(out.transform_diagonal).toEqual([1.004073, 1.004073, 1.001154]);
     expect(out.radial).toEqual([
-      { q: "0–4", direction: "in-plane", n: 18, before: 0.003, after: -0.0013 },
-      { q: "≥ 16", direction: "oblique", n: 5, before: 0.0041, after: 0.0002 },
+      { q: "0–4", direction: "in-plane", n: 16, before: 0.0026, after: -0.0011 },
+      { q: "≥ 14", direction: "oblique", n: 5, before: 0.0036, after: 0.0003 },
     ]);
     expect(out.reading).toMatch(/symmetrised: only the UB changes that commute/);
-    expect(r.summary).toBe("symmetric: RMS 0.0555 → 0.0397 Å⁻¹ over 3010 peaks; a 8.029 → 7.994 Å, c 10.030 → 10.018 Å; turned 0.000°");
+    expect(r.summary).toBe("symmetric: RMS 0.0487 → 0.0342 Å⁻¹ over 2655 peaks; a 6.124 → 6.099 Å, c 9.412 → 9.402 Å; turned 0.000°");
     expect((await run("ub_check", { q_max: -1 })).text).toMatch(/q_max must be positive/);
   });
 });

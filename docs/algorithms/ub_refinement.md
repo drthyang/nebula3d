@@ -6,8 +6,8 @@ point is `examples/refine_ub.py`.
 
 A UB that is slightly off puts each Bragg peak beside its node instead of on it:
 
-- **a rotation error** moves a peak across Q by the angle times |Q|: 0.25 Å⁻¹ at
-  16 Å⁻¹ for 0.9°;
+- **a rotation error** moves a peak across Q by the angle times |Q|: 0.17 Å⁻¹ at
+  10 Å⁻¹ for 1°;
 - **a cell error** moves it along Q by the relative error times |Q|.
 
 Both grow with |Q|. The punch then searches farther from the nodes, and the
@@ -82,7 +82,7 @@ Symmetrising hides what does not commute with the symmetry operations.
 - **A rotation is hidden.** Each node holds its orbit partners' peaks, turned by
   the rotation's conjugates. The result is a ring centred on the node, not a
   shifted peak. The ring's centroid sits inward by about half the squared
-  angle, 1e-4 of |Q| for 0.9°.
+  angle, 1.5e-4 of |Q| for 1°.
 - **A cell error that keeps the symmetry survives.** It moves the equivalent
   nodes alike, so the symmetrised peaks stay sharp and as far off their nodes as
   before.
@@ -94,9 +94,8 @@ gives rounding error, below 1e-4.
 `refine_ub` refuses every fit but `symmetric` on a symmetrised volume, and the
 orientation then needs the unsymmetrised data. The `symmetric` fit works in the
 volume's own HKL, where the symmetrising was done. The other fits work in Q,
-through the UB. A free refinement usually leaves the UB's cell a few parts in a
-thousand short of the symmetry; through such a UB, the averaging itself would
-read as a distortion.
+through the UB. A free refinement can leave the UB's cell slightly off the
+symmetry; through such a UB, the averaging itself would read as a distortion.
 
 ## Regridding
 
@@ -116,11 +115,11 @@ spreading them into rings.
 
 **Trim the coverage edge first.** Voxels on the edge of the measured coverage
 are barely covered by the detectors and can sit orders of magnitude above the
-interior. On a measured unsymmetrised hexagonal volume, 90–99 % of the voxels
-above 2·10³–10⁵ were on the outermost layer, the largest at 5.5·10⁷, against
-1.7·10⁴ for the strongest Bragg peak. Interpolating and symmetrising carry
-them inward, out of reach of the pipeline's own trim at load (`edge_trim`).
-Skipping the trim once left that volume's 3D-ΔPDF dominated by them. The
+interior. On a measured volume nearly all of the brightest voxels sat on the
+outermost layer, far above the strongest Bragg peak. Interpolating and
+symmetrising carry them inward, out of reach of the pipeline's own trim at load
+(`edge_trim`). Skipping the trim once left that volume's 3D-ΔPDF dominated by
+them. The
 script therefore trims first (`EDGE_TRIM`, one layer by default, as the
 pipeline does), and the UB check trims a copy.
 

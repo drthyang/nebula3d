@@ -36,7 +36,7 @@ const writeSaved = (saved: Saved): void => {
 };
 
 /** The sample a dataset id names: the part before its temperature token
- * ("Ab2Cd3-90K-…" → "Ab2Cd3"), else its first segment. */
+ * ("Ab2Cd3-<T>-…" → "Ab2Cd3"), else its first segment. */
 export function sampleOf(id: string): string {
   const m = /^(.*?)-?\d+(?:\.\d+)?K(?:-|$)/i.exec(id);
   return m ? m[1] : id.split("-")[0];

@@ -120,9 +120,9 @@ const SPARSE_ZEROS = 0.25;
 const SPARSE_LEVEL = 0.1;
 
 // A leftover this wide (FWHM in voxels, along either slice axis) is a broad
-// diffuse maximum, not a reflection: Bragg and spurious peaks span 1–4 voxels
-// FWHM on the measured grids, short-range-order maxima 5–12 along their broad
-// axis.
+// diffuse maximum, not a reflection: on measured grids Bragg and spurious
+// peaks stay narrower, while broad maxima (short-range order, for one) reach
+// it along their broad axis.
 const BROAD_VOXELS = 5;
 
 // Full width at half maximum, in voxels, through (ix, iy) along (dx, dy).

@@ -12,15 +12,15 @@
   cleanup views fall into fewer columns beside the dock instead of shrinking.
 
 - **NEBULA Pilot has an eval suite, measured on real models.** Nine scenarios
-  with known answers from the research rounds on a measured hexagonal volume
+  with known answers from the research rounds on a measured volume
   are graded deterministically, on the tools each model called and on what it
   answered. Numbers are checked against the run's own tool results. CI replays
   every scenario with a scripted model; `npm run eval:agent` runs real ones.
   Results, raw records included, are in [docs/evals.md](docs/evals.md):
   - Claude Sonnet 5.5 and Haiku 5.5 pass 27/27 each, at about $0.025 and $0.001
     a run.
-  - gemma4:26b passes 15/27; it answers the ring and punch questions from the
-    opening cut.
+  - gemma4:26b and qwen3:32b on Ollama pass 15/27 and 17/27; both answer the
+    ring and punch questions from the opening cut.
   - qwen3.8-27b on LM Studio passed every run that finished, but most crashed
     for lack of GPU memory on a shared machine.
 
@@ -46,9 +46,6 @@
   centroids. A centroid of the voxels above half height overstated sub-voxel
   offsets by a third, which read a cell 1 % off as 1.3 % off. See
   [docs/algorithms/ub_refinement.md](docs/algorithms/ub_refinement.md).
-  On a measured hexagonal volume (symmetrised), the Bragg peaks sit
-  0.2–0.5 % of |Q| outside their nodes, the same for weak and strong peaks.
-  In-plane the offset grows with |Q|, which no UB can produce.
 - **NEBULA Pilot can check the UB.** `ub_check` (and
   `GET /api/volumes/{id}/ub`) runs the UB refinement on the raw volume, with
   the punch cell as the Bragg nodes. It reports how far the peaks sat from
@@ -63,12 +60,11 @@
   to the stopping level over the local noise. The shared Bragg profile,
   kept as `punch_footprint="profile"` (*Profile-matched (shared width)* on
   the Configure page), gave a sharp spike on a broad maximum the wide punch
-  of a Bragg peak of its height. On a measured hexagonal volume, own widths
-  halved the share of the short-range-order maxima punched (0.65 % → 0.30 %),
-  so no maximum lost half its box, where 32 had. They left no more Bragg
-  residue, at 4.66 % of the volume punched against 4.36 %. 92 % of the
-  peaks were measured; the rest keep the shared profile. **This changes
-  the default punch mask.**
+  of a Bragg peak of its height. On measured data, own widths punched a
+  smaller share of the broad maxima, so no maximum lost half its box. They
+  left no more Bragg residue, with slightly more of the volume punched. Most
+  peaks were punched to their own width; the rest keep the shared profile.
+  **This changes the default punch mask.**
 - **NEBULA Pilot can tell a second grain from displaced Bragg peaks.**
   `grain_check` groups the off-lattice peaks the punch's search found into
   symmetry orbits and tests the strongest two ways:
@@ -79,11 +75,8 @@
     same search at random directions. A rotation under 2° is the UB, not a
     grain.
 
-  On a measured hexagonal volume there is no second grain: a rotated copy
-  indexes 2 of the 40 strongest orbits (random directions: 4). 35 of the 40
-  sit next to Bragg nodes at a median 0.85°. They are Bragg peaks
-  symmetrised from data whose UB is off by about a degree; 5 remain
-  unexplained. A volume's metadata now carries the symmetry its file
+  On measured data it tells Bragg peaks displaced by a UB that is off from a
+  second grain. A volume's metadata now carries the symmetry its file
   declares. The agent's context counts the peaks the search punched off the
   lattice: a model had read the leftover count, which is only what the
   punch missed on one cut, as "no off-lattice peaks".
@@ -107,23 +100,21 @@
   Qmax are where the counts begin and end: past either edge most voxels
   hold none. `GET /api/volumes/{id}/coverage` measures, per |Q| shell, the
   share of voxels holding counts (measured, finite and non-zero), and where
-  it crosses one half. On a measured hexagonal volume that gave 0.52 and
-  16.70 Å⁻¹, with the box's nearest face at 12.53 Å⁻¹. The Configure page
-  shows the edges under the |Q| band, with a *From raw data* button that
-  sets the band to them. `qmax_coverage` reports them, suggests the band,
-  and says whether a band that is set stays inside the counts.
+  it crosses one half. The Configure page shows the edges under the |Q| band,
+  with a *From raw data* button that sets the band to them. `qmax_coverage`
+  reports them, suggests the band, and says whether a band that is set stays
+  inside the counts.
 - **The |Q| band slider spans the whole box.** It stopped at the corner of a
-  ±(4, 8, 15) r.l.u. crop that the ΔPDF does not apply: on a ±20 r.l.u.
-  volume it ended at 13.5 Å⁻¹, while the counts reach 16.7.
+  ±(4, 8, 15) r.l.u. crop that the ΔPDF does not apply: on a measured volume
+  it ended well before the counts did.
 - **The 3D-ΔPDF page's Auto shows the features, not the FFT ripple.** Auto
   put the colour limit at the 97th percentile of |ΔPDF|, but a ΔPDF section
   is mostly ripple around a few compact features, so that percentile
-  measured the ripple. On a measured hexagonal volume it set the limit at
-  8–17 × the sections' robust σ (0.5–3 % of the strongest feature): every
-  feature saturated and the ripple filled the colour range. Auto now takes
-  the 99.9th percentile over the three centre sections, with the origin's
-  self-correlation disk left out (275 σ there). The features carry the
-  colour and the ripple stays near the neutral colour.
+  measured the ripple. On a measured volume, the old limit saturated every
+  feature and the ripple filled the colour range. Auto now takes the 99.9th
+  percentile over the three centre sections, with the origin's
+  self-correlation disk left out. The features carry the colour and the
+  ripple stays near the neutral colour.
 - **NEBULA Pilot can optimise the ΔPDF view's contrast.** `dpdf_contrast`
   sets the 3D-ΔPDF viewer's limit by the same rule in one call. It reports
   the robust σ, the strongest feature, and what other percentiles would
@@ -147,14 +138,13 @@
 - **Tuning no longer trades a clean ΔPDF for a higher SNR.** The ΔPDF
   stage was judged on feature SNR and the round trip alone, though its
   goal requires the transform to stay inside the measured coverage. On a
-  hexagonal volume a tuning run chose a separable window for 4 % more SNR.
-  That window put 5.7 % of its weight on unmeasured reciprocal space
-  (against 3 × 10⁻⁶ for the ellipsoid window) and broke the ΔPDF's
-  six-fold symmetry (RMS 0.44). The stage's evaluation now reports the
-  window's weight on unmeasured space and the x–y section's worst
-  symmetry break. A trial past the backend's own limit (10⁻³, where its
-  automatic window gives up the separable shape) is not a candidate while
-  your settings stay inside it, and the reason is given.
+  measured volume a tuning run chose a separable window for a little more
+  SNR. That window put far more of its weight on unmeasured reciprocal space
+  than the ellipsoid window, and broke the ΔPDF's symmetry. The stage's
+  evaluation now reports the window's weight on unmeasured space and the x–y
+  section's worst symmetry break. A trial past the backend's own limit
+  (10⁻³, where its automatic window gives up the separable shape) is not a
+  candidate while your settings stay inside it, and the reason is given.
 - **Tuning no longer tries a punch setting that cannot act.** With the
   default profile footprint, the punch replaces the covariance fit's radii
   with the learned profile's, so freeing those radii from their bounds
@@ -172,14 +162,14 @@
 - **Each plane's ring verdict follows the cross-plane rule.** A bump seen
   on one plane only is the crystal's own scattering, and the ring review's
   totals already left it out. Each plane's detail still named it as that
-  plane's worst leftover ring, and a model reported three such bumps as
+  plane's worst leftover ring, and a model reported such bumps as
   misses of the ring removal. Each plane's residuals now mark them
   `single_plane_bump`, and its worst dent and leftover skip them.
 - **`\DeltaPDF` reads as ΔPDF in the chat.** Models often write the
   ΔPDF as `\DeltaPDF`, which the chat left as typed, since a TeX command
   ends at the next non-letter. A Greek letter or symbol command now also
   ends at a capital letter, as a model means it, and a TeX control space
-  (`16.7\ Å`) reads as a space.
+  (`10\ Å`) reads as a space.
 - **Names keep their underscores in the chat.** Models often write field
   names such as `ring_energy_ratio` without backticks, and the chat's
   Markdown took the underscores for italics: the name read
@@ -196,19 +186,17 @@
   the model server now says what usually causes it.
 - **NEBULA Pilot can check the ΔPDF's symmetry.** `symmetry_check`
   compares a ΔPDF section with its images under the cell's in-plane
-  operations and says which hold. Five expert reviews of a hexagonal
-  volume had missed a 12.6 % break of its six-fold symmetry, which no tool
-  could see.
+  operations and says which hold. Five expert reviews of a measured
+  volume had missed a clear break of its symmetry, which no tool could see.
 - **A symmetrised volume gives a symmetric ΔPDF.** The ring removal, the
   backfill and the flatten each work on index-space neighbourhoods that the
-  hexagonal six-fold does not map onto themselves. On a measured 6/mmm
-  volume the ΔPDF lost 12.6 % (RMS) of its six-fold symmetry: equivalent
-  Bragg peaks kept tails of up to ~1000 counts on one side of the backfill
-  and not the other. With the declared symmetry (\`symmetry="auto"\`, the
-  default), these stages now average their output over each orbit (and the
-  backfill's band and the ring stage's spoke mask are closed under the
-  group). The ΔPDF's partners agree to rounding, and its strongest
-  equivalent features to one count in 2.5 million.
+  hexagonal six-fold does not map onto themselves. On a measured volume the
+  ΔPDF lost a clear share of its symmetry: equivalent Bragg peaks kept tails
+  on one side of the backfill and not the other. With the declared symmetry
+  (`symmetry="auto"`, the default), these stages now average their output
+  over each orbit (and the backfill's band and the ring stage's spoke mask
+  are closed under the group). The ΔPDF's partners, its strongest equivalent
+  features included, agree to rounding.
 - **The conversation survives a reload.** Reloading the page emptied
   NEBULA Pilot's transcript and the unsent draft. Both are now kept for the
   tab (sessionStorage, up to about 1 MB of the newest turns) and come back
@@ -228,16 +216,15 @@
   When no setting changed, it no longer suggests rewriting the outputs.
 - **The coverage check reads the window that actually ran.** It judged the
   transform by one reach radius from the Configure page's settings: on a
-  hexagonal box (18 Å⁻¹ in-plane, 12.5 Å⁻¹ along c*) it reported a box-face
-  taper that was not used. The ΔPDF now records the share of its window's
-  weight on unmeasured reciprocal space (`window_open_weight` in its
-  provenance and in the ΔPDF metadata, with the window's shape and scale).
-  `qmax_coverage` gives that share as its verdict: 3.2 × 10⁻⁶ on the
-  measured volume, clean.
+  measured volume it reported a box-face taper that was not used. The ΔPDF
+  now records the share of its window's weight on unmeasured reciprocal space
+  (`window_open_weight` in its provenance and in the ΔPDF metadata, with the
+  window's shape and scale). `qmax_coverage` gives that share as its verdict:
+  negligible on the measured volume, so clean.
 - **The flatten can take a background that rises with |Q|.** Its model
   fitted a constant (plus the magnetic form factor), so on a measured
-  hexagonal volume the diffuse floor still climbed from −1 to +10 across
-  1–17 Å⁻¹ after the flatten. Inelastic background rises like that
+  volume the diffuse floor still climbed steadily across the coverage
+  after the flatten. Inelastic background rises like that
   (thermal diffuse scattering, and with X-rays Compton scattering), starting
   out as Q². A *+ b·Q² term* switch (`flatten_q2`) adds it to the
   model. Like the other terms it varies only on the scale of the whole
@@ -245,34 +232,33 @@
   rise that saturates, so past the fit range's end the term is held at its
   value there. *Fit to |Q|* (`flatten_fit_q_max`) carries the fit past its
   old 10 Å⁻¹ end. The examples take `Q2=1` and `FIT_Q_MAX`; the punch
-  example takes `SEARCH_MAX_WIDTH`. With both, the floor sat within
-  ±0.5 of zero across the coverage. The ΔPDF changed only inside 1.5 Å,
-  where the self term lands: RMS 3.3× lower there, every pair vector
-  unchanged. NEBULA Pilot can turn both on.
+  example takes `SEARCH_MAX_WIDTH`. With both, the floor sat near zero
+  across the coverage. The ΔPDF changed only near the origin, where the
+  self term lands: lower RMS there, every pair vector unchanged. NEBULA
+  Pilot can turn both on.
 - **The flatten check sees a leftover pedestal.** It judged floors in
   units of the slice's scatter and only inside the fit range. Beside
-  strong diffuse structure, a pedestal spanning twice the diffuse level
-  read 0.39σ, "flat". It now also reports `floor_trend` (the floors' rank
-  correlation with |Q| across the whole coverage) and
+  strong diffuse structure, a pedestal spanning more than the diffuse level
+  read a fraction of σ, "flat". It now also reports `floor_trend` (the
+  floors' rank correlation with |Q| across the whole coverage) and
   `floor_span_fraction` (their range against the diffuse level). Partial
   shells at the coverage edge are left out.
 - **Leftover peaks are told apart by width.** The punch review counted
-  every off-lattice leftover alike, so the short-range-order maxima kept on
-  purpose read as missed peaks. On one plane of a measured volume that was
-  176 of 188. Each leftover now carries its FWHM in voxels. Broad ones
+  every off-lattice leftover alike, so broad maxima kept on purpose read as
+  missed peaks. On one plane of a measured volume, nearly all the leftovers
+  were such maxima. Each leftover now carries its FWHM in voxels. Broad ones
   (5 voxels or more along a slice axis) are reported as diffuse maxima
   kept, and only the sharp ones as punch candidates. The headline states
   both counts.
 - **The off-lattice search can leave broad maxima alone.** It punched any
-  candidate tall enough, so on a hexagonal volume whose superstructure is
-  short-range order (maxima about 4 × broader along l than the Bragg
-  peaks), it cut out the strongest of the very signal a 3D-ΔPDF images.
+  candidate tall enough, so where short-range order gives broad maxima, it
+  cut out the strongest of the very signal a 3D-ΔPDF images.
   *Search width ×Bragg* (`punch_search_max_width_ratio`, off by default)
   leaves a candidate broader than that many Bragg widths along any axis.
   The Bragg width is measured at the strongest integer peaks. A candidate
   within a quarter of the node spacing of a punched Bragg node is that
   peak's wing and is punched anyway. Spurious reflections are as sharp as
-  Bragg peaks on every volume measured, so 2 keeps them punched. Widths
+  Bragg peaks, so 2 keeps them punched. Widths
   come from line cuts above a straight baseline through the points five
   voxels either side, so a sharp spurious peak on a broad maximum's flank
   still measures sharp.
@@ -302,19 +288,18 @@
   diffuse there. A residual counts only beyond 3 × that diffuse's own
   scatter on the plane. A dip in a shell's low percentiles is not proof of
   a dent: on a measured volume it was the rings' counting noise, which
-  widened the shells' spread by 30–60 % while their medians stayed level.
-  Only the strongest Al line kept a real dent, about 2–3 %.
+  widened the shells' spread while their medians stayed level.
 - **Configure remembers its settings for each dataset**, and the console
   remembers the selected dataset across reloads. Facts about one sample,
   such as its protected satellite planes, no longer carry over to the next.
 - **The leftover-peak scan sets sparse counts aside.** Near the coverage
   edge most voxels are empty, so the local scatter is all but 0 and a
-  single count reads tens to thousands of σ. On three measured volumes,
-  every leftover the scan reported on the H = 0 plane was such a count at
-  the K edge (75 at 28 K), and so were the two "missed lattice peaks" it
-  reported at 45 K. A would-be peak whose surroundings are a quarter exact
-  zeros, or sit below a tenth of the slice's median level, is now counted
-  with the noisy spikes.
+  single count reads as a peak of many σ. On three measured volumes, every
+  leftover the scan reported on the H = 0 plane was such a count at the
+  coverage edge, and so were the "missed lattice peaks" it reported on one
+  of them. A would-be peak whose surroundings are a quarter exact zeros, or
+  sit below a tenth of the slice's median level, is now counted with the
+  noisy spikes.
 - **Leftovers on the search's protected planes are counted apart.** The
   punch review reports how many off-lattice leftovers sit on the protected
   H planes, where they stay by design, so the model no longer takes every
@@ -332,7 +317,7 @@
   few minutes of work on a 401×401×301 volume.
 - **The leftover-peak scan no longer takes noise for peaks, or misses real
   ones.** It judged each spike against the whole slice's noise and accepted
-  single voxels. On a measured 401×401×301 volume, 675 of its 697 hits on
+  single voxels. On a measured 401×401×301 volume, nearly all its hits on
   one plane were noise at the coverage edge, while resolved peaks with a
   contrast below 4 went unflagged. A peak now has to stand out in its own
   neighbourhood (8 local robust σ) and span more than one voxel. Spikes in
@@ -343,17 +328,17 @@
 - **The off-lattice search's floor and protected H planes are settings.**
   The punch protects the H = n ± 1/3 planes from its search, and needs a
   peak to clear 27 × the diffuse scatter. Both were fixed, so twin or
-  harmonic peaks on those planes, some at ~700σ, could not be punched from
-  the app. *Search floor ×σ*, *Search skips H* (`1/3, 2/3`, `none`) and its
+  harmonic peaks on those planes could not be punched from the app.
+  *Search floor ×σ*, *Search skips H* (`1/3, 2/3`, `none`) and its
   half width are on the Configure page and in the API
   (`punch_search_floor`, `punch_search_protect_h`,
   `punch_search_protect_half_width`). The floor is also on the tuning list.
 - **The flatten is judged over its own fit range (0.8–10 Å⁻¹).** The floor
   check included the direct-beam core, which is punched and smoothly filled,
-  so a clean flatten could read 2σ.
+  so a clean flatten could fail it.
 - **The assistant changes only the settings you ask for.** Asked to turn
   off the search's protected planes, it set the integer punch's H guard to
-  0 instead. That ran every node's punch along H and discarded diffuse: 49 %
+  0 instead. That ran every node's punch along H and discarded diffuse: many
   more voxels punched. The H guard's description now says what it is, and
   `update_settings` tells the model to ask when unsure. A setting already at
   the value is reported as no change.
@@ -361,8 +346,9 @@
   texture and coverage checks instead of guessing. It also reports any
   other stage that misses its goal, such as the flatten. `assess_stage`
   says which planes it measured.
-- **Two datasets at one temperature have distinct names** ("22K · cc",
-  "22K · sub bkg") in the sidebar, Configure and the assistant.
+- **Two datasets at one temperature have distinct names** (the temperature,
+  then what sets the file name apart, such as "cc" or "sub bkg") in the
+  sidebar, Configure and the assistant.
 - **The cards the assistant is on breathe a blue edge.** While a step runs,
   the cards for what it works on glow. A pipeline run or a tuning run lights
   the stage it is on. While the answer is written, the cards it mentions
@@ -538,13 +524,11 @@
     gives the same mask.
 
   Effects:
-  - On X-ray volumes on a 2×2×2 cell, every strong parent reflection is
-    punched as before, and more of the weaker ones than with the floors. The
-    broad maxima at the supercell nodes are left whole.
-  - On a hexagonal neutron volume, the short-range-order maxima at its
-    non-parent nodes, which the floors had punched, are left alone.
-  - On orthorhombic neutron volumes the punched volume changes by a few per
-    cent.
+  - On measured data of another scale, every strong Bragg peak is punched as
+    before, and more of the weaker ones than with the floors.
+  - Broad maxima at nodes, which the floors could punch, are left alone.
+  - On the data the floors were tuned on, the punched volume changes by a
+    few per cent.
 
   To keep the earlier behaviour, set `integer_detect="floors"`,
   `search_floor_unit="data"` and the search floors to 0.8.

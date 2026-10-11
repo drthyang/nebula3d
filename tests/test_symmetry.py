@@ -348,8 +348,8 @@ def test_orbit_mean_makes_equivalent_values_equal_and_leaves_the_rest():
 def test_backfill_is_symmetric_with_the_declared_symmetry():
     # Regression (6/mmm data, 2026-10-10): the Laplace fill is solved on an
     # index-space stencil, which the hexagonal 6-fold does not map onto
-    # itself, so equivalent holes were filled differently (the ΔPDF lost 12 %
-    # of its six-fold symmetry); with the declared operations the fills agree.
+    # itself, so equivalent holes were filled differently (the ΔPDF visibly
+    # lost its six-fold symmetry); with the declared operations the fills agree.
     from nebula3d.pipeline import BackfillParams, backfill
     vol = _hex_volume()
     gs = GridSymmetry.for_volume(vol, parse_symmetry_ops(SIX_M))
@@ -411,7 +411,7 @@ def test_ring_removal_output_is_made_symmetric():
 
 def test_a_symmetrised_input_gives_a_symmetric_delta_pdf(tmp_path):
     # End to end (2026-10-10): every stage keeps the declared symmetry — on
-    # measured 6/mmm data the ΔPDF had lost 12 % of its six-fold symmetry to
+    # measured 6/mmm data the ΔPDF had visibly lost its six-fold symmetry to
     # the ring removal and the backfill's index-space stencils.
     from nebula3d.io import load_delta_pdf
     from nebula3d.pipeline import run_pipeline

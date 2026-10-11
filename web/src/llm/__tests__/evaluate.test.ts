@@ -93,29 +93,29 @@ describe("evaluateStage", () => {
       stages: [...dataset.stages, { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" }],
     };
     api.fetchConsistencyCheck.mockResolvedValue({ has_check: false });
-    api.fetchDpdfMeta.mockResolvedValue({ lattice: { a: 8, b: 8, c: 10 }, window_open_weight: 0.0572, window_shape: "separable" });
+    api.fetchDpdfMeta.mockResolvedValue({ lattice: { a: 6, b: 6, c: 9 }, window_open_weight: 0.0436, window_shape: "separable" });
     // A section that changes sign under the two-fold: not symmetric.
     api.fetchDpdfSlice.mockImplementation(async () => {
       const s = makeSlice(21, 21, (x) => x);
       return { ...s, header: { ...s.header, axes_angle: 120 } };
     });
     const e = await evaluateStage("pdf", withPdf);
-    expect(e.window_weight_on_unmeasured).toBe(0.057);
+    expect(e.window_weight_on_unmeasured).toBe(0.044);
     expect(e.window_shape).toBe("separable");
     expect(e.max_symmetry_break as number).toBeGreaterThan(1);
     expect(typeof e.worst_symmetry_op).toBe("string");
-    expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.057 · symmetry off ≤ \d/);
+    expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.044 · symmetry off ≤ \d/);
   });
 
   it("names the plane and |Q| of the worst ring residual in the headline", () => {
     const e = {
       mean_ring_energy_ratio: 0.24,
       max_over_subtraction_fraction: 0.03,
-      max_ring_dent: 0.233,
+      max_ring_dent: 0.187,
       max_ring_left: 0,
-      worst_ring_dent: { plane: "h0l", at: 7.58, residual_fraction: -0.233 },
+      worst_ring_dent: { plane: "h0l", at: 6.35, residual_fraction: -0.187 },
       worst_ring_left: null,
     };
-    expect(headline("rings", e)).toBe("ring ratio 0.24 · over-sub ≤ 0.03 · ring dent ≤ 0.233 (h0l, 7.58 Å⁻¹) · left ≤ 0");
+    expect(headline("rings", e)).toBe("ring ratio 0.24 · over-sub ≤ 0.03 · ring dent ≤ 0.187 (h0l, 6.35 Å⁻¹) · left ≤ 0");
   });
 });
