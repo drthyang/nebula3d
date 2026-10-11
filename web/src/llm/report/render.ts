@@ -4,14 +4,13 @@
 // as images.
 
 import { parseBlocks, type Block, type Inline } from "../markdown";
-import type { Report, ReportCheck, Verdict } from "./report";
+import { VERDICT_LABEL, type Report, type ReportCheck, type Verdict } from "./report";
 
 const esc = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 const isPng = (url: string): boolean => /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(url);
 
-const VERDICT_LABEL: Record<Verdict, string> = { pass: "meets its goal", attention: "needs attention", info: "not judged" };
 
 const when = (iso: string): string => {
   const d = new Date(iso);

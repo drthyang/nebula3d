@@ -6,6 +6,9 @@
 //     NEBULA_EVAL_OUT=../docs/evals/results/ollama-gemma4-26b.json npm run eval:agent
 //
 // NEBULA_EVAL_API       the backend (default http://127.0.0.1:8000)
+// NEBULA_EVAL_SET       heldout: the held-out scenarios instead (heldout.ts), on a backend
+//                       serving the volumes examples/make_eval_volumes.py writes, run
+//                       with the defaults
 // NEBULA_EVAL_ONLY      scenario ids to run, comma-separated (default all)
 // NEBULA_EVAL_REPEAT    runs per scenario (default 1)
 // NEBULA_EVAL_TIMEOUT   minutes per run before it is stopped (default 20)
@@ -20,10 +23,12 @@ import { isAnthropicUrl } from "../provider/anthropic";
 import { isLocalUrl, providerForUrl } from "../provider/presets";
 import { backendUrl, env, readText, useBackend, writeText } from "./backend";
 import { grade, runScenario, transcript, type EvalRun, type ScenarioResult } from "./harness";
+import { HELDOUT_SCENARIOS } from "./heldout";
 import { SCENARIOS } from "./scenarios";
 import { sampleScrubber } from "./scrub";
 
 const live = env("NEBULA_EVAL") === "1";
+const SET = env("NEBULA_EVAL_SET") === "heldout" ? HELDOUT_SCENARIOS : SCENARIOS;
 
 describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
   it("runs the scenarios on a real model", async () => {
@@ -40,7 +45,7 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
     const datasets = await fetchDatasets();
     // The record is committed: it names no sample (scrub.ts).
     const scrub = sampleScrubber(datasets);
-    const scenarios = SCENARIOS.filter((s) => !only.size || only.has(s.id));
+    const scenarios = SET.filter((s) => !only.size || only.has(s.id));
     const results: ScenarioResult[] = [];
     const out = env("NEBULA_EVAL_OUT");
     // The record is rewritten after every run, so progress shows and a run cut
@@ -121,7 +126,7 @@ describe.skipIf(!regrade)("NEBULA Pilot evals, re-graded", () => {
     const url = new URL(regrade!, `file://${env("PWD") ?? ""}/`);
     const record = JSON.parse(await readText(url)) as RecordFile;
     for (const r of record.runs) {
-      const scenario = SCENARIOS.find((s) => s.id === r.scenario);
+      const scenario = [...SCENARIOS, ...HELDOUT_SCENARIOS].find((s) => s.id === r.scenario);
       if (!scenario) continue;
       const run: EvalRun = {
         scenario: r.scenario,

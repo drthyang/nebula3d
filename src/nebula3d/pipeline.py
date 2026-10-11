@@ -65,6 +65,7 @@ from nebula3d.io.delta_pdf_file import load_delta_pdf, save_delta_pdf
 from nebula3d.io.mantid_nxs import NEBULA3D_GROUP
 from nebula3d.preprocessing import (
     GlobalRingConfig,
+    IsotropyConfig,
     PooledRingConfig,
     confirm_ring_shells_across_h,
     fit_global_rings,
@@ -1020,14 +1021,20 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
         min_snr=p.pooled_min_snr,
         envelope_scale=p.pooled_envelope_scale,
         amp_cap=p.pooled_amp_cap,
+        confirm_rings=p.pooled_confirm_rings,
+        isotropy=IsotropyConfig(direction_share=p.pooled_ring_direction_share,
+                                height_share=p.pooled_ring_height_share),
     ), progress=_progress)
     out = result.cleaned
     # Attached transiently (as global_v2 does) so run_pipeline writes the sidecar.
     setattr(out, "_ring_diagnostics", result.diagnostics)
     d = result.diagnostics
+    rejected = len(d.get("rejected_shells") or [])  # type: ignore[arg-type]
     _emit(progress, "rings", "done", 1.0,
           f"pooled ring removal {d['status']}: {len(d['shells'])} shells "  # type: ignore[arg-type]
-          f"(of {d['n_planes_fitted']}/{d['n_planes']} planes fitted), removed "
+          + (f"confirmed as rings, {rejected} not (the crystal's own scattering, kept) "
+             if p.pooled_confirm_rings else "")
+          + f"(of {d['n_planes_fitted']}/{d['n_planes']} planes fitted), removed "
           f"{100.0 * float(d['removed_fraction']):.3g}% of |I|")  # type: ignore[arg-type]
     return out
 

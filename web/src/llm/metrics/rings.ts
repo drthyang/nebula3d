@@ -61,6 +61,7 @@ const MIN_RESIDUAL = 0.005;
 
 export interface RingResidual {
   at: number; // the ring's |Q| (Å⁻¹ with a cell)
+  fwhm: number; // its width at half its height above the baseline, on this profile
   residual_fraction: number; // mean over the ring of (after − flank line) / flank line
   noise_fraction: number; // RMS of the flanks about their line / flank line
   significant: boolean; // |residual_fraction| > NOISE_MULTIPLE × noise_fraction and > MIN_RESIDUAL
@@ -92,6 +93,9 @@ export const ringResiduals = (before: GridSlice, after: GridSlice, radius?: Radi
   }
   const inRing = new Array<boolean>(RING_BINS).fill(false);
   for (const { lo, hi } of rings) for (let i = lo; i <= hi; i++) inRing[i] = true;
+  // One bin's width in |Q|: the typical step between the shells' mean radii.
+  const steps = raw.r.slice(1).map((v, i) => v - raw.r[i]).filter((d) => Number.isFinite(d) && d > 0);
+  const binWidth = steps.length ? median(steps) : 0;
 
   const out: RingResidual[] = [];
   for (const { peak, lo, hi } of rings) {
@@ -126,8 +130,13 @@ export const ringResiduals = (before: GridSlice, after: GridSlice, radius?: Radi
     const scatter2 = xs.reduce((acc, x, k) => acc + (ys[k] - (my + slope * (x - mx))) ** 2, 0) / Math.max(xs.length - 2, 1);
     const fraction = resid / under;
     const noise = Math.sqrt(scatter2) / (under / n);
+    // The bins at or above half the peak's height, either side of it.
+    let half = 1;
+    for (let i = peak - 1; i >= lo && bump[i] >= 0.5 * bump[peak]; i--) half += 1;
+    for (let i = peak + 1; i <= hi && bump[i] >= 0.5 * bump[peak]; i++) half += 1;
     out.push({
       at: roundSig(raw.r[peak], 3),
+      fwhm: roundSig(half * binWidth, 2),
       residual_fraction: roundSig(fraction),
       noise_fraction: roundSig(noise),
       significant: Math.abs(fraction) > Math.max(NOISE_MULTIPLE * noise, MIN_RESIDUAL),

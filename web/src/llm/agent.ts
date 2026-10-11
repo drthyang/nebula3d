@@ -11,6 +11,7 @@ import {
   type TokenUsage,
   type ToolCall,
 } from "./provider/client";
+import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
 import type { LlmSettings } from "./settings";
 import { runToolCall, toolSpecs, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
 import { openView } from "./tools/openView";
@@ -60,6 +61,31 @@ export const CUT_OFF_NOTE =
 // is sent again, at most this many times in one reply.
 export const MALFORMED_RETRIES = 2;
 
+// A final answer that fails its checks (answerChecks.ts: a verdict without its
+// tool, a number from nowhere, a stage called clean that the tools judged to
+// need attention) goes back to the model this many times; what still fails is
+// noted under the reply.
+export const ANSWER_REVISIONS = 1;
+export const REVISING_NOTE = "Checking the answer against its evidence…";
+
+// What an answer's numbers may come from: the conversation as it arrived (the
+// system prompt, the context, the user's words, earlier answers), this reply's
+// tool results, and the tools' own guidance. Not this reply's own text: its
+// drafts, and the notes sent back about them, would vouch for themselves.
+function numberSources(convo: ChatMessage[], arrived: number, tools: AgentTool[]): string {
+  const text = (m: ChatMessage): string =>
+    typeof m.content === "string"
+      ? m.content
+      : Array.isArray(m.content)
+        ? m.content.map((part) => (part.type === "text" ? part.text : "")).join("\n")
+        : "";
+  return [
+    ...convo.slice(0, arrived).map(text),
+    ...convo.slice(arrived).filter((m) => m.role === "tool").map(text),
+    ...tools.map((t) => t.description),
+  ].join("\n");
+}
+
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
 // A call whose arguments are not a JSON object goes back to the model with {}
@@ -96,6 +122,7 @@ export async function runAgent({
   onProgress,
   maxRounds = MAX_TOOL_ROUNDS,
   usage: wantUsage = false,
+  checkAnswers = true,
 }: {
   messages: ChatMessage[];
   tools: AgentTool[];
@@ -105,8 +132,12 @@ export async function runAgent({
   onProgress?: (p: AgentProgress) => void;
   maxRounds?: number;
   usage?: boolean; // count the reply's tokens (the evals)
+  checkAnswers?: boolean; // hold a final answer to its evidence (answerChecks.ts); on whenever tools are
 }): Promise<AgentResult> {
   const convo = [...messages];
+  const arrived = convo.length;
+  let revisions = 0;
+  let rejected = ""; // the last answer sent back, kept if the revision writes nothing
   // The tools may refresh the dataset (run_pipeline does); keep that to this reply.
   // The skills read so far gate a stage's changes (skills.ts); this reply's
   // reads add to its own copy.
@@ -176,6 +207,7 @@ export async function runAgent({
       }
       throw e;
     }
+    const before = content;
     content = joinText(content, roundText);
 
     // A reply that ran out of room may end mid-call: never run that round's tools.
@@ -183,7 +215,24 @@ export async function runAgent({
       note = CUT_OFF_NOTE;
       break;
     }
-    if (!calls.length || !useTools) break;
+    if (!calls.length || !useTools) {
+      // The final answer: held to its evidence before the user reads it. A
+      // revision that wrote nothing leaves the answer it revised.
+      const answer = roundText.trim() ? roundText : rejected;
+      const issues = useTools && checkAnswers ? answerIssues(answer, steps, numberSources(convo, arrived, tools)) : null;
+      if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
+        revisions += 1;
+        rejected = roundText;
+        content = before;
+        convo.push({ role: "assistant", content: roundText });
+        convo.push({ role: "user", content: issuesPrompt(issues) });
+        emit(`_${REVISING_NOTE}_`);
+        continue;
+      }
+      if (!roundText.trim() && rejected) content = joinText(before, rejected);
+      if (issues) note = note ? `${note} ${issuesNote(issues)}` : issuesNote(issues);
+      break;
+    }
     if (last) {
       note = `Stopped after ${maxRounds} rounds of tool calls; the answer uses what was gathered so far.`;
       break;

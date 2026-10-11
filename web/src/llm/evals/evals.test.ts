@@ -19,6 +19,9 @@ interface Replay {
   good: ScriptTurn[];
   bad: ScriptTurn[];
   catches: string[]; // checks the bad run must fail
+  // What the agent's own answer checks (answerChecks.ts) note under the bad
+  // run, which they first sent back once: these failures are caught live too.
+  flags?: RegExp;
 }
 
 const REPLAYS: Record<string, Replay> = {
@@ -31,6 +34,7 @@ const REPLAYS: Record<string, Replay> = {
     ],
     bad: [{ text: "Yes, the ring removal is clean: the rings were subtracted completely." }],
     catches: ["calls assess_stage for the rings", "quotes the leftover ring's |Q|", "says that a ring is left"],
+    flags: /Not measured in this reply: the ring removal/,
   },
   "punch-missed": {
     good: [
@@ -44,6 +48,7 @@ const REPLAYS: Record<string, Replay> = {
       { text: "Yes, the punch removed every Bragg peak; nothing is left at the nodes." },
     ],
     catches: ["quotes the missed peaks at nodes", "says that lattice peaks were missed"],
+    flags: /Contradicts the tools' verdict on the Bragg punch/,
   },
   "pdf-window-coverage": {
     good: [
@@ -109,6 +114,7 @@ const REPLAYS: Record<string, Replay> = {
       { text: "Yes, the off-lattice peaks show a second grain, turned about 20° from the main one." },
     ],
     catches: ["says that there is no second grain", "never claims a second grain", "quotes the offset angle"],
+    flags: /Contradicts the tools' verdict on a second grain/,
   },
   "ub-symmetrised": {
     good: [
@@ -119,6 +125,7 @@ const REPLAYS: Record<string, Replay> = {
     ],
     bad: [{ calls: [{ name: "ub_check", args: {} }] }, { text: "The UB is fine: the fit changed nothing." }],
     catches: ["says that the orientation needs the unsymmetrised data"],
+    flags: /Contradicts the tools' verdict on the UB/,
   },
   "ub-misoriented": {
     good: [
@@ -129,6 +136,7 @@ const REPLAYS: Record<string, Replay> = {
     ],
     bad: [{ calls: [{ name: "ub_check", args: {} }] }, { text: "The UB is right; the peaks sit on their nodes." }],
     catches: ["quotes the rotation", "quotes the refined a"],
+    flags: /Contradicts the tools' verdict on the UB/,
   },
   // The skills' firm rule: the bad scripts change a stage without reading its
   // skill, the executor refuses, and the change never lands.
@@ -211,6 +219,8 @@ describe("NEBULA Pilot evals, replayed", () => {
       const caught = bad.result.grades.filter((g) => !g.pass).map((g) => g.check);
       expect(bad.result.passed).toBe(false);
       for (const name of r.catches) expect(caught, `${name}\n${transcript(bad.result.run)}`).toContain(name);
+      if (r.flags) expect(bad.result.run.note ?? "", transcript(bad.result.run)).toMatch(r.flags);
+      else expect(bad.result.run.note ?? "", "a bad run the answer checks do not flag").not.toMatch(/Not measured|Contradicts/);
     });
   }
 });

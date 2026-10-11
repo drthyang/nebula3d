@@ -58,6 +58,12 @@ from nebula3d.preprocessing.radial_flatten import (
     RadialFlattenResult,
     flatten_radial_background,
 )
+from nebula3d.preprocessing.ring_isotropy import (
+    IsotropyConfig,
+    ShellIsotropy,
+    judge_shells,
+    shell_isotropy,
+)
 from nebula3d.preprocessing.ring_model import FittedRingModel, PatchedRingModel, RingParams
 from nebula3d.preprocessing.sampling import azimuthal_sampling_mask, trim_coverage_edge
 
@@ -75,6 +81,10 @@ __all__ = [
     "PooledRingConfig",
     "PooledRingResult",
     "fit_pooled_rings",
+    "IsotropyConfig",
+    "ShellIsotropy",
+    "judge_shells",
+    "shell_isotropy",
     "PatchedRingModel",
     "RingParams",
     "FittedRingModel",

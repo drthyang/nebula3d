@@ -261,6 +261,36 @@ def _write_entry(path, vol, **attrs):
             entry.attrs[key] = value
 
 
+def test_volume_ring_isotropy(tmp_path):
+    """/rings judges shells: an isotropic powder ring is one, maxima along a few
+    directions at the same |Q| are not."""
+    n = 61
+    blank = HKLVolume.from_arrays(np.zeros((n, n, n)), (-3, 3), (-3, 3), (-3, 3),
+                                  ub_matrix=np.eye(3))
+    H, K, L = blank.hkl_grid()
+    q = blank.q_magnitude()
+    ring = np.exp(-0.5 * ((q - 2.0) / 0.06) ** 2)
+    lobes = sum(np.exp(-0.5 * ((H - h) ** 2 + (K - k) ** 2 + (L - l_) ** 2) / 0.25 ** 2)
+                for h, k, l_ in [(2.6, 0, 0), (-2.6, 0, 0), (0, 0, 2.6), (0, 0, -2.6)])
+    data = 1.0 + ring + 3.0 * lobes + np.random.default_rng(0).normal(0.0, 0.01, q.shape)
+    vol = HKLVolume.from_arrays(data, (-3, 3), (-3, 3), (-3, 3), ub_matrix=np.eye(3))
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    nebula3d.save(vol, tmp_path / "raw" / f"{STEM}.nxs")
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    r = client.get(f"/api/volumes/{SLUG}.raw/rings", params={"q": "2.0,2.6", "fwhm": "0.14,0.14"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["rule"] == {"direction_share": 0.9, "height_share": 0.15}
+    assert [s["is_ring"] for s in body["shells"]] == [True, False]
+    assert body["shells"][0]["isotropy"] > 0.9
+    bad_params = ({"q": "2.0", "fwhm": "0.1,0.1"}, {"q": "x", "fwhm": "0.1"},
+                  {"q": "-1", "fwhm": "0.1"})
+    for bad in bad_params:
+        assert client.get(f"/api/volumes/{SLUG}.raw/rings", params=bad).status_code == 400
+
+
 def test_volume_ub_check(tmp_path):
     """The UB check on a NeXus Viewer export: a volume symmetrised under the
     operations it declares takes the symmetric fit, which finds the cell the

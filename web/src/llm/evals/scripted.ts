@@ -30,7 +30,9 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
     requests += 1;
     const turn = turns[next++];
     if (!turn) overrun += 1;
-    const text = turn ? (turn.text ?? "") : "(the script ran out)";
+    // Past the script the model has nothing more to say: an empty reply (the
+    // agent keeps the answer it had), counted as an overrun.
+    const text = turn ? (turn.text ?? "") : "";
     const chunks: string[] = [];
     const push = (o: unknown) => chunks.push(`data: ${JSON.stringify(o)}\n\n`);
     for (const piece of text.match(/[\s\S]{1,40}/g) ?? []) push({ choices: [{ delta: { content: piece } }] });

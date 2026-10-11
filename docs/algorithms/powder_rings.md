@@ -96,6 +96,54 @@ supplies the statistics one plane lacks.
 5. Subtract the excess, interpolated bilinearly over (φ, |Q|) at every voxel.
    The sampling-mask spokes are masked as in the per-plane models.
 
+**Only confirmed rings are subtracted** (`PooledRingConfig.confirm_rings`,
+on by default since 2026-10-11). A shell the detection finds is a powder ring
+only if it rises at its |Q| in nearly every direction over the sphere
+(`nebula3d.preprocessing.ring_isotropy.judge_shells`): texture can vary a
+ring's height, but not take it away anywhere. The crystal's own scattering at
+one |Q| (short-range-order maxima, the thermal diffuse round its Bragg nodes,
+the nodes) rises in some directions only. Before this rule the removal
+subtracted every detected shell, and on a crystal with no rings it took broad
+shells of its diffuse: on a held-out synthetic volume 3 % of the intensity,
+up to a third of the diffuse near 4.1 Å⁻¹ (docs/evals.md). Comparing the three
+principal planes cannot replace the test: symmetry makes them equivalent (all
+three on a cubic cell, h0l and 0kl on a hexagonal or tetragonal one), so the
+crystal's own scattering shows on each.
+
+The sphere is cut into 8 × 16 cells of equal solid angle (bands in cos θ by
+sectors in φ, Cartesian Q). In each cell the radial profile is the median of
+each |Q| bin, robust to a Bragg peak in the cell, and the shell's height there
+is that profile's mean over its core (± 0.75 × FWHM, the FWHM capped at 0.16
+Å⁻¹) above a line through flanks on either side. The mean over the core, not
+its peak, so a ring whose |Q| wanders with direction (within the FWHM of the
+all-direction profile, which the wandering widens) still counts. A flank skips
+the core of every other shell found above the noise (a close doublet's weak
+member included) and reaches further out for clean bins; with no clean flank
+on one side the shell is judged again clear of the confirmed rings only, and
+else not judged. The rule: at least 0.15 of the median height in 90 % of
+the cells (*to confirm with the user*). On the synthetic volumes the 10th
+percentile of the cells' heights over the median (the isotropy) reads:
+
+| Shell | Isotropy |
+| --- | ---: |
+| Injected isotropic rings (held-out) | 0.96 |
+| Demo aluminium lines, textured (`ring_p2` 0.45, `ring_p4` 0.15) | 0.35 (weakest) to 0.90 |
+| Test ring three times stronger one way, its |Q| wandering ± 0.07 Å⁻¹ (`tests/test_pooled_rings.py`) | 0.33 |
+| The crystals' own diffuse shells (eight volumes, one with its HKL origin shifted) | −0.14 or less |
+
+The cells must stay small, and the core narrow: on 4 × 8 cells the diffuse
+shells read up to 0.9, and with a 0.29 Å⁻¹ core one read 0.21, because both
+average maxima in different directions, or at neighbouring |Q|, into what
+reads as a ring. The Al lattice of the weak-line prior is fitted from
+confirmed rings alone, so a crystal whose own lattice is close to aluminium's
+cannot pass its shells off as Al lines. With nothing confirmed the stage
+returns the volume unchanged, mask included; otherwise it is the stage it was
+(on the demo volume, bit for bit). A shell measured in too few directions (a
+box corner) is not judged, and not subtracted. A ring too weak to rise above the noise in
+nearly every cell is neither removed nor counted by the ring check. The
+diagnostics list each subtracted shell with its verdict, and the rest under
+`rejected_shells`.
+
 **Bragg peaks.** A Bragg peak covers one sector over a few planes, a minority of
 the pooling neighbourhood, so the median rejects it. Pooling over the stack
 alone is not enough at integer H, where the peak spans most of the plane window:
@@ -144,8 +192,11 @@ Knobs (`RingParams`): `pooled_sectors` (72), `pooled_window_deg` (5),
 `pooled_neighbor_sectors` (1), `pooled_envelope_scale` (1.5),
 `pooled_amp_cap` (8), `pooled_min_snr` (6); `ring_width` is the maximum ring
 FWHM and `slice_axis` the stack axis. `PooledRingConfig` also has
-`pool_target_count` (12) and `al_prior` (on). The diagnostics sidecar
-(`*_ringremoved_diagnostics.json`) lists each shell with its detection route.
+`pool_target_count` (12) and `al_prior` (on). `pooled_confirm_rings` (on)
+subtracts only confirmed rings, by `pooled_ring_direction_share` (0.9) and
+`pooled_ring_height_share` (0.15). The diagnostics sidecar
+(`*_ringremoved_diagnostics.json`) lists each shell with its detection route
+and its verdict.
 
 ### Ring Removal 2.0: sample-only global 3D model
 

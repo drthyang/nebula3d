@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+- **A ring must rise in every direction.** A shell in |Q| is now a powder ring
+  only if it stands above the diffuse beside it in nearly every direction over
+  the sphere: at least 0.15 of its median height in 90 % of 128 direction
+  cells, judged in 3D on the raw volume (to confirm with the user). The
+  crystal's own scattering at one |Q| rises in some directions only.
+  - The pooled ring removal subtracts only confirmed rings. A crystal with no
+    rings keeps all of its diffuse: on the held-out synthetic volume the
+    removal had taken 3 % of the intensity, up to a third of the diffuse near
+    4.1 Å⁻¹. The demo volume's aluminium rings are removed as before, and the
+    held-out rings lose 95 % and 96.5 %. `pooled_confirm_rings=False` restores
+    the old behaviour.
+  - `assess_stage` judges each bump the planes show the same way, through the
+    new `GET /api/volumes/{id}/rings`. Its rule that rings are bumps seen on
+    two planes is gone: symmetry makes planes equivalent (all three on a
+    cubic cell), so the crystal's own scattering shows on each.
+  - `assess_stage` with `stage=all` leaves out the stages' goals, and a ring
+    result its noise-level bumps, so both fit the tool-result limit; one stage
+    at a time still gives its goal.
+- **Held-out evals with injected faults.** Five synthetic volumes that no
+  eval, tuning or prompt was written on, each with one fault of a known size
+  (`nebula3d.faults`): a turned UB, a shifted HKL origin, counts cut short in
+  |Q|, and powder rings. `ub_check` measures 0.602° of a 0.6° turn, and says
+  when no UB change explains the peaks' offsets. The counts' edge reads 4.507
+  Å⁻¹ against 4.511, and both rings are found at their |Q|. The CI replays a good
+  and a bad answer per scenario (`NEBULA_EVAL_SET=heldout` runs them on a real
+  model). The set also found that the ring check read a cubic crystal's
+  short-range-order diffuse as rings, and that the default ring removal
+  subtracted part of that diffuse from a crystal with no rings (below).
+- **Fixed:** the answer checks no longer call a sentence about the Bragg peaks'
+  offset from their nodes an unmeasured verdict on the punch. They also catch
+  "No ring is left" against a ring check that needs attention: the leading "No"
+  was read as an answer word.
+
+- **NEBULA Pilot's answers stand on their evidence.** Before you read a final
+  answer, the agent checks it three ways:
+  - a verdict on a stage needs the tool that measures it in this reply;
+  - every number must come from a tool result or the context;
+  - no claim may contradict a verdict a tool computed.
+
+  `assess_stage` now returns each stage's verdict, *meets its goal* or *needs
+  attention*, with the rule behind it, by the report's own criteria. An answer
+  that fails goes back to the model once, with what to fix; what still fails
+  is noted under the reply. In the eval replays, five of the nine research
+  scenarios' failures are now caught by these checks alone: a ring verdict
+  from the opening cut, a punch called clean that missed peaks, a second
+  grain the tool rules out, and a UB called right that the fit turned or could
+  not judge.
 - **NEBULA Pilot has skills: the user's methods, read on demand.** Three
   drafts live in `.claude/skills`, where Claude Code reads them too:
   - `reduction-qc`: the UB, the symmetrisation, the |Q| edges and the

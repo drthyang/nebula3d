@@ -3,7 +3,7 @@
 // stage writes), so a trial is judged on more than one cut.  The numbers are
 // the same pure metrics the chat context uses.
 
-import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta } from "../../api/client";
+import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingIsotropy } from "../../api/client";
 import type { Dataset } from "../../api/types";
 import { dpdfVolumeId, loadPipelineContext, safe, hklVolumeId, type Cut } from "../context/loadContext";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
@@ -24,8 +24,24 @@ const DPDF_CUTS: Cut[] = [
 
 export type StageEvaluation = Record<string, unknown>;
 
-// Two planes' rings within this |Q| (Å⁻¹) are the same powder ring.
+// Bumps within this |Q| (Å⁻¹) on the planes are one shell, judged once.
 const RING_MATCH_Q = 0.1;
+
+/** The planes' bumps as shells: those within RING_MATCH_Q of the first of a run are one. */
+function shellsOf(bumps: { at: number; fwhm?: number }[]): { q: number; fwhm: number; members: number[] }[] {
+  const order = bumps.map((_b, i) => i).sort((i, j) => bumps[i].at - bumps[j].at);
+  const shells: { q: number; fwhm: number; members: number[] }[] = [];
+  for (const i of order) {
+    const last = shells[shells.length - 1];
+    if (last && bumps[i].at - bumps[last.members[0]].at <= RING_MATCH_Q) last.members.push(i);
+    else shells.push({ q: 0, fwhm: 0, members: [i] });
+  }
+  for (const sh of shells) {
+    sh.q = sh.members.reduce((t, i) => t + bumps[i].at, 0) / sh.members.length;
+    sh.fwhm = Math.max(...sh.members.map((i) => bumps[i].fwhm ?? 0), 0.02);
+  }
+  return shells;
+}
 
 // Fraction of the voxels measured before the punch that the punch removed.
 function punchedFraction(before: Float32Array | undefined, after: Float32Array | undefined): number | null {
@@ -108,15 +124,22 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
 
   if (stage === "rings") {
     const r = contexts.map((c) => c.context.ring_removal);
-    // A powder ring is isotropic: it shows at one |Q| on every plane.  A bump on
-    // a single plane is the crystal's own scattering (Bragg tails, a diffuse
-    // shell), which the ring stage rightly leaves, so only rings seen on two or
-    // more planes count when more than one plane was measured.
     const all = cuts.flatMap((c, i) => (r[i]?.ring_residuals ?? []).map((x) => ({ plane: c.plane, ...x })));
     const planesMeasured = r.filter((x) => x?.ring_residuals).length;
-    const isRing = (x: { plane: string; at: number }) =>
-      planesMeasured < 2 || new Set(all.filter((y) => Math.abs(y.at - x.at) <= RING_MATCH_Q).map((y) => y.plane)).size >= 2;
-    const rings = all.filter((x) => x.significant && isRing(x));
+    // A powder ring rises at its |Q| in nearly every direction over the sphere;
+    // the crystal's own scattering there (short-range order, thermal diffuse,
+    // the Bragg nodes) rises in some directions only. The three planes cannot
+    // tell them apart where symmetry makes them equivalent (all three on a cubic
+    // cell; h0l and 0kl on a hexagonal or tetragonal one), so every bump is
+    // judged in 3D on the raw volume, and only confirmed rings count.
+    const shells = shellsOf(all);
+    const judged = metaId && shells.length ? await safe(fetchRingIsotropy(metaId, shells)) : null;
+    const shellOf = new Map<number, number>();
+    shells.forEach((sh, k) => sh.members.forEach((i) => shellOf.set(i, k)));
+    const verdictOf = (i: number) => judged?.shells[shellOf.get(i) ?? -1] ?? null;
+    const isRing = (i: number) => verdictOf(i)?.is_ring === true;
+    const unjudged = shells.length > 0 && !judged;
+    const rings = all.map((x, i) => ({ x, i })).filter(({ x, i }) => x.significant && isRing(i)).map(({ x }) => x);
     const worstOf = <T extends { at: number; residual_fraction: number }>(xs: T[], sign: 1 | -1) =>
       xs.reduce<T | null>(
         (best, x) =>
@@ -129,24 +152,59 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     };
     const dent = worst(-1);
     const left = worst(1);
-    // Each plane's residuals with its one-plane bumps marked, and its extremes
-    // picked among the rings alone, so the plane agrees with the totals.
-    const planeResiduals = (i: number) =>
-      r[i]?.ring_residuals?.map((x) => (isRing({ plane: cuts[i].plane, at: x.at }) ? x : { ...x, single_plane_bump: true })) ?? null;
-    const planeWorst = (xs: ReturnType<typeof planeResiduals>, sign: 1 | -1) =>
-      worstOf((xs ?? []).filter((x) => x.significant && !("single_plane_bump" in x)), sign);
+    // Each plane's residuals marked ring or not, its extremes picked among the
+    // rings alone, so the plane agrees with the totals.
+    let offset = 0;
+    const planeResiduals = cuts.map((_c, i) => {
+      const xs = r[i]?.ring_residuals ?? null;
+      const start = offset;
+      offset += xs?.length ?? 0;
+      // The width went to the 3D test; the residual reads without it. Judged,
+      // a bump neither significant nor a ring is noise, and left out.
+      return (
+        xs?.flatMap((residual, k) => {
+          const { fwhm, ...x } = residual;
+          void fwhm;
+          if (!judged) return [x];
+          const ring = isRing(start + k);
+          return ring || x.significant ? [{ ...x, ring }] : [];
+        }) ?? null
+      );
+    });
+    const planeWorst = (xs: (typeof planeResiduals)[number], sign: 1 | -1) =>
+      worstOf((xs ?? []).filter((x) => x.significant && "ring" in x && x.ring), sign);
+    const rule = judged?.rule;
     return {
       mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),
       max_over_subtraction_fraction: max(r.map((x) => x?.over_subtraction_fraction)),
-      // The deepest dent and largest leftover at the raw rings, over the planes.
-      max_ring_dent: planesMeasured ? roundSig(dent ? -dent.residual_fraction : 0) : null,
-      max_ring_left: planesMeasured ? roundSig(left ? left.residual_fraction : 0) : null,
+      // The deepest dent and largest leftover at the confirmed rings, over the
+      // planes; not judged when the 3D test could not run.
+      max_ring_dent: planesMeasured && !unjudged ? roundSig(dent ? -dent.residual_fraction : 0) : null,
+      max_ring_left: planesMeasured && !unjudged ? roundSig(left ? left.residual_fraction : 0) : null,
       worst_ring_dent: dent,
       worst_ring_left: left,
-      // Significant bumps on one plane only: crystal scattering, not rings.
-      single_plane_bumps: all.filter((x) => x.significant && !isRing(x)).map(({ plane, at, residual_fraction }) => ({ plane, at, residual_fraction })),
+      // Each shell the planes' bumps make, judged in 3D: a ring rises by at least
+      // height_share of its median height in direction_share of the directions
+      // (isotropy: the height there over the median); the others are the
+      // crystal's own scattering, which the removal must leave.
+      ...(unjudged
+        ? { ring_rule: "not judged: the test of each bump in 3D could not run" }
+        : {
+            ring_rule: { direction_share: rule?.direction_share ?? null, height_share: rule?.height_share ?? null },
+            // The rings, and the bumps significant on some plane (the rest are noise).
+            shells_judged: shells.flatMap((sh, k) => {
+              const v = judged?.shells[k];
+              if (!v?.is_ring && !sh.members.some((i) => all[i].significant)) return [];
+              return [{
+                at: roundSig(sh.q, 3),
+                ring: v?.is_ring ?? false,
+                ...(v?.isotropy != null ? { isotropy: roundSig(v.isotropy, 2) } : {}),
+                ...(v?.not_judged ? { not_judged: v.not_judged } : {}),
+              }];
+            }),
+          }),
       per_plane: per((i) => {
-        const residuals = planeResiduals(i);
+        const residuals = planeResiduals[i];
         return r[i] && {
           ring_energy_ratio: r[i]!.ring_energy_ratio,
           after_ring_energy: r[i]!.after_ring_energy,
