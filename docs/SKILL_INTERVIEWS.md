@@ -45,8 +45,12 @@ qualitatively, as the docs do.
    keep a margin inside them?
 5. Edge voxels: how many layers do you trim, and does that depend on the
    instrument or the probe?
-6. Rings: is "seen on two planes at one |Q|" the right test for a powder ring?
-   How large a dent or leftover do you tolerate?
+6. Rings: you chose "rises in nearly every direction over the sphere" for a
+   powder ring. Is at least 0.15 of its median height in 90 % of 128
+   directions the right line (synthetic rings read 0.33 to 0.96, the crystals'
+   own diffuse −0.14 or less)? Do your measured rings, textured or wandering in
+   |Q|, clear it, and what of a ring too weak to? How large a dent or leftover
+   do you tolerate?
 7. The flatten: when is a floor that rises with |Q| background to remove, and
    when could it be signal? What floor and span do you accept?
 8. What makes you stop and not run the 3D-ΔPDF at all?

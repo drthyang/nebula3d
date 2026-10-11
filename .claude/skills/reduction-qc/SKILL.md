@@ -51,10 +51,17 @@ inward. Check these first, in this order, and say what each check found.
    symmetrised outside the pipeline must be trimmed first. Unmeasured voxels
    stay masked. The backfill fills punched holes and gaps the measured data
    enclose, not the open coverage.
-5. **Powder rings.** `assess_stage` for the rings, then `radial_profile`. A ring
-   counts only where two planes see it at one |Q|. A bump on one plane only is
-   the crystal's own scattering, and must stay. Report leftovers and dents as
-   shares of the diffuse beside them.
+5. **Powder rings.** `assess_stage` for the rings, then `radial_profile`. A bump
+   is a powder ring only if it rises in nearly every direction over the sphere,
+   judged in 3D (`shells_judged`; the rule: at least 0.15 of its median height
+   in 90 % of the directions, *to confirm with the user*). The crystal's own
+   scattering at one |Q| rises in some directions only, and must stay. Planes
+   cannot tell them apart: symmetry makes them equivalent (all three on a cubic
+   cell, h0l and 0kl on a hexagonal or tetragonal one). The removal subtracts
+   only confirmed rings, so a crystal with none keeps all its diffuse. Report
+   leftovers and dents at the confirmed rings as shares of the diffuse beside
+   them. A ring too weak to rise in nearly every direction is neither removed
+   nor counted: if one shows by eye, say so.
 6. **The flatten floor.** `assess_stage` for the flatten: the floors near zero
    across the whole coverage, no trend with |Q| (`floor_trend`), and a span
    small against the diffuse level. A floor that rises with |Q| is inelastic
@@ -86,7 +93,7 @@ A QC answer is complete when it states, each with the tool's numbers:
 - [ ] whether the volume is symmetrised, and what that hides;
 - [ ] the raw counts' |Q| edges, and whether the band stays inside them;
 - [ ] the window's weight on unmeasured space;
-- [ ] the ring verdict, on two planes or more;
+- [ ] the ring verdict, with the shells confirmed as rings and those that are not;
 - [ ] the flatten floor, trend and span;
 - [ ] what was not checked, and why.
 
@@ -97,8 +104,9 @@ A QC answer is complete when it states, each with the tool's numbers:
 - Calling an offset that grows with |Q| a UB error, and "fixing" it with a
   refined UB.
 - Letting the band run past the counts, so empty voxels enter the transform.
-- Reading a one-plane bump as a leftover ring, and subtracting the crystal's
-  own scattering.
+- Reading a bump the planes share as a ring: on a cubic crystal its own
+  diffuse shows on all three planes. Only the test in 3D confirms a ring, and
+  only confirmed rings are subtracted.
 - Regridding or symmetrising before trimming the edge, so its bright voxels
   spread inward.
 - Judging the whole volume from the opening cut at L = 0: measure another plane
