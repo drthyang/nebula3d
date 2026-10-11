@@ -399,7 +399,7 @@ const runOn = (ds: Dataset, name: string, args: object) =>
   runToolCall({ id: "c", type: "function", function: { name, arguments: JSON.stringify(args) } }, CHAT_TOOLS, { dataset: ds, datasets: [ds] });
 
 describe("assess_stage", () => {
-  it("judges each stage that exists against its goal, headline numbers only for all", async () => {
+  it("judges each stage that exists by its criterion, headline numbers only for all", async () => {
     evaluate.evaluateStage.mockImplementation(async (stage: string) =>
       stage === "flatten"
         ? { max_after_floor_sigma: 0.8, per_plane: { hk0: {} } }
@@ -409,8 +409,10 @@ describe("assess_stage", () => {
     const out = JSON.parse(r.text);
     expect(out.rings.missing).toMatch(/no ringremoved output yet/);
     expect(out.flatten).toMatchObject({ headline: "floor ≤ 0.8σ · trend ≤ – · span ≤ –", max_after_floor_sigma: 0.8 });
-    expect(out.flatten.goal).toMatch(/floor/);
+    expect(out.flatten.criterion).toMatch(/floor/);
+    // Five stages' per-plane detail and goals would overflow the result.
     expect(out.flatten).not.toHaveProperty("per_plane");
+    expect(out.flatten).not.toHaveProperty("goal");
     expect(r.summary).toBe("Flatten: meets its goal · floor ≤ 0.8σ · trend ≤ – · span ≤ – · 3D-ΔPDF: needs attention · r 0.99 · RMS 0.1 · SNR 40");
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
   });
@@ -419,6 +421,7 @@ describe("assess_stage", () => {
     evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, per_plane: { hk0: { after_floor_max_sigma: 0.8 } } });
     const out = JSON.parse((await run("assess_stage", { stage: "flatten" })).text);
     expect(out.flatten.per_plane.hk0).toEqual({ after_floor_max_sigma: 0.8 });
+    expect(out.flatten.goal).toMatch(/floor/);
   });
 });
 

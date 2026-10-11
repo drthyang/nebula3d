@@ -718,9 +718,16 @@ const assessStage: AgentTool = {
       // left to the model (answerChecks.ts holds the model to it).
       const check = stageCheck(stage, evaluation);
       const verdict = check ? VERDICT_LABEL[check.verdict] : VERDICT_LABEL.info;
-      // All five stages' per-plane detail would overflow the result.
+      // All five stages' per-plane detail, or their goals, would overflow the
+      // result (MAX_RESULT_CHARS): one stage at a time gives both.
       if (pick === "all") delete evaluation.per_plane;
-      result[stage] = { verdict, criterion: check?.criterion, headline: headline(stage, evaluation), ...evaluation, goal: STAGE_GOALS[stage] };
+      result[stage] = {
+        verdict,
+        criterion: check?.criterion,
+        headline: headline(stage, evaluation),
+        ...evaluation,
+        ...(pick === "all" ? {} : { goal: STAGE_GOALS[stage] }),
+      };
       lines.push(`${TUNE_STAGE_LABELS[stage]}: ${verdict} · ${headline(stage, evaluation)}`);
     }
     if (measuredOn) result.measured_on = measuredOn;
