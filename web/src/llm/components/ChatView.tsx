@@ -88,6 +88,7 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
 }
 
 const TOOL_LABELS: Record<string, string> = {
+  read_skill: "Read a skill",
   describe_dataset: "Read the dataset",
   current_view: "Checked your view",
   measure_reciprocal_cut: "Measured a reciprocal cut",
@@ -101,6 +102,10 @@ const TOOL_LABELS: Record<string, string> = {
   radial_profile: "Took a radial profile",
   texture_check: "Checked for texture",
   qmax_coverage: "Checked Qmax against coverage",
+  symmetry_check: "Checked the ΔPDF's symmetry",
+  dpdf_contrast: "Set the ΔPDF's contrast",
+  grain_check: "Checked for a second grain",
+  ub_check: "Checked the UB",
   run_log: "Read the run log",
   update_settings: "Changed settings",
   run_pipeline: "Ran the pipeline",
