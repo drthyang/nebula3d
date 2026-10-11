@@ -338,6 +338,9 @@ button {
   flex-direction: column;
   min-width: 0;
   overflow-y: auto;
+  /* the page layouts answer to this width, not the window's: with NEBULA
+     Pilot docked beside it, the page reflows */
+  container: main / inline-size;
   padding:
     var(--main-pad-top)
     max(var(--main-pad-x), env(safe-area-inset-right))
@@ -1077,7 +1080,7 @@ input[type="range"]::-moz-range-track {
 
 /* shared panels */
 .bragg-grid { display: grid; grid-template-columns: 1.62fr 1fr; gap: 12px; align-items: stretch; }
-@media (max-width: 1100px) { .bragg-grid { grid-template-columns: 1fr; } }
+@container main (max-width: 860px) { .bragg-grid { grid-template-columns: 1fr; } }
 .bragg-panel {
   background: #15191f;
   border: 1px solid #252c36;
@@ -1204,7 +1207,7 @@ input[type="range"]::-moz-range-track {
   gap: 18px;
   align-items: start;
 }
-@media (max-width: 820px) {
+@container main (max-width: 780px) {
   .pipeline-layout {
     grid-template-columns: 1fr;
   }
@@ -2182,12 +2185,12 @@ input[type="range"]::-moz-range-track {
   transition: width 0.4s ease;
 }
 
-@media (max-width: 1180px) {
+@container main (max-width: 920px) {
   .data-card-grid {
     grid-template-columns: 1fr;
   }
 }
-@media (max-width: 1000px) {
+@container main (max-width: 950px) {
   .data-card-head {
     flex-direction: column;
     align-items: stretch;
@@ -2207,7 +2210,7 @@ input[type="range"]::-moz-range-track {
     flex: 1 1 150px;
   }
 }
-@media (max-width: 720px) {
+@container main (max-width: 680px) {
   .data-root-row {
     flex-wrap: wrap;
   }
@@ -2300,7 +2303,7 @@ input[type="range"]::-moz-range-track {
 .pdf-preview-controls {
   display: flex;
 }
-@media (max-width: 920px) {
+@container main (max-width: 870px) {
   .stage-card .card-body {
     grid-template-columns: 1fr;
   }
@@ -2322,7 +2325,7 @@ input[type="range"]::-moz-range-track {
     display: flex;
   }
 }
-@media (max-width: 640px) {
+@container main (max-width: 600px) {
   .punch-controls {
     grid-template-columns: 1fr;
   }
@@ -2513,7 +2516,7 @@ input[type="range"]::-moz-range-track {
   gap: 16px;
   align-items: stretch;
 }
-@media (max-width: 900px) {
+@container main (max-width: 850px) {
   .exec-body { grid-template-columns: 1fr; }
 }
 
@@ -3297,16 +3300,17 @@ input[type="range"]::-moz-range-track {
 
 /* ============================================================ NEBULA Pilot */
 
-/* The assistant is a panel docked to the right of every page: a third grid
-   column beside <main> while open.  On the compact layouts (sidebar folded
-   into a top bar) it slides over the page instead. */
-:root {
-  --dock-w: clamp(360px, 27vw, 480px);
-}
-.app.dock-open {
+/* NEBULA Pilot never covers the page (state/dockLayout.ts, components/
+   PilotDock.tsx).  Docked, it is a third grid column beside <main>, as wide as
+   the user dragged it (--dock-w), or the slim rail when collapsed; the page
+   reflows beside it (its layouts answer to <main>'s width: @container main).
+   On a portrait tablet or a phone it is a bottom sheet under the page instead
+   (--sheet-h), or a slim bar when collapsed (see the compact layout below). */
+.app.dock-docked {
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--dock-w);
 }
 .ai-side {
+  position: relative;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -3314,6 +3318,114 @@ input[type="range"]::-moz-range-track {
   background: var(--bg-raised);
   border-left: 1px solid var(--border);
   padding: 14px 14px max(14px, env(safe-area-inset-bottom));
+}
+/* the docked panel's left edge: drag to resize */
+.ai-resize-x {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 9px;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+}
+.ai-resize-x:hover,
+.ai-resize-x:focus-visible {
+  outline: none;
+  background: linear-gradient(to right, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px);
+}
+body.ai-resizing,
+body.ai-resizing * {
+  user-select: none;
+}
+body.ai-resizing iframe {
+  pointer-events: none;
+}
+/* collapsed beside the page: a slim rail */
+.ai-rail {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  background: var(--bg-raised);
+  border-left: 1px solid var(--border);
+}
+.ai-rail button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+.ai-rail button:hover {
+  background: var(--surface-2);
+}
+.ai-rail-label {
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+/* the bottom sheet: a handle to drag its height */
+.ai-side[data-mode="sheet"] {
+  border-left: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 0;
+}
+.ai-resize-y {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  cursor: row-resize;
+  touch-action: none;
+}
+.ai-resize-y span {
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+.ai-resize-y:hover span,
+.ai-resize-y:focus-visible span {
+  background: var(--accent);
+}
+.ai-resize-y:focus-visible {
+  outline: none;
+}
+/* collapsed under the page: a slim bar */
+.ai-sheetbar {
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+  padding:
+    4px max(12px, env(safe-area-inset-right))
+    max(4px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+}
+.ai-sheetbar button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 650;
+  cursor: pointer;
+}
+.ai-sheetbar button svg:last-child {
+  margin-left: auto;
+  color: var(--text-2);
 }
 .ai-panel {
   flex: 1;
@@ -4467,7 +4579,7 @@ h6.md-h {
 
 /* Bragg stat strip wraps to 3 columns (median width spans two) until there is
    room for all five side by side. */
-@media (max-width: 1439px) {
+@container main (max-width: 1180px) {
   .bragg-stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -4574,16 +4686,33 @@ h6.md-h {
     display: flex;
     flex-direction: column;
   }
-  /* the assistant slides over the page instead of taking a column */
-  .ai-side {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 40;
-    width: min(100vw, 440px);
-    padding-top: calc(env(safe-area-inset-top) + 12px);
-    box-shadow: var(--shadow-2);
+  /* the top bar spans the window; NEBULA Pilot docks beside <main> below it
+     (a tablet held landscape), or sits under it as a bottom sheet */
+  .app.dock-docked {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--dock-w);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "bar bar" "main dock";
+  }
+  .app.dock-sheet {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "bar" "main" "dock";
+  }
+  .app > .sidebar {
+    grid-area: bar;
+  }
+  .app > .main {
+    grid-area: main;
+  }
+  .app > .ai-side,
+  .app > .ai-rail,
+  .app > .ai-sheetbar {
+    grid-area: dock;
+  }
+  .app.dock-sheet > .ai-side {
+    height: var(--sheet-h);
   }
   .sidebar {
     flex: none;
@@ -5641,14 +5770,19 @@ h6.md-h {
   color: var(--text);
 }
 
-/* Narrower screens: five views in one row get too small; wrap them. */
-@media (max-width: 1099px) {
+/* A narrower page (a smaller screen, or NEBULA Pilot docked beside it): five
+   views in one row get too small to read; wrap them. */
+@container main (max-width: 1050px) {
   .ws--grid[data-n="5"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ws--grid[data-n="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-/* Phones: every view is shown, one per row, and the layout buttons hide (as in
-   the NeXus Viewer's compact layout). */
-@media (max-width: 599px) {
+@container main (max-width: 700px) {
+  .ws--grid[data-n="5"],
+  .ws--grid[data-n="3"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Phone-narrow pages: every view is shown, one per row, and the layout buttons
+   hide (as in the NeXus Viewer's compact layout). */
+@container main (max-width: 560px) {
   .ws[data-n],
   .ws--grid[data-n],
   .ws--focus[data-n],

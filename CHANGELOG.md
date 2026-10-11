@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **NEBULA Pilot docks beside the page instead of covering it.** It takes its
+  own column, and the page reflows beside it, so a figure the Pilot points at
+  is never hidden under the panel. Drag the column's edge to resize it, or
+  collapse it to a slim rail; the width is remembered. On a portrait tablet or
+  a phone it is a bottom sheet under the page, resizable and collapsible the
+  same way. With *Follow* on, the figure it works on is scrolled fully into
+  view beside it. The pages' layouts follow the width they are given, so the
+  cleanup views fall into fewer columns beside the dock instead of shrinking.
+
 - **NEBULA Pilot has an eval suite, measured on real models.** Nine scenarios
   with known answers from the research rounds on a measured hexagonal volume
   are graded deterministically, on the tools each model called and on what it
