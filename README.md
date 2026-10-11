@@ -10,6 +10,15 @@ cloud one.
 **Try it in the browser:** https://drthyang.github.io/nebula3d/ runs the complete
 pipeline client-side; nothing is uploaded.
 
+![NEBULA Pilot, docked beside the page, assesses a run on the synthetic demo volume and opens its analysis report](docs/media/nebula-pilot-demo.gif)
+
+*NEBULA Pilot, docked beside the page (1440×900), on a local model (gemma4:26b),
+assesses a run on the built-in synthetic demo volume: simulated data, not
+measured. One click asks for the assessment. Each tool lights up the figure it
+reads, beside the panel, and the reply opens a report built from the tools' own
+numbers. A time-lapse, about six minutes in one: the waits for the model are
+sped up, and each figure and the answer are held long enough to read.*
+
 ## Highlights
 
 - **NEBULA Pilot, an agent for the reduction.** Connect a local model (Ollama,

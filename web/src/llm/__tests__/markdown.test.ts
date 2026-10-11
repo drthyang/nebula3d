@@ -11,6 +11,8 @@ describe("deLatex", () => {
     expect(deLatex("of the \\DeltaPDF weight, \\sigmaN")).toBe("of the ΔPDF weight, σN");
     expect(deLatex("\\leftarrow, but \\deltax")).toBe("←, but \\deltax");
     expect(deLatex("0.6--14.2\\ Å^-1")).toBe("0.6--14.2 Å^-1");
+    expect(deLatex("a floor \\lesssim 1σ, a peak \\gtrsim 5σ, 3\\% off")).toBe("a floor ≲ 1σ, a peak ≳ 5σ, 3% off");
+    expect(deLatex("\\leqslant and \\geqslant, not \\le")).toBe("⩽ and ⩾, not ≤");
   });
   it("leaves plain text unchanged", () => {
     expect(deLatex("no math here")).toBe("no math here");
