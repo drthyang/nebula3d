@@ -242,11 +242,11 @@ def shell_isotropy(
     sorted_vals = val[order]
     starts = np.zeros_like(count)
     np.cumsum(count[:-1], out=starts[1:])
-    median = np.full(count.size, np.nan)
+    median_flat = np.full(count.size, np.nan)
     nz = np.nonzero(count >= cfg.min_voxels)[0]
-    median[nz] = 0.5 * (sorted_vals[starts[nz] + (count[nz] - 1) // 2]
-                        + sorted_vals[starts[nz] + count[nz] // 2])
-    median = median.reshape(n_cells, total_bins)
+    median_flat[nz] = 0.5 * (sorted_vals[starts[nz] + (count[nz] - 1) // 2]
+                             + sorted_vals[starts[nz] + count[nz] // 2])
+    median = median_flat.reshape(n_cells, total_bins)
 
     out: list[ShellIsotropy] = []
     for s, (q0, fwhm, _lo, n_bins, centres, role) in enumerate(layouts):
