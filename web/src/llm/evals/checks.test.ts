@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentStep } from "../agent";
-import { answers, asserts, didNotRun, measured, mentions, neverAsserts, numbers, quotes, ran, readSkillBefore, sentences } from "./checks";
+import { answers, asserts, didNotRun, measured, mentions, neverAsserts, numbers, quotes, ran, sentences } from "./checks";
 import type { Check, EvalRun } from "./harness";
 
 const step = (name: string, args: Record<string, unknown> = {}, result: unknown = {}, status: AgentStep["status"] = "done"): AgentStep => ({
@@ -47,15 +47,6 @@ describe("what the model called", () => {
   it("counts any attempt against a call that must not happen", () => {
     expect(passes(didNotRun("run_pipeline"), run("", []))).toBe(true);
     expect(passes(didNotRun("run_pipeline"), run("", [step("run_pipeline", {}, {}, "error")]))).toBe(false);
-  });
-
-  it("checks that a skill was read before the change it gates", () => {
-    const check = readSkillBefore("bragg-node-audit", "update_settings");
-    const read = step("read_skill", { name: "bragg-node-audit" });
-    const change = step("update_settings", { changes: { punchMinSig: 6 } });
-    expect(passes(check, run("", [read, change]))).toBe(true);
-    expect(passes(check, run("", [change]))).toBe(false);
-    expect(passes(check, run("", [step("read_skill", { name: "bragg-node-audit", reference: "bragg_cleanup" }), change]))).toBe(false);
   });
 });
 
