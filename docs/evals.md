@@ -58,7 +58,9 @@ Measured on 2026-10-10 on one Mac (68.7 GB unified memory), against the native
 server. Each scenario ran three times per model, at temperature 0.2 (the Claude
 models take no sampling parameters), with a 20-minute limit per run. Raw
 records, with every tool call, its result and the answer, are in
-[`docs/evals/results/`](evals/results/).
+[`docs/evals/results/`](evals/results/). They name no sample: the runner
+replaces a sample written as a formula in a dataset id with a neutral label
+(sampleA, sampleB, …) before it writes a record (`web/src/llm/evals/scrub.ts`).
 
 | Scenario | claude-sonnet-5-5 (Anthropic) | claude-haiku-5-5 (Anthropic) | gemma4:26b (Ollama) | qwen/qwen3.8-27b (LM Studio) |
 | --- | :---: | :---: | :---: | :---: |

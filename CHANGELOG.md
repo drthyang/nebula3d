@@ -26,7 +26,9 @@
 
   Claude requests now cache the system prompt and tools, plus a breakpoint
   that follows the conversation, so about 90 % of their input is billed at the
-  cache-hit rate. An eval never starts a pipeline run.
+  cache-hit rate. An eval never starts a pipeline run. The records and the
+  replay fixtures name no sample: a sample written as a formula in a dataset
+  id becomes sampleA, sampleB, … wherever it appears.
 - **The UB can be refined from where the Bragg peaks sit.**
   `nebula3d.analysis.ub_refine` (and `examples/refine_ub.py`) finds each
   Bragg node's peak and fits one of four UB changes:

@@ -21,6 +21,7 @@ import { isLocalUrl, providerForUrl } from "../provider/presets";
 import { backendUrl, env, readText, useBackend, writeText } from "./backend";
 import { grade, runScenario, transcript, type EvalRun, type ScenarioResult } from "./harness";
 import { SCENARIOS } from "./scenarios";
+import { sampleScrubber } from "./scrub";
 
 const live = env("NEBULA_EVAL") === "1";
 
@@ -37,6 +38,8 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
 
     useBackend();
     const datasets = await fetchDatasets();
+    // The record is committed: it names no sample (scrub.ts).
+    const scrub = sampleScrubber(datasets);
     const scenarios = SCENARIOS.filter((s) => !only.size || only.has(s.id));
     const results: ScenarioResult[] = [];
     const out = env("NEBULA_EVAL_OUT");
@@ -69,7 +72,7 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
           error: r.run.error ?? null,
         })),
       };
-      await writeText(new URL(out, `file://${env("PWD") ?? ""}/`), JSON.stringify(record, null, 1) + "\n");
+      await writeText(new URL(out, `file://${env("PWD") ?? ""}/`), scrub(JSON.stringify(record, null, 1)) + "\n");
     };
     for (const scenario of scenarios) {
       for (let i = 0; i < repeat; i++) {
