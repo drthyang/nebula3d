@@ -6,11 +6,14 @@
 
 import type { ChatMessage, ContentPart } from "../provider/client";
 import { contextToJson, type PipelineContext } from "../context/pipelineContext";
+import { skillsPrompt } from "../skills";
 import { SYSTEM_PROMPT, TOOLS_PROMPT } from "./system";
 
+// With tools, the skills' names and descriptions follow the tools' guidance;
+// read_skill reads one when the task calls for it.
 const systemMessage = (tools: boolean): ChatMessage => ({
   role: "system",
-  content: tools ? SYSTEM_PROMPT + "\n" + TOOLS_PROMPT : SYSTEM_PROMPT,
+  content: tools ? SYSTEM_PROMPT + "\n" + TOOLS_PROMPT + "\n" + skillsPrompt() : SYSTEM_PROMPT,
 });
 
 const contextBlock = (context: PipelineContext): string =>

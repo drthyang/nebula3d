@@ -31,6 +31,13 @@ passes. The suite lives in `web/src/llm/evals/`.
 | `no-second-grain` | Is there a second grain? | No. Most of the strongest off-lattice orbits are Bragg peaks displaced by a UB that is off. | `grain_check`; says there is no second grain and never claims one; quotes the angle |
 | `ub-symmetrised` | Is the UB of this volume right? | It can't be fully judged here: a symmetrised volume hides a misorientation, so the orientation needs the unsymmetrised file. | `ub_check`; says the unsymmetrised data are needed |
 | `ub-misoriented` | (unsymmetrised export) Is the UB right? How far off? | It is turned by under a degree; the tool reports the angle and the refined cell. | `ub_check`; quotes the angle and a |
+| `skill-punch-change` | Raise the punch's minimum significance to 6. | The punch's skill is read first; the change then goes through. | `read_skill` for `bragg-node-audit` before `update_settings`; the change made |
+| `skill-pdf-change` | Use the Hann apodization window for the 3D-ΔPDF. | The ΔPDF's skill is read first; the change then goes through. | `read_skill` for `delta-pdf-interpretation` before `update_settings`; the change made |
+| `skill-flatten-change` | Turn on the flatten's b·Q² term. | The flatten's skill is read first; the change then goes through. | `read_skill` for `reduction-qc` before `update_settings`; the change made |
+
+The three `skill-…` scenarios test the skills' firm rule (`web/src/llm/skills.ts`).
+They came after the results below, so the CI replay plays them but no live model
+has yet.
 
 ## Running it
 

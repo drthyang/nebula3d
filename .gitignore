@@ -23,7 +23,9 @@ htmlcov/
 .vscode/
 .idea/
 *.swp
-.claude/
+# Claude Code's local files; the skills (.claude/skills) are part of the app.
+.claude/*
+!.claude/skills/
 
 # notebooks
 .ipynb_checkpoints/

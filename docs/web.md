@@ -339,6 +339,20 @@ The conversation and any reply still streaming live in module-scoped stores
 (`chatStore.ts`, `session.ts`), so collapsing the panel or changing pages does
 not stop them.
 
+**Skills.** The user's methods, one per topic, live in
+`.claude/skills/<name>/SKILL.md`, where Claude Code reads them too:
+`reduction-qc`, `bragg-node-audit` and `delta-pdf-interpretation`. All three
+are drafts awaiting the user's interview (questions in
+[SKILL_INTERVIEWS.md](SKILL_INTERVIEWS.md)). The system prompt lists only their
+names and descriptions. `read_skill` reads a skill whole, or a document it
+cites (a long one by section). A firm rule rides on them (`llm/skills.ts`): a
+stage's settings change (`update_settings`) and the stage is tuned
+(`tune_pipeline`) only after its skill has been read in the conversation.
+Otherwise the executor refuses the call and names the skill to read. The ring
+removal and the flatten belong to `reduction-qc`, the punch and the backfill to
+`bragg-node-audit`, and the ΔPDF to `delta-pdf-interpretation`. The app's own
+tool calls (the report's) are not gated.
+
 - **`metrics/`** — one pure module per judgment, each unit-tested
   (`vitest`, `npm --prefix web run test`):
   - `rings.ts` — residual powder-ring energy (localized bumps in the radial

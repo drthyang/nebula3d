@@ -108,7 +108,9 @@ export async function runAgent({
 }): Promise<AgentResult> {
   const convo = [...messages];
   // The tools may refresh the dataset (run_pipeline does); keep that to this reply.
-  const toolCtx = ctx && { ...ctx };
+  // The skills read so far gate a stage's changes (skills.ts); this reply's
+  // reads add to its own copy.
+  const toolCtx = ctx && { ...ctx, skillsRead: new Set(ctx.skillsRead ?? []) };
   let useTools = tools.length > 0 && ctx !== null && !toolsKnownUnsupported(settings);
   let content = "";
   let reasoning = "";

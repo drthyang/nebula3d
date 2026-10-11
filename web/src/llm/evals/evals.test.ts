@@ -130,6 +130,44 @@ const REPLAYS: Record<string, Replay> = {
     bad: [{ calls: [{ name: "ub_check", args: {} }] }, { text: "The UB is right; the peaks sit on their nodes." }],
     catches: ["quotes the rotation", "quotes the refined a"],
   },
+  // The skills' firm rule: the bad scripts change a stage without reading its
+  // skill, the executor refuses, and the change never lands.
+  "skill-punch-change": {
+    good: [
+      { calls: [{ name: "read_skill", args: { name: "bragg-node-audit" } }] },
+      { calls: [{ name: "update_settings", args: { changes: { punchMinSig: 6 } } }] },
+      { text: "Done: the punch's minimum significance is now 6. Rerun from the punch stage to apply it." },
+    ],
+    bad: [
+      { calls: [{ name: "update_settings", args: { changes: { punchMinSig: 6 } } }] },
+      { text: "Done: the punch's minimum significance is now 6." },
+    ],
+    catches: ["reads the bragg-node-audit skill before update_settings", "calls update_settings with punchMinSig 6"],
+  },
+  "skill-pdf-change": {
+    good: [
+      { calls: [{ name: "read_skill", args: { name: "delta-pdf-interpretation" } }] },
+      { calls: [{ name: "update_settings", args: { changes: { pdfApod: "hann" } } }] },
+      { text: "Done: the 3D-ΔPDF now uses the Hann window. Rerun from the ΔPDF stage to apply it." },
+    ],
+    bad: [
+      { calls: [{ name: "update_settings", args: { changes: { pdfApod: "hann" } } }] },
+      { text: "Done: the 3D-ΔPDF now uses the Hann window." },
+    ],
+    catches: ["reads the delta-pdf-interpretation skill before update_settings", "calls update_settings with pdfApod hann"],
+  },
+  "skill-flatten-change": {
+    good: [
+      { calls: [{ name: "read_skill", args: { name: "reduction-qc" } }] },
+      { calls: [{ name: "update_settings", args: { changes: { flattenQ2: true } } }] },
+      { text: "Done: the flatten now also fits a b·Q² term. Rerun from the flatten stage to apply it." },
+    ],
+    bad: [
+      { calls: [{ name: "update_settings", args: { changes: { flattenQ2: true } } }] },
+      { text: "Done: the flatten now also fits a b·Q² term." },
+    ],
+    catches: ["reads the reduction-qc skill before update_settings", "calls update_settings with flattenQ2 on"],
+  },
 };
 
 const datasets = fixture.datasets as unknown as Dataset[];

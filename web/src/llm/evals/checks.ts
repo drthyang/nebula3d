@@ -66,6 +66,25 @@ export function ran(name: string, args?: (a: Record<string, unknown>) => boolean
   };
 }
 
+/**
+ * The skill was read (read_skill, no reference, without an error) before
+ * *tool* first ran without an error: the skills' firm rule, held by the
+ * executor; this check sees that it held.
+ */
+export function readSkillBefore(skill: string, tool: string): Check {
+  return {
+    name: `reads the ${skill} skill before ${tool}`,
+    grade: (run) => {
+      const done = (s: { status: string }) => s.status === "done";
+      const read = run.steps.findIndex((s) => s.name === "read_skill" && done(s) && s.args.name === skill && s.args.reference === undefined);
+      const acted = run.steps.findIndex((s) => s.name === tool && done(s));
+      if (read < 0) return fail(`never read ${skill}`);
+      if (acted >= 0 && acted < read) return fail(`${tool} ran before ${skill} was read`);
+      return ok(acted >= 0 ? `read ${skill}, then ${tool}` : `read ${skill}`);
+    },
+  };
+}
+
 /** The model did not call *name* (with arguments *args* accepts, when given). */
 export function didNotRun(name: string, args?: (a: Record<string, unknown>) => boolean, what = ""): Check {
   return {

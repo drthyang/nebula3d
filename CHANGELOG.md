@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **NEBULA Pilot has skills: the user's methods, read on demand.** Three
+  drafts live in `.claude/skills`, where Claude Code reads them too:
+  - `reduction-qc`: the UB, the symmetrisation, the |Q| edges and the
+    coverage, edge and unmeasured voxels, the rings and the flatten;
+  - `bragg-node-audit`: allowed and forbidden nodes, off-lattice peaks and the
+    backfill, ported from the scattering-agent-tools skill;
+  - `delta-pdf-interpretation`: what a feature's sign means, the trust checks
+    and the artifacts that imitate signal.
+
+  Each gives the steps in order, marks the judgment calls still to confirm
+  with the user, and ends with a checklist and the failure modes. The system
+  prompt lists only their names and descriptions, and the new `read_skill`
+  tool reads one, or a document it cites. A firm rule rides on them: a
+  stage's settings change, and the stage is tuned, only after its skill has
+  been read in the conversation. Otherwise the call is refused, with the skill
+  to read. The questions for the user's interviews are in
+  [docs/SKILL_INTERVIEWS.md](docs/SKILL_INTERVIEWS.md).
 - **NEBULA Pilot docks beside the page instead of covering it.** It takes its
   own column, and the page reflows beside it, so a figure the Pilot points at
   is never hidden under the panel. Drag the column's edge to resize it, or
