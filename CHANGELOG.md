@@ -19,8 +19,8 @@
   Results, raw records included, are in [docs/evals.md](docs/evals.md):
   - Claude Sonnet 5.5 and Haiku 5.5 pass 27/27 each, at about $0.025 and $0.001
     a run.
-  - gemma4:26b passes 15/27; it answers the ring and punch questions from the
-    opening cut.
+  - gemma4:26b and qwen3:32b on Ollama pass 15/27 and 17/27; both answer the
+    ring and punch questions from the opening cut.
   - qwen3.8-27b on LM Studio passed every run that finished, but most crashed
     for lack of GPU memory on a shared machine.
 

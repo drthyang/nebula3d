@@ -24,8 +24,9 @@ pipeline client-side; nothing is uploaded.
 - **Measured with real models.** Nine scenarios with known answers from
   research rounds on a measured volume are graded on the tools each model
   called and what it answered. Claude Sonnet 5.5 and Haiku 5.5 pass all 27 runs
-  each, at about $0.025 and $0.001 a run. The local gemma4:26b passes 15/27: it
-  answers the ring and punch questions from the opening cut instead of checking.
+  each, at about $0.025 and $0.001 a run. The local gemma4:26b and qwen3:32b
+  pass 15/27 and 17/27: both answer the ring and punch questions from the
+  opening cut instead of checking.
   Details and the raw records are in [docs/evals.md](docs/evals.md). CI replays
   every scenario with a scripted model.
 - **Tuning that cannot touch your results.** Each trial runs in its own folder,

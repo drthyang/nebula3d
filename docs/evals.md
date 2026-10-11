@@ -54,31 +54,32 @@ passes. The suite lives in `web/src/llm/evals/`.
 
 ## Results
 
-Measured on 2026-10-10 on one Mac (68.7 GB unified memory), against the native
-server. Each scenario ran three times per model, at temperature 0.2 (the Claude
+Measured on 10 and 11 October 2026 on one Mac (68.7 GB unified memory),
+against the native server. Each scenario ran three times per model, at temperature 0.2 (the Claude
 models take no sampling parameters), with a 20-minute limit per run. Raw
 records, with every tool call, its result and the answer, are in
 [`docs/evals/results/`](evals/results/). They name no sample: the runner
 replaces a sample written as a formula in a dataset id with a neutral label
 (sampleA, sampleB, …) before it writes a record (`web/src/llm/evals/scrub.ts`).
 
-| Scenario | claude-sonnet-5-5 (Anthropic) | claude-haiku-5-5 (Anthropic) | gemma4:26b (Ollama) | qwen/qwen3.8-27b (LM Studio) |
-| --- | :---: | :---: | :---: | :---: |
-| `rings-left` | ✓ 3/3 | ✓ 3/3 | ✗ 0/3 | ◐ 1/3 (2 errors) |
-| `punch-missed` | ✓ 3/3 | ✓ 3/3 | ✗ 0/3 | ✗ 0/3 (3 errors) |
-| `pdf-window-coverage` | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 |
-| `pdf-separable-refused` | ✓ 3/3 | ✓ 3/3 | ✗ 0/3 | ◐ 1/3 (2 errors) |
-| `symmetry-kept` | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ◐ 1/3 (2 errors) |
-| `q-band-from-raw` | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ✗ 0/3 (3 errors) |
-| `no-second-grain` | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ◐ 2/3 (1 error) |
-| `ub-symmetrised` | ✓ 3/3 | ✓ 3/3 | ✗ 0/3 | ✓ 3/3 |
-| `ub-misoriented` | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ◐ 1/3 (2 errors) |
+| Scenario | claude-sonnet-5-5 (Anthropic) | claude-haiku-5-5 (Anthropic) | gemma4:26b (Ollama) | qwen3:32b (Ollama) | qwen/qwen3.8-27b (LM Studio) |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| `rings-left` | ✓ 3/3 | ✓ 3/3 | ✗ 0/3 | ✗ 0/3 | ◐ 1/3 (2 errors) |
+| `punch-missed` | ✓ 3/3 | ✓ 3/3 | ✗ 0/3 | ✗ 0/3 | ✗ 0/3 (3 errors) |
+| `pdf-window-coverage` | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 |
+| `pdf-separable-refused` | ✓ 3/3 | ✓ 3/3 | ✗ 0/3 | ✗ 0/3 | ◐ 1/3 (2 errors) |
+| `symmetry-kept` | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ◐ 1/3 (2 errors) |
+| `q-band-from-raw` | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ✗ 0/3 (3 errors) |
+| `no-second-grain` | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ◐ 2/3 (1 error) |
+| `ub-symmetrised` | ✓ 3/3 | ✓ 3/3 | ✗ 0/3 | ◐ 2/3 | ✓ 3/3 |
+| `ub-misoriented` | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ✓ 3/3 | ◐ 1/3 (2 errors) |
 
 | Model | Passed | Failed on the checks | Errors (crash, out of memory, timeout) | Median time per run | Mean tokens per run (in / out) | Mean cost per run |
 | --- | :---: | :---: | :---: | ---: | ---: | ---: |
 | claude-sonnet-5-5 (Anthropic) | 27/27 | 0 | 0 | 12 s | 34,187 / 1,406 | $0.0245 |
 | claude-haiku-5-5 (Anthropic) | 27/27 | 0 | 0 | 9 s | 32,621 / 1,189 | $0.0012 |
 | gemma4:26b (Ollama) | 15/27 | 12 | 0 | 27 s | 17,332 / 870 | local |
+| qwen3:32b (Ollama) | 17/27 | 10 | 0 | 365 s | 16,646 / 1,227 | local |
 | qwen/qwen3.8-27b (LM Studio) | 12/27 | 0 | 15 | 326 s | – | local |
 
 Costs use Anthropic's published prices, fetched 2026-10-10: Sonnet 5.5 at $2
@@ -101,6 +102,18 @@ including a one-run pilot on Haiku (`claude-haiku-5-5-pilot.json`).
     orientation.
   - It passes the five scenarios a single dedicated tool answers: window
     coverage, symmetry, the |Q| band, the second grain and the misorientation.
+- **qwen3:32b (Ollama) has the same blind spot as gemma4, and passes 17/27.**
+  - It never calls `assess_stage` for the rings or the punch and answers from
+    the opening cut.
+  - Asked about the separable window, it twice changed the settings and started
+    a run (stubbed, so graded and never sent), and once advised without saying
+    to keep the ellipsoid.
+  - It passes the single-tool scenarios. In one of three runs on the
+    symmetrised UB it called `grain_check` instead of `ub_check`.
+  - Its times say little about the model. It shared Ollama with another
+    benchmark that used gemma4:26b, so most requests waited for the two models
+    to swap in memory. Two `pdf-separable-refused` runs also include pauses of
+    4.7 and 2.4 minutes, while the machine recorded a demo.
 - **qwen3.8-27b (LM Studio) passed all 12 of its runs that finished.** The other
   15 ended in GPU out-of-memory crashes inside LM Studio, or at the 20-minute
   limit. This happened while the machine also served other model servers, so
@@ -113,7 +126,6 @@ including a one-run pilot on Haiku (`claude-haiku-5-5-pilot.json`).
   Every record was then re-graded with the current checks
   (`NEBULA_EVAL_REGRADE`); only that run changed.
 - **Not run:**
-  - Ollama qwen3:32b is still running; its record will be added.
   - LM Studio's muse-glimmer was not loaded, and these runs never load LM Studio
     models.
   - Claude Opus 5.5 was not needed: Sonnet passed everything.
