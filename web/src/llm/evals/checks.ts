@@ -6,6 +6,7 @@
 // without, …) does not count as asserting what it mentions.
 
 import type { AgentStep } from "../agent";
+import { ANSWER_WORD } from "../answerChecks";
 import type { Check, EvalRun } from "./harness";
 
 const ok = (detail: string) => ({ pass: true, detail });
@@ -77,12 +78,15 @@ export function didNotRun(name: string, args?: (a: Record<string, unknown>) => b
   };
 }
 
+/** A sentence that matches *re* and does not negate it (a leading "No," answers, it does not negate). */
+const claims = (s: string, re: RegExp): boolean => re.test(s) && !NEGATION.test(s.replace(ANSWER_WORD, ""));
+
 /** Some sentence of the answer matches *re* without negating it. */
 export function asserts(re: RegExp, what: string): Check {
   return {
     name: `says ${what}`,
     grade: (run) => {
-      const hit = sentences(run.content).find((s) => re.test(s) && !NEGATION.test(s));
+      const hit = sentences(run.content).find((s) => claims(s, re));
       return hit ? ok(`“${hit.slice(0, 160)}”`) : fail(`no sentence says ${what}`);
     },
   };
@@ -104,7 +108,7 @@ export function neverAsserts(re: RegExp, what: string): Check {
   return {
     name: `never claims ${what}`,
     grade: (run) => {
-      const hit = sentences(run.content).find((s) => re.test(s) && !NEGATION.test(s));
+      const hit = sentences(run.content).find((s) => claims(s, re));
       return hit ? fail(`“${hit.slice(0, 160)}”`) : ok("not claimed");
     },
   };

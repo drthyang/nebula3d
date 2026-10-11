@@ -59,6 +59,13 @@ describe("verdicts and their evidence", () => {
       "it should not.",
       "it is fine.",
     ]);
+    expect(clauses("No ring is left.")).toEqual(["No ring is left."]); // a determiner, not an answer
+  });
+
+  it("reads the peaks' offset from their nodes as the UB's verdict, not the punch's", () => {
+    const ub = "ub_check found a rotation of only 0.001°, and the Bragg peaks' RMS offset from their nodes stayed at 0.0004 Å⁻¹.";
+    expect(verdictsIn(ub).has("punch")).toBe(false);
+    expect(verdictsIn("The punch missed 16 lattice peaks at nodes.").has("punch")).toBe(true);
   });
 });
 
@@ -71,6 +78,7 @@ describe("contradicting the tools' computed verdicts", () => {
     expect(contradictions("The punch missed 12 peaks at nodes.", [punchMissed])).toEqual([]);
     const judged = step("assess_stage", { stage: "rings" }, { rings: { verdict: "needs attention" } });
     expect(contradictions("Ring removal: clean.", [judged]).map((t) => t.id)).toEqual(["rings"]);
+    expect(contradictions("No ring is left.", [judged]).map((t) => t.id)).toEqual(["rings"]);
   });
 
   it("holds the other tools to their own verdicts", () => {

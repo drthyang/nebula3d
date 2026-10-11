@@ -42,7 +42,8 @@ export const TOPICS: readonly Topic[] = [
     label: "the Bragg punch",
     evidence: "assess_stage with stage punch",
     settles: (s) => stageIs(s, "punch"),
-    subject: /\b(bragg (peaks?|punch|nodes?)|punch(ed|ing)?|(?<!off-)lattice peaks?|leftover peaks?|missed peaks?)\b/i,
+    // The peaks' offset from their nodes is the UB's verdict, not the punch's.
+    subject: /^(?!.*\b(UB|ub_check|grain_check|offsets?|orientation|rotation)\b)(?=.*\b(bragg (peaks?|punch|nodes?)|punch(ed|ing)?|(?<!off-)lattice peaks?|leftover peaks?|missed peaks?)\b)/is,
   },
   {
     id: "backfill",
@@ -110,14 +111,17 @@ export function sentences(text: string): string[] {
     .filter(Boolean);
 }
 
+/** A leading answer word ("Yes,", "No:"), not the "No" of "No ring is left". */
+export const ANSWER_WORD = /^(yes|no)\s*[,:.!—–-]\s*/i;
+
 /**
  * The claims an answer makes: its sentences split into clauses at ; and :, so
  * "The UB is fine: the fit changed nothing" makes its claim without the next
- * clause's negation, and without a leading answer word ("Yes,", "No:").
+ * clause's negation, and without a leading answer word.
  */
 export function clauses(text: string): string[] {
   return sentences(text)
-    .map((s) => s.replace(/^(yes|no)\b[,:.!]?\s*/i, ""))
+    .map((s) => s.replace(ANSWER_WORD, ""))
     .flatMap((s) => s.split(/;\s+/))
     .flatMap((s) => {
       // A short label before a colon ("Ring removal: clean") stays with what follows it.
