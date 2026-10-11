@@ -8,6 +8,9 @@ describe("deLatex", () => {
     expect(deLatex("width \\approx 0.04 \\times 10")).toBe("width ≈ 0.04 × 10");
     expect(deLatex("\\sigma_{bg}")).toBe("σ_bg");
     expect(deLatex("\\text{SNR} = 156")).toBe("SNR = 156");
+    expect(deLatex("of the \\DeltaPDF weight, \\sigmaN")).toBe("of the ΔPDF weight, σN");
+    expect(deLatex("\\leftarrow, but \\deltax")).toBe("←, but \\deltax");
+    expect(deLatex("0.55--16.7\\ Å^-1")).toBe("0.55--16.7 Å^-1");
   });
   it("leaves plain text unchanged", () => {
     expect(deLatex("no math here")).toBe("no math here");

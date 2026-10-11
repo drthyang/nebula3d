@@ -30,8 +30,9 @@ const TEX_SYMBOLS: Record<string, string> = {
 };
 
 // Match \command where the name ends at a non-letter (so `\sigma_{bg}` works —
-// `\b` would fail there because `_` is a word character).
-const TEX_RE = new RegExp(`\\\\(${Object.keys(TEX_SYMBOLS).join("|")})(?![A-Za-z])`, "g");
+// `\b` would fail there because `_` is a word character) or at a capital: models
+// write `\DeltaPDF` for ΔPDF, which TeX itself would read as one unknown command.
+const TEX_RE = new RegExp(`\\\\(${Object.keys(TEX_SYMBOLS).join("|")})(?![a-z])`, "g");
 
 // Formatting wrappers whose braced content should survive as plain text.
 const TEX_WRAP_RE = /\\(?:text|mathrm|mathbf|mathit|mathsf|mathcal|mathtt|operatorname|boldsymbol|textbf|textit)\{([^{}]*)\}/g;
@@ -45,8 +46,8 @@ export function deLatex(s: string): string {
     // Strip inline/inline-display math delimiters once the symbols are Unicode.
     .replace(/\$\$?/g, "")
     .replace(/\\[()[\]]/g, "")
-    // LaTeX spacing macros → a normal (or no) space.
-    .replace(/\\[,;:!]/g, " ")
+    // LaTeX spacing macros (and a control space, `16.7\ Å`) → a normal space.
+    .replace(/\\[,;:! ]/g, " ")
     // Simple sub/superscript braces: \sigma_{bg} → σ_bg, x^{2} → x^2.
     .replace(/([_^])\{([^{}]*)\}/g, "$1$2");
 }

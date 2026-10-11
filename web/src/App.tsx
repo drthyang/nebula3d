@@ -13,7 +13,8 @@ import {
   IconTransform,
 } from "./components/ui";
 import { ViewerImportBanner } from "./components/ViewerImportBanner";
-import { AssistantPanel } from "./llm";
+import { PilotDock } from "./components/PilotDock";
+import { useDockLayout } from "./components/useDockLayout";
 import { useAgentHighlights } from "./llm/highlight";
 import { useRememberedConfig } from "./state/configMemory";
 import { ConsistencyViewer } from "./pages/ConsistencyViewer";
@@ -130,6 +131,7 @@ export function App() {
   // The assistant is a panel docked beside every page, not a page of its own,
   // so it can open a viewer next to the conversation.
   const dockOpen = useNavStore((s) => s.dockOpen);
+  const dock = useDockLayout();
   useAgentHighlights();
   useRememberedConfig();
   const setDockOpen = useNavStore((s) => s.setDockOpen);
@@ -162,7 +164,7 @@ export function App() {
   }, [tab]);
 
   return (
-    <div className={`app${dockOpen ? " dock-open" : ""}`}>
+    <div className={`app dock-${dock.mode} ${dockOpen ? "dock-open" : "dock-collapsed"}`} style={dock.style}>
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-glyph">
@@ -251,11 +253,7 @@ export function App() {
         <ConsoleFoot className="main-foot" apiUp={apiUp} />
       </main>
 
-      {dockOpen && (
-        <aside className="ai-side" aria-label="NEBULA Pilot">
-          <AssistantPanel onClose={() => setDockOpen(false)} />
-        </aside>
-      )}
+      <PilotDock mode={dock.mode} open={dockOpen} />
     </div>
   );
 }

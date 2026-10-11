@@ -1,4 +1,5 @@
-// The NEBULA Pilot panel, docked beside every page: a title row, the compact
+// The NEBULA Pilot panel, docked beside every page (or under it, as a bottom
+// sheet, on a portrait screen; components/PilotDock.tsx): a title row, the compact
 // model connection, an optional connection-settings drawer, and the chat, where
 // the model answers from the dataset the pages show and acts on it: it
 // measures and assesses, opens the viewer, runs the pipeline, and tunes it.
@@ -6,6 +7,7 @@
 import { useMemo, useState } from "react";
 
 import { useDatasets } from "../../api/hooks";
+import type { DockMode } from "../../state/dockLayout";
 import { BrandGlyph, EmptyState, IconAlert } from "../../components/ui";
 import { useDatasetStore } from "../../state/datasetStore";
 import { contextWarning } from "../provider/client";
@@ -15,7 +17,7 @@ import { ChatView } from "./ChatView";
 import { ConnectionBar } from "./ConnectionBar";
 import { ConnectionSettings } from "./ConnectionSettings";
 
-export function AssistantPanel({ onClose }: { onClose: () => void }) {
+export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollapse: () => void }) {
   const datasetsQ = useDatasets();
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
   const datasetId = useDatasetStore((s) => s.datasetId);
@@ -37,9 +39,22 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           NEBULA Pilot
           <span className="nav-beta">Beta</span>
         </span>
-        <button type="button" className="ai-panel-close" onClick={onClose} title="Close NEBULA Pilot" aria-label="Close NEBULA Pilot">
+        <button
+          type="button"
+          className="ai-panel-close"
+          onClick={onCollapse}
+          title={mode === "docked" ? "Collapse NEBULA Pilot to its rail" : "Collapse NEBULA Pilot"}
+          aria-label="Collapse NEBULA Pilot"
+        >
           <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-            <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            <path
+              d={mode === "docked" ? "M5 3l4 4-4 4" : "M3 5l4 4 4-4"}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
       </div>
