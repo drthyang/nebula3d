@@ -47,7 +47,7 @@ export function numbers(text: string): number[] {
     .replace(/[⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (m) => "^" + [...m].map((c) => SUPERSCRIPT[c]).join(""))
     .replace(/(\d)\s*[×x·]\s*10\s*\^?\s*\(?([-+−]?\d+)\)?/g, (_m, a, e) => `${a}e${String(e).replace("−", "-")}`)
     .replace(/−/g, "-");
-  // A sign counts only where nothing alphanumeric precedes it: "0.55-16.7" is a range, not −16.7.
+  // A sign counts only where nothing alphanumeric precedes it: "0.8-10" is a range, not −10.
   return [...flat.matchAll(/(?<![\w)\]}.])[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?|\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi)]
     .map((m) => Number(m[0]))
     .filter(Number.isFinite);

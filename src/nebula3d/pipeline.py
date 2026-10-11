@@ -447,9 +447,8 @@ class PunchParams:
     detect_window_q: float | None = None
     # "own" (default): each peak punched to its own width, a Gaussian of its
     # measured line-cut FWHM out to profile_n_sigma × the local noise (the
-    # shared profile where a width cannot be measured).  On a measured
-    # hexagonal volume it halved the share of the short-range-order maxima the
-    # punch took (0.65 % → 0.30 %; no maximum lost half its box, where 32 had)
+    # shared profile where a width cannot be measured).  On measured data it
+    # punched markedly less of the broad diffuse maxima than the shared profile,
     # and left no more Bragg residue: the shared profile gives a sharp spike
     # on a broad maximum the wide punch of a Bragg peak of its height.
     # "profile": every peak shares the dataset's stacked Bragg profile along
@@ -663,8 +662,8 @@ def share_ring_removal(out: HKLVolume, input_mask: np.ndarray, symmetry: GridSym
     The ring models work plane by plane in one stacking direction (sectors of
     0kl planes stacked along H, for the pooled model), which an operation that
     mixes the grid axes does not respect: on symmetrised hexagonal data the
-    subtraction differed between equivalent voxels by up to a few units in
-    the Al shells, about 7 % of the ΔPDF's six-fold symmetry.  The voxels the
+    subtraction differed between equivalent voxels in the Al shells, enough
+    to break the ΔPDF's six-fold symmetry visibly.  The voxels the
     stage masks (azimuthally under-sampled spokes) are closed under the group,
     and the ring-removed values averaged over each orbit
     (:meth:`GridSymmetry.orbit_mean`), the symmetric part of the subtraction.
@@ -2090,7 +2089,7 @@ def run_pipeline(
                                       stage="flatten")
             if symmetry is not None:
                 # The pedestal is a function of |Q| from the refined UB, which
-                # is not exactly symmetric (|a*| ≠ |b*| by 0.1 %, γ* ≠ 60°):
+                # is not exactly symmetric (|a*| and |b*| differ slightly, γ* ≠ 60°):
                 # equivalent voxels lost slightly different amounts.
                 n = symmetry.orbit_mean(out.data, out.mask & np.isfinite(out.data))
                 _emit(progress, "flatten", "progress", None,

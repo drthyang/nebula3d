@@ -169,7 +169,7 @@ describe("startTuning", () => {
     usePipelineStore.setState({ punchEnabled: false, backfillEnabled: false, pdfEnabled: true, pdfWindowShape: "" });
     evaluate.evaluateStage.mockImplementation(async () => {
       const separable = usePipelineStore.getState().pdfWindowShape === "separable";
-      return { mean_feature_snr: separable ? 1230 : 1180, window_weight_on_unmeasured: separable ? 0.057 : 3.2e-6 };
+      return { mean_feature_snr: separable ? 980 : 950, window_weight_on_unmeasured: separable ? 0.043 : 4.1e-6 };
     });
     llm.completeChat
       .mockResolvedValueOnce('{"candidates": [{"changes": {"pdfWindowShape": "separable"}, "why": "more SNR"}]}')
@@ -178,7 +178,7 @@ describe("startTuning", () => {
     const [pdf] = useTuneStore.getState().stages;
     expect(pdf.trials).toHaveLength(2);
     expect(pdf.best).toBe(1);
-    expect(pdf.why).toMatch(/Trial 2 was not a candidate: its window puts 0\.057 of its weight on unmeasured reciprocal space/);
+    expect(pdf.why).toMatch(/Trial 2 was not a candidate: its window puts 0\.043 of its weight on unmeasured reciprocal space/);
     expect(llm.completeChat).toHaveBeenCalledTimes(1); // no judging between one candidate
     expect(promoted()).toEqual(["pdf-1"]);
     expect(usePipelineStore.getState().pdfWindowShape).toBe("");

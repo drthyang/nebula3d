@@ -1,6 +1,6 @@
 // A dataset's short name: its temperature, and — when another dataset shares
-// that temperature — what sets its file stem apart ("22K · sub bkg" beside
-// "22K · cc"), so two runs at one temperature never look the same.
+// that temperature — what sets its file stem apart ("<T> · sub bkg" beside
+// "<T> · cc"), so two runs at one temperature never look the same.
 
 import type { Dataset } from "./types";
 

@@ -857,7 +857,7 @@ const textureCheck: AgentTool = {
   },
 };
 
-// A share, in exponent form when it is tiny (3.2e-6, not 0.0000032).
+// A share, in exponent form when it is tiny (1.5e-6, not 0.0000015).
 const share = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(roundSig(x, 2)));
 
 // How far the forward transform reaches in |Q|, from the Configure page: an

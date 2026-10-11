@@ -46,7 +46,7 @@ export function deLatex(s: string): string {
     // Strip inline/inline-display math delimiters once the symbols are Unicode.
     .replace(/\$\$?/g, "")
     .replace(/\\[()[\]]/g, "")
-    // LaTeX spacing macros (and a control space, `16.7\ Å`) → a normal space.
+    // LaTeX spacing macros (and a control space, `10\ Å`) → a normal space.
     .replace(/\\[,;:! ]/g, " ")
     // Simple sub/superscript braces: \sigma_{bg} → σ_bg, x^{2} → x^2.
     .replace(/([_^])\{([^{}]*)\}/g, "$1$2");

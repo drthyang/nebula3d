@@ -5,8 +5,8 @@
 // ripple fills the colour range.  Here Auto takes the 99.9th percentile of |v|
 // over the centre sections, the origin's self-correlation peak left out, so
 // the features carry the colour range and the ripple stays near the neutral
-// colour.  On a measured hexagonal volume that limit sat at 180–220 × the
-// sections' robust σ, where the 97th percentile gave 8–17 ×.
+// colour.  On measured data that limit sat an order of magnitude above the
+// 97th percentile, in units of the sections' robust σ.
 
 import type { Slice } from "../api/types";
 import { toDisplay } from "./oblique";

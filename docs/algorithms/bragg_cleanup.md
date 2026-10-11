@@ -128,9 +128,8 @@ examples:
 No single rescaling of the floors works either. The data's typical Bragg
 peak, or its diffuse scatter, would raise those floors on that X-ray volume,
 not lower them. And the typical Bragg peak follows the physics of the weak
-reflections, not the intensity scale. On one sample measured at two
-temperatures, the strongest peaks agreed closely while the weak ones grew
-severalfold.
+reflections, not the intensity scale: between two temperatures of one
+sample, the weak reflections can change far more than the strong ones.
 
 `integer_detect="significance"` drops the floors and judges each node as
 peak integration does:
@@ -152,9 +151,9 @@ peak integration does:
   - reject the node when that fraction exceeds 0.15 by more than two
     standard errors.
 
-  Bragg peaks keep a few per cent there: the median is 1–3 % on every
-  dataset tried, X-ray and neutron. Superlattice and short-range-order
-  maxima a few times wider than the resolution keep far more.
+  Bragg peaks keep a few per cent there on every dataset tried, X-ray and
+  neutron. Superlattice and short-range-order maxima a few times wider than
+  the resolution keep far more.
 
 The first three are needed against diffuse maxima much wider than a peak:
 
@@ -171,9 +170,8 @@ These stand above their 1–2× shell, so on good counting statistics they pass
 the shell test. A punch sized for a Bragg peak then takes their core and
 leaves their skirt, which is worse than leaving them whole.
 
-An X-ray volume on a 2×2×2 cell shows this. Its supercell nodes hold broad
-maxima with a sharp-looking top. The shell test took the cores of about half
-of the strongest. With the width test:
+Measured data show this: broad maxima with a sharp-looking top lost their
+cores to the shell test. With the width test:
 - nearly all of them are left whole;
 - every parent Bragg peak is still punched.
 
@@ -192,16 +190,15 @@ volume, the data-unit floors punched 4,181 voxels at its own scale and
 
 Measured effects, against the floors:
 
-- **Orthorhombic (mmm) neutron volumes.** More integer nodes, all weak ones;
-  the punched volume changes by a few per cent at most.
-- **Hexagonal neutron volume on a 2×2×2 cell.** Fewer nodes. Nearly all of
-  them are non-parent nodes whose short-range-order maxima the floors had
-  punched: on that volume's scale the floors were inactive. The rest are
-  weak parent nodes at the threshold.
-- **X-ray volumes on a 2×2×2 cell.**
-  - Every strong parent reflection is punched, as before.
-  - More of the weaker parent reflections are punched than with the floors.
-  - The broad maxima at the supercell nodes are left whole.
+- **On some volumes,** more integer nodes, all weak ones; the punched volume
+  changes by a few per cent at most.
+- **On another,** fewer nodes: nearly all of the dropped ones held broad
+  maxima that the floors had punched, because on that volume's scale the
+  floors were inactive. The rest are weak parent nodes at the threshold.
+- **On others,**
+  - every strong parent reflection is punched, as before;
+  - more of the weaker parent reflections are punched than with the floors;
+  - broad maxima away from the parent nodes are left whole.
 
 The test requires `min_significance`. With the gate off (web: Min σ 0), the
 pipeline falls back to the floors.
@@ -275,23 +272,18 @@ satellite detection without punching structured diffuse on any thirds plane.
 ### Broad maxima are left to the diffuse (`search_max_width_ratio`)
 
 The search judges a candidate by its height alone. Short-range order puts
-broad maxima off the Bragg nodes, and a tall one clears every floor. On a
-hexagonal neutron volume indexed on a doubled cell, with Bragg peaks only at
-the even nodes, the search took the strongest of the superstructure maxima:
-the very signal the ΔPDF is for.
+broad maxima off the Bragg nodes, and a tall one clears every floor. On
+measured data the search took the strongest of those maxima: the very signal
+the ΔPDF is for.
 
-What separates them is width. Line cuts through the peak along H, K and L,
-with the half maximum taken above a straight baseline through the points
-five voxels either side (`_FWHM_REACH`), measured on that volume:
+What separates them is width, measured by line cuts through the peak along H,
+K and L, with the half maximum taken above a straight baseline through the
+points five voxels either side (`_FWHM_REACH`). On measured data, Bragg peaks
+and spurious reflections (from a second grain) were narrow on every axis,
+while short-range-order maxima were several times broader along at least one.
 
-| feature | FWHM along l (r.l.u.) | in-plane |
-| --- | --- | --- |
-| Bragg peaks (strongest 40) | 0.1–0.3 | one voxel |
-| spurious reflections (a second grain) | ≤ 0.2 | ≤ 0.2 |
-| short-range-order maxima | 0.5–0.6 | 0.1–0.2 |
-
-Spurious reflections were as sharp as Bragg peaks on every volume measured,
-the orthorhombic ones included. With `search_max_width_ratio` set (`mode="both"`),
+Spurious reflections are as sharp as Bragg peaks. With
+`search_max_width_ratio` set (`mode="both"`),
 a search candidate broader than that many Bragg widths along any axis is left
 unpunched:
 
@@ -300,15 +292,14 @@ unpunched:
 - **A Bragg wing is punched anyway.** A candidate within a quarter of the node
   spacing (per axis, honouring `supercell`) of a punched node belongs to that
   peak: very strong peaks reach past their punch, and their wings measure
-  broad. On the doubled-cell volume the wings were most of the candidates
-  (6,868 punched and 3,798 left before this rule).
+  broad. On measured data the wings were most of the candidates.
 - **The baseline matters.** A sharp spurious peak on the flank of a broad
   maximum measures sharp only above a local baseline; core moments read the
   pair as one broad feature and kept it.
 - **Default off** (`None`). The run log says how many candidates were left
   as diffuse. Set it from the server (`punch_search_max_width_ratio`), the
   web app (*Search width ×Bragg*), or `SEARCH_MAX_WIDTH` in the examples; 2
-  separates the classes above.
+  separated the narrow features from the broad maxima on the data tested.
 
 ## Significance Gate
 
@@ -385,18 +376,10 @@ each peak to its own width.
 dataset's Bragg profile, scaled to its height. A sharp spike on a broad
 maximum (a spurious reflection on a short-range-order maximum, say) then
 takes the wide punch of a Bragg peak of its height and removes the maximum
-with it. On a measured hexagonal volume, whose short-range-order maxima sit
-on the doubled cell's odd positions:
-
-| Footprint | Punched | SRO positions punched | SRO positions over half punched | Bragg nodes with residue > 8σ |
-| --- | --- | --- | --- | --- |
-| profile | 4.36 % | 0.65 % | 32 | 2,068 of 3,764 |
-| own | 4.66 % | 0.30 % | 0 | 1,960 of 3,764 |
-
-There, 15,037 of the 16,409 peaks were punched to their own width; the rest
-fell back to the profile. The residue count is a loose 3D criterion and also
-counts the copies a slightly misoriented UB leaves beside the nodes, so only
-the comparison between the rows is meaningful.
+with it. On measured data, own widths punched a smaller share of the broad
+maxima, left none of them more than half punched, and left no more Bragg
+residue than the profile. Most peaks were punched to their own width; the
+rest fell back to the profile.
 
 ## Profile-Matched Punch
 
@@ -600,19 +583,19 @@ H guard and the thirds exclusion are meant for data with fractional-H planes
 at thirds; turn them off where there are none (see the supercell notes above).
 
 **Every stage keeps the symmetry, so the ΔPDF does.** The punch was not the
-only stage computed on index-space neighbourhoods. On a measured 6/mmm volume
-the ΔPDF had lost 12.6 % (RMS) of its six-fold symmetry, while the raw data
-were exact:
+only stage computed on index-space neighbourhoods. On a measured symmetrised
+volume the ΔPDF had lost a clear share of its six-fold symmetry, while the raw
+data were exact:
 
 - **Ring removal.** The pooled model fits sectors of 0kl planes stacked along
-  H; its subtraction differed between partners by up to a few units in the Al
-  shells. Its output is averaged over each orbit, and the voxels it masks
+  H; its subtraction differed between partners in the powder-ring shells.
+  Its output is averaged over each orbit, and the voxels it masks
   (under-sampled spokes) are closed under the group
   (`pipeline.share_ring_removal`).
 - **Backfill.** The Laplace fill is solved on a 6-neighbour stencil, and its
   gap band (the measured voxels next to a hole it rewrites, to drop the Bragg
-  tail) is a 6-neighbour dilation: equivalent peaks kept tails of up to ~1000
-  counts on one side and replaced them on the other. The band is closed under
+  tail) is a 6-neighbour dilation: equivalent peaks kept their tails on one
+  side and had them replaced on the other. The band is closed under
   the group before it is solved, and every voxel the fill writes is averaged
   over its orbit.
 - **Flatten.** Its pedestal follows |Q| from the refined UB, which is not

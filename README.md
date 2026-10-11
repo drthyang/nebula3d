@@ -35,9 +35,9 @@ pipeline client-side; nothing is uploaded.
   win: a ΔPDF window with more than 10⁻³ of its weight on unmeasured space is
   one.
 - **A symmetric pipeline.** With the symmetry declared in the input file,
-  every stage averages its output over symmetry orbits. On a measured 6/mmm
-  volume the ΔPDF's six-fold partners agree to rounding, where they had
-  differed by 12.6 % (RMS).
+  every stage averages its output over symmetry orbits. On a measured
+  symmetrised volume the ΔPDF's equivalent partners now agree to rounding,
+  where they had differed visibly.
 - **Made for local models.** The agent says how much context a model needs:
   with *Tools* on, the first request is about 8k tokens and a full assessment
   about 18k. It warns when LM Studio has loaded the model with less. A reply
@@ -73,19 +73,15 @@ Symmetrised HKL volume (NeXus Viewer export or Mantid)
 NEBULA Pilot was used to review measured volumes as five domain experts in
 turn: an instrument scientist, a crystallographer, a diffuse-scattering
 physicist, a Fourier specialist and a statistician. Each review fixed what it
-found, or built the tool it lacked. On a hexagonal X-ray volume:
+found, or built the tool it lacked. On a measured volume:
 
-- The off-lattice search now leaves broad short-range-order maxima alone; they
-  are about 4 × broader along l than the Bragg peaks. Before, 176 of the 188
-  "leftover peaks" on one plane were those maxima.
+- The off-lattice search now leaves broad diffuse maxima alone. Before, most of
+  the "leftover peaks" on a plane were such maxima.
 - The flatten can take a background that rises with |Q|. The floor now sits
-  within ±0.5 of zero across the coverage, and the ΔPDF changed only inside
-  1.5 Å.
-- The coverage check reads the window that actually ran: 3 × 10⁻⁶ of its weight
-  lies on unmeasured space.
-- The ΔPDF keeps the declared 6/mmm symmetry to rounding (`symmetry_check`).
-- The 3D-ΔPDF page's Auto contrast shows the features, not the FFT ripple: its
-  limit is 275 σ instead of 8–17 σ.
+  near zero across the coverage, and the ΔPDF changed only near the origin.
+- The coverage check reads the window that actually ran.
+- The ΔPDF keeps the declared symmetry to rounding (`symmetry_check`).
+- The 3D-ΔPDF page's Auto contrast shows the features, not the FFT ripple.
 
 Tested live with local models through LM Studio and Ollama, including a
 five-stage tuning run. The details are in [CHANGELOG.md](CHANGELOG.md).

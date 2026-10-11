@@ -4,7 +4,7 @@
 """Refining the UB matrix from where the Bragg peaks sit.
 
 A UB slightly off puts each Bragg peak beside its node: a rotation error by
-the angle times |Q| across Q (0.25 Å⁻¹ at 16 Å⁻¹ for 0.9°), a cell error by
+the angle times |Q| across Q (0.17 Å⁻¹ at 10 Å⁻¹ for 1°), a cell error by
 the relative error times |Q| along it.  :func:`measure_centres` finds each
 node's peak and its centre; :func:`fit_ub` finds the UB that puts the centres
 back on their nodes; :func:`refine_ub` does both from the low-|Q| peaks
@@ -23,7 +23,7 @@ before a first fit has moved the search.  The fits:
 Symmetrising hides what does not commute with the operations.  A rotation
 turns each node's orbit partners by the rotation's conjugates, so the node
 holds a ring centred on itself (its centroid inward by about half the squared
-angle, 1e-4 of |Q| for 0.9°), and the orientation can only be refined from
+angle, 1.5e-4 of |Q| for 1°), and the orientation can only be refined from
 unsymmetrised data; :func:`symmetry_break` tells the two apart.  What commutes
 survives: a cell error that keeps the symmetry moves the equivalent nodes
 alike, and the symmetrised peaks stay sharp, as far off their nodes as before.
