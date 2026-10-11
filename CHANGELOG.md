@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Held-out evals with injected faults.** Five synthetic volumes that no
+  eval, tuning or prompt was written on, each with one fault of a known size
+  (`nebula3d.faults`): a turned UB, a shifted HKL origin, counts cut short in
+  |Q|, and powder rings. `ub_check` measures 0.602° of a 0.6° turn, and says
+  when no UB change explains the peaks' offsets. The counts' edge reads 4.507
+  Å⁻¹ against 4.511, and both rings are found at their |Q|. The CI replays a good
+  and a bad answer per scenario (`NEBULA_EVAL_SET=heldout` runs them on a real
+  model). The set also found that the ring check reads a cubic crystal's
+  short-range-order diffuse as rings, and that the default ring removal
+  subtracts part of that diffuse from a crystal with no rings; both are open
+  ([docs/evals.md](docs/evals.md)).
+- **Fixed:** the answer checks no longer call a sentence about the Bragg peaks'
+  offset from their nodes an unmeasured verdict on the punch. They also catch
+  "No ring is left" against a ring check that needs attention: the leading "No"
+  was read as an answer word.
+
 - **NEBULA Pilot's answers stand on their evidence.** Before you read a final
   answer, the agent checks it three ways:
   - a verdict on a stage needs the tool that measures it in this reply;

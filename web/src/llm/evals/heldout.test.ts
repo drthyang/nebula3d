@@ -1,0 +1,196 @@
+// The held-out scenarios' CI replay: each played by a scripted model against
+// the tool results recorded on the held-out volumes (fixtures/heldout.json,
+// from heldoutProbe.test.ts), through the real agent loop, its answer checks
+// and the graders, as evals.test.ts does for the measured set. A good script
+// writes what a careful model would, and must pass every check on its first
+// answer; a bad one, a failure as models make them, must fail the checks named
+// for it. The injected sizes grade the tools too: what they read must be the
+// fault that was put in.
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import type { Dataset } from "../../api/types";
+import type { PipelineContext } from "../context/pipelineContext";
+import { VERDICT_LABEL } from "../report/report";
+import { CHAT_TOOLS } from "../tools";
+import fixture from "./fixtures/heldout.json";
+import { runScenario, transcript, type Scenario } from "./harness";
+import { HELDOUT, HELDOUT_CALLS, HELDOUT_SCENARIOS, TRUTH } from "./heldout";
+import { replayTools, scriptedModel, SCRIPTED_URL, type ScriptTurn } from "./scripted";
+
+interface Replay {
+  good: ScriptTurn[];
+  bad: ScriptTurn[];
+  catches: string[]; // checks the bad run must fail
+  flags?: RegExp; // what the agent's answer checks note under the bad run
+}
+
+const REPLAYS: Record<string, Replay> = {
+  "heldout-ub-turned": {
+    good: [
+      { calls: [{ name: "ub_check", args: {} }] },
+      {
+        text: "No, the UB is off. ub_check found it turned by 0.602° and fitted that rotation away: the Bragg peaks' RMS offset from their nodes fell from 0.0492 to 0.0016 Å⁻¹. Use the refined UB before the punch.",
+      },
+    ],
+    bad: [{ calls: [{ name: "ub_check", args: {} }] }, { text: "Yes, the UB is right: the Bragg peaks sit on their nodes." }],
+    catches: ["quotes the rotation the fit measured", "quotes the rotation (0.6, injected)", "says that the UB is off"],
+    flags: /Contradicts the tools' verdict on the UB/,
+  },
+  "heldout-ub-right": {
+    good: [
+      { calls: [{ name: "ub_check", args: {} }] },
+      {
+        text: "Yes, the UB is right. ub_check found a rotation of only 0.001°, and the Bragg peaks' RMS offset from their nodes stayed at 0.0004 Å⁻¹, so there is nothing to correct.",
+      },
+    ],
+    bad: [{ calls: [{ name: "ub_check", args: {} }] }, { text: "No, the UB is misoriented by about 0.5°; refine it before the punch." }],
+    catches: ["says that the UB is right", "never claims a misorientation"],
+    flags: /Contradicts the tools' verdict on the UB/,
+  },
+  "heldout-origin-shifted": {
+    good: [
+      { calls: [{ name: "ub_check", args: {} }] },
+      {
+        text: "No, the UB is not what is wrong. ub_check found a rotation of only 0.001°, and the fit removed none of the peaks' offset: the RMS stayed at 0.0583 Å⁻¹, against a voxel of 0.0806 Å⁻¹, so no UB change explains it. Look at the origin of the HKL grid, or at how |Q| was assigned.",
+      },
+    ],
+    bad: [
+      { calls: [{ name: "ub_check", args: {} }] },
+      { text: "Yes, the UB is wrong: the peaks sit 0.0583 Å⁻¹ off their nodes. Refine the UB to put them back." },
+    ],
+    catches: ["says where the offset comes from", "never claims that the UB is wrong"],
+    flags: /Contradicts the tools' verdict on the UB/,
+  },
+  "heldout-coverage-edge": {
+    good: [
+      { calls: [{ name: "qmax_coverage", args: {} }] },
+      {
+        text: "The raw counts end at 4.507 Å⁻¹. Every direction is measured from 0.15 to 4.45 Å⁻¹, and nothing past the edge, well short of the box's face at 6.444 Å⁻¹. Give the 3D-ΔPDF the band the tool suggests, 0 to 4.5 Å⁻¹; the ellipsoid window, shrunk to 0.695 ×, then puts 9.8e-4 of its weight on unmeasured reciprocal space.",
+      },
+    ],
+    bad: [{ text: "The coverage is complete: the counts reach the box's face, so use the whole box, out to 6.4 Å⁻¹." }],
+    catches: ["calls qmax_coverage", "quotes the counts' upper edge", "quotes the edge (4.511, injected)"],
+    flags: /Not measured in this reply: the ΔPDF window against the coverage/,
+  },
+  "heldout-rings-found": {
+    good: [
+      { calls: [{ name: "assess_stage", args: { stage: "rings" } }] },
+      {
+        text: "Yes. The raw radial profiles have ring-like bumps at 1.68, 2.45, 3.16, 3.66, 4.59 and 7.08 Å⁻¹, on every plane. A ring is left at 3.66 Å⁻¹: 0.417 of the level under it on hk0, 0.315 on h0l and 0.304 on 0kl, each above three times its plane's noise. The one at 2.45 Å⁻¹ is left on hk0 only (0.168), and leftovers show at 3.16 and 4.59 Å⁻¹ too.",
+      },
+    ],
+    bad: [{ text: "No: the raw data have no powder rings, and the ring removal left nothing behind." }],
+    catches: ["calls assess_stage for the rings", "quotes the first ring (2.45, injected)", "quotes the second ring (3.65, injected)", "says that a ring is left"],
+    flags: /Not measured in this reply: the ring removal/,
+  },
+};
+
+const datasets = fixture.datasets as unknown as Dataset[];
+const contexts = fixture.contexts as unknown as Record<string, PipelineContext>;
+const results = fixture.results as Record<string, string>;
+const recorded = <T,>(dataset: string, call: string, args: Record<string, unknown> = {}) =>
+  JSON.parse(results[`${dataset}|${call}|${JSON.stringify(args)}`]) as T;
+
+async function replay(scenario: Scenario, turns: ScriptTurn[]) {
+  const model = scriptedModel(turns);
+  uninstall = model.install();
+  const result = await runScenario(scenario, {
+    datasets,
+    settings: { baseUrl: SCRIPTED_URL, model: "scripted", apiKey: "", temperature: 0 },
+    tools: replayTools(results, scenario.dataset, CHAT_TOOLS),
+    context: contexts[scenario.dataset],
+  });
+  return { result, model };
+}
+
+let uninstall: (() => void) | null = null;
+afterEach(() => {
+  uninstall?.();
+  uninstall = null;
+});
+
+describe("held-out evals, replayed", () => {
+  it("has a replay for every scenario, and a recording of every call", () => {
+    expect(Object.keys(REPLAYS).sort()).toEqual(HELDOUT_SCENARIOS.map((s) => s.id).sort());
+    for (const [dataset, calls] of Object.entries(HELDOUT_CALLS)) {
+      for (const c of calls) expect(results[`${dataset}|${c.name}|${JSON.stringify(c.args)}`], `${dataset} ${c.name}`).toBeDefined();
+    }
+  });
+
+  for (const scenario of HELDOUT_SCENARIOS) {
+    it(`${scenario.id}: a good run passes on its first answer, a bad one is caught`, async () => {
+      const r = REPLAYS[scenario.id];
+      const good = await replay(scenario, r.good);
+      const failing = good.result.grades.filter((g) => !g.pass);
+      expect(failing, `${failing.map((g) => `${g.check}: ${g.detail}`).join("\n")}\n${transcript(good.result.run)}`).toEqual([]);
+      expect(good.result.passed).toBe(true);
+      expect(good.model.overrun()).toBe(0);
+      expect(good.result.run.usage?.requests, `the answer checks sent the good answer back\n${transcript(good.result.run)}`).toBe(r.good.length);
+
+      uninstall?.();
+      const bad = await replay(scenario, r.bad);
+      const caught = bad.result.grades.filter((g) => !g.pass).map((g) => g.check);
+      expect(bad.result.passed).toBe(false);
+      for (const name of r.catches) expect(caught, `${name}\n${transcript(bad.result.run)}`).toContain(name);
+      if (r.flags) expect(bad.result.run.note ?? "", transcript(bad.result.run)).toMatch(r.flags);
+      else expect(bad.result.run.note ?? "", "a bad run the answer checks do not flag").not.toMatch(/Not measured|Contradicts/);
+    });
+  }
+});
+
+describe("the tools, against the faults put in", () => {
+  interface UbCheck {
+    orientation_change_deg: number;
+    rms_start: number;
+    rms: number;
+    unexplained: boolean;
+  }
+
+  it("ub_check measures the turn put into the UB, and none where there is none", () => {
+    const turned = recorded<UbCheck>(HELDOUT.turned, "ub_check");
+    expect(turned.orientation_change_deg).toBeCloseTo(TRUTH.misorientDeg, 1);
+    expect(turned.rms).toBeLessThan(0.1 * turned.rms_start);
+    const clean = recorded<UbCheck>(HELDOUT.clean, "ub_check");
+    expect(clean.orientation_change_deg).toBeLessThan(0.05);
+    expect(clean.unexplained).toBe(false);
+  });
+
+  it("ub_check says no UB explains a shifted origin", () => {
+    const shifted = recorded<UbCheck>(HELDOUT.shifted, "ub_check");
+    expect(shifted.orientation_change_deg).toBeLessThan(0.05);
+    expect(shifted.unexplained).toBe(true);
+  });
+
+  it("qmax_coverage finds where the counts were cut", () => {
+    const coverage = recorded<{ raw_counts: { q_max_edge: number } }>(HELDOUT.coverage, "qmax_coverage");
+    expect(Math.abs(coverage.raw_counts.q_max_edge - TRUTH.coverageQMax)).toBeLessThan(0.05);
+  });
+
+  interface Rings {
+    rings: { verdict: string; per_plane: Record<string, { ring_residuals: { at: number }[] }> };
+  }
+  const ringsAt = (r: Rings) => Object.values(r.rings.per_plane).flatMap((p) => p.ring_residuals.map((x) => x.at));
+
+  it("the ring check finds the rings put in, on every plane", () => {
+    const rings = recorded<Rings>(HELDOUT.rings, "assess_stage", { stage: "rings" });
+    for (const q of TRUTH.ringQ) {
+      for (const [plane, p] of Object.entries(rings.rings.per_plane)) {
+        expect(p.ring_residuals.some((x) => Math.abs(x.at - q) < 0.05), `${q} Å⁻¹ on ${plane}`).toBe(true);
+      }
+    }
+    // On the clean volume, the same positions hold no ring.
+    const clean = recorded<Rings>(HELDOUT.clean, "assess_stage", { stage: "rings" });
+    for (const q of TRUTH.ringQ) expect(ringsAt(clean).some((at) => Math.abs(at - q) < 0.05), `${q} Å⁻¹`).toBe(false);
+  });
+
+  // A known false positive, found by this set: the clean volume has no ring,
+  // yet the ring check reads the crystal's own diffuse as rings at 1.68, 3.16,
+  // 4.59, 5.52 and 7.08 Å⁻¹. "Seen on two or more planes" cannot tell them
+  // apart here: on a cubic crystal, hk0, h0l and 0kl are equivalent planes, so
+  // its diffuse shows on all three (docs/evals.md). This passes, and must lose
+  // its .fails, once the check tells them apart and the fixture is recorded again.
+  it.fails("the ring check finds no ring on the clean volume", () => {
+    expect(recorded<Rings>(HELDOUT.clean, "assess_stage", { stage: "rings" }).rings.verdict).toBe(VERDICT_LABEL.pass);
+  });
+});

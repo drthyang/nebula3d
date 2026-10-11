@@ -53,6 +53,12 @@ export const FIXTURE_CALLS: Record<string, { name: string; args: Record<string, 
 const stageIs = (...stages: string[]) => (a: Record<string, unknown>) => stages.includes(String(a.stage));
 const noActions = [didNotRun("run_pipeline"), didNotRun("tune_pipeline"), didNotRun("update_settings")];
 
+/** Some sentence says that a ring is left after the removal. */
+export const saysRingLeft = asserts(
+  /\bring\w*\b[^.]*\b(left|leftover|remain\w*|residu\w*|surviv\w*|incomplete|persist\w*)\b|\b(left|leftover|remain\w*|residu\w*|surviv\w*)\b[^.]*\bring/i,
+  "that a ring is left",
+);
+
 /** The UB check's refined a (Å), read off its cell text ("a, b, c Å; α°, β°, γ°"). */
 const refinedA = (run: EvalRun): number | null => {
   const done = calls(run, "ub_check");
@@ -73,10 +79,7 @@ export const SCENARIOS: Scenario[] = [
       answers,
       ran("assess_stage", stageIs("rings", "all"), "for the rings"),
       quotes("the leftover ring's |Q|", measured("assess_stage", "rings.worst_ring_left.at"), 0.3),
-      asserts(
-        /\bring\w*\b[^.]*\b(left|leftover|remain\w*|residu\w*|surviv\w*|incomplete|persist\w*)\b|\b(left|leftover|remain\w*|residu\w*|surviv\w*)\b[^.]*\bring/i,
-        "that a ring is left",
-      ),
+      saysRingLeft,
     ],
   },
   {

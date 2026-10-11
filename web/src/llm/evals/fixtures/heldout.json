@@ -1,0 +1,935 @@
+{
+ "recorded": "2026-10-11",
+ "datasets": [
+  {
+   "id": "heldout-rocksalt",
+   "temperature": null,
+   "raw_name": "heldout-rocksalt.nxs",
+   "stem": "heldout-rocksalt",
+   "stages": [
+    {
+     "name": "raw",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-rocksalt.raw"
+    },
+    {
+     "name": "ringremoved",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-rocksalt.ringremoved"
+    },
+    {
+     "name": "braggpunched",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-rocksalt.braggpunched"
+    },
+    {
+     "name": "backfilled",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-rocksalt.backfilled"
+    },
+    {
+     "name": "flattened",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-rocksalt.flattened"
+    },
+    {
+     "name": "delta_pdf",
+     "exists": true,
+     "kind": "delta_pdf",
+     "volume_id": "heldout-rocksalt.delta_pdf"
+    }
+   ]
+  },
+  {
+   "id": "heldout-misoriented",
+   "temperature": null,
+   "raw_name": "heldout-misoriented.nxs",
+   "stem": "heldout-misoriented",
+   "stages": [
+    {
+     "name": "raw",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-misoriented.raw"
+    },
+    {
+     "name": "ringremoved",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-misoriented.ringremoved"
+    },
+    {
+     "name": "braggpunched",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-misoriented.braggpunched"
+    },
+    {
+     "name": "backfilled",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-misoriented.backfilled"
+    },
+    {
+     "name": "flattened",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-misoriented.flattened"
+    },
+    {
+     "name": "delta_pdf",
+     "exists": true,
+     "kind": "delta_pdf",
+     "volume_id": "heldout-misoriented.delta_pdf"
+    }
+   ]
+  },
+  {
+   "id": "heldout-shifted",
+   "temperature": null,
+   "raw_name": "heldout-shifted.nxs",
+   "stem": "heldout-shifted",
+   "stages": [
+    {
+     "name": "raw",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-shifted.raw"
+    },
+    {
+     "name": "ringremoved",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-shifted.ringremoved"
+    },
+    {
+     "name": "braggpunched",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-shifted.braggpunched"
+    },
+    {
+     "name": "backfilled",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-shifted.backfilled"
+    },
+    {
+     "name": "flattened",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-shifted.flattened"
+    },
+    {
+     "name": "delta_pdf",
+     "exists": true,
+     "kind": "delta_pdf",
+     "volume_id": "heldout-shifted.delta_pdf"
+    }
+   ]
+  },
+  {
+   "id": "heldout-coverage",
+   "temperature": null,
+   "raw_name": "heldout-coverage.nxs",
+   "stem": "heldout-coverage",
+   "stages": [
+    {
+     "name": "raw",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-coverage.raw"
+    },
+    {
+     "name": "ringremoved",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-coverage.ringremoved"
+    },
+    {
+     "name": "braggpunched",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-coverage.braggpunched"
+    },
+    {
+     "name": "backfilled",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-coverage.backfilled"
+    },
+    {
+     "name": "flattened",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-coverage.flattened"
+    },
+    {
+     "name": "delta_pdf",
+     "exists": true,
+     "kind": "delta_pdf",
+     "volume_id": "heldout-coverage.delta_pdf"
+    }
+   ]
+  },
+  {
+   "id": "heldout-rings",
+   "temperature": null,
+   "raw_name": "heldout-rings.nxs",
+   "stem": "heldout-rings",
+   "stages": [
+    {
+     "name": "raw",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-rings.raw"
+    },
+    {
+     "name": "ringremoved",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-rings.ringremoved"
+    },
+    {
+     "name": "braggpunched",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-rings.braggpunched"
+    },
+    {
+     "name": "backfilled",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-rings.backfilled"
+    },
+    {
+     "name": "flattened",
+     "exists": true,
+     "kind": "hkl",
+     "volume_id": "heldout-rings.flattened"
+    },
+    {
+     "name": "delta_pdf",
+     "exists": true,
+     "kind": "delta_pdf",
+     "volume_id": "heldout-rings.delta_pdf"
+    }
+   ]
+  }
+ ],
+ "contexts": {
+  "heldout-rocksalt": {
+   "dataset": "heldout-rocksalt",
+   "reciprocal_plane": "hk0",
+   "cut_value": 0,
+   "lattice_A": {
+    "a": 3.9,
+    "b": 3.9,
+    "c": 3.9
+   },
+   "cell_angles_deg": {
+    "alpha": 90,
+    "beta": 90,
+    "gamma": 90
+   },
+   "grid": [
+    161,
+    161,
+    161
+   ],
+   "ring_removal": {
+    "before_ring_energy": 0.0713,
+    "after_ring_energy": 0.0556,
+    "ring_energy_ratio": 0.78,
+    "over_subtraction_fraction": 0.00108,
+    "after_negative_fraction": 0.00108,
+    "ring_residuals": [
+     {
+      "at": 1.68,
+      "residual_fraction": 0.338,
+      "noise_fraction": 0.139,
+      "significant": false
+     },
+     {
+      "at": 3.16,
+      "residual_fraction": 0.194,
+      "noise_fraction": 0.106,
+      "significant": false
+     },
+     {
+      "at": 3.95,
+      "residual_fraction": -0.0175,
+      "noise_fraction": 0.0834,
+      "significant": false
+     },
+     {
+      "at": 4.59,
+      "residual_fraction": 0.243,
+      "noise_fraction": 0.118,
+      "significant": false
+     },
+     {
+      "at": 5.52,
+      "residual_fraction": 0.173,
+      "noise_fraction": 0.0537,
+      "significant": true
+     },
+     {
+      "at": 7.08,
+      "residual_fraction": 0.334,
+      "noise_fraction": 0.126,
+      "significant": false
+     }
+    ],
+    "worst_ring_dent": null,
+    "worst_ring_left": {
+     "at": 5.52,
+     "residual_fraction": 0.173,
+     "noise_fraction": 0.0537,
+     "significant": true
+    },
+    "suggested_display_vmax": 0.6919,
+    "n_finite": 25921
+   },
+   "bragg_punch": {
+    "leftover": {
+     "suspicious_peaks": [],
+     "n_suspicious": 0,
+     "n_at_nodes": 0,
+     "n_off_nodes": 0,
+     "n_on_protected": 0,
+     "n_broad_off_nodes": 0,
+     "n_skipped_noisy": 0,
+     "scan_sigma_threshold": 8
+    },
+    "peak_profile": {
+     "n_peaks": 188,
+     "n_at_lattice_nodes": 188,
+     "n_search_off_lattice": 0,
+     "fit_kinds": {
+      "profile": 98,
+      "own": 90
+     },
+     "resolution_limited_fraction": 0.273,
+     "median_measured_width_q": [
+      0.112,
+      0.132,
+      0.175
+     ],
+     "median_anisotropy": 1.5,
+     "width_units": "Å⁻¹"
+    }
+   },
+   "backfill": {
+    "n_filled": 601,
+    "fill_coverage": 0.0232,
+    "median_seam_sigma": 0.177,
+    "p95_seam_sigma": 0.633,
+    "bright_fill_fraction": 0,
+    "checkerboard_fraction": 0.15
+   },
+   "flatten": {
+    "removed_fraction": 0.733,
+    "floor_before": [
+     0.176,
+     0.126,
+     0.135
+    ],
+    "floor_after": [
+     0.037,
+     -0.0131,
+     -0.00488
+    ],
+    "after_floor_max_sigma": 1.32,
+    "after_negative_fraction": 0.314,
+    "floor_trend": -0.361,
+    "floor_span_fraction": 1.06
+   },
+   "delta_pdf": {
+    "origin_excluded_radius": 1.95,
+    "background_sigma": 8.39,
+    "feature_snr": 942,
+    "strong_feature_fraction": 0.0619,
+    "positive_fraction": 0.43,
+    "anisotropy_ratio": 1.09,
+    "anisotropy_angle_deg": 1.74,
+    "radial_trend": [
+     189,
+     10,
+     5.76
+    ],
+    "consistency_pearson_r": 0.988,
+    "consistency_normalized_rms": 0.133
+   }
+  },
+  "heldout-misoriented": {
+   "dataset": "heldout-misoriented",
+   "reciprocal_plane": "hk0",
+   "cut_value": 0,
+   "lattice_A": {
+    "a": 3.9,
+    "b": 3.9,
+    "c": 3.9
+   },
+   "cell_angles_deg": {
+    "alpha": 90,
+    "beta": 90,
+    "gamma": 90
+   },
+   "grid": [
+    161,
+    161,
+    161
+   ],
+   "ring_removal": {
+    "before_ring_energy": 0.0736,
+    "after_ring_energy": 0.0706,
+    "ring_energy_ratio": 0.959,
+    "over_subtraction_fraction": 0,
+    "after_negative_fraction": 0,
+    "ring_residuals": [
+     {
+      "at": 1.68,
+      "residual_fraction": 0.34,
+      "noise_fraction": 0.146,
+      "significant": false
+     },
+     {
+      "at": 3.16,
+      "residual_fraction": 0.334,
+      "noise_fraction": 0.13,
+      "significant": false
+     },
+     {
+      "at": 4.59,
+      "residual_fraction": 0.372,
+      "noise_fraction": 0.107,
+      "significant": true
+     },
+     {
+      "at": 5.52,
+      "residual_fraction": 0.161,
+      "noise_fraction": 0.057,
+      "significant": false
+     },
+     {
+      "at": 5.66,
+      "residual_fraction": 0.184,
+      "noise_fraction": 0.0338,
+      "significant": true
+     },
+     {
+      "at": 7.08,
+      "residual_fraction": 0.197,
+      "noise_fraction": 0.164,
+      "significant": false
+     },
+     {
+      "at": 7.23,
+      "residual_fraction": -0.0917,
+      "noise_fraction": 0.108,
+      "significant": false
+     }
+    ],
+    "worst_ring_dent": null,
+    "worst_ring_left": {
+     "at": 4.59,
+     "residual_fraction": 0.372,
+     "noise_fraction": 0.107,
+     "significant": true
+    },
+    "suggested_display_vmax": 0.6007,
+    "n_finite": 24649
+   },
+   "bragg_punch": {
+    "leftover": {
+     "suspicious_peaks": [],
+     "n_suspicious": 0,
+     "n_at_nodes": 0,
+     "n_off_nodes": 0,
+     "n_on_protected": 0,
+     "n_broad_off_nodes": 0,
+     "n_skipped_noisy": 0,
+     "scan_sigma_threshold": 8
+    },
+    "peak_profile": {
+     "n_peaks": 166,
+     "n_at_lattice_nodes": 166,
+     "n_search_off_lattice": 0,
+     "fit_kinds": {
+      "profile": 76,
+      "own": 90
+     },
+     "resolution_limited_fraction": 0.16,
+     "median_measured_width_q": [
+      0.108,
+      0.15,
+      0.166
+     ],
+     "median_anisotropy": 1.95,
+     "width_units": "Å⁻¹"
+    }
+   },
+   "backfill": {
+    "n_filled": 385,
+    "fill_coverage": 0.0156,
+    "median_seam_sigma": 0.14,
+    "p95_seam_sigma": 0.405,
+    "bright_fill_fraction": 0,
+    "checkerboard_fraction": 0.0806
+   },
+   "flatten": {
+    "removed_fraction": 0.692,
+    "floor_before": [
+     0.178,
+     0.134,
+     0.134
+    ],
+    "floor_after": [
+     0.0354,
+     -0.00873,
+     -0.00909
+    ],
+    "after_floor_max_sigma": 1.17,
+    "after_negative_fraction": 0.297,
+    "floor_trend": -0.38,
+    "floor_span_fraction": 0.975
+   },
+   "delta_pdf": {
+    "origin_excluded_radius": 1.95,
+    "background_sigma": 6.45,
+    "feature_snr": 1410,
+    "strong_feature_fraction": 0.056,
+    "positive_fraction": 0.428,
+    "anisotropy_ratio": 1.03,
+    "anisotropy_angle_deg": 6.45,
+    "radial_trend": [
+     169,
+     7.78,
+     4.31
+    ],
+    "consistency_pearson_r": 0.996,
+    "consistency_normalized_rms": 0.0707
+   }
+  },
+  "heldout-shifted": {
+   "dataset": "heldout-shifted",
+   "reciprocal_plane": "hk0",
+   "cut_value": 0,
+   "lattice_A": {
+    "a": 3.9,
+    "b": 3.9,
+    "c": 3.9
+   },
+   "cell_angles_deg": {
+    "alpha": 90,
+    "beta": 90,
+    "gamma": 90
+   },
+   "grid": [
+    161,
+    161,
+    161
+   ],
+   "ring_removal": {
+    "before_ring_energy": 0.062,
+    "after_ring_energy": 0.0509,
+    "ring_energy_ratio": 0.821,
+    "over_subtraction_fraction": 0,
+    "after_negative_fraction": 0,
+    "ring_residuals": [
+     {
+      "at": 1.68,
+      "residual_fraction": 0.327,
+      "noise_fraction": 0.119,
+      "significant": false
+     },
+     {
+      "at": 3.16,
+      "residual_fraction": 0.107,
+      "noise_fraction": 0.0718,
+      "significant": false
+     },
+     {
+      "at": 4.59,
+      "residual_fraction": 0.322,
+      "noise_fraction": 0.106,
+      "significant": true
+     },
+     {
+      "at": 5.52,
+      "residual_fraction": 0.156,
+      "noise_fraction": 0.0492,
+      "significant": true
+     },
+     {
+      "at": 5.66,
+      "residual_fraction": 0.157,
+      "noise_fraction": 0.0132,
+      "significant": true
+     },
+     {
+      "at": 6.02,
+      "residual_fraction": 0.0971,
+      "noise_fraction": 0.0269,
+      "significant": true
+     },
+     {
+      "at": 7.08,
+      "residual_fraction": 0.231,
+      "noise_fraction": 0.107,
+      "significant": false
+     },
+     {
+      "at": 7.58,
+      "residual_fraction": 0.24,
+      "noise_fraction": 0.0666,
+      "significant": true
+     }
+    ],
+    "worst_ring_dent": null,
+    "worst_ring_left": {
+     "at": 4.59,
+     "residual_fraction": 0.322,
+     "noise_fraction": 0.106,
+     "significant": true
+    },
+    "suggested_display_vmax": 0.7219,
+    "n_finite": 25281
+   },
+   "bragg_punch": {
+    "leftover": {
+     "suspicious_peaks": [],
+     "n_suspicious": 0,
+     "n_at_nodes": 0,
+     "n_off_nodes": 0,
+     "n_on_protected": 0,
+     "n_broad_off_nodes": 0,
+     "n_skipped_noisy": 0,
+     "scan_sigma_threshold": 8
+    },
+    "peak_profile": {
+     "n_peaks": 185,
+     "n_at_lattice_nodes": 185,
+     "n_search_off_lattice": 0,
+     "fit_kinds": {
+      "profile": 95,
+      "own": 90
+     },
+     "resolution_limited_fraction": 0.227,
+     "median_measured_width_q": [
+      0.109,
+      0.117,
+      0.165
+     ],
+     "median_anisotropy": 1.9,
+     "width_units": "Å⁻¹"
+    }
+   },
+   "backfill": {
+    "n_filled": 607,
+    "fill_coverage": 0.024,
+    "median_seam_sigma": 0.162,
+    "p95_seam_sigma": 0.446,
+    "bright_fill_fraction": 0,
+    "checkerboard_fraction": 0.12
+   },
+   "flatten": {
+    "removed_fraction": 0.712,
+    "floor_before": [
+     0.174,
+     0.135,
+     0.135
+    ],
+    "floor_after": [
+     0.0318,
+     -0.00751,
+     -0.00742
+    ],
+    "after_floor_max_sigma": 1.19,
+    "after_negative_fraction": 0.308,
+    "floor_trend": -0.338,
+    "floor_span_fraction": 0.962
+   },
+   "delta_pdf": {
+    "origin_excluded_radius": 1.95,
+    "background_sigma": 11.8,
+    "feature_snr": 723,
+    "strong_feature_fraction": 0.0484,
+    "positive_fraction": 0.46,
+    "anisotropy_ratio": 1.22,
+    "anisotropy_angle_deg": -4.97,
+    "radial_trend": [
+     175,
+     18.1,
+     7.87
+    ],
+    "consistency_pearson_r": 0.982,
+    "consistency_normalized_rms": 0.157
+   }
+  },
+  "heldout-coverage": {
+   "dataset": "heldout-coverage",
+   "reciprocal_plane": "hk0",
+   "cut_value": 0,
+   "lattice_A": {
+    "a": 3.9,
+    "b": 3.9,
+    "c": 3.9
+   },
+   "cell_angles_deg": {
+    "alpha": 90,
+    "beta": 90,
+    "gamma": 90
+   },
+   "grid": [
+    161,
+    161,
+    161
+   ],
+   "ring_removal": {
+    "before_ring_energy": 0.105,
+    "after_ring_energy": 0.0653,
+    "ring_energy_ratio": 0.621,
+    "over_subtraction_fraction": 0,
+    "after_negative_fraction": 0,
+    "ring_residuals": [
+     {
+      "at": 1.68,
+      "residual_fraction": 0.327,
+      "noise_fraction": 0.139,
+      "significant": false
+     },
+     {
+      "at": 3.16,
+      "residual_fraction": 0.194,
+      "noise_fraction": 0.105,
+      "significant": false
+     }
+    ],
+    "worst_ring_dent": null,
+    "worst_ring_left": null,
+    "suggested_display_vmax": 0.5991,
+    "n_finite": 9401
+   },
+   "bragg_punch": {
+    "leftover": {
+     "suspicious_peaks": [],
+     "n_suspicious": 0,
+     "n_at_nodes": 0,
+     "n_off_nodes": 0,
+     "n_on_protected": 0,
+     "n_broad_off_nodes": 0,
+     "n_skipped_noisy": 0,
+     "scan_sigma_threshold": 8
+    },
+    "peak_profile": {
+     "n_peaks": 14,
+     "n_at_lattice_nodes": 14,
+     "n_search_off_lattice": 0,
+     "fit_kinds": {
+      "own": 14
+     },
+     "resolution_limited_fraction": null,
+     "median_measured_width_q": [
+      null,
+      null,
+      null
+     ],
+     "median_anisotropy": null,
+     "width_units": "Å⁻¹"
+    }
+   },
+   "backfill": {
+    "n_filled": 105,
+    "fill_coverage": 0.0112,
+    "median_seam_sigma": 0.178,
+    "p95_seam_sigma": 0.45,
+    "bright_fill_fraction": 0,
+    "checkerboard_fraction": 0
+   },
+   "flatten": {
+    "removed_fraction": 0.868,
+    "floor_before": null,
+    "floor_after": null,
+    "after_floor_max_sigma": 1.14,
+    "after_negative_fraction": 0.414,
+    "floor_trend": -0.874,
+    "floor_span_fraction": 1.1
+   },
+   "delta_pdf": {
+    "origin_excluded_radius": 1.95,
+    "background_sigma": 5.09,
+    "feature_snr": 559,
+    "strong_feature_fraction": 0.0667,
+    "positive_fraction": 0.42,
+    "anisotropy_ratio": 1.03,
+    "anisotropy_angle_deg": -3.26,
+    "radial_trend": [
+     108,
+     5.81,
+     3.32
+    ],
+    "consistency_pearson_r": 0.99,
+    "consistency_normalized_rms": 0.125
+   }
+  },
+  "heldout-rings": {
+   "dataset": "heldout-rings",
+   "reciprocal_plane": "hk0",
+   "cut_value": 0,
+   "lattice_A": {
+    "a": 3.9,
+    "b": 3.9,
+    "c": 3.9
+   },
+   "cell_angles_deg": {
+    "alpha": 90,
+    "beta": 90,
+    "gamma": 90
+   },
+   "grid": [
+    161,
+    161,
+    161
+   ],
+   "ring_removal": {
+    "before_ring_energy": 0.0991,
+    "after_ring_energy": 0.0624,
+    "ring_energy_ratio": 0.63,
+    "over_subtraction_fraction": 0.0000772,
+    "after_negative_fraction": 0.0000772,
+    "ring_residuals": [
+     {
+      "at": 1.68,
+      "residual_fraction": 0.321,
+      "noise_fraction": 0.138,
+      "significant": false
+     },
+     {
+      "at": 2.45,
+      "residual_fraction": 0.168,
+      "noise_fraction": 0.0489,
+      "significant": true
+     },
+     {
+      "at": 3.16,
+      "residual_fraction": 0.323,
+      "noise_fraction": 0.115,
+      "significant": false
+     },
+     {
+      "at": 3.66,
+      "residual_fraction": 0.417,
+      "noise_fraction": 0.111,
+      "significant": true
+     },
+     {
+      "at": 4.59,
+      "residual_fraction": 0.393,
+      "noise_fraction": 0.109,
+      "significant": true
+     },
+     {
+      "at": 7.08,
+      "residual_fraction": 0.292,
+      "noise_fraction": 0.14,
+      "significant": false
+     }
+    ],
+    "worst_ring_dent": null,
+    "worst_ring_left": {
+     "at": 3.66,
+     "residual_fraction": 0.417,
+     "noise_fraction": 0.111,
+     "significant": true
+    },
+    "suggested_display_vmax": 0.6971,
+    "n_finite": 25921
+   },
+   "bragg_punch": {
+    "leftover": {
+     "suspicious_peaks": [],
+     "n_suspicious": 0,
+     "n_at_nodes": 0,
+     "n_off_nodes": 0,
+     "n_on_protected": 0,
+     "n_broad_off_nodes": 0,
+     "n_skipped_noisy": 0,
+     "scan_sigma_threshold": 8
+    },
+    "peak_profile": {
+     "n_peaks": 236,
+     "n_at_lattice_nodes": 236,
+     "n_search_off_lattice": 0,
+     "fit_kinds": {
+      "profile": 99,
+      "own": 137
+     },
+     "resolution_limited_fraction": 0.273,
+     "median_measured_width_q": [
+      0.112,
+      0.132,
+      0.175
+     ],
+     "median_anisotropy": 1.5,
+     "width_units": "Å⁻¹"
+    }
+   },
+   "backfill": {
+    "n_filled": 633,
+    "fill_coverage": 0.0244,
+    "median_seam_sigma": 0.179,
+    "p95_seam_sigma": 0.66,
+    "bright_fill_fraction": 0,
+    "checkerboard_fraction": 0.131
+   },
+   "flatten": {
+    "removed_fraction": 0.715,
+    "floor_before": [
+     0.181,
+     0.131,
+     0.135
+    ],
+    "floor_after": [
+     0.039,
+     -0.0112,
+     -0.00749
+    ],
+    "after_floor_max_sigma": 1.24,
+    "after_negative_fraction": 0.301,
+    "floor_trend": -0.393,
+    "floor_span_fraction": 1.01
+   },
+   "delta_pdf": {
+    "origin_excluded_radius": 1.95,
+    "background_sigma": 14.5,
+    "feature_snr": 587,
+    "strong_feature_fraction": 0.0424,
+    "positive_fraction": 0.404,
+    "anisotropy_ratio": 1.1,
+    "anisotropy_angle_deg": 0.307,
+    "radial_trend": [
+     183,
+     16.3,
+     9.55
+    ],
+    "consistency_pearson_r": 0.988,
+    "consistency_normalized_rms": 0.129
+   }
+  }
+ },
+ "results": {
+  "heldout-rocksalt|ub_check|{}": "{\"fit\":\"both\",\"bragg_nodes_every\":[1,1,1],\"symmetry_from\":null,\"symmetrised\":null,\"symmetry_break\":null,\"peaks\":{\"searched\":342,\"used\":90,\"rejected\":0},\"rms_start\":0.0004,\"rms\":0.0004,\"cell_start\":\"3.9000, 3.9000, 3.9000 Å; 90.000°, 90.000°, 90.000°\",\"cell\":\"3.8999, 3.8999, 3.8999 Å; 90.000°, 90.001°, 90.000°\",\"orientation_change_deg\":0.001,\"axis_uvw\":[1,0.563,0.475],\"transform_diagonal\":[1.000021,1.000028,1.000028],\"passes\":[{\"q_max\":3.72,\"found\":14,\"used\":14,\"rms\":\"0.0003 → 0.0003\"},{\"q_max\":7.44,\"found\":82,\"used\":82,\"rms\":\"0.0004 → 0.0004\"},{\"q_max\":11.16,\"found\":90,\"used\":90,\"rms\":\"0.0004 → 0.0004\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":4,\"before\":0.000058,\"after\":0.000032},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":8,\"before\":-0.000084,\"after\":-0.00011},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":4,\"before\":0.000058,\"after\":0.000032},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":56,\"before\":0.000035,\"after\":0.000012},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":8,\"before\":0.000035,\"after\":0.0000034},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":8,\"before\":0.000022,\"after\":-0.0000022}],\"unexplained\":false,\"reading\":\"The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).\"}",
+  "heldout-rocksalt|assess_stage|{\"stage\":\"rings\"}": "{\"rings\":{\"verdict\":\"needs attention\",\"criterion\":\"No powder ring left above, or dented below, three times its plane's noise. Only rings seen on two or more planes count: a bump on one plane is the crystal's own scattering.\",\"headline\":\"ring ratio 0.749 · over-sub ≤ 0.00139 · ring dent ≤ 0 · left ≤ 0.402 (h0l, 7.08 Å⁻¹)\",\"mean_ring_energy_ratio\":0.749,\"max_over_subtraction_fraction\":0.00139,\"max_ring_dent\":0,\"max_ring_left\":0.402,\"worst_ring_dent\":null,\"worst_ring_left\":{\"plane\":\"h0l\",\"at\":7.08,\"residual_fraction\":0.402},\"single_plane_bumps\":[{\"plane\":\"h0l\",\"at\":5.38,\"residual_fraction\":0.0977},{\"plane\":\"0kl\",\"at\":2.39,\"residual_fraction\":0.267}],\"per_plane\":{\"hk0\":{\"ring_energy_ratio\":0.78,\"after_ring_energy\":0.0556,\"over_subtraction_fraction\":0.00108,\"after_negative_fraction\":0.00108,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":5.52,\"residual_fraction\":0.173,\"noise_fraction\":0.0537,\"significant\":true},\"ring_residuals\":[{\"at\":1.68,\"residual_fraction\":0.338,\"noise_fraction\":0.139,\"significant\":false},{\"at\":3.16,\"residual_fraction\":0.194,\"noise_fraction\":0.106,\"significant\":false},{\"at\":3.95,\"residual_fraction\":-0.0175,\"noise_fraction\":0.0834,\"significant\":false,\"single_plane_bump\":true},{\"at\":4.59,\"residual_fraction\":0.243,\"noise_fraction\":0.118,\"significant\":false},{\"at\":5.52,\"residual_fraction\":0.173,\"noise_fraction\":0.0537,\"significant\":true},{\"at\":7.08,\"residual_fraction\":0.334,\"noise_fraction\":0.126,\"significant\":false}]},\"h0l\":{\"ring_energy_ratio\":0.733,\"after_ring_energy\":0.049,\"over_subtraction_fraction\":0.00139,\"after_negative_fraction\":0.00139,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":7.08,\"residual_fraction\":0.402,\"noise_fraction\":0.101,\"significant\":true},\"ring_residuals\":[{\"at\":1.68,\"residual_fraction\":0.346,\"noise_fraction\":0.119,\"significant\":false},{\"at\":2.6,\"residual_fraction\":0.11,\"noise_fraction\":0.0595,\"significant\":false},{\"at\":2.74,\"residual_fraction\":0.164,\"noise_fraction\":0.155,\"significant\":false},{\"at\":3.16,\"residual_fraction\":0.332,\"noise_fraction\":0.0816,\"significant\":true},{\"at\":4.59,\"residual_fraction\":0.274,\"noise_fraction\":0.0977,\"significant\":false},{\"at\":5.38,\"residual_fraction\":0.0977,\"noise_fraction\":0.031,\"significant\":true,\"single_plane_bump\":true},{\"at\":5.52,\"residual_fraction\":0.106,\"noise_fraction\":0.0461,\"significant\":false},{\"at\":7.08,\"residual_fraction\":0.402,\"noise_fraction\":0.101,\"significant\":true},{\"at\":7.58,\"residual_fraction\":0.137,\"noise_fraction\":0.0587,\"significant\":false}]},\"0kl\":{\"ring_energy_ratio\":0.733,\"after_ring_energy\":0.0486,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":4.59,\"residual_fraction\":0.291,\"noise_fraction\":0.0912,\"significant\":true},\"ring_residuals\":[{\"at\":1.68,\"residual_fraction\":0.348,\"noise_fraction\":0.127,\"significant\":false},{\"at\":2.39,\"residual_fraction\":0.267,\"noise_fraction\":0.0756,\"significant\":true,\"single_plane_bump\":true},{\"at\":2.6,\"residual_fraction\":0.0652,\"noise_fraction\":0.0511,\"significant\":false},{\"at\":2.74,\"residual_fraction\":0.0565,\"noise_fraction\":0.12,\"significant\":false},{\"at\":3.16,\"residual_fraction\":0.25,\"noise_fraction\":0.076,\"significant\":true},{\"at\":4.59,\"residual_fraction\":0.291,\"noise_fraction\":0.0912,\"significant\":true},{\"at\":5.52,\"residual_fraction\":0.104,\"noise_fraction\":0.058,\"significant\":false},{\"at\":5.66,\"residual_fraction\":0.0995,\"noise_fraction\":0.0595,\"significant\":false,\"single_plane_bump\":true},{\"at\":7.08,\"residual_fraction\":0.319,\"noise_fraction\":0.124,\"significant\":false},{\"at\":7.58,\"residual_fraction\":0.201,\"noise_fraction\":0.0616,\"significant\":true}]}},\"goal\":\"Remove powder/Al rings: mean_ring_energy_ratio as low as the trials reach on every plane (its floor is set by the diffuse, not 0; near 0.4–0.5 can be ring-free), while over_subtraction_fraction and after_negative_fraction stay small (a few percent from noise), and each raw ring ends level with the diffuse beside it: max_ring_dent (how far the deepest ring sits below its flanks, a share of the diffuse there; the subtraction over-shot, even where no voxel goes negative) and max_ring_left (a ring left over) both 0: they count only residuals beyond 3 × their plane's noise_fraction, so any value above 0 is a real dent or leftover (worst_ring_dent and worst_ring_left say on which plane and at which |Q|). Only rings seen on two or more planes count: a bump on one plane only (single_plane_bumps) is the crystal's own scattering, which the ring removal must leave, not a miss (per_plane marks it single_plane_bump and leaves it out of that plane's worst_ring_dent and worst_ring_left). Lower ring energy bought by over-subtracting (negatives or ring dents rising) is worse, not better.\"},\"measured_on\":[\"H–K plane at L = 0\",\"H–L plane at K = 0\",\"K–L plane at H = 0\"]}",
+  "heldout-misoriented|ub_check|{}": "{\"fit\":\"both\",\"bragg_nodes_every\":[1,1,1],\"symmetry_from\":null,\"symmetrised\":null,\"symmetry_break\":null,\"peaks\":{\"searched\":342,\"used\":90,\"rejected\":0},\"rms_start\":0.0492,\"rms\":0.0016,\"cell_start\":\"3.9000, 3.9000, 3.9000 Å; 90.000°, 90.000°, 90.000°\",\"cell\":\"3.8999, 3.8999, 3.8999 Å; 89.987°, 90.014°, 90.000°\",\"orientation_change_deg\":0.602,\"axis_uvw\":[1,0.999,0.001],\"transform_diagonal\":[0.999998,1.000005,0.999969],\"passes\":[{\"q_max\":3.72,\"found\":14,\"used\":14,\"rms\":\"0.0236 → 0.0006\"},{\"q_max\":7.44,\"found\":82,\"used\":82,\"rms\":\"0.0464 → 0.0016\"},{\"q_max\":11.16,\"found\":90,\"used\":90,\"rms\":\"0.0492 → 0.0016\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":4,\"before\":0.000036,\"after\":0.000028},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":8,\"before\":-0.0001,\"after\":-0.00011},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":4,\"before\":0.000034,\"after\":0.000037},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":56,\"before\":0.000011,\"after\":0.0000048},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":8,\"before\":0.000013,\"after\":0.000036},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":8,\"before\":0.000024,\"after\":0.000013}],\"unexplained\":false,\"reading\":\"The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).\"}",
+  "heldout-shifted|ub_check|{}": "{\"fit\":\"both\",\"bragg_nodes_every\":[1,1,1],\"symmetry_from\":null,\"symmetrised\":null,\"symmetry_break\":null,\"peaks\":{\"searched\":342,\"used\":90,\"rejected\":0},\"rms_start\":0.0583,\"rms\":0.0583,\"cell_start\":\"3.9000, 3.9000, 3.9000 Å; 90.000°, 90.000°, 90.000°\",\"cell\":\"3.8999, 3.8999, 3.8999 Å; 90.000°, 90.001°, 90.000°\",\"orientation_change_deg\":0.001,\"axis_uvw\":[1,0.539,0.531],\"transform_diagonal\":[1.000023,1.00003,1.000029],\"passes\":[{\"q_max\":3.72,\"found\":14,\"used\":14,\"rms\":\"0.0584 → 0.0584\"},{\"q_max\":7.44,\"found\":82,\"used\":82,\"rms\":\"0.0583 → 0.0583\"},{\"q_max\":11.16,\"found\":90,\"used\":90,\"rms\":\"0.0583 → 0.0583\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":4,\"before\":0.000061,\"after\":0.00003},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":8,\"before\":-0.0001,\"after\":-0.00013},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":4,\"before\":0.000064,\"after\":0.000034},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":56,\"before\":0.000035,\"after\":0.0000051},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":8,\"before\":0.000033,\"after\":0.0000042},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":8,\"before\":0.000021,\"after\":-0.0000063}],\"unexplained\":true,\"reading\":\"The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic). The fit removed little of the peaks' offset (RMS 0.0583 → 0.0583 Å⁻¹, against a voxel of 0.0806 Å⁻¹): no UB change explains it. Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.\"}",
+  "heldout-coverage|qmax_coverage|{}": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window (shrunk to 0.695 × to fit the coverage) puts 9.8e-4 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.0009820561475803523,\"window_shape\":\"ellipsoid\",\"window_scale\":0.695,\"transform_reach_q\":4.51,\"reach_from\":\"an ellipsoid window inscribed in the box (its reach varies with direction; box_face_q is the nearest face)\",\"full_coverage_q\":4.51,\"box_face_q\":6.44,\"box_corner_q\":11.16,\"low_q_gap\":0,\"raw_counts\":{\"q_min_edge\":null,\"q_max_edge\":4.507,\"fully_measured\":[0.15,4.45],\"box_face_q\":6.444},\"suggested_band\":[0,4.5],\"band_check\":\"no |Q| band is set: the transform takes every voxel, empty ones included, up to the window's reach\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"(default)\",\"pdfQMax\":\"(default)\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":4.51,\"half_coverage_q\":4.51,\"box_q\":6.44,\"shells\":[{\"q\":0.564,\"measured\":1},{\"q\":1.21,\"measured\":1},{\"q\":1.85,\"measured\":1},{\"q\":2.5,\"measured\":1},{\"q\":3.14,\"measured\":1},{\"q\":3.79,\"measured\":1},{\"q\":4.43,\"measured\":1},{\"q\":5.07,\"measured\":0},{\"q\":5.72,\"measured\":0},{\"q\":6.36,\"measured\":0}]},\"h0l\":{\"full_coverage_q\":4.51,\"half_coverage_q\":4.51,\"box_q\":6.44,\"shells\":[{\"q\":0.564,\"measured\":1},{\"q\":1.21,\"measured\":1},{\"q\":1.85,\"measured\":1},{\"q\":2.5,\"measured\":1},{\"q\":3.14,\"measured\":1},{\"q\":3.79,\"measured\":1},{\"q\":4.43,\"measured\":1},{\"q\":5.07,\"measured\":0},{\"q\":5.72,\"measured\":0},{\"q\":6.36,\"measured\":0}]},\"0kl\":{\"full_coverage_q\":4.51,\"half_coverage_q\":4.51,\"box_q\":6.44,\"shells\":[{\"q\":0.564,\"measured\":1},{\"q\":1.21,\"measured\":1},{\"q\":1.85,\"measured\":1},{\"q\":2.5,\"measured\":1},{\"q\":3.14,\"measured\":1},{\"q\":3.79,\"measured\":1},{\"q\":4.43,\"measured\":1},{\"q\":5.07,\"measured\":0},{\"q\":5.72,\"measured\":0},{\"q\":6.36,\"measured\":0}]}}}",
+  "heldout-rings|assess_stage|{\"stage\":\"rings\"}": "{\"rings\":{\"verdict\":\"needs attention\",\"criterion\":\"No powder ring left above, or dented below, three times its plane's noise. Only rings seen on two or more planes count: a bump on one plane is the crystal's own scattering.\",\"headline\":\"ring ratio 0.604 · over-sub ≤ 0.0000772 · ring dent ≤ 0 · left ≤ 0.443 (h0l, 3.16 Å⁻¹)\",\"mean_ring_energy_ratio\":0.604,\"max_over_subtraction_fraction\":0.0000772,\"max_ring_dent\":0,\"max_ring_left\":0.443,\"worst_ring_dent\":null,\"worst_ring_left\":{\"plane\":\"h0l\",\"at\":3.16,\"residual_fraction\":0.443},\"single_plane_bumps\":[],\"per_plane\":{\"hk0\":{\"ring_energy_ratio\":0.63,\"after_ring_energy\":0.0624,\"over_subtraction_fraction\":0.0000772,\"after_negative_fraction\":0.0000772,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":3.66,\"residual_fraction\":0.417,\"noise_fraction\":0.111,\"significant\":true},\"ring_residuals\":[{\"at\":1.68,\"residual_fraction\":0.321,\"noise_fraction\":0.138,\"significant\":false},{\"at\":2.45,\"residual_fraction\":0.168,\"noise_fraction\":0.0489,\"significant\":true},{\"at\":3.16,\"residual_fraction\":0.323,\"noise_fraction\":0.115,\"significant\":false},{\"at\":3.66,\"residual_fraction\":0.417,\"noise_fraction\":0.111,\"significant\":true},{\"at\":4.59,\"residual_fraction\":0.393,\"noise_fraction\":0.109,\"significant\":true},{\"at\":7.08,\"residual_fraction\":0.292,\"noise_fraction\":0.14,\"significant\":false}]},\"h0l\":{\"ring_energy_ratio\":0.604,\"after_ring_energy\":0.0594,\"over_subtraction_fraction\":0.0000772,\"after_negative_fraction\":0.0000772,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":3.16,\"residual_fraction\":0.443,\"noise_fraction\":0.0879,\"significant\":true},\"ring_residuals\":[{\"at\":1.68,\"residual_fraction\":0.323,\"noise_fraction\":0.117,\"significant\":false},{\"at\":2.45,\"residual_fraction\":0.197,\"noise_fraction\":0.0712,\"significant\":false},{\"at\":2.74,\"residual_fraction\":0.0998,\"noise_fraction\":0.139,\"significant\":false,\"single_plane_bump\":true},{\"at\":3.16,\"residual_fraction\":0.443,\"noise_fraction\":0.0879,\"significant\":true},{\"at\":3.66,\"residual_fraction\":0.315,\"noise_fraction\":0.0817,\"significant\":true},{\"at\":4.59,\"residual_fraction\":0.383,\"noise_fraction\":0.0884,\"significant\":true},{\"at\":7.08,\"residual_fraction\":0.402,\"noise_fraction\":0.101,\"significant\":true}]},\"0kl\":{\"ring_energy_ratio\":0.578,\"after_ring_energy\":0.0573,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":4.59,\"residual_fraction\":0.422,\"noise_fraction\":0.0881,\"significant\":true},\"ring_residuals\":[{\"at\":1.68,\"residual_fraction\":0.336,\"noise_fraction\":0.131,\"significant\":false},{\"at\":2.45,\"residual_fraction\":0.112,\"noise_fraction\":0.13,\"significant\":false},{\"at\":3.16,\"residual_fraction\":0.38,\"noise_fraction\":0.08,\"significant\":true},{\"at\":3.66,\"residual_fraction\":0.304,\"noise_fraction\":0.0835,\"significant\":true},{\"at\":4.59,\"residual_fraction\":0.422,\"noise_fraction\":0.0881,\"significant\":true}]}},\"goal\":\"Remove powder/Al rings: mean_ring_energy_ratio as low as the trials reach on every plane (its floor is set by the diffuse, not 0; near 0.4–0.5 can be ring-free), while over_subtraction_fraction and after_negative_fraction stay small (a few percent from noise), and each raw ring ends level with the diffuse beside it: max_ring_dent (how far the deepest ring sits below its flanks, a share of the diffuse there; the subtraction over-shot, even where no voxel goes negative) and max_ring_left (a ring left over) both 0: they count only residuals beyond 3 × their plane's noise_fraction, so any value above 0 is a real dent or leftover (worst_ring_dent and worst_ring_left say on which plane and at which |Q|). Only rings seen on two or more planes count: a bump on one plane only (single_plane_bumps) is the crystal's own scattering, which the ring removal must leave, not a miss (per_plane marks it single_plane_bump and leaves it out of that plane's worst_ring_dent and worst_ring_left). Lower ring energy bought by over-subtracting (negatives or ring dents rising) is worse, not better.\"},\"measured_on\":[\"H–K plane at L = 0\",\"H–L plane at K = 0\",\"K–L plane at H = 0\"]}"
+ }
+}
