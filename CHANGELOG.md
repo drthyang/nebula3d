@@ -169,7 +169,8 @@
   ΔPDF as `\DeltaPDF`, which the chat left as typed, since a TeX command
   ends at the next non-letter. A Greek letter or symbol command now also
   ends at a capital letter, as a model means it, and a TeX control space
-  (`10\ Å`) reads as a space.
+  (`10\ Å`) reads as a space. `\lesssim`, `\gtrsim` and the other common
+  relations, and `\%`, read as their symbols too.
 - **Names keep their underscores in the chat.** Models often write field
   names such as `ring_energy_ratio` without backticks, and the chat's
   Markdown took the underscores for italics: the name read

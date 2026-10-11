@@ -27,6 +27,9 @@ const TEX_SYMBOLS: Record<string, string> = {
   ll: "≪", gg: "≫", to: "→", rightarrow: "→", leftarrow: "←", Rightarrow: "⇒",
   infty: "∞", partial: "∂", nabla: "∇", angstrom: "Å", AA: "Å", degree: "°",
   circ: "∘", cdots: "⋯", ldots: "…", hbar: "ℏ", ell: "ℓ",
+  lesssim: "≲", gtrsim: "≳", lessapprox: "⪅", gtrapprox: "⪆", leqslant: "⩽",
+  geqslant: "⩾", equiv: "≡", cong: "≅", perp: "⊥", parallel: "∥", langle: "⟨",
+  rangle: "⟩",
 };
 
 // Match \command where the name ends at a non-letter (so `\sigma_{bg}` works —
@@ -48,6 +51,8 @@ export function deLatex(s: string): string {
     .replace(/\\[()[\]]/g, "")
     // LaTeX spacing macros (and a control space, `10\ Å`) → a normal space.
     .replace(/\\[,;:! ]/g, " ")
+    // An escaped percent sign is a percent sign.
+    .replace(/\\%/g, "%")
     // Simple sub/superscript braces: \sigma_{bg} → σ_bg, x^{2} → x^2.
     .replace(/([_^])\{([^{}]*)\}/g, "$1$2");
 }
