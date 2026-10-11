@@ -282,7 +282,7 @@ function flatten(text: string): string {
     .replace(/^\s*(?:[-*]\s+)?\(?\d+[.)]\s+/gm, "");
 }
 
-/** The numbers an answer writes, as written; numbers inside names (hk0, 3D, 6/mmm, 401x401) are not numbers. */
+/** The numbers an answer writes, as written; numbers inside names (hk0, 3D, 6/mmm, 201x201) are not numbers. */
 export function writtenNumbers(text: string): WrittenNumber[] {
   const out: WrittenNumber[] = [];
   const re = /(?<![A-Za-z_\d.^/])([-+]?)(\d+(?:\.(\d+))?)(?:e([-+]?\d+))?(\s*%)?(?![A-Za-z_\d/]|\.\d)/g;

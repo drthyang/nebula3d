@@ -103,7 +103,7 @@ describe("contradicting the tools' computed verdicts", () => {
 
 describe("numbers by reference", () => {
   it("reads numbers as written, not the digits inside names, exponents or list markers", () => {
-    const n = writtenNumbers("1. On hk0 the 3D-ΔPDF at 6/mmm: a ring at 7.2 Å⁻¹, 4.1 × 10⁻⁶ of the weight, 12 %, 10⁻³, x_H on a 401x401x401 grid.");
+    const n = writtenNumbers("1. On hk0 the 3D-ΔPDF at 6/mmm: a ring at 7.2 Å⁻¹, 4.1 × 10⁻⁶ of the weight, 12 %, 10⁻³, x_H on a 201x201x201 grid.");
     expect(n.map((x) => x.text)).toEqual(["7.2", "4.1e-6", "12 %", "1e-3"]);
     expect(n[0].tolerance).toBeCloseTo(0.05);
     expect(n[1].value).toBeCloseTo(4.1e-6);
