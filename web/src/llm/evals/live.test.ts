@@ -39,37 +39,20 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
     const datasets = await fetchDatasets();
     const scenarios = SCENARIOS.filter((s) => !only.size || only.has(s.id));
     const results: ScenarioResult[] = [];
-    for (const scenario of scenarios) {
-      for (let i = 0; i < repeat; i++) {
-        const abort = new AbortController();
-        const timer = setTimeout(() => abort.abort(), minutes * 60_000);
-        const r = await runScenario(scenario, {
-          datasets,
-          settings: { baseUrl, model, apiKey, temperature: 0.2 },
-          signal: abort.signal,
-        });
-        clearTimeout(timer);
-        results.push(r);
-        const u = r.run.usage;
-        console.log(
-          `${r.passed ? "✓" : "✗"} ${scenario.id} (${(r.run.latencyMs / 1000).toFixed(0)} s` +
-            `${u ? `, ${u.input} in / ${u.output} out over ${u.requests} requests` : ""})` +
-            (r.passed ? "" : `\n${r.grades.filter((g) => !g.pass).map((g) => `    ✗ ${g.check}: ${g.detail}`).join("\n")}\n${transcript(r.run)}`),
-        );
-      }
-    }
-
-    const passed = results.filter((r) => r.passed).length;
-    console.log(`NEBULA Pilot evals (${provider}, ${model}): ${passed}/${results.length} runs passed`);
     const out = env("NEBULA_EVAL_OUT");
-    if (out) {
+    // The record is rewritten after every run, so progress shows and a run cut
+    // short keeps what it measured.
+    const save = async (done: boolean) => {
+      if (!out) return;
       const record = {
         provider,
         model,
         local: isLocalUrl(baseUrl),
         at: new Date().toISOString(),
+        complete: done,
         backend: backendUrl(),
         repeat,
+        timeout_minutes: minutes,
         summary: scenarios.map((s) => {
           const runs = results.filter((r) => r.scenario === s.id);
           return { id: s.id, passed: runs.filter((r) => r.passed).length, runs: runs.length };
@@ -87,7 +70,41 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
         })),
       };
       await writeText(new URL(out, `file://${env("PWD") ?? ""}/`), JSON.stringify(record, null, 1) + "\n");
+    };
+    for (const scenario of scenarios) {
+      for (let i = 0; i < repeat; i++) {
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), minutes * 60_000);
+        const started = performance.now();
+        // The abort stops the model's stream; a tool waiting on the backend may
+        // not hear it, so the run is also given up a minute later, as failed.
+        let giveUp: ReturnType<typeof setTimeout> | undefined;
+        const stalled = new Promise<ScenarioResult>((resolve) => {
+          giveUp = setTimeout(() => {
+            const run: EvalRun = { scenario: scenario.id, steps: [], content: "", error: `timed out after ${minutes} min`, latencyMs: performance.now() - started, usage: null };
+            resolve(grade(scenario, run));
+          }, (minutes + 1) * 60_000);
+        });
+        const r = await Promise.race([
+          runScenario(scenario, { datasets, settings: { baseUrl, model, apiKey, temperature: 0.2 }, signal: abort.signal }),
+          stalled,
+        ]);
+        clearTimeout(timer);
+        clearTimeout(giveUp);
+        if (abort.signal.aborted && !r.run.error) r.run.error = `timed out after ${minutes} min`;
+        results.push(r);
+        await save(false);
+        const u = r.run.usage;
+        console.log(
+          `${r.passed ? "✓" : "✗"} ${scenario.id} (${(r.run.latencyMs / 1000).toFixed(0)} s` +
+            `${u ? `, ${u.input} in / ${u.output} out over ${u.requests} requests` : ""})` +
+            (r.passed ? "" : `\n${r.grades.filter((g) => !g.pass).map((g) => `    ✗ ${g.check}: ${g.detail}`).join("\n")}\n${transcript(r.run)}`),
+        );
+      }
     }
+    await save(true);
+    const passed = results.filter((r) => r.passed).length;
+    console.log(`NEBULA Pilot evals (${provider}, ${model}): ${passed}/${results.length} runs passed`);
     for (const r of results) expect.soft(r.passed, `${r.scenario}`).toBe(true);
   }, 6 * 3600_000);
 });
