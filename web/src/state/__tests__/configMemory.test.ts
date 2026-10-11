@@ -64,8 +64,8 @@ describe("rememberConfig", () => {
   });
 
   it("names the sample before the temperature", () => {
-    expect(sampleOf("sampleA-90K-all-hex-h-k-0")).toBe("sampleA");
-    expect(sampleOf("sampleB-22K-mmm-0-k-l")).toBe("sampleB");
+    expect(sampleOf("Ab2Cd3-90K-all-hex-h-k-0")).toBe("Ab2Cd3");
+    expect(sampleOf("EfGh4-22K-mmm-0-k-l")).toBe("EfGh4");
     expect(sampleOf("demo")).toBe("demo");
   });
 

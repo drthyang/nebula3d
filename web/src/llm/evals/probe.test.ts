@@ -15,6 +15,7 @@ import { CHAT_TOOLS, runToolCall } from "../tools";
 import { env, useBackend, writeText } from "./backend";
 import { pickDataset } from "./harness";
 import { FIXTURE_CALLS, HEX_CONFIG } from "./scenarios";
+import { sampleScrubber } from "./scrub";
 
 const probe = env("NEBULA_EVAL_PROBE") === "1";
 
@@ -36,7 +37,9 @@ describe.skipIf(!probe)("record the eval fixtures", () => {
       neutral.push({ ...d, id, raw_name: `${suffix}.nxs`, stem: suffix,
         stages: d.stages.map((st) => ({ ...st, volume_id: `${id}.${st.name}` })) });
     }
-    const scrub = (text: string) => renames.reduce((t, [a, b]) => t.split(a).join(b), text);
+    // Any other dataset a tool lists keeps its id, but not its sample's name.
+    const samples = sampleScrubber(datasets);
+    const scrub = (text: string) => samples(renames.reduce((t, [a, b]) => t.split(a).join(b), text));
     for (const [suffix, calls] of Object.entries(FIXTURE_CALLS)) {
       const dataset = pickDataset(datasets, suffix);
       contexts[suffix] = JSON.parse(scrub(JSON.stringify((await loadPipelineContext(dataset)).context)));
