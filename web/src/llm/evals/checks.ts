@@ -11,7 +11,7 @@ import type { Check, EvalRun } from "./harness";
 const ok = (detail: string) => ({ pass: true, detail });
 const fail = (detail: string) => ({ pass: false, detail });
 
-const NEGATION = /\b(no|not|never|none|nothing|nowhere|neither|nor|without|cannot|isn't|aren't|wasn't|weren't|doesn't|don't|didn't|won't|shouldn't|wouldn't|lacks?)\b|n't\b/i;
+const NEGATION = /\b(no|not|never|none|nothing|nowhere|neither|nor|without|cannot|isn't|aren't|wasn't|weren't|doesn't|don't|didn't|won't|shouldn't|wouldn't|lacks?|too (few|weak|small|faint)|insufficient)\b|n't\b/i;
 
 /** The tool calls of *name* that ran without error. */
 export const calls = (run: EvalRun, name: string): AgentStep[] =>

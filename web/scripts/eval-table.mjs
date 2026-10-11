@@ -4,17 +4,20 @@
 //
 //   node scripts/eval-table.mjs ../docs/evals/results/*.json
 //
-// Prints a pass table (scenario × model) and a per-model summary: pass rate,
+// Prints a pass table (scenario × model; a run that ended in an error, such as a
+// server crash or a timeout, is counted apart) and a per-model summary: pass rate,
 // median latency per run, mean tokens per run and, for models with a price
 // in PRICES, the mean cost per run.  Nothing is estimated: a model whose
 // server did not report token counts shows "–".
 
 import { readFileSync } from "node:fs";
 
-// US$ per million tokens: input, output, cache read, cache write (5 min).
-// Source: Anthropic's pricing (models overview), checked 2026-10-10.
+// US$ per million tokens: input, output, cache hit, 5-minute cache write.
+// Source: https://platform.claude.com/docs/en/about-claude/pricing, fetched
+// 2026-10-10 (Haiku 5.5 at its rate for prompts up to 100,000 tokens, which
+// every eval request is under).
 const PRICES = {
-  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
   "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
   "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
 };
@@ -46,15 +49,18 @@ out.push(`| Scenario | ${records.map(label).join(" | ")} |`);
 out.push(`| --- | ${records.map(() => ":---:").join(" | ")} |`);
 for (const id of ids) {
   const cells = records.map((r) => {
-    const s = r.summary.find((x) => x.id === id);
-    if (!s || !s.runs) return "–";
-    return s.passed === s.runs ? `✓${s.runs > 1 ? ` ${s.passed}/${s.runs}` : ""}` : `✗${s.runs > 1 ? ` ${s.passed}/${s.runs}` : ""}`;
+    const runs = r.runs.filter((x) => x.scenario === id);
+    if (!runs.length) return "–";
+    const passed = runs.filter((x) => x.passed).length;
+    const errors = runs.filter((x) => !x.passed && x.error).length;
+    const mark = passed === runs.length ? "✓" : passed ? "◐" : "✗";
+    return `${mark} ${passed}/${runs.length}${errors ? ` (${errors} error${errors > 1 ? "s" : ""})` : ""}`;
   });
   out.push(`| \`${id}\` | ${cells.join(" | ")} |`);
 }
 out.push("");
-out.push("| Model | Passed | Median time per run | Mean tokens per run (in / out) | Mean cost per run |");
-out.push("| --- | :---: | ---: | ---: | ---: |");
+out.push("| Model | Passed | Failed on the checks | Errors (crash, out of memory, timeout) | Median time per run | Mean tokens per run (in / out) | Mean cost per run |");
+out.push("| --- | :---: | :---: | :---: | ---: | ---: | ---: |");
 for (const r of records) {
   const passed = r.runs.filter((x) => x.passed).length;
   const latency = median(r.runs.map((x) => x.latency_ms)) / 1000;
@@ -64,6 +70,8 @@ for (const r of records) {
     : "–";
   const costs = r.runs.map((x) => cost(r.model, x.usage));
   const meanCost = costs.every((c) => c != null) && costs.length ? `$${(costs.reduce((a, c) => a + c, 0) / costs.length).toFixed(4)}` : r.local ? "local" : "–";
-  out.push(`| ${label(r)} | ${passed}/${r.runs.length} | ${latency.toFixed(0)} s | ${tokens} | ${meanCost} |`);
+  const errors = r.runs.filter((x) => !x.passed && x.error).length;
+  const failed = r.runs.length - passed - errors;
+  out.push(`| ${label(r)} | ${passed}/${r.runs.length} | ${failed} | ${errors} | ${latency.toFixed(0)} s | ${tokens} | ${meanCost} |`);
 }
 console.log(out.join("\n"));

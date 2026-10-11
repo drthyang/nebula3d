@@ -10,6 +10,12 @@ cloud one.
 **Try it in the browser:** https://drthyang.github.io/nebula3d/ runs the complete
 pipeline client-side; nothing is uploaded.
 
+![NEBULA Pilot, on a local model, assesses a reduction of a measured hexagonal volume and opens its analysis report](docs/media/nebula-pilot-demo.gif)
+
+*NEBULA Pilot on a local model (gemma4:26b) assesses a measured run. The console
+follows each tool call, and the reply opens a report built from the measured
+numbers. A time-lapse: about four minutes in one.*
+
 ## Highlights
 
 - **NEBULA Pilot, an agent for the reduction.** Connect a local model (Ollama,
@@ -21,6 +27,13 @@ pipeline client-side; nothing is uploaded.
   displaced Bragg peaks, checks the UB against where the Bragg peaks sit, and
   sets the ΔPDF view's contrast. It runs the pipeline and tunes it stage by stage. Every number comes
   from deterministic, unit-tested metrics; the model reads and explains them.
+- **Measured with real models.** Nine scenarios with known answers from
+  research rounds on a measured volume are graded on the tools each model
+  called and what it answered. Claude Sonnet 5.5 and Haiku 5.5 pass all 27 runs
+  each, at about $0.025 and $0.001 a run. The local gemma4:26b passes 15/27: it
+  answers the ring and punch questions from the opening cut instead of checking.
+  Details and the raw records are in [docs/evals.md](docs/evals.md). CI replays
+  every scenario with a scripted model.
 - **Tuning that cannot touch your results.** Each trial runs in its own folder,
   never in `processed/`. The model proposes settings from a checked catalog,
   and every trial is measured on three planes. A trial past a hard limit cannot
