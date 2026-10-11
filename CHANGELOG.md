@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **A ring must rise in every direction.** A shell in |Q| is now a powder ring
+  only if it stands above the diffuse beside it in nearly every direction over
+  the sphere: at least 0.15 of its median height in 90 % of 128 direction
+  cells, judged in 3D on the raw volume (to confirm with the user). The
+  crystal's own scattering at one |Q| rises in some directions only.
+  - The pooled ring removal subtracts only confirmed rings. A crystal with no
+    rings keeps all of its diffuse: on the held-out synthetic volume the
+    removal had taken 3 % of the intensity, up to a third of the diffuse near
+    4.1 Å⁻¹. The demo volume's aluminium rings are removed as before, and the
+    held-out rings lose 95 % and 96.5 %. `pooled_confirm_rings=False` restores
+    the old behaviour.
+  - `assess_stage` judges each bump the planes show the same way, through the
+    new `GET /api/volumes/{id}/rings`. Its rule that rings are bumps seen on
+    two planes is gone: symmetry makes planes equivalent (all three on a
+    cubic cell), so the crystal's own scattering shows on each.
+  - `assess_stage` with `stage=all` leaves out the stages' goals, and a ring
+    result its noise-level bumps, so both fit the tool-result limit; one stage
+    at a time still gives its goal.
 - **Held-out evals with injected faults.** Five synthetic volumes that no
   eval, tuning or prompt was written on, each with one fault of a known size
   (`nebula3d.faults`): a turned UB, a shifted HKL origin, counts cut short in
@@ -9,10 +27,9 @@
   when no UB change explains the peaks' offsets. The counts' edge reads 4.507
   Å⁻¹ against 4.511, and both rings are found at their |Q|. The CI replays a good
   and a bad answer per scenario (`NEBULA_EVAL_SET=heldout` runs them on a real
-  model). The set also found that the ring check reads a cubic crystal's
+  model). The set also found that the ring check read a cubic crystal's
   short-range-order diffuse as rings, and that the default ring removal
-  subtracts part of that diffuse from a crystal with no rings; both are open
-  ([docs/evals.md](docs/evals.md)).
+  subtracted part of that diffuse from a crystal with no rings (below).
 - **Fixed:** the answer checks no longer call a sentence about the Bragg peaks'
   offset from their nodes an unmeasured verdict on the punch. They also catch
   "No ring is left" against a ring check that needs attention: the leading "No"

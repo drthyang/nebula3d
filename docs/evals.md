@@ -55,7 +55,8 @@ construction, so the set grades the tools as well as the model.
 (`heldout.test.ts`, part of `npm test`) plays each scenario with a good and a
 bad script against tool results recorded on them (`fixtures/heldout.json`). It
 also checks what the tools read against the faults. No live model has run the
-set yet.
+set yet. The measured set's fixture (`fixtures/hex90k.json`) was recorded
+before the 3D ring rule, and re-recording it needs the user's data.
 
 What the tools read, against what was put in:
 
@@ -67,34 +68,34 @@ What the tools read, against what was put in:
   UB change explains it.
 - **The cut coverage:** the raw counts' upper edge reads 4.507 Å⁻¹, against
   4.511, and the suggested band is 0–4.5 Å⁻¹.
-- **The rings:** the ring removal found both at their |Q| (2.447 and 3.655
-  Å⁻¹). By construction it removed 95 % of the first and 75 % of the second, and
-  the ring check flags the part of the second that is left.
+- **The rings:** the ring removal confirms both as powder rings (each rises in
+  nearly every direction over the sphere) at their |Q| (2.447 and 3.655 Å⁻¹),
+  and by construction removes 95 % of the first and 96.5 % of the second. The
+  ring check still flags the first on hk0 alone, a residual of 0.149 of the
+  level there. On that plane the crystal's own rods lift the profile at the
+  same |Q|, and a residual cannot tell the two apart.
 
-The set also found two faults in the tools. Neither has been fixed, because
-both turn on what counts as a ring, which needs the user's call:
+The set also found two faults in the ring tools, both now fixed by the rule
+the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
+[powder_rings.md](algorithms/powder_rings.md)):
 
-- **The ring check reads short-range-order diffuse as rings.** The clean volume
-  has no ring, yet the ring check says "needs attention", with rings at 1.68,
-  3.16, 4.59, 5.52 and 7.08 Å⁻¹. These are the crystal's own diffuse
-  scattering, mostly its short-range order, which lifts the median radial
-  profile in shells.
-  The check's rule that "only rings seen on two or more planes count" cannot
-  tell them apart here. On a cubic crystal, hk0, h0l and 0kl are equivalent
-  planes, so the crystal's own scattering shows on all three; under hexagonal
-  or tetragonal symmetry, h0l and 0kl are equivalent. The replay keeps this as
-  an expected failure (`it.fails`), which flips when the check is fixed and the
-  fixture is recorded again.
-- **The default ring removal takes diffuse from a crystal with no rings.** On
-  the clean volume it subtracted four shells. Two are broad, at 1.72 and 4.14
-  Å⁻¹ (FWHM about 0.22 Å⁻¹, near the 0.24 Å⁻¹ cap); one sits on the crystal's
-  own (200) shell at 3.21 Å⁻¹. In all, that is 3 % of the intensity, but
-  between 1.7 and 1.9 Å⁻¹ it is about a fifth of the diffuse, and near 4.1 Å⁻¹
-  a third. The built-in demo crystal, with its aluminium rings left out, loses
-  0.5 % of its intensity this way. Given the held-out variant's stronger order,
-  it loses 4 %, and up to 38 % of the diffuse in the worst 0.1 Å⁻¹ shell. The
-  demo volume itself does not show this: its aluminium rings are what the
-  removal finds.
+- **The ring check read short-range-order diffuse as rings.** On the clean
+  volume, with no ring, it said "needs attention", with rings at 1.68, 3.16,
+  4.59, 5.52 and 7.08 Å⁻¹: the crystal's own diffuse scattering, mostly its
+  short-range order, lifting the median radial profile in shells. Its rule
+  that "only rings seen on two or more planes count" could not tell them
+  apart. On a cubic crystal hk0, h0l and 0kl are equivalent planes, so the
+  crystal's own scattering shows on all three; under hexagonal or tetragonal
+  symmetry h0l and 0kl are equivalent. A bump now counts as a ring only if it
+  rises in nearly every direction over the sphere, judged in 3D on the raw
+  volume, and the clean volume reads "meets its goal".
+- **The default ring removal took diffuse from a crystal with no rings.** On
+  the clean volume it subtracted four shells: 3 % of the intensity, about a
+  fifth of the diffuse between 1.7 and 1.9 Å⁻¹ and a third near 4.1 Å⁻¹. The
+  built-in demo crystal with its aluminium rings left out lost 0.5 %; with the
+  held-out variant's stronger order, 4 %. The removal now subtracts only the
+  shells confirmed as rings, so none of these volumes loses any intensity, and
+  the demo volume's aluminium rings are removed as before.
 
 ## Running it
 

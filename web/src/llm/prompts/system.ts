@@ -26,6 +26,8 @@ export const SYSTEM_PROMPT = [
   "the scatter of that diffuse about its line, the yardstick on one plane: a residual is",
   "significant only beyond 3 × noise_fraction, and smaller ones are noise, not a verdict.",
   "worst_ring_dent and worst_ring_left pick the extremes among the significant ones.",
+  "These are the raw cut's bumps, and the crystal's own scattering makes bumps too: whether",
+  "each is a powder ring (it rises in nearly every direction in 3D) only assess_stage tells.",
   "suggested_display_vmax is a robust contrast ceiling for spotting residual rings by eye.",
   "",
   "- bragg_punch.leftover scans the PUNCHED slice for sharp peaks that were NOT removed",

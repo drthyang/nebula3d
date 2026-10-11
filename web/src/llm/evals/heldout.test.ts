@@ -77,7 +77,7 @@ const REPLAYS: Record<string, Replay> = {
     good: [
       { calls: [{ name: "assess_stage", args: { stage: "rings" } }] },
       {
-        text: "Yes. The raw radial profiles have ring-like bumps at 1.68, 2.45, 3.16, 3.66, 4.59 and 7.08 Å⁻¹, on every plane. A ring is left at 3.66 Å⁻¹: 0.417 of the level under it on hk0, 0.315 on h0l and 0.304 on 0kl, each above three times its plane's noise. The one at 2.45 Å⁻¹ is left on hk0 only (0.168), and leftovers show at 3.16 and 4.59 Å⁻¹ too.",
+        text: "Yes. The raw data have two powder rings, at 2.45 and 3.66 Å⁻¹: each rises in nearly every direction over the sphere (isotropy 0.92 and 0.97). The bumps at 1.68, 3.16, 4.59 and 7.08 Å⁻¹ do not, so they are the crystal's own scattering, which the removal rightly left. The removal took the ring at 3.66 Å⁻¹ out: its residuals are below the noise on every plane. Part of the ring at 2.45 Å⁻¹ is left on hk0: a residual of 0.149, above three times that plane's noise.",
       },
     ],
     bad: [{ text: "No: the raw data have no powder rings, and the ring removal left nothing behind." }],
@@ -168,29 +168,35 @@ describe("the tools, against the faults put in", () => {
   });
 
   interface Rings {
-    rings: { verdict: string; per_plane: Record<string, { ring_residuals: { at: number }[] }> };
+    rings: {
+      verdict: string;
+      max_ring_left: number | null;
+      shells_judged: { at: number; ring: boolean }[];
+      per_plane: Record<string, { ring_residuals: { at: number; ring?: boolean }[] }>;
+    };
   }
-  const ringsAt = (r: Rings) => Object.values(r.rings.per_plane).flatMap((p) => p.ring_residuals.map((x) => x.at));
+  const near = (at: number, q: number) => Math.abs(at - q) < 0.05;
 
-  it("the ring check finds the rings put in, on every plane", () => {
-    const rings = recorded<Rings>(HELDOUT.rings, "assess_stage", { stage: "rings" });
+  it("the ring check confirms the rings put in, in 3D, and sees them on every plane", () => {
+    const rings = recorded<Rings>(HELDOUT.rings, "assess_stage", { stage: "rings" }).rings;
     for (const q of TRUTH.ringQ) {
-      for (const [plane, p] of Object.entries(rings.rings.per_plane)) {
-        expect(p.ring_residuals.some((x) => Math.abs(x.at - q) < 0.05), `${q} Å⁻¹ on ${plane}`).toBe(true);
+      expect(rings.shells_judged.find((x) => near(x.at, q))?.ring, `${q} Å⁻¹`).toBe(true);
+      for (const [plane, p] of Object.entries(rings.per_plane)) {
+        expect(p.ring_residuals.find((x) => near(x.at, q))?.ring, `${q} Å⁻¹ on ${plane}`).toBe(true);
       }
     }
-    // On the clean volume, the same positions hold no ring.
-    const clean = recorded<Rings>(HELDOUT.clean, "assess_stage", { stage: "rings" });
-    for (const q of TRUTH.ringQ) expect(ringsAt(clean).some((at) => Math.abs(at - q) < 0.05), `${q} Å⁻¹`).toBe(false);
+    // Only the rings put in: every other bump is the crystal's own.
+    expect(rings.shells_judged.filter((x) => x.ring)).toHaveLength(TRUTH.ringQ.length);
   });
 
-  // A known false positive, found by this set: the clean volume has no ring,
-  // yet the ring check reads the crystal's own diffuse as rings at 1.68, 3.16,
-  // 4.59, 5.52 and 7.08 Å⁻¹. "Seen on two or more planes" cannot tell them
-  // apart here: on a cubic crystal, hk0, h0l and 0kl are equivalent planes, so
-  // its diffuse shows on all three (docs/evals.md). This passes, and must lose
-  // its .fails, once the check tells them apart and the fixture is recorded again.
-  it.fails("the ring check finds no ring on the clean volume", () => {
-    expect(recorded<Rings>(HELDOUT.clean, "assess_stage", { stage: "rings" }).rings.verdict).toBe(VERDICT_LABEL.pass);
+  // The clean volume has no ring. The crystal's own diffuse makes bumps on all
+  // three planes (on a cubic crystal they are equivalent), which the two-plane
+  // rule took for rings; none rises in nearly every direction in 3D.
+  it("the ring check finds no ring on the clean volume", () => {
+    const rings = recorded<Rings>(HELDOUT.clean, "assess_stage", { stage: "rings" }).rings;
+    expect(rings.verdict).toBe(VERDICT_LABEL.pass);
+    expect(rings.max_ring_left).toBe(0);
+    expect(rings.shells_judged.length).toBeGreaterThan(0);
+    expect(rings.shells_judged.some((x) => x.ring)).toBe(false);
   });
 });

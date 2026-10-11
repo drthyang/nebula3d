@@ -74,6 +74,25 @@ class CoverageOut(BaseModel):
     box_corner_q: float
 
 
+class RingShellOut(BaseModel):
+    """One shell judged: does it rise in nearly every direction (a powder ring)?"""
+    q_center: float | None
+    fwhm: float | None
+    n_cells: int
+    median_height: float | None
+    relative_height: float | None
+    isotropy: float | None
+    is_ring: bool
+    not_judged: str | None = None
+
+
+class RingIsotropyOut(BaseModel):
+    """Which shells of a volume are powder rings (see preprocessing.ring_isotropy)."""
+    id: str
+    rule: dict[str, float]
+    shells: list[RingShellOut]
+
+
 class UbPassOut(BaseModel):
     q_max: float
     n_found: int

@@ -53,9 +53,9 @@ export const FIXTURE_CALLS: Record<string, { name: string; args: Record<string, 
 const stageIs = (...stages: string[]) => (a: Record<string, unknown>) => stages.includes(String(a.stage));
 const noActions = [didNotRun("run_pipeline"), didNotRun("tune_pipeline"), didNotRun("update_settings")];
 
-/** Some sentence says that a ring is left after the removal. */
+/** Some sentence says that a ring is left after the removal (a number's decimal point does not end it). */
 export const saysRingLeft = asserts(
-  /\bring\w*\b[^.]*\b(left|leftover|remain\w*|residu\w*|surviv\w*|incomplete|persist\w*)\b|\b(left|leftover|remain\w*|residu\w*|surviv\w*)\b[^.]*\bring/i,
+  /\bring\w*\b(?:[^.]|\.(?=\d))*\b(left|leftover|remain\w*|residu\w*|surviv\w*|incomplete|persist\w*)\b|\b(left|leftover|remain\w*|residu\w*|surviv\w*)\b(?:[^.]|\.(?=\d))*\bring/i,
   "that a ring is left",
 );
 

@@ -79,9 +79,13 @@ def load_volume(path: Path) -> HKLVolume:
     return vol
 
 
+_ring_cache: dict[tuple, dict] = {}
+
+
 def clear_cache() -> None:
     with _lock:
         _cache.clear()
+        _ring_cache.clear()
 
 
 _CELL_KEYS = ("a", "b", "c", "alpha", "beta", "gamma")
@@ -304,6 +308,30 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
     with _lock:
         _ub_cache.clear()  # one volume's check at a time
         _ub_cache[key] = out
+    return out
+
+
+def volume_ring_isotropy(path: Path, shells: list[tuple[float, float]]) -> dict:
+    """Whether each ``(q_center, fwhm)`` shell of the volume (Å⁻¹) is a powder
+    ring: it rises in nearly every direction over the sphere
+    (:func:`~nebula3d.preprocessing.ring_isotropy.judge_shells`), cached by
+    ``(path, mtime, shells)``. The ring removal subtracts only such shells."""
+    from nebula3d.preprocessing.ring_isotropy import IsotropyConfig, judge_shells
+
+    shells = [(round(float(q), 4), round(float(f), 4)) for q, f in shells]
+    key = (str(path), path.stat().st_mtime, tuple(shells))
+    with _lock:
+        hit = _ring_cache.get(key)
+    if hit is not None:
+        return hit
+    cfg = IsotropyConfig()
+    out = {
+        "rule": {"direction_share": cfg.direction_share, "height_share": cfg.height_share},
+        "shells": [r.as_dict() for r in judge_shells(load_volume(path), shells, cfg)],
+    }
+    with _lock:
+        _ring_cache.clear()  # one volume's shells at a time
+        _ring_cache[key] = out
     return out
 
 

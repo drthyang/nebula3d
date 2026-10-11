@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchRingIsotropy: vi.fn(),
   fetchSlice: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
@@ -60,10 +61,10 @@ describe("evaluateStage", () => {
     expect(headline("punch", e)).toBe("0 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.04");
   });
 
-  it("counts a ring only where two planes see it; a one-plane bump is crystal scattering", async () => {
+  // Raw: a powder ring at r = 6 on every plane, and on h0l a bump at r = 12
+  // (the crystal's own). Ring-removed: the ring over-shot by 20 %, the bump left.
+  const ringAndBump = () => {
     const g = (r: number, r0: number) => Math.exp(-((r - r0) ** 2) / 0.5);
-    // Raw: a powder ring at r = 6 on every plane, and on h0l alone a bump at
-    // r = 12.  Ring-removed: the ring over-shot by 20 %, the h0l bump left.
     api.fetchSlice.mockImplementation(async (id: string, plane: string) =>
       makeSlice(161, 161, (x, y) => {
         const r = Math.hypot(x, y);
@@ -71,20 +72,48 @@ describe("evaluateStage", () => {
         return id.endsWith("raw") ? 1 + 8 * g(r, 6) + bump : 1 - 0.2 * g(r, 6) + bump;
       }, { half: 20 }),
     );
+  };
+  // The 3D test: the inner shell (r = 6, 2π·6/4 ≈ 9.4 Å⁻¹) rises in every direction,
+  // the outer one (≈ 18.8 Å⁻¹) does not.
+  const judgeIn3d = () =>
+    api.fetchRingIsotropy.mockImplementation(async (_id: string, shells: { q: number; fwhm: number }[]) => ({
+      id: "demo.raw",
+      rule: { direction_share: 0.9, height_share: 0.15 },
+      shells: shells.map((sh) => ({ q_center: sh.q, fwhm: sh.fwhm, n_cells: 128, median_height: 1, relative_height: 1, isotropy: sh.q < 14 ? 0.95 : -0.4, is_ring: sh.q < 14, not_judged: null })),
+    }));
+
+  it("counts only the bumps the 3D test confirms as rings; the others are the crystal's own", async () => {
+    ringAndBump();
+    judgeIn3d();
     const e = await evaluateStage("rings", dataset);
+    // One call, on the raw volume, with each shell the planes' bumps make.
+    expect(api.fetchRingIsotropy).toHaveBeenCalledTimes(1);
+    const [id, shells] = api.fetchRingIsotropy.mock.calls[0] as [string, { q: number }[]];
+    expect(id).toBe("demo.raw");
+    expect(shells.map((sh) => Math.round(sh.q / ((2 * Math.PI) / 4)))).toEqual([6, 12]);
     const dent = e.worst_ring_dent as { at: number; plane: string };
     expect(dent).not.toBeNull();
-    expect(e.max_ring_left).toBe(0); // the h0l-only bump is not a ring left over
-    const bumps = e.single_plane_bumps as { plane: string; at: number }[];
-    expect(bumps.map((b) => b.plane)).toEqual(["h0l"]);
-    expect(bumps[0].at).toBeGreaterThan(dent.at);
+    expect(e.max_ring_left).toBe(0); // the bump at 12 is not a ring left over
+    const judged = e.shells_judged as { at: number; ring: boolean }[];
+    expect(judged.map((x) => x.ring)).toEqual([true, false]);
+    expect(judged[1].at).toBeGreaterThan(dent.at);
+    expect(e.ring_rule).toEqual({ direction_share: 0.9, height_share: 0.15 });
     // The plane's own detail agrees: its bump is marked, and is not its worst ring.
-    type Plane = { worst_ring_left: unknown; worst_ring_dent: { at: number } | null; ring_residuals: { at: number; single_plane_bump?: boolean }[] };
+    type Plane = { worst_ring_left: unknown; worst_ring_dent: { at: number } | null; ring_residuals: { at: number; ring?: boolean }[] };
     const h0l = (e.per_plane as Record<string, Plane>).h0l;
     expect(h0l.worst_ring_left).toBeNull();
     expect(h0l.worst_ring_dent?.at).toBe(dent.at);
-    expect(h0l.ring_residuals.find((x) => x.at > dent.at)?.single_plane_bump).toBe(true);
-    expect(h0l.ring_residuals.find((x) => x.at === dent.at)?.single_plane_bump).toBeUndefined();
+    expect(h0l.ring_residuals.find((x) => x.at > dent.at)?.ring).toBe(false);
+    expect(h0l.ring_residuals.find((x) => x.at === dent.at)?.ring).toBe(true);
+  });
+
+  it("does not judge the rings when the 3D test cannot run", async () => {
+    ringAndBump();
+    api.fetchRingIsotropy.mockRejectedValue(new Error("404 Not Found"));
+    const e = await evaluateStage("rings", dataset);
+    expect(e.max_ring_left).toBeNull();
+    expect(e.max_ring_dent).toBeNull();
+    expect(e.ring_rule).toMatch(/^not judged/);
   });
 
   it("reports the ΔPDF window's weight on unmeasured space and the section's symmetry", async () => {

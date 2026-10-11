@@ -93,6 +93,14 @@ class RingParams:
     pooled_envelope_scale: float = 1.5  # shell envelope half-width = × FWHM
     pooled_amp_cap: float = 8.0       # per-shell ceiling × across-stack amplitude
     pooled_min_snr: float = 6.0       # shell detection threshold (profile noise σ)
+    # Subtract only the shells confirmed as powder rings: each rises by at least
+    # height_share of its median height in at least direction_share of the
+    # directions over the sphere (nebula3d.preprocessing.ring_isotropy); the
+    # crystal's own scattering at one |Q| rises in some directions only. The
+    # two shares are to confirm with the user.
+    pooled_confirm_rings: bool = True
+    pooled_ring_direction_share: float = 0.9
+    pooled_ring_height_share: float = 0.15
 
 
 @dataclass(frozen=True)

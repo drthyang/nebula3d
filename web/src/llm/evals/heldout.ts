@@ -101,7 +101,7 @@ export const HELDOUT_SCENARIOS: Scenario[] = [
   {
     id: "heldout-rings-found",
     title: "Finds powder rings at their |Q|",
-    origin: "Fault injection: powder rings at 2.45 and 3.65 Å⁻¹; the default removal leaves about a quarter of the second.",
+    origin: "Fault injection: powder rings at 2.45 and 3.65 Å⁻¹. The default removal takes out 95 % and 96.5 % of them; the check still flags the first on hk0, where the crystal's rods add to that plane's profile.",
     dataset: HELDOUT.rings,
     config: {},
     question: "Are there powder rings in the raw data, and at what |Q|? Did the ring removal take them out?",

@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentStep } from "../agent";
 import { answers, asserts, didNotRun, measured, mentions, neverAsserts, numbers, quotes, ran, sentences } from "./checks";
 import type { Check, EvalRun } from "./harness";
+import { saysRingLeft } from "./scenarios";
 
 const step = (name: string, args: Record<string, unknown> = {}, result: unknown = {}, status: AgentStep["status"] = "done"): AgentStep => ({
   id: `${name}-${Math.random()}`,
@@ -63,6 +64,11 @@ describe("what it answered", () => {
     expect(passes(left, run("One ring is left at 7.2 Å⁻¹."))).toBe(true);
     expect(passes(left, run("No ring is left."))).toBe(false);
     expect(passes(left, run("No, a ring is left at 7.2 Å⁻¹."))).toBe(true); // "No," answers the question
+  });
+
+  it("reads a claim across a number's decimal point", () => {
+    expect(passes(saysRingLeft, run("Part of the ring at 2.45 Å⁻¹ is left on hk0."))).toBe(true);
+    expect(passes(saysRingLeft, run("The ring at 2.45 Å⁻¹ was removed. Nothing is left."))).toBe(false);
   });
 
   it("can require a negated claim", () => {

@@ -375,9 +375,11 @@ miss is a note.
     profile across the ring against a line through the diffuse beside it, as
     a share of that diffuse (negative: a dent, the subtraction over-shot;
     positive: a ring left over), significant only beyond 3 × the flanks' own
-    scatter. `assess_stage` counts a ring only where two planes see it at one
-    |Q| (a bump on one plane is the crystal's own scattering) and names the
-    plane and |Q| of the worst.
+    scatter. `assess_stage` counts a bump as a ring only if it rises in
+    nearly every direction over the sphere, each judged in 3D on the raw
+    volume (`GET /api/volumes/{id}/rings`, `preprocessing/ring_isotropy.py`):
+    the crystal's own scattering makes bumps too, on every plane that symmetry
+    makes equivalent. It names the plane and |Q| of the worst.
   - `punch.ts` — scans the *punched* slice for peaks the punch missed: each
     must stand 8 local σ above its own neighbourhood and span more than one
     voxel. Spikes in noisy or sparse-count regions (the coverage edge: a
