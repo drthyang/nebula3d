@@ -616,6 +616,18 @@ describe("ub_check", () => {
     expect(out.reading).toMatch(/symmetrised: only the UB changes that commute/);
     expect(r.summary).toBe("symmetric: RMS 0.0487 → 0.0342 Å⁻¹ over 2655 peaks; a 6.124 → 6.099 Å, c 9.412 → 9.402 Å; turned 0.000°");
     expect((await run("ub_check", { q_max: -1 })).text).toMatch(/q_max must be positive/);
+    expect(out.unexplained).toBe(false); // no voxel size reported: nothing to judge against
+  });
+
+  it("says when the peaks sit off their nodes for a reason no UB explains", async () => {
+    // A shifted HKL origin: every peak off by the same vector, which the best UB cannot remove.
+    api.fetchUbCheck.mockResolvedValue({ ...check, fit: "both", symmetrised: false, rms_start: 0.0445, rms: 0.0444, voxel_q: 0.0997 });
+    const out = JSON.parse((await run("ub_check", {})).text);
+    expect(out.unexplained).toBe(true);
+    expect(out.reading).toMatch(/The fit removed little of the peaks' offset \(RMS 0\.0445 → 0\.0444 Å⁻¹, against a voxel of 0\.0997 Å⁻¹\): no UB change explains it/);
+    // A turned UB: the fit takes the offset away.
+    api.fetchUbCheck.mockResolvedValue({ ...check, fit: "both", symmetrised: false, rms_start: 0.0366, rms: 0.0037, voxel_q: 0.0997 });
+    expect(JSON.parse((await run("ub_check", {})).text).unexplained).toBe(false);
   });
 });
 

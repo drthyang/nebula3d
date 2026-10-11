@@ -93,7 +93,7 @@ export const TOPICS: readonly Topic[] = [
 
 /** Words that make a sentence about a topic a verdict on it. */
 const VERDICT =
-  /\b(clean(ly)?|left|leftovers?|remain(s|ing|ed)?|residu\w*|removed|miss(ed|es)?|pass(es|ed)?|fail(s|ed)?|meets?|met|kept|keeps|holds?|held|broken|breaks?|lost|preserved|intact|successful(ly)?|(in)?complete(ly)?|over-?subtract\w*|dent(s|ed)?|biased|unbiased|seamless|flat|level|inside|within|past|beyond|exceeds?|right|correct|wrong|misorient\w*|turned|rotated|present|absent|no second|spurious|fine|good|ok(ay)?|shows?|showing|found|indicates?|confirms?|suggests?)\b/i;
+  /\b(clean(ly)?|left|leftovers?|remain(s|ing|ed)?|residu\w*|removed|miss(ed|es)?|pass(es|ed)?|fail(s|ed)?|meets?|met|kept|keeps|holds?|held|broken|breaks?|lost|preserved|intact|successful(ly)?|(in)?complete(ly)?|over-?subtract\w*|dent(s|ed)?|biased|unbiased|seamless|flat|level|inside|within|past|beyond|exceeds?|right|correct|wrong|misorient\w*|turned|rotated|present|absent|no second|spurious|fine|good|ok(ay)?|shows?|showing|found|indicates?|confirms?|suggests?|off by|(is|are|was|were) off)\b/i;
 
 /** A sentence that weighs a possibility, plans, or asks is not a verdict. */
 const NOT_A_VERDICT = /\b(if|whether|unless|would|could|might|may|once|until|let me|i will|i'll|i'd|i'm going to|to check|to see|next)\b/i;
@@ -233,6 +233,9 @@ const RULES: readonly VerdictRule[] = [
     topic: "ub",
     says: ubSays,
     claimsOk: asserted(/\b(right|correct|fine|accurate|good|on (their|its) nodes)\b/i),
+    // When the fit finds the UB right (no turn, or offsets no UB explains),
+    // blaming the UB sends the user to the wrong fix.
+    claimsNotOk: asserted(/\bUB\b[^.,;]{0,30}\b(is|was|looks|seems)\s+(off|wrong|incorrect|misorient\w*)\b|\bUB\b[^.,;]{0,20}\b(turned|rotated|off) by\b|\b(misoriented|wrong) UB\b/i),
   },
 ];
 

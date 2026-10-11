@@ -116,6 +116,7 @@ class UbCheckOut(BaseModel):
     ub_start: list[list[float]]
     ub: list[list[float]]
     radial: list[UbRadialOut]
+    voxel_q: float | None = None  # the grid's finest step in Q (Å⁻¹)
 
 
 class DeltaPdfMetaOut(BaseModel):

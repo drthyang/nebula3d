@@ -226,6 +226,13 @@ def symmetry_ops_for(path: Path) -> tuple[tuple[np.ndarray, ...] | None, str | N
     return None, None
 
 
+def voxel_q(vol: HKLVolume) -> float:
+    """The volume's finest grid step in Q (Å⁻¹): each axis's step through the UB."""
+    ub = np.asarray(vol.ub_matrix, dtype=float)
+    steps = [float(a[1] - a[0]) for a in (vol.h_axis, vol.k_axis, vol.l_axis)]
+    return float(min(np.linalg.norm(ub[:, i]) * abs(steps[i]) for i in range(3)))
+
+
 def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
                     q_max: float | None = None) -> dict:
     """Whether the volume's UB puts its Bragg peaks on their nodes
@@ -291,6 +298,8 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
         "radial": [{"q_lo": o.q_lo, "q_hi": o.q_hi if np.isfinite(o.q_hi) else None,
                     "direction": o.direction, "n": o.n, "before": o.before, "after": o.after}
                    for o in radial_offsets(f, r.centres)],
+        # The grid's finest step in Q: what an offset is small or large against.
+        "voxel_q": voxel_q(vol),
     }
     with _lock:
         _ub_cache.clear()  # one volume's check at a time

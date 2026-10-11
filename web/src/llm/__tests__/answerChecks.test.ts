@@ -186,3 +186,11 @@ describe("runAgent holds the final answer to its evidence", () => {
     expect(plain.note).toBeUndefined();
   });
 });
+
+describe("offsets no UB explains", () => {
+  it("does not let the UB take the blame when the fit finds it right", () => {
+    const shifted = step("ub_check", {}, { symmetrised: false, orientation_change_deg: 0.001, unexplained: true });
+    expect(contradictions("The UB is off by half a degree; refine it.", [shifted]).map((t) => t.id)).toEqual(["ub"]);
+    expect(contradictions("The peaks sit off their nodes, but the UB is right: the origin moved.", [shifted])).toEqual([]);
+  });
+});

@@ -71,6 +71,7 @@ export interface UbCheck {
   ub: number[][];
   // The peaks' median offset along Q from their nodes relative to |Q|, per |Q| band and direction.
   radial: { q_lo: number; q_hi: number | null; direction: string; n: number; before: number; after: number }[];
+  voxel_q?: number | null; // the grid's finest step in Q (Å⁻¹)
 }
 
 export interface VolumeMeta {
