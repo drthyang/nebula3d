@@ -1,0 +1,60 @@
+{
+ "provider": "Anthropic",
+ "model": "claude-haiku-5-5",
+ "local": false,
+ "at": "2026-10-11T02:38:51.268Z",
+ "complete": true,
+ "backend": "http://127.0.0.1:8000",
+ "repeat": 1,
+ "timeout_minutes": 20,
+ "summary": [
+  {
+   "id": "symmetry-kept",
+   "passed": 1,
+   "runs": 1
+  }
+ ],
+ "runs": [
+  {
+   "scenario": "symmetry-kept",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "638 characters"
+    },
+    {
+     "check": "calls symmetry_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that the symmetry is kept",
+     "pass": true,
+     "detail": "“On the x–y section at z = 0 Å, the ΔPDF keeps every in-plane operation of the hexagonal cell, each to better than the 10⁻³ tolerance:”"
+    }
+   ],
+   "latency_ms": 5964,
+   "usage": {
+    "input": 26420,
+    "output": 509,
+    "cacheRead": 12964,
+    "cacheWrite": 13450,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "symmetry_check",
+     "args": {},
+     "status": "done",
+     "summary": "every in-plane operation holds",
+     "result": "{\"section\":\"ΔPDF x–y section at z = 0 Å\",\"cell\":\"hexagonal\",\"ops\":[{\"op\":\"six-fold (60°)\",\"rms_difference\":0.0000027,\"pairs\":123019},{\"op\":\"three-fold (120°)\",\"rms_difference\":0.0000027,\"pairs\":123019},{\"op\":\"two-fold (180°)\",\"rms_difference\":0,\"pairs\":164025},{\"op\":\"mirror (a ↔ b)\",\"rms_difference\":0.0000029,\"pairs\":164025}],\"holds\":[\"six-fold (60°)\",\"three-fold (120°)\",\"two-fold (180°)\",\"mirror (a ↔ b)\"],\"verdict\":\"kept: every in-plane operation holds to 0.001 or better\"}"
+    }
+   ],
+   "answer": "Yes. On the x–y section at z = 0 Å, the ΔPDF keeps every in-plane operation of the hexagonal cell, each to better than the 10⁻³ tolerance:\n\n- six-fold (60°): RMS difference 2.7×10⁻⁶\n- three-fold (120°): RMS difference 2.7×10⁻⁶\n- two-fold (180°): RMS difference 0\n- a ↔ b mirror: RMS difference 2.9×10⁻⁶\n\nThis is one section at z = 0. I did not check other heights. The check assumes the hexagonal operations are the sample's own, as you indicated. The cell (a ≈ b, γ ≈ 120°) is consistent with that. The result shows the transform preserved the symmetry, but it does not show that the data were symmetrised. The tool does not report that.",
+   "note": null,
+   "error": null
+  }
+ ]
+}

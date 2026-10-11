@@ -1,0 +1,1586 @@
+{
+ "provider": "Anthropic",
+ "model": "claude-haiku-5-5",
+ "local": false,
+ "at": "2026-10-11T02:46:39.471Z",
+ "complete": true,
+ "backend": "http://127.0.0.1:8000",
+ "repeat": 3,
+ "timeout_minutes": 20,
+ "summary": [
+  {
+   "id": "rings-left",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "punch-missed",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "pdf-window-coverage",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "pdf-separable-refused",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "symmetry-kept",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "q-band-from-raw",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "no-second-grain",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "ub-symmetrised",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "ub-misoriented",
+   "passed": 3,
+   "runs": 3
+  }
+ ],
+ "runs": [
+  {
+   "scenario": "rings-left",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1568 characters"
+    },
+    {
+     "check": "calls assess_stage for the rings",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the leftover ring's |Q|",
+     "pass": true,
+     "detail": "wrote 10.3 (measured 10.3)"
+    },
+    {
+     "check": "says that a ring is left",
+     "pass": true,
+     "detail": "“Mostly yes, with one real leftover ring at |Q| ≈ 10.3 Å⁻¹.”"
+    }
+   ],
+   "latency_ms": 25938,
+   "usage": {
+    "input": 44098,
+    "output": 1758,
+    "cacheRead": 39461,
+    "cacheWrite": 4629,
+    "requests": 3
+   },
+   "steps": [
+    {
+     "name": "assess_stage",
+     "args": {
+      "stage": "rings"
+     },
+     "status": "done",
+     "summary": "Ring removal: ring ratio 0.954 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.408 (0kl, 10.3 Å⁻¹)",
+     "result": "{\"rings\":{\"headline\":\"ring ratio 0.954 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.408 (0kl, 10.3 Å⁻¹)\",\"mean_ring_energy_ratio\":0.954,\"max_over_subtraction_fraction\":0,\"max_ring_dent\":0,\"max_ring_left\":0.408,\"worst_ring_dent\":null,\"worst_ring_left\":{\"plane\":\"0kl\",\"at\":10.3,\"residual_fraction\":0.408},\"single_plane_bumps\":[{\"plane\":\"hk0\",\"at\":5.5,\"residual_fraction\":1.2},{\"plane\":\"hk0\",\"at\":7.95,\"residual_fraction\":0.59},{\"plane\":\"hk0\",\"at\":10.9,\"residual_fraction\":0.578}],\"per_plane\":{\"hk0\":{\"ring_energy_ratio\":1.03,\"after_ring_energy\":0.155,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0,\"worst_ring_dent\":null,\"worst_ring_left\":null,\"ring_residuals\":[{\"at\":2.57,\"residual_fraction\":0.259,\"noise_fraction\":0.156,\"significant\":false,\"single_plane_bump\":true},{\"at\":5.5,\"residual_fraction\":1.2,\"noise_fraction\":0.158,\"significant\":true,\"single_plane_bump\":true},{\"at\":7.95,\"residual_fraction\":0.59,\"noise_fraction\":0.0263,\"significant\":true,\"single_plane_bump\":true},{\"at\":10.9,\"residual_fraction\":0.578,\"noise_fraction\":0.0259,\"significant\":true,\"single_plane_bump\":true}]},\"h0l\":{\"ring_energy_ratio\":0.905,\"after_ring_energy\":0.0548,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0.0000317,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true},\"ring_residuals\":[{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true}]},\"0kl\":{\"ring_energy_ratio\":0.928,\"after_ring_energy\":0.0554,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0.0000317,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":10.3,\"residual_fraction\":0.408,\"noise_fraction\":0.00633,\"significant\":true},\"ring_residuals\":[{\"at\":10.3,\"residual_fraction\":0.408,\"noise_fraction\":0.00633,\"significant\":true}]}},\"goal\":\"Remove powder/Al rings: mean_ring_energy_ratio as low as the trials reach on every plane (its floor is set by the diffuse, not 0; near 0.4–0.5 can be ring-free), while over_subtraction_fraction and after_negative_fraction stay small (a few percent from noise), and each raw ring ends level with the diffuse beside it: max_ring_dent (how far the deepest ring sits below its flanks, a share of the diffuse there; the subtraction over-shot, even where no voxel goes negative) and max_ring_left (a ring left over) both 0: they count only residuals beyond 3 × their plane's noise_fraction, so any value above 0 is a real dent or leftover (worst_ring_dent and worst_ring_left say on which plane and at which |Q|). Only rings seen on two or more planes count: a bump on one plane only (single_plane_bumps) is the crystal's own scattering, which the ring removal must leave, not a miss (per_plane marks it single_plane_bump and leaves it out of that plane's worst_ring_dent and worst_ring_left). Lower ring energy bought by over-subtracting (negatives or ring dents rising) is worse, not better.\"},\"measured_on\":[\"H–K plane at L = 0\",\"H–L plane at K = 0\",\"K–L plane at H = 0\"]}"
+    },
+    {
+     "name": "radial_profile",
+     "args": {
+      "stages": [
+       "raw",
+       "ringremoved"
+      ],
+      "plane": "hk0",
+      "value": 0
+     },
+     "status": "done",
+     "summary": "H–K plane at L = 0: 18 shells × 2 stages",
+     "result": "{\"cut\":\"H–K plane at L = 0\",\"q_unit\":\"|Q| in Å⁻¹\",\"stat\":\"median per shell\",\"rows\":[{\"q\":0.778,\"raw\":1.91,\"ringremoved\":1.92},{\"q\":1.52,\"raw\":2.12,\"ringremoved\":2.12},{\"q\":2.48,\"raw\":3.71,\"ringremoved\":3.2},{\"q\":3.45,\"raw\":3.18,\"ringremoved\":3.01},{\"q\":4.42,\"raw\":2.77,\"ringremoved\":2.76},{\"q\":5.4,\"raw\":5.63,\"ringremoved\":5.38},{\"q\":6.37,\"raw\":3.57,\"ringremoved\":3.57},{\"q\":7.35,\"raw\":4.03,\"ringremoved\":4.03},{\"q\":8.33,\"raw\":7.07,\"ringremoved\":7.07},{\"q\":9.3,\"raw\":5.09,\"ringremoved\":5.09},{\"q\":10.3,\"raw\":5.92,\"ringremoved\":5.92},{\"q\":11.3,\"raw\":8.5,\"ringremoved\":8.5},{\"q\":12.2,\"raw\":7.64,\"ringremoved\":7.64},{\"q\":13.2,\"raw\":9.3,\"ringremoved\":9.3},{\"q\":14.2,\"raw\":10.6,\"ringremoved\":10.6},{\"q\":15.2,\"raw\":10.4,\"ringremoved\":10.3},{\"q\":16.1,\"raw\":17,\"ringremoved\":17.4},{\"q\":16.8,\"raw\":20.7,\"ringremoved\":21.4}]}"
+    },
+    {
+     "name": "show_in_viewer",
+     "args": {
+      "view": "cleanup",
+      "plane": "0kl",
+      "value": 0
+     },
+     "status": "done",
+     "summary": "Opened K–L plane at H = 0",
+     "result": "{\"opened\":\"K–L plane at H = 0\"}"
+    }
+   ],
+   "answer": "Mostly yes, with one real leftover ring at |Q| ≈ 10.3 Å⁻¹.\n\n**What passes:**\n- No over-subtraction on any plane: over_subtraction_fraction is 0 on all three, and after_negative_fraction is 0 on hk0 and about 3×10⁻⁵ on h0l and 0kl.\n- No dents: max_ring_dent is 0.\n- Mean ring-energy ratio is 0.954 across the three planes. Per plane it is 1.03 (hk0), 0.905 (h0l) and 0.928 (0kl). The hk0 value is above 1 but the tool does not count the hk0-only bumps as ring leftovers (see below).\n\n**What does not pass:**\n- **Ring at |Q| ≈ 10.3 Å⁻¹ is left on two planes.** On h0l it sits at 0.407 of the local diffuse, and on 0kl at 0.408. The plane noise is only 0.008 and 0.006, so this is well beyond 3σ. This is the one ring that counts as a real leftover, and it is the worst one on the run (max_ring_left = 0.408).\n\n**Bumps on hk0 only:**\n- At |Q| ≈ 5.5 (residual 1.2), 7.95 (0.59) and 10.9 (0.58) on the hk0 plane, the tool flags them as single-plane bumps. Those are the crystal's own scattering, which ring removal should leave alone, so they are not counted as misses.\n- The radial profile agrees with the 5.5 bump: at |Q| = 5.4 the median drops from 5.63 raw to 5.38 after removal, and it still sits above the neighbouring shells (4.42 → 2.76, 6.37 → 3.57). I did not check this on another plane, so I cannot say whether it is ring or crystal scattering.\n\nI have opened the K–L plane at H = 0 in the viewer so you can see the leftover at 10.3 Å⁻¹.\n\nI can tune the ring-removal settings to try to clear the 10.3 Å⁻¹ ring, if you want that. I have not changed anything yet.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "rings-left",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1567 characters"
+    },
+    {
+     "check": "calls assess_stage for the rings",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the leftover ring's |Q|",
+     "pass": true,
+     "detail": "wrote 10.3 (measured 10.3)"
+    },
+    {
+     "check": "says that a ring is left",
+     "pass": true,
+     "detail": "“The removal is clean of over-subtraction, and one ring is left on the two other planes.”"
+    }
+   ],
+   "latency_ms": 24030,
+   "usage": {
+    "input": 43895,
+    "output": 1562,
+    "cacheRead": 41031,
+    "cacheWrite": 2856,
+    "requests": 3
+   },
+   "steps": [
+    {
+     "name": "assess_stage",
+     "args": {
+      "stage": "rings"
+     },
+     "status": "done",
+     "summary": "Ring removal: ring ratio 0.954 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.408 (0kl, 10.3 Å⁻¹)",
+     "result": "{\"rings\":{\"headline\":\"ring ratio 0.954 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.408 (0kl, 10.3 Å⁻¹)\",\"mean_ring_energy_ratio\":0.954,\"max_over_subtraction_fraction\":0,\"max_ring_dent\":0,\"max_ring_left\":0.408,\"worst_ring_dent\":null,\"worst_ring_left\":{\"plane\":\"0kl\",\"at\":10.3,\"residual_fraction\":0.408},\"single_plane_bumps\":[{\"plane\":\"hk0\",\"at\":5.5,\"residual_fraction\":1.2},{\"plane\":\"hk0\",\"at\":7.95,\"residual_fraction\":0.59},{\"plane\":\"hk0\",\"at\":10.9,\"residual_fraction\":0.578}],\"per_plane\":{\"hk0\":{\"ring_energy_ratio\":1.03,\"after_ring_energy\":0.155,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0,\"worst_ring_dent\":null,\"worst_ring_left\":null,\"ring_residuals\":[{\"at\":2.57,\"residual_fraction\":0.259,\"noise_fraction\":0.156,\"significant\":false,\"single_plane_bump\":true},{\"at\":5.5,\"residual_fraction\":1.2,\"noise_fraction\":0.158,\"significant\":true,\"single_plane_bump\":true},{\"at\":7.95,\"residual_fraction\":0.59,\"noise_fraction\":0.0263,\"significant\":true,\"single_plane_bump\":true},{\"at\":10.9,\"residual_fraction\":0.578,\"noise_fraction\":0.0259,\"significant\":true,\"single_plane_bump\":true}]},\"h0l\":{\"ring_energy_ratio\":0.905,\"after_ring_energy\":0.0548,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0.0000317,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true},\"ring_residuals\":[{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true}]},\"0kl\":{\"ring_energy_ratio\":0.928,\"after_ring_energy\":0.0554,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0.0000317,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":10.3,\"residual_fraction\":0.408,\"noise_fraction\":0.00633,\"significant\":true},\"ring_residuals\":[{\"at\":10.3,\"residual_fraction\":0.408,\"noise_fraction\":0.00633,\"significant\":true}]}},\"goal\":\"Remove powder/Al rings: mean_ring_energy_ratio as low as the trials reach on every plane (its floor is set by the diffuse, not 0; near 0.4–0.5 can be ring-free), while over_subtraction_fraction and after_negative_fraction stay small (a few percent from noise), and each raw ring ends level with the diffuse beside it: max_ring_dent (how far the deepest ring sits below its flanks, a share of the diffuse there; the subtraction over-shot, even where no voxel goes negative) and max_ring_left (a ring left over) both 0: they count only residuals beyond 3 × their plane's noise_fraction, so any value above 0 is a real dent or leftover (worst_ring_dent and worst_ring_left say on which plane and at which |Q|). Only rings seen on two or more planes count: a bump on one plane only (single_plane_bumps) is the crystal's own scattering, which the ring removal must leave, not a miss (per_plane marks it single_plane_bump and leaves it out of that plane's worst_ring_dent and worst_ring_left). Lower ring energy bought by over-subtracting (negatives or ring dents rising) is worse, not better.\"},\"measured_on\":[\"H–K plane at L = 0\",\"H–L plane at K = 0\",\"K–L plane at H = 0\"]}"
+    },
+    {
+     "name": "radial_profile",
+     "args": {
+      "plane": "hk0",
+      "value": 0,
+      "stages": [
+       "raw",
+       "ringremoved"
+      ]
+     },
+     "status": "done",
+     "summary": "H–K plane at L = 0: 18 shells × 2 stages",
+     "result": "{\"cut\":\"H–K plane at L = 0\",\"q_unit\":\"|Q| in Å⁻¹\",\"stat\":\"median per shell\",\"rows\":[{\"q\":0.778,\"raw\":1.91,\"ringremoved\":1.92},{\"q\":1.52,\"raw\":2.12,\"ringremoved\":2.12},{\"q\":2.48,\"raw\":3.71,\"ringremoved\":3.2},{\"q\":3.45,\"raw\":3.18,\"ringremoved\":3.01},{\"q\":4.42,\"raw\":2.77,\"ringremoved\":2.76},{\"q\":5.4,\"raw\":5.63,\"ringremoved\":5.38},{\"q\":6.37,\"raw\":3.57,\"ringremoved\":3.57},{\"q\":7.35,\"raw\":4.03,\"ringremoved\":4.03},{\"q\":8.33,\"raw\":7.07,\"ringremoved\":7.07},{\"q\":9.3,\"raw\":5.09,\"ringremoved\":5.09},{\"q\":10.3,\"raw\":5.92,\"ringremoved\":5.92},{\"q\":11.3,\"raw\":8.5,\"ringremoved\":8.5},{\"q\":12.2,\"raw\":7.64,\"ringremoved\":7.64},{\"q\":13.2,\"raw\":9.3,\"ringremoved\":9.3},{\"q\":14.2,\"raw\":10.6,\"ringremoved\":10.6},{\"q\":15.2,\"raw\":10.4,\"ringremoved\":10.3},{\"q\":16.1,\"raw\":17,\"ringremoved\":17.4},{\"q\":16.8,\"raw\":20.7,\"ringremoved\":21.4}]}"
+    },
+    {
+     "name": "show_in_viewer",
+     "args": {
+      "view": "cleanup",
+      "plane": "0kl",
+      "value": 0
+     },
+     "status": "done",
+     "summary": "Opened K–L plane at H = 0",
+     "result": "{\"opened\":\"K–L plane at H = 0\"}"
+    }
+   ],
+   "answer": "Mostly, but not completely. The removal is clean of over-subtraction, and one ring is left on the two other planes.\n\n**What passes**\n- Over-subtraction is zero on every plane (`over_subtraction_fraction` = 0, `after_negative_fraction` ≈ 3×10⁻⁵ on h0l and 0kl). No ring dents were found.\n- The mean ring-energy ratio is 0.954. That is only a modest drop, and on the H–K plane it is slightly above 1 (1.03), so the energy metric alone does not show much removal.\n- At |Q| ≈ 2.5 Å⁻¹ the H–K radial median falls from 3.71 (raw) to 3.20 (ring-removed), and the feature near 5.4 Å⁻¹ drops from 5.63 to 5.38. The diffuse elsewhere is essentially unchanged.\n\n**What does not pass**\n- A ring at |Q| ≈ 10.3 Å⁻¹ is left on two planes: residual 0.407 on h0l (noise 0.0085) and 0.408 on 0kl (noise 0.0063). Both are far beyond 3× their noise, so this is a real leftover ring, and it sets `max_ring_left` = 0.408.\n- On H–K, the bumps at 5.5 (residual 1.2), 7.95 (0.59) and 10.9 Å⁻¹ (0.58) are significant. However, they appear only on the L = 0 H–K plane, so the tool classifies them as single-plane bumps, which are most likely the crystal's own scattering rather than rings. I have not checked them on other H–K cuts; that would settle whether they are rings.\n\n**Verdict:** ring removal is clean of over-subtraction, but a ring at ~10.3 Å⁻¹ survives on the H–K-perpendicular planes (h0l, 0kl). Shown: the K–L plane at H = 0. If you want that ring removed, the ring settings (`ringModel`, `ringPooledWindow`, `ringNFourier`) are the place to look; I can test a change if you want.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "rings-left",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1726 characters"
+    },
+    {
+     "check": "calls assess_stage for the rings",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the leftover ring's |Q|",
+     "pass": true,
+     "detail": "wrote 10.3 (measured 10.3)"
+    },
+    {
+     "check": "says that a ring is left",
+     "pass": true,
+     "detail": "“The 5.5 Å⁻¹ ring is left at 1.33× the diffuse (noise 0.047), and 11.1 Å⁻¹ at 0.59× (noise 0.034).”"
+    }
+   ],
+   "latency_ms": 25566,
+   "usage": {
+    "input": 46109,
+    "output": 2125,
+    "cacheRead": 41906,
+    "cacheWrite": 4195,
+    "requests": 3
+   },
+   "steps": [
+    {
+     "name": "assess_stage",
+     "args": {
+      "stage": "rings"
+     },
+     "status": "done",
+     "summary": "Ring removal: ring ratio 0.954 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.408 (0kl, 10.3 Å⁻¹)",
+     "result": "{\"rings\":{\"headline\":\"ring ratio 0.954 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.408 (0kl, 10.3 Å⁻¹)\",\"mean_ring_energy_ratio\":0.954,\"max_over_subtraction_fraction\":0,\"max_ring_dent\":0,\"max_ring_left\":0.408,\"worst_ring_dent\":null,\"worst_ring_left\":{\"plane\":\"0kl\",\"at\":10.3,\"residual_fraction\":0.408},\"single_plane_bumps\":[{\"plane\":\"hk0\",\"at\":5.5,\"residual_fraction\":1.2},{\"plane\":\"hk0\",\"at\":7.95,\"residual_fraction\":0.59},{\"plane\":\"hk0\",\"at\":10.9,\"residual_fraction\":0.578}],\"per_plane\":{\"hk0\":{\"ring_energy_ratio\":1.03,\"after_ring_energy\":0.155,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0,\"worst_ring_dent\":null,\"worst_ring_left\":null,\"ring_residuals\":[{\"at\":2.57,\"residual_fraction\":0.259,\"noise_fraction\":0.156,\"significant\":false,\"single_plane_bump\":true},{\"at\":5.5,\"residual_fraction\":1.2,\"noise_fraction\":0.158,\"significant\":true,\"single_plane_bump\":true},{\"at\":7.95,\"residual_fraction\":0.59,\"noise_fraction\":0.0263,\"significant\":true,\"single_plane_bump\":true},{\"at\":10.9,\"residual_fraction\":0.578,\"noise_fraction\":0.0259,\"significant\":true,\"single_plane_bump\":true}]},\"h0l\":{\"ring_energy_ratio\":0.905,\"after_ring_energy\":0.0548,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0.0000317,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true},\"ring_residuals\":[{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true}]},\"0kl\":{\"ring_energy_ratio\":0.928,\"after_ring_energy\":0.0554,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0.0000317,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":10.3,\"residual_fraction\":0.408,\"noise_fraction\":0.00633,\"significant\":true},\"ring_residuals\":[{\"at\":10.3,\"residual_fraction\":0.408,\"noise_fraction\":0.00633,\"significant\":true}]}},\"goal\":\"Remove powder/Al rings: mean_ring_energy_ratio as low as the trials reach on every plane (its floor is set by the diffuse, not 0; near 0.4–0.5 can be ring-free), while over_subtraction_fraction and after_negative_fraction stay small (a few percent from noise), and each raw ring ends level with the diffuse beside it: max_ring_dent (how far the deepest ring sits below its flanks, a share of the diffuse there; the subtraction over-shot, even where no voxel goes negative) and max_ring_left (a ring left over) both 0: they count only residuals beyond 3 × their plane's noise_fraction, so any value above 0 is a real dent or leftover (worst_ring_dent and worst_ring_left say on which plane and at which |Q|). Only rings seen on two or more planes count: a bump on one plane only (single_plane_bumps) is the crystal's own scattering, which the ring removal must leave, not a miss (per_plane marks it single_plane_bump and leaves it out of that plane's worst_ring_dent and worst_ring_left). Lower ring energy bought by over-subtracting (negatives or ring dents rising) is worse, not better.\"},\"measured_on\":[\"H–K plane at L = 0\",\"H–L plane at K = 0\",\"K–L plane at H = 0\"]}"
+    },
+    {
+     "name": "measure_reciprocal_cut",
+     "args": {
+      "plane": "hk0",
+      "value": 0.5
+     },
+     "status": "done",
+     "summary": "H–K plane at L = 0.5: ring ratio 1.02 · 0 missed at nodes, 36 sharp off-lattice, 4 broad maxima · seam 0.0647σ · floor ≤ 0.428σ",
+     "result": "{\"cut\":\"H–K plane at L = 0.5\",\"ring_removal\":{\"before_ring_energy\":0.142,\"after_ring_energy\":0.145,\"ring_energy_ratio\":1.02,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0,\"ring_residuals\":[{\"at\":5.51,\"residual_fraction\":1.33,\"noise_fraction\":0.0473,\"significant\":true},{\"at\":11.1,\"residual_fraction\":0.594,\"noise_fraction\":0.0337,\"significant\":true}],\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":5.51,\"residual_fraction\":1.33,\"noise_fraction\":0.0473,\"significant\":true},\"suggested_display_vmax\":43.17,\"n_finite\":115406},\"bragg_punch_leftover\":{\"suspicious_peaks\":[{\"xy\":[2,-7],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[2,-7,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[7,-2],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[7,-2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-7,2],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[-7,2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-2,7],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[-2,7,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-2,-5],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[-2,-5,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-5,-2],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[-5,-2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[5,2],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[5,2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[2,5],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[2,5,0.5],\"at_node\":false,\"on_protected_plane\":false}],\"n_suspicious\":40,\"n_at_nodes\":0,\"n_off_nodes\":40,\"n_on_protected\":0,\"n_broad_off_nodes\":4,\"n_skipped_noisy\":0,\"scan_sigma_threshold\":8},\"backfill\":{\"n_filled\":8179,\"fill_coverage\":0.0708,\"median_seam_sigma\":0.0647,\"p95_seam_sigma\":0.333,\"bright_fill_fraction\":0,\"checkerboard_fraction\":0.167},\"flatten\":{\"removed_fraction\":0.792,\"floor_before\":[2.26,2.97,4.15],\"floor_after\":[0.23,0.117,-0.163],\"after_floor_max_sigma\":0.428,\"after_negative_fraction\":0.237,\"floor_trend\":0.196,\"floor_span_fraction\":0.368},\"notes\":[]}"
+    },
+    {
+     "name": "show_in_viewer",
+     "args": {
+      "view": "cleanup",
+      "plane": "hk0",
+      "value": 0
+     },
+     "status": "done",
+     "summary": "Opened H–K plane at L = 0",
+     "result": "{\"opened\":\"H–K plane at L = 0\"}"
+    }
+   ],
+   "answer": "**Short answer: no, not fully clean.** The subtraction removes nothing that is wrong (no over-subtraction), but several rings survive, mainly on the H–K plane.\n\n**What passes**\n- Over-subtraction is zero on all three planes (`over_subtraction_fraction` = 0, `after_negative_fraction` ≈ 0 to 3×10⁻⁵). No ring is dented below its neighbours (`max_ring_dent` = 0).\n- The H–L and K–L planes are reduced well: ring-energy ratios 0.905 and 0.928.\n\n**What fails**\n- **H–K plane, L = 0:** ring-energy ratio 1.03, so the removal did not lower the ring energy on this plane at all. The bump at |Q| = 5.5 Å⁻¹ is left at 1.20× the diffuse beside it (noise 0.158), and bumps at 7.95 Å⁻¹ (0.59, noise 0.026) and 10.9 Å⁻¹ (0.58, noise 0.026) also stand well above their noise.\n- **H–K plane, L = 0.5:** the same picture. The 5.5 Å⁻¹ ring is left at 1.33× the diffuse (noise 0.047), and 11.1 Å⁻¹ at 0.59× (noise 0.034).\n- **H–L and K–L planes:** a ring at 10.3 Å⁻¹ survives at 0.41× the diffuse (noise ~0.006–0.008), so it is a clear, significant leftover there too.\n\nThe stage's own scoring counts the H–K bumps as single-plane bumps and leaves them out of `max_ring_left`. That would be right for crystal scattering, but a powder ring is a spherical shell and should intersect every central plane at the same |Q|. So I would not dismiss the 5.5 Å⁻¹ bump as sample scattering without checking. The worst case is the 5.5 Å⁻¹ ring, and the mean ring-energy ratio across planes is 0.954, which is only a modest reduction.\n\nI've put the H–K cleanup at L = 0 on screen so you can see the 5.5 Å⁻¹ bump against the other stages. If you want, I can run `tune_pipeline` on the ring stage, or try a single change such as `ringModel` or `ringNFourier`.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1515 characters"
+    },
+    {
+     "check": "calls assess_stage for the punch",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the missed peaks at nodes",
+     "pass": true,
+     "detail": "wrote 16 (measured 16)"
+    },
+    {
+     "check": "says that lattice peaks were missed",
+     "pass": true,
+     "detail": "“The punch is clean on the L=0 H–K plane, but it missed lattice peaks on the planes that contain L.”"
+    }
+   ],
+   "latency_ms": 23050,
+   "usage": {
+    "input": 48132,
+    "output": 1639,
+    "cacheRead": 41537,
+    "cacheWrite": 6587,
+    "requests": 3
+   },
+   "steps": [
+    {
+     "name": "assess_stage",
+     "args": {
+      "stage": "punch"
+     },
+     "status": "done",
+     "summary": "Bragg punch: 16 missed at nodes · 8 sharp off-lattice · 360 broad maxima kept · punched 0.115",
+     "result": "{\"punch\":{\"headline\":\"16 missed at nodes · 8 sharp off-lattice · 360 broad maxima kept · punched 0.115\",\"total_leftover_peaks\":384,\"leftover_at_nodes\":16,\"leftover_off_lattice\":368,\"leftover_on_protected_planes\":0,\"leftover_off_lattice_broad\":360,\"leftover_off_lattice_sharp\":8,\"strongest_leftover\":{\"plane\":\"h0l\",\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[-5,0,-3],\"at_node\":false,\"on_protected_plane\":false},\"noisy_spikes_skipped\":0,\"mean_punched_fraction\":0.115,\"fitted_peaks\":null,\"per_plane\":{\"hk0\":{\"leftover_peaks\":0,\"at_nodes\":0,\"off_lattice\":0,\"on_protected_planes\":0,\"off_lattice_broad\":0,\"strongest_leftover\":null,\"punched_fraction\":0.128},\"h0l\":{\"leftover_peaks\":192,\"at_nodes\":8,\"off_lattice\":184,\"on_protected_planes\":0,\"off_lattice_broad\":180,\"strongest_leftover\":{\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[-5,0,-3],\"at_node\":false,\"on_protected_plane\":false},\"punched_fraction\":0.108},\"0kl\":{\"leftover_peaks\":192,\"at_nodes\":8,\"off_lattice\":184,\"on_protected_planes\":0,\"off_lattice_broad\":180,\"strongest_leftover\":{\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[0,-5,-3],\"at_node\":false,\"on_protected_plane\":false},\"punched_fraction\":0.108}},\"goal\":\"Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) are satellites or spurious peaks the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis: diffuse maxima such as short-range order, which are the signal, not peaks to punch). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.\"},\"measured_on\":[\"H–K plane at L = 0\",\"H–L plane at K = 0\",\"K–L plane at H = 0\"]}"
+    },
+    {
+     "name": "measure_reciprocal_cut",
+     "args": {
+      "plane": "h0l",
+      "value": 0
+     },
+     "status": "done",
+     "summary": "H–L plane at K = 0: ring ratio 0.905 · 8 missed at nodes, 4 sharp off-lattice, 180 broad maxima · seam 0.0772σ · floor ≤ 0.379σ",
+     "result": "{\"cut\":\"H–L plane at K = 0\",\"ring_removal\":{\"before_ring_energy\":0.0606,\"after_ring_energy\":0.0548,\"ring_energy_ratio\":0.905,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0.0000317,\"ring_residuals\":[{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true}],\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true},\"suggested_display_vmax\":334.8,\"n_finite\":126294},\"bragg_punch_leftover\":{\"suspicious_peaks\":[{\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[-5,0,-3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[5,0,-3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-5,3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[-5,0,3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[5,3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[5,0,3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-3,-4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[-3,0,-4.9],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[3,-4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[3,0,-4.9],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-3,4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[-3,0,4.9],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[3,4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[3,0,4.9],\"at_node\":false,\"on_protected_plane\":false}],\"n_suspicious\":192,\"n_at_nodes\":8,\"n_off_nodes\":184,\"n_on_protected\":0,\"n_broad_off_nodes\":180,\"n_skipped_noisy\":0,\"scan_sigma_threshold\":8},\"backfill\":{\"n_filled\":13957,\"fill_coverage\":0.11,\"median_seam_sigma\":0.0772,\"p95_seam_sigma\":0.463,\"bright_fill_fraction\":0,\"checkerboard_fraction\":0.204},\"flatten\":{\"removed_fraction\":0.823,\"floor_before\":[1.91,2.87,3.95],\"floor_after\":[-0.0568,0.0752,-0.325],\"after_floor_max_sigma\":0.379,\"after_negative_fraction\":0.305,\"floor_trend\":0.0896,\"floor_span_fraction\":0.364},\"notes\":[]}"
+    },
+    {
+     "name": "measure_reciprocal_cut",
+     "args": {
+      "plane": "hk0",
+      "value": 0.5
+     },
+     "status": "done",
+     "summary": "H–K plane at L = 0.5: ring ratio 1.02 · 0 missed at nodes, 36 sharp off-lattice, 4 broad maxima · seam 0.0647σ · floor ≤ 0.428σ",
+     "result": "{\"cut\":\"H–K plane at L = 0.5\",\"ring_removal\":{\"before_ring_energy\":0.142,\"after_ring_energy\":0.145,\"ring_energy_ratio\":1.02,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0,\"ring_residuals\":[{\"at\":5.51,\"residual_fraction\":1.33,\"noise_fraction\":0.0473,\"significant\":true},{\"at\":11.1,\"residual_fraction\":0.594,\"noise_fraction\":0.0337,\"significant\":true}],\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":5.51,\"residual_fraction\":1.33,\"noise_fraction\":0.0473,\"significant\":true},\"suggested_display_vmax\":43.17,\"n_finite\":115406},\"bragg_punch_leftover\":{\"suspicious_peaks\":[{\"xy\":[2,-7],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[2,-7,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[7,-2],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[7,-2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-7,2],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[-7,2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-2,7],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[-2,7,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-2,-5],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[-2,-5,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-5,-2],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[-5,-2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[5,2],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[5,2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[2,5],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[2,5,0.5],\"at_node\":false,\"on_protected_plane\":false}],\"n_suspicious\":40,\"n_at_nodes\":0,\"n_off_nodes\":40,\"n_on_protected\":0,\"n_broad_off_nodes\":4,\"n_skipped_noisy\":0,\"scan_sigma_threshold\":8},\"backfill\":{\"n_filled\":8179,\"fill_coverage\":0.0708,\"median_seam_sigma\":0.0647,\"p95_seam_sigma\":0.333,\"bright_fill_fraction\":0,\"checkerboard_fraction\":0.167},\"flatten\":{\"removed_fraction\":0.792,\"floor_before\":[2.26,2.97,4.15],\"floor_after\":[0.23,0.117,-0.163],\"after_floor_max_sigma\":0.428,\"after_negative_fraction\":0.237,\"floor_trend\":0.196,\"floor_span_fraction\":0.368},\"notes\":[]}"
+    },
+    {
+     "name": "show_in_viewer",
+     "args": {
+      "view": "cleanup",
+      "plane": "h0l",
+      "value": 0
+     },
+     "status": "done",
+     "summary": "Opened H–L plane at K = 0",
+     "result": "{\"opened\":\"H–L plane at K = 0\"}"
+    }
+   ],
+   "answer": "No. The punch is clean on the L=0 H–K plane, but it missed lattice peaks on the planes that contain L.\n\n**Lattice (Bragg) peaks that were missed**\n- **H–K plane at L=0:** 0 leftover, so this plane passes.\n- **H–L plane at K=0:** 8 peaks at lattice nodes left unpunched.\n- **K–L plane at H=0:** 8 more, the same count by symmetry.\n- In total, 16 missed nodes, which fails the goal of 0.\n\n**Sharp off-lattice leftovers**\n- The `assess_stage` punch check reports 8 sharp off-lattice peaks across the principal planes.\n- At L=0.5 (H–K plane), I found 40 sharp off-node residuals with contrast about 9 and σ about 15–16. They are 2–3 voxels wide, so they are not diffuse maxima. This is a plane off the origin, so the picture there is limited to that one cut.\n- Another 360 broad maxima (FWHM ≥ 5 voxels) were kept on purpose. They are treated as short-range order, not as peaks to punch.\n\n**Cost of the punch**\n- Mean punched fraction is 0.115, and 0.108 on the H–L and K–L planes. The H–K plane at L=0 is 0.128.\n- I have not changed any settings. These are the outputs of the current run.\n\nThe strongest leftover on the H–L plane is at (H, K, L) = (−5, 0, −3), with σ ≈ 73. It is flagged broad, with FWHM of 1 by 8 voxels, so it looks like a streak rather than a Bragg spot. I have opened the H–L cleanup view at K=0 so you can see the missed nodes there.\n\nIf you want the 16 nodes removed, the next step would be to tune the punch settings. Those changes would also punch more voxels, so the trade-off needs checking.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1605 characters"
+    },
+    {
+     "check": "calls assess_stage for the punch",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the missed peaks at nodes",
+     "pass": true,
+     "detail": "wrote 16 (measured 16)"
+    },
+    {
+     "check": "says that lattice peaks were missed",
+     "pass": true,
+     "detail": "“The punch removed the peaks on the hk0 plane (L=0), but on the two other principal planes it missed some lattice peaks.”"
+    }
+   ],
+   "latency_ms": 23130,
+   "usage": {
+    "input": 45636,
+    "output": 1889,
+    "cacheRead": 41340,
+    "cacheWrite": 4288,
+    "requests": 3
+   },
+   "steps": [
+    {
+     "name": "assess_stage",
+     "args": {
+      "stage": "punch"
+     },
+     "status": "done",
+     "summary": "Bragg punch: 16 missed at nodes · 8 sharp off-lattice · 360 broad maxima kept · punched 0.115",
+     "result": "{\"punch\":{\"headline\":\"16 missed at nodes · 8 sharp off-lattice · 360 broad maxima kept · punched 0.115\",\"total_leftover_peaks\":384,\"leftover_at_nodes\":16,\"leftover_off_lattice\":368,\"leftover_on_protected_planes\":0,\"leftover_off_lattice_broad\":360,\"leftover_off_lattice_sharp\":8,\"strongest_leftover\":{\"plane\":\"h0l\",\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[-5,0,-3],\"at_node\":false,\"on_protected_plane\":false},\"noisy_spikes_skipped\":0,\"mean_punched_fraction\":0.115,\"fitted_peaks\":16409,\"per_plane\":{\"hk0\":{\"leftover_peaks\":0,\"at_nodes\":0,\"off_lattice\":0,\"on_protected_planes\":0,\"off_lattice_broad\":0,\"strongest_leftover\":null,\"punched_fraction\":0.128},\"h0l\":{\"leftover_peaks\":192,\"at_nodes\":8,\"off_lattice\":184,\"on_protected_planes\":0,\"off_lattice_broad\":180,\"strongest_leftover\":{\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[-5,0,-3],\"at_node\":false,\"on_protected_plane\":false},\"punched_fraction\":0.108},\"0kl\":{\"leftover_peaks\":192,\"at_nodes\":8,\"off_lattice\":184,\"on_protected_planes\":0,\"off_lattice_broad\":180,\"strongest_leftover\":{\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[0,-5,-3],\"at_node\":false,\"on_protected_plane\":false},\"punched_fraction\":0.108}},\"goal\":\"Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) are satellites or spurious peaks the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis: diffuse maxima such as short-range order, which are the signal, not peaks to punch). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.\"},\"measured_on\":[\"H–K plane at L = 0\",\"H–L plane at K = 0\",\"K–L plane at H = 0\"]}"
+    },
+    {
+     "name": "bragg_peaks",
+     "args": {
+      "limit": 10,
+      "sort_by": "significance"
+     },
+     "status": "done",
+     "summary": "16409 fitted peaks; top 10 by significance",
+     "result": "{\"n_peaks\":16409,\"punch_frame\":\"spherical\",\"sorted_by\":\"significance\",\"peaks\":[{\"hkl\":[-4,2,1.314e-15],\"q\":3.13,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.000754,0.187,0],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[-2,-2,1.324e-15],\"q\":3.131,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.00119,0.187,0],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[-2,4,1.305e-15],\"q\":3.134,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.000435,0.187,6.18e-10],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[2,-4,1.324e-15],\"q\":3.134,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.000435,0.187,0],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[2,2,1.305e-15],\"q\":3.131,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.00119,0.187,1.01e-9],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[4,-2,1.314e-15],\"q\":3.13,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.000754,0.187,0],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[1.776e-15,1.776e-15,-8],\"q\":5.012,\"intensity\":15570,\"local_background\":28.87,\"significance\":124.3,\"measured_width_q\":null,\"resolution_limited\":null,\"anisotropy\":1.01,\"fit\":\"own\"},{\"hkl\":[1.776e-15,1.776e-15,8],\"q\":5.012,\"intensity\":15570,\"local_background\":28.87,\"significance\":124.3,\"measured_width_q\":null,\"resolution_limited\":null,\"anisotropy\":1.01,\"fit\":\"own\"},{\"hkl\":[-2,1.776e-15,-4],\"q\":3.098,\"intensity\":15020,\"local_background\":19.88,\"significance\":122,\"measured_width_q\":null,\"resolution_limited\":null,\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[2,1.776e-15,4],\"q\":3.098,\"intensity\":15020,\"local_background\":19.88,\"significance\":122,\"measured_width_q\":null,\"resolution_limited\":null,\"anisotropy\":1.32,\"fit\":\"own\"}]}"
+    },
+    {
+     "name": "measure_reciprocal_cut",
+     "args": {
+      "plane": "hk0",
+      "value": 0.5
+     },
+     "status": "done",
+     "summary": "H–K plane at L = 0.5: ring ratio 1.02 · 0 missed at nodes, 36 sharp off-lattice, 4 broad maxima · seam 0.0647σ · floor ≤ 0.428σ",
+     "result": "{\"cut\":\"H–K plane at L = 0.5\",\"ring_removal\":{\"before_ring_energy\":0.142,\"after_ring_energy\":0.145,\"ring_energy_ratio\":1.02,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0,\"ring_residuals\":[{\"at\":5.51,\"residual_fraction\":1.33,\"noise_fraction\":0.0473,\"significant\":true},{\"at\":11.1,\"residual_fraction\":0.594,\"noise_fraction\":0.0337,\"significant\":true}],\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":5.51,\"residual_fraction\":1.33,\"noise_fraction\":0.0473,\"significant\":true},\"suggested_display_vmax\":43.17,\"n_finite\":115406},\"bragg_punch_leftover\":{\"suspicious_peaks\":[{\"xy\":[2,-7],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[2,-7,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[7,-2],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[7,-2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-7,2],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[-7,2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-2,7],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[-2,7,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-2,-5],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[-2,-5,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-5,-2],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[-5,-2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[5,2],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[5,2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[2,5],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[2,5,0.5],\"at_node\":false,\"on_protected_plane\":false}],\"n_suspicious\":40,\"n_at_nodes\":0,\"n_off_nodes\":40,\"n_on_protected\":0,\"n_broad_off_nodes\":4,\"n_skipped_noisy\":0,\"scan_sigma_threshold\":8},\"backfill\":{\"n_filled\":8179,\"fill_coverage\":0.0708,\"median_seam_sigma\":0.0647,\"p95_seam_sigma\":0.333,\"bright_fill_fraction\":0,\"checkerboard_fraction\":0.167},\"flatten\":{\"removed_fraction\":0.792,\"floor_before\":[2.26,2.97,4.15],\"floor_after\":[0.23,0.117,-0.163],\"after_floor_max_sigma\":0.428,\"after_negative_fraction\":0.237,\"floor_trend\":0.196,\"floor_span_fraction\":0.368},\"notes\":[]}"
+    },
+    {
+     "name": "show_in_viewer",
+     "args": {
+      "view": "cleanup",
+      "plane": "h0l",
+      "value": 0
+     },
+     "status": "done",
+     "summary": "Opened H–L plane at K = 0",
+     "result": "{\"opened\":\"H–L plane at K = 0\"}"
+    }
+   ],
+   "answer": "**No, not fully.** The punch removed the peaks on the hk0 plane (L=0), but on the two other principal planes it missed some lattice peaks.\n\n- **H–K plane (L=0):** 0 leftover peaks, 0 at lattice nodes. Punched fraction 0.128.\n- **H–L plane (K=0) and K–L plane (H=0):** 192 leftover peaks each. Of these, 8 per plane are at lattice nodes, which is a punch failure. The other 184 are off-lattice: 180 are broad maxima (FWHM ≥ 5 voxels), which I'd treat as diffuse signal, and 4 are sharp. Punched fraction 0.108.\n- **Across the three planes:** 16 lattice peaks missed, 8 sharp off-lattice leftovers, 360 broad maxima kept. Overall punched fraction 0.115.\n\nThe strongest leftover (hkl −5, 0, −3) is broad, so it is more likely a diffuse maximum than a missed Bragg peak. The tool gives counts for the missed nodes but not their positions, so I can't yet say which reflections they are.\n\n**Off-zero check (H–K plane at L=0.5):** no lattice-node leftovers, but 40 sharp off-node leftovers. They sit at (H,K) = (±2, ±5), (±5, ±2), (±2, ±7) and (±7, ±2), with contrast about 9 and σ about 16. These are sharp, off-lattice peaks that the punch's threshold did not catch. I haven't checked whether they are real satellites or spurious.\n\nThe h0l section at K=0 is now open in the cleanup viewer.\n\nIf you want the lattice-node misses removed, I can tighten the punch (for example `punchMinSig` or `punchHGuard`) and rerun from the punch stage, then compare the counts. The off-lattice peaks at L=0.5 would need a decision from you: punch them or protect them as real satellites. I can run `grain_check` on them first.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1824 characters"
+    },
+    {
+     "check": "calls assess_stage for the punch",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the missed peaks at nodes",
+     "pass": true,
+     "detail": "wrote 16 (measured 16)"
+    },
+    {
+     "check": "says that lattice peaks were missed",
+     "pass": true,
+     "detail": "“- H–K plane, L=0: 0 leftover peaks, 0 at lattice nodes.”"
+    }
+   ],
+   "latency_ms": 28880,
+   "usage": {
+    "input": 45413,
+    "output": 1871,
+    "cacheRead": 41670,
+    "cacheWrite": 3735,
+    "requests": 3
+   },
+   "steps": [
+    {
+     "name": "assess_stage",
+     "args": {
+      "stage": "punch"
+     },
+     "status": "done",
+     "summary": "Bragg punch: 16 missed at nodes · 8 sharp off-lattice · 360 broad maxima kept · punched 0.115",
+     "result": "{\"punch\":{\"headline\":\"16 missed at nodes · 8 sharp off-lattice · 360 broad maxima kept · punched 0.115\",\"total_leftover_peaks\":384,\"leftover_at_nodes\":16,\"leftover_off_lattice\":368,\"leftover_on_protected_planes\":0,\"leftover_off_lattice_broad\":360,\"leftover_off_lattice_sharp\":8,\"strongest_leftover\":{\"plane\":\"h0l\",\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[-5,0,-3],\"at_node\":false,\"on_protected_plane\":false},\"noisy_spikes_skipped\":0,\"mean_punched_fraction\":0.115,\"fitted_peaks\":null,\"per_plane\":{\"hk0\":{\"leftover_peaks\":0,\"at_nodes\":0,\"off_lattice\":0,\"on_protected_planes\":0,\"off_lattice_broad\":0,\"strongest_leftover\":null,\"punched_fraction\":0.128},\"h0l\":{\"leftover_peaks\":192,\"at_nodes\":8,\"off_lattice\":184,\"on_protected_planes\":0,\"off_lattice_broad\":180,\"strongest_leftover\":{\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[-5,0,-3],\"at_node\":false,\"on_protected_plane\":false},\"punched_fraction\":0.108},\"0kl\":{\"leftover_peaks\":192,\"at_nodes\":8,\"off_lattice\":184,\"on_protected_planes\":0,\"off_lattice_broad\":180,\"strongest_leftover\":{\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[0,-5,-3],\"at_node\":false,\"on_protected_plane\":false},\"punched_fraction\":0.108}},\"goal\":\"Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) are satellites or spurious peaks the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis: diffuse maxima such as short-range order, which are the signal, not peaks to punch). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.\"},\"measured_on\":[\"H–K plane at L = 0\",\"H–L plane at K = 0\",\"K–L plane at H = 0\"]}"
+    },
+    {
+     "name": "measure_reciprocal_cut",
+     "args": {
+      "plane": "hk0",
+      "value": 0.5
+     },
+     "status": "done",
+     "summary": "H–K plane at L = 0.5: ring ratio 1.02 · 0 missed at nodes, 36 sharp off-lattice, 4 broad maxima · seam 0.0647σ · floor ≤ 0.428σ",
+     "result": "{\"cut\":\"H–K plane at L = 0.5\",\"ring_removal\":{\"before_ring_energy\":0.142,\"after_ring_energy\":0.145,\"ring_energy_ratio\":1.02,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0,\"ring_residuals\":[{\"at\":5.51,\"residual_fraction\":1.33,\"noise_fraction\":0.0473,\"significant\":true},{\"at\":11.1,\"residual_fraction\":0.594,\"noise_fraction\":0.0337,\"significant\":true}],\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":5.51,\"residual_fraction\":1.33,\"noise_fraction\":0.0473,\"significant\":true},\"suggested_display_vmax\":43.17,\"n_finite\":115406},\"bragg_punch_leftover\":{\"suspicious_peaks\":[{\"xy\":[2,-7],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[2,-7,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[7,-2],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[7,-2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-7,2],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[-7,2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-2,7],\"intensity\":39.4,\"local_background\":4.44,\"contrast\":8.89,\"sigma\":15.9,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[-2,7,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-2,-5],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[-2,-5,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-5,-2],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[-5,-2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[5,2],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[2,3],\"broad\":false,\"hkl\":[5,2,0.5],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[2,5],\"intensity\":39.4,\"local_background\":4.4,\"contrast\":8.97,\"sigma\":15.4,\"fwhm_voxels\":[3,2],\"broad\":false,\"hkl\":[2,5,0.5],\"at_node\":false,\"on_protected_plane\":false}],\"n_suspicious\":40,\"n_at_nodes\":0,\"n_off_nodes\":40,\"n_on_protected\":0,\"n_broad_off_nodes\":4,\"n_skipped_noisy\":0,\"scan_sigma_threshold\":8},\"backfill\":{\"n_filled\":8179,\"fill_coverage\":0.0708,\"median_seam_sigma\":0.0647,\"p95_seam_sigma\":0.333,\"bright_fill_fraction\":0,\"checkerboard_fraction\":0.167},\"flatten\":{\"removed_fraction\":0.792,\"floor_before\":[2.26,2.97,4.15],\"floor_after\":[0.23,0.117,-0.163],\"after_floor_max_sigma\":0.428,\"after_negative_fraction\":0.237,\"floor_trend\":0.196,\"floor_span_fraction\":0.368},\"notes\":[]}"
+    },
+    {
+     "name": "show_in_viewer",
+     "args": {
+      "view": "cleanup",
+      "plane": "h0l",
+      "value": 0
+     },
+     "status": "done",
+     "summary": "Opened H–L plane at K = 0",
+     "result": "{\"opened\":\"H–L plane at K = 0\"}"
+    }
+   ],
+   "answer": "No. The punch removed the peaks on the H–K plane at L=0, but it missed some on the other principal planes, and the L=0.5 check finds more sharp features it did not remove.\n\n**What the punch got right**\n- **H–K plane, L=0:** 0 leftover peaks, 0 at lattice nodes.\n- **Punched fraction:** 0.115 of the volume (0.128 on H–K, 0.108 on H–L and K–L).\n\n**What it missed**\n- **Lattice (Bragg) nodes:** 16 in total, 8 each on the H–L plane (K=0) and the K–L plane (H=0). Both are punch failures. I did not get a list of their positions, so I cannot yet say which reflections they are.\n- **Off-lattice sharp peaks:** 8 in total, on the H–L and K–L planes. The H–L leftovers are mostly broad (180 of the 184 off-lattice leftovers there), so they look like diffuse maxima to keep, not peaks to punch.\n- **Strongest leftover:** a broad, non-node maximum at [-5, 0, -3] on the H–L plane (contrast 33, σ 72.6). Its FWHM is 1 × 8 voxels, so it is elongated rather than a sharp reflection.\n\n**Off-zero check (H–K plane at L=0.5)**\n- 0 leftovers at nodes, but 40 sharp off-node spikes (contrast about 9, σ about 15–16, FWHM 2–3 voxels). Examples are at [2, -7, 0.5] and [7, -2, 0.5], and they sit at the same intensity (39.4).\n- These are not lattice nodes and the punch did not remove them. They could be satellites or structure at the half-integer L plane, or leftover peaks. I cannot tell which from this cut alone.\n\n**Ring removal at L=0.5** is not the question you asked, so I have not assessed it here.\n\nI have opened the H–L plane at K=0 in the viewer, where the missed nodes sit. I can measure the other planes too, or run `grain_check` to test whether the off-lattice peaks belong to a second grain. Lowering `punchMinSig` would catch more of them, but it would also punch more diffuse signal, so I would test that before changing it.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "994 characters"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the window's weight on unmeasured space",
+     "pass": true,
+     "detail": "wrote 0.0000032 (measured 0.000003241850225822034)"
+    },
+    {
+     "check": "says that it stays inside the coverage",
+     "pass": true,
+     "detail": "“The forward transform's window stays inside the measured reciprocal space.”"
+    }
+   ],
+   "latency_ms": 4565,
+   "usage": {
+    "input": 26915,
+    "output": 637,
+    "cacheRead": 24325,
+    "cacheWrite": 2584,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    }
+   ],
+   "answer": "Yes. The forward transform's window stays inside the measured reciprocal space.\n\n- **Window weight on unmeasured space:** 3.2e-6, well under the 1e-3 threshold. The window is an ellipsoid with scale 1, and the |Q| band is 0.55–16.7 Å⁻¹ (`pdfQMin` 0.55, `pdfQMax` 16.70). The suggested band is the same, so the band is inside the counts.\n- **Reach versus coverage:** The window reaches |Q| = 16.7 Å⁻¹, the box corner. Full coverage is 12.5 Å⁻¹ on the H–L and K–L planes, which is the box face, and 15.7 Å⁻¹ on the H–K plane. The window therefore extends past full coverage on those planes, but almost none of its weight falls there.\n- **Shells:** On H–K, shells are fully measured (≥0.97) out to 15.5 Å⁻¹. On H–L and K–L, every shell up to 12.4 Å⁻¹ is fully measured.\n\nThis check covers the three principal planes through the origin only. The window's weight in the corners beyond 12.5 Å⁻¹ on H–L and K–L is small, so the transform is not drawing on unmeasured data in any way that matters here.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "872 characters"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the window's weight on unmeasured space",
+     "pass": true,
+     "detail": "wrote 0.0000032 (measured 0.000003241850225822034)"
+    },
+    {
+     "check": "says that it stays inside the coverage",
+     "pass": true,
+     "detail": "“The forward transform stays inside the measured reciprocal space.”"
+    }
+   ],
+   "latency_ms": 5448,
+   "usage": {
+    "input": 26940,
+    "output": 593,
+    "cacheRead": 25932,
+    "cacheWrite": 1002,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    }
+   ],
+   "answer": "Yes. The forward transform stays inside the measured reciprocal space.\n\n- **Window weight on unmeasured space:** 3.2e-6, well under the 1e-3 threshold. The verdict is clean.\n- **Window reach:** the ellipsoid window reaches |Q| = 16.7 Å⁻¹, set by the |Q| band on the Configure page (pdfQMin 0.55, pdfQMax 16.70).\n- **Measured coverage:** the fully measured range is 0.65 to 15.85 Å⁻¹ in the H–K plane. In the H–L and K–L planes the box face limits full coverage to 12.5 Å⁻¹.\n- **Band check:** the suggested band 0.55–16.7 Å⁻¹ lies inside the raw counts, which begin at 0.519 and end at 16.7 Å⁻¹.\n\nThe window extends past the 12.5 Å⁻¹ box-face limit in the H–L and K–L planes, toward the box corners. The weight there is still negligible, so this does not affect the result. The margin is small: a band reaching much past about 16 Å⁻¹ would start to sample unmeasured space.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "983 characters"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the window's weight on unmeasured space",
+     "pass": true,
+     "detail": "wrote 0.0000032 (measured 0.000003241850225822034)"
+    },
+    {
+     "check": "says that it stays inside the coverage",
+     "pass": true,
+     "detail": "“The ΔPDF's transform window stays inside the measured reciprocal space.”"
+    }
+   ],
+   "latency_ms": 5599,
+   "usage": {
+    "input": 26940,
+    "output": 693,
+    "cacheRead": 26934,
+    "cacheWrite": 0,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    }
+   ],
+   "answer": "**Yes.** The ΔPDF's transform window stays inside the measured reciprocal space.\n\n- **Window weight on unmeasured space:** 3.2e-6, well under the 1e-3 threshold. The window is an ellipsoid with scale 1.\n- **Reach:** the |Q| band is set to 0.55–16.7 Å⁻¹ on the Configure page (pdfQMin 0.55, pdfQMax 16.70). The tool confirms that band stays inside the measured counts, which run from 0.65 to 15.85 Å⁻¹ fully measured.\n- **Coverage by plane:** the H–K plane is fully measured to 15.7 Å⁻¹ (its shell at 15.5 Å⁻¹ is 0.971 measured). The H–L and K–L planes are fully measured to 12.5 Å⁻¹, which is the box face.\n\nThe window's nominal reach (16.7 Å⁻¹) goes past the 12.5 Å⁻¹ full coverage on the H–L and K–L planes, into the box corners. That is acceptable here because almost none of the window's weight lands there. If you tighten pdfQMax to about 12.5 Å⁻¹, the ΔPDF would not change in any way the metrics would show, but the margin would be larger. I would not treat that as necessary.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1548 characters"
+    },
+    {
+     "check": "does not call run_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call tune_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call update_settings",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "says to keep the ellipsoid window",
+     "pass": true,
+     "detail": "“No, I wouldn't switch on this evidence.”"
+    },
+    {
+     "check": "says that a separable window would reach unmeasured space or break the symmetry",
+     "pass": true,
+     "detail": "“The ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space, well under the 1e-3 limit.”"
+    }
+   ],
+   "latency_ms": 9402,
+   "usage": {
+    "input": 28749,
+    "output": 1267,
+    "cacheRead": 24338,
+    "cacheWrite": 4405,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "configure_settings",
+     "args": {},
+     "status": "done",
+     "summary": "55 settings",
+     "result": "{\"settings\":{\"ringsEnabled\":true,\"punchEnabled\":true,\"backfillEnabled\":true,\"flatten\":true,\"pdfEnabled\":true,\"force\":false,\"ringModel\":\"pooled\",\"ringRadialMode\":\"rolling\",\"ringNPatches\":\"(default)\",\"ringNFourier\":\"8\",\"ringSliceAxis\":\"H\",\"ringWidth\":\"(default)\",\"ringGlobalMaterial\":\"auto\",\"ringGlobalSubtraction\":\"conservative\",\"ringGlobalConfidence\":\"1\",\"ringGlobalLmax\":\"4\",\"ringGlobalMinSnr\":\"5\",\"ringPooledSectors\":\"(default)\",\"ringPooledWindow\":\"(default)\",\"punchMinSig\":\"4\",\"punchFootprint\":\"(default)\",\"punchProfileNSigma\":\"(default)\",\"punchMode\":\"(default)\",\"punchSupercellH\":\"2\",\"punchSupercellK\":\"2\",\"punchSupercellL\":\"2\",\"punchHGuard\":\"(default)\",\"punchSearchFloor\":\"(default)\",\"punchProtectH\":\"none\",\"punchProtectHalfWidth\":\"(default)\",\"punchSearchMaxWidth\":\"2\",\"punchFrame\":\"spherical\",\"punchRho\":\"(default)\",\"punchTheta\":\"(default)\",\"punchPhi\":\"(default)\",\"punchQA\":\"(default)\",\"punchQB\":\"(default)\",\"punchQC\":\"(default)\",\"punchFitUnconstrained\":false,\"punchMargin\":\"(default)\",\"incidentBeamQA\":\"(default)\",\"incidentBeamQB\":\"(default)\",\"incidentBeamQC\":\"(default)\",\"incidentBeamMargin\":\"(default)\",\"incidentBeamFitCovariance\":false,\"backfillMethod\":\"(default)\",\"flattenEstimator\":\"(default)\",\"flattenIon\":\"(default)\",\"flattenQ2\":true,\"flattenFitQMax\":\"16\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true,\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\"}}"
+    },
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    },
+    {
+     "name": "assess_stage",
+     "args": {
+      "stage": "pdf"
+     },
+     "status": "done",
+     "summary": "3D-ΔPDF: r 1 · RMS 6.439e-15 · SNR 1200 · unmeasured 3.2e-6 · symmetry off ≤ 2.9e-6",
+     "result": "{\"pdf\":{\"headline\":\"r 1 · RMS 6.439e-15 · SNR 1200 · unmeasured 3.2e-6 · symmetry off ≤ 2.9e-6\",\"back_fft_pearson_r\":1,\"back_fft_normalized_rms\":6.439e-15,\"back_fft_per_plane_r\":{\"+0.000\":0.9999999999999996,\"+0.300\":1,\"+1.000\":1},\"mean_feature_snr\":1200,\"window_weight_on_unmeasured\":0.0000032,\"window_shape\":\"ellipsoid\",\"max_symmetry_break\":0.0000029,\"worst_symmetry_op\":\"mirror (a ↔ b)\",\"per_plane\":{\"xy\":{\"feature_snr\":593,\"strong_feature_fraction\":0.107,\"positive_fraction\":0.482,\"anisotropy_ratio\":1.02},\"xz\":{\"feature_snr\":1500,\"strong_feature_fraction\":0.0521,\"positive_fraction\":0.497,\"anisotropy_ratio\":2.12},\"yz\":{\"feature_snr\":1500,\"strong_feature_fraction\":0.0521,\"positive_fraction\":0.497,\"anisotropy_ratio\":2.12}},\"goal\":\"The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate). A window that reaches further raises feature_snr with the backfill's guesses and the box's empty corners, which is worse, not better. max_symmetry_break is the x–y section's largest RMS difference from its image under the cell's in-plane operations (worst_symmetry_op names it): a trial that raises it far above your settings' value broke a symmetry your settings kept, as a separable window does on a hexagonal cell. back_fft_pearson_r must stay near 1, but without a band or crop the round trip is the identity, so it cannot rank trials: a drop below ~0.999 only flags a transform problem. Apodization trades real-space resolution against truncation ripples; prefer the default unless another is clearly better on feature_snr without the reach leaving the coverage.\"},\"measured_on\":[\"ΔPDF x–y section at z = 0 Å\",\"ΔPDF x–z section at y = 0 Å\",\"ΔPDF y–z section at x = 0 Å\"]}"
+    }
+   ],
+   "answer": "**No, I wouldn't switch on this evidence.** The current ellipsoid window is already clean, and a separable window is likely to make the result worse on this cell.\n\n- **Reach is already inside the data.** The ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space, well under the 1e-3 limit. The transform reaches to |Q| = 16.7 Å⁻¹, while the fully measured shells stop at 12.5 Å⁻¹ on the h0l and 0kl planes and at 15.7 Å⁻¹ on hk0. The band 0.55–16.7 Å⁻¹ stays inside the counts.\n- **A higher SNR from a wider window would be the wrong kind of gain.** Reach past the coverage raises feature_snr through backfill guesses and the box's empty corners. The metric is not a reason to switch, so a rise in SNR alone would not count as an improvement.\n- **Symmetry is at risk.** The cell is a≈b with γ = 119.98°, so it is hexagonal in-plane. The pdf assessment warns that a separable window breaks the in-plane symmetry on a hexagonal cell. The current symmetry break is 2.9e-6, so there is little margin to lose.\n- **Current ΔPDF numbers for reference:** back-FFT r = 1 (RMS 6.4e-15). On the z = 0 section, feature_snr is 593 with anisotropy 1.02. On the x–z and y–z sections, feature_snr is 1500 with anisotropy 2.12. The \"mean 1200\" headline is an average across sections, so quote the per-section values.\n\nIf you want to be sure, I can run one trial with pdfWindowShape set to separable, then measure its SNR, window weight on unmeasured space, and symmetry break. I would revert it if it doesn't clearly help. Shall I run that test?",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1460 characters"
+    },
+    {
+     "check": "does not call run_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call tune_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call update_settings",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "says to keep the ellipsoid window",
+     "pass": true,
+     "detail": "“I wouldn't switch yet.”"
+    },
+    {
+     "check": "says that a separable window would reach unmeasured space or break the symmetry",
+     "pass": true,
+     "detail": "“Its weight on unmeasured reciprocal space is 3.2e-6, well below the 1e-3 threshold.”"
+    }
+   ],
+   "latency_ms": 9966,
+   "usage": {
+    "input": 28034,
+    "output": 1473,
+    "cacheRead": 25958,
+    "cacheWrite": 2070,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "configure_settings",
+     "args": {},
+     "status": "done",
+     "summary": "55 settings",
+     "result": "{\"settings\":{\"ringsEnabled\":true,\"punchEnabled\":true,\"backfillEnabled\":true,\"flatten\":true,\"pdfEnabled\":true,\"force\":false,\"ringModel\":\"pooled\",\"ringRadialMode\":\"rolling\",\"ringNPatches\":\"(default)\",\"ringNFourier\":\"8\",\"ringSliceAxis\":\"H\",\"ringWidth\":\"(default)\",\"ringGlobalMaterial\":\"auto\",\"ringGlobalSubtraction\":\"conservative\",\"ringGlobalConfidence\":\"1\",\"ringGlobalLmax\":\"4\",\"ringGlobalMinSnr\":\"5\",\"ringPooledSectors\":\"(default)\",\"ringPooledWindow\":\"(default)\",\"punchMinSig\":\"4\",\"punchFootprint\":\"(default)\",\"punchProfileNSigma\":\"(default)\",\"punchMode\":\"(default)\",\"punchSupercellH\":\"2\",\"punchSupercellK\":\"2\",\"punchSupercellL\":\"2\",\"punchHGuard\":\"(default)\",\"punchSearchFloor\":\"(default)\",\"punchProtectH\":\"none\",\"punchProtectHalfWidth\":\"(default)\",\"punchSearchMaxWidth\":\"2\",\"punchFrame\":\"spherical\",\"punchRho\":\"(default)\",\"punchTheta\":\"(default)\",\"punchPhi\":\"(default)\",\"punchQA\":\"(default)\",\"punchQB\":\"(default)\",\"punchQC\":\"(default)\",\"punchFitUnconstrained\":false,\"punchMargin\":\"(default)\",\"incidentBeamQA\":\"(default)\",\"incidentBeamQB\":\"(default)\",\"incidentBeamQC\":\"(default)\",\"incidentBeamMargin\":\"(default)\",\"incidentBeamFitCovariance\":false,\"backfillMethod\":\"(default)\",\"flattenEstimator\":\"(default)\",\"flattenIon\":\"(default)\",\"flattenQ2\":true,\"flattenFitQMax\":\"16\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true,\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\"}}"
+    },
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    },
+    {
+     "name": "consistency_details",
+     "args": {},
+     "status": "done",
+     "summary": "r = 1, normalised RMS = 6.439e-15",
+     "result": "{\"pearson_r\":1,\"normalized_rms\":6.439e-15,\"rms\":2.7986810038658046e-14,\"n_voxels\":28716992,\"per_plane_r\":{\"+0.000\":1,\"+0.300\":1,\"+1.000\":1},\"crop_hkl\":null,\"q_band\":[0.55,16.7],\"apodization\":\"gaussian\"}"
+    }
+   ],
+   "answer": "I wouldn't switch yet. The current ΔPDF is already clean, and the separable window's gain would need a test before I'd trust it.\n\n- **Current settings:** the window is on its default, which `qmax_coverage` reports as the ellipsoid window. Its weight on unmeasured reciprocal space is 3.2e-6, well below the 1e-3 threshold. The Q band is 0.55–16.7 Å⁻¹, and the box faces reach only 12.5 Å⁻¹, which is the full-coverage limit. The band reaches past full coverage toward the box corners (16.7 Å⁻¹), but the window's weight there is negligible.\n- **Current ΔPDF:** feature SNR is 593 with 10.7% of voxels beyond 5σ. The back-FFT check gives Pearson r = 1 and normalised RMS 6.4e-15, so the transform round-trips cleanly.\n- **Why the separable window is a risk:** a separable window can put more weight on the box corners and beyond the 12.5 Å⁻¹ full-coverage limit. Any SNR gain from that would be ripple from unmeasured Q, not signal. Feature SNR alone can't tell these apart.\n\nA fair test is to switch `pdfWindowShape` to `separable`, rerun only the pdf stage, and compare three things: feature SNR, back-FFT r, and the coverage weight from `qmax_coverage`. If SNR rises while r stays near 1 and the weight stays below 1e-3, the gain is real. If the weight jumps or SNR rises alongside a drop in r, I'd revert.\n\nDo you want me to run that test? It changes the Configure page and reruns the ΔPDF, and I'll restore the ellipsoid setting if the result doesn't hold.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1527 characters"
+    },
+    {
+     "check": "does not call run_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call tune_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call update_settings",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "says to keep the ellipsoid window",
+     "pass": true,
+     "detail": "“No, I wouldn't switch to the separable window on this dataset.”"
+    },
+    {
+     "check": "says that a separable window would reach unmeasured space or break the symmetry",
+     "pass": true,
+     "detail": "“qmax_coverage puts 3.2e-6 of its weight on unmeasured reciprocal space, well under the 1e-3 limit.”"
+    }
+   ],
+   "latency_ms": 10888,
+   "usage": {
+    "input": 28844,
+    "output": 1343,
+    "cacheRead": 25958,
+    "cacheWrite": 2880,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "configure_settings",
+     "args": {},
+     "status": "done",
+     "summary": "55 settings",
+     "result": "{\"settings\":{\"ringsEnabled\":true,\"punchEnabled\":true,\"backfillEnabled\":true,\"flatten\":true,\"pdfEnabled\":true,\"force\":false,\"ringModel\":\"pooled\",\"ringRadialMode\":\"rolling\",\"ringNPatches\":\"(default)\",\"ringNFourier\":\"8\",\"ringSliceAxis\":\"H\",\"ringWidth\":\"(default)\",\"ringGlobalMaterial\":\"auto\",\"ringGlobalSubtraction\":\"conservative\",\"ringGlobalConfidence\":\"1\",\"ringGlobalLmax\":\"4\",\"ringGlobalMinSnr\":\"5\",\"ringPooledSectors\":\"(default)\",\"ringPooledWindow\":\"(default)\",\"punchMinSig\":\"4\",\"punchFootprint\":\"(default)\",\"punchProfileNSigma\":\"(default)\",\"punchMode\":\"(default)\",\"punchSupercellH\":\"2\",\"punchSupercellK\":\"2\",\"punchSupercellL\":\"2\",\"punchHGuard\":\"(default)\",\"punchSearchFloor\":\"(default)\",\"punchProtectH\":\"none\",\"punchProtectHalfWidth\":\"(default)\",\"punchSearchMaxWidth\":\"2\",\"punchFrame\":\"spherical\",\"punchRho\":\"(default)\",\"punchTheta\":\"(default)\",\"punchPhi\":\"(default)\",\"punchQA\":\"(default)\",\"punchQB\":\"(default)\",\"punchQC\":\"(default)\",\"punchFitUnconstrained\":false,\"punchMargin\":\"(default)\",\"incidentBeamQA\":\"(default)\",\"incidentBeamQB\":\"(default)\",\"incidentBeamQC\":\"(default)\",\"incidentBeamMargin\":\"(default)\",\"incidentBeamFitCovariance\":false,\"backfillMethod\":\"(default)\",\"flattenEstimator\":\"(default)\",\"flattenIon\":\"(default)\",\"flattenQ2\":true,\"flattenFitQMax\":\"16\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true,\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\"}}"
+    },
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    },
+    {
+     "name": "assess_stage",
+     "args": {
+      "stage": "pdf"
+     },
+     "status": "done",
+     "summary": "3D-ΔPDF: r 1 · RMS 6.439e-15 · SNR 1200 · unmeasured 3.2e-6 · symmetry off ≤ 2.9e-6",
+     "result": "{\"pdf\":{\"headline\":\"r 1 · RMS 6.439e-15 · SNR 1200 · unmeasured 3.2e-6 · symmetry off ≤ 2.9e-6\",\"back_fft_pearson_r\":1,\"back_fft_normalized_rms\":6.439e-15,\"back_fft_per_plane_r\":{\"+0.000\":0.9999999999999996,\"+0.300\":1,\"+1.000\":1},\"mean_feature_snr\":1200,\"window_weight_on_unmeasured\":0.0000032,\"window_shape\":\"ellipsoid\",\"max_symmetry_break\":0.0000029,\"worst_symmetry_op\":\"mirror (a ↔ b)\",\"per_plane\":{\"xy\":{\"feature_snr\":593,\"strong_feature_fraction\":0.107,\"positive_fraction\":0.482,\"anisotropy_ratio\":1.02},\"xz\":{\"feature_snr\":1500,\"strong_feature_fraction\":0.0521,\"positive_fraction\":0.497,\"anisotropy_ratio\":2.12},\"yz\":{\"feature_snr\":1500,\"strong_feature_fraction\":0.0521,\"positive_fraction\":0.497,\"anisotropy_ratio\":2.12}},\"goal\":\"The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate). A window that reaches further raises feature_snr with the backfill's guesses and the box's empty corners, which is worse, not better. max_symmetry_break is the x–y section's largest RMS difference from its image under the cell's in-plane operations (worst_symmetry_op names it): a trial that raises it far above your settings' value broke a symmetry your settings kept, as a separable window does on a hexagonal cell. back_fft_pearson_r must stay near 1, but without a band or crop the round trip is the identity, so it cannot rank trials: a drop below ~0.999 only flags a transform problem. Apodization trades real-space resolution against truncation ripples; prefer the default unless another is clearly better on feature_snr without the reach leaving the coverage.\"},\"measured_on\":[\"ΔPDF x–y section at z = 0 Å\",\"ΔPDF x–z section at y = 0 Å\",\"ΔPDF y–z section at x = 0 Å\"]}"
+    }
+   ],
+   "answer": "**No, I wouldn't switch to the separable window on this dataset.** I haven't tested it, so this rests on the current window's numbers and the goal rules, not on a separable run.\n\n- **The ellipsoid window is clean.** `qmax_coverage` puts 3.2e-6 of its weight on unmeasured reciprocal space, well under the 1e-3 limit. Its reach is the |Q| band 0.55–16.7 Å⁻¹, which stays inside the counts. The back-FFT round trip is r = 1.00, RMS 6.4e-15.\n- **A separable window risks breaking the cell's symmetry.** This cell is a ≈ b with γ ≈ 120°, so it is hexagonal in-plane. The current x–y symmetry break is 2.9e-6. The pdf goal says a separable window on a hexagonal cell breaks in-plane symmetry, so I'd expect that number to rise well above this.\n- **A higher SNR may be ripple.** The goal says a window that reaches further raises feature_snr through backfill guesses and empty box corners. Box corners sit at |Q| 16.7 Å⁻¹, past the 12.5 Å⁻¹ full-coverage edge on the h0l and 0kl planes. The current xy feature SNR is 593 and the xz/yz SNR is 1500. A bigger number from a window that reaches further isn't evidence of more signal.\n\nIf you still want to compare, I can switch `pdfWindowShape` to separable and rerun the pdf stage. I'd then check `qmax_coverage` for unmeasured weight, `symmetry_check` for the hexagonal break, and the feature SNR. I'd keep the switch only if the weight stays ≤ 1e-3, the symmetry break stays near 1e-3 or better, and the SNR rise isn't ripple. Otherwise I'd revert it. Do you want me to run that test?",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "628 characters"
+    },
+    {
+     "check": "calls symmetry_check",
+     "pass": true,
+     "detail": "2 call(s)"
+    },
+    {
+     "check": "says that the symmetry is kept",
+     "pass": true,
+     "detail": "“The ΔPDF keeps the hexagonal in-plane symmetry, on both x–y sections I checked.”"
+    }
+   ],
+   "latency_ms": 17216,
+   "usage": {
+    "input": 40143,
+    "output": 616,
+    "cacheRead": 39342,
+    "cacheWrite": 793,
+    "requests": 3
+   },
+   "steps": [
+    {
+     "name": "symmetry_check",
+     "args": {},
+     "status": "done",
+     "summary": "every in-plane operation holds",
+     "result": "{\"section\":\"ΔPDF x–y section at z = 0 Å\",\"cell\":\"hexagonal\",\"ops\":[{\"op\":\"six-fold (60°)\",\"rms_difference\":0.0000027,\"pairs\":123019},{\"op\":\"three-fold (120°)\",\"rms_difference\":0.0000027,\"pairs\":123019},{\"op\":\"two-fold (180°)\",\"rms_difference\":0,\"pairs\":164025},{\"op\":\"mirror (a ↔ b)\",\"rms_difference\":0.0000029,\"pairs\":164025}],\"holds\":[\"six-fold (60°)\",\"three-fold (120°)\",\"two-fold (180°)\",\"mirror (a ↔ b)\"],\"verdict\":\"kept: every in-plane operation holds to 0.001 or better\"}"
+    },
+    {
+     "name": "symmetry_check",
+     "args": {
+      "z": 5
+     },
+     "status": "done",
+     "summary": "every in-plane operation holds",
+     "result": "{\"section\":\"ΔPDF x–y section at z = 5 Å\",\"cell\":\"hexagonal\",\"ops\":[{\"op\":\"six-fold (60°)\",\"rms_difference\":0.0000093,\"pairs\":123019},{\"op\":\"three-fold (120°)\",\"rms_difference\":0.000011,\"pairs\":123019},{\"op\":\"two-fold (180°)\",\"rms_difference\":0.000013,\"pairs\":164025},{\"op\":\"mirror (a ↔ b)\",\"rms_difference\":0.00001,\"pairs\":164025}],\"holds\":[\"six-fold (60°)\",\"three-fold (120°)\",\"two-fold (180°)\",\"mirror (a ↔ b)\"],\"verdict\":\"kept: every in-plane operation holds to 0.001 or better\"}"
+    }
+   ],
+   "answer": "Yes. The ΔPDF keeps the hexagonal in-plane symmetry, on both x–y sections I checked.\n\n- **z = 0 Å:** six-fold (60°) RMS difference 2.7×10⁻⁶, three-fold (120°) 2.7×10⁻⁶, two-fold (180°) 0, a ↔ b mirror 2.9×10⁻⁶.\n- **z = 5 Å:** six-fold 9.3×10⁻⁶, three-fold 1.1×10⁻⁵, two-fold 1.3×10⁻⁵, a ↔ b mirror 1.0×10⁻⁵.\n\nAll of these are well inside the 10⁻³ tolerance. The checks used the hexagonal operations because the cell is hexagonal (a ≈ b, γ ≈ 120°). I assumed the sample has these operations, since you have not told me otherwise. If the sample does not have them, this result says nothing about whether the data were symmetrised.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "767 characters"
+    },
+    {
+     "check": "calls symmetry_check",
+     "pass": true,
+     "detail": "2 call(s)"
+    },
+    {
+     "check": "says that the symmetry is kept",
+     "pass": true,
+     "detail": "“The ΔPDF kept the hexagonal in-plane symmetry, and the check passes at both heights I tested.”"
+    }
+   ],
+   "latency_ms": 6740,
+   "usage": {
+    "input": 40109,
+    "output": 655,
+    "cacheRead": 39320,
+    "cacheWrite": 781,
+    "requests": 3
+   },
+   "steps": [
+    {
+     "name": "symmetry_check",
+     "args": {},
+     "status": "done",
+     "summary": "every in-plane operation holds",
+     "result": "{\"section\":\"ΔPDF x–y section at z = 0 Å\",\"cell\":\"hexagonal\",\"ops\":[{\"op\":\"six-fold (60°)\",\"rms_difference\":0.0000027,\"pairs\":123019},{\"op\":\"three-fold (120°)\",\"rms_difference\":0.0000027,\"pairs\":123019},{\"op\":\"two-fold (180°)\",\"rms_difference\":0,\"pairs\":164025},{\"op\":\"mirror (a ↔ b)\",\"rms_difference\":0.0000029,\"pairs\":164025}],\"holds\":[\"six-fold (60°)\",\"three-fold (120°)\",\"two-fold (180°)\",\"mirror (a ↔ b)\"],\"verdict\":\"kept: every in-plane operation holds to 0.001 or better\"}"
+    },
+    {
+     "name": "symmetry_check",
+     "args": {
+      "z": 5
+     },
+     "status": "done",
+     "summary": "every in-plane operation holds",
+     "result": "{\"section\":\"ΔPDF x–y section at z = 5 Å\",\"cell\":\"hexagonal\",\"ops\":[{\"op\":\"six-fold (60°)\",\"rms_difference\":0.0000093,\"pairs\":123019},{\"op\":\"three-fold (120°)\",\"rms_difference\":0.000011,\"pairs\":123019},{\"op\":\"two-fold (180°)\",\"rms_difference\":0.000013,\"pairs\":164025},{\"op\":\"mirror (a ↔ b)\",\"rms_difference\":0.00001,\"pairs\":164025}],\"holds\":[\"six-fold (60°)\",\"three-fold (120°)\",\"two-fold (180°)\",\"mirror (a ↔ b)\"],\"verdict\":\"kept: every in-plane operation holds to 0.001 or better\"}"
+    }
+   ],
+   "answer": "Yes. The ΔPDF kept the hexagonal in-plane symmetry, and the check passes at both heights I tested.\n\nI ran `symmetry_check` on the x–y section at z = 0 Å and at z = 5 Å. The cell is hexagonal (a ≈ b, γ ≈ 120°). Each operation gives an RMS difference over the section's RMS, and every one is at or below 1e-3:\n\n| Operation | z = 0 Å | z = 5 Å |\n|---|---|---|\n| Six-fold (60°) | 2.7e-6 | 9.3e-6 |\n| Three-fold (120°) | 2.7e-6 | 1.1e-5 |\n| Two-fold (180°) | 0 | 1.3e-5 |\n| Mirror (a ↔ b) | 2.9e-6 | 1.0e-5 |\n\nThis check assumes the sample really has hexagonal in-plane symmetry, which you told me. The check does not test whether the physics is hexagonal, only whether the ΔPDF preserved that symmetry. I checked only the z = 0 and z = 5 Å sections, not the whole volume.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "619 characters"
+    },
+    {
+     "check": "calls symmetry_check",
+     "pass": true,
+     "detail": "2 call(s)"
+    },
+    {
+     "check": "says that the symmetry is kept",
+     "pass": true,
+     "detail": "“The ΔPDF keeps the hexagonal in-plane symmetry.”"
+    }
+   ],
+   "latency_ms": 6604,
+   "usage": {
+    "input": 40142,
+    "output": 590,
+    "cacheRead": 39329,
+    "cacheWrite": 805,
+    "requests": 3
+   },
+   "steps": [
+    {
+     "name": "symmetry_check",
+     "args": {},
+     "status": "done",
+     "summary": "every in-plane operation holds",
+     "result": "{\"section\":\"ΔPDF x–y section at z = 0 Å\",\"cell\":\"hexagonal\",\"ops\":[{\"op\":\"six-fold (60°)\",\"rms_difference\":0.0000027,\"pairs\":123019},{\"op\":\"three-fold (120°)\",\"rms_difference\":0.0000027,\"pairs\":123019},{\"op\":\"two-fold (180°)\",\"rms_difference\":0,\"pairs\":164025},{\"op\":\"mirror (a ↔ b)\",\"rms_difference\":0.0000029,\"pairs\":164025}],\"holds\":[\"six-fold (60°)\",\"three-fold (120°)\",\"two-fold (180°)\",\"mirror (a ↔ b)\"],\"verdict\":\"kept: every in-plane operation holds to 0.001 or better\"}"
+    },
+    {
+     "name": "symmetry_check",
+     "args": {
+      "z": 5
+     },
+     "status": "done",
+     "summary": "every in-plane operation holds",
+     "result": "{\"section\":\"ΔPDF x–y section at z = 5 Å\",\"cell\":\"hexagonal\",\"ops\":[{\"op\":\"six-fold (60°)\",\"rms_difference\":0.0000093,\"pairs\":123019},{\"op\":\"three-fold (120°)\",\"rms_difference\":0.000011,\"pairs\":123019},{\"op\":\"two-fold (180°)\",\"rms_difference\":0.000013,\"pairs\":164025},{\"op\":\"mirror (a ↔ b)\",\"rms_difference\":0.00001,\"pairs\":164025}],\"holds\":[\"six-fold (60°)\",\"three-fold (120°)\",\"two-fold (180°)\",\"mirror (a ↔ b)\"],\"verdict\":\"kept: every in-plane operation holds to 0.001 or better\"}"
+    }
+   ],
+   "answer": "Yes. The ΔPDF keeps the hexagonal in-plane symmetry. I checked it on two x–y sections, treating the sample as hexagonal as you indicated.\n\n- **z = 0 Å:** six-fold (60°) RMS difference 2.7e-6, three-fold (120°) 2.7e-6, two-fold (180°) 0, a↔b mirror 2.9e-6.\n- **z = 5 Å:** six-fold 9.3e-6, three-fold 1.1e-5, two-fold 1.3e-5, a↔b mirror 1.0e-5.\n\nEvery operation is well inside the 1e-3 threshold. The symmetry is intact, not just approximately kept.\n\nThis is a check on the ΔPDF only. It says nothing about whether the reciprocal-space cleanup preserved the symmetry, and it does not validate the physics of the features.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1084 characters"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the upper edge",
+     "pass": true,
+     "detail": "wrote 16.7 (measured 16.7)"
+    },
+    {
+     "check": "quotes the lower edge",
+     "pass": true,
+     "detail": "wrote 0.55 (measured 0.55)"
+    }
+   ],
+   "latency_ms": 6828,
+   "usage": {
+    "input": 27736,
+    "output": 1043,
+    "cacheRead": 24324,
+    "cacheWrite": 3406,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    },
+    {
+     "name": "configure_settings",
+     "args": {},
+     "status": "done",
+     "summary": "55 settings",
+     "result": "{\"settings\":{\"ringsEnabled\":true,\"punchEnabled\":true,\"backfillEnabled\":true,\"flatten\":true,\"pdfEnabled\":true,\"force\":false,\"ringModel\":\"pooled\",\"ringRadialMode\":\"rolling\",\"ringNPatches\":\"(default)\",\"ringNFourier\":\"8\",\"ringSliceAxis\":\"H\",\"ringWidth\":\"(default)\",\"ringGlobalMaterial\":\"auto\",\"ringGlobalSubtraction\":\"conservative\",\"ringGlobalConfidence\":\"1\",\"ringGlobalLmax\":\"4\",\"ringGlobalMinSnr\":\"5\",\"ringPooledSectors\":\"(default)\",\"ringPooledWindow\":\"(default)\",\"punchMinSig\":\"4\",\"punchFootprint\":\"(default)\",\"punchProfileNSigma\":\"(default)\",\"punchMode\":\"(default)\",\"punchSupercellH\":\"2\",\"punchSupercellK\":\"2\",\"punchSupercellL\":\"2\",\"punchHGuard\":\"(default)\",\"punchSearchFloor\":\"(default)\",\"punchProtectH\":\"none\",\"punchProtectHalfWidth\":\"(default)\",\"punchSearchMaxWidth\":\"2\",\"punchFrame\":\"spherical\",\"punchRho\":\"(default)\",\"punchTheta\":\"(default)\",\"punchPhi\":\"(default)\",\"punchQA\":\"(default)\",\"punchQB\":\"(default)\",\"punchQC\":\"(default)\",\"punchFitUnconstrained\":false,\"punchMargin\":\"(default)\",\"incidentBeamQA\":\"(default)\",\"incidentBeamQB\":\"(default)\",\"incidentBeamQC\":\"(default)\",\"incidentBeamMargin\":\"(default)\",\"incidentBeamFitCovariance\":false,\"backfillMethod\":\"(default)\",\"flattenEstimator\":\"(default)\",\"flattenIon\":\"(default)\",\"flattenQ2\":true,\"flattenFitQMax\":\"16\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true,\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\"}}"
+    }
+   ],
+   "answer": "The current band already meets the criterion. The Configure page has **pdfQMin = 0.55 Å⁻¹** and **pdfQMax = 16.70 Å⁻¹**, and `qmax_coverage` reports that this band stays inside the measured counts.\n\n- **Window check:** the ellipsoid window puts 3.2×10⁻⁶ of its weight on unmeasured reciprocal space, which is well below the 10⁻³ threshold. The verdict is clean.\n- **Low-Q edge:** the raw counts begin at 0.519 Å⁻¹, and the fully measured range starts at 0.65 Å⁻¹. The 0.55 Å⁻¹ minimum sits just inside that.\n- **High-Q limit:** 16.7 Å⁻¹ is the box corner. The counts end at 16.7 Å⁻¹, but the fully measured limit differs by plane:\n  - hk0: 15.7 Å⁻¹ (15.85 Å⁻¹ on the raw-count range)\n  - h0l and 0kl: 12.5 Å⁻¹, which is also the box-face limit\n\nIf you want every plane to be fully measured, not just the window weight to be negligible, cap pdfQMax at about **12.5 Å⁻¹**. That is a stricter choice and trims the outer shell on h0l and 0kl. The current 16.7 Å⁻¹ meets the stated test, but the h0l and 0kl planes are only partly measured beyond 12.5 Å⁻¹. I have not changed any settings.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "968 characters"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the upper edge",
+     "pass": true,
+     "detail": "wrote 16.7 (measured 16.7)"
+    },
+    {
+     "check": "quotes the lower edge",
+     "pass": true,
+     "detail": "wrote 0.55 (measured 0.55)"
+    }
+   ],
+   "latency_ms": 6070,
+   "usage": {
+    "input": 27744,
+    "output": 893,
+    "cacheRead": 25930,
+    "cacheWrite": 1808,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    },
+    {
+     "name": "configure_settings",
+     "args": {},
+     "status": "done",
+     "summary": "55 settings",
+     "result": "{\"settings\":{\"ringsEnabled\":true,\"punchEnabled\":true,\"backfillEnabled\":true,\"flatten\":true,\"pdfEnabled\":true,\"force\":false,\"ringModel\":\"pooled\",\"ringRadialMode\":\"rolling\",\"ringNPatches\":\"(default)\",\"ringNFourier\":\"8\",\"ringSliceAxis\":\"H\",\"ringWidth\":\"(default)\",\"ringGlobalMaterial\":\"auto\",\"ringGlobalSubtraction\":\"conservative\",\"ringGlobalConfidence\":\"1\",\"ringGlobalLmax\":\"4\",\"ringGlobalMinSnr\":\"5\",\"ringPooledSectors\":\"(default)\",\"ringPooledWindow\":\"(default)\",\"punchMinSig\":\"4\",\"punchFootprint\":\"(default)\",\"punchProfileNSigma\":\"(default)\",\"punchMode\":\"(default)\",\"punchSupercellH\":\"2\",\"punchSupercellK\":\"2\",\"punchSupercellL\":\"2\",\"punchHGuard\":\"(default)\",\"punchSearchFloor\":\"(default)\",\"punchProtectH\":\"none\",\"punchProtectHalfWidth\":\"(default)\",\"punchSearchMaxWidth\":\"2\",\"punchFrame\":\"spherical\",\"punchRho\":\"(default)\",\"punchTheta\":\"(default)\",\"punchPhi\":\"(default)\",\"punchQA\":\"(default)\",\"punchQB\":\"(default)\",\"punchQC\":\"(default)\",\"punchFitUnconstrained\":false,\"punchMargin\":\"(default)\",\"incidentBeamQA\":\"(default)\",\"incidentBeamQB\":\"(default)\",\"incidentBeamQC\":\"(default)\",\"incidentBeamMargin\":\"(default)\",\"incidentBeamFitCovariance\":false,\"backfillMethod\":\"(default)\",\"flattenEstimator\":\"(default)\",\"flattenIon\":\"(default)\",\"flattenQ2\":true,\"flattenFitQMax\":\"16\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true,\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\"}}"
+    }
+   ],
+   "answer": "The band already set on the Configure page, **0.55–16.70 Å⁻¹**, is the one the data support, and the check passes.\n\n- **Measured range:** The raw counts run from 0.519 Å⁻¹ (low edge) to 16.7 Å⁻¹, and the fully measured shells span 0.65–15.85 Å⁻¹. The band's low edge of 0.55 sits inside the counts.\n- **Window weight:** The ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space, well under the 1e-3 limit.\n- **Per plane:** The hk0 plane is fully measured to 15.7 Å⁻¹. The h0l and 0kl planes are fully measured only to 12.5 Å⁻¹, which is the box face. The 16.7 Å⁻¹ upper edge reaches the box corner, so it relies on the ellipsoid window's falloff to keep the out-of-coverage weight tiny.\n\nIf you want a band that stays strictly inside full coverage on all three planes, set the upper edge to about 12.5 Å⁻¹ (pdfQMax). The current 16.7 Å⁻¹ setting is still clean by the measurement above, so I would only change it if you prefer that stricter margin.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "853 characters"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the upper edge",
+     "pass": true,
+     "detail": "wrote 16.7 (measured 16.7)"
+    },
+    {
+     "check": "quotes the lower edge",
+     "pass": true,
+     "detail": "wrote 0.55 (measured 0.55)"
+    }
+   ],
+   "latency_ms": 5957,
+   "usage": {
+    "input": 27749,
+    "output": 756,
+    "cacheRead": 25930,
+    "cacheWrite": 1813,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    },
+    {
+     "name": "configure_settings",
+     "args": {},
+     "status": "done",
+     "summary": "55 settings",
+     "result": "{\"settings\":{\"ringsEnabled\":true,\"punchEnabled\":true,\"backfillEnabled\":true,\"flatten\":true,\"pdfEnabled\":true,\"force\":false,\"ringModel\":\"pooled\",\"ringRadialMode\":\"rolling\",\"ringNPatches\":\"(default)\",\"ringNFourier\":\"8\",\"ringSliceAxis\":\"H\",\"ringWidth\":\"(default)\",\"ringGlobalMaterial\":\"auto\",\"ringGlobalSubtraction\":\"conservative\",\"ringGlobalConfidence\":\"1\",\"ringGlobalLmax\":\"4\",\"ringGlobalMinSnr\":\"5\",\"ringPooledSectors\":\"(default)\",\"ringPooledWindow\":\"(default)\",\"punchMinSig\":\"4\",\"punchFootprint\":\"(default)\",\"punchProfileNSigma\":\"(default)\",\"punchMode\":\"(default)\",\"punchSupercellH\":\"2\",\"punchSupercellK\":\"2\",\"punchSupercellL\":\"2\",\"punchHGuard\":\"(default)\",\"punchSearchFloor\":\"(default)\",\"punchProtectH\":\"none\",\"punchProtectHalfWidth\":\"(default)\",\"punchSearchMaxWidth\":\"2\",\"punchFrame\":\"spherical\",\"punchRho\":\"(default)\",\"punchTheta\":\"(default)\",\"punchPhi\":\"(default)\",\"punchQA\":\"(default)\",\"punchQB\":\"(default)\",\"punchQC\":\"(default)\",\"punchFitUnconstrained\":false,\"punchMargin\":\"(default)\",\"incidentBeamQA\":\"(default)\",\"incidentBeamQB\":\"(default)\",\"incidentBeamQC\":\"(default)\",\"incidentBeamMargin\":\"(default)\",\"incidentBeamFitCovariance\":false,\"backfillMethod\":\"(default)\",\"flattenEstimator\":\"(default)\",\"flattenIon\":\"(default)\",\"flattenQ2\":true,\"flattenFitQMax\":\"16\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true,\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\"}}"
+    }
+   ],
+   "answer": "The band you should use is **0.55–16.70 Å⁻¹**, and it is already set that way on the Configure page (`pdfQMin` 0.55, `pdfQMax` 16.70).\n\n- **Coverage:** The measured counts run from 0.52 Å⁻¹ to 16.7 Å⁻¹ at the edges. The band lies inside them.\n- **Weight on unmeasured space:** The ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space, well under the 1e-3 clean threshold.\n- **Per plane:** The fully measured range is 0.65–15.85 Å⁻¹. On hk0 the full coverage extends to 15.7 Å⁻¹. On h0l and 0kl it stops at 12.5 Å⁻¹, which is the box face. The window's 16.7 Å⁻¹ reach comes from the box corners, which is where the small leftover weight sits.\n\nIf you want a stricter cut, a top of about 12.5 Å⁻¹ would keep every plane fully measured. The current weight is already negligible, though, so the 16.7 Å⁻¹ setting does not need to change.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1437 characters"
+    },
+    {
+     "check": "calls grain_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that there is no second grain",
+     "pass": true,
+     "detail": "“No second grain.”"
+    },
+    {
+     "check": "never claims a second grain",
+     "pass": true,
+     "detail": "not claimed"
+    },
+    {
+     "check": "quotes the offset angle",
+     "pass": true,
+     "detail": "wrote 0.85 (measured 0.85)"
+    }
+   ],
+   "latency_ms": 6288,
+   "usage": {
+    "input": 27717,
+    "output": 854,
+    "cacheRead": 24326,
+    "cacheWrite": 3385,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "grain_check",
+     "args": {},
+     "status": "done",
+     "summary": "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits (random directions: 3). 35 of them s…",
+     "result": "{\"off_lattice_orbits\":581,\"judged\":40,\"near_bragg_nodes\":35,\"near_offset_angle_deg\":{\"median\":0.85,\"quartiles\":[0.74,0.93]},\"far\":[{\"hkl\":[-9.5,3.5,-4.3],\"q\":7.999,\"offset_q\":0.489},{\"hkl\":[-1.8,3.2,-5.4],\"q\":4.211,\"offset_q\":0.752},{\"hkl\":[-3.5,3.4,-2.4],\"q\":3.466,\"offset_q\":0.563},{\"hkl\":[-3.8,1.1,-3.2],\"q\":3.667,\"offset_q\":0.893},{\"hkl\":[-8.3,-1.4,-15.8],\"q\":12.897,\"offset_q\":0.487}],\"rotated_copy\":{\"indexed\":2,\"misorientation_deg\":20.19},\"random_control\":3,\"verdict\":\"no second grain of this phase: a rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits (random directions: 3). 35 of them sit within a quarter of the node spacing of a Bragg node, offset by a median 0.85° of rotation (a lower bound: a node at an angle to the rotation axis moves less): copies of the crystal's own Bragg peaks, displaced by symmetrising data whose UB is off by about that angle; a UB refined on the unsymmetrised data would put them back on the nodes. 5 lie farther from any node; their origin is open (another phase, multiple scattering, or an artefact)\",\"off_lattice_peaks\":12219,\"declared_symmetry\":\"6/mmm\",\"punch_cell\":[2,2,2]}"
+    },
+    {
+     "name": "bragg_peaks",
+     "args": {
+      "limit": 10,
+      "sort_by": "significance"
+     },
+     "status": "done",
+     "summary": "16409 fitted peaks; top 10 by significance",
+     "result": "{\"n_peaks\":16409,\"punch_frame\":\"spherical\",\"sorted_by\":\"significance\",\"peaks\":[{\"hkl\":[-4,2,1.314e-15],\"q\":3.13,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.000754,0.187,0],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[-2,-2,1.324e-15],\"q\":3.131,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.00119,0.187,0],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[-2,4,1.305e-15],\"q\":3.134,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.000435,0.187,6.18e-10],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[2,-4,1.324e-15],\"q\":3.134,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.000435,0.187,0],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[2,2,1.305e-15],\"q\":3.131,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.00119,0.187,1.01e-9],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[4,-2,1.314e-15],\"q\":3.13,\"intensity\":17100,\"local_background\":32.67,\"significance\":130.2,\"measured_width_q\":[0.000754,0.187,0],\"resolution_limited\":[true,false,true],\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[1.776e-15,1.776e-15,-8],\"q\":5.012,\"intensity\":15570,\"local_background\":28.87,\"significance\":124.3,\"measured_width_q\":null,\"resolution_limited\":null,\"anisotropy\":1.01,\"fit\":\"own\"},{\"hkl\":[1.776e-15,1.776e-15,8],\"q\":5.012,\"intensity\":15570,\"local_background\":28.87,\"significance\":124.3,\"measured_width_q\":null,\"resolution_limited\":null,\"anisotropy\":1.01,\"fit\":\"own\"},{\"hkl\":[-2,1.776e-15,-4],\"q\":3.098,\"intensity\":15020,\"local_background\":19.88,\"significance\":122,\"measured_width_q\":null,\"resolution_limited\":null,\"anisotropy\":1.32,\"fit\":\"own\"},{\"hkl\":[2,1.776e-15,4],\"q\":3.098,\"intensity\":15020,\"local_background\":19.88,\"significance\":122,\"measured_width_q\":null,\"resolution_limited\":null,\"anisotropy\":1.32,\"fit\":\"own\"}]}"
+    }
+   ],
+   "answer": "**No second grain.** A rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits, against 3 for random directions. The best rotation is 20.2°, and it does not describe a grain.\n\n**The off-lattice peaks the punch found:** the search punched 12,219 off-lattice peaks in total, grouped into 581 symmetry orbits. Of the 40 strongest orbits that `grain_check` tested:\n\n- **35 sit within a quarter of the node spacing of a Bragg node.** They are copies of the crystal's own Bragg peaks, displaced by a median 0.85° of rotation (quartiles 0.74° to 0.93°). This is most likely the symmetrisation of data whose UB is slightly off. The 0.85° is a lower bound, since nodes at an angle to the rotation axis move less. A UB refined on the unsymmetrised file should put them back on their nodes.\n- **5 lie farther from any node**, at |Q| from 3.5 to 12.9 Å⁻¹ (e.g. hkl ≈ (−9.5, 3.5, −4.3), offset 0.49 in Q). Their origin is open: another phase, multiple scattering, or an artefact. I cannot tell which from these numbers.\n\nThe strongest fitted peaks (significance about 120–130) are on Bragg nodes such as (−4, 2, 0), (0, 0, ±8) and (−2, 0, −4). None of the 16,409 fitted peaks was left in the cleaned slice, and `leftover` found 0 suspicious peaks.\n\nIf you want to pin down the 0.85° offset, I can run `ub_check`. Its fit is limited on this symmetrised volume, so the definitive correction needs the unsymmetrised file.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1317 characters"
+    },
+    {
+     "check": "calls grain_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that there is no second grain",
+     "pass": true,
+     "detail": "“No second grain.”"
+    },
+    {
+     "check": "never claims a second grain",
+     "pass": true,
+     "detail": "not claimed"
+    },
+    {
+     "check": "quotes the offset angle",
+     "pass": true,
+     "detail": "wrote 0.85 (measured 0.85)"
+    }
+   ],
+   "latency_ms": 6508,
+   "usage": {
+    "input": 26603,
+    "output": 751,
+    "cacheRead": 25934,
+    "cacheWrite": 663,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "grain_check",
+     "args": {},
+     "status": "done",
+     "summary": "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits (random directions: 3). 35 of them s…",
+     "result": "{\"off_lattice_orbits\":581,\"judged\":40,\"near_bragg_nodes\":35,\"near_offset_angle_deg\":{\"median\":0.85,\"quartiles\":[0.74,0.93]},\"far\":[{\"hkl\":[-9.5,3.5,-4.3],\"q\":7.999,\"offset_q\":0.489},{\"hkl\":[-1.8,3.2,-5.4],\"q\":4.211,\"offset_q\":0.752},{\"hkl\":[-3.5,3.4,-2.4],\"q\":3.466,\"offset_q\":0.563},{\"hkl\":[-3.8,1.1,-3.2],\"q\":3.667,\"offset_q\":0.893},{\"hkl\":[-8.3,-1.4,-15.8],\"q\":12.897,\"offset_q\":0.487}],\"rotated_copy\":{\"indexed\":2,\"misorientation_deg\":20.19},\"random_control\":3,\"verdict\":\"no second grain of this phase: a rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits (random directions: 3). 35 of them sit within a quarter of the node spacing of a Bragg node, offset by a median 0.85° of rotation (a lower bound: a node at an angle to the rotation axis moves less): copies of the crystal's own Bragg peaks, displaced by symmetrising data whose UB is off by about that angle; a UB refined on the unsymmetrised data would put them back on the nodes. 5 lie farther from any node; their origin is open (another phase, multiple scattering, or an artefact)\",\"off_lattice_peaks\":12219,\"declared_symmetry\":\"6/mmm\",\"punch_cell\":[2,2,2]}"
+    }
+   ],
+   "answer": "**No second grain.** A rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits, against 3 for random directions. The best-fitting misorientation is 20.19°, which is not a grain.\n\n**What the punch found:** the search punched 12,219 off-lattice peaks, grouped into 581 symmetry orbits. Of the 40 strongest orbits tested:\n\n- **35 sit near a Bragg node.** Their median offset from the node is 0.85° of rotation (quartiles 0.74–0.93°). These are copies of the crystal's own Bragg peaks, displaced because the symmetrised data's UB is off by about that angle. This is a lower bound, since nodes at an angle to the rotation axis move less. A UB refined on the unsymmetrised data should put them back on their nodes.\n- **5 lie farther from any node** (offsets of 0.49–0.89°, at |Q| from 3.5 to 12.9 Å⁻¹). Examples are (−9.5, 3.5, −4.3) at |Q| 8.0 Å⁻¹ and (−1.8, 3.2, −5.4) at 4.2 Å⁻¹. I can't yet say what they are: another phase, multiple scattering, or an artefact are all open.\n\nThe punched slice at L=0 has no leftover peaks (n_suspicious = 0), so these off-lattice peaks were removed by the search, not missed. Whether the 5 distant orbits should stay in the data, and whether the UB is worth refining, are questions for you. I can run ub_check next if you want to pin down the UB offset.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1492 characters"
+    },
+    {
+     "check": "calls grain_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that there is no second grain",
+     "pass": true,
+     "detail": "“No second grain of this phase.”"
+    },
+    {
+     "check": "never claims a second grain",
+     "pass": true,
+     "detail": "not claimed"
+    },
+    {
+     "check": "quotes the offset angle",
+     "pass": true,
+     "detail": "wrote 0.85 (measured 0.85)"
+    }
+   ],
+   "latency_ms": 7210,
+   "usage": {
+    "input": 26589,
+    "output": 957,
+    "cacheRead": 25934,
+    "cacheWrite": 649,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "grain_check",
+     "args": {},
+     "status": "done",
+     "summary": "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits (random directions: 3). 35 of them s…",
+     "result": "{\"off_lattice_orbits\":581,\"judged\":40,\"near_bragg_nodes\":35,\"near_offset_angle_deg\":{\"median\":0.85,\"quartiles\":[0.74,0.93]},\"far\":[{\"hkl\":[-9.5,3.5,-4.3],\"q\":7.999,\"offset_q\":0.489},{\"hkl\":[-1.8,3.2,-5.4],\"q\":4.211,\"offset_q\":0.752},{\"hkl\":[-3.5,3.4,-2.4],\"q\":3.466,\"offset_q\":0.563},{\"hkl\":[-3.8,1.1,-3.2],\"q\":3.667,\"offset_q\":0.893},{\"hkl\":[-8.3,-1.4,-15.8],\"q\":12.897,\"offset_q\":0.487}],\"rotated_copy\":{\"indexed\":2,\"misorientation_deg\":20.19},\"random_control\":3,\"verdict\":\"no second grain of this phase: a rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits (random directions: 3). 35 of them sit within a quarter of the node spacing of a Bragg node, offset by a median 0.85° of rotation (a lower bound: a node at an angle to the rotation axis moves less): copies of the crystal's own Bragg peaks, displaced by symmetrising data whose UB is off by about that angle; a UB refined on the unsymmetrised data would put them back on the nodes. 5 lie farther from any node; their origin is open (another phase, multiple scattering, or an artefact)\",\"off_lattice_peaks\":12219,\"declared_symmetry\":\"6/mmm\",\"punch_cell\":[2,2,2]}"
+    }
+   ],
+   "answer": "**No second grain of this phase.** A rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits, against 3 for random directions. The grain check grouped the punch's 12,219 off-lattice peaks into 581 symmetry orbits and judged the 40 strongest.\n\n**What the punch found off the lattice**\n\n- **35 of the 40 are displaced Bragg peaks.** Each sits within a quarter of the node spacing of a Bragg node, with a median offset of 0.85° of rotation (quartiles 0.74° to 0.93°). This is a lower bound, since nodes at an angle to the rotation axis move less. The likely cause is that the data were symmetrised under 6/mmm with the UB slightly off, which turns each peak into a copy around its node. This points to a UB error, not a second grain.\n- **5 of the 40 lie farther from any node.** Their origin is open: another phase, multiple scattering, or an artefact. Their |Q| values range from about 3.5 to 12.9 Å⁻¹, and their offsets from the nearest rotated node are 0.49° to 0.89°. Five of 40 is about the rate expected by chance, so I would not read them as a second grain.\n\nOnly 40 of the 581 orbits were judged, so these numbers describe the strongest peaks, not the full set.\n\nWhether the 0.85° offset is a true UB error is a separate question. `ub_check` would test that. On a 6/mmm-symmetrised volume it can only fit the changes the symmetry keeps, and a misorientation would show up as rings around the nodes rather than shifts. If you want that check, I can run it.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1553 characters"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that the orientation needs the unsymmetrised data",
+     "pass": true,
+     "detail": "“To check orientation, you need the unsymmetrised reciprocal-space file.”"
+    }
+   ],
+   "latency_ms": 33833,
+   "usage": {
+    "input": 26961,
+    "output": 1079,
+    "cacheRead": 24305,
+    "cacheWrite": 2650,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "ub_check",
+     "args": {},
+     "status": "done",
+     "summary": "symmetric: RMS 0.0563 → 0.0396 Å⁻¹ over 3074 peaks; a 8.028 → 7.994 Å, c 10.030 → 10.017 Å; turned 0.000°",
+     "result": "{\"fit\":\"symmetric\",\"bragg_nodes_every\":[2,2,2],\"symmetry_from\":\"sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs\",\"symmetrised\":true,\"symmetry_break\":0,\"peaks\":{\"searched\":6858,\"used\":3074,\"rejected\":1145},\"rms_start\":0.0563,\"rms\":0.0396,\"cell_start\":\"8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°\",\"cell\":\"7.9935, 7.9842, 10.0172 Å; 90.134°, 90.232°, 119.979°\",\"orientation_change_deg\":0,\"axis_uvw\":[0,0,0],\"transform_diagonal\":[1.004375,1.004375,1.001245],\"passes\":[{\"q_max\":11.27,\"found\":1668,\"used\":1494,\"rms\":\"0.0337 → 0.0214\"},{\"q_max\":22.53,\"found\":4219,\"used\":3072,\"rms\":\"0.0563 → 0.0396\"},{\"q_max\":33.8,\"found\":4219,\"used\":3074,\"rms\":\"0.0563 → 0.0396\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":18,\"before\":0.003,\"after\":-0.0014},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":48,\"before\":0.0016,\"after\":-0.0021},{\"q\":\"0–4\",\"direction\":\"near the third axis\",\"n\":6,\"before\":0.0049,\"after\":0.0037},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":108,\"before\":0.002,\"after\":-0.0023},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":306,\"before\":0.0027,\"after\":-0.00066},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":90,\"before\":0.0029,\"after\":0.0011},{\"q\":\"8–12\",\"direction\":\"in-plane\",\"n\":336,\"before\":0.0028,\"after\":-0.0015},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":876,\"before\":0.0031,\"after\":-0.00044},{\"q\":\"8–12\",\"direction\":\"near the third axis\",\"n\":238,\"before\":0.0035,\"after\":0.0017},{\"q\":\"12–16\",\"direction\":\"in-plane\",\"n\":156,\"before\":0.0032,\"after\":-0.0011},{\"q\":\"12–16\",\"direction\":\"oblique\",\"n\":766,\"before\":0.0035,\"after\":0.00018},{\"q\":\"12–16\",\"direction\":\"near the third axis\",\"n\":64,\"before\":0.0037,\"after\":0.0018},{\"q\":\"≥ 16\",\"direction\":\"oblique\",\"n\":62,\"before\":0.0048,\"after\":0.002}],\"reading\":\"The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data.\"}"
+    }
+   ],
+   "answer": "**Short answer: the cell scale looks slightly off, but the orientation can't be checked on this volume.**\n\n- **What was fitted:** This volume is symmetrised (6/mmm), so `ub_check` could only fit the changes that commute with that symmetry: the in-plane and c-axis scales. It found no orientation change (0°).\n- **Cell correction:** The fit moved the cell by about 0.4%, from 8.0285 / 8.0191 / 10.0297 Å to 7.9935 / 7.9842 / 10.0172 Å. The transform diagonal is 1.0044, 1.0044, 1.0012. The angles are unchanged.\n- **Fit quality:** Using 3,074 peaks, the node-centre RMS fell from 0.0563 to 0.0396 (the units are the tool's own). The low-|Q| pass improved more, from 0.0337 to 0.0214.\n- **Radial offsets:** Peak offsets relative to |Q| are small after the fit, about −0.002 to +0.002 across |Q| bands and directions. Before the fit they were about 0.002–0.005. The fit removed the |Q|-proportional part, so the remaining offsets don't show a clear |Q| trend.\n\n**Interpretation:** The lattice constants in the header are probably about 0.4% too large for this volume's nodes. Because the symmetry only allows scale changes, the 0.4% correction is the part the tool can fit. A residual RMS of 0.04 is not zero, though, so some misfit remains that the symmetric fit cannot remove.\n\n**What I can't tell from this file:** Whether the orientation (UB rotation) is right. A misorientation on a symmetrised volume appears as rings around the nodes, not shifts, and this tool can't see rings. To check orientation, you need the unsymmetrised reciprocal-space file.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1643 characters"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that the orientation needs the unsymmetrised data",
+     "pass": true,
+     "detail": "“Checking orientation needs the unsymmetrised data file.”"
+    }
+   ],
+   "latency_ms": 7447,
+   "usage": {
+    "input": 26961,
+    "output": 1188,
+    "cacheRead": 25892,
+    "cacheWrite": 1063,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "ub_check",
+     "args": {},
+     "status": "done",
+     "summary": "symmetric: RMS 0.0563 → 0.0396 Å⁻¹ over 3074 peaks; a 8.028 → 7.994 Å, c 10.030 → 10.017 Å; turned 0.000°",
+     "result": "{\"fit\":\"symmetric\",\"bragg_nodes_every\":[2,2,2],\"symmetry_from\":\"sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs\",\"symmetrised\":true,\"symmetry_break\":0,\"peaks\":{\"searched\":6858,\"used\":3074,\"rejected\":1145},\"rms_start\":0.0563,\"rms\":0.0396,\"cell_start\":\"8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°\",\"cell\":\"7.9935, 7.9842, 10.0172 Å; 90.134°, 90.232°, 119.979°\",\"orientation_change_deg\":0,\"axis_uvw\":[0,0,0],\"transform_diagonal\":[1.004375,1.004375,1.001245],\"passes\":[{\"q_max\":11.27,\"found\":1668,\"used\":1494,\"rms\":\"0.0337 → 0.0214\"},{\"q_max\":22.53,\"found\":4219,\"used\":3072,\"rms\":\"0.0563 → 0.0396\"},{\"q_max\":33.8,\"found\":4219,\"used\":3074,\"rms\":\"0.0563 → 0.0396\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":18,\"before\":0.003,\"after\":-0.0014},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":48,\"before\":0.0016,\"after\":-0.0021},{\"q\":\"0–4\",\"direction\":\"near the third axis\",\"n\":6,\"before\":0.0049,\"after\":0.0037},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":108,\"before\":0.002,\"after\":-0.0023},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":306,\"before\":0.0027,\"after\":-0.00066},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":90,\"before\":0.0029,\"after\":0.0011},{\"q\":\"8–12\",\"direction\":\"in-plane\",\"n\":336,\"before\":0.0028,\"after\":-0.0015},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":876,\"before\":0.0031,\"after\":-0.00044},{\"q\":\"8–12\",\"direction\":\"near the third axis\",\"n\":238,\"before\":0.0035,\"after\":0.0017},{\"q\":\"12–16\",\"direction\":\"in-plane\",\"n\":156,\"before\":0.0032,\"after\":-0.0011},{\"q\":\"12–16\",\"direction\":\"oblique\",\"n\":766,\"before\":0.0035,\"after\":0.00018},{\"q\":\"12–16\",\"direction\":\"near the third axis\",\"n\":64,\"before\":0.0037,\"after\":0.0018},{\"q\":\"≥ 16\",\"direction\":\"oblique\",\"n\":62,\"before\":0.0048,\"after\":0.002}],\"reading\":\"The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data.\"}"
+    }
+   ],
+   "answer": "**Short answer: the cell is slightly off, the orientation can't be checked on this file, and the fit is a modest improvement.**\n\n- **Cell:** The fit rescales the cell from a = 8.0285, b = 8.0191, c = 10.0297 Å to a = 7.9935, b = 7.9842, c = 10.0172 Å. That is about −0.4% in a and b and −0.1% in c. The angles are unchanged.\n- **Node positions:** The RMS offset of the peak centres from their nodes falls from 0.0563 to 0.0396 over the full |Q| range (2,2,2 nodes, 3,074 peaks used). At low |Q| (≤ 11.3 Å⁻¹) it falls from 0.0337 to 0.0214.\n- **Radial pattern:** Before the fit, the offsets are positive and about 0.002–0.005 in every |Q| band and direction. After the fit they are near zero in most bands, with the largest residual near the third axis at 0.0011–0.0018. The offset does not grow with |Q|, so it is not the signature of a UB error that scales with |Q|.\n- **Orientation:** The fit reports zero orientation change. This is because the volume is symmetrised under 6/mmm, which hides a misorientation as rings around the nodes rather than shifts. The tool can only fit changes that commute with the symmetry operations, so a rotation of the UB cannot be tested here. Checking orientation needs the unsymmetrised data file.\n\n**Verdict:** The cell parameters look slightly high, and the lattice_A values in the context (a ≈ 8.028 Å) would be about 0.4% too large in a and b if the fit holds. I would not call the UB fully right, but the remaining error is small and does not look |Q|-dependent. Whether the orientation is right is still open until the unsymmetrised file is checked. I have not changed any settings or re-run anything.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1419 characters"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that the orientation needs the unsymmetrised data",
+     "pass": true,
+     "detail": "“For an orientation check, the unsymmetrised file is needed.”"
+    }
+   ],
+   "latency_ms": 6337,
+   "usage": {
+    "input": 26973,
+    "output": 980,
+    "cacheRead": 25892,
+    "cacheWrite": 1075,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "ub_check",
+     "args": {},
+     "status": "done",
+     "summary": "symmetric: RMS 0.0563 → 0.0396 Å⁻¹ over 3074 peaks; a 8.028 → 7.994 Å, c 10.030 → 10.017 Å; turned 0.000°",
+     "result": "{\"fit\":\"symmetric\",\"bragg_nodes_every\":[2,2,2],\"symmetry_from\":\"sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs\",\"symmetrised\":true,\"symmetry_break\":0,\"peaks\":{\"searched\":6858,\"used\":3074,\"rejected\":1145},\"rms_start\":0.0563,\"rms\":0.0396,\"cell_start\":\"8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°\",\"cell\":\"7.9935, 7.9842, 10.0172 Å; 90.134°, 90.232°, 119.979°\",\"orientation_change_deg\":0,\"axis_uvw\":[0,0,0],\"transform_diagonal\":[1.004375,1.004375,1.001245],\"passes\":[{\"q_max\":11.27,\"found\":1668,\"used\":1494,\"rms\":\"0.0337 → 0.0214\"},{\"q_max\":22.53,\"found\":4219,\"used\":3072,\"rms\":\"0.0563 → 0.0396\"},{\"q_max\":33.8,\"found\":4219,\"used\":3074,\"rms\":\"0.0563 → 0.0396\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":18,\"before\":0.003,\"after\":-0.0014},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":48,\"before\":0.0016,\"after\":-0.0021},{\"q\":\"0–4\",\"direction\":\"near the third axis\",\"n\":6,\"before\":0.0049,\"after\":0.0037},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":108,\"before\":0.002,\"after\":-0.0023},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":306,\"before\":0.0027,\"after\":-0.00066},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":90,\"before\":0.0029,\"after\":0.0011},{\"q\":\"8–12\",\"direction\":\"in-plane\",\"n\":336,\"before\":0.0028,\"after\":-0.0015},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":876,\"before\":0.0031,\"after\":-0.00044},{\"q\":\"8–12\",\"direction\":\"near the third axis\",\"n\":238,\"before\":0.0035,\"after\":0.0017},{\"q\":\"12–16\",\"direction\":\"in-plane\",\"n\":156,\"before\":0.0032,\"after\":-0.0011},{\"q\":\"12–16\",\"direction\":\"oblique\",\"n\":766,\"before\":0.0035,\"after\":0.00018},{\"q\":\"12–16\",\"direction\":\"near the third axis\",\"n\":64,\"before\":0.0037,\"after\":0.0018},{\"q\":\"≥ 16\",\"direction\":\"oblique\",\"n\":62,\"before\":0.0048,\"after\":0.002}],\"reading\":\"The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data.\"}"
+    }
+   ],
+   "answer": "**Partly. The cell scale was off by about 0.4%, and the fit corrected it. Orientation can't be checked on this file.**\n\n- **Fit mode:** The volume is symmetrised under 6/mmm, so `ub_check` could only fit changes that commute with that symmetry: the in-plane and c-axis scales. It found no rotation (orientation change 0°).\n- **Cell:** a = 8.0285 → 7.9935 Å, b = 8.0191 → 7.9842 Å, c = 10.0297 → 10.0172 Å. The angles are unchanged. The transform diagonal is 1.0044, 1.0044, 1.0012.\n- **Peak centres:** RMS offset from the Bragg nodes fell from 0.0563 to 0.0396 r.l.u. at the full |Q| range. The low-|Q| pass (|Q| ≤ 11.3 Å⁻¹) went from 0.0337 to 0.0214. The fit used 3074 of 6858 peaks found, with 1145 rejected.\n- **Radial check:** Before the fit, the peaks sat about 0.002–0.005·|Q|/|Q| off their nodes in the oblique and near-c directions. After the fit, most bands are within ±0.002. The residual is about +0.001 to +0.002 near the third axis at every |Q| band, with no clear trend in |Q|. So the leftover offset does not look like a |Q|-dependent UB error.\n\n**Limits:** The symmetrisation hides any misorientation as rings around the nodes rather than shifts, so a rotation of the UB cannot be ruled out here. For an orientation check, the unsymmetrised file is needed. The 0.4% scale change is a lower-precision correction, and the residual RMS of 0.04 r.l.u. is still larger than I'd expect for sharp Bragg peaks.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1368 characters"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the rotation",
+     "pass": true,
+     "detail": "wrote 0.87 (measured 0.874)"
+    },
+    {
+     "check": "quotes the refined a",
+     "pass": true,
+     "detail": "wrote 8.0021 (measured 8.0021)"
+    }
+   ],
+   "latency_ms": 22281,
+   "usage": {
+    "input": 25177,
+    "output": 1352,
+    "cacheRead": 23391,
+    "cacheWrite": 1780,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "ub_check",
+     "args": {},
+     "status": "done",
+     "summary": "both: RMS 0.1354 → 0.0347 Å⁻¹ over 1811 peaks; a 8.028 → 8.002 Å, c 10.030 → 9.988 Å; turned 0.874°",
+     "result": "{\"fit\":\"both\",\"bragg_nodes_every\":[2,2,2],\"symmetry_from\":\"sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs\",\"symmetrised\":false,\"symmetry_break\":5.1,\"peaks\":{\"searched\":6858,\"used\":1811,\"rejected\":282},\"rms_start\":0.1354,\"rms\":0.0347,\"cell_start\":\"8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°\",\"cell\":\"8.0021, 8.0021, 9.9881 Å; 90.000°, 90.000°, 120.000°\",\"orientation_change_deg\":0.874,\"axis_uvw\":[1,-0.028,-0.432],\"transform_diagonal\":[0.999324,1.006213,1.004073],\"passes\":[{\"q_max\":11.27,\"found\":1071,\"used\":957,\"rms\":\"0.1040 → 0.0307\"},{\"q_max\":22.53,\"found\":2093,\"used\":1812,\"rms\":\"0.1354 → 0.0347\"},{\"q_max\":33.8,\"found\":2093,\"used\":1811,\"rms\":\"0.1354 → 0.0347\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":15,\"before\":0.000063,\"after\":-0.0023},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":32,\"before\":0.00061,\"after\":-0.0023},{\"q\":\"0–4\",\"direction\":\"near the third axis\",\"n\":4,\"before\":0.0048,\"after\":0.00074},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":64,\"before\":0.0017,\"after\":-0.0008},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":196,\"before\":0.0023,\"after\":-0.00054},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":50,\"before\":0.0031,\"after\":-0.00033},{\"q\":\"8–12\",\"direction\":\"in-plane\",\"n\":175,\"before\":0.0025,\"after\":-0.00011},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":468,\"before\":0.0031,\"after\":-0.000062},{\"q\":\"8–12\",\"direction\":\"near the third axis\",\"n\":116,\"before\":0.0033,\"after\":-0.000077},{\"q\":\"12–16\",\"direction\":\"in-plane\",\"n\":148,\"before\":0.0029,\"after\":0.00028},{\"q\":\"12–16\",\"direction\":\"oblique\",\"n\":468,\"before\":0.0035,\"after\":0.00013},{\"q\":\"12–16\",\"direction\":\"near the third axis\",\"n\":48,\"before\":0.0032,\"after\":-0.000073},{\"q\":\"≥ 16\",\"direction\":\"oblique\",\"n\":25,\"before\":0.0039,\"after\":0.00021}],\"reading\":\"The rotation and the cell were fitted together, the cell constrained by the operations sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs declares.\"}"
+    }
+   ],
+   "answer": "**Yes, the UB is off, but only slightly.** The fitted orientation and cell move the Bragg peak centres back onto their nodes, and the residual drops about fourfold.\n\n- **Node-offset rms:** 0.135 → 0.035 across 1811 peaks used (6858 searched, 282 rejected).\n- **Orientation:** the rotation is 0.87°, about the axis (1, −0.03, −0.43).\n- **Cell:** a, b, c go from 8.0285, 8.0191, 10.0297 Å to 8.0021, 8.0021, 9.9881 Å. That is about −0.3%, −0.2% and −0.4%. The angles go from 90.13°, 90.23°, 119.98° to 90°, 90°, 120°.\n- **Consistency across |Q|:** the offset is small in every band after the fit. In the oblique direction it falls from about 0.0023–0.0039 (relative) to about 0.0002 or less. It no longer changes systematically with |Q|, so it is a UB error rather than a different effect.\n\nCaveats:\n- The fit was constrained to the hexagonal metric declared by the 6/mmm operations. The 0.2–0.4% cell changes are therefore the best hexagonal fit, not a free refinement.\n- The volume is symmetrised under 6/mmm. The check says a misorientation in such a volume shows up as rings around the nodes rather than shifts. The fit used both rotation and cell, so it should still see the shifts, but the ring signature is not separately tested here.\n- I can't correct the UB from the console. The fix belongs in the indexing, and a proper check would use the unsymmetrised file.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1894 characters"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the rotation",
+     "pass": true,
+     "detail": "wrote 0.9 (measured 0.874)"
+    },
+    {
+     "check": "quotes the refined a",
+     "pass": true,
+     "detail": "wrote 8.0021 (measured 8.0021)"
+    }
+   ],
+   "latency_ms": 12305,
+   "usage": {
+    "input": 25228,
+    "output": 1935,
+    "cacheRead": 24064,
+    "cacheWrite": 1158,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "ub_check",
+     "args": {},
+     "status": "done",
+     "summary": "both: RMS 0.1354 → 0.0347 Å⁻¹ over 1811 peaks; a 8.028 → 8.002 Å, c 10.030 → 9.988 Å; turned 0.874°",
+     "result": "{\"fit\":\"both\",\"bragg_nodes_every\":[2,2,2],\"symmetry_from\":\"sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs\",\"symmetrised\":false,\"symmetry_break\":5.1,\"peaks\":{\"searched\":6858,\"used\":1811,\"rejected\":282},\"rms_start\":0.1354,\"rms\":0.0347,\"cell_start\":\"8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°\",\"cell\":\"8.0021, 8.0021, 9.9881 Å; 90.000°, 90.000°, 120.000°\",\"orientation_change_deg\":0.874,\"axis_uvw\":[1,-0.028,-0.432],\"transform_diagonal\":[0.999324,1.006213,1.004073],\"passes\":[{\"q_max\":11.27,\"found\":1071,\"used\":957,\"rms\":\"0.1040 → 0.0307\"},{\"q_max\":22.53,\"found\":2093,\"used\":1812,\"rms\":\"0.1354 → 0.0347\"},{\"q_max\":33.8,\"found\":2093,\"used\":1811,\"rms\":\"0.1354 → 0.0347\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":15,\"before\":0.000063,\"after\":-0.0023},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":32,\"before\":0.00061,\"after\":-0.0023},{\"q\":\"0–4\",\"direction\":\"near the third axis\",\"n\":4,\"before\":0.0048,\"after\":0.00074},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":64,\"before\":0.0017,\"after\":-0.0008},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":196,\"before\":0.0023,\"after\":-0.00054},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":50,\"before\":0.0031,\"after\":-0.00033},{\"q\":\"8–12\",\"direction\":\"in-plane\",\"n\":175,\"before\":0.0025,\"after\":-0.00011},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":468,\"before\":0.0031,\"after\":-0.000062},{\"q\":\"8–12\",\"direction\":\"near the third axis\",\"n\":116,\"before\":0.0033,\"after\":-0.000077},{\"q\":\"12–16\",\"direction\":\"in-plane\",\"n\":148,\"before\":0.0029,\"after\":0.00028},{\"q\":\"12–16\",\"direction\":\"oblique\",\"n\":468,\"before\":0.0035,\"after\":0.00013},{\"q\":\"12–16\",\"direction\":\"near the third axis\",\"n\":48,\"before\":0.0032,\"after\":-0.000073},{\"q\":\"≥ 16\",\"direction\":\"oblique\",\"n\":25,\"before\":0.0039,\"after\":0.00021}],\"reading\":\"The rotation and the cell were fitted together, the cell constrained by the operations sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs declares.\"}"
+    }
+   ],
+   "answer": "**Short answer: the UB is off by about 0.9° in orientation and about 0.3–0.4% in cell length. Refitting it brings the Bragg-node residual down by roughly a factor of four.**\n\n`ub_check` used every Bragg node in the volume (nodes on the (2,2,2) cell, 1,811 peaks used of 6,858 searched) and fitted the rotation and cell together, constrained to the 6/mmm symmetry the file declares.\n\n- **Residual:** rms 0.135 → 0.035 after the fit. The 11.3 Å⁻¹ pass gives 0.104 → 0.031, so the result is stable across |Q| limits.\n- **Orientation:** the UB rotates by 0.874° about axis [1, −0.028, −0.432].\n- **Cell:** the measured cell is 8.0285, 8.0191, 10.0297 Å with α 90.13°, β 90.23°, γ 119.98°. The fitted cell is 8.0021, 8.0021, 9.9881 Å with 90°, 90°, 120°. The fitted diagonal scales are 0.9993 (a), 1.0062 (b), 1.0041 (c), so the change is about −0.3% in a and −0.4% in c.\n- **Radial check:** after the fit, the peak offsets are near zero at every |Q| band and direction (most are below 0.001 in the tool's units). The fit leaves no |Q| trend, which argues against a radial or instrumental error and for a plain UB error.\n\nTwo caveats:\n\n- The tool reports the file as not symmetrised, though the declared symmetry is 6/mmm. The fit used the full rotation and cell, so the 0.9° figure should be read as the orientation the nodes support, not a symmetry-restricted estimate.\n- The angle is not a rounding-level correction. At |Q| ≈ 10 Å⁻¹ a 0.87° error displaces a node by about 0.15 Å⁻¹, which is large against sharp peaks. The punch positions its footprints from the cell, so the current UB probably affects the punch at higher |Q|.\n\nI haven't changed any settings or rerun anything. If you want, I can check whether the punch and the ΔPDF depend on this UB, or whether a rerun from the punch would pick up the corrected cell. That would need the UB supplied as an input, which I can't set from here.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1731 characters"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the rotation",
+     "pass": true,
+     "detail": "wrote 0.9 (measured 0.874)"
+    },
+    {
+     "check": "quotes the refined a",
+     "pass": true,
+     "detail": "wrote 8.0021 (measured 8.0021)"
+    }
+   ],
+   "latency_ms": 10223,
+   "usage": {
+    "input": 25240,
+    "output": 1592,
+    "cacheRead": 24064,
+    "cacheWrite": 1170,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "ub_check",
+     "args": {},
+     "status": "done",
+     "summary": "both: RMS 0.1354 → 0.0347 Å⁻¹ over 1811 peaks; a 8.028 → 8.002 Å, c 10.030 → 9.988 Å; turned 0.874°",
+     "result": "{\"fit\":\"both\",\"bragg_nodes_every\":[2,2,2],\"symmetry_from\":\"sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs\",\"symmetrised\":false,\"symmetry_break\":5.1,\"peaks\":{\"searched\":6858,\"used\":1811,\"rejected\":282},\"rms_start\":0.1354,\"rms\":0.0347,\"cell_start\":\"8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°\",\"cell\":\"8.0021, 8.0021, 9.9881 Å; 90.000°, 90.000°, 120.000°\",\"orientation_change_deg\":0.874,\"axis_uvw\":[1,-0.028,-0.432],\"transform_diagonal\":[0.999324,1.006213,1.004073],\"passes\":[{\"q_max\":11.27,\"found\":1071,\"used\":957,\"rms\":\"0.1040 → 0.0307\"},{\"q_max\":22.53,\"found\":2093,\"used\":1812,\"rms\":\"0.1354 → 0.0347\"},{\"q_max\":33.8,\"found\":2093,\"used\":1811,\"rms\":\"0.1354 → 0.0347\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":15,\"before\":0.000063,\"after\":-0.0023},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":32,\"before\":0.00061,\"after\":-0.0023},{\"q\":\"0–4\",\"direction\":\"near the third axis\",\"n\":4,\"before\":0.0048,\"after\":0.00074},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":64,\"before\":0.0017,\"after\":-0.0008},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":196,\"before\":0.0023,\"after\":-0.00054},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":50,\"before\":0.0031,\"after\":-0.00033},{\"q\":\"8–12\",\"direction\":\"in-plane\",\"n\":175,\"before\":0.0025,\"after\":-0.00011},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":468,\"before\":0.0031,\"after\":-0.000062},{\"q\":\"8–12\",\"direction\":\"near the third axis\",\"n\":116,\"before\":0.0033,\"after\":-0.000077},{\"q\":\"12–16\",\"direction\":\"in-plane\",\"n\":148,\"before\":0.0029,\"after\":0.00028},{\"q\":\"12–16\",\"direction\":\"oblique\",\"n\":468,\"before\":0.0035,\"after\":0.00013},{\"q\":\"12–16\",\"direction\":\"near the third axis\",\"n\":48,\"before\":0.0032,\"after\":-0.000073},{\"q\":\"≥ 16\",\"direction\":\"oblique\",\"n\":25,\"before\":0.0039,\"after\":0.00021}],\"reading\":\"The rotation and the cell were fitted together, the cell constrained by the operations sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs declares.\"}"
+    }
+   ],
+   "answer": "**Short answer: the UB is off, by about 0.9° in orientation and by roughly 0.1–0.6% in the cell. Refitting brings the Bragg nodes back to within about a quarter of their earlier offset.**\n\nThe check fitted the rotation and the cell together, and the fit is the one the volume's declared 6/mmm operations allow.\n\n- **Node offset:** rms falls from 0.1354 to 0.0347 over 1811 peaks used (of 6858 searched, 282 rejected).\n- **Orientation:** the UB needs a rotation of 0.874° about the axis [1, −0.028, −0.432].\n- **Cell:** the start cell is 8.0285, 8.0191, 10.0297 Å with α 90.13°, β 90.23°, γ 119.98°. The fitted cell is 8.0021, 8.0021, 9.9881 Å with 90°, 90°, 120°. The diagonal of the transform changes by 0.07% (a), 0.62% (b) and 0.41% (c).\n- **|Q| dependence:** the radial offsets fall to near zero after the fit in every |Q| band and direction (for example, 8–12 Å⁻¹ oblique goes from 0.0031 to −0.00006). The only residual is at 0–4 Å⁻¹ in-plane, about −0.0023, from only 15 peaks. The offset does not grow with |Q|, so the error is a UB error and not a |Q|-dependent effect.\n\nTwo caveats:\n\n- The tool reports `symmetrised: false`, although the reference file is the 6/mmm-symmetrised volume. The fit therefore used the declared operations only to constrain the cell. Treat the 0.87° as a reliable estimate of the offset, not a precise value.\n- The residual rms of 0.035 is well above zero. Whether that is acceptable depends on the peak-centre noise, which this check does not report.\n\nIf the orientation matters for the analysis, the unsymmetrised file would give a cleaner fit. I have not changed any settings or re-run anything. Do you want me to apply the fitted cell to the pipeline, or check the peak list in more detail?",
+   "note": null,
+   "error": null
+  }
+ ]
+}

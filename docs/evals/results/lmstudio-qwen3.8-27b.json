@@ -1,0 +1,1184 @@
+{
+ "provider": "LM Studio",
+ "model": "qwen/qwen3.8-27b",
+ "local": true,
+ "at": "2026-10-11T02:43:59.437Z",
+ "backend": "http://127.0.0.1:8000",
+ "repeat": 3,
+ "summary": [
+  {
+   "id": "rings-left",
+   "passed": 1,
+   "runs": 3
+  },
+  {
+   "id": "punch-missed",
+   "passed": 0,
+   "runs": 3
+  },
+  {
+   "id": "pdf-window-coverage",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "pdf-separable-refused",
+   "passed": 1,
+   "runs": 3
+  },
+  {
+   "id": "symmetry-kept",
+   "passed": 1,
+   "runs": 3
+  },
+  {
+   "id": "q-band-from-raw",
+   "passed": 0,
+   "runs": 3
+  },
+  {
+   "id": "no-second-grain",
+   "passed": 2,
+   "runs": 3
+  },
+  {
+   "id": "ub-symmetrised",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "ub-misoriented",
+   "passed": 1,
+   "runs": 3
+  }
+ ],
+ "runs": [
+  {
+   "scenario": "rings-left",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: The model has crashed without additional information. (Exit code: null)"
+    },
+    {
+     "check": "calls assess_stage for the rings",
+     "pass": false,
+     "detail": "never called assess_stage"
+    },
+    {
+     "check": "quotes the leftover ring's |Q|",
+     "pass": false,
+     "detail": "no the leftover ring's |Q| in the tool results to compare with"
+    },
+    {
+     "check": "says that a ring is left",
+     "pass": false,
+     "detail": "no sentence says that a ring is left"
+    }
+   ],
+   "latency_ms": 710396,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "The model has crashed without additional information. (Exit code: null)"
+  },
+  {
+   "scenario": "rings-left",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: Model is unloaded."
+    },
+    {
+     "check": "calls assess_stage for the rings",
+     "pass": false,
+     "detail": "never called assess_stage"
+    },
+    {
+     "check": "quotes the leftover ring's |Q|",
+     "pass": false,
+     "detail": "no the leftover ring's |Q| in the tool results to compare with"
+    },
+    {
+     "check": "says that a ring is left",
+     "pass": false,
+     "detail": "no sentence says that a ring is left"
+    }
+   ],
+   "latency_ms": 5398,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "Model is unloaded."
+  },
+  {
+   "scenario": "rings-left",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "2526 characters"
+    },
+    {
+     "check": "calls assess_stage for the rings",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the leftover ring's |Q|",
+     "pass": true,
+     "detail": "wrote 10.3 (measured 10.3)"
+    },
+    {
+     "check": "says that a ring is left",
+     "pass": true,
+     "detail": "“- A genuine ring is left at |Q| ≈ 10.3 Å⁻¹, and it shows on two planes at the same |Q| — H–L: residual 0.407 (noise 0.0085) and K–L: residual 0.408 (noise 0.006”"
+    }
+   ],
+   "latency_ms": 773251,
+   "usage": {
+    "input": 36589,
+    "output": 7082,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 3
+   },
+   "steps": [
+    {
+     "name": "assess_stage",
+     "args": {
+      "stage": "rings"
+     },
+     "status": "done",
+     "summary": "Ring removal: ring ratio 0.954 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.408 (0kl, 10.3 Å⁻¹)",
+     "result": "{\"rings\":{\"headline\":\"ring ratio 0.954 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.408 (0kl, 10.3 Å⁻¹)\",\"mean_ring_energy_ratio\":0.954,\"max_over_subtraction_fraction\":0,\"max_ring_dent\":0,\"max_ring_left\":0.408,\"worst_ring_dent\":null,\"worst_ring_left\":{\"plane\":\"0kl\",\"at\":10.3,\"residual_fraction\":0.408},\"single_plane_bumps\":[{\"plane\":\"hk0\",\"at\":5.5,\"residual_fraction\":1.2},{\"plane\":\"hk0\",\"at\":7.95,\"residual_fraction\":0.59},{\"plane\":\"hk0\",\"at\":10.9,\"residual_fraction\":0.578}],\"per_plane\":{\"hk0\":{\"ring_energy_ratio\":1.03,\"after_ring_energy\":0.155,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0,\"worst_ring_dent\":null,\"worst_ring_left\":null,\"ring_residuals\":[{\"at\":2.57,\"residual_fraction\":0.259,\"noise_fraction\":0.156,\"significant\":false,\"single_plane_bump\":true},{\"at\":5.5,\"residual_fraction\":1.2,\"noise_fraction\":0.158,\"significant\":true,\"single_plane_bump\":true},{\"at\":7.95,\"residual_fraction\":0.59,\"noise_fraction\":0.0263,\"significant\":true,\"single_plane_bump\":true},{\"at\":10.9,\"residual_fraction\":0.578,\"noise_fraction\":0.0259,\"significant\":true,\"single_plane_bump\":true}]},\"h0l\":{\"ring_energy_ratio\":0.905,\"after_ring_energy\":0.0548,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0.0000317,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true},\"ring_residuals\":[{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true}]},\"0kl\":{\"ring_energy_ratio\":0.928,\"after_ring_energy\":0.0554,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0.0000317,\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":10.3,\"residual_fraction\":0.408,\"noise_fraction\":0.00633,\"significant\":true},\"ring_residuals\":[{\"at\":10.3,\"residual_fraction\":0.408,\"noise_fraction\":0.00633,\"significant\":true}]}},\"goal\":\"Remove powder/Al rings: mean_ring_energy_ratio as low as the trials reach on every plane (its floor is set by the diffuse, not 0; near 0.4–0.5 can be ring-free), while over_subtraction_fraction and after_negative_fraction stay small (a few percent from noise), and each raw ring ends level with the diffuse beside it: max_ring_dent (how far the deepest ring sits below its flanks, a share of the diffuse there; the subtraction over-shot, even where no voxel goes negative) and max_ring_left (a ring left over) both 0: they count only residuals beyond 3 × their plane's noise_fraction, so any value above 0 is a real dent or leftover (worst_ring_dent and worst_ring_left say on which plane and at which |Q|). Only rings seen on two or more planes count: a bump on one plane only (single_plane_bumps) is the crystal's own scattering, which the ring removal must leave, not a miss (per_plane marks it single_plane_bump and leaves it out of that plane's worst_ring_dent and worst_ring_left). Lower ring energy bought by over-subtracting (negatives or ring dents rising) is worse, not better.\"},\"measured_on\":[\"H–K plane at L = 0\",\"H–L plane at K = 0\",\"K–L plane at H = 0\"]}"
+    },
+    {
+     "name": "measure_reciprocal_cut",
+     "args": {
+      "plane": "h0l",
+      "value": 0
+     },
+     "status": "done",
+     "summary": "H–L plane at K = 0: ring ratio 0.905 · 8 missed at nodes, 4 sharp off-lattice, 180 broad maxima · seam 0.0772σ · floor ≤ 0.379σ",
+     "result": "{\"cut\":\"H–L plane at K = 0\",\"ring_removal\":{\"before_ring_energy\":0.0606,\"after_ring_energy\":0.0548,\"ring_energy_ratio\":0.905,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0.0000317,\"ring_residuals\":[{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true}],\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":10.3,\"residual_fraction\":0.407,\"noise_fraction\":0.00849,\"significant\":true},\"suggested_display_vmax\":334.8,\"n_finite\":126294},\"bragg_punch_leftover\":{\"suspicious_peaks\":[{\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[-5,0,-3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[5,0,-3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-5,3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[-5,0,3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[5,3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[5,0,3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-3,-4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[-3,0,-4.9],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[3,-4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[3,0,-4.9],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-3,4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[-3,0,4.9],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[3,4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[3,0,4.9],\"at_node\":false,\"on_protected_plane\":false}],\"n_suspicious\":192,\"n_at_nodes\":8,\"n_off_nodes\":184,\"n_on_protected\":0,\"n_broad_off_nodes\":180,\"n_skipped_noisy\":0,\"scan_sigma_threshold\":8},\"backfill\":{\"n_filled\":13957,\"fill_coverage\":0.11,\"median_seam_sigma\":0.0772,\"p95_seam_sigma\":0.463,\"bright_fill_fraction\":0,\"checkerboard_fraction\":0.204},\"flatten\":{\"removed_fraction\":0.823,\"floor_before\":[1.91,2.87,3.95],\"floor_after\":[-0.0568,0.0752,-0.325],\"after_floor_max_sigma\":0.379,\"after_negative_fraction\":0.305,\"floor_trend\":0.0896,\"floor_span_fraction\":0.364},\"notes\":[]}"
+    },
+    {
+     "name": "measure_reciprocal_cut",
+     "args": {
+      "plane": "0kl",
+      "value": 0
+     },
+     "status": "done",
+     "summary": "K–L plane at H = 0: ring ratio 0.928 · 8 missed at nodes, 4 sharp off-lattice, 180 broad maxima · seam 0.0772σ · floor ≤ 0.378σ",
+     "result": "{\"cut\":\"K–L plane at H = 0\",\"ring_removal\":{\"before_ring_energy\":0.0597,\"after_ring_energy\":0.0554,\"ring_energy_ratio\":0.928,\"over_subtraction_fraction\":0,\"after_negative_fraction\":0.0000317,\"ring_residuals\":[{\"at\":10.3,\"residual_fraction\":0.408,\"noise_fraction\":0.00633,\"significant\":true}],\"worst_ring_dent\":null,\"worst_ring_left\":{\"at\":10.3,\"residual_fraction\":0.408,\"noise_fraction\":0.00633,\"significant\":true},\"suggested_display_vmax\":334.8,\"n_finite\":126294},\"bragg_punch_leftover\":{\"suspicious_peaks\":[{\"xy\":[-5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[0,-5,-3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[5,-3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[0,5,-3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-5,3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[0,-5,3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[5,3],\"intensity\":154,\"local_background\":4.66,\"contrast\":33.1,\"sigma\":72.6,\"fwhm_voxels\":[1,8],\"broad\":true,\"hkl\":[0,5,3],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-3,-4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[0,-3,-4.9],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[3,-4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[0,3,-4.9],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[-3,4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[0,-3,4.9],\"at_node\":false,\"on_protected_plane\":false},{\"xy\":[3,4.9],\"intensity\":77,\"local_background\":3.83,\"contrast\":20.1,\"sigma\":55.9,\"fwhm_voxels\":[1,6],\"broad\":true,\"hkl\":[0,3,4.9],\"at_node\":false,\"on_protected_plane\":false}],\"n_suspicious\":192,\"n_at_nodes\":8,\"n_off_nodes\":184,\"n_on_protected\":0,\"n_broad_off_nodes\":180,\"n_skipped_noisy\":0,\"scan_sigma_threshold\":8},\"backfill\":{\"n_filled\":13957,\"fill_coverage\":0.11,\"median_seam_sigma\":0.0772,\"p95_seam_sigma\":0.463,\"bright_fill_fraction\":0,\"checkerboard_fraction\":0.204},\"flatten\":{\"removed_fraction\":0.823,\"floor_before\":[1.91,2.87,3.95],\"floor_after\":[-0.0567,0.0759,-0.326],\"after_floor_max_sigma\":0.378,\"after_negative_fraction\":0.305,\"floor_trend\":0.0896,\"floor_span_fraction\":0.366},\"notes\":[]}"
+    },
+    {
+     "name": "radial_profile",
+     "args": {
+      "plane": "hk0",
+      "value": 0
+     },
+     "status": "done",
+     "summary": "H–K plane at L = 0: 18 shells × 5 stages",
+     "result": "{\"cut\":\"H–K plane at L = 0\",\"q_unit\":\"|Q| in Å⁻¹\",\"stat\":\"median per shell\",\"rows\":[{\"q\":0.778,\"raw\":1.91,\"ringremoved\":1.92,\"braggpunched\":1.92,\"backfilled\":1.73,\"flattened\":-0.0579},{\"q\":1.52,\"raw\":2.12,\"ringremoved\":2.12,\"braggpunched\":2.09,\"backfilled\":2.07,\"flattened\":0.181},{\"q\":2.48,\"raw\":3.71,\"ringremoved\":3.2,\"braggpunched\":3.19,\"backfilled\":3.17,\"flattened\":1.14},{\"q\":3.45,\"raw\":3.18,\"ringremoved\":3.01,\"braggpunched\":2.72,\"backfilled\":3,\"flattened\":0.791},{\"q\":4.42,\"raw\":2.77,\"ringremoved\":2.76,\"braggpunched\":2.5,\"backfilled\":2.69,\"flattened\":0.24},{\"q\":5.4,\"raw\":5.63,\"ringremoved\":5.38,\"braggpunched\":5.23,\"backfilled\":5.06,\"flattened\":2.38},{\"q\":6.37,\"raw\":3.57,\"ringremoved\":3.57,\"braggpunched\":3.33,\"backfilled\":3.57,\"flattened\":0.5},{\"q\":7.35,\"raw\":4.03,\"ringremoved\":4.03,\"braggpunched\":3.97,\"backfilled\":3.88,\"flattened\":0.4},{\"q\":8.33,\"raw\":7.07,\"ringremoved\":7.07,\"braggpunched\":6.62,\"backfilled\":6.43,\"flattened\":2.42},{\"q\":9.3,\"raw\":5.09,\"ringremoved\":5.09,\"braggpunched\":4.78,\"backfilled\":4.76,\"flattened\":0.243},{\"q\":10.3,\"raw\":5.92,\"ringremoved\":5.92,\"braggpunched\":5.92,\"backfilled\":5.75,\"flattened\":0.6},{\"q\":11.3,\"raw\":8.5,\"ringremoved\":8.5,\"braggpunched\":8.16,\"backfilled\":8.05,\"flattened\":2.21},{\"q\":12.2,\"raw\":7.64,\"ringremoved\":7.64,\"braggpunched\":7.42,\"backfilled\":7.44,\"flattened\":0.902},{\"q\":13.2,\"raw\":9.3,\"ringremoved\":9.3,\"braggpunched\":9.13,\"backfilled\":9.05,\"flattened\":1.78},{\"q\":14.2,\"raw\":10.6,\"ringremoved\":10.6,\"braggpunched\":10.2,\"backfilled\":10,\"flattened\":1.95},{\"q\":15.2,\"raw\":10.4,\"ringremoved\":10.3,\"braggpunched\":9.96,\"backfilled\":10,\"flattened\":1.08},{\"q\":16.1,\"raw\":17,\"ringremoved\":17.4,\"braggpunched\":16.8,\"backfilled\":16.8,\"flattened\":7.11},{\"q\":16.8,\"raw\":20.7,\"ringremoved\":21.4,\"braggpunched\":20.8,\"backfilled\":20.7,\"flattened\":10.8}]}"
+    },
+    {
+     "name": "configure_settings",
+     "args": {},
+     "status": "done",
+     "summary": "55 settings",
+     "result": "{\"settings\":{\"ringsEnabled\":true,\"punchEnabled\":true,\"backfillEnabled\":true,\"flatten\":true,\"pdfEnabled\":true,\"force\":false,\"ringModel\":\"pooled\",\"ringRadialMode\":\"rolling\",\"ringNPatches\":\"(default)\",\"ringNFourier\":\"8\",\"ringSliceAxis\":\"H\",\"ringWidth\":\"(default)\",\"ringGlobalMaterial\":\"auto\",\"ringGlobalSubtraction\":\"conservative\",\"ringGlobalConfidence\":\"1\",\"ringGlobalLmax\":\"4\",\"ringGlobalMinSnr\":\"5\",\"ringPooledSectors\":\"(default)\",\"ringPooledWindow\":\"(default)\",\"punchMinSig\":\"4\",\"punchFootprint\":\"(default)\",\"punchProfileNSigma\":\"(default)\",\"punchMode\":\"(default)\",\"punchSupercellH\":\"2\",\"punchSupercellK\":\"2\",\"punchSupercellL\":\"2\",\"punchHGuard\":\"(default)\",\"punchSearchFloor\":\"(default)\",\"punchProtectH\":\"none\",\"punchProtectHalfWidth\":\"(default)\",\"punchSearchMaxWidth\":\"2\",\"punchFrame\":\"spherical\",\"punchRho\":\"(default)\",\"punchTheta\":\"(default)\",\"punchPhi\":\"(default)\",\"punchQA\":\"(default)\",\"punchQB\":\"(default)\",\"punchQC\":\"(default)\",\"punchFitUnconstrained\":false,\"punchMargin\":\"(default)\",\"incidentBeamQA\":\"(default)\",\"incidentBeamQB\":\"(default)\",\"incidentBeamQC\":\"(default)\",\"incidentBeamMargin\":\"(default)\",\"incidentBeamFitCovariance\":false,\"backfillMethod\":\"(default)\",\"flattenEstimator\":\"(default)\",\"flattenIon\":\"(default)\",\"flattenQ2\":true,\"flattenFitQMax\":\"16\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true,\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\"}}"
+    }
+   ],
+   "answer": "\n\n\n\n\n\n\n\n\n\n\n\n\n## Verdict: not fully clean — one real powder ring is left, but there is no over‑subtraction\n\nI measured all three principal planes (not just the L=0 H–K cut) and the radial profile.\n\n**What is clean**\n- No over‑subtraction anywhere: `over_subtraction_fraction = 0`, `after_negative_fraction ≈ 0` (3e‑5 on the c‑planes), and `max_ring_dent = 0` on every plane. The subtraction never dented the diffuse or drove voxels negative.\n- On the H–K plane (L=0) the ring‑energy ratio is **1.03** (0.15 → 0.155) — i.e. the removal changed essentially nothing there. That is *correct*, not a failure: the bumps on that plane (at 5.5, 7.95, 10.9 Å⁻¹) are flagged `single_plane_bump`, meaning they appear only on H–K and are the crystal's own in‑plane scattering, which the ring stage must leave alone.\n\n**The miss**\n- A genuine ring is left at **|Q| ≈ 10.3 Å⁻¹**, and it shows on **two** planes at the same |Q| — H–L: residual 0.407 (noise 0.0085) and K–L: residual 0.408 (noise 0.0063). Appearing at the same |Q| on two planes through the origin is the signature of a ring, not a crystal rod/peak. It sits at ~0.41× the local diffuse, i.e. ~50–65× the local noise — far beyond the 3× significance threshold. `max_ring_left = 0.408` (K–L, 10.3 Å⁻¹).\n- The ring‑energy ratios on the c‑containing planes are 0.905 (H–L) and 0.928 (K–L) — only a modest reduction, consistent with under‑removal rather than a clean pass. (The ring‑free floor is ~0.4–0.5, but much of the H–K residual is crystal diffuse that should stay, so the ratios overstate the powder problem there.)\n\n**Minor edge note:** on H–K the ring‑removed shell median slightly *exceeds* raw at the outermost shells (16.1: 17.0→17.4; 16.8: 20.7→21.4) — a small coverage‑edge effect of the rolling window; no negatives resulted.\n\n**Likely ΔPDF impact is small:** a ring at 10.3 Å⁻¹ maps to r ≈ 2π/10.3 ≈ 0.61 Å, which is inside the 2 Å origin‑excluded radius, so it probably does not contaminate the reported ΔPDF features (which live at larger r). It is, however, a real cleanliness miss on the reciprocal side.\n\nThe current ring settings are `ringModel: pooled` with `ringGlobalSubtraction: conservative` — the conservative global subtraction is the most likely reason the 10.3 ring is under‑removed. If you want, I can run `tune_pipeline` on the `rings` stage (it will try the ring settings, keep the best, and leave your dataset outputs untouched), then rerun and re‑measure these same planes to confirm the 10.3 ring is gone without introducing dents. Want me to?",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: This operation was aborted"
+    },
+    {
+     "check": "calls assess_stage for the punch",
+     "pass": false,
+     "detail": "never called assess_stage"
+    },
+    {
+     "check": "quotes the missed peaks at nodes",
+     "pass": false,
+     "detail": "no the missed peaks at nodes in the tool results to compare with"
+    },
+    {
+     "check": "says that lattice peaks were missed",
+     "pass": false,
+     "detail": "no sentence says that lattice peaks were missed"
+    }
+   ],
+   "latency_ms": 1188499,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "This operation was aborted"
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: This operation was aborted"
+    },
+    {
+     "check": "calls assess_stage for the punch",
+     "pass": false,
+     "detail": "never called assess_stage"
+    },
+    {
+     "check": "quotes the missed peaks at nodes",
+     "pass": false,
+     "detail": "no the missed peaks at nodes in the tool results to compare with"
+    },
+    {
+     "check": "says that lattice peaks were missed",
+     "pass": false,
+     "detail": "no sentence says that lattice peaks were missed"
+    }
+   ],
+   "latency_ms": 1192856,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "This operation was aborted"
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: This operation was aborted"
+    },
+    {
+     "check": "calls assess_stage for the punch",
+     "pass": false,
+     "detail": "never called assess_stage"
+    },
+    {
+     "check": "quotes the missed peaks at nodes",
+     "pass": false,
+     "detail": "no the missed peaks at nodes in the tool results to compare with"
+    },
+    {
+     "check": "says that lattice peaks were missed",
+     "pass": false,
+     "detail": "no sentence says that lattice peaks were missed"
+    }
+   ],
+   "latency_ms": 1182381,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "This operation was aborted"
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1068 characters"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the window's weight on unmeasured space",
+     "pass": true,
+     "detail": "wrote 0.0000032 (measured 0.000003241850225822034)"
+    },
+    {
+     "check": "says that it stays inside the coverage",
+     "pass": true,
+     "detail": "“Yes — the check comes back clean.”"
+    }
+   ],
+   "latency_ms": 92946,
+   "usage": {
+    "input": 19529,
+    "output": 932,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    }
+   ],
+   "answer": "\n\n\n\n\n\nYes — the check comes back clean.\n\n- **Window:** ellipsoid, scale 1, set by the |Q| band **0.55–16.7 Å⁻¹** on the Configure page (pdfWindowSupport on).\n- **Weight on unmeasured space: 3.2 × 10⁻⁶** — far below the ≲ 10⁻³ cleanliness threshold, so the forward transform does not reach past the measured reciprocal space.\n- The raw counts span 0.519–16.7 Å⁻¹, and shells are fully (95 %) measured between **0.65 and 15.85 Å⁻¹**. The band edges poke slightly outside that fully-measured range (0.55 < 0.65, 16.7 > 15.85), but the ellipsoid tapers there, which is why the leaked weight is only 3.2 × 10⁻⁶.\n- Per plane, the hk0 shells stay fully measured to 15.5 Å⁻¹ (0.971 at the last shell), and h0l/0kl to 12.4 Å⁻¹ (the box face at 12.5), all inside the band.\n\nSo the ΔPDF's window stays inside the measured volume, and this is check 4 of the four run checks passing. (The back-FFT round trip in the context — r = 1, RMS 6.4 × 10⁻¹⁵ — only confirms the transform ran correctly, since without a crop it's the identity; the coverage check above is the real evidence.)",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1347 characters"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the window's weight on unmeasured space",
+     "pass": true,
+     "detail": "wrote 0.0000032 (measured 0.000003241850225822034)"
+    },
+    {
+     "check": "says that it stays inside the coverage",
+     "pass": true,
+     "detail": "“Yes — the transform window stays inside the measured reciprocal space, and the check is clean:”"
+    }
+   ],
+   "latency_ms": 86895,
+   "usage": {
+    "input": 19529,
+    "output": 833,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    }
+   ],
+   "answer": "\n\n\n\n\n\nYes — the transform window stays inside the measured reciprocal space, and the check is clean:\n\n- **Verdict:** the ΔPDF's ellipsoid window (scale 1) puts only **3.2 × 10⁻⁶** of its weight on unmeasured reciprocal space — far below the ≲ 10⁻³ cleanliness threshold.\n- **Reach:** the window reaches to **|Q| = 16.7 Å⁻¹**, set by the |Q| band on the Configure page (`pdfQMin` 0.55, `pdfQMax` 16.70). That is exactly the box corner (16.7 Å⁻¹); the box face is 12.5 Å⁻¹.\n- **Coverage:** the raw counts span 0.519–16.7 Å⁻¹, with shells fully (95 %) measured between **0.65 and 15.85 Å⁻¹**. The band check confirms 0.55–16.7 stays inside the counts. On the principal planes, shells are fully measured out to 15.7 Å⁻¹ (hk0) and 12.5 Å⁻¹ (h0l, 0kl), with the hk0 shell at 15.5 Å⁻¹ at 97.1 % measured.\n\nSo the small sliver of window weight beyond 15.85 Å⁻¹ sits in the tapered corner region where the data are still present (just not 95 % complete), and the ellipsoid apodization keeps its contribution negligible. No change to the window is needed for this check.\n\nOne caveat to keep in mind: this only says the transform doesn't reach past the data. The back-FFT round trip in the context (r = 1, RMS 6.4 × 10⁻¹⁵) confirms the transform ran correctly, but with a band set it is not evidence the ΔPDF is physically right — that's a separate question.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1460 characters"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the window's weight on unmeasured space",
+     "pass": true,
+     "detail": "wrote 0.0000032 (measured 0.000003241850225822034)"
+    },
+    {
+     "check": "says that it stays inside the coverage",
+     "pass": true,
+     "detail": "“Yes — the transform window stays inside the measured reciprocal space, with only a negligible spill.”"
+    }
+   ],
+   "latency_ms": 74724,
+   "usage": {
+    "input": 19529,
+    "output": 766,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    }
+   ],
+   "answer": "\n\n\n\n\n\nYes — the transform window stays inside the measured reciprocal space, with only a negligible spill.\n\n**What the check found (90K dataset):**\n- **Verdict: clean** — the ΔPDF's ellipsoid window puts **3.2 × 10⁻⁶** of its weight on unmeasured reciprocal space (≲ 10⁻³ is the clean threshold).\n- The window is an **ellipsoid** (scale 1) reaching out to **|Q| = 16.7 Å⁻¹**, set by the |Q| band **0.55–16.7 Å⁻¹** on the Configure page.\n- The raw volume's counts span **0.519–16.7 Å⁻¹**, and shells are **fully (95 %) measured from 0.65 to 15.85 Å⁻¹**. The box face is at 12.5 Å⁻¹ and the box corner at 16.7 Å⁻¹.\n- The band check confirms the set band **0.55–16.7 Å⁻¹ stays inside the counts**.\n\n**Two small caveats, both harmless here:**\n1. The band's low edge (0.55) sits slightly below where shells become fully measured (0.65), and its high edge (16.7) extends past the fully-measured edge (15.85) out to the box corner. Because the window is an ellipsoid that tapers to zero at its boundary, the weight actually placed in those unmeasured slivers is only 3.2 × 10⁻⁶ — far below the 10⁻³ cleanliness bar.\n2. The per-plane coverage differs: hk0 is fully measured to 15.7 Å⁻¹, while h0l and 0kl stop at 12.5 Å⁻¹ (the box face). The ellipsoidal window handles this by tapering, which is why the overall spill is so small.\n\nSo the forward transform is not reaching past the data, and the ΔPDF's 593σ feature SNR is not an artefact of windowing beyond coverage.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "2177 characters"
+    },
+    {
+     "check": "does not call run_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call tune_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call update_settings",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "says to keep the ellipsoid window",
+     "pass": true,
+     "detail": "“There's no reason to trade that for ripple.”"
+    },
+    {
+     "check": "says that a separable window would reach unmeasured space or break the symmetry",
+     "pass": true,
+     "detail": "“qmax_coverage reports the on‑disk ΔPDF's ellipsoid window puts 3.2e‑6 of its weight on unmeasured reciprocal space — effectively zero, clean.”"
+    }
+   ],
+   "latency_ms": 671390,
+   "usage": {
+    "input": 19975,
+    "output": 8003,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "configure_settings",
+     "args": {},
+     "status": "done",
+     "summary": "55 settings",
+     "result": "{\"settings\":{\"ringsEnabled\":true,\"punchEnabled\":true,\"backfillEnabled\":true,\"flatten\":true,\"pdfEnabled\":true,\"force\":false,\"ringModel\":\"pooled\",\"ringRadialMode\":\"rolling\",\"ringNPatches\":\"(default)\",\"ringNFourier\":\"8\",\"ringSliceAxis\":\"H\",\"ringWidth\":\"(default)\",\"ringGlobalMaterial\":\"auto\",\"ringGlobalSubtraction\":\"conservative\",\"ringGlobalConfidence\":\"1\",\"ringGlobalLmax\":\"4\",\"ringGlobalMinSnr\":\"5\",\"ringPooledSectors\":\"(default)\",\"ringPooledWindow\":\"(default)\",\"punchMinSig\":\"4\",\"punchFootprint\":\"(default)\",\"punchProfileNSigma\":\"(default)\",\"punchMode\":\"(default)\",\"punchSupercellH\":\"2\",\"punchSupercellK\":\"2\",\"punchSupercellL\":\"2\",\"punchHGuard\":\"(default)\",\"punchSearchFloor\":\"(default)\",\"punchProtectH\":\"none\",\"punchProtectHalfWidth\":\"(default)\",\"punchSearchMaxWidth\":\"2\",\"punchFrame\":\"spherical\",\"punchRho\":\"(default)\",\"punchTheta\":\"(default)\",\"punchPhi\":\"(default)\",\"punchQA\":\"(default)\",\"punchQB\":\"(default)\",\"punchQC\":\"(default)\",\"punchFitUnconstrained\":false,\"punchMargin\":\"(default)\",\"incidentBeamQA\":\"(default)\",\"incidentBeamQB\":\"(default)\",\"incidentBeamQC\":\"(default)\",\"incidentBeamMargin\":\"(default)\",\"incidentBeamFitCovariance\":false,\"backfillMethod\":\"(default)\",\"flattenEstimator\":\"(default)\",\"flattenIon\":\"(default)\",\"flattenQ2\":true,\"flattenFitQMax\":\"16\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true,\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\"}}"
+    },
+    {
+     "name": "qmax_coverage",
+     "args": {},
+     "status": "done",
+     "summary": "clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space",
+     "result": "{\"verdict\":\"clean: the ΔPDF's ellipsoid window puts 3.2e-6 of its weight on unmeasured reciprocal space\",\"window_weight_on_unmeasured\":0.000003241850225822034,\"window_shape\":\"ellipsoid\",\"window_scale\":1,\"transform_reach_q\":16.7,\"reach_from\":\"the |Q| band set on the Configure page\",\"full_coverage_q\":12.5,\"box_face_q\":12.5,\"box_corner_q\":16.7,\"low_q_gap\":0.783,\"raw_counts\":{\"q_min_edge\":0.519,\"q_max_edge\":16.7,\"fully_measured\":[0.65,15.85],\"box_face_q\":12.53},\"suggested_band\":[0.55,16.7],\"band_check\":\"the band 0.55–16.7 Å⁻¹ stays inside the counts\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"0.55\",\"pdfQMax\":\"16.70\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true},\"per_plane\":{\"hk0\":{\"full_coverage_q\":15.7,\"half_coverage_q\":15.7,\"box_q\":15.7,\"shells\":[{\"q\":1.37,\"measured\":1},{\"q\":2.93,\"measured\":1},{\"q\":4.5,\"measured\":1},{\"q\":6.07,\"measured\":1},{\"q\":7.63,\"measured\":1},{\"q\":9.2,\"measured\":1},{\"q\":10.8,\"measured\":1},{\"q\":12.3,\"measured\":1},{\"q\":13.9,\"measured\":1},{\"q\":15.5,\"measured\":0.971}]},\"h0l\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]},\"0kl\":{\"full_coverage_q\":12.5,\"half_coverage_q\":12.5,\"box_q\":12.5,\"shells\":[{\"q\":1.1,\"measured\":1},{\"q\":2.35,\"measured\":1},{\"q\":3.6,\"measured\":1},{\"q\":4.86,\"measured\":1},{\"q\":6.11,\"measured\":1},{\"q\":7.36,\"measured\":1},{\"q\":8.61,\"measured\":1},{\"q\":9.87,\"measured\":1},{\"q\":11.1,\"measured\":1},{\"q\":12.4,\"measured\":1}]}}}"
+    }
+   ],
+   "answer": "\n\n\n\n\n\n\nShort answer: no — and the coverage numbers say why, before you even run it.\n\n**What the current (ellipsoid) window does**\n`qmax_coverage` reports the on‑disk ΔPDF's ellipsoid window puts **3.2e‑6** of its weight on unmeasured reciprocal space — effectively zero, clean. Its reach is the set band, **16.7 Å⁻¹** (`pdfQMax`), and the raw counts are fully measured only over **[0.65, 15.85]**, with the box face at **12.5**. The per‑plane full‑coverage is anisotropic: **hk0 → 15.7**, but **h0l → 12.5** and **0kl → 12.5**. The ellipsoid tapers to exactly that anisotropic coverage, which is why the unmeasured weight is negligible.\n\n**What a separable window would do**\nA separable window is a box in H, K, L. Its corners reach the **box corner = 16.7 Å⁻¹** — but the data box ends at the **face = 12.5**, and the h0l/0kl planes stop being fully measured at **12.5**. So the separable box's corners (12.5 → 16.7, worst in the c‑direction diagonals) sit in space that is only partially or not at all measured. It does *not* taper to the anisotropic coverage the way the ellipsoid does, so a substantial share of its weight lands on unmeasured voxels.\n\n**The consequence for your SNR**\nThat extra weight on unmeasured space shows up as FFT ripple in the ΔPDF and pulls the back‑FFT consistency down from its current **r = 1** (normalized RMS 6.4e‑15). So yes, the feature SNR could tick up — but per the usual trap, a higher SNR accompanied by a lower back‑FFT r and Qmax past the coverage is **ripple, not signal**. Your current ΔPDF is already strong and clean (feature SNR **593**, strong‑feature fraction **0.107**, anisotropy **1.02**, radial trend falling 61600 → 13500 → 3260, r = 1). There's no reason to trade that for ripple.\n\n**Recommendation:** keep `pdfWindowShape` on the ellipsoid (it's currently `(default)`, which is the ellipsoid that produced the clean 3.2e‑6). Don't switch.\n\nIf you'd like, I can prove it empirically: set `pdfWindowShape` to `separable`, rerun from `pdf`, and measure the same sections plus `qmax_coverage` and the back‑FFT r — then revert if (as I expect) the SNR gain comes with a dropped r and added ripple. Want me to run that test?",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+    },
+    {
+     "check": "does not call run_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call tune_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call update_settings",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "says to keep the ellipsoid window",
+     "pass": false,
+     "detail": "no sentence says to keep the ellipsoid window"
+    },
+    {
+     "check": "says that a separable window would reach unmeasured space or break the symmetry",
+     "pass": false,
+     "detail": "no sentence says that a separable window would reach unmeasured space or break the symmetry"
+    }
+   ],
+   "latency_ms": 657714,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+    },
+    {
+     "check": "does not call run_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call tune_pipeline",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "does not call update_settings",
+     "pass": true,
+     "detail": "not called"
+    },
+    {
+     "check": "says to keep the ellipsoid window",
+     "pass": false,
+     "detail": "no sentence says to keep the ellipsoid window"
+    },
+    {
+     "check": "says that a separable window would reach unmeasured space or break the symmetry",
+     "pass": false,
+     "detail": "no sentence says that a separable window would reach unmeasured space or break the symmetry"
+    }
+   ],
+   "latency_ms": 219,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+    },
+    {
+     "check": "calls symmetry_check",
+     "pass": false,
+     "detail": "never called symmetry_check"
+    },
+    {
+     "check": "says that the symmetry is kept",
+     "pass": false,
+     "detail": "no sentence says that the symmetry is kept"
+    }
+   ],
+   "latency_ms": 188,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: The model has crashed without additional information. (Exit code: null)"
+    },
+    {
+     "check": "calls symmetry_check",
+     "pass": false,
+     "detail": "never called symmetry_check"
+    },
+    {
+     "check": "says that the symmetry is kept",
+     "pass": false,
+     "detail": "no sentence says that the symmetry is kept"
+    }
+   ],
+   "latency_ms": 202,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "The model has crashed without additional information. (Exit code: null)"
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "846 characters"
+    },
+    {
+     "check": "calls symmetry_check",
+     "pass": true,
+     "detail": "2 call(s)"
+    },
+    {
+     "check": "says that the symmetry is kept",
+     "pass": true,
+     "detail": "“Yes — the ΔPDF kept the cell's in-plane hexagonal symmetry, at both heights I checked:”"
+    }
+   ],
+   "latency_ms": 221011,
+   "usage": {
+    "input": 19228,
+    "output": 879,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "symmetry_check",
+     "args": {
+      "z": 0
+     },
+     "status": "done",
+     "summary": "every in-plane operation holds",
+     "result": "{\"section\":\"ΔPDF x–y section at z = 0 Å\",\"cell\":\"hexagonal\",\"ops\":[{\"op\":\"six-fold (60°)\",\"rms_difference\":0.0000027,\"pairs\":123019},{\"op\":\"three-fold (120°)\",\"rms_difference\":0.0000027,\"pairs\":123019},{\"op\":\"two-fold (180°)\",\"rms_difference\":0,\"pairs\":164025},{\"op\":\"mirror (a ↔ b)\",\"rms_difference\":0.0000029,\"pairs\":164025}],\"holds\":[\"six-fold (60°)\",\"three-fold (120°)\",\"two-fold (180°)\",\"mirror (a ↔ b)\"],\"verdict\":\"kept: every in-plane operation holds to 0.001 or better\"}"
+    },
+    {
+     "name": "symmetry_check",
+     "args": {
+      "z": 5
+     },
+     "status": "done",
+     "summary": "every in-plane operation holds",
+     "result": "{\"section\":\"ΔPDF x–y section at z = 5 Å\",\"cell\":\"hexagonal\",\"ops\":[{\"op\":\"six-fold (60°)\",\"rms_difference\":0.0000093,\"pairs\":123019},{\"op\":\"three-fold (120°)\",\"rms_difference\":0.000011,\"pairs\":123019},{\"op\":\"two-fold (180°)\",\"rms_difference\":0.000013,\"pairs\":164025},{\"op\":\"mirror (a ↔ b)\",\"rms_difference\":0.00001,\"pairs\":164025}],\"holds\":[\"six-fold (60°)\",\"three-fold (120°)\",\"two-fold (180°)\",\"mirror (a ↔ b)\"],\"verdict\":\"kept: every in-plane operation holds to 0.001 or better\"}"
+    }
+   ],
+   "answer": "\n\n\n\n\n\n\nYes — the ΔPDF kept the cell's in-plane hexagonal symmetry, at both heights I checked:\n\n- **z = 0 Å:** six-fold (60°) and three-fold (120°) hold to 2.7×10⁻⁶ of the section RMS, the two-fold to 0, and the a ↔ b mirror to 2.9×10⁻⁶.\n- **z = 5 Å:** the same operations hold to 9.3×10⁻⁶ – 1.3×10⁻⁵.\n\nAll are far below the ~10⁻³ threshold, so no pipeline stage (punch, backfill, flatten, or the transform) broke the in-plane symmetry — the data were evidently symmetrised with these operations and the pipeline preserved that.\n\nTwo caveats: this only tests the **in-plane** operations (6, 3, 2-fold and the a ↔ b mirror) on x–y sections; it says nothing about symmetry along c (e.g. a z-mirror). And the cell is only approximately hexagonal (a = 8.028 vs b = 8.019 Å, γ = 119.98°), so the check is the hexagonal idealisation, not the exact cell.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": false,
+     "detail": "never called qmax_coverage"
+    },
+    {
+     "check": "quotes the upper edge",
+     "pass": false,
+     "detail": "no the upper edge in the tool results to compare with"
+    },
+    {
+     "check": "quotes the lower edge",
+     "pass": false,
+     "detail": "no number within 0.07 of 0.55"
+    }
+   ],
+   "latency_ms": 105005,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": false,
+     "detail": "never called qmax_coverage"
+    },
+    {
+     "check": "quotes the upper edge",
+     "pass": false,
+     "detail": "no the upper edge in the tool results to compare with"
+    },
+    {
+     "check": "quotes the lower edge",
+     "pass": false,
+     "detail": "no number within 0.07 of 0.55"
+    }
+   ],
+   "latency_ms": 154,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+    },
+    {
+     "check": "calls qmax_coverage",
+     "pass": false,
+     "detail": "never called qmax_coverage"
+    },
+    {
+     "check": "quotes the upper edge",
+     "pass": false,
+     "detail": "no the upper edge in the tool results to compare with"
+    },
+    {
+     "check": "quotes the lower edge",
+     "pass": false,
+     "detail": "no number within 0.07 of 0.55"
+    }
+   ],
+   "latency_ms": 60,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 403, in _generate_with_exception_handling\n    self._generate()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/model_kit.py\", line 698, in _generate\n    controller.step_generation()\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/request_lifecycle.py\", line 211, in step_generation\n    prompt_responses, generation_responses = state.batch_generator.next()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1202, in next\n    return self._next()\n           ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 1229, in _next\n    generation_responses = self._generation_batch.next()\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 685, in next\n    tokens, token_logprob_list, top_idx_list, top_logprob_list = self._step()\n                                                                 ^^^^^^^^^^^^\n  File \"/Users/thyang/.lmstudio/extensions/backends/vendor/_amphibian/app-mlx-generate-mac26-arm64@38/lib/python3.11/site-packages/mlx_engine/model_kit/batched_vision/batch_generator.py\", line 488, in _step\n    mx.async_eval(*eval_targets)\nRuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).\n"
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: The model has crashed without additional information. (Exit code: null)"
+    },
+    {
+     "check": "calls grain_check",
+     "pass": false,
+     "detail": "never called grain_check"
+    },
+    {
+     "check": "says that there is no second grain",
+     "pass": false,
+     "detail": "no sentence says that there is no second grain"
+    },
+    {
+     "check": "never claims a second grain",
+     "pass": true,
+     "detail": "not claimed"
+    },
+    {
+     "check": "quotes the offset angle",
+     "pass": false,
+     "detail": "no the offset angle in the tool results to compare with"
+    }
+   ],
+   "latency_ms": 235,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "The model has crashed without additional information. (Exit code: null)"
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "2176 characters"
+    },
+    {
+     "check": "calls grain_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that there is no second grain",
+     "pass": true,
+     "detail": "“No second grain.”"
+    },
+    {
+     "check": "never claims a second grain",
+     "pass": true,
+     "detail": "not claimed"
+    },
+    {
+     "check": "quotes the offset angle",
+     "pass": true,
+     "detail": "wrote 0.85 (measured 0.85)"
+    }
+   ],
+   "latency_ms": 326354,
+   "usage": {
+    "input": 30067,
+    "output": 2712,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 3
+   },
+   "steps": [
+    {
+     "name": "grain_check",
+     "args": {
+      "top": 40
+     },
+     "status": "done",
+     "summary": "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits (random directions: 3). 35 of them s…",
+     "result": "{\"off_lattice_orbits\":581,\"judged\":40,\"near_bragg_nodes\":35,\"near_offset_angle_deg\":{\"median\":0.85,\"quartiles\":[0.74,0.93]},\"far\":[{\"hkl\":[-9.5,3.5,-4.3],\"q\":7.999,\"offset_q\":0.489},{\"hkl\":[-1.8,3.2,-5.4],\"q\":4.211,\"offset_q\":0.752},{\"hkl\":[-3.5,3.4,-2.4],\"q\":3.466,\"offset_q\":0.563},{\"hkl\":[-3.8,1.1,-3.2],\"q\":3.667,\"offset_q\":0.893},{\"hkl\":[-8.3,-1.4,-15.8],\"q\":12.897,\"offset_q\":0.487}],\"rotated_copy\":{\"indexed\":2,\"misorientation_deg\":20.19},\"random_control\":3,\"verdict\":\"no second grain of this phase: a rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits (random directions: 3). 35 of them sit within a quarter of the node spacing of a Bragg node, offset by a median 0.85° of rotation (a lower bound: a node at an angle to the rotation axis moves less): copies of the crystal's own Bragg peaks, displaced by symmetrising data whose UB is off by about that angle; a UB refined on the unsymmetrised data would put them back on the nodes. 5 lie farther from any node; their origin is open (another phase, multiple scattering, or an artefact)\",\"off_lattice_peaks\":12219,\"declared_symmetry\":\"6/mmm\",\"punch_cell\":[2,2,2]}"
+    },
+    {
+     "name": "ub_check",
+     "args": {},
+     "status": "done",
+     "summary": "symmetric: RMS 0.0563 → 0.0396 Å⁻¹ over 3074 peaks; a 8.028 → 7.994 Å, c 10.030 → 10.017 Å; turned 0.000°",
+     "result": "{\"fit\":\"symmetric\",\"bragg_nodes_every\":[2,2,2],\"symmetry_from\":\"sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs\",\"symmetrised\":true,\"symmetry_break\":0,\"peaks\":{\"searched\":6858,\"used\":3074,\"rejected\":1145},\"rms_start\":0.0563,\"rms\":0.0396,\"cell_start\":\"8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°\",\"cell\":\"7.9935, 7.9842, 10.0172 Å; 90.134°, 90.232°, 119.979°\",\"orientation_change_deg\":0,\"axis_uvw\":[0,0,0],\"transform_diagonal\":[1.004375,1.004375,1.001245],\"passes\":[{\"q_max\":11.27,\"found\":1668,\"used\":1494,\"rms\":\"0.0337 → 0.0214\"},{\"q_max\":22.53,\"found\":4219,\"used\":3072,\"rms\":\"0.0563 → 0.0396\"},{\"q_max\":33.8,\"found\":4219,\"used\":3074,\"rms\":\"0.0563 → 0.0396\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":18,\"before\":0.003,\"after\":-0.0014},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":48,\"before\":0.0016,\"after\":-0.0021},{\"q\":\"0–4\",\"direction\":\"near the third axis\",\"n\":6,\"before\":0.0049,\"after\":0.0037},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":108,\"before\":0.002,\"after\":-0.0023},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":306,\"before\":0.0027,\"after\":-0.00066},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":90,\"before\":0.0029,\"after\":0.0011},{\"q\":\"8–12\",\"direction\":\"in-plane\",\"n\":336,\"before\":0.0028,\"after\":-0.0015},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":876,\"before\":0.0031,\"after\":-0.00044},{\"q\":\"8–12\",\"direction\":\"near the third axis\",\"n\":238,\"before\":0.0035,\"after\":0.0017},{\"q\":\"12–16\",\"direction\":\"in-plane\",\"n\":156,\"before\":0.0032,\"after\":-0.0011},{\"q\":\"12–16\",\"direction\":\"oblique\",\"n\":766,\"before\":0.0035,\"after\":0.00018},{\"q\":\"12–16\",\"direction\":\"near the third axis\",\"n\":64,\"before\":0.0037,\"after\":0.0018},{\"q\":\"≥ 16\",\"direction\":\"oblique\",\"n\":62,\"before\":0.0048,\"after\":0.002}],\"reading\":\"The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data.\"}"
+    }
+   ],
+   "answer": "\n\n\n\n\n\n\n\n\n\n**No second grain.** The punch's search found 12,219 sharp off-lattice peaks (of 16,409 fitted; 4,190 sit on the Bragg nodes of the doubled cell). `grain_check` grouped them into 581 symmetry orbits (declared 6/mmm) and tested the 40 strongest:\n\n- **Rotated-copy test:** a single rotation indexes only **2 of 40** orbits (random directions: 3) — well below the bar for a second grain. Verdict: *no second grain of this phase*.\n- **35 of 40** orbits lie within a quarter of the node spacing of a Bragg node, offset by a **median 0.85°** of rotation (a lower bound, since a node at an angle to the rotation axis moves less). These are **copies of the crystal's own Bragg peaks, displaced because the UB is off by about that angle** — the volume was symmetrised (6/mmm), which smears a slightly misoriented peak into displaced copies around each node.\n- **5 orbits** sit farther from any node (offsets 0.49–0.89 Å⁻¹, e.g. (−9.5, 3.5, −4.3) at |Q| = 8.0); their origin is open — another phase, multiple scattering, or an artefact. They are a small minority and not a grain.\n\n**What the UB check adds:** `ub_check` on this symmetrised volume can only fit the changes that commute with the 6/mmm operations (scales, not orientation — orientation change 0° by construction). It improves the peak-centre rms from **0.0563 → 0.0396** and shrinks the cell from **8.0285, 8.0191, 10.0297 Å to 7.9935, 7.9842, 10.0172 Å** (≈0.44% in-plane, 0.12% along c). The residual radial offsets are ≈0.2–0.5% and **constant with |Q|** in every direction band (0.002–0.003 in-plane, 0.003–0.005 near c) — the signature of a scale error, not a |Q|-dependent effect. So the scale part of the UB is genuinely off; the ~0.85° rotation part **cannot be refined on this symmetrised file** — it needs the unsymmetrised data.\n\nPractical consequence: the off-lattice peaks the punch removed are Bragg intensity, not diffuse signal, so punching them is harmless for the ΔPDF — but if the UB (scale + orientation, from the unsymmetrised volume) is corrected, those copies fall back onto the nodes and get removed as ordinary Bragg peaks, and the 5 unexplained orbits would be the ones left to explain.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1560 characters"
+    },
+    {
+     "check": "calls grain_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that there is no second grain",
+     "pass": true,
+     "detail": "“No second grain.”"
+    },
+    {
+     "check": "never claims a second grain",
+     "pass": true,
+     "detail": "not claimed"
+    },
+    {
+     "check": "quotes the offset angle",
+     "pass": true,
+     "detail": "wrote 0.85 (measured 0.85)"
+    }
+   ],
+   "latency_ms": 197617,
+   "usage": {
+    "input": 19232,
+    "output": 1867,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "grain_check",
+     "args": {},
+     "status": "done",
+     "summary": "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits (random directions: 3). 35 of them s…",
+     "result": "{\"off_lattice_orbits\":581,\"judged\":40,\"near_bragg_nodes\":35,\"near_offset_angle_deg\":{\"median\":0.85,\"quartiles\":[0.74,0.93]},\"far\":[{\"hkl\":[-9.5,3.5,-4.3],\"q\":7.999,\"offset_q\":0.489},{\"hkl\":[-1.8,3.2,-5.4],\"q\":4.211,\"offset_q\":0.752},{\"hkl\":[-3.5,3.4,-2.4],\"q\":3.466,\"offset_q\":0.563},{\"hkl\":[-3.8,1.1,-3.2],\"q\":3.667,\"offset_q\":0.893},{\"hkl\":[-8.3,-1.4,-15.8],\"q\":12.897,\"offset_q\":0.487}],\"rotated_copy\":{\"indexed\":2,\"misorientation_deg\":20.19},\"random_control\":3,\"verdict\":\"no second grain of this phase: a rotated copy of the Bragg lattice indexes only 2 of the 40 strongest off-lattice orbits (random directions: 3). 35 of them sit within a quarter of the node spacing of a Bragg node, offset by a median 0.85° of rotation (a lower bound: a node at an angle to the rotation axis moves less): copies of the crystal's own Bragg peaks, displaced by symmetrising data whose UB is off by about that angle; a UB refined on the unsymmetrised data would put them back on the nodes. 5 lie farther from any node; their origin is open (another phase, multiple scattering, or an artefact)\",\"off_lattice_peaks\":12219,\"declared_symmetry\":\"6/mmm\",\"punch_cell\":[2,2,2]}"
+    }
+   ],
+   "answer": "\n\n\n\n\n\nNo second grain. The punch's search punched **12,219 off-lattice peaks**, which group into **581 symmetry orbits** under the declared 6/mmm; I judged the 40 strongest:\n\n- **No rotated copy of the Bragg lattice**: a single rotation (20.19°) indexes only **2 of 40** strong orbits, versus **3** for random directions — i.e. no better than chance. There is no twin or second grain of this phase.\n- **35 of 40 orbits sit within a quarter of the node spacing of a Bragg node**, offset by a median **0.85°** of rotation (quartiles 0.74–0.93°; a lower bound, since a node at an angle to the rotation axis moves less). These are **copies of the crystal's own Bragg peaks, displaced because the data were symmetrised with a UB that is off by about that angle** — symmetrising smears each peak into a ring of copies around its node, and the search finds those copies off-lattice. A UB refined on the unsymmetrised data would put them back on the nodes.\n- **5 orbits lie farther from any node** (offsets 0.49–0.89 Å⁻¹, |Q| = 3.5–12.9 Å⁻¹); their origin is open — another phase, multiple scattering, or an artefact.\n\nThis is consistent with the fitted-peak profile in the context: the peaks are elongated (median anisotropy **3.15**, only **5.1%** resolution-limited, median widths 0.121/0.332/0.279 Å⁻¹) — smeared displaced copies, not a sharp second lattice.\n\nIf you'd like, I can run `ub_check` to confirm the ~0.85° UB misorientation (on the symmetrised volume it will fit only the changes the symmetry keeps — the full orientation needs the unsymmetrised file).",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "2518 characters"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that the orientation needs the unsymmetrised data",
+     "pass": true,
+     "detail": "“But because the data are symmetrised, this is not a full UB validation: the orientation is untestable here and would need the unsymmetrised file.”"
+    }
+   ],
+   "latency_ms": 330703,
+   "usage": {
+    "input": 19729,
+    "output": 3817,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "ub_check",
+     "args": {},
+     "status": "done",
+     "summary": "symmetric: RMS 0.0563 → 0.0396 Å⁻¹ over 3074 peaks; a 8.028 → 7.994 Å, c 10.030 → 10.017 Å; turned 0.000°",
+     "result": "{\"fit\":\"symmetric\",\"bragg_nodes_every\":[2,2,2],\"symmetry_from\":\"sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs\",\"symmetrised\":true,\"symmetry_break\":0,\"peaks\":{\"searched\":6858,\"used\":3074,\"rejected\":1145},\"rms_start\":0.0563,\"rms\":0.0396,\"cell_start\":\"8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°\",\"cell\":\"7.9935, 7.9842, 10.0172 Å; 90.134°, 90.232°, 119.979°\",\"orientation_change_deg\":0,\"axis_uvw\":[0,0,0],\"transform_diagonal\":[1.004375,1.004375,1.001245],\"passes\":[{\"q_max\":11.27,\"found\":1668,\"used\":1494,\"rms\":\"0.0337 → 0.0214\"},{\"q_max\":22.53,\"found\":4219,\"used\":3072,\"rms\":\"0.0563 → 0.0396\"},{\"q_max\":33.8,\"found\":4219,\"used\":3074,\"rms\":\"0.0563 → 0.0396\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":18,\"before\":0.003,\"after\":-0.0014},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":48,\"before\":0.0016,\"after\":-0.0021},{\"q\":\"0–4\",\"direction\":\"near the third axis\",\"n\":6,\"before\":0.0049,\"after\":0.0037},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":108,\"before\":0.002,\"after\":-0.0023},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":306,\"before\":0.0027,\"after\":-0.00066},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":90,\"before\":0.0029,\"after\":0.0011},{\"q\":\"8–12\",\"direction\":\"in-plane\",\"n\":336,\"before\":0.0028,\"after\":-0.0015},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":876,\"before\":0.0031,\"after\":-0.00044},{\"q\":\"8–12\",\"direction\":\"near the third axis\",\"n\":238,\"before\":0.0035,\"after\":0.0017},{\"q\":\"12–16\",\"direction\":\"in-plane\",\"n\":156,\"before\":0.0032,\"after\":-0.0011},{\"q\":\"12–16\",\"direction\":\"oblique\",\"n\":766,\"before\":0.0035,\"after\":0.00018},{\"q\":\"12–16\",\"direction\":\"near the third axis\",\"n\":64,\"before\":0.0037,\"after\":0.0018},{\"q\":\"≥ 16\",\"direction\":\"oblique\",\"n\":62,\"before\":0.0048,\"after\":0.002}],\"reading\":\"The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data.\"}"
+    }
+   ],
+   "answer": "\n\nI'll check the UB directly by fitting it to the measured Bragg peak centres.\n\n\n\n\n\n## Short answer: partly. The in‑plane (a, b) scale in the file is slightly wrong; the c axis is fine; and the orientation can't be judged from this file at all.\n\n**What the fit could and couldn't do.** The volume is symmetrised (6/mmm, `symmetry_break = 0`), so `ub_check` fitted only the changes that commute with those operations — the in‑plane (hk) scale and the c scale. It could **not** fit a rotation (`orientation_change = 0°`): in a symmetrised volume a misorientation hides as rings around the nodes, not as shifts. So this test speaks to the cell, not the orientation.\n\n**What it found** (3074 peaks used of 6858 searched; 1145 rejected):\n\n- **In‑plane (a, b) — genuinely off, and corrected.** The peak‑centre misfit dropped `rms 0.0563 → 0.0396`, and a, b shrank from **8.0285 / 8.0191 Å → 7.9935 / 7.9842 Å** (a ~0.44% correction, `transform_diagonal` 1.0044). The in‑plane radial offset was *constant* with |Q| before the fit (0.003, 0.002, 0.0028, 0.0032 across the 0–4 → 12–16 Å⁻¹ bands) and is removed after (≈ −0.001 to −0.002). A relative offset that is the same at every |Q| is exactly the signature of a UB scale error — so this part of the UB was wrong and the fit fixes it.\n- **c axis — essentially right.** c moved only 10.0297 → 10.0172 Å (~0.12%, `transform_diagonal` 1.0012); the near‑c radial offset is small and roughly flat.\n- **Oblique direction — not a UB error.** Its relative offset *grows* with |Q| (0.0016 at 0–4 Å⁻¹ up to 0.0048 at ≥16 Å⁻¹) and the fit only averages it (after: −0.0021 → +0.002). A |Q|‑dependent shift is not something a UB refinement can remove; it's a separate effect (consistent with the symmetrisation smearing peaks into the rings you see in the ring‑removal residuals).\n\n**Verdict.** The cell parameters stored in the file are a little off — a and b are ~0.4% too large — and the fit corrects that. The c axis was fine. But because the data are symmetrised, this is **not** a full UB validation: the orientation is untestable here and would need the unsymmetrised file. And the residual |Q|‑dependent oblique shift is not a UB error, so don't read the remaining `rms = 0.0396` as \"the UB is still 0.04 off\" — part of it is irreducible from this symmetrised volume.\n\nIf you want, I can check whether the corrected a/b (7.9935/7.9842 Å) is what the rest of the pipeline (punch nodes, ΔPDF) actually assumes, or look at the unsymmetrised file for the orientation if you have it.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "2623 characters"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that the orientation needs the unsymmetrised data",
+     "pass": true,
+     "detail": "“The orientation can only be checked on the unsymmetrised file.”"
+    }
+   ],
+   "latency_ms": 489535,
+   "usage": {
+    "input": 21112,
+    "output": 5197,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "ub_check",
+     "args": {},
+     "status": "done",
+     "summary": "symmetric: RMS 0.0563 → 0.0396 Å⁻¹ over 3074 peaks; a 8.028 → 7.994 Å, c 10.030 → 10.017 Å; turned 0.000°",
+     "result": "{\"fit\":\"symmetric\",\"bragg_nodes_every\":[2,2,2],\"symmetry_from\":\"sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs\",\"symmetrised\":true,\"symmetry_break\":0,\"peaks\":{\"searched\":6858,\"used\":3074,\"rejected\":1145},\"rms_start\":0.0563,\"rms\":0.0396,\"cell_start\":\"8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°\",\"cell\":\"7.9935, 7.9842, 10.0172 Å; 90.134°, 90.232°, 119.979°\",\"orientation_change_deg\":0,\"axis_uvw\":[0,0,0],\"transform_diagonal\":[1.004375,1.004375,1.001245],\"passes\":[{\"q_max\":11.27,\"found\":1668,\"used\":1494,\"rms\":\"0.0337 → 0.0214\"},{\"q_max\":22.53,\"found\":4219,\"used\":3072,\"rms\":\"0.0563 → 0.0396\"},{\"q_max\":33.8,\"found\":4219,\"used\":3074,\"rms\":\"0.0563 → 0.0396\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":18,\"before\":0.003,\"after\":-0.0014},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":48,\"before\":0.0016,\"after\":-0.0021},{\"q\":\"0–4\",\"direction\":\"near the third axis\",\"n\":6,\"before\":0.0049,\"after\":0.0037},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":108,\"before\":0.002,\"after\":-0.0023},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":306,\"before\":0.0027,\"after\":-0.00066},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":90,\"before\":0.0029,\"after\":0.0011},{\"q\":\"8–12\",\"direction\":\"in-plane\",\"n\":336,\"before\":0.0028,\"after\":-0.0015},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":876,\"before\":0.0031,\"after\":-0.00044},{\"q\":\"8–12\",\"direction\":\"near the third axis\",\"n\":238,\"before\":0.0035,\"after\":0.0017},{\"q\":\"12–16\",\"direction\":\"in-plane\",\"n\":156,\"before\":0.0032,\"after\":-0.0011},{\"q\":\"12–16\",\"direction\":\"oblique\",\"n\":766,\"before\":0.0035,\"after\":0.00018},{\"q\":\"12–16\",\"direction\":\"near the third axis\",\"n\":64,\"before\":0.0037,\"after\":0.0018},{\"q\":\"≥ 16\",\"direction\":\"oblique\",\"n\":62,\"before\":0.0048,\"after\":0.002}],\"reading\":\"The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data.\"}"
+    },
+    {
+     "name": "describe_dataset",
+     "args": {},
+     "status": "done",
+     "summary": "90K · sym6mmm: raw, ringremoved, braggpunched, backfilled, flattened, delta_pdf",
+     "result": "{\"dataset\":\"90K · sym6mmm\",\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg-sym6mmm\",\"stages\":[\"raw\",\"ringremoved\",\"braggpunched\",\"backfilled\",\"flattened\",\"delta_pdf\"],\"reciprocal\":{\"grid\":[401,401,401],\"H\":[-20,20],\"K\":[-20,20],\"L\":[-20,20],\"planes\":[\"hk0\",\"h0l\",\"0kl\"]},\"cell\":{\"a\":8.0284791524381,\"b\":8.019123840772787,\"c\":10.029686360318104,\"alpha\":90.13354720062244,\"beta\":90.23166622743771,\"gamma\":119.978656300225},\"delta_pdf\":{\"grid\":[405,405,405],\"x\":[-40.04,40.04],\"y\":[-40,40],\"z\":[-50.02,50.02],\"q_max\":16.7,\"planes\":[\"xy\",\"xz\",\"yz\"]},\"other_datasets\":[{\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg\",\"label\":\"90K · (h,k,0) [0,0,l] [-20.0,20.0] [-20.0,20.0] [-20.0,20.0]\"},{\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg-sym6mmm~tune~20261010T142319-8784\",\"label\":\"90K · tuned 14:23\"},{\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg-sym6mmm~tune~20261010T134213-52e4\",\"label\":\"90K · tuned 13:42\"},{\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg-sym6mmm~tune~20261010T122741-e276\",\"label\":\"90K · tuned 12:27\"},{\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg-ubrefined-sym6mmm\",\"label\":\"90K · ubrefined\"},{\"id\":\"sampleB-100K-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc-sub-bkg\",\"label\":\"100K\"},{\"id\":\"sampleB-22K-mmm-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc\",\"label\":\"22K · cc\"},{\"id\":\"sampleB-22K-mmm-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc-sub-bkg\",\"label\":\"22K · sub bkg\"},{\"id\":\"sampleB-28K-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc-sub-bkg\",\"label\":\"28K\"},{\"id\":\"sampleB-45K-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc-sub-bkg\",\"label\":\"45K\"},{\"id\":\"sampleB-45K-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc-sub-bkg~tune~20261010T100059-97e2\",\"label\":\"45K · tuned 10:00\"}]}"
+    }
+   ],
+   "answer": "\n\n\n\n\n\n\nI ran `ub_check` on the raw volume. Here's what it found, and the honest verdict.\n\n## What the fit did\nBecause this volume is **symmetrised (sym6mmm)**, the fit is `symmetric` — it could only adjust the UB changes that commute with the 6/mmm operations (the scale of the *hk* plane and the scale of *l*). It could **not** fit a rotation: `orientation_change_deg = 0`.\n\n- **rms of peak-centre offset: 0.0563 → 0.0396** (a real but partial improvement)\n- **Cell before → after:** a 8.0285 → **7.9935**, b 8.0191 → **7.9842**, c 10.0297 → **10.0172** Å (angles unchanged at 90.134/90.232/119.979°)\n- Transform diagonal [1.0044, 1.0044, 1.0012] — i.e. the fit rescales the *hk* plane by **~0.44%** and *l* by **~0.12%**.\n\n## What the radial offsets show\nThe median offset of peak centres along **Q**, relative to |Q|, is **~0.2–0.5% and roughly constant across every |Q| band** (in-plane 0.003→0.002→0.0028→0.0032; oblique 0.0016→0.0027→0.0031→0.0035; near-c 0.0049→0.0029→0.0035→0.0037). A relative offset that is the same at every |Q| along a direction is the signature of a **UB scale error**, not a |Q|-dependent effect. So the discrepancy is a genuine UB problem, not a data artefact.\n\nBut the fit only partly removes it, and the direction families **don't agree**: after the fit, in-plane goes slightly negative (−0.001 to −0.002) while **near-c stays positive at +0.001 to +0.004**. A pure scale cannot fix a direction-dependent offset.\n\n## Verdict\n**The UB is not exactly right, but this file can only prove half of that.**\n\n1. **There is a real, correctable scale error** — the in-plane lattice parameter is ~0.4% too large (c ~0.1% too large). That part is unambiguous.\n2. **A residual ~0.4% offset remains and is direction-dependent**, which a scale-only (symmetric) fit cannot explain away. The most likely cause is a **slight misorientation** — but because the volume was symmetrised, a misorientation is hidden as *rings around the nodes* rather than shifts, so the fit is blind to it. **The orientation can only be checked on the unsymmetrised file.**\n3. One caution on the magnitude: the fitted peaks are strongly elongated (`median_anisotropy` 3.15, only 5% resolution-limited), so the \"centre\" of each peak is poorly defined and inflates the rms beyond the pure UB error.\n\n**Bottom line:** the in-plane cell is ~0.4% too big — a real UB scale error worth correcting. Whether there is *also* a misorientation cannot be settled from this symmetrised volume; you'd need to run the check on the unsymmetrised dataset (e.g. the `90K · (h,k,0)` file without `sym6mmm`). Want me to run `ub_check` on that one?",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "1966 characters"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "says that the orientation needs the unsymmetrised data",
+     "pass": true,
+     "detail": "“The orientation of the UB cannot be confirmed from this file; you'd need the unsymmetrised data for that.”"
+    }
+   ],
+   "latency_ms": 330291,
+   "usage": {
+    "input": 19733,
+    "output": 3901,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "ub_check",
+     "args": {},
+     "status": "done",
+     "summary": "symmetric: RMS 0.0563 → 0.0396 Å⁻¹ over 3074 peaks; a 8.028 → 7.994 Å, c 10.030 → 10.017 Å; turned 0.000°",
+     "result": "{\"fit\":\"symmetric\",\"bragg_nodes_every\":[2,2,2],\"symmetry_from\":\"sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs\",\"symmetrised\":true,\"symmetry_break\":0,\"peaks\":{\"searched\":6858,\"used\":3074,\"rejected\":1145},\"rms_start\":0.0563,\"rms\":0.0396,\"cell_start\":\"8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°\",\"cell\":\"7.9935, 7.9842, 10.0172 Å; 90.134°, 90.232°, 119.979°\",\"orientation_change_deg\":0,\"axis_uvw\":[0,0,0],\"transform_diagonal\":[1.004375,1.004375,1.001245],\"passes\":[{\"q_max\":11.27,\"found\":1668,\"used\":1494,\"rms\":\"0.0337 → 0.0214\"},{\"q_max\":22.53,\"found\":4219,\"used\":3072,\"rms\":\"0.0563 → 0.0396\"},{\"q_max\":33.8,\"found\":4219,\"used\":3074,\"rms\":\"0.0563 → 0.0396\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":18,\"before\":0.003,\"after\":-0.0014},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":48,\"before\":0.0016,\"after\":-0.0021},{\"q\":\"0–4\",\"direction\":\"near the third axis\",\"n\":6,\"before\":0.0049,\"after\":0.0037},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":108,\"before\":0.002,\"after\":-0.0023},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":306,\"before\":0.0027,\"after\":-0.00066},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":90,\"before\":0.0029,\"after\":0.0011},{\"q\":\"8–12\",\"direction\":\"in-plane\",\"n\":336,\"before\":0.0028,\"after\":-0.0015},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":876,\"before\":0.0031,\"after\":-0.00044},{\"q\":\"8–12\",\"direction\":\"near the third axis\",\"n\":238,\"before\":0.0035,\"after\":0.0017},{\"q\":\"12–16\",\"direction\":\"in-plane\",\"n\":156,\"before\":0.0032,\"after\":-0.0011},{\"q\":\"12–16\",\"direction\":\"oblique\",\"n\":766,\"before\":0.0035,\"after\":0.00018},{\"q\":\"12–16\",\"direction\":\"near the third axis\",\"n\":64,\"before\":0.0037,\"after\":0.0018},{\"q\":\"≥ 16\",\"direction\":\"oblique\",\"n\":62,\"before\":0.0048,\"after\":0.002}],\"reading\":\"The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data.\"}"
+    }
+   ],
+   "answer": "\n\nI'll check the UB directly by fitting it to the measured Bragg peak centres on the raw volume.\n\n\n\n\n\nShort answer: **the cell part of the UB is slightly off, and the orientation can't be judged from this file.** Here's what the fit to the measured Bragg peak centres (3074 of 6858 searched) shows:\n\n**What the fit changed**\n- rms of peak-centre scatter: **0.0563 → 0.0396** (i.e. 5.6% → 4.0% of |Q|) — a real but modest improvement.\n- Cell before → after: **a 8.0285 → 7.9935 Å, b 8.0191 → 7.9842 Å, c 10.0297 → 10.0172 Å**; angles unchanged (90.134°, 90.232°, 119.979°).\n- So the current in-plane cell is **~0.44% too large** and c **~0.12% too large** (transform diagonal 1.0044, 1.0044, 1.0012). The volume is indexed on a doubled cell (Bragg nodes every 2,2,2).\n\n**Why it's not a clean \"UB is wrong\" verdict**\n- The residual relative offsets are small (0.2–0.5% of |Q|) and **vary with |Q|** — e.g. in-plane 0.003 → 0.002 → 0.0028 → 0.0032, oblique 0.0016 → 0.0027 → 0.0031 → 0.0035 → 0.0048, near-c 0.0049 → 0.0029 → 0.0035 → 0.0037. A pure UB scale error would give the *same* relative offset at every |Q| along a direction; these don't, so part of the 4% is intrinsic (peak broadening / symmetrisation smearing), not a uniform mis-scale. The fit is only averaging it.\n\n**The key caveat**\n- The volume is **symmetrised (6/mmm)**, so the fit is `symmetric`: it could only adjust the cell scales that commute with the symmetry. It found **no rotation (0°, axis [0,0,0])** — not because there is none, but because a misorientation in a symmetrised volume hides as rings around the nodes, not shifts. **The orientation of the UB cannot be confirmed from this file; you'd need the unsymmetrised data for that.**\n\nSo: the cell is a touch too big (worth correcting if you want the tightest peak centres), but I can't certify the orientation from a symmetrised volume. Want me to apply the fitted cell (a 7.9935, b 7.9842, c 10.0172) and rerun, or leave the UB as-is?",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: This operation was aborted"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": false,
+     "detail": "never called ub_check"
+    },
+    {
+     "check": "quotes the rotation",
+     "pass": false,
+     "detail": "no the rotation in the tool results to compare with"
+    },
+    {
+     "check": "quotes the refined a",
+     "pass": false,
+     "detail": "no the refined a in the tool results to compare with"
+    }
+   ],
+   "latency_ms": 1198964,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "This operation was aborted"
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": true,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": true,
+     "detail": "2626 characters"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": true,
+     "detail": "1 call(s)"
+    },
+    {
+     "check": "quotes the rotation",
+     "pass": true,
+     "detail": "wrote 0.874 (measured 0.874)"
+    },
+    {
+     "check": "quotes the refined a",
+     "pass": true,
+     "detail": "wrote 8.0021 (measured 8.0021)"
+    }
+   ],
+   "latency_ms": 585893,
+   "usage": {
+    "input": 19451,
+    "output": 6721,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 2
+   },
+   "steps": [
+    {
+     "name": "describe_dataset",
+     "args": {},
+     "status": "done",
+     "summary": "90K · (h,k,0) [0,0,l] [-20.0,20.0] [-20.0,20.0] [-20.0,20.0]: raw",
+     "result": "{\"dataset\":\"90K · (h,k,0) [0,0,l] [-20.0,20.0] [-20.0,20.0] [-20.0,20.0]\",\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg\",\"stages\":[\"raw\"],\"reciprocal\":{\"grid\":[401,401,401],\"H\":[-20,20],\"K\":[-20,20],\"L\":[-20,20],\"planes\":[\"hk0\",\"h0l\",\"0kl\"]},\"cell\":{\"a\":8.0284791524381,\"b\":8.019123840772787,\"c\":10.029686360318104,\"alpha\":90.13354720062244,\"beta\":90.23166622743771,\"gamma\":119.978656300225},\"delta_pdf\":null,\"other_datasets\":[{\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg-sym6mmm\",\"label\":\"90K · sym6mmm\"},{\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg-sym6mmm~tune~20261010T142319-8784\",\"label\":\"90K · tuned 14:23\"},{\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg-sym6mmm~tune~20261010T134213-52e4\",\"label\":\"90K · tuned 13:42\"},{\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg-sym6mmm~tune~20261010T122741-e276\",\"label\":\"90K · tuned 12:27\"},{\"id\":\"sampleA-90K-all-hex-h-k-0-0-0-l-20-0-20-0-20-0-20-0-20-0-20-0-401x401x401-sub-bkg-ubrefined-sym6mmm\",\"label\":\"90K · ubrefined\"},{\"id\":\"sampleB-100K-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc-sub-bkg\",\"label\":\"100K\"},{\"id\":\"sampleB-22K-mmm-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc\",\"label\":\"22K · cc\"},{\"id\":\"sampleB-22K-mmm-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc-sub-bkg\",\"label\":\"22K · sub bkg\"},{\"id\":\"sampleB-28K-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc-sub-bkg\",\"label\":\"28K\"},{\"id\":\"sampleB-45K-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc-sub-bkg\",\"label\":\"45K\"},{\"id\":\"sampleB-45K-0-k-l-h-0-0-12-0-12-0-30-0-30-0-5-0-5-0-401x401x301-mmm-cc-sub-bkg~tune~20261010T100059-97e2\",\"label\":\"45K · tuned 10:00\"}]}"
+    },
+    {
+     "name": "ub_check",
+     "args": {},
+     "status": "done",
+     "summary": "both: RMS 0.1354 → 0.0347 Å⁻¹ over 1811 peaks; a 8.028 → 8.002 Å, c 10.030 → 9.988 Å; turned 0.874°",
+     "result": "{\"fit\":\"both\",\"bragg_nodes_every\":[2,2,2],\"symmetry_from\":\"sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs\",\"symmetrised\":false,\"symmetry_break\":5.1,\"peaks\":{\"searched\":6858,\"used\":1811,\"rejected\":282},\"rms_start\":0.1354,\"rms\":0.0347,\"cell_start\":\"8.0285, 8.0191, 10.0297 Å; 90.134°, 90.232°, 119.979°\",\"cell\":\"8.0021, 8.0021, 9.9881 Å; 90.000°, 90.000°, 120.000°\",\"orientation_change_deg\":0.874,\"axis_uvw\":[1,-0.028,-0.432],\"transform_diagonal\":[0.999324,1.006213,1.004073],\"passes\":[{\"q_max\":11.27,\"found\":1071,\"used\":957,\"rms\":\"0.1040 → 0.0307\"},{\"q_max\":22.53,\"found\":2093,\"used\":1812,\"rms\":\"0.1354 → 0.0347\"},{\"q_max\":33.8,\"found\":2093,\"used\":1811,\"rms\":\"0.1354 → 0.0347\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":15,\"before\":0.000063,\"after\":-0.0023},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":32,\"before\":0.00061,\"after\":-0.0023},{\"q\":\"0–4\",\"direction\":\"near the third axis\",\"n\":4,\"before\":0.0048,\"after\":0.00074},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":64,\"before\":0.0017,\"after\":-0.0008},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":196,\"before\":0.0023,\"after\":-0.00054},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":50,\"before\":0.0031,\"after\":-0.00033},{\"q\":\"8–12\",\"direction\":\"in-plane\",\"n\":175,\"before\":0.0025,\"after\":-0.00011},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":468,\"before\":0.0031,\"after\":-0.000062},{\"q\":\"8–12\",\"direction\":\"near the third axis\",\"n\":116,\"before\":0.0033,\"after\":-0.000077},{\"q\":\"12–16\",\"direction\":\"in-plane\",\"n\":148,\"before\":0.0029,\"after\":0.00028},{\"q\":\"12–16\",\"direction\":\"oblique\",\"n\":468,\"before\":0.0035,\"after\":0.00013},{\"q\":\"12–16\",\"direction\":\"near the third axis\",\"n\":48,\"before\":0.0032,\"after\":-0.000073},{\"q\":\"≥ 16\",\"direction\":\"oblique\",\"n\":25,\"before\":0.0039,\"after\":0.00021}],\"reading\":\"The rotation and the cell were fitted together, the cell constrained by the operations sampleA_90K_all_hex__h_k_0___0_0_l___-20.0_20.0___-20.0_20.0___-20.0_20.0__401x401x401_sub_bkg_sym6mmm.nxs declares.\"}"
+    }
+   ],
+   "answer": "\n\nI'll check the dataset state and run the UB fit on the raw volume.\n\n\n\n\n\n\nI ran the UB fit on the raw (non‑symmetrised) 90K volume. Here's what it found.\n\n## The fit\nBecause this volume is **not** symmetrised (`symmetrised: false`), the fit used `both` — rotation and cell together — with the cell constrained to the declared 6/mmm hexagonal symmetry. It used 1811 of 6858 searched peak centres (282 rejected).\n\n**Result: the UB was off.**\n\n| Quantity | Before | After fit |\n|---|---|---|\n| a | 8.0285 Å | 8.0021 Å (−0.33 %) |\n| b | 8.0191 Å | 8.0021 Å (−0.21 %) |\n| c | 10.0297 Å | 9.9881 Å (−0.41 %) |\n| α / β / γ | 90.134° / 90.232° / 119.979° | 90° / 90° / 120° |\n| orientation | — | **0.874°** rotation about [1, −0.028, −0.432] |\n| peak‑centre rms | 0.1354 | **0.0347** (~4× lower) |\n\nSo the original UB had a slightly non‑hexagonal cell (a ≠ b, angles 0.13–0.23° off ideal) that the fit pulled to a = b = 8.0021, 90/90/120, plus a ~0.87° misorientation. That is a real, non‑trivial correction, and it cut the peak‑centre rms from 0.1354 to 0.0347.\n\n## The caveat — part of the displacement is *not* a UB error\nThe radial check (relative offset along Q, before the fit) does **not** look like a rigid misorientation:\n\n- **in‑plane:** 0.00006 → 0.0017 → 0.0025 → 0.0029 (grows with |Q|)\n- **oblique:** 0.0006 → 0.0023 → 0.0031 → 0.0035 → 0.0039 (grows with |Q|)\n- **near the third axis:** 0.0048 → 0.0031 → 0.0033 → 0.0032 (roughly constant)\n\nA genuine UB error (rotation or scale) gives the *same* relative offset at every |Q| along a direction. Only the near‑third‑axis direction behaves that way. The in‑plane and oblique offsets **grow with |Q|**, which a UB refinement can only average, not remove. So the residual rms of 0.0347 after the fit contains a |Q|‑dependent component that no better UB will eliminate — consistent with peak broadening/asymmetry, or peaks that don't scale with the main lattice (this is a doubled cell, nodes every [2,2,2], so superstructure/diffuse maxima can masquerade as displaced Bragg peaks).\n\n## Bottom line\n- **Is it right?** No — the cell was ~0.2–0.4% too large (and not quite hexagonal) and the orientation ~0.87° off.\n- **How far off?** ~0.87° in orientation and ~0.3–0.4% in the cell parameters, which the fit corrects (rms 0.1354 → 0.0347).\n- **But** the displacement is partly |Q|‑dependent, so the \"how far off\" is an average over a non‑rigid shift; expect a residual that a UB refinement alone won't clear. If you want the corrected indexing, the `ubrefined` variant of this dataset already exists in the list — I can compare its peak positions against this fit if useful.",
+   "note": null,
+   "error": null
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": false,
+   "grades": [
+    {
+     "check": "answers",
+     "pass": false,
+     "detail": "error: This operation was aborted"
+    },
+    {
+     "check": "calls ub_check",
+     "pass": false,
+     "detail": "never called ub_check"
+    },
+    {
+     "check": "quotes the rotation",
+     "pass": false,
+     "detail": "no the rotation in the tool results to compare with"
+    },
+    {
+     "check": "quotes the refined a",
+     "pass": false,
+     "detail": "no the refined a in the tool results to compare with"
+    }
+   ],
+   "latency_ms": 1199649,
+   "usage": null,
+   "steps": [],
+   "answer": "",
+   "note": null,
+   "error": "This operation was aborted"
+  }
+ ]
+}

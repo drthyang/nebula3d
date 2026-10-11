@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **NEBULA Pilot has an eval suite, measured on real models.** Nine scenarios
+  with known answers from the research rounds on a measured hexagonal volume
+  are graded deterministically, on the tools each model called and on what it
+  answered. Numbers are checked against the run's own tool results. CI replays
+  every scenario with a scripted model; `npm run eval:agent` runs real ones.
+  Results, raw records included, are in [docs/evals.md](docs/evals.md):
+  - Claude Sonnet 5.5 and Haiku 5.5 pass 27/27 each, at about $0.025 and $0.001
+    a run.
+  - gemma4:26b passes 15/27; it answers the ring and punch questions from the
+    opening cut.
+  - qwen3.8-27b on LM Studio passed every run that finished, but most crashed
+    for lack of GPU memory on a shared machine.
+
+  Claude requests now cache the system prompt and tools, plus a breakpoint
+  that follows the conversation, so about 90 % of their input is billed at the
+  cache-hit rate. An eval never starts a pipeline run.
 - **The UB can be refined from where the Bragg peaks sit.**
   `nebula3d.analysis.ub_refine` (and `examples/refine_ub.py`) finds each
   Bragg node's peak and fits one of four UB changes:
