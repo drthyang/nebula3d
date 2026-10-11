@@ -54,6 +54,7 @@ import {
 import { qRadius } from "../context/pipelineContext";
 import type { ToolCall, ToolSpec } from "../provider/client";
 import { openView, type ViewTarget } from "./openView";
+import { stageCheck, VERDICT_LABEL } from "../report/report";
 
 export type { ViewTarget } from "./openView";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
@@ -713,10 +714,14 @@ const assessStage: AgentTool = {
         if (plane) view = cleanupView(plane, 0);
         else if (stage === "pdf") view = { view: "consistency", label: "the back-FFT check" };
       }
+      // The verdict is computed from the numbers, by the report's rule, never
+      // left to the model (answerChecks.ts holds the model to it).
+      const check = stageCheck(stage, evaluation);
+      const verdict = check ? VERDICT_LABEL[check.verdict] : VERDICT_LABEL.info;
       // All five stages' per-plane detail would overflow the result.
       if (pick === "all") delete evaluation.per_plane;
-      result[stage] = { headline: headline(stage, evaluation), ...evaluation, goal: STAGE_GOALS[stage] };
-      lines.push(`${TUNE_STAGE_LABELS[stage]}: ${headline(stage, evaluation)}`);
+      result[stage] = { verdict, criterion: check?.criterion, headline: headline(stage, evaluation), ...evaluation, goal: STAGE_GOALS[stage] };
+      lines.push(`${TUNE_STAGE_LABELS[stage]}: ${verdict} · ${headline(stage, evaluation)}`);
     }
     if (measuredOn) result.measured_on = measuredOn;
     return { result, summary: lines.join(" · ") || "no stage outputs yet", view };

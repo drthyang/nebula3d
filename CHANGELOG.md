@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **NEBULA Pilot's answers stand on their evidence.** Before you read a final
+  answer, the agent checks it three ways:
+  - a verdict on a stage needs the tool that measures it in this reply;
+  - every number must come from a tool result or the context;
+  - no claim may contradict a verdict a tool computed.
+
+  `assess_stage` now returns each stage's verdict, *meets its goal* or *needs
+  attention*, with the rule behind it, by the report's own criteria. An answer
+  that fails goes back to the model once, with what to fix; what still fails
+  is noted under the reply. In the eval replays, five of the nine research
+  scenarios' failures are now caught by these checks alone: a ring verdict
+  from the opening cut, a punch called clean that missed peaks, a second
+  grain the tool rules out, and a UB called right that the fit turned or could
+  not judge.
 - **NEBULA Pilot docks beside the page instead of covering it.** It takes its
   own column, and the page reflows beside it, so a figure the Pilot points at
   is never hidden under the panel. Drag the column's edge to resize it, or

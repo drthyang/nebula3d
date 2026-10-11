@@ -1,0 +1,364 @@
+// What a NEBULA Pilot answer must stand on.  The agent loop checks each final
+// answer before the user reads it:
+//
+// - **No verdict without its evidence.** A verdict on a stage (the ring
+//   removal is clean, the punch missed peaks, the window stays inside the
+//   coverage, …) needs the tool that measures it to have run in this reply.
+//   Small models answered from the opening cut instead.
+// - **Numbers by reference.** Every number written must come from a tool
+//   result, the context, the user's words or the tools' own guidance, within
+//   its written precision.
+// - **Verdicts from the checks.** A stage the tools judged to need attention
+//   is never called clean: the tools compute verdicts, the model quotes them.
+//
+// A failed check sends the answer back once, with what to fix; what still
+// fails is noted under the reply.  The text checks are heuristic by design:
+// a false alarm costs one tool call, a miss is a note.
+
+import type { AgentStep } from "./agent";
+import { stageCheck, VERDICT_LABEL } from "./report/report";
+
+export interface Topic {
+  id: string;
+  label: string; // what the verdict is about, as the note says it
+  evidence: string; // the tool that settles it, as the model is told
+  settles: (step: AgentStep) => boolean;
+  subject: RegExp;
+}
+
+const stageIs = (step: AgentStep, ...stages: string[]): boolean =>
+  step.name === "assess_stage" && (step.args.stage === undefined || ["all", ...stages].includes(String(step.args.stage)));
+
+export const TOPICS: readonly Topic[] = [
+  {
+    id: "rings",
+    label: "the ring removal",
+    evidence: "assess_stage with stage rings",
+    settles: (s) => stageIs(s, "rings") || s.name === "radial_profile",
+    subject: /\b(powder[- ]?rings?|rings?|ring[- ]removal)\b/i,
+  },
+  {
+    id: "punch",
+    label: "the Bragg punch",
+    evidence: "assess_stage with stage punch",
+    settles: (s) => stageIs(s, "punch"),
+    subject: /\b(bragg (peaks?|punch|nodes?)|punch(ed|ing)?|(?<!off-)lattice peaks?|leftover peaks?|missed peaks?)\b/i,
+  },
+  {
+    id: "backfill",
+    label: "the backfill",
+    evidence: "texture_check, or assess_stage with stage backfill",
+    settles: (s) => s.name === "texture_check" || stageIs(s, "backfill"),
+    subject: /\b(backfill(ed|ing)?|fill bias|texture)\b/i,
+  },
+  {
+    id: "flatten",
+    label: "the flatten",
+    evidence: "assess_stage with stage flatten",
+    settles: (s) => stageIs(s, "flatten"),
+    subject: /\b(flatten(ed|ing)?|floors?|pedestal)\b/i,
+  },
+  {
+    id: "coverage",
+    label: "the ΔPDF window against the coverage",
+    evidence: "qmax_coverage",
+    settles: (s) => s.name === "qmax_coverage",
+    subject: /\b(q[ _-]?max|coverage|unmeasured)\b/i,
+  },
+  {
+    id: "symmetry",
+    label: "the ΔPDF's symmetry",
+    evidence: "symmetry_check",
+    settles: (s) => s.name === "symmetry_check",
+    // A verdict on the ΔPDF itself; "a separable window breaks the six-fold
+    // symmetry" is about a setting, not this run.
+    subject: /^(?=.*\b(symmetr(y|ic)|six-?fold|6-?fold|three-?fold|3-?fold)\b)(?=.*(Δ\s?PDF|delta-?pdf|section)).*/is,
+  },
+  {
+    id: "grain",
+    label: "a second grain",
+    evidence: "grain_check",
+    settles: (s) => s.name === "grain_check",
+    subject: /\b(second grains?|grains?|twin(s|ned|ning)?)\b/i,
+  },
+  {
+    id: "ub",
+    label: "the UB",
+    evidence: "ub_check",
+    // grain_check measures the Bragg peaks' offset from their nodes too.
+    settles: (s) => s.name === "ub_check" || s.name === "grain_check",
+    subject: /\bUB\b|\borientation matrix\b/,
+  },
+];
+
+/** Words that make a sentence about a topic a verdict on it. */
+const VERDICT =
+  /\b(clean(ly)?|left|leftovers?|remain(s|ing|ed)?|residu\w*|removed|miss(ed|es)?|pass(es|ed)?|fail(s|ed)?|meets?|met|kept|keeps|holds?|held|broken|breaks?|lost|preserved|intact|successful(ly)?|(in)?complete(ly)?|over-?subtract\w*|dent(s|ed)?|biased|unbiased|seamless|flat|level|inside|within|past|beyond|exceeds?|right|correct|wrong|misorient\w*|turned|rotated|present|absent|no second|spurious|fine|good|ok(ay)?|shows?|showing|found|indicates?|confirms?|suggests?)\b/i;
+
+/** A sentence that weighs a possibility, plans, or asks is not a verdict. */
+const NOT_A_VERDICT = /\b(if|whether|unless|would|could|might|may|once|until|let me|i will|i'll|i'd|i'm going to|to check|to see|next)\b/i;
+
+/** Negations (a negated claim is still a verdict, but not a claim of success). */
+const NEGATION = /\b(no|not|never|none|nothing|neither|nor|without|cannot|isn't|aren't|wasn't|weren't|doesn't|don't|didn't|won't|lacks?)\b|n't\b/i;
+
+/** The answer's sentences (lines and sentence ends split it), without Markdown emphasis. */
+export function sentences(text: string): string[] {
+  return text
+    .replace(/\*\*|__|`/g, "")
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The claims an answer makes: its sentences split into clauses at ; and :, so
+ * "The UB is fine: the fit changed nothing" makes its claim without the next
+ * clause's negation, and without a leading answer word ("Yes,", "No:").
+ */
+export function clauses(text: string): string[] {
+  return sentences(text)
+    .map((s) => s.replace(/^(yes|no)\b[,:.!]?\s*/i, ""))
+    .flatMap((s) => s.split(/;\s+/))
+    .flatMap((s) => {
+      // A short label before a colon ("Ring removal: clean") stays with what follows it.
+      const parts = s.split(/:\s+/);
+      return parts.length > 1 && parts[0].split(/\s+/).length <= 3 ? [s] : parts;
+    })
+    .map((c) => c.trim())
+    .filter(Boolean);
+}
+
+/** The verdict clauses about each topic. */
+export function verdictsIn(text: string): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const s of clauses(text)) {
+    if (s.endsWith("?") || NOT_A_VERDICT.test(s) || !VERDICT.test(s)) continue;
+    for (const t of TOPICS) if (t.subject.test(s)) out.set(t.id, [...(out.get(t.id) ?? []), s]);
+  }
+  return out;
+}
+
+/** Topics the answer gives a verdict on without the tool that settles it having run (without an error) in this reply. */
+export function missingEvidence(text: string, steps: readonly AgentStep[]): Topic[] {
+  const done = steps.filter((s) => s.status === "done");
+  const claimed = verdictsIn(text);
+  return TOPICS.filter((t) => claimed.has(t.id) && !done.some((s) => t.settles(s)));
+}
+
+/** A claim that a stage met its goal. */
+const SUCCESS = /\b(clean(ly)?|pass(es|ed)?|meets? (its|the) goal|successful(ly)?|fully removed|completely removed|removed (every|all)|all (removed|gone)|perfect(ly)?|flawless(ly)?)\b/i;
+const SUCCESS_BY_NEGATION = /\b(no\s+(\w+\s+){0,3}|nothing\s+(is\s+|was\s+)?|none\s+(is\s+|are\s+|was\s+|were\s+)?)(left|leftovers?|missed|remain\w*|residu\w*)\b/i;
+const claimsSuccess = (s: string): boolean => (SUCCESS.test(s) && !NEGATION.test(s)) || SUCCESS_BY_NEGATION.test(s);
+
+type ToolSays = "ok" | "not ok" | null;
+
+const resultsOf = (steps: readonly AgentStep[], name: string): Record<string, unknown>[] =>
+  steps.flatMap((s) => {
+    if (s.name !== name || s.status !== "done" || !s.result) return [];
+    try {
+      const r: unknown = JSON.parse(s.result);
+      return r && typeof r === "object" && !Array.isArray(r) ? [r as Record<string, unknown>] : [];
+    } catch {
+      return [];
+    }
+  });
+
+/** A stage's verdict from assess_stage: its computed verdict, or computed here from its numbers by the same rule. */
+function stageSays(steps: readonly AgentStep[], stage: "rings" | "punch" | "backfill" | "flatten"): ToolSays {
+  let says: ToolSays = null;
+  for (const r of resultsOf(steps, "assess_stage")) {
+    const m = r[stage];
+    if (!m || typeof m !== "object") continue;
+    const field = (m as Record<string, unknown>).verdict;
+    const check = typeof field === "string" ? null : stageCheck(stage, m as Record<string, unknown>);
+    const label = typeof field === "string" ? field : check ? VERDICT_LABEL[check.verdict] : null;
+    if (label === VERDICT_LABEL.attention) says = "not ok";
+    else if (label === VERDICT_LABEL.pass) says = "ok";
+  }
+  return says;
+}
+
+/** A tool's own verdict line: does it start the way a passing or a failing one does? */
+function verdictSays(steps: readonly AgentStep[], tool: string, ok: RegExp, notOk: RegExp): ToolSays {
+  let says: ToolSays = null;
+  for (const r of resultsOf(steps, tool)) {
+    const v = typeof r.verdict === "string" ? r.verdict : "";
+    if (notOk.test(v)) says = "not ok";
+    else if (ok.test(v)) says = "ok";
+  }
+  return says;
+}
+
+/** The UB from ub_check: off when the fit turned it or the volume is symmetrised (its orientation cannot be judged). */
+function ubSays(steps: readonly AgentStep[]): ToolSays {
+  let says: ToolSays = null;
+  for (const r of resultsOf(steps, "ub_check")) {
+    const angle = typeof r.orientation_change_deg === "number" ? r.orientation_change_deg : typeof r.angle_deg === "number" ? r.angle_deg : null;
+    says = r.symmetrised === true || (angle != null && angle >= 0.05) ? "not ok" : "ok";
+  }
+  return says;
+}
+
+interface VerdictRule {
+  topic: string;
+  says: (steps: readonly AgentStep[]) => ToolSays;
+  claimsOk: (s: string) => boolean; // a non-hedged claim that it is fine
+  claimsNotOk?: (s: string) => boolean; // checked against a passing verdict, where calling it wrong is as bad
+}
+
+const asserted = (re: RegExp) => (s: string): boolean => re.test(s) && !NEGATION.test(s) && !/\b(unlikely|doubt\w*)\b/i.test(s);
+
+const RULES: readonly VerdictRule[] = [
+  { topic: "rings", says: (st) => stageSays(st, "rings"), claimsOk: claimsSuccess },
+  { topic: "punch", says: (st) => stageSays(st, "punch"), claimsOk: claimsSuccess },
+  { topic: "backfill", says: (st) => stageSays(st, "backfill"), claimsOk: claimsSuccess },
+  { topic: "flatten", says: (st) => stageSays(st, "flatten"), claimsOk: claimsSuccess },
+  {
+    topic: "coverage",
+    says: (st) => verdictSays(st, "qmax_coverage", /^clean/i, /^(too far|past|unmeasured|not)/i),
+    claimsOk: asserted(/\b(inside|within|stays|clean)\b/i),
+  },
+  {
+    topic: "symmetry",
+    says: (st) => verdictSays(st, "symmetry_check", /^kept/i, /^not kept/i),
+    claimsOk: asserted(/\b(kept|keeps|holds?|preserved|intact)\b/i),
+  },
+  {
+    topic: "grain",
+    says: (st) => verdictSays(st, "grain_check", /^no second grain/i, /^a second grain/i),
+    claimsOk: (s) => /\bno second grain\b|\bone grain\b|\bsingle grain\b/i.test(s),
+    claimsNotOk: asserted(/\b(a|the) second grain\b|\btwin(ned|s)?\b|\bsecond grain (is|was) (present|there|found)\b/i),
+  },
+  {
+    topic: "ub",
+    says: ubSays,
+    claimsOk: asserted(/\b(right|correct|fine|accurate|good|on (their|its) nodes)\b/i),
+  },
+];
+
+/** Topics where the answer contradicts the tools' computed verdicts in this reply. */
+export function contradictions(text: string, steps: readonly AgentStep[]): Topic[] {
+  const claimed = verdictsIn(text);
+  return RULES.flatMap((rule) => {
+    const says = rule.says(steps);
+    const lines = claimed.get(rule.topic) ?? [];
+    const wrong =
+      (says === "not ok" && lines.some(rule.claimsOk)) || (says === "ok" && rule.claimsNotOk !== undefined && lines.some(rule.claimsNotOk));
+    const topic = TOPICS.find((t) => t.id === rule.topic);
+    return wrong && topic ? [topic] : [];
+  });
+}
+
+// ------------------------------------------------------------------ numbers
+
+export interface WrittenNumber {
+  text: string; // as written
+  value: number;
+  tolerance: number; // half a unit of the last digit written
+  percent: boolean;
+}
+
+const SUPERSCRIPT: Record<string, string> = { "⁻": "-", "⁺": "+", "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9" };
+
+/** Text with exponents as e-notation, unit exponents (Å⁻¹, Q²) and list markers dropped. */
+function flatten(text: string): string {
+  return text
+    .replace(/\$/g, "")
+    .replace(/\\(times|cdot)/g, "×")
+    .replace(/\\[,;:! ]/g, " ")
+    .replace(/\^\{([^}]*)\}/g, "^$1")
+    .replace(/[⁻⁺⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (m) => "^" + [...m].map((c) => SUPERSCRIPT[c]).join(""))
+    .replace(/−/g, "-")
+    .replace(/(\d(?:\.\d+)?)\s*[×x·]\s*10\s*\^\s*\(?([-+]?\d+)\)?/g, "$1e$2")
+    .replace(/(?<![\d.])10\s*\^\s*\(?([-+]?\d+)\)?/g, "1e$1")
+    .replace(/\^\s*\(?[-+]?\d+\)?/g, "")
+    .replace(/^\s*(?:[-*]\s+)?\(?\d+[.)]\s+/gm, "");
+}
+
+/** The numbers an answer writes, as written; numbers inside names (hk0, 3D, 6/mmm, 401x401) are not numbers. */
+export function writtenNumbers(text: string): WrittenNumber[] {
+  const out: WrittenNumber[] = [];
+  const re = /(?<![A-Za-z_\d.^/])([-+]?)(\d+(?:\.(\d+))?)(?:e([-+]?\d+))?(\s*%)?(?![A-Za-z_\d/]|\.\d)/g;
+  for (const m of flatten(text).matchAll(re)) {
+    const [whole, sign, mantissa, decimals = "", exp, percent] = m;
+    const scale = exp ? 10 ** Number(exp) : 1;
+    const value = Number(`${sign}${mantissa}`) * scale;
+    if (!Number.isFinite(value)) continue;
+    out.push({ text: whole.trim(), value, tolerance: 0.5 * 10 ** -decimals.length * scale, percent: Boolean(percent) });
+  }
+  return out;
+}
+
+/** Every number in the sources, as magnitudes, sorted. */
+export function sourceNumbers(sources: string): number[] {
+  const values = [...flatten(sources).matchAll(/\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi)].map((m) => Math.abs(Number(m[0])));
+  return values.filter(Number.isFinite).sort((a, b) => a - b);
+}
+
+/** Is some source within tolerance of |v| (a written precision, or 2 % for a rounded figure)? */
+function traced(v: number, tolerance: number, sorted: readonly number[]): boolean {
+  const target = Math.abs(v);
+  const tol = Math.max(tolerance, 0.02 * target) + 1e-12;
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid] < target - tol) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo < sorted.length && sorted[lo] <= target + tol;
+}
+
+/** The numbers an answer writes that no source holds (distinct, as written). */
+export function untracedNumbers(text: string, sources: string): string[] {
+  const sorted = sourceNumbers(sources);
+  const out: string[] = [];
+  for (const n of writtenNumbers(text)) {
+    const ok = traced(n.value, n.tolerance, sorted) || (n.percent && traced(n.value / 100, n.tolerance / 100, sorted));
+    if (!ok && !out.includes(n.text)) out.push(n.text);
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------ the check
+
+export interface AnswerIssues {
+  missing: Topic[]; // verdicts without their tool
+  untraced: string[]; // numbers from nowhere
+  contradicted: Topic[]; // contradicts the verdict a tool computed
+}
+
+/** What the answer fails, or null when it stands on its evidence. */
+export function answerIssues(text: string, steps: readonly AgentStep[], sources: string): AnswerIssues | null {
+  if (!text.trim()) return null;
+  const issues: AnswerIssues = {
+    missing: missingEvidence(text, steps),
+    untraced: untracedNumbers(text, sources),
+    contradicted: contradictions(text, steps),
+  };
+  return issues.missing.length || issues.untraced.length || issues.contradicted.length ? issues : null;
+}
+
+const MAX_LISTED = 8;
+const listed = (xs: string[]): string => (xs.length > MAX_LISTED ? `${xs.slice(0, MAX_LISTED).join(", ")}, …` : xs.join(", "));
+
+/** What the model is told, to fix the answer before the user reads it. */
+export function issuesPrompt(issues: AnswerIssues): string {
+  const lines = ["Before this answer goes to the user, fix it:"];
+  for (const t of issues.missing) lines.push(`- It gives a verdict on ${t.label} without its evidence in this reply: call ${t.evidence}, and answer from its result.`);
+  for (const t of issues.contradicted) lines.push(`- What it says about ${t.label} contradicts the verdict the tool computed: quote that verdict and its numbers.`);
+  if (issues.untraced.length) {
+    lines.push(`- These numbers appear in no tool result or the context: ${listed(issues.untraced)}. Quote the tools' numbers, or leave them out.`);
+  }
+  lines.push("Then write the whole answer again.");
+  return lines.join("\n");
+}
+
+/** The note under a reply that still fails after its one revision. */
+export function issuesNote(issues: AnswerIssues): string {
+  const parts: string[] = [];
+  if (issues.missing.length) parts.push(`Not measured in this reply: ${issues.missing.map((t) => `${t.label} (${t.evidence})`).join("; ")}.`);
+  if (issues.contradicted.length) parts.push(`Contradicts the tools' verdict on ${issues.contradicted.map((t) => t.label).join(" and ")}.`);
+  if (issues.untraced.length) parts.push(`Not found in any tool result or the context: ${listed(issues.untraced)}.`);
+  return parts.join(" ");
+}

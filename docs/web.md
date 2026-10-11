@@ -339,6 +339,28 @@ The conversation and any reply still streaming live in module-scoped stores
 (`chatStore.ts`, `session.ts`), so collapsing the panel or changing pages does
 not stop them.
 
+**Answers stand on their evidence** (`llm/answerChecks.ts`). Before the user
+reads a final answer, the agent loop checks it three ways:
+
+- **No verdict without its evidence.** A verdict on a stage (the ring removal is
+  clean, the punch missed peaks, the window stays inside the coverage, the ΔPDF
+  keeps its symmetry, a second grain, the UB) needs the tool that measures it to
+  have run in this reply. Small models had answered from the opening cut.
+- **Numbers by reference.** Every number written must come from a tool result,
+  the context, the user's words or the tools' guidance, within its written
+  precision. A number found nowhere is listed.
+- **Verdicts computed, not self-graded.** `assess_stage` returns each stage's
+  verdict (*meets its goal*, *needs attention*) with the rule behind it, by the
+  report's own criteria. An answer that contradicts a tool's verdict is caught:
+  a stage called clean that needs attention, a second grain that `grain_check`
+  rules out, or a UB called right that `ub_check` turned or could not judge on a
+  symmetrised volume.
+
+A failing answer goes back to the model once, with what to fix ("Checking the
+answer against its evidence…" shows meanwhile). What still fails is noted under
+the reply. The text checks are heuristic: a false alarm costs one tool call, a
+miss is a note.
+
 - **`metrics/`** — one pure module per judgment, each unit-tested
   (`vitest`, `npm --prefix web run test`):
   - `rings.ts` — residual powder-ring energy (localized bumps in the radial

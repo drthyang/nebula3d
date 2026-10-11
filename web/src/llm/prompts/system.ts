@@ -142,5 +142,11 @@ export const TOOLS_PROMPT = [
   "failed. When a change improves one number, check that it did not break another: a higher",
   "ΔPDF feature SNR with a lower back-FFT r, or with Qmax past the coverage, is ripple, not",
   "signal.",
+  "Verdicts come from the tools: assess_stage gives each stage's verdict and the rule behind it,",
+  "and qmax_coverage, symmetry_check, grain_check and ub_check give theirs. Quote them; never",
+  "grade a stage yourself. A verdict on a stage needs that stage's tool in this reply, and every",
+  "number you write must come from a tool result or the context: the app checks each answer and",
+  "sends one back that gives a verdict without its tool, a number from nowhere, or a verdict the",
+  "tools contradict.",
   "Quote the numbers the tools return. Keep tool calls purposeful — a few well-chosen ones.",
 ].join("\n");

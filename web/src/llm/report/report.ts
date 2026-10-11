@@ -305,6 +305,28 @@ const kindOf = (steps: ReportStep[]): string => {
   return "Analysis";
 };
 
+/** How a verdict reads, in the report, the chat and the tools' results. */
+export const VERDICT_LABEL: Record<Verdict, string> = { pass: "meets its goal", attention: "needs attention", info: "not judged" };
+
+/**
+ * One stage's check from its evaluation (what assess_stage measures), by the
+ * report's own rules: the verdict the tools compute and the model quotes.
+ */
+export function stageCheck(stage: "rings" | "punch" | "backfill" | "flatten" | "pdf", m: Obj): ReportCheck | null {
+  switch (stage) {
+    case "rings":
+      return ringsCheck(m, CRITERIA.rings);
+    case "punch":
+      return punchCheck(m, CRITERIA.punch);
+    case "backfill":
+      return backfillCheck(m, null, CRITERIA.backfill);
+    case "flatten":
+      return flattenCheck(m, CRITERIA.flatten);
+    case "pdf":
+      return pdfCheck(m, null, null, CRITERIA.pdf);
+  }
+}
+
 export function buildReport(input: ReportInput): Report {
   const m = input.measured;
   const d = m.describe ?? null;

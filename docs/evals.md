@@ -37,8 +37,10 @@ passes. The suite lives in `web/src/llm/evals/`.
 - **CI replay** (`evals.test.ts`, part of `npm test`). A scripted model plays
   each scenario against tool results recorded on the eval datasets
   (`fixtures/hex90k.json`), through the real loop and graders. A good script must
-  pass every check. A bad script, the failure as models made it, must fail the
-  checks named for it.
+  pass every check, and the agent's own answer checks
+  (`web/src/llm/answerChecks.ts`) on its first answer. A bad script, the failure
+  as models made it, must fail the checks named for it. Where the answer checks
+  catch that failure too, the replay asserts their note.
 - **Real models** (`live.test.ts`). With the native server serving the eval
   datasets:
 
@@ -55,7 +57,8 @@ passes. The suite lives in `web/src/llm/evals/`.
 ## Results
 
 Measured on 10 and 11 October 2026 on one Mac (68.7 GB unified memory),
-against the native server. Each scenario ran three times per model, at
+against the native server, before the answer checks existed: a
+rerun would show what they change. Each scenario ran three times per model, at
 temperature 0.2 (the Claude models take no sampling parameters), with a
 20-minute limit per run. Raw records, with every tool call, its result and
 the answer, are in [`docs/evals/results/`](evals/results/). They name no
