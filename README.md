@@ -10,11 +10,13 @@ cloud one.
 **Try it in the browser:** https://drthyang.github.io/nebula3d/ runs the complete
 pipeline client-side; nothing is uploaded.
 
-![NEBULA Pilot, on a local model, assesses a reduction of a measured hexagonal volume and opens its analysis report](docs/media/nebula-pilot-demo.gif)
+![NEBULA Pilot, docked beside the page on a local model, assesses a reduction of a measured hexagonal volume and opens its analysis report](docs/media/nebula-pilot-demo.gif)
 
-*NEBULA Pilot on a local model (gemma4:26b) assesses a measured run. The console
-follows each tool call, and the reply opens a report built from the measured
-numbers. A time-lapse: about four minutes in one.*
+*NEBULA Pilot, docked beside the page (1440×900), on a local model (gemma4:26b).
+One click asks it to assess a measured run. Each tool lights up the figure it
+reads, beside the panel, and the reply opens a report built from the measured
+numbers. A time-lapse, about three minutes in one: the waits for the model are
+sped up, and each figure and the answer are held long enough to read.*
 
 ## Highlights
 
