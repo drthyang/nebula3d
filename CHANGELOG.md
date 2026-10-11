@@ -173,6 +173,11 @@
   plane's worst leftover ring, and a model reported three such bumps as
   misses of the ring removal. Each plane's residuals now mark them
   `single_plane_bump`, and its worst dent and leftover skip them.
+- **`\DeltaPDF` reads as ΔPDF in the chat.** Models often write the
+  ΔPDF as `\DeltaPDF`, which the chat left as typed, since a TeX command
+  ends at the next non-letter. A Greek letter or symbol command now also
+  ends at a capital letter, as a model means it, and a TeX control space
+  (`16.7\ Å`) reads as a space.
 - **Names keep their underscores in the chat.** Models often write field
   names such as `ring_energy_ratio` without backticks, and the chat's
   Markdown took the underscores for italics: the name read
