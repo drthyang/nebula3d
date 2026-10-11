@@ -48,6 +48,24 @@ export interface VolumeCoverage {
   box_corner_q: number;
 }
 
+/** One shell judged: does it rise in nearly every direction over the sphere (a powder ring)? */
+export interface RingShell {
+  q_center: number | null; // Å⁻¹
+  fwhm: number | null; // Å⁻¹
+  n_cells: number; // direction cells with data
+  median_height: number | null; // the shell's median height above its flanks (data units)
+  relative_height: number | null; // that height over the flanks' level
+  isotropy: number | null; // the low-quantile height over the median height
+  is_ring: boolean;
+  not_judged: string | null; // why no verdict, if none
+}
+
+export interface RingIsotropy {
+  id: string;
+  rule: { direction_share: number; height_share: number };
+  shells: RingShell[];
+}
+
 export interface UbCheck {
   id: string;
   fit: "orientation" | "lattice" | "both" | "symmetric";
@@ -71,6 +89,7 @@ export interface UbCheck {
   ub: number[][];
   // The peaks' median offset along Q from their nodes relative to |Q|, per |Q| band and direction.
   radial: { q_lo: number; q_hi: number | null; direction: string; n: number; before: number; after: number }[];
+  voxel_q?: number | null; // the grid's finest step in Q (Å⁻¹)
 }
 
 export interface VolumeMeta {

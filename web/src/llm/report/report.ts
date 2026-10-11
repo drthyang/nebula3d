@@ -136,7 +136,7 @@ const rangeText = (v: unknown): string => (Array.isArray(v) && v.length === 2 ? 
 // What each check's verdict is judged by: the rules in the builders below, in words.
 export const CRITERIA: Record<string, string> = {
   rings:
-    "No powder ring left above, or dented below, three times its plane's noise. Only rings seen on two or more planes count: a bump on one plane is the crystal's own scattering.",
+    "No powder ring left above, or dented below, three times its plane's noise. A bump is a powder ring only if it rises in nearly every direction over the sphere (at least 0.15 of its median height in 90 % of directions): the crystal's own scattering at that |Q| rises in some directions only.",
   punch: "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice. Broad maxima are diffuse scattering, and stay.",
   grains:
     "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.",
@@ -149,7 +149,11 @@ function ringsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck 
   if (!m) return null;
   const left = num(m.max_ring_left);
   const dent = num(m.max_ring_dent);
-  const bumps = Array.isArray(m.single_plane_bumps) ? m.single_plane_bumps.length : 0;
+  // The shells judged not to be rings; runs recorded before the 3D test
+  // (2026-10-11) counted the bumps seen on one plane only.
+  const notRings = Array.isArray(m.shells_judged)
+    ? (m.shells_judged as Obj[]).filter((x) => x?.ring === false)
+    : Array.isArray(m.single_plane_bumps) ? m.single_plane_bumps : [];
   // A leftover or dent above 0 is beyond 3 × its plane's noise: real, by the tool's definition.
   const clean = left === 0 && dent === 0;
   return {
@@ -162,7 +166,7 @@ function ringsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck 
       ["Largest over-subtraction fraction", fmt(m.max_over_subtraction_fraction)],
       ["Deepest ring dent", `${fmt(dent)}${where(m.worst_ring_dent)}`],
       ["Largest ring left", `${fmt(left)}${where(m.worst_ring_left)}`],
-      ["Bumps on one plane only (crystal scattering, kept)", String(bumps)],
+      ["Bumps that are not rings (the crystal's own scattering, kept)", String(notRings.length)],
     ],
   };
 }
@@ -304,6 +308,28 @@ const kindOf = (steps: ReportStep[]): string => {
   if (names.has("assess_stage")) return "Assessment";
   return "Analysis";
 };
+
+/** How a verdict reads, in the report, the chat and the tools' results. */
+export const VERDICT_LABEL: Record<Verdict, string> = { pass: "meets its goal", attention: "needs attention", info: "not judged" };
+
+/**
+ * One stage's check from its evaluation (what assess_stage measures), by the
+ * report's own rules: the verdict the tools compute and the model quotes.
+ */
+export function stageCheck(stage: "rings" | "punch" | "backfill" | "flatten" | "pdf", m: Obj): ReportCheck | null {
+  switch (stage) {
+    case "rings":
+      return ringsCheck(m, CRITERIA.rings);
+    case "punch":
+      return punchCheck(m, CRITERIA.punch);
+    case "backfill":
+      return backfillCheck(m, null, CRITERIA.backfill);
+    case "flatten":
+      return flattenCheck(m, CRITERIA.flatten);
+    case "pdf":
+      return pdfCheck(m, null, null, CRITERIA.pdf);
+  }
+}
 
 export function buildReport(input: ReportInput): Report {
   const m = input.measured;

@@ -32,13 +32,80 @@ passes. The suite lives in `web/src/llm/evals/`.
 | `ub-symmetrised` | Is the UB of this volume right? | It can't be fully judged here: a symmetrised volume hides a misorientation, so the orientation needs the unsymmetrised file. | `ub_check`; says the unsymmetrised data are needed |
 | `ub-misoriented` | (unsymmetrised export) Is the UB right? How far off? | It is turned by under a degree; the tool reports the angle and the refined cell. | `ub_check`; quotes the angle and a |
 
+## Held-out volumes and injected faults
+
+The scenarios above were written on one measured volume, so passing them can
+mean that the prompts and checks fit that volume. The held-out set tests the
+same loop on data no eval, tuning or prompt was written on: a variant of the
+built-in synthetic crystal (another cell, stronger short-range order, another
+seed, no aluminium rings), with one fault injected per volume at a known size
+(`nebula3d.faults`). Each answer is graded against the run's own tool results,
+as above, and against the size that was put in. That truth is known by
+construction, so the set grades the tools as well as the model.
+
+| Scenario | Volume | The fault | Checks |
+| --- | --- | --- | --- |
+| `heldout-ub-turned` | `heldout-misoriented` | The UB turned by 0.6° about [1 1 0] | `ub_check`; quotes the angle it measured, and within 0.15° of 0.6°; says the UB is off |
+| `heldout-ub-right` | `heldout-rocksalt` | None | `ub_check`; says the UB is right; never claims a misorientation |
+| `heldout-origin-shifted` | `heldout-shifted` | The HKL origin off by (0.03, 0.02, 0) r.l.u., which no UB removes | `ub_check`; points at the origin or how \|Q\| was assigned; never calls the UB wrong |
+| `heldout-coverage-edge` | `heldout-coverage` | No counts past 4.511 Å⁻¹ (70 % of the box's inscribed \|Q\|) | `qmax_coverage`; quotes the counts' upper edge, and within 0.2 Å⁻¹ of 4.511 |
+| `heldout-rings-found` | `heldout-rings` | Powder rings at 2.45 and 3.65 Å⁻¹ | `assess_stage` for the rings; quotes both, within 0.1 Å⁻¹; says a ring is left |
+
+`examples/make_eval_volumes.py` writes the five volumes. The CI replay
+(`heldout.test.ts`, part of `npm test`) plays each scenario with a good and a
+bad script against tool results recorded on them (`fixtures/heldout.json`). It
+also checks what the tools read against the faults. No live model has run the
+set yet. The measured set's fixture (`fixtures/hex90k.json`) was recorded
+before the 3D ring rule, and re-recording it needs the user's data.
+
+What the tools read, against what was put in:
+
+- **The turned UB:** `ub_check` measured 0.602° of the 0.6°, and the peaks' RMS
+  offset fell from 0.0492 to 0.0016 Å⁻¹. On the clean volume it measured
+  0.001°.
+- **The shifted origin:** the fit removed none of the offset (RMS 0.0583 Å⁻¹
+  before and after, against a voxel of 0.0806 Å⁻¹), and `ub_check` says that no
+  UB change explains it.
+- **The cut coverage:** the raw counts' upper edge reads 4.507 Å⁻¹, against
+  4.511, and the suggested band is 0–4.5 Å⁻¹.
+- **The rings:** the ring removal confirms both as powder rings (each rises in
+  nearly every direction over the sphere) at their |Q| (2.447 and 3.655 Å⁻¹),
+  and by construction removes 95 % of the first and 96.5 % of the second. The
+  ring check still flags the first on hk0 alone, a residual of 0.149 of the
+  level there. On that plane the crystal's own rods lift the profile at the
+  same |Q|, and a residual cannot tell the two apart.
+
+The set also found two faults in the ring tools, both now fixed by the rule
+the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
+[powder_rings.md](algorithms/powder_rings.md)):
+
+- **The ring check read short-range-order diffuse as rings.** On the clean
+  volume, with no ring, it said "needs attention", with rings at 1.68, 3.16,
+  4.59, 5.52 and 7.08 Å⁻¹: the crystal's own diffuse scattering, mostly its
+  short-range order, lifting the median radial profile in shells. Its rule
+  that "only rings seen on two or more planes count" could not tell them
+  apart. On a cubic crystal hk0, h0l and 0kl are equivalent planes, so the
+  crystal's own scattering shows on all three; under hexagonal or tetragonal
+  symmetry h0l and 0kl are equivalent. A bump now counts as a ring only if it
+  rises in nearly every direction over the sphere, judged in 3D on the raw
+  volume, and the clean volume reads "meets its goal".
+- **The default ring removal took diffuse from a crystal with no rings.** On
+  the clean volume it subtracted four shells: 3 % of the intensity, about a
+  fifth of the diffuse between 1.7 and 1.9 Å⁻¹ and a third near 4.1 Å⁻¹. The
+  built-in demo crystal with its aluminium rings left out lost 0.5 %; with the
+  held-out variant's stronger order, 4 %. The removal now subtracts only the
+  shells confirmed as rings, so none of these volumes loses any intensity, and
+  the demo volume's aluminium rings are removed as before.
+
 ## Running it
 
 - **CI replay** (`evals.test.ts`, part of `npm test`). A scripted model plays
   each scenario against tool results recorded on the eval datasets
   (`fixtures/hex90k.json`), through the real loop and graders. A good script must
-  pass every check. A bad script, the failure as models made it, must fail the
-  checks named for it.
+  pass every check, and the agent's own answer checks
+  (`web/src/llm/answerChecks.ts`) on its first answer. A bad script, the failure
+  as models made it, must fail the checks named for it. Where the answer checks
+  catch that failure too, the replay asserts their note.
 - **Real models** (`live.test.ts`). With the native server serving the eval
   datasets:
 
@@ -49,13 +116,24 @@ passes. The suite lives in `web/src/llm/evals/`.
   `NEBULA_EVAL_ONLY` takes scenario ids, `NEBULA_EVAL_REPEAT` runs per scenario.
   A Claude base URL reads `ANTHROPIC_API_KEY` from the environment; the key is
   never written out.
+- **The held-out set:** write the volumes into a data root of their own, serve
+  it, and run with `NEBULA_EVAL_SET=heldout`:
+
+  ```bash
+  DATA_ROOT=/tmp/nebula-heldout .venv/bin/python examples/make_eval_volumes.py
+  ```
+
+  Run each volume once with the default settings. Then
+  `NEBULA_EVAL_PROBE_HELDOUT=1 NEBULA_EVAL_API=<that server> npx vitest run
+  src/llm/evals/heldoutProbe.test.ts` records its fixture.
 - **Tables:** `node web/scripts/eval-table.mjs docs/evals/results/*.json`.
 - **Re-recording the fixtures:** `NEBULA_EVAL_PROBE=1 npx vitest run src/llm/evals/probe.test.ts`.
 
 ## Results
 
 Measured on 10 and 11 October 2026 on one Mac (68.7 GB unified memory),
-against the native server. Each scenario ran three times per model, at
+against the native server, before the answer checks existed: a
+rerun would show what they change. Each scenario ran three times per model, at
 temperature 0.2 (the Claude models take no sampling parameters), with a
 20-minute limit per run. Raw records, with every tool call, its result and
 the answer, are in [`docs/evals/results/`](evals/results/). They name no

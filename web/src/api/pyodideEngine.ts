@@ -28,6 +28,7 @@ import type {
   ConsistencyMeta,
   Dataset,
   DeltaPdfMeta,
+  RingIsotropy,
   Slice,
   SliceHeader,
   TuningPromote,
@@ -408,6 +409,9 @@ export const engine = {
   },
   ubCheck(volumeId: string, cell: string, qMax: number | null): Promise<UbCheck> {
     return jsonCall<UbCheck>("volume_ub_check_json", [volumeId, cell, qMax]);
+  },
+  ringIsotropy(volumeId: string, q: string, fwhm: string): Promise<RingIsotropy> {
+    return jsonCall<RingIsotropy>("volume_ring_isotropy_json", [volumeId, q, fwhm]);
   },
   volumeSlice(volumeId: string, plane: string, value: number, interp: boolean): Promise<Slice> {
     return sliceCall("volume_slice", [volumeId, plane, value, interp]);

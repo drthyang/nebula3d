@@ -54,6 +54,7 @@ import {
 import { qRadius } from "../context/pipelineContext";
 import type { ToolCall, ToolSpec } from "../provider/client";
 import { openView, type ViewTarget } from "./openView";
+import { stageCheck, VERDICT_LABEL } from "../report/report";
 
 export type { ViewTarget } from "./openView";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
@@ -713,10 +714,21 @@ const assessStage: AgentTool = {
         if (plane) view = cleanupView(plane, 0);
         else if (stage === "pdf") view = { view: "consistency", label: "the back-FFT check" };
       }
-      // All five stages' per-plane detail would overflow the result.
+      // The verdict is computed from the numbers, by the report's rule, never
+      // left to the model (answerChecks.ts holds the model to it).
+      const check = stageCheck(stage, evaluation);
+      const verdict = check ? VERDICT_LABEL[check.verdict] : VERDICT_LABEL.info;
+      // All five stages' per-plane detail, or their goals, would overflow the
+      // result (MAX_RESULT_CHARS): one stage at a time gives both.
       if (pick === "all") delete evaluation.per_plane;
-      result[stage] = { headline: headline(stage, evaluation), ...evaluation, goal: STAGE_GOALS[stage] };
-      lines.push(`${TUNE_STAGE_LABELS[stage]}: ${headline(stage, evaluation)}`);
+      result[stage] = {
+        verdict,
+        criterion: check?.criterion,
+        headline: headline(stage, evaluation),
+        ...evaluation,
+        ...(pick === "all" ? {} : { goal: STAGE_GOALS[stage] }),
+      };
+      lines.push(`${TUNE_STAGE_LABELS[stage]}: ${verdict} · ${headline(stage, evaluation)}`);
     }
     if (measuredOn) result.measured_on = measuredOn;
     return { result, summary: lines.join(" · ") || "no stage outputs yet", view };
@@ -1035,6 +1047,11 @@ const grainCheckTool: AgentTool = {
 
 const sig2 = (x: number): number => Number(x.toPrecision(2));
 
+// The peaks sit off their nodes by more than a quarter voxel, and the best UB
+// takes away less than a fifth of it: something other than the UB moved them.
+export const unexplainedOffset = (u: { rms_start: number; rms: number; voxel_q?: number | null }): boolean =>
+  u.voxel_q != null && u.voxel_q > 0 && u.rms_start > 0.25 * u.voxel_q && u.rms > 0.8 * u.rms_start;
+
 const ubCheckTool: AgentTool = {
   name: "ub_check",
   description:
@@ -1068,12 +1085,19 @@ const ubCheckTool: AgentTool = {
       transform_diagonal: u.transform.map((row, i) => Number(row[i].toFixed(6))),
       passes: u.passes.map((p) => ({ q_max: Number(p.q_max.toFixed(2)), found: p.n_found, used: p.n_used, rms: `${p.rms_start.toFixed(4)} → ${p.rms.toFixed(4)}` })),
       radial: u.radial.map((o) => ({ q: o.q_hi == null ? `≥ ${o.q_lo}` : `${o.q_lo}–${o.q_hi}`, direction: o.direction, n: o.n, before: sig2(o.before), after: sig2(o.after) })),
-      reading:
+      // Offsets well above the centring's own scatter that the fit cannot
+      // remove are not a UB error: a shifted HKL origin, or |Q| assigned wrong.
+      unexplained: unexplainedOffset(u),
+      reading: [
         u.fit === "symmetric"
           ? "The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data."
           : u.operations_from
             ? `The rotation and the cell were fitted together, the cell constrained by the operations ${u.operations_from} declares.`
             : "The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).",
+        unexplainedOffset(u)
+          ? `The fit removed little of the peaks' offset (RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹, against a voxel of ${u.voxel_q!.toFixed(4)} Å⁻¹): no UB change explains it. Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.`
+          : "",
+      ].filter(Boolean).join(" "),
     };
     return {
       result,

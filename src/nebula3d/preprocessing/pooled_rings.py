@@ -35,6 +35,12 @@ a single plane lacks:
    an FCC-Al powder line (``al_prior``; lattice parameter fitted from the strong
    rings): the sample environment's Al lines are the usual weak rings, while a
    weak sharp maximum of the diffuse itself must not be taken for one.
+   **Confirmed** (``confirm_rings``, on by default): a shell is a powder ring
+   only if it rises in nearly every direction over the sphere
+   (:func:`~nebula3d.preprocessing.ring_isotropy.judge_shells`); the crystal's
+   own scattering at one |Q| rises in some directions only.  Only confirmed
+   shells are subtracted, and the Al lattice is fitted from confirmed rings
+   alone, so a crystal with no rings keeps all of its diffuse.
 3. **Pooling (pass 2):** each plane's sector profile is replaced by the weighted
    median of the sector profiles in a small solid angle of the ring sphere
    around it: the planes whose direction at that |Q| lies within ±``pool_deg``
@@ -57,7 +63,8 @@ Neighbouring planes share most of their pooled data, so the subtracted ring is
 continuous along the stack axis: no plane-to-plane jitter reaches the ΔPDF FFT.
 The azimuthally under-sampled "spoke" voxels are masked as the per-plane models
 mask them (:func:`~nebula3d.preprocessing.sampling.azimuthal_sampling_mask`), for
-the downstream backfill.
+the downstream backfill; with confirmation on and no ring confirmed, nothing is
+subtracted and nothing masked.
 """
 
 from __future__ import annotations
@@ -84,6 +91,7 @@ from nebula3d.preprocessing.radial_background import (
     _snip_baseline,
     _stack_plane_q_magnitude,
 )
+from nebula3d.preprocessing.ring_isotropy import IsotropyConfig, ShellIsotropy, judge_shells
 from nebula3d.preprocessing.sampling import azimuthal_sampling_mask
 
 # plane → (stack axis, stack-axis attribute, the two in-plane axis indices)
@@ -114,7 +122,9 @@ class PooledRingConfig:
     difference in cos θ elsewhere).  ``pool_target_count`` is the number of
     voxels the pooling solid angle should hold, by geometry; where it would
     hold fewer, it widens.  ``min_snr`` and ``al_prior`` govern weak rings
-    (see the module docstring).
+    (see the module docstring).  ``confirm_rings`` subtracts only the shells
+    that rise in nearly every direction, by the rule of ``isotropy``; off, every
+    detected shell is subtracted (the behaviour before 2026-10-11).
     """
 
     plane: str = "0kl"
@@ -135,6 +145,8 @@ class PooledRingConfig:
     window_cap_frac: float = 0.9
     baseline_smooth: float = 0.06
     sampling_min_count_frac: float = 0.25
+    confirm_rings: bool = True
+    isotropy: IsotropyConfig = field(default_factory=IsotropyConfig)
 
     def __post_init__(self) -> None:
         if self.plane not in _PLANES:
@@ -202,7 +214,7 @@ def fit_pooled_rings(
     sector_cnt = np.zeros((n_planes, n_sec, n_bins), dtype=np.float32)
     shell_prof = np.full((n_planes, n_bins), np.nan)
     shell_cnt = np.zeros((n_planes, n_bins))
-    out_mask = vol.mask.copy()
+    sampled = vol.mask.copy()   # the azimuthal sampling mask, applied below
     fitted = np.zeros(n_planes, dtype=bool)
     abs_total = 0.0          # Σ|I| over valid voxels, for the removed fraction
     for i in range(n_planes):
@@ -217,30 +229,44 @@ def fit_pooled_rings(
         fit2 = keep2 & np.isfinite(data2)
         sector_med[i], sector_cnt[i] = _sector_profiles(
             q2[fit2], phi2[fit2], data2[fit2], edges, n_sec)
-        _put_plane(out_mask, axis, i, keep2)
+        _put_plane(sampled, axis, i, keep2)
         fitted[i] = True
         if progress is not None and (i + 1) % 30 == 0:
             progress(0.4 * (i + 1) / n_planes, f"sector profiles {i + 1}/{n_planes}")
     t_pass1 = time.perf_counter() - t_start
 
-    centers, fwhm, amps, origin, al_a = _detect_shells(
-        q_grid, shell_prof, shell_cnt, q_step, cfg)
+    def confirm(c: NDArray[np.float64], f: NDArray[np.float64], rings: list[tuple[float, float]],
+                others: list[tuple[float, float]]) -> list[ShellIsotropy]:
+        return judge_shells(vol, list(zip(c.tolist(), f.tolist())), cfg.isotropy,
+                            rings=rings, others=others)
+
+    centers, fwhm, amps, origin, al_a, rejected = _detect_shells(
+        q_grid, shell_prof, shell_cnt, q_step, cfg, confirm if cfg.confirm_rings else None)
     del shell_prof, shell_cnt
+    t_detect = time.perf_counter() - t_start
 
     diagnostics: dict[str, object] = {
         "algorithm": "pooled",
-        "schema_version": 1,
+        "schema_version": 2,
         "plane": cfg.plane,
         "config": dataclasses.asdict(cfg),
         "n_planes": n_planes,
         "n_planes_fitted": int(fitted.sum()),
         "q_step": q_step,
         "al_lattice_a": al_a,
+        # The rule a shell must pass to be subtracted, if any.
+        "confirmation": ({"rule": "rises in nearly every direction",
+                          "direction_share": cfg.isotropy.direction_share,
+                          "height_share": cfg.isotropy.height_share}
+                         if cfg.confirm_rings else None),
         "shells": [
             {"q_center": float(c), "fwhm": float(f), "amplitude": float(a),
-             "envelope_halfwidth": float(cfg.envelope_scale * f), "detection": o}
-            for c, f, a, o in zip(centers, fwhm, amps, origin)
+             "envelope_halfwidth": float(cfg.envelope_scale * f), "detection": o,
+             **({"isotropy": iso.as_dict()} if iso is not None else {})}
+            for c, f, a, o, iso in zip(centers, fwhm, amps, origin[0], origin[1])
         ],
+        # Detected, not confirmed, not subtracted: the crystal's own scattering.
+        "rejected_shells": rejected,
     }
     # Pass 2 reads each plane's raw data only while correcting that plane (the
     # neighbours enter through the pass-1 profiles), so in low-memory mode (the
@@ -248,11 +274,15 @@ def fit_pooled_rings(
     res_data = vol.data if low_memory() else vol.data.copy()
     ring_out = np.zeros_like(vol.data) if return_ring else None
     if centers.size == 0:
-        diagnostics["status"] = "no_rings"
+        # Nothing is subtracted, so nothing needs the sampling mask either.
+        diagnostics["status"] = "no_rings" if not rejected else "no_confirmed_rings"
         diagnostics["removed_fraction"] = 0.0
-        diagnostics["timing_s"] = {"pass1": t_pass1, "total": time.perf_counter() - t_start}
+        diagnostics["timing_s"] = {"pass1": t_pass1, "detect": t_detect,
+                                   "total": time.perf_counter() - t_start}
+        out_mask = vol.mask.copy() if cfg.confirm_rings else sampled
         cleaned = dataclasses.replace(vol, data=res_data, mask=out_mask)
         return PooledRingResult(cleaned=cleaned, diagnostics=diagnostics, ring=ring_out)
+    out_mask = sampled
 
     # ---- radial quantities shared by every plane ----
     windows = _cluster_windows(q_grid, centers, fwhm, q_step, cfg.max_fwhm,
@@ -322,7 +352,8 @@ def fit_pooled_rings(
 
     diagnostics["status"] = "fitted"
     diagnostics["removed_fraction"] = removed / abs_total if abs_total > 0 else 0.0
-    diagnostics["timing_s"] = {"pass1": t_pass1, "total": time.perf_counter() - t_start}
+    diagnostics["timing_s"] = {"pass1": t_pass1, "detect": t_detect,
+                               "total": time.perf_counter() - t_start}
     cleaned = dataclasses.replace(vol, data=res_data, mask=out_mask)
     return PooledRingResult(cleaned=cleaned, diagnostics=diagnostics, ring=ring_out)
 
@@ -501,50 +532,83 @@ def _in_plane_voxel_area(vol: HKLVolume, plane: str) -> float:
     return float(np.linalg.norm(np.cross(ub[:, i] * di, ub[:, j] * dj))) or 1.0
 
 
+ConfirmFn = Callable[[NDArray[np.float64], NDArray[np.float64], list[tuple[float, float]],
+                      list[tuple[float, float]]], list[ShellIsotropy]]
+
+
 def _detect_shells(
     q_grid: NDArray[np.float64],
     shell_prof: NDArray[np.float64],
     shell_cnt: NDArray[np.float64],
     q_step: float,
     cfg: PooledRingConfig,
-) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], list[str],
-           float | None]:
-    """Confirmed ring shells: ``(centers, fwhm, amplitudes, origin, al_a)``.
+    confirm: ConfirmFn | None = None,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64],
+           tuple[list[str], list[ShellIsotropy | None]], float | None, list[dict[str, object]]]:
+    """Ring shells: ``(centers, fwhm, amplitudes, (origin, isotropy), al_a, rejected)``.
 
     Every ring above both the cross-stack relative cut and ``min_snr`` × the
     profile noise (``origin="relative"``), plus weaker rings above the noise cut
     alone that sit within max(2·q_step, 0.02) Å⁻¹ of an FCC-Al line
     (``origin="al_line"``), the lattice parameter ``al_a`` fitted from the
-    strong rings that match Al.
+    strong rings that match Al.  With ``confirm``, each candidate must also be
+    confirmed a powder ring (it rises in nearly every direction), the Al
+    lattice is fitted from the confirmed strong rings alone, and the others are
+    returned in ``rejected`` with their verdicts.
     """
+    rejected: list[dict[str, object]] = []
+    # Every shell above the noise cut, the weak ones too: kept out of the
+    # flanks of the shells judged, so a weak ring beside a strong one (a close
+    # doublet) does not lift the strong one's flank.
+    above_noise = _confirm_shells_from_plane_profiles(
+        q_grid, shell_prof, shell_cnt, q_step, cfg.max_fwhm, _MIN_VOXELS_PER_BIN,
+        min_snr=cfg.min_snr, rel_prominence=0.0)
+    found = list(zip(above_noise[0].tolist(), above_noise[1].tolist()))
+
+    def judged(c: NDArray[np.float64], f: NDArray[np.float64], a: NDArray[np.float64],
+               route: str, rings: list[tuple[float, float]]
+               ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64],
+                          list[ShellIsotropy | None]]:
+        if confirm is None or c.size == 0:
+            return c, f, a, [None] * c.size
+        verdicts = confirm(c, f, rings, found)
+        ok = np.array([v.is_ring for v in verdicts], dtype=bool)
+        rejected.extend({"q_center": float(cc), "fwhm": float(ff), "amplitude": float(aa),
+                         "detection": route, "isotropy": v.as_dict()}
+                        for cc, ff, aa, v in zip(c, f, a, verdicts) if not v.is_ring)
+        return c[ok], f[ok], a[ok], [v for v in verdicts if v.is_ring]
+
     strong = _confirm_shells_from_plane_profiles(
         q_grid, shell_prof, shell_cnt, q_step, cfg.max_fwhm, _MIN_VOXELS_PER_BIN,
         min_snr=cfg.min_snr)
-    c, f, a = strong
+    c, f, a, iso = judged(*strong, "relative", [])
     origin = ["relative"] * c.size
+    seen_c, seen_f = strong[0], strong[1]   # judged already, kept or not
     if not cfg.al_prior or c.size == 0:
-        return c, f, a, origin, None
+        return c, f, a, (origin, iso), None, rejected
     gcfg = GlobalRingConfig(q_min=cfg.q_min, q_max=cfg.q_max, material="auto")
     _matches, al_a = _match_aluminum(c, a, gcfg)
     if al_a is None:
-        return c, f, a, origin, None
-    weak_c, weak_f, weak_a = _confirm_shells_from_plane_profiles(
-        q_grid, shell_prof, shell_cnt, q_step, cfg.max_fwhm, _MIN_VOXELS_PER_BIN,
-        min_snr=cfg.min_snr, rel_prominence=0.0)
+        return c, f, a, (origin, iso), None, rejected
+    weak_c, weak_f, weak_a = above_noise
     lines = np.array([ln.q for ln in aluminum_fcc_lines(al_a, cfg.q_max + 0.1,
                                                          max(0.0, cfg.q_min - 0.1))])
     tol = max(2.0 * q_step, 0.02)
     keep = [k for k in range(weak_c.size)
-            if not np.any(np.abs(c - weak_c[k]) <= np.maximum(f, q_step))
+            if not np.any(np.abs(seen_c - weak_c[k]) <= np.maximum(seen_f, q_step))
             and lines.size and np.min(np.abs(lines - weak_c[k])) <= tol]
     if not keep:
-        return c, f, a, origin, al_a
-    c = np.concatenate([c, weak_c[keep]])
-    f = np.concatenate([f, weak_f[keep]])
-    a = np.concatenate([a, weak_a[keep]])
-    origin = origin + ["al_line"] * len(keep)
+        return c, f, a, (origin, iso), al_a, rejected
+    wc, wf, wa, wiso = judged(weak_c[keep], weak_f[keep], weak_a[keep], "al_line",
+                              list(zip(c.tolist(), f.tolist())))
+    c = np.concatenate([c, wc])
+    f = np.concatenate([f, wf])
+    a = np.concatenate([a, wa])
+    origin = origin + ["al_line"] * wc.size
+    iso = iso + wiso
     order = np.argsort(c)
-    return c[order], f[order], a[order], [origin[k] for k in order], al_a
+    return (c[order], f[order], a[order], ([origin[k] for k in order], [iso[k] for k in order]),
+            al_a, rejected)
 
 
 def _stack_normal_component(vol: HKLVolume, plane: str) -> float:

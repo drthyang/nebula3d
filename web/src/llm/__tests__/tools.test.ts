@@ -399,7 +399,7 @@ const runOn = (ds: Dataset, name: string, args: object) =>
   runToolCall({ id: "c", type: "function", function: { name, arguments: JSON.stringify(args) } }, CHAT_TOOLS, { dataset: ds, datasets: [ds] });
 
 describe("assess_stage", () => {
-  it("judges each stage that exists against its goal, headline numbers only for all", async () => {
+  it("judges each stage that exists by its criterion, headline numbers only for all", async () => {
     evaluate.evaluateStage.mockImplementation(async (stage: string) =>
       stage === "flatten"
         ? { max_after_floor_sigma: 0.8, per_plane: { hk0: {} } }
@@ -409,9 +409,11 @@ describe("assess_stage", () => {
     const out = JSON.parse(r.text);
     expect(out.rings.missing).toMatch(/no ringremoved output yet/);
     expect(out.flatten).toMatchObject({ headline: "floor ≤ 0.8σ · trend ≤ – · span ≤ –", max_after_floor_sigma: 0.8 });
-    expect(out.flatten.goal).toMatch(/floor/);
+    expect(out.flatten.criterion).toMatch(/floor/);
+    // Five stages' per-plane detail and goals would overflow the result.
     expect(out.flatten).not.toHaveProperty("per_plane");
-    expect(r.summary).toBe("Flatten: floor ≤ 0.8σ · trend ≤ – · span ≤ – · 3D-ΔPDF: r 0.99 · RMS 0.1 · SNR 40");
+    expect(out.flatten).not.toHaveProperty("goal");
+    expect(r.summary).toBe("Flatten: meets its goal · floor ≤ 0.8σ · trend ≤ – · span ≤ – · 3D-ΔPDF: needs attention · r 0.99 · RMS 0.1 · SNR 40");
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
   });
 
@@ -419,6 +421,7 @@ describe("assess_stage", () => {
     evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, per_plane: { hk0: { after_floor_max_sigma: 0.8 } } });
     const out = JSON.parse((await run("assess_stage", { stage: "flatten" })).text);
     expect(out.flatten.per_plane.hk0).toEqual({ after_floor_max_sigma: 0.8 });
+    expect(out.flatten.goal).toMatch(/floor/);
   });
 });
 
@@ -616,6 +619,18 @@ describe("ub_check", () => {
     expect(out.reading).toMatch(/symmetrised: only the UB changes that commute/);
     expect(r.summary).toBe("symmetric: RMS 0.0487 → 0.0342 Å⁻¹ over 2655 peaks; a 6.124 → 6.099 Å, c 9.412 → 9.402 Å; turned 0.000°");
     expect((await run("ub_check", { q_max: -1 })).text).toMatch(/q_max must be positive/);
+    expect(out.unexplained).toBe(false); // no voxel size reported: nothing to judge against
+  });
+
+  it("says when the peaks sit off their nodes for a reason no UB explains", async () => {
+    // A shifted HKL origin: every peak off by the same vector, which the best UB cannot remove.
+    api.fetchUbCheck.mockResolvedValue({ ...check, fit: "both", symmetrised: false, rms_start: 0.0445, rms: 0.0444, voxel_q: 0.0997 });
+    const out = JSON.parse((await run("ub_check", {})).text);
+    expect(out.unexplained).toBe(true);
+    expect(out.reading).toMatch(/The fit removed little of the peaks' offset \(RMS 0\.0445 → 0\.0444 Å⁻¹, against a voxel of 0\.0997 Å⁻¹\): no UB change explains it/);
+    // A turned UB: the fit takes the offset away.
+    api.fetchUbCheck.mockResolvedValue({ ...check, fit: "both", symmetrised: false, rms_start: 0.0366, rms: 0.0037, voxel_q: 0.0997 });
+    expect(JSON.parse((await run("ub_check", {})).text).unexplained).toBe(false);
   });
 });
 

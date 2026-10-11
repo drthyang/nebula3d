@@ -10,12 +10,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import StageStatus, resolve_volume
 from nebula3d.server.deps import get_config
-from nebula3d.server.schemas import CoverageOut, LatticeOut, UbCheckOut, VolumeMetaOut
+from nebula3d.server.schemas import (
+    CoverageOut,
+    LatticeOut,
+    RingIsotropyOut,
+    UbCheckOut,
+    VolumeMetaOut,
+)
 from nebula3d.server.volumes import (
     PLANES,
     slice_envelope,
     volume_coverage,
     volume_meta,
+    volume_ring_isotropy,
     volume_ub_check,
 )
 
@@ -83,6 +90,31 @@ def ub_check(
     except ValueError as exc:  # too few peaks to fit
         raise HTTPException(422, str(exc)) from exc
     return UbCheckOut(id=volume_id, **out)
+
+
+def parse_shells(q: str, fwhm: str) -> list[tuple[float, float]]:
+    """``"2.45,3.66"``, ``"0.08,0.08"`` → [(2.45, 0.08), (3.66, 0.08)]: positive
+    |Q| centres and widths (Å⁻¹), as many of each, at most 64."""
+    try:
+        qs = [float(x) for x in q.split(",") if x.strip()]
+        ws = [float(x) for x in fwhm.split(",") if x.strip()]
+    except ValueError as exc:
+        raise HTTPException(400, f"q and fwhm must be numbers, not {q!r}, {fwhm!r}") from exc
+    if not qs or len(qs) != len(ws) or len(qs) > 64 or min(qs + ws) <= 0:
+        raise HTTPException(400, "q and fwhm must list as many positive numbers, at most 64")
+    return list(zip(qs, ws))
+
+
+@router.get("/{volume_id}/rings", response_model=RingIsotropyOut)
+def rings(
+    volume_id: str,
+    q: str = Query(..., description="shell centres in Å⁻¹, comma-separated"),
+    fwhm: str = Query(..., description="their widths in Å⁻¹, comma-separated"),
+    cfg: ServerConfig = Depends(get_config),
+) -> RingIsotropyOut:
+    """Which of the shells are powder rings: each rises in nearly every direction."""
+    stage = _resolve_hkl(cfg, volume_id)
+    return RingIsotropyOut(id=volume_id, **volume_ring_isotropy(stage.path, parse_shells(q, fwhm)))
 
 
 @router.get("/{volume_id}/slice")

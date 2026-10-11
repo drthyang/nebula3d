@@ -82,6 +82,7 @@ __all__ = [
     "volume_slice",
     "volume_coverage_json",
     "volume_ub_check_json",
+    "volume_ring_isotropy_json",
     "dpdf_meta_json",
     "dpdf_slice",
     "consistency_meta_json",
@@ -1136,6 +1137,18 @@ def volume_ub_check_json(volume_id: str, cell: str = "1,1,1",
     if len(nodes) != 3 or min(nodes) < 1:
         raise ValueError(f"cell must be three positive integers, not {cell!r}")
     m = _vol.volume_ub_check(stage.path, nodes, None if q_max is None else float(q_max))  # type: ignore[arg-type]
+    return _json({**m, "id": volume_id})
+
+
+def volume_ring_isotropy_json(volume_id: str, q: str, fwhm: str) -> str:
+    """Which shells of an HKL stage are powder rings (mirrors
+    GET /api/volumes/{id}/rings)."""
+    stage = _resolve(volume_id, "hkl")
+    qs = [float(x) for x in str(q).split(",") if x.strip()]
+    ws = [float(x) for x in str(fwhm).split(",") if x.strip()]
+    if not qs or len(qs) != len(ws) or len(qs) > 64 or min(qs + ws) <= 0:
+        raise ValueError("q and fwhm must list as many positive numbers, at most 64")
+    m = _vol.volume_ring_isotropy(stage.path, list(zip(qs, ws)))
     return _json({**m, "id": volume_id})
 
 

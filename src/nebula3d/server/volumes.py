@@ -79,9 +79,13 @@ def load_volume(path: Path) -> HKLVolume:
     return vol
 
 
+_ring_cache: dict[tuple, dict] = {}
+
+
 def clear_cache() -> None:
     with _lock:
         _cache.clear()
+        _ring_cache.clear()
 
 
 _CELL_KEYS = ("a", "b", "c", "alpha", "beta", "gamma")
@@ -226,6 +230,13 @@ def symmetry_ops_for(path: Path) -> tuple[tuple[np.ndarray, ...] | None, str | N
     return None, None
 
 
+def voxel_q(vol: HKLVolume) -> float:
+    """The volume's finest grid step in Q (Å⁻¹): each axis's step through the UB."""
+    ub = np.asarray(vol.ub_matrix, dtype=float)
+    steps = [float(a[1] - a[0]) for a in (vol.h_axis, vol.k_axis, vol.l_axis)]
+    return float(min(np.linalg.norm(ub[:, i]) * abs(steps[i]) for i in range(3)))
+
+
 def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
                     q_max: float | None = None) -> dict:
     """Whether the volume's UB puts its Bragg peaks on their nodes
@@ -291,10 +302,36 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
         "radial": [{"q_lo": o.q_lo, "q_hi": o.q_hi if np.isfinite(o.q_hi) else None,
                     "direction": o.direction, "n": o.n, "before": o.before, "after": o.after}
                    for o in radial_offsets(f, r.centres)],
+        # The grid's finest step in Q: what an offset is small or large against.
+        "voxel_q": voxel_q(vol),
     }
     with _lock:
         _ub_cache.clear()  # one volume's check at a time
         _ub_cache[key] = out
+    return out
+
+
+def volume_ring_isotropy(path: Path, shells: list[tuple[float, float]]) -> dict:
+    """Whether each ``(q_center, fwhm)`` shell of the volume (Å⁻¹) is a powder
+    ring: it rises in nearly every direction over the sphere
+    (:func:`~nebula3d.preprocessing.ring_isotropy.judge_shells`), cached by
+    ``(path, mtime, shells)``. The ring removal subtracts only such shells."""
+    from nebula3d.preprocessing.ring_isotropy import IsotropyConfig, judge_shells
+
+    shells = [(round(float(q), 4), round(float(f), 4)) for q, f in shells]
+    key = (str(path), path.stat().st_mtime, tuple(shells))
+    with _lock:
+        hit = _ring_cache.get(key)
+    if hit is not None:
+        return hit
+    cfg = IsotropyConfig()
+    out = {
+        "rule": {"direction_share": cfg.direction_share, "height_share": cfg.height_share},
+        "shells": [r.as_dict() for r in judge_shells(load_volume(path), shells, cfg)],
+    }
+    with _lock:
+        _ring_cache.clear()  # one volume's shells at a time
+        _ring_cache[key] = out
     return out
 
 

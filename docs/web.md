@@ -339,6 +339,28 @@ The conversation and any reply still streaming live in module-scoped stores
 (`chatStore.ts`, `session.ts`), so collapsing the panel or changing pages does
 not stop them.
 
+**Answers stand on their evidence** (`llm/answerChecks.ts`). Before the user
+reads a final answer, the agent loop checks it three ways:
+
+- **No verdict without its evidence.** A verdict on a stage (the ring removal is
+  clean, the punch missed peaks, the window stays inside the coverage, the ΔPDF
+  keeps its symmetry, a second grain, the UB) needs the tool that measures it to
+  have run in this reply. Small models had answered from the opening cut.
+- **Numbers by reference.** Every number written must come from a tool result,
+  the context, the user's words or the tools' guidance, within its written
+  precision. A number found nowhere is listed.
+- **Verdicts computed, not self-graded.** `assess_stage` returns each stage's
+  verdict (*meets its goal*, *needs attention*) with the rule behind it, by the
+  report's own criteria. An answer that contradicts a tool's verdict is caught:
+  a stage called clean that needs attention, a second grain that `grain_check`
+  rules out, or a UB called right that `ub_check` turned or could not judge on a
+  symmetrised volume.
+
+A failing answer goes back to the model once, with what to fix ("Checking the
+answer against its evidence…" shows meanwhile). What still fails is noted under
+the reply. The text checks are heuristic: a false alarm costs one tool call, a
+miss is a note.
+
 - **`metrics/`** — one pure module per judgment, each unit-tested
   (`vitest`, `npm --prefix web run test`):
   - `rings.ts` — residual powder-ring energy (localized bumps in the radial
@@ -353,9 +375,11 @@ not stop them.
     profile across the ring against a line through the diffuse beside it, as
     a share of that diffuse (negative: a dent, the subtraction over-shot;
     positive: a ring left over), significant only beyond 3 × the flanks' own
-    scatter. `assess_stage` counts a ring only where two planes see it at one
-    |Q| (a bump on one plane is the crystal's own scattering) and names the
-    plane and |Q| of the worst.
+    scatter. `assess_stage` counts a bump as a ring only if it rises in
+    nearly every direction over the sphere, each judged in 3D on the raw
+    volume (`GET /api/volumes/{id}/rings`, `preprocessing/ring_isotropy.py`):
+    the crystal's own scattering makes bumps too, on every plane that symmetry
+    makes equivalent. It names the plane and |Q| of the worst.
   - `punch.ts` — scans the *punched* slice for peaks the punch missed: each
     must stand 8 local σ above its own neighbourhood and span more than one
     voxel. Spikes in noisy or sparse-count regions (the coverage edge: a

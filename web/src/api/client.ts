@@ -10,6 +10,7 @@ import type {
   DeltaPdfMeta,
   JobOut,
   PipelineRunRequest,
+  RingIsotropy,
   Slice,
   SliceHeader,
   TuningPromote,
@@ -154,6 +155,14 @@ export async function fetchUbCheck(volumeId: string, cell: [number, number, numb
     throw new Error(detail ?? `${r.status} ${r.statusText}: ${url}`);
   }
   return (await r.json()) as UbCheck;
+}
+
+/** Which shells (|Q| centre, FWHM in Å⁻¹) of a volume are powder rings: each rises in nearly every direction. */
+export function fetchRingIsotropy(volumeId: string, shells: { q: number; fwhm: number }[]): Promise<RingIsotropy> {
+  const q = shells.map((s) => s.q.toFixed(4)).join(",");
+  const fwhm = shells.map((s) => s.fwhm.toFixed(4)).join(",");
+  if (PYODIDE_MODE) return engine.ringIsotropy(volumeId, q, fwhm);
+  return getJSON<RingIsotropy>(`/api/volumes/${encodeURIComponent(volumeId)}/rings?${new URLSearchParams({ q, fwhm })}`);
 }
 
 export function fetchSlice(
