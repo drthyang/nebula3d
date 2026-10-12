@@ -139,7 +139,10 @@ describe("held-out evals, replayed", () => {
   }
 });
 
-describe("the tools, against the faults put in", () => {
+// What the tools read on the held-out volumes, as recorded: these pin the
+// recording the replays use. tests/test_faults.py runs the tools themselves
+// (the UB fit, the coverage edge, the ring stage) on faults made live.
+describe("the recorded tools, against the faults put in", () => {
   interface UbCheck {
     orientation_change_deg: number;
     rms_start: number;

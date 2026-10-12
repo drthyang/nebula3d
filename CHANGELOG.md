@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+- **The 3D-ΔPDF refuses a grid without Q = 0 on its centre voxel.** The
+  transform takes index n // 2 of each axis as Q = 0. On an even grid with a
+  bin edge at 0 that voxel sits half a step off, and every feature at x was
+  multiplied by cos(2π·δ·x) without a word. The stage now names each axis that
+  is off, by how much, and the fix (re-bin with a bin centred at 0, or crop
+  symmetric about 0), and transforms nothing. The cleanup stages run on any
+  grid.
+- **σ is read when the file has it, and the agent is told when it has not.** A
+  NeXus Viewer export's `/entry/sigma` is read. Without one, σ is √|I|, and on
+  normalized values the punch's significance test depends on the arbitrary
+  intensity scale: `describe_dataset`, the punch's log line and `assess_stage`
+  for the punch now say so. Each stage's output records whether its σ came
+  with the data.
+- **The browser's ring check keeps enough of every shell.** In the browser's
+  low-memory mode the 3D ring check read an eighth of the volume's voxels,
+  thinned alike over every shell, so the small shells near |Q| = 0 kept only a
+  few directions: the demo's two lowest aluminium rings went unjudged and
+  stayed in. Each shell now keeps about 32 voxels per direction cell and |Q|
+  bin; on the demo the browser's ring stage matches the native one bit for
+  bit.
+- **Fixed, from a review of the latest work:**
+  - A tool result past the size limit is trimmed to valid JSON (the longest
+    lists and texts go first, named under `left_out`), and the answer checks
+    judge the whole result: a cut-off result had let "no ring is left" pass
+    against a ring check that needs attention. An earlier answer no longer
+    vouches for the numbers of the next.
+  - A smooth hump under a shell, or a shell at the noise level, is no longer
+    a ring: a quarter of its height must stay above a quadratic through the
+    flanks, and it must stand three times the flanks' scatter above them (to
+    confirm with the user).
+  - `assess_stage` checks what its criteria state: the 3D-ΔPDF's verdict
+    judges the worst in-plane symmetry break, and the answer checks hold a
+    verdict on the ΔPDF to it.
+  - `ub_check` on a volume binned so that its declared symmetry operations
+    cannot map the grid fits the rotation and the cell instead of failing,
+    and says why the symmetrisation was not judged.
+  - The number tracing reads numbers as written: thousands separators, signs,
+    exponents in either case, and a round integer as precise as its last
+    non-zero digit.
+  - `qmax_coverage` no longer reports a box face at 0 Å⁻¹ on a volume that
+    holds only half of reciprocal space.
+  - `GET /api/volumes/{id}/rings` takes finite, positive shells only.
+  - The docked NEBULA Pilot leaves the page 45 % of the room beside the
+    sidebar, as intended.
+
 - **A ring must rise in every direction.** A shell in |Q| is now a powder ring
   only if it stands above the diffuse beside it in nearly every direction over
   the sphere: at least 0.15 of its median height in 90 % of 128 direction

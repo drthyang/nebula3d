@@ -4,6 +4,7 @@
 // text; the model's own answer goes in as a clearly labelled narrative.  This
 // module only assembles: it is pure, so the report can be tested end to end.
 
+import { SYMMETRY_HOLDS } from "../metrics/symmetry";
 import type { ParamValue } from "../tune/catalog";
 
 export type Verdict = "pass" | "attention" | "info";
@@ -323,12 +324,31 @@ export function stageCheck(stage: "rings" | "punch" | "backfill" | "flatten" | "
     case "punch":
       return punchCheck(m, CRITERIA.punch);
     case "backfill":
-      return backfillCheck(m, null, CRITERIA.backfill);
+      // A stage's evaluation measures no fill bias (texture_check does): its
+      // criterion says only what it judges.
+      return backfillCheck(m, null, BACKFILL_SEAM_CRITERION);
     case "flatten":
       return flattenCheck(m, CRITERIA.flatten);
     case "pdf":
-      return pdfCheck(m, null, null, CRITERIA.pdf);
+      // The evaluation's worst in-plane symmetry break, judged as symmetry_check
+      // judges each operation.
+      return pdfCheck(m, null, symmetryOf(m), CRITERIA.pdf);
   }
+}
+
+const BACKFILL_SEAM_CRITERION =
+  "The fills meet their surroundings: a median seam of 1σ or less. Whether a cut's fill is biased one way is texture_check's to say.";
+
+/** symmetry_check's verdict, from a ΔPDF evaluation's worst in-plane break (null without one). */
+function symmetryOf(m: Obj): Obj | null {
+  const worst = num(m.max_symmetry_break);
+  if (worst == null) return null;
+  return {
+    verdict:
+      worst <= SYMMETRY_HOLDS
+        ? `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better`
+        : `not kept: ${String(m.worst_symmetry_op ?? "an in-plane operation")} (${worst})`,
+  };
 }
 
 export function buildReport(input: ReportInput): Report {

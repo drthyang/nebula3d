@@ -23,15 +23,21 @@ export function dockModeFor(width: number, height: number): DockMode {
   return width >= 1000 || (width >= 900 && width > height) ? "docked" : "sheet";
 }
 
-/** A docked width the page keeps at least 45 % of the window beside. */
-export function clampDockWidth(px: number, viewportWidth: number): number {
-  const max = Math.max(DOCK_MIN_W, Math.min(DOCK_MAX_W, Math.round(viewportWidth * 0.55)));
+/**
+ * A docked width that leaves the page at least 45 % of the room beside the
+ * sidebar: the app's width less the sidebar column (none below 1100 px, where
+ * the sidebar is a top bar). Measured from the window alone, it left the page
+ * a quarter of the window at 1100 px.
+ */
+export function clampDockWidth(px: number, appWidth: number, sidebarWidth = 0): number {
+  const room = Math.max(0, appWidth - sidebarWidth);
+  const max = Math.max(DOCK_MIN_W, Math.min(DOCK_MAX_W, Math.round(room * 0.55)));
   return Math.round(Math.min(max, Math.max(DOCK_MIN_W, px)));
 }
 
 /** The width a first-time dock opens at: about 28 % of the window, 360–480 px. */
-export const defaultDockWidth = (viewportWidth: number): number =>
-  clampDockWidth(Math.min(480, Math.max(360, viewportWidth * 0.28)), viewportWidth);
+export const defaultDockWidth = (appWidth: number, sidebarWidth = 0): number =>
+  clampDockWidth(Math.min(480, Math.max(360, appWidth * 0.28)), appWidth, sidebarWidth);
 
 /** A sheet height, as a share of the window, between 30 % and 85 %. */
 export const clampSheet = (fraction: number): number => Math.min(SHEET_MAX, Math.max(SHEET_MIN, fraction));

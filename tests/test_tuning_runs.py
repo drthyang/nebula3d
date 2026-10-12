@@ -225,7 +225,7 @@ def test_server_tuning_run_leaves_processed_byte_identical(root: Path) -> None:
 
 def test_bridge_tuning_run_leaves_processed_byte_identical(tmp_path: Path) -> None:
     webbridge.setup(workdir=str(tmp_path / "work"))
-    dataset_id = webbridge.make_demo_input(n=24)
+    dataset_id = webbridge.make_demo_input(n=25)
     webbridge.run("", "{}", flatten_enabled=True, force=True)
     processed = tmp_path / "work" / "processed"
     before = _snapshot(processed)

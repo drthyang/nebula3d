@@ -56,6 +56,13 @@ describe("clampDockWidth", () => {
     expect(clampDockWidth(700, 1100)).toBe(605); // the page keeps 45 % beside it
   });
 
+  it("leaves the page 45 % of the room beside the sidebar, not of the window", () => {
+    // 1100 px with its 208 px sidebar: the page keeps 45 % of the 892 px left.
+    expect(clampDockWidth(700, 1100, 208)).toBe(491);
+    expect(1100 - 208 - clampDockWidth(700, 1100, 208)).toBeGreaterThanOrEqual(Math.round(0.45 * 892));
+    expect(defaultDockWidth(1100, 208)).toBe(360);
+  });
+
   it("allows the minimum even on a window too narrow for 55 %", () => {
     expect(clampDockWidth(400, 500)).toBe(DOCK_MIN_W);
   });

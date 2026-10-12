@@ -7,7 +7,10 @@ from scipy.fft import next_fast_len
 from nebula3d.analysis.bragg import BraggRemover, bragg_mask
 from nebula3d.analysis.bragg_fill import backfill_bragg
 from nebula3d.analysis.delta_pdf import (
+    FFT_ORIGIN_TOL,
     DeltaPDF,
+    FFTOriginError,
+    check_fft_origin,
     compute_delta_pdf,
     invert_delta_pdf,
 )
@@ -590,9 +593,9 @@ def test_both_mode_is_sequential_union():
 
 
 def test_delta_pdf_shape_and_finite():
-    vol = _make_vol(shape=(8, 8, 8))
+    vol = _make_vol(shape=(9, 9, 9))
     dpdf = compute_delta_pdf(vol, apodization="hann", zero_pad=False)
-    assert dpdf.data.shape == (8, 8, 8)
+    assert dpdf.data.shape == (9, 9, 9)
     assert np.isfinite(dpdf.data).all()
 
 
@@ -605,16 +608,16 @@ def test_delta_pdf_zero_pad_next_fast_len():
     assert 13 < n < 16
     assert dpdf.data.shape == (n, n, n)
     # Already-fast sizes are left unpadded.
-    vol10 = _make_vol(shape=(10, 10, 10))
-    dpdf10 = compute_delta_pdf(vol10, apodization="none", zero_pad=True)
-    assert dpdf10.data.shape == (10, 10, 10)
+    vol11 = _make_vol(shape=(11, 11, 11))
+    dpdf11 = compute_delta_pdf(vol11, apodization="none", zero_pad=True)
+    assert dpdf11.data.shape == (11, 11, 11)
 
 
 def test_delta_pdf_hk0_slice():
-    vol = _make_vol(shape=(8, 8, 8))
+    vol = _make_vol(shape=(9, 9, 9))
     dpdf = compute_delta_pdf(vol, apodization="none", zero_pad=False)
     sl = dpdf.slice_hk0()
-    assert sl.shape == (8, 8)
+    assert sl.shape == (9, 9)
 
 
 def test_delta_pdf_centring_positive_peak():
@@ -622,12 +625,13 @@ def test_delta_pdf_centring_positive_peak():
 
     Regression guard for the FFT origin-centring bug: the input has Q=0 at the
     array centre, so the transform needs ifftshift before fftn.  Without it the
-    output picks up a (-1)^k phase ramp that flips peak signs by pixel parity
-    (each correlation splits into mixed +/- lobes).  With I(Q)=1+cos(2π·3·(i-c)/N)
-    — even about the Q=0 centre — the buggy transform produced -2048 where the
-    correct one produces +2048.
+    output picks up a phase ramp that flips peak signs (on an even grid, by
+    pixel parity, so each correlation splits into mixed +/- lobes).  With
+    I(Q)=1+cos(2π·3·(i-c)/N) — even about the Q=0 centre, which the 17-point
+    axis over ±2 puts on voxel c — the buggy transform gives -2089 where the
+    correct one gives +2456.5.
     """
-    N, c = 16, 8
+    N, c = 17, 8
     idx = np.arange(N)
     line = 1.0 + np.cos(2 * np.pi * 3 * (idx - c) / N)  # even about Q=0
     data = np.broadcast_to(line[:, None, None], (N, N, N)).astype(float).copy()
@@ -644,6 +648,44 @@ def test_delta_pdf_centring_positive_peak():
     assert list(peaks) == [c - 3, c + 3]           # peaks at the right distance
     assert (hline[peaks] > 0).all()                # correct sign (was negative)
     assert np.isclose(hline[c - 3], hline[c + 3])  # centrosymmetric
+
+
+def test_delta_pdf_refuses_an_even_grid_with_an_edge_at_zero():
+    """An even axis with a bin edge at 0 puts index n // 2 at +step/2, where the
+    transform would scale every feature by a cosine: it refuses, naming the
+    axis, the offset and the fix, and phase-corrects nothing."""
+    ub = 2 * np.pi * np.eye(3) / 4.0
+    vol = HKLVolume.from_arrays(np.ones((16, 17, 17)), (-1.875, 1.875), (-2, 2),
+                                (-2, 2), ub_matrix=ub)
+    with pytest.raises(FFTOriginError) as err:
+        compute_delta_pdf(vol, apodization="none")
+    msg = str(err.value)
+    assert ("H has no bin centred at 0: its centre index 8 of 16 sits at "
+            "+0.125 r.l.u., +0.5 of its 0.25 step") in msg
+    assert "K has" not in msg and "L has" not in msg
+    assert "Re-bin the volume with a bin centred at Q = 0" in msg
+
+
+def test_delta_pdf_refuses_a_zero_bin_off_centre_unless_cropped_about_it():
+    """K has a bin at 0 but runs one bin further above it: Q = 0 sits on index 7,
+    the transform's origin is index 8. A crop symmetric about 0 fixes it."""
+    ub = 2 * np.pi * np.eye(3) / 4.0
+    data = np.random.default_rng(3).uniform(0.5, 1.5, (17, 17, 17))
+    vol = HKLVolume.from_arrays(data, (-2, 2), (-1.75, 2.25), (-2, 2), ub_matrix=ub)
+    with pytest.raises(FFTOriginError, match=r"K has its bin at 0 on index 7, not on "
+                       r"its centre index 8 \(7 bins below 0, 9 above\)"):
+        compute_delta_pdf(vol, apodization="none")
+    dpdf = compute_delta_pdf(vol, apodization="none", zero_pad=False,
+                             crop_hkl=(2.0, 1.75, 2.0))
+    assert dpdf.data.shape == (17, 15, 17)
+
+
+def test_check_fft_origin_tolerates_rounding_only():
+    ax = np.linspace(-2, 2, 17)
+    step = 0.25
+    check_fft_origin(ax, ax + 0.5 * FFT_ORIGIN_TOL * step, ax)  # a file's rounding
+    with pytest.raises(FFTOriginError, match="K has no bin centred at 0"):
+        check_fft_origin(ax, ax + 2 * FFT_ORIGIN_TOL * step, ax)
 
 
 def _make_even_vol(n=15):

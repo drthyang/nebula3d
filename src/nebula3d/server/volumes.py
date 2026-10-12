@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 
 import nebula3d
-from nebula3d.core import HKLVolume
+from nebula3d.core import HKLVolume, sigma_note
 from nebula3d.utils.reciprocal_space import direct_cell
 from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import _ALIASES, _PLANE, SliceData
@@ -124,8 +124,8 @@ def declared_symmetry(path: Path) -> tuple[str | None, list[list[list[int]]] | N
 
 
 def volume_meta(path: Path) -> dict:
-    """Compact metadata for a volume: shape, axis ranges, lattice, and the
-    symmetry its file declares."""
+    """Compact metadata for a volume: shape, axis ranges, lattice, the
+    symmetry its file declares, and whether its σ came with the data."""
     vol = load_volume(path)
     symmetry, symmetry_ops = declared_symmetry(path)
     return {
@@ -138,6 +138,8 @@ def volume_meta(path: Path) -> dict:
         "planes": list(PLANES),
         "symmetry": symmetry,
         "symmetry_ops": symmetry_ops,
+        "sigma": "estimated" if vol.sigma_estimated else "measured",
+        "sigma_note": sigma_note(vol),
     }
 
 
@@ -309,6 +311,23 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
         _ub_cache.clear()  # one volume's check at a time
         _ub_cache[key] = out
     return out
+
+
+def parse_ring_shells(q: str, fwhm: str) -> list[tuple[float, float]]:
+    """``"2.45,3.66"``, ``"0.08,0.08"`` → [(2.45, 0.08), (3.66, 0.08)]: finite,
+    positive |Q| centres and widths (Å⁻¹), as many of each, at most 64.
+    Raises ``ValueError`` otherwise (NaN and infinity included)."""
+    import math
+
+    try:
+        qs = [float(x) for x in str(q).split(",") if x.strip()]
+        ws = [float(x) for x in str(fwhm).split(",") if x.strip()]
+    except ValueError as exc:
+        raise ValueError(f"q and fwhm must be numbers, not {q!r}, {fwhm!r}") from exc
+    if (not qs or len(qs) != len(ws) or len(qs) > 64
+            or not all(math.isfinite(v) and v > 0 for v in qs + ws)):
+        raise ValueError("q and fwhm must list as many finite, positive numbers, at most 64")
+    return list(zip(qs, ws))
 
 
 def volume_ring_isotropy(path: Path, shells: list[tuple[float, float]]) -> dict:

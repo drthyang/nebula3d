@@ -114,6 +114,9 @@ class HKLVolume:
         (3, 3) UB matrix in Å^-1 (columns = reciprocal-lattice vectors).
     instrument:
         Free-text instrument name for provenance.
+    sigma_estimated:
+        True when no σ came with the data and ``sigma`` holds √|data| instead
+        (see :func:`sigma_note`).
     """
 
     data: NDArray[np.floating]
@@ -126,6 +129,7 @@ class HKLVolume:
         default_factory=lambda: np.eye(3, dtype=np.float64)
     )
     instrument: str = ""
+    sigma_estimated: bool = False
 
     @property
     def dtype(self) -> np.dtype:
@@ -161,6 +165,7 @@ class HKLVolume:
             data = data.astype(dtype, copy=False)
             if sigma is not None:
                 sigma = sigma.astype(dtype, copy=False)
+        estimated = sigma is None
         if sigma is None:
             sigma = np.sqrt(np.abs(data))
         mask = np.ones(data.shape, dtype=bool)
@@ -173,6 +178,7 @@ class HKLVolume:
             k_axis=k_axis,
             l_axis=l_axis,
             ub_matrix=ub,
+            sigma_estimated=estimated,
         )
 
     # ------------------------------------------------------------------
@@ -211,3 +217,35 @@ class HKLVolume:
         out = self.data.copy()
         out[~self.mask] = np.nan
         return out
+
+
+def sigma_note(vol: HKLVolume, max_samples: int = 1_000_000) -> str | None:
+    """Why *vol*'s σ counts for little, or None when it is fine.
+
+    With no σ in the file, ``sigma`` is √|I|: a count's standard error when the
+    values are counts, but on normalized values (non-integer, or none above
+    about 1) it hangs on the arbitrary intensity scale, and a significance
+    measured in it means nothing fixed. The test reads every n-th valid voxel,
+    up to *max_samples* of them.
+    """
+    if not vol.sigma_estimated:
+        return None
+    flat = np.asarray(vol.data).reshape(-1)
+    step = max(1, flat.size // max_samples)
+    sample = np.asarray(flat[::step], dtype=np.float64)
+    sample = sample[np.asarray(vol.mask).reshape(-1)[::step] & np.isfinite(sample)]
+    if sample.size == 0:
+        return None
+    why = []
+    if np.any(np.abs(sample - np.round(sample)) > 1e-6):
+        why.append("non-integer")
+    top = float(np.max(np.abs(sample)))
+    if top < 1.0:
+        why.append(f"the largest {top:.3g}")
+    if not why:
+        return None
+    return ("No σ came with this volume, so σ is taken as √|I|, which depends on the "
+            "data's arbitrary intensity scale. Its values look normalized ("
+            + ", ".join(why) + "), so the punch's significance test (min_significance, "
+            "in σ) does not count standard errors here. Export σ with the volume "
+            "(the NeXus Viewer writes /entry/sigma) to make it count them.")

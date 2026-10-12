@@ -74,6 +74,9 @@ export interface ToolContext {
   // call the model makes, which gates a stage's changes on its skill; left
   // unset by the app's own calls (the report), which change nothing.
   skillsRead?: Set<string>;
+  // The tool results of the conversation's earlier turns: what an answer's
+  // numbers may come from besides this reply's own results (agent.ts).
+  earlierResults?: readonly string[];
 }
 
 
@@ -302,6 +305,10 @@ const describeDataset: AgentTool = {
         planes: RECIP_PLANES,
       },
       cell: meta?.lattice ?? dmeta?.lattice ?? null,
+      // Whether σ came with the data; the note says when √|I| makes the
+      // punch's significance test count nothing fixed.
+      sigma: meta?.sigma ?? null,
+      ...(meta?.sigma_note ? { sigma_note: meta.sigma_note } : {}),
       delta_pdf: dmeta && {
         grid: dmeta.shape,
         x: range4(dmeta.x_range),
@@ -1098,7 +1105,8 @@ const ubCheckTool: AgentTool = {
         u.fit === "symmetric"
           ? "The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data."
           : u.operations_from
-            ? `The rotation and the cell were fitted together, the cell constrained by the operations ${u.operations_from} declares.`
+            ? `The rotation and the cell were fitted together, the cell constrained by the operations ${u.operations_from} declares.` +
+              (u.symmetry_break == null ? " They do not map this volume's grid, so whether it is symmetrised was not judged." : "")
             : "The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).",
         unexplainedOffset(u)
           ? `The fit removed little of the peaks' offset (RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹, against a voxel of ${u.voxel_q!.toFixed(4)} Å⁻¹): no UB change explains it. Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.`
@@ -1590,8 +1598,60 @@ export interface ToolRun {
   ok: boolean;
   args: Args;
   text: string; // what the model reads
+  full?: string; // the whole result, when the model reads it trimmed (answerChecks.ts reads this)
   summary: string;
   view?: ViewTarget;
+}
+
+/**
+ * A result as JSON of at most *max* characters: the whole of it, or, when
+ * longer, still valid JSON. The bulkiest parts go first: the last items of the
+ * longest lists, then the longest texts, each named under `left_out`, so the
+ * small fields a verdict lives in stay. Cutting the text mid-way left JSON
+ * that nothing could parse: the answer checks then saw no verdict at all.
+ */
+export function fitResult(value: unknown, max: number): string {
+  const whole = JSON.stringify(value) ?? "null";
+  if (whole.length <= max) return whole;
+  if (!value || typeof value !== "object") return `${whole.slice(0, max)}… [truncated]`;
+  const copy = JSON.parse(whole) as Record<string, unknown> | unknown[];
+  const leftOut: string[] = [];
+  const size = (v: unknown): number => JSON.stringify(v)?.length ?? 0;
+  const render = (): string =>
+    Array.isArray(copy) ? JSON.stringify(copy) : JSON.stringify(leftOut.length ? { ...copy, left_out: leftOut } : copy);
+  let text = render();
+  for (let guard = 0; text.length > max && guard < 100_000; guard++) {
+    // Follow the bulkiest member down: a list loses its last item, an object
+    // its bulkiest leaf.
+    let node: Record<string, unknown> | unknown[] = copy;
+    let path = "";
+    let trimmed = false;
+    for (;;) {
+      if (Array.isArray(node)) {
+        if (!node.length) break;
+        node.pop();
+        const note = `${path || "the list"}: its last items`;
+        if (!leftOut.includes(note)) leftOut.push(note);
+        trimmed = true;
+        break;
+      }
+      const entries = Object.entries(node);
+      if (!entries.length) break;
+      const [key, child] = entries.reduce((a, b) => (size(b[1]) > size(a[1]) ? b : a));
+      if (child !== null && typeof child === "object" && Object.keys(child).length > 0) {
+        path = path ? `${path}.${key}` : key;
+        node = child as Record<string, unknown> | unknown[];
+        continue;
+      }
+      delete node[key];
+      leftOut.push(path ? `${path}.${key}` : key);
+      trimmed = true;
+      break;
+    }
+    if (!trimmed) break;
+    text = render();
+  }
+  return text.length <= max ? text : `${text.slice(0, max)}… [truncated]`;
 }
 
 // Run one call the model made.  Never throws: a bad call becomes an error
@@ -1622,11 +1682,13 @@ export async function runToolCall(
   if (refusal) return { ok: false, args, text: `Error: ${refusal}`, summary: "refused until its skill is read" };
   try {
     const out = await tool.run(args, ctx, io);
-    // A text result (a skill) goes as written; anything else as JSON.
-    let text = typeof out.result === "string" ? out.result : JSON.stringify(out.result);
+    // A text result (a skill) goes as written; anything else as JSON, trimmed
+    // to valid JSON when it is long (fitResult).
     const max = tool.maxResultChars ?? MAX_RESULT_CHARS;
-    if (text.length > max) text = `${text.slice(0, max)}… [truncated]`;
-    return { ok: true, args, text, summary: out.summary, view: out.view };
+    const full = typeof out.result === "string" ? out.result : (JSON.stringify(out.result) ?? "null");
+    const text =
+      full.length <= max ? full : typeof out.result === "string" ? `${full.slice(0, max)}… [truncated]` : fitResult(out.result, max);
+    return { ok: true, args, text, ...(text !== full ? { full } : {}), summary: out.summary, view: out.view };
   } catch (e) {
     const msg = (e as Error).message;
     const text = e instanceof ToolArgError ? `Error: invalid arguments — ${msg}` : `Error: ${msg}`;

@@ -59,7 +59,7 @@ from nebula3d.analysis import (
     invert_delta_pdf,
 )
 from nebula3d.analysis.delta_pdf import _q_max_from_axes, real_space_radius
-from nebula3d.core import HKLVolume
+from nebula3d.core import HKLVolume, sigma_note
 from nebula3d.core import low_memory as _low_memory
 from nebula3d.io.delta_pdf_file import load_delta_pdf, save_delta_pdf
 from nebula3d.io.mantid_nxs import NEBULA3D_GROUP
@@ -1249,6 +1249,10 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     """
     p = params or PunchParams()
     _emit(progress, "punch", "start", None, f"Bragg punch (mode={p.mode})")
+    if p.min_significance is not None and p.significance_noise == "sigma":
+        note = sigma_note(vol)
+        if note is not None:
+            _emit(progress, "punch", "progress", None, f"⚠ {note}")
     remover = bragg_remover(p)
     if symmetry is not None:
         remover = dataclasses.replace(remover, symmetry_ops=symmetry.ops)

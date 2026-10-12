@@ -44,7 +44,7 @@ export interface VolumeCoverage {
   q_max_edge: number | null; // where it last falls through ½ (null: to the corner)
   full_q_min: number | null; // first shell ≥ 95 %
   full_q_max: number | null; // last shell ≥ 95 %
-  box_q: number; // the nearest face of the box
+  box_q: number; // the nearest face of the box in Q (a face through the origin, a half-space volume's, aside)
   box_corner_q: number;
 }
 
@@ -56,6 +56,8 @@ export interface RingShell {
   median_height: number | null; // the shell's median height above its flanks (data units)
   relative_height: number | null; // that height over the flanks' level
   isotropy: number | null; // the low-quantile height over the median height
+  snr?: number | null; // the height over its noise, in the typical cell
+  beyond_curve?: number | null; // the share of the height above a quadratic through the flanks
   is_ring: boolean;
   not_judged: string | null; // why no verdict, if none
 }
@@ -106,6 +108,10 @@ export interface VolumeMeta {
   // The point group the file declares its data were symmetrised with.
   symmetry?: string | null;
   symmetry_ops?: number[][][] | null;
+  // "measured": σ came with the data; "estimated": √|I|. sigma_note says when
+  // that leaves a significance in σ meaningless (normalized values).
+  sigma?: "measured" | "estimated";
+  sigma_note?: string | null;
 }
 
 export interface DeltaPdfMeta {

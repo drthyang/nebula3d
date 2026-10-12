@@ -45,6 +45,7 @@ import numpy as np
 
 import nebula3d
 from nebula3d._ringplane import RingWorkerContext, _PlaneResult
+from nebula3d.analysis.delta_pdf import FFTOriginError
 from nebula3d.core import HKLVolume
 from nebula3d.pipeline import (
     STAGES,
@@ -746,6 +747,8 @@ async def run_async(
             done = await _run_pdf_stages_gpu(
                 params, stages, bool(force), force_from, cb, gpu,
                 proc_dir=proc_dir, inputs=inputs)
+        except FFTOriginError:
+            raise  # the grid, not the GPU: the CPU FFT would refuse it too
         except Exception as exc:  # noqa: BLE001 - GPU must never fail the run
             _cb_emit(cb, "pdf", "progress", None,
                      f"WebGPU ΔPDF failed ({exc}); recomputing with the CPU FFT")
@@ -1144,11 +1147,7 @@ def volume_ring_isotropy_json(volume_id: str, q: str, fwhm: str) -> str:
     """Which shells of an HKL stage are powder rings (mirrors
     GET /api/volumes/{id}/rings)."""
     stage = _resolve(volume_id, "hkl")
-    qs = [float(x) for x in str(q).split(",") if x.strip()]
-    ws = [float(x) for x in str(fwhm).split(",") if x.strip()]
-    if not qs or len(qs) != len(ws) or len(qs) > 64 or min(qs + ws) <= 0:
-        raise ValueError("q and fwhm must list as many positive numbers, at most 64")
-    m = _vol.volume_ring_isotropy(stage.path, list(zip(qs, ws)))
+    m = _vol.volume_ring_isotropy(stage.path, _vol.parse_ring_shells(q, fwhm))
     return _json({**m, "id": volume_id})
 
 

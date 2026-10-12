@@ -10,7 +10,7 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore, type StageRun } from "../tune/tuner";
-import { CHAT_TOOLS, runToolCall, type ToolContext } from "../tools";
+import { CHAT_TOOLS, fitResult, MAX_RESULT_CHARS, runToolCall, type AgentTool, type ToolContext } from "../tools";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -99,6 +99,19 @@ describe("runToolCall", () => {
   it("rejects an unknown plane", async () => {
     const r = await run("measure_reciprocal_cut", { plane: "hkl", value: 0 });
     expect(r.text).toMatch(/plane must be one of hk0, h0l, 0kl/);
+  });
+});
+
+describe("describe_dataset", () => {
+  it("says whether σ came with the data, and when √|I| makes it count nothing fixed", async () => {
+    const plain = JSON.parse((await run("describe_dataset", {})).text);
+    expect(plain.sigma).toBeNull();
+    expect(plain).not.toHaveProperty("sigma_note");
+    const note = "No σ came with this volume, so σ is taken as √|I| …";
+    api.fetchMeta.mockResolvedValue({ ...META, sigma: "estimated", sigma_note: note });
+    const estimated = JSON.parse((await run("describe_dataset", {})).text);
+    expect(estimated.sigma).toBe("estimated");
+    expect(estimated.sigma_note).toBe(note);
   });
 });
 
@@ -712,5 +725,46 @@ describe("openView", () => {
     expect(useNavStore.getState().tab).toBe("consistency");
     openView({ view: "execution", label: "the run log" });
     expect(useNavStore.getState().tab).toBe("execution");
+  });
+});
+
+describe("a long result, trimmed to valid JSON", () => {
+  // An assess_stage rings result past the limit: a long goal, long per-plane lists.
+  const residuals = (n: number) => Array.from({ length: n }, (_, i) => ({ at: 1 + i / 10, residual_fraction: 0.1, noise_fraction: 0.05, significant: true, ring: false }));
+  const long = {
+    rings: {
+      verdict: "needs attention",
+      headline: "ring ratio 0.7 · left ≤ 0.4 (h0l, 3.16 Å⁻¹)",
+      max_ring_left: 0.4,
+      per_plane: { hk0: { ring_residuals: residuals(30) }, h0l: { ring_residuals: residuals(30) }, "0kl": { ring_residuals: residuals(30) } },
+      goal: "g".repeat(1500),
+    },
+  };
+
+  it("leaves a result that fits as it is", () => {
+    expect(fitResult({ a: 1 }, 100)).toBe('{"a":1}');
+  });
+
+  it("drops the bulkiest parts first, keeps the verdict, and names what it left out", () => {
+    expect(JSON.stringify(long).length).toBeGreaterThan(MAX_RESULT_CHARS);
+    const text = fitResult(long, MAX_RESULT_CHARS);
+    expect(text.length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
+    const read = JSON.parse(text) as { rings: Record<string, unknown>; left_out: string[] };
+    expect(read.rings.verdict).toBe("needs attention");
+    expect(read.rings.headline).toBe(long.rings.headline);
+    expect(read.rings.max_ring_left).toBe(0.4);
+    expect(read.left_out.length).toBeGreaterThan(0);
+    expect(read.left_out.every((x) => x.startsWith("rings."))).toBe(true);
+  });
+
+  it("hands the whole result back beside the trimmed one", async () => {
+    const big: AgentTool = { name: "big", description: "", parameters: { type: "object", properties: {} }, run: async () => ({ result: long, summary: "big" }) };
+    const r = await runToolCall({ id: "c", type: "function", function: { name: "big", arguments: "{}" } }, [big], ctx);
+    expect(r.ok).toBe(true);
+    expect(() => JSON.parse(r.text)).not.toThrow();
+    expect(r.full).toBe(JSON.stringify(long));
+    const small: AgentTool = { ...big, name: "small", run: async () => ({ result: { a: 1 }, summary: "small" }) };
+    const s = await runToolCall({ id: "c", type: "function", function: { name: "small", arguments: "{}" } }, [small], ctx);
+    expect(s.full).toBeUndefined();
   });
 });

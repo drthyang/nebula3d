@@ -386,9 +386,26 @@ OFFSET_DIRECTIONS = (("in-plane", 0.0, 0.05), ("oblique", 0.05, 0.7),
 def auto_fit(vol: HKLVolume, ops: Ops | None) -> tuple[str, float | None]:
     """The fit a UB check takes, and the volume's :func:`symmetry_break`:
     ``"symmetric"`` on a volume symmetrised under *ops*, else ``"both"`` (the
-    cell constrained by *ops*, triclinic without them)."""
-    broken = None if ops is None else symmetry_break(vol, ops)
+    cell constrained by *ops*, triclinic without them).
+
+    Operations that do not map *vol*'s grid onto itself (borrowed from an
+    export binned otherwise, say) cannot show whether it is symmetrised: the
+    fit is ``"both"``, the operations constraining the cell only, and the break
+    is ``None``."""
+    broken = _grid_break(vol, ops)
     return ("symmetric" if broken is not None and broken < SYMMETRISED else "both"), broken
+
+
+def _grid_break(vol: HKLVolume, ops: Ops | None) -> float | None:
+    """:func:`symmetry_break`, or ``None`` without *ops* or where they do not map
+    *vol*'s grid onto itself: then there is nothing to judge on that grid, and
+    the operations constrain the cell alone."""
+    if ops is None:
+        return None
+    try:
+        return symmetry_break(vol, ops)
+    except ValueError:
+        return None
 
 
 def radial_offsets(fit: UBFit, centres: Centres, *, min_peaks: int = 3) -> list[RadialOffset]:
@@ -445,7 +462,9 @@ def refine_ub(
 
     *ops* constrain the fit (see :func:`fit_ub`) and are checked against the
     data: a volume symmetrised under them takes only the ``"symmetric"`` fit
-    (see the module docstring), and any other raises ``ValueError``.  The
+    (see the module docstring), and any other raises ``ValueError``. Operations
+    that do not map the grid onto itself are not checked; they constrain the
+    cell only.  The
     other arguments are :func:`measure_centres`'s and :func:`fit_ub`'s.
     """
     from nebula3d.analysis.coverage import box_extent_q
@@ -454,7 +473,7 @@ def refine_ub(
         raise ValueError(f"fit must be one of {FITS}, not {fit!r}")
     if passes < 1:
         raise ValueError("passes must be at least 1")
-    broken = None if ops is None else symmetry_break(vol, ops)
+    broken = _grid_break(vol, ops)
     if fit != "symmetric" and broken is not None and broken < SYMMETRISED:
         raise ValueError(
             f"this volume is symmetrised under the {len(_group(ops))} operations given "
@@ -550,7 +569,7 @@ def regrid(vol: HKLVolume, ub: NDArray[np.floating], *, chunk: int = 8) -> HKLVo
         mask[j0:j1] = ok
     return HKLVolume(data=data, sigma=sigma, mask=mask, h_axis=axes[0].copy(),
                      k_axis=axes[1].copy(), l_axis=axes[2].copy(), ub_matrix=ub_new,
-                     instrument=vol.instrument)
+                     instrument=vol.instrument, sigma_estimated=vol.sigma_estimated)
 
 
 def _group(ops: Ops | None) -> Ops:

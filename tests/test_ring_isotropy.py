@@ -24,8 +24,9 @@ from nebula3d.preprocessing import (
 Q_RING, FWHM = 2.0, 0.15
 
 
-def _volume(feature: str, *, seed: int = 0, n: int = 81) -> HKLVolume:
-    """A smooth isotropic background with one feature at |Q| = 2 Å⁻¹."""
+def _volume(feature: str, *, seed: int = 0, n: int = 81, hump: float = 0.0) -> HKLVolume:
+    """A smooth isotropic background with one feature at |Q| = 2 Å⁻¹, on a broad
+    hump of height *hump* centred there (σ-like width 0.4 Å⁻¹) if any."""
     blank = HKLVolume.from_arrays(np.zeros((n, n, n)), (-3, 3), (-3, 3), (-3, 3),
                                   ub_matrix=np.eye(3))
     H, K, L = blank.hkl_grid()
@@ -44,7 +45,8 @@ def _volume(feature: str, *, seed: int = 0, n: int = 81) -> HKLVolume:
     else:
         bump = np.zeros_like(q)
     rng = np.random.default_rng(seed)
-    data = 1.0 + 0.5 * np.exp(-q / 2.0) + bump + rng.normal(0.0, 0.01, q.shape)
+    data = (1.0 + 0.5 * np.exp(-q / 2.0) + hump * np.exp(-(((q - Q_RING) / 0.4) ** 2)) + bump
+            + rng.normal(0.0, 0.01, q.shape))
     return HKLVolume.from_arrays(data, (-3, 3), (-3, 3), (-3, 3), ub_matrix=np.eye(3))
 
 
@@ -61,6 +63,23 @@ def test_maxima_in_a_few_directions_are_not_a_ring():
     (r,) = judge_shells(_volume("lobes"), [(Q_RING, FWHM)])
     assert r.median_height != 0
     assert not r.is_ring
+
+
+@pytest.mark.parametrize("feature", ["none", "lobes"])
+def test_a_smooth_hump_is_not_a_ring(feature):
+    # Above a line through the flanks, a broad concave hump reads as a height in
+    # every direction: an empty shell on it, or maxima along <100> only, passed
+    # for a ring. Above a quadratic through the same flanks almost none is left.
+    (r,) = judge_shells(_volume(feature, hump=0.3), [(Q_RING, FWHM)])
+    assert not r.is_ring
+    assert r.beyond_curve < IsotropyConfig().curve_share
+
+
+def test_a_ring_on_a_smooth_hump_is_still_one():
+    vol = _volume("ring", hump=0.3)
+    (r,) = judge_shells(vol, [(Q_RING, FWHM)])
+    assert r.is_ring
+    assert r.snr >= IsotropyConfig().min_snr
 
 
 def test_nothing_at_that_q_is_not_a_ring():
@@ -94,8 +113,9 @@ def test_a_broad_candidate_beside_a_ring_does_not_hide_it():
 def test_reads_a_subset_past_the_voxel_budget_and_agrees():
     vol = _volume("ring")
     (full,) = judge_shells(vol, [(Q_RING, FWHM)])
-    # About half of the ~90k voxels in the shell's window.
-    (sub,) = judge_shells(vol, [(Q_RING, FWHM)], IsotropyConfig(max_voxels=45_000))
+    # About half of the ~90k voxels in the shell's window, with no per-shell floor.
+    (sub,) = judge_shells(vol, [(Q_RING, FWHM)],
+                          IsotropyConfig(max_voxels=45_000, sample_per_bin=0))
     assert sub.is_ring and full.is_ring
     assert sub.n_cells >= 0.9 * full.n_cells
     assert abs(sub.isotropy - full.isotropy) < 0.05
@@ -106,6 +126,8 @@ def test_config_validation():
         IsotropyConfig(direction_share=1.0)
     with pytest.raises(ValueError):
         IsotropyConfig(core_scale=0.0)
+    with pytest.raises(ValueError):
+        IsotropyConfig(sample_per_bin=-1)
 
 
 # ---------------------------------------------------------------- the removal
@@ -116,11 +138,16 @@ def _demo(ring_amp: float) -> HKLVolume:
 
 
 def test_a_crystal_with_no_rings_keeps_all_its_diffuse():
-    vol = _demo(0.0)
+    # The held-out evals' crystal (another cell, stronger short-range order): its
+    # own diffuse makes shells the detection finds, and the test rejects them all.
+    vol = demo_volume(121, seed=7, model=DemoModel(a=3.9, sro_amp=0.09, ring_amp=0.0),
+                      dtype=np.float32)
     res = fit_pooled_rings(vol, PooledRingConfig())
     d = res.diagnostics
-    assert d["status"] in ("no_rings", "no_confirmed_rings")
+    assert d["status"] == "no_confirmed_rings"
     assert d["shells"] == []
+    assert len(d["rejected_shells"]) >= 2
+    assert all(not s["isotropy"]["is_ring"] for s in d["rejected_shells"])
     assert d["removed_fraction"] == 0.0
     assert np.array_equal(res.cleaned.data, vol.data)
     assert np.array_equal(res.cleaned.mask, vol.mask)
@@ -136,6 +163,27 @@ def test_the_demo_aluminium_rings_are_confirmed_and_removed():
         assert any(abs(q - q_al) < 0.05 for q in kept), (q_al, kept)
     assert all(s["isotropy"]["is_ring"] for s in d["shells"])
     assert all(not s["isotropy"]["is_ring"] for s in d["rejected_shells"])
+
+
+def test_low_memory_mode_confirms_the_rings_native_mode_does(monkeypatch):
+    """The browser's low-memory budget is an eighth of the volume's voxels.
+    Shared by every shell alike, it thinned the small shells near |Q| = 0 to a
+    few direction cells, so the demo's lowest Al rings went unjudged and stayed
+    in. Each shell now keeps sample_per_bin voxels per cell and bin."""
+    def confirmed(lean: bool, **isotropy: int) -> list[float]:
+        if lean:
+            monkeypatch.setenv("NEBULA3D_LOW_MEMORY", "1")
+        else:
+            monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)
+        # A fresh volume each time: in low-memory mode the output overwrites it.
+        cfg = PooledRingConfig(isotropy=IsotropyConfig(**isotropy))
+        shells = fit_pooled_rings(_demo(0.9), cfg).diagnostics["shells"]
+        return [round(s["q_center"], 2) for s in shells]
+
+    native = confirmed(False)
+    assert confirmed(True) == native
+    shared_budget_only = confirmed(True, sample_per_bin=0)
+    assert min(native) not in shared_budget_only
 
 
 def test_confirmation_off_subtracts_every_detected_shell():

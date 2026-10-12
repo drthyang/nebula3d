@@ -24,6 +24,7 @@ export interface Topic {
   evidence: string; // the tool that settles it, as the model is told
   settles: (step: AgentStep) => boolean;
   subject: RegExp;
+  verdict?: RegExp; // the words that make a sentence a verdict on it, where VERDICT is too broad
 }
 
 const stageIs = (step: AgentStep, ...stages: string[]): boolean =>
@@ -83,6 +84,16 @@ export const TOPICS: readonly Topic[] = [
     subject: /\b(second grains?|grains?|twin(s|ned|ning)?)\b/i,
   },
   {
+    id: "pdf",
+    label: "the 3D-ΔPDF",
+    evidence: "assess_stage with stage pdf",
+    settles: (s) => stageIs(s, "pdf"),
+    // A verdict on the stage as a whole; its symmetry and its coverage are
+    // their own topics, and a feature the ΔPDF shows is no verdict.
+    subject: /^(?!.*\b(symmetr(y|ic)|six-?fold|three-?fold|coverage|unmeasured)\b)(?=.*(Δ\s?PDF|delta-?pdf)).*/is,
+    verdict: /\b(meets? (its|the) goal|needs attention|pass(es|ed)?|fail(s|ed)?|clean|trustworthy|reliable|sound)\b/i,
+  },
+  {
     id: "ub",
     label: "the UB",
     evidence: "ub_check",
@@ -136,8 +147,10 @@ export function clauses(text: string): string[] {
 export function verdictsIn(text: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const s of clauses(text)) {
-    if (s.endsWith("?") || NOT_A_VERDICT.test(s) || !VERDICT.test(s)) continue;
-    for (const t of TOPICS) if (t.subject.test(s)) out.set(t.id, [...(out.get(t.id) ?? []), s]);
+    if (s.endsWith("?") || NOT_A_VERDICT.test(s)) continue;
+    for (const t of TOPICS) {
+      if (t.subject.test(s) && (t.verdict ?? VERDICT).test(s)) out.set(t.id, [...(out.get(t.id) ?? []), s]);
+    }
   }
   return out;
 }
@@ -168,7 +181,7 @@ const resultsOf = (steps: readonly AgentStep[], name: string): Record<string, un
   });
 
 /** A stage's verdict from assess_stage: its computed verdict, or computed here from its numbers by the same rule. */
-function stageSays(steps: readonly AgentStep[], stage: "rings" | "punch" | "backfill" | "flatten"): ToolSays {
+function stageSays(steps: readonly AgentStep[], stage: "rings" | "punch" | "backfill" | "flatten" | "pdf"): ToolSays {
   let says: ToolSays = null;
   for (const r of resultsOf(steps, "assess_stage")) {
     const m = r[stage];
@@ -217,6 +230,7 @@ const RULES: readonly VerdictRule[] = [
   { topic: "punch", says: (st) => stageSays(st, "punch"), claimsOk: claimsSuccess },
   { topic: "backfill", says: (st) => stageSays(st, "backfill"), claimsOk: claimsSuccess },
   { topic: "flatten", says: (st) => stageSays(st, "flatten"), claimsOk: claimsSuccess },
+  { topic: "pdf", says: (st) => stageSays(st, "pdf"), claimsOk: claimsSuccess },
   {
     topic: "coverage",
     says: (st) => verdictSays(st, "qmax_coverage", /^clean/i, /^(too far|past|unmeasured|not)/i),
@@ -261,8 +275,9 @@ export function contradictions(text: string, steps: readonly AgentStep[]): Topic
 export interface WrittenNumber {
   text: string; // as written
   value: number;
-  tolerance: number; // half a unit of the last digit written
+  tolerance: number; // half a unit of the last digit written (of the last non-zero one, for a round integer)
   percent: boolean;
+  signed: boolean; // written with a + or − of its own
 }
 
 const SUPERSCRIPT: Record<string, string> = { "⁻": "-", "⁺": "+", "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9" };
@@ -285,21 +300,44 @@ function flatten(text: string): string {
 /** The numbers an answer writes, as written; numbers inside names (hk0, 3D, 6/mmm, 201x201) are not numbers. */
 export function writtenNumbers(text: string): WrittenNumber[] {
   const out: WrittenNumber[] = [];
-  const re = /(?<![A-Za-z_\d.^/])([-+]?)(\d+(?:\.(\d+))?)(?:e([-+]?\d+))?(\s*%)?(?![A-Za-z_\d/]|\.\d)/g;
-  for (const m of flatten(text).matchAll(re)) {
+  // Thousands separators in prose ("12,345"); not in the sources, where a
+  // comma separates a JSON list's items.
+  const prose = flatten(text).replace(/(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,]|\.\d)/g, (m) => m.replace(/,/g, ""));
+  const re = /(?<![A-Za-z_\d.^/])([-+]?)(\d+(?:\.(\d+))?)(?:e([-+]?\d+))?(\s*%)?(?![A-Za-z_\d/]|\.\d)/gi;
+  for (const m of prose.matchAll(re)) {
     const [whole, sign, mantissa, decimals = "", exp, percent] = m;
     const scale = exp ? 10 ** Number(exp) : 1;
     const value = Number(`${sign}${mantissa}`) * scale;
     if (!Number.isFinite(value)) continue;
-    out.push({ text: whole.trim(), value, tolerance: 0.5 * 10 ** -decimals.length * scale, percent: Boolean(percent) });
+    // A round integer is as precise as its last non-zero digit: 1500 is 1532 rounded.
+    const zeros = !decimals && !exp ? (/0+$/.exec(mantissa.replace(/^0+(?=\d)/, ""))?.[0].length ?? 0) : 0;
+    const unit = decimals ? 10 ** -decimals.length : 10 ** Math.min(zeros, Math.max(mantissa.length - 1, 0));
+    out.push({ text: whole.trim(), value, tolerance: 0.5 * unit * scale, percent: Boolean(percent), signed: sign !== "" });
   }
   return out;
 }
 
-/** Every number in the sources, as magnitudes, sorted. */
-export function sourceNumbers(sources: string): number[] {
-  const values = [...flatten(sources).matchAll(/\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi)].map((m) => Math.abs(Number(m[0])));
-  return values.filter(Number.isFinite).sort((a, b) => a - b);
+export interface SourceNumbers {
+  all: number[]; // every number, as a magnitude, sorted
+  negative: number[]; // the magnitudes of those written with a minus sign, sorted
+  positive: number[]; // the magnitudes of the others, sorted
+}
+
+/** Every number in the sources, sorted: all of them, and by sign. A minus counts
+ * only right before the digits with no digit or point before it, so a range
+ * ("4-8") reads as two positive numbers. */
+export function sourceNumbers(sources: string): SourceNumbers {
+  const all: number[] = [];
+  const negative: number[] = [];
+  const positive: number[] = [];
+  for (const m of flatten(sources).matchAll(/(?<![\d.])(-?)(\d+(?:\.\d+)?(?:e[-+]?\d+)?)/gi)) {
+    const v = Math.abs(Number(m[2]));
+    if (!Number.isFinite(v)) continue;
+    all.push(v);
+    (m[1] === "-" ? negative : positive).push(v);
+  }
+  const sort = (xs: number[]) => xs.sort((a, b) => a - b);
+  return { all: sort(all), negative: sort(negative), positive: sort(positive) };
 }
 
 /** Is some source within tolerance of |v| (a written precision, or 2 % for a rounded figure)? */
@@ -318,10 +356,12 @@ function traced(v: number, tolerance: number, sorted: readonly number[]): boolea
 
 /** The numbers an answer writes that no source holds (distinct, as written). */
 export function untracedNumbers(text: string, sources: string): string[] {
-  const sorted = sourceNumbers(sources);
+  const found = sourceNumbers(sources);
   const out: string[] = [];
   for (const n of writtenNumbers(text)) {
-    const ok = traced(n.value, n.tolerance, sorted) || (n.percent && traced(n.value / 100, n.tolerance / 100, sorted));
+    // A signed number needs a source of its sign: +0.14 is not −0.14.
+    const pool = !n.signed ? found.all : n.value < 0 ? found.negative : found.positive;
+    const ok = traced(n.value, n.tolerance, pool) || (n.percent && traced(n.value / 100, n.tolerance / 100, pool));
     if (!ok && !out.includes(n.text)) out.push(n.text);
   }
   return out;

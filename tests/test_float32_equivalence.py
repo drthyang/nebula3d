@@ -99,7 +99,7 @@ def test_mean_subtract_uses_f64_accumulator():
     """A float32 volume with a large pedestal: the subtracted mean must come
     from a float64 accumulator (a float32 pairwise mean drifts ~1e-4 here)."""
     rng = np.random.default_rng(11)
-    n = 48
+    n = 49
     axes = np.linspace(-2, 2, n)
     base = (1000.0 + rng.normal(0, 1.0, (n, n, n))).astype(np.float32)
     vol64 = HKLVolume.from_arrays(base.astype(np.float64), (-2, 2), (-2, 2),
@@ -251,7 +251,7 @@ def test_inspect_reports_precision_and_new_ceiling(tmp_path):
 def test_run_precision_override(tmp_path):
     """params_json {"precision": "float64"} pins the debug/validation mode."""
     webbridge.setup(workdir=str(tmp_path / "work"))
-    webbridge.make_demo_input(n=24)
+    webbridge.make_demo_input(n=25)
     webbridge.run("rings", '{"precision": "float64"}', flatten_enabled=True,
                   force=True)
     ring = sorted(
@@ -261,7 +261,7 @@ def test_run_precision_override(tmp_path):
 
 def test_run_default_is_float32(tmp_path):
     webbridge.setup(workdir=str(tmp_path / "work"))
-    webbridge.make_demo_input(n=24)
+    webbridge.make_demo_input(n=25)
     webbridge.run("rings", "{}", flatten_enabled=True, force=True)
     ring = sorted(
         (tmp_path / "work" / "processed").glob("*_ringremoved.h5"))[0]

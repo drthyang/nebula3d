@@ -52,7 +52,7 @@ def test_webbridge_imports_without_fastapi():
 def ran_pipeline(tmp_path):
     """Run the full pipeline once on a synthetic volume in a temp workspace."""
     webbridge.setup(workdir=str(tmp_path / "work"))
-    dataset_id = webbridge.make_demo_input(n=24)
+    dataset_id = webbridge.make_demo_input(n=25)
 
     events: list[tuple] = []
 
@@ -128,13 +128,13 @@ def test_hkl_meta_and_slice(ran_pipeline):
     meta = json.loads(webbridge.volume_meta_json(vid))
     assert meta["id"] == vid
     assert meta["kind"] == "hkl"
-    assert meta["shape"] == [24, 24, 24]
+    assert meta["shape"] == [25, 25, 25]
     assert "hk" in meta["planes"]
 
     env = webbridge.volume_slice(vid, "hk", 0.0, False)
     header, data = _decode_envelope(bytes(env))
     assert header["nx"] * header["ny"] == data.size
-    assert header["ny"] == 24 and header["nx"] == 24
+    assert header["ny"] == 25 and header["nx"] == 25
 
 
 def test_dpdf_meta_and_slice(ran_pipeline):
@@ -323,7 +323,7 @@ def test_run_async_without_pool_delegates(tmp_path):
     import asyncio
 
     webbridge.setup(workdir=str(tmp_path / "work"))
-    dataset_id = webbridge.make_demo_input(n=24)
+    dataset_id = webbridge.make_demo_input(n=25)
     events: list[tuple] = []
 
     def progress(stage, status, fraction, message):
@@ -350,7 +350,7 @@ def test_run_async_with_pool_matches_sync_run(tmp_path, monkeypatch):
     params = json.dumps({"rings_model": "patched"})
     # Reference: plain sync run in workspace A.
     webbridge.setup(workdir=str(tmp_path / "a"))
-    webbridge.make_demo_input(n=24)
+    webbridge.make_demo_input(n=25)
     webbridge.run("", params, flatten_enabled=True, force=True)
     ring_a = sorted((tmp_path / "a" / "processed").glob("*_ringremoved.h5"))[0]
     vol_a = nebula3d.load(ring_a)
@@ -360,7 +360,7 @@ def test_run_async_with_pool_matches_sync_run(tmp_path, monkeypatch):
     monkeypatch.setattr(webbridge, "_JsPlaneExecutor",
                         lambda pool, progress=None: FakeExecutor(n_workers=3))
     webbridge.setup(workdir=str(tmp_path / "b"))
-    webbridge.make_demo_input(n=24)
+    webbridge.make_demo_input(n=25)
     events: list[tuple] = []
 
     def progress(stage, status, fraction, message):
@@ -386,7 +386,7 @@ def test_run_async_pool_skipped_when_rings_current(tmp_path, monkeypatch):
     import asyncio
 
     webbridge.setup(workdir=str(tmp_path / "work"))
-    webbridge.make_demo_input(n=24)
+    webbridge.make_demo_input(n=25)
     webbridge.run("", "{}", flatten_enabled=True, force=True)
 
     def _boom(pool):  # noqa: ANN001
@@ -420,7 +420,7 @@ def test_browser_run_is_matplotlib_free(tmp_path):
         "import json\n"
         "from nebula3d import webbridge\n"
         f"webbridge.setup(workdir={str(tmp_path / 'work')!r})\n"
-        "webbridge.make_demo_input(n=24)\n"
+        "webbridge.make_demo_input(n=25)\n"
         "out = json.loads(webbridge.run('', '{}', flatten_enabled=True, force=True))\n"
         "assert out, 'no datasets returned'\n"
         "loaded = [m for m in sys.modules if m.startswith('matplotlib') "

@@ -197,6 +197,27 @@ def test_volume_meta(env):
     assert "hk" in m["planes"] and "0kl" in m["planes"]
 
 
+def test_volume_meta_says_where_sigma_came_from(tmp_path):
+    """A NeXus Viewer hand-off without /entry/sigma: σ is √|I|, and on its
+    normalized values the meta carries the note the agent reads."""
+    import h5py
+
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    n = 15
+    with h5py.File(tmp_path / "raw" / f"{STEM}.nxs", "w") as f:
+        entry = f.create_group("entry")
+        entry["data"] = np.random.default_rng(0).uniform(0.05, 0.6, (n, n, n))
+        for name in ("h_axis", "k_axis", "l_axis"):
+            entry[name] = np.linspace(-2, 2, n)
+        entry["ub_matrix"] = UB
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    m = client.get(f"/api/volumes/{SLUG}.raw/meta").json()
+    assert m["sigma"] == "estimated"
+    assert "√|I|" in m["sigma_note"] and "non-integer" in m["sigma_note"]
+
+
 def test_declared_symmetry(tmp_path):
     """A NeXus Viewer file's /entry symmetry and symmetry_ops reach the volume meta."""
     import h5py
@@ -286,9 +307,20 @@ def test_volume_ring_isotropy(tmp_path):
     assert [s["is_ring"] for s in body["shells"]] == [True, False]
     assert body["shells"][0]["isotropy"] > 0.9
     bad_params = ({"q": "2.0", "fwhm": "0.1,0.1"}, {"q": "x", "fwhm": "0.1"},
-                  {"q": "-1", "fwhm": "0.1"})
+                  {"q": "-1", "fwhm": "0.1"}, {"q": "nan", "fwhm": "0.1"},
+                  {"q": "2.0", "fwhm": "inf"}, {"q": "inf,2.0", "fwhm": "0.1,0.1"})
     for bad in bad_params:
         assert client.get(f"/api/volumes/{SLUG}.raw/rings", params=bad).status_code == 400
+
+
+def test_ring_shells_must_be_finite_and_positive():
+    # The browser bridge parses /rings requests with the same function.
+    assert vol_mod.parse_ring_shells("2.45, 3.66", "0.08,0.08") == [(2.45, 0.08), (3.66, 0.08)]
+    many = ",".join(["1"] * 65)
+    for q, fwhm in [("nan", "0.1"), ("2", "inf"), ("-inf", "0.1"), ("2", "0"), ("", ""),
+                    ("2,3", "0.1"), (many, many)]:
+        with pytest.raises(ValueError):
+            vol_mod.parse_ring_shells(q, fwhm)
 
 
 def test_volume_ub_check(tmp_path):
@@ -315,6 +347,34 @@ def test_volume_ub_check(tmp_path):
     assert all(o["before"] == pytest.approx(a / a_true - 1, abs=1e-3) for o in in_plane)
     assert all(abs(o["after"]) < 1e-3 for o in u["radial"])
     assert client.get(f"/api/volumes/{SLUG}.raw/ub", params={"cell": "2,0,2"}).status_code == 400
+
+
+def test_volume_ub_check_with_operations_that_do_not_map_the_grid(tmp_path):
+    """Operations borrowed for a grid binned otherwise (K at 1.25× H's step)
+    cannot map it onto itself: the check fits the rotation and the cell, the
+    operations constraining the cell only, instead of failing with a 422."""
+    a, a_true = 4.0, 4.04
+    ub, ub_true = 2 * np.pi / a * np.eye(3), 2 * np.pi / a_true * np.eye(3)
+    vol = HKLVolume.from_arrays(np.full((61, 49, 61), 10.0), (-3, 3), (-3, 3), (-3, 3),
+                                ub_matrix=ub)
+    hkl = np.stack(np.meshgrid(vol.h_axis, vol.k_axis, vol.l_axis, indexing="ij"), axis=-1)
+    for g in np.array(np.meshgrid(*[np.arange(-2, 3)] * 3, indexing="ij")).reshape(3, -1).T:
+        if g.any():
+            d = (hkl - np.linalg.inv(ub) @ ub_true @ g) @ ub.T
+            vol.data += 500 * np.exp(-(d ** 2).sum(-1) / (2 * 0.15 ** 2))
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    _write_entry(tmp_path / "raw" / f"{STEM}.nxs", vol, symmetry_ops="h,k,l; -k,h,l; -h,-k,-l")
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    r = client.get(f"/api/volumes/{SLUG}.raw/ub", params={"cell": "1,1,1"})
+    assert r.status_code == 200, r.text
+    u = r.json()
+    assert u["fit"] == "both" and u["operations"] == 3
+    assert u["symmetry_break"] is None and u["symmetrised"] is None
+    # The four-fold still constrains the cell: a = b, at the lattice the peaks sit on.
+    assert u["cell"][0] == pytest.approx(u["cell"][1], abs=1e-6)
+    assert u["cell"][:3] == pytest.approx([a_true] * 3, abs=2e-3)
 
 
 def test_volume_ub_check_takes_the_symmetry_of_the_export(tmp_path):
@@ -923,7 +983,7 @@ def test_job_manager_runs_pipeline_in_process(tmp_path):
     # seed a punched volume so backfill → flatten → pdf can run without the slow
     # ring/punch stages (and without a real Mantid .nxs).
     rng = np.random.default_rng(0)
-    shape = (16, 16, 16)
+    shape = (17, 17, 17)
     vol = HKLVolume.from_arrays(
         np.abs(rng.normal(1.0, 0.2, shape)), (-3, 3), (-3, 3), (-3, 3), ub_matrix=UB)
     for idx in [(8, 8, 8), (7, 8, 9)]:

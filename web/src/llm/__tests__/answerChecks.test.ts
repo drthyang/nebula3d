@@ -81,6 +81,14 @@ describe("contradicting the tools' computed verdicts", () => {
     expect(contradictions("No ring is left.", [judged]).map((t) => t.id)).toEqual(["rings"]);
   });
 
+  it("holds a 3D-ΔPDF called sound to the stage's verdict, and reads a feature as no verdict", () => {
+    const pdf = step("assess_stage", { stage: "pdf" }, { pdf: { verdict: "needs attention" } });
+    expect(contradictions("The 3D-ΔPDF meets its goal.", [pdf]).map((t) => t.id)).toEqual(["pdf"]);
+    expect(verdictsIn("The 3D-ΔPDF shows a positive peak at 2.9 Å.").has("pdf")).toBe(false);
+    expect(verdictsIn("The ΔPDF keeps its six-fold symmetry.").has("pdf")).toBe(false);
+    expect(missingEvidence("The 3D-ΔPDF passes.", []).map((t) => t.id)).toEqual(["pdf"]);
+  });
+
   it("holds the other tools to their own verdicts", () => {
     const noGrain = step("grain_check", {}, { verdict: "no second grain of this phase: …" });
     expect(contradictions("The off-lattice peaks show a second grain.", [noGrain]).map((t) => t.id)).toEqual(["grain"]);
@@ -98,6 +106,24 @@ describe("contradicting the tools' computed verdicts", () => {
     expect(contradictions("The UB is fine: the fit changed nothing.", [symmetrised]).map((t) => t.id)).toEqual(["ub"]);
     const right = step("ub_check", {}, { symmetrised: false, orientation_change_deg: 0.01 });
     expect(contradictions("The UB is right.", [right])).toEqual([]);
+  });
+});
+
+describe("numbers read as they are written", () => {
+  it("reads thousands separators, an upper-case exponent and a round integer", () => {
+    expect(untracedNumbers("The search found 12,345 voxels.", '{"n": 12345}')).toEqual([]);
+    expect(untracedNumbers("It puts 1.2E-3 of its weight there.", '{"w": 0.0012}')).toEqual([]);
+    expect(untracedNumbers("About 1500 peaks were punched.", '{"n": 1532}')).toEqual([]);
+    expect(untracedNumbers("About 1500 peaks were punched.", '{"n": 1621}')).toEqual(["1500"]);
+    // A JSON list's commas still separate its items.
+    expect(untracedNumbers("The axis is 12 and 345.", '{"axis": [12,345,7]}')).toEqual([]);
+  });
+
+  it("holds a signed number to a source of its sign", () => {
+    expect(untracedNumbers("A dent of -0.14.", '{"x": -0.14}')).toEqual([]);
+    expect(untracedNumbers("A residual of +0.14.", '{"x": -0.14}')).toEqual(["+0.14"]);
+    expect(untracedNumbers("A residual of 0.14.", '{"x": -0.14}')).toEqual([]); // unsigned: by size
+    expect(untracedNumbers("The band ends at 8 Å⁻¹.", 'the band 4-8 Å⁻¹')).toEqual([]);
   });
 });
 
@@ -192,6 +218,41 @@ describe("runAgent holds the final answer to its evidence", () => {
     script([[{ content: "Yes, the ring removal is clean." }]]);
     const plain = await runAgent({ messages: question, tools: [], ctx, settings, signal: new AbortController().signal });
     expect(plain.note).toBeUndefined();
+  });
+});
+
+describe("the checks judge what the tools found, and nothing the assistant said", () => {
+  it("still catches a contradiction when the model read the result trimmed", async () => {
+    // Past MAX_RESULT_CHARS: once cut mid-way, the result parsed as nothing, and
+    // "no ring is left" passed against a ring check that needs attention.
+    const residuals = Array.from({ length: 90 }, (_, i) => ({ at: 1 + i / 10, residual_fraction: 0.1, noise_fraction: 0.05, significant: true, ring: false }));
+    const long: AgentTool = {
+      ...assess,
+      run: async () => ({ result: { rings: { verdict: "needs attention", per_plane: { hk0: { ring_residuals: residuals } }, goal: "g".repeat(1500) } }, summary: "rings judged" }),
+    };
+    script([[{ toolCalls: [call] }], [{ content: "No ring is left." }], [{ content: "" }]]);
+    const r = await runAgent({ messages: question, tools: [long], ctx, settings, signal: new AbortController().signal });
+    expect(r.note).toMatch(/Contradicts the tools' verdict on the ring removal/);
+  });
+
+  it("does not take an earlier answer's number as a source, but an earlier tool result's", async () => {
+    const earlier: ChatMessage[] = [
+      { role: "user", content: "Where is the leftover ring?" },
+      { role: "assistant", content: "It is at 9.99 Å⁻¹." },
+      { role: "user", content: "And now?" },
+    ];
+    script([[{ toolCalls: [call] }], [{ content: "A ring is left at 9.99 Å⁻¹." }], [{ content: "" }]]);
+    const r = await runAgent({ messages: earlier, tools: [assess], ctx, settings, signal: new AbortController().signal });
+    expect(r.note).toMatch(/Not found in any tool result or the context: 9\.99/);
+    script([[{ toolCalls: [call] }], [{ content: "A ring is left at 9.99 Å⁻¹." }]]);
+    const traced = await runAgent({
+      messages: earlier,
+      tools: [assess],
+      ctx: { ...ctx, earlierResults: ['{"rings":{"worst_ring_left":{"at":9.99}}}'] },
+      settings,
+      signal: new AbortController().signal,
+    });
+    expect(traced.note).toBeUndefined();
   });
 });
 
