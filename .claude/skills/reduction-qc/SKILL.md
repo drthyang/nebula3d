@@ -61,14 +61,17 @@ inward. Check these first, in this order, and say what each check found.
    only confirmed rings, so a crystal with none keeps all its diffuse. Report
    leftovers and dents at the confirmed rings as shares of the diffuse beside
    them. A ring too weak to rise in nearly every direction is neither removed
-   nor counted: if one shows by eye, say so.
+   nor counted: if one shows by eye, say so. Not every instrument's data have
+   rings (TOPAZ has no aluminium ring background): rings confirmed on data
+   that should have none are an anomaly to report, not routine cleanup.
 6. **The flatten floor.** `assess_stage` for the flatten: the floors near zero
    across the whole coverage, no trend with |Q| (`floor_trend`), and a span
    small against the diffuse level. A floor that rises with |Q| is inelastic
-   background (thermal diffuse scattering, and Compton scattering for X-rays).
-   The `+ b·Q²` term (`flattenQ2`) and *Fit to |Q|* (`flattenFitQMax`)
-   address it. X-ray data carry no magnetic scattering, so the magnetic ion
-   stays none for them.
+   background (thermal diffuse and multiphonon scattering; with X-rays also
+   Compton scattering, which neutrons lack). The `+ b·Q²` term (`flattenQ2`)
+   and *Fit to |Q|* (`flattenFitQMax`) address it. X-ray data carry no
+   magnetic scattering, so the magnetic ion stays none for them; neutron data
+   can carry magnetic diffuse scattering, so there the ion is the user's call.
 7. **Symmetry kept.** On symmetrised data, after the pipeline: `symmetry_check`
    on the ΔPDF. An operation the data were symmetrised with holds to about 1e-3
    or better; a clear break means a stage broke it (see

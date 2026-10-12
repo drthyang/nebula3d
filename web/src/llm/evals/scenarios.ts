@@ -1,5 +1,5 @@
 // The eval scenarios: questions with known answers from the research rounds
-// on a measured hexagonal X-ray volume (symmetrised under 6/mmm by the NeXus
+// on a measured hexagonal neutron volume from TOPAZ (symmetrised under 6/mmm by the NeXus
 // Viewer), its unsymmetrised export, and the run the pipeline made of the
 // symmetrised one with the settings below.
 
@@ -77,7 +77,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: "rings-left",
     title: "Finds the powder ring the subtraction left",
-    origin: "Research round 1: the pooled ring model leaves an Al ring on two of the planes; the bumps seen on one plane only are the crystal's own.",
+    origin: "Research round 1: a powder ring is left on two of the planes; the bumps seen on one plane only are the crystal's own. TOPAZ has no aluminium powder-ring background, so rings on this set are an anomaly to report, not routine cleanup.",
     dataset: HEX,
     config: HEX_CONFIG,
     question: "Is the powder-ring removal clean on this run?",

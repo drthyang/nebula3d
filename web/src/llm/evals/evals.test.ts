@@ -29,7 +29,7 @@ const REPLAYS: Record<string, Replay> = {
     good: [
       { calls: [{ name: "assess_stage", args: { stage: "rings" } }] },
       {
-        text: "Not quite. The pooled ring model removed most of the Al rings, but one is left at 10.3 Å⁻¹ on the h0l and 0kl planes, at 0.41 of the diffuse there. The bumps on hk0 at 5.5, 7.95 and 10.9 Å⁻¹ show on that plane only, so they are the crystal's own scattering.",
+        text: "Not quite. A ring is left at 10.3 Å⁻¹ on the h0l and 0kl planes, at 0.41 of the diffuse there. The bumps on hk0 at 5.5, 7.95 and 10.9 Å⁻¹ show on that plane only, so they are the crystal's own scattering.",
       },
     ],
     bad: [{ text: "Yes, the ring removal is clean: the rings were subtracted completely." }],

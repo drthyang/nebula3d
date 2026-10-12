@@ -470,17 +470,27 @@ Judge the effect on the L=0 (H–K) plane, where the methods diverge.
 
 #### A background that rises with |Q|, and what the literature does
 
-On a measured X-ray volume the diffuse floor still climbed steadily across the
-coverage after the constant model. The flatten's `b·Q²` term
-(`q2_term`, held at its value past the fit range's end) removes that rise.
-It varies only on the scale of the whole |Q| range, so like the other two
-terms it changes the ΔPDF only near r = 0.
+On a measured neutron volume from TOPAZ the diffuse floor still climbed
+steadily across the coverage after the constant model. The flatten's `b·Q²`
+term (`q2_term`, held at its value past the fit range's end) removes that rise.
+It varies only on the scale of the whole |Q| range, so like the other two terms
+it changes the ΔPDF only near r = 0.
 
 That is the established way of removing slowly varying additive scattering.
 PDFgetX3 (Juhás, Davis, Farrow & Billinge, *J. Appl. Cryst.* **46**, 560,
 2013) removes Compton, fluorescence, multiple scattering and sample-environment
 scattering together with an *ad hoc* polynomial in Q. Its degree is kept low
 enough that the correction only touches r below a cut-off.
+
+Neutrons have no Compton scattering; the rise has other sources. A
+diffractometer without energy analysis, TOPAZ among them, counts inelastic
+scattering together with the elastic. The intensity the Debye–Waller factor
+exp(−2W) (2W ∝ ⟨u²⟩Q²) takes out of the Bragg peaks reappears as thermal
+diffuse and multiphonon scattering, a share that grows as 1 − exp(−2W): as Q²
+at low |Q|. The incoherent background can vary with |Q| as well, through
+inelasticity on a time-of-flight instrument. For neutron data the `b·Q²` term
+stands in for that rise: the leading term of the physics, used as an empirical
+smooth term, not a model of it.
 
 For X-rays the main rising term is Compton scattering. Gorfman, Eremenko,
 Krayzman, Bosak, Zavalij & Levin (*J. Appl. Cryst.*, 2026;
@@ -503,5 +513,9 @@ crystal's Compton or fluorescence.
 So for X-ray data the `b·Q²` term stands in for the Compton rise (and thermal
 diffuse scattering). It is the generic smooth term, not the physical shape. An
 explicit Compton term would need the composition, the photon energy and
-incoherent scattering tables; nebula3d does not compute one yet. X-ray data
-carry no magnetic scattering, so leave the magnetic ion at none for them.
+incoherent scattering tables; nebula3d does not compute one yet.
+
+X-ray data carry no magnetic scattering, so leave the magnetic ion at none for
+them. Neutron data can carry magnetic diffuse scattering, paramagnetic or from
+short-range magnetic order: there the magnetic ion is a fact about the sample,
+and its `c·F(Q)²` term falls with |Q|, the opposite of the inelastic rise.
