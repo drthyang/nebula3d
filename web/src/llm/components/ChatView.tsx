@@ -22,6 +22,7 @@ import {
 import { renderSliceToDataUrl } from "../render/sliceImage";
 import { askAssistant, stopAssistant } from "../session";
 import { saveSettings, type LlmSettings } from "../settings";
+import { skillsReadIn } from "../skills";
 import { CHAT_TOOLS, type ToolContext } from "../tools";
 import { openView } from "../tools/openView";
 import type { AssistantContext } from "../useAssistant";
@@ -87,6 +88,7 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
 }
 
 const TOOL_LABELS: Record<string, string> = {
+  read_skill: "Read a skill",
   describe_dataset: "Read the dataset",
   current_view: "Checked your view",
   measure_reciprocal_cut: "Measured a reciprocal cut",
@@ -216,7 +218,8 @@ export function ChatView({
         label: text,
         messages: buildChatMessages(assistant.context, history, text, null, { tools }),
         tools: settings.useTools ? CHAT_TOOLS : [],
-        ctx: toolContext,
+        // The skills read earlier in the conversation still count.
+        ctx: toolContext && { ...toolContext, skillsRead: skillsReadIn(turns) },
       });
     },
     [assistant, busy, turns, tools, settings.useTools, toolContext],
@@ -238,10 +241,10 @@ export function ChatView({
         label: STAGE_REVIEW_LABELS[stage] + (image ? " (with image)" : ""),
         messages: buildStageReviewMessages(assistant.context, stage, image, { tools }),
         tools: settings.useTools ? CHAT_TOOLS : [],
-        ctx: toolContext,
+        ctx: toolContext && { ...toolContext, skillsRead: skillsReadIn(turns) },
       });
     },
-    [assistant, busy, settings.attachImages, settings.useTools, tools, toolContext],
+    [assistant, busy, turns, settings.attachImages, settings.useTools, tools, toolContext],
   );
 
   const stages: ReviewStage[] = ["rings", "punch", "backfill", "flatten", "dpdf"];

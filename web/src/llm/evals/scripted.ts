@@ -82,8 +82,15 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
 }
 
 /** The app's tools, answering from results recorded as "<dataset>|<tool>|<args JSON>". */
-export function replayTools(results: Record<string, string>, dataset: string, tools: AgentTool[]): AgentTool[] {
-  return tools.map((tool) => ({
+export function replayTools(
+  results: Record<string, string>,
+  dataset: string,
+  tools: AgentTool[],
+  // Tools that never touch the backend run as they are: the skills, and the
+  // Configure page's settings (the harness resets them per scenario).
+  local: readonly string[] = ["read_skill", "update_settings", "configure_settings"],
+): AgentTool[] {
+  return tools.map((tool) => local.includes(tool.name) ? tool : ({
     ...tool,
     run: async (args) => {
       const key = `${dataset}|${tool.name}|${JSON.stringify(args)}`;

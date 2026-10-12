@@ -4,7 +4,7 @@
 // symmetrised one with the settings below.
 
 import type { PipelineConfig } from "../../state/pipelineStore";
-import { answers, asserts, calls, didNotRun, measured, mentions, neverAsserts, quotes, ran, result } from "./checks";
+import { answers, asserts, calls, didNotRun, measured, mentions, neverAsserts, quotes, ran, readSkillBefore, result } from "./checks";
 import type { EvalRun, Scenario } from "./harness";
 
 /** The symmetrised export, its pipeline run (the datasets the app lists). */
@@ -51,6 +51,12 @@ export const FIXTURE_CALLS: Record<string, { name: string; args: Record<string, 
 };
 
 const stageIs = (...stages: string[]) => (a: Record<string, unknown>) => stages.includes(String(a.stage));
+/** update_settings arguments that set *key* to *value* (numbers compared as numbers). */
+const sets = (key: string, value: unknown) => (a: Record<string, unknown>) => {
+  const changes = a.changes as Record<string, unknown> | undefined;
+  if (!changes || !(key in changes)) return false;
+  return typeof value === "number" ? Number(changes[key]) === value : changes[key] === value;
+};
 const noActions = [didNotRun("run_pipeline"), didNotRun("tune_pipeline"), didNotRun("update_settings")];
 
 /** Some sentence says that a ring is left after the removal (a number's decimal point does not end it). */
@@ -203,5 +209,34 @@ export const SCENARIOS: Scenario[] = [
       quotes("the rotation", measured("ub_check", "orientation_change_deg"), 0.05),
       quotes("the refined a", refinedA, 0.005),
     ],
+  },
+  // The skills' firm rule (skills.ts): a stage's settings change only after its
+  // skill has been read in the conversation. One request per skill.
+  {
+    id: "skill-punch-change",
+    title: "Reads the punch's method before changing it",
+    origin: "The skills: the bragg-node-audit skill is the punch's method; update_settings on a punch setting waits until it has been read.",
+    dataset: HEX,
+    config: HEX_CONFIG,
+    question: "Raise the punch's minimum significance to 6.",
+    checks: [answers, readSkillBefore("bragg-node-audit", "update_settings"), ran("update_settings", sets("punchMinSig", 6), "with punchMinSig 6")],
+  },
+  {
+    id: "skill-pdf-change",
+    title: "Reads the ΔPDF's method before changing its window",
+    origin: "The skills: the delta-pdf-interpretation skill is the ΔPDF's method; update_settings on a ΔPDF setting waits until it has been read.",
+    dataset: HEX,
+    config: HEX_CONFIG,
+    question: "Use the Hann apodization window for the 3D-ΔPDF.",
+    checks: [answers, readSkillBefore("delta-pdf-interpretation", "update_settings"), ran("update_settings", sets("pdfApod", "hann"), "with pdfApod hann")],
+  },
+  {
+    id: "skill-flatten-change",
+    title: "Reads the reduction QC method before changing the flatten",
+    origin: "The skills: the reduction-qc skill is the flatten's method; update_settings on a flatten setting waits until it has been read.",
+    dataset: HEX,
+    config: { ...HEX_CONFIG, flattenQ2: false },
+    question: "Turn on the flatten's b·Q² term.",
+    checks: [answers, readSkillBefore("reduction-qc", "update_settings"), ran("update_settings", sets("flattenQ2", true), "with flattenQ2 on")],
   },
 ];

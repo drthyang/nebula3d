@@ -139,7 +139,9 @@ export async function runAgent({
   let revisions = 0;
   let rejected = ""; // the last answer sent back, kept if the revision writes nothing
   // The tools may refresh the dataset (run_pipeline does); keep that to this reply.
-  const toolCtx = ctx && { ...ctx };
+  // The skills read so far gate a stage's changes (skills.ts); this reply's
+  // reads add to its own copy.
+  const toolCtx = ctx && { ...ctx, skillsRead: new Set(ctx.skillsRead ?? []) };
   let useTools = tools.length > 0 && ctx !== null && !toolsKnownUnsupported(settings);
   let content = "";
   let reasoning = "";

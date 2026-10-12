@@ -32,6 +32,8 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     port: 5173,
+    // The skills (../.claude/skills) and the docs they cite sit beside web/.
+    fs: { allow: [".."] },
     proxy: {
       "/api": "http://127.0.0.1:8000",
     },

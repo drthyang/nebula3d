@@ -54,6 +54,7 @@ import {
 import { qRadius } from "../context/pipelineContext";
 import type { ToolCall, ToolSpec } from "../provider/client";
 import { openView, type ViewTarget } from "./openView";
+import { allSkills, readSkill, REFERENCE_MAX_CHARS, unreadSkillRefusal } from "../skills";
 import { stageCheck, VERDICT_LABEL } from "../report/report";
 
 export type { ViewTarget } from "./openView";
@@ -69,6 +70,10 @@ import { textureMetrics } from "../metrics/texture";
 export interface ToolContext {
   dataset: Dataset;
   datasets: Dataset[];
+  // The skills read in this conversation (read_skill adds to it). Set on every
+  // call the model makes, which gates a stage's changes on its skill; left
+  // unset by the app's own calls (the report), which change nothing.
+  skillsRead?: Set<string>;
 }
 
 
@@ -90,6 +95,7 @@ export interface AgentTool {
   description: string;
   parameters: Record<string, unknown>; // JSON Schema of the arguments
   run: (args: Record<string, unknown>, ctx: ToolContext, io: ToolIO) => Promise<ToolOutcome>;
+  maxResultChars?: number; // above MAX_RESULT_CHARS, for a result that must arrive whole (a skill)
 }
 
 /** Bad arguments: the message goes back to the model so it can correct itself. */
@@ -1510,7 +1516,43 @@ const tunePipeline: AgentTool = {
   },
 };
 
+// The user's methods (skills.ts): the system prompt lists their names, and
+// this reads one, or a document it cites, when the task calls for it.
+const readSkillTool: AgentTool = {
+  name: "read_skill",
+  description:
+    "Read one of the user's skills: their method for a topic, with the steps, the checks and what to report. " +
+    "Name it from the list in the system prompt. With reference, read one of the documents the skill cites (a long " +
+    "one by section). Read a stage's skill before you change that stage's settings or tune it: those calls are " +
+    "refused until it has been read in this conversation.",
+  parameters: {
+    type: "object",
+    properties: {
+      name: { type: "string", enum: allSkills().map((s) => s.name), description: "The skill" },
+      reference: { type: "string", description: "One of the skill's references, by the name the skill lists" },
+      section: { type: "string", description: "With reference: one section of that document, by its heading" },
+    },
+    required: ["name"],
+  },
+  maxResultChars: REFERENCE_MAX_CHARS + 2000,
+  run: async (args, ctx) => {
+    const name = typeof args.name === "string" ? args.name.trim() : "";
+    if (!name) throw new ToolArgError("name must be one of the skills listed in the system prompt");
+    const reference = typeof args.reference === "string" && args.reference.trim() ? args.reference.trim() : undefined;
+    const section = typeof args.section === "string" && args.section.trim() ? args.section.trim() : undefined;
+    let text: string;
+    try {
+      text = readSkill(name, reference, section);
+    } catch (e) {
+      throw new ToolArgError((e as Error).message);
+    }
+    if (!reference) ctx.skillsRead?.add(name);
+    return { result: text, summary: reference ? `${name}: ${reference}${section ? ` (${section})` : ""}` : `Read the ${name} skill` };
+  },
+};
+
 export const CHAT_TOOLS: AgentTool[] = [
+  readSkillTool,
   describeDataset,
   currentView,
   measureReciprocalCut,
@@ -1574,10 +1616,16 @@ export async function runToolCall(
     const text = `Error: no tool named ${call.function.name}. Available: ${tools.map((t) => t.name).join(", ")}`;
     return { ok: false, args, text, summary: `unknown tool ${call.function.name}` };
   }
+  // A firm rule: a stage's settings change, and the stage is tuned, only after
+  // its skill has been read in the conversation (skills.ts).
+  const refusal = ctx.skillsRead ? unreadSkillRefusal(tool.name, args, ctx.skillsRead) : null;
+  if (refusal) return { ok: false, args, text: `Error: ${refusal}`, summary: "refused until its skill is read" };
   try {
     const out = await tool.run(args, ctx, io);
-    let text = JSON.stringify(out.result);
-    if (text.length > MAX_RESULT_CHARS) text = `${text.slice(0, MAX_RESULT_CHARS)}… [truncated]`;
+    // A text result (a skill) goes as written; anything else as JSON.
+    let text = typeof out.result === "string" ? out.result : JSON.stringify(out.result);
+    const max = tool.maxResultChars ?? MAX_RESULT_CHARS;
+    if (text.length > max) text = `${text.slice(0, max)}… [truncated]`;
     return { ok: true, args, text, summary: out.summary, view: out.view };
   } catch (e) {
     const msg = (e as Error).message;

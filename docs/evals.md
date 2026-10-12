@@ -31,6 +31,13 @@ passes. The suite lives in `web/src/llm/evals/`.
 | `no-second-grain` | Is there a second grain? | No. Most of the strongest off-lattice orbits are Bragg peaks displaced by a UB that is off. | `grain_check`; says there is no second grain and never claims one; quotes the angle |
 | `ub-symmetrised` | Is the UB of this volume right? | It can't be fully judged here: a symmetrised volume hides a misorientation, so the orientation needs the unsymmetrised file. | `ub_check`; says the unsymmetrised data are needed |
 | `ub-misoriented` | (unsymmetrised export) Is the UB right? How far off? | It is turned by under a degree; the tool reports the angle and the refined cell. | `ub_check`; quotes the angle and a |
+| `skill-punch-change` | Raise the punch's minimum significance to 6. | The punch's skill is read first; the change then goes through. | `read_skill` for `bragg-node-audit` before `update_settings`; the change made |
+| `skill-pdf-change` | Use the Hann apodization window for the 3D-ΔPDF. | The ΔPDF's skill is read first; the change then goes through. | `read_skill` for `delta-pdf-interpretation` before `update_settings`; the change made |
+| `skill-flatten-change` | Turn on the flatten's b·Q² term. | The flatten's skill is read first; the change then goes through. | `read_skill` for `reduction-qc` before `update_settings`; the change made |
+
+The three `skill-…` scenarios test the skills' firm rule (`web/src/llm/skills.ts`).
+They came after the results below, so the CI replay plays them but no live model
+has yet.
 
 ## Held-out volumes and injected faults
 
@@ -132,7 +139,7 @@ the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
 ## Results
 
 Measured on 10 and 11 October 2026 on one Mac (68.7 GB unified memory),
-against the native server, before the answer checks existed: a
+against the native server, before the skills and the answer checks existed: a
 rerun would show what they change. Each scenario ran three times per model, at
 temperature 0.2 (the Claude models take no sampling parameters), with a
 20-minute limit per run. Raw records, with every tool call, its result and
