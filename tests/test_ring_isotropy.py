@@ -135,11 +135,16 @@ def _demo(ring_amp: float) -> HKLVolume:
 
 
 def test_a_crystal_with_no_rings_keeps_all_its_diffuse():
-    vol = _demo(0.0)
+    # The held-out evals' crystal (another cell, stronger short-range order): its
+    # own diffuse makes shells the detection finds, and the test rejects them all.
+    vol = demo_volume(121, seed=7, model=DemoModel(a=3.9, sro_amp=0.09, ring_amp=0.0),
+                      dtype=np.float32)
     res = fit_pooled_rings(vol, PooledRingConfig())
     d = res.diagnostics
-    assert d["status"] in ("no_rings", "no_confirmed_rings")
+    assert d["status"] == "no_confirmed_rings"
     assert d["shells"] == []
+    assert len(d["rejected_shells"]) >= 2
+    assert all(not s["isotropy"]["is_ring"] for s in d["rejected_shells"])
     assert d["removed_fraction"] == 0.0
     assert np.array_equal(res.cleaned.data, vol.data)
     assert np.array_equal(res.cleaned.mask, vol.mask)

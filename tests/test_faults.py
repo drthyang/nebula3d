@@ -73,3 +73,25 @@ def test_faults_leave_unmeasured_voxels_as_the_loader_does(vol):
     shifted = faults.shift_origin(vol, (0.2, 0.0, 0.0))
     assert not shifted.mask[0].any()  # what came in from outside the box
     assert (shifted.data[~shifted.mask] == 0).all()
+
+
+def test_the_ring_stage_confirms_and_removes_injected_rings():
+    # The held-out evals' crystal with powder rings put in at known |Q|: the
+    # default ring stage confirms exactly those two and removes them, run live
+    # (web/src/llm/evals/heldout.test.ts reads the same tools from a recording).
+    from nebula3d.demo import DemoModel, demo_volume
+    from nebula3d.preprocessing import PooledRingConfig, fit_pooled_rings
+
+    base = demo_volume(121, seed=7, model=DemoModel(a=3.9, sro_amp=0.09, ring_amp=0.0),
+                       dtype=np.float32)
+    ringed = faults.add_rings(base, (2.45, 3.65), amplitude=0.6, width=0.03)
+    out = fit_pooled_rings(ringed, PooledRingConfig())
+    confirmed = sorted(s["q_center"] for s in out.diagnostics["shells"])
+    assert len(confirmed) == 2
+    assert confirmed == pytest.approx([2.45, 3.65], abs=0.05)
+    q = base.q_magnitude()
+    for q0 in (2.45, 3.65):
+        shell = base.mask & (np.abs(q - q0) < 0.09)
+        injected = float((ringed.data - base.data)[shell].sum())
+        left = float((out.cleaned.data - base.data)[shell].sum())
+        assert abs(left) < 0.15 * injected, q0
