@@ -962,7 +962,7 @@ def test_job_manager_runs_pipeline_in_process(tmp_path):
     # seed a punched volume so backfill → flatten → pdf can run without the slow
     # ring/punch stages (and without a real Mantid .nxs).
     rng = np.random.default_rng(0)
-    shape = (16, 16, 16)
+    shape = (17, 17, 17)
     vol = HKLVolume.from_arrays(
         np.abs(rng.normal(1.0, 0.2, shape)), (-3, 3), (-3, 3), (-3, 3), ub_matrix=UB)
     for idx in [(8, 8, 8), (7, 8, 9)]:

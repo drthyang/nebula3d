@@ -503,6 +503,57 @@ def compute_delta_pdf(
     return _finish_forward(plan, delta_pdf)
 
 
+#: How far from 0, as a share of the step, an axis may sit at the voxel the
+#: transform takes as Q = 0.
+FFT_ORIGIN_TOL = 1e-3
+
+
+class FFTOriginError(ValueError):
+    """The grid does not hold Q = 0 on the voxel the transform takes as it."""
+
+
+def check_fft_origin(h_axis: NDArray[np.floating], k_axis: NDArray[np.floating],
+                     l_axis: NDArray[np.floating]) -> None:
+    """Refuse a grid whose Q = 0 is not on the transform's origin voxel.
+
+    The transform takes index ``n // 2`` of each axis as Q = 0 (the symmetric
+    zero-pad keeps it there). An axis that is off by δ multiplies every
+    feature of the 3D-ΔPDF at x by cos(2π·δ·x): an even grid with a bin edge
+    at 0 puts ``n // 2`` at +step/2, so with a 0.1 r.l.u. step a feature three
+    cells out keeps cos(0.3π) = 0.59 of its value. Nothing is phase-corrected
+    or shifted here; the grid has to be re-binned, or cropped when it has a bin
+    at 0 but runs further on one side.
+    Raises :class:`FFTOriginError` naming each axis that is off and by how much.
+    """
+    off = []
+    for name, axis in (("H", h_axis), ("K", k_axis), ("L", l_axis)):
+        ax = np.asarray(axis, dtype=np.float64)
+        if ax.size < 2:
+            continue
+        step = abs(float(ax[1] - ax[0]))
+        mid = ax.size // 2
+        tol = FFT_ORIGIN_TOL * step
+        if abs(ax[mid]) <= tol:
+            continue
+        zero = int(np.argmin(np.abs(ax)))
+        if abs(ax[zero]) <= tol:
+            off.append(f"{name} has its bin at 0 on index {zero}, not on its centre "
+                       f"index {mid} ({zero} bins below 0, {ax.size - 1 - zero} above)")
+        else:
+            off.append(f"{name} has no bin centred at 0: its centre index {mid} of "
+                       f"{ax.size} sits at {ax[mid]:+.4g} r.l.u., {ax[mid] / step:+.3g} "
+                       f"of its {step:.4g} step")
+    if off:
+        raise FFTOriginError(
+            "The 3D-ΔPDF takes the centre voxel of each axis (index n // 2) as "
+            "Q = 0, but on this grid " + "; ".join(off) + ". Off that voxel the "
+            "transform would scale every feature at x by cos(2π·δ·x), δ being the "
+            "offset, so nothing was transformed. Re-bin the volume with a bin "
+            "centred at Q = 0 on each axis (bin edges at ±(m + ½)·step, an odd "
+            "number of bins); an axis with its bin at 0 that runs further on one "
+            "side can instead be cropped symmetric about 0 (crop_hkl).")
+
+
 def _prepare_forward(
     vol: HKLVolume,
     *,
@@ -548,6 +599,7 @@ def _prepare_forward(
         h_axis  = h_axis[ih[0]:ih[-1]+1]
         k_axis  = k_axis[ik[0]:ik[-1]+1]
         l_axis  = l_axis[il[0]:il[-1]+1]
+    check_fft_origin(h_axis, k_axis, l_axis)
 
     # Replace NaN with zero (filled volume should have no NaN).  With a
     # support, a voxel carries data only where it is supported and finite;

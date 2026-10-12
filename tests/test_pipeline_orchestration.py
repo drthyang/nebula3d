@@ -22,13 +22,14 @@ import pytest
 
 import nebula3d
 from nebula3d import pipeline
+from nebula3d.analysis.delta_pdf import FFTOriginError
 from nebula3d.core import HKLVolume
 from nebula3d.io import load_delta_pdf
 
 UB = 2 * np.pi * np.eye(3) / 4.0
 
 
-def _vol(shape=(8, 8, 8), seed=0, fill=1.0):
+def _vol(shape=(9, 9, 9), seed=0, fill=1.0):
     rng = np.random.default_rng(seed)
     data = fill + rng.normal(0.0, 0.01, shape)
     return HKLVolume.from_arrays(data, (-3, 3), (-3, 3), (-3, 3), ub_matrix=UB)
@@ -269,7 +270,7 @@ def test_force_recomputes_everything(tmp_path, stubbed):
 def test_run_pipeline_trims_the_coverage_edge_of_the_raw_input(
         tmp_path, stubbed, monkeypatch):
     inp = tmp_path / "sample.nxs"
-    raw = _vol()
+    raw = _vol(shape=(8, 8, 8))                # rings only: no ΔPDF, any grid
     raw.mask[:, :, 6:] = False                # unmeasured coverage
     raw.data[:, :, 6:] = 0.0
     nebula3d.save(raw, inp)
@@ -366,7 +367,7 @@ def test_invalid_force_from_raises(tmp_path):
 # ---------------------------------------------------------------------------
 # real stage calls (backfill → flatten → pdf) on a small synthetic volume
 # ---------------------------------------------------------------------------
-def _punched_vol(shape=(20, 20, 20)):
+def _punched_vol(shape=(21, 21, 21)):
     rng = np.random.default_rng(0)
     vol = HKLVolume.from_arrays(
         np.zeros(shape), (-3, 3), (-3, 3), (-3, 3), ub_matrix=UB)
@@ -429,6 +430,23 @@ def test_real_pdf_stale_guard_skips_on_rerun(tmp_path):
     pipeline.run_pipeline(inp, params, progress=lambda *a: events.append(a), **kw)
     skipped = {ev[0] for ev in events if ev[1] == "skip"}
     assert {"backfill", "flatten", "pdf"} <= skipped
+
+
+def test_real_pdf_refuses_an_even_grid_after_the_cleanup_stages(tmp_path):
+    """On an even grid Q = 0 falls between two voxels: the cleanup stages run and
+    keep their outputs, and the ΔPDF stage refuses, naming the axes and the fix."""
+    inp = tmp_path / "s.nxs"
+    paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path)
+    nebula3d.save(_punched_vol(shape=(20, 20, 20)), paths.braggpunched)
+    params = pipeline.PipelineParams(
+        delta_pdf=pipeline.DeltaPdfParams(apodization="hann", zero_pad=False,
+                                          crop_hkl=None),
+    )
+    with pytest.raises(FFTOriginError, match="H has no bin centred at 0.*Re-bin"):
+        pipeline.run_pipeline(inp, params, proc_dir=tmp_path,
+                              stages=("backfill", "flatten", "pdf"))
+    assert paths.backfilled.exists() and paths.flattened.exists()
+    assert not paths.delta_pdf.exists()
 
 
 def _diffuse_vol(n=15):

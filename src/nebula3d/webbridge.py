@@ -45,6 +45,7 @@ import numpy as np
 
 import nebula3d
 from nebula3d._ringplane import RingWorkerContext, _PlaneResult
+from nebula3d.analysis.delta_pdf import FFTOriginError
 from nebula3d.core import HKLVolume
 from nebula3d.pipeline import (
     STAGES,
@@ -746,6 +747,8 @@ async def run_async(
             done = await _run_pdf_stages_gpu(
                 params, stages, bool(force), force_from, cb, gpu,
                 proc_dir=proc_dir, inputs=inputs)
+        except FFTOriginError:
+            raise  # the grid, not the GPU: the CPU FFT would refuse it too
         except Exception as exc:  # noqa: BLE001 - GPU must never fail the run
             _cb_emit(cb, "pdf", "progress", None,
                      f"WebGPU ΔPDF failed ({exc}); recomputing with the CPU FFT")

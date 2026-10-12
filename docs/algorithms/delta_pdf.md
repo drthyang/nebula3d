@@ -29,6 +29,18 @@ real, centrosymmetric `I(Q)` must therefore be:
 Δρ = fftshift( fftn( ifftshift( I_windowed ) ) ).real
 ```
 
+That centre voxel has to hold `Q=0`. Before transforming, `check_fft_origin`
+reads each axis at index `n//2` and refuses the grid unless the value there is
+0 to within 10⁻³ of the step, naming each axis that is off and by how much. An
+axis off by δ multiplies every feature at x by cos(2π·δ·x): an even grid with a
+bin edge at 0 puts `n//2` at +step/2, so with a 0.1 r.l.u. step a feature three
+cells out keeps cos(0.3π) = 0.59 of its value. Nothing is phase-corrected.
+Re-bin the volume with a bin centred at 0 on each axis (bin edges at
+±(m+½)·step, an odd number of bins); an axis that has its bin at 0 but runs
+further on one side can instead be cropped symmetric about 0 (`crop_hkl`). The
+cleanup stages run on any grid and keep their outputs; only the ΔPDF stage
+refuses.
+
 Step by step (as implemented in `src/nebula3d/analysis/delta_pdf.py`):
 
 1. **Fill** masked voxels with 0 (the backfilled volume should already be
@@ -137,7 +149,9 @@ appearance), and slices such as `x_H=0` look scrambled.
 
 Verification: for `I(Q)=1+cos(2π·3·(i−c)/N)` (a single positive correlation,
 even about the centre) the buggy transform returned a peak of **−2048** where
-the correct transform returns **+2048**. Regression guard:
+the correct transform returns **+2048** on a 16-point grid. The test now runs
+on 17 points, where `Q=0` sits on the centre voxel (−2089 against +2456.5).
+Regression guard:
 `tests/test_bragg.py::test_delta_pdf_centring_positive_peak`.
 
 This bug only affected sign/phase; the real-space axes and magnitudes were
