@@ -193,11 +193,12 @@ describe("runAgent", () => {
     expect(useNavStore.getState().tab).toBe("config");
   });
 
-  it("propagates other errors", async () => {
-    script([new Error("HTTP 500: boom")]);
-    await expect(
-      runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal }),
-    ).rejects.toThrow("boom");
+  it("ends the reply with a note on an error a retry would not cure", async () => {
+    const seen = script([new Error("HTTP 400: bad request")]);
+    const r = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal });
+    expect(seen).toHaveLength(1);
+    expect(r.failure).toEqual({ kind: "error", message: "HTTP 400: bad request", attempts: 1 });
+    expect(r.note).toBe("The reply ended with an error: HTTP 400: bad request.");
   });
 
   it("asks again when the server could not parse the model's reply", async () => {
@@ -210,11 +211,81 @@ describe("runAgent", () => {
     expect(seen).toHaveLength(2);
     expect(seen[1].messages).toEqual(seen[0].messages); // the same request again
 
-    // A model that keeps doing it ends the reply after the retries.
+    // A model that keeps doing it ends the reply after the retries, saying so.
     script([malformed(), malformed(), malformed(), [{ content: "never" }]]);
-    await expect(
-      runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal }),
-    ).rejects.toThrow(/peg-native format/);
+    const kept = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal });
+    expect(kept.failure?.kind).toBe("malformed");
+    expect(kept.note).toMatch(/peg-native format/);
+  });
+
+  describe("when the model server fails", () => {
+    const quick = { retryDelaysMs: [1, 1], stallMs: { first: 60, idle: 60 } };
+    const crashed = () => new Error("Error in iterating prediction stream: Exception: Encountered fatal exception in the backend generation thread:");
+
+    it("asks a crashed server again after a pause, and carries on", async () => {
+      const seen = script([[{ toolCalls: [call("c1", "echo", { x: 2 })] }], crashed(), [{ content: "x is 2." }]]);
+      const r = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal, ...quick });
+      expect(r.content).toBe("x is 2.");
+      expect(r.failure).toBeUndefined();
+      expect(seen).toHaveLength(3);
+      expect(seen[2].messages).toEqual(seen[1].messages); // the same request again
+    });
+
+    it("ends with what happened and what to do once the retries are spent, keeping the steps", async () => {
+      script([[{ toolCalls: [call("c1", "echo", { x: 3 })] }], crashed(), crashed(), crashed(), [{ content: "never" }]]);
+      const r = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal, ...quick });
+      expect(r.steps).toHaveLength(1);
+      expect(r.failure).toMatchObject({ kind: "crash", attempts: 3 });
+      expect(r.note).toMatch(/failed while answering .*and again when asked 2 more times\. On a shared machine this is usually memory/);
+      expect(r.note).toMatch(/The steps above ran/);
+    });
+
+    it("tells memory from a crash, and gives it one longer try", async () => {
+      const oom = () => Object.assign(new Error("HTTP 500: model requires more system memory (31.2 GiB) than is available (12.5 GiB)"), { status: 500 });
+      const seen = script([oom(), oom(), [{ content: "never" }]]);
+      const r = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal, ...quick });
+      expect(seen).toHaveLength(2);
+      expect(r.failure).toMatchObject({ kind: "memory", attempts: 2 });
+      expect(r.note).toMatch(/ran out of memory/);
+    });
+
+    it("asks again when the model was unloaded mid-reply", async () => {
+      const seen = script([new Error("Model is unloaded."), [{ content: "Back." }]]);
+      const r = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal, ...quick });
+      expect(r.content).toBe("Back.");
+      expect(seen).toHaveLength(2);
+    });
+
+    it("does not retry a conversation too long for the window", async () => {
+      const seen = script([new Error("HTTP 400: the input length exceeds the context length"), [{ content: "never" }]]);
+      const r = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal, ...quick });
+      expect(seen).toHaveLength(1);
+      expect(r.failure?.kind).toBe("context");
+    });
+
+    it("ends a request the server sits on, asks again, and says so if it never answers", async () => {
+      let calls = 0;
+      client.streamChat.mockImplementation((args: { signal: AbortSignal }) => {
+        calls += 1;
+        return (async function* () {
+          // Nothing, ever: until the watchdog ends the request.
+          await new Promise((_, reject) => args.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+          yield { content: "unreachable" };
+        })();
+      });
+      const r = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal, ...quick });
+      expect(calls).toBe(2); // one retry
+      expect(r.failure).toMatchObject({ kind: "stalled", attempts: 2 });
+      expect(r.note).toMatch(/sent nothing for too long/);
+    });
+
+    it("stops at once when the reply is stopped during a pause", async () => {
+      script([crashed(), [{ content: "never" }]]);
+      const abort = new AbortController();
+      const run = runAgent({ messages: base, tools: [echo], ctx, settings, signal: abort.signal, retryDelaysMs: [60_000] });
+      setTimeout(() => abort.abort(), 20);
+      await expect(run).rejects.toMatchObject({ name: "AbortError" });
+    });
   });
 
   it("does not send a request longer than the window LM Studio loaded the model with, and says why", async () => {

@@ -3,7 +3,10 @@
 // on — within a budget — until it answers in plain text.  A model or server
 // that cannot call tools gets the same request without them.  Each request is
 // first held to the model's context window (provider/window.ts): a local
-// server would cut a longer one without saying so.
+// server would cut a longer one without saying so.  A request that fails the
+// way a local server's do, a crash, a model unloaded, a server gone quiet, is
+// asked again after a pause; what still fails ends the reply with a note that
+// says what to do (recovery.ts).
 
 import {
   isMalformedOutput,
@@ -15,6 +18,7 @@ import {
 } from "./provider/client";
 import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
 import { isLocalUrl } from "./provider/presets";
+import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
 import { observeTokens } from "./provider/tokens";
 import { planWindow } from "./provider/window";
 import type { LlmSettings } from "./settings";
@@ -40,6 +44,9 @@ export interface AgentProgress {
 
 export interface AgentResult extends AgentProgress {
   note?: string;
+  // Set when the model server failed the reply after its retries; the note
+  // explains it, and the steps and text before it stay.
+  failure?: Failure;
   // With `usage`: the reply's token counts over all its requests, when the
   // server reported them (null when it did not).
   usage?: (TokenUsage & { requests: number }) | null;
@@ -65,6 +72,14 @@ export const CUT_OFF_NOTE =
 // A reply its server could not parse ran none of its tools, so the same request
 // is sent again, at most this many times in one reply.
 export const MALFORMED_RETRIES = 2;
+
+// A server that sends nothing for this long is taken as stuck: before the first
+// piece of a reply (loading the model and reading a long prompt on a busy
+// machine can take minutes), and between pieces.
+export const STALL_MS = { first: 300_000, idle: 120_000 };
+
+// Retries for failures a moment may cure, over the whole reply.
+export const MAX_RECOVERIES = 4;
 
 // A final answer that fails its checks (answerChecks.ts: a verdict without its
 // tool, a number from nowhere, a stage called clean that the tools judged to
@@ -135,6 +150,8 @@ export async function runAgent({
   maxRounds = MAX_TOOL_ROUNDS,
   usage: wantUsage = false,
   checkAnswers = true,
+  stallMs = STALL_MS,
+  retryDelaysMs = RETRY_DELAYS_MS,
 }: {
   messages: ChatMessage[];
   tools: AgentTool[];
@@ -145,6 +162,8 @@ export async function runAgent({
   maxRounds?: number;
   usage?: boolean; // count the reply's tokens (the evals)
   checkAnswers?: boolean; // hold a final answer to its evidence (answerChecks.ts); on whenever tools are
+  stallMs?: { first: number; idle: number }; // the watchdog's limits (tests shorten them)
+  retryDelaysMs?: number[]; // the pauses before each retry
 }): Promise<AgentResult> {
   const convo = [...messages];
   const arrived = convo.length;
@@ -169,6 +188,9 @@ export async function runAgent({
   };
 
   let retries = 0;
+  let attempts = 0; // retries of the current request
+  let recoveries = 0; // retries over the reply
+  let failure: Failure | undefined;
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 }; // over the requests that reported them
   let requests = 0;
   for (let round = 0; ; round++) {
@@ -179,26 +201,44 @@ export async function runAgent({
     let cutOff = false;
     const reasoningBefore = reasoning;
     const specs = useTools ? toolSpecs(tools) : undefined;
-    // A request the model's window cannot hold is not sent: the reply says why.
-    const plan = await planWindow({ baseUrl: settings.baseUrl, model: settings.model, messages: convo, tools: specs, signal });
-    if (plan.refusal) {
-      note = note ? `${note} ${plan.refusal}` : plan.refusal;
-      break;
-    }
+    // The request's own controller: the reply's Stop ends it, and so does the
+    // watchdog when the server goes quiet.
+    const request = new AbortController();
+    const stopRequest = () => request.abort();
+    signal.addEventListener("abort", stopRequest, { once: true });
+    let stalled = false;
+    let heard = false; // a piece of the reply arrived
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const watch = (ms: number) => {
+      clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        stalled = true;
+        request.abort();
+      }, ms);
+    };
+    watch(stallMs.first);
     try {
+      // A request the model's window cannot hold is not sent: the reply says why.
+      const plan = await planWindow({ baseUrl: settings.baseUrl, model: settings.model, messages: convo, tools: specs, signal: request.signal });
+      if (plan.refusal) {
+        note = note ? `${note} ${plan.refusal}` : plan.refusal;
+        break;
+      }
       for await (const delta of streamChat({
         baseUrl: settings.baseUrl,
         model: settings.model,
         messages: convo,
         temperature: settings.temperature,
         apiKey: settings.apiKey || undefined,
-        signal,
+        signal: request.signal,
         tools: specs,
         toolChoice: useTools && last ? "none" : undefined,
         // A local server's counts calibrate the token estimate.
         includeUsage: wantUsage || isLocalUrl(settings.baseUrl),
         numCtx: plan.numCtx,
       })) {
+        heard = true;
+        watch(stallMs.idle);
         if (delta.usage) {
           observeTokens(plan.key, plan.base, delta.usage.input);
           tokens.input += delta.usage.input;
@@ -215,7 +255,9 @@ export async function runAgent({
         emit(roundText);
       }
       requests += 1;
+      attempts = 0;
     } catch (e) {
+      if (signal.aborted) throw e; // the reply was stopped
       if (useTools && round === 0 && !roundText && isToolsUnsupported(e)) {
         noTools.add(`${settings.baseUrl}|${settings.model}`);
         useTools = false;
@@ -223,14 +265,34 @@ export async function runAgent({
         round = -1; // the same request again, without tools
         continue;
       }
-      if (isMalformedOutput(e) && retries < MALFORMED_RETRIES && !signal.aborted) {
+      if (isMalformedOutput(e) && retries < MALFORMED_RETRIES) {
         retries += 1;
         reasoning = reasoningBefore; // the failed attempt's thinking goes with it
         round -= 1; // the same request again
         emit();
         continue;
       }
-      throw e;
+      const kind = classifyFailure(e, stalled);
+      if (attempts < (RETRIES[kind] ?? 0) && recoveries < MAX_RECOVERIES) {
+        await pause(retryDelaysMs[Math.min(attempts, retryDelaysMs.length - 1)] ?? 0, signal);
+        attempts += 1;
+        recoveries += 1;
+        reasoning = reasoningBefore;
+        round -= 1; // the same request again
+        emit();
+        continue;
+      }
+      // What still fails ends the reply, with what was written and what ran.
+      const message = stalled
+        ? new StallError(Math.round((heard ? stallMs.idle : stallMs.first) / 1000)).message
+        : ((e as Error)?.message ?? String(e));
+      failure = { kind, message, attempts: attempts + 1 };
+      content = joinText(content, roundText);
+      note = note ? `${note} ${explainFailure(failure, steps.length > 0)}` : explainFailure(failure, steps.length > 0);
+      break;
+    } finally {
+      clearTimeout(watchdog);
+      signal.removeEventListener("abort", stopRequest);
     }
     const before = content;
     content = joinText(content, roundText);
@@ -292,5 +354,5 @@ export async function runAgent({
 
   // A server that reported some requests' counts but not all leaves the total unknown.
   const usage = wantUsage ? (tokens.requests > 0 && tokens.requests === requests ? tokens : null) : undefined;
-  return { content, reasoning, steps, note, ...(wantUsage ? { usage } : {}) };
+  return { content, reasoning, steps, note, ...(failure ? { failure } : {}), ...(wantUsage ? { usage } : {}) };
 }

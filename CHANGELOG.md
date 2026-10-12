@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **NEBULA Pilot rides out a failing model server.** A request that fails the
+  way a local server on a shared machine does is asked again after a pause:
+  the model crashed (most often out of memory) or was unloaded, the connection
+  dropped, or the server sent nothing for minutes. What still fails ends the
+  reply with a note that says what happened and what to do, keeping the steps
+  that ran, instead of an error. The evals record such failures by kind, apart
+  from wrong answers.
+
 - **NEBULA Pilot never has its prompt cut to fit a local model.** Ollama is now
   reached through its own chat API, which takes a context length per request:
   each request gets a window that holds it and room for the reply, within the

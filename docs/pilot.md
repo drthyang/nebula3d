@@ -44,6 +44,10 @@ Each is described under [How it works](#how-it-works).
   unmeasured space is one).
 - **One run at a time.** Neither a run nor a tuning run starts while another is
   going, and *Stop* cancels the one the model started.
+- **A failing server is asked again, then explained.** A crash, a model
+  unloaded, a dropped connection or a server gone quiet gets the same
+  request again after a pause; what still fails ends the reply with what to
+  do, never a bare error, and keeps the steps that ran.
 - **No prompt is cut to fit.** A local server handed a prompt longer than the
   model's context window cuts it or fails, so each request is held to the
   window first. Ollama is asked for a window that holds the request (its own
@@ -193,29 +197,34 @@ miss is a note.
   records; `pipelineContext.ts` folds the metrics into the budgeted JSON
   context. **`prompts/`** — the domain system prompt (plus a tools section when
   tools are on) and the per-stage message builders. **`provider/`** — a
-  dependency-free streaming OpenAI-compatible client with function calling, and
-  Claude through Anthropic's SDK behind the same calls (`anthropic.ts`, loaded
-  only when Anthropic is picked): system messages become the system prompt,
-  a round's tool results go back in one user message, and a turn that called
-  tools is replayed exactly as Claude returned it, thinking included.
-  With Tools on, the first request alone is about 8k tokens and a full
-  assessment reaches about 18k, so on LM Studio the chat reads the context
-  length the model was loaded with (`/api/v0/models`) and, below 32k, says
-  how far to raise it (`loadedContext`, `contextWarning`). Before each request
-  `provider/window.ts` estimates its tokens (`tokens.ts`): prose at 3.5
-  characters a token and data at 1.4 (tool results, call arguments and the
-  fenced context JSON: a tokenizer may give every digit its own token), scaled
-  by the largest ratio of the server's own counts to that estimate. Ollama goes
-  through `/api/chat` with `options.num_ctx`: the length the model already runs
-  with when it holds the request and 6k for the reply (another app may be using
-  the model, and any other length reloads it under them, `/api/ps`), else the
-  smallest of 8k, 16k, 32k, 64k and 128k that does, never below what the model
-  last ran with and within the longest context `/api/show` reports. A request
-  that cannot fit is not sent. A reply that runs
-  out of room ends with a note and runs none of its cut-off calls. A reply
-  the server could not parse (a tool call in the wrong syntax) is asked
-  again, up to twice. A reply that still ends in an error keeps its steps
-  and text, with the error as its note.
+  dependency-free streaming client with function calling, OpenAI-compatible and
+  through Ollama's own chat API (`/api/chat`), and Claude through Anthropic's
+  SDK behind the same calls (`anthropic.ts`, loaded only when Anthropic is
+  picked): system messages become the system prompt, a round's tool results go
+  back in one user message, and a turn that called tools is replayed exactly as
+  Claude returned it, thinking included. With Tools on, the first request alone
+  is about 8k tokens and a full assessment reaches about 18k, so on LM Studio
+  the chat reads the context length the model was loaded with
+  (`/api/v0/models`) and, below 32k, says how far to raise it (`loadedContext`,
+  `contextWarning`). Before each request `provider/window.ts` estimates its
+  tokens (`tokens.ts`): prose at 3.5 characters a token and data at 1.4 (tool
+  results, call arguments and the fenced context JSON: a tokenizer may give
+  every digit its own token), scaled by the largest ratio of the server's own
+  counts to that estimate. Ollama goes through `/api/chat` with
+  `options.num_ctx`: the length the model already runs with when it holds the
+  request and 6k for the reply (another app may be using the model, and any
+  other length reloads it under them, `/api/ps`), else the smallest of 8k, 16k,
+  32k, 64k and 128k that does, never below what the model last ran with and
+  within the longest context `/api/show` reports. A request that cannot fit is
+  not sent. A reply that runs out of room ends with a note and runs none of its
+  cut-off calls. A reply the server could not parse (a tool call in the wrong
+  syntax) is asked again, up to twice. A request that fails the way a server on
+  a shared machine does is asked again after a pause of 5 s, then 20 s
+  (`recovery.ts`): the model crashed or was unloaded, or the connection dropped
+  (twice each), the server ran out of memory or sent nothing, 5 min before a
+  reply began or 2 min within one (once each). What still fails ends the reply
+  with a note that says what happened and what to do; its steps and text stay,
+  and the evals record the failure's kind apart from a wrong answer.
   **`settings.ts`** — a localStorage store (provider, model, key, temperature,
   vision and tools opt-ins).
 - **Tools** (`tools/`, `agent.ts`) — with *Tools* on, a reply is an agent loop:

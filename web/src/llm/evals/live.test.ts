@@ -65,6 +65,15 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
           const runs = results.filter((r) => r.scenario === s.id);
           return { id: s.id, passed: runs.filter((r) => r.passed).length, runs: runs.length };
         }),
+        // Runs the model server failed after its retries, by kind; and runs
+        // that ended in an exception (none expected: recovery.ts explains).
+        failures: Object.fromEntries(
+          [...new Set(results.flatMap((r) => (r.run.failure ? [r.run.failure.kind] : [])))].map((k) => [
+            k,
+            results.filter((r) => r.run.failure?.kind === k).length,
+          ]),
+        ),
+        errors: results.filter((r) => r.run.error).length,
         runs: results.map((r) => ({
           scenario: r.scenario,
           passed: r.passed,
@@ -75,6 +84,7 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
           answer: r.run.content,
           note: r.run.note ?? null,
           error: r.run.error ?? null,
+          failure: r.run.failure ?? null,
         })),
       };
       await writeText(new URL(out, `file://${env("PWD") ?? ""}/`), scrub(JSON.stringify(record, null, 1)) + "\n");
@@ -106,6 +116,7 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
         console.log(
           `${r.passed ? "✓" : "✗"} ${scenario.id} (${(r.run.latencyMs / 1000).toFixed(0)} s` +
             `${u ? `, ${u.input} in / ${u.output} out over ${u.requests} requests` : ""})` +
+            (r.run.failure ? ` [server: ${r.run.failure.kind} after ${r.run.failure.attempts} tries]` : "") +
             (r.passed ? "" : `\n${r.grades.filter((g) => !g.pass).map((g) => `    ✗ ${g.check}: ${g.detail}`).join("\n")}\n${transcript(r.run)}`),
         );
       }
@@ -134,6 +145,7 @@ describe.skipIf(!regrade)("NEBULA Pilot evals, re-graded", () => {
         content: r.answer,
         note: r.note ?? undefined,
         error: r.error ?? undefined,
+        failure: r.failure ?? null,
         latencyMs: r.latency_ms,
         usage: r.usage,
       };
@@ -162,5 +174,6 @@ interface RecordFile {
     answer: string;
     note: string | null;
     error: string | null;
+    failure?: EvalRun["failure"];
   }[];
 }
