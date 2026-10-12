@@ -121,8 +121,12 @@ the core of every other shell found above the noise (a close doublet's weak
 member included) and reaches further out for clean bins; with no clean flank
 on one side the shell is judged again clear of the confirmed rings only, and
 else not judged. The rule: at least 0.15 of the median height in 90 % of
-the cells (*to confirm with the user*). On the synthetic volumes the 10th
-percentile of the cells' heights over the median (the isotropy) reads:
+the cells; in the typical cell the height stands at least 3 times the flanks'
+scatter above them; and at least a quarter of it stays above a quadratic
+through the same flanks, since a smooth hump under the shell reads as a height
+in every direction above a line but not above the curve (*all to confirm with
+the user*). On the synthetic volumes the 10th percentile of the cells' heights
+over the median (the isotropy) reads:
 
 | Shell | Isotropy |
 | --- | ---: |
@@ -130,6 +134,7 @@ percentile of the cells' heights over the median (the isotropy) reads:
 | Demo aluminium lines, textured (`ring_p2` 0.45, `ring_p4` 0.15) | 0.35 (weakest) to 0.90 |
 | Test ring three times stronger one way, its |Q| wandering ± 0.07 Å⁻¹ (`tests/test_pooled_rings.py`) | 0.33 |
 | The crystals' own diffuse shells (eight volumes, one with its HKL origin shifted) | −0.14 or less |
+| An empty shell on a broad hump, or maxima along ⟨100⟩ on it | 0.90 to 0.96, but only 0.15 or less of the height above the curve |
 
 The cells must stay small, and the core narrow: on 4 × 8 cells the diffuse
 shells read up to 0.9, and with a 0.29 Å⁻¹ core one read 0.21, because both

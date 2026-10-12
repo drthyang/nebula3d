@@ -21,10 +21,14 @@ core, not its peak, so a ring whose |Q| wanders with direction (within the
 FWHM of the all-direction profile, which that wandering widens) still counts.
 A flank skips the bins of another shell's core, reaching further out for clean
 ones; a shell with no clean flank on one side is not judged. The shell is a
-powder ring when its median height over the cells is
-positive, and at least ``height_share`` of it in at least
-``direction_share`` of the cells. Its isotropy is the height in the cell at
-the (1 − ``direction_share``) quantile over the median height.
+powder ring when its median height over the cells is positive, and at least
+``height_share`` of it in at least ``direction_share`` of the cells; when in
+the typical cell it stands ``min_snr`` times its flanks' scatter above them;
+and when at least ``curve_share`` of the height stays above a quadratic
+through the same flanks. A smooth hump under the shell, or the curve of a
+falling background, reads as a height in every direction above a line, but
+not above the curve; a ring stands above both. Its isotropy is the height in
+the cell at the (1 − ``direction_share``) quantile over the median height.
 
 On the synthetic volumes (docs/algorithms/powder_rings.md), with the
 default 128 cells, rings read an isotropy of 0.33 to 0.96: aluminium's
@@ -34,7 +38,10 @@ crystals' own diffuse reads −0.14 or less, one on a volume whose HKL origin
 is shifted included. The default, 0.15 of the median height in 90 % of the
 directions, sits in that gap (to confirm with the user). Coarser cells, or a
 wider core, average the diffuse's maxima into the shell (on 32 cells it read
-up to 0.9, with a 0.29 Å⁻¹ core 0.21), so both stay small.
+up to 0.9, with a 0.29 Å⁻¹ core 0.21), so both stay small. Above the curve,
+rings keep 0.35 of their height or more (the wandering ring the least), an
+empty shell on a broad hump 0.15 or less: ``curve_share`` is 0.25 (to confirm
+with the user).
 """
 
 from __future__ import annotations
@@ -61,6 +68,10 @@ class IsotropyConfig:
     (Å⁻¹): a broader core sums a crystal's maxima at neighbouring |Q| in
     different directions into what reads as a ring, while a ring's own
     verdict hardly changes.
+    ``min_snr`` is the noise floor: the median over cells of the height over
+    its noise (the flanks' scatter about their line, over the core's mean).
+    ``curve_share`` of the height must stay above a quadratic through the
+    flanks, where each side has two bins or more.
     A cell counts where every bin of its profile has ``min_voxels``, and a
     shell is judged on ``min_cells`` cells or more. Past ``max_voxels`` in the
     shells' windows (an eighth of the volume's voxels in low-memory mode, the
@@ -81,6 +92,8 @@ class IsotropyConfig:
     min_voxels: int = 5
     min_cells: int = 16
     max_voxels: int = 6_000_000
+    min_snr: float = 3.0
+    curve_share: float = 0.25
 
     def __post_init__(self) -> None:
         if self.n_cos < 2 or self.n_phi < 4:
@@ -103,6 +116,8 @@ class ShellIsotropy:
     isotropy: float           # the low-quantile height over the median height
     is_ring: bool
     not_judged: str = ""      # why no verdict could be reached, if none was
+    snr: float = float("nan")  # median over cells of the height over its noise
+    beyond_curve: float = float("nan")  # the share of the height left above a quadratic baseline
 
     def as_dict(self) -> dict[str, object]:
         def r(x: float, n: int = 4) -> float | None:
@@ -110,8 +125,9 @@ class ShellIsotropy:
         return {"q_center": r(self.q_center), "fwhm": r(self.fwhm), "n_cells": self.n_cells,
                 "median_height": r(self.median_height, 6),
                 "relative_height": r(self.relative_height),
-                "isotropy": r(self.isotropy, 3), "is_ring": self.is_ring,
-                "not_judged": self.not_judged or None}
+                "isotropy": r(self.isotropy, 3), "snr": r(self.snr, 1),
+                "beyond_curve": r(self.beyond_curve, 2),
+                "is_ring": self.is_ring, "not_judged": self.not_judged or None}
 
 
 def voxel_q_step(vol: HKLVolume) -> float:
@@ -261,12 +277,27 @@ def shell_isotropy(
             out.append(ShellIsotropy(q0, fwhm, 0, np.nan, np.nan, np.nan, False,
                                      "no clean flank on one side"))
             continue
-        heights, levels = [], []
+        # A line through the flanks gives each cell's height, which a ring whose
+        # |Q| wanders with direction keeps. A quadratic through the same flanks
+        # gives the height left once their curvature is taken out: a smooth hump
+        # under the shell, or a falling background, reads as a height in every
+        # direction above a line, but not above the curve.
+        curved = x_flank.size >= 4
+        heights, levels, snrs, beyond_curve = [], [], [], []
         for c in np.nonzero(good)[0]:
-            slope, icept = np.polyfit(x_flank, prof[c, flank], 1)
-            heights.append(float(np.mean(prof[c, role == 1] - (icept + slope * x_core))))
-            levels.append(float(icept))
-        out.append(_verdict(q0, fwhm, np.asarray(heights), np.asarray(levels), cfg))
+            y_flank = prof[c, flank]
+            line = np.polyfit(x_flank, y_flank, 1)
+            height = float(np.mean(prof[c, role == 1] - np.polyval(line, x_core)))
+            resid = y_flank - np.polyval(line, x_flank)
+            scatter = float(np.sqrt(np.sum(resid ** 2) / max(x_flank.size - 2, 1)))
+            heights.append(height)
+            levels.append(float(np.polyval(line, 0.0)))
+            snrs.append(height / (scatter / np.sqrt(x_core.size)) if scatter > 0 else np.inf)
+            if curved:
+                quad = np.polyfit(x_flank, y_flank, 2)
+                beyond_curve.append(float(np.mean(prof[c, role == 1] - np.polyval(quad, x_core))))
+        out.append(_verdict(q0, fwhm, np.asarray(heights), np.asarray(levels), np.asarray(snrs),
+                            np.asarray(beyond_curve) if curved else None, cfg))
     return out
 
 
@@ -299,6 +330,7 @@ def judge_shells(
 
 
 def _verdict(q0: float, fwhm: float, heights: NDArray[np.float64], levels: NDArray[np.float64],
+             snrs: NDArray[np.float64], beyond_curve: NDArray[np.float64] | None,
              cfg: IsotropyConfig) -> ShellIsotropy:
     n = int(heights.size)
     if n < cfg.min_cells:
@@ -309,8 +341,15 @@ def _verdict(q0: float, fwhm: float, heights: NDArray[np.float64], levels: NDArr
     level = float(np.median(levels))
     rel = med / level if level > 0 else np.nan
     iso = low / med if med > 0 else np.nan
+    # The noise floor: in the typical direction the shell stands min_snr times
+    # its flanks' scatter (over the core's mean) above them. And the curvature:
+    # a curve_share of that height stays above a quadratic through the flanks.
+    snr = float(np.median(snrs))
+    curve = float(np.median(beyond_curve)) / med if beyond_curve is not None and med > 0 else np.nan
     return ShellIsotropy(q0, fwhm, n, med, rel, iso,
-                         bool(med > 0 and low >= cfg.height_share * med))
+                         bool(med > 0 and low >= cfg.height_share * med and snr >= cfg.min_snr
+                              and not (curve < cfg.curve_share)),
+                         snr=snr, beyond_curve=curve)
 
 
 __all__ = ["IsotropyConfig", "ShellIsotropy", "judge_shells", "shell_isotropy", "voxel_q_step"]

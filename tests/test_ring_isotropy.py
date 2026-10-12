@@ -24,8 +24,9 @@ from nebula3d.preprocessing import (
 Q_RING, FWHM = 2.0, 0.15
 
 
-def _volume(feature: str, *, seed: int = 0, n: int = 81) -> HKLVolume:
-    """A smooth isotropic background with one feature at |Q| = 2 Å⁻¹."""
+def _volume(feature: str, *, seed: int = 0, n: int = 81, hump: float = 0.0) -> HKLVolume:
+    """A smooth isotropic background with one feature at |Q| = 2 Å⁻¹, on a broad
+    hump of height *hump* centred there (σ-like width 0.4 Å⁻¹) if any."""
     blank = HKLVolume.from_arrays(np.zeros((n, n, n)), (-3, 3), (-3, 3), (-3, 3),
                                   ub_matrix=np.eye(3))
     H, K, L = blank.hkl_grid()
@@ -44,7 +45,8 @@ def _volume(feature: str, *, seed: int = 0, n: int = 81) -> HKLVolume:
     else:
         bump = np.zeros_like(q)
     rng = np.random.default_rng(seed)
-    data = 1.0 + 0.5 * np.exp(-q / 2.0) + bump + rng.normal(0.0, 0.01, q.shape)
+    data = (1.0 + 0.5 * np.exp(-q / 2.0) + hump * np.exp(-(((q - Q_RING) / 0.4) ** 2)) + bump
+            + rng.normal(0.0, 0.01, q.shape))
     return HKLVolume.from_arrays(data, (-3, 3), (-3, 3), (-3, 3), ub_matrix=np.eye(3))
 
 
@@ -61,6 +63,23 @@ def test_maxima_in_a_few_directions_are_not_a_ring():
     (r,) = judge_shells(_volume("lobes"), [(Q_RING, FWHM)])
     assert r.median_height != 0
     assert not r.is_ring
+
+
+@pytest.mark.parametrize("feature", ["none", "lobes"])
+def test_a_smooth_hump_is_not_a_ring(feature):
+    # Above a line through the flanks, a broad concave hump reads as a height in
+    # every direction: an empty shell on it, or maxima along <100> only, passed
+    # for a ring. Above a quadratic through the same flanks almost none is left.
+    (r,) = judge_shells(_volume(feature, hump=0.3), [(Q_RING, FWHM)])
+    assert not r.is_ring
+    assert r.beyond_curve < IsotropyConfig().curve_share
+
+
+def test_a_ring_on_a_smooth_hump_is_still_one():
+    vol = _volume("ring", hump=0.3)
+    (r,) = judge_shells(vol, [(Q_RING, FWHM)])
+    assert r.is_ring
+    assert r.snr >= IsotropyConfig().min_snr
 
 
 def test_nothing_at_that_q_is_not_a_ring():

@@ -82,6 +82,8 @@ class RingShellOut(BaseModel):
     median_height: float | None
     relative_height: float | None
     isotropy: float | None
+    snr: float | None = None            # the height over its noise, in the typical cell
+    beyond_curve: float | None = None   # the share of the height above a quadratic baseline
     is_ring: bool
     not_judged: str | None = None
 

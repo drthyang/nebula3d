@@ -56,6 +56,8 @@ export interface RingShell {
   median_height: number | null; // the shell's median height above its flanks (data units)
   relative_height: number | null; // that height over the flanks' level
   isotropy: number | null; // the low-quantile height over the median height
+  snr?: number | null; // the height over its noise, in the typical cell
+  beyond_curve?: number | null; // the share of the height above a quadratic through the flanks
   is_ring: boolean;
   not_judged: string | null; // why no verdict, if none
 }
