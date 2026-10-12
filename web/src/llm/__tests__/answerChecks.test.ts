@@ -195,6 +195,41 @@ describe("runAgent holds the final answer to its evidence", () => {
   });
 });
 
+describe("the checks judge what the tools found, and nothing the assistant said", () => {
+  it("still catches a contradiction when the model read the result trimmed", async () => {
+    // Past MAX_RESULT_CHARS: once cut mid-way, the result parsed as nothing, and
+    // "no ring is left" passed against a ring check that needs attention.
+    const residuals = Array.from({ length: 90 }, (_, i) => ({ at: 1 + i / 10, residual_fraction: 0.1, noise_fraction: 0.05, significant: true, ring: false }));
+    const long: AgentTool = {
+      ...assess,
+      run: async () => ({ result: { rings: { verdict: "needs attention", per_plane: { hk0: { ring_residuals: residuals } }, goal: "g".repeat(1500) } }, summary: "rings judged" }),
+    };
+    script([[{ toolCalls: [call] }], [{ content: "No ring is left." }], [{ content: "" }]]);
+    const r = await runAgent({ messages: question, tools: [long], ctx, settings, signal: new AbortController().signal });
+    expect(r.note).toMatch(/Contradicts the tools' verdict on the ring removal/);
+  });
+
+  it("does not take an earlier answer's number as a source, but an earlier tool result's", async () => {
+    const earlier: ChatMessage[] = [
+      { role: "user", content: "Where is the leftover ring?" },
+      { role: "assistant", content: "It is at 9.99 Å⁻¹." },
+      { role: "user", content: "And now?" },
+    ];
+    script([[{ toolCalls: [call] }], [{ content: "A ring is left at 9.99 Å⁻¹." }], [{ content: "" }]]);
+    const r = await runAgent({ messages: earlier, tools: [assess], ctx, settings, signal: new AbortController().signal });
+    expect(r.note).toMatch(/Not found in any tool result or the context: 9\.99/);
+    script([[{ toolCalls: [call] }], [{ content: "A ring is left at 9.99 Å⁻¹." }]]);
+    const traced = await runAgent({
+      messages: earlier,
+      tools: [assess],
+      ctx: { ...ctx, earlierResults: ['{"rings":{"worst_ring_left":{"at":9.99}}}'] },
+      settings,
+      signal: new AbortController().signal,
+    });
+    expect(traced.note).toBeUndefined();
+  });
+});
+
 describe("offsets no UB explains", () => {
   it("does not let the UB take the blame when the fit finds it right", () => {
     const shifted = step("ub_check", {}, { symmetrised: false, orientation_change_deg: 0.001, unexplained: true });

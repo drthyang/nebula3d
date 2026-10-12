@@ -69,10 +69,12 @@ export const ANSWER_REVISIONS = 1;
 export const REVISING_NOTE = "Checking the answer against its evidence…";
 
 // What an answer's numbers may come from: the conversation as it arrived (the
-// system prompt, the context, the user's words, earlier answers), this reply's
-// tool results, and the tools' own guidance. Not this reply's own text: its
-// drafts, and the notes sent back about them, would vouch for themselves.
-function numberSources(convo: ChatMessage[], arrived: number, tools: AgentTool[]): string {
+// system prompt, the context, the user's words), the tool results of this reply
+// and of earlier turns, and the tools' own guidance. No assistant text: an
+// earlier answer's number from nowhere would otherwise vouch for the next
+// answer, and this reply's drafts, and the notes sent back about them, for
+// themselves.
+function numberSources(convo: ChatMessage[], arrived: number, tools: AgentTool[], earlier: readonly string[]): string {
   const text = (m: ChatMessage): string =>
     typeof m.content === "string"
       ? m.content
@@ -80,11 +82,16 @@ function numberSources(convo: ChatMessage[], arrived: number, tools: AgentTool[]
         ? m.content.map((part) => (part.type === "text" ? part.text : "")).join("\n")
         : "";
   return [
-    ...convo.slice(0, arrived).map(text),
+    ...convo.slice(0, arrived).filter((m) => m.role !== "assistant").map(text),
     ...convo.slice(arrived).filter((m) => m.role === "tool").map(text),
+    ...earlier,
     ...tools.map((t) => t.description),
   ].join("\n");
 }
+
+/** The tool results of a conversation's turns, as the model read them: number sources for the next reply. */
+export const toolResultsIn = (turns: readonly { steps?: readonly AgentStep[] }[]): string[] =>
+  turns.flatMap((t) => (t.steps ?? []).flatMap((s) => (s.status === "done" && s.result ? [s.result] : [])));
 
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
@@ -146,6 +153,9 @@ export async function runAgent({
   let content = "";
   let reasoning = "";
   let steps: AgentStep[] = [];
+  // Each step's whole result, where the model read it trimmed: the answer
+  // checks judge against what the tools found, not against what fit.
+  const fullResults = new Map<string, string>();
   let note: string | undefined = tools.length && !useTools && ctx ? TOOLS_UNSUPPORTED_NOTE : undefined;
   const emit = (roundText = "") => onProgress?.({ content: joinText(content, roundText), reasoning, steps });
   const setStep = (id: string, patch: Partial<AgentStep>) => {
@@ -219,7 +229,9 @@ export async function runAgent({
       // The final answer: held to its evidence before the user reads it. A
       // revision that wrote nothing leaves the answer it revised.
       const answer = roundText.trim() ? roundText : rejected;
-      const issues = useTools && checkAnswers ? answerIssues(answer, steps, numberSources(convo, arrived, tools)) : null;
+      const checked = steps.map((st) => (fullResults.has(st.id) ? { ...st, result: fullResults.get(st.id) } : st));
+      const sources = numberSources(convo, arrived, tools, ctx?.earlierResults ?? []);
+      const issues = useTools && checkAnswers ? answerIssues(answer, checked, sources) : null;
       if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
         revisions += 1;
         rejected = roundText;
@@ -256,6 +268,7 @@ export async function runAgent({
         result: run.text,
         view: run.view,
       });
+      if (run.full) fullResults.set(id, run.full);
       // The console follows what the model looked at, step by step.
       if (run.ok && run.view && settings.followViews) openView(run.view);
       convo.push({ role: "tool", tool_call_id: call.id, content: run.text });
