@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { Slice } from "../../api/types";
 import { rasterize } from "../report/figures";
 import { reportHtml, reportMarkdown } from "../report/render";
-import { buildReport, fmt, type ReportInput } from "../report/report";
+import { buildReport, fmt, stageCheck, type ReportInput } from "../report/report";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
 
@@ -176,5 +176,23 @@ describe("rasterize", () => {
     const r = rasterize(slice(90), opts);
     expect(at(r, 84, -10, 0, 21)).toEqual([128, 128, 128]);
     expect(at(r, 84, 20.5, 20.5, 21)).toEqual([13, 17, 23]);
+  });
+});
+
+describe("a stage's check states only what it judges", () => {
+  it("judges the 3D-ΔPDF's symmetry from its worst in-plane break", () => {
+    const base = { back_fft_pearson_r: 0.9995, window_weight_on_unmeasured: 1e-4 };
+    const broken = stageCheck("pdf", { ...base, max_symmetry_break: 0.05, worst_symmetry_op: "six-fold (60°)" });
+    expect(broken?.verdict).toBe("attention");
+    expect(broken?.headline).toMatch(/symmetry broken/);
+    expect(stageCheck("pdf", { ...base, max_symmetry_break: 5e-4 })?.verdict).toBe("pass");
+    expect(stageCheck("pdf", base)?.verdict).toBe("pass");
+  });
+
+  it("does not promise a fill-bias check a stage's evaluation never makes", () => {
+    const c = stageCheck("backfill", { mean_median_seam_sigma: 0.6 });
+    expect(c?.verdict).toBe("pass");
+    expect(c?.criterion).toMatch(/texture_check's to say/);
+    expect(c?.criterion).not.toMatch(/no cut whose fill is biased/);
   });
 });

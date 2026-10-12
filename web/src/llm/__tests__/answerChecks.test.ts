@@ -81,6 +81,14 @@ describe("contradicting the tools' computed verdicts", () => {
     expect(contradictions("No ring is left.", [judged]).map((t) => t.id)).toEqual(["rings"]);
   });
 
+  it("holds a 3D-ΔPDF called sound to the stage's verdict, and reads a feature as no verdict", () => {
+    const pdf = step("assess_stage", { stage: "pdf" }, { pdf: { verdict: "needs attention" } });
+    expect(contradictions("The 3D-ΔPDF meets its goal.", [pdf]).map((t) => t.id)).toEqual(["pdf"]);
+    expect(verdictsIn("The 3D-ΔPDF shows a positive peak at 2.9 Å.").has("pdf")).toBe(false);
+    expect(verdictsIn("The ΔPDF keeps its six-fold symmetry.").has("pdf")).toBe(false);
+    expect(missingEvidence("The 3D-ΔPDF passes.", []).map((t) => t.id)).toEqual(["pdf"]);
+  });
+
   it("holds the other tools to their own verdicts", () => {
     const noGrain = step("grain_check", {}, { verdict: "no second grain of this phase: …" });
     expect(contradictions("The off-lattice peaks show a second grain.", [noGrain]).map((t) => t.id)).toEqual(["grain"]);

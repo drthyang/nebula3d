@@ -24,6 +24,7 @@ export interface Topic {
   evidence: string; // the tool that settles it, as the model is told
   settles: (step: AgentStep) => boolean;
   subject: RegExp;
+  verdict?: RegExp; // the words that make a sentence a verdict on it, where VERDICT is too broad
 }
 
 const stageIs = (step: AgentStep, ...stages: string[]): boolean =>
@@ -83,6 +84,16 @@ export const TOPICS: readonly Topic[] = [
     subject: /\b(second grains?|grains?|twin(s|ned|ning)?)\b/i,
   },
   {
+    id: "pdf",
+    label: "the 3D-ΔPDF",
+    evidence: "assess_stage with stage pdf",
+    settles: (s) => stageIs(s, "pdf"),
+    // A verdict on the stage as a whole; its symmetry and its coverage are
+    // their own topics, and a feature the ΔPDF shows is no verdict.
+    subject: /^(?!.*\b(symmetr(y|ic)|six-?fold|three-?fold|coverage|unmeasured)\b)(?=.*(Δ\s?PDF|delta-?pdf)).*/is,
+    verdict: /\b(meets? (its|the) goal|needs attention|pass(es|ed)?|fail(s|ed)?|clean|trustworthy|reliable|sound)\b/i,
+  },
+  {
     id: "ub",
     label: "the UB",
     evidence: "ub_check",
@@ -136,8 +147,10 @@ export function clauses(text: string): string[] {
 export function verdictsIn(text: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const s of clauses(text)) {
-    if (s.endsWith("?") || NOT_A_VERDICT.test(s) || !VERDICT.test(s)) continue;
-    for (const t of TOPICS) if (t.subject.test(s)) out.set(t.id, [...(out.get(t.id) ?? []), s]);
+    if (s.endsWith("?") || NOT_A_VERDICT.test(s)) continue;
+    for (const t of TOPICS) {
+      if (t.subject.test(s) && (t.verdict ?? VERDICT).test(s)) out.set(t.id, [...(out.get(t.id) ?? []), s]);
+    }
   }
   return out;
 }
@@ -168,7 +181,7 @@ const resultsOf = (steps: readonly AgentStep[], name: string): Record<string, un
   });
 
 /** A stage's verdict from assess_stage: its computed verdict, or computed here from its numbers by the same rule. */
-function stageSays(steps: readonly AgentStep[], stage: "rings" | "punch" | "backfill" | "flatten"): ToolSays {
+function stageSays(steps: readonly AgentStep[], stage: "rings" | "punch" | "backfill" | "flatten" | "pdf"): ToolSays {
   let says: ToolSays = null;
   for (const r of resultsOf(steps, "assess_stage")) {
     const m = r[stage];
@@ -217,6 +230,7 @@ const RULES: readonly VerdictRule[] = [
   { topic: "punch", says: (st) => stageSays(st, "punch"), claimsOk: claimsSuccess },
   { topic: "backfill", says: (st) => stageSays(st, "backfill"), claimsOk: claimsSuccess },
   { topic: "flatten", says: (st) => stageSays(st, "flatten"), claimsOk: claimsSuccess },
+  { topic: "pdf", says: (st) => stageSays(st, "pdf"), claimsOk: claimsSuccess },
   {
     topic: "coverage",
     says: (st) => verdictSays(st, "qmax_coverage", /^clean/i, /^(too far|past|unmeasured|not)/i),
