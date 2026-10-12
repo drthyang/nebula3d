@@ -109,6 +109,24 @@ describe("contradicting the tools' computed verdicts", () => {
   });
 });
 
+describe("numbers read as they are written", () => {
+  it("reads thousands separators, an upper-case exponent and a round integer", () => {
+    expect(untracedNumbers("The search found 12,345 voxels.", '{"n": 12345}')).toEqual([]);
+    expect(untracedNumbers("It puts 1.2E-3 of its weight there.", '{"w": 0.0012}')).toEqual([]);
+    expect(untracedNumbers("About 1500 peaks were punched.", '{"n": 1532}')).toEqual([]);
+    expect(untracedNumbers("About 1500 peaks were punched.", '{"n": 1621}')).toEqual(["1500"]);
+    // A JSON list's commas still separate its items.
+    expect(untracedNumbers("The axis is 12 and 345.", '{"axis": [12,345,7]}')).toEqual([]);
+  });
+
+  it("holds a signed number to a source of its sign", () => {
+    expect(untracedNumbers("A dent of -0.14.", '{"x": -0.14}')).toEqual([]);
+    expect(untracedNumbers("A residual of +0.14.", '{"x": -0.14}')).toEqual(["+0.14"]);
+    expect(untracedNumbers("A residual of 0.14.", '{"x": -0.14}')).toEqual([]); // unsigned: by size
+    expect(untracedNumbers("The band ends at 8 Å⁻¹.", 'the band 4-8 Å⁻¹')).toEqual([]);
+  });
+});
+
 describe("numbers by reference", () => {
   it("reads numbers as written, not the digits inside names, exponents or list markers", () => {
     const n = writtenNumbers("1. On hk0 the 3D-ΔPDF at 6/mmm: a ring at 7.2 Å⁻¹, 4.1 × 10⁻⁶ of the weight, 12 %, 10⁻³, x_H on a 201x201x201 grid.");
