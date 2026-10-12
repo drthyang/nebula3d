@@ -44,6 +44,12 @@ Each is described under [How it works](#how-it-works).
   unmeasured space is one).
 - **One run at a time.** Neither a run nor a tuning run starts while another is
   going, and *Stop* cancels the one the model started.
+- **No prompt is cut to fit.** A local server handed a prompt longer than the
+  model's context window cuts it or fails, so each request is held to the
+  window first. Ollama is asked for a window that holds the request (its own
+  chat API takes the length per request; the OpenAI-style one cannot), and a
+  request no window of the model can hold, or longer than the window LM Studio
+  loaded the model with, is not sent: the reply says how to fix it.
 
 ## Evals
 
@@ -195,7 +201,13 @@ miss is a note.
   With Tools on, the first request alone is about 8k tokens and a full
   assessment reaches about 18k, so on LM Studio the chat reads the context
   length the model was loaded with (`/api/v0/models`) and, below 32k, says
-  how far to raise it (`loadedContext`, `contextWarning`). A reply that runs
+  how far to raise it (`loadedContext`, `contextWarning`). Before each request
+  `provider/window.ts` estimates its tokens (characters at 3.5 a token, then
+  at the lowest rate the server's own counts gave, `tokens.ts`). Ollama goes
+  through `/api/chat` with `options.num_ctx` set to the smallest of 8k, 16k,
+  32k, 64k and 128k that holds the request and 6k for the reply, never below
+  what the model last ran with (a change reloads it) and within the longest
+  context `/api/show` reports. A request that cannot fit is not sent. A reply that runs
   out of room ends with a note and runs none of its cut-off calls. A reply
   the server could not parse (a tool call in the wrong syntax) is asked
   again, up to twice. A reply that still ends in an error keeps its steps

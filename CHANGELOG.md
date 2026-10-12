@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **NEBULA Pilot never has its prompt cut to fit a local model.** Ollama is now
+  reached through its own chat API, which takes a context length per request:
+  each request gets a window that holds it and room for the reply, within the
+  model's longest. Before, Ollama ran the OpenAI-style endpoint at a length set
+  by the machine's memory, 4k on a small machine, and dropped the start of a
+  longer conversation without a word. A request longer than any window the
+  model supports, or than the one LM Studio loaded it with, is not sent: the
+  reply says how to fix it.
+
 - **The 3D-ΔPDF refuses a grid without Q = 0 on its centre voxel.** The
   transform takes index n // 2 of each axis as Q = 0. On an even grid with a
   bin edge at 0 that voxel sits half a step off, and every feature at x was

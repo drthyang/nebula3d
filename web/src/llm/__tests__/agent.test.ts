@@ -21,9 +21,9 @@ type Reply = StreamDelta[] | Error;
 // Each streamChat call plays the next scripted reply; the messages and tools
 // each call was given are recorded.
 function script(replies: Reply[]) {
-  const seen: { messages: ChatMessage[]; tools?: unknown[]; toolChoice?: string }[] = [];
-  client.streamChat.mockImplementation((args: { messages: ChatMessage[]; tools?: unknown[]; toolChoice?: string }) => {
-    seen.push({ messages: [...args.messages], tools: args.tools, toolChoice: args.toolChoice });
+  const seen: { messages: ChatMessage[]; tools?: unknown[]; toolChoice?: string; numCtx?: number }[] = [];
+  client.streamChat.mockImplementation((args: { messages: ChatMessage[]; tools?: unknown[]; toolChoice?: string; numCtx?: number }) => {
+    seen.push({ messages: [...args.messages], tools: args.tools, toolChoice: args.toolChoice, numCtx: args.numCtx });
     const reply = replies.shift();
     return (async function* () {
       if (reply instanceof Error) throw reply;
@@ -52,6 +52,8 @@ const base: ChatMessage[] = [{ role: "user", content: "hi" }];
 
 beforeEach(() => {
   client.streamChat.mockReset();
+  // The window plan asks the model server about the model: none answers here.
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
 });
 
 describe("runAgent", () => {
@@ -213,5 +215,30 @@ describe("runAgent", () => {
     await expect(
       runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal }),
     ).rejects.toThrow(/peg-native format/);
+  });
+
+  it("does not send a request longer than the window LM Studio loaded the model with, and says why", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ data: [{ id: "qwen", state: "loaded", loaded_context_length: 4096 }] }), { status: 200 })),
+    );
+    const seen = script([[{ content: "never sent" }]]);
+    const r = await runAgent({
+      messages: [{ role: "user", content: "x".repeat(20_000) }],
+      tools: [echo],
+      ctx,
+      settings: { ...settings, baseUrl: "http://localhost:1234/v1", model: "qwen" },
+      signal: new AbortController().signal,
+    });
+    expect(seen).toHaveLength(0);
+    expect(r.content).toBe("");
+    expect(r.note).toMatch(/loaded with a 4,096-token context, so it was not sent/);
+  });
+
+  it("asks Ollama for a context length that holds each request", async () => {
+    const seen = script([[{ toolCalls: [call("c1", "echo", { x: 1 })] }], [{ content: "done" }]]);
+    await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal });
+    // A short exchange: the smallest step, kept for the second request.
+    expect(seen.map((s) => s.numCtx)).toEqual([8192, 8192]);
   });
 });

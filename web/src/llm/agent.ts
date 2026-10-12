@@ -1,7 +1,9 @@
 // One assistant reply as an agent loop: stream the model's answer; when it calls
 // tools, run them here in the browser, send the results back, and let it carry
 // on — within a budget — until it answers in plain text.  A model or server
-// that cannot call tools gets the same request without them.
+// that cannot call tools gets the same request without them.  Each request is
+// first held to the model's context window (provider/window.ts): a local
+// server would cut a longer one without saying so.
 
 import {
   isMalformedOutput,
@@ -12,6 +14,9 @@ import {
   type ToolCall,
 } from "./provider/client";
 import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
+import { isLocalUrl } from "./provider/presets";
+import { observeTokens } from "./provider/tokens";
+import { planWindow } from "./provider/window";
 import type { LlmSettings } from "./settings";
 import { runToolCall, toolSpecs, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
 import { openView } from "./tools/openView";
@@ -173,6 +178,13 @@ export async function runAgent({
     let native: unknown;
     let cutOff = false;
     const reasoningBefore = reasoning;
+    const specs = useTools ? toolSpecs(tools) : undefined;
+    // A request the model's window cannot hold is not sent: the reply says why.
+    const plan = await planWindow({ baseUrl: settings.baseUrl, model: settings.model, messages: convo, tools: specs, signal });
+    if (plan.refusal) {
+      note = note ? `${note} ${plan.refusal}` : plan.refusal;
+      break;
+    }
     try {
       for await (const delta of streamChat({
         baseUrl: settings.baseUrl,
@@ -181,11 +193,14 @@ export async function runAgent({
         temperature: settings.temperature,
         apiKey: settings.apiKey || undefined,
         signal,
-        tools: useTools ? toolSpecs(tools) : undefined,
+        tools: specs,
         toolChoice: useTools && last ? "none" : undefined,
-        includeUsage: wantUsage,
+        // A local server's counts calibrate the token estimate.
+        includeUsage: wantUsage || isLocalUrl(settings.baseUrl),
+        numCtx: plan.numCtx,
       })) {
         if (delta.usage) {
+          observeTokens(plan.key, plan.chars, delta.usage.input);
           tokens.input += delta.usage.input;
           tokens.output += delta.usage.output;
           tokens.cacheRead += delta.usage.cacheRead ?? 0;
