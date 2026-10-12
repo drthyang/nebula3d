@@ -44,6 +44,10 @@ Each is described under [How it works](#how-it-works).
   unmeasured space is one).
 - **One run at a time.** Neither a run nor a tuning run starts while another is
   going, and *Stop* cancels the one the model started.
+- **No loops.** A call repeated with the same arguments, with nothing
+  changed in between, is not run again: the model is pointed at the result it
+  has. After two rounds in a row that brought nothing new, the model is asked
+  to answer with what it has, and the reply says so.
 - **A failing server is asked again, then explained.** A crash, a model
   unloaded, a dropped connection or a server gone quiet gets the same
   request again after a pause; what still fails ends the reply with what to

@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { useNavStore } from "../../state/navStore";
-import { CUT_OFF_NOTE, runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
+import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";
 import type { AgentTool } from "../tools";
@@ -216,6 +216,81 @@ describe("runAgent", () => {
     const kept = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal });
     expect(kept.failure?.kind).toBe("malformed");
     expect(kept.note).toMatch(/peg-native format/);
+  });
+
+  describe("the loop guard", () => {
+    // A tool that counts its runs.
+    const counting = (name: string) => {
+      const runs: unknown[] = [];
+      const tool: AgentTool = {
+        name,
+        description: "counts",
+        parameters: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } } },
+        run: async (args) => {
+          runs.push(args);
+          return { result: { run: runs.length }, summary: `run ${runs.length}` };
+        },
+      };
+      return { tool, runs };
+    };
+
+    it("does not run a call again with the same arguments, in any order, and points at the result", async () => {
+      const { tool, runs } = counting("measure");
+      const seen = script([
+        [{ toolCalls: [call("c1", "measure", { a: 1, b: 2 })] }],
+        [{ toolCalls: [call("c2", "measure", { b: 2, a: 1 }), call("c3", "measure", { a: 5 })] }],
+        [{ content: "Done." }],
+      ]);
+      const r = await runAgent({ messages: base, tools: [tool], ctx, settings, signal: new AbortController().signal });
+      expect(runs).toEqual([{ a: 1, b: 2 }, { a: 5 }]);
+      expect(r.steps.map((st) => st.summary)).toEqual(["run 1", "same call as step 1: not run again", "run 2"]);
+      const sent = seen[2].messages.filter((m) => m.role === "tool").map((m) => m.content);
+      expect(sent[1]).toMatch(/already_called.*step 1/);
+      expect(r.note).toBeUndefined(); // a round with something new is no loop
+    });
+
+    it("reads again after a call that changes the settings", async () => {
+      const { tool, runs } = counting("measure");
+      const change = counting("update_settings");
+      script([
+        [{ toolCalls: [call("c1", "measure", { a: 1 })] }],
+        [{ toolCalls: [call("c2", "update_settings", { a: 9 })] }],
+        [{ toolCalls: [call("c3", "measure", { a: 1 })] }],
+        [{ content: "Changed." }],
+      ]);
+      await runAgent({ messages: base, tools: [tool, change.tool], ctx, settings, signal: new AbortController().signal });
+      expect(runs).toHaveLength(2);
+    });
+
+    it("asks for the answer after two rounds that brought nothing new, and says so", async () => {
+      const { tool, runs } = counting("measure");
+      const seen = script([
+        [{ toolCalls: [call("c1", "measure", { a: 1 })] }],
+        [{ toolCalls: [call("c2", "measure", { a: 1 })] }],
+        [{ toolCalls: [call("c3", "measure", { a: 1 })] }],
+        [{ content: "a is 1." }],
+      ]);
+      const r = await runAgent({ messages: base, tools: [tool], ctx, settings, signal: new AbortController().signal });
+      expect(runs).toHaveLength(1);
+      expect(seen).toHaveLength(4);
+      expect(seen[3].toolChoice).toBe("none");
+      expect(seen[3].messages[seen[3].messages.length - 1]).toMatchObject({ role: "user", content: expect.stringMatching(/Answer now/) });
+      expect(r.content).toBe("a is 1.");
+      expect(r.note).toBe(LOOP_NOTE);
+    });
+
+    it("keeps what it has when the model calls again after being asked to answer", async () => {
+      const { tool } = counting("measure");
+      script([
+        [{ content: "Measuring." }, { toolCalls: [call("c1", "measure", { a: 1 })] }],
+        [{ toolCalls: [call("c2", "measure", { a: 1 })] }],
+        [{ toolCalls: [call("c3", "measure", { a: 1 })] }],
+        [{ toolCalls: [call("c4", "measure", { a: 1 })] }],
+      ]);
+      const r = await runAgent({ messages: base, tools: [tool], ctx, settings, signal: new AbortController().signal });
+      expect(r.content).toBe("Measuring.");
+      expect(r.steps).toHaveLength(3); // the call after the request to answer did not run
+    });
   });
 
   describe("when the model server fails", () => {

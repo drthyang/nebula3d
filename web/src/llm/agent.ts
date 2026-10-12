@@ -81,6 +81,25 @@ export const STALL_MS = { first: 300_000, idle: 120_000 };
 // Retries for failures a moment may cure, over the whole reply.
 export const MAX_RECOVERIES = 4;
 
+// A call repeated with the same arguments, with nothing changed in between,
+// is not run again: the model is pointed at the earlier result. After this
+// many rounds in a row that brought nothing new (only repeats and errors),
+// the model is asked to answer with what it has.
+export const BARREN_ROUNDS = 2;
+export const LOOP_NOTE = "The model repeated calls that brought nothing new, so it was asked to answer with what it had.";
+const ANSWER_NOW = "The tool calls are bringing nothing new. Answer now from the results above, without calling more tools.";
+
+// Calls after which the same reading may differ: they change the settings, the
+// files on disk, or what the console shows.
+const CHANGES_STATE = new Set(["update_settings", "run_pipeline", "tune_pipeline", "show_in_viewer"]);
+
+const canonical = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(canonical)
+    : v && typeof v === "object"
+      ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical((v as Record<string, unknown>)[k])]))
+      : v;
+
 // A final answer that fails its checks (answerChecks.ts: a verdict without its
 // tool, a number from nowhere, a stage called clean that the tools judged to
 // need attention) goes back to the model this many times; what still fails is
@@ -140,6 +159,9 @@ const startArgs = (call: ToolCall): Record<string, unknown> => {
   }
 };
 
+// One call, whatever order its arguments were written in.
+const callKey = (call: ToolCall): string => `${call.function.name}|${JSON.stringify(canonical(startArgs(call)))}`;
+
 export async function runAgent({
   messages,
   tools,
@@ -191,6 +213,10 @@ export async function runAgent({
   let attempts = 0; // retries of the current request
   let recoveries = 0; // retries over the reply
   let failure: Failure | undefined;
+  // The calls that ran since the state last changed, by key → their step number.
+  const called = new Map<string, number>();
+  let barren = 0; // rounds in a row that brought nothing new
+  let answerNow = false; // asked to answer without calling more tools
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 }; // over the requests that reported them
   let requests = 0;
   for (let round = 0; ; round++) {
@@ -232,7 +258,7 @@ export async function runAgent({
         apiKey: settings.apiKey || undefined,
         signal: request.signal,
         tools: specs,
-        toolChoice: useTools && last ? "none" : undefined,
+        toolChoice: useTools && (last || answerNow) ? "none" : undefined,
         // A local server's counts calibrate the token estimate.
         includeUsage: wantUsage || isLocalUrl(settings.baseUrl),
         numCtx: plan.numCtx,
@@ -326,11 +352,25 @@ export async function runAgent({
       note = `Stopped after ${maxRounds} rounds of tool calls; the answer uses what was gathered so far.`;
       break;
     }
+    if (answerNow) break; // asked to answer, it called again: what it has stands
 
     convo.push({ role: "assistant", content: roundText, tool_calls: calls.map(replayable), ...(native ? { native } : {}) });
+    let fresh = 0; // calls this round that brought a new result
     for (const call of calls) {
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
       const id = `${steps.length}:${call.id}`; // servers may reuse call ids across rounds
+      const key = callKey(call);
+      const earlier = called.get(key);
+      if (earlier !== undefined) {
+        // The same reading again: point the model at the one it has.
+        const text = JSON.stringify({
+          already_called: `Called with these arguments earlier in this reply (step ${earlier}); its result is above. Use it, or call with other arguments.`,
+        });
+        steps = [...steps, { id, name: call.function.name, args: startArgs(call), status: "done", summary: `same call as step ${earlier}: not run again`, result: text }];
+        emit();
+        convo.push({ role: "tool", tool_call_id: call.id, content: text });
+        continue;
+      }
       steps = [...steps, { id, name: call.function.name, args: startArgs(call), status: "running" }];
       emit();
       const run = await runToolCall(call, tools, toolCtx!, {
@@ -346,9 +386,20 @@ export async function runAgent({
         view: run.view,
       });
       if (run.full) fullResults.set(id, run.full);
+      if (run.ok) {
+        fresh += 1;
+        if (CHANGES_STATE.has(call.function.name)) called.clear();
+        else called.set(key, steps.length);
+      }
       // The console follows what the model looked at, step by step.
       if (run.ok && run.view && settings.followViews) openView(run.view);
       convo.push({ role: "tool", tool_call_id: call.id, content: run.text });
+    }
+    barren = fresh ? 0 : barren + 1;
+    if (barren >= BARREN_ROUNDS && !answerNow) {
+      answerNow = true;
+      note = note ? `${note} ${LOOP_NOTE}` : LOOP_NOTE;
+      convo.push({ role: "user", content: ANSWER_NOW });
     }
   }
 

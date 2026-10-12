@@ -18,7 +18,7 @@
 import { describe, expect, it } from "vitest";
 
 import { fetchDatasets } from "../../api/client";
-import type { AgentStep } from "../agent";
+import { LOOP_NOTE, type AgentStep } from "../agent";
 import { isAnthropicUrl } from "../provider/anthropic";
 import { isLocalUrl, providerForUrl } from "../provider/presets";
 import { backendUrl, env, readText, useBackend, writeText } from "./backend";
@@ -74,6 +74,10 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
           ]),
         ),
         errors: results.filter((r) => r.run.error).length,
+        // The acceptance's limits: replies the loop guard ended, and replies
+        // that reached the round cap.
+        loops: results.filter((r) => r.run.note?.includes(LOOP_NOTE)).length,
+        turn_cap: results.filter((r) => /^Stopped after \d+ rounds/.test(r.run.note ?? "")).length,
         runs: results.map((r) => ({
           scenario: r.scenario,
           passed: r.passed,

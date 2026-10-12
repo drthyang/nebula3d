@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **NEBULA Pilot does not go round in circles.** A tool call repeated with the
+  same arguments, with nothing changed in between, is not run again: the model
+  is pointed at the result it has. After two rounds in a row that brought
+  nothing new, the model is asked to answer with what it has, and the reply
+  notes it. The evals count such replies, and those that reach the round cap.
+
 - **NEBULA Pilot rides out a failing model server.** A request that fails the
   way a local server on a shared machine does is asked again after a pause:
   the model crashed (most often out of memory) or was unloaded, the connection
