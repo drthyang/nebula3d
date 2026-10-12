@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **A local model gets fewer tools at a time.** NEBULA Pilot offers a local
+  model the reading tools every question needs and the ones its question is
+  about, and the acting tools (settings, runs, tuning) only when the message
+  asks for an action, not when it asks whether to. A question about the rings
+  sends well under 60 % of the tools' definitions. A tool the model calls by
+  name all the same still runs and stays offered, as does one an answer check
+  asks for; cloud models get every tool.
+
 - **A long NEBULA Pilot reply on a local model keeps its numbers in less
   room.** Once a request passes about 24k tokens, the reply's older tool
   results go back to the model shortened to their verdicts, headlines and

@@ -52,6 +52,13 @@ Each is described under [How it works](#how-it-works).
   unloaded, a dropped connection or a server gone quiet gets the same
   request again after a pause; what still fails ends the reply with what to
   do, never a bare error, and keeps the steps that ran.
+- **A local model gets the tools its question needs.** All the tools'
+  definitions come to about 5k tokens on every request, so a local model is
+  offered the reading tools, the ones its question is about (the rings, the
+  punch, the lattice, the 3D-ΔPDF …), and the acting ones only when the
+  message asks for an action (`localTools.ts`). A tool it calls by name all
+  the same still runs and stays offered, as does one an answer check asks for.
+  Cloud models get them all.
 - **A long reply keeps its numbers.** Once a local model's request passes
   about 24k tokens, the reply's older tool results go back to it shortened to
   their verdicts, headlines and numbers, the newest three whole; a request too

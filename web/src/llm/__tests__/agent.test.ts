@@ -296,6 +296,45 @@ describe("runAgent", () => {
     });
   });
 
+  describe("the tools a local model is offered", () => {
+    const named = (name: string): AgentTool => ({
+      name,
+      description: name,
+      parameters: { type: "object", properties: {} },
+      run: async () => ({ result: { verdict: "meets its goal", tool: name }, summary: name }),
+    });
+    const tools = ["assess_stage", "ub_check", "texture_check"].map(named);
+    const specNames = (specs?: unknown[]) => (specs as { function: { name: string } }[] | undefined)?.map((t) => t.function.name);
+
+    it("offers the question's tools, and runs and then offers one it calls by name all the same", async () => {
+      const seen = script([[{ toolCalls: [call("c1", "ub_check", {})] }], [{ content: "Done." }]]);
+      const r = await runAgent({ messages: [{ role: "user", content: "Is the ring removal clean?" }], tools, ctx, settings, signal: new AbortController().signal, checkAnswers: false });
+      expect(specNames(seen[0].tools)).toEqual(["assess_stage", "texture_check"]);
+      expect(r.steps[0]).toMatchObject({ name: "ub_check", status: "done" });
+      expect(specNames(seen[1].tools)).toEqual(["assess_stage", "ub_check", "texture_check"]);
+    });
+
+    it("offers a cloud model every tool", async () => {
+      const seen = script([[{ content: "Fine." }]]);
+      await runAgent({
+        messages: [{ role: "user", content: "Is the ring removal clean?" }],
+        tools,
+        ctx,
+        settings: { ...settings, baseUrl: "https://api.example.com/v1" },
+        signal: new AbortController().signal,
+        checkAnswers: false,
+      });
+      expect(specNames(seen[0].tools)).toEqual(["assess_stage", "ub_check", "texture_check"]);
+    });
+
+    it("offers the tool a revision asks for", async () => {
+      const seen = script([[{ content: "The backfill is clean." }], [{ content: "Checked." }]]);
+      await runAgent({ messages: [{ role: "user", content: "How does it look?" }], tools, ctx, settings, signal: new AbortController().signal });
+      expect(specNames(seen[0].tools)).toEqual(["assess_stage"]);
+      expect(specNames(seen[1].tools)).toEqual(["assess_stage", "texture_check"]); // the backfill's evidence
+    });
+  });
+
   describe("a long reply on a local model", () => {
     // A reading with a long series; x picks where the series starts.
     const seriesTool: AgentTool = {

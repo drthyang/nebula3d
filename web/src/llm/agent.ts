@@ -18,6 +18,7 @@ import {
 } from "./provider/client";
 import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
 import { compactResult, isCompacted } from "./compact";
+import { lastQuestion, toolsFor } from "./localTools";
 import { isLocalUrl } from "./provider/presets";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
 import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
@@ -244,6 +245,13 @@ export async function runAgent({
     return changed;
   };
   const windowKey = `${settings.baseUrl}|${settings.model}`;
+  // A local model is offered the reading tools and those its question is
+  // about (localTools.ts); one it calls by name all the same runs, and joins.
+  let offered = isLocalUrl(settings.baseUrl) ? toolsFor(lastQuestion(messages), tools) : tools;
+  const offer = (name: string) => {
+    const tool = tools.find((t) => t.name === name);
+    if (tool && !offered.includes(tool)) offered = tools.filter((t) => offered.includes(t) || t === tool);
+  };
   let barren = 0; // rounds in a row that brought nothing new
   let answerNow = false; // asked to answer without calling more tools
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 }; // over the requests that reported them
@@ -255,7 +263,7 @@ export async function runAgent({
     let native: unknown;
     let cutOff = false;
     const reasoningBefore = reasoning;
-    const specs = useTools ? toolSpecs(tools) : undefined;
+    const specs = useTools ? toolSpecs(offered) : undefined;
     if (isLocalUrl(settings.baseUrl) && estimateTokens(baseTokens(convo, specs), windowKey) > softBudget) compactOlder(KEEP_FULL);
     // The request's own controller: the reply's Stop ends it, and so does the
     // watchdog when the server goes quiet.
@@ -373,6 +381,8 @@ export async function runAgent({
         rejected = roundText;
         content = before;
         convo.push({ role: "assistant", content: roundText });
+        // The tools the fix asks for are offered.
+        for (const t of issues.missing) tools.forEach((tool) => t.evidence.includes(tool.name) && offer(tool.name));
         convo.push({ role: "user", content: issuesPrompt(issues) });
         emit(`_${REVISING_NOTE}_`);
         continue;
@@ -420,6 +430,7 @@ export async function runAgent({
       });
       if (run.full) fullResults.set(id, run.full);
       if (run.ok) {
+        offer(call.function.name);
         fresh += 1;
         if (CHANGES_STATE.has(call.function.name)) called.clear();
         else called.set(key, steps.length);
