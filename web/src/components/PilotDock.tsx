@@ -12,6 +12,7 @@ import { AssistantPanel } from "../llm";
 import { useHighlightStore } from "../llm/highlight";
 import { loadSettings } from "../llm/settings";
 import { clampDockWidth, defaultDockWidth, type DockMode } from "../state/dockLayout";
+import { appWidth, sidebarWidth, zoom } from "./dockRoom";
 import { useNavStore } from "../state/navStore";
 import { BrandGlyph } from "./ui";
 
@@ -56,8 +57,6 @@ function useFollowGlow(): void {
   }, []);
 }
 
-const zoom = (): number =>
-  parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-zoom")) || 1;
 
 export function PilotDock({ mode, open }: { mode: DockMode; open: boolean }) {
   const setOpen = useNavStore((s) => s.setDockOpen);
@@ -97,7 +96,7 @@ function WidthHandle() {
   const setWidth = useNavStore((s) => s.setDockWidth);
   const current = () => {
     const { dockWidth } = useNavStore.getState();
-    return clampDockWidth(dockWidth ?? defaultDockWidth(window.innerWidth), window.innerWidth);
+    return clampDockWidth(dockWidth ?? defaultDockWidth(appWidth(), sidebarWidth()), appWidth(), sidebarWidth());
   };
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -106,7 +105,7 @@ function WidthHandle() {
     const x0 = e.clientX;
     const w0 = current();
     const z = zoom();
-    const width = (ev: globalThis.PointerEvent) => clampDockWidth(w0 + (x0 - ev.clientX) / z, window.innerWidth);
+    const width = (ev: globalThis.PointerEvent) => clampDockWidth(w0 + (x0 - ev.clientX) / z, appWidth(), sidebarWidth());
     const move = (ev: globalThis.PointerEvent) => setWidth(width(ev));
     const up = (ev: globalThis.PointerEvent) => {
       setWidth(width(ev), true);
@@ -122,8 +121,8 @@ function WidthHandle() {
   };
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const step = e.shiftKey ? 64 : 16;
-    if (e.key === "ArrowLeft") setWidth(clampDockWidth(current() + step, window.innerWidth), true);
-    else if (e.key === "ArrowRight") setWidth(clampDockWidth(current() - step, window.innerWidth), true);
+    if (e.key === "ArrowLeft") setWidth(clampDockWidth(current() + step, appWidth(), sidebarWidth()), true);
+    else if (e.key === "ArrowRight") setWidth(clampDockWidth(current() - step, appWidth(), sidebarWidth()), true);
     else return;
     e.preventDefault();
   };
@@ -136,7 +135,7 @@ function WidthHandle() {
       tabIndex={0}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
-      onDoubleClick={() => setWidth(defaultDockWidth(window.innerWidth), true)}
+      onDoubleClick={() => setWidth(defaultDockWidth(appWidth(), sidebarWidth()), true)}
       title="Drag to resize; double-click for the default width"
     />
   );
