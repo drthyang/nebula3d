@@ -78,8 +78,9 @@ A suite of scenarios with known answers grades the agent on the tools it
 called and what it answered, on a measured volume and on held-out synthetic
 volumes with injected faults (a turned UB, a shifted origin, cut coverage,
 powder rings). CI replays every scenario with a scripted model; real models
-run it live. The scenarios, the commands and the results per model are in
-[evals.md](evals.md).
+run it live, and a local tier holds a local model to an acceptance (at least
+80 % of runs passing, no loops, no exceptions). The scenarios, the commands
+and the results per model are in [evals.md](evals.md).
 
 ## What its reviews found
 

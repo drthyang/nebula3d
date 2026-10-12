@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **A local tier for NEBULA Pilot's evals.** `npm run eval:local` takes a
+  local model through the eval scenarios and the held-out fault scenarios,
+  after showing what the shared machine's model servers hold and how much
+  memory is free, then checks the acceptance: at least 80 % of runs pass, no
+  reply reaches the round cap or is ended by the loop guard, and no run ends
+  in an exception; server failures are listed by kind
+  (`web/scripts/eval-acceptance.mjs`).
+
 - **A local model gets fewer tools at a time.** NEBULA Pilot offers a local
   model the reading tools every question needs and the ones its question is
   about, and the acting tools (settings, runs, tuning) only when the message

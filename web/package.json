@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "eval:agent": "NEBULA_EVAL=1 vitest run src/llm/evals/live.test.ts"
+    "eval:agent": "NEBULA_EVAL=1 vitest run src/llm/evals/live.test.ts",
+    "eval:local": "scripts/eval-local.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
