@@ -76,7 +76,10 @@ class IsotropyConfig:
     shell is judged on ``min_cells`` cells or more. Past ``max_voxels`` in the
     shells' windows (an eighth of the volume's voxels in low-memory mode, the
     browser), a fixed random subset of that many is read: a median per cell
-    and bin needs no more.
+    and bin needs no more. Each shell still keeps about ``sample_per_bin``
+    voxels per direction cell and |Q| bin, all of them when it has fewer, so
+    the budget thins only the shells that have plenty: a small one near
+    |Q| = 0 would otherwise lose most of its cells.
     """
 
     n_cos: int = 8
@@ -92,6 +95,7 @@ class IsotropyConfig:
     min_voxels: int = 5
     min_cells: int = 16
     max_voxels: int = 6_000_000
+    sample_per_bin: int = 32
     min_snr: float = 3.0
     curve_share: float = 0.25
 
@@ -102,6 +106,8 @@ class IsotropyConfig:
             raise ValueError("direction_share must be in (0, 1) and height_share in (0, 1]")
         if min(self.core_scale, self.flank_scale, self.q_step) <= 0 or self.gap_scale < 0:
             raise ValueError("core_scale, flank_scale and q_step must be positive, gap_scale ≥ 0")
+        if self.sample_per_bin < 0:
+            raise ValueError("sample_per_bin must be 0 or more")
 
 
 @dataclass(frozen=True)
@@ -204,16 +210,19 @@ def shell_isotropy(
     total_bins = int(offsets[-1])
     q_lo = min(lay[2] for lay in layouts)
     q_hi = max(lay[2] + lay[3] * q_step for lay in layouts)
-    # The voxels the windows hold, by geometry (an upper bound past the box):
-    # past the budget, each is read with probability keep_share.
+    # The voxels each window holds, by geometry (an upper bound past the box):
+    # past the budget, each is read with probability keep_share, raised for a
+    # shell that would keep fewer than sample_per_bin per cell and bin.
     axes_steps = [abs(float(a[1] - a[0])) if np.size(a) > 1 else 1.0
                   for a in (vol.h_axis, vol.k_axis, vol.l_axis)]
     ub_det = abs(float(np.linalg.det(np.asarray(vol.ub_matrix, dtype=np.float64))))
-    voxel_volume = ub_det * float(np.prod(axes_steps))
-    shell_volume = sum(4.0 / 3.0 * np.pi * (max(lay[2] + lay[3] * q_step, 0.0) ** 3
-                                           - max(lay[2], 0.0) ** 3) for lay in layouts)
-    expected = shell_volume / max(voxel_volume, 1e-30)
-    keep_share = min(1.0, max_voxels / max(expected, 1.0))
+    voxel_volume = max(ub_det * float(np.prod(axes_steps)), 1e-30)
+    expected = [4.0 / 3.0 * np.pi * (max(lay[2] + lay[3] * q_step, 0.0) ** 3
+                                     - max(lay[2], 0.0) ** 3) / voxel_volume
+                for lay in layouts]
+    keep_share = min(1.0, max_voxels / max(sum(expected), 1.0))
+    keeps = [min(1.0, max(keep_share, n_cells * lay[3] * cfg.sample_per_bin / max(e, 1.0)))
+             for lay, e in zip(layouts, expected)]
 
     ub = np.asarray(vol.ub_matrix, dtype=np.float64)
     h = np.asarray(vol.h_axis, dtype=np.float64)
@@ -229,10 +238,10 @@ def shell_isotropy(
         q = np.sqrt(qx * qx + qy * qy + qz * qz)
         data = vol.data[i0:i0 + slab]
         ok = vol.mask[i0:i0 + slab] & np.isfinite(data) & (q >= q_lo) & (q < q_hi)
-        if keep_share < 1.0:
-            ok &= np.random.default_rng(i0).random(ok.shape) < keep_share
         if not ok.any():
             continue
+        draw = (np.random.default_rng(i0).random(ok.shape)[ok]
+                if min(keeps) < 1.0 else None)
         q_ok, qz_ok = q[ok], qz[ok]
         cos = np.clip(qz_ok / q_ok, -1.0, 1.0)
         band = np.minimum(((cos + 1.0) * 0.5 * cfg.n_cos).astype(np.int64), cfg.n_cos - 1)
@@ -244,6 +253,8 @@ def shell_isotropy(
         for s, (_q0, _f, lo, n_bins, _c, _r) in enumerate(layouts):
             b = np.floor((q_ok - lo) / q_step).astype(np.int32)
             inside = (b >= 0) & (b < n_bins)
+            if draw is not None and keeps[s] < 1.0:
+                inside &= draw < keeps[s]
             if inside.any():
                 keys.append(cell[inside] * np.int32(total_bins) + np.int32(offsets[s]) + b[inside])
                 vals.append(v[inside])

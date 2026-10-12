@@ -136,6 +136,14 @@ over the median (the isotropy) reads:
 | The crystals' own diffuse shells (eight volumes, one with its HKL origin shifted) | −0.14 or less |
 | An empty shell on a broad hump, or maxima along ⟨100⟩ on it | 0.90 to 0.96, but only 0.15 or less of the height above the curve |
 
+Past a budget of voxels in the shells' windows (6 M, or an eighth of the
+volume's voxels in the browser's low-memory mode) a fixed random subset is
+read, but each shell keeps about 32 voxels per cell and |Q| bin, all of them
+when it has fewer (`IsotropyConfig.sample_per_bin`). A budget shared by every
+shell alike thinned the small shells near |Q| = 0 to a few cells: in the
+browser the demo's two lowest Al lines went unjudged and stayed in, where the
+native run removed them. The two modes now confirm the same rings.
+
 The cells must stay small, and the core narrow: on 4 × 8 cells the diffuse
 shells read up to 0.9, and with a 0.29 Å⁻¹ core one read 0.21, because both
 average maxima in different directions, or at neighbouring |Q|, into what

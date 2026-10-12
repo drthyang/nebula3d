@@ -113,8 +113,9 @@ def test_a_broad_candidate_beside_a_ring_does_not_hide_it():
 def test_reads_a_subset_past_the_voxel_budget_and_agrees():
     vol = _volume("ring")
     (full,) = judge_shells(vol, [(Q_RING, FWHM)])
-    # About half of the ~90k voxels in the shell's window.
-    (sub,) = judge_shells(vol, [(Q_RING, FWHM)], IsotropyConfig(max_voxels=45_000))
+    # About half of the ~90k voxels in the shell's window, with no per-shell floor.
+    (sub,) = judge_shells(vol, [(Q_RING, FWHM)],
+                          IsotropyConfig(max_voxels=45_000, sample_per_bin=0))
     assert sub.is_ring and full.is_ring
     assert sub.n_cells >= 0.9 * full.n_cells
     assert abs(sub.isotropy - full.isotropy) < 0.05
@@ -125,6 +126,8 @@ def test_config_validation():
         IsotropyConfig(direction_share=1.0)
     with pytest.raises(ValueError):
         IsotropyConfig(core_scale=0.0)
+    with pytest.raises(ValueError):
+        IsotropyConfig(sample_per_bin=-1)
 
 
 # ---------------------------------------------------------------- the removal
@@ -160,6 +163,27 @@ def test_the_demo_aluminium_rings_are_confirmed_and_removed():
         assert any(abs(q - q_al) < 0.05 for q in kept), (q_al, kept)
     assert all(s["isotropy"]["is_ring"] for s in d["shells"])
     assert all(not s["isotropy"]["is_ring"] for s in d["rejected_shells"])
+
+
+def test_low_memory_mode_confirms_the_rings_native_mode_does(monkeypatch):
+    """The browser's low-memory budget is an eighth of the volume's voxels.
+    Shared by every shell alike, it thinned the small shells near |Q| = 0 to a
+    few direction cells, so the demo's lowest Al rings went unjudged and stayed
+    in. Each shell now keeps sample_per_bin voxels per cell and bin."""
+    def confirmed(lean: bool, **isotropy: int) -> list[float]:
+        if lean:
+            monkeypatch.setenv("NEBULA3D_LOW_MEMORY", "1")
+        else:
+            monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)
+        # A fresh volume each time: in low-memory mode the output overwrites it.
+        cfg = PooledRingConfig(isotropy=IsotropyConfig(**isotropy))
+        shells = fit_pooled_rings(_demo(0.9), cfg).diagnostics["shells"]
+        return [round(s["q_center"], 2) for s in shells]
+
+    native = confirmed(False)
+    assert confirmed(True) == native
+    shared_budget_only = confirmed(True, sample_per_bin=0)
+    assert min(native) not in shared_budget_only
 
 
 def test_confirmation_off_subtracts_every_detected_shell():
