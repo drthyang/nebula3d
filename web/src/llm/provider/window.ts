@@ -6,13 +6,13 @@
 // reply says why instead. Cloud models' windows are far longer than this app's
 // requests.
 
-import { isOllamaUrl, loadedContext, ollamaModel, type ChatMessage, type ToolSpec } from "./client";
+import { isOllamaUrl, loadedContext, ollamaContext, type ChatMessage, type ToolSpec } from "./client";
 import { isLocalUrl } from "./presets";
-import { estimateTokens, MIN_REPLY, ollamaWindow, REPLY_RESERVE, requestChars } from "./tokens";
+import { baseTokens, estimateTokens, MIN_REPLY, REPLY_RESERVE } from "./tokens";
 
 export interface WindowPlan {
-  key: string; // base URL + model: whose token rate the estimate used
-  chars: number; // the request's characters, to calibrate the rate by its counts
+  key: string; // base URL + model: whose counts scale the estimate
+  base: number; // the request's tokens at the starting rates, to calibrate by its counts
   prompt: number; // its estimated prompt tokens
   numCtx?: number; // Ollama: the context length to ask for
   window: number | null; // the window the prompt and reply must fit, where known
@@ -43,34 +43,34 @@ export async function planWindow({
   signal?: AbortSignal;
 }): Promise<WindowPlan> {
   const key = `${baseUrl}|${model}`;
-  const chars = requestChars(messages, tools);
-  const prompt = estimateTokens(chars, key);
+  const base = baseTokens(messages, tools);
+  const prompt = estimateTokens(base, key);
   if (isOllamaUrl(baseUrl)) {
-    const { maxContext } = await ollamaModel(baseUrl, model, signal);
-    // Room for thinking and the answer when the model can hold it, else the least.
-    const numCtx = ollamaWindow(key, prompt + REPLY_RESERVE, maxContext) ?? ollamaWindow(key, prompt + MIN_REPLY, maxContext);
+    // The length the model runs with when it holds the request (no reload under
+    // another app), else room for thinking and the answer, else the least.
+    const { numCtx, max } = await ollamaContext(baseUrl, model, prompt, signal);
     if (numCtx == null) {
       return {
         key,
-        chars,
+        base,
         prompt,
-        window: maxContext,
+        window: max,
         refusal:
-          `This request needs about ${n(prompt)} tokens, more than ${model} can hold (${n(maxContext ?? 0)}), ` +
+          `This request needs about ${n(prompt)} tokens, more than ${model} can hold (${n(max ?? 0)}), ` +
           "so it was not sent: Ollama would drop the start of the conversation. Press Clear to start a shorter " +
           "conversation, or pick a model with a longer context.",
       };
     }
-    return { key, chars, prompt, numCtx, window: numCtx };
+    return { key, base, prompt, numCtx, window: numCtx };
   }
-  if (!isLocalUrl(baseUrl)) return { key, chars, prompt, window: null };
+  if (!isLocalUrl(baseUrl)) return { key, base, prompt, window: null };
   // LM Studio fixes the window when it loads the model; elsewhere it is unknown.
   const context = await loadedContext(baseUrl, model, { signal });
   const loaded = context?.loaded ?? null;
   if (loaded != null && prompt + MIN_REPLY > loaded) {
     return {
       key,
-      chars,
+      base,
       prompt,
       window: loaded,
       refusal:
@@ -80,5 +80,5 @@ export async function planWindow({
         "or press Clear to start a shorter conversation.",
     };
   }
-  return { key, chars, prompt, window: loaded };
+  return { key, base, prompt, window: loaded };
 }

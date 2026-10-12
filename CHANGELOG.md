@@ -5,7 +5,9 @@
 - **NEBULA Pilot never has its prompt cut to fit a local model.** Ollama is now
   reached through its own chat API, which takes a context length per request:
   each request gets a window that holds it and room for the reply, within the
-  model's longest. Before, Ollama ran the OpenAI-style endpoint at a length set
+  model's longest, and a model another app already runs with a window that
+  holds the request keeps it, so it is not reloaded under that app. Before,
+  Ollama ran the OpenAI-style endpoint at a length set
   by the machine's memory, 4k on a small machine, and dropped the start of a
   longer conversation without a word. A request longer than any window the
   model supports, or than the one LM Studio loaded it with, is not sent: the

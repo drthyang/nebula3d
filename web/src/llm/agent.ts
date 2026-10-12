@@ -200,7 +200,7 @@ export async function runAgent({
         numCtx: plan.numCtx,
       })) {
         if (delta.usage) {
-          observeTokens(plan.key, plan.chars, delta.usage.input);
+          observeTokens(plan.key, plan.base, delta.usage.input);
           tokens.input += delta.usage.input;
           tokens.output += delta.usage.output;
           tokens.cacheRead += delta.usage.cacheRead ?? 0;

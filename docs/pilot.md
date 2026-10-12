@@ -202,12 +202,16 @@ miss is a note.
   assessment reaches about 18k, so on LM Studio the chat reads the context
   length the model was loaded with (`/api/v0/models`) and, below 32k, says
   how far to raise it (`loadedContext`, `contextWarning`). Before each request
-  `provider/window.ts` estimates its tokens (characters at 3.5 a token, then
-  at the lowest rate the server's own counts gave, `tokens.ts`). Ollama goes
-  through `/api/chat` with `options.num_ctx` set to the smallest of 8k, 16k,
-  32k, 64k and 128k that holds the request and 6k for the reply, never below
-  what the model last ran with (a change reloads it) and within the longest
-  context `/api/show` reports. A request that cannot fit is not sent. A reply that runs
+  `provider/window.ts` estimates its tokens (`tokens.ts`): prose at 3.5
+  characters a token and data at 1.4 (tool results, call arguments and the
+  fenced context JSON: a tokenizer may give every digit its own token), scaled
+  by the largest ratio of the server's own counts to that estimate. Ollama goes
+  through `/api/chat` with `options.num_ctx`: the length the model already runs
+  with when it holds the request and 6k for the reply (another app may be using
+  the model, and any other length reloads it under them, `/api/ps`), else the
+  smallest of 8k, 16k, 32k, 64k and 128k that does, never below what the model
+  last ran with and within the longest context `/api/show` reports. A request
+  that cannot fit is not sent. A reply that runs
   out of room ends with a note and runs none of its cut-off calls. A reply
   the server could not parse (a tool call in the wrong syntax) is asked
   again, up to twice. A reply that still ends in an error keeps its steps

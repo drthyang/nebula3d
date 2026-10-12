@@ -7,13 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ChatMessage } from "../provider/client";
 import {
-  CHARS_PER_TOKEN,
+  baseTokens,
+  DATA_CHARS_PER_TOKEN,
   estimateTokens,
   observeTokens,
   ollamaWindow,
-  requestChars,
+  PROSE_CHARS_PER_TOKEN,
   resetTokenState,
-  tokenRate,
+  tokenScale,
 } from "../provider/tokens";
 import { planWindow } from "../provider/window";
 
@@ -24,26 +25,44 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const asking = (chars: number): ChatMessage[] => [{ role: "user", content: "x".repeat(chars) }];
 
 describe("the token estimate", () => {
-  it("counts text, calls and tools, and an image as about a thousand tokens", () => {
-    const text = requestChars([{ role: "user", content: "abcd" }]);
-    const image = requestChars([
-      { role: "user", content: [{ type: "text", text: "abcd" }, { type: "image_url", image_url: { url: `data:image/png;base64,${"A".repeat(500_000)}` } }] },
-    ]);
-    expect(image - text).toBe(4000);
-    const tools = requestChars([], [{ type: "function", function: { name: "t", description: "d", parameters: {} } }]);
-    expect(tools).toBeGreaterThan(40);
+  const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 6);
+
+  it("reads prose at 3.5 characters a token and data at 1.4: tool results, call arguments, fenced JSON", () => {
+    const prose = "word ".repeat(700); // 3,500 characters
+    const data = '{"at":4.39,"residual_fraction":0.149}'.repeat(100); // 3,700 characters
+    close(baseTokens([{ role: "user", content: prose }]), 5 + 3500 / PROSE_CHARS_PER_TOKEN);
+    close(baseTokens([{ role: "tool", tool_call_id: "c", content: data }]), 5 + 3700 / DATA_CHARS_PER_TOKEN);
+    const fenced = "```json\n" + data + "\n```";
+    close(baseTokens([{ role: "user", content: `Context:\n${fenced}` }]), 5 + 9 / PROSE_CHARS_PER_TOKEN + fenced.length / DATA_CHARS_PER_TOKEN);
+    const args = '{"stage":"rings"}';
+    close(
+      baseTokens([{ role: "assistant", content: "", tool_calls: [{ id: "c", type: "function", function: { name: "assess_stage", arguments: args } }] }]),
+      5 + 12 / PROSE_CHARS_PER_TOKEN + args.length / DATA_CHARS_PER_TOKEN,
+    );
   });
 
-  it("takes the lowest rate the server counted, and ignores a rate past reason", () => {
+  it("counts an image as about a thousand tokens, and the tools' definitions as prose", () => {
+    const text = baseTokens([{ role: "user", content: "abcd" }]);
+    const image = baseTokens([
+      { role: "user", content: [{ type: "text", text: "abcd" }, { type: "image_url", image_url: { url: `data:image/png;base64,${"A".repeat(500_000)}` } }] },
+    ]);
+    expect(image - text).toBe(1000);
+    const spec = [{ type: "function" as const, function: { name: "t", description: "d", parameters: {} } }];
+    close(baseTokens([], spec), JSON.stringify(spec).length / PROSE_CHARS_PER_TOKEN);
+  });
+
+  it("scales by what the server counted, keeps the largest ratio, and ignores one past reason", () => {
     const key = "http://localhost:1234/v1|m";
-    expect(tokenRate(key)).toBe(CHARS_PER_TOKEN);
-    observeTokens(key, 36_000, 9_000); // 4 characters a token
-    expect(tokenRate(key)).toBe(CHARS_PER_TOKEN); // the lower start stands
-    observeTokens(key, 30_000, 10_000); // 3 a token
-    expect(tokenRate(key)).toBe(3);
-    observeTokens(key, 30_000, 1_000); // 30 a token: a prompt the server cut
-    expect(tokenRate(key)).toBe(3);
-    expect(estimateTokens(3_001, key)).toBe(1_001);
+    expect(tokenScale(key)).toBe(1);
+    observeTokens(key, 10_000, 8_000); // the estimate ran long: 0.8
+    expect(tokenScale(key)).toBe(0.8);
+    observeTokens(key, 10_000, 7_000); // shorter still: the larger ratio stands
+    expect(tokenScale(key)).toBe(0.8);
+    observeTokens(key, 10_000, 12_000); // the estimate ran short: 1.2
+    expect(tokenScale(key)).toBe(1.2);
+    observeTokens(key, 10_000, 1_000); // 0.1: a prompt the server cut
+    expect(tokenScale(key)).toBe(1.2);
+    expect(estimateTokens(1_000, key)).toBe(1_200);
   });
 });
 
@@ -60,16 +79,29 @@ describe("ollamaWindow", () => {
 });
 
 describe("planWindow", () => {
+  // Ollama's /api/show and /api/ps.
+  const ollama = (contextLength: number, running: { name: string; context_length: number }[] = []) =>
+    vi.fn(async (url: string) => (url.endsWith("/api/ps") ? json({ models: running }) : json({ model_info: { "qwen3.context_length": contextLength } })));
+
   it("sizes Ollama's window for the prompt and room to reply", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => json({ model_info: { "qwen3.context_length": 40_960 } })));
+    vi.stubGlobal("fetch", ollama(40_960));
     const plan = await planWindow({ baseUrl: "http://localhost:11434/v1", model: "qwen3:32b", messages: asking(35_000) });
-    expect(plan.prompt).toBe(10_005); // 35,016 characters at 3.5
+    expect(plan.prompt).toBe(10_005); // 35,000 characters of prose at 3.5, and the message's own
     expect(plan.numCtx).toBe(16_384);
     expect(plan.refusal).toBeUndefined();
   });
 
+  it("keeps the length a running model has when it holds the request: no reload under another app", async () => {
+    vi.stubGlobal("fetch", ollama(262_144, [{ name: "gemma4:26b", context_length: 40_960 }]));
+    const held = await planWindow({ baseUrl: "http://localhost:11434/v1", model: "gemma4:26b", messages: asking(35_000) });
+    expect(held.numCtx).toBe(40_960);
+    // One it cannot hold gets the step that does, which reloads the model.
+    const longer = await planWindow({ baseUrl: "http://localhost:11434/v1", model: "gemma4:26b", messages: asking(140_000) });
+    expect(longer.numCtx).toBe(65_536);
+  });
+
   it("refuses a request no window of the model can hold", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => json({ model_info: { "llama.context_length": 8_192 } })));
+    vi.stubGlobal("fetch", ollama(8_192));
     const plan = await planWindow({ baseUrl: "http://localhost:11434/v1", model: "tiny", messages: asking(35_000) });
     expect(plan.numCtx).toBeUndefined();
     expect(plan.refusal).toMatch(/about 10,005 tokens, more than tiny can hold \(8,192\)/);

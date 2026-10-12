@@ -17,7 +17,7 @@ import {
   streamAnthropic,
 } from "./anthropic";
 import { isLocalUrl, providerForUrl } from "./presets";
-import { estimateTokens, ollamaWindow, REPLY_RESERVE, requestChars } from "./tokens";
+import { baseTokens, estimateTokens, keepWindow, MIN_REPLY, ollamaWindow, REPLY_RESERVE } from "./tokens";
 
 // A message's content is either plain text or a list of parts (text +
 // image_url), the OpenAI vision shape that Ollama/LM Studio/Gemini also accept.
@@ -344,6 +344,51 @@ export const ollamaModel = (baseUrl: string, model: string, signal?: AbortSignal
   return known;
 };
 
+// Names Ollama treats as one model: "llama3.2" is "llama3.2:latest".
+const sameModel = (a: string | undefined, b: string): boolean =>
+  !!a && (a === b || a === `${b}:latest` || `${a}:latest` === b);
+
+/** The context length an Ollama model runs with now, if it is loaded (GET /api/ps, which loads nothing). */
+export const ollamaRunning = async (baseUrl: string, model: string, signal?: AbortSignal): Promise<number | null> => {
+  try {
+    const response = await fetch(`${serverRoot(baseUrl)}/api/ps`, { signal });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { models?: { name?: string; model?: string; context_length?: unknown }[] };
+    const length = payload.models?.find((m) => sameModel(m.name, model) || sameModel(m.model, model))?.context_length;
+    return typeof length === "number" && length > 0 ? length : null;
+  } catch (error) {
+    if ((error as Error)?.name === "AbortError") throw error;
+    return null;
+  }
+};
+
+/**
+ * The context length to run an Ollama model with for a prompt of `prompt`
+ * tokens. The one it runs with now, when that holds the prompt and the reply:
+ * another app may be using the model (Athanor's critic, MATERIA), and any
+ * other length reloads it under them. Else the smallest step that holds them
+ * (tokens.ts), within the longest context the model supports. Null when
+ * nothing it supports can hold the prompt.
+ */
+export const ollamaContext = async (
+  baseUrl: string,
+  model: string,
+  prompt: number,
+  signal?: AbortSignal,
+): Promise<{ numCtx: number | null; max: number | null }> => {
+  const key = `${baseUrl}|${model}`;
+  const [{ maxContext: max }, running] = await Promise.all([
+    ollamaModel(baseUrl, model, signal),
+    ollamaRunning(baseUrl, model, signal),
+  ]);
+  if (running != null && running >= prompt + REPLY_RESERVE) return { numCtx: keepWindow(key, running), max };
+  const sized = ollamaWindow(key, prompt + REPLY_RESERVE, max) ?? ollamaWindow(key, prompt + MIN_REPLY, max);
+  if (sized != null) return { numCtx: sized, max };
+  // Room for a short reply in what it runs with is still better than none.
+  if (running != null && running >= prompt + MIN_REPLY) return { numCtx: keepWindow(key, running), max };
+  return { numCtx: null, max };
+};
+
 // A call's arguments as the object Ollama's API takes; anything else as {}.
 const argsObject = (json: string): Record<string, unknown> => {
   try {
@@ -380,10 +425,9 @@ export const toOllamaMessages = (messages: ChatMessage[]): Record<string, unknow
 // The context length for a request whose caller did not size it.
 const sizedWindow = async (args: Omit<PostChatArgs, "stream">): Promise<number | undefined> => {
   if (args.numCtx) return args.numCtx;
-  const key = `${args.baseUrl}|${args.model}`;
-  const prompt = estimateTokens(requestChars(args.messages, args.tools), key);
-  const { maxContext } = await ollamaModel(args.baseUrl, args.model, args.signal);
-  return ollamaWindow(key, prompt + REPLY_RESERVE, maxContext) ?? maxContext ?? undefined;
+  const prompt = estimateTokens(baseTokens(args.messages, args.tools), `${args.baseUrl}|${args.model}`);
+  const { numCtx, max } = await ollamaContext(args.baseUrl, args.model, prompt, args.signal);
+  return numCtx ?? max ?? undefined;
 };
 
 const postOllama = async (args: Omit<PostChatArgs, "stream">, stream: boolean): Promise<Response> => {

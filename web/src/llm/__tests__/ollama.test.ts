@@ -24,12 +24,15 @@ const line = (o: unknown) => `${JSON.stringify(o)}\n`;
 const show = (contextLength: number) =>
   new Response(JSON.stringify({ model_info: { "gemma4.context_length": contextLength }, capabilities: ["tools"] }), { status: 200 });
 
-// Routes /api/show and /api/chat; records each request's URL and body.
-function server(chat: () => Response, contextLength = 40960) {
+// Routes /api/show, /api/ps (the models running now) and /api/chat; records
+// each request's URL and body.
+function server(chat: () => Response, contextLength = 40960, running: { name: string; context_length: number }[] = []) {
   const seen: { url: string; body: Record<string, unknown> }[] = [];
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     seen.push({ url, body: init?.body ? JSON.parse(init.body as string) : {} });
-    return url.endsWith("/api/show") ? show(contextLength) : chat();
+    if (url.endsWith("/api/show")) return show(contextLength);
+    if (url.endsWith("/api/ps")) return new Response(JSON.stringify({ models: running }), { status: 200 });
+    return chat();
   });
   vi.stubGlobal("fetch", fetchMock);
   return seen;
@@ -163,6 +166,15 @@ describe("streamChat with Ollama", () => {
     const chats = seen.filter((s) => s.url.endsWith("/api/chat"));
     expect(chats.map((s) => (s.body.options as { num_ctx?: number }).num_ctx)).toEqual([8192, 32768, 32768, 40960]);
     expect(seen.filter((s) => s.url.endsWith("/api/show"))).toHaveLength(1); // read once
+  });
+
+  it("runs with the length another app loaded the model with when it holds the request", async () => {
+    const seen = server(() => ndjson([line({ message: { content: "ok" }, done: true })]), 262144, [
+      { name: "gemma4:26b", context_length: 40960 },
+    ]);
+    await collect(streamChat({ baseUrl: OLLAMA, model: "gemma4:26b", messages: [{ role: "user", content: "hi" }], temperature: 0 }));
+    const chat = seen.find((s) => s.url.endsWith("/api/chat"))!;
+    expect((chat.body.options as { num_ctx?: number }).num_ctx).toBe(40960);
   });
 
   it("raises an error Ollama streams, with what to do about it", async () => {
