@@ -317,6 +317,34 @@ def test_volume_ub_check(tmp_path):
     assert client.get(f"/api/volumes/{SLUG}.raw/ub", params={"cell": "2,0,2"}).status_code == 400
 
 
+def test_volume_ub_check_with_operations_that_do_not_map_the_grid(tmp_path):
+    """Operations borrowed for a grid binned otherwise (K at 1.25× H's step)
+    cannot map it onto itself: the check fits the rotation and the cell, the
+    operations constraining the cell only, instead of failing with a 422."""
+    a, a_true = 4.0, 4.04
+    ub, ub_true = 2 * np.pi / a * np.eye(3), 2 * np.pi / a_true * np.eye(3)
+    vol = HKLVolume.from_arrays(np.full((61, 49, 61), 10.0), (-3, 3), (-3, 3), (-3, 3),
+                                ub_matrix=ub)
+    hkl = np.stack(np.meshgrid(vol.h_axis, vol.k_axis, vol.l_axis, indexing="ij"), axis=-1)
+    for g in np.array(np.meshgrid(*[np.arange(-2, 3)] * 3, indexing="ij")).reshape(3, -1).T:
+        if g.any():
+            d = (hkl - np.linalg.inv(ub) @ ub_true @ g) @ ub.T
+            vol.data += 500 * np.exp(-(d ** 2).sum(-1) / (2 * 0.15 ** 2))
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    _write_entry(tmp_path / "raw" / f"{STEM}.nxs", vol, symmetry_ops="h,k,l; -k,h,l; -h,-k,-l")
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    r = client.get(f"/api/volumes/{SLUG}.raw/ub", params={"cell": "1,1,1"})
+    assert r.status_code == 200, r.text
+    u = r.json()
+    assert u["fit"] == "both" and u["operations"] == 3
+    assert u["symmetry_break"] is None and u["symmetrised"] is None
+    # The four-fold still constrains the cell: a = b, at the lattice the peaks sit on.
+    assert u["cell"][0] == pytest.approx(u["cell"][1], abs=1e-6)
+    assert u["cell"][:3] == pytest.approx([a_true] * 3, abs=2e-3)
+
+
 def test_volume_ub_check_takes_the_symmetry_of_the_export(tmp_path):
     """An unsymmetrised volume declares no symmetry; its symmetrised export,
     which names it as its source, does: the check fits the rotation and a cell

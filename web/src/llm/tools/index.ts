@@ -1101,7 +1101,8 @@ const ubCheckTool: AgentTool = {
         u.fit === "symmetric"
           ? "The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data."
           : u.operations_from
-            ? `The rotation and the cell were fitted together, the cell constrained by the operations ${u.operations_from} declares.`
+            ? `The rotation and the cell were fitted together, the cell constrained by the operations ${u.operations_from} declares.` +
+              (u.symmetry_break == null ? " They do not map this volume's grid, so whether it is symmetrised was not judged." : "")
             : "The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).",
         unexplainedOffset(u)
           ? `The fit removed little of the peaks' offset (RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹, against a voxel of ${u.voxel_q!.toFixed(4)} Å⁻¹): no UB change explains it. Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.`
