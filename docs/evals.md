@@ -153,6 +153,19 @@ the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
   unloads a model. Before the local-model work, on the nine scenarios of the
   time: qwen3.8-27b passed 12/27 runs with 15 exceptions, qwen3:32b 17/27 and
   gemma4:26b 15/27 (below).
+
+  The full records, with every tool call, result and answer, stay on the
+  machine (`web/.eval-runs/<date>/`, ignored by git): on the measured volume
+  they hold figures from unpublished data. Their summaries go to
+  [`docs/evals/local/<date>/`](evals/local/): per run, whether it passed, the
+  names of the checks it failed, how the model server failed it if it did,
+  whether it ended in an exception, at the round cap or by the loop guard, and
+  its time and tokens (`web/scripts/eval-records.mjs`). The 10 October runs
+  are there as the baseline, and the before/after report reads the folders:
+
+  ```bash
+  cd web && node scripts/eval-report.mjs --before ../docs/evals/local/2026-10-10/*.json --after ../docs/evals/local/<date>/*.json
+  ```
 - **Tables:** `node web/scripts/eval-table.mjs` with the five records, not the
   `-pilot` one: `docs/evals/results/{claude-sonnet-5-5,claude-haiku-5-5,ollama-gemma4-26b,ollama-qwen3-32b,lmstudio-qwen3.8-27b}.json`.
 - **Re-recording the measured set's fixture:** `cd web && NEBULA_EVAL_PROBE=1 npx vitest run src/llm/evals/probe.test.ts`.

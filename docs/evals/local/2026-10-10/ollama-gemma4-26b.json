@@ -1,0 +1,524 @@
+{
+ "kind": "nebula-pilot-eval-summary",
+ "provider": "Ollama",
+ "model": "gemma4:26b",
+ "local": true,
+ "at": "2026-10-10T23:28:14.996Z",
+ "repeat": 3,
+ "summary": [
+  {
+   "id": "rings-left",
+   "passed": 0,
+   "runs": 3
+  },
+  {
+   "id": "punch-missed",
+   "passed": 0,
+   "runs": 3
+  },
+  {
+   "id": "pdf-window-coverage",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "pdf-separable-refused",
+   "passed": 0,
+   "runs": 3
+  },
+  {
+   "id": "symmetry-kept",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "q-band-from-raw",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "no-second-grain",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "ub-symmetrised",
+   "passed": 0,
+   "runs": 3
+  },
+  {
+   "id": "ub-misoriented",
+   "passed": 3,
+   "runs": 3
+  }
+ ],
+ "runs": [
+  {
+   "scenario": "rings-left",
+   "passed": false,
+   "failed_checks": [
+    "calls assess_stage for the rings",
+    "quotes the leftover ring's |Q|",
+    "says that a ring is left"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 32,
+   "tokens": {
+    "input": 8934,
+    "output": 706,
+    "requests": 1
+   }
+  },
+  {
+   "scenario": "rings-left",
+   "passed": false,
+   "failed_checks": [
+    "calls assess_stage for the rings",
+    "quotes the leftover ring's |Q|",
+    "says that a ring is left"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 45,
+   "tokens": {
+    "input": 8934,
+    "output": 611,
+    "requests": 1
+   }
+  },
+  {
+   "scenario": "rings-left",
+   "passed": false,
+   "failed_checks": [
+    "calls assess_stage for the rings",
+    "quotes the leftover ring's |Q|"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 12,
+   "tokens": {
+    "input": 8934,
+    "output": 569,
+    "requests": 1
+   }
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": false,
+   "failed_checks": [
+    "calls assess_stage for the punch",
+    "quotes the missed peaks at nodes"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 41,
+   "tokens": {
+    "input": 19079,
+    "output": 1594,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": false,
+   "failed_checks": [
+    "calls assess_stage for the punch",
+    "quotes the missed peaks at nodes",
+    "says that lattice peaks were missed"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 27,
+   "tokens": {
+    "input": 8934,
+    "output": 1204,
+    "requests": 1
+   }
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": false,
+   "failed_checks": [
+    "calls assess_stage for the punch",
+    "quotes the missed peaks at nodes"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 37,
+   "tokens": {
+    "input": 19038,
+    "output": 1573,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 20,
+   "tokens": {
+    "input": 18646,
+    "output": 407,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 30,
+   "tokens": {
+    "input": 18646,
+    "output": 479,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 16,
+   "tokens": {
+    "input": 18646,
+    "output": 268,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": false,
+   "failed_checks": [
+    "says to keep the ellipsoid window",
+    "says that a separable window would reach unmeasured space or break the symmetry"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 82,
+   "tokens": {
+    "input": 28021,
+    "output": 2661,
+    "requests": 3
+   }
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": false,
+   "failed_checks": [
+    "says that a separable window would reach unmeasured space or break the symmetry"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 57,
+   "tokens": {
+    "input": 8951,
+    "output": 1224,
+    "requests": 1
+   }
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": false,
+   "failed_checks": [
+    "says to keep the ellipsoid window",
+    "says that a separable window would reach unmeasured space or break the symmetry"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 86,
+   "tokens": {
+    "input": 8951,
+    "output": 1585,
+    "requests": 1
+   }
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 34,
+   "tokens": {
+    "input": 18113,
+    "output": 570,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 27,
+   "tokens": {
+    "input": 18113,
+    "output": 707,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 15,
+   "tokens": {
+    "input": 18113,
+    "output": 700,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 12,
+   "tokens": {
+    "input": 18654,
+    "output": 479,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 17,
+   "tokens": {
+    "input": 18654,
+    "output": 716,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 13,
+   "tokens": {
+    "input": 18654,
+    "output": 504,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 18,
+   "tokens": {
+    "input": 18354,
+    "output": 718,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 17,
+   "tokens": {
+    "input": 18354,
+    "output": 737,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 17,
+   "tokens": {
+    "input": 18354,
+    "output": 687,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": false,
+   "failed_checks": [
+    "says that the orientation needs the unsymmetrised data"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 31,
+   "tokens": {
+    "input": 18807,
+    "output": 827,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": false,
+   "failed_checks": [
+    "says that the orientation needs the unsymmetrised data"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 34,
+   "tokens": {
+    "input": 18843,
+    "output": 476,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": false,
+   "failed_checks": [
+    "says that the orientation needs the unsymmetrised data"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 18,
+   "tokens": {
+    "input": 18843,
+    "output": 822,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 29,
+   "tokens": {
+    "input": 17026,
+    "output": 772,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 22,
+   "tokens": {
+    "input": 17191,
+    "output": 710,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 32,
+   "tokens": {
+    "input": 36172,
+    "output": 1186,
+    "requests": 4
+   }
+  }
+ ]
+}

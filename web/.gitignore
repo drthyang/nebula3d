@@ -10,3 +10,8 @@ public/data/
 
 # Locally-built nebula3d wheel for the Pyodide PoC (build artifact; can bundle data).
 public/wheels/
+
+# Full eval records (scripts/eval-local.sh): every tool call, result and answer,
+# which on the measured eval datasets hold figures from unpublished data. Only
+# their summaries, in docs/evals/local/, are committed.
+.eval-runs/

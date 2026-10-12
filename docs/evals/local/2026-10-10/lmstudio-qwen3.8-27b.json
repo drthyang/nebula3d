@@ -1,0 +1,500 @@
+{
+ "kind": "nebula-pilot-eval-summary",
+ "provider": "LM Studio",
+ "model": "qwen/qwen3.8-27b",
+ "local": true,
+ "at": "2026-10-11T02:43:59.437Z",
+ "repeat": 3,
+ "summary": [
+  {
+   "id": "rings-left",
+   "passed": 1,
+   "runs": 3
+  },
+  {
+   "id": "punch-missed",
+   "passed": 0,
+   "runs": 3
+  },
+  {
+   "id": "pdf-window-coverage",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "pdf-separable-refused",
+   "passed": 1,
+   "runs": 3
+  },
+  {
+   "id": "symmetry-kept",
+   "passed": 1,
+   "runs": 3
+  },
+  {
+   "id": "q-band-from-raw",
+   "passed": 0,
+   "runs": 3
+  },
+  {
+   "id": "no-second-grain",
+   "passed": 2,
+   "runs": 3
+  },
+  {
+   "id": "ub-symmetrised",
+   "passed": 3,
+   "runs": 3
+  },
+  {
+   "id": "ub-misoriented",
+   "passed": 1,
+   "runs": 3
+  }
+ ],
+ "runs": [
+  {
+   "scenario": "rings-left",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls assess_stage for the rings",
+    "quotes the leftover ring's |Q|",
+    "says that a ring is left"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 710,
+   "tokens": null
+  },
+  {
+   "scenario": "rings-left",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls assess_stage for the rings",
+    "quotes the leftover ring's |Q|",
+    "says that a ring is left"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 5,
+   "tokens": null
+  },
+  {
+   "scenario": "rings-left",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 773,
+   "tokens": {
+    "input": 36589,
+    "output": 7082,
+    "requests": 3
+   }
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls assess_stage for the punch",
+    "quotes the missed peaks at nodes",
+    "says that lattice peaks were missed"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 1188,
+   "tokens": null
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls assess_stage for the punch",
+    "quotes the missed peaks at nodes",
+    "says that lattice peaks were missed"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 1193,
+   "tokens": null
+  },
+  {
+   "scenario": "punch-missed",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls assess_stage for the punch",
+    "quotes the missed peaks at nodes",
+    "says that lattice peaks were missed"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 1182,
+   "tokens": null
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 93,
+   "tokens": {
+    "input": 19529,
+    "output": 932,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 87,
+   "tokens": {
+    "input": 19529,
+    "output": 833,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "pdf-window-coverage",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 75,
+   "tokens": {
+    "input": 19529,
+    "output": 766,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 671,
+   "tokens": {
+    "input": 19975,
+    "output": 8003,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "says to keep the ellipsoid window",
+    "says that a separable window would reach unmeasured space or break the symmetry"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 658,
+   "tokens": null
+  },
+  {
+   "scenario": "pdf-separable-refused",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "says to keep the ellipsoid window",
+    "says that a separable window would reach unmeasured space or break the symmetry"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 0,
+   "tokens": null
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls symmetry_check",
+    "says that the symmetry is kept"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 0,
+   "tokens": null
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls symmetry_check",
+    "says that the symmetry is kept"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 0,
+   "tokens": null
+  },
+  {
+   "scenario": "symmetry-kept",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 221,
+   "tokens": {
+    "input": 19228,
+    "output": 879,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls qmax_coverage",
+    "quotes the upper edge",
+    "quotes the lower edge"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 105,
+   "tokens": null
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls qmax_coverage",
+    "quotes the upper edge",
+    "quotes the lower edge"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 0,
+   "tokens": null
+  },
+  {
+   "scenario": "q-band-from-raw",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls qmax_coverage",
+    "quotes the upper edge",
+    "quotes the lower edge"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 0,
+   "tokens": null
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls grain_check",
+    "says that there is no second grain",
+    "quotes the offset angle"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 0,
+   "tokens": null
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 326,
+   "tokens": {
+    "input": 30067,
+    "output": 2712,
+    "requests": 3
+   }
+  },
+  {
+   "scenario": "no-second-grain",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 198,
+   "tokens": {
+    "input": 19232,
+    "output": 1867,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 331,
+   "tokens": {
+    "input": 19729,
+    "output": 3817,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 490,
+   "tokens": {
+    "input": 21112,
+    "output": 5197,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "ub-symmetrised",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 330,
+   "tokens": {
+    "input": 19733,
+    "output": 3901,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls ub_check",
+    "quotes the rotation",
+    "quotes the refined a"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 1199,
+   "tokens": null
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": true,
+   "failed_checks": [],
+   "failure": null,
+   "attempts": null,
+   "error": false,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 586,
+   "tokens": {
+    "input": 19451,
+    "output": 6721,
+    "requests": 2
+   }
+  },
+  {
+   "scenario": "ub-misoriented",
+   "passed": false,
+   "failed_checks": [
+    "answers",
+    "calls ub_check",
+    "quotes the rotation",
+    "quotes the refined a"
+   ],
+   "failure": null,
+   "attempts": null,
+   "error": true,
+   "turn_cap": false,
+   "loop": false,
+   "seconds": 1200,
+   "tokens": null
+  }
+ ]
+}
