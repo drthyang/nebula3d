@@ -1,470 +1,80 @@
 # NEBULA3D
 
-**NEBULA3D** — *Neutron Elastic Background Utility for Local Analysis and
-3D-ΔPDF* — is a Python toolkit and browser console (the `nebula3d` package) for
-cleaning 3D reciprocal-space diffuse-scattering volumes, neutron or X-ray, and
-turning them into real-space 3D-ΔPDF maps. It comes with **NEBULA Pilot**, an AI
-agent that runs, judges and tunes the reduction with you, on a local model or a
-cloud one.
+**NEBULA3D** (*Neutron Elastic Background Utility for Local Analysis and
+3D-ΔPDF*) is a Python package and browser console that cleans 3D
+reciprocal-space diffuse-scattering volumes, neutron or X-ray, into real-space
+3D-ΔPDF maps, with an AI agent that assesses and tunes the reduction with you.
 
-**Try it in the browser:** https://drthyang.github.io/nebula3d/ runs the complete
+**Try it in the browser:** https://drthyang.github.io/nebula3d/ runs the whole
 pipeline client-side; nothing is uploaded.
 
 ![NEBULA Pilot, docked beside the page, assesses a run on the synthetic demo volume and opens its analysis report](docs/media/nebula-pilot-demo.gif)
 
-*NEBULA Pilot, docked beside the page (1440×900), on a local model (gemma4:26b),
-assesses a run on the built-in synthetic demo volume: simulated data, not
-measured. One click asks for the assessment. Each tool lights up the figure it
-reads, beside the panel, and the reply opens a report built from the tools' own
-numbers. A time-lapse, about six minutes in one: the waits for the model are
-sped up, and each figure and the answer are held long enough to read.*
+*NEBULA Pilot on the built-in synthetic demo volume (simulated data, not
+measured), with a local model. A time-lapse: the waits for the model are sped
+up.*
 
-## Highlights
+## What it does
 
-- **NEBULA Pilot, an agent for the reduction.** Connect a local model (Ollama,
-  LM Studio) or a cloud one (OpenAI, Gemini, Anthropic). With *Tools* on, the
-  model works through 22 tools that run in your browser. It measures any cut,
-  judges each stage against its goal on three planes, and checks the punch and
-  backfill for texture. It checks the ΔPDF's window against the measured
-  coverage and the ΔPDF against the cell's symmetry, tells a second grain from
-  displaced Bragg peaks, checks the UB against where the Bragg peaks sit, and
-  sets the ΔPDF view's contrast. It runs the pipeline and tunes it stage by stage. Every number comes
-  from deterministic, unit-tested metrics; the model reads and explains them.
-- **Measured with real models.** Nine scenarios with known answers from
-  research rounds on a measured volume are graded on the tools each model
-  called and what it answered. Claude Sonnet 5.5 and Haiku 5.5 pass all 27 runs
-  each, at about $0.025 and $0.001 a run. The local gemma4:26b and qwen3:32b
-  pass 15/27 and 17/27: both answer the ring and punch questions from the
-  opening cut instead of checking.
-  Details and the raw records are in [docs/evals.md](docs/evals.md). CI replays
-  every scenario with a scripted model.
-- **Tuning that cannot touch your results.** Each trial runs in its own folder,
-  never in `processed/`. The model proposes settings from a checked catalog,
-  and every trial is measured on three planes. A trial past a hard limit cannot
-  win: a ΔPDF window with more than 10⁻³ of its weight on unmeasured space is
-  one.
-- **A symmetric pipeline.** With the symmetry declared in the input file,
-  every stage averages its output over symmetry orbits. On a measured
-  symmetrised volume the ΔPDF's equivalent partners now agree to rounding,
-  where they had differed visibly.
-- **Made for local models.** The agent says how much context a model needs:
-  with *Tools* on, the first request is about 8k tokens and a full assessment
-  about 18k. It warns when LM Studio has loaded the model with less. A reply
-  survives a full context window, a server error and a malformed tool call:
-  what ran is kept, and an unparseable reply is asked again.
-- **The |Q| band from the data.** The raw volume shows where its counts begin
-  and end in |Q|. The console reads those edges and sets the ΔPDF's band from
-  them.
-- **The whole pipeline in the browser**, at full float64 resolution, or
-  natively with no size limit: same code, same console.
+- **The reduction, stage by stage:** powder-ring removal, Bragg and satellite
+  punch, backfill, radial-background flatten, the 3D-ΔPDF transform and a
+  back-FFT consistency check ([the pipeline](docs/pipeline.md)).
+- **Aware of the crystal:** the stages keep the symmetry the input declares,
+  non-orthogonal cells are fine, and the UB can be checked and refined from
+  where the Bragg peaks sit.
+- **Powder rings told from diffuse:** a shell is subtracted only if it rises in
+  nearly every direction in 3D, so the crystal's own diffuse stays
+  ([powder rings](docs/algorithms/powder_rings.md)).
+- **One console, two run modes:** the static web app runs the pipeline in your
+  browser; `nebula3d-web` serves the same console natively, with no size limit.
+- **Mantid files in and out:** it loads NeXus Viewer and Mantid exports, and
+  writes volumes that Mantid's `LoadMD` opens.
 
-The workflow removes powder rings, punches sharp Bragg and satellite peaks, fills
-the punched holes, flattens the isotropic background, Fourier-transforms the
-cleaned volume into a real-space 3D-ΔPDF, and ends with a back-FFT consistency
-check.
+## Quick start
 
-```text
-Symmetrised HKL volume (NeXus Viewer export or Mantid)
-        |
-        v
-  1. powder-ring subtraction        examples/remove_rings_3d.py
-  2. Bragg/satellite punch          examples/punch_bragg_3d.py
-  3. Bragg-hole backfill            examples/backfill_bragg_3d.py
-  4. radial-background flatten      examples/flatten_background_3d.py
-  5. 3D-ΔPDF transform              examples/delta_pdf.py
-  6. back-FFT consistency check     examples/delta_pdf_consistency.py
-  7. cleanup / ΔPDF viewers         examples/explore_slice.py, examples/explore_delta_pdf_ortho.py
-  8. AI review and tuning (optional) web NEBULA Pilot — local or cloud LLM
-```
+Open **https://drthyang.github.io/nebula3d/**, load the built-in demo volume
+(**Use demo**) or your own `.nxs`/`.h5`, and press **Run pipeline**.
 
-### What the agent-driven reviews found
-
-NEBULA Pilot was used to review measured volumes as five domain experts in
-turn: an instrument scientist, a crystallographer, a diffuse-scattering
-physicist, a Fourier specialist and a statistician. Each review fixed what it
-found, or built the tool it lacked. On a measured volume:
-
-- The off-lattice search now leaves broad diffuse maxima alone. Before, most of
-  the "leftover peaks" on a plane were such maxima.
-- The flatten can take a background that rises with |Q|. The floor now sits
-  near zero across the coverage, and the ΔPDF changed only near the origin.
-- The coverage check reads the window that actually ran.
-- The ΔPDF keeps the declared symmetry to rounding (`symmetry_check`).
-- The 3D-ΔPDF page's Auto contrast shows the features, not the FFT ripple.
-
-Tested live with local models through LM Studio and Ollama, including a
-five-stage tuning run. The details are in [CHANGELOG.md](CHANGELOG.md).
-
-For a **3D-PDF** (total scattering with the Bragg peaks *kept* — a Patterson-like
-map) instead of the ΔPDF, use `examples/run_pipeline_pdf.py`, which skips the
-punch and backfill stages. To characterise magnetic diffuse that sits *at* the
-Bragg satellites, use `examples/investigate_bragg_diffuse.py`.
-
-## Web UI
-
-`nebula3d` ships a single browser console (React) that unifies the
-cleanup and 3D-ΔPDF viewers and drives the whole pipeline from a raw `.nxs` with
-live progress. It has two interchangeable run modes that share the same UI and
-the same reduction code:
-
-- **In-browser (no install)** — the hosted app at
-  **https://drthyang.github.io/nebula3d/** is a **fully static** GitHub Pages
-  bundle that runs the *complete* `nebula3d` pipeline client-side via Pyodide, at
-  full-resolution float64 (up to ~50 M voxels — a 301×401×401 volume fits). Load
-  your own `.nxs`/`.h5`; nothing is uploaded, nothing is server-side.
-- **Native** — `pip install -e ".[web]"` then `nebula3d-web` (serves
-  http://127.0.0.1:8000); the same UI backed by FastAPI for local work with no
-  size limit.
-
-The browser build has **full feature parity** with the native backend — the
-static, hosted app is a first-class way to run nebula3d, not a reduced demo.
-
-A sidebar console drives everything from one place — a global dataset switcher,
-a pipeline runner (the default landing view), reciprocal-space cleanup, a Bragg
-profile view, 3D-ΔPDF orthoslices, and the back-FFT consistency check — plus
-**NEBULA Pilot**, an AI assistant in a panel beside every page, that connects to your **selected
-LLM**, local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic), and **reasons over
-the reduction**: it grades each stage from metrics computed in the browser,
-measures any cut it needs, opens the viewer where its point shows, and can
-**tune the pipeline stage by stage**, keeping the best of a few settings for
-each (nothing leaves your machine but the chat calls to your own model server).
-See
-[QUICKSTART.md](QUICKSTART.md) to get running and [docs/web.md](docs/web.md) for
-the reference, architecture, and development workflow.
-
-## Install
-
-Requires Python 3.10 or newer.
+To run it natively, from a clone (Python 3.10+ and Node.js):
 
 ```bash
-git clone https://github.com/drthyang/nebula3d
-cd nebula3d
-pip install -e ".[dev]"
+pip install -e ".[web]"
+make web-install && make ui     # build the console once
+nebula3d-web                    # serves http://127.0.0.1:8000
 ```
 
-For local scripts run from the repository root, set:
-
-```bash
-export PYTHONPATH=src
-export MPLCONFIGDIR=/tmp/mpl
-```
-
-`MPLCONFIGDIR` keeps Matplotlib cache files out of the repository.
-
-## Development
-
-Before pushing, run the same checks as CI (tests, lint, type check):
-
-```bash
-bash scripts/check.sh
-```
-
-It runs `pytest`, `ruff check src/ tests/`, and `mypy src/nebula3d`. Set
-`PY=/path/to/python` to choose the interpreter. To run it automatically on every
-push, install it as a git hook in your clone:
-
-```bash
-ln -s ../../scripts/check.sh .git/hooks/pre-push
-```
-
-## Input Data
-
-Place the volume in `data/raw/`. A NeXus Viewer export (`/entry` with the data,
-mask, H/K/L axes and UB matrix), neutron or X-ray, loads directly. Its declared
-`symmetry_ops` are honoured by every stage (`symmetry="auto"`, the default). A
-Mantid-exported NeXus file works too, in either variant:
-
-```text
-*_cc_sub_bkg.nxs   # correlation chopper, empty-can background subtracted
-*_cc_data.nxs      # correlation chopper data
-```
-
-Here `cc` means CORELLI correlation chopper, and `sub_bkg` means the empty-can
-background has already been subtracted. **Correlation-chopper (`cc`) and
-properly symmetrised data is recommended.** You can also load the files the
-package writes. Every `.h5` it writes — the stage volumes and the 3D-ΔPDF — is a
-Mantid MDHistoWorkspace NeXus file (the `SaveMD` layout), so Mantid Workbench's
-`LoadMD` opens it, with the unit cell in the oriented lattice; files from older
-versions (`/entry/...`) still load. See [docs/README.md](docs/README.md#file-format).
-
-Bin the volume on the crystal's own H, K, L axes (Mantid projections
-`u=[1,0,0]`, `v=[0,1,0]`, `w=[0,0,1]`, in any order). Non-orthogonal cells such
-as hexagonal or monoclinic are fine: the UB matrix carries the metric, and every
-|Q|-based stage uses it. A projected grid (e.g. `[H,0,0]/[-K,2K,0]/[0,0,L]`) is
-rejected on load. The 3D-ΔPDF keeps the cell angles and every viewer draws each
-section at its real angle (see [docs/algorithms/delta_pdf.md](docs/algorithms/delta_pdf.md)).
-Known gap: the *reciprocal-space* viewers still draw a*, b*, c* at 90°.
-
-## Quick Start
-
-To run the app, see [QUICKSTART.md](QUICKSTART.md). For concise CLI command
-recipes for batch workflows and viewers, see [docs/commands.md](docs/commands.md).
-
-Run the complete pipeline:
-
-```bash
-DATA_FILE=data/raw/your_volume_cc_sub_bkg.nxs \
-PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl \
-python3 examples/run_pipeline.py
-```
-
-`examples/run_pipeline.py` runs all compute stages, skips stages whose outputs
-already exist, writes the 3D-ΔPDF, runs the consistency check, then opens the
-cleanup and ΔPDF viewers. The stages are: (1) ring removal, (2) Bragg punch,
-(3) Bragg backfill, (4) **radial-background flatten** — the explicit
-background-removal step (default on; `FLATTEN=0` to skip), (5) 3D-ΔPDF FFT,
-(6) back-FFT consistency check. The background is removed at step 4, not by a
-hidden blur inside the FFT: the transform's own Gaussian `SUBTRACT_BG` is off by
-default because it is the *alternative* remover (see step 5 below).
-
-Useful overrides:
-
-| Variable | Effect |
-| --- | --- |
-| `DATA_FILE=/path/to/file.nxs` | Use a specific input file. |
-| `NO_VIEWER=1` | Stop after writing outputs and the consistency check; do not open GUI viewers. |
-| `FORCE=1` | Recompute every stage. |
-| `FORCE_FROM=rings|punch|backfill|flatten|pdf|check` | Recompute from one stage onward. |
-| `FLATTEN=0` | Skip the radial-background flatten (step 4). |
-| `CONSISTENCY=0` | Skip the final back-FFT consistency check. |
-
-## Run Stages Manually
-
-Run these from the repository root when you want to inspect or tune individual
-stages.
-
-### 1. Remove Powder Rings
-
-```bash
-PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl RING_PRESET=cc_on \
-python3 examples/remove_rings_3d.py
-```
-
-Output:
-
-```text
-data/processed/*_ringremoved.h5
-```
-
-### 2. Punch Bragg And Satellite Peaks
-
-```bash
-PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl PUNCH_PRESET=cc_on MODE=both \
-MIN_I=0.8 MIN_PROM=0.8 INTEGER_FIT_POSITION=1 INTEGER_FIT_SHAPE=1 \
-INTEGER_H_GUARD=0.12 \
-SEARCH_EXCLUDE_H=-0.6667,-0.3333,0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \
-PREVIEW=0 \
-python3 examples/punch_bragg_3d.py
-```
-
-Output:
-
-```text
-data/processed/*_braggpunched.h5
-```
-
-### 3. Backfill Bragg Holes
-
-```bash
-PYTHONPATH=src METHOD=local \
-python3 examples/backfill_bragg_3d.py
-```
-
-Output:
-
-```text
-data/processed/*_braggpunched_backfilled.h5
-```
-
-### 4. Flatten The Radial Background (Background Removal)
-
-```bash
-PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl \
-python3 examples/flatten_background_3d.py
-```
-
-Output:
-
-```text
-data/processed/*_backfilled_flattened.h5
-```
-
-Sweeps spherical `|Q|` shells, fits the isotropic pedestal `const + c·F(Q)²`
-to each shell's floor (p25) and subtracts it. The constant is nuclear incoherent
-scattering and `F` is the magnetic ion's form factor (`ION`; set it to the
-sample's magnetic ion, while the pipeline and web app default to none, a
-constant only). Both
-terms are self scattering, so the ΔPDF changes only at r ≈ 0, while the
-anisotropic diffuse, the Bragg residuals and isotropic pair correlations are
-kept. This is the explicit background-removal step. A background that
-rises with |Q| (inelastic: thermal diffuse, and Compton with X-rays; leading term ∝ Q²) is not
-F²-shaped: `Q2=1` adds a `b·Q²` term, held at its value past the fit range's
-end, and `FIT_Q_MAX` carries the fit to the data's coverage (default 10 Å⁻¹).
-Use `examples/validate_flatten.py` to check isotropy, feature retention, and
-over-subtraction on your own volumes.
-
-### 5. Compute The 3D-ΔPDF
-
-```bash
-PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl APODIZE=gaussian \
-python3 examples/delta_pdf.py
-```
-
-Outputs:
-
-```text
-examples/_delta_pdf.h5
-examples/_delta_pdf_hk0.png
-examples/_delta_pdf_h0l.png
-examples/_delta_pdf_0kl.png
-```
-
-By default the transform uses the **full `|Q|` range** (no crop), which gives the
-finest real-space ΔPDF — the real-space pixel size is fixed by the `|Q|` extent
-kept, not by zero-padding (see [docs/algorithms/delta_pdf.md](docs/algorithms/delta_pdf.md)).
-This matches the back-FFT consistency view, which always uses the full range.
-`CROP_H=4 CROP_K=8 CROP_L=15` is an optional band-limit (smaller transform, trims
-the noisier outer `|Q|` shells at the cost of a coarser real-space grid). The
-background has already been removed at step 4, so the transform's own
-smooth-background subtraction is **off**.
-`SUBTRACT_BG=0,sigma,sigma` is the *legacy alternative*: it subtracts a smooth
-per-H-plane Gaussian background inside the FFT. Use the flatten **or**
-`SUBTRACT_BG`, never both — running both removes the background twice, and the
-per-H-plane blur (σ_H=0) destroys the on-axis H-direction signal that the
-flatten preserves.
-
-### 6. Check ΔPDF Consistency
-
-```bash
-PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl \
-DATA_FILE=data/processed/your_volume_ringremoved_braggpunched_backfilled_flattened.h5 \
-python3 examples/delta_pdf_consistency.py
-```
-
-The check computes the ΔPDF with the standard settings, inverse-transforms it
-back to reciprocal space, and compares **data | back-FFT | residual**. A faithful
-transform gives Pearson `r` close to 1 with a small normalised RMS residual. The
-web UI exposes the same check interactively, including adjustable `|Q|` and
-real-space `r` bands.
-
-## Visual QA
-
-Inspect cleanup across H:
-
-```bash
-PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl USE_BACKGROUND=0 \
-PUNCH_PRESET=cc_on MODE=both MIN_I=0.8 MIN_PROM=0.8 \
-INTEGER_FIT_POSITION=1 INTEGER_FIT_SHAPE=1 INTEGER_H_GUARD=0.12 \
-SEARCH_EXCLUDE_H=-0.6667,-0.3333,0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \
-BACKFILL_METHOD=local H_VALUE=0.3333 \
-python3 examples/explore_slice.py
-```
-
-The viewer shows raw data, removed ring intensity, punched data, and backfilled
-data, with an H slider for scrubbing through the volume.
-
-Inspect the real-space 3D-ΔPDF:
-
-```bash
-PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl RMAX=50 \
-python3 examples/explore_delta_pdf_ortho.py
-```
-
-This opens three linked orthogonal real-space cuts with movable cut sliders,
-contrast control, and unit-cell gridlines.
-
-## Python API
-
-```python
-import nebula3d
-from nebula3d.analysis import BraggRemover, backfill_bragg, compute_delta_pdf
-
-vol = nebula3d.load("data/processed/sample_ringremoved.h5")
-
-remover = BraggRemover(
-    mode="both",
-    punch_spherical_radii=(0.097, 0.072, 0.115),  # Å⁻¹: radial, polar, azimuthal
-    integer_detect="significance",  # nodes by significance, no intensity floor
-    min_significance=5.0,
-    integer_max_shell_fraction=0.15,  # and no broader than a Bragg peak
-    integer_optimize_position=True,
-    integer_optimize_shape=True,
-    integer_h_guard_hkl=0.12,
-    search_n_mad=4.0,
-    search_floor_unit="scatter",  # search floors × the diffuse scatter
-    search_min_intensity=27.0,
-    search_min_prominence=27.0,
-    search_exclude_h_centers=(-2 / 3, -1 / 3, 1 / 3, 2 / 3),
-    search_exclude_h_half_width=0.08,
-    incident_beam_ellipsoid_radii_hkl=(0.15, 0.50, 1.00),
-)
-
-punched = remover.apply(vol)
-filled = backfill_bragg(punched)  # fills each hole from its surroundings
-dpdf = compute_delta_pdf(filled, apodization="hann")
-```
-
-## Documentation
-
-Start with [docs/README.md](docs/README.md).
-
-Key pages:
-
-| Page | Purpose |
-| --- | --- |
-| [docs/algorithms/powder_rings.md](docs/algorithms/powder_rings.md) | Powder-ring model and subtraction strategy. |
-| [docs/algorithms/bragg_cleanup.md](docs/algorithms/bragg_cleanup.md) | Bragg/satellite detection, punching, and backfill. |
-| [docs/algorithms/delta_pdf.md](docs/algorithms/delta_pdf.md) | 3D-ΔPDF transform, centring, background subtraction, and consistency checks. |
-| [docs/algorithms/ub_refinement.md](docs/algorithms/ub_refinement.md) | UB refinement from the Bragg peaks' centres, and regridding onto it. |
-| [QUICKSTART.md](QUICKSTART.md) | Get the app running (native or in-browser) in a few commands. |
-| [docs/commands.md](docs/commands.md) | Concise CLI command recipes for batch workflows and viewers. |
-| [docs/web.md](docs/web.md) | Browser console: run modes, viewers, architecture, dev workflow. |
-| [docs/web.md#nebula-pilot-ai-assistant](docs/web.md#nebula-pilot-ai-assistant) | NEBULA Pilot: the agent loop, its tools, tuning, and local-model guidance. |
-| [docs/interactive.md](docs/interactive.md) | Matplotlib viewer usage and visualization API. |
-| [CHANGELOG.md](CHANGELOG.md) | Release notes and version history. |
-
-## Package Layout
-
-```text
-src/nebula3d/
-├── core.py              HKLVolume: 3D array, HKL axes, mask, sigma, UB matrix
-├── io/                  Mantid NeXus (read/write), legacy HDF5, ΔPDF files, ASCII HKL
-├── preprocessing/       powder-ring models, background handling, sampling
-├── analysis/            Bragg punch/fill, 3D-ΔPDF, |Q| coverage
-├── symmetry.py          declared symmetry ops: index maps and orbit means
-├── inpainting/          symmetry, TV, RBF, and biharmonic fallbacks
-├── server/              FastAPI backend for the console (native mode)
-├── webbridge.py         the same API for the in-browser (Pyodide) build
-└── visualization/       slices, profiles, overview plots, interactive viewers
-
-web/                     the React console; NEBULA Pilot lives in web/src/llm
-```
-
-## Tests And CI
-
-Run locally in a Python 3.10+ environment with dev dependencies:
-
-```bash
-PYTHONPATH=src python3 -m pytest -o addopts=''
-python3 -m ruff check src/ tests/
-python3 -m mypy src/nebula3d --ignore-missing-imports
-```
-
-GitHub Actions runs the same checks on Python 3.10, 3.11, and 3.12. The
-console has its own suite (`npm --prefix web test`): 558 Python and 294 web
-tests at the time of writing.
+More, including the batch scripts: [QUICKSTART.md](QUICKSTART.md).
+
+## NEBULA Pilot
+
+An agent docked beside every page. Connect a local model (Ollama, LM Studio) or
+a cloud one (OpenAI, Gemini, Anthropic): it measures cuts, judges each stage,
+runs and tunes the pipeline, and shows you the figures it reads. Every number
+comes from deterministic metrics, and each answer is checked against the
+tools' results before you read it. Its tools, guardrails and evals:
+[docs/pilot.md](docs/pilot.md).
 
 ## Status
 
-The latest release is 0.3.0 (beta); `main` carries the 0.4.0 development work
-listed in [CHANGELOG.md](CHANGELOG.md). The recommended workflow is operational
-and ends with the back-FFT consistency check: powder-ring removal, Bragg
-cleanup, Bragg-hole backfill, radial flatten, 3D-ΔPDF transform, consistency
-QA, and interactive viewers. The complete pipeline also runs **fully
-client-side** in the static GitHub Pages app, at full-resolution float64 with
-feature parity to the native backend. **NEBULA Pilot** reviews, runs and tunes
-the reduction as an agent, with local or cloud models. The package remains
-pre-1.0/beta while the public API and file formats continue to evolve.
+Beta: the latest release is 0.3.0, and `main` carries the 0.4.0 work
+([CHANGELOG.md](CHANGELOG.md)). CI runs the Python tests on 3.10–3.13 with
+ruff and mypy, and the console's tests and builds, including replays of the
+agent's evals ([docs/development.md](docs/development.md#tests-and-ci)).
+
+## Documentation
+
+- [Quickstart](QUICKSTART.md): run the console, in the browser or natively.
+- [The console](docs/web.md): its views, run modes and architecture.
+- [NEBULA Pilot](docs/pilot.md): the agent's tools, guardrails and
+  [evals](docs/evals.md).
+- [Running the pipeline](docs/pipeline.md): input data, the scripts, each
+  stage, the Python API; also [command recipes](docs/commands.md).
+- Algorithms: [powder rings](docs/algorithms/powder_rings.md),
+  [Bragg cleanup](docs/algorithms/bragg_cleanup.md),
+  [3D-ΔPDF](docs/algorithms/delta_pdf.md),
+  [UB refinement](docs/algorithms/ub_refinement.md).
+- [Development](docs/development.md): install from source, checks, CI.
+- [All documentation](docs/README.md) · [Changelog](CHANGELOG.md)
 
 ## License and provenance
 

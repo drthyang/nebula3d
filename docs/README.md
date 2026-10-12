@@ -6,41 +6,54 @@ viewers, and reproducible command recipes in more detail.
 
 ## Recommended Reading Order
 
-1. [Repository README](../README.md) - installation and package overview.
+1. [Repository README](../README.md) - what NEBULA3D is, in one screen.
 2. [Quickstart](../QUICKSTART.md) - get the browser app running (native or
    in-browser) in a few commands.
 3. [Web UI](web.md) - the browser console that runs the pipeline and unifies the
-   cleanup, ΔPDF, multi-volume, and consistency views; both run modes,
-   architecture, and the development workflow.
-4. [Command recipes](commands.md) - concise CLI commands for batch workflows and
+   cleanup, ΔPDF and consistency views; both run modes, architecture, and the
+   development workflow.
+4. [NEBULA Pilot](pilot.md) - the console's AI agent: its tools, guardrails,
+   evals and how it works; the eval suite and its results are in
+   [evals.md](evals.md).
+5. [Running the pipeline](pipeline.md) - input data, the complete pipeline and
+   each stage from the command line, visual QA, and the Python API.
+6. [Command recipes](commands.md) - concise CLI commands for batch workflows and
    viewers.
-6. [Powder ring removal](algorithms/powder_rings.md) - how smooth powder-ring
-   intensity is estimated and subtracted.
-7. [Bragg cleanup](algorithms/bragg_cleanup.md) - integer-node Bragg punching,
+7. [Powder ring removal](algorithms/powder_rings.md) - how powder-ring intensity
+   is estimated and subtracted, and how a ring is told from the crystal's own
+   diffuse.
+8. [Bragg cleanup](algorithms/bragg_cleanup.md) - integer-node Bragg punching,
    search-mode satellite punching, direct-beam handling, and backfill.
-8. [3D-ΔPDF transform](algorithms/delta_pdf.md) - centred FFT recipe, the
+9. [3D-ΔPDF transform](algorithms/delta_pdf.md) - centred FFT recipe, the
    radial-background flatten (the default step-4 background removal), the
    alternative smooth-background subtraction, real-space viewer assumptions, and
    the back-FFT consistency check.
-9. [UB refinement](algorithms/ub_refinement.md) - fitting the UB to where the
+10. [UB refinement](algorithms/ub_refinement.md) - fitting the UB to where the
    Bragg peaks sit, what a symmetrised volume can still show, and regridding
    onto the refined UB.
-10. [Interactive exploration](interactive.md) - the standalone matplotlib cleanup
+11. [Interactive exploration](interactive.md) - the standalone matplotlib cleanup
    QA viewers, ΔPDF viewers, and plotting primitives.
+12. [Development](development.md) - installing from source, the checks to run
+   before pushing, the package layout, and CI.
 
 ## Pages
 
 | Page | Use it when you need to... |
 | --- | --- |
 | [../QUICKSTART.md](../QUICKSTART.md) | Get the app running (native or in-browser). |
+| [web.md](web.md) | Launch, use, or develop the browser console (both run modes + consistency check). |
+| [pilot.md](pilot.md) | Use or understand NEBULA Pilot, the console's agent: tools, guardrails, tuning, local models. |
+| [evals.md](evals.md) | Read how the agent is graded, and its results per model. |
+| [pipeline.md](pipeline.md) | Prepare input data, or run the pipeline and its stages from the command line or Python. |
 | [commands.md](commands.md) | Run batch workflows and viewers from the CLI. |
-| [web.md](web.md) | Launch, use, or develop the browser console (both run modes + consistency check), and NEBULA Pilot, its agent: tools, tuning, local models. |
 | [algorithms/powder_rings.md](algorithms/powder_rings.md) | Understand or tune powder-ring subtraction. |
 | [algorithms/bragg_cleanup.md](algorithms/bragg_cleanup.md) | Tune Bragg punching, satellite search, or q-shell backfill. |
 | [algorithms/delta_pdf.md](algorithms/delta_pdf.md) | Understand the FFT, centring, apodization, background subtraction, and round-trip consistency check. |
 | [algorithms/inpainting.md](algorithms/inpainting.md) | Compare general inpainting fallbacks such as symmetry and TV. |
 | [algorithms/ub_refinement.md](algorithms/ub_refinement.md) | Refine the UB from the Bragg peaks' centres, or regrid a volume onto a refined UB. |
 | [interactive.md](interactive.md) | Use the cleanup and ΔPDF viewers or the plotting API. |
+| [development.md](development.md) | Install from source, run the checks, read the package layout and CI. |
+| [SKILL_INTERVIEWS.md](SKILL_INTERVIEWS.md) | Read the questions for the user's skill interviews. |
 | [../CHANGELOG.md](../CHANGELOG.md) | Review release notes and version history. |
 
 ## Output Locations

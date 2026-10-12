@@ -90,9 +90,9 @@ supplies the statistics one plane lacks.
    ≈ 6.8/6.9 Å⁻¹) shares a window instead of each member being capped at
    0.9 × the separation, which
    left half the broad member in the baseline. The excess is kept inside the
-   confirmed shells through an envelope 1.5 × FWHM wide (room for the
-   direction-dependent position) and capped at 8 × the shell's across-stack
-   amplitude.
+   confirmed shells through an envelope flat to ±1.5 × FWHM, tapering to zero
+   over a further 1.5 × FWHM (room for the direction-dependent position), and
+   capped at 8 × the shell's across-stack amplitude.
 5. Subtract the excess, interpolated bilinearly over (φ, |Q|) at every voxel.
    The sampling-mask spokes are masked as in the per-plane models.
 
@@ -260,8 +260,9 @@ before/model/after figures, injected-truth retention metrics, and downstream
 DeltaPDF comparison remain required before changing the default.
 
 The original factored Gaussian/SVD model remains in the package as
-`PatchedRingModel`, but the current real-data driver uses
-`PatchedRadialRingModel` through `examples/remove_rings_3d.py`.
+`PatchedRingModel`. The per-plane `PatchedRadialRingModel` path runs with
+`ring_model="patched"` (`RING_MODEL=patched` in `examples/remove_rings_3d.py`,
+whose default is the pooled model).
 
 That path is non-parametric:
 
@@ -339,8 +340,7 @@ lever is texture **contrast** (lower `texture_ridge`, higher `n_fourier`).
 ## Legacy Factored Ring Algorithm
 
 The older algorithm is still useful background and remains available for
-comparison. It assumes a shared azimuthal texture across all rings and then
-optionally backfills masked shells.
+comparison. It assumes a shared azimuthal texture across all rings.
 
 ### Step 1 — Empty-scan subtraction  (`EmptySubtractor`)
 
@@ -405,7 +405,6 @@ The factored model assumes all rings share one T(φ). Check this after fitting:
 | Texture mismatch | Shared T(φ) too restrictive | Inspect `rank1_variance` |
 | Over-subtraction of diffuse | Ring model absorbs diffuse | Reduce detection sensitivity |
 | Gibbs ringing in ΔPDF | Hard mask boundary | Sigmoid taper (`taper_width > 0`) |
-| Biased fill values | Interpolation can't capture sharp diffuse | TV fallback; tune λ |
 
 ## References
 

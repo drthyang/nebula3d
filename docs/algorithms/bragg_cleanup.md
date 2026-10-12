@@ -75,8 +75,8 @@ The integer path is lattice-aware:
      The diagonal fit it replaced (three radii along H, K, L, no tilt, floored
      at the base ellipsoid's HKL bounding box) was removed.
 
-     With the profile-matched punch (the default, see below) the fit still
-     sets the centre, but the footprint follows the learned Bragg profile.
+     With the own-width footprint (the pipeline default) or the profile
+     footprint (see below), the fit sets the centre but not the footprint.
 6. Punch a continuous-HKL ellipsoid at the fitted centre.
 
 Useful guards:
@@ -201,7 +201,8 @@ Measured effects, against the floors:
   - broad maxima away from the parent nodes are left whole.
 
 The test requires `min_significance`. With the gate off (web: Min σ 0), the
-pipeline falls back to the floors.
+server and the web app switch to `integer_detect="floors"`; from Python, set
+both.
 
 `significance_noise="sigma"` assumes `sigma` is a real error estimate. A
 volume without one (`HKLVolume.from_arrays`, a legacy HDF5 or ASCII file
@@ -742,13 +743,23 @@ The metrics are in `nebula3d.analysis.bragg_qa`.
 
 ## Recommended QA Settings
 
+For the cleanup viewer, `examples/explore_slice.py`, which reads the punch and
+backfill settings below (it takes the protected planes as an explicit
+`SEARCH_EXCLUDE_H` list):
+
 ```bash
-PUNCH_PRESET=cc_on MODE=both MIN_I=0.8 MIN_PROM=0.8 \
+PUNCH_PRESET=cc_on MODE=both MIN_I=0.8 \
 INTEGER_FIT_POSITION=1 INTEGER_FIT_SHAPE=1 INTEGER_H_GUARD=0.12 \
 MIN_SIGNIFICANCE=5 PUNCH_FOOTPRINT=profile PROFILE_N_SIGMA=0.5 \
-SEARCH_EXCLUDE_H_FRACTIONS=0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \
-BACKFILL_METHOD=laplace
+SEARCH_EXCLUDE_H=-0.6667,-0.3333,0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \
+BACKFILL_METHOD=laplace \
+python3 examples/explore_slice.py
 ```
+
+The pipeline's own default footprint is `own`, not `profile`. The punch script,
+`punch_bragg_3d.py`, takes no `MIN_PROM` (its integer-mode prominence is fixed
+at 1.0, as the viewer's default is), and the backfill script,
+`backfill_bragg_3d.py`, reads `METHOD`, not `BACKFILL_METHOD`.
 
 Inspect `H=0` for residual Bragg peaks and `H=±1/3`, `±2/3` for diffuse
 preservation.

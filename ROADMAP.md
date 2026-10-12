@@ -369,8 +369,8 @@ containment, and the only shape fit (the diagonal fit and the
 `integer_fit_covariance` switch were removed); see
 `docs/algorithms/bragg_cleanup.md`.
 
-Phase 4 (validating): HKL-vs-Q comparison via
-[`examples/compare_punch_frames.py`](examples/compare_punch_frames.py). The
+Phase 4 (validating): HKL-vs-Q comparison via `examples/compare_punch_frames.py`
+(since removed, with the HKL frame). The
 validation path compares matched Q radii against the legacy HKL footprint and
 checks whether an isotropic Q radius is justified for a given volume. Two fixes landed:
 (a) Q-mode was silently ignoring `margin` — now applied; (b) Q-mode was
@@ -379,15 +379,16 @@ substantially vs the intended punch — Q-mode is now **adaptive** (`_fit_base_r
 the per-peak fit to the Q resolution, in Å⁻¹; the diagonal fit then punches via
 the same radii path as HKL). The final gate is a **ΔPDF-level A/B** through
 the full pipeline ([`examples/compare_delta_pdf_frames.py`](examples/compare_delta_pdf_frames.py)),
-followed by slice-level checks with
-[`examples/plot_punch_slices.py`](examples/plot_punch_slices.py).
+followed by slice-level checks with `examples/plot_punch_slices.py` (since
+removed).
 
-**The default is now Q** (`PunchParams.punch_frame="q"`,
-`punch_q_radii=(0.097, 0.072, 0.115)` Å⁻¹): the punch
+**The default became Q** (`punch_q_radii=(0.097, 0.072, 0.115)` Å⁻¹): the punch
 footprint is a lattice-/temperature-portable reciprocal-Å⁻¹ resolution floor,
 still modulated by the per-peak fit + φ-tail. The Phase 0 golden master was
-regenerated to freeze the new default; set `punch_frame="hkl"` to restore the
-legacy rlu footprint.
+regenerated to freeze the new default. It is now the spherical frame
+(`PunchParams.punch_frame="spherical"`, `punch_spherical_radii` the same radii
+radial, polar and azimuthal); `"q"` keeps the fixed a*/b*/c* radii, and the
+fractional-HKL frame has been removed.
 
 Two findings now encoded as tests / constraints:
 

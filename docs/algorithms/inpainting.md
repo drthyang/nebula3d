@@ -13,8 +13,8 @@ Fourier-transforms into spurious ΔPDF features at the lattice vectors.
 ```python
 from nebula3d.analysis import backfill_bragg
 
-filled = backfill_bragg(punched)                    # method="local"
-filled = backfill_bragg(punched, method="laplace")  # smooth harmonic fill
+filled = backfill_bragg(punched)                    # method="laplace" (default): smooth harmonic fill
+filled = backfill_bragg(punched, method="local")    # the local-mean alternative
 ```
 
 Both fill each hole from the diffuse around it, while the direct beam keeps its

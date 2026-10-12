@@ -42,7 +42,7 @@ instead of reusing the cached output.
 
 ```bash
 NO_VIEWER=1 \
-DATA_FILE="data/raw/example_volume_cc_sub_bkg.nxs" \
+DATA_FILE="data/raw/example_volume.nxs" \
 $PY examples/run_pipeline.py
 ```
 
@@ -83,7 +83,7 @@ raw -> ring removed -> Bragg punched -> backfilled
 ```
 
 ```bash
-DATA_FILE="data/raw/example_volume_cc_sub_bkg.nxs" \
+DATA_FILE="data/raw/example_volume.nxs" \
 RING_FILE="data/processed/example_volume_ringremoved.h5" \
 PUNCH_FILE="data/processed/example_volume_ringremoved_braggpunched.h5" \
 BACKFILL_FILE="data/processed/example_volume_ringremoved_braggpunched_backfilled.h5" \
@@ -112,12 +112,12 @@ $PY examples/delta_pdf_consistency.py
 
 A faithful transform should give Pearson `r` close to 1 and a small normalised
 RMS residual over the reliably recovered reciprocal-space region. For interactive
-band-limited checks, use the web UI's **Consistency check** view.
+band-limited checks, use the web UI's **Q–R Band Transform** view.
 
 ## Compare ΔPDF Files
 
-With pipeline outputs in `data/processed`, use the web UI's multi-volume view for
-general comparisons. The script accepts a comma-separated list of ΔPDF paths:
+The web UI has no multi-volume view at present; compare ΔPDF files with this
+script, which accepts a comma-separated list of ΔPDF paths:
 
 ```bash
 PDF_FILES="data/processed/condition_a_delta_pdf.h5,data/processed/condition_b_delta_pdf.h5,data/processed/condition_c_delta_pdf.h5" \
@@ -140,7 +140,7 @@ if it already ran.
 
 ```bash
 NO_VIEWER=1 \
-DATA_FILE="data/raw/example_volume_cc_sub_bkg.nxs" \
+DATA_FILE="data/raw/example_volume.nxs" \
 $PY examples/run_pipeline_pdf.py
 ```
 
@@ -164,5 +164,6 @@ features, then decomposes each selected feature into a sharp
 $PY examples/investigate_bragg_diffuse.py
 ```
 
-Writes cut/fit figures, a summary plot, and a CSV with resolution `sigma(|Q|)`,
-points-across-FWHM, correlation length, and the diffuse fraction.
+Writes cut/fit figures, a summary plot (resolution σ(|Q|), points across the
+FWHM, correlation length ξ and diffuse fraction), and a CSV of each peak's
+fitted sharp and broad widths, points across the FWHM, ξ and diffuse fraction.
