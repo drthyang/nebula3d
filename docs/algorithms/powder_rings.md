@@ -6,6 +6,14 @@ Polycrystalline material in the beam path can add powder rings to a single-cryst
 diffuse scattering volume. Common sources include the sample environment,
 cryostat, sample holder, and capsule walls.
 
+Whether a volume has any depends on the instrument and its sample environment.
+The measured CORELLI volumes carry aluminium lines; TOPAZ data have no
+aluminium powder-ring background. The stage subtracts only the shells its 3D
+check confirms as rings (below), so a volume without rings passes through
+unchanged. Rings confirmed on data that should have none are an anomaly to
+report and trace (the mount, the sample environment, a second phase), not a
+routine cleanup step.
+
 The goal is to subtract the ring contribution while preserving real diffuse
 structure. The current production path is subtractive: it estimates only the
 azimuthally smooth ring intensity and subtracts that estimate. It does not mask

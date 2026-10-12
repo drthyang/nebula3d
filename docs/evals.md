@@ -1,9 +1,9 @@
 # NEBULA Pilot evals
 
 How well NEBULA Pilot, the console's agent, reaches the answers the research
-rounds established on a measured volume, model by model: a hexagonal X-ray
-volume, symmetrised by the NeXus Viewer, together with its unsymmetrised
-export.
+rounds established on a measured volume, model by model: a hexagonal neutron
+volume from TOPAZ, symmetrised by the NeXus Viewer, together with its
+unsymmetrised export.
 
 Each scenario is one question. It goes through the app's own agent loop, with
 the messages the chat panel builds and the console's tools running against the
@@ -25,7 +25,7 @@ passes. The suite lives in `web/src/llm/evals/`.
 
 | Scenario | Question | The answer the research established | Checks |
 | --- | --- | --- | --- |
-| `rings-left` | Is the powder-ring removal clean on this run? | A powder ring is left, on two of the three planes. Bumps seen on one plane only are the crystal's own scattering. | `assess_stage` for the rings; quotes the ring's \|Q\|; says a ring is left |
+| `rings-left` | Is the powder-ring removal clean on this run? | A powder ring is left, on two of the three planes. Bumps seen on one plane only are the crystal's own scattering. TOPAZ has no aluminium powder-ring background, so rings on this set are an anomaly to report and trace, not routine cleanup. | `assess_stage` for the rings; quotes the ring's \|Q\|; says a ring is left |
 | `punch-missed` | Did the Bragg punch remove every peak it should have? | Some lattice peaks were missed at nodes. The broad maxima are kept as diffuse scattering. | `assess_stage` for the punch; quotes the count; says peaks were missed |
 | `pdf-window-coverage` | Does the ΔPDF's transform window stay inside the measured space? | Yes: its weight on unmeasured space is far under the 10⁻³ limit. | `qmax_coverage`; quotes the weight; says it stays inside |
 | `pdf-separable-refused` | Should I switch to a separable window for a higher SNR? | No. It would reach unmeasured space and break the six-fold symmetry; the tuner refused it. | No setting changed and no run started; advises keeping the ellipsoid; says why |

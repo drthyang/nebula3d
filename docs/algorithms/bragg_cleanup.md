@@ -120,13 +120,13 @@ examples:
 
 - A volume far above the scale they were tuned on cleared them at every
   node, diffuse or not.
-- On an X-ray volume whose background varies from run to run, weaker but
+- On a neutron volume from TOPAZ whose background varies from run to run, weaker but
   clearly significant parent reflections stood below the prominence floor.
   The 8-MAD catch failed them too: the background's own variation inflates
   the window MAD.
 
 No single rescaling of the floors works either. The data's typical Bragg
-peak, or its diffuse scatter, would raise those floors on that X-ray volume,
+peak, or its diffuse scatter, would raise those floors on that volume,
 not lower them. And the typical Bragg peak follows the physics of the weak
 reflections, not the intensity scale: between two temperatures of one
 sample, the weak reflections can change far more than the strong ones.
@@ -151,8 +151,8 @@ peak integration does:
   - reject the node when that fraction exceeds 0.15 by more than two
     standard errors.
 
-  Bragg peaks keep a few per cent there on every dataset tried, X-ray and
-  neutron. Superlattice and short-range-order maxima a few times wider than
+  Bragg peaks keep a few per cent there on every dataset tried.
+  Superlattice and short-range-order maxima a few times wider than
   the resolution keep far more.
 
 The first three are needed against diffuse maxima much wider than a peak:
