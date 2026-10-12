@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **A long NEBULA Pilot reply on a local model keeps its numbers in less
+  room.** Once a request passes about 24k tokens, the reply's older tool
+  results go back to the model shortened to their verdicts, headlines and
+  numbers (the newest three stay whole), so the request stays inside a 32k
+  window with room to reply. A request too long for the window is shortened to
+  its newest result before it is refused. The model can call a shortened tool
+  again for the whole result, and the answer checks read the whole results.
+
 - **NEBULA Pilot does not go round in circles.** A tool call repeated with the
   same arguments, with nothing changed in between, is not run again: the model
   is pointed at the result it has. After two rounds in a row that brought

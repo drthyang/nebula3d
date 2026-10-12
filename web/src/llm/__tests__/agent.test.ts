@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../api/types";
 import { useNavStore } from "../../state/navStore";
 import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
+import { isCompacted } from "../compact";
+import { resetTokenState } from "../provider/tokens";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";
 import type { AgentTool } from "../tools";
@@ -54,6 +56,7 @@ beforeEach(() => {
   client.streamChat.mockReset();
   // The window plan asks the model server about the model: none answers here.
   vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
+  resetTokenState();
 });
 
 describe("runAgent", () => {
@@ -290,6 +293,81 @@ describe("runAgent", () => {
       const r = await runAgent({ messages: base, tools: [tool], ctx, settings, signal: new AbortController().signal });
       expect(r.content).toBe("Measuring.");
       expect(r.steps).toHaveLength(3); // the call after the request to answer did not run
+    });
+  });
+
+  describe("a long reply on a local model", () => {
+    // A reading with a long series; x picks where the series starts.
+    const seriesTool: AgentTool = {
+      name: "series",
+      description: "a long series",
+      parameters: { type: "object", properties: { x: { type: "number" } } },
+      run: async (args) => {
+        const x = args.x as number;
+        const series = Array.from({ length: 200 }, (_, i) => Number((x + i / 1000).toFixed(3)));
+        return { result: { verdict: "meets its goal", peak: x, series }, summary: `series ${x}` };
+      },
+    };
+    const toolTexts = (messages: ChatMessage[]) => messages.filter((m) => m.role === "tool").map((m) => String(m.content));
+
+    it("shortens older results past the budget, keeps the newest whole, and checks numbers against the whole ones", async () => {
+      const seen = script([
+        [{ toolCalls: [call("c1", "series", { x: 1 })] }],
+        [{ toolCalls: [call("c2", "series", { x: 2 })] }],
+        [{ toolCalls: [call("c3", "series", { x: 3 })] }],
+        [{ toolCalls: [call("c4", "series", { x: 4 })] }],
+        [{ content: "The first series reaches 1.199." }],
+      ]);
+      const r = await runAgent({ messages: base, tools: [seriesTool], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
+      const sent = toolTexts(seen[4].messages);
+      expect(sent.map(isCompacted)).toEqual([true, false, false, false]);
+      expect(JSON.parse(sent[0])).toMatchObject({ verdict: "meets its goal", peak: 1, series: "(200 items)" });
+      // 1.199 is only in the whole first series: the checks read it there.
+      expect(r.content).toBe("The first series reaches 1.199.");
+      expect(r.note).toBeUndefined();
+    });
+
+    it("lets a shortened call run again, for the whole result", async () => {
+      let runs = 0;
+      const counted: AgentTool = {
+        ...seriesTool,
+        run: async (args, c, io) => {
+          runs += 1;
+          return seriesTool.run(args, c, io);
+        },
+      };
+      script([
+        [{ toolCalls: [call("c1", "series", { x: 1 })] }],
+        [{ toolCalls: [call("c2", "series", { x: 2 })] }],
+        [{ toolCalls: [call("c3", "series", { x: 3 })] }],
+        [{ toolCalls: [call("c4", "series", { x: 4 })] }],
+        [{ toolCalls: [call("c5", "series", { x: 1 })] }],
+        [{ content: "Done." }],
+      ]);
+      await runAgent({ messages: base, tools: [counted], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
+      expect(runs).toBe(5); // the first result was shortened, so asking again runs it
+    });
+
+    it("shortens a request too long for LM Studio's window down to its newest result before refusing it", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify({ data: [{ id: "qwen", state: "loaded", loaded_context_length: 3500 }] }), { status: 200 })),
+      );
+      const seen = script([
+        [{ toolCalls: [call("c1", "series", { x: 1 })] }],
+        [{ toolCalls: [call("c2", "series", { x: 2 })] }],
+        [{ content: "Done." }],
+      ]);
+      const r = await runAgent({
+        messages: base,
+        tools: [seriesTool],
+        ctx,
+        settings: { ...settings, baseUrl: "http://localhost:1234/v1", model: "qwen" },
+        signal: new AbortController().signal,
+      });
+      expect(seen).toHaveLength(3);
+      expect(toolTexts(seen[2].messages).map(isCompacted)).toEqual([true, false]);
+      expect(r.content).toBe("Done.");
     });
   });
 

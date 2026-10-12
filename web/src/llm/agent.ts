@@ -17,9 +17,10 @@ import {
   type ToolCall,
 } from "./provider/client";
 import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
+import { compactResult, isCompacted } from "./compact";
 import { isLocalUrl } from "./provider/presets";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
-import { observeTokens } from "./provider/tokens";
+import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
 import { planWindow } from "./provider/window";
 import type { LlmSettings } from "./settings";
 import { runToolCall, toolSpecs, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
@@ -89,6 +90,14 @@ export const BARREN_ROUNDS = 2;
 export const LOOP_NOTE = "The model repeated calls that brought nothing new, so it was asked to answer with what it had.";
 const ANSWER_NOW = "The tool calls are bringing nothing new. Answer now from the results above, without calling more tools.";
 
+// A local model's request past this many tokens has its older tool results
+// shortened to their readings and numbers (compact.ts), the newest KEEP_FULL
+// left whole: it keeps the request inside a 32k window with room to reply, and
+// fast. A request no window can hold is shortened down to the newest result
+// before it is refused.
+export const SOFT_BUDGET = 24_000;
+export const KEEP_FULL = 3;
+
 // Calls after which the same reading may differ: they change the settings, the
 // files on disk, or what the console shows.
 const CHANGES_STATE = new Set(["update_settings", "run_pipeline", "tune_pipeline", "show_in_viewer"]);
@@ -109,11 +118,11 @@ export const REVISING_NOTE = "Checking the answer against its evidence…";
 
 // What an answer's numbers may come from: the conversation as it arrived (the
 // system prompt, the context, the user's words), the tool results of this reply
-// and of earlier turns, and the tools' own guidance. No assistant text: an
-// earlier answer's number from nowhere would otherwise vouch for the next
-// answer, and this reply's drafts, and the notes sent back about them, for
-// themselves.
-function numberSources(convo: ChatMessage[], arrived: number, tools: AgentTool[], earlier: readonly string[]): string {
+// (whole, though the model may read them shortened) and of earlier turns, and
+// the tools' own guidance. No assistant text: an earlier answer's number from
+// nowhere would otherwise vouch for the next answer, and this reply's drafts,
+// and the notes sent back about them, for themselves.
+function numberSources(convo: ChatMessage[], arrived: number, results: readonly string[], tools: AgentTool[], earlier: readonly string[]): string {
   const text = (m: ChatMessage): string =>
     typeof m.content === "string"
       ? m.content
@@ -122,7 +131,7 @@ function numberSources(convo: ChatMessage[], arrived: number, tools: AgentTool[]
         : "";
   return [
     ...convo.slice(0, arrived).filter((m) => m.role !== "assistant").map(text),
-    ...convo.slice(arrived).filter((m) => m.role === "tool").map(text),
+    ...results,
     ...earlier,
     ...tools.map((t) => t.description),
   ].join("\n");
@@ -174,6 +183,7 @@ export async function runAgent({
   checkAnswers = true,
   stallMs = STALL_MS,
   retryDelaysMs = RETRY_DELAYS_MS,
+  softBudget = SOFT_BUDGET,
 }: {
   messages: ChatMessage[];
   tools: AgentTool[];
@@ -186,6 +196,7 @@ export async function runAgent({
   checkAnswers?: boolean; // hold a final answer to its evidence (answerChecks.ts); on whenever tools are
   stallMs?: { first: number; idle: number }; // the watchdog's limits (tests shorten them)
   retryDelaysMs?: number[]; // the pauses before each retry
+  softBudget?: number; // a local request's tokens past which older results are shortened
 }): Promise<AgentResult> {
   const convo = [...messages];
   const arrived = convo.length;
@@ -215,6 +226,24 @@ export async function runAgent({
   let failure: Failure | undefined;
   // The calls that ran since the state last changed, by key → their step number.
   const called = new Map<string, number>();
+  // This reply's tool results in the conversation, oldest first: where each
+  // sits and which call made it.
+  const results: { index: number; key: string }[] = [];
+  // Shorten all but the newest `keep` results; a shortened call may run again.
+  const compactOlder = (keep: number): boolean => {
+    let changed = false;
+    for (const r of results.slice(0, Math.max(0, results.length - keep))) {
+      const m = convo[r.index];
+      if (typeof m.content !== "string" || isCompacted(m.content)) continue;
+      const short = compactResult(m.content);
+      if (short === m.content) continue;
+      convo[r.index] = { ...m, content: short };
+      called.delete(r.key);
+      changed = true;
+    }
+    return changed;
+  };
+  const windowKey = `${settings.baseUrl}|${settings.model}`;
   let barren = 0; // rounds in a row that brought nothing new
   let answerNow = false; // asked to answer without calling more tools
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 }; // over the requests that reported them
@@ -227,6 +256,7 @@ export async function runAgent({
     let cutOff = false;
     const reasoningBefore = reasoning;
     const specs = useTools ? toolSpecs(tools) : undefined;
+    if (isLocalUrl(settings.baseUrl) && estimateTokens(baseTokens(convo, specs), windowKey) > softBudget) compactOlder(KEEP_FULL);
     // The request's own controller: the reply's Stop ends it, and so does the
     // watchdog when the server goes quiet.
     const request = new AbortController();
@@ -244,8 +274,11 @@ export async function runAgent({
     };
     watch(stallMs.first);
     try {
-      // A request the model's window cannot hold is not sent: the reply says why.
-      const plan = await planWindow({ baseUrl: settings.baseUrl, model: settings.model, messages: convo, tools: specs, signal: request.signal });
+      // A request the model's window cannot hold is shortened to its newest
+      // result, and if that is not enough, not sent: the reply says why.
+      const planned = () => planWindow({ baseUrl: settings.baseUrl, model: settings.model, messages: convo, tools: specs, signal: request.signal });
+      let plan = await planned();
+      if (plan.refusal && compactOlder(1)) plan = await planned();
       if (plan.refusal) {
         note = note ? `${note} ${plan.refusal}` : plan.refusal;
         break;
@@ -333,7 +366,7 @@ export async function runAgent({
       // revision that wrote nothing leaves the answer it revised.
       const answer = roundText.trim() ? roundText : rejected;
       const checked = steps.map((st) => (fullResults.has(st.id) ? { ...st, result: fullResults.get(st.id) } : st));
-      const sources = numberSources(convo, arrived, tools, ctx?.earlierResults ?? []);
+      const sources = numberSources(convo, arrived, checked.map((st) => st.result ?? ""), tools, ctx?.earlierResults ?? []);
       const issues = useTools && checkAnswers ? answerIssues(answer, checked, sources) : null;
       if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
         revisions += 1;
@@ -393,6 +426,7 @@ export async function runAgent({
       }
       // The console follows what the model looked at, step by step.
       if (run.ok && run.view && settings.followViews) openView(run.view);
+      results.push({ index: convo.length, key });
       convo.push({ role: "tool", tool_call_id: call.id, content: run.text });
     }
     barren = fresh ? 0 : barren + 1;

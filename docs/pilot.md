@@ -52,6 +52,12 @@ Each is described under [How it works](#how-it-works).
   unloaded, a dropped connection or a server gone quiet gets the same
   request again after a pause; what still fails ends the reply with what to
   do, never a bare error, and keeps the steps that ran.
+- **A long reply keeps its numbers.** Once a local model's request passes
+  about 24k tokens, the reply's older tool results go back to it shortened to
+  their verdicts, headlines and numbers, the newest three whole; a request too
+  long for the window is shortened to its newest result before it is refused.
+  The model can call a shortened tool again, and the answer checks always
+  read the whole results.
 - **No prompt is cut to fit.** A local server handed a prompt longer than the
   model's context window cuts it or fails, so each request is held to the
   window first. Ollama is asked for a window that holds the request (its own
