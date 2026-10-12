@@ -286,9 +286,20 @@ def test_volume_ring_isotropy(tmp_path):
     assert [s["is_ring"] for s in body["shells"]] == [True, False]
     assert body["shells"][0]["isotropy"] > 0.9
     bad_params = ({"q": "2.0", "fwhm": "0.1,0.1"}, {"q": "x", "fwhm": "0.1"},
-                  {"q": "-1", "fwhm": "0.1"})
+                  {"q": "-1", "fwhm": "0.1"}, {"q": "nan", "fwhm": "0.1"},
+                  {"q": "2.0", "fwhm": "inf"}, {"q": "inf,2.0", "fwhm": "0.1,0.1"})
     for bad in bad_params:
         assert client.get(f"/api/volumes/{SLUG}.raw/rings", params=bad).status_code == 400
+
+
+def test_ring_shells_must_be_finite_and_positive():
+    # The browser bridge parses /rings requests with the same function.
+    assert vol_mod.parse_ring_shells("2.45, 3.66", "0.08,0.08") == [(2.45, 0.08), (3.66, 0.08)]
+    many = ",".join(["1"] * 65)
+    for q, fwhm in [("nan", "0.1"), ("2", "inf"), ("-inf", "0.1"), ("2", "0"), ("", ""),
+                    ("2,3", "0.1"), (many, many)]:
+        with pytest.raises(ValueError):
+            vol_mod.parse_ring_shells(q, fwhm)
 
 
 def test_volume_ub_check(tmp_path):

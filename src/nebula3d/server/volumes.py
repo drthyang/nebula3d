@@ -311,6 +311,23 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
     return out
 
 
+def parse_ring_shells(q: str, fwhm: str) -> list[tuple[float, float]]:
+    """``"2.45,3.66"``, ``"0.08,0.08"`` → [(2.45, 0.08), (3.66, 0.08)]: finite,
+    positive |Q| centres and widths (Å⁻¹), as many of each, at most 64.
+    Raises ``ValueError`` otherwise (NaN and infinity included)."""
+    import math
+
+    try:
+        qs = [float(x) for x in str(q).split(",") if x.strip()]
+        ws = [float(x) for x in str(fwhm).split(",") if x.strip()]
+    except ValueError as exc:
+        raise ValueError(f"q and fwhm must be numbers, not {q!r}, {fwhm!r}") from exc
+    if (not qs or len(qs) != len(ws) or len(qs) > 64
+            or not all(math.isfinite(v) and v > 0 for v in qs + ws)):
+        raise ValueError("q and fwhm must list as many finite, positive numbers, at most 64")
+    return list(zip(qs, ws))
+
+
 def volume_ring_isotropy(path: Path, shells: list[tuple[float, float]]) -> dict:
     """Whether each ``(q_center, fwhm)`` shell of the volume (Å⁻¹) is a powder
     ring: it rises in nearly every direction over the sphere

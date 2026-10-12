@@ -19,6 +19,7 @@ from nebula3d.server.schemas import (
 )
 from nebula3d.server.volumes import (
     PLANES,
+    parse_ring_shells,
     slice_envelope,
     volume_coverage,
     volume_meta,
@@ -93,16 +94,11 @@ def ub_check(
 
 
 def parse_shells(q: str, fwhm: str) -> list[tuple[float, float]]:
-    """``"2.45,3.66"``, ``"0.08,0.08"`` → [(2.45, 0.08), (3.66, 0.08)]: positive
-    |Q| centres and widths (Å⁻¹), as many of each, at most 64."""
+    """The shells a /rings request names (:func:`parse_ring_shells`), or a 400."""
     try:
-        qs = [float(x) for x in q.split(",") if x.strip()]
-        ws = [float(x) for x in fwhm.split(",") if x.strip()]
+        return parse_ring_shells(q, fwhm)
     except ValueError as exc:
-        raise HTTPException(400, f"q and fwhm must be numbers, not {q!r}, {fwhm!r}") from exc
-    if not qs or len(qs) != len(ws) or len(qs) > 64 or min(qs + ws) <= 0:
-        raise HTTPException(400, "q and fwhm must list as many positive numbers, at most 64")
-    return list(zip(qs, ws))
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.get("/{volume_id}/rings", response_model=RingIsotropyOut)

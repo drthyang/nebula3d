@@ -1144,11 +1144,7 @@ def volume_ring_isotropy_json(volume_id: str, q: str, fwhm: str) -> str:
     """Which shells of an HKL stage are powder rings (mirrors
     GET /api/volumes/{id}/rings)."""
     stage = _resolve(volume_id, "hkl")
-    qs = [float(x) for x in str(q).split(",") if x.strip()]
-    ws = [float(x) for x in str(fwhm).split(",") if x.strip()]
-    if not qs or len(qs) != len(ws) or len(qs) > 64 or min(qs + ws) <= 0:
-        raise ValueError("q and fwhm must list as many positive numbers, at most 64")
-    m = _vol.volume_ring_isotropy(stage.path, list(zip(qs, ws)))
+    m = _vol.volume_ring_isotropy(stage.path, _vol.parse_ring_shells(q, fwhm))
     return _json({**m, "id": volume_id})
 
 
