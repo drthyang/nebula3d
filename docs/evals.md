@@ -9,13 +9,16 @@ Each scenario is one question. It goes through the app's own agent loop, with
 the messages the chat panel builds and the console's tools running against the
 native server. Deterministic checks grade the run on two things:
 
-- **what the model called:** a call counts only when it ran without an error;
+- **what the model called:** a call it must make counts only when it ran
+  without an error, while a call it must not make counts if it was attempted at
+  all;
 - **what it answered:** the text is read sentence by sentence, and a sentence
   that negates (no, not, never, without…) does not count as asserting what it
   mentions.
 
 Every number an answer must quote is compared with that run's own tool results,
-not with a value written into the test. A run passes only when every check
+not with a value written into the test. The one exception is `q-band-from-raw`'s
+lower edge, checked against the 0.55 Å⁻¹ band the run used. A run passes only when every check
 passes. The suite lives in `web/src/llm/evals/`.
 
 ## Scenarios
@@ -62,7 +65,7 @@ construction, so the set grades the tools as well as the model.
 (`heldout.test.ts`, part of `npm test`) plays each scenario with a good and a
 bad script against tool results recorded on them (`fixtures/heldout.json`). It
 also checks what the tools read against the faults. No live model has run the
-set yet. The measured set's fixture (`fixtures/hex90k.json`) was recorded
+set yet. The measured set's fixture (in `web/src/llm/evals/fixtures/`) was recorded
 before the 3D ring rule, and re-recording it needs the user's data.
 
 What the tools read, against what was put in:
@@ -108,7 +111,7 @@ the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
 
 - **CI replay** (`evals.test.ts`, part of `npm test`). A scripted model plays
   each scenario against tool results recorded on the eval datasets
-  (`fixtures/hex90k.json`), through the real loop and graders. A good script must
+  (`web/src/llm/evals/fixtures/`), through the real loop and graders. A good script must
   pass every check, and the agent's own answer checks
   (`web/src/llm/answerChecks.ts`) on its first answer. A bad script, the failure
   as models made it, must fail the checks named for it. Where the answer checks
@@ -130,11 +133,12 @@ the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
   DATA_ROOT=/tmp/nebula-heldout .venv/bin/python examples/make_eval_volumes.py
   ```
 
-  Run each volume once with the default settings. Then
-  `NEBULA_EVAL_PROBE_HELDOUT=1 NEBULA_EVAL_API=<that server> npx vitest run
+  Run each volume once with the default settings. Then `cd web &&
+  NEBULA_EVAL_PROBE_HELDOUT=1 NEBULA_EVAL_API=<that server> npx vitest run
   src/llm/evals/heldoutProbe.test.ts` records its fixture.
-- **Tables:** `node web/scripts/eval-table.mjs docs/evals/results/*.json`.
-- **Re-recording the fixtures:** `NEBULA_EVAL_PROBE=1 npx vitest run src/llm/evals/probe.test.ts`.
+- **Tables:** `node web/scripts/eval-table.mjs` with the five records, not the
+  `-pilot` one: `docs/evals/results/{claude-sonnet-5-5,claude-haiku-5-5,ollama-gemma4-26b,ollama-qwen3-32b,lmstudio-qwen3.8-27b}.json`.
+- **Re-recording the measured set's fixture:** `cd web && NEBULA_EVAL_PROBE=1 npx vitest run src/llm/evals/probe.test.ts`.
 
 ## Results
 

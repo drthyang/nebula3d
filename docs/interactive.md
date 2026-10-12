@@ -26,7 +26,7 @@ a cut-position slider:
 
 ```bash
 env PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl USE_BACKGROUND=0 \
-PUNCH_PRESET=cc_on MODE=both MIN_I=0.8 MIN_PROM=0.8 \
+PUNCH_PRESET=cc_on MODE=both MIN_I=0.8 \
 INTEGER_FIT_POSITION=1 INTEGER_FIT_SHAPE=1 INTEGER_H_GUARD=0.12 \
 SEARCH_EXCLUDE_H=-0.6667,-0.3333,0.3333,0.6667 SEARCH_EXCLUDE_H_WIDTH=0.08 \
 BACKFILL_METHOD=local H_VALUE=0.3333 \
@@ -82,9 +82,11 @@ after changing ring code). Env: `TEMP` or `DATA_FILE`, `MODELS` (e.g.
 
 Three interactive viewers preview the **real-space 3D-ΔPDF** (the FFT of the
 cleaned diffuse volume): two single-volume views (orthoslice and
-single-plane) that read the cached `examples/_delta_pdf.h5` written by
-`examples/delta_pdf.py` (run that first if it is missing), and a
-multi-volume comparison view. **Use these as the standard preview for ΔPDF
+single-plane) and a multi-volume comparison view. The orthoslice viewer reads
+the one `*_delta_pdf.h5` in `data/processed/` (set `MATCH` or `PDF_FILE` when
+there are several; it does not load `examples/_delta_pdf.h5`). The single-plane
+viewer reads the one in `data/processed/`, else `examples/_delta_pdf.h5`, else
+computes a ΔPDF from a backfilled volume. **Use these as the standard preview for ΔPDF
 results — do not build ad-hoc plotting scripts.**
 
 ### Orthoslice viewer (recommended) — `examples/explore_delta_pdf_ortho.py`
@@ -106,9 +108,11 @@ spacings).
 - `RMAX` — display half-window (Å) for all axes (default 50).
 - `PERCENTILE` — per-panel colour-scale percentile at r>3 Å (default 98).
 - `CONTRAST_MIN` / `CONTRAST_MAX` — contrast-slider range (default 0.1 .. 20).
-- `LAT_A` / `LAT_B` / `LAT_C` — direct-lattice constants (Å) for the gridlines
-  (default: ΔPDF `.h5` attrs, else the source backfilled UB matrix).
-- `PDF_FILE` — ΔPDF `.h5` (default `examples/_delta_pdf.h5`).
+- `LAT_A` / `LAT_B` / `LAT_C` — direct-lattice constants (Å) for the gridlines,
+  used only when the ΔPDF file has no unit cell (then the source backfilled
+  file's UB matrix).
+- `PDF_FILE` / `MATCH` — an explicit ΔPDF `.h5`, or a filename substring to pick
+  one in `data/processed/`.
 - `SMOKE=1` — render one frame to PNG headless (verification, no GUI).
 
 ### Single-plane viewer — `examples/explore_delta_pdf.py`
@@ -181,7 +185,7 @@ After it loads, these names are in scope:
 
 | Name | What |
 |------|------|
-| `data`, `bkg`, `sub` | `HKLVolume` for data / background / (data − bkg) |
+| `data`, `bkg`, `sub` | `HKLVolume` for data / background; `sub` is the same as `data` (the preferred input is already background-subtracted) |
 | `plot_slice`, `plot_radial_profile`, `plot_azimuthal_map`, `plot_overview` | plot functions |
 | `extract_slice` | numeric slice extractor (no plotting) |
 | `plt` | `matplotlib.pyplot` |

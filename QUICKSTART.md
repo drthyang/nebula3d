@@ -15,14 +15,17 @@ Open the hosted app: **https://drthyang.github.io/nebula3d/**
 
 It is a **fully static** GitHub Pages bundle — no backend — that runs the *real*,
 *complete* `nebula3d` pipeline entirely in your browser via Pyodide. Load your
-own `.nxs`/`.h5`; nothing is uploaded. It works at **full-resolution float64**,
-up to ~50 M voxels (a 301×401×401 volume fits); larger data uses the native mode
-below. This path has full feature parity with the native backend.
+own `.nxs`/`.h5`, or the built-in demo volume; nothing is uploaded. It runs at
+full resolution, storing volumes and running the FFT in float32 (|Q|, fits and
+reductions stay float64): up to about 80 M voxels in a desktop browser, about
+5 M on a phone or tablet. Larger data uses the native mode below. This path has full feature parity with the
+native backend.
 
 To run that build locally:
 
 ```bash
 make web-install
+make web-wheel                     # the data-free wheel + manifest the page loads
 cd web && npm run dev:pyodide      # http://localhost:5173
 ```
 
@@ -59,13 +62,14 @@ reads it from there. A session typically runs top to bottom:
 2. **Reciprocal cleanup** — compare stages (raw → ring-removed → punched →
    backfilled → flattened) on one shared plane and colour scale.
 3. **3D-ΔPDF** — three linked real-space orthoslices with a unit-cell overlay.
-4. **Consistency check** — inverse-FFT the ΔPDF back to reciprocal space and
+4. **Q–R Band Transform** (the consistency check) — inverse-FFT the ΔPDF back to reciprocal space and
    compare *data | back-FFT | residual*, with `|Q|` and real-space `r` bands.
 5. **NEBULA Pilot** — open it from the sidebar; it docks beside every page.
    Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic)
    model. Ask it to *Assess the run* or *Tune for the best result*, or ask
    anything about the reduction: with *Tools* on it measures cuts, judges each
-   stage, runs and tunes the pipeline, and opens the figures it talks about.
+   stage, runs and tunes the pipeline, and opens the figures it talks about
+   ([docs/pilot.md](docs/pilot.md)).
    A local model needs room: load it with a **32k context** (in LM Studio, set
    the model's default Context Length, which it uses whenever it reloads an idle
    model; start Ollama with `OLLAMA_CONTEXT_LENGTH=32768`). With *Tools* on, the
@@ -73,6 +77,9 @@ reads it from there. A session typically runs top to bottom:
 
 ## Going further
 
-- Scripting / batch CLI recipes: [docs/commands.md](docs/commands.md)
-- Web UI reference, architecture, and dev workflow: [docs/web.md](docs/web.md)
-- Algorithms and full overview: [README.md](README.md) and [docs/README.md](docs/README.md)
+- The pipeline from Python and the command line: [docs/pipeline.md](docs/pipeline.md),
+  with short recipes in [docs/commands.md](docs/commands.md)
+- NEBULA Pilot, its tools, guardrails and evals: [docs/pilot.md](docs/pilot.md)
+- The console's reference and architecture: [docs/web.md](docs/web.md)
+- Installing from source and the checks before pushing: [docs/development.md](docs/development.md)
+- Everything else: [docs/README.md](docs/README.md)

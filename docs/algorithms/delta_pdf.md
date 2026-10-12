@@ -48,8 +48,8 @@ Step by step (as implemented in `src/nebula3d/analysis/delta_pdf.py`):
    separable window respects — a hexagonal cell — where it is a taper in an
    ellipsoidal radius instead (`window_shape`; see "The window respects the
    lattice symmetry" below).
-4. **Zero-pad symmetrically** to the next fast FFT length (5-smooth,
-   `scipy.fft.next_fast_len` — just as fast as a power of two but a far
+4. **Zero-pad symmetrically** to the next fast FFT length (11-smooth natively,
+   `scipy.fft.next_fast_len`; 5-smooth on WebGPU — just as fast as a power of two but a far
    smaller pad), keeping `Q=0` on the new centre. One-sided padding shifts
    the origin and breaks step 5.
 5. **`ifftshift` → `fftn` → `fftshift`**: move `Q=0` to the corner, transform,
@@ -107,13 +107,13 @@ axes) on its result, and
 ```python
 I_recon = fftshift( ifftn( ifftshift( Δρ ) ) ).real    # inverse of the recipe
 I_recon = unpad(I_recon)                                # strip symmetric padding
-I_recon = (I_recon + mean) / window                     # restore DC, deapodize
+I_recon = I_recon / window + mean                       # deapodize, restore DC
 ```
 
-The deapodization (divide by the window) is well-posed for the **gaussian**
-window because it never reaches zero; for **hann** the edge planes (window → 0)
-are clamped by `window_floor` and are unreliable. The recovered volume's `mask`
-marks the reliably-recovered region.
+Both windows reach zero on the box faces (the Gaussian is shifted to do so), so
+voxels where the window is below `window_floor` (10⁻³ of its peak) are not
+deapodized and are left out of the recovered volume's `mask`, which marks the
+reliably recovered region.
 
 `pdf_consistency_check` (pipeline stage `pdf_check`, default ON; standalone
 `examples/delta_pdf_consistency.py`) runs this inverse and compares it to the
@@ -196,18 +196,21 @@ The Gaussian change narrows the window's FWHM in `Q` by 3 % (real-space peaks
 amplitudes drop by up to that much; the measured drop on both datasets stayed
 within it.
 
-Still open, found in the same diagnosis (hexagonal data):
+Found in the same diagnosis (hexagonal data), and since fixed:
 
 - The **separable index-space window is not 6-fold invariant** for a hexagonal
   cell, so a/b and a+b get different resolution. Fixed by the ellipsoid
   window; see the next section.
-- The **punch mask is not 6-fold symmetric**: a sizeable fraction of punched
-  voxels (and of the coverage-edge trim) have an unpunched 60° partner. It
-  puts a long-wavelength stripe pattern across the a–b section.
-- The **Laplace backfill fills the unmeasured part of the box** (a large
+- The **punch mask was not 6-fold symmetric**: a sizeable fraction of punched
+  voxels (and of the coverage-edge trim) had an unpunched 60° partner, which
+  put a long-wavelength stripe pattern across the a–b section. With the
+  declared symmetry (`PipelineParams.symmetry="auto"`) the punch and the edge
+  trim now decide once per orbit.
+- The **Laplace backfill filled the unmeasured part of the box** (a large
   fraction of it on the hexagonal data, far beyond the `|Q|` where the data
-  end). With the Gaussian window this barely changes the ΔPDF, but it is
-  invented intensity.
+  end): invented intensity, though the Gaussian window barely let it into the
+  ΔPDF. The backfill now fills only space the data enclose
+  (`BackfillParams.unmeasured="enclosed"`).
 
 Whether a smooth cross from the residual envelope (two sections down)
 remains after this fix has not been re-measured: subtracting the separable
@@ -238,8 +241,8 @@ server `pdf_window_shape`, the *Window shape* select in the web app):
   i.e. is not a signed permutation of H, K, L. This is the case for
   hexagonal cells in hexagonal axes, which no separable window can follow.
   Otherwise `"separable"`. Orthogonal, monoclinic and triclinic cells
-  therefore keep the old window bit-for-bit. `apodization="none"` stays no
-  window.
+  therefore keep the old window bit-for-bit (without a support; see below).
+  `apodization="none"` stays no window.
 
 **Finding the ellipsoid.** The lattice point group is read off the UB: the
 integer matrices `R` with entries in {−1, 0, 1} and `Rᵀ G* R = G*`
@@ -284,9 +287,9 @@ On the exactly symmetric raw volume the ellipsoid leaves only float32
 round-off. The worst separable mismatch sits on the sharp lattice-vector
 peaks (a strong peak at the lattice vector along a has almost no counterpart
 at the same distance along a+b), which fall between grid points and so sample
-the anisotropic resolution function. What remains on the pipeline input is
-the input's own asymmetry: the punch mask and the edge trim are not 6-fold
-symmetric (see the list above).
+the anisotropic resolution function. What remained on the pipeline input was
+the input's own asymmetry: the punch mask and the edge trim were not 6-fold
+symmetric (see the list above), until the declared symmetry was shared.
 
 **Cost.** The ellipsoid leaves out the box corners. Its support is 45 % of
 the box against 98.5 %, and its weight `Σw` is 0.78 of the separable
@@ -335,8 +338,8 @@ default on, passes the input volume's `mask`; server `pdf_window_support`;
   ellipsoid at scale 1.0, kept a negligible share there and nothing on a box
   face.
 - `invert_delta_pdf` leaves unsupported voxels out of the reliable `mask`.
-- An all-True support (main's Laplace backfill fills the whole box) changes
-  nothing, bit for bit.
+- An all-True support (a backfill that fills the whole box, e.g.
+  `unmeasured="all"`) changes nothing, bit for bit.
 
 The tolerance is not cosmetic. Coverage edges are ragged, and thin channels
 of unmeasured voxels reach far in. On the raw hexagonal data the nearest open
@@ -446,7 +449,7 @@ per-H-plane form (`σ_H=0`, e.g. `0,1.5,1.5`) does so by subtracting each H
 plane's integrated K–L intensity — which **is** the on-axis x_H Fourier
 component. So it also **destroys the H-direction signal** (real lattice-`a`
 peaks almost vanish, for any σ; see the `radial_flatten` module and
-`flatten-vs-subtractbg`).
+`examples/validate_flatten.py`).
 
 The production pipeline (`examples/run_pipeline.py`) therefore removes the
 background with an **explicit step 4**, the isotropic radial flatten
@@ -454,10 +457,11 @@ background with an **explicit step 4**, the isotropic radial flatten
 `examples/flatten_background_3d.py`), and leaves the in-FFT `SUBTRACT_BG` **off**
 by default. The flatten subtracts a smooth `bg(|Q|)` per spherical shell without
 touching per-plane DC, so it **preserves the on-axis H signal** while still
-roughly halving the L=0 axis cross. By default `bg(|Q|)` is the fitted pedestal
-`const + c·F(Q)²` — nuclear incoherent plus single-ion paramagnetic
-scattering, `F` the magnetic ion's form factor — which is pure self
-scattering and so changes the ΔPDF only at r ≈ 0. A free-form per-shell floor
+roughly halving the L=0 axis cross. By default `bg(|Q|)` is a fitted constant
+(nuclear incoherent scattering); naming the magnetic ion adds `c·F(Q)²`
+(single-ion paramagnetic scattering, `F` its form factor), and `q2_term` adds
+`b·Q²`. The constant and the `F²` term are pure self scattering and so change
+the ΔPDF only at r ≈ 0. A free-form per-shell floor
 (`estimator="floor"`) also removes the isotropic part of real pair
 correlations at short r. The two are alternatives — never run both
 (double subtraction, and the blur re-introduces the H-axis loss). Validate the

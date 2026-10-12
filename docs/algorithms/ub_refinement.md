@@ -66,8 +66,8 @@ centre's position, UB·centre.
 | `symmetric` | UB·D with D commuting with every operation (M·D = D·M). | Linear least squares. Under 6/mmm, D scales the hk plane and l. With no operations, D is any matrix: the free nine-parameter UB. |
 
 A centre that lies farther from its node than three times the median distance
-is left out, and the fit repeated. Centres within half a voxel of their node are
-always kept. Without that floor, a model that misses some directions by a
+is left out, and the fit repeated. `refine_ub` always keeps the centres within
+half a voxel of their node (`fit_ub` alone keeps only those within 10⁻⁴ Å⁻¹). Without that floor, a model that misses some directions by a
 little would drop those directions as outliers.
 
 `refine_ub` measures and fits in passes, working from low |Q| outward. It takes
