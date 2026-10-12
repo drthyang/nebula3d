@@ -129,8 +129,8 @@ def _load_hdf5(
         grp = f[entry]
         # dtype=None preserves the stored precision (h5py returns it as-is).
         data = np.array(grp["data"], dtype=dtype)
-        sigma = (np.array(grp["sigma"], dtype=dtype) if "sigma" in grp
-                 else np.sqrt(np.abs(data)))
+        estimated = "sigma" not in grp
+        sigma = np.sqrt(np.abs(data)) if estimated else np.array(grp["sigma"], dtype=dtype)
         mask = (np.array(grp["mask"], dtype=bool) if "mask" in grp
                 else np.ones(data.shape, dtype=bool))
         h_axis = np.array(grp["h_axis"], dtype=np.float64)
@@ -148,6 +148,7 @@ def _load_hdf5(
         l_axis=l_axis,
         ub_matrix=ub,
         instrument=instrument,
+        sigma_estimated=estimated,
     )
 
 
@@ -189,6 +190,7 @@ def _load_ascii(path: Path) -> HKLVolume:
         h_axis=h_vals,
         k_axis=k_vals,
         l_axis=l_vals,
+        sigma_estimated=cols.shape[1] < 5,
     )
 
 

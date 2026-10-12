@@ -174,6 +174,8 @@ def load_mantid_nxs(
                                       keep_masked=extra is not None)
         instrument = (path.stem if extra is None
                       else _as_text(extra.attrs.get("instrument", "")))
+        estimated = (extra is not None
+                     and _as_text(extra.attrs.get("sigma", "")) == SIGMA_ESTIMATED)
 
     return HKLVolume(
         data=data,
@@ -184,7 +186,13 @@ def load_mantid_nxs(
         l_axis=axes["L"][1],
         ub_matrix=ub,
         instrument=instrument,
+        sigma_estimated=estimated,
     )
+
+
+#: The NEBULA3D group's ``sigma`` attribute on a volume whose σ is √|I|, none
+#: having come with the data (``HKLVolume.sigma_estimated``).
+SIGMA_ESTIMATED = "sqrt_intensity"
 
 
 def save_mantid_nxs(vol: HKLVolume, path: _PathLike) -> None:
@@ -204,7 +212,8 @@ def save_mantid_nxs(vol: HKLVolume, path: _PathLike) -> None:
         path, vol.data, dims, content="hkl_volume", sigma=vol.sigma,
         valid=vol.mask, ub_matrix=vol.ub_matrix,
         coordinate_system=COORDINATE_SYSTEM_HKL,
-        attrs={"instrument": vol.instrument})
+        attrs={"instrument": vol.instrument,
+               "sigma": SIGMA_ESTIMATED if vol.sigma_estimated else "measured"})
 
 
 def write_md_histo(

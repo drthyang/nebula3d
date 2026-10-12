@@ -55,6 +55,8 @@ def meta(volume_id: str, cfg: ServerConfig = Depends(get_config)) -> VolumeMetaO
         planes=m["planes"],
         symmetry=m.get("symmetry"),
         symmetry_ops=m.get("symmetry_ops"),
+        sigma=m["sigma"],
+        sigma_note=m["sigma_note"],
     )
 
 

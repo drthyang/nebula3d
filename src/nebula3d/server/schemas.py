@@ -59,6 +59,10 @@ class VolumeMetaOut(BaseModel):
     # The point group the file declares its data were symmetrised with.
     symmetry: str | None = None
     symmetry_ops: list[list[list[int]]] | None = None
+    # "measured": σ came with the data; "estimated": √|I|, and sigma_note says
+    # when that leaves a significance in σ meaningless (normalized values).
+    sigma: str = "measured"
+    sigma_note: str | None = None
 
 
 class CoverageOut(BaseModel):

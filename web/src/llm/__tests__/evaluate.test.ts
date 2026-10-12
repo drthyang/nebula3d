@@ -59,6 +59,16 @@ describe("evaluateStage", () => {
     expect(e.fitted_peaks).toBe(12);
     expect(e.leftover_on_protected_planes).toBe(0);
     expect(headline("punch", e)).toBe("0 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.04");
+    expect(e).not.toHaveProperty("sigma_note");
+  });
+
+  it("passes on the raw volume's note when its σ is √|I| of normalized data", async () => {
+    const meta = await api.fetchMeta();
+    const note = "No σ came with this volume, so σ is taken as √|I| …";
+    api.fetchMeta.mockImplementation(async (id: string) =>
+      id === "demo.raw" ? { ...meta, sigma: "estimated", sigma_note: note } : meta);
+    const e = await evaluateStage("punch", dataset);
+    expect(e.sigma_note).toBe(note);
   });
 
   // Raw: a powder ring at r = 6 on every plane, and on h0l a bump at r = 12

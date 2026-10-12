@@ -197,6 +197,27 @@ def test_volume_meta(env):
     assert "hk" in m["planes"] and "0kl" in m["planes"]
 
 
+def test_volume_meta_says_where_sigma_came_from(tmp_path):
+    """A NeXus Viewer hand-off without /entry/sigma: σ is √|I|, and on its
+    normalized values the meta carries the note the agent reads."""
+    import h5py
+
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    n = 15
+    with h5py.File(tmp_path / "raw" / f"{STEM}.nxs", "w") as f:
+        entry = f.create_group("entry")
+        entry["data"] = np.random.default_rng(0).uniform(0.05, 0.6, (n, n, n))
+        for name in ("h_axis", "k_axis", "l_axis"):
+            entry[name] = np.linspace(-2, 2, n)
+        entry["ub_matrix"] = UB
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    m = client.get(f"/api/volumes/{SLUG}.raw/meta").json()
+    assert m["sigma"] == "estimated"
+    assert "√|I|" in m["sigma_note"] and "non-integer" in m["sigma_note"]
+
+
 def test_declared_symmetry(tmp_path):
     """A NeXus Viewer file's /entry symmetry and symmetry_ops reach the volume meta."""
     import h5py

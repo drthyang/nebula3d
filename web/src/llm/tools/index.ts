@@ -305,6 +305,10 @@ const describeDataset: AgentTool = {
         planes: RECIP_PLANES,
       },
       cell: meta?.lattice ?? dmeta?.lattice ?? null,
+      // Whether σ came with the data; the note says when √|I| makes the
+      // punch's significance test count nothing fixed.
+      sigma: meta?.sigma ?? null,
+      ...(meta?.sigma_note ? { sigma_note: meta.sigma_note } : {}),
       delta_pdf: dmeta && {
         grid: dmeta.shape,
         x: range4(dmeta.x_range),

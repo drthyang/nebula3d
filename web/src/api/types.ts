@@ -108,6 +108,10 @@ export interface VolumeMeta {
   // The point group the file declares its data were symmetrised with.
   symmetry?: string | null;
   symmetry_ops?: number[][][] | null;
+  // "measured": σ came with the data; "estimated": √|I|. sigma_note says when
+  // that leaves a significance in σ meaningless (normalized values).
+  sigma?: "measured" | "estimated";
+  sigma_note?: string | null;
 }
 
 export interface DeltaPdfMeta {

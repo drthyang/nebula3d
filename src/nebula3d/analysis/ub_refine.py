@@ -569,7 +569,7 @@ def regrid(vol: HKLVolume, ub: NDArray[np.floating], *, chunk: int = 8) -> HKLVo
         mask[j0:j1] = ok
     return HKLVolume(data=data, sigma=sigma, mask=mask, h_axis=axes[0].copy(),
                      k_axis=axes[1].copy(), l_axis=axes[2].copy(), ub_matrix=ub_new,
-                     instrument=vol.instrument)
+                     instrument=vol.instrument, sigma_estimated=vol.sigma_estimated)
 
 
 def _group(ops: Ops | None) -> Ops:

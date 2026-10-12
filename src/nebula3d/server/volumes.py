@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 
 import nebula3d
-from nebula3d.core import HKLVolume
+from nebula3d.core import HKLVolume, sigma_note
 from nebula3d.utils.reciprocal_space import direct_cell
 from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import _ALIASES, _PLANE, SliceData
@@ -124,8 +124,8 @@ def declared_symmetry(path: Path) -> tuple[str | None, list[list[list[int]]] | N
 
 
 def volume_meta(path: Path) -> dict:
-    """Compact metadata for a volume: shape, axis ranges, lattice, and the
-    symmetry its file declares."""
+    """Compact metadata for a volume: shape, axis ranges, lattice, the
+    symmetry its file declares, and whether its σ came with the data."""
     vol = load_volume(path)
     symmetry, symmetry_ops = declared_symmetry(path)
     return {
@@ -138,6 +138,8 @@ def volume_meta(path: Path) -> dict:
         "planes": list(PLANES),
         "symmetry": symmetry,
         "symmetry_ops": symmetry_ops,
+        "sigma": "estimated" if vol.sigma_estimated else "measured",
+        "sigma_note": sigma_note(vol),
     }
 
 

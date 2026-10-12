@@ -102,6 +102,19 @@ describe("runToolCall", () => {
   });
 });
 
+describe("describe_dataset", () => {
+  it("says whether σ came with the data, and when √|I| makes it count nothing fixed", async () => {
+    const plain = JSON.parse((await run("describe_dataset", {})).text);
+    expect(plain.sigma).toBeNull();
+    expect(plain).not.toHaveProperty("sigma_note");
+    const note = "No σ came with this volume, so σ is taken as √|I| …";
+    api.fetchMeta.mockResolvedValue({ ...META, sigma: "estimated", sigma_note: note });
+    const estimated = JSON.parse((await run("describe_dataset", {})).text);
+    expect(estimated.sigma).toBe("estimated");
+    expect(estimated.sigma_note).toBe(note);
+  });
+});
+
 describe("line_profile", () => {
   it("reads the row through the requested coordinate and finds its maximum", async () => {
     // hk0 plane: x = H, y = K.  A peak on the K = 1 row at H = 0.6.

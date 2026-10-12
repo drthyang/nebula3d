@@ -218,7 +218,11 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     };
   }
   if (stage === "punch") {
-    const profile = await safe(fetchBraggProfile(dataset.id));
+    const rawId = hklVolumeId(dataset);
+    const [profile, rawMeta] = await Promise.all([
+      safe(fetchBraggProfile(dataset.id)),
+      rawId ? safe(fetchMeta(rawId)) : null,
+    ]);
     const leftovers = contexts.map((c) => c.context.bragg_punch?.leftover);
     const fractions = contexts.map((c) =>
       punchedFraction(c.slices.ringremoved?.data, c.slices.braggpunched?.data),
@@ -231,6 +235,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       return p && (!best || p.sigma > (best.sigma as number)) ? { plane: c.plane, ...p } : best;
     }, null);
     return {
+      // The significance test counts σ: say so when σ is √|I| of normalized data.
+      ...(rawMeta?.sigma_note ? { sigma_note: rawMeta.sigma_note } : {}),
       total_leftover_peaks: total("n_suspicious"),
       leftover_at_nodes: total("n_at_nodes"),
       leftover_off_lattice: total("n_off_nodes"),
