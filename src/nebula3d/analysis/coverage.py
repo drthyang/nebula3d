@@ -10,10 +10,12 @@ none.  The |Q| where that share first rises through one half (above the beam
 stop) and where it last falls through one half are the data's Qmin and Qmax
 edges, the limits the ΔPDF's |Q| band should respect.
 
-The box can end before the counts do: ``box_q`` is the radius of the largest
-sphere inside it, the nearest face in Q.  A spherical band reaching past
-``box_q`` is cut by the box along that face's direction, while the counts may
-run further in others (an ellipsoid window inscribed in the box uses them).
+The box can end before the counts do: ``box_q`` is the distance to its
+nearest face in Q.  A spherical band reaching past ``box_q`` is cut by the box
+along that face's direction, while the counts may run further in others (an
+ellipsoid window inscribed in the box uses them).  A face through the origin,
+as a half-space volume (h ≥ 0) has, does not count: the shells there carry on
+in the half the volume holds.
 """
 
 from __future__ import annotations
@@ -42,7 +44,7 @@ class QCoverage:
     q_max_edge: float | None  # last fall through HALF (None: measured to the corner)
     full_q_min: float | None  # first shell ≥ FULL
     full_q_max: float | None  # last shell ≥ FULL
-    box_q: float  # largest sphere inside the box
+    box_q: float  # the nearest box face in Q (a face through the origin aside)
     box_corner_q: float  # farthest box corner
 
 
@@ -50,18 +52,22 @@ def box_extent_q(vol: HKLVolume) -> tuple[float, float]:
     """``(box_q, box_corner_q)``: the nearest face and the farthest corner in Q.
 
     The face ``h_i = f`` is the plane ``(UB⁻¹ Q)_i = f``; its distance from the
-    origin is ``|f| / ‖row_i(UB⁻¹)‖`` (a non-orthogonal cell included).
+    origin is ``|f| / ‖row_i(UB⁻¹)‖`` (a non-orthogonal cell included).  A face
+    within half a step of the origin (a half-space volume's) does not count;
+    with no other face, ``box_q`` is 0.
     """
     ub = np.asarray(vol.ub_matrix, dtype=np.float64)
     inv = np.linalg.inv(ub)
     axes = (vol.h_axis, vol.k_axis, vol.l_axis)
+    steps = [abs(float(ax[1]) - float(ax[0])) if len(ax) > 1 else 0.0 for ax in axes]
     faces = [abs(float(f)) / float(np.linalg.norm(inv[i]))
-             for i, ax in enumerate(axes) for f in (ax[0], ax[-1])]
+             for i, ax in enumerate(axes) for f in (ax[0], ax[-1])
+             if abs(float(f)) > 0.5 * steps[i] + 1e-12]
     corners = np.array([[hv, kv, lv] for hv in (axes[0][0], axes[0][-1])
                         for kv in (axes[1][0], axes[1][-1])
                         for lv in (axes[2][0], axes[2][-1])], dtype=np.float64)
     corner_q = float(np.max(np.linalg.norm(corners @ ub.T, axis=1)))
-    return float(min(faces)), corner_q
+    return (float(min(faces)) if faces else 0.0), corner_q
 
 
 def _crossing(q: NDArray[np.float64], s: NDArray[np.float64], level: float,

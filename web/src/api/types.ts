@@ -44,7 +44,7 @@ export interface VolumeCoverage {
   q_max_edge: number | null; // where it last falls through ½ (null: to the corner)
   full_q_min: number | null; // first shell ≥ 95 %
   full_q_max: number | null; // last shell ≥ 95 %
-  box_q: number; // the nearest face of the box
+  box_q: number; // the nearest face of the box in Q (a face through the origin, a half-space volume's, aside)
   box_corner_q: number;
 }
 

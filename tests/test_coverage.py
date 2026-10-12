@@ -61,3 +61,14 @@ def test_box_face_on_a_hexagonal_cell():
     # 5 · a*·sin(60°) from the origin, farther than that here.
     assert box_q == pytest.approx(2 * 2 * np.pi / cpar)
     assert corner_q > box_q
+
+
+def test_a_face_through_the_origin_is_no_box_face():
+    # A half-space volume (h ≥ 0): its h = 0 face would make box_q 0, though
+    # the shells carry on in the half it holds.
+    ub = 2 * np.pi / 4.0 * np.eye(3)
+    half = HKLVolume.from_arrays(np.ones((31, 61, 61)), (0, 3), (-3, 3), (-3, 3), ub_matrix=ub)
+    box_q, corner_q = box_extent_q(half)
+    assert box_q == pytest.approx(3 * 2 * np.pi / 4.0)
+    assert q_coverage(half).box_q == pytest.approx(box_q)
+    assert corner_q == pytest.approx(np.sqrt(27) * 2 * np.pi / 4.0)
