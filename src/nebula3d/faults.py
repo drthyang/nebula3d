@@ -9,8 +9,10 @@ of a kind a real reduction suffers:
 - :func:`misorient`: the UB slightly turned. Every Bragg peak sits beside its
   node by the angle times |Q|, and ``ub_check`` should find the angle.
 - :func:`shift_origin`: the HKL origin offset. Every peak moves by the same
-  vector, so its offset relative to |Q| falls with |Q|: ``ub_check``'s radial
-  offsets should say that no UB explains it.
+  vector, which no UB change undoes: ``ub_check``'s fit removes little of the
+  peaks' offset, and its ``unexplained`` rule says so. Its radial offsets
+  cannot show it: a peak and its Friedel mate move in opposite senses along Q,
+  so their median stays near zero.
 - :func:`cut_coverage`: counts that end at a |Q| inside the box. The raw
   counts' upper edge (``qmax_coverage``) should find it.
 - :func:`add_rings`: powder rings left in the data. The ring assessment
