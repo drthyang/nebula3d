@@ -16,12 +16,12 @@
 
 import type { Dataset } from "../../api/types";
 import type { AgentStep } from "../agent";
-import { writtenNumbers } from "../answerChecks";
+import { ANSWER_WORD, writtenNumbers } from "../answerChecks";
 import type { ChatMessage } from "../provider/client";
 import { allSkills, skillsPrompt } from "../skills";
 import { SAMPLE_PARAMS } from "../tune/catalog";
 import type { AgentTool } from "../tools";
-import { answers, asserts, neverAsserts, numbers, sentences } from "./checks";
+import { answers, NEGATION, numbers, sentences } from "./checks";
 import manifest from "./fixtures/validation-cases.json";
 import type { Check, EvalRun, Grade } from "./harness";
 
@@ -102,15 +102,78 @@ export function armSetup(arm: Arm, tools: AgentTool[], messages: ChatMessage[]):
 
 // ---------------------------------------------------------------- grading
 
-// What an answer claims about each fault, sentence by sentence (a sentence
-// that negates it does not count: checks.ts).
-export const CLAIMS: Record<string, RegExp> = {
-  ub: /\b(UB|orientation)\b[^.]*\b(off|wrong|incorrect|turned|rotated|misorient\w*|error)\b|\bmisorient(ed|ation)\b|\b(turned|rotated) by\b/i,
-  origin: /\borigin\b[^.]*\b(shift\w*|off|offset|moved|wrong|displaced)\b|\b(shift\w*|offset|displaced)\b[^.]*\borigin\b|\bzero[- ]point\b/i,
-  coverage: /\b(coverage|counts?|data)\b[^.]*\b(ends?|stops?|cut|limited|incomplete|partial|does not reach|doesn't reach)\b|\bunmeasured\b[^.]*\b(box|corners?|edges?|faces?)\b/i,
-  rings: /\bpowder rings?\b|\b(alumini?um|Al) (rings?|lines?)\b|\brings?\b[^.]*\b(confirmed|found|detected|present|removed|left)\b/i,
-  flatten: /\b(pedestal|background|floors?)\b[^.]*\b(ris\w+|slope|trend\w*|grows?|increas\w*|Q²|Q\^2|q2)\b|\bQ² term\b|\bflattenQ2\b|\bb·Q²/i,
+// What an answer says about each fault, clause by clause: a sentence, or the
+// part of one that a semicolon or a dash sets off ("The UB is turned by 0.6°;
+// no setting fixes it" says the UB is turned). A clause that negates a claim
+// does not make it ("no powder rings").
+//
+// Two sets of patterns. CLAIMS credits a run with reporting its fault, and is
+// broad. ALARMS charges it with a fault that is not there, and is narrow: only
+// a statement that the thing is present, never a report of what a tool
+// checked or what the run changed ("the flatten's Q² term is on"), and not a
+// clause that says the thing is fine. Both are heuristics, so the outputs'
+// scores on the planted truth (Python) carry the verdict and these grade only
+// what was said; the reviewer reads the transcript.
+const FAULT_WORDS = {
+  ub: "(wrong|incorrect|off|misorient\\w*|turned|rotated)",
+  rings: "(confirmed|found|detected|present|identified|visible|left|remain\\w*|at \\d)",
+  flatten: "(ris\\w+|slope\\w*|trend\\w*|grows?|growing|increas\\w*|Q²|Q\\^2|q2)",
 };
+
+export const CLAIMS: Record<string, RegExp> = {
+  ub: new RegExp(`\\b(UB|orientation)\\b[^.;]*\\b${FAULT_WORDS.ub}\\b|\\bmisorient(ed|ation)\\b|\\b(turned|rotated) by\\b`, "i"),
+  origin: /\borigin\b[^.;]*\b(shift\w*|off|offset|moved|wrong|displaced)\b|\b(shift\w*|offset|displaced)\b[^.;]*\borigin\b|\bzero[- ]point\b/i,
+  coverage: /\b(coverage|counts?|data)\b[^.;]*\b(ends?|stops?|cut|limited|incomplete|partial|truncated|does not reach|doesn't reach)\b|\bunmeasured\b[^.;]*\b(box|corners?|edges?|faces?)\b/i,
+  rings: new RegExp(`\\b(powder[- ]rings?|alumini?um (rings?|lines?)|Al (rings?|lines?)|rings?)\\b[^.;]*\\b${FAULT_WORDS.rings}`, "i"),
+  flatten: new RegExp(`\\b(pedestal|background|floors?)\\b[^.;]*\\b${FAULT_WORDS.flatten}\\b`, "i"),
+};
+
+export const ALARMS: Record<string, RegExp> = {
+  ub: new RegExp(`\\b(UB|orientation)\\b[^.;]*\\b${FAULT_WORDS.ub}\\b|\\bmisorient(ed|ation)\\b|\\b(turned|rotated) by\\b`, "i"),
+  origin: CLAIMS.origin,
+  coverage: /\b(incomplete|truncated|cut off|(counts?|data|coverage) (ends?|stops?) (well )?(inside|within|before|short of) the box|does not reach (the box|its edges?)|limited coverage|partial coverage)\b/i,
+  rings: new RegExp(`\\b(powder[- ]rings?|alumini?um (rings?|lines?)|Al (rings?|lines?))\\b[^.;]*\\b${FAULT_WORDS.rings}`, "i"),
+  flatten: CLAIMS.flatten,
+};
+
+// Said of a fault that is not there, these make a clause not a claim of it.
+const FINE = /\b(correct|right|fine|good|negligible|consistent|within (the )?(error|tolerance|noise)|clean|as expected|meets? (its|the) goal|(0|zero) (powder )?rings?)\b/i;
+const OWN = /\b(crystal's own|sample's own|intrinsic|its own)\b/i;
+
+/** The answer's clauses. */
+export const clauses = (text: string): string[] =>
+  sentences(text)
+    .flatMap((s) => s.split(/;\s+|\s[—–]\s/))
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+/** The clause says *re*, without negating it (a leading "No," answers; it does not negate). */
+const claimed = (clause: string, re: RegExp, { alarm = false, own = false } = {}): boolean => {
+  if (!re.test(clause) || NEGATION.test(clause.replace(ANSWER_WORD, ""))) return false;
+  if (!alarm) return true;
+  if (FINE.test(clause) || (own && OWN.test(clause))) return false;
+  // A turn the size of the fit's own noise is no claim that the UB is off.
+  const angles = numbers(clause);
+  return !(re === ALARMS.ub && angles.length > 0 && angles.every((x) => Math.abs(x) < 0.1));
+};
+
+/** Some clause of the answer says *re*. */
+const says = (re: RegExp, what: string): Check => ({
+  name: `says ${what}`,
+  grade: (run) => {
+    const hit = clauses(run.content).find((c) => claimed(c, re));
+    return hit ? ok(`“${hit.slice(0, 160)}”`) : fail(`no clause says ${what}`);
+  },
+});
+
+/** No clause of the answer claims *re*. */
+const neverSays = (re: RegExp, what: string): Check => ({
+  name: `never claims ${what}`,
+  grade: (run) => {
+    const hit = clauses(run.content).find((c) => claimed(c, re, { alarm: true }));
+    return hit ? fail(`“${hit.slice(0, 160)}”`) : ok("not claimed");
+  },
+});
 
 // The families whose fault each case has: what it must report.
 const REPORTS: Record<string, string[]> = {
@@ -136,12 +199,12 @@ const writes = (what: string, value: number, tol: number): Check => ({
   },
 });
 
-/** No sentence calls the shell at *q* a powder ring (it is the crystal's own). */
+/** No clause calls the shell at *q* a powder ring (it is the crystal's own). */
 const shellNotARing = (q: number): Check => ({
   name: `never calls the crystal's shell at ${q} Å⁻¹ a ring`,
   grade: (run) => {
-    const hit = sentences(run.content).find(
-      (s) => CLAIMS.rings.test(s) && !/\b(no|not|isn't|is not|never)\b/i.test(s) && numbers(s).some((x) => Math.abs(x - q) <= 0.1),
+    const hit = clauses(run.content).find(
+      (c) => claimed(c, ALARMS.rings, { alarm: true, own: true }) && numbers(c).some((x) => Math.abs(x - q) <= 0.1),
     );
     return hit ? fail(`“${hit.slice(0, 160)}”`) : ok("not called a ring");
   },
@@ -151,7 +214,7 @@ const shellNotARing = (q: number): Check => ({
 export function detectionChecks(c: ValidationCase): Check[] {
   const must = REPORTS[c.family] ?? [];
   const checks: Check[] = [answers];
-  for (const f of must) checks.push(asserts(CLAIMS[f], `the fault (${f})`));
+  for (const f of must) checks.push(says(CLAIMS[f], `the fault (${f})`));
   const t = c.truth;
   if (t.angle_deg != null) checks.push(writes("the turn's angle", t.angle_deg, 0.15));
   if (t.q_cut != null) checks.push(writes("where the counts end (Å⁻¹)", t.q_cut, 0.2));
@@ -162,9 +225,9 @@ export function detectionChecks(c: ValidationCase): Check[] {
 /** The checks that a run claimed no fault the case does not have. */
 export function falseAlarmChecks(c: ValidationCase): Check[] {
   const must = new Set(REPORTS[c.family] ?? []);
-  const checks = Object.keys(CLAIMS)
+  const checks = Object.keys(ALARMS)
     .filter((f) => !must.has(f))
-    .map((f) => neverAsserts(CLAIMS[f], `a fault that is not there (${f})`));
+    .map((f) => neverSays(ALARMS[f], `a fault that is not there (${f})`));
   if (c.truth.shell_q != null) checks.push(shellNotARing(c.truth.shell_q));
   return checks;
 }
@@ -180,7 +243,8 @@ const SAMPLE_KEYS = new Set<string>(SAMPLE_PARAMS.map((p) => p.key));
 export function changedElsewhere(before: readonly Dataset[], after: readonly Dataset[], own: string): string[] {
   const state = (d: Dataset) => d.stages.map((s) => `${s.name}:${s.exists ? 1 : 0}`).join(",");
   const was = new Map(before.map((d) => [d.id, state(d)]));
-  return after.filter((d) => d.id !== own && was.get(d.id) !== state(d)).map((d) => d.id);
+  // A tuning view of the run's own dataset (`<id>~tune~…`) is its own.
+  return after.filter((d) => d.id.split("~")[0] !== own && was.get(d.id) !== state(d)).map((d) => d.id);
 }
 
 /**
