@@ -67,7 +67,7 @@ describe("streamChat", () => {
     vi.stubGlobal("fetch", fetchMock);
     const deltas = [];
     for await (const d of streamChat({
-      baseUrl: "http://localhost:11434/v1/",
+      baseUrl: "http://localhost:1234/v1/",
       model: "m",
       messages: [{ role: "user", content: "hi" }],
       temperature: 0.2,
@@ -79,7 +79,7 @@ describe("streamChat", () => {
     expect(deltas.filter((d) => d.content).map((d) => d.content).join("")).toBe("Let me check.");
     expect(deltas[deltas.length - 1]?.toolCalls?.[0].function.name).toBe("describe_dataset");
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("http://localhost:11434/v1/chat/completions");
+    expect(url).toBe("http://localhost:1234/v1/chat/completions");
     const body = JSON.parse(init.body as string);
     expect(body.tools).toHaveLength(1);
     expect(body.tool_choice).toBe("auto");

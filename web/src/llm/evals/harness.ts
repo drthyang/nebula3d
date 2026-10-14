@@ -13,6 +13,7 @@ import { runAgent, type AgentStep } from "../agent";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { buildChatMessages } from "../prompts/templates";
+import type { Failure } from "../recovery";
 import type { LlmSettings } from "../settings";
 import { CHAT_TOOLS, type AgentTool } from "../tools";
 
@@ -22,6 +23,9 @@ export interface EvalRun {
   content: string;
   note?: string;
   error?: string;
+  // The model server failed the reply after its retries (recovery.ts): an
+  // infrastructure failure, reported apart from a wrong answer.
+  failure?: Failure | null;
   latencyMs: number;
   usage: { input: number; output: number; cacheRead?: number; cacheWrite?: number; requests: number } | null; // null: the server did not say
 }
@@ -124,6 +128,7 @@ export async function runScenario(
       steps: result.steps,
       content: result.content,
       note: result.note,
+      failure: result.failure ?? null,
       latencyMs: performance.now() - started,
       usage: result.usage ?? null,
     };

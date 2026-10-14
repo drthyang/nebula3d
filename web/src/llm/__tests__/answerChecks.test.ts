@@ -186,6 +186,8 @@ const call = { id: "c1", type: "function" as const, function: { name: "assess_st
 
 beforeEach(() => {
   client.streamChat.mockReset();
+  // The window plan asks the model server about the model: none answers here.
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
 });
 
 describe("runAgent holds the final answer to its evidence", () => {

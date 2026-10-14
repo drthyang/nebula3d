@@ -5,7 +5,8 @@
 //   node scripts/eval-table.mjs ../docs/evals/results/*.json
 //
 // Prints a pass table (scenario × model; a run that ended in an error, such as a
-// server crash or a timeout, is counted apart) and a per-model summary: pass rate,
+// server crash or a timeout, is counted apart, whether it ended in an exception
+// or in the note the agent writes after its retries) and a per-model summary: pass rate,
 // median latency per run, mean tokens per run and, for models with a price
 // in PRICES, the mean cost per run.  Nothing is estimated: a model whose
 // server did not report token counts shows "–".
@@ -52,7 +53,7 @@ for (const id of ids) {
     const runs = r.runs.filter((x) => x.scenario === id);
     if (!runs.length) return "–";
     const passed = runs.filter((x) => x.passed).length;
-    const errors = runs.filter((x) => !x.passed && x.error).length;
+    const errors = runs.filter((x) => !x.passed && (x.error || x.failure)).length;
     const mark = passed === runs.length ? "✓" : passed ? "◐" : "✗";
     return `${mark} ${passed}/${runs.length}${errors ? ` (${errors} error${errors > 1 ? "s" : ""})` : ""}`;
   });
@@ -70,7 +71,7 @@ for (const r of records) {
     : "–";
   const costs = r.runs.map((x) => cost(r.model, x.usage));
   const meanCost = costs.every((c) => c != null) && costs.length ? `$${(costs.reduce((a, c) => a + c, 0) / costs.length).toFixed(4)}` : r.local ? "local" : "–";
-  const errors = r.runs.filter((x) => !x.passed && x.error).length;
+  const errors = r.runs.filter((x) => !x.passed && (x.error || x.failure)).length;
   const failed = r.runs.length - passed - errors;
   out.push(`| ${label(r)} | ${passed}/${r.runs.length} | ${failed} | ${errors} | ${latency.toFixed(0)} s | ${tokens} | ${meanCost} |`);
 }
