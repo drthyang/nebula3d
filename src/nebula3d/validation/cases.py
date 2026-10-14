@@ -23,6 +23,7 @@ Nothing here reads measured data.
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import math
 from collections.abc import Mapping, Sequence
@@ -48,6 +49,7 @@ __all__ = [
     "build",
     "case_named",
     "cases",
+    "label_of",
     "orbit",
 ]
 
@@ -178,6 +180,14 @@ def cases(split: str) -> tuple[Case, ...]:
     if split not in SPLITS:
         raise ValueError(f"split must be one of {SPLITS}")
     return tuple(c for c in CASES if c.split == split)
+
+
+def label_of(case: Case | str) -> str:
+    """The name a case's data go by on the server: opaque, so that nothing a model reads (a
+    dataset's id, its file's name, the other datasets listed) says which fault it holds or
+    which split it is in."""
+    case_id = case if isinstance(case, str) else case.id
+    return "v" + hashlib.sha256(f"nebula3d-validation:{case_id}".encode()).hexdigest()[:6]
 
 
 def case_named(case_id: str) -> Case:

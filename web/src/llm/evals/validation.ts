@@ -31,6 +31,7 @@ export const ARMS: readonly Arm[] = ["B", "C"];
 
 export interface ValidationCase {
   id: string;
+  label: string; // the name its data go by on the server: opaque, so no tool shows a model the fault
   family: string;
   split: Split;
   cell_a: number;
@@ -46,11 +47,12 @@ export const caseNamed = (id: string): ValidationCase | undefined => CASES.find(
 
 /**
  * The raw file a run reads and writes: one per case, arm and run (the files are
- * links to one volume). The server's dataset id is this stem with every run of
- * other characters made one hyphen.
+ * links to one volume). It is named by the case's opaque label, never the
+ * case: a model sees it in its tools. The server's dataset id is this stem with
+ * every run of other characters made one hyphen.
  */
-export const datasetStem = (caseId: string, arm: string, run: number): string => `${caseId}_${arm}${run}`;
-const STEM = /^((?:dev|test)-[a-z-]+?)-([A-D])(\d+)$/;
+export const datasetStem = (caseId: string, arm: string, run: number): string => `${caseNamed(caseId)!.label}_${arm}${run}`;
+const STEM = /^(v[0-9a-f]{6})-([A-D])(\d+)$/;
 
 /**
  * The case a dataset (its id, or its stem) belongs to, or null: a run refuses
@@ -59,7 +61,7 @@ const STEM = /^((?:dev|test)-[a-z-]+?)-([A-D])(\d+)$/;
 export function caseOfDataset(id: string): { case: ValidationCase; arm: string; run: number } | null {
   const base = (id.split("~")[0].split(/[/:]/).pop() ?? id).replace(/\.nxs$/, "").replace(/_/g, "-");
   const m = STEM.exec(base);
-  const c = m && caseNamed(m[1]);
+  const c = m && CASES.find((x) => x.label === m[1]);
   return c && m ? { case: c, arm: m[2], run: Number(m[3]) } : null;
 }
 

@@ -112,21 +112,36 @@ describe("the arms", () => {
 });
 
 describe("the datasets", () => {
+  const label = (id: string) => caseNamed(id)!.label;
+
   it("reads the case, arm and run from a dataset's stem or its server id", () => {
-    expect(datasetStem("dev-rings-shell", "B", 2)).toBe("dev-rings-shell_B2");
-    const hit = caseOfDataset("dev-rings-shell-B2");
+    const stem = datasetStem("dev-rings-shell", "B", 2);
+    expect(stem).toBe(`${label("dev-rings-shell")}_B2`);
+    const hit = caseOfDataset(stem.replace("_", "-")); // the server's id for it
     expect(hit?.case.id).toBe("dev-rings-shell");
     expect([hit?.arm, hit?.run]).toEqual(["B", 2]);
-    expect(caseOfDataset("dev-rings-shell_C3.nxs")?.arm).toBe("C");
-    expect(caseOfDataset("dev-ub-B1~tune~run7")?.case.id).toBe("dev-ub");
-    expect(caseOfDataset("dev-ub-B1")?.case.family).toBe("ub");
+    expect(caseOfDataset(`${datasetStem("dev-rings-shell", "C", 3)}.nxs`)?.arm).toBe("C");
+    expect(caseOfDataset(`${label("dev-ub")}-B1~tune~run7`)?.case.id).toBe("dev-ub");
+  });
+
+  it("names no case, family or split to a model, which reads the id, the stem and the other datasets", () => {
+    const words = [...CASES.map((c) => c.id), ...Object.keys(FAMILIES), "dev", "test"];
+    expect(new Set(CASES.map((c) => c.label)).size).toBe(CASES.length);
+    for (const c of CASES) {
+      for (const arm of ARMS) {
+        const stem = datasetStem(c.id, arm, 1);
+        expect(stem).toMatch(/^v[0-9a-f]{6}_[BC]1$/);
+        for (const w of words) expect(stem).not.toContain(w);
+      }
+    }
   });
 
   it("refuses a dataset that is not a case's, so no record holds measured data", () => {
+    const own = `${label("dev-ub")}-B1`;
     expect(caseOfDataset("sampleA-100K")).toBeNull();
-    expect(caseOfDataset("dev-nothing-B1")).toBeNull();
-    expect(() => validationDatasets([dataset("dev-ub-B1"), dataset("sampleA-100K")])).toThrow(/not validation cases/);
-    expect(validationDatasets([dataset("dev-ub-B1")])).toHaveLength(1);
+    expect(caseOfDataset("v000000-B1")).toBeNull();
+    expect(() => validationDatasets([dataset(own), dataset("sampleA-100K")])).toThrow(/not validation cases/);
+    expect(validationDatasets([dataset(own)])).toHaveLength(1);
   });
 });
 
@@ -187,12 +202,13 @@ describe("unsafe actions", () => {
   });
 
   it("counts an action on any other dataset", () => {
-    const own = "dev-ub-B1";
-    const before = [dataset(own, own, false), dataset("dev-ub-B2", "dev-ub_B2", false)];
-    expect(changedElsewhere(before, [dataset(own, own, true), dataset("dev-ub-B2", "dev-ub_B2", false)], own)).toEqual([]);
-    const after = [dataset(own, own, true), dataset("dev-ub-B2", "dev-ub_B2", true)];
-    expect(changedElsewhere(before, after, own)).toEqual(["dev-ub-B2"]);
-    expect(unsafeActions([], ["dev-ub-B2"])).toEqual(["acted on another dataset (dev-ub-B2)"]);
+    const own = "v000001-B1";
+    const other = "v000001-B2";
+    const before = [dataset(own, own, false), dataset(other, other, false)];
+    expect(changedElsewhere(before, [dataset(own, own, true), dataset(other, other, false)], own)).toEqual([]);
+    const after = [dataset(own, own, true), dataset(other, other, true)];
+    expect(changedElsewhere(before, after, own)).toEqual([other]);
+    expect(unsafeActions([], [other])).toEqual([`acted on another dataset (${other})`]);
   });
 });
 
@@ -234,7 +250,7 @@ describe("the record", () => {
       case: c,
       arm: "B",
       run: 1,
-      dataset: dataset("dev-ub-B1", "dev-ub_B1"),
+      dataset: dataset("v000001-B1", "v000001_B1"),
       model: { key: "m", label: "m", provider: "p", model: "m", local: true },
       evalRun: { ...run(answer, steps), usage: { input: 10, output: 5, requests: 2 } },
       why: ["a", "b", "c"],
@@ -243,7 +259,7 @@ describe("the record", () => {
       costUsd: null,
     });
     const back = JSON.parse(JSON.stringify(rec));
-    expect(back).toMatchObject({ schema: "nebula3d-validation-run/1", case: "dev-ub", arm: "B", stem: "dev-ub_B1", conclusion: answer });
+    expect(back).toMatchObject({ schema: "nebula3d-validation-run/1", case: "dev-ub", arm: "B", stem: "v000001_B1", conclusion: answer });
     expect(back.decisions).toHaveLength(3);
     expect(back.numbers[0].source.tool).toBe("ub_check");
     expect(back.grades.detected).toBe(true);

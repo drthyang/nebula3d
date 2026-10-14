@@ -12,6 +12,7 @@
  "cases": [
   {
    "id": "dev-control",
+   "label": "va21fc1",
    "family": "control",
    "split": "dev",
    "cell_a": 3.9,
@@ -40,6 +41,7 @@
   },
   {
    "id": "test-control",
+   "label": "vce3d55",
    "family": "control",
    "split": "test",
    "cell_a": 4.1,
@@ -68,6 +70,7 @@
   },
   {
    "id": "dev-ub",
+   "label": "vbda187",
    "family": "ub",
    "split": "dev",
    "cell_a": 3.9,
@@ -105,6 +108,7 @@
   },
   {
    "id": "test-ub",
+   "label": "v525b45",
    "family": "ub",
    "split": "test",
    "cell_a": 4.1,
@@ -142,6 +146,7 @@
   },
   {
    "id": "dev-origin",
+   "label": "ve78bc4",
    "family": "origin",
    "split": "dev",
    "cell_a": 3.9,
@@ -182,6 +187,7 @@
   },
   {
    "id": "test-origin",
+   "label": "v77c1f8",
    "family": "origin",
    "split": "test",
    "cell_a": 4.1,
@@ -222,6 +228,7 @@
   },
   {
    "id": "dev-coverage",
+   "label": "v396edc",
    "family": "coverage",
    "split": "dev",
    "cell_a": 3.9,
@@ -254,6 +261,7 @@
   },
   {
    "id": "test-coverage",
+   "label": "v7c4413",
    "family": "coverage",
    "split": "test",
    "cell_a": 4.1,
@@ -286,6 +294,7 @@
   },
   {
    "id": "dev-rings",
+   "label": "vf423ac",
    "family": "rings",
    "split": "dev",
    "cell_a": 3.9,
@@ -326,6 +335,7 @@
   },
   {
    "id": "test-rings",
+   "label": "vac968c",
    "family": "rings",
    "split": "test",
    "cell_a": 4.1,
@@ -361,6 +371,7 @@
   },
   {
    "id": "dev-shell",
+   "label": "vb3beaf",
    "family": "shell",
    "split": "dev",
    "cell_a": 3.9,
@@ -397,6 +408,7 @@
   },
   {
    "id": "test-shell",
+   "label": "v3c8c61",
    "family": "shell",
    "split": "test",
    "cell_a": 4.1,
@@ -433,6 +445,7 @@
   },
   {
    "id": "dev-flatten",
+   "label": "va7eeb5",
    "family": "flatten",
    "split": "dev",
    "cell_a": 3.9,
@@ -465,6 +478,7 @@
   },
   {
    "id": "test-flatten",
+   "label": "v24a425",
    "family": "flatten",
    "split": "test",
    "cell_a": 4.1,
@@ -497,6 +511,7 @@
   },
   {
    "id": "dev-rings-shell",
+   "label": "vd7e662",
    "family": "rings-shell",
    "split": "dev",
    "cell_a": 3.9,
@@ -545,6 +560,7 @@
   },
   {
    "id": "test-rings-shell",
+   "label": "v4ff84a",
    "family": "rings-shell",
    "split": "test",
    "cell_a": 4.1,

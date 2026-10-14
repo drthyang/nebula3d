@@ -23,7 +23,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .cases import FAMILIES, Built, answer_truth, build, case_named, cases
+from .cases import FAMILIES, Built, answer_truth, build, case_named, cases, label_of
 
 ARMS = ("B", "C")
 
@@ -45,6 +45,7 @@ def manifest() -> dict[str, Any]:
         "cases": [
             {
                 "id": c.id,
+                "label": label_of(c),
                 "family": c.family,
                 "split": c.split,
                 "cell_a": c.crystal.a,
@@ -65,20 +66,24 @@ def manifest() -> dict[str, Any]:
 
 
 def dataset_stem(case_id: str, arm: str, run: int) -> str:
-    """The raw file's stem; the server's dataset id is this with other characters made hyphens
-    (web/src/llm/evals/validation.ts parses it back)."""
-    return f"{case_id}_{arm}{run}"
+    """The raw file's stem, opaque (:func:`.cases.label_of`): a model sees the stem in its tools,
+    and the case's name would give the fault away. The server's dataset id is this with other
+    characters made hyphens (web/src/llm/evals/validation.ts parses it back)."""
+    return f"{label_of(case_id)}_{arm}{run}"
 
 
 def cmd_make(args: argparse.Namespace) -> None:
     root = Path(args.root)
+    # The server lists every .nxs in raw/ as a dataset: the volumes themselves live beside it,
+    # and raw/ holds only the links, one per arm and run.
     (root / "raw").mkdir(parents=True, exist_ok=True)
+    (root / "volumes").mkdir(exist_ok=True)
     (root / "processed").mkdir(exist_ok=True)
     from ..io.hkl_reader import save
 
     arms = [a.strip() for a in args.arms.split(",") if a.strip()]
     for c in cases(_split(args)):
-        base = root / "raw" / f"{c.id}.nxs"
+        base = root / "volumes" / f"{label_of(c)}.nxs"
         if not base.exists():
             save(build(c, args.n).raw, base)
         # One dataset per arm and run, each its own outputs; the volumes are links to one file.
@@ -86,7 +91,7 @@ def cmd_make(args: argparse.Namespace) -> None:
             for k in range(1, args.runs + 1):
                 link = root / "raw" / f"{dataset_stem(c.id, arm, k)}.nxs"
                 if not link.exists():
-                    os.symlink(base.name, link)
+                    os.symlink(Path("..") / "volumes" / base.name, link)
         print(base)
     (root / "manifest.json").write_text(json.dumps(manifest(), indent=1, ensure_ascii=False) + "\n")
 

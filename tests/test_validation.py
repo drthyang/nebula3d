@@ -241,7 +241,19 @@ def test_a_case_with_fewer_runs_than_the_others_does_not_pass():
     assert {r["case"]: r["pass"] for r in rows} == {"dev-ub": True, "dev-origin": False}
 
 
-def test_stems_name_the_case_arm_and_run():
+def test_what_a_model_can_see_names_no_case_fault_or_split(tmp_path):
+    # The tools show a model its dataset's id and stem, and the other datasets the server lists.
     from nebula3d.validation.__main__ import dataset_stem
+    from nebula3d.validation.cases import label_of
 
-    assert dataset_stem("dev-rings-shell", "B", 2) == "dev-rings-shell_B2"
+    labels = [label_of(c) for c in CASES]
+    assert len(set(labels)) == len(CASES)
+    assert dataset_stem("dev-rings-shell", "B", 2) == f"{label_of('dev-rings-shell')}_B2"
+    main(["make", "--root", str(tmp_path), "--split", "dev", "--arms", "B,C", "--runs", "2", "--n", "21"])
+    served = sorted(p.name for p in (tmp_path / "raw").iterdir())
+    assert len(served) == len(cases("dev")) * 2 * 2  # only the links are datasets
+    words = {c.id for c in CASES} | set(FAMILIES) | {"dev", "test"}
+    for name in served + sorted(p.name for p in (tmp_path / "volumes").iterdir()):
+        assert not any(w in name for w in words), name
+        assert re.fullmatch(r"v[0-9a-f]{6}(_[BC][12])?\.nxs", name), name
+    assert all((tmp_path / "raw" / n).resolve().exists() for n in served)
