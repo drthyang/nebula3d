@@ -5,7 +5,9 @@
 // multimodal content parts so a rendered slice image can ride along for
 // vision-capable models, and with function calling ("tools") so the model can
 // ask the app to measure, look up or show something mid-answer.  Claude goes
-// through Anthropic's own SDK instead (anthropic.ts), behind the same calls.
+// through Anthropic's own SDK instead (anthropic.ts), behind the same calls,
+// and Ollama through its own chat API, the one place a request sets its
+// context length (see streamOllama).
 
 import {
   checkAnthropicConnection,
@@ -15,6 +17,7 @@ import {
   streamAnthropic,
 } from "./anthropic";
 import { isLocalUrl, providerForUrl } from "./presets";
+import { baseTokens, estimateTokens, keepWindow, MIN_REPLY, ollamaWindow, REPLY_RESERVE } from "./tokens";
 
 // A message's content is either plain text or a list of parts (text +
 // image_url), the OpenAI vision shape that Ollama/LM Studio/Gemini also accept.
@@ -235,10 +238,21 @@ interface PostChatArgs {
   // Functions the model may call; "none" asks it to answer without calling.
   tools?: ToolSpec[];
   toolChoice?: "auto" | "none";
-  // Ask a streaming server for the request's token counts (stream_options);
-  // the evals record them, the app does not.
+  // Ask a streaming server for the request's token counts (stream_options):
+  // the evals record them, and they calibrate the token estimate (tokens.ts).
   includeUsage?: boolean;
+  // Ollama: the context length to run the model with (options.num_ctx); sized
+  // from the request when left out.
+  numCtx?: number;
 }
+
+// A failed request as an error that carries its status and says what to do.
+const httpError = async (response: Response): Promise<HttpError> => {
+  const message = await describeHttpError(response);
+  const error = new Error(response.status === 500 ? `${message} — ${SERVER_ERROR_HINT}` : message) as HttpError;
+  error.status = response.status;
+  return error;
+};
 
 const postChat = async ({
   baseUrl,
@@ -264,12 +278,7 @@ const postChat = async ({
     body: JSON.stringify(body),
     signal,
   });
-  if (!response.ok) {
-    const message = await describeHttpError(response);
-    const error = new Error(response.status === 500 ? `${message} — ${SERVER_ERROR_HINT}` : message) as HttpError;
-    error.status = response.status;
-    throw error;
-  }
+  if (!response.ok) throw await httpError(response);
   return response;
 };
 
@@ -284,6 +293,231 @@ export const isToolsUnsupported = (error: unknown): boolean => {
   const { status, message } = (error ?? {}) as HttpError;
   return status !== undefined && status >= 400 && status < 500 && /tool|function/i.test(message ?? "");
 };
+
+// Ollama at its usual port goes through its own chat API (/api/chat), not /v1:
+// only there does a request set the model's context length. Otherwise Ollama
+// picks one by the machine's memory (4k on a small machine, far more on a large
+// one) and cuts a longer prompt from its start without a word, or spends
+// memory on a window the conversation never needs.
+export const isOllamaUrl = (baseUrl: string): boolean => {
+  if (providerForUrl(baseUrl)?.id === "ollama") return true;
+  try {
+    return new URL(baseUrl).port === "11434";
+  } catch {
+    return false;
+  }
+};
+
+const serverRoot = (baseUrl: string): string => trimBase(baseUrl).replace(/\/v1$/, "");
+
+export interface OllamaModel {
+  maxContext: number | null; // the longest context the model supports
+}
+
+const ollamaModels = new Map<string, Promise<OllamaModel>>();
+
+/** What Ollama says about a model (POST /api/show, which loads nothing), read once. */
+export const ollamaModel = (baseUrl: string, model: string, signal?: AbortSignal): Promise<OllamaModel> => {
+  const key = `${serverRoot(baseUrl)}|${model}`;
+  let known = ollamaModels.get(key);
+  if (!known) {
+    known = (async (): Promise<OllamaModel> => {
+      const response = await fetch(`${serverRoot(baseUrl)}/api/show`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+        signal,
+      });
+      if (!response.ok) return { maxContext: null };
+      const payload = (await response.json()) as { model_info?: Record<string, unknown> };
+      const length = Object.entries(payload.model_info ?? {}).find(
+        ([k, v]) => k.endsWith(".context_length") && typeof v === "number" && v > 0,
+      )?.[1];
+      return { maxContext: typeof length === "number" ? length : null };
+    })().catch((error) => {
+      ollamaModels.delete(key); // a server that was down is asked again next time
+      if ((error as Error)?.name === "AbortError") throw error;
+      return { maxContext: null };
+    });
+    ollamaModels.set(key, known);
+  }
+  return known;
+};
+
+// Names Ollama treats as one model: "llama3.2" is "llama3.2:latest".
+const sameModel = (a: string | undefined, b: string): boolean =>
+  !!a && (a === b || a === `${b}:latest` || `${a}:latest` === b);
+
+/** The context length an Ollama model runs with now, if it is loaded (GET /api/ps, which loads nothing). */
+export const ollamaRunning = async (baseUrl: string, model: string, signal?: AbortSignal): Promise<number | null> => {
+  try {
+    const response = await fetch(`${serverRoot(baseUrl)}/api/ps`, { signal });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { models?: { name?: string; model?: string; context_length?: unknown }[] };
+    const length = payload.models?.find((m) => sameModel(m.name, model) || sameModel(m.model, model))?.context_length;
+    return typeof length === "number" && length > 0 ? length : null;
+  } catch (error) {
+    if ((error as Error)?.name === "AbortError") throw error;
+    return null;
+  }
+};
+
+/**
+ * The context length to run an Ollama model with for a prompt of `prompt`
+ * tokens. The one it runs with now, when that holds the prompt and the reply:
+ * another app may be using the model (Athanor's critic, MATERIA), and any
+ * other length reloads it under them. Else the smallest step that holds them
+ * (tokens.ts), within the longest context the model supports. Null when
+ * nothing it supports can hold the prompt.
+ */
+export const ollamaContext = async (
+  baseUrl: string,
+  model: string,
+  prompt: number,
+  signal?: AbortSignal,
+): Promise<{ numCtx: number | null; max: number | null }> => {
+  const key = `${baseUrl}|${model}`;
+  const [{ maxContext: max }, running] = await Promise.all([
+    ollamaModel(baseUrl, model, signal),
+    ollamaRunning(baseUrl, model, signal),
+  ]);
+  if (running != null && running >= prompt + REPLY_RESERVE) return { numCtx: keepWindow(key, running), max };
+  const sized = ollamaWindow(key, prompt + REPLY_RESERVE, max) ?? ollamaWindow(key, prompt + MIN_REPLY, max);
+  if (sized != null) return { numCtx: sized, max };
+  // Room for a short reply in what it runs with is still better than none.
+  if (running != null && running >= prompt + MIN_REPLY) return { numCtx: keepWindow(key, running), max };
+  return { numCtx: null, max };
+};
+
+// A call's arguments as the object Ollama's API takes; anything else as {}.
+const argsObject = (json: string): Record<string, unknown> => {
+  try {
+    const args: unknown = JSON.parse(json || "{}");
+    return args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+};
+
+/** Messages in Ollama's own form: images as base64, call arguments as objects, results by tool name. */
+export const toOllamaMessages = (messages: ChatMessage[]): Record<string, unknown>[] => {
+  const names = new Map<string, string>(); // tool_call_id → the tool it called
+  return messages.map((m) => {
+    const parts = typeof m.content === "string" ? null : m.content;
+    const out: Record<string, unknown> = {
+      role: m.role,
+      content: parts ? parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("\n") : m.content,
+    };
+    const images = parts?.flatMap((p) => (p.type === "image_url" ? [p.image_url.url.replace(/^data:[^,]*,/, "")] : []));
+    if (images?.length) out.images = images;
+    if (m.tool_calls?.length) {
+      out.tool_calls = m.tool_calls.map((c) => {
+        names.set(c.id, c.function.name);
+        return { function: { name: c.function.name, arguments: argsObject(c.function.arguments) } };
+      });
+    }
+    const name = m.role === "tool" && m.tool_call_id ? names.get(m.tool_call_id) : undefined;
+    if (name) out.tool_name = name;
+    return out;
+  });
+};
+
+// The context length for a request whose caller did not size it.
+const sizedWindow = async (args: Omit<PostChatArgs, "stream">): Promise<number | undefined> => {
+  if (args.numCtx) return args.numCtx;
+  const prompt = estimateTokens(baseTokens(args.messages, args.tools), `${args.baseUrl}|${args.model}`);
+  const { numCtx, max } = await ollamaContext(args.baseUrl, args.model, prompt, args.signal);
+  return numCtx ?? max ?? undefined;
+};
+
+const postOllama = async (args: Omit<PostChatArgs, "stream">, stream: boolean): Promise<Response> => {
+  const numCtx = await sizedWindow(args);
+  const body: Record<string, unknown> = {
+    model: args.model,
+    messages: toOllamaMessages(args.messages),
+    stream,
+    options: { temperature: args.temperature, ...(numCtx ? { num_ctx: numCtx } : {}) },
+  };
+  // Ollama takes no tool_choice: a request that must answer goes without tools.
+  if (args.tools?.length && args.toolChoice !== "none") body.tools = args.tools;
+  const response = await fetch(`${serverRoot(args.baseUrl)}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: args.signal,
+  });
+  if (!response.ok) throw await httpError(response);
+  return response;
+};
+
+interface OllamaChunk {
+  message?: {
+    content?: string;
+    thinking?: string;
+    tool_calls?: { id?: string; function?: { name?: string; arguments?: unknown } }[];
+  };
+  done?: boolean;
+  done_reason?: string;
+  prompt_eval_count?: number;
+  eval_count?: number;
+  error?: unknown;
+}
+
+// Ollama's stream is one JSON object a line: text and thinking in pieces, each
+// tool call whole, and the counts on the last line.
+async function* streamOllama(args: Omit<PostChatArgs, "stream">): AsyncGenerator<StreamDelta> {
+  const response = await postOllama(args, true);
+  if (!response.body) throw new Error("The server returned no response body to stream");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const calls: ToolCall[] = [];
+  let buffer = "";
+  let doneReason: string | undefined;
+  let usage: TokenUsage | undefined;
+  function* take(line: string): Generator<StreamDelta> {
+    if (!line.trim()) return;
+    let chunk: OllamaChunk;
+    try {
+      chunk = JSON.parse(line) as OllamaChunk;
+    } catch {
+      return;
+    }
+    if (chunk.error) throw streamedError(chunk.error);
+    if (chunk.message?.thinking) yield { reasoning: chunk.message.thinking };
+    if (chunk.message?.content) yield { content: chunk.message.content };
+    for (const c of chunk.message?.tool_calls ?? []) {
+      if (!c.function?.name) continue;
+      const a = c.function.arguments;
+      calls.push({
+        id: c.id || `call_${calls.length}`,
+        type: "function",
+        function: { name: c.function.name, arguments: typeof a === "string" ? a : JSON.stringify(a ?? {}) },
+      });
+    }
+    if (chunk.done) {
+      doneReason = chunk.done_reason;
+      if (typeof chunk.prompt_eval_count === "number") {
+        usage = { input: chunk.prompt_eval_count, output: chunk.eval_count ?? 0 };
+      }
+    }
+  }
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) yield* take(line);
+    }
+    yield* take(buffer + decoder.decode());
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+  if (calls.length) yield { toolCalls: calls };
+  if (doneReason === "length") yield { truncated: true };
+  if (usage) yield { usage };
+}
 
 export interface StreamDelta {
   content?: string;
@@ -363,9 +597,14 @@ export async function* streamChat({
   tools,
   toolChoice,
   includeUsage,
+  numCtx,
 }: Omit<PostChatArgs, "stream">): AsyncGenerator<StreamDelta> {
   if (isAnthropicUrl(baseUrl)) {
     yield* streamAnthropic({ baseUrl, model, messages, apiKey, signal, tools, toolChoice, includeUsage });
+    return;
+  }
+  if (isOllamaUrl(baseUrl)) {
+    yield* streamOllama({ baseUrl, model, messages, temperature, signal, tools, toolChoice, numCtx });
     return;
   }
   const response = await postChat({
@@ -438,8 +677,16 @@ export const completeChat = async ({
   temperature = 0,
   signal,
   apiKey,
+  numCtx,
 }: Omit<PostChatArgs, "stream">): Promise<string> => {
   if (isAnthropicUrl(baseUrl)) return completeAnthropic({ baseUrl, model, messages, apiKey, signal });
+  if (isOllamaUrl(baseUrl)) {
+    const response = await postOllama({ baseUrl, model, messages, temperature, signal, numCtx }, false);
+    const payload = (await response.json()) as OllamaChunk;
+    if (payload.error) throw streamedError(payload.error);
+    if (typeof payload.message?.content !== "string") throw new Error("The model returned no message content");
+    return payload.message.content;
+  }
   const response = await postChat({ baseUrl, model, messages, temperature, stream: false, signal, apiKey });
   const payload = await response.json();
   const content = payload.choices?.[0]?.message?.content;

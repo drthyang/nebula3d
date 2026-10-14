@@ -19,6 +19,54 @@
   report's own rule (a floor trend and a span both 0.8 or more) is one function
   now, stated as `pedestal_left` and in the headline, where the Q² term's
   question had two numbers to combine.
+- **A local tier for NEBULA Pilot's evals.** `npm run eval:local` takes a
+  local model through the eval scenarios and the held-out fault scenarios,
+  after showing what the shared machine's model servers hold and how much
+  memory is free, then checks the acceptance: at least 80 % of runs pass, no
+  reply reaches the round cap or is ended by the loop guard, and no run ends
+  in an exception; server failures are listed by kind
+  (`web/scripts/eval-acceptance.mjs`).
+
+- **A local model gets fewer tools at a time.** NEBULA Pilot offers a local
+  model the reading tools every question needs and the ones its question is
+  about, and the acting tools (settings, runs, tuning) only when the message
+  asks for an action, not when it asks whether to. A question about the rings
+  sends well under 60 % of the tools' definitions. A tool the model calls by
+  name all the same still runs and stays offered, as does one an answer check
+  asks for; cloud models get every tool.
+
+- **A long NEBULA Pilot reply on a local model keeps its numbers in less
+  room.** Once a request passes about 24k tokens, the reply's older tool
+  results go back to the model shortened to their verdicts, headlines and
+  numbers (the newest three stay whole), so the request stays inside a 32k
+  window with room to reply. A request too long for the window is shortened to
+  its newest result before it is refused. The model can call a shortened tool
+  again for the whole result, and the answer checks read the whole results.
+
+- **NEBULA Pilot does not go round in circles.** A tool call repeated with the
+  same arguments, with nothing changed in between, is not run again: the model
+  is pointed at the result it has. After two rounds in a row that brought
+  nothing new, the model is asked to answer with what it has, and the reply
+  notes it. The evals count such replies, and those that reach the round cap.
+
+- **NEBULA Pilot rides out a failing model server.** A request that fails the
+  way a local server on a shared machine does is asked again after a pause:
+  the model crashed (most often out of memory) or was unloaded, the connection
+  dropped, or the server sent nothing for minutes. What still fails ends the
+  reply with a note that says what happened and what to do, keeping the steps
+  that ran, instead of an error. The evals record such failures by kind, apart
+  from wrong answers.
+
+- **NEBULA Pilot never has its prompt cut to fit a local model.** Ollama is now
+  reached through its own chat API, which takes a context length per request:
+  each request gets a window that holds it and room for the reply, within the
+  model's longest, and a model another app already runs with a window that
+  holds the request keeps it, so it is not reloaded under that app. Before,
+  Ollama ran the OpenAI-style endpoint at a length set
+  by the machine's memory, 4k on a small machine, and dropped the start of a
+  longer conversation without a word. A request longer than any window the
+  model supports, or than the one LM Studio loaded it with, is not sent: the
+  reply says how to fix it.
 
 - **The 3D-ΔPDF refuses a grid without Q = 0 on its centre voxel.** The
   transform takes index n // 2 of each axis as Q = 0. On an even grid with a

@@ -141,6 +141,36 @@ the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
   Run each volume once with the default settings. Then `cd web &&
   NEBULA_EVAL_PROBE_HELDOUT=1 NEBULA_EVAL_API=<that server> npx vitest run
   src/llm/evals/heldoutProbe.test.ts` records its fixture.
+- **The local tier** (`cd web && npm run eval:local -- <base-url> <model>
+  <label>`, `web/scripts/eval-local.sh`): one local model through the
+  scenarios and the held-out fault scenarios, three runs each, each set on its
+  own backend (`NEBULA_EVAL_API`, `NEBULA_EVAL_HELDOUT_API`), then the
+  acceptance (`web/scripts/eval-acceptance.mjs`):
+  - at least 80 % of the model's runs pass;
+  - no reply reaches the round cap, and the loop guard ends none;
+  - no run ends in an exception. A run the model server failed after its
+    retries (a crash, out of memory, a stall) ends in a note instead, and is
+    listed by kind.
+
+  The models are qwen3.8-27b in LM Studio, loaded at a 32,768-token context,
+  and gemma4:26b in Ollama. The Mac is shared: the script first shows what the
+  model servers hold and how much memory is free, stops below 15 %, and never
+  unloads a model. Before the local-model work, on the nine scenarios of the
+  time: qwen3.8-27b passed 12/27 runs with 15 exceptions, qwen3:32b 17/27 and
+  gemma4:26b 15/27 (below).
+
+  The full records, with every tool call, result and answer, stay on the
+  machine (`web/.eval-runs/<date>/`, ignored by git): on the measured volume
+  they hold figures from unpublished data. Their summaries go to
+  [`docs/evals/local/<date>/`](evals/local/): per run, whether it passed, the
+  names of the checks it failed, how the model server failed it if it did,
+  whether it ended in an exception, at the round cap or by the loop guard, and
+  its time and tokens (`web/scripts/eval-records.mjs`). The 10 October runs
+  are there as the baseline, and the before/after report reads the folders:
+
+  ```bash
+  cd web && node scripts/eval-report.mjs --before ../docs/evals/local/2026-10-10/*.json --after ../docs/evals/local/<date>/*.json
+  ```
 - **Tables:** `node web/scripts/eval-table.mjs` with the five records, not the
   `-pilot` one: `docs/evals/results/{claude-sonnet-5-5,claude-haiku-5-5,ollama-gemma4-26b,ollama-qwen3-32b,lmstudio-qwen3.8-27b}.json`.
 - **Re-recording the measured set's fixture:** `cd web && NEBULA_EVAL_PROBE=1 npx vitest run src/llm/evals/probe.test.ts`.

@@ -1,7 +1,12 @@
 // One assistant reply as an agent loop: stream the model's answer; when it calls
 // tools, run them here in the browser, send the results back, and let it carry
 // on — within a budget — until it answers in plain text.  A model or server
-// that cannot call tools gets the same request without them.
+// that cannot call tools gets the same request without them.  Each request is
+// first held to the model's context window (provider/window.ts): a local
+// server would cut a longer one without saying so.  A request that fails the
+// way a local server's do, a crash, a model unloaded, a server gone quiet, is
+// asked again after a pause; what still fails ends the reply with a note that
+// says what to do (recovery.ts).
 
 import {
   isMalformedOutput,
@@ -12,6 +17,12 @@ import {
   type ToolCall,
 } from "./provider/client";
 import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
+import { compactResult, isCompacted } from "./compact";
+import { lastQuestion, toolsFor } from "./localTools";
+import { isLocalUrl } from "./provider/presets";
+import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
+import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
+import { planWindow } from "./provider/window";
 import type { LlmSettings } from "./settings";
 import { runToolCall, toolSpecs, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
 import { openView } from "./tools/openView";
@@ -35,6 +46,9 @@ export interface AgentProgress {
 
 export interface AgentResult extends AgentProgress {
   note?: string;
+  // Set when the model server failed the reply after its retries; the note
+  // explains it, and the steps and text before it stay.
+  failure?: Failure;
   // With `usage`: the reply's token counts over all its requests, when the
   // server reported them (null when it did not).
   usage?: (TokenUsage & { requests: number }) | null;
@@ -61,6 +75,41 @@ export const CUT_OFF_NOTE =
 // is sent again, at most this many times in one reply.
 export const MALFORMED_RETRIES = 2;
 
+// A server that sends nothing for this long is taken as stuck: before the first
+// piece of a reply (loading the model and reading a long prompt on a busy
+// machine can take minutes), and between pieces.
+export const STALL_MS = { first: 300_000, idle: 120_000 };
+
+// Retries for failures a moment may cure, over the whole reply.
+export const MAX_RECOVERIES = 4;
+
+// A call repeated with the same arguments, with nothing changed in between,
+// is not run again: the model is pointed at the earlier result. After this
+// many rounds in a row that brought nothing new (only repeats and errors),
+// the model is asked to answer with what it has.
+export const BARREN_ROUNDS = 2;
+export const LOOP_NOTE = "The model repeated calls that brought nothing new, so it was asked to answer with what it had.";
+const ANSWER_NOW = "The tool calls are bringing nothing new. Answer now from the results above, without calling more tools.";
+
+// A local model's request past this many tokens has its older tool results
+// shortened to their readings and numbers (compact.ts), the newest KEEP_FULL
+// left whole: it keeps the request inside a 32k window with room to reply, and
+// fast. A request no window can hold is shortened down to the newest result
+// before it is refused.
+export const SOFT_BUDGET = 24_000;
+export const KEEP_FULL = 3;
+
+// Calls after which the same reading may differ: they change the settings, the
+// files on disk, or what the console shows.
+const CHANGES_STATE = new Set(["update_settings", "run_pipeline", "tune_pipeline", "show_in_viewer"]);
+
+const canonical = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(canonical)
+    : v && typeof v === "object"
+      ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical((v as Record<string, unknown>)[k])]))
+      : v;
+
 // A final answer that fails its checks (answerChecks.ts: a verdict without its
 // tool, a number from nowhere, a stage called clean that the tools judged to
 // need attention) goes back to the model this many times; what still fails is
@@ -70,11 +119,11 @@ export const REVISING_NOTE = "Checking the answer against its evidence…";
 
 // What an answer's numbers may come from: the conversation as it arrived (the
 // system prompt, the context, the user's words), the tool results of this reply
-// and of earlier turns, and the tools' own guidance. No assistant text: an
-// earlier answer's number from nowhere would otherwise vouch for the next
-// answer, and this reply's drafts, and the notes sent back about them, for
-// themselves.
-function numberSources(convo: ChatMessage[], arrived: number, tools: AgentTool[], earlier: readonly string[]): string {
+// (whole, though the model may read them shortened) and of earlier turns, and
+// the tools' own guidance. No assistant text: an earlier answer's number from
+// nowhere would otherwise vouch for the next answer, and this reply's drafts,
+// and the notes sent back about them, for themselves.
+function numberSources(convo: ChatMessage[], arrived: number, results: readonly string[], tools: AgentTool[], earlier: readonly string[]): string {
   const text = (m: ChatMessage): string =>
     typeof m.content === "string"
       ? m.content
@@ -83,7 +132,7 @@ function numberSources(convo: ChatMessage[], arrived: number, tools: AgentTool[]
         : "";
   return [
     ...convo.slice(0, arrived).filter((m) => m.role !== "assistant").map(text),
-    ...convo.slice(arrived).filter((m) => m.role === "tool").map(text),
+    ...results,
     ...earlier,
     ...tools.map((t) => t.description),
   ].join("\n");
@@ -120,6 +169,9 @@ const startArgs = (call: ToolCall): Record<string, unknown> => {
   }
 };
 
+// One call, whatever order its arguments were written in.
+const callKey = (call: ToolCall): string => `${call.function.name}|${JSON.stringify(canonical(startArgs(call)))}`;
+
 export async function runAgent({
   messages,
   tools,
@@ -130,6 +182,9 @@ export async function runAgent({
   maxRounds = MAX_TOOL_ROUNDS,
   usage: wantUsage = false,
   checkAnswers = true,
+  stallMs = STALL_MS,
+  retryDelaysMs = RETRY_DELAYS_MS,
+  softBudget = SOFT_BUDGET,
 }: {
   messages: ChatMessage[];
   tools: AgentTool[];
@@ -140,6 +195,9 @@ export async function runAgent({
   maxRounds?: number;
   usage?: boolean; // count the reply's tokens (the evals)
   checkAnswers?: boolean; // hold a final answer to its evidence (answerChecks.ts); on whenever tools are
+  stallMs?: { first: number; idle: number }; // the watchdog's limits (tests shorten them)
+  retryDelaysMs?: number[]; // the pauses before each retry
+  softBudget?: number; // a local request's tokens past which older results are shortened
 }): Promise<AgentResult> {
   const convo = [...messages];
   const arrived = convo.length;
@@ -164,6 +222,38 @@ export async function runAgent({
   };
 
   let retries = 0;
+  let attempts = 0; // retries of the current request
+  let recoveries = 0; // retries over the reply
+  let failure: Failure | undefined;
+  // The calls that ran since the state last changed, by key → their step number.
+  const called = new Map<string, number>();
+  // This reply's tool results in the conversation, oldest first: where each
+  // sits and which call made it.
+  const results: { index: number; key: string }[] = [];
+  // Shorten all but the newest `keep` results; a shortened call may run again.
+  const compactOlder = (keep: number): boolean => {
+    let changed = false;
+    for (const r of results.slice(0, Math.max(0, results.length - keep))) {
+      const m = convo[r.index];
+      if (typeof m.content !== "string" || isCompacted(m.content)) continue;
+      const short = compactResult(m.content);
+      if (short === m.content) continue;
+      convo[r.index] = { ...m, content: short };
+      called.delete(r.key);
+      changed = true;
+    }
+    return changed;
+  };
+  const windowKey = `${settings.baseUrl}|${settings.model}`;
+  // A local model is offered the reading tools and those its question is
+  // about (localTools.ts); one it calls by name all the same runs, and joins.
+  let offered = isLocalUrl(settings.baseUrl) ? toolsFor(lastQuestion(messages), tools) : tools;
+  const offer = (name: string) => {
+    const tool = tools.find((t) => t.name === name);
+    if (tool && !offered.includes(tool)) offered = tools.filter((t) => offered.includes(t) || t === tool);
+  };
+  let barren = 0; // rounds in a row that brought nothing new
+  let answerNow = false; // asked to answer without calling more tools
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 }; // over the requests that reported them
   let requests = 0;
   for (let round = 0; ; round++) {
@@ -173,19 +263,51 @@ export async function runAgent({
     let native: unknown;
     let cutOff = false;
     const reasoningBefore = reasoning;
+    const specs = useTools ? toolSpecs(offered) : undefined;
+    if (isLocalUrl(settings.baseUrl) && estimateTokens(baseTokens(convo, specs), windowKey) > softBudget) compactOlder(KEEP_FULL);
+    // The request's own controller: the reply's Stop ends it, and so does the
+    // watchdog when the server goes quiet.
+    const request = new AbortController();
+    const stopRequest = () => request.abort();
+    signal.addEventListener("abort", stopRequest, { once: true });
+    let stalled = false;
+    let heard = false; // a piece of the reply arrived
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const watch = (ms: number) => {
+      clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        stalled = true;
+        request.abort();
+      }, ms);
+    };
+    watch(stallMs.first);
     try {
+      // A request the model's window cannot hold is shortened to its newest
+      // result, and if that is not enough, not sent: the reply says why.
+      const planned = () => planWindow({ baseUrl: settings.baseUrl, model: settings.model, messages: convo, tools: specs, signal: request.signal });
+      let plan = await planned();
+      if (plan.refusal && compactOlder(1)) plan = await planned();
+      if (plan.refusal) {
+        note = note ? `${note} ${plan.refusal}` : plan.refusal;
+        break;
+      }
       for await (const delta of streamChat({
         baseUrl: settings.baseUrl,
         model: settings.model,
         messages: convo,
         temperature: settings.temperature,
         apiKey: settings.apiKey || undefined,
-        signal,
-        tools: useTools ? toolSpecs(tools) : undefined,
-        toolChoice: useTools && last ? "none" : undefined,
-        includeUsage: wantUsage,
+        signal: request.signal,
+        tools: specs,
+        toolChoice: useTools && (last || answerNow) ? "none" : undefined,
+        // A local server's counts calibrate the token estimate.
+        includeUsage: wantUsage || isLocalUrl(settings.baseUrl),
+        numCtx: plan.numCtx,
       })) {
+        heard = true;
+        watch(stallMs.idle);
         if (delta.usage) {
+          observeTokens(plan.key, plan.base, delta.usage.input);
           tokens.input += delta.usage.input;
           tokens.output += delta.usage.output;
           tokens.cacheRead += delta.usage.cacheRead ?? 0;
@@ -200,7 +322,9 @@ export async function runAgent({
         emit(roundText);
       }
       requests += 1;
+      attempts = 0;
     } catch (e) {
+      if (signal.aborted) throw e; // the reply was stopped
       if (useTools && round === 0 && !roundText && isToolsUnsupported(e)) {
         noTools.add(`${settings.baseUrl}|${settings.model}`);
         useTools = false;
@@ -208,14 +332,34 @@ export async function runAgent({
         round = -1; // the same request again, without tools
         continue;
       }
-      if (isMalformedOutput(e) && retries < MALFORMED_RETRIES && !signal.aborted) {
+      if (isMalformedOutput(e) && retries < MALFORMED_RETRIES) {
         retries += 1;
         reasoning = reasoningBefore; // the failed attempt's thinking goes with it
         round -= 1; // the same request again
         emit();
         continue;
       }
-      throw e;
+      const kind = classifyFailure(e, stalled);
+      if (attempts < (RETRIES[kind] ?? 0) && recoveries < MAX_RECOVERIES) {
+        await pause(retryDelaysMs[Math.min(attempts, retryDelaysMs.length - 1)] ?? 0, signal);
+        attempts += 1;
+        recoveries += 1;
+        reasoning = reasoningBefore;
+        round -= 1; // the same request again
+        emit();
+        continue;
+      }
+      // What still fails ends the reply, with what was written and what ran.
+      const message = stalled
+        ? new StallError(Math.round((heard ? stallMs.idle : stallMs.first) / 1000)).message
+        : ((e as Error)?.message ?? String(e));
+      failure = { kind, message, attempts: attempts + 1 };
+      content = joinText(content, roundText);
+      note = note ? `${note} ${explainFailure(failure, steps.length > 0)}` : explainFailure(failure, steps.length > 0);
+      break;
+    } finally {
+      clearTimeout(watchdog);
+      signal.removeEventListener("abort", stopRequest);
     }
     const before = content;
     content = joinText(content, roundText);
@@ -230,13 +374,15 @@ export async function runAgent({
       // revision that wrote nothing leaves the answer it revised.
       const answer = roundText.trim() ? roundText : rejected;
       const checked = steps.map((st) => (fullResults.has(st.id) ? { ...st, result: fullResults.get(st.id) } : st));
-      const sources = numberSources(convo, arrived, tools, ctx?.earlierResults ?? []);
+      const sources = numberSources(convo, arrived, checked.map((st) => st.result ?? ""), tools, ctx?.earlierResults ?? []);
       const issues = useTools && checkAnswers ? answerIssues(answer, checked, sources) : null;
       if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
         revisions += 1;
         rejected = roundText;
         content = before;
         convo.push({ role: "assistant", content: roundText });
+        // The tools the fix asks for are offered.
+        for (const t of issues.missing) tools.forEach((tool) => t.evidence.includes(tool.name) && offer(tool.name));
         convo.push({ role: "user", content: issuesPrompt(issues) });
         emit(`_${REVISING_NOTE}_`);
         continue;
@@ -249,11 +395,25 @@ export async function runAgent({
       note = `Stopped after ${maxRounds} rounds of tool calls; the answer uses what was gathered so far.`;
       break;
     }
+    if (answerNow) break; // asked to answer, it called again: what it has stands
 
     convo.push({ role: "assistant", content: roundText, tool_calls: calls.map(replayable), ...(native ? { native } : {}) });
+    let fresh = 0; // calls this round that brought a new result
     for (const call of calls) {
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
       const id = `${steps.length}:${call.id}`; // servers may reuse call ids across rounds
+      const key = callKey(call);
+      const earlier = called.get(key);
+      if (earlier !== undefined) {
+        // The same reading again: point the model at the one it has.
+        const text = JSON.stringify({
+          already_called: `Called with these arguments earlier in this reply (step ${earlier}); its result is above. Use it, or call with other arguments.`,
+        });
+        steps = [...steps, { id, name: call.function.name, args: startArgs(call), status: "done", summary: `same call as step ${earlier}: not run again`, result: text }];
+        emit();
+        convo.push({ role: "tool", tool_call_id: call.id, content: text });
+        continue;
+      }
       steps = [...steps, { id, name: call.function.name, args: startArgs(call), status: "running" }];
       emit();
       const run = await runToolCall(call, tools, toolCtx!, {
@@ -269,13 +429,26 @@ export async function runAgent({
         view: run.view,
       });
       if (run.full) fullResults.set(id, run.full);
+      if (run.ok) {
+        offer(call.function.name);
+        fresh += 1;
+        if (CHANGES_STATE.has(call.function.name)) called.clear();
+        else called.set(key, steps.length);
+      }
       // The console follows what the model looked at, step by step.
       if (run.ok && run.view && settings.followViews) openView(run.view);
+      results.push({ index: convo.length, key });
       convo.push({ role: "tool", tool_call_id: call.id, content: run.text });
+    }
+    barren = fresh ? 0 : barren + 1;
+    if (barren >= BARREN_ROUNDS && !answerNow) {
+      answerNow = true;
+      note = note ? `${note} ${LOOP_NOTE}` : LOOP_NOTE;
+      convo.push({ role: "user", content: ANSWER_NOW });
     }
   }
 
   // A server that reported some requests' counts but not all leaves the total unknown.
   const usage = wantUsage ? (tokens.requests > 0 && tokens.requests === requests ? tokens : null) : undefined;
-  return { content, reasoning, steps, note, ...(wantUsage ? { usage } : {}) };
+  return { content, reasoning, steps, note, ...(failure ? { failure } : {}), ...(wantUsage ? { usage } : {}) };
 }
