@@ -55,7 +55,7 @@ import { qRadius } from "../context/pipelineContext";
 import type { ToolCall, ToolSpec } from "../provider/client";
 import { openView, type ViewTarget } from "./openView";
 import { allSkills, readSkill, REFERENCE_MAX_CHARS, unreadSkillRefusal } from "../skills";
-import { stageCheck, VERDICT_LABEL } from "../report/report";
+import { NOT_DECLARED, stageCheck, VERDICT_LABEL } from "../report/report";
 
 export type { ViewTarget } from "./openView";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
@@ -911,7 +911,7 @@ const sameNumbers = (a: StageEvaluation | undefined, b: StageEvaluation | undefi
 const symmetryCheck: AgentTool = {
   name: "symmetry_check",
   description:
-    "Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell: an x–y section (default z = 0) compared with its image under each in-plane operation (hexagonal: six-, three-, two-fold and the a ↔ b mirror; orthogonal: the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b), as the RMS of the difference over the section's RMS. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it; a larger share means a stage broke it, or the sample lacks that operation. Which operations the sample has is the user's to say.",
+    "Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell, when the file declares that its data were symmetrised (with none declared the asymmetry is the data's own and is not judged): an x–y section (default z = 0) compared with its image under each in-plane operation (hexagonal: six-, three-, two-fold and the a ↔ b mirror; orthogonal: the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b), as the RMS of the difference over the section's RMS. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it; a larger share means a stage broke it, or the sample lacks that operation. Which operations the sample has is the user's to say.",
   parameters: {
     type: "object",
     properties: { z: { type: "number", description: "Height of the x–y section along c, in Å (default 0)" } },
@@ -920,6 +920,10 @@ const symmetryCheck: AgentTool = {
     const z = args.z === undefined ? 0 : num(args, "z");
     const meta = await dpdfMeta(dataset);
     const slice = await fetchDpdfSlice(dpdfVolumeId(dataset)!, "xy", z);
+    // The point group the raw file declares its data were symmetrised with; none read: not known.
+    const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset);
+    const rawMeta = rawId ? await safe(fetchMeta(rawId)) : null;
+    const declared = rawMeta ? rawMeta.symmetry ?? null : undefined;
     const { a, b } = meta.lattice ?? {};
     const sym = a && b ? sectionSymmetry(slice, { a, b }) : null;
     if (!sym) {
@@ -936,11 +940,20 @@ const symmetryCheck: AgentTool = {
         cell: sym.kind,
         ops: sym.ops,
         holds,
-        verdict: broken.length
-          ? `not kept: ${broken.join(", ")}; a symmetry the data were symmetrised with should hold to ~${SYMMETRY_HOLDS} or better`
-          : `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better`,
+        symmetry_declared: declared === undefined ? null : Boolean(declared),
+        verdict:
+          declared === null || declared === ""
+            ? NOT_DECLARED(Math.max(...sym.ops.map((o) => o.rms_difference)))
+            : broken.length
+              ? `not kept: ${broken.join(", ")}; a symmetry the data were symmetrised with should hold to ~${SYMMETRY_HOLDS} or better`
+              : `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better`,
       },
-      summary: broken.length ? `not kept: ${broken.join(", ")}` : "every in-plane operation holds",
+      summary:
+        declared === null || declared === ""
+          ? "no symmetry declared: not judged"
+          : broken.length
+            ? `not kept: ${broken.join(", ")}`
+            : "every in-plane operation holds",
       view: dpdfView(meta, "xy", z),
     };
   },

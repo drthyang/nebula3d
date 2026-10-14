@@ -80,7 +80,10 @@ volumes with injected faults (a turned UB, a shifted origin, cut coverage,
 powder rings). CI replays every scenario with a scripted model; real models
 run it live, and a local tier holds a local model to an acceptance (at least
 80 % of runs passing, no loops, no exceptions). The scenarios, the commands
-and the results per model are in [evals.md](evals.md).
+and the results per model are in [evals.md](evals.md), which also holds the
+validation on synthetic cases with a planted truth (the Pilot against the
+default pipeline, with and without its skills).
+[pilot-review.md](pilot-review.md) reviews each tool and skill.
 
 ## What its reviews found
 

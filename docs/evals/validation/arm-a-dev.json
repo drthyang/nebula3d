@@ -1,0 +1,2987 @@
+{
+ "split": "dev",
+ "n": 161,
+ "runs": 3,
+ "cases": [
+  {
+   "case": "dev-control",
+   "family": "control",
+   "split": "dev",
+   "arm": "A",
+   "notes": {
+    "resolved": [
+     true,
+     true
+    ]
+   },
+   "runs": [
+    {
+     "run": 1,
+     "score": {
+      "case": "dev-control",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1493,
+        "amplitude_ratio_range": [
+         1.1332,
+         1.1724
+        ],
+        "position_error_A": 0.0123,
+        "truth_vs_planted_A": 0.0154,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9388,
+        "amplitude_ratio_range": [
+         0.9378,
+         0.9391
+        ],
+        "position_error_A": 0.0024,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": null,
+      "dpdf_rms_error": 0.1215,
+      "pedestal_span": 0.0247,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": null,
+      "false_alarms": [],
+      "evidence": "no fault to find"
+     },
+     "unsafe_actions": 0,
+     "digest": "d8a41bdbdaf77edb",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08552 = 2.309 intensity, 2.309 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 188 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 188 peaks; punched 27,063 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1437 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98901, normalised RMS=1.253e-01"
+     ]
+    },
+    {
+     "run": 2,
+     "score": {
+      "case": "dev-control",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1493,
+        "amplitude_ratio_range": [
+         1.1332,
+         1.1724
+        ],
+        "position_error_A": 0.0123,
+        "truth_vs_planted_A": 0.0154,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9388,
+        "amplitude_ratio_range": [
+         0.9378,
+         0.9391
+        ],
+        "position_error_A": 0.0024,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": null,
+      "dpdf_rms_error": 0.1215,
+      "pedestal_span": 0.0247,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": null,
+      "false_alarms": [],
+      "evidence": "no fault to find"
+     },
+     "unsafe_actions": 0,
+     "digest": "d8a41bdbdaf77edb",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08552 = 2.309 intensity, 2.309 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 188 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 188 peaks; punched 27,063 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1437 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98901, normalised RMS=1.253e-01"
+     ]
+    },
+    {
+     "run": 3,
+     "score": {
+      "case": "dev-control",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1493,
+        "amplitude_ratio_range": [
+         1.1332,
+         1.1724
+        ],
+        "position_error_A": 0.0123,
+        "truth_vs_planted_A": 0.0154,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9388,
+        "amplitude_ratio_range": [
+         0.9378,
+         0.9391
+        ],
+        "position_error_A": 0.0024,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": null,
+      "dpdf_rms_error": 0.1215,
+      "pedestal_span": 0.0247,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": null,
+      "false_alarms": [],
+      "evidence": "no fault to find"
+     },
+     "unsafe_actions": 0,
+     "digest": "d8a41bdbdaf77edb",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08552 = 2.309 intensity, 2.309 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 188 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 188 peaks; punched 27,063 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1437 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98901, normalised RMS=1.253e-01"
+     ]
+    }
+   ],
+   "reproducible": true,
+   "pass": true,
+   "summary": {
+    "case": "dev-control",
+    "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+    "features": [
+     {
+      "vector": [
+       0.5,
+       1.0,
+       1.0
+      ],
+      "sign": "−",
+      "distance_A": 5.85,
+      "vectors": 12,
+      "amplitude_ratio": 1.1493,
+      "amplitude_ratio_range": [
+       1.1332,
+       1.1724
+      ],
+      "position_error_A": 0.0123,
+      "truth_vs_planted_A": 0.0154,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     },
+     {
+      "vector": [
+       1.5,
+       0.0,
+       0.0
+      ],
+      "sign": "+",
+      "distance_A": 5.85,
+      "vectors": 3,
+      "amplitude_ratio": 0.9388,
+      "amplitude_ratio_range": [
+       0.9378,
+       0.9391
+      ],
+      "position_error_A": 0.0024,
+      "truth_vs_planted_A": 0.0093,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     }
+    ],
+    "window_open_weight": null,
+    "dpdf_rms_error": 0.1215,
+    "pedestal_span": 0.0247,
+    "pedestal_q": [
+     3.5,
+     6.24
+    ],
+    "criteria": {
+     "features": true,
+     "window": true,
+     "pedestal": true
+    },
+    "pass": true
+   },
+   "detection": {
+    "detected": null,
+    "false_alarms": [],
+    "evidence": "no fault to find"
+   }
+  },
+  {
+   "case": "dev-ub",
+   "family": "ub",
+   "split": "dev",
+   "arm": "A",
+   "notes": {
+    "resolved": [
+     true,
+     true
+    ]
+   },
+   "runs": [
+    {
+     "run": 1,
+     "score": {
+      "case": "dev-ub",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1559,
+        "amplitude_ratio_range": [
+         1.146,
+         1.1786
+        ],
+        "position_error_A": 0.0404,
+        "truth_vs_planted_A": 0.0162,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9087,
+        "amplitude_ratio_range": [
+         0.9044,
+         0.909
+        ],
+        "position_error_A": 0.0347,
+        "truth_vs_planted_A": 0.0092,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.00015014643178743367,
+      "dpdf_rms_error": 0.1569,
+      "pedestal_span": 0.0256,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": false,
+      "false_alarms": [],
+      "evidence": "the run's log and records do not mention it"
+     },
+     "unsafe_actions": 0,
+     "digest": "92a21e8e52bd0b7e",
+     "log": [
+      "rings progress: trimmed 79,416 voxels at the edge of the measured coverage (edge_trim=1)",
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 169 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08656 = 2.337 intensity, 2.337 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 169 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 169 peaks; punched 24,666 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 157,188 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1443 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.99647, normalised RMS=7.097e-02"
+     ]
+    },
+    {
+     "run": 2,
+     "score": {
+      "case": "dev-ub",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1559,
+        "amplitude_ratio_range": [
+         1.146,
+         1.1786
+        ],
+        "position_error_A": 0.0404,
+        "truth_vs_planted_A": 0.0162,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9087,
+        "amplitude_ratio_range": [
+         0.9044,
+         0.909
+        ],
+        "position_error_A": 0.0347,
+        "truth_vs_planted_A": 0.0092,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.00015014643178743367,
+      "dpdf_rms_error": 0.1569,
+      "pedestal_span": 0.0256,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": false,
+      "false_alarms": [],
+      "evidence": "the run's log and records do not mention it"
+     },
+     "unsafe_actions": 0,
+     "digest": "92a21e8e52bd0b7e",
+     "log": [
+      "rings progress: trimmed 79,416 voxels at the edge of the measured coverage (edge_trim=1)",
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 169 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08656 = 2.337 intensity, 2.337 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 169 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 169 peaks; punched 24,666 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 157,188 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1443 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.99647, normalised RMS=7.097e-02"
+     ]
+    },
+    {
+     "run": 3,
+     "score": {
+      "case": "dev-ub",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1559,
+        "amplitude_ratio_range": [
+         1.146,
+         1.1786
+        ],
+        "position_error_A": 0.0404,
+        "truth_vs_planted_A": 0.0162,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9087,
+        "amplitude_ratio_range": [
+         0.9044,
+         0.909
+        ],
+        "position_error_A": 0.0347,
+        "truth_vs_planted_A": 0.0092,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.00015014643178743367,
+      "dpdf_rms_error": 0.1569,
+      "pedestal_span": 0.0256,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": false,
+      "false_alarms": [],
+      "evidence": "the run's log and records do not mention it"
+     },
+     "unsafe_actions": 0,
+     "digest": "92a21e8e52bd0b7e",
+     "log": [
+      "rings progress: trimmed 79,416 voxels at the edge of the measured coverage (edge_trim=1)",
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 169 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08656 = 2.337 intensity, 2.337 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 169 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 169 peaks; punched 24,666 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 157,188 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1443 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.99647, normalised RMS=7.097e-02"
+     ]
+    }
+   ],
+   "reproducible": true,
+   "pass": false,
+   "summary": {
+    "case": "dev-ub",
+    "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+    "features": [
+     {
+      "vector": [
+       0.5,
+       1.0,
+       1.0
+      ],
+      "sign": "−",
+      "distance_A": 5.85,
+      "vectors": 12,
+      "amplitude_ratio": 1.1559,
+      "amplitude_ratio_range": [
+       1.146,
+       1.1786
+      ],
+      "position_error_A": 0.0404,
+      "truth_vs_planted_A": 0.0162,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     },
+     {
+      "vector": [
+       1.5,
+       0.0,
+       0.0
+      ],
+      "sign": "+",
+      "distance_A": 5.85,
+      "vectors": 3,
+      "amplitude_ratio": 0.9087,
+      "amplitude_ratio_range": [
+       0.9044,
+       0.909
+      ],
+      "position_error_A": 0.0347,
+      "truth_vs_planted_A": 0.0092,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     }
+    ],
+    "window_open_weight": 0.00015014643178743367,
+    "dpdf_rms_error": 0.1569,
+    "pedestal_span": 0.0256,
+    "pedestal_q": [
+     3.5,
+     6.24
+    ],
+    "criteria": {
+     "features": true,
+     "window": true,
+     "pedestal": true
+    },
+    "pass": true
+   },
+   "detection": {
+    "detected": false,
+    "false_alarms": [],
+    "evidence": "the run's log and records do not mention it"
+   }
+  },
+  {
+   "case": "dev-origin",
+   "family": "origin",
+   "split": "dev",
+   "arm": "A",
+   "notes": {
+    "resolved": [
+     true,
+     true
+    ]
+   },
+   "runs": [
+    {
+     "run": 1,
+     "score": {
+      "case": "dev-origin",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.0937,
+        "amplitude_ratio_range": [
+         1.0611,
+         1.116
+        ],
+        "position_error_A": 0.0118,
+        "truth_vs_planted_A": 0.0157,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9069,
+        "amplitude_ratio_range": [
+         0.8739,
+         0.9539
+        ],
+        "position_error_A": 0.0035,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 9.827301528275553e-05,
+      "dpdf_rms_error": 0.1722,
+      "pedestal_span": 0.0282,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": false,
+      "false_alarms": [],
+      "evidence": "the run's log and records do not mention it"
+     },
+     "unsafe_actions": 0,
+     "digest": "e581e3aee6725c1d",
+     "log": [
+      "rings progress: trimmed 51,359 voxels at the edge of the measured coverage (edge_trim=1)",
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 159/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 185 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08557 = 2.31 intensity, 2.31 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 185 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 185 peaks; punched 26,815 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 103,040 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1444 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98290, normalised RMS=1.557e-01"
+     ]
+    },
+    {
+     "run": 2,
+     "score": {
+      "case": "dev-origin",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.0937,
+        "amplitude_ratio_range": [
+         1.0611,
+         1.116
+        ],
+        "position_error_A": 0.0118,
+        "truth_vs_planted_A": 0.0157,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9069,
+        "amplitude_ratio_range": [
+         0.8739,
+         0.9539
+        ],
+        "position_error_A": 0.0035,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 9.827301528275553e-05,
+      "dpdf_rms_error": 0.1722,
+      "pedestal_span": 0.0282,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": false,
+      "false_alarms": [],
+      "evidence": "the run's log and records do not mention it"
+     },
+     "unsafe_actions": 0,
+     "digest": "e581e3aee6725c1d",
+     "log": [
+      "rings progress: trimmed 51,359 voxels at the edge of the measured coverage (edge_trim=1)",
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 159/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 185 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08557 = 2.31 intensity, 2.31 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 185 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 185 peaks; punched 26,815 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 103,040 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1444 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98290, normalised RMS=1.557e-01"
+     ]
+    },
+    {
+     "run": 3,
+     "score": {
+      "case": "dev-origin",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.0937,
+        "amplitude_ratio_range": [
+         1.0611,
+         1.116
+        ],
+        "position_error_A": 0.0118,
+        "truth_vs_planted_A": 0.0157,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9069,
+        "amplitude_ratio_range": [
+         0.8739,
+         0.9539
+        ],
+        "position_error_A": 0.0035,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 9.827301528275553e-05,
+      "dpdf_rms_error": 0.1722,
+      "pedestal_span": 0.0282,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": false,
+      "false_alarms": [],
+      "evidence": "the run's log and records do not mention it"
+     },
+     "unsafe_actions": 0,
+     "digest": "e581e3aee6725c1d",
+     "log": [
+      "rings progress: trimmed 51,359 voxels at the edge of the measured coverage (edge_trim=1)",
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 159/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 185 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08557 = 2.31 intensity, 2.31 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 185 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 185 peaks; punched 26,815 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 103,040 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1444 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98290, normalised RMS=1.557e-01"
+     ]
+    }
+   ],
+   "reproducible": true,
+   "pass": false,
+   "summary": {
+    "case": "dev-origin",
+    "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+    "features": [
+     {
+      "vector": [
+       0.5,
+       1.0,
+       1.0
+      ],
+      "sign": "−",
+      "distance_A": 5.85,
+      "vectors": 12,
+      "amplitude_ratio": 1.0937,
+      "amplitude_ratio_range": [
+       1.0611,
+       1.116
+      ],
+      "position_error_A": 0.0118,
+      "truth_vs_planted_A": 0.0157,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     },
+     {
+      "vector": [
+       1.5,
+       0.0,
+       0.0
+      ],
+      "sign": "+",
+      "distance_A": 5.85,
+      "vectors": 3,
+      "amplitude_ratio": 0.9069,
+      "amplitude_ratio_range": [
+       0.8739,
+       0.9539
+      ],
+      "position_error_A": 0.0035,
+      "truth_vs_planted_A": 0.0093,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     }
+    ],
+    "window_open_weight": 9.827301528275553e-05,
+    "dpdf_rms_error": 0.1722,
+    "pedestal_span": 0.0282,
+    "pedestal_q": [
+     3.5,
+     6.24
+    ],
+    "criteria": {
+     "features": true,
+     "window": true,
+     "pedestal": true
+    },
+    "pass": true
+   },
+   "detection": {
+    "detected": false,
+    "false_alarms": [],
+    "evidence": "the run's log and records do not mention it"
+   }
+  },
+  {
+   "case": "dev-coverage",
+   "family": "coverage",
+   "split": "dev",
+   "arm": "A",
+   "notes": {
+    "q_cut": 4.511,
+    "resolved": [
+     false,
+     true
+    ]
+   },
+   "runs": [
+    {
+     "run": 1,
+     "score": {
+      "case": "dev-coverage",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 2.22,
+        "amplitude_ratio_range": [
+         2.1939,
+         2.2402
+        ],
+        "position_error_A": 0.4907,
+        "truth_vs_planted_A": 0.4645,
+        "voxel_A": 0.4815,
+        "judged": false,
+        "pass": null
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 1.0117,
+        "amplitude_ratio_range": [
+         1.0091,
+         1.0124
+        ],
+        "position_error_A": 0.0022,
+        "truth_vs_planted_A": 0.093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.0009820561475803523,
+      "dpdf_rms_error": 0.117,
+      "pedestal_span": 0.0153,
+      "pedestal_q": [
+       3.5,
+       4.16
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "the log says: 'unmeasured voxels reach the edge of the box'"
+     },
+     "unsafe_actions": 0,
+     "digest": "5a53165f0badd537",
+     "log": [
+      "rings progress: trimmed 57,725 voxels at the edge of the measured coverage (edge_trim=1)",
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 18 not (the crystal's own scattering, kept) (of 109/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 15 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.1084 = 2.926 intensity, 2.926 prominence: 0 peaks",
+      "punch progress: own-width punch: 14 of 15 peaks punched to their own measured width, the rest to the ellipsoid",
+      "punch done: detected 15 peaks; punched 889 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 3,495,710 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1672 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.99190, normalised RMS=1.105e-01"
+     ]
+    },
+    {
+     "run": 2,
+     "score": {
+      "case": "dev-coverage",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 2.22,
+        "amplitude_ratio_range": [
+         2.1939,
+         2.2402
+        ],
+        "position_error_A": 0.4907,
+        "truth_vs_planted_A": 0.4645,
+        "voxel_A": 0.4815,
+        "judged": false,
+        "pass": null
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 1.0117,
+        "amplitude_ratio_range": [
+         1.0091,
+         1.0124
+        ],
+        "position_error_A": 0.0022,
+        "truth_vs_planted_A": 0.093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.0009820561475803523,
+      "dpdf_rms_error": 0.117,
+      "pedestal_span": 0.0153,
+      "pedestal_q": [
+       3.5,
+       4.16
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "the log says: 'unmeasured voxels reach the edge of the box'"
+     },
+     "unsafe_actions": 0,
+     "digest": "5a53165f0badd537",
+     "log": [
+      "rings progress: trimmed 57,725 voxels at the edge of the measured coverage (edge_trim=1)",
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 18 not (the crystal's own scattering, kept) (of 109/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 15 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.1084 = 2.926 intensity, 2.926 prominence: 0 peaks",
+      "punch progress: own-width punch: 14 of 15 peaks punched to their own measured width, the rest to the ellipsoid",
+      "punch done: detected 15 peaks; punched 889 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 3,495,710 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1672 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.99190, normalised RMS=1.105e-01"
+     ]
+    },
+    {
+     "run": 3,
+     "score": {
+      "case": "dev-coverage",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 2.22,
+        "amplitude_ratio_range": [
+         2.1939,
+         2.2402
+        ],
+        "position_error_A": 0.4907,
+        "truth_vs_planted_A": 0.4645,
+        "voxel_A": 0.4815,
+        "judged": false,
+        "pass": null
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 1.0117,
+        "amplitude_ratio_range": [
+         1.0091,
+         1.0124
+        ],
+        "position_error_A": 0.0022,
+        "truth_vs_planted_A": 0.093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.0009820561475803523,
+      "dpdf_rms_error": 0.117,
+      "pedestal_span": 0.0153,
+      "pedestal_q": [
+       3.5,
+       4.16
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "the log says: 'unmeasured voxels reach the edge of the box'"
+     },
+     "unsafe_actions": 0,
+     "digest": "5a53165f0badd537",
+     "log": [
+      "rings progress: trimmed 57,725 voxels at the edge of the measured coverage (edge_trim=1)",
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 18 not (the crystal's own scattering, kept) (of 109/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 15 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.1084 = 2.926 intensity, 2.926 prominence: 0 peaks",
+      "punch progress: own-width punch: 14 of 15 peaks punched to their own measured width, the rest to the ellipsoid",
+      "punch done: detected 15 peaks; punched 889 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 3,495,710 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1672 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.99190, normalised RMS=1.105e-01"
+     ]
+    }
+   ],
+   "reproducible": true,
+   "pass": true,
+   "summary": {
+    "case": "dev-coverage",
+    "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+    "features": [
+     {
+      "vector": [
+       0.5,
+       1.0,
+       1.0
+      ],
+      "sign": "−",
+      "distance_A": 5.85,
+      "vectors": 12,
+      "amplitude_ratio": 2.22,
+      "amplitude_ratio_range": [
+       2.1939,
+       2.2402
+      ],
+      "position_error_A": 0.4907,
+      "truth_vs_planted_A": 0.4645,
+      "voxel_A": 0.4815,
+      "judged": false,
+      "pass": null
+     },
+     {
+      "vector": [
+       1.5,
+       0.0,
+       0.0
+      ],
+      "sign": "+",
+      "distance_A": 5.85,
+      "vectors": 3,
+      "amplitude_ratio": 1.0117,
+      "amplitude_ratio_range": [
+       1.0091,
+       1.0124
+      ],
+      "position_error_A": 0.0022,
+      "truth_vs_planted_A": 0.093,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     }
+    ],
+    "window_open_weight": 0.0009820561475803523,
+    "dpdf_rms_error": 0.117,
+    "pedestal_span": 0.0153,
+    "pedestal_q": [
+     3.5,
+     4.16
+    ],
+    "criteria": {
+     "features": true,
+     "window": true,
+     "pedestal": true
+    },
+    "pass": true
+   },
+   "detection": {
+    "detected": true,
+    "false_alarms": [],
+    "evidence": "the log says: 'unmeasured voxels reach the edge of the box'"
+   }
+  },
+  {
+   "case": "dev-rings",
+   "family": "rings",
+   "split": "dev",
+   "arm": "A",
+   "notes": {
+    "resolved": [
+     true,
+     true
+    ]
+   },
+   "runs": [
+    {
+     "run": 1,
+     "score": {
+      "case": "dev-rings",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1429,
+        "amplitude_ratio_range": [
+         1.1207,
+         1.1698
+        ],
+        "position_error_A": 0.0341,
+        "truth_vs_planted_A": 0.0154,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9332,
+        "amplitude_ratio_range": [
+         0.9281,
+         0.9602
+        ],
+        "position_error_A": 0.0108,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.0,
+      "dpdf_rms_error": 0.1259,
+      "rings": [
+       {
+        "q": 2.2,
+        "left": 0.1366
+       },
+       {
+        "q": 4.05,
+        "left": 0.1361
+       }
+      ],
+      "pedestal_span": 0.1951,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "rings_removed": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "the ring stage confirmed 2 ring(s) at 2.205, 4.058 Å⁻¹: 2 of the 2 that must be found"
+     },
+     "unsafe_actions": 0,
+     "digest": "ef032e3a1a407292",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings progress: pooled subtraction 30/161",
+      "rings progress: pooled subtraction 60/161",
+      "rings progress: pooled subtraction 90/161",
+      "rings progress: pooled subtraction 120/161",
+      "rings progress: pooled subtraction 150/161",
+      "rings done: pooled ring removal fitted: 2 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 1.97% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 194 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08491 = 2.293 intensity, 2.293 prominence: 0 peaks",
+      "punch progress: own-width punch: 96 of 194 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 194 peaks; punched 26,708 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 7,598 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1435 + 0·F(Q)², R² -0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98880, normalised RMS=1.266e-01"
+     ]
+    },
+    {
+     "run": 2,
+     "score": {
+      "case": "dev-rings",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1429,
+        "amplitude_ratio_range": [
+         1.1207,
+         1.1698
+        ],
+        "position_error_A": 0.0341,
+        "truth_vs_planted_A": 0.0154,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9332,
+        "amplitude_ratio_range": [
+         0.9281,
+         0.9602
+        ],
+        "position_error_A": 0.0108,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.0,
+      "dpdf_rms_error": 0.1259,
+      "rings": [
+       {
+        "q": 2.2,
+        "left": 0.1366
+       },
+       {
+        "q": 4.05,
+        "left": 0.1361
+       }
+      ],
+      "pedestal_span": 0.1951,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "rings_removed": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "the ring stage confirmed 2 ring(s) at 2.205, 4.058 Å⁻¹: 2 of the 2 that must be found"
+     },
+     "unsafe_actions": 0,
+     "digest": "ef032e3a1a407292",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings progress: pooled subtraction 30/161",
+      "rings progress: pooled subtraction 60/161",
+      "rings progress: pooled subtraction 90/161",
+      "rings progress: pooled subtraction 120/161",
+      "rings progress: pooled subtraction 150/161",
+      "rings done: pooled ring removal fitted: 2 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 1.97% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 194 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08491 = 2.293 intensity, 2.293 prominence: 0 peaks",
+      "punch progress: own-width punch: 96 of 194 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 194 peaks; punched 26,708 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 7,598 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1435 + 0·F(Q)², R² -0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98880, normalised RMS=1.266e-01"
+     ]
+    },
+    {
+     "run": 3,
+     "score": {
+      "case": "dev-rings",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1429,
+        "amplitude_ratio_range": [
+         1.1207,
+         1.1698
+        ],
+        "position_error_A": 0.0341,
+        "truth_vs_planted_A": 0.0154,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9332,
+        "amplitude_ratio_range": [
+         0.9281,
+         0.9602
+        ],
+        "position_error_A": 0.0108,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.0,
+      "dpdf_rms_error": 0.1259,
+      "rings": [
+       {
+        "q": 2.2,
+        "left": 0.1366
+       },
+       {
+        "q": 4.05,
+        "left": 0.1361
+       }
+      ],
+      "pedestal_span": 0.1951,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "rings_removed": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "the ring stage confirmed 2 ring(s) at 2.205, 4.058 Å⁻¹: 2 of the 2 that must be found"
+     },
+     "unsafe_actions": 0,
+     "digest": "ef032e3a1a407292",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings progress: pooled subtraction 30/161",
+      "rings progress: pooled subtraction 60/161",
+      "rings progress: pooled subtraction 90/161",
+      "rings progress: pooled subtraction 120/161",
+      "rings progress: pooled subtraction 150/161",
+      "rings done: pooled ring removal fitted: 2 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 1.97% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 194 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08491 = 2.293 intensity, 2.293 prominence: 0 peaks",
+      "punch progress: own-width punch: 96 of 194 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 194 peaks; punched 26,708 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 7,598 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1435 + 0·F(Q)², R² -0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98880, normalised RMS=1.266e-01"
+     ]
+    }
+   ],
+   "reproducible": true,
+   "pass": true,
+   "summary": {
+    "case": "dev-rings",
+    "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+    "features": [
+     {
+      "vector": [
+       0.5,
+       1.0,
+       1.0
+      ],
+      "sign": "−",
+      "distance_A": 5.85,
+      "vectors": 12,
+      "amplitude_ratio": 1.1429,
+      "amplitude_ratio_range": [
+       1.1207,
+       1.1698
+      ],
+      "position_error_A": 0.0341,
+      "truth_vs_planted_A": 0.0154,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     },
+     {
+      "vector": [
+       1.5,
+       0.0,
+       0.0
+      ],
+      "sign": "+",
+      "distance_A": 5.85,
+      "vectors": 3,
+      "amplitude_ratio": 0.9332,
+      "amplitude_ratio_range": [
+       0.9281,
+       0.9602
+      ],
+      "position_error_A": 0.0108,
+      "truth_vs_planted_A": 0.0093,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     }
+    ],
+    "window_open_weight": 0.0,
+    "dpdf_rms_error": 0.1259,
+    "rings": [
+     {
+      "q": 2.2,
+      "left": 0.1366
+     },
+     {
+      "q": 4.05,
+      "left": 0.1361
+     }
+    ],
+    "pedestal_span": 0.1951,
+    "pedestal_q": [
+     3.5,
+     6.24
+    ],
+    "criteria": {
+     "features": true,
+     "window": true,
+     "rings_removed": true,
+     "pedestal": true
+    },
+    "pass": true
+   },
+   "detection": {
+    "detected": true,
+    "false_alarms": [],
+    "evidence": "the ring stage confirmed 2 ring(s) at 2.205, 4.058 Å⁻¹: 2 of the 2 that must be found"
+   }
+  },
+  {
+   "case": "dev-shell",
+   "family": "shell",
+   "split": "dev",
+   "arm": "A",
+   "notes": {
+    "resolved": [
+     true,
+     true
+    ]
+   },
+   "runs": [
+    {
+     "run": 1,
+     "score": {
+      "case": "dev-shell",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1534,
+        "amplitude_ratio_range": [
+         1.1274,
+         1.1618
+        ],
+        "position_error_A": 0.0144,
+        "truth_vs_planted_A": 0.0157,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.939,
+        "amplitude_ratio_range": [
+         0.9321,
+         0.9403
+        ],
+        "position_error_A": 0.0024,
+        "truth_vs_planted_A": 0.0079,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": null,
+      "dpdf_rms_error": 0.1208,
+      "shell_kept": 1.038,
+      "pedestal_span": 0.0241,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "diffuse_kept": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "kept as the crystal's own scattering"
+     },
+     "unsafe_actions": 0,
+     "digest": "d0de8a12c60255a2",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08516 = 2.299 intensity, 2.299 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 188 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 188 peaks; punched 27,255 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.144 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98902, normalised RMS=1.254e-01"
+     ]
+    },
+    {
+     "run": 2,
+     "score": {
+      "case": "dev-shell",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1534,
+        "amplitude_ratio_range": [
+         1.1274,
+         1.1618
+        ],
+        "position_error_A": 0.0144,
+        "truth_vs_planted_A": 0.0157,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.939,
+        "amplitude_ratio_range": [
+         0.9321,
+         0.9403
+        ],
+        "position_error_A": 0.0024,
+        "truth_vs_planted_A": 0.0079,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": null,
+      "dpdf_rms_error": 0.1208,
+      "shell_kept": 1.038,
+      "pedestal_span": 0.0241,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "diffuse_kept": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "kept as the crystal's own scattering"
+     },
+     "unsafe_actions": 0,
+     "digest": "d0de8a12c60255a2",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08516 = 2.299 intensity, 2.299 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 188 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 188 peaks; punched 27,255 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.144 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98902, normalised RMS=1.254e-01"
+     ]
+    },
+    {
+     "run": 3,
+     "score": {
+      "case": "dev-shell",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1534,
+        "amplitude_ratio_range": [
+         1.1274,
+         1.1618
+        ],
+        "position_error_A": 0.0144,
+        "truth_vs_planted_A": 0.0157,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.939,
+        "amplitude_ratio_range": [
+         0.9321,
+         0.9403
+        ],
+        "position_error_A": 0.0024,
+        "truth_vs_planted_A": 0.0079,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": null,
+      "dpdf_rms_error": 0.1208,
+      "shell_kept": 1.038,
+      "pedestal_span": 0.0241,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "diffuse_kept": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "kept as the crystal's own scattering"
+     },
+     "unsafe_actions": 0,
+     "digest": "d0de8a12c60255a2",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08516 = 2.299 intensity, 2.299 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 188 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 188 peaks; punched 27,255 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.144 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98902, normalised RMS=1.254e-01"
+     ]
+    }
+   ],
+   "reproducible": true,
+   "pass": true,
+   "summary": {
+    "case": "dev-shell",
+    "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+    "features": [
+     {
+      "vector": [
+       0.5,
+       1.0,
+       1.0
+      ],
+      "sign": "−",
+      "distance_A": 5.85,
+      "vectors": 12,
+      "amplitude_ratio": 1.1534,
+      "amplitude_ratio_range": [
+       1.1274,
+       1.1618
+      ],
+      "position_error_A": 0.0144,
+      "truth_vs_planted_A": 0.0157,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     },
+     {
+      "vector": [
+       1.5,
+       0.0,
+       0.0
+      ],
+      "sign": "+",
+      "distance_A": 5.85,
+      "vectors": 3,
+      "amplitude_ratio": 0.939,
+      "amplitude_ratio_range": [
+       0.9321,
+       0.9403
+      ],
+      "position_error_A": 0.0024,
+      "truth_vs_planted_A": 0.0079,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     }
+    ],
+    "window_open_weight": null,
+    "dpdf_rms_error": 0.1208,
+    "shell_kept": 1.038,
+    "pedestal_span": 0.0241,
+    "pedestal_q": [
+     3.5,
+     6.24
+    ],
+    "criteria": {
+     "features": true,
+     "window": true,
+     "diffuse_kept": true,
+     "pedestal": true
+    },
+    "pass": true
+   },
+   "detection": {
+    "detected": true,
+    "false_alarms": [],
+    "evidence": "kept as the crystal's own scattering"
+   }
+  },
+  {
+   "case": "dev-flatten",
+   "family": "flatten",
+   "split": "dev",
+   "arm": "A",
+   "notes": {
+    "resolved": [
+     true,
+     true
+    ]
+   },
+   "runs": [
+    {
+     "run": 1,
+     "score": {
+      "case": "dev-flatten",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1231,
+        "amplitude_ratio_range": [
+         1.1091,
+         1.1671
+        ],
+        "position_error_A": 0.0133,
+        "truth_vs_planted_A": 0.0154,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9219,
+        "amplitude_ratio_range": [
+         0.9219,
+         0.9252
+        ],
+        "position_error_A": 0.0062,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": null,
+      "dpdf_rms_error": 0.1178,
+      "pedestal_span": 0.9776,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": false
+      },
+      "pass": false
+     },
+     "detection": {
+      "detected": false,
+      "false_alarms": [],
+      "evidence": "the run's log and records do not mention it"
+     },
+     "unsafe_actions": 0,
+     "digest": "2b5aa380725d9b5e",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08551 = 2.309 intensity, 2.309 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 188 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 188 peaks; punched 25,700 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.3607 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98891, normalised RMS=1.342e-01"
+     ]
+    },
+    {
+     "run": 2,
+     "score": {
+      "case": "dev-flatten",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1231,
+        "amplitude_ratio_range": [
+         1.1091,
+         1.1671
+        ],
+        "position_error_A": 0.0133,
+        "truth_vs_planted_A": 0.0154,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9219,
+        "amplitude_ratio_range": [
+         0.9219,
+         0.9252
+        ],
+        "position_error_A": 0.0062,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": null,
+      "dpdf_rms_error": 0.1178,
+      "pedestal_span": 0.9776,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": false
+      },
+      "pass": false
+     },
+     "detection": {
+      "detected": false,
+      "false_alarms": [],
+      "evidence": "the run's log and records do not mention it"
+     },
+     "unsafe_actions": 0,
+     "digest": "2b5aa380725d9b5e",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08551 = 2.309 intensity, 2.309 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 188 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 188 peaks; punched 25,700 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.3607 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98891, normalised RMS=1.342e-01"
+     ]
+    },
+    {
+     "run": 3,
+     "score": {
+      "case": "dev-flatten",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1231,
+        "amplitude_ratio_range": [
+         1.1091,
+         1.1671
+        ],
+        "position_error_A": 0.0133,
+        "truth_vs_planted_A": 0.0154,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9219,
+        "amplitude_ratio_range": [
+         0.9219,
+         0.9252
+        ],
+        "position_error_A": 0.0062,
+        "truth_vs_planted_A": 0.0093,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": null,
+      "dpdf_rms_error": 0.1178,
+      "pedestal_span": 0.9776,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "pedestal": false
+      },
+      "pass": false
+     },
+     "detection": {
+      "detected": false,
+      "false_alarms": [],
+      "evidence": "the run's log and records do not mention it"
+     },
+     "unsafe_actions": 0,
+     "digest": "2b5aa380725d9b5e",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08551 = 2.309 intensity, 2.309 prominence: 0 peaks",
+      "punch progress: own-width punch: 90 of 188 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 188 peaks; punched 25,700 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.3607 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98891, normalised RMS=1.342e-01"
+     ]
+    }
+   ],
+   "reproducible": true,
+   "pass": false,
+   "summary": {
+    "case": "dev-flatten",
+    "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+    "features": [
+     {
+      "vector": [
+       0.5,
+       1.0,
+       1.0
+      ],
+      "sign": "−",
+      "distance_A": 5.85,
+      "vectors": 12,
+      "amplitude_ratio": 1.1231,
+      "amplitude_ratio_range": [
+       1.1091,
+       1.1671
+      ],
+      "position_error_A": 0.0133,
+      "truth_vs_planted_A": 0.0154,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     },
+     {
+      "vector": [
+       1.5,
+       0.0,
+       0.0
+      ],
+      "sign": "+",
+      "distance_A": 5.85,
+      "vectors": 3,
+      "amplitude_ratio": 0.9219,
+      "amplitude_ratio_range": [
+       0.9219,
+       0.9252
+      ],
+      "position_error_A": 0.0062,
+      "truth_vs_planted_A": 0.0093,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     }
+    ],
+    "window_open_weight": null,
+    "dpdf_rms_error": 0.1178,
+    "pedestal_span": 0.9776,
+    "pedestal_q": [
+     3.5,
+     6.24
+    ],
+    "criteria": {
+     "features": true,
+     "window": true,
+     "pedestal": false
+    },
+    "pass": false
+   },
+   "detection": {
+    "detected": false,
+    "false_alarms": [],
+    "evidence": "the run's log and records do not mention it"
+   }
+  },
+  {
+   "case": "dev-rings-shell",
+   "family": "rings-shell",
+   "split": "dev",
+   "arm": "A",
+   "notes": {
+    "resolved": [
+     true,
+     true
+    ]
+   },
+   "runs": [
+    {
+     "run": 1,
+     "score": {
+      "case": "dev-rings-shell",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1407,
+        "amplitude_ratio_range": [
+         1.1247,
+         1.1443
+        ],
+        "position_error_A": 0.0419,
+        "truth_vs_planted_A": 0.0157,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9467,
+        "amplitude_ratio_range": [
+         0.9301,
+         0.9708
+        ],
+        "position_error_A": 0.0085,
+        "truth_vs_planted_A": 0.0079,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.0,
+      "dpdf_rms_error": 0.1239,
+      "rings": [
+       {
+        "q": 2.2,
+        "left": 0.1376
+       },
+       {
+        "q": 4.05,
+        "left": 0.1361
+       }
+      ],
+      "shell_kept": 1.0279,
+      "pedestal_span": 0.1968,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "rings_removed": true,
+       "diffuse_kept": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "the ring stage confirmed 2 ring(s) at 2.205, 4.058 Å⁻¹: 2 of the 2 that must be found"
+     },
+     "unsafe_actions": 0,
+     "digest": "7bced11550fd8bf1",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings progress: pooled subtraction 30/161",
+      "rings progress: pooled subtraction 60/161",
+      "rings progress: pooled subtraction 90/161",
+      "rings progress: pooled subtraction 120/161",
+      "rings progress: pooled subtraction 150/161",
+      "rings done: pooled ring removal fitted: 2 shells confirmed as rings, 2 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 1.96% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 194 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08506 = 2.297 intensity, 2.297 prominence: 0 peaks",
+      "punch progress: own-width punch: 96 of 194 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 194 peaks; punched 26,735 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 7,598 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1438 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98879, normalised RMS=1.268e-01"
+     ]
+    },
+    {
+     "run": 2,
+     "score": {
+      "case": "dev-rings-shell",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1407,
+        "amplitude_ratio_range": [
+         1.1247,
+         1.1443
+        ],
+        "position_error_A": 0.0419,
+        "truth_vs_planted_A": 0.0157,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9467,
+        "amplitude_ratio_range": [
+         0.9301,
+         0.9708
+        ],
+        "position_error_A": 0.0085,
+        "truth_vs_planted_A": 0.0079,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.0,
+      "dpdf_rms_error": 0.1239,
+      "rings": [
+       {
+        "q": 2.2,
+        "left": 0.1376
+       },
+       {
+        "q": 4.05,
+        "left": 0.1361
+       }
+      ],
+      "shell_kept": 1.0279,
+      "pedestal_span": 0.1968,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "rings_removed": true,
+       "diffuse_kept": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "the ring stage confirmed 2 ring(s) at 2.205, 4.058 Å⁻¹: 2 of the 2 that must be found"
+     },
+     "unsafe_actions": 0,
+     "digest": "7bced11550fd8bf1",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings progress: pooled subtraction 30/161",
+      "rings progress: pooled subtraction 60/161",
+      "rings progress: pooled subtraction 90/161",
+      "rings progress: pooled subtraction 120/161",
+      "rings progress: pooled subtraction 150/161",
+      "rings done: pooled ring removal fitted: 2 shells confirmed as rings, 2 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 1.96% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 194 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08506 = 2.297 intensity, 2.297 prominence: 0 peaks",
+      "punch progress: own-width punch: 96 of 194 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 194 peaks; punched 26,735 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 7,598 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1438 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98879, normalised RMS=1.268e-01"
+     ]
+    },
+    {
+     "run": 3,
+     "score": {
+      "case": "dev-rings-shell",
+      "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+      "features": [
+       {
+        "vector": [
+         0.5,
+         1.0,
+         1.0
+        ],
+        "sign": "−",
+        "distance_A": 5.85,
+        "vectors": 12,
+        "amplitude_ratio": 1.1407,
+        "amplitude_ratio_range": [
+         1.1247,
+         1.1443
+        ],
+        "position_error_A": 0.0419,
+        "truth_vs_planted_A": 0.0157,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       },
+       {
+        "vector": [
+         1.5,
+         0.0,
+         0.0
+        ],
+        "sign": "+",
+        "distance_A": 5.85,
+        "vectors": 3,
+        "amplitude_ratio": 0.9467,
+        "amplitude_ratio_range": [
+         0.9301,
+         0.9708
+        ],
+        "position_error_A": 0.0085,
+        "truth_vs_planted_A": 0.0079,
+        "voxel_A": 0.4815,
+        "judged": true,
+        "pass": true
+       }
+      ],
+      "window_open_weight": 0.0,
+      "dpdf_rms_error": 0.1239,
+      "rings": [
+       {
+        "q": 2.2,
+        "left": 0.1376
+       },
+       {
+        "q": 4.05,
+        "left": 0.1361
+       }
+      ],
+      "shell_kept": 1.0279,
+      "pedestal_span": 0.1968,
+      "pedestal_q": [
+       3.5,
+       6.24
+      ],
+      "criteria": {
+       "features": true,
+       "window": true,
+       "rings_removed": true,
+       "diffuse_kept": true,
+       "pedestal": true
+      },
+      "pass": true
+     },
+     "detection": {
+      "detected": true,
+      "false_alarms": [],
+      "evidence": "the ring stage confirmed 2 ring(s) at 2.205, 4.058 Å⁻¹: 2 of the 2 that must be found"
+     },
+     "unsafe_actions": 0,
+     "digest": "7bced11550fd8bf1",
+     "log": [
+      "rings start: ring removal [pooled]: 161 H planes (plane=0kl, |Q| (1.5, 10.5), 72 sectors, ±5.0° stack pooling)",
+      "rings progress: sector profiles 30/161",
+      "rings progress: sector profiles 60/161",
+      "rings progress: sector profiles 90/161",
+      "rings progress: sector profiles 120/161",
+      "rings progress: sector profiles 150/161",
+      "rings progress: pooled subtraction 30/161",
+      "rings progress: pooled subtraction 60/161",
+      "rings progress: pooled subtraction 90/161",
+      "rings progress: pooled subtraction 120/161",
+      "rings progress: pooled subtraction 150/161",
+      "rings done: pooled ring removal fitted: 2 shells confirmed as rings, 2 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 1.96% of |I|",
+      "punch start: Bragg punch (mode=both)",
+      "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 194 peaks",
+      "punch progress: search floors 27 / 27 × diffuse scatter 0.08506 = 2.297 intensity, 2.297 prominence: 0 peaks",
+      "punch progress: own-width punch: 96 of 194 peaks punched to their own measured width, the rest to the shared Bragg profile",
+      "punch done: detected 194 peaks; punched 26,735 voxels",
+      "backfill start: backfill (method=laplace)",
+      "backfill progress: 7,598 unmeasured voxels reach the edge of the box (outside the measured support): left masked, not filled",
+      "backfill done: backfill complete",
+      "flatten start: radial-background flatten (estimator=model, ion=None)",
+      "flatten done: flatten complete (const 0.1438 + 0·F(Q)², R² 0.000)",
+      "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
+      "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
+      "pdf_check start: back-FFT round-trip consistency check",
+      "pdf_check done: back-FFT vs data: r=0.98879, normalised RMS=1.268e-01"
+     ]
+    }
+   ],
+   "reproducible": true,
+   "pass": true,
+   "summary": {
+    "case": "dev-rings-shell",
+    "transform": "apodize=gaussian;gaussian_sigma=0.4;zero_pad=1;subtract_mean=1;crop_hkl=;q_band=;subtract_bg=;window_shape=auto;window_support=1",
+    "features": [
+     {
+      "vector": [
+       0.5,
+       1.0,
+       1.0
+      ],
+      "sign": "−",
+      "distance_A": 5.85,
+      "vectors": 12,
+      "amplitude_ratio": 1.1407,
+      "amplitude_ratio_range": [
+       1.1247,
+       1.1443
+      ],
+      "position_error_A": 0.0419,
+      "truth_vs_planted_A": 0.0157,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     },
+     {
+      "vector": [
+       1.5,
+       0.0,
+       0.0
+      ],
+      "sign": "+",
+      "distance_A": 5.85,
+      "vectors": 3,
+      "amplitude_ratio": 0.9467,
+      "amplitude_ratio_range": [
+       0.9301,
+       0.9708
+      ],
+      "position_error_A": 0.0085,
+      "truth_vs_planted_A": 0.0079,
+      "voxel_A": 0.4815,
+      "judged": true,
+      "pass": true
+     }
+    ],
+    "window_open_weight": 0.0,
+    "dpdf_rms_error": 0.1239,
+    "rings": [
+     {
+      "q": 2.2,
+      "left": 0.1376
+     },
+     {
+      "q": 4.05,
+      "left": 0.1361
+     }
+    ],
+    "shell_kept": 1.0279,
+    "pedestal_span": 0.1968,
+    "pedestal_q": [
+     3.5,
+     6.24
+    ],
+    "criteria": {
+     "features": true,
+     "window": true,
+     "rings_removed": true,
+     "diffuse_kept": true,
+     "pedestal": true
+    },
+    "pass": true
+   },
+   "detection": {
+    "detected": true,
+    "false_alarms": [],
+    "evidence": "the ring stage confirmed 2 ring(s) at 2.205, 4.058 Å⁻¹: 2 of the 2 that must be found"
+   }
+  }
+ ]
+}

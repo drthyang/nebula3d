@@ -43,7 +43,8 @@ viewers, and reproducible command recipes in more detail.
 | [../QUICKSTART.md](../QUICKSTART.md) | Get the app running (native or in-browser). |
 | [web.md](web.md) | Launch, use, or develop the browser console (both run modes + consistency check). |
 | [pilot.md](pilot.md) | Use or understand NEBULA Pilot, the console's agent: tools, guardrails, tuning, local models. |
-| [evals.md](evals.md) | Read how the agent is graded, and its results per model. |
+| [evals.md](evals.md) | Read how the agent is graded, its results per model, and the validation on synthetic cases with a planted truth. |
+| [pilot-review.md](pilot-review.md) | Read what each of the agent's tools computes, which are tested against a known answer, and what its skills lack. |
 | [pipeline.md](pipeline.md) | Prepare input data, or run the pipeline and its stages from the command line or Python. |
 | [commands.md](commands.md) | Run batch workflows and viewers from the CLI. |
 | [algorithms/powder_rings.md](algorithms/powder_rings.md) | Understand or tune powder-ring subtraction. |
