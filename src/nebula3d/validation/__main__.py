@@ -5,6 +5,7 @@
 
     python -m nebula3d.validation manifest                 # the cases, as JSON
     python -m nebula3d.validation arm-a --split dev        # arm A, scored
+    python -m nebula3d.validation arm-d --split dev        # arm D, the scorer's reference
     python -m nebula3d.validation make --root R --split dev --arms B,C --runs 3
     python -m nebula3d.validation score --root R --record web/.validation/<label>.json
 
@@ -22,7 +23,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .cases import FAMILIES, Built, build, case_named, cases
+from .cases import FAMILIES, Built, answer_truth, build, case_named, cases
 
 ARMS = ("B", "C")
 
@@ -56,6 +57,7 @@ def manifest() -> dict[str, Any]:
                     for p in c.crystal.planted
                 ],
                 "fault": {k: (list(v) if isinstance(v, tuple) else v) for k, v in c.fault.items()},
+                "truth": answer_truth(c),
             }
             for c in CASES
         ],
@@ -63,7 +65,9 @@ def manifest() -> dict[str, Any]:
 
 
 def dataset_stem(case_id: str, arm: str, run: int) -> str:
-    return f"{case_id}--{arm}-r{run}"
+    """The raw file's stem; the server's dataset id is this with other characters made hyphens
+    (web/src/llm/evals/validation.ts parses it back)."""
+    return f"{case_id}_{arm}{run}"
 
 
 def cmd_make(args: argparse.Namespace) -> None:
@@ -104,6 +108,7 @@ def _outputs(processed: Path, stem: str) -> tuple[Path, Path] | None:
 
 def cmd_score(args: argparse.Namespace) -> None:
     """Score a live record's runs (arms B and C) on their outputs, and merge the grades."""
+    from .report import live_table, summarize_record
     from .score import score_outputs
 
     root = Path(args.root)
@@ -115,14 +120,16 @@ def cmd_score(args: argparse.Namespace) -> None:
             sys.exit("this record holds test cases: pass --report")
         if case.id not in built:
             built[case.id] = build(case, args.n)
-        found = _outputs(root / "processed", run["dataset"])
+        found = _outputs(root / "processed", run.get("stem", run["dataset"]))
         run["truth_score"] = (
             score_outputs(built[case.id], *found)
             if found
             else {"pass": False, "criteria": {"outputs": False}, "note": "no ΔPDF was made"}
         )
+    record["summary"] = summarize_record(record)
     out = Path(args.out or args.record)
     out.write_text(json.dumps(record, indent=1, ensure_ascii=False) + "\n")
+    print(live_table(record["summary"]))
     print(out)
 
 
@@ -145,6 +152,16 @@ def cmd_arm_a(args: argparse.Namespace) -> None:
     print(arm_a_table(results))
 
 
+def cmd_arm_d(args: argparse.Namespace) -> None:
+    from .arm_d import run_arm_d
+
+    split = _split(args)
+    root = Path(tempfile.mkdtemp(prefix="nebula-arm-d-"))
+    for r in run_arm_d(cases(split), root, n=args.n):
+        bad = [k for k, ok in r["summary"]["criteria"].items() if not ok]
+        print(f"{r['case']}: {'passes' if r['pass'] else 'FAILS ' + ', '.join(bad)}")
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(
         prog="python -m nebula3d.validation",
@@ -153,7 +170,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("manifest", help="print the cases as JSON")
-    for name, fn in (("make", cmd_make), ("arm-a", cmd_arm_a), ("score", cmd_score)):
+    for name, fn in (
+        ("make", cmd_make),
+        ("arm-a", cmd_arm_a),
+        ("arm-d", cmd_arm_d),
+        ("score", cmd_score),
+    ):
         p = sub.add_parser(name)
         p.set_defaults(fn=fn)
         p.add_argument(

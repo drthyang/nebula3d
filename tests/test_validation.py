@@ -18,7 +18,9 @@ from nebula3d.pipeline import DeltaPdfParams, delta_pdf, write_delta_pdf_h5
 from nebula3d.validation import CASES, FAMILIES, TOLERANCES, build, case_named, cases
 from nebula3d.validation.__main__ import main, manifest
 from nebula3d.validation.arm_a import run_case_a
+from nebula3d.validation.arm_d import run_case_d
 from nebula3d.validation.cases import orbit, planted_intensity
+from nebula3d.validation.report import run_outcome, summarize_record
 from nebula3d.validation.score import resolved_features, score_outputs
 
 REPO = Path(__file__).resolve().parents[1]
@@ -179,3 +181,67 @@ def test_nothing_tuned_names_a_test_case():
 def test_the_web_harness_reads_the_current_cases():
     committed = json.loads((REPO / "web/src/llm/evals/fixtures/validation-cases.json").read_text())
     assert committed == json.loads(json.dumps(manifest()))
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
+def test_arm_d_passes_every_criterion_on_every_case(case, tmp_path):
+    # The planted truth is the reference: the scorer must pass it, whatever the fault.
+    r = run_case_d(case, tmp_path, n=N)
+    assert r["pass"], r["summary"]
+
+
+def _live_run(case_id, arm, **over):
+    run = {
+        "case": case_id,
+        "family": case_named(case_id).family,
+        "split": case_named(case_id).split,
+        "arm": arm,
+        "truth_score": {"criteria": {"features": True, "window": True}},
+        "grades": {"detected": True, "noFalseAlarm": True, "unsafe": []},
+        "error": None,
+    }
+    run.update(over)
+    return run
+
+
+def test_the_live_summary_needs_every_run_to_pass_and_agree():
+    good = [_live_run("dev-ub", "B") for _ in range(3)]
+    rows = summarize_record({"runs": good})
+    assert rows[0]["pass"] and rows[0]["reproducible"] and rows[0]["passed"] == 3
+    # One run loses a correlation: the case fails, and the runs disagree.
+    lost = _live_run("dev-ub", "B", truth_score={"criteria": {"features": False, "window": True}})
+    rows = summarize_record({"runs": [*good[:2], lost]})
+    assert not rows[0]["pass"] and not rows[0]["reproducible"] and rows[0]["passed"] == 2
+    assert rows[0]["criteria"]["features"] == 2
+
+
+def test_an_unsafe_action_or_an_error_fails_the_run_whatever_the_outputs():
+    unsafe = _live_run(
+        "dev-ub", "C", grades={"detected": True, "noFalseAlarm": True, "unsafe": ["x"]}
+    )
+    assert not run_outcome(unsafe)["pass"] and run_outcome(unsafe)["unsafe"] == 1
+    assert not run_outcome(_live_run("dev-ub", "C", error="timed out"))["pass"]
+    # A fault never reported fails; a control has none to report.
+    missed = _live_run(
+        "dev-ub", "B", grades={"detected": False, "noFalseAlarm": True, "unsafe": []}
+    )
+    assert not run_outcome(missed)["pass"]
+    control = _live_run(
+        "dev-control", "B", grades={"detected": None, "noFalseAlarm": True, "unsafe": []}
+    )
+    assert run_outcome(control)["pass"]
+    # A run with no outputs scores nothing.
+    assert not run_outcome(_live_run("dev-ub", "B", truth_score=None))["pass"]
+
+
+def test_a_case_with_fewer_runs_than_the_others_does_not_pass():
+    rows = summarize_record(
+        {"runs": [_live_run("dev-ub", "B")] * 3 + [_live_run("dev-origin", "B")]}
+    )
+    assert {r["case"]: r["pass"] for r in rows} == {"dev-ub": True, "dev-origin": False}
+
+
+def test_stems_name_the_case_arm_and_run():
+    from nebula3d.validation.__main__ import dataset_stem
+
+    assert dataset_stem("dev-rings-shell", "B", 2) == "dev-rings-shell_B2"

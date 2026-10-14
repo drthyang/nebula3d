@@ -336,3 +336,29 @@ def ring_qs(b: Built) -> list[float]:
 
         return [2.0 * math.pi * math.sqrt(sum(i * i for i in hkl)) / _AL_A for hkl, _ in _AL_LINES]
     return []
+
+
+def answer_truth(case: Case) -> dict[str, Any]:
+    """What an answer about the case is graded against: the fault's size in the
+    units the tools report it (the grid spans ±4 r.l.u., so the box's faces sit
+    at |Q| = 4 · 2π / a)."""
+    f = case.fault
+    out: dict[str, Any] = {}
+    if case.family == "ub":
+        out["angle_deg"] = f["angle_deg"]
+    if case.family == "origin":
+        out["offset_rlu"] = list(f["offset"])
+    if case.family == "coverage":
+        out["q_cut"] = round(float(f["fraction"]) * 4.0 * 2.0 * math.pi / case.crystal.a, 3)
+    if case.family in ("rings", "rings-shell"):
+        if "q" in f:
+            out["ring_q"] = [float(x) for x in f["q"]]
+        else:  # the Al lines: the two strongest, (111) and (200), must be named
+            from ..demo import _AL_A
+
+            out["ring_q"] = [round(2.0 * math.pi * math.sqrt(m) / _AL_A, 3) for m in (3, 4)]
+    if case.family in ("shell", "rings-shell"):
+        out["shell_q"] = float(f["shell"]["q"] if "shell" in f else f["q"])
+    if case.family == "flatten":
+        out["q2"] = f["q2"]
+    return out

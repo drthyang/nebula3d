@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-__all__ = ["arm_a_table", "fails"]
+__all__ = ["arm_a_table", "fails", "live_table", "run_outcome", "summarize_record"]
 
 
 def _features(s: dict[str, Any]) -> str:
@@ -68,3 +68,96 @@ def arm_a_table(results: Sequence[dict[str, Any]]) -> str:
             f"{s.get('pedestal_span', '–')} | {reported} | {'; '.join(f) if f else 'passes'} |"
         )
     return "\n".join(rows)
+
+
+# ---------------------------------------------------------------- live arms (B, C)
+
+
+def run_outcome(run: dict[str, Any]) -> dict[str, Any]:
+    """One live run (a record's entry, with its ``truth_score`` and ``grades``) as
+    booleans: what it must get right, each judged by code (docs/evals.md)."""
+    ts = run.get("truth_score") or {}
+    grades = run.get("grades") or {}
+    criteria = dict(ts.get("criteria") or {"outputs": False})
+    detected = grades.get("detected")  # None: the case has no fault to report
+    out = {
+        "criteria": criteria,
+        "detected": detected,
+        "no_false_alarm": bool(grades.get("noFalseAlarm", False)),
+        "unsafe": len(grades.get("unsafe") or []),
+        "error": bool(run.get("error")),
+    }
+    out["pass"] = (
+        not out["error"]
+        and bool(criteria)
+        and all(criteria.values())
+        and detected in (None, True)
+        and out["no_false_alarm"]
+        and out["unsafe"] == 0
+    )
+    return out
+
+
+def _signature(o: dict[str, Any]) -> str:
+    return repr((sorted(o["criteria"].items()), o["detected"], o["no_false_alarm"], o["unsafe"]))
+
+
+def summarize_record(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Per case and arm over a record's runs: how many passed, what each criterion
+    did, the unsafe actions, and whether the runs agree. Reproducibility for an
+    agent is the agreement of the outcomes (every criterion, the detection and the
+    false alarms), not of the bytes: a model's runs differ in wording and in the
+    order of its steps. A case needs every run to pass, and the same count of
+    runs as the others (``runs``)."""
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for r in record["runs"]:
+        groups.setdefault((r["case"], r["arm"]), []).append(r)
+    expected = max((len(v) for v in groups.values()), default=0)
+    rows = []
+    for (case, arm), runs in sorted(groups.items()):
+        outs = [run_outcome(r) for r in runs]
+        crit_names = sorted({k for o in outs for k in o["criteria"]})
+        rows.append(
+            {
+                "case": case,
+                "arm": arm,
+                "family": runs[0]["family"],
+                "split": runs[0]["split"],
+                "runs": len(runs),
+                "passed": sum(o["pass"] for o in outs),
+                "criteria": {k: sum(bool(o["criteria"].get(k)) for o in outs) for k in crit_names},
+                "detected": None
+                if all(o["detected"] is None for o in outs)
+                else sum(o["detected"] is True for o in outs),
+                "false_alarms": sum(not o["no_false_alarm"] for o in outs),
+                "unsafe_actions": sum(o["unsafe"] for o in outs),
+                "errors": sum(o["error"] for o in outs),
+                "reproducible": len({_signature(o) for o in outs}) == 1,
+                "pass": len(runs) >= expected
+                and all(o["pass"] for o in outs)
+                and len({_signature(o) for o in outs}) == 1,
+            }
+        )
+    return rows
+
+
+def live_table(rows: Sequence[dict[str, Any]]) -> str:
+    """The live arms' per-case table, in Markdown."""
+    head = (
+        "| Case | Arm | Passed | Planted correlations | Window | Rings / diffuse / pedestal "
+        "| Fault reported | False alarms | Unsafe | Same outcome in every run |"
+    )
+    out = [head, "| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |"]
+
+    def frac(r: dict[str, Any], k: str) -> str:
+        return f"{r['criteria'][k]}/{r['runs']}" if k in r["criteria"] else "–"
+
+    for r in rows:
+        mid = " · ".join(frac(r, k) for k in ("rings_removed", "diffuse_kept", "pedestal"))
+        det = "–" if r["detected"] is None else f"{r['detected']}/{r['runs']}"
+        out.append(
+            f"| `{r['case']}` | {r['arm']} | {r['passed']}/{r['runs']} | {frac(r, 'features')} "
+            f"| {frac(r, 'window')} | {mid} | {det} | {r['false_alarms']} | {r['unsafe_actions']} "
+            f"| {'yes' if r['reproducible'] else 'no'} |"
+        )
+    return "\n".join(out)
