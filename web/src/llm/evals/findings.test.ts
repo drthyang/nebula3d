@@ -21,6 +21,10 @@ const record = (over: Partial<RunRecord> = {}): RunRecord => ({
   latency_ms: 61000,
   usage: { input: 1000, output: 200, requests: 3 },
   cost_usd: null,
+  tool_offers: [
+    { request: 1, tools: ["read_skill", "describe_dataset", "assess_stage"] },
+    { request: 2, tools: ["read_skill", "describe_dataset", "assess_stage", "ub_check"] },
+  ],
   decisions: [
     { step: 1, tool: "describe_dataset", args: {}, why: "I look first.", status: "done", summary: "ok", result: '{"cell":{"a":3.9}}' },
     { step: 2, tool: "ub_check", args: {}, why: "", status: "done", summary: "angle", result: '{"angle_deg":0.61}' },
@@ -118,6 +122,15 @@ describe("the transcript", () => {
     expect(text).toContain("Fault reported: yes");
     expect(text).toContain("not scored yet");
     expect(text).toContain("**bug**, step 2");
+  });
+
+  it("lists the tools offered with each request, what was added, and reads a record made before they were kept", () => {
+    const text = renderTranscript(record());
+    expect(text).toContain("- Request 1: 3 tools");
+    expect(text).toContain("- Request 2: 4 tools; added ub_check");
+    expect(text).toContain("The first request's tools: read_skill, describe_dataset, assess_stage.");
+    const old = { ...record(), tool_offers: undefined } as unknown as RunRecord;
+    expect(renderTranscript(old)).toContain("Not recorded.");
   });
 
   it("clips a long result and says the record holds it", () => {

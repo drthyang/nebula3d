@@ -24,6 +24,7 @@ import type { AgentTool } from "../tools";
 import { answers, NEGATION, numbers, sentences } from "./checks";
 import manifest from "./fixtures/validation-cases.json";
 import type { Check, EvalRun, Grade } from "./harness";
+import type { ToolOffer } from "./offers";
 
 export type Split = "dev" | "test";
 export type Arm = "B" | "C";
@@ -411,6 +412,7 @@ export interface RunRecord {
   latency_ms: number;
   usage: EvalRun["usage"];
   cost_usd: number | null;
+  tool_offers: ToolOffer[]; // the tools offered on each request, as sent (offers.ts)
   decisions: Decision[];
   numbers: NumberSource[];
   conclusion: string;
@@ -433,6 +435,7 @@ export function buildRecord(p: {
   started: string;
   costUsd: number | null;
   elsewhere?: readonly string[];
+  offers?: readonly ToolOffer[];
 }): RunRecord {
   const r = p.evalRun;
   return {
@@ -451,6 +454,7 @@ export function buildRecord(p: {
     latency_ms: Math.round(r.latencyMs),
     usage: r.usage,
     cost_usd: p.costUsd,
+    tool_offers: [...(p.offers ?? [])],
     decisions: decisions(r.steps, p.why),
     numbers: numberSources(r.content, r.steps),
     conclusion: r.content,

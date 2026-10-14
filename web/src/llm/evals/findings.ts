@@ -6,6 +6,7 @@
 // transcript point at, each with its evidence, for a reviewer to confirm or
 // drop; nothing here is a verdict.
 
+import { offerChanges } from "./offers";
 import { findIn, type RunRecord, type ValidationCase } from "./validation";
 
 export const FINDING_KINDS = ["bug", "missing-tool", "skill-gap", "orchestration", "science-error"] as const;
@@ -163,6 +164,20 @@ export function renderTranscript(rec: RunRecord, findings: readonly Finding[] = 
     "## Task",
     "",
     rec.task,
+    "",
+    "## Tools offered",
+    "",
+    ...((rec.tool_offers ?? []).length
+      ? [
+          "As sent with each request (the Pilot offers a local model the tools its question needs, and more once it calls them):",
+          "",
+          ...offerChanges(rec.tool_offers ?? []).map(
+            (c) => `- Request ${c.request}: ${c.count} tools${c.added.length ? `; added ${c.added.join(", ")}` : ""}${c.dropped.length ? `; dropped ${c.dropped.join(", ")}` : ""}`,
+          ),
+          "",
+          `The first request's tools: ${rec.tool_offers[0].tools.join(", ") || "none"}.`,
+        ]
+      : ["Not recorded."]),
     "",
     "## Steps",
   ];

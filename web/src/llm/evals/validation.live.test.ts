@@ -33,6 +33,7 @@ import { contextWarning, loadedContext } from "../provider/client";
 import { CHAT_TOOLS } from "../tools";
 import { backendUrl, env, exists, makeDir, readText, useBackend, writeText } from "./backend";
 import { installEventSource } from "./eventSource";
+import { OfferRecorder } from "./offers";
 import { candidateFindings, renderTranscript, type Finding } from "./findings";
 import type { EvalRun } from "./harness";
 import {
@@ -148,6 +149,9 @@ describe.skipIf(!live)("validation, live", () => {
       const stalled = new Promise<never>((_, reject) => {
         giveUp = setTimeout(() => reject(new Error(`timed out after ${minutes} min`)), (minutes + 1) * 60_000);
       });
+      // What goes over the wire to the model, request by request: the tools it was offered.
+      const recorder = new OfferRecorder();
+      const stopRecording = recorder.install();
       const t0 = performance.now();
       const startedAt = new Date().toISOString();
       let evalRun: EvalRun;
@@ -178,6 +182,7 @@ describe.skipIf(!live)("validation, live", () => {
       clearTimeout(timer);
       clearTimeout(giveUp);
       abort.abort(); // lets go of anything still waiting on this run
+      stopRecording();
 
       const elsewhere = changedElsewhere(before, await fetchDatasets(), dataset.id);
       const costUsd = costOf(evalRun.usage, model.price);
@@ -197,6 +202,7 @@ describe.skipIf(!live)("validation, live", () => {
         started: startedAt,
         costUsd,
         elsewhere,
+        offers: recorder.offers,
       });
       records.push(record);
       await writeText(new URL(transcriptName(record), transcripts), renderTranscript(record, candidateFindings(record, job.case)));
