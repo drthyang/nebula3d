@@ -299,6 +299,8 @@ describe("the record", () => {
     expect(back.numbers[0].source.tool).toBe("ub_check");
     expect(back.grades.detected).toBe(true);
     expect(back.grades.unsafe).toEqual([]);
+    expect(back.failure).toBeNull();
+    expect(back.tool_offers).toEqual([]);
     expect(rec.task).toBe(TASK);
   });
 });

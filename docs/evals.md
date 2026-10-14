@@ -274,8 +274,8 @@ began with.
 | Arm | What runs |
 | --- | --- |
 | **A** | The default pipeline, no agent: Run with nothing configured, three times |
-| **B** | The Pilot as shipped: its tools, skills and guardrails |
-| **C** | The Pilot without its skills: `read_skill` is not offered and the system prompt lists none; the skill gate (a stage's settings change only after its skill is read) is counted as passed, so C may change what B may |
+| **B** | The Pilot as shipped, for each model: its tools, skills and guardrails, and whatever tools the shipped code offers that model. A local model is offered the reading tools and those its question is about (`localTools.ts`), 22 of the 23 for this task (`compare_datasets` is withheld), and more as it calls them; the validation does not bypass that |
+| **C** | B without its skills and nothing else: `read_skill` is not offered and the system prompt lists no skill; the skill gate (a stage's settings change only after its skill is read) is counted as passed, so C may change what B may. A test (`validationArms.test.ts`) runs both through the real agent loop and shows their requests differ only by `read_skill` and the skills' listing |
 | **D** | The planted truth: the crystal's own noise-free diffuse scattering through the same transform on the same support. It is the reference, and a check that the scorer passes it on every case |
 
 B and C get the same task, blind to the case, and one dataset each: its own, under
@@ -352,6 +352,8 @@ transcript.
 One JSON record per model and split (`docs/evals/validation/<model>-<split>.json`)
 and one Markdown transcript per run beside it, readable offline. Each run holds:
 
+- **the tools offered on each request**, as they went over the wire (a recording
+  `fetch`), so a reviewer sees what the model could call and when a tool joined it;
 - **the decisions:** every step's tool, arguments, status, summary and whole
   result, and the model's own words before it as the reason;
 - **every number the conclusion writes, with its source:** the step, tool and

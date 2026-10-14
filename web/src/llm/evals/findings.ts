@@ -111,7 +111,10 @@ export function candidateFindings(rec: RunRecord, c: ValidationCase): Finding[] 
   if (rec.error) {
     add({ step: null, kind: "orchestration", evidence: `the run ended in an error: ${clip(rec.error)}`, proposed_fix: "find why it could not finish (the model server, the time limit, a tool that hung) before reading its score" });
   }
-  if (rec.note && /Stopped after|cut off/.test(rec.note)) {
+  if (rec.failure) {
+    add({ step: null, kind: "orchestration", evidence: `the model server failed the reply (${rec.failure.kind}, ${rec.failure.attempts} request(s)): ${clip(rec.failure.message)}`, proposed_fix: "an infrastructure failure, not a wrong answer: check the machine and the server, then run it again before reading its score" });
+  }
+  if (rec.note && /Stopped after|cut off|repeated calls that brought nothing new/.test(rec.note)) {
     add({ step: null, kind: "orchestration", evidence: clip(rec.note), proposed_fix: "the task needs more rounds, or a tool returns too much for the context: shorten its result, or raise the limit for this task and say so" });
   }
   for (const d of rec.decisions) {

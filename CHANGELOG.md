@@ -8,7 +8,10 @@
   on the planted correlations, and runs the default pipeline (arm A) and the
   scorer's reference (arm D). The Pilot's two arms, with and without its skills,
   have a runner, a transcript every run leaves, a findings schema and a model
-  configuration with a spend cap; none has run a model yet. The protocol and
+  configuration with a spend cap; none has run a model yet. Arm B is the Pilot
+  as shipped, including the tools it offers a local model; arm C is B without
+  `read_skill` and the skills' listing, tested; each run records the tools
+  offered on every request. The protocol and
   arm A's results are in `docs/evals.md`, the review of the tools and skills it
   began with in `docs/pilot-review.md`.
 - **The ΔPDF is not called symmetry-broken when the file declares no symmetry.**

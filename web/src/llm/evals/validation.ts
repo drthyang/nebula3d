@@ -18,6 +18,7 @@ import type { Dataset } from "../../api/types";
 import type { AgentStep } from "../agent";
 import { ANSWER_WORD, writtenNumbers } from "../answerChecks";
 import type { ChatMessage } from "../provider/client";
+import type { Failure } from "../recovery";
 import { allSkills, skillsPrompt } from "../skills";
 import { SAMPLE_PARAMS } from "../tune/catalog";
 import type { AgentTool } from "../tools";
@@ -418,6 +419,7 @@ export interface RunRecord {
   conclusion: string;
   note: string | null;
   error: string | null;
+  failure: Failure | null; // the model server failed the reply after its retries: infrastructure, apart from a wrong answer
   grades: ValidationGrades;
   truth_score?: Record<string, unknown>; // filled by `python -m nebula3d.validation score`
 }
@@ -460,6 +462,7 @@ export function buildRecord(p: {
     conclusion: r.content,
     note: r.note ?? null,
     error: r.error ?? null,
+    failure: r.failure ?? null,
     grades: gradeRun(p.case, r, p.elsewhere ?? []),
   };
 }

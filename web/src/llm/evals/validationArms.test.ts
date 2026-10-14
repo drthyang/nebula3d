@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { runAgent } from "../agent";
+import { toolsFor } from "../localTools";
 import { buildChatMessages } from "../prompts/templates";
 import { allSkills, skillsPrompt } from "../skills";
 import { CHAT_TOOLS, type AgentTool } from "../tools";
@@ -138,10 +139,20 @@ describe.each([
     });
   });
 
-  it("offers B the Pilot's own tools: all of them to a cloud model, the shipped subset to a local one", async () => {
+  it("offers B what the Pilot ships: all of the tools to a cloud model, the shipped selection to a local one", async () => {
     const b = await runArm("B", baseUrl);
-    const all = CHAT_TOOLS.length;
-    if (baseUrl.startsWith("https")) expect(b.offers.every((o) => o.tools.length === all)).toBe(true);
-    else expect(b.offers[0].tools.length).toBeLessThanOrEqual(all);
+    const c = await runArm("C", baseUrl);
+    const all = STUBBED.map((t) => t.name);
+    if (baseUrl.startsWith("https")) {
+      b.offers.forEach((o) => expect(o.tools).toEqual(all));
+    } else {
+      // The first request carries exactly what the shipped selection gives this task: no
+      // bypass for the validation. Later requests only add what the model called or was asked for.
+      expect(b.offers[0].tools).toEqual(toolsFor(TASK, STUBBED).map((t) => t.name));
+      expect(b.offers[0].tools.length).toBeLessThanOrEqual(all.length);
+      b.offers.slice(1).forEach((o, i) => b.offers[i].tools.forEach((n) => expect(o.tools).toContain(n)));
+      // C is that selection made without read_skill, and nothing else changed.
+      expect(c.offers[0].tools).toEqual(toolsFor(TASK, STUBBED.filter((t) => t.name !== "read_skill")).map((t) => t.name));
+    }
   });
 });

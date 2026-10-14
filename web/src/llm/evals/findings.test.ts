@@ -33,6 +33,7 @@ const record = (over: Partial<RunRecord> = {}): RunRecord => ({
   conclusion: "The UB is turned by 0.61°.",
   note: null,
   error: null,
+  failure: null,
   grades: { detection: [], falseAlarms: [], unsafe: [], detected: true, noFalseAlarm: true },
   ...over,
 });
@@ -94,6 +95,14 @@ describe("candidate findings", () => {
     expect(found.map((f) => f.kind).sort()).toEqual(["bug", "bug", "orchestration", "orchestration"]);
     expect(found.find((f) => f.evidence.startsWith("an unsafe"))?.step).toBe(4);
     for (const f of found) expect(findingProblems(f)).toEqual([]);
+  });
+
+  it("tells a failure of the model server, and a loop the guard ended, from a wrong answer", () => {
+    const failed = candidateFindings(record({ failure: { kind: "memory", message: "out of memory", attempts: 3 } }), c);
+    expect(failed.map((f) => f.kind)).toEqual(["orchestration"]);
+    expect(failed[0].evidence).toMatch(/model server failed the reply \(memory, 3 request/);
+    const looped = candidateFindings(record({ note: "The model repeated calls that brought nothing new, so it was asked to answer with what it had." }), c);
+    expect(looped.map((f) => f.kind)).toEqual(["orchestration"]);
   });
 
   it("does not count a refusal until a skill is read as a tool failure", () => {
