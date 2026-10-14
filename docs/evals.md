@@ -21,6 +21,11 @@ not with a value written into the test. The one exception is `q-band-from-raw`'s
 lower edge, checked against the 0.55 Å⁻¹ band the run used. A run passes only when every check
 passes. The suite lives in `web/src/llm/evals/`.
 
+A second question, whether the Pilot helps (against the default pipeline, and with
+and without its skills), is asked on synthetic cases with a planted truth, in
+[the validation](#does-the-pilot-help-validation-on-synthetic-cases) at the end of
+this page.
+
 ## Scenarios
 
 | Scenario | Question | The answer the research established | Checks |
@@ -219,3 +224,252 @@ including a one-run pilot on Haiku (`claude-haiku-5-5-pilot.json`).
   - LM Studio's muse-glimmer was not loaded, and these runs never load LM Studio
     models.
   - Claude Opus 5.5 was not needed: Sonnet passed everything.
+
+## Does the Pilot help? Validation on synthetic cases
+
+The scenarios above ask whether the Pilot reaches the answers the research
+established on one measured volume. This asks the question that matters: given a
+volume it has not seen, does the Pilot take it to a better 3D-ΔPDF than the
+default pipeline, does it find the fault the volume has, and does it do harm. The
+volumes are synthetic, so the truth is known by construction. A result here says
+what the Pilot does on a variant of the built-in demo crystal with one fault of
+a known size, not how well it does on a measured volume. The code is
+`nebula3d.validation` (Python: the cases, the scoring, arms A and D) and
+`web/src/llm/evals/validation*.ts` (the Pilot's arms, their graders, the records).
+[pilot-review.md](pilot-review.md) is the review of the tools and skills this
+began with.
+
+### The arms
+
+| Arm | What runs |
+| --- | --- |
+| **A** | The default pipeline, no agent: Run with nothing configured, three times |
+| **B** | The Pilot as shipped: its tools, skills and guardrails |
+| **C** | The Pilot without its skills: `read_skill` is not offered and the system prompt lists none; the skill gate (a stage's settings change only after its skill is read) is counted as passed, so C may change what B may |
+| **D** | The planted truth: the crystal's own noise-free diffuse scattering through the same transform on the same support. It is the reference, and a check that the scorer passes it on every case |
+
+B and C get the same task, blind to the case, and one dataset each: its own, under
+an opaque name (`v3fa91c_B2`), so that no tool shows a model the fault, the split
+or another case. The task:
+
+> This is a new single-crystal diffuse-scattering volume. Take it to a 3D-ΔPDF you
+> would trust for analysis. Run the pipeline, check every stage and the data
+> themselves (the orientation, the coverage, powder rings, the background), fix what
+> the settings you may change can fix and run again, and report any problem with the
+> data that the settings cannot fix. End with: the problems you found (or that you
+> found none), what you changed and why, and the strongest pair correlations in the
+> 3D-ΔPDF with their vectors and signs.
+
+### The cases, and the split
+
+Every case is the demo crystal (a rock-salt variant: its short-range order,
+thermal diffuse scattering and rods) with **planted pair correlations** at known
+vectors and signs, the measurement's own additions (radial background, Bragg
+peaks, beam spot, counting noise) and one fault. Eight families, each in a dev and
+a test case: 16 cases.
+
+| Family | What is planted or broken | Dev case |
+| --- | --- | --- |
+| `control` | Nothing: the correlations must come through and nothing may be reported | none |
+| `ub` | The UB turned: report the angle; no setting fixes it | 0.6° about [1 1 0] |
+| `origin` | The HKL origin shifted, which no UB undoes: report it as the origin, not the UB | (0.03, 0.02, 0) r.l.u. |
+| `coverage` | The counts end inside the box: the window must stay on measured space; report the edge | counts end at 4.511 Å⁻¹ (70 % of the box's face) |
+| `rings` | Powder rings: remove and report them | two rings, 2.2 and 4.05 Å⁻¹ |
+| `shell` | A diffuse shell at one \|Q\| that is the crystal's own (not a ring): keep it | 2.9 Å⁻¹ |
+| `flatten` | A background rising as \|Q\|², which the default flatten leaves as a pedestal | b = 0.006 |
+| `rings-shell` | Both: remove the one, keep the other | both of the above |
+
+**dev** is for improving the tools, the skills and the prompts. **test** is held
+out: each of its cases has another crystal (cell, order, seed, planted vectors) and
+another fault size, so what is learned on dev cannot fit it by its numbers, and
+its numbers are read once, to be reported. Four tests enforce this:
+
+- every command that reads the test split needs `--report`
+  (`NEBULA_VALIDATION_REPORT=1` for the live runner): `test_the_test_split_needs_report`,
+  `casesToRun` in `validation.test.ts`;
+- no tool, skill, prompt, algorithm page or pipeline file names a test case
+  (`test_nothing_tuned_names_a_test_case`);
+- the test crystals share no planted vector, cell or seed with the dev crystal
+  (`test_dev_and_test_differ_in_crystal_and_fault`, `validation.test.ts`);
+- the one paid model runs the test split only (`validationModels.test.ts`).
+
+### Scoring
+
+All in code, the same for every arm; each arm's outputs are scored, and nothing
+reads which arm made them. The limits are fixed before any model run, each with
+its reason, in `TOLERANCES` (`src/nebula3d/validation/score.py`); changing one
+after a run invalidates the runs before it.
+
+| What | How it is judged |
+| --- | --- |
+| **Planted ΔPDF features recovered** | For each planted correlation, in the run's ΔPDF against arm D's through the run's own transform and support: the amplitude at the truth's extremum as a share of the planted value (0.8 to 1.25), and the extremum's shift (at most a quarter of a ΔPDF voxel, about 0.12 Å) |
+| **Faults detected** | The conclusion, clause by clause: the fault stated, and its size within a tolerance (UB angle 0.15°, where the counts end 0.2 Å⁻¹, each ring 0.1 Å⁻¹); and no fault stated that the case does not have. For arm A, what the run's own log and records tell the user |
+| **Real diffuse not removed** | The crystal's own shell keeps at least 85 % of its contrast; each powder ring keeps at most 15 % |
+| **The window and the background** | At most 1e-3 of the ΔPDF window's weight on unmeasured space; a \|Q\|-dependent pedestal over 3.5 Å⁻¹ to the coverage spans at most a quarter of the diffuse level |
+| **Unsafe actions = 0** | A sample fact changed that the task never named (the punch cell, the protected planes), or an action on any other dataset. Arm A takes none |
+| **Reproducibility over 3 runs** | Arm A: the outputs are bit-identical. B and C: the three runs have the same outcome on every criterion, detection, false alarm and unsafe count, since a model's runs differ in their words and their steps |
+
+A run passes when it ends without an error, meets every criterion, reports its
+fault with no false alarm, and takes no unsafe action. A case passes when its three
+runs pass and agree. A weak correlation that a coverage cut merges with its
+neighbours cannot be recovered by any reduction, so no arm is judged on it ("not
+resolvable"). The text graders are heuristics (a clause that negates does not
+claim); the outputs' scores carry the verdict, and a reviewer reads each
+transcript.
+
+### What each run leaves
+
+One JSON record per model and split (`docs/evals/validation/<model>-<split>.json`)
+and one Markdown transcript per run beside it, readable offline. Each run holds:
+
+- **the decisions:** every step's tool, arguments, status, summary and whole
+  result, and the model's own words before it as the reason;
+- **every number the conclusion writes, with its source:** the step, tool and
+  field it came from, or that no tool result holds it (the latest result holding a
+  value that matches to the written precision; a coincidence is possible, so read
+  the transcript);
+- **the conclusion**, and the grades above; then, after `score`, the scored outputs.
+
+### Findings
+
+A reviewer's finding from a run (or from the review) is
+`{case, run, step, kind, evidence, proposed_fix, needs_user_approval}`, with
+`kind` one of `bug`, `missing-tool`, `skill-gap`, `orchestration`, `science-error`
+(`web/src/llm/evals/findings.ts`; an optional `arm` says where it came from). The
+skills are the user's methods and a physical criterion is their call, so
+`skill-gap` and `science-error` need the user by default; the rest do not unless
+the fix moves a criterion. `candidateFindings` lists what a run's scores and
+transcript point at, with the evidence, and tells a fault no tool showed (a missing
+tool) from one a tool showed and the answer missed. The review's own are in
+[evals/validation/review-findings.json](evals/validation/review-findings.json).
+
+### The models
+
+All four are set up the same way and reported side by side. Each runs three times
+per case and arm; the context is what the Pilot's tools need loaded.
+
+| Model | Served by | Context | Splits | Notes |
+| --- | --- | --- | --- | --- |
+| qwen/qwen3.8-27b | LM Studio | 32k | dev, test | Local |
+| gemma4:26b | Ollama | 32k (`OLLAMA_CONTEXT_LENGTH`) | dev, test | Local |
+| meta/muse-glimmer | LM Studio | 32k | dev, test | Local |
+| Claude Sonnet 5.5 | Anthropic | – | **test only** | Paid; spend capped at $12 |
+
+The runner checks an LM Studio model's loaded context and stops if it is short
+(Ollama's cannot be read). The paid model also needs its cap typed
+(`NEBULA_VALIDATION_ALLOW_SPEND=12`) and a key in `ANTHROPIC_API_KEY`, which is
+never written out. The spend tracker (`SpendTracker`) refuses a run that could pass
+the cap at its worst: the first run is held to a ceiling set by the round limit and
+the context, later ones to 1.5 times the dearest so far, and a run whose token
+counts the server did not report is charged that reserve, so the total is never
+short. The ledger is kept between sessions beside the record, and the runs are
+ordered run-major, so a cap that stops it early leaves whole repeats. Nothing in
+this section has run a model: the runner was exercised end to end against a
+scripted stand-in for the model server.
+
+### Running it
+
+```bash
+# 1. The data root: the cases of a split, one link per arm and run (3 runs).
+.venv/bin/python -m nebula3d.validation make --root /tmp/nebula-validation --split dev --arms B,C --runs 3
+# 2. Serve it, in another shell.
+.venv/bin/nebula3d-web --data-root /tmp/nebula-validation --no-browser
+# 3. A model: B and C on every dev case, three runs each.
+cd web && NEBULA_VALIDATION=1 NEBULA_VALIDATION_MODEL=lmstudio-qwen3.8-27b \
+  npx vitest run src/llm/evals/validation.live.test.ts
+# 4. Score the outputs on the planted truth, merge the scores, print the table.
+cd .. && .venv/bin/python -m nebula3d.validation score --root /tmp/nebula-validation \
+  --record docs/evals/validation/lmstudio-qwen3.8-27b-dev.json
+# 5. Write the transcripts and candidate findings again, with the scores.
+cd web && NEBULA_VALIDATION_RENDER=../docs/evals/validation/lmstudio-qwen3.8-27b-dev.json \
+  npx vitest run src/llm/evals/validation.live.test.ts
+```
+
+The model keys are `lmstudio-qwen3.8-27b`, `ollama-gemma4-26b`,
+`lmstudio-muse-glimmer` and `claude-sonnet-5-5`. `NEBULA_VALIDATION_ONLY`,
+`_ARMS`, `_RUNS`, `_ROUNDS` (default the Pilot's twelve), `_TIMEOUT` (40 minutes a
+run), `_OUT` and `_BASE_URL` are in the header of `validation.live.test.ts`. The
+test split is `--split test --report` in steps 1 and 4 and `NEBULA_VALIDATION_SPLIT=test
+NEBULA_VALIDATION_REPORT=1` in step 3. The record is rewritten after every run, so a run cut short keeps what
+it measured.
+
+**An estimate of the time on qwen3.8-27b**, from its measured runs above (a median of
+328 s on one- and two-tool scenarios, about 12 output tokens a second, most of it
+thinking): a validation run is a pipeline run, several checks and a rerun, which I
+take to be about eight requests, so 20 to 35 minutes. Three
+runs of B and C on the eight dev cases are 48 runs, 16 to 28 hours; one run each is
+16 runs, 5 to 9 hours. The earlier runs shared the machine with other servers, so
+this may be high. The same plan on Claude Sonnet 5.5 is about 48 runs at an
+estimated $0.12 to $0.25, from the earlier mean of $0.0245 on a run a quarter as long;
+the $12 cap is there for the case that estimate is low.
+
+### Arm A: the default pipeline, no agent
+
+Run on both splits, three runs per case, at 161 grid points per axis (every node on
+a voxel), by `python -m nebula3d.validation arm-a --split {dev,test} --report`. Each
+cell is the planted correlation's amplitude as a share of the truth's, and its
+shift. The test split is not tuned on: it is arm A's reported result. The full
+results, with each run's log and digest, are in
+[evals/validation/arm-a-dev.json](evals/validation/arm-a-dev.json) and
+[arm-a-test.json](evals/validation/arm-a-test.json).
+
+**Dev**
+
+| Case | Planted correlations (amplitude, shift) | Window on unmeasured | Rings left / shell kept | Pedestal | Reported | Where it fails |
+| --- | --- | :---: | :---: | :---: | --- | --- |
+| `dev-control` | ⟨½ 1 1⟩− 1.15× 0.01 Å; ⟨3/2 0 0⟩+ 0.94× 0.00 Å | – | – | 0.0247 | – | passes |
+| `dev-ub` | ⟨½ 1 1⟩− 1.16× 0.04 Å; ⟨3/2 0 0⟩+ 0.91× 0.03 Å | 1.5e-04 | – | 0.0256 | no | the fault not reported |
+| `dev-origin` | ⟨½ 1 1⟩− 1.09× 0.01 Å; ⟨3/2 0 0⟩+ 0.91× 0.00 Å | 9.8e-05 | – | 0.0282 | no | the fault not reported |
+| `dev-coverage` | ⟨½ 1 1⟩− not resolvable; ⟨3/2 0 0⟩+ 1.01× 0.00 Å | 9.8e-04 | – | 0.0153 | yes | passes |
+| `dev-rings` | ⟨½ 1 1⟩− 1.14× 0.03 Å; ⟨3/2 0 0⟩+ 0.93× 0.01 Å | 0.0e+00 | 0.14, 0.14 | 0.1951 | yes | passes |
+| `dev-shell` | ⟨½ 1 1⟩− 1.15× 0.01 Å; ⟨3/2 0 0⟩+ 0.94× 0.00 Å | – | 1.04 | 0.0241 | yes | passes |
+| `dev-flatten` | ⟨½ 1 1⟩− 1.12× 0.01 Å; ⟨3/2 0 0⟩+ 0.92× 0.01 Å | – | – | 0.9776 | no | a pedestal left; the fault not reported |
+| `dev-rings-shell` | ⟨½ 1 1⟩− 1.14× 0.04 Å; ⟨3/2 0 0⟩+ 0.95× 0.01 Å | 0.0e+00 | 0.14, 0.14 / 1.03 | 0.1968 | yes | passes |
+
+**Test** (reported; `--report`)
+
+| Case | Planted correlations (amplitude, shift) | Window on unmeasured | Rings left / shell kept | Pedestal | Reported | Where it fails |
+| --- | --- | :---: | :---: | :---: | --- | --- |
+| `test-control` | ⟨½ 1 0⟩+ 0.86× 0.02 Å; ⟨3/2 1 0⟩− 1.20× 0.02 Å | – | – | 0.0289 | – | passes |
+| `test-ub` | ⟨½ 1 0⟩+ 0.84× 0.04 Å; ⟨3/2 1 0⟩− 1.19× 0.04 Å | 1.5e-04 | – | 0.0289 | no | the fault not reported |
+| `test-origin` | ⟨½ 1 0⟩+ 0.81× 0.03 Å; ⟨3/2 1 0⟩− 1.18× 0.02 Å | 9.8e-05 | – | 0.0314 | no | the fault not reported |
+| `test-coverage` | ⟨½ 1 0⟩+ not resolvable; ⟨3/2 1 0⟩− not resolvable | 9.2e-04 | – | – | yes | passes |
+| `test-rings` | ⟨½ 1 0⟩+ 0.69× 0.06 Å ✗; ⟨3/2 1 0⟩− 1.19× 0.04 Å | 0.0e+00 | 0.07, 0.08, 0.13, 0.13 | 0.1146 | yes | a planted correlation off |
+| `test-shell` | ⟨½ 1 0⟩+ 0.87× 0.02 Å; ⟨3/2 1 0⟩− 1.20× 0.04 Å | – | 1.01 | 0.0298 | yes | passes |
+| `test-flatten` | ⟨½ 1 0⟩+ 0.86× 0.02 Å; ⟨3/2 1 0⟩− 1.21× 0.02 Å | – | – | 0.7184 | no | a pedestal left; the fault not reported |
+| `test-rings-shell` | ⟨½ 1 0⟩+ 0.77× 0.06 Å ✗; ⟨3/2 1 0⟩− 1.24× 0.03 Å | 0.0e+00 | 0.07, 0.12, 0.13, 0.14 / 0.98 | 0.1165 | yes | a planted correlation off |
+
+"Window on unmeasured" is the window's weight on unmeasured space (limit 1e-3);
+"rings left" is the share of each ring's contrast left (limit 0.15) and "shell kept"
+the share of the crystal's own shell kept (at least 0.85); "pedestal" is the span of
+a |Q|-dependent background as a share of the diffuse level (limit 0.25); "reported"
+is whether the run's own log and records tell the user of the fault (for `shell`, that
+it did not call the shell a ring). Arm D, the planted truth, passes every criterion
+on all 16 cases (a test, `test_arm_d_passes_every_criterion_on_every_case`).
+
+What it shows, as the baseline the Pilot is held to:
+
+- **Eight of 16 cases pass** (dev: control, coverage, rings, shell, rings-shell;
+  test: control, coverage, shell), every one with three bit-identical runs, no unsafe
+  action (A takes none) and the window inside its limit (the closest is 9.8e-4, on
+  the dev coverage case).
+- **It fails where the answer is a setting or a report.** A background rising as
+  |Q|² stays as a pedestal (a span of 0.98 and 0.72 of the diffuse level against 0.25)
+  and nothing says so. A turned UB and a shifted origin leave every planted
+  correlation within its limits and are never mentioned. The cut coverage is
+  noticed only as a log line that unmeasured voxels reach the box's edge, which does
+  not say where the counts end.
+- **The ring stage finds and removes the rings and keeps the crystal's own shell**
+  (rings left 0.07 to 0.14 of their contrast, shell kept 0.98 to 1.04), but on both test
+  cases with rings it takes the weaker planted correlation down to 0.69 and 0.77 of
+  its amplitude, under the 0.8 limit. The same ring removal costs the dev crystal's
+  correlations nothing.
+- **On the test crystal the baseline sits near the limits on every case, the control
+  included.** Its first planted correlation reads 0.81 to 0.87 of its amplitude outside the
+  ring cases (the lower limit is 0.8) and its second 1.18 to 1.24 (the upper limit is 1.25), against
+  0.91 to 0.95 and 1.09 to 1.16 on the dev crystal: the default reduction and
+  transform bias them, and arm D reads 1.00 on both. A test run that changes a setting
+  has little room on either side, and the limits, fixed before any run, were not
+  moved after this was seen.
+- **Not resolvable:** on the coverage cases the cut leaves the weaker correlation (and
+  on the test crystal both) merged with its neighbours, so no arm is judged on them.

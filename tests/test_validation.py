@@ -249,7 +249,21 @@ def test_what_a_model_can_see_names_no_case_fault_or_split(tmp_path):
     labels = [label_of(c) for c in CASES]
     assert len(set(labels)) == len(CASES)
     assert dataset_stem("dev-rings-shell", "B", 2) == f"{label_of('dev-rings-shell')}_B2"
-    main(["make", "--root", str(tmp_path), "--split", "dev", "--arms", "B,C", "--runs", "2", "--n", "21"])
+    main(
+        [
+            "make",
+            "--root",
+            str(tmp_path),
+            "--split",
+            "dev",
+            "--arms",
+            "B,C",
+            "--runs",
+            "2",
+            "--n",
+            "21",
+        ]
+    )
     served = sorted(p.name for p in (tmp_path / "raw").iterdir())
     assert len(served) == len(cases("dev")) * 2 * 2  # only the links are datasets
     words = {c.id for c in CASES} | set(FAMILIES) | {"dev", "test"}
