@@ -274,7 +274,7 @@ export interface NumberSource {
 }
 
 /** Where in a JSON value a number sits that matches *v* within *tol* (relative 2 %, or the written precision). */
-function findIn(node: unknown, v: number, tol: number, path: string): { path: string; value: number } | null {
+export function findIn(node: unknown, v: number, tol: number, path: string): { path: string; value: number } | null {
   if (typeof node === "number") {
     const t = Math.max(tol, 0.02 * Math.abs(v)) + 1e-12;
     return Math.abs(Math.abs(node) - Math.abs(v)) <= t ? { path, value: node } : null;
