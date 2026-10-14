@@ -1,0 +1,524 @@
+{
+ "families": {
+  "control": "No fault: the planted correlations must come through, and nothing may be reported wrong.",
+  "ub": "The UB turned: every Bragg peak sits beside its node by the angle × |Q|. Report the angle; no setting fixes it.",
+  "origin": "The HKL origin shifted: every feature moves by one vector, which no UB undoes. Report it as the origin, not the UB.",
+  "coverage": "The counts end inside the box. The ΔPDF window must stay on measured space; report the edge.",
+  "rings": "Powder rings: remove them, and report them.",
+  "shell": "A diffuse shell at one |Q| that is the crystal's own (it follows the crystal's symmetry, absent in a fifth of directions). Keep it.",
+  "flatten": "A background rising as |Q|², which the default flatten (a constant) leaves as a pedestal. Turn on the flatten's Q² term.",
+  "rings-shell": "Powder rings and the crystal's own shell together: remove the one, keep the other."
+ },
+ "cases": [
+  {
+   "id": "dev-control",
+   "family": "control",
+   "split": "dev",
+   "cell_a": 3.9,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      1.0
+     ],
+     "sign": "-",
+     "distance_A": 5.85
+    },
+    {
+     "vector": [
+      1.5,
+      0.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 5.85
+    }
+   ],
+   "fault": {}
+  },
+  {
+   "id": "test-control",
+   "family": "control",
+   "split": "test",
+   "cell_a": 4.1,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 4.584
+    },
+    {
+     "vector": [
+      1.5,
+      1.0,
+      0.0
+     ],
+     "sign": "-",
+     "distance_A": 7.391
+    }
+   ],
+   "fault": {}
+  },
+  {
+   "id": "dev-ub",
+   "family": "ub",
+   "split": "dev",
+   "cell_a": 3.9,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      1.0
+     ],
+     "sign": "-",
+     "distance_A": 5.85
+    },
+    {
+     "vector": [
+      1.5,
+      0.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 5.85
+    }
+   ],
+   "fault": {
+    "angle_deg": 0.6,
+    "axis": [
+     1.0,
+     1.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "test-ub",
+   "family": "ub",
+   "split": "test",
+   "cell_a": 4.1,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 4.584
+    },
+    {
+     "vector": [
+      1.5,
+      1.0,
+      0.0
+     ],
+     "sign": "-",
+     "distance_A": 7.391
+    }
+   ],
+   "fault": {
+    "angle_deg": 0.45,
+    "axis": [
+     1.0,
+     0.0,
+     2.0
+    ]
+   }
+  },
+  {
+   "id": "dev-origin",
+   "family": "origin",
+   "split": "dev",
+   "cell_a": 3.9,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      1.0
+     ],
+     "sign": "-",
+     "distance_A": 5.85
+    },
+    {
+     "vector": [
+      1.5,
+      0.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 5.85
+    }
+   ],
+   "fault": {
+    "offset": [
+     0.03,
+     0.02,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "test-origin",
+   "family": "origin",
+   "split": "test",
+   "cell_a": 4.1,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 4.584
+    },
+    {
+     "vector": [
+      1.5,
+      1.0,
+      0.0
+     ],
+     "sign": "-",
+     "distance_A": 7.391
+    }
+   ],
+   "fault": {
+    "offset": [
+     0.0,
+     0.035,
+     0.02
+    ]
+   }
+  },
+  {
+   "id": "dev-coverage",
+   "family": "coverage",
+   "split": "dev",
+   "cell_a": 3.9,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      1.0
+     ],
+     "sign": "-",
+     "distance_A": 5.85
+    },
+    {
+     "vector": [
+      1.5,
+      0.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 5.85
+    }
+   ],
+   "fault": {
+    "fraction": 0.7
+   }
+  },
+  {
+   "id": "test-coverage",
+   "family": "coverage",
+   "split": "test",
+   "cell_a": 4.1,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 4.584
+    },
+    {
+     "vector": [
+      1.5,
+      1.0,
+      0.0
+     ],
+     "sign": "-",
+     "distance_A": 7.391
+    }
+   ],
+   "fault": {
+    "fraction": 0.62
+   }
+  },
+  {
+   "id": "dev-rings",
+   "family": "rings",
+   "split": "dev",
+   "cell_a": 3.9,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      1.0
+     ],
+     "sign": "-",
+     "distance_A": 5.85
+    },
+    {
+     "vector": [
+      1.5,
+      0.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 5.85
+    }
+   ],
+   "fault": {
+    "q": [
+     2.2,
+     4.05
+    ],
+    "amplitude": 0.5,
+    "width": 0.025
+   }
+  },
+  {
+   "id": "test-rings",
+   "family": "rings",
+   "split": "test",
+   "cell_a": 4.1,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 4.584
+    },
+    {
+     "vector": [
+      1.5,
+      1.0,
+      0.0
+     ],
+     "sign": "-",
+     "distance_A": 7.391
+    }
+   ],
+   "fault": {
+    "aluminium": 0.6
+   }
+  },
+  {
+   "id": "dev-shell",
+   "family": "shell",
+   "split": "dev",
+   "cell_a": 3.9,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      1.0
+     ],
+     "sign": "-",
+     "distance_A": 5.85
+    },
+    {
+     "vector": [
+      1.5,
+      0.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 5.85
+    }
+   ],
+   "fault": {
+    "q": 2.9,
+    "amplitude": 0.25,
+    "width": 0.03,
+    "lobes": "100",
+    "power": 3
+   }
+  },
+  {
+   "id": "test-shell",
+   "family": "shell",
+   "split": "test",
+   "cell_a": 4.1,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 4.584
+    },
+    {
+     "vector": [
+      1.5,
+      1.0,
+      0.0
+     ],
+     "sign": "-",
+     "distance_A": 7.391
+    }
+   ],
+   "fault": {
+    "q": 3.35,
+    "amplitude": 0.2,
+    "width": 0.035,
+    "lobes": "111",
+    "power": 3
+   }
+  },
+  {
+   "id": "dev-flatten",
+   "family": "flatten",
+   "split": "dev",
+   "cell_a": 3.9,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      1.0
+     ],
+     "sign": "-",
+     "distance_A": 5.85
+    },
+    {
+     "vector": [
+      1.5,
+      0.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 5.85
+    }
+   ],
+   "fault": {
+    "q2": 0.006
+   }
+  },
+  {
+   "id": "test-flatten",
+   "family": "flatten",
+   "split": "test",
+   "cell_a": 4.1,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 4.584
+    },
+    {
+     "vector": [
+      1.5,
+      1.0,
+      0.0
+     ],
+     "sign": "-",
+     "distance_A": 7.391
+    }
+   ],
+   "fault": {
+    "q2": 0.0045
+   }
+  },
+  {
+   "id": "dev-rings-shell",
+   "family": "rings-shell",
+   "split": "dev",
+   "cell_a": 3.9,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      1.0
+     ],
+     "sign": "-",
+     "distance_A": 5.85
+    },
+    {
+     "vector": [
+      1.5,
+      0.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 5.85
+    }
+   ],
+   "fault": {
+    "q": [
+     2.2,
+     4.05
+    ],
+    "amplitude": 0.5,
+    "width": 0.025,
+    "shell": {
+     "q": 2.9,
+     "amplitude": 0.25,
+     "width": 0.03,
+     "lobes": "100",
+     "power": 3
+    }
+   }
+  },
+  {
+   "id": "test-rings-shell",
+   "family": "rings-shell",
+   "split": "test",
+   "cell_a": 4.1,
+   "planted": [
+    {
+     "vector": [
+      0.5,
+      1.0,
+      0.0
+     ],
+     "sign": "+",
+     "distance_A": 4.584
+    },
+    {
+     "vector": [
+      1.5,
+      1.0,
+      0.0
+     ],
+     "sign": "-",
+     "distance_A": 7.391
+    }
+   ],
+   "fault": {
+    "aluminium": 0.6,
+    "shell": {
+     "q": 3.35,
+     "amplitude": 0.2,
+     "width": 0.035,
+     "lobes": "111",
+     "power": 3
+    }
+   }
+  }
+ ]
+}
