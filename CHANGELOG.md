@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Does the Pilot help? A validation on synthetic cases with a planted truth.**
+  `python -m nebula3d.validation` builds sixteen cases (eight faults, each in a
+  dev and a held-out test split from another crystal), scores any arm's outputs
+  on the planted correlations, and runs the default pipeline (arm A) and the
+  scorer's reference (arm D). The Pilot's two arms, with and without its skills,
+  have a runner, a transcript every run leaves, a findings schema and a model
+  configuration with a spend cap; none has run a model yet. The protocol and
+  arm A's results are in `docs/evals.md`, the review of the tools and skills it
+  began with in `docs/pilot-review.md`.
+- **The ΔPDF is not called symmetry-broken when the file declares no symmetry.**
+  `symmetry_check` and `assess_stage` for the ΔPDF read the asymmetry of every
+  unsymmetrised volume (counting noise) as a break by a stage. A file that
+  declares none is now "not judged", with the asymmetry still reported.
+- **`assess_stage` for the flatten says whether a pedestal is left.** The
+  report's own rule (a floor trend and a span both 0.8 or more) is one function
+  now, stated as `pedestal_left` and in the headline, where the Q² term's
+  question had two numbers to combine.
+
 - **The 3D-ΔPDF refuses a grid without Q = 0 on its centre voxel.** The
   transform takes index n // 2 of each axis as Q = 0. On an even grid with a
   bin edge at 0 that voxel sits half a step off, and every feature at x was

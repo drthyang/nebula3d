@@ -4,6 +4,7 @@
 // text; the model's own answer goes in as a clearly labelled narrative.  This
 // module only assembles: it is pure, so the report can be tested end to end.
 
+import { pedestalLeft } from "../metrics/flatten";
 import { SYMMETRY_HOLDS } from "../metrics/symmetry";
 import type { ParamValue } from "../tune/catalog";
 
@@ -250,7 +251,7 @@ function flattenCheck(m: Obj | null | undefined, criterion?: string): ReportChec
   const trend = num(m.max_floor_trend);
   const span = num(m.max_floor_span_fraction);
   // The goal's own reading: a floor beyond 1σ, or a trend near 1 with a span near 1, is a pedestal left.
-  const pedestal = trend != null && span != null && Math.abs(trend) >= 0.8 && span >= 0.8;
+  const pedestal = pedestalLeft(trend, span) === true;
   return {
     title: "Flatten",
     verdict: floor == null ? "info" : floor <= 1 && !pedestal ? "pass" : "attention",
@@ -286,7 +287,7 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
   return {
     title: "3D-ΔPDF",
     verdict: m || cov || sym ? (ok ? "pass" : "attention") : "info",
-    headline: `r ${fmt(r)} · SNR ${fmt(m?.mean_feature_snr)} · unmeasured ${fmt(open)}${symVerdict ? ` · symmetry ${symVerdict.startsWith("kept") ? "kept" : "broken"}` : ""}`,
+    headline: `r ${fmt(r)} · SNR ${fmt(m?.mean_feature_snr)} · unmeasured ${fmt(open)}${symVerdict ? ` · symmetry ${symVerdict.startsWith("kept") ? "kept" : symVerdict.startsWith("not judged") ? "not judged" : "broken"}` : ""}`,
     criterion,
     details,
   };
@@ -339,10 +340,17 @@ export function stageCheck(stage: "rings" | "punch" | "backfill" | "flatten" | "
 const BACKFILL_SEAM_CRITERION =
   "The fills meet their surroundings: a median seam of 1σ or less. Whether a cut's fill is biased one way is texture_check's to say.";
 
+/** What the verdict says of a volume that declares no symmetry (symmetry_check says the same). */
+export const NOT_DECLARED = (asymmetry: unknown): string =>
+  `not judged: the file declares no symmetry, so the section's asymmetry (${String(asymmetry)}) is the data's own, counting noise included, not a break by a stage`;
+
 /** symmetry_check's verdict, from a ΔPDF evaluation's worst in-plane break (null without one). */
 function symmetryOf(m: Obj): Obj | null {
   const worst = num(m.max_symmetry_break);
   if (worst == null) return null;
+  // A file that declares no symmetry was not symmetrised: the section's
+  // asymmetry is the data's own, and no stage broke anything (docs/pilot-review.md).
+  if (m.symmetry_declared === false) return { verdict: NOT_DECLARED(worst) };
   return {
     verdict:
       worst <= SYMMETRY_HOLDS

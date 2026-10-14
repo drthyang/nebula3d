@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
+import { stageCheck } from "../report/report";
 import { evaluateStage, headline } from "../tune/evaluate";
 import { makeSlice } from "./helpers";
 
@@ -138,12 +139,59 @@ describe("evaluateStage", () => {
       const s = makeSlice(21, 21, (x) => x);
       return { ...s, header: { ...s.header, axes_angle: 120 } };
     });
+    api.fetchMeta.mockResolvedValue({ ...(await api.fetchMeta()), symmetry: "6/mmm" }); // declared symmetrised
     const e = await evaluateStage("pdf", withPdf);
     expect(e.window_weight_on_unmeasured).toBe(0.044);
     expect(e.window_shape).toBe("separable");
     expect(e.max_symmetry_break as number).toBeGreaterThan(1);
     expect(typeof e.worst_symmetry_op).toBe("string");
+    expect(e.symmetry_declared).toBe(true);
     expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.044 · symmetry off ≤ \d/);
+    expect(stageCheck("pdf", e)?.headline).toMatch(/ · symmetry broken$/);
+  });
+
+  it("does not judge a symmetry the file never declared: unsymmetrised data differ from their images by their own noise", async () => {
+    const withPdf: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" }],
+    };
+    api.fetchConsistencyCheck.mockResolvedValue({ has_check: true, metrics: { pearson_r: 0.9999, normalized_rms: 0.01 } });
+    api.fetchDpdfMeta.mockResolvedValue({ lattice: { a: 6, b: 6, c: 9 }, window_open_weight: 0, window_shape: "separable" });
+    api.fetchDpdfSlice.mockImplementation(async () => {
+      const s = makeSlice(21, 21, (x) => x);
+      return { ...s, header: { ...s.header, axes_angle: 120 } };
+    });
+    const e = await evaluateStage("pdf", withPdf); // the mocked volume declares no symmetry
+    expect(e.symmetry_declared).toBe(false);
+    expect(e.max_symmetry_break as number).toBeGreaterThan(1); // still measured, and reported
+    expect(headline("pdf", e)).toMatch(/ · no symmetry declared \(asymmetry \d/);
+    const check = stageCheck("pdf", e)!;
+    expect(check.verdict).toBe("pass"); // nothing else fails
+    expect(check.headline).toMatch(/ · symmetry not judged$/);
+    // The rule still bites where symmetry is declared.
+    expect(stageCheck("pdf", { ...e, symmetry_declared: true })!.verdict).toBe("attention");
+  });
+
+  it("says whether the flatten left a pedestal, so the Q² term's question has a stated answer", async () => {
+    const withFlat: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, ...["backfilled", "flattened"].map((name) => ({ name, exists: true, kind: "hkl" as const, volume_id: `demo.${name}` }))],
+    };
+    api.fetchMeta.mockResolvedValue({ shape: [81, 81, 81], h_range: [-10, 10], k_range: [-10, 10], l_range: [-10, 10], lattice: { a: 4, b: 4, c: 4 } });
+    const lumpy = (x: number, y: number) => 0.8 * Math.cos(1.3 * x) * Math.cos(1.1 * y);
+    const evaluate = async (after: (x: number, y: number) => number) => {
+      api.fetchSlice.mockImplementation(async (id: string) =>
+        makeSlice(81, 81, id.endsWith("backfilled") ? (x, y) => 4 + 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y) : after, { half: 10 }),
+      );
+      return evaluateStage("flatten", withFlat);
+    };
+    const rising = await evaluate((x, y) => 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y));
+    expect(rising.pedestal_left).toBe(true);
+    expect(headline("flatten", rising)).toMatch(/ · pedestal left$/);
+    const level = await evaluate(lumpy);
+    expect(level.pedestal_left).toBe(false);
+    expect(headline("flatten", level)).toMatch(/ · no pedestal$/);
+    expect(headline("flatten", { max_after_floor_sigma: 0.8 })).toBe("floor ≤ 0.8σ · trend ≤ – · span ≤ –"); // not measured: not said
   });
 
   it("names the plane and |Q| of the worst ring residual in the headline", () => {

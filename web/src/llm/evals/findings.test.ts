@@ -133,3 +133,18 @@ describe("the transcript", () => {
     expect(text).toContain("features ok, pedestal FAILED");
   });
 });
+
+describe("the review's findings", () => {
+  it("are all findings, in the schema, on cases that exist, and name what they need from the user", async () => {
+    const { readText } = await import("./backend");
+    const found = JSON.parse(await readText(new URL("../../../../docs/evals/validation/review-findings.json", import.meta.url))) as Finding[];
+    expect(found.length).toBeGreaterThanOrEqual(8);
+    for (const f of found) {
+      expect(findingProblems(f), f.evidence.slice(0, 40)).toEqual([]);
+      expect(caseNamed(f.case), f.case).toBeDefined();
+      expect(caseNamed(f.case)!.split).toBe("dev"); // the test split was not read
+      if (f.kind === "skill-gap" || f.kind === "science-error") expect(f.needs_user_approval).toBe(true);
+    }
+    expect(new Set(found.map((f) => f.kind))).toEqual(new Set(["missing-tool", "science-error", "skill-gap", "orchestration"]));
+  });
+});
