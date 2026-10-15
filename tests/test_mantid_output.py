@@ -214,7 +214,10 @@ def test_writer_matches_the_savemd_layout(tmp_path):
         assert _vlen_ascii_attr(extra, "content") == "hkl_volume"
         assert _vlen_ascii_attr(extra, "dtype") == "float32"
         assert _vlen_ascii_attr(extra, "version") == nebula3d.__version__
-        assert _vlen_ascii_attr(extra, "instrument") == vol.instrument
+        # "CORELLI (Å test)" is not ASCII: labelled UTF-8, so every reader decodes it
+        tid, _ = _attr_type(extra, "instrument")
+        assert tid.is_variable_str() and tid.get_cset() == h5py.h5t.CSET_UTF8
+        assert extra.attrs["instrument"] == vol.instrument
         np.testing.assert_array_equal(extra["ub_matrix"][()], UB)
         np.testing.assert_array_equal(extra["D2_centers"][()], vol.h_axis)
 
@@ -447,6 +450,25 @@ def test_delta_pdf_writes_the_savemd_layout_and_reads_back(tmp_path):
     nebula3d.save(_vol(), tmp_path / "v.h5")
     with pytest.raises(ValueError, match="nebula3d.load"):
         load_delta_pdf(tmp_path / "v.h5")
+
+
+def test_text_outside_ascii_is_labelled_utf8(tmp_path):
+    """Mantid writes only ASCII text.  A run log outside it (a file name, say) is
+    labelled UTF-8, not ASCII, so a reader that trusts the label (h5wasm) does
+    not decode it byte by byte; ASCII text keeps Mantid's type."""
+    x, y, z = _dpdf_axes()
+    name = "Fe₃Ge₂_Å.h5"
+    path = tmp_path / "d.h5"
+    save_delta_pdf(path, np.zeros((x.size, y.size, z.size)), x, y, z,
+                   logs={"source_file": name, "apodization": "gaussian"})
+    with h5py.File(path, "r") as f:
+        run = f[ROOT]["experiment0/logs"]
+        tid = run["source_file/value"].id.get_type()
+        assert not tid.is_variable_str() and tid.get_cset() == h5py.h5t.CSET_UTF8
+        assert tid.get_strpad() == h5py.h5t.STR_NULLTERM
+        assert tid.get_size() == len(name.encode())
+        assert _fixed_string(run["apodization/value"]) == "gaussian"
+    assert load_delta_pdf(path, read_data=False).logs["source_file"] == name
 
 
 def test_legacy_delta_pdf_still_reads(tmp_path):

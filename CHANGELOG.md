@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Text outside ASCII in a SaveMD file reads back right in other HDF5
+  readers.** A run log, title or attribute with characters outside ASCII (a
+  file name such as `Fe₃Ge₂_Å.nxs`) was stored as UTF-8 bytes labelled ASCII,
+  so readers that trust the label, such as h5wasm-based web viewers, showed
+  `Feâ‚ƒGeâ‚‚_Ã….nxs`. Such text is now labelled UTF-8; ASCII text keeps
+  Mantid's type (`nebula3d/io/mantid_nxs.py`).
+
 - **A local tier for NEBULA Pilot's evals.** `npm run eval:local` takes a
   local model through the eval scenarios and the held-out fault scenarios,
   after showing what the shared machine's model servers hold and how much
