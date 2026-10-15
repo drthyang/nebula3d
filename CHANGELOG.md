@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Text outside ASCII in a SaveMD file reads back right in other HDF5
+  readers.** A run log, title or attribute with characters outside ASCII (a
+  file name such as `Fe₃Ge₂_Å.nxs`) was stored as UTF-8 bytes labelled ASCII,
+  so readers that trust the label, such as h5wasm-based web viewers, showed
+  `Feâ‚ƒGeâ‚‚_Ã….nxs`. Such text is now labelled UTF-8; ASCII text keeps
+  Mantid's type (`nebula3d/io/mantid_nxs.py`).
+
 - **NeXus Viewer exports in the Mantid layout keep their symmetry.** The
   viewer now exports its symmetrized volumes as Mantid MDHistoWorkspace files
   the way NEBULA3D writes them, with its `source_file`, `symmetry` and

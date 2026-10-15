@@ -260,7 +260,9 @@ def write_md_histo(
 
     Every string attribute is a scalar variable-length ASCII string and every
     string dataset a fixed-length ASCII string of shape (1,), as Mantid writes
-    them; its loader is strict about the HDF5 types.
+    them; its loader is strict about the HDF5 types.  Text outside ASCII (a
+    file name in a run log, say) is labelled UTF-8 instead, so that every
+    reader decodes it; Mantid itself writes none.
     """
     import h5py
 
@@ -690,13 +692,15 @@ def _bin_edges(centers: NDArray[np.float64]) -> NDArray[np.float64]:
 def _set_text_attrs(obj: h5py.HLObject, **values: str) -> None:
     """Scalar variable-length ASCII string attributes, as Mantid writes them.
 
-    (h5py's default is UTF-8.)  Text outside ASCII is stored as its UTF-8 bytes.
+    (h5py's default is UTF-8.)  Text outside ASCII is labelled UTF-8: as ASCII,
+    a reader that trusts the label (h5wasm, say) would decode it byte by byte.
     """
     import h5py
 
-    vlen_ascii = h5py.string_dtype("ascii")
     for name, text in values.items():
-        obj.attrs.create(name, str(text).encode("utf-8"), dtype=vlen_ascii)
+        raw = str(text).encode("utf-8")
+        encoding = "ascii" if raw.isascii() else "utf-8"
+        obj.attrs.create(name, raw, dtype=h5py.string_dtype(encoding))
 
 
 def _nx_group(
@@ -714,6 +718,7 @@ def _text_dataset(grp: h5py.Group, name: str, text: str) -> h5py.Dataset:
     """A string dataset as Mantid's NeXus layer writes one: shape (1,),
     fixed-length null-terminated ASCII exactly as long as the text, and a
     single blank for an empty string (HDF5 has no zero-length string type).
+    Text outside ASCII is labelled UTF-8 (see :func:`_set_text_attrs`).
 
     Written through the low-level API with the file type as the memory type,
     so HDF5 copies the bytes instead of converting (a NULLPAD → NULLTERM
@@ -725,7 +730,7 @@ def _text_dataset(grp: h5py.Group, name: str, text: str) -> h5py.Dataset:
     tid = h5py.h5t.C_S1.copy()
     tid.set_size(len(raw))
     tid.set_strpad(h5py.h5t.STR_NULLTERM)
-    tid.set_cset(h5py.h5t.CSET_ASCII)
+    tid.set_cset(h5py.h5t.CSET_ASCII if raw.isascii() else h5py.h5t.CSET_UTF8)
     dsid = h5py.h5d.create(grp.id, name.encode(), tid, h5py.h5s.create_simple((1,)))
     dsid.write(h5py.h5s.ALL, h5py.h5s.ALL, np.array([raw], dtype=f"S{len(raw)}"),
                mtype=tid)
