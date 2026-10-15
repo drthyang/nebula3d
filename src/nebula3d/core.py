@@ -248,4 +248,5 @@ def sigma_note(vol: HKLVolume, max_samples: int = 1_000_000) -> str | None:
             "data's arbitrary intensity scale. Its values look normalized ("
             + ", ".join(why) + "), so the punch's significance test (min_significance, "
             "in σ) does not count standard errors here. Export σ with the volume "
-            "(the NeXus Viewer writes /entry/sigma) to make it count them.")
+            "(the NeXus Viewer exports it from its source file's uncertainties) to "
+            "make it count them.")

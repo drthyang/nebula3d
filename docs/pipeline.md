@@ -33,8 +33,10 @@ Bragg satellites, use `examples/investigate_bragg_diffuse.py`.
 
 ## Input data
 
-Place the volume in `data/raw/`. A NeXus Viewer export (`/entry` with the data,
-mask, H/K/L axes and UB matrix), neutron or X-ray, loads directly. Its declared
+Place the volume in `data/raw/`. A NeXus Viewer export (a Mantid
+MDHistoWorkspace with NEBULA3D's `nebula3d` group, or in older exports `/entry`
+with the data, mask, H/K/L axes and UB matrix), neutron or X-ray, loads
+directly. Its declared
 `symmetry_ops` are honoured by every stage (`symmetry="auto"`, the default). A
 Mantid-exported NeXus file works too, in either variant:
 
