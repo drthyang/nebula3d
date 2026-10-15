@@ -6,11 +6,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
 
 from nebula3d.core import HKLVolume
+
+if TYPE_CHECKING:
+    import h5py
 
 _PathLike = str | Path
 
@@ -23,10 +27,9 @@ def load(
 
     Supported formats (auto-detected by extension and file content):
     - ``.nxs`` / ``.h5`` / ``.hdf5``: a Mantid MDHistoWorkspace — a raw Mantid
-      file or one NEBULA3D wrote (:func:`save`) — or the legacy nebula3d HDF5
-      layout (``/entry/{data, sigma, mask, h_axis, k_axis, l_axis,
-      ub_matrix}``): what NEBULA3D wrote before, and what the NeXus Viewer
-      hands over
+      file, or one NEBULA3D or the NeXus Viewer's export wrote (:func:`save`)
+      — or the legacy nebula3d HDF5 layout (``/entry/{data, sigma, mask,
+      h_axis, k_axis, l_axis, ub_matrix}``): what both wrote before
     - ``.txt`` / ``.dat`` / ``.hkl``: whitespace-delimited ASCII (h k l I [sigma])
 
     ``dtype`` sets the storage precision of ``data``/``sigma`` (float64
@@ -94,6 +97,25 @@ def load_ub_matrix(path: _PathLike) -> NDArray[np.float64]:
         elif "entry/ub_matrix" in f:
             ub = np.array(f["entry/ub_matrix"], dtype=np.float64)
     return ub if ub is not None else np.eye(3, dtype=np.float64)
+
+
+def declared_attrs(f: h5py.File) -> h5py.AttributeManager | None:
+    """The attributes in which a volume file declares where it came from.
+
+    The NeXus Viewer's export names its ``source_file``, the ``symmetry`` and
+    ``symmetry_ops`` it was symmetrised with, and more, as attributes of the
+    ``nebula3d`` group in the Mantid layout, or of ``/entry`` in the legacy
+    one.  None for a file with neither group.
+    """
+    import h5py
+
+    from nebula3d.io.mantid_nxs import NEBULA3D_GROUP
+
+    for name in (f"MDHistoWorkspace/{NEBULA3D_GROUP}", "entry"):
+        grp = f.get(name)
+        if isinstance(grp, h5py.Group):
+            return grp.attrs
+    return None
 
 
 def _pop_only_kwarg(kwargs: dict[str, object], name: str, default: str) -> str:

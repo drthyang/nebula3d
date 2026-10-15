@@ -616,8 +616,9 @@ class PipelineParams:
     # interior.  0 keeps them.
     edge_trim: int = 1
     # The Laue symmetry the input was symmetrised with.  "auto": the
-    # operations the input file declares (the NeXus Viewer writes them as
-    # /entry@symmetry_ops), none if it declares none; None: ignore them; or the
+    # operations the input file declares (the NeXus Viewer's export writes them
+    # as symmetry_ops, see nebula3d.io.hkl_reader.declared_attrs), none if it
+    # declares none; None: ignore them; or the
     # operations themselves, "h,k,l; -k,h+k,l; ...".  The coverage-edge trim,
     # the ring removal, the punch, the backfill and the flatten then treat
     # symmetry-equivalent voxels alike (see nebula3d.symmetry), so a

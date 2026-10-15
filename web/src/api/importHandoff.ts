@@ -3,8 +3,9 @@
 //
 // Its "Open in NEBULA3D" button opens this app as
 //   ?import=nexus-viewer&id=<uuid>&from=<viewer origin>
-// and builds its symmetrized volume as a nebula3d HDF5 file
-// (/entry/{data, mask, h_axis, k_axis, l_axis, ub_matrix}). The exchange:
+// and builds its symmetrized volume as a Mantid MDHistoWorkspace file with a
+// nebula3d group, as this app writes them (older viewers: /entry/{data, mask,
+// h_axis, k_axis, l_axis, ub_matrix}). The exchange:
 //   app    -> viewer  { type: "nebula3d-import-ready", id }  (repeated until the file arrives)
 //   viewer -> app     { type: "nebula3d-import-progress", id, label, fraction }  (optional, while it builds the file)
 //   viewer -> app     { type: "nebula3d-import", id, schema: "nexus-viewer/1", file: File, meta }
