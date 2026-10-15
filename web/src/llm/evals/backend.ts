@@ -31,3 +31,17 @@ export async function writeText(url: URL, text: string): Promise<void> {
   const fs = (await import(/* @vite-ignore */ spec)) as { writeFileSync(p: URL, d: string): void };
   fs.writeFileSync(url, text);
 }
+
+/** Makes a folder (and its parents) in the test process. */
+export async function makeDir(url: URL): Promise<void> {
+  const spec = "node:fs";
+  const fs = (await import(/* @vite-ignore */ spec)) as { mkdirSync(p: URL, o: { recursive: true }): void };
+  fs.mkdirSync(url, { recursive: true });
+}
+
+/** Whether a file exists in the test process. */
+export async function exists(url: URL): Promise<boolean> {
+  const spec = "node:fs";
+  const fs = (await import(/* @vite-ignore */ spec)) as { existsSync(p: URL): boolean };
+  return fs.existsSync(url);
+}

@@ -7,6 +7,7 @@ import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fet
 import type { Dataset } from "../../api/types";
 import { dpdfVolumeId, loadPipelineContext, safe, hklVolumeId, type Cut } from "../context/loadContext";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
+import { pedestalLeft } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
 import { sectionSymmetry, type SectionSymmetry } from "../metrics/symmetry";
 import type { TuneStage } from "./catalog";
@@ -68,9 +69,11 @@ const max = (xs: (number | null | undefined)[]): number | null => {
 export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise<StageEvaluation> {
   if (stage === "pdf") {
     const dId = dpdfVolumeId(dataset);
-    const [check, dmeta, ...sections] = await Promise.all([
+    const rawId = hklVolumeId(dataset);
+    const [check, dmeta, rawMeta, ...sections] = await Promise.all([
       safe(fetchConsistencyCheck(dataset.id)),
       dId ? safe(fetchDpdfMeta(dId)) : Promise.resolve(null),
+      rawId ? safe(fetchMeta(rawId)) : Promise.resolve(null),
       ...DPDF_CUTS.map((dpdf) => loadPipelineContext(dataset, { recip: null, dpdf, records: false })),
     ]);
     // The x–y section through the origin against its images under the cell's
@@ -106,6 +109,10 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       window_shape: dmeta?.window_shape ?? null,
       max_symmetry_break: worstOp ? worstOp.rms_difference : null,
       worst_symmetry_op: worstOp?.op ?? null,
+      // Whether the file declares a symmetry its data were symmetrised with.
+      // Without one the section's asymmetry is the data's own (counting noise
+      // included), not a stage's break; null when the volume was not read.
+      symmetry_declared: rawMeta ? Boolean(rawMeta.symmetry) : null,
       per_plane: perPlane,
     };
   }
@@ -276,6 +283,13 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     // and the widest floor span, over the planes.
     max_floor_trend: max(f.map((x) => (x?.floor_trend != null ? Math.abs(x.floor_trend) : null))),
     max_floor_span_fraction: max(f.map((x) => x?.floor_span_fraction)),
+    // Whether that trend and span make a pedestal left (metrics/flatten.ts):
+    // the flatten's Q² term is for a pedestal, so this is the answer to
+    // "does it want flattenQ2", stated, not left to the model to read off two numbers.
+    pedestal_left: pedestalLeft(
+      max(f.map((x) => (x?.floor_trend != null ? Math.abs(x.floor_trend) : null))),
+      max(f.map((x) => x?.floor_span_fraction)),
+    ),
     per_plane: per((i) => f[i] ?? null),
   };
 }
@@ -297,14 +311,21 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
     case "backfill":
       return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;
     case "flatten":
-      return `floor ≤ ${v("max_after_floor_sigma")}σ · trend ≤ ${v("max_floor_trend")} · span ≤ ${v("max_floor_span_fraction")}`;
+      return (
+        `floor ≤ ${v("max_after_floor_sigma")}σ · trend ≤ ${v("max_floor_trend")} · span ≤ ${v("max_floor_span_fraction")}` +
+        (typeof e.pedestal_left === "boolean" ? (e.pedestal_left ? " · pedestal left" : " · no pedestal") : "")
+      );
     case "pdf": {
       const open = e.window_weight_on_unmeasured;
       const broken = e.max_symmetry_break;
       return (
         `r ${v("back_fft_pearson_r")} · RMS ${v("back_fft_normalized_rms")} · SNR ${v("mean_feature_snr")}` +
         (typeof open === "number" ? ` · unmeasured ${tiny(open)}` : "") +
-        (typeof broken === "number" ? ` · symmetry off ≤ ${tiny(broken)}` : "")
+        (typeof broken === "number"
+          ? e.symmetry_declared === false
+            ? ` · no symmetry declared (asymmetry ${tiny(broken)})`
+            : ` · symmetry off ≤ ${tiny(broken)}`
+          : "")
       );
     }
   }

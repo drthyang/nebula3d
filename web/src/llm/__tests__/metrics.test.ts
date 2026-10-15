@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { qRadius } from "../context/pipelineContext";
 import { backfillMetrics } from "../metrics/backfill";
 import { dpdfMetrics } from "../metrics/dpdf";
-import { flattenMetrics } from "../metrics/flatten";
+import { flattenMetrics, pedestalLeft } from "../metrics/flatten";
 import { ringEnergy, ringMetrics } from "../metrics/rings";
 import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
 import { percentile, robustStats } from "../metrics/sliceStats";
@@ -80,6 +80,38 @@ describe("flatten trend", () => {
     const m = flattenMetrics(before, level, undefined, [1, 6]);
     expect(Math.abs(m.floor_trend!)).toBeLessThan(0.6);
     expect(m.floor_span_fraction!).toBeLessThan(0.2);
+  });
+});
+
+describe("a pedestal left", () => {
+  it("is a floor that follows |Q| over a span of the diffuse level, and nothing less", () => {
+    expect(pedestalLeft(0.9, 1.1)).toBe(true);
+    expect(pedestalLeft(-0.85, 0.9)).toBe(true); // a falling floor too
+    expect(pedestalLeft(0.9, 0.5)).toBe(false); // follows |Q|, but small beside the diffuse
+    expect(pedestalLeft(0.5, 1.5)).toBe(false); // wide, but it wanders: it does not follow |Q|
+    expect(pedestalLeft(null, 1)).toBeNull();
+    expect(pedestalLeft(0.9, undefined)).toBeNull();
+  });
+
+  // What the tools read on synthetic volumes with a known answer (a background
+  // rising as |Q|² planted, and none), each by the default flatten.
+  it("separates a planted Q² background from a clean one, as the planted truth does", () => {
+    expect(pedestalLeft(0.836, 0.839)).toBe(true); // |Q|² background left by the constant flatten
+    expect(pedestalLeft(0.516, 1.24)).toBe(false); // no such background: only the demo's own low-|Q| hump
+    expect(pedestalLeft(0.288, 0.56)).toBe(false); // the same volume with the Q² term on
+  });
+
+  it("is what the flattened floors give: rising floors are a pedestal, level floors are not", () => {
+    const lumpy = (x: number, y: number) => 0.8 * Math.cos(1.3 * x) * Math.cos(1.1 * y);
+    const before = makeSlice(81, 81, (x, y) => 4 + 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y), { half: 10 });
+    const rising = makeSlice(81, 81, (x, y) => 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y), { half: 10 });
+    const level = makeSlice(81, 81, (x, y) => lumpy(x, y), { half: 10 });
+    const of = (after: typeof rising) => {
+      const m = flattenMetrics(before, after, undefined, [1, 6]);
+      return pedestalLeft(m.floor_trend == null ? null : Math.abs(m.floor_trend), m.floor_span_fraction);
+    };
+    expect(of(rising)).toBe(true);
+    expect(of(level)).toBe(false);
   });
 });
 

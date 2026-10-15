@@ -37,6 +37,16 @@ export interface FlattenMetrics {
   floor_span_fraction: number | null;
 }
 
+/**
+ * Whether the flatten left a pedestal: the floors still follow |Q| (a rank
+ * correlation of 0.8 or more in magnitude) over a span of 0.8 or more of the
+ * diffuse level. Null when either is not measured. The rule the report and
+ * assess_stage judge by (docs/pilot-review.md), and the one a skill can
+ * point at when it asks whether to turn the Q² term on.
+ */
+export const pedestalLeft = (trend: number | null | undefined, span: number | null | undefined): boolean | null =>
+  trend == null || span == null ? null : Math.abs(trend) >= 0.8 && span >= 0.8;
+
 // Spearman rank correlation of y with its index (the shells' |Q| order).
 const rankTrend = (y: number[]): number | null => {
   const n = y.length;
