@@ -102,9 +102,10 @@ def lattice_parameters(vol: HKLVolume) -> dict[str, float | None]:
 
 
 def declared_symmetry(path: Path) -> tuple[str | None, list[list[list[int]]] | None]:
-    """The point group a file says its data were symmetrised with (``/entry``
-    ``symmetry`` and ``symmetry_ops`` attributes, the NeXus Viewer's layout),
-    or ``(None, None)``."""
+    """The point group a file says its data were symmetrised with (the
+    ``symmetry`` and ``symmetry_ops`` attributes of a NeXus Viewer export, see
+    :func:`nebula3d.io.hkl_reader.declared_attrs`), or ``(None, None)``."""
+    from nebula3d.io.hkl_reader import declared_attrs
     from nebula3d.symmetry import read_symmetry_ops
 
     label = None
@@ -112,8 +113,8 @@ def declared_symmetry(path: Path) -> tuple[str | None, list[list[list[int]]] | N
         import h5py
 
         with h5py.File(path, "r") as f:
-            entry = f.get("entry")
-            raw = entry.attrs.get("symmetry") if isinstance(entry, h5py.Group) else None
+            attrs = declared_attrs(f)
+            raw = attrs.get("symmetry") if attrs is not None else None
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8")
         label = str(raw) if raw else None
@@ -205,10 +206,12 @@ _ub_cache: dict[tuple, dict] = {}
 def symmetry_ops_for(path: Path) -> tuple[tuple[np.ndarray, ...] | None, str | None]:
     """The symmetry operations *path* declares, else those of a symmetrised
     export in the same folder that names *path* as its source (the NeXus
-    Viewer's ``/entry`` ``source_file``), with the name of the file they came
-    from; ``(None, None)`` when neither declares any."""
+    Viewer's ``source_file``, see :func:`nebula3d.io.hkl_reader.declared_attrs`),
+    with the name of the file they came from; ``(None, None)`` when neither
+    declares any."""
     import h5py
 
+    from nebula3d.io.hkl_reader import declared_attrs
     from nebula3d.symmetry import read_symmetry_ops
 
     ops = read_symmetry_ops(path)
@@ -219,8 +222,8 @@ def symmetry_ops_for(path: Path) -> tuple[tuple[np.ndarray, ...] | None, str | N
             continue
         try:
             with h5py.File(other, "r") as f:
-                entry = f.get("entry")
-                source = entry.attrs.get("source_file") if isinstance(entry, h5py.Group) else None
+                attrs = declared_attrs(f)
+                source = attrs.get("source_file") if attrs is not None else None
         except OSError:
             continue
         if isinstance(source, bytes):

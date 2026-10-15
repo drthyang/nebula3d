@@ -262,8 +262,22 @@ def test_symmetry_off_leaves_the_punch_unchanged():
     np.testing.assert_array_equal(a, b)
 
 
+def _write_viewer_export(path, vol, symmetry_ops):
+    """The NeXus Viewer's export: the Mantid layout, its attributes on the
+    nebula3d group."""
+    from nebula3d.io.mantid_nxs import MDDim, write_md_histo
+
+    labels = ("[H,0,0]", "[0,K,0]", "[0,0,L]")
+    axes = (vol.h_axis, vol.k_axis, vol.l_axis)
+    dims = [MDDim(label, axis, "r.l.u.", "HKL", tuple(np.eye(3)[i]))
+            for i, (label, axis) in enumerate(zip(labels, axes))]
+    attrs = {} if symmetry_ops is None else {"symmetry": "6/m", "symmetry_ops": symmetry_ops}
+    write_md_histo(path, vol.data.astype(np.float32), dims, content="hkl_volume",
+                   valid=vol.mask, ub_matrix=vol.ub_matrix, attrs=attrs)
+
+
 def _write_viewer_file(path, vol, symmetry_ops):
-    """The legacy /entry layout the NeXus Viewer hands over."""
+    """The legacy /entry layout the NeXus Viewer handed over."""
     with h5py.File(path, "w") as f:
         e = f.create_group("entry")
         e.create_dataset("data", data=vol.data.astype(np.float32))
@@ -276,10 +290,11 @@ def _write_viewer_file(path, vol, symmetry_ops):
             e.attrs["symmetry_ops"] = symmetry_ops
 
 
-def test_load_input_trims_symmetrically_with_the_declared_symmetry(tmp_path):
+@pytest.mark.parametrize("write", [_write_viewer_export, _write_viewer_file])
+def test_load_input_trims_symmetrically_with_the_declared_symmetry(tmp_path, write):
     vol = _hex_volume()
     path = tmp_path / "hex_sym6m.nxs"
-    _write_viewer_file(path, vol, SIX_M)
+    write(path, vol, SIX_M)
     assert len(read_symmetry_ops(path)) == 12
 
     events = []
@@ -294,10 +309,11 @@ def test_load_input_trims_symmetrically_with_the_declared_symmetry(tmp_path):
     np.testing.assert_array_equal(explicit.mask, auto.mask)
 
 
-def test_load_input_without_a_declared_symmetry_trims_as_before(tmp_path):
+@pytest.mark.parametrize("write", [_write_viewer_export, _write_viewer_file])
+def test_load_input_without_a_declared_symmetry_trims_as_before(tmp_path, write):
     vol = _hex_volume()
     path = tmp_path / "hex.nxs"
-    _write_viewer_file(path, vol, None)
+    write(path, vol, None)
     assert read_symmetry_ops(path) is None
     got = load_input(path, PipelineParams())
     want = _hex_volume()

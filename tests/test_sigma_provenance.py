@@ -2,8 +2,9 @@
 
 The punch's significance test counts σ. With none in the file, σ is √|I|: a
 count's standard error on counts, but on normalized values it depends on the
-arbitrary intensity scale. The NeXus Viewer's hand-off (``/entry``) carries
-``sigma`` when it has one; the flag travels with every stage's output.
+arbitrary intensity scale. The NeXus Viewer's export carries σ when it has one
+(``errors_squared``, or ``/entry/sigma`` in the legacy layout); the flag
+travels with every stage's output.
 """
 
 import h5py
@@ -42,7 +43,7 @@ def test_normalized_values_without_sigma_get_the_note():
     note = sigma_note(_vol(_normalized()))
     assert note is not None
     assert "√|I|" in note and "non-integer" in note and "the largest 0.6" in note
-    assert "/entry/sigma" in note
+    assert "NeXus Viewer exports it" in note
 
 
 def test_counts_or_a_given_sigma_need_no_note():

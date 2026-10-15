@@ -68,17 +68,20 @@ def parse_symmetry_ops(text: str) -> tuple[NDArray[np.int64], ...]:
 def read_symmetry_ops(path: str | Path) -> tuple[NDArray[np.int64], ...] | None:
     """The symmetry operations *path* declares its data were symmetrised with.
 
-    Read from the ``symmetry_ops`` attribute of ``/entry`` (the layout the
-    NeXus Viewer hands over); ``None`` when the file declares none.
+    Read from the ``symmetry_ops`` attribute the NeXus Viewer's export writes
+    (see :func:`nebula3d.io.hkl_reader.declared_attrs`); ``None`` when the
+    file declares none.
     """
     import h5py
+
+    from nebula3d.io.hkl_reader import declared_attrs
 
     path = Path(path)
     if path.suffix.lower() not in {".h5", ".hdf5", ".nxs"}:
         return None
     with h5py.File(path, "r") as f:
-        entry = f.get("entry")
-        text = entry.attrs.get("symmetry_ops") if isinstance(entry, h5py.Group) else None
+        attrs = declared_attrs(f)
+        text = attrs.get("symmetry_ops") if attrs is not None else None
     if text is None:
         return None
     if isinstance(text, bytes):

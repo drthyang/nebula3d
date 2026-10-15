@@ -218,15 +218,16 @@ def test_volume_meta_says_where_sigma_came_from(tmp_path):
     assert "√|I|" in m["sigma_note"] and "non-integer" in m["sigma_note"]
 
 
-def test_declared_symmetry(tmp_path):
-    """A NeXus Viewer file's /entry symmetry and symmetry_ops reach the volume meta."""
+@pytest.mark.parametrize("layout", ["mantid", "entry"])
+def test_declared_symmetry(tmp_path, layout):
+    """A NeXus Viewer export's symmetry and symmetry_ops reach the volume meta:
+    attributes of the nebula3d group in the Mantid layout, of /entry in the
+    legacy one."""
     import h5py
 
     path = tmp_path / "viewer.nxs"
-    with h5py.File(path, "w") as f:
-        entry = f.create_group("entry")
-        entry.attrs["symmetry"] = "-1"
-        entry.attrs["symmetry_ops"] = "h,k,l; -h,-k,-l"
+    write = _write_export if layout == "mantid" else _write_entry
+    write(path, _vol(), symmetry="-1", symmetry_ops="h,k,l; -h,-k,-l")
     label, ops = vol_mod.declared_symmetry(path)
     assert label == "-1"
     assert ops == [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]]
@@ -234,6 +235,8 @@ def test_declared_symmetry(tmp_path):
     with h5py.File(plain, "w") as f:
         f.create_group("entry")
     assert vol_mod.declared_symmetry(plain) == (None, None)
+    nebula3d.save(_vol(), tmp_path / "own.nxs")   # NEBULA3D's own output declares none
+    assert vol_mod.declared_symmetry(tmp_path / "own.nxs") == (None, None)
 
 
 def test_volume_coverage(env):
@@ -270,8 +273,21 @@ def _hex_crystal(ub, ub_true, symmetrise=False):
     return vol
 
 
+def _write_export(path, vol, **attrs):
+    """*vol* as the NeXus Viewer exports it: the Mantid layout, with its
+    attributes on the nebula3d group."""
+    from nebula3d.io.mantid_nxs import MDDim, write_md_histo
+
+    labels = ("[H,0,0]", "[0,K,0]", "[0,0,L]")
+    axes = (vol.h_axis, vol.k_axis, vol.l_axis)
+    dims = [MDDim(label, axis, "r.l.u.", "HKL", tuple(np.eye(3)[i]))
+            for i, (label, axis) in enumerate(zip(labels, axes))]
+    write_md_histo(path, vol.data, dims, content="hkl_volume", valid=vol.mask,
+                   ub_matrix=vol.ub_matrix, attrs=attrs)
+
+
 def _write_entry(path, vol, **attrs):
-    """*vol* in the NeXus Viewer's layout, with /entry attributes."""
+    """*vol* in the NeXus Viewer's legacy layout, with /entry attributes."""
     with h5py.File(path, "w") as f:
         entry = f.create_group("entry")
         for name, values in (("data", vol.data), ("mask", vol.mask), ("h_axis", vol.h_axis),
@@ -377,7 +393,8 @@ def test_volume_ub_check_with_operations_that_do_not_map_the_grid(tmp_path):
     assert u["cell"][:3] == pytest.approx([a_true] * 3, abs=2e-3)
 
 
-def test_volume_ub_check_takes_the_symmetry_of_the_export(tmp_path):
+@pytest.mark.parametrize("layout", ["mantid", "entry"])
+def test_volume_ub_check_takes_the_symmetry_of_the_export(tmp_path, layout):
     """An unsymmetrised volume declares no symmetry; its symmetrised export,
     which names it as its source, does: the check fits the rotation and a cell
     constrained by the export's operations."""
@@ -389,8 +406,9 @@ def test_volume_ub_check_takes_the_symmetry_of_the_export(tmp_path):
     (tmp_path / "raw").mkdir()
     (tmp_path / "processed").mkdir()
     _write_entry(tmp_path / "raw" / f"{STEM}.nxs", vol)
-    _write_entry(tmp_path / "raw" / f"{STEM}_sym6mmm.nxs", _hex_crystal(ub, ub, symmetrise=True),
-                 symmetry_ops=SIX_MMM_TEXT, source_file=f"{STEM}.nxs")
+    write = _write_export if layout == "mantid" else _write_entry
+    write(tmp_path / "raw" / f"{STEM}_sym6mmm.nxs", _hex_crystal(ub, ub, symmetrise=True),
+          symmetry_ops=SIX_MMM_TEXT, source_file=f"{STEM}.nxs")
     assert vol_mod.symmetry_ops_for(tmp_path / "raw" / f"{STEM}.nxs")[1] == f"{STEM}_sym6mmm.nxs"
     vol_mod.clear_cache()
     client = TestClient(create_app(ServerConfig(data_root=tmp_path)))

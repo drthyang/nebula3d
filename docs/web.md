@@ -184,10 +184,12 @@ The [NeXus Viewer](https://drthyang.github.io/neutron-nexus-viewer/) symmetrizes
 and masks Mantid volumes, which this pipeline expects as input. Its **Open in
 NEBULA3D** button opens this app in a new tab as
 `?import=nexus-viewer&id=<uuid>&from=<viewer origin>`, builds the volume as a
-nebula3d HDF5 file in the legacy layout (`/entry/{data, mask, h_axis, k_axis,
-l_axis, ub_matrix}`, padded symmetric about Q = 0, and `sigma` when the viewer
-has one; it still loads, while everything this app writes is a Mantid
-MDHistoWorkspace file) and sends it. Without `sigma`, σ is √|I|: on normalized
+Mantid MDHistoWorkspace file the way this app writes one (padded symmetric
+about Q = 0, σ in `errors_squared`, and a `nebula3d` group with the exact axes
+and UB, its `sigma` provenance and the viewer's attributes: `source_file`,
+`symmetry`, `symmetry_ops`, …) and sends it. Its older exports, in the legacy
+layout (`/entry/{data, mask, sigma, h_axis, k_axis, l_axis, ub_matrix}`,
+attributes on `/entry`), still load. Without σ from the viewer, σ is √|I|: on normalized
 values the punch's significance test then depends on the arbitrary intensity
 scale, and the console says so where NEBULA Pilot reads it (`describe_dataset`,
 the punch's log line and its assessment):

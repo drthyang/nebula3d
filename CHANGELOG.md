@@ -9,6 +9,14 @@
   `Feâ‚ƒGeâ‚‚_Ã….nxs`. Such text is now labelled UTF-8; ASCII text keeps
   Mantid's type (`nebula3d/io/mantid_nxs.py`).
 
+- **NeXus Viewer exports in the Mantid layout keep their symmetry.** The
+  viewer now exports its symmetrized volumes as Mantid MDHistoWorkspace files
+  the way NEBULA3D writes them, with its `source_file`, `symmetry` and
+  `symmetry_ops` as attributes of the `nebula3d` group. NEBULA3D reads them
+  there (`nebula3d.io.hkl_reader.declared_attrs`), so the declared symmetry
+  still reaches every stage, the volume's meta and the UB check; older exports
+  with the attributes on `/entry` read as before.
+
 - **Does the Pilot help? A validation on synthetic cases with a planted truth.**
   `python -m nebula3d.validation` builds sixteen cases (eight faults, each in a
   dev and a held-out test split from another crystal), scores any arm's outputs
