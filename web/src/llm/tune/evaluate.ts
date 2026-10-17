@@ -101,6 +101,11 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     return {
       back_fft_pearson_r: m ? roundSig(m.pearson_r, 5) : null,
       back_fft_normalized_rms: m ? roundSig(m.normalized_rms, 4) : null,
+      // Against the data's even part, which the real transform keeps (the
+      // verdict's r): 1 when the transform is sound. The odd share is what r
+      // against the data loses to counting noise on unsymmetrised data.
+      back_fft_pearson_r_even: m?.pearson_r_even != null ? roundSig(m.pearson_r_even, 6) : null,
+      back_fft_odd_share: m?.odd_share != null ? roundSig(m.odd_share, 3) : null,
       back_fft_per_plane_r: m?.per_plane_r ?? null,
       mean_feature_snr: mean(Object.values(perPlane).map((p) => p?.feature_snr)),
       // The share of the window's weight on unmeasured reciprocal space
@@ -319,7 +324,9 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
       const open = e.window_weight_on_unmeasured;
       const broken = e.max_symmetry_break;
       return (
-        `r ${v("back_fft_pearson_r")} · RMS ${v("back_fft_normalized_rms")} · SNR ${v("mean_feature_snr")}` +
+        `r ${v("back_fft_pearson_r")}` +
+        (typeof e.back_fft_pearson_r_even === "number" ? ` (even part ${v("back_fft_pearson_r_even")})` : "") +
+        ` · RMS ${v("back_fft_normalized_rms")} · SNR ${v("mean_feature_snr")}` +
         (typeof open === "number" ? ` · unmeasured ${tiny(open)}` : "") +
         (typeof broken === "number"
           ? e.symmetry_declared === false

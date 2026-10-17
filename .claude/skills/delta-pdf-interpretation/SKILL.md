@@ -58,7 +58,9 @@ z = 0 plane: rods in reciprocal space are planes in real space.
 4. **Round trip.** `assess_stage` for the ΔPDF, or `consistency_details`: a
    back-FFT r near 1 only shows the transform ran correctly. Without a band or
    a crop the round trip is the identity. It is not evidence that a feature is
-   real.
+   real. The transform keeps only the data's even part under Q → −Q, so r is
+   judged against that part (`pearson_r_even`); r against unsymmetrised data is
+   lower by their odd part, counting noise (`odd_share`), which is no fault.
 5. **Colour range.** `dpdf_contrast`: the range is set from the sections, so
    the features carry the colour and the ripple stays near neutral. Never
    describe a figure whose features are saturated.

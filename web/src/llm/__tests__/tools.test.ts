@@ -738,6 +738,28 @@ describe("ub_check", () => {
   });
 });
 
+describe("consistency_details", () => {
+  it("gives r against the data's even part beside r against the data", async () => {
+    api.fetchConsistencyCheck.mockResolvedValue({
+      dataset_id: "demo", check_path: "x", has_check: true,
+      metrics: { pearson_r: 0.989014, normalized_rms: 0.125311, rms: 0.03, n_voxels: 3617683, per_plane_r: { "+0.000": 0.98912 },
+        q_band: null, crop_hkl: null, apodization: "gaussian", pearson_r_even: 0.99999999, normalized_rms_even: 1e-9, odd_share: 0.021851 },
+    });
+    const r = await run("consistency_details", {});
+    const out = JSON.parse(r.text);
+    expect([out.pearson_r, out.pearson_r_even, out.odd_share]).toEqual([0.989, 1, 0.02185]);
+    expect(r.summary).toBe("r = 0.989, normalised RMS = 0.1253; against the even part r = 1 (odd share 0.02185)");
+    // A check saved before the even part was compared reads as before.
+    api.fetchConsistencyCheck.mockResolvedValue({
+      dataset_id: "demo", check_path: "x", has_check: true,
+      metrics: { pearson_r: 0.9995, normalized_rms: 0.01, rms: 0.001, n_voxels: 10, per_plane_r: {}, q_band: null, crop_hkl: null, apodization: "gaussian" },
+    });
+    const before = await run("consistency_details", {});
+    expect(JSON.parse(before.text).pearson_r_even).toBeUndefined();
+    expect(before.summary).toBe("r = 0.9995, normalised RMS = 0.01");
+  });
+});
+
 describe("texture_check", () => {
   // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs.
   const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;

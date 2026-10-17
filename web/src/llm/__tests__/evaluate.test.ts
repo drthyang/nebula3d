@@ -172,6 +172,33 @@ describe("evaluateStage", () => {
     expect(stageCheck("pdf", { ...e, symmetry_declared: true })!.verdict).toBe("attention");
   });
 
+  it("judges the round trip against the data's even part: the clean control passes, a transform fault does not", async () => {
+    // docs/pilot-review.md finding 3: the dev control, unsymmetrised, reads r = 0.989
+    // against the data (its odd part is counting noise) and 1 against the even part.
+    const withPdf: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" }],
+    };
+    const control = { pearson_r: 0.989014, normalized_rms: 0.125311, pearson_r_even: 1, normalized_rms_even: 0, odd_share: 0.021851 };
+    api.fetchConsistencyCheck.mockResolvedValue({ has_check: true, metrics: control });
+    api.fetchDpdfMeta.mockResolvedValue({ lattice: { a: 3.9, b: 3.9, c: 3.9 }, window_open_weight: null, window_shape: "separable" });
+    api.fetchDpdfSlice.mockImplementation(async () => makeSlice(21, 21, (x, y) => Math.cos(x) * Math.cos(y)));
+    const e = await evaluateStage("pdf", withPdf); // declares no symmetry
+    expect([e.back_fft_pearson_r, e.back_fft_pearson_r_even, e.back_fft_odd_share]).toEqual([0.98901, 1, 0.0219]);
+    expect(headline("pdf", e)).toMatch(/^r 0\.98901 \(even part 1\) · RMS 0\.1253/);
+    const check = stageCheck("pdf", e)!;
+    expect(check.verdict).toBe("pass"); // failed at r < 0.999 before
+    expect(check.headline).toMatch(/^r 0\.989 \(even part 1\)/);
+    // A transform that loses part of the ΔPDF falls short of its own even part.
+    expect(stageCheck("pdf", { ...e, back_fft_pearson_r_even: 0.97 })!.verdict).toBe("attention");
+    // A check recorded before the even part was compared: r against the data is
+    // judged only where the file declares the data symmetrised.
+    const old = { ...e, back_fft_pearson_r_even: null };
+    expect(stageCheck("pdf", old)!.verdict).toBe("pass");
+    expect(stageCheck("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4 })!.verdict).toBe("attention");
+    expect(stageCheck("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4, back_fft_pearson_r: 0.9995 })!.verdict).toBe("pass");
+  });
+
   it("says whether the flatten left a pedestal, so the Q² term's question has a stated answer", async () => {
     const withFlat: Dataset = {
       ...dataset,

@@ -147,6 +147,14 @@ export interface ConsistencyMetrics {
   r_data_max: number;
   crop_hkl: number[] | null;
   apodization: string;
+  // Against the data's even part under Q → −Q, what the real transform keeps:
+  // 1 to rounding when the transform is sound (absent from checks made before
+  // 2026-10-17). odd_share is the share of the data's variance that is odd,
+  // which no real transform keeps: counting noise on unsymmetrised data.
+  pearson_r_even?: number | null;
+  normalized_rms_even?: number | null;
+  odd_share?: number | null;
+  n_voxels_even?: number;
 }
 
 // The pipeline's own back-FFT check, saved to *_delta_pdf_consistency.json: the
@@ -158,7 +166,8 @@ export interface ConsistencyCheck {
   has_check: boolean;
   metrics: Pick<
     ConsistencyMetrics,
-    "pearson_r" | "normalized_rms" | "rms" | "n_voxels" | "per_plane_r" | "q_band" | "crop_hkl" | "apodization"
+    | "pearson_r" | "normalized_rms" | "rms" | "n_voxels" | "per_plane_r" | "q_band" | "crop_hkl" | "apodization"
+    | "pearson_r_even" | "normalized_rms_even" | "odd_share" | "n_voxels_even"
   > | null;
 }
 

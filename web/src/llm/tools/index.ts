@@ -123,6 +123,8 @@ const num = (args: Args, key: string, fallback?: number): number => {
 };
 
 const r4 = (v: number | null | undefined): number | null => (v == null ? null : roundSig(v, 4));
+// Six figures, so that a check at 0.999 reads apart from 1.
+const r6 = (v: number | null | undefined): number | null => (v == null ? null : roundSig(v, 6));
 const range4 = (r: [number, number]): [number, number] => [roundSig(r[0], 4), roundSig(r[1], 4)];
 
 const RECIP_PLANES = ["hk0", "h0l", "0kl"] as const;
@@ -499,7 +501,7 @@ const braggPeaks: AgentTool = {
 const consistencyDetails: AgentTool = {
   name: "consistency_details",
   description:
-    "The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. Says whether — and where — the ΔPDF reproduces the data.",
+    "The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. The transform keeps the real part, which is the data's even part under Q → −Q: pearson_r_even compares the round trip with that part and is 1 when the transform is sound, while r against the data is limited by the odd part (odd_share: counting noise on unsymmetrised data), so r below 1 on unsymmetrised data is no fault. Neither says a feature is real.",
   parameters: { type: "object", properties: {} },
   run: async (_args, { dataset }) => {
     const check = await safe(fetchConsistencyCheck(dataset.id));
@@ -512,10 +514,19 @@ const consistencyDetails: AgentTool = {
       pearson_r: r4(m.pearson_r),
       normalized_rms: r4(m.normalized_rms),
       per_plane_r: Object.fromEntries(Object.entries(m.per_plane_r ?? {}).map(([k, v]) => [k, r4(v)])),
+      ...(m.pearson_r_even !== undefined
+        ? {
+            pearson_r_even: r6(m.pearson_r_even),
+            normalized_rms_even: r4(m.normalized_rms_even),
+            odd_share: r4(m.odd_share),
+          }
+        : {}),
     };
     return {
       result,
-      summary: `r = ${result.pearson_r}, normalised RMS = ${result.normalized_rms}`,
+      summary:
+        `r = ${result.pearson_r}, normalised RMS = ${result.normalized_rms}` +
+        (result.pearson_r_even != null ? `; against the even part r = ${result.pearson_r_even} (odd share ${result.odd_share})` : ""),
       view: { view: "consistency", label: "the back-FFT check" },
     };
   },

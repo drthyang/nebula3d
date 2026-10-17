@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **The back-FFT check judges what the transform keeps.** The ΔPDF is the
+  real part of the Fourier transform, the transform of the data's even part
+  under Q → −Q, so on unsymmetrised data r against the data measures their
+  odd part, counting noise: every dev case of the validation read 0.979 to
+  0.996 and failed the ΔPDF's 0.999 gate with a sound transform. The check
+  now also compares the round trip with the even part (`pearson_r_even`,
+  1 to rounding on all of them) and reports the odd share of the data's
+  variance (`odd_share`); `assess_stage` and the report judge
+  `pearson_r_even`, and a check saved before judges r only on data declared
+  symmetrised (validation review, finding 3).
+
 - **`qmax_coverage` says when the counts end inside the box.** Its verdict
   read "clean" on a volume whose counts end at 4.5 Å⁻¹ of a 6.4 Å⁻¹ box, the
   window's weight just under its limit, and the edge sat only in

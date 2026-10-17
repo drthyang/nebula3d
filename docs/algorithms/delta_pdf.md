@@ -132,11 +132,25 @@ reliably recovered region.
 diffuse data the ΔPDF was built from (cropped to the transform window), writing a
 metric JSON (Pearson r + normalised RMS residual) and a `data | back-FFT |
 residual` figure. Because the gaussian window is invertible, a faithful ΔPDF
-round-trips to **r ≈ 1**. The check is therefore a regression/validation gate: a wrong axis,
-sign flip, or normalisation bug, or an over-aggressive `crop_hkl` / apodization,
-would surface here as a visible residual. (On an **even** grid the `Q=0` centre
-leaves one index unpaired, so the real-part projection drops a small asymmetric
-part — a known, tiny round-trip error; odd grids are exact.)
+round-trips to **r ≈ 1** against what the transform keeps. The check is
+therefore a regression/validation gate: a wrong axis, sign flip, or
+normalisation bug, or an over-aggressive `crop_hkl` / apodization, would surface
+here as a visible residual.
+
+**What the transform keeps is the data's even part.** The ΔPDF is the real part
+of the Fourier transform, which is the transform of `E(Q) = ½(I(Q) + I(−Q))`
+about the grid's origin voxel; the odd part never reaches it. On symmetrised
+(centrosymmetric) data `E = I`. On unsymmetrised data the odd part is mostly
+counting noise, so r against the data reads `r² ≈ 1 − odd share`: 0.979 to
+0.996 on every dev case of the validation, with a sound transform. The check
+therefore also compares the round trip with `E` over the voxels where both `Q`
+and `−Q` are measured (`pearson_r_even`, `normalized_rms_even`), which reads 1
+to rounding on all of them, and reports the odd share of the data's variance
+(`odd_share`). The Pilot judges the stage by `pearson_r_even ≥ 0.999`
+(docs/pilot-review.md, finding 3). The separable window on an **even** axis is
+centred half a voxel off the origin, so there the comparison takes the even part
+of the windowed data and divides the window out, as the inverse does; on odd
+grids, and with the ellipsoid window, that is `E` itself.
 
 ## The centring bug (fixed 2026-06-05)
 
