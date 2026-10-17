@@ -104,6 +104,7 @@ const TOOL_LABELS: Record<string, string> = {
   qmax_coverage: "Checked Qmax against coverage",
   symmetry_check: "Checked the ΔPDF's symmetry",
   dpdf_contrast: "Set the ΔPDF's contrast",
+  dpdf_peaks: "Listed the ΔPDF's strongest features",
   grain_check: "Checked for a second grain",
   ub_check: "Checked the UB",
   run_log: "Read the run log",

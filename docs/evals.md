@@ -274,7 +274,7 @@ began with.
 | Arm | What runs |
 | --- | --- |
 | **A** | The default pipeline, no agent: Run with nothing configured, three times |
-| **B** | The Pilot as shipped, for each model: its tools, skills and guardrails, and whatever tools the shipped code offers that model. A local model is offered the reading tools and those its question is about (`localTools.ts`), 22 of the 23 for this task (`compare_datasets` is withheld), and more as it calls them; the validation does not bypass that |
+| **B** | The Pilot as shipped, for each model: its tools, skills and guardrails, and whatever tools the shipped code offers that model. A local model is offered the reading tools and those its question is about (`localTools.ts`), 23 of the 24 for this task (`compare_datasets` is withheld), and more as it calls them; the validation does not bypass that |
 | **C** | B without its skills and nothing else: `read_skill` is not offered and the system prompt lists no skill; the skill gate (a stage's settings change only after its skill is read) is counted as passed, so C may change what B may. A test (`validationArms.test.ts`) runs both through the real agent loop and shows their requests differ only by `read_skill` and the skills' listing |
 | **D** | The planted truth: the crystal's own noise-free diffuse scattering through the same transform on the same support. It is the reference, and a check that the scorer passes it on every case |
 
@@ -443,7 +443,10 @@ cell is the planted correlation's amplitude as a share of the truth's, and its
 shift. The test split is not tuned on: it is arm A's reported result. The full
 results, with each run's log and digest, are in
 [evals/validation/arm-a-dev.json](evals/validation/arm-a-dev.json) and
-[arm-a-test.json](evals/validation/arm-a-test.json).
+[arm-a-test.json](evals/validation/arm-a-test.json). Dev was run again after the
+review's batch 1 (2026-10-17, [pilot-review.md](pilot-review.md#batch-1-the-eight-findings-implemented-2026-10-17)):
+the same digests and scores, since the batch changes the Pilot's tools and not
+what the default pipeline writes.
 
 **Dev**
 

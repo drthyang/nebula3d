@@ -2,6 +2,78 @@
 
 ## Unreleased
 
+- **The flatten's verdict no longer holds its floors to 1σ (the user's choice; provisional).**
+  The σ is the flattened cut's own spread and the floors follow the diffuse
+  level, so all eight validation dev volumes read 1.5 to 1.8σ and "needs
+  attention", the clean control and the planted case after its Q² term
+  included. The verdict now rests on the pedestal rule, which separates them;
+  the largest floor in σ is still measured and reported. The user chose to
+  drop the 1σ limit (2026-10-17) over keeping or widening it (validation
+  review, finding 6).
+
+- **`texture_check` no longer flags a sound fill of a node-peaked diffuse.**
+  It compared each fill with its rim's median in rim σ, and flagged all three
+  cuts of the validation's clean control: the diffuse peaks at the nodes
+  (thermal diffuse scattering), so a sound fill sits above that median, and σ
+  shrinks with the counts. A fill is now compared with the range its measured
+  rim allows, from the diffuse at the hole's edge carried in to its rise
+  continued to the node (voxels the fill itself wrote are not rim), and a
+  bias counts only when it is also a fifth of the local diffuse level or more
+  (`median_fill_bias_level`; `above_fraction` and `below_fraction` replace
+  `brighter_fraction`). No dev case is flagged; fills set off by a fifth of the
+  level are (validation review, finding 4; the floor is provisional).
+
+- **`dpdf_peaks`: the 3D-ΔPDF's strongest features, with their vectors and
+  signs.** The validation's task and the delta-pdf-interpretation skill ask
+  for each feature's vector, sign and size, and no tool gave them. The new
+  tool (server: `GET /api/deltapdf/{id}/features`,
+  `nebula3d.analysis.dpdf_features`) lists the volume's local extrema above a
+  few robust σ outside the origin's disk, one per ± pair, each with its
+  vector in Å and in lattice units (to a fraction of a voxel), its sign and
+  its size in σ, those of one sign, length and size grouped. Planted
+  correlations come out at their vectors with their signs (validation
+  review, finding 1).
+
+- **The flatten's pedestal is judged where a pedestal shows.** On the dev
+  case whose counts end at 4.5 Å⁻¹, `assess_stage` said a pedestal was left
+  where the planted truth has none: after a constant flatten the floors
+  follow the crystal's own diffuse level, a hump at 1.7 Å⁻¹ and its fall,
+  and over the short range a cut leaves that fall reads as a trend (the
+  full control reads the same over the same shells). The trend and span are
+  now taken over the outer half of the shells the counts reach (at least 95 %
+  measured), where an inelastic background rises fastest and the diffuse's
+  own oscillation is damped (`floor_judged_q`); the floors' thirds skip
+  unmeasured shells, so a cut volume has them. On the eight dev cases only
+  the planted |Q|² background reads as a pedestal (validation review,
+  finding 8; the range is provisional, as the 0.8 limits are).
+
+- **The back-FFT check judges what the transform keeps.** The ΔPDF is the
+  real part of the Fourier transform, the transform of the data's even part
+  under Q → −Q, so on unsymmetrised data r against the data measures their
+  odd part, counting noise: every dev case of the validation read 0.979 to
+  0.996 and failed the ΔPDF's 0.999 gate with a sound transform. The check
+  now also compares the round trip with the even part (`pearson_r_even`,
+  1 to rounding on all of them) and reports the odd share of the data's
+  variance (`odd_share`); `assess_stage` and the report judge
+  `pearson_r_even`, and a check saved before judges r only on data declared
+  symmetrised (validation review, finding 3).
+
+- **`qmax_coverage` says when the counts end inside the box.** Its verdict
+  read "clean" on a volume whose counts end at 4.5 Å⁻¹ of a 6.4 Å⁻¹ box, the
+  window's weight just under its limit, and the edge sat only in
+  `raw_counts` and `suggested_band`. With no |Q| band set, the verdict and
+  `band_check` now give the edge, the box face and the band the counts
+  allow (validation review, finding 7).
+
+- **`ub_check` gives a shifted origin's size.** The peaks' mean offset from
+  their nodes in r.l.u., before and after the fit (`mean_offset_rlu`): a UB
+  error averages out over the nodes and the fit removes it, while a shifted
+  HKL origin moves every peak by one vector that stays. When the offsets are
+  unexplained by any UB and that vector makes most of them, the check names
+  the shift (`origin_shift_rlu`); on the dev origin case it reads
+  (0.0305, 0.0195, 0) r.l.u. for the (0.03, 0.02, 0) put in (validation
+  review, finding 2).
+
 - **Text outside ASCII in a SaveMD file reads back right in other HDF5
   readers.** A run log, title or attribute with characters outside ASCII (a
   file name such as `Fe₃Ge₂_Å.nxs`) was stored as UTF-8 bytes labelled ASCII,

@@ -21,7 +21,18 @@ export interface Finding {
   proposed_fix: string;
   needs_user_approval: boolean;
   arm?: string; // which arm's run it came from
+  // What became of it: implemented by `commit`, with the regression `tests`
+  // that pin it, or deferred; `note` says what is provisional or left open.
+  status?: FindingStatus;
+  commit?: string;
+  tests?: string[];
+  note?: string;
+  // Where the fix offered options, the one chosen, by whom and when.
+  decision?: { by: string; on: string; option: string };
 }
+
+export const FINDING_STATUSES = ["open", "implemented", "deferred"] as const;
+export type FindingStatus = (typeof FINDING_STATUSES)[number];
 
 /**
  * Which kinds of change wait for the user. The skills are the user's methods
@@ -50,7 +61,22 @@ export function findingProblems(x: unknown): string[] {
   if (f.step !== null && (!Number.isInteger(f.step) || (f.step as number) < 1)) out.push("step must be null or a whole number from 1");
   if (!(FINDING_KINDS as readonly unknown[]).includes(f.kind)) out.push(`kind must be one of ${FINDING_KINDS.join(", ")}`);
   if (typeof f.needs_user_approval !== "boolean") out.push("needs_user_approval must be true or false");
-  const known = new Set(["case", "run", "step", "kind", "evidence", "proposed_fix", "needs_user_approval", "arm"]);
+  if (f.status !== undefined && !(FINDING_STATUSES as readonly unknown[]).includes(f.status)) {
+    out.push(`status must be one of ${FINDING_STATUSES.join(", ")}`);
+  }
+  if (f.status === "implemented") {
+    if (typeof f.commit !== "string" || !/^[0-9a-f]{7,40}$/.test(f.commit)) out.push("an implemented finding names its commit");
+    if (!Array.isArray(f.tests) || !f.tests.length || f.tests.some((t) => typeof t !== "string" || !t.trim())) {
+      out.push("an implemented finding names its regression tests");
+    }
+  }
+  if (f.note !== undefined && (typeof f.note !== "string" || !f.note.trim())) out.push("note must be a non-empty string");
+  if (f.decision !== undefined) {
+    const d = f.decision as Record<string, unknown> | null;
+    const ok = d && typeof d === "object" && ["by", "on", "option"].every((k) => typeof d[k] === "string" && (d[k] as string).trim());
+    if (!ok || !/^\d{4}-\d{2}-\d{2}$/.test(String(d!.on))) out.push("decision must give by, on (YYYY-MM-DD) and option");
+  }
+  const known = new Set(["case", "run", "step", "kind", "evidence", "proposed_fix", "needs_user_approval", "arm", "status", "commit", "tests", "note", "decision"]);
   for (const k of Object.keys(f)) if (!known.has(k)) out.push(`unknown field ${k}`);
   return out;
 }

@@ -171,14 +171,15 @@ export const radialFloors = (
   minCount = 20,
 ): number[] => radialFloorShells(grid, nbins, radius, p, minCount).floors;
 
-/** The radial floors with each shell's centre radius. */
+/** The radial floors with each shell's centre radius, its measured (finite)
+ * voxels and all its voxels on the grid. */
 export const radialFloorShells = (
   grid: GridSlice,
   nbins = 32,
   radius: RadiusFn = planarRadius,
   p = 0.25,
   minCount = 20,
-): { floors: number[]; centres: number[]; counts: number[] } => {
+): { floors: number[]; centres: number[]; counts: number[]; totals: number[] } => {
   const { nx, ny, x_axis, y_axis } = grid.header;
   const radii = new Float64Array(nx * ny);
   let rMax = 0;
@@ -190,16 +191,20 @@ export const radialFloorShells = (
     }
   }
   const shells: number[][] = Array.from({ length: nbins }, () => []);
+  const totals = new Array<number>(nbins).fill(0);
   const binScale = rMax > 0 ? nbins / rMax : 0;
   for (let i = 0; i < nx * ny; i++) {
+    const b = Math.min(nbins - 1, Math.floor(radii[i] * binScale));
+    totals[b] += 1;
     const v = grid.data[i];
     if (!Number.isFinite(v)) continue;
-    shells[Math.min(nbins - 1, Math.floor(radii[i] * binScale))].push(v);
+    shells[b].push(v);
   }
   return {
     floors: shells.map((s) => (s.length >= minCount ? percentile(s, p) : NaN)),
     centres: shells.map((_s, i) => ((i + 0.5) * rMax) / nbins),
     counts: shells.map((s) => s.length),
+    totals,
   };
 };
 

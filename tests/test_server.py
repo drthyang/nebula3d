@@ -362,6 +362,9 @@ def test_volume_ub_check(tmp_path):
     assert in_plane
     assert all(o["before"] == pytest.approx(a / a_true - 1, abs=1e-3) for o in in_plane)
     assert all(abs(o["after"]) < 1e-3 for o in u["radial"])
+    # A cell error is linear in the node: no mean offset, the origin is where it was.
+    assert u["mean_offset_rlu"]["n"] == u["n_used"]
+    assert max(abs(x) for x in u["mean_offset_rlu"]["after"]) < 2e-3
     assert client.get(f"/api/volumes/{SLUG}.raw/ub", params={"cell": "2,0,2"}).status_code == 400
 
 
@@ -625,6 +628,28 @@ def test_dpdf_slices_carry_the_real_section_angle(tmp_path, layout, plane, angle
                    params={"plane": plane, "value": 0.0})
     header, _ = _parse_envelope(r.content)
     assert header["axes_angle"] == pytest.approx(angle)
+
+
+def test_dpdf_features_lists_extrema_in_angstrom_and_lattice_units(dpdf_env):
+    """The ΔPDF's strongest extrema (analysis.dpdf_features), served: each
+    vector in Å along a, b, c and in lattice units, the strongest first."""
+    client, *_ = dpdf_env
+    r = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/features", params={"min_sigma": 1, "limit": 5})
+    assert r.status_code == 200, r.text
+    f = r.json()
+    assert f["sigma"] > 0 and f["min_sigma"] == 1 and 0 < len(f["groups"]) <= 5
+    assert f["n_extrema"] >= len(f["groups"])
+    sizes = [g["size_sigma"] for g in f["groups"]]
+    assert sizes == sorted(sizes, reverse=True) and sizes[-1] >= 1
+    for g in f["groups"]:
+        assert g["sign"] in (1, -1) and g["n"] >= len(g["vectors"]) >= 1
+        for v, u in zip(g["vectors"], g["vectors_rlu"]):
+            # lattice units to 4 decimals: within 0.5e-4 of a cell edge (24.7 Å)
+            assert [u[0] * 5.8, u[1] * 10.4, u[2] * 24.7] == pytest.approx(v, abs=2e-3)
+            assert g["length"] >= f["origin_radius"]
+    url = f"/api/deltapdf/{SLUG}.delta_pdf/features"
+    assert client.get(url, params={"min_sigma": 0}).status_code == 422
+    assert client.get(url, params={"limit": 0}).status_code == 422
 
 
 def test_dpdf_bad_plane_400(dpdf_env):

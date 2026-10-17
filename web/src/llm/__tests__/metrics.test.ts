@@ -93,18 +93,21 @@ describe("a pedestal left", () => {
     expect(pedestalLeft(0.9, undefined)).toBeNull();
   });
 
-  // What the tools read on synthetic volumes with a known answer (a background
-  // rising as |Q|² planted, and none), each by the default flatten.
+  // What the tools read on the validation's dev cases (synthetic, a known
+  // answer), each by the default flatten, over the outer half of the shells
+  // the counts reach (docs/pilot-review.md, finding 8).
   it("separates a planted Q² background from a clean one, as the planted truth does", () => {
-    expect(pedestalLeft(0.836, 0.839)).toBe(true); // |Q|² background left by the constant flatten
-    expect(pedestalLeft(0.516, 1.24)).toBe(false); // no such background: only the demo's own low-|Q| hump
-    expect(pedestalLeft(0.288, 0.56)).toBe(false); // the same volume with the Q² term on
+    expect(pedestalLeft(0.97, 0.97)).toBe(true); // |Q|² background left by the constant flatten
+    expect(pedestalLeft(0.31, 0.6)).toBe(false); // the control: only the demo's own floor
+    expect(pedestalLeft(0.02, 0.33)).toBe(false); // the planted case with the Q² term on
+    expect(pedestalLeft(0.93, 0.49)).toBe(false); // the cut coverage, whose truth has none
   });
 
   it("is what the flattened floors give: rising floors are a pedestal, level floors are not", () => {
     const lumpy = (x: number, y: number) => 0.8 * Math.cos(1.3 * x) * Math.cos(1.1 * y);
-    const before = makeSlice(81, 81, (x, y) => 4 + 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y), { half: 10 });
-    const rising = makeSlice(81, 81, (x, y) => 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y), { half: 10 });
+    // A |Q|² floor spanning more than the diffuse level over the outer half.
+    const before = makeSlice(81, 81, (x, y) => 4 + 0.25 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y), { half: 10 });
+    const rising = makeSlice(81, 81, (x, y) => 0.25 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y), { half: 10 });
     const level = makeSlice(81, 81, (x, y) => lumpy(x, y), { half: 10 });
     const of = (after: typeof rising) => {
       const m = flattenMetrics(before, after, undefined, [1, 6]);
@@ -112,6 +115,30 @@ describe("a pedestal left", () => {
     };
     expect(of(rising)).toBe(true);
     expect(of(level)).toBe(false);
+  });
+
+  // The dev cut-coverage case in miniature: the counts end at 4.4 of a box
+  // whose face is at 6.4, and the floors after a constant flatten follow the
+  // crystal's own diffuse level, a hump at 1.7 that falls past it, with no
+  // background left. Over every shell from 0.8 out they fall (trend −0.8 on the
+  // dev case, a pedestal by the old reading); over the outer half of the shells
+  // the counts reach they span too little to be one.
+  it("judges a volume cut short over the outer half of the shells its counts reach", () => {
+    const hump = (r: number) => 0.9 * Math.exp(-((r - 1.7) ** 2) / 0.5);
+    const lumpy = (x: number, y: number) => 0.3 * Math.cos(3.1 * x) * Math.cos(2.9 * y);
+    const cut = (f: (x: number, y: number) => number) => (x: number, y: number) => (Math.hypot(x, y) <= 4.4 ? f(x, y) : NaN);
+    const before = makeSlice(161, 161, cut((x, y) => 1 + hump(Math.hypot(x, y)) + lumpy(x, y)), { half: 6.4 });
+    const after = makeSlice(161, 161, cut((x, y) => hump(Math.hypot(x, y)) + lumpy(x, y)), { half: 6.4 });
+    const m = flattenMetrics(before, after, undefined, [0.8, 10]);
+    expect(m.floor_judged_q![0]).toBeGreaterThan(2);
+    expect(m.floor_judged_q![1]).toBeLessThan(4.4); // the partial shell at the edge is not judged
+    expect(m.floor_trend!).toBeLessThan(-0.8); // it still falls there
+    expect(pedestalLeft(Math.abs(m.floor_trend!), m.floor_span_fraction)).toBe(false); // but spans too little
+    expect(m.floor_before).not.toBeNull(); // the thirds of the shells the counts reach
+    // The same floor with a |Q|² background on it: a pedestal, cut or not.
+    const withQ2 = makeSlice(161, 161, cut((x, y) => hump(Math.hypot(x, y)) + 0.12 * (x * x + y * y) + lumpy(x, y)), { half: 6.4 });
+    const q = flattenMetrics(before, withQ2, undefined, [0.8, 10]);
+    expect(pedestalLeft(Math.abs(q.floor_trend!), q.floor_span_fraction)).toBe(true);
   });
 });
 

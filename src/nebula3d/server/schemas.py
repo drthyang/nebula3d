@@ -117,6 +117,16 @@ class UbRadialOut(BaseModel):
     after: float
 
 
+class UbMeanOffsetOut(BaseModel):
+    """The peak centres' mean offset (centre − node) in r.l.u. over the peaks
+    the fit kept: with the volume's UB, with the refined one, and the standard
+    error of the first (see analysis.ub_refine.mean_offset)."""
+    before: list[float | None]
+    after: list[float | None]
+    standard_error: list[float | None]
+    n: int
+
+
 class UbCheckOut(BaseModel):
     """Whether a volume's UB puts its Bragg peaks on their nodes (see
     analysis.ub_refine)."""
@@ -142,6 +152,30 @@ class UbCheckOut(BaseModel):
     ub: list[list[float]]
     radial: list[UbRadialOut]
     voxel_q: float | None = None  # the grid's finest step in Q (Å⁻¹)
+    # The peak centres' mean offset from their nodes, r.l.u., before and after the fit.
+    mean_offset_rlu: UbMeanOffsetOut | None = None
+
+
+class DpdfFeatureGroupOut(BaseModel):
+    """Extrema of one sign, length and size (see analysis.dpdf_features)."""
+    sign: int
+    length: float  # Å
+    size_sigma: float  # the largest |ΔPDF| in the group, in robust σ
+    value: float
+    n: int  # extrema in the group, one per ± pair
+    vectors: list[list[float]]  # (x, y, z) along a, b, c, Å
+    vectors_rlu: list[list[float] | None]  # the same in lattice units
+    sizes_sigma: list[float]
+
+
+class DpdfFeaturesOut(BaseModel):
+    """The ΔPDF's strongest extrema outside the origin's disk."""
+    id: str
+    sigma: float | None  # robust σ outside the origin's disk; None when it holds no data
+    min_sigma: float
+    origin_radius: float  # Å
+    n_extrema: int
+    groups: list[DpdfFeatureGroupOut]
 
 
 class DeltaPdfMetaOut(BaseModel):

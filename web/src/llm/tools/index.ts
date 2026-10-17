@@ -10,6 +10,7 @@ import {
   fetchBraggProfile,
   fetchConsistencyCheck,
   fetchDataset,
+  fetchDpdfFeatures,
   fetchDpdfMeta,
   fetchDpdfSlice,
   fetchMeta,
@@ -17,7 +18,7 @@ import {
   fetchUbCheck,
   fetchVolumeCoverage,
 } from "../../api/client";
-import type { Dataset, DeltaPdfMeta, JobEvent, Slice, VolumeCoverage, VolumeMeta } from "../../api/types";
+import type { Dataset, DeltaPdfMeta, JobEvent, Slice, UbCheck, VolumeCoverage, VolumeMeta } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import {
@@ -123,6 +124,8 @@ const num = (args: Args, key: string, fallback?: number): number => {
 };
 
 const r4 = (v: number | null | undefined): number | null => (v == null ? null : roundSig(v, 4));
+// Six figures, so that a check at 0.999 reads apart from 1.
+const r6 = (v: number | null | undefined): number | null => (v == null ? null : roundSig(v, 6));
 const range4 = (r: [number, number]): [number, number] => [roundSig(r[0], 4), roundSig(r[1], 4)];
 
 const RECIP_PLANES = ["hk0", "h0l", "0kl"] as const;
@@ -499,7 +502,7 @@ const braggPeaks: AgentTool = {
 const consistencyDetails: AgentTool = {
   name: "consistency_details",
   description:
-    "The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. Says whether — and where — the ΔPDF reproduces the data.",
+    "The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. The transform keeps the real part, which is the data's even part under Q → −Q: pearson_r_even compares the round trip with that part and is 1 when the transform is sound, while r against the data is limited by the odd part (odd_share: counting noise on unsymmetrised data), so r below 1 on unsymmetrised data is no fault. Neither says a feature is real.",
   parameters: { type: "object", properties: {} },
   run: async (_args, { dataset }) => {
     const check = await safe(fetchConsistencyCheck(dataset.id));
@@ -512,10 +515,19 @@ const consistencyDetails: AgentTool = {
       pearson_r: r4(m.pearson_r),
       normalized_rms: r4(m.normalized_rms),
       per_plane_r: Object.fromEntries(Object.entries(m.per_plane_r ?? {}).map(([k, v]) => [k, r4(v)])),
+      ...(m.pearson_r_even !== undefined
+        ? {
+            pearson_r_even: r6(m.pearson_r_even),
+            normalized_rms_even: r4(m.normalized_rms_even),
+            odd_share: r4(m.odd_share),
+          }
+        : {}),
     };
     return {
       result,
-      summary: `r = ${result.pearson_r}, normalised RMS = ${result.normalized_rms}`,
+      summary:
+        `r = ${result.pearson_r}, normalised RMS = ${result.normalized_rms}` +
+        (result.pearson_r_even != null ? `; against the even part r = ${result.pearson_r_even} (odd share ${result.odd_share})` : ""),
       view: { view: "consistency", label: "the back-FFT check" },
     };
   },
@@ -840,7 +852,7 @@ const runLog: AgentTool = {
 const textureCheck: AgentTool = {
   name: "texture_check",
   description:
-    "Check whether the punch and backfill printed a pattern of their own into reciprocal space, on a cut (default: the three principal planes through the origin). Fill bias: each filled hole against the unpunched voxels on its rim, signed, in rim σ; a median near 0 with about half the holes brighter is clean, while holes filled systematically brighter or darker add a lattice-periodic texture that the ΔPDF turns into features at lattice vectors. Azimuthal texture: per |Q| shell, how much the sector means vary around the shell before the punch (unpunched voxels) and after the backfill; a ratio near 1 adds none.",
+    "Check whether the punch and backfill printed a pattern of their own into reciprocal space, on a cut (default: the three principal planes through the origin). Fill bias: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median); the part outside that range, signed, in the rim's σ and in units of the local diffuse level. Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture that the ΔPDF turns into features at lattice vectors. Azimuthal texture: per |Q| shell, how much the sector means vary around the shell before the punch (unpunched voxels) and after the backfill; a ratio near 1 adds none.",
   parameters: {
     type: "object",
     properties: {
@@ -1041,6 +1053,60 @@ const dpdfContrast: AgentTool = {
   },
 };
 
+// How many of a group's vectors the model reads (the group's n says how many there are).
+const PEAK_VECTORS = 4;
+
+const dpdfPeaks: AgentTool = {
+  name: "dpdf_peaks",
+  description:
+    "The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors): copies of one correlation under the crystal's symmetry, most likely, though the grouping does not use the symmetry and two correlations can share a length. Use it for the strongest pair correlations with their vectors and signs, after the trust checks (qmax_coverage, symmetry_check on symmetrised data, assess_stage pdf). What size is worth interpreting, and what a feature means, is the user's call (delta-pdf-interpretation). Quote the vectors, signs and sizes it returns.",
+  parameters: {
+    type: "object",
+    properties: {
+      min_sigma: { type: "number", description: "Smallest |ΔPDF| listed, in robust σ (3–1000; default 5)" },
+      limit: { type: "integer", minimum: 1, maximum: 30, description: "How many entries, strongest first (default 12)" },
+    },
+  },
+  run: async (args, { dataset }) => {
+    const minSigma = num(args, "min_sigma", 5);
+    if (!(minSigma >= 3 && minSigma <= 1000)) throw new ToolArgError("min_sigma must be within [3, 1000]");
+    const limit = Math.round(num(args, "limit", 12));
+    if (limit < 1 || limit > 30) throw new ToolArgError("limit must be within [1, 30]");
+    const meta = await dpdfMeta(dataset);
+    const f = await fetchDpdfFeatures(dpdfVolumeId(dataset)!, minSigma, limit);
+    const sign = (s: number) => (s > 0 ? "+" : "−");
+    const vec = (v: number[] | null, digits: number) => (v ? v.map((x) => roundSig(x, digits) + 0) : null);
+    const features = f.groups.map((g) => ({
+      sign: sign(g.sign),
+      length_A: roundSig(g.length, 4),
+      size_sigma: roundSig(g.size_sigma, 3),
+      n_vectors: g.n,
+      vectors_rlu: g.vectors_rlu.slice(0, PEAK_VECTORS).map((v) => vec(v, 3)),
+      vectors_A: g.vectors.slice(0, PEAK_VECTORS).map((v) => vec(v, 4)),
+    }));
+    const result = {
+      features,
+      robust_sigma: f.sigma == null ? null : roundSig(f.sigma, 3),
+      threshold_sigma: f.min_sigma,
+      origin_disk_A: roundSig(f.origin_radius, 3),
+      extrema_above_threshold: f.n_extrema,
+      reading:
+        "Each entry: the sign, |r|, the largest size in σ, how many vectors (one per ± pair) share them, and up to " +
+        `${PEAK_VECTORS} of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. ` +
+        "The size is against the volume's robust σ outside the origin's disk; features nearer the origin than the shortest interatomic distance are not pair correlations.",
+    };
+    const top = f.groups[0];
+    const where = top ? `(${vec(top.vectors_rlu[0] ?? top.vectors[0], 3)!.join(", ")})${top.vectors_rlu[0] ? " r.l.u." : " Å"}` : "";
+    return {
+      result,
+      summary: top
+        ? `${f.n_extrema} extrema above ${f.min_sigma}σ; strongest ${sign(top.sign)} at ${where}, ${roundSig(top.length, 3)} Å, ${roundSig(top.size_sigma, 3)}σ`
+        : `no extremum above ${f.min_sigma}σ outside the origin's disk`,
+      view: dpdfView(meta, "xy", top ? Math.min(Math.max(top.vectors[0][2], meta.z_range[0]), meta.z_range[1]) : 0),
+    };
+  },
+};
+
 const grainCheckTool: AgentTool = {
   name: "grain_check",
   description:
@@ -1078,10 +1144,29 @@ const sig2 = (x: number): number => Number(x.toPrecision(2));
 export const unexplainedOffset = (u: { rms_start: number; rms: number; voxel_q?: number | null }): boolean =>
   u.voxel_q != null && u.voxel_q > 0 && u.rms_start > 0.25 * u.voxel_q && u.rms > 0.8 * u.rms_start;
 
+/**
+ * The HKL origin's shift (r.l.u.), or null: the centres' mean offset from their
+ * nodes after the fit, when the offsets are unexplained by any UB and that one
+ * vector makes 0.8 or more of the RMS the fit leaves. A UB error offsets node h
+ * by (T − I)·h, which averages to zero over a centrosymmetric set of nodes and
+ * which the fit removes; a shifted origin moves every peak by the same vector,
+ * which no UB (a linear map) can remove, so it is the mean after the fit, and
+ * |UB·mean| is then most of the RMS. The 0.8 is unexplainedOffset's.
+ */
+export function originShift(u: Pick<UbCheck, "rms_start" | "rms" | "voxel_q" | "ub" | "mean_offset_rlu">): number[] | null {
+  const after = u.mean_offset_rlu?.after;
+  if (!unexplainedOffset(u) || !after || after.some((x) => x == null || !Number.isFinite(x))) return null;
+  const v = after as number[];
+  const q = Math.hypot(...[0, 1, 2].map((i) => u.ub[i][0] * v[0] + u.ub[i][1] * v[1] + u.ub[i][2] * v[2]));
+  return q >= 0.8 * u.rms ? v : null;
+}
+
+const rlu = (v: (number | null)[]): string => `(${v.map((x) => (x == null ? "–" : x.toFixed(4))).join(", ")})`;
+
 const ubCheckTool: AgentTool = {
   name: "ub_check",
   description:
-    "Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit: a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it. About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, and what radial shows.",
+    "Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit: a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it. mean_offset_rlu is the peaks' mean offset from their nodes in r.l.u., before and after the fit: a UB error averages out over the nodes and the fit removes it, while a shifted HKL origin moves every peak by one vector that stays after the fit (origin_shift_rlu, when that vector makes most of the offset the fit leaves). About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, what radial shows, and an origin shift when it gives one.",
   parameters: {
     type: "object",
     properties: { q_max: { type: "number", description: "The nodes' |Q| limit in Å⁻¹ (default: everything the box holds)" } },
@@ -1095,6 +1180,7 @@ const ubCheckTool: AgentTool = {
     const cell = [s.punchSupercellH, s.punchSupercellK, s.punchSupercellL].map((v) => Number(v) || 1) as [number, number, number];
     const u = await fetchUbCheck(rawId, cell, qMax);
     const cellText = (c: number[]) => `${c.slice(0, 3).map((x) => x.toFixed(4)).join(", ")} Å; ${c.slice(3).map((x) => x.toFixed(3)).join("°, ")}°`;
+    const shift = originShift(u);
     const result = {
       fit: u.fit,
       bragg_nodes_every: u.cell_nodes,
@@ -1114,6 +1200,15 @@ const ubCheckTool: AgentTool = {
       // Offsets well above the centring's own scatter that the fit cannot
       // remove are not a UB error: a shifted HKL origin, or |Q| assigned wrong.
       unexplained: unexplainedOffset(u),
+      // The centres' mean offset from their nodes, r.l.u.: what an origin shift is.
+      mean_offset_rlu: u.mean_offset_rlu
+        ? {
+            before: u.mean_offset_rlu.before.map((x) => (x == null ? null : Number(x.toFixed(4)))),
+            after: u.mean_offset_rlu.after.map((x) => (x == null ? null : Number(x.toFixed(4)))),
+            standard_error: u.mean_offset_rlu.standard_error.map((x) => (x == null ? null : sig2(x))),
+          }
+        : null,
+      origin_shift_rlu: shift ? shift.map((x) => Number(x.toFixed(4))) : null,
       reading: [
         u.fit === "symmetric"
           ? "The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data."
@@ -1122,13 +1217,18 @@ const ubCheckTool: AgentTool = {
               (u.symmetry_break == null ? " They do not map this volume's grid, so whether it is symmetrised was not judged." : "")
             : "The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).",
         unexplainedOffset(u)
-          ? `The fit removed little of the peaks' offset (RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹, against a voxel of ${u.voxel_q!.toFixed(4)} Å⁻¹): no UB change explains it. Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.`
+          ? `The fit removed little of the peaks' offset (RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹, against a voxel of ${u.voxel_q!.toFixed(4)} Å⁻¹): no UB change explains it.` +
+            (shift
+              ? ` Every peak sits a mean ${rlu(shift)} r.l.u. off its node, after the fit as before it: one vector moves them all, the HKL origin shifted by about that much, which no UB can make. Report the origin, not the UB.`
+              : " Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.")
           : "",
       ].filter(Boolean).join(" "),
     };
     return {
       result,
-      summary: `${u.fit}: RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹ over ${u.n_used} peaks; a ${u.cell_start[0].toFixed(3)} → ${u.cell[0].toFixed(3)} Å, c ${u.cell_start[2].toFixed(3)} → ${u.cell[2].toFixed(3)} Å; turned ${u.angle_deg.toFixed(3)}°`,
+      summary:
+        `${u.fit}: RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹ over ${u.n_used} peaks; a ${u.cell_start[0].toFixed(3)} → ${u.cell[0].toFixed(3)} Å, c ${u.cell_start[2].toFixed(3)} → ${u.cell[2].toFixed(3)} Å; turned ${u.angle_deg.toFixed(3)}°` +
+        (shift ? `; origin shifted ${rlu(shift)} r.l.u.` : ""),
     };
   },
 };
@@ -1136,7 +1236,7 @@ const ubCheckTool: AgentTool = {
 const qmaxCoverage: AgentTool = {
   name: "qmax_coverage",
   description:
-    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. From the raw volume, raw_counts gives where its counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts.",
+    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. From the raw volume, raw_counts gives where its counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts. When the counts end inside the box and no band is set, the verdict says so, with the edge and the band they allow (counts_end_inside_box).",
   parameters: { type: "object", properties: {} },
   run: async (_args, { dataset }) => {
     const meta = await recipMeta(dataset);
@@ -1182,7 +1282,16 @@ const qmaxCoverage: AgentTool = {
     const windowNote = dmeta?.window_shape
       ? `the ΔPDF's ${dmeta.window_shape} window${dmeta.window_scale != null && dmeta.window_scale < 1 ? ` (shrunk to ${roundSig(dmeta.window_scale, 3)} × to fit the coverage)` : ""}`
       : "the ΔPDF's window";
-    const verdict = openWeight != null
+    const counts = await rawCounts;
+    const band = rawBand(counts, s.pdfQMin, s.pdfQMax);
+    // The counts end inside the box and no band is set: only the window's taper
+    // keeps the transform on the counts. Said in the verdict, which a model
+    // quotes, and not only in raw_counts and suggested_band, which it may not.
+    const cutNote =
+      band.counts_end_inside_box && !s.pdfQMax
+        ? `; the raw counts end at ${band.raw_counts.q_max_edge} Å⁻¹, inside the box (its nearest face at ${band.raw_counts.box_face_q} Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is ${band.suggested_band![0]}–${band.suggested_band![1]} Å⁻¹ (suggested_band), the user's to set`
+        : "";
+    const verdict = (openWeight != null
       ? openWeight <= OPEN_WEIGHT_OK
         ? `clean: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space`
         : `too far: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`
@@ -1194,7 +1303,7 @@ const qmaxCoverage: AgentTool = {
           ? "no ΔPDF yet to read the box corner from"
           : reach <= fullQ + shell
             ? `the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), inside full coverage at ${fullQ} Å⁻¹`
-            : `too far: the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), past full coverage at ${fullQ} Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage`;
+            : `too far: the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), past full coverage at ${fullQ} Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage`) + cutNote;
     return {
       result: {
         verdict,
@@ -1207,7 +1316,7 @@ const qmaxCoverage: AgentTool = {
         box_face_q: boxQ,
         box_corner_q: cornerQ == null ? null : roundSig(cornerQ, 4),
         low_q_gap: pick("low_q_gap").length ? Math.max(...pick("low_q_gap")) : null,
-        ...rawBand(await rawCounts, s.pdfQMin, s.pdfQMax),
+        ...band,
         q_unit: "Å⁻¹",
         settings: {
           pdfQMin: s.pdfQMin || "(default)",
@@ -1238,12 +1347,18 @@ const qmaxCoverage: AgentTool = {
 // counts), the band that keeps inside them, and whether the band that is set
 // does.  The box can end first along one axis: past box_face_q the window,
 // not the band, limits the reach in that direction.
+// The counts end inside the box when their upper edge sits at least one of
+// q_coverage's shells (0.1 Å⁻¹, the edge's own resolution) inside its nearest
+// face: then part of every direction's reach is empty, not only the corners.
+const COUNTS_EDGE_SHELL = 0.1;
+
 function rawBand(c: VolumeCoverage | null, qMinSet: string, qMaxSet: string) {
-  if (!c) return {};
+  if (!c) return { counts_end_inside_box: false as const };
   const lo = c.q_min_edge != null ? Math.ceil(c.q_min_edge * 20) / 20 : 0;
   const hi = c.q_max_edge != null ? Math.floor(c.q_max_edge * 20) / 20 : null;
   const qMin = qMinSet ? Number(qMinSet) : null;
   const qMax = qMaxSet ? Number(qMaxSet) : null;
+  const inside = c.q_max_edge != null && c.q_max_edge <= c.box_q - COUNTS_EDGE_SHELL;
   const problems: string[] = [];
   if (qMax != null) {
     if (qMin == null || qMin < lo - 0.025) problems.push(`Qmin below the counts' lower edge (${roundSig(c.q_min_edge ?? 0, 3)} Å⁻¹): the beam stop's empty voxels enter the transform`);
@@ -1257,9 +1372,13 @@ function rawBand(c: VolumeCoverage | null, qMinSet: string, qMaxSet: string) {
       box_face_q: roundSig(c.box_q, 4),
     },
     suggested_band: hi != null ? [lo, hi] : null,
+    counts_end_inside_box: inside,
     band_check:
       qMax == null
-        ? "no |Q| band is set: the transform takes every voxel, empty ones included, up to the window's reach"
+        ? "no |Q| band is set: the transform takes every voxel, empty ones included, up to the window's reach" +
+          (inside && hi != null
+            ? `; the counts end at ${roundSig(c.q_max_edge!, 4)} Å⁻¹, inside the box (face ${roundSig(c.box_q, 4)} Å⁻¹): the band they allow is ${lo}–${hi} Å⁻¹`
+            : "")
         : problems.length
           ? problems.join("; ")
           : `the band ${qMin ?? 0}–${qMax} Å⁻¹ stays inside the counts`,
@@ -1583,6 +1702,7 @@ export const CHAT_TOOLS: AgentTool[] = [
   qmaxCoverage,
   symmetryCheck,
   dpdfContrast,
+  dpdfPeaks,
   grainCheckTool,
   ubCheckTool,
   radialProfileTool,

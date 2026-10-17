@@ -32,7 +32,7 @@ import dataclasses
 import json
 import os
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
@@ -1605,6 +1605,117 @@ def _consistency_metrics(
     return metrics, rows
 
 
+def _mirror_index(n: int, i: int) -> int | None:
+    """The index of −Q along an axis of *n* voxels whose Q = 0 sits at n//2
+    (the transform's origin, :func:`~nebula3d.analysis.delta_pdf.check_fft_origin`),
+    or None where −Q is off the grid (index 0 of an even axis)."""
+    j = 2 * (n // 2) - i
+    return j if 0 <= j < n else None
+
+
+def _mirror_plane(a: np.ndarray, fill: float | bool) -> np.ndarray:
+    """A 2-D plane at (−k, −l) about the transform's origin, *fill* where −Q is off the grid."""
+    out = np.full_like(a, fill)
+    nk, nl = a.shape
+    k0 = 1 - nk % 2  # an even axis has no mirror for index 0
+    l0 = 1 - nl % 2
+    # index j maps to 2·(n//2) − j: reversing [k0, n) does exactly that.
+    out[k0:, l0:] = a[k0:, l0:][::-1, ::-1]
+    return out
+
+
+def _even_part_metrics(
+    rec: np.ndarray,
+    data: np.ndarray | Callable[[int], np.ndarray],
+    region: np.ndarray | Callable[[int], np.ndarray],
+    window_axes: tuple[np.ndarray, ...] | None = None,
+    mean: float = 0.0,
+) -> dict:
+    """The round trip against the data's even part under Q → −Q.
+
+    The forward transform keeps the real part of the Fourier transform, which
+    is the transform of the data's even part E(Q) = ½(I(Q) + I(−Q)) about the
+    grid's origin: the back-FFT reproduces E, never the odd part. On
+    unsymmetrised data the odd part is mostly counting noise, so r against the
+    data measures that noise (r² ≈ 1 − the odd share), and a sound transform
+    reads r ≈ 0.99 on the dev cases (docs/pilot-review.md, finding 3). Against
+    E, over the voxels where both Q and −Q are in *region*, a sound transform
+    gives r = 1 to rounding; a crop, a band or a transform fault lowers it.
+
+    The transform takes the even part of the *windowed* data, w·(I − c), and
+    the inverse divides the window out. With a window even about the origin
+    (the ellipsoid; the separable one on an odd grid) that is E itself; the
+    separable window on an even axis is centred half a voxel off the origin
+    (``linspace(−1, 1, n)``), so with its *window_axes* and the subtracted
+    *mean* c, E is taken as c + ½(w·(I − c) + w′·(I′ − c))/w, primes at −Q,
+    which is E wherever w′ = w.
+
+    Returns ``pearson_r_even`` and ``normalized_rms_even`` (as
+    :func:`_consistency_metrics` defines them, with E for the data),
+    ``odd_share`` (the share of the data's variance there that is odd, which
+    no real transform can keep) and ``n_voxels_even``.
+    """
+    data_at = _plane_provider(data)
+    region_at = _plane_provider(region)
+    n_h = rec.shape[0]
+
+    def planes() -> Iterator[tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        for i in range(n_h):
+            j = _mirror_index(n_h, i)
+            if j is None:
+                continue
+            m = region_at(i) & _mirror_plane(region_at(j), False)
+            if not m.any():
+                continue
+            d = data_at(i)
+            d_m = _mirror_plane(data_at(j), 0.0)
+            if window_axes is None:
+                e = 0.5 * (d + d_m)
+            else:
+                wh, wk, wl = window_axes
+                w_kl = np.outer(wk, wl)
+                w_i = wh[i] * w_kl
+                w_m = wh[j] * _mirror_plane(w_kl, 0.0)
+                m &= w_i > 0.0
+                safe = np.where(m, w_i, 1.0)
+                e = mean + 0.5 * ((d - mean) * w_i + (d_m - mean) * w_m) / safe
+            yield (rec[i][m].astype(np.float64, copy=False), e[m].astype(np.float64, copy=False),
+                   d[m].astype(np.float64, copy=False))
+
+    n = 0
+    sum_a = sum_e = sum_d = 0.0
+    for a, e, d in planes():
+        n += int(a.size)
+        sum_a += float(a.sum())
+        sum_e += float(e.sum())
+        sum_d += float(d.sum())
+    if n < 2:
+        return {"pearson_r_even": float("nan"), "normalized_rms_even": float("nan"),
+                "odd_share": float("nan"), "n_voxels_even": n}
+    mean_a, mean_e, mean_d = sum_a / n, sum_e / n, sum_d / n
+    s_aa = s_ee = s_ae = s_diff = s_ee_raw = s_odd = s_dd = 0.0
+    for a, e, d in planes():
+        da, de = a - mean_a, e - mean_e
+        s_aa += float(np.dot(da, da))
+        s_ee += float(np.dot(de, de))
+        s_ae += float(np.dot(da, de))
+        r = a - e
+        s_diff += float(np.dot(r, r))
+        s_ee_raw += float(np.dot(e, e))
+        o = d - e
+        s_odd += float(np.dot(o, o))
+        dd = d - mean_d
+        s_dd += float(np.dot(dd, dd))
+    pearson = (min(1.0, max(-1.0, s_ae / np.sqrt(s_aa * s_ee)))
+               if s_aa > 0.0 and s_ee > 0.0 else float("nan"))
+    return {
+        "pearson_r_even": float(pearson),
+        "normalized_rms_even": float(np.sqrt(s_diff / n) / (np.sqrt(s_ee_raw / n) or 1.0)),
+        "odd_share": float(s_odd / s_dd) if s_dd > 0.0 else float("nan"),
+        "n_voxels_even": n,
+    }
+
+
 def pdf_consistency_check(
     vol: HKLVolume,
     dpdf: DeltaPDF,
@@ -1623,8 +1734,12 @@ def pdf_consistency_check(
     transform window).  Returns a metrics dict — Pearson ``r`` and normalised
     RMS residual over the reliably-recovered region, plus per-H-plane ``r`` —
     and, when *figure_path* is given, writes a ``data | back-FFT | residual``
-    comparison PNG.  A faithful ΔPDF gives ``r ≈ 1``; a gross mismatch flags a
-    transform bug or an over-aggressive ``crop_hkl`` / apodization.
+    comparison PNG.  A faithful ΔPDF gives ``r ≈ 1`` against the data's even
+    part under Q → −Q (``pearson_r_even``, :func:`_even_part_metrics`), the part
+    the real transform keeps; against the data itself r is limited by the odd
+    part (``odd_share``), which on unsymmetrised data is mostly counting noise.
+    A gross mismatch flags a transform bug or an over-aggressive ``crop_hkl`` /
+    apodization.
 
     ``consume_dpdf=True`` releases ``dpdf.data`` during the inversion (this
     check never reads it afterwards) — the memory-critical in-browser pipeline
@@ -1656,6 +1771,8 @@ def pdf_consistency_check(
 
     metrics, rows = _consistency_metrics(
         recon.data, _data_plane, _region_plane, recon.h_axis, h_values)
+    metrics.update(_even_part_metrics(recon.data, _data_plane, _region_plane,
+                                      dpdf.window_axes, dpdf.subtracted_mean))
     metrics["crop_hkl"] = list(p.crop_hkl) if p.crop_hkl else None
     metrics["q_band"] = list(p.q_band) if p.q_band else None
     metrics["apodization"] = p.apodization
@@ -1752,6 +1869,8 @@ def consistency_reconstruction(
     region = recon.mask & np.isfinite(data) & in_band
     metrics, _rows = _consistency_metrics(
         recon.data, data, region, recon.h_axis, h_values)
+    metrics.update(_even_part_metrics(recon.data, data, region,
+                                      dpdf.window_axes, dpdf.subtracted_mean))
     metrics["q_data_max"] = q_data_max
     metrics["q_band"] = list(q_band) if q_band else None
     metrics["r_data_max"] = r_data_max
@@ -2166,9 +2285,12 @@ def run_pipeline(
                 consume_dpdf=True)
             paths.pdf_check_json.parent.mkdir(parents=True, exist_ok=True)
             paths.pdf_check_json.write_text(json.dumps(metrics, indent=2))
+            even = metrics.get("pearson_r_even")
             _emit(progress, "pdf_check", "done", 1.0,
                   f"back-FFT vs data: r={metrics['pearson_r']:.5f}, "
-                  f"normalised RMS={metrics['normalized_rms']:.3e}")
+                  f"normalised RMS={metrics['normalized_rms']:.3e}"
+                  + (f"; vs the data's even part, which the transform keeps: r={even:.5f}"
+                     if even is not None else ""))
     elif want("pdf_check"):
         _emit(progress, "pdf_check", "skip", None, "consistency check disabled")
 

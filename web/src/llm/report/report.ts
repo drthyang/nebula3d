@@ -143,8 +143,9 @@ export const CRITERIA: Record<string, string> = {
   grains:
     "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.",
   backfill: "The fills meet their surroundings: a median seam of 1σ or less, and no cut whose fill is biased one way.",
-  flatten: "No floor left above 1σ, and no pedestal across the coverage: a floor trend and a span both 0.8 or more.",
-  pdf: "A back-FFT r of 0.999 or more, at most 1e-3 of the window's weight on unmeasured space, and the declared symmetry kept.",
+  flatten:
+    "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (the 1σ limit dropped at the user's choice, 2026-10-17; provisional).",
+  pdf: "The back-FFT reproduces what the transform keeps, the data's even part under Q → −Q, to an r of 0.999 or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.",
 };
 
 function ringsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
@@ -245,35 +246,75 @@ function backfillCheck(m: Obj | null | undefined, texture: Obj | null | undefine
   };
 }
 
+/**
+ * Why the flatten's verdict no longer holds the floors to 1σ: the user chose to
+ * drop that limit (2026-10-17), of keeping, widening or dropping it; provisional,
+ * as the pedestal rule's 0.8 limits are. The σ is the flattened cut's
+ * own robust spread, which the diffuse structure and the counting noise set, and
+ * the floors after a flatten that fits a constant follow the diffuse level: on
+ * all eight dev volumes of the validation they read 1.5 to 1.8σ, the clean
+ * control (1.72σ) and the planted case after its Q² term (1.52σ) included, so
+ * the limit could not be met whatever the flatten did, while the pedestal rule
+ * alone separates the planted background from the rest (docs/pilot-review.md,
+ * finding 6). The largest floor in σ is still measured and reported.
+ */
+export const FLATTEN_FLOOR_SIGMA_NOTE = "reported, not judged";
+
 function flattenCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
   if (!m) return null;
   const floor = num(m.max_after_floor_sigma);
   const trend = num(m.max_floor_trend);
   const span = num(m.max_floor_span_fraction);
-  // The goal's own reading: a floor beyond 1σ, or a trend near 1 with a span near 1, is a pedestal left.
-  const pedestal = pedestalLeft(trend, span) === true;
+  // A trend near 1 with a span near 1 is a pedestal left. The floor in σ is
+  // reported, not judged (FLATTEN_FLOOR_SIGMA_NOTE): docs/pilot-review.md, finding 6.
+  const pedestal = pedestalLeft(trend, span);
   return {
     title: "Flatten",
-    verdict: floor == null ? "info" : floor <= 1 && !pedestal ? "pass" : "attention",
+    verdict: pedestal == null ? "info" : pedestal ? "attention" : "pass",
     headline: `floor ≤ ${fmt(floor)}σ · trend ≤ ${fmt(trend)} · span ≤ ${fmt(span)}`,
     criterion,
     details: [
-      ["Largest leftover floor", `${fmt(floor)} σ`],
+      ["Largest leftover floor (reported, not judged)", `${fmt(floor)} σ`],
       ["Largest floor trend with |Q|", fmt(trend)],
       ["Largest floor span (share of the diffuse)", fmt(span)],
     ],
   };
 }
 
+/** The back-FFT round trip's limit on r (CRITERIA.pdf). */
+export const BACK_FFT_R_OK = 0.999;
+
+/**
+ * Whether the back-FFT round trip passes, or null when it does not judge. The
+ * transform keeps the real part of the Fourier transform, the data's even part
+ * under Q → −Q, so a sound transform reproduces that part to r = 1, and r
+ * against the data is limited by the odd part: on unsymmetrised data, counting
+ * noise (r 0.979 to 0.996 on every dev case of the validation, which a sound
+ * transform failed at 0.999; docs/pilot-review.md, finding 3). A check recorded
+ * before the even part was compared judges r against the data only where the
+ * file declares the data symmetrised (or the volume was not read), where the
+ * two are the same.
+ */
+export function backFftOk(m: Obj | null | undefined): boolean | null {
+  const even = num(m?.back_fft_pearson_r_even);
+  if (even != null) return even >= BACK_FFT_R_OK;
+  const r = num(m?.back_fft_pearson_r);
+  if (r == null || m?.symmetry_declared === false) return null;
+  return r >= BACK_FFT_R_OK;
+}
+
 function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: Obj | null | undefined, criterion?: string): ReportCheck | null {
   if (!m && !cov && !sym) return null;
   const r = num(m?.back_fft_pearson_r);
+  const rEven = num(m?.back_fft_pearson_r_even);
   const open = num(m?.window_weight_on_unmeasured) ?? num(cov?.window_weight_on_unmeasured);
   const symVerdict = typeof sym?.verdict === "string" ? (sym.verdict as string) : null;
   const covVerdict = typeof cov?.verdict === "string" ? (cov.verdict as string) : null;
-  const ok = (r == null || r >= 0.999) && (open == null || open <= 1e-3) && !(symVerdict && symVerdict.startsWith("not kept"));
+  const ok = backFftOk(m) !== false && (open == null || open <= 1e-3) && !(symVerdict && symVerdict.startsWith("not kept"));
   const details: [string, string][] = [
     ["Back-FFT Pearson r", fmt(r)],
+    ["Back-FFT r against the data's even part (what the transform keeps)", fmt(rEven)],
+    ["Odd share of the data (no real transform keeps it)", fmt(m?.back_fft_odd_share)],
     ["Back-FFT normalised RMS", fmt(m?.back_fft_normalized_rms)],
     ["Mean feature SNR", fmt(m?.mean_feature_snr)],
     ["Window weight on unmeasured space", fmt(open)],
@@ -287,7 +328,7 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
   return {
     title: "3D-ΔPDF",
     verdict: m || cov || sym ? (ok ? "pass" : "attention") : "info",
-    headline: `r ${fmt(r)} · SNR ${fmt(m?.mean_feature_snr)} · unmeasured ${fmt(open)}${symVerdict ? ` · symmetry ${symVerdict.startsWith("kept") ? "kept" : symVerdict.startsWith("not judged") ? "not judged" : "broken"}` : ""}`,
+    headline: `r ${fmt(r)}${rEven != null ? ` (even part ${fmt(rEven)})` : ""} · SNR ${fmt(m?.mean_feature_snr)} · unmeasured ${fmt(open)}${symVerdict ? ` · symmetry ${symVerdict.startsWith("kept") ? "kept" : symVerdict.startsWith("not judged") ? "not judged" : "broken"}` : ""}`,
     criterion,
     details,
   };

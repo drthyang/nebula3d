@@ -151,6 +151,17 @@ def test_dpdf_meta_and_slice(ran_pipeline):
     assert header["robust_max"] > 0
 
 
+def test_dpdf_features_json(ran_pipeline):
+    dataset_id, _datasets, _events = ran_pipeline
+    vid = f"{dataset_id}.delta_pdf"
+    f = json.loads(webbridge.dpdf_features_json(vid, 5.0, 4))
+    assert f["id"] == vid and f["min_sigma"] == 5.0
+    assert 0 < len(f["groups"]) <= 4
+    assert all(g["size_sigma"] >= 5.0 and g["length"] >= f["origin_radius"] for g in f["groups"])
+    with pytest.raises(ValueError):
+        webbridge.dpdf_features_json(vid, 0.0, 4)
+
+
 def test_consistency_meta_and_slice(ran_pipeline):
     dataset_id, _datasets, _events = ran_pipeline
     meta = json.loads(webbridge.consistency_meta_json(dataset_id))
@@ -219,6 +230,10 @@ def test_volume_ub_check_json(tmp_path):
     assert out["fit"] == "both" and out["symmetrised"] is None
     assert out["cell"][:3] == pytest.approx([4.2, 4.2, 4.2], rel=2e-3)
     assert out["angle_deg"] < 0.05
+    # The peaks' mean offset from their nodes, r.l.u.: none on a right UB and origin.
+    off = out["mean_offset_rlu"]
+    assert off["n"] == out["n_used"]
+    assert max(abs(x) for x in off["before"] + off["after"]) < 1e-3
     with pytest.raises(ValueError, match="cell must be"):
         webbridge.volume_ub_check_json(f"{ds}.raw", "0,1,1")
 

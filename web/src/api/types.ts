@@ -92,6 +92,10 @@ export interface UbCheck {
   // The peaks' median offset along Q from their nodes relative to |Q|, per |Q| band and direction.
   radial: { q_lo: number; q_hi: number | null; direction: string; n: number; before: number; after: number }[];
   voxel_q?: number | null; // the grid's finest step in Q (Å⁻¹)
+  // The peak centres' mean offset (centre − node) in r.l.u., with the volume's
+  // UB and the refined one, and the first's standard error: a shifted HKL
+  // origin is this vector, which no UB removes.
+  mean_offset_rlu?: { before: (number | null)[]; after: (number | null)[]; standard_error: (number | null)[]; n: number } | null;
 }
 
 export interface VolumeMeta {
@@ -131,6 +135,28 @@ export interface DeltaPdfMeta {
   window_open_weight?: number | null;
 }
 
+// The ΔPDF's strongest extrema outside the origin's disk, grouped by sign,
+// length and size (nebula3d.analysis.dpdf_features): one per ± pair.
+export interface DpdfFeatureGroup {
+  sign: 1 | -1;
+  length: number; // |r|, Å
+  size_sigma: number; // the largest |ΔPDF| in the group, in robust σ
+  value: number;
+  n: number; // extrema in the group
+  vectors: number[][]; // (x, y, z) along a, b, c, Å, strongest first
+  vectors_rlu: (number[] | null)[]; // the same in lattice units
+  sizes_sigma: number[];
+}
+
+export interface DpdfFeatures {
+  id: string;
+  sigma: number | null; // robust σ of the ΔPDF outside the origin's disk
+  min_sigma: number;
+  origin_radius: number; // Å
+  n_extrema: number;
+  groups: DpdfFeatureGroup[];
+}
+
 export interface ConsistencyMetrics {
   pearson_r: number;
   normalized_rms: number;
@@ -143,6 +169,14 @@ export interface ConsistencyMetrics {
   r_data_max: number;
   crop_hkl: number[] | null;
   apodization: string;
+  // Against the data's even part under Q → −Q, what the real transform keeps:
+  // 1 to rounding when the transform is sound (absent from checks made before
+  // 2026-10-17). odd_share is the share of the data's variance that is odd,
+  // which no real transform keeps: counting noise on unsymmetrised data.
+  pearson_r_even?: number | null;
+  normalized_rms_even?: number | null;
+  odd_share?: number | null;
+  n_voxels_even?: number;
 }
 
 // The pipeline's own back-FFT check, saved to *_delta_pdf_consistency.json: the
@@ -154,7 +188,8 @@ export interface ConsistencyCheck {
   has_check: boolean;
   metrics: Pick<
     ConsistencyMetrics,
-    "pearson_r" | "normalized_rms" | "rms" | "n_voxels" | "per_plane_r" | "q_band" | "crop_hkl" | "apodization"
+    | "pearson_r" | "normalized_rms" | "rms" | "n_voxels" | "per_plane_r" | "q_band" | "crop_hkl" | "apodization"
+    | "pearson_r_even" | "normalized_rms_even" | "odd_share" | "n_voxels_even"
   > | null;
 }
 

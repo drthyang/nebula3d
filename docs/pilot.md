@@ -12,14 +12,14 @@ does not compute them. Getting it running is in
 ## Tools
 
 With *Tools* on, a reply is an agent loop of up to twelve rounds. The model
-calls 23 tools, which run in the browser against the same API the viewers use:
+calls 24 tools, which run in the browser against the same API the viewers use:
 
 - **Skills:** `read_skill` reads one of the user's methods (below).
 - **Reading:** `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
   `measure_dpdf_cut`, `line_profile`, `bragg_peaks`, `consistency_details`,
   `compare_datasets`, `configure_settings`, `run_log`.
 - **Assessing:** `assess_stage`, `radial_profile`, `texture_check`,
-  `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`.
+  `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`.
 - **Display:** `dpdf_contrast`.
 - **Acting:** `update_settings`, `run_pipeline`, `tune_pipeline`,
   `show_in_viewer`.
@@ -316,7 +316,17 @@ miss is a note.
     as its `source_file`. It reports the
     peaks' offset along Q relative to |Q| by |Q| band and direction: an offset
     that changes with |Q| along a direction is not a UB error (see
-    [UB refinement](algorithms/ub_refinement.md)).
+    [UB refinement](algorithms/ub_refinement.md)). It also reports the peaks'
+    mean offset from their nodes in r.l.u., before and after the fit: a UB
+    error averages out over a centrosymmetric set of nodes and the fit removes
+    it, while a shifted HKL origin moves every peak by one vector that stays,
+    which it then names as the origin's shift. `dpdf_peaks`
+    (`analysis/dpdf_features.py`, `GET /api/deltapdf/{id}/features`) lists the
+    3D-ΔPDF's strongest extrema from the whole volume: local extrema above a
+    few robust σ (default 5) outside the origin's disk, one per ± pair, each
+    with its vector in Å and in lattice units (to a fraction of a voxel), its
+    sign and its size in σ, those of one sign, length and size grouped as the
+    copies of one correlation.
   - *Display*: `dpdf_contrast` optimises the 3D-ΔPDF viewer's colour range in
     one call (the page's Auto rule, measured on the centre sections), reports the
     robust σ, the strongest feature and what the 99.5th and 99.97th percentiles

@@ -7,6 +7,10 @@
 // zero means it over-subtracted.  Only the shells inside the flatten's own fit
 // range are judged (with the true |Q| known): the direct-beam core, punched and
 // smoothly filled, and the box corners beyond the coverage say nothing of the fit.
+//
+// Whether a pedestal is left is judged on the outer half of the shells the
+// counts reach (judgedShells, below), not on every shell past the fit range's
+// start: docs/pilot-review.md, finding 8.
 
 import type { GridSlice, RadiusFn } from "./sliceStats";
 import { median, radialFloorShells, robustStats, roundSig } from "./sliceStats";
@@ -25,16 +29,64 @@ export interface FlattenMetrics {
   // ≲ 1 is flat, several σ is a leftover trend or an over-subtraction.
   after_floor_max_sigma: number | null;
   after_negative_fraction: number | null;
-  // Over every measured shell from the fit range's start out to the coverage
-  // (not only the fit range): how the floor after the flatten follows |Q|.
-  // floor_trend is the floors' rank correlation with |Q| — near ±1 a pedestal
-  // the model left (a rising or falling background), near 0 level or only
-  // oscillating.  floor_span_fraction is the floors' range as a share of the
-  // backfilled slice's median level.  A trend near 1 with a span near or above
-  // 1 is a leftover background, however small it reads in σ beside strong
-  // diffuse structure.
+  // Over the outer half of the shells the counts reach (judgedShells): how the
+  // floor after the flatten follows |Q|. floor_trend is the floors' rank
+  // correlation with |Q| — near ±1 a pedestal the model left (a rising or
+  // falling background), near 0 level or only oscillating.
+  // floor_span_fraction is the floors' range as a share of the backfilled
+  // slice's median level.  A trend near 1 with a span near or above 1 is a
+  // leftover background, however small it reads in σ beside strong diffuse
+  // structure.  floor_judged_q is the |Q| range of the shells judged.
   floor_trend: number | null;
   floor_span_fraction: number | null;
+  floor_judged_q: [number, number] | null;
+}
+
+// A shell the counts reach: at least this share of its voxels on the cut is
+// measured (qmax_coverage's "fully measured"). The partial shell at a coverage
+// edge holds the voxels nearest the edge only.
+export const FULL_SHELL = 0.95;
+
+/**
+ * The shells a pedestal is judged on (indices into radialFloorShells): those
+ * the counts reach (FULL_SHELL), from half the outermost one's |Q| outward, and
+ * not inside the fit range's start.
+ *
+ * Why the outer half. The floors after a flatten that fits a constant follow
+ * the crystal's own diffuse level (and any broad low-|Q| hump of the
+ * background), which rises to its strongest shells at low |Q| and falls past
+ * them: on the dev control a hump at 1.7 Å⁻¹ of 0.9 of the diffuse level, then
+ * floors that oscillate about zero out to 9 Å⁻¹. A rank trend over all shells
+ * reads that fall as a trend wherever the coverage is short: the dev control
+ * restricted to the 0.8–4.4 Å⁻¹ its cut twin measures reads −0.79 on H–K,
+ * the same as the cut case itself (−0.77; −0.82 on its worst plane), whose
+ * planted truth has no pedestal (span 0.015 of the diffuse level). An
+ * inelastic background (b·Q², thermal diffuse and multiphonon, Compton) is
+ * largest and rises fastest at high |Q|, where the diffuse's own oscillation
+ * is damped: the outer half of the measured range is where a pedestal shows
+ * and the crystal's floor does not. On the eight dev cases, judged so, only
+ * the planted |Q|² background reads as a pedestal (trend 0.97, span 0.97;
+ * with the Q² term on, 0.02 and 0.33), the cut case reads trend 0.93 with a
+ * span of 0.49, and the controls stay under 0.62 and 0.65. The validation's
+ * scorer judges the pedestal on the outer shells too (3.5 Å⁻¹ out to the
+ * coverage, nebula3d.validation.score). Provisional, as the 0.8 limits are.
+ */
+export function judgedShells(
+  shells: { floors: number[]; centres: number[]; counts: number[]; totals: number[] },
+  qRange?: [number, number],
+): number[] {
+  const reached = shells.floors
+    .map((_f, i) => i)
+    .filter(
+      (i) =>
+        Number.isFinite(shells.floors[i]) &&
+        shells.totals[i] > 0 &&
+        shells.counts[i] >= FULL_SHELL * shells.totals[i] &&
+        (!qRange || shells.centres[i] >= qRange[0]),
+    );
+  if (!reached.length) return [];
+  const outer = Math.max(...reached.map((i) => shells.centres[i]));
+  return reached.filter((i) => shells.centres[i] >= 0.5 * outer);
 }
 
 /**
@@ -66,13 +118,15 @@ const rankTrend = (y: number[]): number | null => {
 
 const NBINS = 30;
 
-// Mean of the finite floors in each third of the shells.
-const thirds = (floors: number[]): [number, number, number] | null => {
+// Mean of the finite floors in each third of them: the thirds of the shells
+// the counts reach, so a volume whose counts end inside the box has them too.
+const thirds = (all: number[]): [number, number, number] | null => {
+  const floors = all.filter(Number.isFinite);
   const out: number[] = [];
   for (let t = 0; t < 3; t++) {
     const lo = Math.round((t * floors.length) / 3);
     const hi = Math.round(((t + 1) * floors.length) / 3);
-    const part = floors.slice(lo, hi).filter(Number.isFinite);
+    const part = floors.slice(lo, hi);
     if (!part.length) return null;
     out.push(roundSig(part.reduce((s, v) => s + v, 0) / part.length));
   }
@@ -101,25 +155,24 @@ export const flattenMetrics = (
     after_negative_fraction: null,
     floor_trend: null,
     floor_span_fraction: null,
+    floor_judged_q: null,
   };
   if (!after) return nulls;
   const afterStats = robustStats(after.data);
   const floorsAfter = floorsIn(after, radius, qRange);
   const sigma = afterStats && afterStats.sigma > 0 ? afterStats.sigma : null;
   const finiteAfter = floorsAfter.filter(Number.isFinite);
-  // Every well-measured shell past the fit range's start (the direct-beam
-  // core): the partial shells at the coverage edge, under a quarter of the
-  // typical shell's voxels, would otherwise set the span.
+  // The outer half of the shells the counts reach (judgedShells).
   const shells = radialFloorShells(after, NBINS, radius);
-  const filled = shells.counts.filter((c) => c > 0);
-  const minCount = filled.length ? 0.25 * median(filled) : 0;
-  const outward = shells.floors.filter(
-    (f, i) => Number.isFinite(f) && shells.counts[i] >= minCount && (!qRange || shells.centres[i] >= qRange[0]),
-  );
+  const judged = judgedShells(shells, qRange);
+  const outward = judged.map((i) => shells.floors[i]);
   const trend = rankTrend(outward);
   const out: FlattenMetrics = {
     ...nulls,
     floor_trend: trend != null ? roundSig(trend) : null,
+    floor_judged_q: judged.length
+      ? [roundSig(shells.centres[judged[0]]), roundSig(shells.centres[judged[judged.length - 1]])]
+      : null,
     floor_after: thirds(floorsAfter),
     after_floor_max_sigma:
       sigma && finiteAfter.length ? roundSig(Math.max(...finiteAfter.map(Math.abs)) / sigma) : null,

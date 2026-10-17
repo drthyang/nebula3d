@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
   fetchConsistencyCheck: vi.fn(),
   fetchDataset: vi.fn(),
+  fetchDpdfFeatures: vi.fn(),
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
@@ -415,18 +416,18 @@ describe("assess_stage", () => {
   it("judges each stage that exists by its criterion, headline numbers only for all", async () => {
     evaluate.evaluateStage.mockImplementation(async (stage: string) =>
       stage === "flatten"
-        ? { max_after_floor_sigma: 0.8, per_plane: { hk0: {} } }
+        ? { max_after_floor_sigma: 0.8, max_floor_trend: 0.3, max_floor_span_fraction: 0.6, per_plane: { hk0: {} } }
         : { back_fft_pearson_r: 0.99, back_fft_normalized_rms: 0.1, mean_feature_snr: 40, per_plane: {} },
     );
     const r = await run("assess_stage", {});
     const out = JSON.parse(r.text);
     expect(out.rings.missing).toMatch(/no ringremoved output yet/);
-    expect(out.flatten).toMatchObject({ headline: "floor ≤ 0.8σ · trend ≤ – · span ≤ –", max_after_floor_sigma: 0.8 });
-    expect(out.flatten.criterion).toMatch(/floor/);
+    expect(out.flatten).toMatchObject({ headline: "floor ≤ 0.8σ · trend ≤ 0.3 · span ≤ 0.6", max_after_floor_sigma: 0.8 });
+    expect(out.flatten.criterion).toMatch(/pedestal/);
     // Five stages' per-plane detail and goals would overflow the result.
     expect(out.flatten).not.toHaveProperty("per_plane");
     expect(out.flatten).not.toHaveProperty("goal");
-    expect(r.summary).toBe("Flatten: meets its goal · floor ≤ 0.8σ · trend ≤ – · span ≤ – · 3D-ΔPDF: needs attention · r 0.99 · RMS 0.1 · SNR 40");
+    expect(r.summary).toBe("Flatten: meets its goal · floor ≤ 0.8σ · trend ≤ 0.3 · span ≤ 0.6 · 3D-ΔPDF: needs attention · r 0.99 · RMS 0.1 · SNR 40");
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
   });
 
@@ -519,6 +520,44 @@ describe("qmax_coverage", () => {
     expect(clean.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window puts 4.1e-6 of its weight/);
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 0.04 });
     expect((await check()).verdict).toMatch(/^too far: the ΔPDF's separable window puts 0.04/);
+  });
+
+  // The dev coverage case (docs/pilot-review.md finding 7): counts cut at
+  // 4.511 Å⁻¹ of a box whose nearest face is 6.444 Å⁻¹, a window shrunk to fit.
+  const cut = { id: "demo.raw", q: [], counted: [], q_min_edge: null, q_max_edge: 4.507, full_q_min: 0.15, full_q_max: 4.45, box_q: 6.444, box_corner_q: 11.16 };
+  const shrunk = async () => {
+    const meta = await api.fetchDpdfMeta();
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 0.695, window_open_weight: 9.8e-4 });
+  };
+
+  it("says in the verdict when the counts end inside the box and no band is set", async () => {
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
+    api.fetchVolumeCoverage.mockResolvedValue(cut);
+    await shrunk();
+    const out = await check();
+    expect(out.counts_end_inside_box).toBe(true);
+    expect(out.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window \(shrunk to 0\.695 × to fit the coverage\) puts 9\.8e-4/);
+    expect(out.verdict).toMatch(/the raw counts end at 4\.507 Å⁻¹, inside the box \(its nearest face at 6\.444 Å⁻¹\), and no \|Q\| band is set.*the band they allow is 0–4\.5 Å⁻¹/);
+    expect(out.band_check).toMatch(/the counts end at 4\.507 Å⁻¹, inside the box \(face 6\.444 Å⁻¹\): the band they allow is 0–4\.5 Å⁻¹$/);
+    // With a band set inside the counts, the band does the work: nothing to add.
+    usePipelineStore.setState({ pdfQMin: "0", pdfQMax: "4.5" });
+    await shrunk();
+    const banded = await check();
+    expect(banded.verdict).not.toMatch(/raw counts end/);
+    expect(banded.band_check).toBe("the band 0–4.5 Å⁻¹ stays inside the counts");
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
+  });
+
+  it("adds nothing where the counts reach the box: a full box, or a turned one whose counts reach past its faces", async () => {
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
+    for (const edge of [null, 10.95, 6.4]) {
+      api.fetchVolumeCoverage.mockResolvedValue({ ...cut, q_max_edge: edge, full_q_max: 8.45 });
+      await shrunk();
+      const out = await check();
+      expect(out.counts_end_inside_box).toBe(false); // 6.4: within one coverage shell of the face
+      expect(out.verdict).not.toMatch(/raw counts end/);
+      expect(out.band_check).toBe("no |Q| band is set: the transform takes every voxel, empty ones included, up to the window's reach");
+    }
   });
 });
 
@@ -662,6 +701,106 @@ describe("ub_check", () => {
     api.fetchUbCheck.mockResolvedValue({ ...check, fit: "both", symmetrised: false, rms_start: 0.0366, rms: 0.0037, voxel_q: 0.0997 });
     expect(JSON.parse((await run("ub_check", {})).text).unexplained).toBe(false);
   });
+
+  // The dev origin case's check (validation sweep, docs/pilot-review.md finding 2):
+  // the origin put off by (0.03, 0.02, 0) r.l.u. on a cubic cell of 3.9 Å.
+  const cubic = [[1.611, 0, 0], [0, 1.611, 0], [0, 0, 1.611]];
+  const shifted = {
+    ...check, fit: "both", symmetrised: false, rms_start: 0.0583, rms: 0.0583, voxel_q: 0.0806, angle_deg: 0, ub: cubic, ub_start: cubic,
+    mean_offset_rlu: { before: [0.0305, 0.0195, 0], after: [0.0305, 0.0195, 0], standard_error: [0.0002, 0.0002, 0.0002], n: 90 },
+  };
+
+  it("gives a shifted origin's size: the peaks' mean offset that the fit leaves", async () => {
+    api.fetchUbCheck.mockResolvedValue(shifted);
+    const r = await run("ub_check", {});
+    const out = JSON.parse(r.text);
+    expect(out.mean_offset_rlu).toEqual({ before: [0.0305, 0.0195, 0], after: [0.0305, 0.0195, 0], standard_error: [0.0002, 0.0002, 0.0002] });
+    expect(out.origin_shift_rlu).toEqual([0.0305, 0.0195, 0]);
+    expect(out.reading).toMatch(/Every peak sits a mean \(0\.0305, 0\.0195, 0\.0000\) r\.l\.u\. off its node.*the HKL origin shifted/);
+    expect(r.summary).toMatch(/origin shifted \(0\.0305, 0\.0195, 0\.0000\) r\.l\.u\.$/);
+  });
+
+  it("names no origin shift for a turned UB, a clean volume, or offsets with no common vector", async () => {
+    // A turned UB (0.6°): the offsets average out over the nodes, and the fit removes them.
+    api.fetchUbCheck.mockResolvedValue({
+      ...shifted, rms_start: 0.0491, rms: 0.0016, angle_deg: 0.601,
+      mean_offset_rlu: { before: [0, 0, 0], after: [0, 0, 0], standard_error: [0.0016, 0.0016, 0.0023], n: 90 },
+    });
+    let out = JSON.parse((await run("ub_check", {})).text);
+    expect([out.unexplained, out.origin_shift_rlu]).toEqual([false, null]);
+    // The control: on their nodes.
+    api.fetchUbCheck.mockResolvedValue({ ...shifted, rms_start: 0.0004, rms: 0.0004, mean_offset_rlu: { ...shifted.mean_offset_rlu, before: [0, 0, 0], after: [0, 0, 0] } });
+    expect(JSON.parse((await run("ub_check", {})).text).origin_shift_rlu).toBeNull();
+    // Unexplained offsets (|Q| assigned wrong: they grow outward) whose mean is small: not the origin.
+    api.fetchUbCheck.mockResolvedValue({ ...shifted, mean_offset_rlu: { ...shifted.mean_offset_rlu, before: [0.002, 0, 0], after: [0.002, 0, 0] } });
+    out = JSON.parse((await run("ub_check", {})).text);
+    expect([out.unexplained, out.origin_shift_rlu]).toEqual([true, null]);
+    expect(out.reading).toMatch(/Look at the origin of the HKL grid, or at how \|Q\| was assigned/);
+  });
+});
+
+describe("dpdf_peaks", () => {
+  // What the server returns on the dev control (docs/pilot-review.md finding 1),
+  // shortened: the strongest correlation, and a planted one at ⟨3/2 0 0⟩.
+  const features = {
+    id: "demo.delta_pdf", sigma: 6.174, min_sigma: 5, origin_radius: 1.95, n_extrema: 619,
+    groups: [
+      { sign: -1, length: 2.7393, size_sigma: 1515.5, value: -9357, n: 6,
+        vectors: [[1.9383, 1.9383, 0], [0, 1.9383, -1.9383], [0, 1.9383, 1.9383], [1.9383, 0, -1.9383], [1.9383, 0, 1.9383]],
+        vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497], [0.497, 0, 0.497]],
+        sizes_sigma: [1515.5, 1515.3, 1514.1, 1513.7, 1513.4] },
+      { sign: 1, length: 5.8383, size_sigma: 238.39, value: 1472, n: 3,
+        vectors: [[5.8383, 0.0039, 0]], vectors_rlu: [[1.497, 0.001, 0]], sizes_sigma: [238.39] },
+    ],
+  };
+
+  it("lists the strongest features with their vectors, signs and sizes", async () => {
+    api.fetchDpdfFeatures.mockResolvedValue(features);
+    const r = await run("dpdf_peaks", {});
+    expect(r.ok).toBe(true);
+    expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith("demo.delta_pdf", 5, 12);
+    const out = JSON.parse(r.text);
+    expect(out.features[0]).toEqual({
+      sign: "−", length_A: 2.739, size_sigma: 1520, n_vectors: 6,
+      vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497]],
+      vectors_A: [[1.938, 1.938, 0], [0, 1.938, -1.938], [0, 1.938, 1.938], [1.938, 0, -1.938]],
+    });
+    expect(out.features[1]).toMatchObject({ sign: "+", length_A: 5.838, n_vectors: 3, vectors_rlu: [[1.5, 0.001, 0]] });
+    expect([out.robust_sigma, out.threshold_sigma, out.origin_disk_A, out.extrema_above_threshold]).toEqual([6.17, 5, 1.95, 619]);
+    expect(r.summary).toBe("619 extrema above 5σ; strongest − at (0.497, 0.497, 0) r.l.u., 2.74 Å, 1520σ");
+    expect(r.view).toMatchObject({ view: "dpdf", plane: "xy", value: 0 });
+  });
+
+  it("checks its arguments, and says when nothing stands out", async () => {
+    expect((await run("dpdf_peaks", { min_sigma: 1 })).text).toMatch(/min_sigma must be within \[3, 1000\]/);
+    expect((await run("dpdf_peaks", { limit: 50 })).text).toMatch(/limit must be within \[1, 30\]/);
+    api.fetchDpdfFeatures.mockResolvedValue({ ...features, n_extrema: 0, groups: [] });
+    const r = await run("dpdf_peaks", { min_sigma: 900, limit: 3 });
+    expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith("demo.delta_pdf", 900, 3);
+    expect(r.summary).toBe("no extremum above 5σ outside the origin's disk");
+  });
+});
+
+describe("consistency_details", () => {
+  it("gives r against the data's even part beside r against the data", async () => {
+    api.fetchConsistencyCheck.mockResolvedValue({
+      dataset_id: "demo", check_path: "x", has_check: true,
+      metrics: { pearson_r: 0.989014, normalized_rms: 0.125311, rms: 0.03, n_voxels: 3617683, per_plane_r: { "+0.000": 0.98912 },
+        q_band: null, crop_hkl: null, apodization: "gaussian", pearson_r_even: 0.99999999, normalized_rms_even: 1e-9, odd_share: 0.021851 },
+    });
+    const r = await run("consistency_details", {});
+    const out = JSON.parse(r.text);
+    expect([out.pearson_r, out.pearson_r_even, out.odd_share]).toEqual([0.989, 1, 0.02185]);
+    expect(r.summary).toBe("r = 0.989, normalised RMS = 0.1253; against the even part r = 1 (odd share 0.02185)");
+    // A check saved before the even part was compared reads as before.
+    api.fetchConsistencyCheck.mockResolvedValue({
+      dataset_id: "demo", check_path: "x", has_check: true,
+      metrics: { pearson_r: 0.9995, normalized_rms: 0.01, rms: 0.001, n_voxels: 10, per_plane_r: {}, q_band: null, crop_hkl: null, apodization: "gaussian" },
+    });
+    const before = await run("consistency_details", {});
+    expect(JSON.parse(before.text).pearson_r_even).toBeUndefined();
+    expect(before.summary).toBe("r = 0.9995, normalised RMS = 0.01");
+  });
 });
 
 describe("texture_check", () => {
@@ -679,7 +818,7 @@ describe("texture_check", () => {
     const r = await runOn(full, "texture_check", {});
     const out = JSON.parse(r.text);
     expect(out.per_cut).toHaveLength(3);
-    expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, brighter_fraction: 1 });
+    expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, above_fraction: 1 });
     expect(r.summary).toMatch(/^systematic fill bias on 3 of 3 cut\(s\)/);
     expect(r.view?.label).toBe("H–K plane at L = 0");
   });
