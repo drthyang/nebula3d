@@ -17,6 +17,8 @@ import {
   type ToolCall,
 } from "./provider/client";
 import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
+import { fillReferences } from "./references";
+import { computedVerdict, type ComputedVerdict } from "./verdict";
 import { compactResult, isCompacted } from "./compact";
 import { lastQuestion, toolsFor } from "./localTools";
 import { isLocalUrl } from "./provider/presets";
@@ -52,6 +54,10 @@ export interface AgentResult extends AgentProgress {
   // With `usage`: the reply's token counts over all its requests, when the
   // server reported them (null when it did not).
   usage?: (TokenUsage & { requests: number }) | null;
+  // The verdict on the run computed from the checks this reply ran
+  // (verdict.ts): what "achieved" is, which the answer explains. Null when the
+  // reply measured nothing it rests on.
+  verdict?: ComputedVerdict | null;
 }
 
 // Rounds of tool calls before the model is asked to answer with what it has;
@@ -382,7 +388,7 @@ export async function runAgent({
         content = before;
         convo.push({ role: "assistant", content: roundText });
         // The tools the fix asks for are offered.
-        for (const t of issues.missing) tools.forEach((tool) => t.evidence.includes(tool.name) && offer(tool.name));
+        for (const t of [...issues.missing, ...issues.stale]) tools.forEach((tool) => t.evidence.includes(tool.name) && offer(tool.name));
         convo.push({ role: "user", content: issuesPrompt(issues) });
         emit(`_${REVISING_NOTE}_`);
         continue;
@@ -450,5 +456,19 @@ export async function runAgent({
 
   // A server that reported some requests' counts but not all leaves the total unknown.
   const usage = wantUsage ? (tokens.requests > 0 && tokens.requests === requests ? tokens : null) : undefined;
-  return { content, reasoning, steps, note, ...(failure ? { failure } : {}), ...(wantUsage ? { usage } : {}) };
+  // Numbers by reference: the words the user reads have each {{tool.field}}
+  // filled in from the result (whole, as the tools found it); and the verdict
+  // on the run is computed from the checks, never taken from the words.
+  const measured = steps.map((st) => (fullResults.has(st.id) ? { ...st, result: fullResults.get(st.id) } : st));
+  content = fillReferences(content, measured).text;
+  const verdict = useTools ? computedVerdict(measured) : null;
+  return {
+    content,
+    reasoning,
+    steps,
+    note,
+    ...(failure ? { failure } : {}),
+    ...(wantUsage ? { usage } : {}),
+    ...(verdict ? { verdict } : {}),
+  };
 }

@@ -213,6 +213,7 @@ export function renderTranscript(rec: RunRecord, findings: readonly Finding[] = 
     }
   }
   lines.push("", "## Conclusion", "", rec.conclusion || "(none)", "");
+  if (rec.computed_verdict) lines.push(`**Verdict computed from the checks:** ${rec.computed_verdict.text}.`, "");
   if (rec.note) lines.push(`Note: ${rec.note}`, "");
   if (rec.error) lines.push(`Error: ${rec.error}`, "");
   lines.push("## Numbers and their sources", "", "| Number | Source |", "| --- | --- |");

@@ -319,6 +319,14 @@ export function ChatView({
                     <Markdown text={t.content} />
                   </div>
                 )}
+                {t.verdict && (
+                  <div
+                    className={`ai-verdict ai-verdict-${t.verdict.achieved === true ? "met" : t.verdict.achieved === false ? "not-met" : "open"}`}
+                    title="Computed from the checks this reply ran, by the report's rules; the model's words explain it"
+                  >
+                    Verdict from the checks: {t.verdict.text}.
+                  </div>
+                )}
                 {t.note && <div className="ai-note">{t.note}</div>}
                 {reportable(t) && toolContext && !busy && (
                   <button

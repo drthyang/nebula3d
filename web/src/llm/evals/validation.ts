@@ -22,6 +22,7 @@ import type { Failure } from "../recovery";
 import { allSkills, skillsPrompt } from "../skills";
 import { SAMPLE_PARAMS } from "../tune/catalog";
 import type { AgentTool } from "../tools";
+import type { ComputedVerdict } from "../verdict";
 import { answers, NEGATION, numbers, sentences } from "./checks";
 import manifest from "./fixtures/validation-cases.json";
 import type { Check, EvalRun, Grade } from "./harness";
@@ -417,6 +418,8 @@ export interface RunRecord {
   decisions: Decision[];
   numbers: NumberSource[];
   conclusion: string;
+  // The verdict on the run computed from its checks (verdict.ts); absent from records made before 2026-10-17.
+  computed_verdict?: ComputedVerdict | null;
   note: string | null;
   error: string | null;
   failure: Failure | null; // the model server failed the reply after its retries: infrastructure, apart from a wrong answer
@@ -460,6 +463,7 @@ export function buildRecord(p: {
     decisions: decisions(r.steps, p.why),
     numbers: numberSources(r.content, r.steps),
     conclusion: r.content,
+    computed_verdict: r.verdict ?? null,
     note: r.note ?? null,
     error: r.error ?? null,
     failure: r.failure ?? null,

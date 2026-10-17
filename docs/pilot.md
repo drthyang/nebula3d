@@ -30,11 +30,31 @@ Each is described under [How it works](#how-it-works).
 
 - **Answers stand on their evidence.** Before you read an answer, the agent
   checks that each verdict on a stage has the tool that measures it in the
-  reply, that every number comes from a tool result or the context, and that
-  no claim contradicts a verdict a tool computed. A failing answer goes back to
-  the model once; what still fails is noted under the reply.
+  reply, measured after the last run that recomputed that stage (a run that
+  reused a stage leaves its measurement standing), that every number comes
+  from a tool result or the context, and that no claim contradicts a verdict a
+  tool computed. A ring or punch verdict needs `assess_stage`, the ΔPDF's
+  correlations `dpdf_peaks` (or a measured section), the origin `ub_check`.
+  The check runs in code after the answer, not as a forced tool call, which the
+  paid models do not take. A failing answer goes back to the model once; what
+  still fails is noted under the reply (`answerChecks.ts`, `evidence.ts`).
+- **Numbers by reference.** The model writes a tool's number as
+  `{{tool.field}}`, the field's path in that tool's result
+  (`{{ub_check.orientation_change_deg}}`, `{{assess_stage.flatten.max_floor_trend}}`),
+  and the app fills it in from the result before you read it: the number is
+  the tool's, as the tool rounded it. A reference that names nothing goes back
+  to the model, and one still unfilled stays as written, with a note
+  (`references.ts`).
 - **Verdicts are computed, not self-graded.** `assess_stage` returns each
-  stage's verdict with the rule behind it, by the report's own criteria.
+  stage's verdict with the rule behind it, by the report's own criteria. The
+  verdict on the whole run, `{{achieved}}`, is computed from the checks the
+  reply ran: met when every stage, measured as it now is, meets its goal and
+  no check on the result needs attention; not met, naming what needs it; or
+  not judged, naming the stages not measured. The data's problems that no
+  setting fixes (a turned UB, a shifted origin, counts that end inside the
+  box) are listed with it. It shows under the reply and heads the report, and
+  an answer that calls the run a success it does not give goes back to the
+  model to quote it (`verdict.ts`).
 - **Skills come first.** A stage's settings change, and the stage is tuned,
   only after its skill has been read in the conversation.
 - **Tuning cannot touch your results.** Each trial runs in its own folder,

@@ -12,6 +12,7 @@
 import { create } from "zustand";
 
 import type { AgentProgress, AgentStep } from "./agent";
+import type { ComputedVerdict } from "./verdict";
 
 export interface ChatTurn {
   id: number;
@@ -20,6 +21,7 @@ export interface ChatTurn {
   reasoning?: string;
   steps?: AgentStep[];
   note?: string;
+  verdict?: ComputedVerdict | null; // computed from the checks the reply ran (verdict.ts)
 }
 
 interface ChatState {

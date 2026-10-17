@@ -36,6 +36,7 @@ export function reportMarkdown(r: Report): string {
   if (r.question) out.push(`> ${r.question.replace(/\n/g, " ")}`, "");
 
   out.push("## Quality checks", "");
+  out.push(`**Goal: ${r.achieved.text}.** *Computed from the checks below, not from the model's words.*`, "");
   out.push(mdTable(["Check", "Verdict", "Numbers"], r.checks.map((c) => [c.title, VERDICT_LABEL[c.verdict], c.headline])), "");
   for (const c of r.checks) {
     out.push(`### ${c.title} — ${VERDICT_LABEL[c.verdict]}`, "");
@@ -212,7 +213,9 @@ export function reportHtml(r: Report): string {
   );
   if (r.question) parts.push(`<div class="request">${esc(r.question)}</div>`);
 
-  parts.push(`<h2>Quality checks</h2><div class="grid">${r.checks.map(checkCard).join("")}</div>`);
+  parts.push(
+    `<h2>Quality checks</h2><p class="achieved"><b>Goal: ${esc(r.achieved.text)}.</b> <span class="note">Computed from the checks below, not from the model's words.</span></p><div class="grid">${r.checks.map(checkCard).join("")}</div>`,
+  );
 
   if (figures.length) {
     parts.push(
