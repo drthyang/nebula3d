@@ -662,6 +662,42 @@ describe("ub_check", () => {
     api.fetchUbCheck.mockResolvedValue({ ...check, fit: "both", symmetrised: false, rms_start: 0.0366, rms: 0.0037, voxel_q: 0.0997 });
     expect(JSON.parse((await run("ub_check", {})).text).unexplained).toBe(false);
   });
+
+  // The dev origin case's check (validation sweep, docs/pilot-review.md finding 2):
+  // the origin put off by (0.03, 0.02, 0) r.l.u. on a cubic cell of 3.9 Å.
+  const cubic = [[1.611, 0, 0], [0, 1.611, 0], [0, 0, 1.611]];
+  const shifted = {
+    ...check, fit: "both", symmetrised: false, rms_start: 0.0583, rms: 0.0583, voxel_q: 0.0806, angle_deg: 0, ub: cubic, ub_start: cubic,
+    mean_offset_rlu: { before: [0.0305, 0.0195, 0], after: [0.0305, 0.0195, 0], standard_error: [0.0002, 0.0002, 0.0002], n: 90 },
+  };
+
+  it("gives a shifted origin's size: the peaks' mean offset that the fit leaves", async () => {
+    api.fetchUbCheck.mockResolvedValue(shifted);
+    const r = await run("ub_check", {});
+    const out = JSON.parse(r.text);
+    expect(out.mean_offset_rlu).toEqual({ before: [0.0305, 0.0195, 0], after: [0.0305, 0.0195, 0], standard_error: [0.0002, 0.0002, 0.0002] });
+    expect(out.origin_shift_rlu).toEqual([0.0305, 0.0195, 0]);
+    expect(out.reading).toMatch(/Every peak sits a mean \(0\.0305, 0\.0195, 0\.0000\) r\.l\.u\. off its node.*the HKL origin shifted/);
+    expect(r.summary).toMatch(/origin shifted \(0\.0305, 0\.0195, 0\.0000\) r\.l\.u\.$/);
+  });
+
+  it("names no origin shift for a turned UB, a clean volume, or offsets with no common vector", async () => {
+    // A turned UB (0.6°): the offsets average out over the nodes, and the fit removes them.
+    api.fetchUbCheck.mockResolvedValue({
+      ...shifted, rms_start: 0.0491, rms: 0.0016, angle_deg: 0.601,
+      mean_offset_rlu: { before: [0, 0, 0], after: [0, 0, 0], standard_error: [0.0016, 0.0016, 0.0023], n: 90 },
+    });
+    let out = JSON.parse((await run("ub_check", {})).text);
+    expect([out.unexplained, out.origin_shift_rlu]).toEqual([false, null]);
+    // The control: on their nodes.
+    api.fetchUbCheck.mockResolvedValue({ ...shifted, rms_start: 0.0004, rms: 0.0004, mean_offset_rlu: { ...shifted.mean_offset_rlu, before: [0, 0, 0], after: [0, 0, 0] } });
+    expect(JSON.parse((await run("ub_check", {})).text).origin_shift_rlu).toBeNull();
+    // Unexplained offsets (|Q| assigned wrong: they grow outward) whose mean is small: not the origin.
+    api.fetchUbCheck.mockResolvedValue({ ...shifted, mean_offset_rlu: { ...shifted.mean_offset_rlu, before: [0.002, 0, 0], after: [0.002, 0, 0] } });
+    out = JSON.parse((await run("ub_check", {})).text);
+    expect([out.unexplained, out.origin_shift_rlu]).toEqual([true, null]);
+    expect(out.reading).toMatch(/Look at the origin of the HKL grid, or at how \|Q\| was assigned/);
+  });
 });
 
 describe("texture_check", () => {

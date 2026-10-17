@@ -25,6 +25,7 @@ import struct
 import threading
 from collections import OrderedDict
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -33,6 +34,9 @@ from nebula3d.core import HKLVolume, sigma_note
 from nebula3d.utils.reciprocal_space import direct_cell
 from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import _ALIASES, _PLANE, SliceData
+
+if TYPE_CHECKING:
+    from nebula3d.analysis.ub_refine import MeanOffset
 
 #: Plane keys accepted by the slice endpoint (principal pairs + Mantid aliases).
 PLANES: tuple[str, ...] = tuple(_PLANE.keys()) + tuple(_ALIASES.keys())
@@ -257,7 +261,7 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
     (:func:`symmetry_ops_for`), to constrain the cell.  ``radial`` gives the
     peaks' offsets along Q relative to |Q| per |Q| band and direction.
     """
-    from nebula3d.analysis.ub_refine import auto_fit, radial_offsets, refine_ub
+    from nebula3d.analysis.ub_refine import auto_fit, mean_offset, radial_offsets, refine_ub
 
     key = (str(path), path.stat().st_mtime, tuple(cell), q_max)
     with _lock:
@@ -309,11 +313,22 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
                    for o in radial_offsets(f, r.centres)],
         # The grid's finest step in Q: what an offset is small or large against.
         "voxel_q": voxel_q(vol),
+        # The centres' mean offset from their nodes (r.l.u.): a shifted HKL
+        # origin, which no UB removes, is this vector before and after the fit.
+        "mean_offset_rlu": _mean_offset_out(mean_offset(f, r.centres)),
     }
     with _lock:
         _ub_cache.clear()  # one volume's check at a time
         _ub_cache[key] = out
     return out
+
+
+def _mean_offset_out(m: MeanOffset) -> dict:
+    def vec(v: tuple[float, float, float]) -> list[float | None]:
+        return [round(x, 6) if np.isfinite(x) else None for x in v]
+
+    return {"before": vec(m.before), "after": vec(m.after),
+            "standard_error": vec(m.standard_error), "n": m.n}
 
 
 def parse_ring_shells(q: str, fwhm: str) -> list[tuple[float, float]]:

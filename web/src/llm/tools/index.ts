@@ -17,7 +17,7 @@ import {
   fetchUbCheck,
   fetchVolumeCoverage,
 } from "../../api/client";
-import type { Dataset, DeltaPdfMeta, JobEvent, Slice, VolumeCoverage, VolumeMeta } from "../../api/types";
+import type { Dataset, DeltaPdfMeta, JobEvent, Slice, UbCheck, VolumeCoverage, VolumeMeta } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import {
@@ -1078,10 +1078,29 @@ const sig2 = (x: number): number => Number(x.toPrecision(2));
 export const unexplainedOffset = (u: { rms_start: number; rms: number; voxel_q?: number | null }): boolean =>
   u.voxel_q != null && u.voxel_q > 0 && u.rms_start > 0.25 * u.voxel_q && u.rms > 0.8 * u.rms_start;
 
+/**
+ * The HKL origin's shift (r.l.u.), or null: the centres' mean offset from their
+ * nodes after the fit, when the offsets are unexplained by any UB and that one
+ * vector makes 0.8 or more of the RMS the fit leaves. A UB error offsets node h
+ * by (T − I)·h, which averages to zero over a centrosymmetric set of nodes and
+ * which the fit removes; a shifted origin moves every peak by the same vector,
+ * which no UB (a linear map) can remove, so it is the mean after the fit, and
+ * |UB·mean| is then most of the RMS. The 0.8 is unexplainedOffset's.
+ */
+export function originShift(u: Pick<UbCheck, "rms_start" | "rms" | "voxel_q" | "ub" | "mean_offset_rlu">): number[] | null {
+  const after = u.mean_offset_rlu?.after;
+  if (!unexplainedOffset(u) || !after || after.some((x) => x == null || !Number.isFinite(x))) return null;
+  const v = after as number[];
+  const q = Math.hypot(...[0, 1, 2].map((i) => u.ub[i][0] * v[0] + u.ub[i][1] * v[1] + u.ub[i][2] * v[2]));
+  return q >= 0.8 * u.rms ? v : null;
+}
+
+const rlu = (v: (number | null)[]): string => `(${v.map((x) => (x == null ? "–" : x.toFixed(4))).join(", ")})`;
+
 const ubCheckTool: AgentTool = {
   name: "ub_check",
   description:
-    "Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit: a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it. About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, and what radial shows.",
+    "Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit: a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it. mean_offset_rlu is the peaks' mean offset from their nodes in r.l.u., before and after the fit: a UB error averages out over the nodes and the fit removes it, while a shifted HKL origin moves every peak by one vector that stays after the fit (origin_shift_rlu, when that vector makes most of the offset the fit leaves). About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, what radial shows, and an origin shift when it gives one.",
   parameters: {
     type: "object",
     properties: { q_max: { type: "number", description: "The nodes' |Q| limit in Å⁻¹ (default: everything the box holds)" } },
@@ -1095,6 +1114,7 @@ const ubCheckTool: AgentTool = {
     const cell = [s.punchSupercellH, s.punchSupercellK, s.punchSupercellL].map((v) => Number(v) || 1) as [number, number, number];
     const u = await fetchUbCheck(rawId, cell, qMax);
     const cellText = (c: number[]) => `${c.slice(0, 3).map((x) => x.toFixed(4)).join(", ")} Å; ${c.slice(3).map((x) => x.toFixed(3)).join("°, ")}°`;
+    const shift = originShift(u);
     const result = {
       fit: u.fit,
       bragg_nodes_every: u.cell_nodes,
@@ -1114,6 +1134,15 @@ const ubCheckTool: AgentTool = {
       // Offsets well above the centring's own scatter that the fit cannot
       // remove are not a UB error: a shifted HKL origin, or |Q| assigned wrong.
       unexplained: unexplainedOffset(u),
+      // The centres' mean offset from their nodes, r.l.u.: what an origin shift is.
+      mean_offset_rlu: u.mean_offset_rlu
+        ? {
+            before: u.mean_offset_rlu.before.map((x) => (x == null ? null : Number(x.toFixed(4)))),
+            after: u.mean_offset_rlu.after.map((x) => (x == null ? null : Number(x.toFixed(4)))),
+            standard_error: u.mean_offset_rlu.standard_error.map((x) => (x == null ? null : sig2(x))),
+          }
+        : null,
+      origin_shift_rlu: shift ? shift.map((x) => Number(x.toFixed(4))) : null,
       reading: [
         u.fit === "symmetric"
           ? "The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data."
@@ -1122,13 +1151,18 @@ const ubCheckTool: AgentTool = {
               (u.symmetry_break == null ? " They do not map this volume's grid, so whether it is symmetrised was not judged." : "")
             : "The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).",
         unexplainedOffset(u)
-          ? `The fit removed little of the peaks' offset (RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹, against a voxel of ${u.voxel_q!.toFixed(4)} Å⁻¹): no UB change explains it. Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.`
+          ? `The fit removed little of the peaks' offset (RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹, against a voxel of ${u.voxel_q!.toFixed(4)} Å⁻¹): no UB change explains it.` +
+            (shift
+              ? ` Every peak sits a mean ${rlu(shift)} r.l.u. off its node, after the fit as before it: one vector moves them all, the HKL origin shifted by about that much, which no UB can make. Report the origin, not the UB.`
+              : " Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.")
           : "",
       ].filter(Boolean).join(" "),
     };
     return {
       result,
-      summary: `${u.fit}: RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹ over ${u.n_used} peaks; a ${u.cell_start[0].toFixed(3)} → ${u.cell[0].toFixed(3)} Å, c ${u.cell_start[2].toFixed(3)} → ${u.cell[2].toFixed(3)} Å; turned ${u.angle_deg.toFixed(3)}°`,
+      summary:
+        `${u.fit}: RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹ over ${u.n_used} peaks; a ${u.cell_start[0].toFixed(3)} → ${u.cell[0].toFixed(3)} Å, c ${u.cell_start[2].toFixed(3)} → ${u.cell[2].toFixed(3)} Å; turned ${u.angle_deg.toFixed(3)}°` +
+        (shift ? `; origin shifted ${rlu(shift)} r.l.u.` : ""),
     };
   },
 };

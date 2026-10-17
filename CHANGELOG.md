@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **`ub_check` gives a shifted origin's size.** The peaks' mean offset from
+  their nodes in r.l.u., before and after the fit (`mean_offset_rlu`): a UB
+  error averages out over the nodes and the fit removes it, while a shifted
+  HKL origin moves every peak by one vector that stays. When the offsets are
+  unexplained by any UB and that vector makes most of them, the check names
+  the shift (`origin_shift_rlu`); on the dev origin case it reads
+  (0.0305, 0.0195, 0) r.l.u. for the (0.03, 0.02, 0) put in (validation
+  review, finding 2).
+
 - **Text outside ASCII in a SaveMD file reads back right in other HDF5
   readers.** A run log, title or attribute with characters outside ASCII (a
   file name such as `Fe₃Ge₂_Å.nxs`) was stored as UTF-8 bytes labelled ASCII,

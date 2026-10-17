@@ -439,6 +439,44 @@ def radial_offsets(fit: UBFit, centres: Centres, *, min_peaks: int = 3) -> list[
     return out
 
 
+@dataclass(frozen=True)
+class MeanOffset:
+    """The peak centres' mean offset from their nodes, in r.l.u. (see
+    :func:`mean_offset`)."""
+
+    before: tuple[float, float, float]  # in the HKL of the start UB
+    after: tuple[float, float, float]  # in the HKL of the refined UB
+    standard_error: tuple[float, float, float]  # of ``before``, from the centres' scatter
+    n: int
+
+
+def mean_offset(fit: UBFit, centres: Centres) -> MeanOffset:
+    """The mean of (centre − node) in r.l.u. over the centres the fit kept,
+    with the start UB and with the refined one.
+
+    A UB error maps node h to T·h, a linear offset (T − I)·h that averages to
+    zero over a centrosymmetric set of nodes (h and −h both measured), and the
+    refined UB removes it whatever the set. A shifted HKL origin adds the same
+    vector to every centre, which no UB (a linear map) can take away: it is
+    the mean, before the fit and after it. So the mean is the size of an
+    origin shift, where :func:`fit_ub`'s RMS only says that something other
+    than the UB moved the peaks.
+    """
+    used = fit.used
+    before = centres.hkl[used] - centres.nodes[used]
+    # The same centres in the refined UB's HKL: Q = UB_start·c = UB·c'.
+    to_refined = np.linalg.inv(fit.ub) @ fit.ub_start
+    after = centres.hkl[used] @ to_refined.T - centres.nodes[used]
+    n = int(used.sum())
+    se = (before.std(axis=0, ddof=1) / np.sqrt(n)) if n > 1 else np.full(3, np.nan)
+
+    def vec(v: NDArray[np.float64]) -> tuple[float, float, float]:
+        return (float(v[0]), float(v[1]), float(v[2]))
+
+    return MeanOffset(before=vec(before.mean(axis=0)), after=vec(after.mean(axis=0)),
+                      standard_error=vec(se), n=n)
+
+
 def refine_ub(
     vol: HKLVolume,
     *,

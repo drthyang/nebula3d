@@ -47,6 +47,24 @@ def test_a_shifted_origin_leaves_offsets_no_ub_removes(vol):
     assert clean.rms_start < 0.25 * voxel_q(vol)  # the clean volume does not trip it
 
 
+def test_the_mean_offset_is_the_origin_shift_and_zero_for_a_turned_ub(vol):
+    """docs/pilot-review.md finding 2: a shifted origin's size is the peaks' mean
+    offset from their nodes, before the fit and after it; a UB error averages out."""
+    shift = (0.03, 0.02, 0.0)
+    r = ub_refine.refine_ub(faults.shift_origin(vol, shift), fit="both")
+    m = ub_refine.mean_offset(r.fit, r.centres)
+    assert m.n == r.fit.n_used
+    assert m.before == pytest.approx(shift, abs=3e-3)
+    assert m.after == pytest.approx(shift, abs=3e-3)  # no UB (a linear map) removes it
+    assert max(m.standard_error) < 1e-3
+    turned = ub_refine.refine_ub(faults.misorient(vol, 0.5, (1, 1, 0)), fit="both")
+    t = ub_refine.mean_offset(turned.fit, turned.centres)
+    assert np.abs(t.after).max() < 1e-3  # the fit removes the turn
+    assert np.abs(t.before).max() < 3e-3  # and it averages out over the nodes
+    clean = ub_refine.refine_ub(vol, fit="both")
+    assert np.abs(ub_refine.mean_offset(clean.fit, clean.centres).before).max() < 1e-3
+
+
 def test_voxel_q_is_the_finest_step_in_q(vol):
     step = vol.h_axis[1] - vol.h_axis[0]
     assert voxel_q(vol) == pytest.approx(np.linalg.norm(vol.ub_matrix[:, 0]) * step)

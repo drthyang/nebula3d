@@ -362,6 +362,9 @@ def test_volume_ub_check(tmp_path):
     assert in_plane
     assert all(o["before"] == pytest.approx(a / a_true - 1, abs=1e-3) for o in in_plane)
     assert all(abs(o["after"]) < 1e-3 for o in u["radial"])
+    # A cell error is linear in the node: no mean offset, the origin is where it was.
+    assert u["mean_offset_rlu"]["n"] == u["n_used"]
+    assert max(abs(x) for x in u["mean_offset_rlu"]["after"]) < 2e-3
     assert client.get(f"/api/volumes/{SLUG}.raw/ub", params={"cell": "2,0,2"}).status_code == 400
 
 

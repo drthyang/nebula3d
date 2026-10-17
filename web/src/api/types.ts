@@ -92,6 +92,10 @@ export interface UbCheck {
   // The peaks' median offset along Q from their nodes relative to |Q|, per |Q| band and direction.
   radial: { q_lo: number; q_hi: number | null; direction: string; n: number; before: number; after: number }[];
   voxel_q?: number | null; // the grid's finest step in Q (Å⁻¹)
+  // The peak centres' mean offset (centre − node) in r.l.u., with the volume's
+  // UB and the refined one, and the first's standard error: a shifted HKL
+  // origin is this vector, which no UB removes.
+  mean_offset_rlu?: { before: (number | null)[]; after: (number | null)[]; standard_error: (number | null)[]; n: number } | null;
 }
 
 export interface VolumeMeta {

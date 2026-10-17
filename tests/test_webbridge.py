@@ -219,6 +219,10 @@ def test_volume_ub_check_json(tmp_path):
     assert out["fit"] == "both" and out["symmetrised"] is None
     assert out["cell"][:3] == pytest.approx([4.2, 4.2, 4.2], rel=2e-3)
     assert out["angle_deg"] < 0.05
+    # The peaks' mean offset from their nodes, r.l.u.: none on a right UB and origin.
+    off = out["mean_offset_rlu"]
+    assert off["n"] == out["n_used"]
+    assert max(abs(x) for x in off["before"] + off["after"]) < 1e-3
     with pytest.raises(ValueError, match="cell must be"):
         webbridge.volume_ub_check_json(f"{ds}.raw", "0,1,1")
 
