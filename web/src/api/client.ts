@@ -8,6 +8,7 @@ import type {
   DataRoot,
   Dataset,
   DeltaPdfMeta,
+  DpdfFeatures,
   JobOut,
   PipelineRunRequest,
   RingIsotropy,
@@ -185,6 +186,13 @@ export function fetchSlice(
 export function fetchDpdfMeta(volumeId: string): Promise<DeltaPdfMeta> {
   if (PYODIDE_MODE) return engine.dpdfMeta(volumeId);
   return getJSON<DeltaPdfMeta>(`/api/deltapdf/${encodeURIComponent(volumeId)}/meta`);
+}
+
+/** The ΔPDF's strongest extrema above `minSigma` robust σ, grouped by sign, length and size. */
+export function fetchDpdfFeatures(volumeId: string, minSigma = 5, limit = 12): Promise<DpdfFeatures> {
+  if (PYODIDE_MODE) return engine.dpdfFeatures(volumeId, minSigma, limit);
+  const params = new URLSearchParams({ min_sigma: String(minSigma), limit: String(limit) });
+  return getJSON<DpdfFeatures>(`/api/deltapdf/${encodeURIComponent(volumeId)}/features?${params}`);
 }
 
 export function fetchDpdfSlice(

@@ -156,6 +156,28 @@ class UbCheckOut(BaseModel):
     mean_offset_rlu: UbMeanOffsetOut | None = None
 
 
+class DpdfFeatureGroupOut(BaseModel):
+    """Extrema of one sign, length and size (see analysis.dpdf_features)."""
+    sign: int
+    length: float  # Å
+    size_sigma: float  # the largest |ΔPDF| in the group, in robust σ
+    value: float
+    n: int  # extrema in the group, one per ± pair
+    vectors: list[list[float]]  # (x, y, z) along a, b, c, Å
+    vectors_rlu: list[list[float] | None]  # the same in lattice units
+    sizes_sigma: list[float]
+
+
+class DpdfFeaturesOut(BaseModel):
+    """The ΔPDF's strongest extrema outside the origin's disk."""
+    id: str
+    sigma: float | None  # robust σ outside the origin's disk; None when it holds no data
+    min_sigma: float
+    origin_radius: float  # Å
+    n_extrema: int
+    groups: list[DpdfFeatureGroupOut]
+
+
 class DeltaPdfMetaOut(BaseModel):
     id: str
     shape: list[int]

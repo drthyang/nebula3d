@@ -1,5 +1,5 @@
 // The tools a local model is offered for a question. Every request carries the
-// definitions of the tools it offers, and all 23 come to about 5k tokens, more
+// definitions of the tools it offers, and all 24 come to about 5k tokens, more
 // than half of the first request: a local model reads them on every request,
 // and the more it is offered, the more it picks the wrong one. So it gets the
 // reading tools every question needs, and the ones the question is about. A
@@ -27,8 +27,8 @@ const TOPICS: { about: RegExp; tools: string[] }[] = [
   { about: /backfill|\bfill|seams?\b|\bholes?\b/i, tools: ["texture_check", "radial_profile"] },
   { about: /flatten|background|floors?\b|incoherent|b·q|q²|magnetic|form factor/i, tools: ["radial_profile"] },
   {
-    about: /Δ\s?pdf|delta.?pdf|\bpdf\b|real.?space|window|apodi|\bband\b|q.?max|fft|transform|consistency|features?\b/i,
-    tools: ["measure_dpdf_cut", "dpdf_contrast", "qmax_coverage", "symmetry_check", "consistency_details"],
+    about: /Δ\s?pdf|delta.?pdf|\bpdf\b|real.?space|window|apodi|\bband\b|q.?max|fft|transform|consistency|features?\b|correlations?\b/i,
+    tools: ["measure_dpdf_cut", "dpdf_peaks", "dpdf_contrast", "qmax_coverage", "symmetry_check", "consistency_details"],
   },
   { about: /\bub\b|orient|lattice|\bcell\b|grains?\b|twin|tilt/i, tools: ["ub_check", "grain_check", "bragg_peaks"] },
   { about: /symmetr|6\/mmm|\bmmm\b|equivalen|hexagonal|six.?fold/i, tools: ["symmetry_check"] },

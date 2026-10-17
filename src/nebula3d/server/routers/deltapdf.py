@@ -9,9 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import StageStatus, resolve_volume
-from nebula3d.server.deltapdf import DPDF_PLANES, dpdf_meta, dpdf_slice_envelope
+from nebula3d.server.deltapdf import DPDF_PLANES, dpdf_features, dpdf_meta, dpdf_slice_envelope
 from nebula3d.server.deps import get_config
-from nebula3d.server.schemas import DeltaPdfMetaOut, LatticeOut
+from nebula3d.server.schemas import DeltaPdfMetaOut, DpdfFeaturesOut, LatticeOut
 
 router = APIRouter(prefix="/api/deltapdf", tags=["deltapdf"])
 
@@ -51,3 +51,16 @@ def slice_(
         raise HTTPException(400, f"unknown plane {plane!r}; choose one of {DPDF_PLANES}")
     body = dpdf_slice_envelope(stage.path, plane=plane, value=value)
     return Response(content=body, media_type="application/octet-stream")
+
+
+@router.get("/{volume_id}/features", response_model=DpdfFeaturesOut)
+def features(
+    volume_id: str,
+    min_sigma: float = Query(5.0, gt=0, le=1e6),
+    limit: int = Query(12, ge=1, le=60),
+    cfg: ServerConfig = Depends(get_config),
+) -> DpdfFeaturesOut:
+    """The ΔPDF's strongest extrema outside the origin's disk, grouped by sign,
+    length and size (see analysis.dpdf_features)."""
+    stage = _resolve_dpdf(cfg, volume_id)
+    return DpdfFeaturesOut(id=volume_id, **dpdf_features(stage.path, min_sigma, limit))

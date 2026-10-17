@@ -214,3 +214,43 @@ def dpdf_slice_envelope(path: Path, plane: str, value: float) -> bytes:
     }
     hb = json.dumps(header).encode("utf-8")
     return struct.pack("<I", len(hb)) + hb + data2d.tobytes()
+
+
+def dpdf_features(path: Path, min_sigma: float = 5.0, limit: int = 12) -> dict:
+    """The ΔPDF's strongest extrema, grouped
+    (:func:`nebula3d.analysis.dpdf_features.strongest_features`), with each
+    vector in Å along a, b, c and in lattice units."""
+    from nebula3d.analysis.dpdf_features import strongest_features
+
+    d = load_dpdf(path)
+    f = strongest_features(d.data, d.x_axis, d.y_axis, d.z_axis, d.cell_angles,
+                           min_sigma=min_sigma, limit=limit)
+    cell = (d.lat_a, d.lat_b, d.lat_c)
+
+    def clean(x: float, digits: int) -> float:
+        return round(float(x), digits) + 0.0  # no −0.0
+
+    def lattice_units(v: tuple[float, float, float]) -> list[float] | None:
+        if any(c is None or not c > 0 for c in cell):
+            return None
+        return [clean(x / c, 4) for x, c in zip(v, cell)]  # type: ignore[operator]
+
+    return {
+        "sigma": float(f.sigma) if np.isfinite(f.sigma) else None,
+        "min_sigma": float(f.min_sigma),
+        "origin_radius": float(f.origin_radius),
+        "n_extrema": f.n_extrema,
+        "groups": [
+            {
+                "sign": g.sign,
+                "length": clean(g.length, 4),
+                "size_sigma": clean(g.size_sigma, 4),
+                "value": float(g.value),
+                "n": g.n,
+                "vectors": [[clean(x, 4) for x in v] for v in g.vectors],
+                "vectors_rlu": [lattice_units(v) for v in g.vectors],
+                "sizes_sigma": [clean(x, 4) for x in g.sizes_sigma],
+            }
+            for g in f.groups
+        ],
+    }

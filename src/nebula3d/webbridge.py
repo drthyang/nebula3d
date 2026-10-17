@@ -86,6 +86,7 @@ __all__ = [
     "volume_ring_isotropy_json",
     "dpdf_meta_json",
     "dpdf_slice",
+    "dpdf_features_json",
     "consistency_meta_json",
     "consistency_check_json",
     "consistency_slice",
@@ -1164,6 +1165,15 @@ def dpdf_slice(volume_id: str, plane: str, value: float) -> bytes:
     """Binary slice envelope of a ΔPDF stage (mirrors /api/deltapdf/{id}/slice)."""
     stage = _resolve(volume_id, "delta_pdf")
     return _dpdf.dpdf_slice_envelope(stage.path, plane=plane, value=float(value))
+
+
+def dpdf_features_json(volume_id: str, min_sigma: float = 5.0, limit: int = 12) -> str:
+    """The ΔPDF's strongest extrema, grouped (mirrors GET /api/deltapdf/{id}/features)."""
+    if not float(min_sigma) > 0 or int(limit) < 1:
+        raise ValueError("min_sigma must be positive and limit at least 1")
+    stage = _resolve(volume_id, "delta_pdf")
+    m = _dpdf.dpdf_features(stage.path, float(min_sigma), int(limit))
+    return _json({**m, "id": volume_id})
 
 
 # ---------------------------------------------------------------------------

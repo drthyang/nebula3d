@@ -274,7 +274,7 @@ began with.
 | Arm | What runs |
 | --- | --- |
 | **A** | The default pipeline, no agent: Run with nothing configured, three times |
-| **B** | The Pilot as shipped, for each model: its tools, skills and guardrails, and whatever tools the shipped code offers that model. A local model is offered the reading tools and those its question is about (`localTools.ts`), 22 of the 23 for this task (`compare_datasets` is withheld), and more as it calls them; the validation does not bypass that |
+| **B** | The Pilot as shipped, for each model: its tools, skills and guardrails, and whatever tools the shipped code offers that model. A local model is offered the reading tools and those its question is about (`localTools.ts`), 23 of the 24 for this task (`compare_datasets` is withheld), and more as it calls them; the validation does not bypass that |
 | **C** | B without its skills and nothing else: `read_skill` is not offered and the system prompt lists no skill; the skill gate (a stage's settings change only after its skill is read) is counted as passed, so C may change what B may. A test (`validationArms.test.ts`) runs both through the real agent loop and shows their requests differ only by `read_skill` and the skills' listing |
 | **D** | The planted truth: the crystal's own noise-free diffuse scattering through the same transform on the same support. It is the reference, and a check that the scorer passes it on every case |
 

@@ -90,10 +90,11 @@ z = 0 plane: rods in reciprocal space are planes in real space.
 ## Steps
 
 1. The trust checks above, in order.
-2. `dpdf_contrast`, then `show_in_viewer` or `measure_dpdf_cut` through the
-   strongest features on the three sections.
+2. `dpdf_peaks` for the strongest features of the whole volume, then
+   `dpdf_contrast` and `show_in_viewer` or `measure_dpdf_cut` through them.
 3. For each feature: its vector in Å and in lattice units, its sign, its size
-   against the section's robust σ, and whether it repeats under the symmetry.
+   against the volume's robust σ (`dpdf_peaks` gives all three), and whether it
+   repeats under the symmetry.
 4. Rule out the artifacts above, naming the check that rules out each.
 5. Relate the features to the structure: which average interatomic vector each
    sits on (a CIF in the 3D-ΔPDF page's structure overlay marks them).

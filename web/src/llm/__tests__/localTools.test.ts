@@ -45,6 +45,12 @@ describe("toolsFor", () => {
     expect(size(toolsFor("Is the powder-ring removal clean on this run?", CHAT_TOOLS))).toBeLessThan(0.6 * size(CHAT_TOOLS));
   });
 
+  it("offers the ΔPDF's feature list to a question about its pair correlations", () => {
+    expect(offered("What are the strongest pair correlations in the 3D-ΔPDF, with their vectors and signs?")).toContain("dpdf_peaks");
+    expect(offered("Which correlations does the data show?")).toContain("dpdf_peaks");
+    expect(offered("Is the powder-ring removal clean on this run?")).not.toContain("dpdf_peaks");
+  });
+
   it("gives a question about nothing in particular the common diagnostics, and keeps tools it has no rule for", () => {
     expect(offered("How does this reduction look?")).toEqual(expect.arrayContaining(["radial_profile", "qmax_coverage", "symmetry_check", "bragg_peaks"]));
     const custom: AgentTool = { name: "custom", description: "d", parameters: {}, run: async () => ({ result: {}, summary: "" }) };

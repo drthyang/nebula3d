@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **`dpdf_peaks`: the 3D-ΔPDF's strongest features, with their vectors and
+  signs.** The validation's task and the delta-pdf-interpretation skill ask
+  for each feature's vector, sign and size, and no tool gave them. The new
+  tool (server: `GET /api/deltapdf/{id}/features`,
+  `nebula3d.analysis.dpdf_features`) lists the volume's local extrema above a
+  few robust σ outside the origin's disk, one per ± pair, each with its
+  vector in Å and in lattice units (to a fraction of a voxel), its sign and
+  its size in σ, those of one sign, length and size grouped. Planted
+  correlations come out at their vectors with their signs (validation
+  review, finding 1).
+
 - **The flatten's pedestal is judged where a pedestal shows.** On the dev
   case whose counts end at 4.5 Å⁻¹, `assess_stage` said a pedestal was left
   where the planted truth has none: after a constant flatten the floors

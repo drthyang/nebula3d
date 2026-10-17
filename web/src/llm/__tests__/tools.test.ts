@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
   fetchConsistencyCheck: vi.fn(),
   fetchDataset: vi.fn(),
+  fetchDpdfFeatures: vi.fn(),
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
@@ -735,6 +736,48 @@ describe("ub_check", () => {
     out = JSON.parse((await run("ub_check", {})).text);
     expect([out.unexplained, out.origin_shift_rlu]).toEqual([true, null]);
     expect(out.reading).toMatch(/Look at the origin of the HKL grid, or at how \|Q\| was assigned/);
+  });
+});
+
+describe("dpdf_peaks", () => {
+  // What the server returns on the dev control (docs/pilot-review.md finding 1),
+  // shortened: the strongest correlation, and a planted one at ⟨3/2 0 0⟩.
+  const features = {
+    id: "demo.delta_pdf", sigma: 6.174, min_sigma: 5, origin_radius: 1.95, n_extrema: 619,
+    groups: [
+      { sign: -1, length: 2.7393, size_sigma: 1515.5, value: -9357, n: 6,
+        vectors: [[1.9383, 1.9383, 0], [0, 1.9383, -1.9383], [0, 1.9383, 1.9383], [1.9383, 0, -1.9383], [1.9383, 0, 1.9383]],
+        vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497], [0.497, 0, 0.497]],
+        sizes_sigma: [1515.5, 1515.3, 1514.1, 1513.7, 1513.4] },
+      { sign: 1, length: 5.8383, size_sigma: 238.39, value: 1472, n: 3,
+        vectors: [[5.8383, 0.0039, 0]], vectors_rlu: [[1.497, 0.001, 0]], sizes_sigma: [238.39] },
+    ],
+  };
+
+  it("lists the strongest features with their vectors, signs and sizes", async () => {
+    api.fetchDpdfFeatures.mockResolvedValue(features);
+    const r = await run("dpdf_peaks", {});
+    expect(r.ok).toBe(true);
+    expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith("demo.delta_pdf", 5, 12);
+    const out = JSON.parse(r.text);
+    expect(out.features[0]).toEqual({
+      sign: "−", length_A: 2.739, size_sigma: 1520, n_vectors: 6,
+      vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497]],
+      vectors_A: [[1.938, 1.938, 0], [0, 1.938, -1.938], [0, 1.938, 1.938], [1.938, 0, -1.938]],
+    });
+    expect(out.features[1]).toMatchObject({ sign: "+", length_A: 5.838, n_vectors: 3, vectors_rlu: [[1.5, 0.001, 0]] });
+    expect([out.robust_sigma, out.threshold_sigma, out.origin_disk_A, out.extrema_above_threshold]).toEqual([6.17, 5, 1.95, 619]);
+    expect(r.summary).toBe("619 extrema above 5σ; strongest − at (0.497, 0.497, 0) r.l.u., 2.74 Å, 1520σ");
+    expect(r.view).toMatchObject({ view: "dpdf", plane: "xy", value: 0 });
+  });
+
+  it("checks its arguments, and says when nothing stands out", async () => {
+    expect((await run("dpdf_peaks", { min_sigma: 1 })).text).toMatch(/min_sigma must be within \[3, 1000\]/);
+    expect((await run("dpdf_peaks", { limit: 50 })).text).toMatch(/limit must be within \[1, 30\]/);
+    api.fetchDpdfFeatures.mockResolvedValue({ ...features, n_extrema: 0, groups: [] });
+    const r = await run("dpdf_peaks", { min_sigma: 900, limit: 3 });
+    expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith("demo.delta_pdf", 900, 3);
+    expect(r.summary).toBe("no extremum above 5σ outside the origin's disk");
   });
 });
 

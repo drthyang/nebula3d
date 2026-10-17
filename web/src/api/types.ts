@@ -135,6 +135,28 @@ export interface DeltaPdfMeta {
   window_open_weight?: number | null;
 }
 
+// The ΔPDF's strongest extrema outside the origin's disk, grouped by sign,
+// length and size (nebula3d.analysis.dpdf_features): one per ± pair.
+export interface DpdfFeatureGroup {
+  sign: 1 | -1;
+  length: number; // |r|, Å
+  size_sigma: number; // the largest |ΔPDF| in the group, in robust σ
+  value: number;
+  n: number; // extrema in the group
+  vectors: number[][]; // (x, y, z) along a, b, c, Å, strongest first
+  vectors_rlu: (number[] | null)[]; // the same in lattice units
+  sizes_sigma: number[];
+}
+
+export interface DpdfFeatures {
+  id: string;
+  sigma: number | null; // robust σ of the ΔPDF outside the origin's disk
+  min_sigma: number;
+  origin_radius: number; // Å
+  n_extrema: number;
+  groups: DpdfFeatureGroup[];
+}
+
 export interface ConsistencyMetrics {
   pearson_r: number;
   normalized_rms: number;

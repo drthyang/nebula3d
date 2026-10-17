@@ -630,6 +630,28 @@ def test_dpdf_slices_carry_the_real_section_angle(tmp_path, layout, plane, angle
     assert header["axes_angle"] == pytest.approx(angle)
 
 
+def test_dpdf_features_lists_extrema_in_angstrom_and_lattice_units(dpdf_env):
+    """The ΔPDF's strongest extrema (analysis.dpdf_features), served: each
+    vector in Å along a, b, c and in lattice units, the strongest first."""
+    client, *_ = dpdf_env
+    r = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/features", params={"min_sigma": 1, "limit": 5})
+    assert r.status_code == 200, r.text
+    f = r.json()
+    assert f["sigma"] > 0 and f["min_sigma"] == 1 and 0 < len(f["groups"]) <= 5
+    assert f["n_extrema"] >= len(f["groups"])
+    sizes = [g["size_sigma"] for g in f["groups"]]
+    assert sizes == sorted(sizes, reverse=True) and sizes[-1] >= 1
+    for g in f["groups"]:
+        assert g["sign"] in (1, -1) and g["n"] >= len(g["vectors"]) >= 1
+        for v, u in zip(g["vectors"], g["vectors_rlu"]):
+            # lattice units to 4 decimals: within 0.5e-4 of a cell edge (24.7 Å)
+            assert [u[0] * 5.8, u[1] * 10.4, u[2] * 24.7] == pytest.approx(v, abs=2e-3)
+            assert g["length"] >= f["origin_radius"]
+    url = f"/api/deltapdf/{SLUG}.delta_pdf/features"
+    assert client.get(url, params={"min_sigma": 0}).status_code == 422
+    assert client.get(url, params={"limit": 0}).status_code == 422
+
+
 def test_dpdf_bad_plane_400(dpdf_env):
     client, *_ = dpdf_env
     r = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/slice", params={"plane": "hk"})

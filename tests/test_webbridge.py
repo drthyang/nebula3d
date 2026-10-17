@@ -151,6 +151,17 @@ def test_dpdf_meta_and_slice(ran_pipeline):
     assert header["robust_max"] > 0
 
 
+def test_dpdf_features_json(ran_pipeline):
+    dataset_id, _datasets, _events = ran_pipeline
+    vid = f"{dataset_id}.delta_pdf"
+    f = json.loads(webbridge.dpdf_features_json(vid, 5.0, 4))
+    assert f["id"] == vid and f["min_sigma"] == 5.0
+    assert 0 < len(f["groups"]) <= 4
+    assert all(g["size_sigma"] >= 5.0 and g["length"] >= f["origin_radius"] for g in f["groups"])
+    with pytest.raises(ValueError):
+        webbridge.dpdf_features_json(vid, 0.0, 4)
+
+
 def test_consistency_meta_and_slice(ran_pipeline):
     dataset_id, _datasets, _events = ran_pipeline
     meta = json.loads(webbridge.consistency_meta_json(dataset_id))

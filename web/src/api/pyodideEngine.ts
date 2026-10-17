@@ -28,6 +28,7 @@ import type {
   ConsistencyMeta,
   Dataset,
   DeltaPdfMeta,
+  DpdfFeatures,
   RingIsotropy,
   Slice,
   SliceHeader,
@@ -418,6 +419,9 @@ export const engine = {
   },
   dpdfMeta(volumeId: string): Promise<DeltaPdfMeta> {
     return jsonCall<DeltaPdfMeta>("dpdf_meta_json", [volumeId]);
+  },
+  dpdfFeatures(volumeId: string, minSigma: number, limit: number): Promise<DpdfFeatures> {
+    return jsonCall<DpdfFeatures>("dpdf_features_json", [volumeId, minSigma, limit]);
   },
   dpdfSlice(volumeId: string, plane: string, value: number): Promise<Slice> {
     return sliceCall("dpdf_slice", [volumeId, plane, value]);
