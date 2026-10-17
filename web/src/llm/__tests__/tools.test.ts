@@ -818,7 +818,7 @@ describe("texture_check", () => {
     const r = await runOn(full, "texture_check", {});
     const out = JSON.parse(r.text);
     expect(out.per_cut).toHaveLength(3);
-    expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, brighter_fraction: 1 });
+    expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, above_fraction: 1 });
     expect(r.summary).toMatch(/^systematic fill bias on 3 of 3 cut\(s\)/);
     expect(r.view?.label).toBe("H–K plane at L = 0");
   });

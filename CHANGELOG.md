@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **`texture_check` no longer flags a sound fill of a node-peaked diffuse.**
+  It compared each fill with its rim's median in rim σ, and flagged all three
+  cuts of the validation's clean control: the diffuse peaks at the nodes
+  (thermal diffuse scattering), so a sound fill sits above that median, and σ
+  shrinks with the counts. A fill is now compared with the range its measured
+  rim allows, from the diffuse at the hole's edge carried in to its rise
+  continued to the node (voxels the fill itself wrote are not rim), and a
+  bias counts only when it is also a fifth of the local diffuse level or more
+  (`median_fill_bias_level`; `above_fraction` and `below_fraction` replace
+  `brighter_fraction`). No dev case is flagged; fills set off by a fifth of the
+  level are (validation review, finding 4; the floor is provisional).
+
 - **`dpdf_peaks`: the 3D-ΔPDF's strongest features, with their vectors and
   signs.** The validation's task and the delta-pdf-interpretation skill ask
   for each feature's vector, sign and size, and no tool gave them. The new
