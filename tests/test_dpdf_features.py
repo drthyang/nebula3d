@@ -77,3 +77,17 @@ def test_symmetric_copies_are_one_entry():
     assert g.sign == 1 and g.n == 3 and g.length == pytest.approx(A, abs=0.05)
     units = sorted(tuple(round(abs(c) / A, 2) for c in v) for v in g.vectors)
     assert units == [(0.0, 0.0, 1.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)]
+
+
+def test_a_large_volume_takes_sigma_from_a_subsample_and_unmeasured_voxels_count_as_zero():
+    """Past SIGMA_VOXELS the σ comes from a regular subsample (a measured 405³
+    ΔPDF must fit the browser's heap); a NaN voxel is no extremum."""
+    n = 211  # 9.4 M voxels: every second voxel along each axis
+    rng = np.random.default_rng(1)
+    data = rng.standard_normal((n, n, n)).astype(np.float32)
+    data[0, 0, :5] = np.nan
+    ax = (np.arange(n) - n // 2) * 0.25
+    f = strongest_features(data, ax, ax, ax, min_sigma=5.5)
+    assert f.sigma == pytest.approx(1.0, rel=0.01)  # unit Gaussian noise
+    assert all(g.size_sigma >= 5.5 for g in f.groups)
+    assert all(np.isfinite(v).all() for g in f.groups for v in g.vectors)

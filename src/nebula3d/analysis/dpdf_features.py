@@ -50,6 +50,11 @@ ORIGIN_EXCLUDED = 0.05
 #: Extrema whose sizes differ by less than this share are grouped (with equal sign and length).
 GROUP_SIZE_TOLERANCE = 0.05
 
+#: The robust σ is taken over every voxel of a volume up to this many, and over
+#: a regular subsample of about this many of a larger one (a 405³ ΔPDF: every
+#: third voxel along each axis), which pins a median to a fraction of a per cent.
+SIGMA_VOXELS = 8_000_000
+
 Vector = tuple[float, float, float]
 
 
@@ -119,36 +124,48 @@ def strongest_features(
         raise ValueError("min_sigma must be positive")
     if limit < 1:
         raise ValueError("limit must be at least 1")
-    v = np.asarray(data, dtype=np.float64)
+    # The volume in its own precision, and nothing volume-sized in float64: a
+    # measured ΔPDF (405³) must fit the browser build's 4 GB heap.
+    d = np.asarray(data)
+    if not np.isfinite(d).all():
+        d = np.where(np.isfinite(d), d, 0)
     axes = [np.asarray(a, dtype=np.float64) for a in (x_axis, y_axis, z_axis)]
-    r = real_space_radius(axes[0][:, None, None], axes[1][None, :, None], axes[2][None, None, :],
-                          cell_angles)
     half = max(max(abs(float(a[0])), abs(float(a[-1]))) for a in axes)
     origin_radius = ORIGIN_EXCLUDED * half
-    outside = (r >= origin_radius) & np.isfinite(v)
-    if not outside.any():
+    # σ outside the origin's disk, from every voxel up to SIGMA_VOXELS of them,
+    # else from a regular subsample of about that many.
+    step = max(1, int(np.ceil((d.size / SIGMA_VOXELS) ** (1 / 3))))
+    sub = d[::step, ::step, ::step]
+    r_sub = real_space_radius(axes[0][::step][:, None, None], axes[1][::step][None, :, None],
+                              axes[2][::step][None, None, :], cell_angles)
+    values = sub[r_sub >= origin_radius].astype(np.float64)
+    if not values.size:
         return DpdfFeatures(sigma=float("nan"), min_sigma=min_sigma, origin_radius=origin_radius,
                             n_extrema=0, groups=())
-    sigma = _robust_sigma(v[outside])
+    sigma = _robust_sigma(values)
+    del values, r_sub, sub
     if not sigma > 0:
         return DpdfFeatures(sigma=sigma, min_sigma=min_sigma, origin_radius=origin_radius,
                             n_extrema=0, groups=())
-    finite = np.where(np.isfinite(v), v, 0.0)
     level = min_sigma * sigma
-    peaks = (ndimage.maximum_filter(finite, size=3, mode="nearest") == finite) & (finite >= level)
-    dips = (ndimage.minimum_filter(finite, size=3, mode="nearest") == finite) & (finite <= -level)
-    origin = np.array([n // 2 for n in v.shape])
+    origin = np.array([n // 2 for n in d.shape])
     steps = np.array([float(a[1] - a[0]) if a.size > 1 else 1.0 for a in axes])
     found: list[tuple[float, int, Vector, float]] = []  # (|value|, sign, vector, length)
-    for sign, mask in ((1, peaks & outside), (-1, dips & outside)):
+    for sign, extremum in ((1, ndimage.maximum_filter), (-1, ndimage.minimum_filter)):
+        mask = extremum(d, size=3, mode="nearest") == d
+        mask &= (d >= level) if sign > 0 else (d <= -level)
         for idx in np.argwhere(mask):
             offset = tuple(int(i) for i in idx - origin)
             if offset <= (0, 0, 0):  # the −r copy of one listed in the other half
                 continue
-            sub = _refine(finite, idx)
-            vec = tuple(float(axes[a][idx[a]] + sub[a] * steps[a]) for a in range(3))
+            at = tuple(float(axes[a][idx[a]]) for a in range(3))
+            if float(real_space_radius(at[0], at[1], at[2], cell_angles)) < origin_radius:
+                continue
+            shift = _refine(d, idx)
+            vec = tuple(float(at[a] + shift[a] * steps[a]) for a in range(3))
             length = float(real_space_radius(vec[0], vec[1], vec[2], cell_angles))
-            found.append((abs(float(finite[tuple(idx)])), sign, vec, length))  # type: ignore[arg-type]
+            found.append((abs(float(d[tuple(idx)])), sign, vec, length))  # type: ignore[arg-type]
+        del mask
     found.sort(key=lambda f: -f[0])
     tol_length = 0.5 * float(np.min(np.abs(steps)))
     groups: list[dict] = []
