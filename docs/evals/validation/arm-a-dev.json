@@ -103,7 +103,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98901, normalised RMS=1.253e-01"
+      "pdf_check done: back-FFT vs data: r=0.98901, normalised RMS=1.253e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -194,7 +194,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98901, normalised RMS=1.253e-01"
+      "pdf_check done: back-FFT vs data: r=0.98901, normalised RMS=1.253e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -285,7 +285,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98901, normalised RMS=1.253e-01"
+      "pdf_check done: back-FFT vs data: r=0.98901, normalised RMS=1.253e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -458,7 +458,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.99647, normalised RMS=7.097e-02"
+      "pdf_check done: back-FFT vs data: r=0.99647, normalised RMS=7.097e-02; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -551,7 +551,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.99647, normalised RMS=7.097e-02"
+      "pdf_check done: back-FFT vs data: r=0.99647, normalised RMS=7.097e-02; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -644,7 +644,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.99647, normalised RMS=7.097e-02"
+      "pdf_check done: back-FFT vs data: r=0.99647, normalised RMS=7.097e-02; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -817,7 +817,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98290, normalised RMS=1.557e-01"
+      "pdf_check done: back-FFT vs data: r=0.98290, normalised RMS=1.557e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -910,7 +910,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98290, normalised RMS=1.557e-01"
+      "pdf_check done: back-FFT vs data: r=0.98290, normalised RMS=1.557e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -1003,7 +1003,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98290, normalised RMS=1.557e-01"
+      "pdf_check done: back-FFT vs data: r=0.98290, normalised RMS=1.557e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -1176,7 +1176,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.99190, normalised RMS=1.105e-01"
+      "pdf_check done: back-FFT vs data: r=0.99190, normalised RMS=1.105e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -1268,7 +1268,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.99190, normalised RMS=1.105e-01"
+      "pdf_check done: back-FFT vs data: r=0.99190, normalised RMS=1.105e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -1360,7 +1360,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.99190, normalised RMS=1.105e-01"
+      "pdf_check done: back-FFT vs data: r=0.99190, normalised RMS=1.105e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -1548,7 +1548,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98880, normalised RMS=1.266e-01"
+      "pdf_check done: back-FFT vs data: r=0.98880, normalised RMS=1.266e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -1656,7 +1656,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98880, normalised RMS=1.266e-01"
+      "pdf_check done: back-FFT vs data: r=0.98880, normalised RMS=1.266e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -1764,7 +1764,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98880, normalised RMS=1.266e-01"
+      "pdf_check done: back-FFT vs data: r=0.98880, normalised RMS=1.266e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -1948,7 +1948,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98902, normalised RMS=1.254e-01"
+      "pdf_check done: back-FFT vs data: r=0.98902, normalised RMS=1.254e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2041,7 +2041,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98902, normalised RMS=1.254e-01"
+      "pdf_check done: back-FFT vs data: r=0.98902, normalised RMS=1.254e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2134,7 +2134,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98902, normalised RMS=1.254e-01"
+      "pdf_check done: back-FFT vs data: r=0.98902, normalised RMS=1.254e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -2307,7 +2307,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98891, normalised RMS=1.342e-01"
+      "pdf_check done: back-FFT vs data: r=0.98891, normalised RMS=1.342e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2398,7 +2398,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98891, normalised RMS=1.342e-01"
+      "pdf_check done: back-FFT vs data: r=0.98891, normalised RMS=1.342e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2489,7 +2489,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98891, normalised RMS=1.342e-01"
+      "pdf_check done: back-FFT vs data: r=0.98891, normalised RMS=1.342e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -2679,7 +2679,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98879, normalised RMS=1.268e-01"
+      "pdf_check done: back-FFT vs data: r=0.98879, normalised RMS=1.268e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2789,7 +2789,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98879, normalised RMS=1.268e-01"
+      "pdf_check done: back-FFT vs data: r=0.98879, normalised RMS=1.268e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2899,7 +2899,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 11.16 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98879, normalised RMS=1.268e-01"
+      "pdf_check done: back-FFT vs data: r=0.98879, normalised RMS=1.268e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],

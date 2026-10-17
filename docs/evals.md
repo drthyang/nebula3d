@@ -443,7 +443,10 @@ cell is the planted correlation's amplitude as a share of the truth's, and its
 shift. The test split is not tuned on: it is arm A's reported result. The full
 results, with each run's log and digest, are in
 [evals/validation/arm-a-dev.json](evals/validation/arm-a-dev.json) and
-[arm-a-test.json](evals/validation/arm-a-test.json).
+[arm-a-test.json](evals/validation/arm-a-test.json). Dev was run again after the
+review's batch 1 (2026-10-17, [pilot-review.md](pilot-review.md#batch-1-the-eight-findings-implemented-2026-10-17)):
+the same digests and scores, since the batch changes the Pilot's tools and not
+what the default pipeline writes.
 
 **Dev**
 

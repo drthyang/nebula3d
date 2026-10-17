@@ -53,7 +53,7 @@ describe("the findings schema", () => {
     expect(findingProblems({ ...good, step: 0 })).toEqual(["step must be null or a whole number from 1"]);
     expect(findingProblems({ ...good, evidence: " " })).toEqual(["evidence must be a non-empty string"]);
     expect(findingProblems({ ...good, needs_user_approval: "yes" })).toEqual(["needs_user_approval must be true or false"]);
-    expect(findingProblems({ ...good, note: "x" })).toEqual(["unknown field note"]);
+    expect(findingProblems({ ...good, reviewer: "x" })).toEqual(["unknown field reviewer"]);
     expect(findingProblems(null)).toEqual(["a finding is an object"]);
   });
 
@@ -158,7 +158,7 @@ describe("the transcript", () => {
 
 describe("the review's findings", () => {
   it("are all findings, in the schema, on cases that exist, and name what they need from the user", async () => {
-    const { readText } = await import("./backend");
+    const { exists, readText } = await import("./backend");
     const found = JSON.parse(await readText(new URL("../../../../docs/evals/validation/review-findings.json", import.meta.url))) as Finding[];
     expect(found.length).toBeGreaterThanOrEqual(8);
     for (const f of found) {
@@ -168,5 +168,22 @@ describe("the review's findings", () => {
       if (f.kind === "skill-gap" || f.kind === "science-error") expect(f.needs_user_approval).toBe(true);
     }
     expect(new Set(found.map((f) => f.kind))).toEqual(new Set(["missing-tool", "science-error", "skill-gap", "orchestration"]));
+    // Validation batch 1: the user approved all eight, and each is implemented
+    // by a commit with the regression tests that pin it.
+    for (const f of found.slice(0, 8)) {
+      expect(f.status, f.evidence.slice(0, 40)).toBe("implemented");
+      for (const t of f.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
+    }
+  });
+
+  it("says what became of a finding: an implemented one names its commit and its tests", () => {
+    const base = { case: "dev-control", run: 1, step: null, kind: "bug", evidence: "e", proposed_fix: "p", needs_user_approval: false };
+    expect(findingProblems({ ...base, status: "implemented", commit: "47c3537", tests: ["tests/test_faults.py"] })).toEqual([]);
+    expect(findingProblems({ ...base, status: "implemented" })).toEqual([
+      "an implemented finding names its commit",
+      "an implemented finding names its regression tests",
+    ]);
+    expect(findingProblems({ ...base, status: "done" })).toEqual(["status must be one of open, implemented, deferred"]);
+    expect(findingProblems({ ...base, status: "deferred", note: "waits for the user" })).toEqual([]);
   });
 });

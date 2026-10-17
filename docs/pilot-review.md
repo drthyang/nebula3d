@@ -130,3 +130,42 @@ checked by a test.
    0.015 of the diffuse level against the 0.25 limit). The floors before the
    flatten cannot be measured there (`floor_before` is empty). The rule should
    judge only shells the counts reach.
+
+## Batch 1: the eight findings implemented (2026-10-17)
+
+The user approved all eight. Each is implemented by one commit, with
+regression tests that pin it, and recorded as such in
+[review-findings.json](evals/validation/review-findings.json) (`status`,
+`commit`, `tests`, `note`). Every new criterion was derived from the physics and
+the dev cases; the test split was not read.
+
+| # | Finding | Commit | What changed |
+| --- | --- | --- | --- |
+| 1 | The ΔPDF's strongest features | `007b5bf` | `dpdf_peaks`: local extrema of the whole volume above 5 robust σ outside the origin's disk, one per ± pair, placed to a fraction of a voxel, each with its vector in Å and r.l.u., sign and size; those of one sign, length and size grouped |
+| 2 | The origin's shift | `47c3537` | `ub_check` gives the peaks' mean offset in r.l.u. before and after the fit, and names it as the origin's shift when the offsets are unexplained and that vector makes most of them |
+| 3 | The round-trip r on unsymmetrised data | `f4bf303` | The check compares the round trip with the data's Q → −Q even part, which the transform keeps (`pearson_r_even`), and reports the odd share; the verdict judges that r. An older check judges r against the data only on data declared symmetrised |
+| 4 | `texture_check` on a clean control | `ebe69ce` | A fill is compared with the range its measured rim allows, from the diffuse at the hole's edge to its rise continued linearly to the node, and a bias counts only at a fifth of the local diffuse level or more (provisional) |
+| 5 | When to turn on flattenQ2 | `304c978` | reduction-qc step 6: on when `assess_stage` reports `pedestal_left`, rerun and read again; off otherwise. Still a draft |
+| 6 | The flatten's "floor above 1σ" | `7e5f4de` | The verdict rests on the pedestal rule; the floor in σ is reported, not judged. **Provisional**: the user's choice to keep, widen or drop the clause is still open, and this takes the drop |
+| 7 | "Clean" beside counts that end inside the box | `e381f51` | With no band set and the counts ending inside the box, `qmax_coverage`'s verdict and `band_check` give the edge, the face and the band the counts allow |
+| 8 | The pedestal rule on a cut volume | `9ae1e86` | The floors on the cut case follow the crystal's own diffuse level (a hump at 1.7 Å⁻¹ and its fall; the full control reads the same over the same shells). The trend and span are judged over the outer half of the shells the counts reach (provisional, as the 0.8 limits are) |
+
+What the sweep reads on the dev cases before and after (every reading tool on
+each case, with the defaults (B1) and with the flatten's Q² term (C1);
+`web/src/llm/evals/validationSweep.test.ts` runs it against a served root):
+
+| | Before | After |
+| --- | --- | --- |
+| ΔPDF verdict | needs attention on all 16 runs (r 0.979 to 0.996) | meets its goal on all 16 (r against the even part 1; odd share 0.007 to 0.043) |
+| Flatten verdict | needs attention on all 16 | needs attention only on the planted \|Q\|² background with the term off (trend 0.975, span 0.971) |
+| `pedestal_left` | true on the planted background and, wrongly, on the cut case | true on the planted background only |
+| Cuts with a systematic fill bias | 1 to 3 of 3 on every run | none |
+| Origin's shift | not given | (0.0305, 0.0195, 0) r.l.u. on the origin case, for (0.03, 0.02, 0); none elsewhere |
+| Coverage verdict on the cut case | "clean: … 9.8e-4 …" | the same, then the counts' edge (4.507 Å⁻¹), the box face (6.444 Å⁻¹) and the band 0–4.5 Å⁻¹ |
+| The ΔPDF's features | no tool | planted ⟨3/2 0 0⟩+ entry 6 to 8 of every case (144 to 342σ); the weaker ⟨½ 1 1⟩− entry 19 on the control (73σ), past the default 12 |
+
+Arm A (the default pipeline, no agent) does not change: none of the eight
+touches what the default pipeline writes. Re-run on dev after the batch, its
+three runs per case have the same ΔPDF digests and the same scores as before,
+five of the eight cases passing; only the back-FFT check's log line now also
+gives r against the even part.
