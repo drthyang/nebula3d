@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **The flatten's pedestal is judged where a pedestal shows.** On the dev
+  case whose counts end at 4.5 Å⁻¹, `assess_stage` said a pedestal was left
+  where the planted truth has none: after a constant flatten the floors
+  follow the crystal's own diffuse level, a hump at 1.7 Å⁻¹ and its fall,
+  and over the short range a cut leaves that fall reads as a trend (the
+  full control reads the same over the same shells). The trend and span are
+  now taken over the outer half of the shells the counts reach (at least 95 %
+  measured), where an inelastic background rises fastest and the diffuse's
+  own oscillation is damped (`floor_judged_q`); the floors' thirds skip
+  unmeasured shells, so a cut volume has them. On the eight dev cases only
+  the planted |Q|² background reads as a pedestal (validation review,
+  finding 8; the range is provisional, as the 0.8 limits are).
+
 - **The back-FFT check judges what the transform keeps.** The ΔPDF is the
   real part of the Fourier transform, the transform of the data's even part
   under Q → −Q, so on unsymmetrised data r against the data measures their

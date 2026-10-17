@@ -206,13 +206,16 @@ describe("evaluateStage", () => {
     };
     api.fetchMeta.mockResolvedValue({ shape: [81, 81, 81], h_range: [-10, 10], k_range: [-10, 10], l_range: [-10, 10], lattice: { a: 4, b: 4, c: 4 } });
     const lumpy = (x: number, y: number) => 0.8 * Math.cos(1.3 * x) * Math.cos(1.1 * y);
+    // A |Q|² floor the flatten left, spanning more than the diffuse level over
+    // the outer half of the coverage, where the pedestal is judged.
+    const q2 = (x: number, y: number) => 0.25 * Math.hypot(x, y) ** 2 / 4;
     const evaluate = async (after: (x: number, y: number) => number) => {
       api.fetchSlice.mockImplementation(async (id: string) =>
-        makeSlice(81, 81, id.endsWith("backfilled") ? (x, y) => 4 + 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y) : after, { half: 10 }),
+        makeSlice(81, 81, id.endsWith("backfilled") ? (x, y) => 4 + q2(x, y) + lumpy(x, y) : after, { half: 10 }),
       );
       return evaluateStage("flatten", withFlat);
     };
-    const rising = await evaluate((x, y) => 0.15 * Math.hypot(x, y) ** 2 / 4 + lumpy(x, y));
+    const rising = await evaluate((x, y) => q2(x, y) + lumpy(x, y));
     expect(rising.pedestal_left).toBe(true);
     expect(headline("flatten", rising)).toMatch(/ · pedestal left$/);
     const level = await evaluate(lumpy);

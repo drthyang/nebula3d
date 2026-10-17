@@ -143,7 +143,7 @@ export const CRITERIA: Record<string, string> = {
   grains:
     "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.",
   backfill: "The fills meet their surroundings: a median seam of 1σ or less, and no cut whose fill is biased one way.",
-  flatten: "No floor left above 1σ, and no pedestal across the coverage: a floor trend and a span both 0.8 or more.",
+  flatten: "No floor left above 1σ, and no pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach.",
   pdf: "The back-FFT reproduces what the transform keeps, the data's even part under Q → −Q, to an r of 0.999 or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.",
 };
 

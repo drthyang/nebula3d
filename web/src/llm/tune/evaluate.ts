@@ -285,7 +285,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
   return {
     max_after_floor_sigma: max(f.map((x) => x?.after_floor_max_sigma)),
     // The strongest leftover |Q| trend of the floors (by |rank correlation|),
-    // and the widest floor span, over the planes.
+    // and the widest floor span, over the planes: each on the outer half of the
+    // shells the counts reach on its plane (metrics/flatten.ts, judgedShells).
     max_floor_trend: max(f.map((x) => (x?.floor_trend != null ? Math.abs(x.floor_trend) : null))),
     max_floor_span_fraction: max(f.map((x) => x?.floor_span_fraction)),
     // Whether that trend and span make a pedestal left (metrics/flatten.ts):
