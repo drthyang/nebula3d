@@ -52,7 +52,8 @@ Each is described under [How it works](#how-it-works).
   no check on the result needs attention; not met, naming what needs it; or
   not judged, naming the stages not measured. The data's problems that no
   setting fixes (a turned UB, a shifted origin, counts that end inside the
-  box) are listed with it. It shows under the reply and heads the report, and
+  box) are listed with it. It shows under a reply that judged the run (or
+  found such a problem) and heads the report, and
   an answer that calls the run a success it does not give goes back to the
   model to quote it (`verdict.ts`).
 - **Skills come first.** A stage's settings change, and the stage is tuned,

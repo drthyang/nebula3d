@@ -112,3 +112,15 @@ export function computedVerdict(steps: readonly AgentStep[]): ComputedVerdict | 
   const text = words + (dataProblems.length ? `; data problems no setting fixes: ${dataProblems.join("; ")}` : "");
   return { achieved, stages, attention, notMeasured, dataProblems, text };
 }
+
+/**
+ * The line under a reply: the verdict when the reply judged the run (met, or
+ * not met), else the data's problems when it found any; nothing for a reply
+ * that measured too little to judge the run (a question about one stage).
+ */
+export function verdictLine(v: ComputedVerdict | null | undefined): string | null {
+  if (!v) return null;
+  const end = (t: string) => (t.endsWith(".") ? t : `${t}.`); // "… r.l.u." takes no second stop
+  if (v.achieved !== null) return end(`Verdict from the checks: ${v.text}`);
+  return v.dataProblems.length ? end(`From the checks: data problems no setting fixes: ${v.dataProblems.join("; ")}`) : null;
+}

@@ -9,7 +9,7 @@ import { overallContradiction, evidenceGaps } from "../answerChecks";
 import { recomputedAt } from "../evidence";
 import { fillReferences, resolveReference } from "../references";
 import { achievedFrom, type ReportCheck } from "../report/report";
-import { computedVerdict } from "../verdict";
+import { computedVerdict, verdictLine } from "../verdict";
 
 let n = 0;
 const step = (name: string, result: unknown, args: Record<string, unknown> = {}, status: AgentStep["status"] = "done"): AgentStep => ({
@@ -50,6 +50,7 @@ describe("evidence after a rerun", () => {
     const profile = [step("radial_profile", { rows: [] })];
     expect(evidenceGaps("No powder ring is left.", profile).missing.map((t) => t.id)).toEqual(["rings"]);
     expect(evidenceGaps("The HKL origin is shifted.", []).missing.map((t) => t.id)).toEqual(["origin"]);
+    expect(evidenceGaps("The origin's self-correlation peak is cut off at 1.95 Å.", []).missing).toEqual([]); // the ΔPDF's origin
     expect(evidenceGaps("The strongest correlation is negative, at (0.5, 0.5, 0).", []).missing.map((t) => t.id)).toEqual(["features"]);
     // Words about correlations with no vector or sign give no verdict on them.
     expect(evidenceGaps("Next I will look at the pair correlations.", []).missing).toEqual([]);
@@ -134,6 +135,21 @@ describe("the verdict computed from the checks", () => {
       expect(overallContradiction(s, notMet), s).toBeNull();
     }
     expect(overallContradiction("The run is ready for analysis.", null)).toMatch(/did not all run/);
+  });
+});
+
+describe("the line under a reply", () => {
+  it("gives the verdict when the reply judged the run, the data's problems when only they were found, else nothing", () => {
+    expect(verdictLine(computedVerdict([all()]))).toBe("Verdict from the checks: met: every stage meets its goal.");
+    expect(verdictLine(computedVerdict([step("assess_stage", { rings: stage(ATTENTION) }, { stage: "rings" })]))).toBe(
+      "Verdict from the checks: not met: needs attention: the ring removal.",
+    );
+    // A question about one stage that passed: too little to judge the run, nothing to add.
+    expect(verdictLine(computedVerdict([step("assess_stage", { rings: stage(PASS) }, { stage: "rings" })]))).toBeNull();
+    expect(verdictLine(computedVerdict([step("ub_check", { fit: "both", orientation_change_deg: 0, origin_shift_rlu: [0.0305, 0.0195, 0] })]))).toBe(
+      "From the checks: data problems no setting fixes: the HKL origin is shifted by (0.0305, 0.0195, 0) r.l.u.",
+    );
+    expect(verdictLine(null)).toBeNull();
   });
 });
 

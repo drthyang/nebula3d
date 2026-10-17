@@ -131,7 +131,8 @@ export const TOPICS: readonly Topic[] = [
     evidence: "ub_check",
     settles: (s) => s.name === "ub_check",
     subject: /\borigin\b/i,
-    verdict: /\b(shift\w*|offset|off|moved|displaced|wrong|right|correct|fine)\b/i,
+    // "The origin is shifted", not "the origin's peak is cut off" (the ΔPDF's origin).
+    verdict: /\b(shift\w*|offset|displaced|moved)\b|\b(is|was|looks|seems)\s+(off|wrong|right|correct|fine)\b/i,
     stage: null,
   },
   {
@@ -140,7 +141,8 @@ export const TOPICS: readonly Topic[] = [
     evidence: "dpdf_peaks",
     // The whole volume's extrema, or a measured section or line through the ΔPDF.
     settles: (s) => s.name === "dpdf_peaks" || s.name === "measure_dpdf_cut" || (s.name === "line_profile" && s.args.stage === "delta_pdf"),
-    subject: /\b(pair[- ]correlations?|correlations?|(positive|negative) (features?|peaks?|lobes?))\b/i,
+    // Not the origin's self-correlation, which is no pair correlation.
+    subject: /\b(pair[- ]correlations?|(?<!self-)correlations?|(positive|negative) (features?|peaks?|lobes?))\b/i,
     // A correlation named with a vector or a sign.
     verdict: /⟨|\(\s*[-−]?\d|\[\s*[-−]?\d|\b(positive|negative)\b|\b\d+(\.\d+)?\s*Å(?!⁻)/i,
     stage: "pdf",
