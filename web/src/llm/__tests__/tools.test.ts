@@ -416,18 +416,18 @@ describe("assess_stage", () => {
   it("judges each stage that exists by its criterion, headline numbers only for all", async () => {
     evaluate.evaluateStage.mockImplementation(async (stage: string) =>
       stage === "flatten"
-        ? { max_after_floor_sigma: 0.8, per_plane: { hk0: {} } }
+        ? { max_after_floor_sigma: 0.8, max_floor_trend: 0.3, max_floor_span_fraction: 0.6, per_plane: { hk0: {} } }
         : { back_fft_pearson_r: 0.99, back_fft_normalized_rms: 0.1, mean_feature_snr: 40, per_plane: {} },
     );
     const r = await run("assess_stage", {});
     const out = JSON.parse(r.text);
     expect(out.rings.missing).toMatch(/no ringremoved output yet/);
-    expect(out.flatten).toMatchObject({ headline: "floor ≤ 0.8σ · trend ≤ – · span ≤ –", max_after_floor_sigma: 0.8 });
-    expect(out.flatten.criterion).toMatch(/floor/);
+    expect(out.flatten).toMatchObject({ headline: "floor ≤ 0.8σ · trend ≤ 0.3 · span ≤ 0.6", max_after_floor_sigma: 0.8 });
+    expect(out.flatten.criterion).toMatch(/pedestal/);
     // Five stages' per-plane detail and goals would overflow the result.
     expect(out.flatten).not.toHaveProperty("per_plane");
     expect(out.flatten).not.toHaveProperty("goal");
-    expect(r.summary).toBe("Flatten: meets its goal · floor ≤ 0.8σ · trend ≤ – · span ≤ – · 3D-ΔPDF: needs attention · r 0.99 · RMS 0.1 · SNR 40");
+    expect(r.summary).toBe("Flatten: meets its goal · floor ≤ 0.8σ · trend ≤ 0.3 · span ≤ 0.6 · 3D-ΔPDF: needs attention · r 0.99 · RMS 0.1 · SNR 40");
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
   });
 

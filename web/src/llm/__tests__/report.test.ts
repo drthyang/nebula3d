@@ -189,6 +189,19 @@ describe("a stage's check states only what it judges", () => {
     expect(stageCheck("pdf", base)?.verdict).toBe("pass");
   });
 
+  it("judges the flatten by the pedestal rule, and reports its floor in σ without judging it", () => {
+    // The validation's dev volumes (docs/pilot-review.md finding 6): floors of
+    // 1.5 to 1.8σ on all eight, whatever the flatten did.
+    const control = stageCheck("flatten", { max_after_floor_sigma: 1.72, max_floor_trend: 0.314, max_floor_span_fraction: 0.601, pedestal_left: false })!;
+    expect(control.verdict).toBe("pass"); // "needs attention" under the 1σ clause
+    expect(control.details).toContainEqual(["Largest leftover floor (reported, not judged)", "1.72 σ"]);
+    expect(control.criterion).toMatch(/^No pedestal: .* The largest floor in σ is reported, not judged/);
+    const planted = { max_after_floor_sigma: 1.8, max_floor_trend: 0.975, max_floor_span_fraction: 0.971 };
+    expect(stageCheck("flatten", planted)!.verdict).toBe("attention");
+    expect(stageCheck("flatten", { max_after_floor_sigma: 1.52, max_floor_trend: 0.025, max_floor_span_fraction: 0.333 })!.verdict).toBe("pass");
+    expect(stageCheck("flatten", { max_after_floor_sigma: 0.8 })!.verdict).toBe("info"); // no trend or span: nothing judged
+  });
+
   it("does not promise a fill-bias check a stage's evaluation never makes", () => {
     const c = stageCheck("backfill", { mean_median_seam_sigma: 0.6 });
     expect(c?.verdict).toBe("pass");
