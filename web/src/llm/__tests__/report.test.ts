@@ -53,6 +53,10 @@ describe("buildReport", () => {
     const r = buildReport(input());
     const verdict = Object.fromEntries(r.checks.map((c) => [c.title, c.verdict]));
     expect(verdict).toEqual({ "Ring removal": "attention", "Bragg punch": "attention", Backfill: "pass", Flatten: "pass", "3D-ΔPDF": "pass" });
+    // Whether the goal is met is computed from those checks, not taken from the model's words.
+    expect(r.achieved).toEqual({ met: false, text: "not met: needs attention: Ring removal, Bragg punch" });
+    expect(reportMarkdown(r)).toContain("**Goal: not met: needs attention: Ring removal, Bragg punch.** *Computed from the checks below, not from the model's words.*");
+    expect(reportHtml(r)).toContain("<b>Goal: not met: needs attention: Ring removal, Bragg punch.</b>");
     expect(r.kind).toBe("Assessment");
     expect(r.checks[0].headline).toContain("left ≤ 0.37 (0kl, 7.2 Å⁻¹)");
     expect(r.checks[0].criterion).toMatch(/^No powder ring left above, or dented below, three times its plane's noise/);

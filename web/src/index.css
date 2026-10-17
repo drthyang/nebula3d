@@ -4160,6 +4160,21 @@ body.ai-resizing iframe {
   font-style: italic;
 }
 
+/* The verdict computed from the checks (verdict.ts), under the reply. */
+.ai-verdict {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+  border-left: 2px solid var(--text-3);
+  padding-left: 8px;
+}
+.ai-verdict-met {
+  border-left-color: var(--green);
+}
+.ai-verdict-not-met {
+  border-left-color: var(--amber);
+}
+
 /* — dock: review chips + composer, pinned under the transcript — */
 .ai-dock {
   display: flex;

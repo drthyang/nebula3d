@@ -66,9 +66,32 @@ export interface Report {
   steps: ReportStep[];
   tuning: ReportTuningStage[] | null;
   checks: ReportCheck[];
+  // Whether the reduction met its goal, computed from the checks above (every
+  // stage meets its goal), never from the model's words.
+  achieved: { met: boolean | null; text: string };
   figures: ReportFigure[];
   narrative: string;
   caveats: string[];
+}
+
+/** The stage checks "achieved" rests on, by title. */
+const STAGE_TITLES = ["Ring removal", "Bragg punch", "Backfill", "Flatten", "3D-ΔPDF"];
+
+/**
+ * Whether the reduction met its goal, from the report's checks: met when every
+ * stage's check passes, not met when one needs attention (named), not judged
+ * when a stage was not measured. The report's counterpart of the verdict the
+ * chat computes from the reply's checks (verdict.ts).
+ */
+export function achievedFrom(checks: readonly ReportCheck[]): { met: boolean | null; text: string } {
+  const of = (title: string) => checks.find((c) => c.title === title);
+  // The stages' checks (the 3D-ΔPDF's holds its window and symmetry, the
+  // backfill's its texture); a second grain is the sample's, reported apart.
+  const attention = checks.filter((c) => STAGE_TITLES.includes(c.title) && c.verdict === "attention").map((c) => c.title);
+  const notJudged = STAGE_TITLES.filter((t) => !of(t) || of(t)!.verdict === "info");
+  if (attention.length) return { met: false, text: `not met: needs attention: ${attention.join(", ")}` };
+  if (notJudged.length) return { met: null, text: `not judged: not measured: ${notJudged.join(", ")}` };
+  return { met: true, text: "met: every stage meets its goal" };
 }
 
 // ---------------------------------------------------------------- inputs
@@ -450,6 +473,7 @@ export function buildReport(input: ReportInput): Report {
     steps: input.steps,
     tuning: input.tuning,
     checks,
+    achieved: achievedFrom(checks),
     figures: input.figures,
     narrative: input.answer.trim(),
     caveats,

@@ -30,6 +30,7 @@ import { reportable } from "../report/collect";
 import { Markdown } from "./Markdown";
 import { ReportView } from "./ReportView";
 import { TuneProgress } from "./TuneProgress";
+import { verdictLine } from "../verdict";
 
 // One-click requests that have the model act: assess the run on the four
 // checks that decide whether it can be trusted, or tune it.
@@ -317,6 +318,14 @@ export function ChatView({
                 {t.content && (
                   <div className="ai-answer">
                     <Markdown text={t.content} />
+                  </div>
+                )}
+                {verdictLine(t.verdict) && (
+                  <div
+                    className={`ai-verdict ai-verdict-${t.verdict!.achieved === true ? "met" : t.verdict!.achieved === false ? "not-met" : "open"}`}
+                    title="Computed from the checks this reply ran, by the report's rules; the model's words explain it"
+                  >
+                    {verdictLine(t.verdict)}
                   </div>
                 )}
                 {t.note && <div className="ai-note">{t.note}</div>}

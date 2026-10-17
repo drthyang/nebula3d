@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **NEBULA Pilot: no verdict without its evidence, numbers by reference, and
+  verdicts computed from the checks (THY-18).** A verdict on a stage needs its
+  tool after the last run that recomputed that stage, not before it; a ring
+  verdict needs `assess_stage`, the ΔPDF's correlations `dpdf_peaks`, the
+  origin `ub_check`. The model writes a tool's number as `{{tool.field}}`,
+  which the app fills in from the result. Whether the run met its goal,
+  `{{achieved}}`, is computed from the checks the reply ran, shown under the
+  reply and at the head of the report, and an answer that calls the run a
+  success it does not give is sent back. Replay tests on the validation's dev
+  cases cover each rule.
+
 - **The flatten's verdict no longer holds its floors to 1σ (the user's choice; provisional).**
   The σ is the flattened cut's own spread and the floors follow the diffuse
   level, so all eight validation dev volumes read 1.5 to 1.8σ and "needs

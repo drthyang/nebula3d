@@ -1,22 +1,33 @@
-// What a NEBULA Pilot answer must stand on.  The agent loop checks each final
-// answer before the user reads it:
+// What a NEBULA Pilot answer must stand on (THY-18).  The agent loop checks
+// each final answer before the user reads it, in code after the answer (the
+// paid models take no forced tool choice, and a local model ignores one):
 //
 // - **No verdict without its evidence.** A verdict on a stage (the ring
 //   removal is clean, the punch missed peaks, the window stays inside the
-//   coverage, …) needs the tool that measures it to have run in this reply.
-//   Small models answered from the opening cut instead.
-// - **Numbers by reference.** Every number written must come from a tool
-//   result, the context, the user's words or the tools' own guidance, within
-//   its written precision.
+//   coverage, …) needs the tool that measures it to have run in this reply,
+//   after the last run that recomputed that stage (evidence.ts): a ring or
+//   punch verdict needs assess_stage, the ΔPDF's correlations dpdf_peaks (or
+//   a measured section), the origin ub_check. Small models answered from the
+//   opening cut instead, or from a measurement the rerun made stale.
+// - **Numbers by reference.** A tool's number is written as a reference,
+//   {{tool.field}}, which the app fills in from the result (references.ts);
+//   one that names nothing is sent back. Every other number written must come
+//   from a tool result, the context, the user's words or the tools' own
+//   guidance, within its written precision.
 // - **Verdicts from the checks.** A stage the tools judged to need attention
-//   is never called clean: the tools compute verdicts, the model quotes them.
+//   is never called clean, and the run is not called trustworthy unless the
+//   verdict computed from the checks says it met its goal (verdict.ts): the
+//   tools compute verdicts, the model quotes and explains them.
 //
 // A failed check sends the answer back once, with what to fix; what still
 // fails is noted under the reply.  The text checks are heuristic by design:
 // a false alarm costs one tool call, a miss is a note.
 
 import type { AgentStep } from "./agent";
+import { current, recomputedAt, type PipelineStage } from "./evidence";
+import { fillReferences } from "./references";
 import { stageCheck, VERDICT_LABEL } from "./report/report";
+import { computedVerdict, type ComputedVerdict } from "./verdict";
 
 export interface Topic {
   id: string;
@@ -25,6 +36,9 @@ export interface Topic {
   settles: (step: AgentStep) => boolean;
   subject: RegExp;
   verdict?: RegExp; // the words that make a sentence a verdict on it, where VERDICT is too broad
+  // The stage whose outputs the evidence reads: a run that recomputes it makes
+  // the evidence stale. null: the raw volume, which no run changes.
+  stage: PipelineStage | null;
 }
 
 const stageIs = (step: AgentStep, ...stages: string[]): boolean =>
@@ -35,8 +49,10 @@ export const TOPICS: readonly Topic[] = [
     id: "rings",
     label: "the ring removal",
     evidence: "assess_stage with stage rings",
-    settles: (s) => stageIs(s, "rings") || s.name === "radial_profile",
+    // A ring is judged in 3D (assess_stage); a radial profile shows a bump on one plane only.
+    settles: (s) => stageIs(s, "rings"),
     subject: /\b(powder[- ]?rings?|rings?|ring[- ]removal)\b/i,
+    stage: "rings",
   },
   {
     id: "punch",
@@ -45,6 +61,7 @@ export const TOPICS: readonly Topic[] = [
     settles: (s) => stageIs(s, "punch"),
     // The peaks' offset from their nodes is the UB's verdict, not the punch's.
     subject: /^(?!.*\b(UB|ub_check|grain_check|offsets?|orientation|rotation)\b)(?=.*\b(bragg (peaks?|punch|nodes?)|punch(ed|ing)?|(?<!off-)lattice peaks?|leftover peaks?|missed peaks?)\b)/is,
+    stage: "punch",
   },
   {
     id: "backfill",
@@ -52,6 +69,7 @@ export const TOPICS: readonly Topic[] = [
     evidence: "texture_check, or assess_stage with stage backfill",
     settles: (s) => s.name === "texture_check" || stageIs(s, "backfill"),
     subject: /\b(backfill(ed|ing)?|fill bias|texture)\b/i,
+    stage: "backfill",
   },
   {
     id: "flatten",
@@ -59,6 +77,7 @@ export const TOPICS: readonly Topic[] = [
     evidence: "assess_stage with stage flatten",
     settles: (s) => stageIs(s, "flatten"),
     subject: /\b(flatten(ed|ing)?|floors?|pedestal)\b/i,
+    stage: "flatten",
   },
   {
     id: "coverage",
@@ -66,6 +85,7 @@ export const TOPICS: readonly Topic[] = [
     evidence: "qmax_coverage",
     settles: (s) => s.name === "qmax_coverage",
     subject: /\b(q[ _-]?max|coverage|unmeasured)\b/i,
+    stage: "pdf",
   },
   {
     id: "symmetry",
@@ -75,6 +95,7 @@ export const TOPICS: readonly Topic[] = [
     // A verdict on the ΔPDF itself; "a separable window breaks the six-fold
     // symmetry" is about a setting, not this run.
     subject: /^(?=.*\b(symmetr(y|ic)|six-?fold|6-?fold|three-?fold|3-?fold)\b)(?=.*(Δ\s?PDF|delta-?pdf|section)).*/is,
+    stage: "pdf",
   },
   {
     id: "grain",
@@ -82,6 +103,7 @@ export const TOPICS: readonly Topic[] = [
     evidence: "grain_check",
     settles: (s) => s.name === "grain_check",
     subject: /\b(second grains?|grains?|twin(s|ned|ning)?)\b/i,
+    stage: "punch",
   },
   {
     id: "pdf",
@@ -92,6 +114,7 @@ export const TOPICS: readonly Topic[] = [
     // their own topics, and a feature the ΔPDF shows is no verdict.
     subject: /^(?!.*\b(symmetr(y|ic)|six-?fold|three-?fold|coverage|unmeasured)\b)(?=.*(Δ\s?PDF|delta-?pdf)).*/is,
     verdict: /\b(meets? (its|the) goal|needs attention|pass(es|ed)?|fail(s|ed)?|clean|trustworthy|reliable|sound)\b/i,
+    stage: "pdf",
   },
   {
     id: "ub",
@@ -100,6 +123,29 @@ export const TOPICS: readonly Topic[] = [
     // grain_check measures the Bragg peaks' offset from their nodes too.
     settles: (s) => s.name === "ub_check" || s.name === "grain_check",
     subject: /\bUB\b|\borientation matrix\b/,
+    stage: null,
+  },
+  {
+    id: "origin",
+    label: "the HKL origin",
+    evidence: "ub_check",
+    settles: (s) => s.name === "ub_check",
+    subject: /\borigin\b/i,
+    // "The origin is shifted", not "the origin's peak is cut off" (the ΔPDF's origin).
+    verdict: /\b(shift\w*|offset|displaced|moved)\b|\b(is|was|looks|seems)\s+(off|wrong|right|correct|fine)\b/i,
+    stage: null,
+  },
+  {
+    id: "features",
+    label: "the 3D-ΔPDF's pair correlations",
+    evidence: "dpdf_peaks",
+    // The whole volume's extrema, or a measured section or line through the ΔPDF.
+    settles: (s) => s.name === "dpdf_peaks" || s.name === "measure_dpdf_cut" || (s.name === "line_profile" && s.args.stage === "delta_pdf"),
+    // Not the origin's self-correlation, which is no pair correlation.
+    subject: /\b(pair[- ]correlations?|(?<!self-)correlations?|(positive|negative) (features?|peaks?|lobes?))\b/i,
+    // A correlation named with a vector or a sign.
+    verdict: /⟨|\(\s*[-−]?\d|\[\s*[-−]?\d|\b(positive|negative)\b|\b\d+(\.\d+)?\s*Å(?!⁻)/i,
+    stage: "pdf",
   },
 ];
 
@@ -155,11 +201,29 @@ export function verdictsIn(text: string): Map<string, string[]> {
   return out;
 }
 
-/** Topics the answer gives a verdict on without the tool that settles it having run (without an error) in this reply. */
-export function missingEvidence(text: string, steps: readonly AgentStep[]): Topic[] {
-  const done = steps.filter((s) => s.status === "done");
+/**
+ * Topics the answer gives a verdict on without the tool that settles it having
+ * run (without an error) in this reply after the last run that recomputed its
+ * stage: `missing` when it never ran, `stale` when it ran only before that run.
+ */
+export function evidenceGaps(text: string, steps: readonly AgentStep[]): { missing: Topic[]; stale: Topic[] } {
+  const at = recomputedAt(steps);
   const claimed = verdictsIn(text);
-  return TOPICS.filter((t) => claimed.has(t.id) && !done.some((s) => t.settles(s)));
+  const missing: Topic[] = [];
+  const stale: Topic[] = [];
+  for (const t of TOPICS) {
+    if (!claimed.has(t.id)) continue;
+    const ran = steps.map((s, i) => [s, i] as const).filter(([s]) => s.status === "done" && t.settles(s));
+    if (ran.some(([, i]) => current(at, t.stage, i))) continue;
+    (ran.length ? stale : missing).push(t);
+  }
+  return { missing, stale };
+}
+
+/** Topics the answer gives a verdict on without current evidence (missing or stale). */
+export function missingEvidence(text: string, steps: readonly AgentStep[]): Topic[] {
+  const { missing, stale } = evidenceGaps(text, steps);
+  return [...missing, ...stale];
 }
 
 /** A claim that a stage met its goal. */
@@ -257,17 +321,45 @@ const RULES: readonly VerdictRule[] = [
   },
 ];
 
-/** Topics where the answer contradicts the tools' computed verdicts in this reply. */
+/** Topics where the answer contradicts the tools' computed verdicts in this reply (on the outputs as they now are). */
 export function contradictions(text: string, steps: readonly AgentStep[]): Topic[] {
   const claimed = verdictsIn(text);
+  const at = recomputedAt(steps);
   return RULES.flatMap((rule) => {
-    const says = rule.says(steps);
+    const stage = TOPICS.find((t) => t.id === rule.topic)?.stage ?? null;
+    const says = rule.says(steps.filter((_s, i) => current(at, stage, i)));
     const lines = claimed.get(rule.topic) ?? [];
     const wrong =
       (says === "not ok" && lines.some(rule.claimsOk)) || (says === "ok" && rule.claimsNotOk !== undefined && lines.some(rule.claimsNotOk));
     const topic = TOPICS.find((t) => t.id === rule.topic);
     return wrong && topic ? [topic] : [];
   });
+}
+
+// ------------------------------------------------------------------ the run as a whole
+
+/** What the run is, said of the whole: the ΔPDF, the result, the reduction, the checks. */
+// (No \b before Δ: it is no word character, and "3D-ΔPDF" has none there.)
+const WHOLE = /Δ\s?PDF|\b(delta-?pdf|result|run|reduction|pipeline|volume|outputs?|analysis|checks|stages|everything|goal)\b/i;
+/** A claim that it met its goal: it can be trusted, every check passes, the goal is met. */
+const ACHIEVED_CLAIM =
+  /\b(trust(worthy|ed)?|reliable|ready (for|to)|fit for (analysis|use|interpretation)|all (the )?(checks|stages) (pass(ed)?|meet|met)|every (check|stage) (passes|passed|meets|met)|(meets?|met) (every|all) (its |their |the )?(goals?|checks)|(goal|target) (is |was |has been )?(met|achieved|reached)|achieved)\b/i;
+
+/**
+ * Where the answer calls the run a success that the computed verdict does not
+ * give: the reason, as the model is told it, or null. A claim with the verdict
+ * not met contradicts it; one with it not judged rests on checks that did not
+ * all run on the outputs as they now are.
+ */
+export function overallContradiction(text: string, verdict: ComputedVerdict | null): string | null {
+  if (verdict?.achieved === true) return null;
+  const claims = clauses(text).filter(
+    (c) => !c.endsWith("?") && !NOT_A_VERDICT.test(c) && !NEGATION.test(c) && WHOLE.test(c) && ACHIEVED_CLAIM.test(c),
+  );
+  if (!claims.length) return null;
+  return verdict?.achieved === false
+    ? `It calls the run a success, but the verdict computed from the checks is "${verdict.text}"`
+    : `It calls the run a success, but the checks it rests on did not all run on the outputs as they now are (${verdict ? verdict.text : "nothing measured"})`;
 }
 
 // ------------------------------------------------------------------ numbers
@@ -371,19 +463,34 @@ export function untracedNumbers(text: string, sources: string): string[] {
 
 export interface AnswerIssues {
   missing: Topic[]; // verdicts without their tool
+  stale: Topic[]; // verdicts on a measurement a later run made stale
   untraced: string[]; // numbers from nowhere
   contradicted: Topic[]; // contradicts the verdict a tool computed
+  unknownReferences: string[]; // {{references}} that name nothing in this reply's results
+  overall: string | null; // calls the run a success the computed verdict does not give
 }
 
-/** What the answer fails, or null when it stands on its evidence. */
+/**
+ * What the answer fails, or null when it stands on its evidence. The answer is
+ * read with its references filled in from this reply's results, as the user
+ * will read it.
+ */
 export function answerIssues(text: string, steps: readonly AgentStep[], sources: string): AnswerIssues | null {
   if (!text.trim()) return null;
+  const { text: filled, unknown } = fillReferences(text, steps);
+  const { missing, stale } = evidenceGaps(filled, steps);
   const issues: AnswerIssues = {
-    missing: missingEvidence(text, steps),
-    untraced: untracedNumbers(text, sources),
-    contradicted: contradictions(text, steps),
+    missing,
+    stale,
+    // An unfilled reference is no number written; its digits (features.0) are not either.
+    untraced: untracedNumbers(filled.replace(/\{\{[^}]*\}\}/g, ""), sources),
+    contradicted: contradictions(filled, steps),
+    unknownReferences: unknown,
+    overall: overallContradiction(filled, computedVerdict(steps)),
   };
-  return issues.missing.length || issues.untraced.length || issues.contradicted.length ? issues : null;
+  return issues.missing.length || issues.stale.length || issues.untraced.length || issues.contradicted.length || issues.unknownReferences.length || issues.overall
+    ? issues
+    : null;
 }
 
 const MAX_LISTED = 8;
@@ -393,6 +500,17 @@ const listed = (xs: string[]): string => (xs.length > MAX_LISTED ? `${xs.slice(0
 export function issuesPrompt(issues: AnswerIssues): string {
   const lines = ["Before this answer goes to the user, fix it:"];
   for (const t of issues.missing) lines.push(`- It gives a verdict on ${t.label} without its evidence in this reply: call ${t.evidence}, and answer from its result.`);
+  for (const t of issues.stale) {
+    lines.push(`- It gives a verdict on ${t.label} from a measurement taken before the last run recomputed it: call ${t.evidence} again on the new outputs, and answer from that.`);
+  }
+  if (issues.overall) {
+    lines.push(`- ${issues.overall}. That verdict is the checks', not yours: quote it as {{achieved}} and explain what it rests on${/did not all run/.test(issues.overall) ? " (call assess_stage with stage all first)" : ""}.`);
+  }
+  if (issues.unknownReferences.length) {
+    lines.push(
+      `- These references name no value in this reply's tool results: ${listed(issues.unknownReferences.map((k) => `{{${k}}}`))}. Write a reference as {{tool.field}}, the path of a field in a result above as the tool returned it (e.g. {{assess_stage.flatten.verdict}}), or quote the number itself.`,
+    );
+  }
   for (const t of issues.contradicted) lines.push(`- What it says about ${t.label} contradicts the verdict the tool computed: quote that verdict and its numbers.`);
   if (issues.untraced.length) {
     lines.push(`- These numbers appear in no tool result or the context: ${listed(issues.untraced)}. Quote the tools' numbers, or leave them out.`);
@@ -405,6 +523,9 @@ export function issuesPrompt(issues: AnswerIssues): string {
 export function issuesNote(issues: AnswerIssues): string {
   const parts: string[] = [];
   if (issues.missing.length) parts.push(`Not measured in this reply: ${issues.missing.map((t) => `${t.label} (${t.evidence})`).join("; ")}.`);
+  if (issues.stale.length) parts.push(`Measured before the last run recomputed it: ${issues.stale.map((t) => `${t.label} (${t.evidence})`).join("; ")}.`);
+  if (issues.overall) parts.push(`${issues.overall.replace(/^It calls/, "The answer calls")}.`);
+  if (issues.unknownReferences.length) parts.push(`References that name no tool value: ${listed(issues.unknownReferences.map((k) => `{{${k}}}`))}.`);
   if (issues.contradicted.length) parts.push(`Contradicts the tools' verdict on ${issues.contradicted.map((t) => t.label).join(" and ")}.`);
   if (issues.untraced.length) parts.push(`Not found in any tool result or the context: ${listed(issues.untraced)}.`);
   return parts.join(" ");

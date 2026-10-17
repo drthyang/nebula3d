@@ -173,7 +173,7 @@ describe.skipIf(!live)("validation, live", () => {
           stalled,
         ]);
         why.update(result);
-        evalRun = { scenario: job.case.id, steps: result.steps, content: result.content, note: result.note, failure: result.failure ?? null, latencyMs: performance.now() - t0, usage: result.usage ?? null };
+        evalRun = { scenario: job.case.id, steps: result.steps, content: result.content, note: result.note, failure: result.failure ?? null, latencyMs: performance.now() - t0, usage: result.usage ?? null, verdict: result.verdict ?? null };
       } catch (e) {
         why.update(progress);
         const error = abort.signal.aborted ? `timed out after ${minutes} min` : (e as Error).message;

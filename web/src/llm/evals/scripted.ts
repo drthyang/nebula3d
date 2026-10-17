@@ -18,16 +18,25 @@ export interface ScriptedModel {
   install: () => () => void; // returns the uninstall
   requests: () => number;
   overrun: () => number; // requests after the script ran out
+  sent: () => string[]; // each request's last user message: what the app said to the model
 }
 
 export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
   let next = 0;
   let requests = 0;
   let overrun = 0;
+  const sent: string[] = [];
   const encoder = new TextEncoder();
 
   const respond = (body: string): Response => {
     requests += 1;
+    try {
+      const msgs = (JSON.parse(body) as { messages?: { role: string; content: unknown }[] }).messages ?? [];
+      const last = [...msgs].reverse().find((m) => m.role === "user");
+      sent.push(typeof last?.content === "string" ? last.content : JSON.stringify(last?.content ?? ""));
+    } catch {
+      sent.push("");
+    }
     const turn = turns[next++];
     if (!turn) overrun += 1;
     // Past the script the model has nothing more to say: an empty reply (the
@@ -78,6 +87,7 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
     },
     requests: () => requests,
     overrun: () => overrun,
+    sent: () => [...sent],
   };
 }
 
