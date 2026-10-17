@@ -55,13 +55,9 @@ all three.
 6. **Broad maxima stay.** A maximum several Bragg widths broad along any axis
    is diffuse scattering, the signal. Never report it as a missed peak. The
    search's width limit (`punchSearchMaxWidth`) leaves such maxima unpunched.
-7. **The backfill.** `texture_check`: no cut whose fills sit systematically
-   outside the range their rims allow, and an azimuthal ratio near 1. The
-   diffuse often peaks at the nodes (thermal diffuse scattering), so a sound
-   fill sits above its rim's median; the range runs from the diffuse at the
-   hole's edge to its rise continued to the node, and a bias counts only when
-   it is also a fifth of the local diffuse level or more. A lattice-periodic
-   fill pattern is texture that the 3D-ΔPDF will show.
+7. **The backfill.** `texture_check`: a fill bias near 0σ with about half the
+   holes brighter, and an azimuthal ratio near 1. A lattice-periodic fill
+   pattern is texture that the 3D-ΔPDF will show.
 8. **Report** (below).
 
 ## Firm rules (enforced in code)
