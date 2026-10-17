@@ -83,11 +83,11 @@
   "needs_user_approval": true,
   "arm": "sweep",
   "status": "implemented",
-  "commit": "304c978",
+  "commit": "baca65c",
   "tests": [
-   "web/src/llm/__tests__/skills.test.ts (says when the flatten's Q² term goes on)"
+   "web/src/llm/__tests__/skills.test.ts (says when the flatten's Q² term goes on; on validation/batch-1-skills)"
   ],
-  "note": "The skill stays a draft awaiting the user's interview."
+  "note": "Skill text, in its own PR (validation/batch-1-skills), which waits for the user's review; the skill stays a draft awaiting the user's interview. That PR also holds the skill lines findings 1, 3 and 4 touch (delta-pdf-interpretation steps 2–3 and check 4, bragg-node-audit step 7)."
  },
  {
   "case": "dev-control",
@@ -104,7 +104,12 @@
    "web/src/llm/__tests__/report.test.ts (judges the flatten by the pedestal rule)",
    "web/src/llm/__tests__/tools.test.ts (assess_stage)"
   ],
-  "note": "Provisional: the fix left keeping, widening or dropping the 1σ clause to the user; this takes the drop (the floor in σ is reported, not judged) until the user says otherwise."
+  "note": "Approved by the user on 2026-10-17, option \"drop\": the 1σ clause is dropped from the flatten's verdict, which rests on the pedestal rule (a trend and a span both 0.8 or more of the diffuse level); the floor in σ is still reported. Labelled provisional in the code and docs, as the 0.8 limits are.",
+  "decision": {
+   "by": "the user",
+   "on": "2026-10-17",
+   "option": "drop"
+  }
  },
  {
   "case": "dev-coverage",

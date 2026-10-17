@@ -27,6 +27,8 @@ export interface Finding {
   commit?: string;
   tests?: string[];
   note?: string;
+  // Where the fix offered options, the one chosen, by whom and when.
+  decision?: { by: string; on: string; option: string };
 }
 
 export const FINDING_STATUSES = ["open", "implemented", "deferred"] as const;
@@ -69,7 +71,12 @@ export function findingProblems(x: unknown): string[] {
     }
   }
   if (f.note !== undefined && (typeof f.note !== "string" || !f.note.trim())) out.push("note must be a non-empty string");
-  const known = new Set(["case", "run", "step", "kind", "evidence", "proposed_fix", "needs_user_approval", "arm", "status", "commit", "tests", "note"]);
+  if (f.decision !== undefined) {
+    const d = f.decision as Record<string, unknown> | null;
+    const ok = d && typeof d === "object" && ["by", "on", "option"].every((k) => typeof d[k] === "string" && (d[k] as string).trim());
+    if (!ok || !/^\d{4}-\d{2}-\d{2}$/.test(String(d!.on))) out.push("decision must give by, on (YYYY-MM-DD) and option");
+  }
+  const known = new Set(["case", "run", "step", "kind", "evidence", "proposed_fix", "needs_user_approval", "arm", "status", "commit", "tests", "note", "decision"]);
   for (const k of Object.keys(f)) if (!known.has(k)) out.push(`unknown field ${k}`);
   return out;
 }

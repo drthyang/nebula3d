@@ -167,7 +167,7 @@ export const CRITERIA: Record<string, string> = {
     "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.",
   backfill: "The fills meet their surroundings: a median seam of 1σ or less, and no cut whose fill is biased one way.",
   flatten:
-    "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (provisional: the user's call to keep, widen or drop the earlier 1σ limit).",
+    "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (the 1σ limit dropped at the user's choice, 2026-10-17; provisional).",
   pdf: "The back-FFT reproduces what the transform keeps, the data's even part under Q → −Q, to an r of 0.999 or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.",
 };
 
@@ -270,8 +270,9 @@ function backfillCheck(m: Obj | null | undefined, texture: Obj | null | undefine
 }
 
 /**
- * Why the flatten's verdict no longer holds the floors to 1σ (provisional; the
- * user's call to keep, widen or drop that limit). The σ is the flattened cut's
+ * Why the flatten's verdict no longer holds the floors to 1σ: the user chose to
+ * drop that limit (2026-10-17), of keeping, widening or dropping it; provisional,
+ * as the pedestal rule's 0.8 limits are. The σ is the flattened cut's
  * own robust spread, which the diffuse structure and the counting noise set, and
  * the floors after a flatten that fits a constant follow the diffuse level: on
  * all eight dev volumes of the validation they read 1.5 to 1.8σ, the clean

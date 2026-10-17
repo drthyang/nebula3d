@@ -13,22 +13,14 @@
   success it does not give is sent back. Replay tests on the validation's dev
   cases cover each rule.
 
-- **The flatten's verdict no longer holds its floors to 1σ (provisional).**
+- **The flatten's verdict no longer holds its floors to 1σ (the user's choice; provisional).**
   The σ is the flattened cut's own spread and the floors follow the diffuse
   level, so all eight validation dev volumes read 1.5 to 1.8σ and "needs
   attention", the clean control and the planted case after its Q² term
   included. The verdict now rests on the pedestal rule, which separates them;
-  the largest floor in σ is still measured and reported. Whether to keep,
-  widen or drop the 1σ limit is the user's call (validation review,
-  finding 6).
-
-- **The reduction-qc skill says when to turn the flatten's Q² term on.**
-  Step 6 said a rising floor wants the term but not when: now, when
-  `assess_stage` for the flatten reports `pedestal_left`, turn it on, rerun
-  from the flatten and read it again; leave it off otherwise, since on a
-  volume without such a background the term fits part of the crystal's own
-  floor. It names the stage-level fields `assess_stage` gives. The skill is
-  still a draft awaiting the user's interview (validation review, finding 5).
+  the largest floor in σ is still measured and reported. The user chose to
+  drop the 1σ limit (2026-10-17) over keeping or widening it (validation
+  review, finding 6).
 
 - **`texture_check` no longer flags a sound fill of a node-peaked diffuse.**
   It compared each fill with its rim's median in rim σ, and flagged all three
