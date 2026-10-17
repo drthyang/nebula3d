@@ -1170,7 +1170,7 @@ const ubCheckTool: AgentTool = {
 const qmaxCoverage: AgentTool = {
   name: "qmax_coverage",
   description:
-    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. From the raw volume, raw_counts gives where its counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts.",
+    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. From the raw volume, raw_counts gives where its counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts. When the counts end inside the box and no band is set, the verdict says so, with the edge and the band they allow (counts_end_inside_box).",
   parameters: { type: "object", properties: {} },
   run: async (_args, { dataset }) => {
     const meta = await recipMeta(dataset);
@@ -1216,7 +1216,16 @@ const qmaxCoverage: AgentTool = {
     const windowNote = dmeta?.window_shape
       ? `the ΔPDF's ${dmeta.window_shape} window${dmeta.window_scale != null && dmeta.window_scale < 1 ? ` (shrunk to ${roundSig(dmeta.window_scale, 3)} × to fit the coverage)` : ""}`
       : "the ΔPDF's window";
-    const verdict = openWeight != null
+    const counts = await rawCounts;
+    const band = rawBand(counts, s.pdfQMin, s.pdfQMax);
+    // The counts end inside the box and no band is set: only the window's taper
+    // keeps the transform on the counts. Said in the verdict, which a model
+    // quotes, and not only in raw_counts and suggested_band, which it may not.
+    const cutNote =
+      band.counts_end_inside_box && !s.pdfQMax
+        ? `; the raw counts end at ${band.raw_counts.q_max_edge} Å⁻¹, inside the box (its nearest face at ${band.raw_counts.box_face_q} Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is ${band.suggested_band![0]}–${band.suggested_band![1]} Å⁻¹ (suggested_band), the user's to set`
+        : "";
+    const verdict = (openWeight != null
       ? openWeight <= OPEN_WEIGHT_OK
         ? `clean: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space`
         : `too far: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`
@@ -1228,7 +1237,7 @@ const qmaxCoverage: AgentTool = {
           ? "no ΔPDF yet to read the box corner from"
           : reach <= fullQ + shell
             ? `the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), inside full coverage at ${fullQ} Å⁻¹`
-            : `too far: the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), past full coverage at ${fullQ} Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage`;
+            : `too far: the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), past full coverage at ${fullQ} Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage`) + cutNote;
     return {
       result: {
         verdict,
@@ -1241,7 +1250,7 @@ const qmaxCoverage: AgentTool = {
         box_face_q: boxQ,
         box_corner_q: cornerQ == null ? null : roundSig(cornerQ, 4),
         low_q_gap: pick("low_q_gap").length ? Math.max(...pick("low_q_gap")) : null,
-        ...rawBand(await rawCounts, s.pdfQMin, s.pdfQMax),
+        ...band,
         q_unit: "Å⁻¹",
         settings: {
           pdfQMin: s.pdfQMin || "(default)",
@@ -1272,12 +1281,18 @@ const qmaxCoverage: AgentTool = {
 // counts), the band that keeps inside them, and whether the band that is set
 // does.  The box can end first along one axis: past box_face_q the window,
 // not the band, limits the reach in that direction.
+// The counts end inside the box when their upper edge sits at least one of
+// q_coverage's shells (0.1 Å⁻¹, the edge's own resolution) inside its nearest
+// face: then part of every direction's reach is empty, not only the corners.
+const COUNTS_EDGE_SHELL = 0.1;
+
 function rawBand(c: VolumeCoverage | null, qMinSet: string, qMaxSet: string) {
-  if (!c) return {};
+  if (!c) return { counts_end_inside_box: false as const };
   const lo = c.q_min_edge != null ? Math.ceil(c.q_min_edge * 20) / 20 : 0;
   const hi = c.q_max_edge != null ? Math.floor(c.q_max_edge * 20) / 20 : null;
   const qMin = qMinSet ? Number(qMinSet) : null;
   const qMax = qMaxSet ? Number(qMaxSet) : null;
+  const inside = c.q_max_edge != null && c.q_max_edge <= c.box_q - COUNTS_EDGE_SHELL;
   const problems: string[] = [];
   if (qMax != null) {
     if (qMin == null || qMin < lo - 0.025) problems.push(`Qmin below the counts' lower edge (${roundSig(c.q_min_edge ?? 0, 3)} Å⁻¹): the beam stop's empty voxels enter the transform`);
@@ -1291,9 +1306,13 @@ function rawBand(c: VolumeCoverage | null, qMinSet: string, qMaxSet: string) {
       box_face_q: roundSig(c.box_q, 4),
     },
     suggested_band: hi != null ? [lo, hi] : null,
+    counts_end_inside_box: inside,
     band_check:
       qMax == null
-        ? "no |Q| band is set: the transform takes every voxel, empty ones included, up to the window's reach"
+        ? "no |Q| band is set: the transform takes every voxel, empty ones included, up to the window's reach" +
+          (inside && hi != null
+            ? `; the counts end at ${roundSig(c.q_max_edge!, 4)} Å⁻¹, inside the box (face ${roundSig(c.box_q, 4)} Å⁻¹): the band they allow is ${lo}–${hi} Å⁻¹`
+            : "")
         : problems.length
           ? problems.join("; ")
           : `the band ${qMin ?? 0}–${qMax} Å⁻¹ stays inside the counts`,

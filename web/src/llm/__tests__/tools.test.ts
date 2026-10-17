@@ -520,6 +520,44 @@ describe("qmax_coverage", () => {
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 0.04 });
     expect((await check()).verdict).toMatch(/^too far: the ΔPDF's separable window puts 0.04/);
   });
+
+  // The dev coverage case (docs/pilot-review.md finding 7): counts cut at
+  // 4.511 Å⁻¹ of a box whose nearest face is 6.444 Å⁻¹, a window shrunk to fit.
+  const cut = { id: "demo.raw", q: [], counted: [], q_min_edge: null, q_max_edge: 4.507, full_q_min: 0.15, full_q_max: 4.45, box_q: 6.444, box_corner_q: 11.16 };
+  const shrunk = async () => {
+    const meta = await api.fetchDpdfMeta();
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 0.695, window_open_weight: 9.8e-4 });
+  };
+
+  it("says in the verdict when the counts end inside the box and no band is set", async () => {
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
+    api.fetchVolumeCoverage.mockResolvedValue(cut);
+    await shrunk();
+    const out = await check();
+    expect(out.counts_end_inside_box).toBe(true);
+    expect(out.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window \(shrunk to 0\.695 × to fit the coverage\) puts 9\.8e-4/);
+    expect(out.verdict).toMatch(/the raw counts end at 4\.507 Å⁻¹, inside the box \(its nearest face at 6\.444 Å⁻¹\), and no \|Q\| band is set.*the band they allow is 0–4\.5 Å⁻¹/);
+    expect(out.band_check).toMatch(/the counts end at 4\.507 Å⁻¹, inside the box \(face 6\.444 Å⁻¹\): the band they allow is 0–4\.5 Å⁻¹$/);
+    // With a band set inside the counts, the band does the work: nothing to add.
+    usePipelineStore.setState({ pdfQMin: "0", pdfQMax: "4.5" });
+    await shrunk();
+    const banded = await check();
+    expect(banded.verdict).not.toMatch(/raw counts end/);
+    expect(banded.band_check).toBe("the band 0–4.5 Å⁻¹ stays inside the counts");
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
+  });
+
+  it("adds nothing where the counts reach the box: a full box, or a turned one whose counts reach past its faces", async () => {
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
+    for (const edge of [null, 10.95, 6.4]) {
+      api.fetchVolumeCoverage.mockResolvedValue({ ...cut, q_max_edge: edge, full_q_max: 8.45 });
+      await shrunk();
+      const out = await check();
+      expect(out.counts_end_inside_box).toBe(false); // 6.4: within one coverage shell of the face
+      expect(out.verdict).not.toMatch(/raw counts end/);
+      expect(out.band_check).toBe("no |Q| band is set: the transform takes every voxel, empty ones included, up to the window's reach");
+    }
+  });
 });
 
 describe("symmetry_check", () => {

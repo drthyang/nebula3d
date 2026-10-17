@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **`qmax_coverage` says when the counts end inside the box.** Its verdict
+  read "clean" on a volume whose counts end at 4.5 Å⁻¹ of a 6.4 Å⁻¹ box, the
+  window's weight just under its limit, and the edge sat only in
+  `raw_counts` and `suggested_band`. With no |Q| band set, the verdict and
+  `band_check` now give the edge, the box face and the band the counts
+  allow (validation review, finding 7).
+
 - **`ub_check` gives a shifted origin's size.** The peaks' mean offset from
   their nodes in r.l.u., before and after the fit (`mean_offset_rlu`): a UB
   error averages out over the nodes and the fit removes it, while a shifted
