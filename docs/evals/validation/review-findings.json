@@ -104,7 +104,12 @@
    "web/src/llm/__tests__/report.test.ts (judges the flatten by the pedestal rule)",
    "web/src/llm/__tests__/tools.test.ts (assess_stage)"
   ],
-  "note": "Provisional: the fix left keeping, widening or dropping the 1σ clause to the user; this takes the drop (the floor in σ is reported, not judged) until the user says otherwise."
+  "note": "Approved by the user on 2026-10-17, option \"drop\": the 1σ clause is dropped from the flatten's verdict, which rests on the pedestal rule (a trend and a span both 0.8 or more of the diffuse level); the floor in σ is still reported. Labelled provisional in the code and docs, as the 0.8 limits are.",
+  "decision": {
+   "by": "the user",
+   "on": "2026-10-17",
+   "option": "drop"
+  }
  },
  {
   "case": "dev-coverage",

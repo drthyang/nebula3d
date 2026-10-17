@@ -200,6 +200,9 @@ describe("a stage's check states only what it judges", () => {
     expect(stageCheck("flatten", planted)!.verdict).toBe("attention");
     expect(stageCheck("flatten", { max_after_floor_sigma: 1.52, max_floor_trend: 0.025, max_floor_span_fraction: 0.333 })!.verdict).toBe("pass");
     expect(stageCheck("flatten", { max_after_floor_sigma: 0.8 })!.verdict).toBe("info"); // no trend or span: nothing judged
+    // The floor alone, however high in σ, no longer makes a verdict: the pedestal rule does (the user's choice, 2026-10-17).
+    expect(stageCheck("flatten", { max_after_floor_sigma: 3, max_floor_trend: 0.31, max_floor_span_fraction: 0.6 })!.verdict).toBe("pass");
+    expect(stageCheck("flatten", { max_after_floor_sigma: 0.5, max_floor_trend: 0.9, max_floor_span_fraction: 0.85 })!.verdict).toBe("attention");
   });
 
   it("does not promise a fill-bias check a stage's evaluation never makes", () => {

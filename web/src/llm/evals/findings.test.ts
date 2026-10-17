@@ -170,6 +170,8 @@ describe("the review's findings", () => {
     expect(new Set(found.map((f) => f.kind))).toEqual(new Set(["missing-tool", "science-error", "skill-gap", "orchestration"]));
     // Validation batch 1: the user approved all eight, and each is implemented
     // by a commit with the regression tests that pin it.
+    // Finding 6 offered the user three options: the record says which one was chosen.
+    expect(found[5].decision).toEqual({ by: "the user", on: "2026-10-17", option: "drop" });
     for (const f of found.slice(0, 8)) {
       expect(f.status, f.evidence.slice(0, 40)).toBe("implemented");
       for (const t of f.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
@@ -185,5 +187,7 @@ describe("the review's findings", () => {
     ]);
     expect(findingProblems({ ...base, status: "done" })).toEqual(["status must be one of open, implemented, deferred"]);
     expect(findingProblems({ ...base, status: "deferred", note: "waits for the user" })).toEqual([]);
+    expect(findingProblems({ ...base, decision: { by: "the user", on: "2026-10-17", option: "drop" } })).toEqual([]);
+    expect(findingProblems({ ...base, decision: { by: "the user", on: "today", option: "drop" } })).toEqual(["decision must give by, on (YYYY-MM-DD) and option"]);
   });
 });
