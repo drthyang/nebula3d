@@ -40,7 +40,7 @@ Each is described under [How it works](#how-it-works).
   still fails is noted under the reply (`answerChecks.ts`, `evidence.ts`).
 - **Numbers by reference.** The model writes a tool's number as
   `{{tool.field}}`, the field's path in that tool's result
-  (`{{ub_check.orientation_change_deg}}`, `{{assess_stage.flatten.max_floor_trend}}`),
+  (`{{ub_check.orientation_change_deg}}`, `{{assess_stage.flatten.floor_trend}}`),
   and the app fills it in from the result before you read it: the number is
   the tool's, as the tool rounded it. A reference that names nothing goes back
   to the model, and one still unfilled stays as written, with a note
@@ -63,7 +63,8 @@ Each is described under [How it works](#how-it-works).
   only after its skill has been read in the conversation.
 - **Tuning cannot touch your results.** Each trial runs in its own folder,
   never in `processed/`; the model proposes settings only from a checked
-  catalog, every trial is measured on three planes, and a trial past a hard
+  catalog, every trial is measured on three planes (a flatten's pedestal over
+  the whole volume), and a trial past a hard
   limit cannot win (a 3D-ΔPDF window with more than 10⁻³ of its weight on
   unmeasured space is one).
 - **One run at a time.** Neither a run nor a tuning run starts while another is
@@ -251,10 +252,12 @@ miss is a note.
     thirds of |Q|, the largest leftover floor in σ, and the pedestal removed,
     over the run's own fit range and at its own floor percentile (the 25th by
     default), as the flattened file records them (`flatten_settings`). Over
-    every well-measured shell out to the coverage
-    edge, `floor_trend` (the floors' rank correlation with |Q|) and
-    `floor_span_fraction` (their range against the diffuse level) catch a
-    pedestal the σ test hides beside strong diffuse structure.
+    the outer half of the shells the counts reach, `floor_trend` (the
+    floors' rank correlation with |Q|) and `floor_span_fraction` (their range
+    against the diffuse level) catch a pedestal the σ test hides beside
+    strong diffuse structure: on a cut, and with `volumePedestal` over the
+    whole volume's shell floors (`GET /api/volumes/{id}/shell-floors`), which
+    the flatten's verdict reads (plan 4.1).
   - `dpdf.ts` — feature SNR vs background, strong-feature anisotropy (covariance
     ratio + orientation), radial trend, and back-FFT consistency pass-through.
 - **`verdicts/`** — the check-verdict module: what each check's measurements

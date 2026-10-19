@@ -23,13 +23,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { fetchMeta, fetchRingDiagnostics, fetchSlice } from "../../../api/client";
+import { fetchMeta, fetchRingDiagnostics, fetchShellFloors, fetchSlice } from "../../../api/client";
 import { usePipelineStore } from "../../../state/pipelineStore";
 import type { AgentStep } from "../../agent";
 import { hklVolumeId, stageVolumeId } from "../../context/loadContext";
 import { qRadius } from "../../context/pipelineContext";
 import { withoutInference } from "../../inference";
-import { flattenMetrics } from "../../metrics/flatten";
+import { flattenJudging, flattenMetrics, volumePedestal } from "../../metrics/flatten";
 import { verdicts } from "../../verdicts";
 import { bridgeConfig } from "./bridgeWorker";
 import { devCase, type DevCase, type DevCaseId, type ToolRunResult } from "./index";
@@ -353,18 +353,23 @@ describe("dev-control: the flatten judged over the range its run recorded", () =
 });
 
 describe("dev-flatten: the pedestal is found, and the Q² term takes it out", () => {
+  // Judged over the whole volume's shell floors (plan 4.1), as the server
+  // measures them on the run's own shells, from its fit range (plan 4.11).
   check("dev-flatten", "a pedestal, then none with the Q² term on and the flatten rerun", async () => {
     const c = devCase("dev-flatten");
     const flatten = async () => {
       const r = ran(await c.tool("assess_stage", { stage: "flatten" }), "assess_stage flatten");
       const f = r.result.flatten as Record<string, unknown>;
-      return { pedestal_left: f.pedestal_left, trend: f.max_floor_trend, span: f.max_floor_span_fraction, verdict: f.verdict, outcome: outcomeOf(r)[0] };
+      const floors = await fetchShellFloors(stageVolumeId(await c.dataset(), "flattened")!);
+      const volume = volumePedestal(floors, flattenJudging(floors.flatten).fitQ);
+      return { pedestal_left: f.pedestal_left, trend: f.floor_trend, span: f.floor_span_fraction, judged: f.floor_judged_q, verdict: f.verdict, outcome: outcomeOf(r)[0], volume };
     };
     const before = await flatten();
     ran(await c.tool("update_settings", { changes: { flattenQ2: true } }), "update_settings");
     const rerun = ran(await c.tool("run_pipeline", { from_stage: "flatten" }), "run_pipeline");
     const after = await flatten();
     const msg = evidence(c, { before, rerun: rerun.result.stages, after });
+    for (const x of [before, after]) expect([x.trend, x.span, x.judged], msg).toEqual([x.volume.floor_trend, x.volume.floor_span_fraction, x.volume.floor_judged_q]);
     expect(before.pedestal_left, msg).toBe(true);
     expect(before.outcome.reasons, msg).toEqual(["pedestal"]);
     expect(rerun.result.stages, msg).toMatchObject({ flatten: "computed" });

@@ -103,6 +103,14 @@ describe("a pedestal left", () => {
     expect(pedestalLeft(0.93, 0.49)).toBe(false); // the cut coverage, whose truth has none
   });
 
+  // The same cases over the whole volume's shells (plan 4.1, at 161³).
+  it("separates them over the whole volume too", () => {
+    expect(pedestalLeft(0.996, 1.3)).toBe(true); // |Q|² background left by the constant flatten
+    expect(pedestalLeft(0.0384, 0.636)).toBe(false); // the control
+    expect(pedestalLeft(0.756, 0.455)).toBe(false); // the planted case with the Q² term on: the corners past its fit range's end
+    expect(pedestalLeft(0.158, 0.192)).toBe(false); // the cut coverage
+  });
+
   it("is what the flattened floors give: rising floors are a pedestal, level floors are not", () => {
     const lumpy = (x: number, y: number) => 0.8 * Math.cos(1.3 * x) * Math.cos(1.1 * y);
     // A |Q|² floor spanning more than the diffuse level over the outer half.

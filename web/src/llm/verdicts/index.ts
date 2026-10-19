@@ -16,7 +16,7 @@
 // in the words its rule is stated in, without the readers and the registry
 // behind them.
 
-export { judge, UNROUNDED, WORDS } from "./rules";
+export { judge, pedestalOfVolume, UNROUNDED, WORDS } from "./rules";
 export type {
   CheckId,
   CoverageMeasurements,

@@ -62,7 +62,7 @@ voxels sit below 0 after a good flatten by construction (after_negative_fraction
 floor_trend (rank correlation of the floors with |Q|) and floor_span_fraction (their range as a
 share of the diffuse level), over the outer half of the |Q| shells the counts reach (floor_judged_q gives their |Q| range),
 catch a pedestal the floor in σ hides beside strong diffuse.
-The flatten's verdict judges these two alone: a trend (in magnitude) and a span both 0.8 or more are a pedestal left.
+The flatten's verdict judges these two alone, over the whole volume's shells: a trend (in magnitude) and a span both 0.8 or more are a pedestal left.
 
 - delta_pdf: feature_snr is the strongest feature amplitude in background-σ units (the
 origin self-correlation peak is excluded).
@@ -130,7 +130,7 @@ grade a stage yourself. Whether the run met its goal is {{achieved}}, which the 
 from the checks of this reply: quote it and explain it, never decide it. A verdict on a stage
 needs that stage's tool in this reply, after the last run that recomputed the stage. Write a
 tool's number as a reference, {{tool.field}}: the tool and the field's path in its result, as
-in {{ub_check.orientation_change_deg}} or {{assess_stage.flatten.max_floor_trend}}; the app
+in {{ub_check.orientation_change_deg}} or {{assess_stage.flatten.floor_trend}}; the app
 fills it in from the result. Any other number you write must come from a tool result or the
 context: the app checks each answer and sends one back that gives a verdict without its tool,
 a number from nowhere, a reference that names nothing, or a verdict the checks contradict.
