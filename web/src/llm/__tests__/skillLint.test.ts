@@ -203,7 +203,7 @@ const GATES: Gate[] = [
     skill: "bragg-node-audit",
     phrase: "an azimuthal ratio near 1",
     stated: 1,
-    none: "texture_check reports azimuthal_ratio, and no rule judges it: the texture rule reads systematic_fill_bias only (verdicts/rules.ts).",
+    none: "texture_check reports azimuthal_ratio, and no rule judges it: the texture rule reads systematic_fill_bias only (verdicts/rules.ts). Interview B12.",
   },
   // delta-pdf-interpretation
   { skill: "delta-pdf-interpretation", phrase: "unmeasured space up to about 1e-3", stated: 1e-3, limit: LIMITS.openWeight },

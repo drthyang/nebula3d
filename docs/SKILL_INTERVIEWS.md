@@ -63,6 +63,17 @@ quoted as they are on `main`. Batch 1's skill text (#17, branch
 `validation/batch-1-skills`) is a proposed diff to them that waits for the user;
 several questions ask whether to take its wording.
 
+The skill fact sync (branch `skills/fact-sync`, stacked on #17) is a second
+proposed diff that waits for the user, who decided on 2026-10-19 to "fix the
+facts now, interviews after v1". It makes the skills state what the tools and
+the verdicts do, and changes none of the method: where the declared symmetry
+and the ΔPDF's settings on disk come from (R5 (b), P2), the turn the verdict
+calls a UB turned (R3), the ring rule's other two conditions and the
+three-times-noise count (R8 (b)), which grain test has a control (B5 (a)), the
+width limit off by default (B7), the operations `symmetry_check` tests (P3
+(c)) and the round trip's 0.999 (P4). What those questions ask of the method
+stays open here.
+
 ## 1. Reduction QC (`reduction-qc`, draft)
 
 `SKILL.md` is `.claude/skills/reduction-qc/SKILL.md`.
@@ -580,6 +591,37 @@ the protected planes be a sample fact?
 - **Why it needs you:** Each failure you describe becomes a failure mode and an
   eval scenario.
 
+### B12. The azimuthal ratio
+
+*Before the freeze.*
+
+**Ask:** (a) Is an azimuthal ratio near 1 part of a clean backfill for you, as
+step 7 says? (b) If it is, how near, and should a rule judge it, or is it
+reported only?
+
+- **Where:** step 7 (`SKILL.md:58-60`); `texture_check`'s `azimuthal_ratio`
+  (`llm/metrics/texture.ts:58`, `azimuthalVariation` :247-282, :323) and its
+  description (`llm/tools/index.ts:941`); the texture rule
+  (`llm/verdicts/rules.ts:464-475`); the system prompt's third check
+  (`llm/prompts/system.ts:133-134`). These `llm/` lines are on the fact sync's
+  branch, `skills/fact-sync`.
+- **Today:** On each cut the tool splits every |Q| shell into 24 sectors and
+  takes how much their means vary around the shell (the coefficient of
+  variation, its median over the shells), before the punch, on the voxels it
+  keeps, and after the backfill. The ratio is after over before: near 1 the
+  backfill added no azimuthal texture. The texture rule judges
+  `systematic_fill_bias` only, so no ratio, however far from 1, makes the
+  backfill need attention in `{{achieved}}` or the report. The skill and the
+  system prompt both read "an azimuthal ratio near 1" as part of a clean
+  backfill, and neither says how near; the skill lint lists that 1 as a number
+  with no constant behind it.
+- **Why it needs you:** How much azimuthal texture the 3D-ΔPDF would show as
+  features is physics, and a rule that judges it changes the backfill's
+  verdict.
+- **Options for (b):** (i) a rule judges it, at a ratio you name, derived on the
+  dev split and constructed cases; (ii) it is reported, not judged, and step 7
+  says so; (iii) step 7 drops it.
+
 ## 3. Interpreting a 3D-ΔPDF (`delta-pdf-interpretation`, draft)
 
 `SKILL.md` is `.claude/skills/delta-pdf-interpretation/SKILL.md`.
@@ -880,10 +922,10 @@ manager" decided on the user's delegation of 2026-10-19.
 - **Order.** Reduction QC first: its answers on the band, the UB and the flatten
   feed the other two. Then the Bragg-node audit, then the ΔPDF, then X1 to X3.
   If time is short, take the questions marked *Before the freeze* first (R10,
-  R11, B2, B7, B8, P6, X1): they change limits, defaults or model-visible text
-  that the validation runs under.
+  R11, B2, B7, B8, B12, P6, X1): they change limits, defaults or model-visible
+  text that the validation runs under.
 - **Time.** About an hour for reduction-qc (12 questions), fifty minutes each
-  for bragg-node-audit (11) and delta-pdf-interpretation (12), and a quarter of
+  for bragg-node-audit (12) and delta-pdf-interpretation (12), and a quarter of
   an hour for X1 to X3: three sessions, or two long ones. A question the user
   wants to think over is marked open and comes back at the next session.
 - **Before each session.** Have the skill on `main` and #17's diff side by side,
