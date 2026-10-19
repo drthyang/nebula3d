@@ -140,9 +140,15 @@ describe("streamChat", () => {
     expect(small).toEqual({ loaded: 8192, max: 131072 });
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:1234/api/v0/models", expect.anything());
     expect(contextWarning(small, "small")).toMatch(
-      /^small is loaded with a 8,192-token context\. .* replies will be cut off\. In LM Studio, set this model's default Context Length to 32,768 \(it supports up to 131,072\)/,
+      /^small is loaded with a 8,192-token context\. .* replies will be cut off\. In LM Studio, set this model's default Context Length to 49,152 \(it supports up to 131,072\)/,
     );
     expect(contextWarning(await loadedContext("http://localhost:1234/v1", "roomy"), "roomy")).toBeNull();
+    // 32k: a full assessment that reads two skills needs about 46k (tokenBudget.test.ts), so 48k is suggested.
+    expect(contextWarning({ loaded: 32_768, max: 131_072 }, "mid")).toMatch(
+      /^mid is loaded with a 32,768-token context\. .* reaches about 46k, so on a long assessment the skills it read are shortened to stubs, or a request is not sent\. In LM Studio, set this model's default Context Length to 49,152/,
+    );
+    expect(contextWarning({ loaded: 49_152, max: 131_072 }, "enough")).toBeNull();
+    expect(contextWarning({ loaded: 32_768, max: 40_960 }, "capped")).toMatch(/Context Length to 40,960 \(it supports up to 40,960\)/);
     // Not loaded: LM Studio will load it with its defaults, which is what to change.
     const idle = await loadedContext("http://localhost:1234/v1", "idle");
     expect(idle).toEqual({ loaded: null, max: 262144 });

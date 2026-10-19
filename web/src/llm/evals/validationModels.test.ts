@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TOOLS_CONTEXT } from "../provider/client";
 import { costOf, MODELS, modelNamed, paidRunGate, plan, RUN_POLICY, runContext, SPEND_CAP_USD, SpendTracker } from "./validationModels";
 import { casesIn } from "./validation";
 
@@ -76,7 +77,7 @@ describe("the run policy's minimum context", () => {
     server.ollamaModel.mockReset();
   });
 
-  it("is 48k for every local model, none for the cloud", () => {
+  it("is 48k for every local model, none for the cloud, and the app suggests the same", () => {
     expect(RUN_POLICY.minLocalContextTokens).toBe(49_152);
     for (const m of MODELS) {
       expect(m.minContextTokens).toBe(m.local ? RUN_POLICY.minLocalContextTokens : null);
@@ -85,6 +86,8 @@ describe("the run policy's minimum context", () => {
         expect(m.how).toMatch(/49152/);
       }
     }
+    // The console's own guidance (contextWarning, the window's refusal) names the same window.
+    expect(TOOLS_CONTEXT).toBe(RUN_POLICY.minLocalContextTokens);
   });
 
   it("refuses LM Studio loaded with 32k, before the run, and says how to load it with more", async () => {
