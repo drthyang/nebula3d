@@ -148,3 +148,25 @@ nowhere else. `web/src/llm/__tests__/facts.test.ts` holds what every
 declaration keeps: a tool that acts says what it changes, one that changes a
 stage's settings or tunes it waits for the stage's skill, and every verdict
 topic and every kind of question has a tool.
+
+### The skills against the code
+
+`web/src/llm/__tests__/skillLint.test.ts` reads each skill
+(`.claude/skills/<name>/SKILL.md`) against the code it describes, and changes
+no skill. It checks that every tool a skill names is in the registry; that
+every field or parameter a step names in backticks is in the result of the
+tools that step names, as each tool returns it on the synthetic crystal
+(`CLAIMS` adds the quantities a step says its tools give, such as "the symmetry
+the file declares"); that every setting it names exists; and that every number
+it writes is either a gate, bound to the constant in the code it must equal
+(`GATES`), or listed as no gate (`NOT_GATES`). `UNSTATED` lists the limits a
+step's tool judges by, which the step should state among its gates. A failure
+names the skill, its step, and what disagrees: a field the tool does not give
+(and where it is instead), a gate whose number differs from its constant, a
+limit the step leaves out. A failure of the tables themselves (a phrase the
+skill no longer holds, a number nobody classified) means the skill's words
+changed: update the table with them. Today's disagreements are on the
+allow-list, `ALLOWED`, each with why. It is the user's skill-review queue
+(agent plan 5.2), not a list to fix here: the lint fails on a disagreement
+that is not on it, and on an entry that no longer fails, so the list shrinks
+as the skills are corrected.
