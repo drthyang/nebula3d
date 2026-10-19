@@ -25,6 +25,8 @@ Workflow (one dataset per browser session):
     run(stages, params_json, …)   → run_pipeline (streams per-stage progress)
     datasets_json()               → dataset + per-stage status (for the viewers)
     volume_slice / dpdf_slice / consistency_slice → binary envelopes
+    dataset_regrid_json(id, …)    → regrid a raw volume onto its refined UB, as a
+                                    new dataset beside it (registered like a load)
 
 All file I/O happens in Pyodide's in-memory filesystem; nothing is uploaded.
 """
@@ -62,6 +64,7 @@ from nebula3d.preprocessing import write_global_ring_diagnostics
 from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
 from nebula3d.server import deltapdf as _dpdf
+from nebula3d.server import regrid as _regrid
 from nebula3d.server import tuning as _tune
 from nebula3d.server import volumes as _vol
 from nebula3d.server.config import ServerConfig
@@ -83,6 +86,7 @@ __all__ = [
     "volume_slice",
     "volume_coverage_json",
     "volume_ub_check_json",
+    "dataset_regrid_json",
     "volume_ring_isotropy_json",
     "dpdf_meta_json",
     "dpdf_slice",
@@ -1132,16 +1136,56 @@ def volume_coverage_json(volume_id: str) -> str:
     return _json({**m, "id": volume_id})
 
 
+def _parse_cell(cell: str) -> tuple[int, int, int]:
+    """``"2,2,2"`` → (2, 2, 2): the Bragg nodes' spacing, three positive integers."""
+    try:
+        nodes = tuple(int(x) for x in str(cell).split(","))
+    except ValueError as exc:
+        raise ValueError(f"cell must be three positive integers, not {cell!r}") from exc
+    if len(nodes) != 3 or min(nodes) < 1:
+        raise ValueError(f"cell must be three positive integers, not {cell!r}")
+    return nodes[0], nodes[1], nodes[2]
+
+
 def volume_ub_check_json(volume_id: str, cell: str = "1,1,1",
                          q_max: float | None = None) -> str:
     """Whether an HKL stage's UB puts its Bragg peaks on their nodes (mirrors
     GET /api/volumes/{id}/ub)."""
     stage = _resolve(volume_id, "hkl")
-    nodes = tuple(int(x) for x in str(cell).split(","))
-    if len(nodes) != 3 or min(nodes) < 1:
-        raise ValueError(f"cell must be three positive integers, not {cell!r}")
-    m = _vol.volume_ub_check(stage.path, nodes, None if q_max is None else float(q_max))  # type: ignore[arg-type]
+    nodes = _parse_cell(cell)
+    m = _vol.volume_ub_check(stage.path, nodes, None if q_max is None else float(q_max))
     return _json({**m, "id": volume_id})
+
+
+def dataset_regrid_json(dataset_id: str, cell: str = "1,1,1", q_max: float | None = None,
+                        symmetrise: bool = False) -> str:
+    """Regrid a dataset's raw volume onto its refined UB, as a new dataset
+    beside it (mirrors POST /api/datasets/{id}/regrid: the same fields, and a
+    refusal as data, ``written`` false).
+
+    The new file is written into the workspace's ``raw/``, where
+    :func:`load_input` puts an uploaded volume, and registered as an input the
+    same way (:func:`select_input`): the dataset listing shows it, and a run
+    can reduce it.  It lives in Pyodide's in-memory filesystem only, like
+    every file here: a restarted worker loses it, and :func:`select_input`
+    then reports ``false`` for it.  The browser computes in float32, as its
+    runs do, so the volume is loaded and written in float32.
+    """
+    cfg = _require_cfg()
+    if _ds.find_dataset(cfg, dataset_id) is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    nodes = _parse_cell(cell)
+    limit = None if q_max is None else float(q_max)
+    if limit is not None and not (math.isfinite(limit) and limit > 0):
+        raise ValueError(f"q_max must be positive, not {q_max!r}")
+    # The regrid reads the volume itself and holds it twice (source and
+    # regridded): drop the viewers' cached volumes first, as a run does.
+    _clear_caches()
+    out = _regrid.regrid_dataset_out(cfg, dataset_id, nodes, limit, bool(symmetrise),
+                                     dtype=np.dtype(_BROWSER_PRECISION))
+    if out["written"] and json.loads(select_input(out["dataset_id"])) is not True:
+        raise RuntimeError(f"{out['file']} was written but is not listed as a dataset")
+    return _json(out)
 
 
 def volume_ring_isotropy_json(volume_id: str, q: str, fwhm: str) -> str:

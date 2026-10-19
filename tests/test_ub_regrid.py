@@ -1,4 +1,5 @@
-"""Regridding a dataset onto its refined UB, as a new dataset (analysis.ub_regrid).
+"""Regridding a dataset onto its refined UB, as a new dataset (analysis.ub_regrid),
+through the API (POST /api/datasets/{id}/regrid) and the browser bridge.
 
 Synthetic hexagonal crystals indexed with a UB that the true one is turned
 from by 0.3°, so each Bragg peak sits beside its node by 0.3° times |Q|.  The
@@ -10,14 +11,17 @@ the UB check's 0.05° rule.
 """
 
 import hashlib
+import json
 import os
 
 import h5py
 import numpy as np
 import pytest
+from fastapi.testclient import TestClient
 from scipy.spatial.transform import Rotation
 
 import nebula3d
+from nebula3d import webbridge
 from nebula3d.analysis import ub_regrid
 from nebula3d.analysis.ub_refine import (
     SYMMETRISED,
@@ -35,7 +39,10 @@ from nebula3d.analysis.ub_regrid import (
     regrid_target,
 )
 from nebula3d.core import HKLVolume
+from nebula3d.pipeline import pipeline_paths
 from nebula3d.server import volumes as vol_mod
+from nebula3d.server.app import create_app
+from nebula3d.server.config import ServerConfig
 from nebula3d.symmetry import GridSymmetry, _group_closure, parse_symmetry_ops, read_symmetry_ops
 
 SIX_MMM_TEXT = "h,k,l; h+k,-h,l; k,h,l; h,k,-l"
@@ -378,3 +385,156 @@ def test_symmetrising_is_optional_and_needs_operations_that_map_the_grid(tmp_pat
     r = regrid_dataset(other, data_root=root, ops=SIX_MMM, symmetrise=True)
     assert not r.written and r.refusal.code == CANNOT_SYMMETRISE
     assert "do not map" in r.refusal.reason
+
+
+# ---------------------------------------------------------------------------
+# The API
+# ---------------------------------------------------------------------------
+def _client(root) -> TestClient:
+    vol_mod.clear_cache()
+    return TestClient(create_app(ServerConfig(data_root=root)))
+
+
+def test_regrid_endpoint_makes_a_new_dataset(tmp_path):
+    root = _root(tmp_path)
+    raw = _raw(root)
+    before = _sha256(raw)
+    client = _client(root)
+    r = client.post(f"/api/datasets/{SLUG}/regrid", json={"cell": [1, 1, 1]})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["written"] is True and out["refusal"] is None
+    assert out["dataset_id"] == NEW_SLUG and out["file"] == f"{NEW_STEM}.nxs"
+    assert out["source_file"] == raw.name == out["refined_on"]
+    assert out["fit"] == "both" and out["symmetrised"] is False
+    assert out["turn_deg"] == pytest.approx(TURN_DEG, abs=0.005)
+    assert out["turn_threshold_deg"] == UB_TURN
+    assert np.allclose(out["ub_start"], UB, atol=1e-7)
+    assert 0 < out["voxels_outside"] < out["measured_before"]
+    assert out["voxels_outside_share"] == pytest.approx(
+        out["voxels_outside"] / out["measured_before"])
+    assert _sha256(raw) == before
+
+    # A dataset the app lists and runs: its raw volume is the new file.
+    listed = {d["id"]: d for d in client.get("/api/datasets").json()}
+    assert listed[NEW_SLUG]["raw_name"] == out["file"]
+    assert next(s for s in listed[NEW_SLUG]["stages"] if s["name"] == "raw")["exists"]
+    meta = client.get(f"/api/volumes/{NEW_SLUG}.raw/meta").json()
+    assert np.allclose(meta["ub_matrix"], out["ub"], atol=1e-7)
+    # The UB check on it: the peaks sit on their nodes, the UB no longer turned.
+    u = client.get(f"/api/volumes/{NEW_SLUG}.raw/ub", params={"cell": "1,1,1"}).json()
+    assert u["angle_deg"] < UB_TURN and u["rms"] < 0.01
+
+    again = client.post(f"/api/datasets/{SLUG}/regrid", json={}).json()
+    assert again["written"] is False and again["refusal"]["code"] == TARGET_EXISTS
+    assert again["dataset_id"] == NEW_SLUG and again["file"] == out["file"]
+    assert again["turn_deg"] is None  # refused before anything was fitted
+
+
+def test_regrid_endpoint_on_a_symmetrised_dataset(tmp_path):
+    """The operations come as the UB check takes them (the file's own): the
+    symmetrised dataset is refused without its source, and regridded from it,
+    symmetrised again, once it is beside it."""
+    root = _root(tmp_path)
+    sym_stem = f"{STEM}_sym6mmm"
+    _write_entry(root / "raw" / f"{sym_stem}.nxs", _symmetrised(_crystal(TURN @ UB)),
+                 symmetry_ops=SIX_MMM_TEXT, symmetry="6/mmm", source_file=f"{STEM}.nxs")
+    client = _client(root)
+    sym_slug = f"{SLUG}-sym6mmm"
+    out = client.post(f"/api/datasets/{sym_slug}/regrid", json={}).json()
+    assert out["written"] is False
+    assert out["refusal"]["code"] == SYMMETRISED_WITHOUT_SOURCE
+    assert out["fit"] == "symmetric" and out["source_symmetrised"] is True
+    assert out["operations"] == 4 and out["operations_from"] == f"{sym_stem}.nxs"
+    assert out["turn_deg"] is None and out["dataset_id"] is None
+
+    _raw(root)  # the unsymmetrised volume it was made from, beside it now
+    out = client.post(f"/api/datasets/{sym_slug}/regrid", json={}).json()
+    assert out["written"] is True and out["symmetrised"] is True
+    assert out["refined_on"] == f"{STEM}.nxs" and out["fit"] == "both"
+    assert out["file"] == f"{sym_stem}_regridded_sym.nxs"
+    assert out["dataset_id"] == f"{sym_slug}-regridded-sym"
+    assert out["turn_deg"] == pytest.approx(TURN_DEG, abs=0.005)
+    meta = client.get(f"/api/volumes/{out['dataset_id']}.raw/meta").json()
+    assert meta["symmetry"] == "6/mmm" and len(meta["symmetry_ops"]) == 4
+
+
+def test_regrid_endpoint_refusals_and_errors(tmp_path):
+    root = _root(tmp_path)
+    _raw(root, _crystal(UB))
+    client = _client(root)
+    out = client.post(f"/api/datasets/{SLUG}/regrid", json={}).json()
+    assert out["written"] is False and out["refusal"]["code"] == TURN_BELOW_NOISE
+    assert out["turn_deg"] < UB_TURN and out["dataset_id"] is None and out["file"] is None
+    assert not (root / "raw" / f"{NEW_STEM}.nxs").exists()
+
+    assert client.post("/api/datasets/nope/regrid", json={}).status_code == 404
+    for bad in ({"cell": [0, 1, 1]}, {"cell": [1, 1]}, {"q_max": -1.0}):
+        assert client.post(f"/api/datasets/{SLUG}/regrid", json=bad).status_code == 400
+
+    # Pipeline outputs of a regridded dataset whose raw volume is gone: a new
+    # file under that stem would inherit them, so it is refused.
+    nebula3d.save(_crystal(UB, half=1.0),
+                  pipeline_paths(root / "raw" / f"{NEW_STEM}.nxs",
+                                 proc_dir=root / "processed").ringremoved)
+    out = client.post(f"/api/datasets/{SLUG}/regrid", json={}).json()
+    assert out["refusal"]["code"] == TARGET_EXISTS and "in use" in out["refusal"]["reason"]
+    assert out["dataset_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# The browser bridge, and its parity with the API
+# ---------------------------------------------------------------------------
+def _bridge(tmp_path, vol: HKLVolume | None = None) -> None:
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    upload = tmp_path / "upload.nxs"
+    nebula3d.save(_crystal(TURN @ UB) if vol is None else vol, upload)
+    assert webbridge.load_input(f"{STEM}.nxs", str(upload)) == SLUG
+
+
+def test_bridge_regrid_registers_the_new_dataset(tmp_path):
+    _bridge(tmp_path)
+    raw = tmp_path / "work" / "raw" / f"{STEM}.nxs"
+    before = _sha256(raw)
+    out = json.loads(webbridge.dataset_regrid_json(SLUG, "1,1,1"))
+    assert out["written"] is True and out["dataset_id"] == NEW_SLUG
+    assert out["turn_deg"] == pytest.approx(TURN_DEG, abs=0.005)
+    # Registered as an input, as a load is: listed, and the next run's input.
+    assert webbridge._S.input == raw.with_name(out["file"])
+    assert webbridge._S.dataset_id == NEW_SLUG
+    assert json.loads(webbridge.select_input(NEW_SLUG)) is True
+    assert NEW_SLUG in {d["id"] for d in json.loads(webbridge.datasets_json())}
+    meta = json.loads(webbridge.volume_meta_json(f"{NEW_SLUG}.raw"))
+    assert np.allclose(meta["ub_matrix"], out["ub"], atol=1e-7)
+    assert _sha256(raw) == before
+    # The browser computes in float32, and writes so.
+    assert nebula3d.load(raw.with_name(out["file"]), dtype=None).data.dtype == np.float32
+
+    again = json.loads(webbridge.dataset_regrid_json(SLUG, "1,1,1"))
+    assert again["written"] is False and again["refusal"]["code"] == TARGET_EXISTS
+    with pytest.raises(KeyError):
+        webbridge.dataset_regrid_json("nope")
+    with pytest.raises(ValueError, match="cell must be"):
+        webbridge.dataset_regrid_json(SLUG, "0,1,1")
+
+
+@pytest.mark.parametrize("right_ub", [False, True], ids=["turned", "right"])
+def test_the_api_and_the_bridge_return_the_same_fields(tmp_path, right_ub):
+    vol = _crystal(UB if right_ub else TURN @ UB)
+    server_root = _root(tmp_path / "server")
+    _raw(server_root, vol)
+    client = _client(server_root)
+    _bridge(tmp_path / "bridge", vol)
+
+    def both() -> tuple[dict, dict]:
+        server = client.post(f"/api/datasets/{SLUG}/regrid", json={"cell": [1, 1, 1]})
+        assert server.status_code == 200, server.text
+        return server.json(), json.loads(webbridge.dataset_regrid_json(SLUG, "1,1,1"))
+
+    server, bridge = both()
+    assert set(server) == set(bridge)
+    assert server == bridge
+    assert server["written"] is (not right_ub)
+    if not right_ub:  # and a refusal: the file exists now on both sides
+        server, bridge = both()
+        assert server == bridge and server["refusal"]["code"] == TARGET_EXISTS

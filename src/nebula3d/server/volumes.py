@@ -251,17 +251,19 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
     """Whether the volume's UB puts its Bragg peaks on their nodes
     (:mod:`nebula3d.analysis.ub_refine`), cached by ``(path, mtime, cell, q_max)``.
 
-    The coverage edge is trimmed first, one voxel layer (the pipeline's
-    ``edge_trim`` default, on a copy): its voxels can sit orders of magnitude
-    above the interior and pass for peaks.  The fit is
-    :func:`~nebula3d.analysis.ub_refine.auto_fit`'s: only the
-    changes that commute with the declared operations on a volume symmetrised
-    under them, else the rotation and the cell together.  An unsymmetrised
-    volume takes its operations from its symmetrised export
-    (:func:`symmetry_ops_for`), to constrain the cell.  ``radial`` gives the
-    peaks' offsets along Q relative to |Q| per |Q| band and direction.
+    The refinement is :func:`~nebula3d.analysis.ub_refine.check_ub`'s, on a
+    copy: the coverage edge trimmed first, one voxel layer (the pipeline's
+    ``edge_trim`` default), as its voxels can sit orders of magnitude above
+    the interior and pass for peaks; then :func:`~nebula3d.analysis.ub_refine.
+    auto_fit`'s fit: only the changes that commute with the declared
+    operations on a volume symmetrised under them, else the rotation and the
+    cell together.  An unsymmetrised volume takes its operations from its
+    symmetrised export (:func:`symmetry_ops_for`), to constrain the cell.
+    The regrid (:mod:`nebula3d.server.regrid`) refines the same way.
+    ``radial`` gives the peaks' offsets along Q relative to |Q| per |Q| band
+    and direction.
     """
-    from nebula3d.analysis.ub_refine import auto_fit, mean_offset, radial_offsets, refine_ub
+    from nebula3d.analysis.ub_refine import check_ub, mean_offset, radial_offsets
 
     key = (str(path), path.stat().st_mtime, tuple(cell), q_max)
     with _lock:
@@ -270,17 +272,12 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
         return hit
     from dataclasses import replace
 
-    from nebula3d.preprocessing.sampling import trim_coverage_edge
-    from nebula3d.symmetry import GridSymmetry
-
     cached = load_volume(path)
     vol = replace(cached, data=cached.data.copy(), sigma=cached.sigma.copy(),
                   mask=cached.mask.copy())
     ops, ops_from = symmetry_ops_for(path)
-    fit, broken = auto_fit(vol, ops)
-    sym = GridSymmetry.for_volume(vol, ops) if ops is not None and fit == "symmetric" else None
-    trim_coverage_edge(vol, 1, symmetry=sym)
-    r = refine_ub(vol, fit=fit, ops=ops, cell=cell, q_max=q_max)
+    checked = check_ub(vol, ops, cell=cell, q_max=q_max)
+    fit, broken, r = checked.fit, checked.symmetry_break, checked.refinement
     f = r.fit
 
     def rounded(m: np.ndarray) -> list:

@@ -34,6 +34,50 @@ class DataRootOut(BaseModel):
     n_datasets: int
 
 
+class RegridIn(BaseModel):
+    """Regrid a dataset onto its refined UB (see analysis.ub_regrid)."""
+    cell: list[int] = [1, 1, 1]  # the Bragg nodes' spacing, (2, 2, 2) on a doubled cell
+    q_max: float | None = None  # the nodes' |Q| limit, Å⁻¹ (default: the whole box)
+    symmetrise: bool = False  # symmetrise the new volume under its operations
+
+
+class RegridRefusalOut(BaseModel):
+    """Why nothing was written: a code to act on, a reason to show."""
+    code: str  # target_exists | symmetrised_without_source | turn_below_noise | cannot_symmetrise
+    reason: str
+
+
+class RegridOut(BaseModel):
+    """A dataset regridded onto its refined UB as a new dataset, or why not."""
+    id: str  # the dataset asked for
+    written: bool
+    refusal: RegridRefusalOut | None = None
+    dataset_id: str | None = None  # the new dataset (or the existing one a refusal names)
+    file: str | None = None  # ... its file, beside the raw one
+    source_file: str  # the dataset's raw file
+    refined_on: str | None = None  # whose peaks were fitted and data regridded
+    fit: str | None = None
+    operations: int | None = None
+    operations_from: str | None = None
+    source_symmetrised: bool | None = None
+    symmetrised: bool = False  # the new file is symmetrised, and declares its operations
+    turn_deg: float | None = None
+    turn_threshold_deg: float  # the UB check's rule: a smaller turn is within the fit's noise
+    axis_uvw: list[float] | None = None
+    ub_start: list[list[float]] | None = None
+    ub: list[list[float]] | None = None
+    cell_start: list[float] | None = None
+    cell: list[float] | None = None
+    rms_start: float | None = None
+    rms: float | None = None
+    n_used: int | None = None
+    measured_before: int | None = None
+    measured_after: int | None = None
+    # Measured before, unmeasured now: their Q fell outside the old grid.
+    voxels_outside: int | None = None
+    voxels_outside_share: float | None = None  # ... over measured_before
+
+
 class LatticeOut(BaseModel):
     a: float | None
     b: float | None

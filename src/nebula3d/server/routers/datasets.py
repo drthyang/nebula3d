@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tsung-han Yang
 
-"""Dataset listing endpoints."""
+"""Dataset listing endpoints, and regridding a dataset into a new one."""
 
 from __future__ import annotations
 
+import math
 import platform
 import shutil
 import subprocess
@@ -15,10 +16,18 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from nebula3d.server import consistency as consistency_mod
 from nebula3d.server import datasets as ds_mod
 from nebula3d.server import deltapdf as dpdf_mod
+from nebula3d.server import regrid as regrid_mod
 from nebula3d.server import volumes as vol_mod
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.deps import get_config
-from nebula3d.server.schemas import DataRootIn, DataRootOut, DatasetOut, StageStatusOut
+from nebula3d.server.schemas import (
+    DataRootIn,
+    DataRootOut,
+    DatasetOut,
+    RegridIn,
+    RegridOut,
+    StageStatusOut,
+)
 
 router = APIRouter(prefix="/api", tags=["datasets"])
 
@@ -169,3 +178,26 @@ def get_dataset(dataset_id: str, cfg: ServerConfig = Depends(get_config)) -> Dat
     if ds is None:
         raise HTTPException(404, f"unknown dataset id {dataset_id!r}")
     return _dataset_out(ds)
+
+
+@router.post("/datasets/{dataset_id}/regrid", response_model=RegridOut)
+def regrid_dataset(dataset_id: str, req: RegridIn,
+                   cfg: ServerConfig = Depends(get_config)) -> RegridOut:
+    """Regrid the dataset's raw volume onto its refined UB (the UB check's
+    fit), as a new dataset beside it; never overwriting a file.  A refusal
+    (the target exists, the fit cannot turn the UB, nothing to symmetrise
+    with) is a 200 with ``written`` false and ``refusal`` saying why."""
+    if len(req.cell) != 3 or min(req.cell) < 1:
+        raise HTTPException(400, f"cell must be three positive integers, not {req.cell!r}")
+    if req.q_max is not None and not (math.isfinite(req.q_max) and req.q_max > 0):
+        raise HTTPException(400, f"q_max must be positive, not {req.q_max!r}")
+    if ds_mod.find_dataset(cfg, dataset_id) is None:
+        raise HTTPException(404, f"unknown dataset id {dataset_id!r}")
+    cell = (req.cell[0], req.cell[1], req.cell[2])
+    try:
+        out = regrid_mod.regrid_dataset_out(cfg, dataset_id, cell, req.q_max, req.symmetrise)
+    except FileNotFoundError as exc:  # no raw volume
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:  # too few peaks to fit
+        raise HTTPException(422, str(exc)) from exc
+    return RegridOut(**out)
