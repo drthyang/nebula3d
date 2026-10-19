@@ -892,7 +892,11 @@ async def _run_pdf_stages_gpu(
         _prepare_forward,
     )
     from nebula3d.core import low_memory  # noqa: PLC0415
-    from nebula3d.pipeline import _drop_sigma, _pdf_is_current  # noqa: PLC0415
+    from nebula3d.pipeline import (  # noqa: PLC0415
+        _drop_sigma,
+        _flatten_off_notice,
+        _pdf_is_current,
+    )
 
     cfg = _require_cfg()
     assert _S.input is not None
@@ -940,6 +944,9 @@ async def _run_pdf_stages_gpu(
             if paths.delta_pdf.exists() and not is_current:
                 _cb_emit(cb, "pdf", "progress", None,
                          f"{paths.delta_pdf.name} stale — recomputing")
+            notice = _flatten_off_notice(params, pdf_input)  # type: ignore[arg-type]
+            if notice is not None:
+                _cb_emit(cb, "pdf", "progress", None, notice)
             _cb_emit(cb, "pdf", "start", None,
                      f"3D-ΔPDF FFT (apodize={p.apodization}) [WebGPU]")
             pdf_vol = nebula3d.load(pdf_input, dtype=params.np_dtype())  # type: ignore[attr-defined]

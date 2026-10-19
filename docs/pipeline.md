@@ -87,7 +87,11 @@ cleanup and ΔPDF viewers. The stages are: (1) ring removal, (2) Bragg punch,
 background-removal step (default on; `FLATTEN=0` to skip), (5) 3D-ΔPDF FFT,
 (6) back-FFT consistency check. The background is removed at step 4, not by a
 hidden blur inside the FFT: the transform's own Gaussian `SUBTRACT_BG` is off by
-default because it is the *alternative* remover (see step 5 below).
+default because it is the *alternative* remover (see step 5 below). With the
+flatten off (`FLATTEN=0`, or the switch on the web page), the ΔPDF transforms
+the run's backfilled volume: `nebula3d.pipeline.run_pipeline`, which the
+server and the browser run, never reads a flattened volume an earlier run left
+on disk, and its log names the volume the ΔPDF transforms.
 
 Useful overrides:
 
