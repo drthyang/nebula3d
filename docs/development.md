@@ -170,7 +170,11 @@ opening messages (tools on with and without the skills, as validation arms B
 and C get them, and tools off), every tool's definition and the tools a local
 model is offered, the stage goals, the verdicts' criteria, the skills' listing,
 the stage-review and tuning prompts, a result from each tool as the executor
-hands it over, and what the answer checks and the agent loop send back. It runs
+hands it over, and what the answer checks and the agent loop send back. Arm C,
+with the skills' switch off, has files of its own (`*-arm-c.md`), and
+`6-inference.md` lists every span of inference arm C does not read
+(`web/src/llm/inference.ts`): a text the model reads is written once, its
+inference tagged inline, and rendered whole or without it. It runs
 on a synthetic crystal behind a mocked API: no model, no backend, no measured
 data. A diff in these files is a change to what the model sees, and is reviewed
 as one: a reworded prompt, a renamed result field or a new tool shows up there.

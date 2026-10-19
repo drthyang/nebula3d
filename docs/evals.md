@@ -287,7 +287,7 @@ began with.
 | --- | --- |
 | **A** | The default pipeline, no agent: Run with nothing configured, three times |
 | **B** | The Pilot as shipped, for each model: its tools, skills and guardrails, and whatever tools the shipped code offers that model. A local model is offered the reading tools and those its question is about (`localTools.ts`), 23 of the 24 for this task (`compare_datasets` is withheld), and more as it calls them; the validation does not bypass that |
-| **C** | B without its skills and nothing else: `read_skill` is not offered and the system prompt lists no skill; the skill gate (a stage's settings change only after its skill is read) is counted as passed, so C may change what B may. A test (`validationArms.test.ts`) runs both through the real agent loop and shows their requests differ only by `read_skill` and the skills' listing |
+| **C** | B with the whole method taken away, structurally, and its guardrails kept (below) |
 | **D** | The planted truth: the crystal's own noise-free diffuse scattering through the same transform on the same support. It is the reference, and a check that the scorer passes it on every case |
 
 B and C get the same task, blind to the case, and one dataset each: its own, under
@@ -301,6 +301,39 @@ or another case. The task:
 > data that the settings cannot fix. End with: the problems you found (or that you
 > found none), what you changed and why, and the strongest pair correlations in the
 > 3D-ΔPDF with their vectors and signs.
+
+**Arm C** removes the whole method, not only the skills' listing. It is one switch,
+`skills: false` (`web/src/llm/skills.ts`), carried on the run's tool context and on
+the builders of the opening messages; every builder of what the model reads reads
+it, so nothing is cut out of a text after it is built. With it off:
+
+- the system prompt is built without the skills' section, and `read_skill` is not
+  offered;
+- every text the model reads keeps its definitions and leaves out its inference
+  (`web/src/llm/inference.ts`, the manager's rule): a definition says what a field,
+  a setting, a tool or a reading is, its units, how it is computed, its limits as a
+  measurement, or how to use the tools; an inference says which reading or tool to
+  use for a conclusion, what a value or a pattern is evidence of, or what a finding
+  calls for (a change, the check to run next, what to report). The system prompt
+  names the four properties a run is judged by, as what exists and in no order, and
+  leaves out the checklist, the readings each is settled with and the routing of a
+  question to a tool; the tool descriptions, the tools' readings, the stages' goals
+  and criteria, the verdicts' words, the context's prose and the tuning prompts'
+  settings lose theirs. Each span is tagged once, where the text is written, and
+  `web/src/llm/__tests__/__snapshots__/model-visible/6-inference.md` lists every
+  one, by class, in the text it sits in;
+- no send-back or refusal names a skill, a stage or a tool to run next: the answer
+  checks still check, and send the same answers back, quoting the answer's own words
+  and saying what they lack ("this verdict needs its evidence from a check run in
+  this reply");
+- there is no skill gate, so C may change and tune what B may.
+
+With the switch on, the text is arm B's byte for byte. `validationArms.test.ts`
+runs both arms through the real agent loop and shows their requests differ only by
+what the switch changes; `armC.test.ts` drives a scripted arm-C session over every
+tool and holds every request and result to no skill's name, no sentence of a
+skill's text of seven words or more, no span of inference, and no send-back that
+names a tool, a stage or a skill.
 
 ### The cases, and the split
 

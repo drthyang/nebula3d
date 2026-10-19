@@ -8,6 +8,7 @@
 // D15, the ΔPDF's rule, and D16, the UB's). An "attention" outcome always
 // carries a reason.
 
+import { built, evidence, inference, inferred, joined, reading, remedy, written, type Span, type Tagged } from "../inference";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
 import { r2, SECOND_GRAIN_DEG, type GrainFacts } from "../metrics/grains";
@@ -132,18 +133,30 @@ const nothing = (): Judged => ({ kind: "info", reasons: ["nothing to judge"] });
 const judged = (faults: Reason[], also: Reason[] = []): Judged =>
   faults.length ? { kind: "attention", reasons: [...faults, ...also] } : { kind: "pass", reasons: also };
 
+// The criteria, the goals and the verdicts' words are tagged by class
+// (inference.ts): whole as written for the report, the console and arm B; their
+// definitions only with the skills off (the validation's arm C), where judge
+// is told so.
 interface StageRule {
-  criterion: string; // the report's and the tools' statement of the rule (WORDS.criterion)
-  goal: string; // the stage's goal (WORDS.goal): in assess_stage's single-stage result and the tuning prompts
-  ownCriterion?: string; // the stage's own evaluation's, where it judges less than the report
+  criterion: Tagged; // the report's and the tools' statement of the rule (WORDS.criterion)
+  goal: Tagged; // the stage's goal (WORDS.goal): in assess_stage's single-stage result and the tuning prompts
+  ownCriterion?: Tagged; // the stage's own evaluation's, where it judges less than the report
   judge: (m: StageNumbers) => Judged;
 }
+
+/** A stage's criterion or goal, tagged: registered under the stage. */
+const criterionOf = (stage: string) => written(`verdicts/rules.ts: the ${stage} criterion`);
+const goalOf = (stage: string) => written(`verdicts/rules.ts: the ${stage} goal`);
 
 // ---------------------------------------------------------------- the stages
 
 const rings: StageRule = {
-  criterion: "No powder ring left above, or dented below, three times its plane's noise. A bump is a powder ring only if it rises in nearly every direction over the sphere (at least 0.15 of its median height in 90 % of directions): the crystal's own scattering at that |Q| rises in some directions only.",
-  goal: "Remove powder/Al rings: mean_ring_energy_ratio as low as the trials reach on every plane (its floor is set by the diffuse, not 0; near 0.4–0.5 can be ring-free), while over_subtraction_fraction and after_negative_fraction stay small (a few percent from noise), and each raw ring ends level with the diffuse beside it: max_ring_dent (how far the deepest ring sits below its flanks, a share of the diffuse there; the subtraction over-shot, even where no voxel goes negative) and max_ring_left (a ring left over) both 0: they count only residuals beyond 3 × their plane's noise_fraction, so any value above 0 is a real dent or leftover (worst_ring_dent and worst_ring_left say on which plane and at which |Q|). A bump counts only if it is a powder ring, rising in nearly every direction over the sphere (shells_judged); the others are the crystal's own scattering, which the removal must leave and subtracts nothing from (per_plane marks them ring: false, out of its worst_ring_dent and worst_ring_left). Lower ring energy bought by over-subtracting (negatives or ring dents rising) is worse, not better.",
+  criterion: criterionOf("rings")`No powder ring left above, or dented below, three times its plane's noise. A bump is a powder ring only if it rises in nearly every direction over the sphere (at least 0.15 of its median height in 90 % of directions)${evidence(
+    ": the crystal's own scattering at that |Q| rises in some directions only",
+  )}.`,
+  goal: goalOf("rings")`Remove powder/Al rings: mean_ring_energy_ratio as low as the trials reach on every plane (its floor is set by the diffuse, not 0; near 0.4–0.5 can be ring-free), while over_subtraction_fraction and after_negative_fraction stay small (a few percent from noise), and each raw ring ends level with the diffuse beside it: max_ring_dent (how far the deepest ring sits below its flanks, a share of the diffuse there${evidence(
+    "; the subtraction over-shot, even where no voxel goes negative",
+  )}) and max_ring_left (a ring left over) both 0: they count only residuals beyond 3 × their plane's noise_fraction, so any value above 0 is a real dent or leftover (worst_ring_dent and worst_ring_left say on which plane and at which |Q|). A bump counts only if it is a powder ring, rising in nearly every direction over the sphere (shells_judged); the others are the crystal's own scattering, which the removal must leave and subtracts nothing from (per_plane marks them ring: false, out of its worst_ring_dent and worst_ring_left). Lower ring energy bought by over-subtracting (negatives or ring dents rising) is worse, not better.`,
   judge: (m) => {
     const left = num(m.max_ring_left);
     const dent = num(m.max_ring_dent);
@@ -165,8 +178,12 @@ const rings: StageRule = {
 export const D5_PROTECTED_SHARP_PEAKS_COUNT = false;
 
 const punch: StageRule = {
-  criterion: "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima are diffuse scattering, and stay.",
-  goal: "Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) are satellites or spurious peaks the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis: diffuse maxima such as short-range order, which are the signal, not peaks to punch). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.",
+  criterion: criterionOf("punch")`No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima${evidence(" are diffuse scattering, and")} stay.`,
+  goal: goalOf("punch")`Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice)${evidence(
+    " are satellites or spurious peaks",
+  )} the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis${evidence(
+    ": diffuse maxima such as short-range order, which are the signal, not peaks to punch",
+  )}). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.`,
   judge: (m) => {
     const atNodes = num(m.leftover_at_nodes);
     if (atNodes == null) return nothing();
@@ -177,11 +194,15 @@ const punch: StageRule = {
 };
 
 const backfill: StageRule = {
-  criterion: "The fills meet their surroundings: a median seam of 1σ or less, and no cut whose fill is biased one way.",
-  goal: "Fill punched holes seamlessly: median_seam_sigma ≲ 1, bright_fill_fraction small (no bright plugs where peaks were), checkerboard_fraction near 0.5 (near 1 is a periodic interpolation artefact).",
+  criterion: criterionOf("backfill")`The fills meet their surroundings: a median seam of 1σ or less, and no cut whose fill is biased one way.`,
+  goal: goalOf("backfill")`Fill punched holes seamlessly: median_seam_sigma ≲ 1, bright_fill_fraction small${evidence(" (no bright plugs where peaks were)")}, checkerboard_fraction near 0.5${evidence(
+    " (near 1 is a periodic interpolation artefact)",
+  )}.`,
   // A stage's evaluation measures no fill bias (texture_check does): its
   // criterion says only what it judges.
-  ownCriterion: "The fills meet their surroundings: a median seam of 1σ or less. Whether a cut's fill is biased one way is texture_check's to say.",
+  ownCriterion: written("verdicts/rules.ts: the backfill's own criterion")`The fills meet their surroundings: a median seam of 1σ or less.${reading(
+    " Whether a cut's fill is biased one way is texture_check's to say.",
+  )}`,
   judge: (m) => {
     const seam = num(m.mean_median_seam_sigma);
     if (seam == null) return nothing();
@@ -203,9 +224,14 @@ const backfill: StageRule = {
  */
 export const FLATTEN_FLOOR_SIGMA_NOTE = "reported, not judged";
 
+// The flatten's goal: what to change about a pedestal left is reduction-qc's
+// step 6 (a floor rising with |Q| wants the b·Q² term and a fit range reaching
+// the coverage), and what a trend and a span near 1 are evidence of goes with it.
 const flatten: StageRule = {
-  criterion: "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (the 1σ limit dropped at the user's choice, 2026-10-17; provisional).",
-  goal: "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself. A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ: a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations.",
+  criterion: criterionOf("flatten")`No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (the 1σ limit dropped at the user's choice, 2026-10-17; provisional).`,
+  goal: goalOf("flatten")`Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.${evidence(
+    " A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ",
+  )}${remedy(": a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations.")}`,
   judge: (m) => {
     // A trend near 1 with a span near 1 is a pedestal left. The floor in σ is
     // reported, not judged (FLATTEN_FLOOR_SIGMA_NOTE).
@@ -265,8 +291,14 @@ function windowWeight(m: StageNumbers): number | null {
 export const D15_PDF_PASSES_UNMEASURED = false;
 
 const pdf: StageRule = {
-  criterion: "The back-FFT reproduces what the transform keeps, the data's even part under Q → −Q, to an r of 0.999 or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.",
-  goal: "The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate). A window that reaches further raises feature_snr with the backfill's guesses and the box's empty corners, which is worse, not better. max_symmetry_break is the x–y section's largest RMS difference from its image under the cell's in-plane operations (worst_symmetry_op names it): a trial that raises it far above your settings' value broke a symmetry your settings kept, as a separable window does on a hexagonal cell. back_fft_pearson_r_even, the round trip against the data's even part under Q → −Q (what the real transform keeps), must stay near 1; back_fft_pearson_r against the data is lower by the odd part (back_fft_odd_share, counting noise on unsymmetrised data). Without a band or crop the round trip is the identity, so neither can rank trials: back_fft_pearson_r_even below ~0.999 only flags a transform problem. Apodization trades real-space resolution against truncation ripples; prefer the default unless another is clearly better on feature_snr without the reach leaving the coverage.",
+  criterion: criterionOf("pdf")`The back-FFT reproduces what the transform keeps, the data's even part under Q → −Q, to an r of 0.999 or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.`,
+  goal: goalOf("pdf")`The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate).${evidence(
+    " A window that reaches further raises feature_snr with the backfill's guesses and the box's empty corners, which is worse, not better.",
+  )} max_symmetry_break is the x–y section's largest RMS difference from its image under the cell's in-plane operations (worst_symmetry_op names it)${evidence(
+    ": a trial that raises it far above your settings' value broke a symmetry your settings kept, as a separable window does on a hexagonal cell",
+  )}. back_fft_pearson_r_even, the round trip against the data's even part under Q → −Q (what the real transform keeps), must stay near 1; back_fft_pearson_r against the data is lower by the odd part (back_fft_odd_share, counting noise on unsymmetrised data). Without a band or crop the round trip is the identity, so neither can rank trials${evidence(
+    ": back_fft_pearson_r_even below ~0.999 only flags a transform problem",
+  )}. Apodization trades real-space resolution against truncation ripples; prefer the default unless another is clearly better on feature_snr without the reach leaving the coverage.`,
   judge: (m) => {
     const back = backFftOk(m);
     const open = windowWeight(m);
@@ -292,9 +324,25 @@ const STAGE_RULES: Record<Stage, StageRule> = { rings, punch, backfill, flatten,
 // ---------------------------------------------------------------- the checks on the result
 
 interface Words extends Judged {
-  words: string | null;
+  words: string | Tagged | null; // tagged where it holds inference (inference.ts): judge renders it by the switch
   dataProblems?: string[];
 }
+
+// The inference the checks' words hold, written once; the words, built for
+// each call with their numbers, take it from here (inference.ts).
+const COVERAGE_WORDS = "verdicts/rules.ts: qmax_coverage's verdict";
+const TAPER_OR_BAND = inference(COVERAGE_WORDS, "remedy", "; taper it to the coverage (pdfWindowSupport) or set a |Q| band");
+const BAND_OR_TAPER = inference(COVERAGE_WORDS, "remedy", "; set a |Q| band at or below it, or taper the window to the coverage");
+const SYMMETRY_WORDS = "verdicts/rules.ts: symmetry_check's verdict";
+const ASYMMETRY_IS = inference(SYMMETRY_WORDS, "evidence", ", so the section's asymmetry (");
+const THE_DATA_OWN = inference(SYMMETRY_WORDS, "evidence", ") is the data's own, counting noise included, not a break by a stage");
+const GRAIN_WORDS = "verdicts/rules.ts: grain_check's verdict";
+const REFINE_UB = inference(GRAIN_WORDS, "remedy", "; refine the UB");
+const SYMMETRISED_COPIES = inference(GRAIN_WORDS, "evidence", ": copies of the crystal's own Bragg peaks, displaced by symmetrising data whose UB is off by about that angle");
+const REFINED_ON_UNSYMMETRISED = inference(GRAIN_WORDS, "remedy", "; a UB refined on the unsymmetrised data would put them back on the nodes");
+const PEAKS_OFF_NODES = inference(GRAIN_WORDS, "evidence", ": the Bragg peaks themselves, off their nodes by about that angle");
+const REFINE_IT = inference(GRAIN_WORDS, "remedy", " (refine the UB)");
+const ORIGIN_OPEN = inference(GRAIN_WORDS, "evidence", "; their origin is open (another phase, multiple scattering, or an artefact)");
 
 interface CheckRule<M> {
   criterion?: string; // the report's statement of the rule (WORDS.criterion)
@@ -321,13 +369,13 @@ const coverage: CheckRule<CoverageMeasurements> = {
     // The ΔPDF on disk records the share of its window's weight on unmeasured
     // space: the direct measure of a reach past the coverage. Without it, the
     // reach from the Configure page's settings against full coverage.
-    const [outcome, text]: [Judged, string] =
+    const [outcome, text]: [Judged, string | Tagged] =
       w != null
         ? w <= OPEN_WEIGHT_OK
           ? [{ kind: "pass", reasons: ["window within limit"] }, `clean: ${m.window} puts ${shownWeight(w)} of its weight on unmeasured reciprocal space`]
           : [
               { kind: "attention", reasons: ["window past limit"] },
-              `too far: ${m.window} puts ${shownWeight(w)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`,
+              built`too far: ${m.window} puts ${shownWeight(w)} of its weight on unmeasured reciprocal space${TAPER_OR_BAND}`,
             ]
         : !m.unit_cell
           ? [nothing(), "no unit cell: |Q| is unknown, so the reach cannot be compared"]
@@ -339,7 +387,7 @@ const coverage: CheckRule<CoverageMeasurements> = {
                 ? [{ kind: "pass", reasons: ["reach inside coverage"] }, `the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), inside full coverage at ${full} Å⁻¹`]
                 : [
                     { kind: "attention", reasons: ["reach past coverage"] },
-                    `too far: the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), past full coverage at ${full} Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage`,
+                    built`too far: the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), past full coverage at ${full} Å⁻¹${BAND_OR_TAPER}`,
                   ];
     // The counts end inside the box and no band is set: only the window's taper
     // keeps the transform on the counts. Said in the verdict, which a model
@@ -349,7 +397,7 @@ const coverage: CheckRule<CoverageMeasurements> = {
       c.counts_end_inside_box && !m.band_set
         ? `; the raw counts end at ${c.raw_counts?.q_max_edge} Å⁻¹, inside the box (its nearest face at ${c.raw_counts?.box_face_q} Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is ${c.suggested_band?.[0]}–${c.suggested_band?.[1]} Å⁻¹ (suggested_band), the user's to set`
         : "";
-    return { ...outcome, words: text + cut, dataProblems: countsProblems(c) };
+    return { ...outcome, words: joined([text, cut]), dataProblems: countsProblems(c) };
   },
 };
 
@@ -360,8 +408,8 @@ export function countsProblems(c: { counts_end_inside_box?: unknown; raw_counts?
 }
 
 /** What the symmetry verdict says of a volume that declares no symmetry. */
-const NOT_DECLARED = (asymmetry: unknown): string =>
-  `not judged: the file declares no symmetry, so the section's asymmetry (${String(asymmetry)}) is the data's own, counting noise included, not a break by a stage`;
+const NOT_DECLARED = (asymmetry: unknown): Tagged =>
+  built`not judged: the file declares no symmetry${ASYMMETRY_IS}${inferred("evidence", String(asymmetry))}${THE_DATA_OWN}`;
 
 const symmetry: CheckRule<SymmetryMeasurements> = {
   judge: (m) => {
@@ -427,7 +475,7 @@ const grain: CheckRule<GrainFacts> = {
       return {
         kind: "attention",
         reasons: ["UB off", ...beside],
-        words: `the off-lattice peaks are the crystal's own Bragg peaks with the UB off: one rotation of ${r2(turn!)}° puts ${indexed} of the ${n} strongest orbits back on the Bragg lattice (random directions: ${control}); refine the UB`,
+        words: built`the off-lattice peaks are the crystal's own Bragg peaks with the UB off: one rotation of ${r2(turn!)}° puts ${indexed} of the ${n} strongest orbits back on the Bragg lattice (random directions: ${control})${REFINE_UB}`,
         dataProblems: [ubOffProblem(r2(turn!))],
       };
     }
@@ -439,16 +487,17 @@ const grain: CheckRule<GrainFacts> = {
         dataProblems: besideProblem,
       };
     }
-    let words = `no second grain of this phase: a rotated copy of the Bragg lattice indexes only ${indexed} of the ${n} strongest off-lattice orbits (random directions: ${control})`;
+    const words: (Span | Tagged)[] = [
+      `no second grain of this phase: a rotated copy of the Bragg lattice indexes only ${indexed} of the ${n} strongest off-lattice orbits (random directions: ${control})`,
+    ];
     if (near >= n / 2 && median != null) {
-      words +=
-        `. ${near} of them sit within a quarter of the node spacing of a Bragg node, offset by a median ${r2(median)}° of rotation (a lower bound: a node at an angle to the rotation axis moves less)` +
-        (g.symmetrised
-          ? ": copies of the crystal's own Bragg peaks, displaced by symmetrising data whose UB is off by about that angle; a UB refined on the unsymmetrised data would put them back on the nodes"
-          : ": the Bragg peaks themselves, off their nodes by about that angle (refine the UB)");
+      words.push(
+        `. ${near} of them sit within a quarter of the node spacing of a Bragg node, offset by a median ${r2(median)}° of rotation (a lower bound: a node at an angle to the rotation axis moves less)`,
+        ...(g.symmetrised ? [SYMMETRISED_COPIES, REFINED_ON_UNSYMMETRISED] : [PEAKS_OFF_NODES, REFINE_IT]),
+      );
     }
-    if (g.far?.length) words += `. ${n - near} lie farther from any node; their origin is open (another phase, multiple scattering, or an artefact)`;
-    return { kind: beside.length ? "attention" : "pass", reasons: ["no second grain", ...beside], words, dataProblems: besideProblem };
+    if (g.far?.length) words.push(`. ${n - near} lie farther from any node`, ORIGIN_OPEN);
+    return { kind: beside.length ? "attention" : "pass", reasons: ["no second grain", ...beside], words: joined(words), dataProblems: besideProblem };
   },
 };
 
@@ -520,40 +569,52 @@ const CHECK_RULES: { [C in Exclude<CheckId, Stage>]: CheckRule<Measurements[C]> 
 
 // ---------------------------------------------------------------- the interface's words
 
+const goals = (skills: boolean): Record<TuneStage, string> =>
+  Object.fromEntries(Object.entries(STAGE_RULES).map(([stage, rule]) => [stage, rule.goal.text(skills)])) as Record<TuneStage, string>;
+
 /** The text the checks' results carry: the verdicts' labels, the rules as criteria, and the stages' goals. */
 export const WORDS: {
   label: Record<Kind, string>;
   criterion: Record<string, string>;
   goal: Record<TuneStage, string>;
+  // The goals with the skills off (the switch, skills.ts: the validation's arm C): their definitions only (inference.ts).
+  goalWithoutSkills: Record<TuneStage, string>;
 } = {
   label: LABEL,
   criterion: {
-    rings: rings.criterion,
-    punch: punch.criterion,
+    rings: rings.criterion.whole,
+    punch: punch.criterion.whole,
     grains: grain.criterion!,
-    backfill: backfill.criterion,
-    flatten: flatten.criterion,
-    pdf: pdf.criterion,
+    backfill: backfill.criterion.whole,
+    flatten: flatten.criterion.whole,
+    pdf: pdf.criterion.whole,
   },
-  goal: { rings: rings.goal, punch: punch.goal, backfill: backfill.goal, flatten: flatten.goal, pdf: pdf.goal },
+  goal: goals(true),
+  goalWithoutSkills: goals(false),
 };
 
 const isStage = (check: CheckId): check is Stage => check in STAGE_RULES;
+
+/** A check's words, as the skills' switch has them: tagged ones whole with the skills on, their definitions with them off. */
+const said = (words: string | Tagged | null, skills: boolean): string | null =>
+  words === null || typeof words === "string" ? words : words.text(skills);
 
 /**
  * A check's outcome from its measurements, by its rule: what its tool writes,
  * and what the readers read. A stage whose evaluation says its output is
  * "missing" (assess_stage, before the run computed it) has no output to judge:
- * its tool writes no verdict for it.
+ * its tool writes no verdict for it. With the skills off (a tool of the
+ * validation's arm C asks so) its words and its criterion are their
+ * definitions only; its kind, reasons and data problems are the same either way.
  */
-export function judge<C extends CheckId>(check: C, m: Measurements[C]): Outcome {
+export function judge<C extends CheckId>(check: C, m: Measurements[C], { skills = true }: { skills?: boolean } = {}): Outcome {
   if (isStage(check)) {
     if (m && typeof m === "object" && "missing" in m) return { check, kind: "info", reasons: ["no output"], dataProblems: [], words: null };
     const rule = STAGE_RULES[check];
     const { kind, reasons } = rule.judge((m ?? {}) as StageNumbers);
-    return { check, kind, reasons, dataProblems: [], words: LABEL[kind], criterion: rule.ownCriterion ?? rule.criterion };
+    return { check, kind, reasons, dataProblems: [], words: LABEL[kind], criterion: (rule.ownCriterion ?? rule.criterion).text(skills) };
   }
   const rule = CHECK_RULES[check as Exclude<CheckId, Stage>] as CheckRule<unknown>;
   const { kind, reasons, words, dataProblems = [] } = rule.judge(m ?? {});
-  return { check, kind, reasons, dataProblems, words, ...(rule.criterion ? { criterion: rule.criterion } : {}) };
+  return { check, kind, reasons, dataProblems, words: said(words, skills), ...(rule.criterion ? { criterion: rule.criterion } : {}) };
 }

@@ -5,7 +5,8 @@
 //
 // - the one task every run gets, blind to the case;
 // - arm B, the Pilot as shipped (skills and guardrails), and arm C, the same
-//   without its skills (no read_skill, no skill list, and so no skill gate);
+//   with the skills' switch off (skills.ts): the whole method taken away, by
+//   every builder of the text the model reads, and the guardrails kept;
 // - what each run decided and why, every number it wrote traced to the tool
 //   result it came from, and its conclusion: the record a reviewer reads;
 // - the answer's grades: the case's fault reported, no fault claimed that is
@@ -17,11 +18,11 @@
 import type { Dataset } from "../../api/types";
 import type { AgentStep } from "../agent";
 import { ANSWER_WORD, writtenNumbers } from "../answerChecks";
+import type { PipelineContext } from "../context/pipelineContext";
+import { buildChatMessages } from "../prompts/templates";
 import type { ChatMessage } from "../provider/client";
 import type { Failure } from "../recovery";
-import { allSkills, skillsPrompt } from "../skills";
 import { SAMPLE_PARAMS } from "../tune/catalog";
-import type { AgentTool } from "../tools";
 import type { ComputedVerdict } from "../verdicts";
 import { answers, NEGATION, numbers, sentences } from "./checks";
 import manifest from "./fixtures/validation-cases.json";
@@ -79,28 +80,28 @@ export const TASK =
 // ---------------------------------------------------------------- the arms
 
 export interface ArmSetup {
-  tools: AgentTool[];
-  messages: ChatMessage[];
-  skillsRead: Set<string>;
+  // The skills' switch (skills.ts): on in arm B, off in arm C. The run's tool
+  // context carries it (ToolContext.skills), so the agent loop, the executor
+  // and the tools read it; the opening messages below were built with it.
+  skills: boolean;
+  messages: ChatMessage[]; // the opening messages for TASK
+  skillsRead: Set<string>; // none yet, in either arm
 }
 
 /**
- * Arm B is the Pilot as shipped. Arm C takes its skills away: read_skill is not
- * offered and the system prompt lists no skill. The skill gate (a stage's
- * settings change only after its skill is read) would then refuse every
- * change, so C starts with every skill counted as read: it may act as B may,
- * without the methods.
+ * Arm B is the Pilot as shipped. Arm C is the same Pilot with the skills'
+ * switch off, which takes the whole method away at the builders of what the
+ * model reads: the system prompt has no skills' section, read_skill is not
+ * offered, no tool description, result, goal or tuning prompt names a skill or
+ * restates a skill's step, and no send-back names a skill, a stage or a tool to
+ * run next. The guardrails stay: the answer checks still check and send the same
+ * answers back (issuesPrompt words them), and C may change what B may. With no
+ * skill to read there is no skill gate: a stage's settings change, and it is
+ * tuned, without one (runToolCall).
  */
-export function armSetup(arm: Arm, tools: AgentTool[], messages: ChatMessage[]): ArmSetup {
-  if (arm === "B") return { tools, messages, skillsRead: new Set() };
-  const listing = skillsPrompt();
-  return {
-    tools: tools.filter((t) => t.name !== "read_skill"),
-    messages: messages.map((m) =>
-      m.role === "system" && typeof m.content === "string" ? { ...m, content: m.content.replace(listing, "") } : m,
-    ),
-    skillsRead: new Set(allSkills().map((s) => s.name)),
-  };
+export function armSetup(arm: Arm, context: PipelineContext): ArmSetup {
+  const skills = arm === "B";
+  return { skills, messages: buildChatMessages(context, [], TASK, null, { tools: true, skills }), skillsRead: new Set() };
 }
 
 // ---------------------------------------------------------------- grading

@@ -10,7 +10,7 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore, type StageRun } from "../tune/tuner";
-import { CHAT_TOOLS, fitResult, MAX_RESULT_CHARS, runToolCall, type AgentTool, type ToolContext } from "../tools";
+import { CHAT_TOOLS, fitResult, MAX_RESULT_CHARS, runToolCall, toolsWithSkills, type AgentTool, type ToolContext } from "../tools";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -766,6 +766,24 @@ describe("ub_check", () => {
     out = JSON.parse((await run("ub_check", {})).text);
     expect([out.unexplained, out.origin_shift_rlu]).toEqual([true, null]);
     expect(out.reading).toMatch(/Look at the origin of the HKL grid, or at how \|Q\| was assigned/);
+  });
+
+  it("reads the fit whole with the skills on, and without its inference with them off (inference.ts)", async () => {
+    const off = () =>
+      runToolCall({ id: "c", type: "function", function: { name: "ub_check", arguments: "{}" } }, toolsWithSkills(CHAT_TOOLS, false), { ...ctx, skills: false });
+    const reading = async (r: Promise<{ text: string }>) => JSON.parse((await r).text).reading as string;
+    // An origin shift: B names it and what to report; C, what the fit found.
+    api.fetchUbCheck.mockResolvedValue(shifted);
+    const b = await reading(run("ub_check", {}));
+    const tail = ", the HKL origin shifted by about that much, which no UB can make. Report the origin, not the UB.";
+    expect(b.endsWith(`Every peak sits a mean (0.0305, 0.0195, 0.0000) r.l.u. off its node, after the fit as before it: one vector moves them all${tail}`)).toBe(true);
+    expect(await reading(off())).toBe(`${b.slice(0, -tail.length)}.`);
+    // No common vector: B says where to look; C does not.
+    api.fetchUbCheck.mockResolvedValue({ ...shifted, mean_offset_rlu: { ...shifted.mean_offset_rlu, before: [0.002, 0, 0], after: [0.002, 0, 0] } });
+    const b2 = await reading(run("ub_check", {}));
+    const look = " Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.";
+    expect(b2.endsWith(`no UB change explains it.${look}`)).toBe(true);
+    expect(await reading(off())).toBe(b2.slice(0, -look.length));
   });
 });
 

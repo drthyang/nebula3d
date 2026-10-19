@@ -22,6 +22,11 @@ export const TUNE_SYSTEM = [
 // Each stage's goal sits with its rule in the check-verdict module
 // (verdicts/rules.ts): in assess_stage's single-stage result and here.
 export const STAGE_GOALS: Record<TuneStage, string> = WORDS.goal;
+// The goals with the skills off (the switch, skills.ts: the validation's arm C).
+export const STAGE_GOALS_WITHOUT_SKILLS: Record<TuneStage, string> = WORDS.goalWithoutSkills;
+
+/** A stage's goal as the tuning prompts give it, by the skills' switch (on unless false). */
+const goalOf = (stage: TuneStage, skills: boolean): string => (skills ? STAGE_GOALS : STAGE_GOALS_WITHOUT_SKILLS)[stage];
 
 export interface TrialRecord {
   trial: number;
@@ -38,22 +43,24 @@ export const buildProposeMessages = ({
   earlier,
   trials,
   count,
+  skills = true,
 }: {
   stage: TuneStage;
   current: Record<string, ParamValue>;
   earlier: Record<string, Record<string, ParamValue>>;
   trials: TrialRecord[];
   count: number;
+  skills?: boolean; // the skills' switch (skills.ts): off, the goal and the settings' help without a skill's step
 }): ChatMessage[] => [
   { role: "system", content: TUNE_SYSTEM },
   {
     role: "user",
     content: [
       `Stage: ${TUNE_STAGE_LABELS[stage]}.`,
-      `Goal: ${STAGE_GOALS[stage]}`,
+      `Goal: ${goalOf(stage, skills)}`,
       "",
       "Settings you may change (use these names exactly):",
-      describeStageParams(stage),
+      describeStageParams(stage, { skills }),
       "",
       `Current settings: ${json(current)}`,
       `Settings already chosen for earlier stages: ${json(earlier)}`,
@@ -67,13 +74,21 @@ export const buildProposeMessages = ({
   },
 ];
 
-export const buildJudgeMessages = ({ stage, trials }: { stage: TuneStage; trials: TrialRecord[] }): ChatMessage[] => [
+export const buildJudgeMessages = ({
+  stage,
+  trials,
+  skills = true,
+}: {
+  stage: TuneStage;
+  trials: TrialRecord[];
+  skills?: boolean; // the skills' switch (skills.ts): off, the goal without a skill's step
+}): ChatMessage[] => [
   { role: "system", content: TUNE_SYSTEM },
   {
     role: "user",
     content: [
       `Stage: ${TUNE_STAGE_LABELS[stage]}.`,
-      `Goal: ${STAGE_GOALS[stage]}`,
+      `Goal: ${goalOf(stage, skills)}`,
       "",
       `Trials (trial 1 = the user's settings): ${json(trials)}`,
       "",

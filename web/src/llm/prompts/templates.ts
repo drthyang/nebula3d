@@ -6,18 +6,34 @@
 
 import type { ChatMessage, ContentPart } from "../provider/client";
 import { contextToJson, type PipelineContext } from "../context/pipelineContext";
-import { skillsPrompt } from "../skills";
-import { SYSTEM_PROMPT, TOOLS_PROMPT } from "./system";
+import { skillsOn, skillsPrompt, type SkillsSwitch } from "../skills";
+import { SYSTEM, TOOLS } from "./system";
 
-// With tools, the skills' names and descriptions follow the tools' guidance;
-// read_skill reads one when the task calls for it.
-const systemMessage = (tools: boolean): ChatMessage => ({
-  role: "system",
-  content: tools ? SYSTEM_PROMPT + "\n" + TOOLS_PROMPT + "\n" + skillsPrompt() : SYSTEM_PROMPT,
-});
+/** What the opening messages are built for: tools on or off, and the skills' switch (skills.ts; on unless false). */
+export interface MessageOptions extends SkillsSwitch {
+  tools?: boolean;
+}
 
-const contextBlock = (context: PipelineContext): string =>
-  `Diagnostic context for this reduction (metrics computed from the current cut):\n\`\`\`json\n${contextToJson(context)}\n\`\`\``;
+/**
+ * The system prompt, from its sections: the domain and the metrics the context
+ * carries; with tools, the tools' guidance and the checks that judge a run;
+ * with tools and the skills on, the skills' names and descriptions, which
+ * read_skill reads when the task calls for it. With the skills off (the
+ * validation's arm C) that section is not there at all, and the others are
+ * their definitions only, without their inference (inference.ts).
+ */
+export function systemPrompt({ tools = false, skills }: MessageOptions = {}): string {
+  const on = skillsOn({ skills });
+  const sections = [SYSTEM.text(on)];
+  if (tools) sections.push(TOOLS.text(on));
+  if (tools && on) sections.push(skillsPrompt());
+  return sections.join("\n");
+}
+
+const systemMessage = (options: MessageOptions): ChatMessage => ({ role: "system", content: systemPrompt(options) });
+
+const contextBlock = (context: PipelineContext, skills?: boolean): string =>
+  `Diagnostic context for this reduction (metrics computed from the current cut):\n\`\`\`json\n${contextToJson(context, undefined, { skills: skillsOn({ skills }) })}\n\`\`\``;
 
 // Attach an optional image to a text prompt, producing either a plain string or
 // the multimodal content-parts array the vision path needs.
@@ -43,10 +59,10 @@ export const buildChatMessages = (
   history: HistoryTurn[],
   userText: string,
   imageDataUrl?: string | null,
-  { tools = false }: { tools?: boolean } = {},
+  { tools = false, skills }: MessageOptions = {},
 ): ChatMessage[] => [
-  systemMessage(tools),
-  { role: "user", content: contextBlock(context) },
+  systemMessage({ tools, skills }),
+  { role: "user", content: contextBlock(context, skills) },
   {
     role: "assistant",
     content: tools
@@ -71,7 +87,9 @@ const STAGE_INSTRUCTION: Record<ReviewStage, string> = {
 };
 
 // With tools, a review must look beyond the opening cut before its verdict,
-// with the tools that judge that stage.
+// with the tools that judge that stage. They are the system prompt's own
+// checks (TOOLS_PROMPT), the Pilot's method rather than a skill's, so the
+// skills' switch leaves them as they are.
 const REVIEW_TOOLS: Record<ReviewStage, string> = {
   rings: "assess_stage rings and radial_profile",
   punch: "assess_stage punch and an off-zero cut",
@@ -86,10 +104,10 @@ export const buildStageReviewMessages = (
   context: PipelineContext,
   stage: ReviewStage,
   imageDataUrl?: string | null,
-  { tools = false }: { tools?: boolean } = {},
+  { tools = false, skills }: MessageOptions = {},
 ): ChatMessage[] => [
-  systemMessage(tools),
-  { role: "user", content: contextBlock(context) },
+  systemMessage({ tools, skills }),
+  { role: "user", content: contextBlock(context, skills) },
   {
     role: "assistant",
     content: tools

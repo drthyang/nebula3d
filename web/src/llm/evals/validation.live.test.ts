@@ -28,7 +28,6 @@ import { configOf } from "../../state/configMemory";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { MAX_TOOL_ROUNDS, runAgent, type AgentProgress } from "../agent";
 import { loadPipelineContext } from "../context/loadContext";
-import { buildChatMessages } from "../prompts/templates";
 import { CHAT_TOOLS } from "../tools";
 import { backendUrl, env, exists, makeDir, readText, useBackend, writeText } from "./backend";
 import { installEventSource } from "./eventSource";
@@ -41,7 +40,6 @@ import {
   buildRecord,
   caseNamed,
   changedElsewhere,
-  TASK,
   validationDatasets,
   WhyTracker,
   type Arm,
@@ -149,7 +147,7 @@ describe.skipIf(!live)("validation, live", () => {
       // run's volume (or the control's) in compare_datasets would answer for it.
       usePipelineStore.getState().patch(configOf(usePipelineStore.getInitialState()));
       const { context: pipelineContext } = await loadPipelineContext(dataset);
-      const setup = armSetup(job.arm, CHAT_TOOLS, buildChatMessages(pipelineContext, [], TASK, null, { tools: true }));
+      const setup = armSetup(job.arm, pipelineContext);
       const before = await fetchDatasets();
 
       const why = new WhyTracker();
@@ -172,8 +170,9 @@ describe.skipIf(!live)("validation, live", () => {
         const result = await Promise.race([
           runAgent({
             messages: setup.messages,
-            tools: setup.tools,
-            ctx: { dataset, datasets: [dataset], skillsRead: setup.skillsRead },
+            // Every tool the Pilot ships: the run's switch (ctx.skills) decides what arm C is offered.
+            tools: CHAT_TOOLS,
+            ctx: { dataset, datasets: [dataset], skills: setup.skills, skillsRead: setup.skillsRead },
             settings: { baseUrl, model: model.model, apiKey, temperature: model.temperature ?? 0.2, attachImages: false, useTools: true, followViews: false },
             signal: abort.signal,
             usage: true,

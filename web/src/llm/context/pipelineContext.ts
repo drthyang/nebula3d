@@ -13,6 +13,7 @@ import type {
   VolumeMeta,
 } from "../../api/types";
 import { metricFromUb, qNorm, reciprocalMetric } from "../../components/reciprocal";
+import { withoutInference } from "../inference";
 import { backfillMetrics } from "../metrics/backfill";
 import { dpdfMetrics } from "../metrics/dpdf";
 import { FLATTEN_FIT_Q, flattenMetrics } from "../metrics/flatten";
@@ -171,9 +172,12 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
 export const CONTEXT_CHAR_BUDGET = 6000;
 
 // Serialize the context, trimming the only unbounded field (the leftover-peak
-// list) if the JSON overruns the budget — recorded, never silent.
-export const contextToJson = (context: PipelineContext, budget = CONTEXT_CHAR_BUDGET): string => {
-  let json = JSON.stringify(context, null, 1);
+// list) if the JSON overruns the budget — recorded, never silent. With the
+// skills off (the switch, skills.ts) its prose is its definitions only
+// (inference.ts).
+export const contextToJson = (context: PipelineContext, budget = CONTEXT_CHAR_BUDGET, { skills = true }: { skills?: boolean } = {}): string => {
+  const shown = (c: PipelineContext): unknown => (skills ? c : withoutInference(c));
+  let json = JSON.stringify(shown(context), null, 1);
   if (json.length <= budget) return json;
   const peaks = context.bragg_punch?.leftover.suspicious_peaks;
   if (peaks && peaks.length > 3) {
@@ -190,7 +194,7 @@ export const contextToJson = (context: PipelineContext, budget = CONTEXT_CHAR_BU
         : undefined,
       notes: [...(context.notes ?? []), `leftover peaks truncated to 3 of ${peaks.length} for length`],
     };
-    json = JSON.stringify(trimmed, null, 1);
+    json = JSON.stringify(shown(trimmed), null, 1);
   }
   return json;
 };
