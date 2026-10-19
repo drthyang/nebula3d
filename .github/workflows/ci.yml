@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+# The validation's held-out test split runs only on this opt-in, under masked
+# names (tests/conftest.py): a local run leaves it out of the output that whoever
+# tunes reads, and CI covers it in every job, the Pyodide-pinned one included.
+# test_ci_runs_the_test_split pins this block.
+env:
+  NEBULA_HOLDOUT_TESTS: "1"
+
 jobs:
   test:
     runs-on: ubuntu-latest

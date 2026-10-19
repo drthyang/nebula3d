@@ -327,5 +327,26 @@
    "on": "2026-10-19",
    "option": "yes"
   }
+ },
+ {
+  "source": "review",
+  "ref": "P4.4",
+  "at": "f807320",
+  "kind": "missing-tool",
+  "evidence": "dpdf_features groups the ΔPDF's extrema by sign, length (half a voxel) and size (5 %) and never uses the declared symmetry (src/nebula3d/analysis/dpdf_features.py:25-28), so an orbit whose copies differ by a few per cent splits into several entries and a planted correlation falls down the list (the dev control's weaker one is entry 19 of a default 12).",
+  "proposed_fix": "When the raw file declares a point group, group the extrema by it: the declared operations (closed into a group, with r ≡ −r) act on the ΔPDF's fractional coordinates as their transpose, and an image claims the nearest unclaimed extremum of its sign within one voxel, in the cell's metric; without a declaration, today's grouping, bit for bit. The limit counts groups.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "1b6df04",
+  "tests": [
+   "tests/test_dpdf_features.py (m-3m and hexagonal 6/mmm and −3 orbits, a near miss, signs apart, no declaration as before, the four cases it does not apply)",
+   "tests/test_server.py and tests/test_webbridge.py (the features endpoint, and server–webbridge parity with and without a declaration)"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 4.4). Evidence on the dev split, default pipeline: the cases declare no symmetry, so their entries are unchanged (dev control 19 and 7); as what-ifs, m-3m would put the control's at 18 and 6, and the origin case's split orbit rejoins at 17. Arm A on dev is unchanged (dpdf_features is not in the default pipeline). The tool's default limit (12) and its description are the TypeScript half, still to come; the description's sentence that the grouping does not use the symmetry waits with the rest of that text for the user.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "group by the declared point group; no declaration: as before"
+  }
  }
 ]

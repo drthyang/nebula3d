@@ -5,6 +5,10 @@
 #   ruff  check src/ tests/                   -> lint
 #   mypy  src/nebula3d --ignore-missing-imports --python-version 3.12  -> type check
 #
+# CI also sets NEBULA_HOLDOUT_TESTS=1, which runs the validation's held-out test
+# split; this does not, so the split stays out unless your shell sets it
+# (docs/development.md).
+#
 # Usage:
 #   bash scripts/check.sh
 #   PY=/path/to/python bash scripts/check.sh      # choose the interpreter

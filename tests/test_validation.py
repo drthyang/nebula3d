@@ -6,8 +6,11 @@ a reduction that lost it, arm A runs and is reproducible, and the held-out
 test split stays out of everything that is tuned."""
 
 import json
+import os
 import re
 import shutil
+import subprocess
+import sys
 from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -446,11 +449,81 @@ def test_the_web_harness_reads_the_current_cases():
     assert committed == json.loads(json.dumps(manifest()))
 
 
-@pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
-def test_arm_d_passes_every_criterion_on_every_case(case, tmp_path):
+def test_arm_d_passes_every_criterion_on_every_case(validation_case, tmp_path):
     # The planted truth is the reference: the scorer must pass it, whatever the fault.
-    r = run_case_d(case, tmp_path, n=N)
-    assert r["pass"], r["summary"]
+    # The dev cases always; the test split's only with NEBULA_HOLDOUT_TESTS=1 (conftest.py).
+    r = run_case_d(validation_case, tmp_path, n=N)
+    passed = bool(r["pass"])
+    if validation_case.split == "dev":
+        assert passed, r["summary"]
+    else:
+        # A held-out case's summary names the case and its vectors: say only what failed.
+        failed = sorted(name for name, ok in r["summary"]["criteria"].items() if not ok)
+        assert passed, f"failed criteria: {failed}"
+
+
+# ------------------------------------------------- the test split in pytest's output
+#
+# pytest prints test names (-v, --collect-only, a failure's header, --durations),
+# and whoever tunes reads them. So the test split's cases are collected only with
+# NEBULA_HOLDOUT_TESTS=1, and then under masked names (conftest.py). What these
+# tests assert on is a count or a dev or masked name, never a held-out one.
+
+ARM_D = "test_arm_d_passes_every_criterion_on_every_case"
+
+
+def _collect_run(holdout: str | None) -> subprocess.CompletedProcess[str]:
+    """Collect the arm D test in a fresh pytest, NEBULA_HOLDOUT_TESTS unset or *holdout*."""
+    env = {k: v for k, v in os.environ.items() if k != "NEBULA_HOLDOUT_TESTS"}
+    if holdout is not None:
+        env["NEBULA_HOLDOUT_TESTS"] = holdout
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
+         f"tests/test_validation.py::{ARM_D}"],
+        cwd=REPO, env=env, capture_output=True, text=True, check=False,
+    )  # fmt: skip
+
+
+def _collect_arm_d(holdout: str | None) -> tuple[list[str], list[str], int, int]:
+    """The arm D test's names, collected as :func:`_collect_run` does: the dev ids and the
+    masked names, in order, then how many names carry a test case's id or label and how
+    many are none of these."""
+    proc = _collect_run(holdout)
+    code = proc.returncode
+    assert code == 0, f"collecting the arm D test failed (exit {code})"
+    names = re.findall(rf"::{ARM_D}\[(.*)\]$", proc.stdout, re.M)
+    dev_ids = {c.id for c in cases("dev")}
+    held_out = {c.id for c in cases("test")} | {label_of(c) for c in cases("test")}
+    dev = [n for n in names if n in dev_ids]
+    masked = [n for n in names if re.fullmatch(r"test-split-case-\d+", n)]
+    named = sum(any(w in n for w in held_out) for n in names)
+    return dev, masked, named, len(names) - len(dev) - len(masked)
+
+
+def test_the_default_run_leaves_the_test_split_out():
+    for off in (None, "0"):
+        dev, masked, named, other = _collect_arm_d(off)
+        assert dev == [c.id for c in cases("dev")], off
+        assert (len(masked), named, other) == (0, 0, 0), off
+
+
+def test_the_opt_in_runs_the_test_split_under_masked_names_only():
+    dev, masked, named, other = _collect_arm_d("1")
+    assert dev == [c.id for c in cases("dev")]
+    assert masked == [f"test-split-case-{i}" for i in range(len(cases("test")))]
+    assert (named, other) == (0, 0)
+
+
+def test_a_mistyped_opt_in_stops_the_run():
+    # Not a quiet "off": a run meant to cover the test split would drop it unseen.
+    code = _collect_run("true").returncode
+    assert code == pytest.ExitCode.USAGE_ERROR
+
+
+def test_ci_runs_the_test_split():
+    # Every CI job runs the test split, as it did before the opt-in.
+    ci = (REPO / ".github/workflows/ci.yml").read_text()
+    assert re.search(r'^env:\n(?:  .*\n)*?  NEBULA_HOLDOUT_TESTS: "1"\n', ci, re.M)
 
 
 def _live_run(case_id, arm, **over):
