@@ -262,6 +262,15 @@ including a one-run pilot on Haiku (`claude-haiku-5-5-pilot.json`).
   are too few to show a second grain", which the grader read as claiming one.
   Every record was then re-graded with the current checks
   (`NEBULA_EVAL_REGRADE`); only that run changed.
+- **One reader of an answer's words, re-graded (plan 3.2).** The graders now
+  read an answer through the reader the answer checks read
+  (`web/src/llm/answerText/`): a question is no claim, a sentence a condition
+  or a plan opens is no credit, and the numbers are read as the app reads
+  them. Every record was re-graded with it (`NEBULA_EVAL_REGRADE`), and it
+  moved no grade. One grade moved from an earlier fix that no re-grade had
+  taken in: the ring check now reads a claim across a number's decimal point,
+  so gemma4:26b's second `rings-left` run says that a ring is left. The run
+  still fails: it never called `assess_stage`.
 - **Not run:**
   - LM Studio's muse-glimmer was not loaded, and these runs never load LM Studio
     models.
