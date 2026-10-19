@@ -314,6 +314,9 @@ export function reportCases(): ReportCase[] {
   for (const x of SYMMETRY) add(`symmetry ${x.id}`, { symmetry: x.m });
   for (const x of TEXTURE) add(`texture ${x.id}`, { texture: x.m });
   for (const x of GRAIN) add(`grain ${x.id}`, { grains: x.m });
+  // The report runs ub_check since Q11 (2.4.11): its data problems in the goal.
+  for (const x of UB) add(`ub ${x.id}`, { ub: x.m });
+  add("ub turned, the grain's UB off: both named", { ub: UB[2].m, grains: GRAIN[1].m });
   add("no coverage, symmetry, texture or grain", { coverage: null, symmetry: null, texture: null, grains: null });
   // The ΔPDF's card: its window from the evaluation, else the coverage's weight.
   const noWeight = { ...passing("pdf").m, window_weight_on_unmeasured: null };

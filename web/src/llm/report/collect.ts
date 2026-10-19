@@ -10,7 +10,7 @@ import { autoLevels } from "../../components/colorScale";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
 import { usePipelineStore } from "../../state/pipelineStore";
 import type { ChatTurn } from "../chatStore";
-import { datasetLabel, dpdfVolumeId, safe } from "../context/loadContext";
+import { datasetLabel, dpdfVolumeId, hklVolumeId, safe } from "../context/loadContext";
 import { isLocalUrl, providerForUrl } from "../provider/presets";
 import type { LlmSettings } from "../settings";
 import { CHAT_TOOLS, toolsWhere, type ToolContext } from "../tools";
@@ -63,13 +63,15 @@ async function measure(ctx: ToolContext): Promise<Measured> {
     }
   };
   const punched = ctx.dataset.stages.some((s) => s.name === "braggpunched" && s.exists);
-  const [describe, all, texture, coverage, symmetry, grains] = await Promise.all([
+  const [describe, all, texture, coverage, symmetry, grains, ub] = await Promise.all([
     run("describe_dataset"),
     run("assess_stage", { stage: "all" }),
     run("texture_check"),
     run("qmax_coverage"),
     dpdfVolumeId(ctx.dataset) ? run("symmetry_check") : Promise.resolve(none),
     punched ? run("grain_check") : Promise.resolve(none),
+    // The UB, on the raw volume, so the report's goal names a turned UB as {{achieved}} does (Q11).
+    hklVolumeId(ctx.dataset) ? run("ub_check") : Promise.resolve(none),
   ]);
   const stage = (k: string): Obj | null => {
     const s = all.result?.[k];
@@ -86,8 +88,9 @@ async function measure(ctx: ToolContext): Promise<Measured> {
     coverage: coverage.result,
     symmetry: symmetry.result,
     grains: grains.result,
+    ub: ub.result,
     // What the tools judged, which the report's verdicts read (verdicts/readers.ts).
-    outcomes: [all, texture, coverage, symmetry, grains].flatMap((r) => r.outcomes),
+    outcomes: [all, texture, coverage, symmetry, grains, ub].flatMap((r) => r.outcomes),
   };
 }
 

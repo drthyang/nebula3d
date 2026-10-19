@@ -28,7 +28,7 @@ import {
 } from "../verdicts/readers";
 import { D17_REPEAT_POINTER_READS_AS_A_RESULT, D18_REPORT_JUDGES_STAGE_NUMBERS } from "../verdicts/recorded";
 import { D15_PDF_PASSES_UNMEASURED, D16_UB_UNMEASURED_READS_RIGHT, D5_PROTECTED_SHARP_PEAKS_COUNT, D6_PDF_READS_ROUNDED_WEIGHT } from "../verdicts/rules";
-import { COVERAGE, GRAIN, GRID_STAGES, STAGE_VARIANTS, SYMMETRY, TEXTURE, type GridStage } from "./verdictGrid";
+import { COVERAGE, GRAIN, GRID_STAGES, STAGE_VARIANTS, SYMMETRY, TEXTURE, UB, type GridStage } from "./verdictGrid";
 
 let n = 0;
 const step = (name: string, result: unknown, args: Record<string, unknown> = {}): AgentStep => ({
@@ -311,6 +311,7 @@ function replyOf(m: Measured): AgentStep[] {
     ["qmax_coverage", m.coverage],
     ["symmetry_check", m.symmetry],
     ["grain_check", m.grains],
+    ["ub_check", m.ub],
   ];
   return [
     ...(Object.keys(stages).length ? [step("assess_stage", stages, { stage: "all" })] : []),
@@ -334,6 +335,7 @@ function cases(): { id: string; m: Measured; differs?: Rule }[] {
   for (const x of SYMMETRY) out.push({ id: `symmetry ${x.id}`, m: { ...PASSING, symmetry: x.m } });
   for (const x of TEXTURE) out.push({ id: `texture ${x.id}`, m: { ...PASSING, texture: x.m } });
   for (const x of GRAIN) out.push({ id: `grain ${x.id}`, m: { ...PASSING, grains: x.m } });
+  for (const x of UB) out.push({ id: `ub ${x.id}`, m: { ...PASSING, ub: x.m } });
   out.push({ id: "no ΔPDF evaluation, the coverage too far by weight", m: { ...PASSING, pdf: null, coverage: COVERAGE[1].m } });
   out.push({ id: "no ΔPDF evaluation, the symmetry not kept", m: { ...PASSING, pdf: null, symmetry: SYMMETRY[1].m } });
   out.push({ id: "no ΔPDF, coverage or symmetry", m: { ...PASSING, pdf: null, coverage: null, symmetry: null } });
@@ -353,6 +355,12 @@ describe("the chat's achieved and the report's, on the same measurements", () =>
       const report = verdicts({ report: m }).achieved?.achieved ?? null;
       if (differs) expect(report, `${id} (${differs})`).not.toBe(chat);
       else expect(report, id).toBe(chat);
+    }
+  });
+
+  it("name the same data problems, the report's run of ub_check included (Q11, 2.4.11)", () => {
+    for (const { id, m } of cases()) {
+      expect(verdicts({ report: m }).achieved?.dataProblems, id).toEqual(chatOf(m)?.dataProblems ?? []);
     }
   });
 });

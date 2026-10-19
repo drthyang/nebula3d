@@ -92,6 +92,7 @@ export interface Measured {
   coverage?: Record<string, unknown> | null;
   symmetry?: Record<string, unknown> | null;
   grains?: Record<string, unknown> | null;
+  ub?: Record<string, unknown> | null; // ub_check's result (Q11): the UB's data problems in the goal
   // The checks' outcomes the tools judged in the measurement pass (collect.ts):
   // the report's verdicts read them, else judge the results above.
   outcomes?: Outcome[];
