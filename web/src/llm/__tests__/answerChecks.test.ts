@@ -78,13 +78,13 @@ describe("contradicting the tools' computed verdicts", () => {
   it("catches a stage called clean that the rule says needs attention, computing the verdict when the result lacks it", () => {
     expect(contradictions("The punch removed every Bragg peak; nothing is left at the nodes.", [punchMissed]).map((t) => t.id)).toEqual(["punch"]);
     expect(contradictions("The punch missed 12 peaks at nodes.", [punchMissed])).toEqual([]);
-    const judged = step("assess_stage", { stage: "rings" }, { rings: { verdict: "needs attention" } });
+    const judged = step("assess_stage", { stage: "rings" }, { rings: { verdict: "needs attention", max_ring_left: 0.12, max_ring_dent: 0 } });
     expect(contradictions("Ring removal: clean.", [judged]).map((t) => t.id)).toEqual(["rings"]);
     expect(contradictions("No ring is left.", [judged]).map((t) => t.id)).toEqual(["rings"]);
   });
 
   it("holds a 3D-ΔPDF called sound to the stage's verdict, and reads a feature as no verdict", () => {
-    const pdf = step("assess_stage", { stage: "pdf" }, { pdf: { verdict: "needs attention" } });
+    const pdf = step("assess_stage", { stage: "pdf" }, { pdf: { verdict: "needs attention", back_fft_pearson_r_even: 0.97 } });
     expect(contradictions("The 3D-ΔPDF meets its goal.", [pdf]).map((t) => t.id)).toEqual(["pdf"]);
     expect(verdictsIn("The 3D-ΔPDF shows a positive peak at 2.9 Å.").has("pdf")).toBe(false);
     expect(verdictsIn("The ΔPDF keeps its six-fold symmetry.").has("pdf")).toBe(false);
@@ -305,7 +305,7 @@ describe("the checks judge what the tools found, and nothing the assistant said"
     const residuals = Array.from({ length: 90 }, (_, i) => ({ at: 1 + i / 10, residual_fraction: 0.1, noise_fraction: 0.05, significant: true, ring: false }));
     const long: AgentTool = {
       ...assess,
-      run: async () => ({ result: { rings: { verdict: "needs attention", per_plane: { hk0: { ring_residuals: residuals } }, goal: "g".repeat(1500) } }, summary: "rings judged" }),
+      run: async () => ({ result: { rings: { verdict: "needs attention", max_ring_left: 0.1, max_ring_dent: 0, per_plane: { hk0: { ring_residuals: residuals } }, goal: "g".repeat(1500) } }, summary: "rings judged" }),
     };
     script([[{ toolCalls: [call] }], [{ content: "No ring is left." }], [{ content: "" }]]);
     const r = await runAgent({ messages: question, tools: [long], ctx, settings, signal: new AbortController().signal });
@@ -365,6 +365,17 @@ describe("the newest current result, as {{achieved}} reads it (D7, 2.4.7)", () =
     expect(contradictions(sound, [short, missing]).map((t) => t.id)).toEqual(["pdf"]); // it passed over "short" before 2.4b.3
     expect(verdicts({ reply: [missing] }).checks.pdf).toBeUndefined();
     expect(verdicts({ reply: [missing] }).achieved).toBeNull();
+  });
+
+  it("judges a stage from its numbers, whatever label a recording gives it (D18, 2.4b.3)", () => {
+    // Recordings whose labels the numbers do not give: "needs attention" over no ring left, "meets its goal" over a ring left.
+    const passing = step("assess_stage", { stage: "rings" }, { rings: { verdict: "needs attention", max_ring_left: 0, max_ring_dent: 0 } });
+    const failing = step("assess_stage", { stage: "rings" }, { rings: { verdict: "meets its goal", max_ring_left: 0.12, max_ring_dent: 0 } });
+    expect(contradictions(clean, [passing])).toEqual([]); // sent back on the label before 2.4b.3
+    expect(contradictions(clean, [failing]).map((t) => t.id)).toEqual(["rings"]);
+    expect([passing, failing].map((s) => verdicts({ reply: [s] }).achieved?.stages.rings)).toEqual(["pass", "attention"]);
+    // A label without its numbers judges nothing.
+    expect(verdicts({ reply: [step("assess_stage", { stage: "rings" }, { rings: { verdict: "needs attention" } })] }).checks.rings).toBe("info");
   });
 
   it("judges a stage from its numbers where its recorded words are no label (D12, 2.4b.3)", () => {

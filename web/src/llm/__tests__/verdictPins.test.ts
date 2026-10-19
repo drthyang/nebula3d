@@ -26,7 +26,7 @@ import {
   D9_REPORT_PDF_CARD_WITHOUT_EVALUATION,
   READS,
 } from "../verdicts/readers";
-import { D17_REPEAT_POINTER_READS_AS_A_RESULT, D18_REPORT_JUDGES_STAGE_NUMBERS } from "../verdicts/recorded";
+import { D17_REPEAT_POINTER_READS_AS_A_RESULT, D18_REPLY_TRUSTS_RECORDED_LABEL } from "../verdicts/recorded";
 import { D15_PDF_PASSES_UNMEASURED, D16_UB_UNMEASURED_READS_RIGHT, D5_PROTECTED_SHARP_PEAKS_COUNT, D6_PDF_READS_ROUNDED_WEIGHT } from "../verdicts/rules";
 import { COVERAGE, GRAIN, GRID_STAGES, STAGE_VARIANTS, SYMMETRY, TEXTURE, UB, type GridStage } from "./verdictGrid";
 
@@ -263,11 +263,15 @@ describe("the disagreements found beyond D1–D10, kept and named", () => {
     expect(verdicts({ report: { ...PASSING, texture: TEXTURE[1].m } }).checks.backfill).toBe("attention");
   });
 
-  it("D18: the report judges a stage from its numbers and takes no recorded label; a reply trusts the label", () => {
-    expect(D18_REPORT_JUDGES_STAGE_NUMBERS).toBe(true);
+  it("D18, unified (2.4b.3): a reply judges a stage from its numbers, as the report does, and takes no recorded label", () => {
+    expect(D18_REPLY_TRUSTS_RECORDED_LABEL).toBe(false);
     const labelled = { verdict: "needs attention", max_ring_left: 0, max_ring_dent: 0 };
     expect(verdicts({ report: { ...PASSING, rings: labelled } }).checks.rings).toBe("pass");
-    expect(reply(assess("rings", labelled)).achieved?.stages.rings).toBe("attention");
+    const r = reply(assess("rings", labelled));
+    expect([r.achieved?.stages.rings, r.checks.rings]).toEqual(["pass", "pass"]);
+    // A label without its numbers judges nothing.
+    const bare = reply(assess("rings", { verdict: "needs attention" }));
+    expect([bare.achieved?.stages.rings, bare.checks.rings]).toEqual(["info", "info"]);
     // The outcomes the measurement pass kept come first.
     const said = { check: "rings" as const, kind: "attention" as const, reasons: ["ring left" as const], dataProblems: [], words: "needs attention" };
     expect(verdicts({ report: { ...PASSING, outcomes: [said] } }).checks.rings).toBe("attention");
