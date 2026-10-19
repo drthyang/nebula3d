@@ -1,7 +1,9 @@
 // Characterisation goldens of how an answer's words are read, taken before the
-// answer checks and the graders shared one reader (plan 3.2): over the dev
-// corpus (answerCorpus.ts: the canned dev answers, the scripted replays and
-// the scenario records' answers), for each answer
+// answer checks and the graders shared one reader (plan 3.2) and kept since:
+// the answer checks' reading never moved, and the graders' moved where the
+// commits that gave them the shared reader's rules say. Over the dev corpus
+// (answerCorpus.ts: the canned dev answers, the scripted replays and the
+// scenario records' answers), for each answer
 //
 // - the graders' grades on every dev case of the validation (its detection
 //   checks, D, and its false-alarm checks, F, each a 1 or a 0 in their order)
@@ -84,7 +86,7 @@ async function digest(text: string): Promise<string> {
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
 }
 
-describe("an answer's words, as the graders and the answer checks read them before the shared reader", () => {
+describe("an answer's words, as the graders and the answer checks read them", () => {
   it("reproduce the goldens over the dev corpus", async () => {
     const corpus = await answerCorpus();
     const dev = casesIn("dev");
