@@ -4,9 +4,15 @@
 // check stays true to the measurement, not to a value written here.  Text is
 // judged sentence by sentence, and a sentence that negates (no, not, never,
 // without, …) does not count as asserting what it mentions.
+//
+// The graders read a result as the model read it (`seen`, readings/), and
+// parse it here, apart from the app's own reading of the whole result
+// (`found`): a field only the whole result holds was never shown to the model,
+// and is not credited.
 
 import type { AgentStep } from "../agent";
 import { ANSWER_WORD } from "../answerChecks";
+import { seen } from "../readings";
 import type { Check, EvalRun } from "./harness";
 
 const ok = (detail: string) => ({ pass: true, detail });
@@ -18,10 +24,10 @@ export const NEGATION = /\b(no|not|never|none|nothing|nowhere|neither|nor|withou
 export const calls = (run: EvalRun, name: string): AgentStep[] =>
   run.steps.filter((s) => s.name === name && s.status === "done");
 
-/** A step's result as the model read it (JSON), or null. */
+/** A step's result as the model read it (`seen`), parsed here as JSON, or null. */
 export function result(step: AgentStep): Record<string, unknown> | null {
   try {
-    const v: unknown = JSON.parse(step.result ?? "null");
+    const v: unknown = JSON.parse(seen(step) || "null");
     return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
   } catch {
     return null;

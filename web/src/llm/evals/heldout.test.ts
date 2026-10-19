@@ -11,8 +11,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import type { PipelineContext } from "../context/pipelineContext";
-import { VERDICT_LABEL } from "../report/report";
 import { CHAT_TOOLS } from "../tools";
+import { WORDS } from "../verdicts";
 import { runScenario, transcript, type Scenario } from "./harness";
 import { HELDOUT, HELDOUT_CALLS, HELDOUT_SCENARIOS, TRUTH } from "./heldout";
 import { HOLDOUT_ENV, holdoutOptedIn, loadHeldoutFixture } from "./heldoutFixture";
@@ -207,7 +207,7 @@ describe.runIf(fixture !== null)("the recorded tools, against the faults put in"
   // rule took for rings; none rises in nearly every direction in 3D.
   it("the ring check finds no ring on the clean volume", () => {
     const rings = recorded<Rings>(HELDOUT.clean, "assess_stage", { stage: "rings" }).rings;
-    expect(rings.verdict).toBe(VERDICT_LABEL.pass);
+    expect(rings.verdict).toBe(WORDS.label.pass);
     expect(rings.max_ring_left).toBe(0);
     expect(rings.shells_judged.length).toBeGreaterThan(0);
     expect(rings.shells_judged.some((x) => x.ring)).toBe(false);

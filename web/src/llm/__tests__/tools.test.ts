@@ -10,7 +10,7 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore, type StageRun } from "../tune/tuner";
-import { CHAT_TOOLS, fitResult, MAX_RESULT_CHARS, runToolCall, type AgentTool, type ToolContext } from "../tools";
+import { CHAT_TOOLS, runToolCall, toolsWithSkills, type ToolContext } from "../tools";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -431,13 +431,57 @@ describe("assess_stage", () => {
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
   });
 
+  it("keeps each stage's outcome beside its result, never in it", async () => {
+    evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, max_floor_trend: 0.9, max_floor_span_fraction: 0.9, per_plane: {} });
+    const r = await run("assess_stage", {});
+    // The rings' and the punch's outputs are missing on this dataset: no verdict for them.
+    expect(r.outcomes?.map((o) => [o.check, o.kind, o.reasons[0] ?? null])).toEqual([
+      ["rings", "info", "no output"],
+      ["punch", "info", "no output"],
+      ["backfill", "info", "no output"],
+      ["flatten", "attention", "pedestal"],
+      ["pdf", "info", "nothing to judge"], // a ΔPDF evaluation that measured nothing is not judged (D15)
+    ]);
+    expect(r.text).not.toMatch(/"(outcomes|reasons|dataProblems)"/);
+  });
+
+  it("shows the sharp leftovers on protected planes on their own line, out of the punch's verdict (D5, 2.4.5)", async () => {
+    evaluate.evaluateStage.mockResolvedValue({ leftover_at_nodes: 0, leftover_off_lattice: 3, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3, leftover_off_lattice_broad: 0, leftover_off_lattice_sharp: 3, mean_punched_fraction: 0.03, per_plane: {} });
+    const out = JSON.parse((await runOn(full, "assess_stage", { stage: "punch" })).text);
+    expect(out.punch).toMatchObject({ verdict: "meets its goal", leftover_off_lattice_sharp: 3, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3 });
+    expect(out.punch.goal).toMatch(/sit on protected planes and stay by design/);
+  });
+
   it("keeps the per-plane detail for one stage", async () => {
     evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, per_plane: { hk0: { after_floor_max_sigma: 0.8 } } });
     const out = JSON.parse((await run("assess_stage", { stage: "flatten" })).text);
     expect(out.flatten.per_plane.hk0).toEqual({ after_floor_max_sigma: 0.8 });
     expect(out.flatten.goal).toMatch(/floor/);
   });
+
+  it("says the rings the removal left unconfirmed on its grid, the remedy with the skills on only (G1)", async () => {
+    evaluate.evaluateStage.mockResolvedValue({
+      notice: NOTICE,
+      mean_ring_energy_ratio: 1,
+      max_ring_dent: null,
+      max_ring_left: null,
+      ring_rule: "not judged: grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1",
+      per_plane: {},
+    });
+    const b = JSON.parse((await runOn(full, "assess_stage", { stage: "rings" })).text);
+    expect(b.rings).toMatchObject({ verdict: "not judged", notice: NOTICE });
+    const armC = await runToolCall(call("assess_stage", { stage: "rings" }), CHAT_TOOLS, { dataset: full, datasets: [full], skills: false });
+    const c = JSON.parse(armC.text);
+    expect(c.rings).toMatchObject({ verdict: "not judged", notice: NOTICE_DEFINITION });
+    expect(armC.text).not.toContain("pooled_confirm_rings");
+  });
 });
+
+// The ring removal's notice as the pipeline writes it (nebula3d.pipeline.unconfirmed_rings_notice), and its definition: arm C's.
+const NOTICE_DEFINITION =
+  "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
+const NOTICE = `${NOTICE_DEFINITION} Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.`;
+const call = (name: string, args: object) => ({ id: "c", type: "function" as const, function: { name, arguments: JSON.stringify(args) } });
 
 describe("run_log", () => {
   it("returns the last run's lines, for one stage on request", async () => {
@@ -461,6 +505,22 @@ describe("run_log", () => {
     usePipelineStore.setState({ events: [] });
     expect((await run("run_log", {})).text).toMatch(/no pipeline run in this session yet/);
   });
+
+  it("gives the ring removal's notice whole with the skills on, without its remedy with them off (G1)", async () => {
+    const summary = "pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 0 not (the crystal's own scattering, kept) (of 81/81 planes fitted), removed 0% of |I|";
+    usePipelineStore.setState({
+      running: false,
+      terminal: "done",
+      events: [
+        { type: "progress", stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` },
+        { type: "progress", stage: "punch", status: "done", message: "188 peaks punched" },
+      ],
+    });
+    const b = JSON.parse((await run("run_log", { stage: "rings" })).text);
+    expect(b.lines).toEqual([{ stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` }]);
+    const c = JSON.parse((await runToolCall(call("run_log", {}), CHAT_TOOLS, { ...ctx, skills: false })).text);
+    expect(c.lines.map((l: { message: string }) => l.message)).toEqual([`${summary}. ⚠ ${NOTICE_DEFINITION}`, "188 peaks punched"]);
+  });
 });
 
 describe("qmax_coverage", () => {
@@ -470,19 +530,21 @@ describe("qmax_coverage", () => {
     usePipelineStore.setState({ pdfQMax: "", pdfApod: "", pdfWindowShape: "", pdfWindowSupport: true });
   });
   const check = async () => JSON.parse((await run("qmax_coverage", {})).text);
+  const judged = async () => (await run("qmax_coverage", {})).outcomes?.[0];
 
   it("passes a window tapered to the measured coverage", async () => {
     const out = await check();
     expect(out.full_coverage_q).toBeLessThan(out.box_face_q);
     expect(out.reach_from).toBe("the window is tapered to the measured coverage");
-    expect(out.verdict).toMatch(/^the transform reaches .* inside full coverage/);
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["reach inside coverage"] });
   });
 
   it("flags a window that tapers only at the box faces past the coverage", async () => {
     usePipelineStore.setState({ pdfWindowSupport: false });
     const out = await check();
     expect(out.transform_reach_q).toBe(out.box_face_q);
-    expect(out.verdict).toMatch(/^too far: .* tapers to zero at the box faces/);
+    expect(out.reach_from).toBe("the window tapers to zero at the box faces");
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
   });
 
   it("gives where the raw counts begin and end, the band they allow, and checks a band that is set", async () => {
@@ -505,11 +567,12 @@ describe("qmax_coverage", () => {
 
   it("judges an explicit |Q| band, and a flat window by the box corners", async () => {
     usePipelineStore.setState({ pdfQMax: "0.1" });
-    expect((await check()).verdict).toMatch(/inside full coverage/);
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["reach inside coverage"] });
     usePipelineStore.setState({ pdfQMax: "", pdfApod: "none" });
     const flat = await check();
     expect(flat.transform_reach_q).toBe(6); // the ΔPDF's recorded q_max, the box corner
-    expect(flat.verdict).toMatch(/^too far: .* out to the box corners/);
+    expect(flat.reach_from).toMatch(/out to the box corners$/);
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
   });
 
   it("judges by the window's recorded weight on unmeasured space when the ΔPDF has it", async () => {
@@ -517,9 +580,11 @@ describe("qmax_coverage", () => {
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 1, window_open_weight: 4.1e-6 });
     const clean = await check();
     expect(clean.window_weight_on_unmeasured).toBe(4.1e-6);
-    expect(clean.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window puts 4.1e-6 of its weight/);
+    expect(clean.window_shape).toBe("ellipsoid");
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 1, window_open_weight: 4.1e-6 });
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["window within limit"] });
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 0.04 });
-    expect((await check()).verdict).toMatch(/^too far: the ΔPDF's separable window puts 0.04/);
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
   });
 
   // The dev coverage case (docs/pilot-review.md finding 7): counts cut at
@@ -534,10 +599,13 @@ describe("qmax_coverage", () => {
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
     api.fetchVolumeCoverage.mockResolvedValue(cut);
     await shrunk();
-    const out = await check();
+    const r = await run("qmax_coverage", {});
+    const out = JSON.parse(r.text);
     expect(out.counts_end_inside_box).toBe(true);
-    expect(out.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window \(shrunk to 0\.695 × to fit the coverage\) puts 9\.8e-4/);
-    expect(out.verdict).toMatch(/the raw counts end at 4\.507 Å⁻¹, inside the box \(its nearest face at 6\.444 Å⁻¹\), and no \|Q\| band is set.*the band they allow is 0–4\.5 Å⁻¹/);
+    expect(out.window_scale).toBe(0.695);
+    // The data's problem, and the verdict's note that only the taper keeps the transform on the counts.
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "pass", dataProblems: ["the counts end at 4.507 Å⁻¹, inside the box"] });
+    expect(out.verdict).toMatch(/raw counts end/);
     expect(out.band_check).toMatch(/the counts end at 4\.507 Å⁻¹, inside the box \(face 6\.444 Å⁻¹\): the band they allow is 0–4\.5 Å⁻¹$/);
     // With a band set inside the counts, the band does the work: nothing to add.
     usePipelineStore.setState({ pdfQMin: "0", pdfQMax: "4.5" });
@@ -578,7 +646,7 @@ describe("symmetry_check", () => {
     expect(out.cell).toBe("hexagonal");
     expect(out.symmetry_declared).toBe(true);
     expect(out.holds).toEqual(["two-fold (180°)"]);
-    expect(out.verdict).toMatch(/^not kept: six-fold/);
+    expect(r.outcomes).toMatchObject([{ check: "symmetry", kind: "attention", reasons: ["symmetry broken"], words: out.verdict }]);
     expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xy", 0);
   });
 
@@ -588,7 +656,7 @@ describe("symmetry_check", () => {
     const r = await runOn(full, "symmetry_check", {});
     const out = JSON.parse(r.text);
     expect(out.symmetry_declared).toBe(false);
-    expect(out.verdict).toMatch(/^not judged: the file declares no symmetry/);
+    expect(r.outcomes).toMatchObject([{ check: "symmetry", kind: "info", reasons: ["not declared"], words: out.verdict }]);
     expect(out.ops.length).toBeGreaterThan(0); // the numbers are still there
     expect(r.summary).toBe("no symmetry declared: not judged");
   });
@@ -648,7 +716,8 @@ describe("grain_check", () => {
     expect(out.off_lattice_peaks).toBe(8);
     expect(out.declared_symmetry).toBe("mmm");
     expect(out.near_bragg_nodes).toBe(8);
-    expect(out.verdict).not.toMatch(/^a second grain/);
+    expect(r.outcomes?.[0]).toMatchObject({ check: "grain", words: out.verdict });
+    expect(r.outcomes?.[0].reasons).not.toContain("second grain");
     expect((await run("grain_check", { top: 3 })).text).toMatch(/top must be within \[8, 120\]/);
   });
 
@@ -737,6 +806,24 @@ describe("ub_check", () => {
     expect([out.unexplained, out.origin_shift_rlu]).toEqual([true, null]);
     expect(out.reading).toMatch(/Look at the origin of the HKL grid, or at how \|Q\| was assigned/);
   });
+
+  it("reads the fit whole with the skills on, and without its inference with them off (inference.ts)", async () => {
+    const off = () =>
+      runToolCall({ id: "c", type: "function", function: { name: "ub_check", arguments: "{}" } }, toolsWithSkills(CHAT_TOOLS, false), { ...ctx, skills: false });
+    const reading = async (r: Promise<{ text: string }>) => JSON.parse((await r).text).reading as string;
+    // An origin shift: B names it and what to report; C, what the fit found.
+    api.fetchUbCheck.mockResolvedValue(shifted);
+    const b = await reading(run("ub_check", {}));
+    const tail = ", the HKL origin shifted by about that much, which no UB can make. Report the origin, not the UB.";
+    expect(b.endsWith(`Every peak sits a mean (0.0305, 0.0195, 0.0000) r.l.u. off its node, after the fit as before it: one vector moves them all${tail}`)).toBe(true);
+    expect(await reading(off())).toBe(`${b.slice(0, -tail.length)}.`);
+    // No common vector: B says where to look; C does not.
+    api.fetchUbCheck.mockResolvedValue({ ...shifted, mean_offset_rlu: { ...shifted.mean_offset_rlu, before: [0.002, 0, 0], after: [0.002, 0, 0] } });
+    const b2 = await reading(run("ub_check", {}));
+    const look = " Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.";
+    expect(b2.endsWith(`no UB change explains it.${look}`)).toBe(true);
+    expect(await reading(off())).toBe(b2.slice(0, -look.length));
+  });
 });
 
 describe("dpdf_peaks", () => {
@@ -804,23 +891,39 @@ describe("consistency_details", () => {
 });
 
 describe("texture_check", () => {
-  // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs.
+  // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs,
+  // the nodes 10 voxels apart (±1.5 r.l.u., 0.1 r.l.u. a voxel).
   const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;
-  const hole = (ix: number, iy: number) => ix > 2 && iy > 2 && ix < 18 && iy < 18 && [4, 0, 1].includes(ix % 5) && [4, 0, 1].includes(iy % 5);
-  const slices: Record<string, ReturnType<typeof makeSlice>> = {
-    "demo.ringremoved": makeSlice(21, 21, (_x, _y, ix, iy) => 100 + 4 * noise(ix, iy)),
-    "demo.braggpunched": makeSlice(21, 21, (_x, _y, ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy))),
-    "demo.backfilled": makeSlice(21, 21, (_x, _y, ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? 30 : 0)),
-  };
+  const hole = (ix: number, iy: number) => [4, 5, 6].includes(ix % 10) && [4, 5, 6].includes(iy % 10);
+  const cut = (f: (ix: number, iy: number) => number, half = 1.5) => makeSlice(31, 31, (_x, _y, ix, iy) => f(ix, iy), { half });
+  const stages = (half?: number): Record<string, ReturnType<typeof makeSlice>> => ({
+    "demo.ringremoved": cut((ix, iy) => 100 + 4 * noise(ix, iy), half),
+    "demo.braggpunched": cut((ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy)), half),
+    "demo.backfilled": cut((ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? 30 : 0), half),
+  });
 
   it("flags fills that sit above their rims on every plane", async () => {
+    const slices = stages();
     api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
     const r = await runOn(full, "texture_check", {});
     const out = JSON.parse(r.text);
     expect(out.per_cut).toHaveLength(3);
     expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, above_fraction: 1 });
+    expect(out.per_cut[0].not_judged).toBeUndefined();
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
     expect(r.summary).toMatch(/^systematic fill bias on 3 of 3 cut\(s\)/);
     expect(r.view?.label).toBe("H–K plane at L = 0");
+  });
+
+  it("does not judge cuts whose grid leaves the holes no room for their rims, and says why", async () => {
+    // The same cuts at 0.2 r.l.u. a voxel: the nodes 5 voxels apart, under the 10 a hole reaching one voxel and its rim need.
+    const slices = stages(3);
+    api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
+    const r = await runOn(full, "texture_check", {});
+    const out = JSON.parse(r.text);
+    expect(out.per_cut[0]).toMatchObject({ n_holes: 9, not_judged: expect.stringMatching(/^grid too coarse: the nodes are 5 voxels apart, under 10/), systematic_fill_bias: null });
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+    expect(r.summary).toMatch(/^fill bias not judged · 3 of 3 cut\(s\) not judged: grid too coarse/);
   });
 
   it("needs the punched and backfilled outputs", async () => {
@@ -881,46 +984,5 @@ describe("openView", () => {
     expect(useNavStore.getState().tab).toBe("consistency");
     openView({ view: "execution", label: "the run log" });
     expect(useNavStore.getState().tab).toBe("execution");
-  });
-});
-
-describe("a long result, trimmed to valid JSON", () => {
-  // An assess_stage rings result past the limit: a long goal, long per-plane lists.
-  const residuals = (n: number) => Array.from({ length: n }, (_, i) => ({ at: 1 + i / 10, residual_fraction: 0.1, noise_fraction: 0.05, significant: true, ring: false }));
-  const long = {
-    rings: {
-      verdict: "needs attention",
-      headline: "ring ratio 0.7 · left ≤ 0.4 (h0l, 3.16 Å⁻¹)",
-      max_ring_left: 0.4,
-      per_plane: { hk0: { ring_residuals: residuals(30) }, h0l: { ring_residuals: residuals(30) }, "0kl": { ring_residuals: residuals(30) } },
-      goal: "g".repeat(1500),
-    },
-  };
-
-  it("leaves a result that fits as it is", () => {
-    expect(fitResult({ a: 1 }, 100)).toBe('{"a":1}');
-  });
-
-  it("drops the bulkiest parts first, keeps the verdict, and names what it left out", () => {
-    expect(JSON.stringify(long).length).toBeGreaterThan(MAX_RESULT_CHARS);
-    const text = fitResult(long, MAX_RESULT_CHARS);
-    expect(text.length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
-    const read = JSON.parse(text) as { rings: Record<string, unknown>; left_out: string[] };
-    expect(read.rings.verdict).toBe("needs attention");
-    expect(read.rings.headline).toBe(long.rings.headline);
-    expect(read.rings.max_ring_left).toBe(0.4);
-    expect(read.left_out.length).toBeGreaterThan(0);
-    expect(read.left_out.every((x) => x.startsWith("rings."))).toBe(true);
-  });
-
-  it("hands the whole result back beside the trimmed one", async () => {
-    const big: AgentTool = { name: "big", description: "", parameters: { type: "object", properties: {} }, run: async () => ({ result: long, summary: "big" }) };
-    const r = await runToolCall({ id: "c", type: "function", function: { name: "big", arguments: "{}" } }, [big], ctx);
-    expect(r.ok).toBe(true);
-    expect(() => JSON.parse(r.text)).not.toThrow();
-    expect(r.full).toBe(JSON.stringify(long));
-    const small: AgentTool = { ...big, name: "small", run: async () => ({ result: { a: 1 }, summary: "small" }) };
-    const s = await runToolCall({ id: "c", type: "function", function: { name: "small", arguments: "{}" } }, [small], ctx);
-    expect(s.full).toBeUndefined();
   });
 });

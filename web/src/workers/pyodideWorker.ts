@@ -30,7 +30,9 @@ const post: PostFn = (
 ).postMessage.bind(self);
 
 // Discriminated union for all messages the Worker receives from the main thread.
-type WorkerRequest =
+// Exported as a type only: the replay tests' CPython adapter at this seam
+// (llm/evals/devData/bridgeWorker.ts) carries every one of them.
+export type WorkerRequest =
   | { id: number; type: "boot"; wheelBase: string; mobile?: boolean }
   | { id: number; type: "load_file"; name: string; buffer: ArrayBuffer }
   | { id: number; type: "load_demo" }

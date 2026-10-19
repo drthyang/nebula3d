@@ -322,6 +322,11 @@ def test_volume_ring_isotropy(tmp_path):
     assert body["rule"] == {"direction_share": 0.9, "height_share": 0.15}
     assert [s["is_ring"] for s in body["shells"]] == [True, False]
     assert body["shells"][0]["isotropy"] > 0.9
+    assert body["not_judged"] is None  # 0.1 Å⁻¹ a voxel: 1.6 voxels across 0.16 Å⁻¹
+    # No shell: the grid's own limit alone.
+    alone = client.get(f"/api/volumes/{SLUG}.raw/rings", params={"q": "", "fwhm": ""})
+    assert alone.status_code == 200, alone.text
+    assert (alone.json()["shells"], alone.json()["not_judged"]) == ([], None)
     bad_params = ({"q": "2.0", "fwhm": "0.1,0.1"}, {"q": "x", "fwhm": "0.1"},
                   {"q": "-1", "fwhm": "0.1"}, {"q": "nan", "fwhm": "0.1"},
                   {"q": "2.0", "fwhm": "inf"}, {"q": "inf,2.0", "fwhm": "0.1,0.1"})
@@ -329,11 +334,35 @@ def test_volume_ring_isotropy(tmp_path):
         assert client.get(f"/api/volumes/{SLUG}.raw/rings", params=bad).status_code == 400
 
 
+def test_volume_ring_isotropy_on_a_grid_too_coarse(tmp_path):
+    """/rings on a grid too coarse to judge any ring (0.3 Å⁻¹ a voxel, under one
+    voxel across 0.16 Å⁻¹): not judged, the grid's reason given for the volume
+    and every shell, with shells or none."""
+    from nebula3d.preprocessing.ring_isotropy import grid_too_coarse
+
+    q = np.linalg.norm(np.stack(np.meshgrid(*[np.linspace(-3, 3, 21)] * 3, indexing="ij")), axis=0)
+    vol = HKLVolume.from_arrays(1.0 + np.exp(-0.5 * ((q - 2.0) / 0.06) ** 2), (-3, 3), (-3, 3),
+                                (-3, 3), ub_matrix=np.eye(3))
+    reason = grid_too_coarse(vol)
+    assert reason.startswith("grid too coarse: ")
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    nebula3d.save(vol, tmp_path / "raw" / f"{STEM}.nxs")
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    for q_, fwhm in (("2.0", "0.14"), ("", "")):
+        body = client.get(f"/api/volumes/{SLUG}.raw/rings", params={"q": q_, "fwhm": fwhm}).json()
+        assert body["not_judged"] == reason
+        assert all(s["not_judged"] == reason and not s["is_ring"] for s in body["shells"])
+        assert len(body["shells"]) == len([x for x in q_.split(",") if x])
+
+
 def test_ring_shells_must_be_finite_and_positive():
     # The browser bridge parses /rings requests with the same function.
     assert vol_mod.parse_ring_shells("2.45, 3.66", "0.08,0.08") == [(2.45, 0.08), (3.66, 0.08)]
+    assert vol_mod.parse_ring_shells("", "") == []  # the grid's own limit alone
     many = ",".join(["1"] * 65)
-    for q, fwhm in [("nan", "0.1"), ("2", "inf"), ("-inf", "0.1"), ("2", "0"), ("", ""),
+    for q, fwhm in [("nan", "0.1"), ("2", "inf"), ("-inf", "0.1"), ("2", "0"), ("2", ""),
                     ("2,3", "0.1"), (many, many)]:
         with pytest.raises(ValueError):
             vol_mod.parse_ring_shells(q, fwhm)
@@ -476,6 +505,72 @@ def test_bragg_profile_reads_saved_json(tmp_path):
     assert body["has_profile"] is True
     assert body["fit_covariance"] is True
     assert body["peaks"][0]["width_q"] == [0.12, 0.08, 0.04]
+
+
+def test_ring_diagnostics_missing_returns_empty_state(env):
+    client, _ = env
+    r = client.get(f"/api/rings/{SLUG}/diagnostics")
+    assert r.status_code == 200
+    assert r.json() == {
+        "dataset_id": SLUG,
+        "diagnostics_path": r.json()["diagnostics_path"],
+        "has_diagnostics": False,
+        "status": None,
+        "unconfirmed_at_grid": None,
+    }
+    assert r.json()["diagnostics_path"].endswith("_ringremoved_diagnostics.json")
+    assert client.get("/api/rings/nope/diagnostics").status_code == 404
+
+
+def test_ring_diagnostics_give_the_rings_left_unconfirmed_on_the_grid(tmp_path):
+    """The ring removal's record (G1): the rings the pooled model detected and
+    could not confirm on its grid, as its run log gives them, from the
+    diagnostics the ring stage writes. The demo's Al rings on 0.2 r.l.u. a
+    voxel (0.3 Å⁻¹). Diagnostics older than the volume describe a removal
+    that no longer exists, and give nothing; a removal that left no shell
+    unconfirmed gives none."""
+    import os
+
+    from nebula3d.demo import DemoModel, demo_volume
+    from nebula3d.pipeline import RingParams, remove_rings, unconfirmed_rings_notice
+    from nebula3d.preprocessing import write_global_ring_diagnostics
+
+    (tmp_path / "raw").mkdir()
+    proc = tmp_path / "processed"
+    proc.mkdir()
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=proc)
+    vol = demo_volume(41, seed=3, model=DemoModel(sro_amp=0.09), dtype=np.float32)
+    lines: list[str] = []
+    out = remove_rings(vol, RingParams(ring_model="pooled"),
+                       progress=lambda stage, status, frac, msg: lines.append(msg))
+    nebula3d.save(out, paths.ringremoved)
+    write_global_ring_diagnostics(getattr(out, "_ring_diagnostics"), paths.ring_diagnostics_json)
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+
+    body = client.get(f"/api/rings/{SLUG}/diagnostics").json()
+    assert body["has_diagnostics"] is True and body["status"] == "no_confirmed_rings"
+    left = body["unconfirmed_at_grid"]
+    assert left["count"] == len(left["q_centers"]) > 0
+    assert left["needs"] == "1 voxel across 0.16 Å⁻¹"
+    assert lines[-1].endswith(f". ⚠ {left['notice']}")
+    assert left["notice"] == unconfirmed_rings_notice(left["count"], left["needs"])
+    assert " ring candidate" in left["notice"] and "not confirmed at this grid" in left["notice"]
+
+    written = paths.ring_diagnostics_json.stat().st_mtime
+    os.utime(paths.ringremoved, (written + 10, written + 10))
+    stale = client.get(f"/api/rings/{SLUG}/diagnostics").json()
+    assert stale["has_diagnostics"] is False and stale["unconfirmed_at_grid"] is None
+
+    paths.ring_diagnostics_json.write_text(json.dumps({"algorithm": "pooled", "status": "fitted"}),
+                                           encoding="utf-8")
+    os.utime(paths.ring_diagnostics_json, (written + 20, written + 20))
+    none_left = client.get(f"/api/rings/{SLUG}/diagnostics").json()
+    assert none_left["has_diagnostics"] is True and none_left["status"] == "fitted"
+    assert none_left["unconfirmed_at_grid"] is None
+
+    paths.ring_diagnostics_json.write_text("{not json", encoding="utf-8")
+    os.utime(paths.ring_diagnostics_json, (written + 30, written + 30))
+    assert client.get(f"/api/rings/{SLUG}/diagnostics").status_code == 500
 
 
 @pytest.mark.parametrize("plane,value", [("hk", 0.0), ("0kl", 0.0), ("h0l", 1.0)])
@@ -647,9 +742,47 @@ def test_dpdf_features_lists_extrema_in_angstrom_and_lattice_units(dpdf_env):
             # lattice units to 4 decimals: within 0.5e-4 of a cell edge (24.7 Å)
             assert [u[0] * 5.8, u[1] * 10.4, u[2] * 24.7] == pytest.approx(v, abs=2e-3)
             assert g["length"] >= f["origin_radius"]
+    # No raw file, so no symmetry declared: grouped by sign, length and size.
+    assert f["grouped_by"] == "sign, length and size (no symmetry declared)"
+    assert all(g["multiplicity"] is None and 1 <= g["mean_size_sigma"] <= g["size_sigma"]
+               for g in f["groups"])
     url = f"/api/deltapdf/{SLUG}.delta_pdf/features"
     assert client.get(url, params={"min_sigma": 0}).status_code == 422
     assert client.get(url, params={"limit": 0}).status_code == 422
+
+
+@pytest.mark.parametrize("declared", [True, False])
+def test_dpdf_features_are_grouped_by_the_symmetry_the_raw_file_declares(tmp_path, declared):
+    """The raw file declares m-3m (a NeXus Viewer export's symmetry and
+    symmetry_ops): the ΔPDF's peaks on two m-3m orbits, their copies unequal,
+    are two entries, each of its multiplicity. Declaring nothing, they are
+    grouped by sign, length and size, which splits the unequal copies."""
+    from tests.test_dpdf_features import M3M, write_declared_dataset
+
+    write_declared_dataset(tmp_path, STEM, ("m-3m", M3M) if declared else None)
+    dpdf_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    r = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/features", params={"min_sigma": 8, "limit": 30})
+    assert r.status_code == 200, r.text
+    f = r.json()
+    assert f["n_extrema"] == 27  # 24 + 3, one per ± pair
+    if not declared:
+        assert f["grouped_by"] == "sign, length and size (no symmetry declared)"
+        assert len(f["groups"]) > 2 and sum(g["n"] for g in f["groups"]) == 27
+        return
+    assert f["grouped_by"] == "declared symmetry (m-3m: 48 operations, r ≡ −r)"
+    assert [(g["sign"], g["n"], g["multiplicity"]) for g in f["groups"]] == [(1, 24, 24),
+                                                                             (-1, 3, 3)]
+    general, axial = f["groups"]
+    assert general["size_sigma"] == max(general["sizes_sigma"]) > general["mean_size_sigma"]
+    # The representative first, in Å and in lattice units; ⟨1 0 0⟩ at a = 4 Å.
+    assert general["vectors_rlu"][0] == pytest.approx([x / 4.0 for x in general["vectors"][0]],
+                                                      abs=1e-4)
+    for u in general["vectors_rlu"]:
+        assert sorted(abs(x) for x in u) == pytest.approx([0.25, 0.5, 0.75], abs=0.03)
+    for u in axial["vectors_rlu"]:
+        assert sorted(abs(x) for x in u) == pytest.approx([0.0, 0.0, 1.0], abs=0.03)
+    assert axial["length"] == pytest.approx(4.0, abs=0.05)
 
 
 def test_dpdf_bad_plane_400(dpdf_env):
@@ -1047,3 +1180,194 @@ def test_job_manager_runs_pipeline_in_process(tmp_path):
     assert paths.delta_pdf.exists()
     stages_done = {e["stage"] for e in job.events if e.get("status") == "done"}
     assert {"backfill", "flatten", "pdf"} <= stages_done
+
+
+def write_flatten_stages(root, settings=None):
+    """A dataset under *root* whose backfilled and flattened stages exist:
+    a uniform diffuse on a constant and a Q² pedestal, flattened as the
+    pipeline's flatten stage writes it (constant only by default, so the Q²
+    stays; its *settings* recorded).  Returns both volumes."""
+    import dataclasses
+
+    from nebula3d.pipeline import FlattenParams, _write_flatten_settings, flatten
+
+    settings = settings or FlattenParams()
+    rng = np.random.default_rng(11)
+    filled = HKLVolume.from_arrays(np.zeros((33, 35, 37)), (-3, 3), (-3, 3), (-3, 3),
+                                   ub_matrix=UB)
+    q = filled.q_magnitude()
+    filled.data[...] = 0.5 + 0.03 * q ** 2 + 0.2 * rng.random(q.shape)
+    filled.mask &= q < 4.5
+    # A copy: in low-memory mode the flatten subtracts in place over its input.
+    flat = flatten(dataclasses.replace(filled, data=filled.data.copy()), settings)
+    for name in ("raw", "processed"):
+        (root / name).mkdir(exist_ok=True)
+    paths = pipeline_paths(root / "raw" / f"{STEM}.nxs", proc_dir=root / "processed")
+    nebula3d.save(filled, paths.ringremoved)
+    nebula3d.save(filled, paths.backfilled)
+    nebula3d.save(flat, paths.flattened)
+    _write_flatten_settings(paths.flattened, settings)
+    return filled, flat
+
+
+def test_volume_shell_floors(tmp_path, monkeypatch):
+    """/shell-floors: the flattened stage's floors over the whole volume, its
+    input's on the same shells (the flatten's own levels) and the level."""
+    from nebula3d.preprocessing import flatten_radial_background, shell_floors
+
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # whatever ran before
+    filled, flat = write_flatten_stages(tmp_path)
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    r = client.get(f"/api/volumes/{SLUG}.flattened/shell-floors")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] == f"{SLUG}.flattened" and body["before_id"] == f"{SLUG}.backfilled"
+    assert (body["q_step"], body["percentile"], body["min_count"]) == (0.05, 25.0, 20)
+    assert body["flatten"]["fit_q_range"] == [0.8, 10.0] and body["flatten"]["q2_term"] is False
+    want = shell_floors(flat, before=filled)
+
+    def listed(a):
+        return [None if not np.isfinite(x) else float(x) for x in a]
+
+    assert body["floors"] == listed(want.floors)
+    assert body["floors_before"] == listed(flatten_radial_background(filled).raw_levels)
+    assert body["medians_before"] == listed(want.medians_before)
+    assert body["counts"] == want.counts.tolist() and body["totals"] == want.totals.tolist()
+    assert len(body["q_edges"]) == len(body["centres"]) + 1 == want.centres.size + 1
+    assert body["level"] == float(want.level)
+    # The flatten took the constant: the floors after it rise with the Q².
+    floors = [f for f in body["floors"] if f is not None]
+    assert floors[-1] - floors[0] > 0.3
+    # Another stage alone, and the settings as asked.
+    alone = client.get(f"/api/volumes/{SLUG}.backfilled/shell-floors",
+                       params={"percentile": 10, "q_step": 0.1, "min_count": 5}).json()
+    assert alone["before_id"] is None and alone["floors_before"] is None
+    assert (alone["q_step"], alone["percentile"], alone["min_count"]) == (0.1, 10.0, 5)
+    assert alone["level_count"] == int((filled.mask & np.isfinite(filled.data)).sum())
+    assert alone["flatten"] is None  # the backfilled stage records no flatten
+    for bad in ({"percentile": 101}, {"q_step": 0}, {"min_count": 0}, {"q_step": 1e-5}):
+        assert client.get(f"/api/volumes/{SLUG}.flattened/shell-floors",
+                          params=bad).status_code == 422
+    assert client.get("/api/volumes/nope.flattened/shell-floors").status_code == 404
+
+
+def test_volume_shell_floors_take_the_runs_own_settings(tmp_path, monkeypatch):
+    """A flattened stage is measured with the settings its flatten recorded,
+    here the 20th percentile, so the input's floors are that flatten's own
+    levels; a setting asked for wins, and a stage without them takes the
+    flatten's defaults."""
+    from nebula3d.pipeline import FlattenParams
+    from nebula3d.preprocessing import flatten_radial_background
+
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # whatever ran before
+    run = FlattenParams(floor_percentile=20.0, q2_term=True, fit_q_range=(1.0, 4.0))
+    filled, _flat = write_flatten_stages(tmp_path, run)
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    body = client.get(f"/api/volumes/{SLUG}.flattened/shell-floors").json()
+    assert body["percentile"] == 20.0
+    assert body["flatten"]["floor_percentile"] == 20.0
+    assert body["flatten"]["fit_q_range"] == [1.0, 4.0] and body["flatten"]["q2_term"] is True
+    levels = flatten_radial_background(filled, floor_percentile=20.0).raw_levels
+    assert body["floors_before"] == [None if not np.isfinite(x) else float(x) for x in levels]
+    asked = client.get(f"/api/volumes/{SLUG}.flattened/shell-floors",
+                       params={"percentile": 25}).json()
+    assert asked["percentile"] == 25.0 and asked["flatten"] == body["flatten"]
+    alone = client.get(f"/api/volumes/{SLUG}.backfilled/shell-floors").json()
+    assert alone["percentile"] == 25.0 and alone["flatten"] is None
+
+
+def write_texture_stages(root, record=True, **lattice):
+    """A dataset under *root* whose punched and backfilled stages exist:
+    holes punched on a lattice of nodes and filled as
+    ``tests.test_fill_texture._lattice(**lattice)`` builds them, the punch's
+    record written into the punched stage unless *record* is False (a file
+    from before the punch recorded its holes).  Returns the lattice."""
+    import dataclasses
+
+    from nebula3d.pipeline import _write_punched
+    from tests.test_fill_texture import _lattice
+
+    lat = _lattice(**lattice)
+    for name in ("raw", "processed"):
+        (root / name).mkdir(exist_ok=True)
+    paths = pipeline_paths(root / "raw" / f"{STEM}.nxs", proc_dir=root / "processed")
+    nebula3d.save(dataclasses.replace(lat.punched, mask=np.ones(lat.record.shape, bool)),
+                  paths.ringremoved)
+    nebula3d.save(lat.punched, paths.braggpunched)
+    if record:
+        _write_punched(paths.braggpunched, lat.record)
+    nebula3d.save(lat.filled, paths.backfilled)
+    return lat
+
+
+def test_volume_texture(tmp_path, monkeypatch):
+    """/texture: the backfilled stage's fills against the punched stage's
+    holes, read from the punch's record, judged by texture.ts's rule with
+    their 3-D rims: fill_texture's numbers, the holes farthest outside their
+    range listed first, the rule's limits as asked."""
+    from nebula3d.analysis import fill_texture
+
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # whatever ran before
+    lat = write_texture_stages(tmp_path, n=61, bias=0.5, share=0.8)
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    url = f"/api/volumes/{SLUG}.backfilled/texture"
+    r = client.get(url)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] == f"{SLUG}.backfilled" and body["punched_id"] == f"{SLUG}.braggpunched"
+    assert body["holes_from"] == "punch_record" and (body["rim"], body["min_rim"]) == (4, 8)
+    assert ((body["min_sigma"], body["one_way"], body["min_holes"], body["floor"])
+            == (0.5, 0.75, 5, 0.2))
+    want = fill_texture(lat.punched, lat.filled, punch_record=lat.record)
+    for name in ("n_holes", "n_judged", "judged", "median_fill_bias_sigma",
+                 "median_fill_bias_level", "above_fraction", "below_fraction",
+                 "above_floor_fraction", "below_floor_fraction", "systematic_fill_bias"):
+        assert body[name] == getattr(want, name), name
+    assert body["n_holes"] == 27 and body["systematic_fill_bias"]
+    # The 20 holes farthest outside their range, in units of their level.
+    rows = body["holes"]
+    assert len(rows) == 20
+    sizes = [abs(row["bias_level"]) for row in rows]
+    assert sizes == sorted(sizes, reverse=True) and sizes[-1] > 0.45
+    h = want.holes
+    for row in rows:
+        i = row["index"]
+        assert row["centre_hkl"] == [round(float(v), 6) for v in h.centre_hkl[i]]
+        assert (row["voxels"], row["rim_voxels"]) == (int(h.voxels[i]), int(h.rim_voxels[i]))
+        for name in ("fill", "level", "sigma", "slope", "edge", "peaked", "bias",
+                     "bias_sigma", "bias_level"):
+            assert row[name] == float(getattr(h, name)[i]), name
+        assert row["not_judged"] is None
+    # Every hole, none, and the rule's limits as asked.
+    assert len(client.get(url, params={"limit": 1000}).json()["holes"]) == 27
+    assert client.get(url, params={"limit": 0}).json()["holes"] == []
+    high = client.get(url, params={"floor": 0.6, "one_way": 0.5, "min_holes": 3}).json()
+    assert (high["floor"], high["one_way"], high["min_holes"]) == (0.6, 0.5, 3)
+    assert not high["systematic_fill_bias"]                   # the median is half the level
+    assert high["median_fill_bias_level"] == body["median_fill_bias_level"]
+    for bad in ({"limit": -1}, {"limit": 100_001}, {"one_way": 1.5}, {"min_holes": 0},
+                {"floor": -0.1}, {"min_sigma": -1}, {"floor": "inf"}):
+        assert client.get(url, params=bad).status_code == 422, bad
+    assert client.get(f"/api/volumes/{SLUG}.braggpunched/texture").status_code == 400
+    assert client.get("/api/volumes/nope.backfilled/texture").status_code == 404
+
+
+def test_volume_texture_without_a_punch_record(tmp_path, monkeypatch):
+    """A punched stage written before the punch recorded its holes: they are
+    texture.ts's own (unmeasured when punched, measured when filled), the
+    same holes here; without the punched stage there is nothing to read."""
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # whatever ran before
+    write_texture_stages(tmp_path, record=False, n=61, bias=0.5, share=0.8)
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    url = f"/api/volumes/{SLUG}.backfilled/texture"
+    body = client.get(url).json()
+    assert body["holes_from"] == "masks" and body["n_holes"] == 27
+    assert body["systematic_fill_bias"]
+    assert body["above_floor_fraction"] == pytest.approx(0.8, abs=0.02)
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=tmp_path / "processed")
+    paths.braggpunched.unlink()
+    assert client.get(url).status_code == 404

@@ -6,7 +6,7 @@
 // reply says why instead. Cloud models' windows are far longer than this app's
 // requests.
 
-import { isOllamaUrl, loadedContext, ollamaContext, type ChatMessage, type ToolSpec } from "./client";
+import { isOllamaUrl, loadedContext, ollamaContext, TOOLS_CONTEXT, type ChatMessage, type ToolSpec } from "./client";
 import { isLocalUrl } from "./presets";
 import { baseTokens, estimateTokens, MIN_REPLY, REPLY_RESERVE } from "./tokens";
 
@@ -21,11 +21,13 @@ export interface WindowPlan {
 
 const n = (x: number): string => x.toLocaleString("en-US");
 
-// The context lengths worth loading a model with: a power of two, 32k at least
-// (a full assessment reaches about 18k tokens).
+// The context length the refusal below suggests loading a model with: 48k at
+// least (TOOLS_CONTEXT: a full assessment that reads two skills reaches about
+// 45.6k tokens with room for the reply, tokenBudget.test.ts), then a power of
+// two. Text only: nothing here sizes or refuses a request by it.
 const suggestion = (prompt: number, max: number | null): number => {
-  let size = 32768;
-  while (size < prompt + REPLY_RESERVE) size *= 2;
+  let size = TOOLS_CONTEXT;
+  for (let next = 65536; size < prompt + REPLY_RESERVE; next *= 2) size = next;
   return max != null ? Math.min(size, max) : size;
 };
 

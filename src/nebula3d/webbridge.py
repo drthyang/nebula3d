@@ -25,6 +25,8 @@ Workflow (one dataset per browser session):
     run(stages, params_json, …)   → run_pipeline (streams per-stage progress)
     datasets_json()               → dataset + per-stage status (for the viewers)
     volume_slice / dpdf_slice / consistency_slice → binary envelopes
+    dataset_regrid_json(id, …)    → regrid a raw volume onto its refined UB, as a
+                                    new dataset beside it (registered like a load)
 
 All file I/O happens in Pyodide's in-memory filesystem; nothing is uploaded.
 """
@@ -62,6 +64,8 @@ from nebula3d.preprocessing import write_global_ring_diagnostics
 from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
 from nebula3d.server import deltapdf as _dpdf
+from nebula3d.server import regrid as _regrid
+from nebula3d.server import rings as _rings
 from nebula3d.server import tuning as _tune
 from nebula3d.server import volumes as _vol
 from nebula3d.server.config import ServerConfig
@@ -83,7 +87,10 @@ __all__ = [
     "volume_slice",
     "volume_coverage_json",
     "volume_ub_check_json",
+    "dataset_regrid_json",
     "volume_ring_isotropy_json",
+    "volume_shell_floors_json",
+    "volume_texture_json",
     "dpdf_meta_json",
     "dpdf_slice",
     "dpdf_features_json",
@@ -91,6 +98,7 @@ __all__ = [
     "consistency_check_json",
     "consistency_slice",
     "bragg_profile_json",
+    "ring_diagnostics_json",
     "save_dpdf",
 ]
 
@@ -1089,6 +1097,18 @@ def bragg_profile_json(dataset_id: str) -> str:
     })
 
 
+def ring_diagnostics_json(dataset_id: str) -> str:
+    """The ring removal's record (mirrors GET /api/rings/{id}/diagnostics): the
+    ring candidates it detected and could not confirm on its grid, which it did
+    not subtract.  The ring stage writes ``*_diagnostics.json`` next to its output
+    volume (here the Pyodide virtual FS), so this only re-reads a small JSON
+    file, through the same helper as the server (:mod:`nebula3d.server.rings`)."""
+    out = _rings.saved_ring_diagnostics(_require_cfg(), dataset_id)
+    if out is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    return _json(out)
+
+
 def _resolve(volume_id: str, kind: str) -> _ds.StageStatus:
     cfg = _require_cfg()
     stage = _ds.resolve_volume(cfg, volume_id)
@@ -1132,16 +1152,56 @@ def volume_coverage_json(volume_id: str) -> str:
     return _json({**m, "id": volume_id})
 
 
+def _parse_cell(cell: str) -> tuple[int, int, int]:
+    """``"2,2,2"`` → (2, 2, 2): the Bragg nodes' spacing, three positive integers."""
+    try:
+        nodes = tuple(int(x) for x in str(cell).split(","))
+    except ValueError as exc:
+        raise ValueError(f"cell must be three positive integers, not {cell!r}") from exc
+    if len(nodes) != 3 or min(nodes) < 1:
+        raise ValueError(f"cell must be three positive integers, not {cell!r}")
+    return nodes[0], nodes[1], nodes[2]
+
+
 def volume_ub_check_json(volume_id: str, cell: str = "1,1,1",
                          q_max: float | None = None) -> str:
     """Whether an HKL stage's UB puts its Bragg peaks on their nodes (mirrors
     GET /api/volumes/{id}/ub)."""
     stage = _resolve(volume_id, "hkl")
-    nodes = tuple(int(x) for x in str(cell).split(","))
-    if len(nodes) != 3 or min(nodes) < 1:
-        raise ValueError(f"cell must be three positive integers, not {cell!r}")
-    m = _vol.volume_ub_check(stage.path, nodes, None if q_max is None else float(q_max))  # type: ignore[arg-type]
+    nodes = _parse_cell(cell)
+    m = _vol.volume_ub_check(stage.path, nodes, None if q_max is None else float(q_max))
     return _json({**m, "id": volume_id})
+
+
+def dataset_regrid_json(dataset_id: str, cell: str = "1,1,1", q_max: float | None = None,
+                        symmetrise: bool = False) -> str:
+    """Regrid a dataset's raw volume onto its refined UB, as a new dataset
+    beside it (mirrors POST /api/datasets/{id}/regrid: the same fields, and a
+    refusal as data, ``written`` false).
+
+    The new file is written into the workspace's ``raw/``, where
+    :func:`load_input` puts an uploaded volume, and registered as an input the
+    same way (:func:`select_input`): the dataset listing shows it, and a run
+    can reduce it.  It lives in Pyodide's in-memory filesystem only, like
+    every file here: a restarted worker loses it, and :func:`select_input`
+    then reports ``false`` for it.  The browser computes in float32, as its
+    runs do, so the volume is loaded and written in float32.
+    """
+    cfg = _require_cfg()
+    if _ds.find_dataset(cfg, dataset_id) is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    nodes = _parse_cell(cell)
+    limit = None if q_max is None else float(q_max)
+    if limit is not None and not (math.isfinite(limit) and limit > 0):
+        raise ValueError(f"q_max must be positive, not {q_max!r}")
+    # The regrid reads the volume itself and holds it twice (source and
+    # regridded): drop the viewers' cached volumes first, as a run does.
+    _clear_caches()
+    out = _regrid.regrid_dataset_out(cfg, dataset_id, nodes, limit, bool(symmetrise),
+                                     dtype=np.dtype(_BROWSER_PRECISION))
+    if out["written"] and json.loads(select_input(out["dataset_id"])) is not True:
+        raise RuntimeError(f"{out['file']} was written but is not listed as a dataset")
+    return _json(out)
 
 
 def volume_ring_isotropy_json(volume_id: str, q: str, fwhm: str) -> str:
@@ -1150,6 +1210,47 @@ def volume_ring_isotropy_json(volume_id: str, q: str, fwhm: str) -> str:
     stage = _resolve(volume_id, "hkl")
     m = _vol.volume_ring_isotropy(stage.path, _vol.parse_ring_shells(q, fwhm))
     return _json({**m, "id": volume_id})
+
+
+def volume_shell_floors_json(volume_id: str, q_step: float | None = None,
+                             percentile: float | None = None,
+                             min_count: int | None = None) -> str:
+    """The floor of every |Q| shell of an HKL stage over the whole volume, and
+    of the flatten's input for the flattened stage (mirrors
+    GET /api/volumes/{id}/shell-floors: the same fields).  Low-memory mode, as
+    every bridge call: the volumes are read a slab at a time."""
+    stage = _resolve(volume_id, "hkl")
+    pair = _ds.flatten_input_of(_require_cfg(), volume_id)
+    m = _vol.volume_shell_floors(
+        stage.path, pair[1].path if pair else None,
+        q_step=None if q_step is None else float(q_step),
+        percentile=None if percentile is None else float(percentile),
+        min_count=None if min_count is None else int(min_count))
+    return _json({"id": volume_id, "before_id": pair[0] if pair else None, **m})
+
+
+def volume_texture_json(volume_id: str, limit: int = 20, min_sigma: float | None = None,
+                        one_way: float | None = None, min_holes: int | None = None,
+                        floor: float | None = None) -> str:
+    """Whether the backfill's fills sit systematically off the diffuse around
+    their holes, on every punch hole of a backfilled stage with its 3-D rim,
+    against the dataset's punched stage (mirrors
+    GET /api/volumes/{id}/texture: the same fields).  Low-memory mode, as
+    every bridge call: the holes are labelled a slab at a time."""
+    stage = _resolve(volume_id, "hkl")
+    if stage.name != "backfilled":
+        raise ValueError(
+            f"the fills' texture is measured on a backfilled stage, not {stage.name!r}")
+    pair = _ds.punched_stage_of(_require_cfg(), volume_id)
+    if pair is None:
+        raise FileNotFoundError(f"no punched stage on disk for {volume_id!r}")
+    m = _vol.volume_texture(
+        stage.path, pair[1].path, limit=int(limit),
+        min_sigma=None if min_sigma is None else float(min_sigma),
+        one_way=None if one_way is None else float(one_way),
+        min_holes=None if min_holes is None else int(min_holes),
+        floor=None if floor is None else float(floor))
+    return _json({"id": volume_id, "punched_id": pair[0], **m})
 
 
 def dpdf_meta_json(volume_id: str) -> str:
@@ -1168,11 +1269,14 @@ def dpdf_slice(volume_id: str, plane: str, value: float) -> bytes:
 
 
 def dpdf_features_json(volume_id: str, min_sigma: float = 5.0, limit: int = 12) -> str:
-    """The ΔPDF's strongest extrema, grouped (mirrors GET /api/deltapdf/{id}/features)."""
+    """The ΔPDF's strongest extrema, grouped by the point group the dataset's
+    raw file declares, else by sign, length and size (mirrors
+    GET /api/deltapdf/{id}/features)."""
     if not float(min_sigma) > 0 or int(limit) < 1:
         raise ValueError("min_sigma must be positive and limit at least 1")
     stage = _resolve(volume_id, "delta_pdf")
-    m = _dpdf.dpdf_features(stage.path, float(min_sigma), int(limit))
+    m = _dpdf.dpdf_features(stage.path, float(min_sigma), int(limit),
+                            declared_by=_ds.raw_input_of(_require_cfg(), volume_id))
     return _json({**m, "id": volume_id})
 
 

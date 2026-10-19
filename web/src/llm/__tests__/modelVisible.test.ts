@@ -10,52 +10,51 @@
 // the whole suite).
 //
 // Hermetic and synthetic: a made-up cubic crystal (a = 4 Å) behind a mocked
-// API, stubbed pipeline and tuning runs, a scripted model and a frozen clock.
-// No model is loaded, no backend or API is called, and no measured data is used.
+// API (syntheticCrystal.ts), stubbed pipeline and tuning runs, a scripted model
+// and a frozen clock. No model is loaded, no backend or API is called, and no
+// measured data is used.
 //
 // Tool results sampled: all 24 tools in CHAT_TOOLS. None skipped. Covered in part:
 // - read_skill: one skill's body; not a reference (those are docs/algorithms
 //   pages, read as written).
 // - run_pipeline, tune_pipeline: the runs are stubs; what is sampled is the
 //   tool's own account of a fake run (the stages it ran, the trials it kept).
+//
+// Arm C (the validation's arm with the skills' switch off, skills.ts) has
+// files of its own, *-arm-c.md: what it is offered, and where its text differs
+// from arm B's (the tools, a sample of results and goals, the tuning prompt).
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import type {
-  BraggPeakWidth,
-  BraggProfile,
-  ConsistencyCheck,
-  Dataset,
-  DeltaPdfMeta,
-  DpdfFeatures,
-  JobEvent,
-  RingIsotropy,
-  Slice,
-  UbCheck,
-  VolumeCoverage,
-  VolumeMeta,
-} from "../../api/types";
-import { useDpdfStore } from "../../state/dpdfStore";
-import { useNavStore } from "../../state/navStore";
+import type { JobEvent } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
-import { useViewerStore } from "../../state/viewerStore";
 import { runAgent, type AgentStep } from "../agent";
 import { answerIssues, issuesPrompt } from "../answerChecks";
-import { compactResult } from "../compact";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
 import { toolsFor } from "../localTools";
-import { buildChatMessages, buildStageReviewMessages, type ReviewStage } from "../prompts/templates";
+import { SYSTEM, TOOLS } from "../prompts/system";
+import { buildChatMessages, buildStageReviewMessages, systemPrompt, type ReviewStage } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolCall } from "../provider/client";
-import { NAMED_REFERENCES } from "../references";
-import { CRITERIA, NOT_DECLARED, VERDICT_LABEL } from "../report/report";
+import { shorten } from "../readings";
+import { fillReferences, NAMED_REFERENCES } from "../references";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, skillsPrompt } from "../skills";
-import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolSpecs, type AgentTool, type ToolContext } from "../tools";
+import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolSpecs, toolsWithSkills, type AgentTool, type ToolContext } from "../tools";
 import { currentStageSettings } from "../tune/catalog";
-import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS, TUNE_SYSTEM } from "../tune/prompts";
+import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS, STAGE_GOALS_WITHOUT_SKILLS, TUNE_SYSTEM } from "../tune/prompts";
 import { useTuneStore } from "../tune/tuner";
+import { judge, WORDS } from "../verdicts";
+
+// The verdicts' words (verdicts/rules.ts), under the names the snapshot gives them.
+const CRITERIA = WORDS.criterion;
+const VERDICT_LABEL = WORDS.label;
+// What the symmetry's rule says of a volume that declares no symmetry.
+const NOT_DECLARED = (asymmetry: number): string => judge("symmetry", { ops: [{ op: "six-fold (60°)", rms_difference: asymmetry }], declared: null }).words ?? "";
+import { writtenInferences } from "../inference";
+import { namedInOwnWords, quotations } from "./methodText";
+import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -65,6 +64,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
@@ -87,372 +87,11 @@ vi.mock("../provider/client", async (importOriginal) => ({
 const SNAPSHOTS = "./__snapshots__/model-visible";
 const UPDATE = "Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.";
 
-// ---------------------------------------------------------------- a synthetic crystal
-
-// A cubic cell of 4 Å on a 97³ grid, H, K, L ∈ [−3, 3]; its ΔPDF on a 49³ grid,
-// x, y, z ∈ [−12, 12] Å. Rational functions and integer noise only, so every
-// platform computes the same numbers.
-const A = 4;
-const QU = (2 * Math.PI) / A; // |Q| of one r.l.u., Å⁻¹
-const axis = (half: number, step: number): number[] =>
-  Array.from({ length: Math.round((2 * half) / step) + 1 }, (_v, i) => -half + i * step);
-const R_AXIS = axis(3, 0.0625);
-const D_AXIS = axis(12, 0.5);
-const NR = R_AXIS.length; // 97
-const ND = D_AXIS.length; // 49
-
-/** Deterministic noise in [−1, 1) from grid indices. */
-const noise = (i: number, j: number, k: number): number => ((i * 7919 + j * 104729 + k * 1299709) % 1009) / 504.5 - 1;
-const lorentz = (d: number, w: number): number => 1 / (1 + (d / w) * (d / w));
-const frac = (x: number): number => x - Math.round(x);
-
-const RECIP_STAGE_NAMES = ["raw", "ringremoved", "braggpunched", "backfilled", "flattened"] as const;
-type RecipStageName = (typeof RECIP_STAGE_NAMES)[number];
-
-// Two datasets of the one crystal: in A the ring removal leaves 15 % of the
-// powder ring, in B none. Each leaves one Bragg peak unpunched, at (2, 1, 0).
-const RING_LEFT: Record<string, number> = { synthetic_a: 0.15, synthetic_b: 0 };
-const MISSED_NODE = [2, 1, 0];
-const RING_Q = 3.2; // Å⁻¹
-
-function recipValue(stage: RecipStageName, ringLeft: number, h: number, k: number, l: number, idx: [number, number, number]): number {
-  const q = QU * Math.sqrt(h * h + k * k + l * l);
-  if (q < 0.25 || q > 4.4) return NaN; // the beam stop, and where the counts end (inside the box)
-  // Rods of short-range order at half-integer H and K, over a rising background.
-  const diffuse = 12 + 6 * lorentz(0.5 - Math.abs(frac(h)), 0.08) + 6 * lorentz(0.5 - Math.abs(frac(k)), 0.08);
-  const background = 4 + 0.25 * q * q;
-  const ring = 30 * lorentz(q - RING_Q, 0.12);
-  // Sharp Bragg peaks at the integer nodes, within 0.1 r.l.u., where the punch
-  // takes them out (all but one).
-  const node = [Math.round(h), Math.round(k), Math.round(l)];
-  const d = Math.sqrt((h - node[0]) * (h - node[0]) + (k - node[1]) * (k - node[1]) + (l - node[2]) * (l - node[2]));
-  const origin = node.every((x) => x === 0);
-  const bragg = origin || d >= 0.1 ? 0 : (1500 / (1 + 0.2 * q * q)) * lorentz(d, 0.02);
-  const punched = !origin && d < 0.1 && !node.every((x, i) => x === MISSED_NODE[i]);
-  const under = diffuse + background + 0.8 * noise(...idx);
-  switch (stage) {
-    case "raw":
-      return under + ring + bragg;
-    case "ringremoved":
-      return under + ringLeft * ring + bragg;
-    case "braggpunched":
-      return punched ? NaN : under + ringLeft * ring + bragg;
-    case "backfilled":
-      return under + ringLeft * ring + (punched ? 0 : bragg);
-    case "flattened":
-      return under + ringLeft * ring + (punched ? 0 : bragg) - background - 12;
-  }
-}
-
-// Correlations along the cell edges (−) and the face diagonals (+), each at
-// every image under the cube's operations, with a ripple that keeps the cube's
-// symmetry. Computed from the sorted |x|, |y|, |z|, so equivalent points get
-// the same bits and the sections keep their symmetry exactly.
-const SIGNS = [[1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1]];
-const PERMUTATIONS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
-const imagesOf = (v: number[]): number[][] => {
-  const all = PERMUTATIONS.flatMap((p) => SIGNS.map((s) => p.map((from, i) => v[from] * s[i] + 0)));
-  return all.filter((x, i) => all.findIndex((y) => y.every((c, n) => c === x[n])) === i);
-};
-const FEATURES: [number[], number][] = [
-  ...imagesOf([4, 0, 0]).map((v): [number[], number] => [v, -25]),
-  ...imagesOf([4, 4, 0]).map((v): [number[], number] => [v, 15]),
-];
-// A compact peak: a squared Lorentzian, its tails falling as d⁻⁴.
-const blob = (d: number, w: number): number => lorentz(d, w) * lorentz(d, w);
-function dpdfValue(x: number, y: number, z: number, idx: [number, number, number]): number {
-  const [u, v, w] = [Math.abs(x), Math.abs(y), Math.abs(z)].sort((p, q) => p - q);
-  const c = (ND - 1) / 2;
-  const [i, j, k] = idx.map((n) => Math.abs(n - c)).sort((p, q) => p - q);
-  let value = 400 * blob(Math.sqrt(u * u + v * v + w * w), 0.8) + 0.6 * noise(i, j, k);
-  for (const [[px, py, pz], amp] of FEATURES) {
-    value += amp * blob(Math.sqrt((u - px) * (u - px) + (v - py) * (v - py) + (w - pz) * (w - pz)), 0.6);
-  }
-  return value;
-}
-
-const PLANE_AXES: Record<string, { fixed: number; labels: [string, string] }> = {
-  hk0: { fixed: 2, labels: ["H", "K"] },
-  h0l: { fixed: 1, labels: ["H", "L"] },
-  "0kl": { fixed: 0, labels: ["K", "L"] },
-  xy: { fixed: 2, labels: ["x", "y"] },
-  xz: { fixed: 1, labels: ["x", "z"] },
-  yz: { fixed: 0, labels: ["y", "z"] },
-};
-
-/** A slice of a 3D function on `grid` at `value` along the plane's fixed axis. */
-function makeCut(plane: string, value: number, grid: number[], f: (p: number[], idx: [number, number, number]) => number, real: boolean): Slice {
-  const { fixed, labels } = PLANE_AXES[plane];
-  const step = grid[1] - grid[0];
-  const fixedIndex = Math.round((value - grid[0]) / step);
-  const free = [0, 1, 2].filter((a) => a !== fixed);
-  const n = grid.length;
-  const data = new Float32Array(n * n);
-  let robust = 0;
-  for (let iy = 0; iy < n; iy++) {
-    for (let ix = 0; ix < n; ix++) {
-      const p = [0, 0, 0];
-      const idx: [number, number, number] = [0, 0, 0];
-      p[fixed] = value;
-      idx[fixed] = fixedIndex;
-      p[free[0]] = grid[ix];
-      idx[free[0]] = ix;
-      p[free[1]] = grid[iy];
-      idx[free[1]] = iy;
-      const v = f(p, idx);
-      data[iy * n + ix] = v;
-      if (Number.isFinite(v) && v > robust) robust = v;
-    }
-  }
-  return {
-    header: {
-      nx: n,
-      ny: n,
-      x_axis: grid,
-      y_axis: grid,
-      x_label: labels[0],
-      y_label: labels[1],
-      cut_label: `${"HKLxyz"[(real ? 3 : 0) + fixed]}=${value}`,
-      robust_max: robust,
-      ...(real ? { axes_angle: 90 } : {}),
-    },
-    data,
-  };
-}
-
-// The datasets: every stage on disk.
-const datasetOf = (stem: string): Dataset => ({
-  id: stem,
-  temperature: null,
-  raw_name: `${stem}.nxs`,
-  stem,
-  stages: [
-    ...RECIP_STAGE_NAMES.map((name) => ({ name, exists: true, kind: "hkl" as const, volume_id: `${stem}.${name}` })),
-    { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: `${stem}.delta_pdf` },
-  ],
-});
-const DATASET = datasetOf("synthetic_a");
-const OTHER = datasetOf("synthetic_b");
-const DATASETS = [DATASET, OTHER];
-
-const LATTICE = { a: A, b: A, c: A, alpha: 90, beta: 90, gamma: 90 };
-const MMM = [
-  [1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1],
-].map(([a, b, c]) => [[a, 0, 0], [0, b, 0], [0, 0, c]]);
-
-const volumeMeta = (id: string): VolumeMeta => ({
-  id,
-  stage: id.split(".")[1],
-  kind: "hkl",
-  shape: [NR, NR, NR],
-  h_range: [-3, 3],
-  k_range: [-3, 3],
-  l_range: [-3, 3],
-  lattice: LATTICE,
-  ub_matrix: [[QU, 0, 0], [0, QU, 0], [0, 0, QU]],
-  planes: ["hk0", "h0l", "0kl"],
-  symmetry: "mmm",
-  symmetry_ops: MMM,
-  sigma: "measured",
-});
-
-const dpdfMeta = (id: string): DeltaPdfMeta => ({
-  id,
-  shape: [ND, ND, ND],
-  x_range: [-12, 12],
-  y_range: [-12, 12],
-  z_range: [-12, 12],
-  lattice: LATTICE,
-  q_max: 8.162,
-  planes: ["xy", "xz", "yz"],
-  window_shape: "ellipsoid",
-  window_scale: 1,
-  window_open_weight: 2.4e-4,
-});
-
-const peak = (index: number, hkl: [number, number, number], q: number, intensity: number, significance: number, node: boolean): BraggPeakWidth => ({
-  index,
-  source_node_hkl: node ? hkl : null,
-  center_hkl: hkl,
-  q_abs: q,
-  intensity,
-  local_background: 16,
-  significance,
-  width_hkl: [0.12, 0.12, 0.12],
-  width_q: [0.19, 0.19, 0.19],
-  measured_width_hkl: node ? [0.06, 0.06, 0.07] : [0.1, 0.09, 0.12],
-  measured_width_q: node ? [0.094, 0.094, 0.11] : [0.157, 0.141, 0.188],
-  resolution_limited: node ? [true, true, false] : [false, false, false],
-  principal_directions_hkl: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-  fit_kind: "covariance",
-});
-const BRAGG_PROFILE: BraggProfile = {
-  dataset_id: "synthetic_a",
-  profile_path: null,
-  has_profile: true,
-  schema_version: 3,
-  width_labels: ["a*", "b*", "c*"],
-  width_units: { q: "Å⁻¹", hkl: "r.l.u." },
-  n_peaks: 14,
-  fit_covariance: true,
-  punch_frame: "spherical",
-  peaks: [
-    peak(0, [1, 0, 0], 1.571, 1250, 310, true),
-    peak(1, [0, 1, 0], 1.571, 1240, 305, true),
-    peak(2, [1, 1, 0], 2.221, 1060, 262, true),
-    peak(3, [1, 1, 1], 2.721, 900, 221, true),
-    peak(4, [2, 0, 0], 3.142, 760, 188, true),
-    peak(5, [2, 1, 0], 3.512, 640, 160, true),
-    // Off the lattice: what the search punched at half-integer positions.
-    peak(6, [1.5, 0.5, 0], 2.483, 96, 22, false),
-    peak(7, [0.5, 1.5, 0], 2.483, 94, 21, false),
-    peak(8, [1.5, -0.5, 0], 2.483, 90, 20, false),
-    peak(9, [2.5, 0.5, 0], 4.005, 61, 14, false),
-    peak(10, [0.5, 2.5, 0], 4.005, 60, 14, false),
-    peak(11, [1.5, 1.5, 0], 3.332, 55, 12, false),
-    peak(12, [0.5, 0.5, 1], 1.924, 52, 11, false),
-    peak(13, [1.5, 0.5, 1], 2.938, 48, 10, false),
-  ],
-};
-
-const CONSISTENCY: ConsistencyCheck = {
-  dataset_id: "synthetic_a",
-  check_path: "synthetic_a_delta_pdf_consistency.json",
-  has_check: true,
-  metrics: {
-    pearson_r: 0.99714,
-    normalized_rms: 0.07132,
-    rms: 0.512,
-    n_voxels: 117649,
-    per_plane_r: { "+0.000": 0.99691 },
-    q_band: null,
-    crop_hkl: null,
-    apodization: "gaussian",
-    pearson_r_even: 0.99999981,
-    normalized_rms_even: 2.1e-7,
-    odd_share: 0.00421,
-    n_voxels_even: 117649,
-  },
-};
-
-const COVERAGE: VolumeCoverage = {
-  id: "synthetic_a.raw",
-  q: [],
-  counted: [],
-  q_min_edge: 0.25,
-  q_max_edge: 4.4,
-  full_q_min: 0.3,
-  full_q_max: 4.35,
-  box_q: 4.712,
-  box_corner_q: 8.162,
-};
-
-const UB_CHECK: UbCheck = {
-  id: "synthetic_a.raw",
-  fit: "both",
-  cell_nodes: [1, 1, 1],
-  operations: 8,
-  operations_from: "synthetic_a.nxs",
-  symmetry_break: 0.0012,
-  symmetrised: false,
-  passes: [{ q_max: 4.4, n_found: 120, n_used: 112, rms_start: 0.0123, rms: 0.0119, angle_deg: 0.003 }],
-  n_searched: 130,
-  n_used: 112,
-  n_rejected: 8,
-  rms_start: 0.0123,
-  rms: 0.0119,
-  angle_deg: 0.003,
-  axis_uvw: [0.12, -0.31, 0.94],
-  cell_start: [4, 4, 4, 90, 90, 90],
-  cell: [4.0012, 4.0009, 3.9994, 90.01, 89.99, 90],
-  transform: [[0.9997, 0, 0], [0, 0.9998, 0], [0, 0, 1.0002]],
-  ub_start: [[QU, 0, 0], [0, QU, 0], [0, 0, QU]],
-  ub: [[QU, 0, 0], [0, QU, 0], [0, 0, QU]],
-  radial: [
-    { q_lo: 0, q_hi: 2, direction: "in-plane", n: 40, before: 0.0004, after: 0.0001 },
-    { q_lo: 2, q_hi: null, direction: "oblique", n: 72, before: 0.0003, after: -0.0001 },
-  ],
-  voxel_q: 0.0982,
-  mean_offset_rlu: { before: [0.0011, -0.0007, 0.0002], after: [0.0009, -0.0006, 0.0002], standard_error: [0.0008, 0.0008, 0.0009], n: 112 },
-};
-
-const DPDF_FEATURES: DpdfFeatures = {
-  id: "synthetic_a.delta_pdf",
-  sigma: 0.71,
-  min_sigma: 5,
-  origin_radius: 1.8,
-  n_extrema: 26,
-  groups: [
-    {
-      sign: -1, length: 4, size_sigma: 35.2, value: -25, n: 3,
-      vectors: [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
-      vectors_rlu: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      sizes_sigma: [35.2, 35.2, 35.2],
-    },
-    {
-      sign: 1, length: 5.657, size_sigma: 21.1, value: 15, n: 6,
-      vectors: [[4, 4, 0], [4, -4, 0], [4, 0, 4], [4, 0, -4], [0, 4, 4], [0, 4, -4]],
-      vectors_rlu: [[1, 1, 0], [1, -1, 0], [1, 0, 1], [1, 0, -1], [0, 1, 1], [0, 1, -1]],
-      sizes_sigma: [21.1, 21.1, 21.1, 21.1, 21.1, 21.1],
-    },
-  ],
-};
-
-// The 3D test of each bump: the one at the powder ring's |Q| rises in nearly every direction.
-const ringIsotropy = (id: string, shells: { q: number; fwhm: number }[]): RingIsotropy => ({
-  id,
-  rule: { direction_share: 0.9, height_share: 0.15 },
-  shells: shells.map((s) => {
-    const ring = Math.abs(s.q - RING_Q) < 0.15;
-    return {
-      q_center: s.q,
-      fwhm: s.fwhm,
-      n_cells: 400,
-      median_height: ring ? 4 : 1,
-      relative_height: ring ? 0.2 : 0.05,
-      isotropy: ring ? 0.86 : 0.04,
-      is_ring: ring,
-      not_judged: null,
-    };
-  }),
-});
-
-function installBackend(): void {
-  const stemOf = (id: string) => id.split(".")[0];
-  api.fetchMeta.mockImplementation(async (id: string) => volumeMeta(id));
-  api.fetchDpdfMeta.mockImplementation(async (id: string) => dpdfMeta(id));
-  api.fetchSlice.mockImplementation(async (id: string, plane: string, value: number) => {
-    const [stem, stage] = id.split(".") as [string, RecipStageName];
-    const left = RING_LEFT[stem];
-    return makeCut(plane, value, R_AXIS, (p, idx) => recipValue(stage, left, p[0], p[1], p[2], idx), false);
-  });
-  api.fetchDpdfSlice.mockImplementation(async (_id: string, plane: string, value: number) =>
-    makeCut(plane, value, D_AXIS, (p, idx) => dpdfValue(p[0], p[1], p[2], idx), true),
-  );
-  api.fetchBraggProfile.mockImplementation(async (id: string) => ({ ...BRAGG_PROFILE, dataset_id: id }));
-  api.fetchConsistencyCheck.mockImplementation(async (id: string) => ({ ...CONSISTENCY, dataset_id: id }));
-  api.fetchVolumeCoverage.mockImplementation(async (id: string) => ({ ...COVERAGE, id }));
-  api.fetchUbCheck.mockImplementation(async (id: string) => ({ ...UB_CHECK, id }));
-  api.fetchDpdfFeatures.mockImplementation(async (id: string) => ({ ...DPDF_FEATURES, id }));
-  api.fetchRingIsotropy.mockImplementation(async (id: string, shells: { q: number; fwhm: number }[]) => ringIsotropy(id, shells));
-  api.fetchDataset.mockImplementation(async (id: string) => DATASETS.find((d) => d.id === stemOf(id)));
-}
-
-// The console as a fresh session leaves it: default settings, no run, the
-// reciprocal viewer at L = 0 and the ΔPDF viewer at z = 4 Å.
-function freshConsole(): void {
-  usePipelineStore.setState(usePipelineStore.getInitialState(), true);
-  useTuneStore.setState({ active: false, stages: [], error: null, finishedNote: null });
-  useNavStore.setState({ tab: "reciprocal" });
-  useViewerStore.setState({ fixedAxis: "L", cutIndex: (NR - 1) / 2 });
-  useDpdfStore.setState({ cutX: (ND - 1) / 2, cutY: (ND - 1) / 2, cutZ: 32, limit: null });
-}
-
 // A frozen clock that only the stubbed runs move.
 let clock = 0;
 
 beforeAll(() => {
-  installBackend();
+  installBackend(api);
   vi.spyOn(performance, "now").mockImplementation(() => clock);
 });
 afterAll(() => {
@@ -527,27 +166,38 @@ describe("1. the system prompt and the first user message, as the app builds the
   const tools = (ts: AgentTool[]) => `Tools offered (${ts.length}): ${ts.map((t) => t.name).join(", ")}.`;
 
   it("arm B: tools on, skills on (the Pilot as shipped)", async () => {
-    const b = armSetup("B", CHAT_TOOLS, buildChatMessages(context, [], TASK, null, { tools: true }));
+    const b = armSetup("B", context);
+    expect(b.messages).toEqual(buildChatMessages(context, [], TASK, null, { tools: true }));
     await expect(
       doc(
         "Opening messages: tools on, skills on (validation arm B)",
         "`buildChatMessages(context, [], TASK, null, { tools: true })` over the synthetic context, as `armSetup(\"B\")` passes it on; TASK is the validation task (evals/validation.ts). A chat question takes TASK's place in the last message.\n\n" +
-          tools(b.tools),
+          tools(toolsWithSkills(CHAT_TOOLS, b.skills)),
         renderMessages(b.messages),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/1-chat-arm-b.md`);
   });
 
-  it("arm C: tools on, skills off (read_skill and the skill listing taken away)", async () => {
-    const messages = buildChatMessages(context, [], TASK, null, { tools: true });
-    const c = armSetup("C", CHAT_TOOLS, messages);
-    // Arm C differs from B by the listing only.
-    expect(c.messages[0].content).toBe((messages[0].content as string).replace(skillsPrompt(), ""));
+  it("arm C: tools on, skills off (the skills' switch off)", async () => {
+    const b = armSetup("B", context);
+    const c = armSetup("C", context);
+    // Built with the switch off from the same sections, never cut from B's: without the skills' section, and the
+    // others without their inference (inference.ts).
+    expect(c.messages[0].content).toBe(systemPrompt({ tools: true, skills: false }));
+    expect(c.messages[0].content).toBe(`${SYSTEM.definitions}\n${TOOLS.definitions}`);
+    expect(b.messages[0].content).toBe(`${SYSTEM.whole}\n${TOOLS.whole}\n${skillsPrompt()}`);
+    // The context: B's, but the search's note, its definition only. The rest is B's.
+    const json = (m: ChatMessage) => JSON.parse(/```json\n([\s\S]*)\n```/.exec(String(m.content))![1]) as { bragg_punch: { peak_profile: { search_note: string } } };
+    const [bc, cc] = [json(b.messages[1]), json(c.messages[1])];
+    expect(cc.bragg_punch.peak_profile.search_note).toBe("peaks the search punched off the Bragg nodes");
+    expect(bc.bragg_punch.peak_profile.search_note).toMatch(/; grain_check says whether/);
+    expect({ ...cc, bragg_punch: { ...cc.bragg_punch, peak_profile: bc.bragg_punch.peak_profile } }).toEqual(bc);
+    expect(c.messages.slice(2)).toEqual(b.messages.slice(2));
     await expect(
       doc(
         "Opening messages: tools on, skills off (validation arm C)",
-        "The same messages as arm B with the skills' listing cut from the system prompt, as `armSetup(\"C\")` builds them (evals/validation.ts).\n\n" +
-          tools(c.tools),
+        "`buildChatMessages(context, [], TASK, null, { tools: true, skills: false })`, as `armSetup(\"C\")` builds them (evals/validation.ts): the skills' switch off (skills.ts), so the system prompt is built without its skills' section, its other sections and the context's prose without their inference (inference.ts; 6-inference.md lists each span left out), and read_skill is not offered. The rest is arm B's.\n\n" +
+          tools(toolsWithSkills(CHAT_TOOLS, c.skills)),
         renderMessages(c.messages),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/1-chat-arm-c.md`);
@@ -584,6 +234,29 @@ describe("2. the tools, as sent to the model", () => {
         body,
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/2-tools.md`);
+  });
+
+  it("arm C: the tools with the skills off", async () => {
+    const b = toolSpecs(CHAT_TOOLS);
+    const c = toolSpecs(toolsWithSkills(CHAT_TOOLS, false));
+    const of = (name: string) => b.find((s) => s.function.name === name)!;
+    // Every tool C is offered is B's, read_skill aside, with B's name and parameters.
+    expect(c.map((s) => s.function.name)).toEqual(b.map((s) => s.function.name).filter((n) => n !== "read_skill"));
+    for (const s of c) expect(s.function.parameters, s.function.name).toEqual(of(s.function.name).function.parameters);
+    const same = c.filter((s) => s.function.description === of(s.function.name).function.description);
+    const own = c.filter((s) => !same.includes(s));
+    const body = [
+      "## Not offered\n\nread_skill: it works only with the skills on (its facts' `needsSkills`).",
+      `## As in arm B (2-tools.md)\n\n${same.length} tools, their definitions as 2-tools.md has them: ${same.map((s) => s.function.name).join(", ")}.`,
+      ...own.map((s) => `## ${s.function.name}: its description with the skills off\n\n${fence(s.function.description)}\n\nIts parameters are as in 2-tools.md.`),
+    ].join("\n\n");
+    await expect(
+      doc(
+        "Tool definitions with the skills off (validation arm C)",
+        `\`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))\`: what arm C's model is offered with every request (${c.length} tools, ${JSON.stringify(c).length} characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (\`descriptionWithoutSkills\`, from the same tagged text), shown in full; every other definition is arm B's.`,
+        body,
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/2-tools-arm-c.md`);
   });
 
   it("the tools a local model is offered, by question", async () => {
@@ -838,7 +511,7 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
         : `${run.text.length} characters sent`;
       parts.push(`## ${sampleTitle(s)}\n\n${size}.\n\n${showResult(run.text)}`);
       if (s.name === "assess_stage" && !compacted.length) {
-        compacted.push(`## ${sampleTitle(s)}\n\n${showResult(compactResult(run.text))}`);
+        compacted.push(`## ${sampleTitle(s)}\n\n${showResult(shorten(run.text))}`);
       }
     }
     const errors: string[] = [];
@@ -856,6 +529,131 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
           compacted.join("\n\n"),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/4-tool-results.md`);
+  });
+
+  it("arm C: a sample of results and goals with the skills off", async () => {
+    const tools = toolsWithSkills(CHAT_TOOLS, false);
+    const runC = async (s: Sample) => {
+      freshConsole();
+      s.before?.();
+      const call: ToolCall = { id: "call_1", type: "function", function: { name: s.name, arguments: JSON.stringify(s.args) } };
+      return runToolCall(call, tools, { dataset: DATASET, datasets: DATASETS, skills: false, skillsRead: new Set(), ...s.ctx });
+    };
+    const shown = async (s: Sample, why: string) => {
+      const run = await runC(s);
+      return { run, text: `## ${sampleTitle(s)}\n\n${why}\n\n${showResult(run.text)}` };
+    };
+
+    // Every sampled call but read_skill runs in arm C; those whose results carry
+    // inference (a goal, a criterion, a verdict's or a reading's words) read
+    // otherwise, and are shown whole; the rest read as in arm B.
+    const differ: string[] = [];
+    for (const s of SAMPLES.filter((x) => x.name !== "read_skill")) {
+      const b = await runSample(s);
+      const c = await runC(s);
+      expect(c.ok, `${sampleTitle(s)}: ${c.text}`).toBe(true);
+      if (c.text !== b.text) differ.push(`## ${sampleTitle(s)}\n\n${showResult(c.text)}`);
+    }
+    expect(differ.map((d) => d.split("\n")[0])).toEqual([
+      "## assess_stage {}",
+      '## assess_stage {"stage":"flatten"}',
+      "## dpdf_peaks {}",
+      "## grain_check {}",
+    ]);
+
+    // The stages' goals: arm C's, each its definitions only.
+    const stages = Object.keys(STAGE_GOALS) as (keyof typeof STAGE_GOALS)[];
+    const goals = stages.map((st) =>
+      STAGE_GOALS_WITHOUT_SKILLS[st] !== STAGE_GOALS[st] ? `### ${st}\n\n${fence(STAGE_GOALS_WITHOUT_SKILLS[st])}` : `### ${st}\n\nAs in arm B (3-goals-and-verdicts.md).`,
+    );
+
+    // A stage's result carries its goal as arm C reads it.
+    const flatten = await runC({ name: "assess_stage", args: { stage: "flatten" } });
+    expect((JSON.parse(flatten.text) as { flatten: { goal: string } }).flatten.goal).toBe(STAGE_GOALS_WITHOUT_SKILLS.flatten);
+
+    // The calls arm B's skill gate refuses until a skill is read: arm C has no gate, so they run.
+    const change = await shown(
+      { name: "update_settings", args: { changes: { flattenQ2: true } } },
+      "No skill read: arm B's gate refuses it until reduction-qc is read (4-tool-results.md); arm C has none.",
+    );
+    expect(change.run.ok, change.run.text).toBe(true);
+    tuner.startTuning.mockClear();
+    const tuning = SAMPLES.find((s) => s.name === "tune_pipeline")!;
+    const tune = await shown(
+      { ...tuning, ctx: {}, note: "a stubbed tuning run of 5.2 min, no skill read" },
+      "No skill read: it runs, and passes the switch on to the tuning prompts.",
+    );
+    expect(tune.run.ok, tune.run.text).toBe(true);
+    expect(tuner.startTuning).toHaveBeenCalledWith(expect.objectContaining({ skills: false }));
+
+    // read_skill, called by name all the same: no tool of this conversation.
+    const read = await runC({ name: "read_skill", args: { name: "reduction-qc" } });
+    expect(read.ok).toBe(false);
+
+    // The tuning prompt for the flatten, as arm C's tune_pipeline asks it.
+    const config = usePipelineStore.getInitialState();
+    const propose = buildProposeMessages({
+      stage: "flatten",
+      current: currentStageSettings("flatten", config),
+      earlier: {},
+      trials: [{ trial: 1, settings: currentStageSettings("flatten", config), metrics: { max_floor_trend: 0.97, max_floor_span_fraction: 1.2, pedestal_left: true } }],
+      count: 2,
+      skills: false,
+    });
+    expect(propose[1].content).toContain(STAGE_GOALS_WITHOUT_SKILLS.flatten);
+
+    await expect(
+      doc(
+        "Tool results and goals with the skills off (validation arm C)",
+        "Arm C's text where it differs from arm B's: the stages' goals, the results that carry inference (a goal, a criterion, a verdict's or a reading's words: inference.ts, 6-inference.md), the calls arm B's skill gate refuses, read_skill called by name, and the tuning prompt for the flatten. Each tool is called through `runToolCall` with the skills' switch off (`skills: false` in its context) and the tools `toolsWithSkills(CHAT_TOOLS, false)` gives; every other sampled result reads as in 4-tool-results.md.",
+        [
+          `## The stages' goals with the skills off\n\n\`STAGE_GOALS_WITHOUT_SKILLS\` (tune/prompts.ts; \`WORDS.goalWithoutSkills\`, verdicts/rules.ts): in assess_stage's single-stage result and the tuning prompts.\n\n${goals.join("\n\n")}`,
+          `# The results that read otherwise\n\n${differ.join("\n\n")}`,
+          `# The calls arm B's gate refuses, and read_skill`,
+          change.text,
+          tune.text,
+          `## read_skill {"name":"reduction-qc"} (called by name: it is not offered)\n\n${fence(read.text)}`,
+          `## The tuning prompt for the flatten, what to try\n\n\`buildProposeMessages({ stage: "flatten", …, skills: false })\` with a synthetic trial: the goal and the settings' help with the skills off. The system message is TUNE_SYSTEM (3-tuning-prompts.md).\n\n${fence(contentText(propose[1]))}`,
+        ].join("\n\n"),
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/4-tool-results-arm-c.md`);
+  });
+});
+
+// ---------------------------------------------------------------- 6. what arm C does not read
+
+describe("6. the inference, which arm C does not read", () => {
+  it("every span, where it is written, by class, in the text it sits in", async () => {
+    const entries = writtenInferences();
+    const sources = [...new Set(entries.map((e) => e.source))].sort();
+    const kinds = (spans: readonly { kind: string }[]) =>
+      ["reading", "evidence", "remedy"].map((k) => [k, spans.filter((s) => s.kind === k).length] as const).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(", ");
+    const body = sources.map((source) => {
+      const here = entries.filter((e) => e.source === source);
+      const texts = [...new Set(here.flatMap((e) => (e.in ? [e.in] : [])))];
+      const loose = here.filter((e) => !e.in);
+      const parts = [`## ${source}\n\n${here.length} span${here.length === 1 ? "" : "s"}: ${kinds(here.map((e) => e.span))}.`];
+      for (const t of texts) {
+        const marked = t.spans
+          .map((s) => (typeof s === "string" ? s : "kind" in s ? `⟦${s.kind}: ${s.text}⟧` : `⟨connective: “${s.whole}” → “${s.definitions}”⟩`))
+          .join("");
+        const joints = t.connectives.length ? ", and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩" : "";
+        parts.push(`The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧${joints}:\n\n${fence(marked)}`);
+      }
+      if (loose.length) {
+        parts.push(`Spans of a text built for each call (its numbers vary), each as written:\n\n${loose.map((e) => `- ${e.span.kind}: “${e.span.text}”`).join("\n")}`);
+      }
+      return parts.join("\n\n");
+    });
+    const total = kinds(entries.map((e) => e.span));
+    await expect(
+      doc(
+        "The inference arm C does not read",
+        "Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. " +
+          `${entries.length} spans in ${sources.length} texts or sets: ${total}.`,
+        body.join("\n\n"),
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/6-inference.md`);
   });
 });
 
@@ -918,64 +716,142 @@ const REPLIES: { what: string; reply: string; steps: AgentStep[] }[] = [
   },
 ];
 
-describe("5. the text sent back to the model", () => {
-  it("the answer checks' prompt, for canned replies", async () => {
-    const body = REPLIES.map(({ what, reply, steps }) => {
+// A success the checks did not all measure: shown for arm C, whose wording of it names no stage to measure.
+const UNMEASURED = { what: "a success the checks did not all measure", reply: "The reduction is ready for analysis.", steps: [COVERED] };
+
+/** Each canned reply, the send-back its checks give with the skills on or off, as a snapshot section. */
+function answerChecksBody(replies: typeof REPLIES, skills: boolean): string {
+  return replies
+    .map(({ what, reply, steps }) => {
       const sources = steps.map((s) => s.result ?? "").join("\n");
       const issues = answerIssues(reply, steps, sources);
       const tools = steps.map((s) => `${s.name} ${JSON.stringify(s.args)}`).join(", ");
-      const sent = issues ? fence(issuesPrompt(issues)) : "Nothing: the answer goes to the user, its references filled in.";
+      const sent = issues ? fence(issuesPrompt(issues, { skills })) : "Nothing: the answer goes to the user, its references filled in.";
       return `## ${what}\n\nTools run in the reply: ${tools}.\n\nThe answer:\n\n${fence(reply)}\n\nSent back to the model:\n\n${sent}`;
-    }).join("\n\n");
+    })
+    .join("\n\n");
+}
+
+/** Whether a quotation in a send-back is the answer's own words: a clause of it as the user reads it (clipped), or a reference it wrote. */
+const quotesTheAnswer = (q: string, reply: string, steps: AgentStep[]): boolean =>
+  fillReferences(reply, steps).text.includes(q.replace(/…$/, "")) || reply.includes(q);
+
+// The scripted reply of 5-agent-loop.md: describe_dataset three times with the
+// same arguments, asked to answer, an answer the checks send back, a revision.
+const GRID = "The grid is 97 × 97 × 97 voxels and the cell edge is 7.3 Å."; // a number from nowhere
+
+async function loopReply({ skills, answer }: { skills: boolean; answer: string }) {
+  freshConsole();
+  const seen: { messages: ChatMessage[]; tools: string[]; toolChoice?: string }[] = [];
+  const call = (id: string): StreamDelta => ({ toolCalls: [{ id, type: "function", function: { name: "describe_dataset", arguments: "{}" } }] });
+  const script: StreamDelta[][] = [
+    [call("call_1")],
+    [call("call_2")], // the same call again: pointed at the first result
+    [call("call_3")], // and again: two rounds with nothing new, asked to answer
+    [{ content: answer }],
+    [{ content: "The grid is 97 × 97 × 97 voxels and the cell edge is {{describe_dataset.cell.a}} Å." }],
+  ];
+  model.streamChat.mockImplementation((args: { messages: ChatMessage[]; tools?: { function: { name: string } }[]; toolChoice?: string }) => {
+    seen.push({ messages: [...args.messages], tools: (args.tools ?? []).map((t) => t.function.name), toolChoice: args.toolChoice });
+    const reply = script.shift() ?? [];
+    return (async function* () {
+      for (const d of reply) yield d;
+    })();
+  });
+  const messages = buildChatMessages(context, [], "What grid and cell does this dataset have?", null, { tools: true, skills });
+  // A cloud URL: no window plan to fetch, every tool offered.
+  const settings: LlmSettings = { ...DEFAULT_SETTINGS, baseUrl: "https://scripted.invalid/v1", model: "scripted", useTools: true, followViews: false };
+  const result = await runAgent({
+    messages,
+    tools: CHAT_TOOLS,
+    ctx: { dataset: DATASET, datasets: DATASETS, skills, skillsRead: new Set(), earlierResults: [] },
+    settings,
+    signal: new AbortController().signal,
+  });
+  expect(seen).toHaveLength(5);
+  expect(result.content).toBe("The grid is 97 × 97 × 97 voxels and the cell edge is 4 Å.");
+  const requests = seen
+    .map((r, i) => `${i + 1}. ${r.messages.length} messages, ${r.tools.length} tools offered${r.toolChoice ? `, tool_choice ${r.toolChoice}` : ""}`)
+    .join("\n");
+  const added = seen[seen.length - 1].messages.slice(messages.length);
+  return { requests, added, body: `## The requests\n\n${requests}\n\n## The conversation after the opening messages, as the last request sent it\n\n${renderMessages(seen[seen.length - 1].messages, messages.length)}` };
+}
+
+describe("5. the text sent back to the model", () => {
+  it("the answer checks' prompt, for canned replies", async () => {
     expect(answerIssues(REPLIES[0].reply, REPLIES[0].steps, REPLIES[0].steps[0].result!)).toBeNull();
     await expect(
       doc(
         "Answer checks",
         "`answerIssues` and `issuesPrompt` (answerChecks.ts) on canned replies: what the agent loop sends back, once, before a failing answer reaches the user. Each reply's number sources here are its tools' results.",
-        body,
+        answerChecksBody(REPLIES, true),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/5-answer-checks.md`);
   });
 
+  it("arm C: the answer checks' prompt with the skills off", async () => {
+    const replies = [...REPLIES, UNMEASURED];
+    for (const { what, reply, steps } of replies) {
+      const issues = answerIssues(reply, steps, steps.map((s) => s.result ?? "").join("\n"));
+      if (!issues) continue;
+      const sent = issuesPrompt(issues, { skills: false });
+      // Its own words name no tool, stage or skill; what it quotes is the answer's.
+      expect(namedInOwnWords(sent), `${what}: ${sent}`).toEqual([]);
+      for (const q of quotations(sent)) expect(quotesTheAnswer(q, reply, steps), `${what}: “${q}”`).toBe(true);
+      // Every kind of finding arm B's send-back has goes back.
+      const kinds: [boolean, RegExp][] = [
+        [issues.missing.length > 0, /this verdict needs its evidence from a check run in this reply/],
+        [issues.stale.length > 0, /before the last run recomputed what it measured/],
+        [issues.overall !== null, /the run a success, but the verdict computed from the checks does not give it/],
+        [issues.unknownReferences.length > 0, /These references name no value/],
+        [issues.contradicted.length > 0, /this contradicts the verdict a check computed/],
+        [issues.untraced.length > 0, /These numbers appear in no tool result/],
+      ];
+      for (const [found, line] of kinds) expect(line.test(sent), `${what}: ${line}`).toBe(found);
+    }
+    await expect(
+      doc(
+        "Answer checks with the skills off (validation arm C)",
+        "`issuesPrompt(issues, { skills: false })` (answerChecks.ts) on 5-answer-checks.md's canned replies, and one more: what the agent loop sends back when the skills' switch is off. The checks are arm B's and find the same; the wording names no skill, no stage and no tool to run next. Each finding quotes the answer's own words (“…”) and says what they lack.",
+        answerChecksBody(replies, false),
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/5-answer-checks-arm-c.md`);
+  });
+
   it("the agent loop's own messages, in a scripted reply", async () => {
-    freshConsole();
-    const seen: { messages: ChatMessage[]; tools: string[]; toolChoice?: string }[] = [];
-    const call = (id: string): StreamDelta => ({ toolCalls: [{ id, type: "function", function: { name: "describe_dataset", arguments: "{}" } }] });
-    const script: StreamDelta[][] = [
-      [call("call_1")],
-      [call("call_2")], // the same call again: pointed at the first result
-      [call("call_3")], // and again: two rounds with nothing new, asked to answer
-      [{ content: "The grid is 97 × 97 × 97 voxels and the cell edge is 7.3 Å." }], // a number from nowhere
-      [{ content: "The grid is 97 × 97 × 97 voxels and the cell edge is {{describe_dataset.cell.a}} Å." }],
-    ];
-    model.streamChat.mockImplementation((args: { messages: ChatMessage[]; tools?: { function: { name: string } }[]; toolChoice?: string }) => {
-      seen.push({ messages: [...args.messages], tools: (args.tools ?? []).map((t) => t.function.name), toolChoice: args.toolChoice });
-      const reply = script.shift() ?? [];
-      return (async function* () {
-        for (const d of reply) yield d;
-      })();
-    });
-    const messages = buildChatMessages(context, [], "What grid and cell does this dataset have?", null, { tools: true });
-    // A cloud URL: no window plan to fetch, every tool offered.
-    const settings: LlmSettings = { ...DEFAULT_SETTINGS, baseUrl: "https://scripted.invalid/v1", model: "scripted", useTools: true, followViews: false };
-    const result = await runAgent({
-      messages,
-      tools: CHAT_TOOLS,
-      ctx: { dataset: DATASET, datasets: DATASETS, skillsRead: new Set(), earlierResults: [] },
-      settings,
-      signal: new AbortController().signal,
-    });
-    expect(seen).toHaveLength(5);
-    expect(result.content).toBe("The grid is 97 × 97 × 97 voxels and the cell edge is 4 Å.");
-    const requests = seen
-      .map((r, i) => `${i + 1}. ${r.messages.length} messages, ${r.tools.length} tools offered${r.toolChoice ? `, tool_choice ${r.toolChoice}` : ""}`)
-      .join("\n");
+    const b = await loopReply({ skills: true, answer: GRID });
     await expect(
       doc(
         "The agent loop's messages",
         "A scripted reply through `runAgent` (agent.ts): the model calls describe_dataset three times with the same arguments, is asked to answer, answers with a number from nowhere, is sent the answer checks' prompt, and answers again. Shown: each request, then the messages the loop added after the opening four (1-chat-arm-b.md).",
-        `## The requests\n\n${requests}\n\n## The conversation after the opening messages, as the last request sent it\n\n${renderMessages(seen[seen.length - 1].messages, messages.length)}`,
+        b.body,
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/5-agent-loop.md`);
+  });
+
+  it("arm C: the agent loop's own messages with the skills off", async () => {
+    const answer = `${GRID} The flatten left no pedestal.`; // and a verdict no check in the reply settles
+    const b = await loopReply({ skills: true, answer });
+    const c = await loopReply({ skills: false, answer });
+    // The repeated call's pointer and the answer-now note are arm B's; only the send-back is worded apart.
+    const sentBack = (added: ChatMessage[]) => added.findIndex((m) => m.role === "user" && String(m.content).startsWith("Before this answer"));
+    const at = sentBack(c.added);
+    expect(at).toBe(sentBack(b.added));
+    expect(c.added.filter((_m, i) => i !== at)).toEqual(b.added.filter((_m, i) => i !== at));
+    expect(String(b.added[at].content)).toMatch(/call assess_stage with stage flatten/);
+    const sent = String(c.added[at].content);
+    expect(namedInOwnWords(sent)).toEqual([]);
+    expect(quotations(sent)).toEqual(["The flatten left no pedestal."]);
+    // Nothing else the loop says names one either: the answer-now note, the repeated call's pointer.
+    for (const m of c.added.filter((x) => x.role === "user" || String(x.content).includes("already_called"))) {
+      expect(namedInOwnWords(String(m.content)), String(m.content)).toEqual([]);
+    }
+    await expect(
+      doc(
+        "The agent loop's messages with the skills off (validation arm C)",
+        "The scripted reply of 5-agent-loop.md through `runAgent` with the skills' switch off (`skills: false` in its context), its first answer one sentence longer: a verdict on the flatten that no check in the reply settles, so the send-back shows arm C's wording. The repeated call's pointer and the answer-now note are arm B's. Shown: each request, then the messages the loop added after the opening four (1-chat-arm-c.md).",
+        c.body,
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/5-agent-loop-arm-c.md`);
   });
 });

@@ -7,10 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../api/types";
 import { useDpdfStore, type ManualLimit } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
-import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
-import { isCompacted } from "../compact";
+import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, toolResultsIn, TOOLS_UNSUPPORTED_NOTE } from "../agent";
 import { resetTokenState } from "../provider/tokens";
 import type { ChatMessage, StreamDelta } from "../provider/client";
+import * as readings from "../readings";
+import { isCompacted } from "../readings/compact";
 import { DEFAULT_SETTINGS } from "../settings";
 import { CHAT_TOOLS, type AgentTool } from "../tools";
 import { makeSlice } from "./helpers";
@@ -418,9 +419,45 @@ describe("runAgent", () => {
 
     it("offers the tool a revision asks for", async () => {
       const seen = script([[{ content: "The backfill is clean." }], [{ content: "Checked." }]]);
-      await runAgent({ messages: [{ role: "user", content: "How does it look?" }], tools, ctx, settings, signal: new AbortController().signal });
+      // A question about the flatten: a generic one is offered texture_check from the start (Q10).
+      await runAgent({ messages: [{ role: "user", content: "How does the flatten look?" }], tools, ctx, settings, signal: new AbortController().signal });
       expect(specNames(seen[0].tools)).toEqual(["assess_stage"]);
       expect(specNames(seen[1].tools)).toEqual(["assess_stage", "texture_check"]); // the backfill's evidence
+    });
+  });
+
+  describe("a result the model reads fitted (readings/)", () => {
+    // 600 readings: past the result limit, so the model reads the first ones
+    // and left_out names the rest; the step keeps the whole beside them.
+    const whole = { verdict: "meets its goal", items: Array.from({ length: 600 }, (_, i) => ({ at: Number((1 + i / 1000).toFixed(3)), w: 0.5 })) };
+    const longTool: AgentTool = {
+      name: "long",
+      description: "a long reading",
+      parameters: { type: "object", properties: {} },
+      run: async () => ({ result: whole, summary: "600 items" }),
+    };
+
+    it("fills a reference to a field the model's copy left out, from the whole result the step carries", async () => {
+      const seen = script([[{ toolCalls: [call("c1", "long", {})] }], [{ content: "The last item is at {{long.items.599.at}}." }]]);
+      const r = await runAgent({ messages: base, tools: [longTool], ctx, settings, signal: new AbortController().signal });
+      const step = r.steps[0];
+      expect(step.full).toBe(JSON.stringify(whole));
+      // What the model read: the tool message as it was sent, which holds the first items only.
+      const sent = seen[1].messages.find((m) => m.role === "tool")?.content;
+      expect(readings.seen(step)).toBe(sent);
+      const read = JSON.parse(readings.seen(step)) as { items: unknown[]; left_out: string[] };
+      expect(read.items.length).toBeLessThan(600);
+      expect(read.left_out).toEqual(["items: its last items"]);
+      expect(readings.found(step)).toEqual(whole);
+      // The reference is filled from the whole result, and its number traced there.
+      expect(r.content).toBe("The last item is at 1.599.");
+      expect(r.note).toBeUndefined();
+    });
+
+    it("gives the next reply an earlier turn's results as the model read them", () => {
+      const step = { id: "0:c1", name: "long", args: {}, status: "done" as const, result: '{"items":[1],"left_out":["items: its last items"]}', full: '{"items":[1,2,3]}' };
+      const turns = [{ steps: [step] }, { steps: [{ ...step, id: "1:c1", status: "error" as const }] }, {}];
+      expect(toolResultsIn(turns)).toEqual(['{"items":[1],"left_out":["items: its last items"]}']);
     });
   });
 
@@ -453,6 +490,12 @@ describe("runAgent", () => {
       // 1.199 is only in the whole first series: the checks read it there.
       expect(r.content).toBe("The first series reaches 1.199.");
       expect(r.note).toBeUndefined();
+      // The model's copy was shortened; what the model read when the call
+      // returned was not: `seen` stays the text sent then, and the step says so.
+      expect(r.steps.map((s) => s.shortened)).toEqual([true, undefined, undefined, undefined]);
+      expect(readings.seen(r.steps[0])).toBe(toolTexts(seen[1].messages)[0]);
+      expect(readings.seen(r.steps[0])).not.toBe(sent[0]);
+      expect(readings.found(r.steps[0])).toMatchObject({ peak: 1, series: expect.arrayContaining([1.199]) });
     });
 
     it("lets a shortened call run again, for the whole result", async () => {
@@ -495,6 +538,8 @@ describe("runAgent", () => {
       });
       expect(seen).toHaveLength(3);
       expect(toolTexts(seen[2].messages).map(isCompacted)).toEqual([true, false]);
+      expect(r.steps.map((s) => s.shortened)).toEqual([true, undefined]);
+      expect(readings.seen(r.steps[0])).toBe(toolTexts(seen[1].messages)[0]);
       expect(r.content).toBe("Done.");
     });
   });

@@ -47,7 +47,7 @@ No powder ring left above, or dented below, three times its plane's noise. A bum
 ### punch
 
 ```text
-No Bragg peak missed at a lattice node, and no sharp peak left off the lattice. Broad maxima are diffuse scattering, and stay.
+No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima are diffuse scattering, and stay.
 ```
 
 ### grains

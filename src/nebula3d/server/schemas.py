@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -32,6 +34,50 @@ class DataRootOut(BaseModel):
     raw_exists: bool
     processed_exists: bool
     n_datasets: int
+
+
+class RegridIn(BaseModel):
+    """Regrid a dataset onto its refined UB (see analysis.ub_regrid)."""
+    cell: list[int] = [1, 1, 1]  # the Bragg nodes' spacing, (2, 2, 2) on a doubled cell
+    q_max: float | None = None  # the nodes' |Q| limit, Å⁻¹ (default: the whole box)
+    symmetrise: bool = False  # symmetrise the new volume under its operations
+
+
+class RegridRefusalOut(BaseModel):
+    """Why nothing was written: a code to act on, a reason to show."""
+    code: str  # target_exists | symmetrised_without_source | turn_below_noise | cannot_symmetrise
+    reason: str
+
+
+class RegridOut(BaseModel):
+    """A dataset regridded onto its refined UB as a new dataset, or why not."""
+    id: str  # the dataset asked for
+    written: bool
+    refusal: RegridRefusalOut | None = None
+    dataset_id: str | None = None  # the new dataset (or the existing one a refusal names)
+    file: str | None = None  # ... its file, beside the raw one
+    source_file: str  # the dataset's raw file
+    refined_on: str | None = None  # whose peaks were fitted and data regridded
+    fit: str | None = None
+    operations: int | None = None
+    operations_from: str | None = None
+    source_symmetrised: bool | None = None
+    symmetrised: bool = False  # the new file is symmetrised, and declares its operations
+    turn_deg: float | None = None
+    turn_threshold_deg: float  # the UB check's rule: a smaller turn is within the fit's noise
+    axis_uvw: list[float] | None = None
+    ub_start: list[list[float]] | None = None
+    ub: list[list[float]] | None = None
+    cell_start: list[float] | None = None
+    cell: list[float] | None = None
+    rms_start: float | None = None
+    rms: float | None = None
+    n_used: int | None = None
+    measured_before: int | None = None
+    measured_after: int | None = None
+    # Measured before, unmeasured now: their Q fell outside the old grid.
+    voxels_outside: int | None = None
+    voxels_outside_share: float | None = None  # ... over measured_before
 
 
 class LatticeOut(BaseModel):
@@ -97,6 +143,101 @@ class RingIsotropyOut(BaseModel):
     id: str
     rule: dict[str, float]
     shells: list[RingShellOut]
+    not_judged: str | None = None   # why the grid is too coarse to judge any ring
+
+
+class UnconfirmedRingsOut(BaseModel):
+    """The shells the ring removal detected and could not confirm as powder
+    rings on its grid, which it did not subtract (pipeline.unconfirmed_rings_notice)."""
+    count: int
+    needs: str                      # what the grid needs (ring_isotropy.grid_needs)
+    notice: str                     # what the run log says of them
+    q_centers: list[float] = []     # their |Q| (Å⁻¹)
+
+
+class RingDiagnosticsOut(BaseModel):
+    """The ring removal's record, from its diagnostics (see server.rings)."""
+    dataset_id: str
+    diagnostics_path: str
+    has_diagnostics: bool
+    status: str | None = None
+    unconfirmed_at_grid: UnconfirmedRingsOut | None = None
+
+
+class ShellFloorsOut(BaseModel):
+    """The floor of every |Q| shell over the whole volume, and of the volume
+    the flatten was given (see preprocessing.flatten_floors).  One entry per
+    shell in each list; ``floors``, ``centres``, ``counts`` and ``totals`` are
+    the Pilot's ``radialFloorShells`` fields."""
+    id: str
+    before_id: str | None           # the flatten's input, for the flattened stage
+    q_step: float                   # shell width, Å⁻¹
+    percentile: float               # the floor's percentile, 0–100
+    min_count: int                  # fewer measured voxels: no floor
+    q_edges: list[float]            # one more than the shells, Å⁻¹
+    centres: list[float]            # Å⁻¹
+    totals: list[int]               # the grid's voxels in the shell
+    counts: list[int]               # ... measured (mask and finite)
+    floors: list[float | None]
+    medians: list[float | None]
+    counts_before: list[int] | None = None
+    floors_before: list[float | None] | None = None
+    medians_before: list[float | None] | None = None
+    level: float | None             # the diffuse level the floors' span is a share of
+    level_count: int
+    # The settings the flatten recorded in the file (FlattenParams: q_step,
+    # floor_percentile, min_count, fit_q_range, q2_term, ion, …), or None.
+    flatten: dict[str, Any] | None = None
+
+
+class TextureHoleOut(BaseModel):
+    """One punch hole's fill against the range its 3-D rim allows (see
+    analysis.bragg_fill_texture); the values are ``None`` where it was not
+    judged."""
+    index: int                      # its place among the holes, C order of first voxels
+    centre_hkl: list[float]         # the mean position of its voxels, r.l.u.
+    voxels: int
+    rim_voxels: int                 # measured, in no hole, left as they were by the fill
+    fill: float | None              # the mean backfilled value over the hole
+    level: float | None             # the rim's median: the local diffuse level
+    sigma: float | None             # the rim's robust σ about its trend
+    slope: float | None             # the trend's change per voxel outward
+    edge: float | None              # the range the rim allows: its trend at the hole's edge ...
+    peaked: float | None            # ... and continued linearly to the hole
+    bias: float | None              # the fill's signed distance outside that range (0 inside)
+    bias_sigma: float | None        # ... in the rim's σ
+    bias_level: float | None        # ... in units of the local level
+    not_judged: str | None = None   # "thin rim", "flat rim", "too large" or "no outside"
+
+
+class TextureOut(BaseModel):
+    """The Pilot's fill-bias check (texture.ts) on every punch hole of a
+    backfilled stage, with its 3-D rim, against the dataset's punched stage
+    (see analysis.bragg_fill_texture).  The summary's fields are texture.ts's
+    ``TextureMetrics`` fill-bias fields, with the same meanings."""
+    id: str
+    punched_id: str                 # the punched stage the holes were read from
+    holes_from: str                 # "punch_record" or "masks" (texture.ts's own test)
+    rim: int                        # the rim's depth, voxels (texture.ts's RIM)
+    min_rim: int                    # the fewest rim voxels a hole is judged with
+    min_sigma: float                # the rule's limits: the median bias in rim σ, ...
+    one_way: float                  # ... the share of the judged holes one way, ...
+    min_holes: int                  # ... the fewest judged holes ...
+    floor: float                    # ... and the median bias in units of the level
+    n_holes: int
+    n_judged: int
+    judged: bool                    # room for the rims, n_judged ≥ min_holes: else not judged
+    node_spacing: float | None = None  # voxels between neighbouring nodes of the grid's cell
+    room_needed: float | None = None   # ... that the median hole's rim needs, 2·(reach + rim)
+    not_judged: str | None = None   # why the grid is too coarse for the rule
+    median_fill_bias_sigma: float | None
+    median_fill_bias_level: float | None
+    above_fraction: float | None
+    below_fraction: float | None
+    above_floor_fraction: float | None  # filled above their range by floor × level or more
+    below_floor_fraction: float | None
+    systematic_fill_bias: bool
+    holes: list[TextureHoleOut]     # the `limit` holes farthest outside their range
 
 
 class UbPassOut(BaseModel):
@@ -157,13 +298,19 @@ class UbCheckOut(BaseModel):
 
 
 class DpdfFeatureGroupOut(BaseModel):
-    """Extrema of one sign, length and size (see analysis.dpdf_features)."""
+    """The copies of one correlation: extrema of one sign that are images of one
+    another under the declared point group, or of one sign, length and size
+    with none declared (see analysis.dpdf_features)."""
     sign: int
-    length: float  # Å
+    length: float  # |r| of the strongest, Å
     size_sigma: float  # the largest |ΔPDF| in the group, in robust σ
+    mean_size_sigma: float  # the mean |ΔPDF| of its n extrema, in robust σ
     value: float
     n: int  # extrema in the group, one per ± pair
-    vectors: list[list[float]]  # (x, y, z) along a, b, c, Å
+    # With a declared symmetry, the orbit's distinct vectors, one per ± pair (n is
+    # fewer when some are below the threshold or outside the volume); None without.
+    multiplicity: int | None
+    vectors: list[list[float]]  # (x, y, z) along a, b, c, Å, the strongest (representative) first
     vectors_rlu: list[list[float] | None]  # the same in lattice units
     sizes_sigma: list[float]
 
@@ -175,6 +322,9 @@ class DpdfFeaturesOut(BaseModel):
     min_sigma: float
     origin_radius: float  # Å
     n_extrema: int
+    # "declared symmetry (<label or operations>: <n> operations, r ≡ −r)", or
+    # "sign, length and size (<why: none declared, or why it was not applied>)"
+    grouped_by: str
     groups: list[DpdfFeatureGroupOut]
 
 

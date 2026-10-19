@@ -8,22 +8,32 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from nebula3d.server.config import ServerConfig
-from nebula3d.server.datasets import StageStatus, resolve_volume
+from nebula3d.server.datasets import (
+    StageStatus,
+    flatten_input_of,
+    punched_stage_of,
+    resolve_volume,
+)
 from nebula3d.server.deps import get_config
 from nebula3d.server.schemas import (
     CoverageOut,
     LatticeOut,
     RingIsotropyOut,
+    ShellFloorsOut,
+    TextureOut,
     UbCheckOut,
     VolumeMetaOut,
 )
 from nebula3d.server.volumes import (
     PLANES,
+    TEXTURE_MAX_LIMIT,
     parse_ring_shells,
     slice_envelope,
     volume_coverage,
     volume_meta,
     volume_ring_isotropy,
+    volume_shell_floors,
+    volume_texture,
     volume_ub_check,
 )
 
@@ -113,6 +123,61 @@ def rings(
     """Which of the shells are powder rings: each rises in nearly every direction."""
     stage = _resolve_hkl(cfg, volume_id)
     return RingIsotropyOut(id=volume_id, **volume_ring_isotropy(stage.path, parse_shells(q, fwhm)))
+
+
+@router.get("/{volume_id}/shell-floors", response_model=ShellFloorsOut)
+def shell_floors(
+    volume_id: str,
+    q_step: float | None = Query(None, gt=0, description="shell width, Å⁻¹ (default 0.05)"),
+    percentile: float | None = Query(None, ge=0, le=100,
+                                     description="the floor's percentile (default 25)"),
+    min_count: int | None = Query(None, ge=1,
+                                  description="fewer measured voxels: no floor (default 20)"),
+    cfg: ServerConfig = Depends(get_config),
+) -> ShellFloorsOut:
+    """The floor of every |Q| shell over the whole volume, on the flatten's
+    shells; for the flattened stage, also of the flatten's input (the
+    backfilled stage) on the same shells, and the diffuse level."""
+    stage = _resolve_hkl(cfg, volume_id)
+    pair = flatten_input_of(cfg, volume_id)
+    try:
+        out = volume_shell_floors(stage.path, pair[1].path if pair else None, q_step=q_step,
+                                  percentile=percentile, min_count=min_count)
+    except ValueError as exc:  # too many shells for q_step
+        raise HTTPException(422, str(exc)) from exc
+    return ShellFloorsOut(id=volume_id, before_id=pair[0] if pair else None, **out)
+
+
+@router.get("/{volume_id}/texture", response_model=TextureOut)
+def texture(
+    volume_id: str,
+    limit: int = Query(20, ge=0, le=TEXTURE_MAX_LIMIT,
+                       description="holes listed, farthest outside their range first"),
+    min_sigma: float | None = Query(None, ge=0,
+                                    description="a systematic bias's median in rim σ (0.5)"),
+    one_way: float | None = Query(None, ge=0, le=1,
+                                  description="its share of the judged holes one way (0.75)"),
+    min_holes: int | None = Query(None, ge=1, description="its fewest judged holes (5)"),
+    floor: float | None = Query(None, ge=0,
+                                description="its median in units of the local level (0.2)"),
+    cfg: ServerConfig = Depends(get_config),
+) -> TextureOut:
+    """Whether the backfill's fills sit systematically off the diffuse around
+    their holes: the Pilot's texture_check rule on every punch hole of a
+    backfilled stage, with its 3-D rim, against the dataset's punched stage."""
+    stage = _resolve_hkl(cfg, volume_id)
+    if stage.name != "backfilled":
+        raise HTTPException(
+            400, f"the fills' texture is measured on a backfilled stage, not {stage.name!r}")
+    pair = punched_stage_of(cfg, volume_id)
+    if pair is None:
+        raise HTTPException(404, f"no punched stage on disk for {volume_id!r}")
+    try:
+        out = volume_texture(stage.path, pair[1].path, limit=limit, min_sigma=min_sigma,
+                             one_way=one_way, min_holes=min_holes, floor=floor)
+    except ValueError as exc:  # a limit out of range, or two stages on different grids
+        raise HTTPException(422, str(exc)) from exc
+    return TextureOut(id=volume_id, punched_id=pair[0], **out)
 
 
 @router.get("/{volume_id}/slice")

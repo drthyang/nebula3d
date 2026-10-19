@@ -288,7 +288,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {}
 
-3262 characters sent.
+3330 characters sent.
 
 ```json
 {
@@ -335,12 +335,13 @@ References of this skill (read one with read_skill and `reference`):
   },
   "punch": {
     "verdict": "needs attention",
-    "criterion": "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice. Broad maxima are diffuse scattering, and stay.",
+    "criterion": "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima are diffuse scattering, and stay.",
     "headline": "1 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.03",
     "total_leftover_peaks": 1,
     "leftover_at_nodes": 1,
     "leftover_off_lattice": 0,
     "leftover_on_protected_planes": 0,
+    "leftover_on_protected_planes_sharp": 0,
     "leftover_off_lattice_broad": 0,
     "leftover_off_lattice_sharp": 0,
     "strongest_leftover": {
@@ -1619,6 +1620,7 @@ A local model's request past its soft budget has its older results shortened (`c
     "leftover_at_nodes": 1,
     "leftover_off_lattice": 0,
     "leftover_on_protected_planes": 0,
+    "leftover_on_protected_planes_sharp": 0,
     "leftover_off_lattice_broad": 0,
     "leftover_off_lattice_sharp": 0,
     "strongest_leftover": {

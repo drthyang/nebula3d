@@ -19,11 +19,12 @@ import {
   STAGE_REVIEW_LABELS,
   type ReviewStage,
 } from "../prompts/templates";
+import { seen } from "../readings";
 import { renderSliceToDataUrl } from "../render/sliceImage";
 import { askAssistant, stopAssistant } from "../session";
 import { saveSettings, type LlmSettings } from "../settings";
 import { skillsReadIn } from "../skills";
-import { CHAT_TOOLS, type ToolContext } from "../tools";
+import { CHAT_TOOLS, factsOf, type ToolContext } from "../tools";
 import { openView } from "../tools/openView";
 import type { AssistantContext } from "../useAssistant";
 import { reportable } from "../report/collect";
@@ -88,41 +89,13 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
   );
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  read_skill: "Read a skill",
-  describe_dataset: "Read the dataset",
-  current_view: "Checked your view",
-  measure_reciprocal_cut: "Measured a reciprocal cut",
-  measure_dpdf_cut: "Measured a ΔPDF section",
-  line_profile: "Took a line profile",
-  bragg_peaks: "Looked up Bragg peaks",
-  consistency_details: "Read the back-FFT check",
-  compare_datasets: "Compared datasets",
-  configure_settings: "Read the run settings",
-  assess_stage: "Assessed a stage",
-  radial_profile: "Took a radial profile",
-  texture_check: "Checked for texture",
-  qmax_coverage: "Checked Qmax against coverage",
-  symmetry_check: "Checked the ΔPDF's symmetry",
-  dpdf_contrast: "Set the ΔPDF's contrast",
-  dpdf_peaks: "Listed the ΔPDF's strongest features",
-  grain_check: "Checked for a second grain",
-  ub_check: "Checked the UB",
-  run_log: "Read the run log",
-  update_settings: "Changed settings",
-  run_pipeline: "Ran the pipeline",
-  tune_pipeline: "Tuned the pipeline",
-  show_in_viewer: "Opened the viewer",
+// A step's line in the transcript: its tool's label (tools/facts.ts), and its
+// running label while it runs (a run's or a tuning run's is in the present
+// tense: they are long enough to be watched).
+const stepLabel = (s: AgentStep): string => {
+  const facts = factsOf(s.name);
+  return s.status === "running" ? facts.runningLabel : facts.label;
 };
-
-// Tools long enough to be watched get a present-tense label while they run.
-const RUNNING_LABELS: Record<string, string> = {
-  run_pipeline: "Running the pipeline",
-  tune_pipeline: "Tuning the pipeline",
-};
-
-const stepLabel = (s: AgentStep): string =>
-  (s.status === "running" ? RUNNING_LABELS[s.name] : undefined) ?? TOOL_LABELS[s.name] ?? s.name;
 
 // The tool calls of one reply: a compact list, each row opening to the
 // arguments and the JSON the model read.  A viewer step can be reopened; a
@@ -146,7 +119,7 @@ function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
               </summary>
               <pre className="ai-step-detail">
                 {JSON.stringify(s.args)}
-                {s.result ? `\n→ ${s.result}` : ""}
+                {seen(s) ? `\n→ ${seen(s)}` : ""}
               </pre>
             </details>
             {s.view && (
@@ -154,7 +127,7 @@ function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
                 Show
               </button>
             )}
-            {(s.name === "run_pipeline" || s.name === "tune_pipeline") && (
+            {factsOf(s.name).startsRuns && (
               <button
                 type="button"
                 className="ai-step-open"

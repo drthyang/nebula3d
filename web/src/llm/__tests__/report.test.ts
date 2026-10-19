@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 import type { Slice } from "../../api/types";
 import { rasterize } from "../report/figures";
 import { reportHtml, reportMarkdown } from "../report/render";
-import { buildReport, fmt, stageCheck, type ReportInput } from "../report/report";
+import { buildReport, fmt, type ReportInput } from "../report/report";
+import { judge, verdicts, type Outcome } from "../verdicts";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
 
@@ -47,6 +48,18 @@ const input = (over: Partial<ReportInput> = {}): ReportInput => ({
   ],
   ...over,
 });
+
+// A run on a grid too coarse for the ring check (made-up numbers): the ring removal
+// left four ring candidates unconfirmed, and says so; every other stage meets its goal.
+const NOTICE_DEFINITION =
+  "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
+const NOTICE = `${NOTICE_DEFINITION} Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.`;
+const COARSE = "grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1";
+const COARSE_RUN = {
+  ...input().measured,
+  rings: { notice: NOTICE, mean_ring_energy_ratio: 1, max_over_subtraction_fraction: 0, max_ring_dent: null, max_ring_left: null, ring_rule: `not judged: ${COARSE}` },
+  punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 },
+};
 
 describe("buildReport", () => {
   it("judges each stage by its stated criterion, from the measured numbers", () => {
@@ -183,36 +196,162 @@ describe("rasterize", () => {
   });
 });
 
-describe("a stage's check states only what it judges", () => {
-  it("judges the 3D-ΔPDF's symmetry from its worst in-plane break", () => {
-    const base = { back_fft_pearson_r: 0.9995, window_weight_on_unmeasured: 1e-4 };
-    const broken = stageCheck("pdf", { ...base, max_symmetry_break: 0.05, worst_symmetry_op: "six-fold (60°)" });
-    expect(broken?.verdict).toBe("attention");
-    expect(broken?.headline).toMatch(/symmetry broken/);
-    expect(stageCheck("pdf", { ...base, max_symmetry_break: 5e-4 })?.verdict).toBe("pass");
-    expect(stageCheck("pdf", base)?.verdict).toBe("pass");
+describe("a card states only what it judges", () => {
+  it("shows the symmetry_check's verdict on the 3D-ΔPDF's card", () => {
+    const r = buildReport(input({ measured: { ...input().measured, symmetry: { verdict: "not kept: six-fold (60°) (0.05)" } } }));
+    const pdf = r.checks.find((c) => c.title === "3D-ΔPDF")!;
+    expect(pdf.verdict).toBe("attention");
+    expect(pdf.headline).toMatch(/ · symmetry broken$/);
   });
 
-  it("judges the flatten by the pedestal rule, and reports its floor in σ without judging it", () => {
+  it("counts qmax_coverage's \"too far\" on the 3D-ΔPDF's card, though the evaluation's weight is within the limit (D2, 2.4.2)", () => {
+    // Synthetic measurements: the window reaches 9.1 Å⁻¹ (to zero at the box faces), past full coverage at 6.5 Å⁻¹; then 6.283 Å⁻¹, inside it.
+    const reach = { window_weight: null, window: "the ΔPDF's ellipsoid window", unit_cell: true, full_coverage_q: 6.5, shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } };
+    const past = judge("coverage", { ...reach, reach: 9.1, reach_from: "the window tapers to zero at the box faces" });
+    const inside = judge("coverage", { ...reach, reach: 6.283, reach_from: "the window is tapered to the measured coverage" });
+    const card = (coverage: Outcome, kept: boolean) => {
+      const measured = { ...input().measured, coverage: { verdict: coverage.words, window_weight_on_unmeasured: null }, ...(kept ? { outcomes: [coverage] } : {}) };
+      return buildReport(input({ measured }));
+    };
+    // As the measurement pass keeps the tool's outcome, and as its words read.
+    for (const kept of [true, false]) {
+      const r = card(past, kept);
+      expect(r.checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("attention");
+      expect(r.achieved.text).toBe("not met: needs attention: Ring removal, Bragg punch, 3D-ΔPDF");
+      expect(card(inside, kept).checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("pass");
+    }
+    expect(card(past, true).checks.find((c) => c.title === "3D-ΔPDF")!.details).toContainEqual(["Coverage", past.words]);
+  });
+
+  it("counts the punch's sharp leftovers outside the protected planes, and shows those on them on their own line (D5, 2.4.5b)", () => {
+    // Synthetic measurements: five sharp off-lattice leftovers, three of them on protected planes.
+    const punch = { leftover_at_nodes: 0, leftover_off_lattice_sharp: 5, leftover_on_protected_planes: 4, leftover_on_protected_planes_sharp: 3, leftover_off_lattice_broad: 7, mean_punched_fraction: 0.03 };
+    const card = (m: Record<string, unknown>) => buildReport(input({ measured: { ...input().measured, punch: m } })).checks.find((c) => c.title === "Bragg punch")!;
+    const two = card(punch);
+    expect(two.verdict).toBe("attention");
+    // The headline names them too, so nothing on those planes goes unsaid.
+    expect(two.headline).toBe("0 missed at nodes · 2 sharp off-lattice (3 more on protected planes, kept) · 7 broad maxima kept · punched 0.03");
+    expect(two.details).toContainEqual(["Sharp off-lattice leftovers (outside the protected planes)", "2"]);
+    expect(two.details).toContainEqual(["Sharp leftovers on protected planes (kept by design)", "3"]);
+    expect(two.criterion).toMatch(/no sharp peak left off the lattice outside the protected planes/);
+    // All of them on the protected planes: none counted, and the card passes.
+    const none = card({ ...punch, leftover_off_lattice_sharp: 3 });
+    expect([none.verdict, none.headline]).toEqual(["pass", "0 missed at nodes · 0 sharp off-lattice (3 more on protected planes, kept) · 7 broad maxima kept · punched 0.03"]);
+    // An evaluation recorded without the split counts every sharp one, under the old label.
+    const old = card({ leftover_at_nodes: 0, leftover_off_lattice_sharp: 5, leftover_on_protected_planes: 4 });
+    expect(old.details).toContainEqual(["Sharp off-lattice leftovers", "5"]);
+    expect(old.details.map(([k]) => k)).not.toContain("Sharp leftovers on protected planes (kept by design)");
+  });
+
+  it("leaves the 3D-ΔPDF's card not judged without a ΔPDF evaluation, unless the coverage or the symmetry needs attention (D9, 2.4.9)", () => {
+    // Synthetic measurements: every other stage passes; no ΔPDF evaluation was run.
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 }, pdf: null };
+    const r = buildReport(input({ measured: sound }));
+    expect(r.checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("info");
+    expect(r.achieved).toEqual({ met: null, text: "not judged: not measured: 3D-ΔPDF" });
+    expect(reportMarkdown(r)).toContain("| 3D-ΔPDF | not judged |");
+    // The coverage too far (a separable window putting 0.04 of its weight on unmeasured space): the card needs attention.
+    const far = judge("coverage", { window_weight: 0.04, window: "the ΔPDF's separable window", unit_cell: true, full_coverage_q: null, reach: null, reach_from: "", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } });
+    const r2 = buildReport(input({ measured: { ...sound, coverage: { verdict: far.words, window_weight_on_unmeasured: 0.04 } } }));
+    expect(r2.checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("attention");
+    expect(r2.achieved).toEqual({ met: false, text: "not met: needs attention: 3D-ΔPDF" });
+  });
+
+  it("names a turned UB in its goal, as {{achieved}} does, from ub_check's result (Q11, 2.4.11)", () => {
+    // Synthetic measurements: every stage passes; ub_check's fit turned the UB by 0.6° and found the origin shifted.
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 } };
+    const ub = { fit: "both", symmetrised: false, orientation_change_deg: 0.6, origin_shift_rlu: [0.03, 0, 0] };
+    const goal = "met: every stage meets its goal; data problems no setting fixes: the UB is turned by 0.6°; the HKL origin is shifted by (0.03, 0, 0) r.l.u.";
+    // As the measurement pass keeps the tool's outcome, and from its result.
+    for (const measured of [{ ...sound, ub, outcomes: [judge("ub", ub)] }, { ...sound, ub }]) {
+      const r = buildReport(input({ measured }));
+      expect(r.achieved).toEqual({ met: true, text: goal });
+      expect(reportMarkdown(r)).toContain(`**Goal: ${goal}.**`);
+    }
+    // A right UB names nothing; a symmetrised volume's UB is not judged, and names nothing either.
+    expect(buildReport(input({ measured: { ...sound, ub: { fit: "both", symmetrised: false, orientation_change_deg: 0.01 } } })).achieved.text).toBe("met: every stage meets its goal");
+    expect(buildReport(input({ measured: { ...sound, ub: { fit: "symmetric", symmetrised: true, orientation_change_deg: 0.3 } } })).achieved.text).toBe("met: every stage meets its goal");
+  });
+
+  it("counts the ΔPDF evaluation's own symmetry break on its card, symmetry_check kept or not run (D13, 2.4b.4)", () => {
+    // Synthetic: a sound round trip, the window inside, and an x–y section off its six-fold by 0.05 on data declared symmetrised.
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 } };
+    const pdf = { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 1e-4, max_symmetry_break: 0.05, worst_symmetry_op: "six-fold (60°)", symmetry_declared: true };
+    for (const symmetry of [input().measured.symmetry, null]) {
+      const r = buildReport(input({ measured: { ...sound, pdf, symmetry } }));
+      expect(r.checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("attention");
+      expect(r.achieved.text).toBe("not met: needs attention: 3D-ΔPDF");
+    }
+    // Held to 1e-3: a pass.
+    expect(buildReport(input({ measured: { ...sound, pdf: { ...pdf, max_symmetry_break: 0.001 } } })).checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("pass");
+  });
+
+  it("counts a fill bias on the Backfill card whether or not it judged the seam, made for it when the backfill was not measured (D14, 2.4b.4)", () => {
+    // Synthetic: one of two cuts filled systematically one way; the seam not measured, or the backfill not measured at all.
+    const texture = { per_cut: [{ systematic_fill_bias: true }, { systematic_fill_bias: false }] };
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 }, texture };
+    for (const backfill of [{ max_bright_fill_fraction: 0 }, null]) {
+      const r = buildReport(input({ measured: { ...sound, backfill } }));
+      const card = r.checks.find((c) => c.title === "Backfill")!;
+      expect(card.verdict).toBe("attention");
+      expect(card.headline).toMatch(/ · fill bias on 1 of 2 cuts$/);
+      expect(r.achieved.text).toBe("not met: needs attention: Backfill");
+    }
+  });
+
+  it("leaves the 3D-ΔPDF's card not judged when its evaluation measured nothing (D15, 2.4b.5)", () => {
+    // Synthetic: an evaluation with no round trip, no window weight and no section symmetry; the coverage clean.
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 } };
+    const nothing = { back_fft_pearson_r: null, back_fft_pearson_r_even: null, window_weight_on_unmeasured: null, max_symmetry_break: null };
+    const r = buildReport(input({ measured: { ...sound, pdf: nothing } }));
+    expect(r.checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("info");
+    expect(r.achieved).toEqual({ met: null, text: "not judged: not measured: 3D-ΔPDF" }); // met before 2.4b.5
+    // As a reply's {{achieved}} reads it.
+    expect(verdicts({ reply: [{ id: "a", name: "assess_stage", args: { stage: "pdf" }, status: "done", result: JSON.stringify({ pdf: nothing }) }] }).achieved?.stages.pdf).toBe("info");
+  });
+
+  it("says the ring candidates the removal left unconfirmed on its grid on its card and among the caveats (G1)", () => {
+    const r = buildReport(input({ measured: COARSE_RUN }));
+    const card = r.checks.find((c) => c.title === "Ring removal")!;
+    expect(card.verdict).toBe("info");
+    expect(card.details[0]).toEqual(["Not subtracted", NOTICE]);
+    expect(card.details).toContainEqual(["Not judged", COARSE]);
+    expect(r.caveats[0]).toBe(`Ring removal: ${NOTICE}`);
+    expect(reportMarkdown(r)).toContain(NOTICE);
+    expect(reportHtml(r)).toContain(NOTICE.replace(/'/g, "&#39;"));
+    // Without a notice, neither the line nor the caveat.
+    const plain = buildReport(input());
+    expect(plain.checks[0].details.map(([k]) => k)).not.toContain("Not subtracted");
+    expect(plain.caveats.filter((c) => c.startsWith("Ring removal: ") && c.includes("not confirmed at this grid"))).toEqual([]);
+  });
+
+  it("says why its goal is not judged on a grid too coarse for the ring check, as {{achieved}} does, not that the stage was not measured (G1)", () => {
+    const r = buildReport(input({ measured: COARSE_RUN }));
+    expect(r.achieved).toEqual({ met: null, text: "not judged: Ring removal (grid too coarse for the ring check)" });
+    expect(verdicts({ report: COARSE_RUN }).achieved).toMatchObject({ notMeasured: [], notJudged: ["Ring removal (grid too coarse for the ring check)"] });
+    // Beside a stage not measured: each with its own words.
+    const noFlatten = buildReport(input({ measured: { ...COARSE_RUN, flatten: null } }));
+    expect(noFlatten.achieved.text).toBe("not judged: Ring removal (grid too coarse for the ring check); not measured: Flatten");
+    // A ring check that judged nothing for another reason reads as before.
+    const rings = { max_ring_dent: null, max_ring_left: null, ring_rule: "not judged: the test of each bump in 3D could not run" };
+    expect(buildReport(input({ measured: { ...COARSE_RUN, rings } })).achieved.text).toBe("not judged: not measured: Ring removal");
+  });
+
+  it("reports the flatten's floor in σ without judging it, by the pedestal rule", () => {
     // The validation's dev volumes (docs/pilot-review.md finding 6): floors of
     // 1.5 to 1.8σ on all eight, whatever the flatten did.
-    const control = stageCheck("flatten", { max_after_floor_sigma: 1.72, max_floor_trend: 0.314, max_floor_span_fraction: 0.601, pedestal_left: false })!;
-    expect(control.verdict).toBe("pass"); // "needs attention" under the 1σ clause
-    expect(control.details).toContainEqual(["Largest leftover floor (reported, not judged)", "1.72 σ"]);
-    expect(control.criterion).toMatch(/^No pedestal: .* The largest floor in σ is reported, not judged/);
-    const planted = { max_after_floor_sigma: 1.8, max_floor_trend: 0.975, max_floor_span_fraction: 0.971 };
-    expect(stageCheck("flatten", planted)!.verdict).toBe("attention");
-    expect(stageCheck("flatten", { max_after_floor_sigma: 1.52, max_floor_trend: 0.025, max_floor_span_fraction: 0.333 })!.verdict).toBe("pass");
-    expect(stageCheck("flatten", { max_after_floor_sigma: 0.8 })!.verdict).toBe("info"); // no trend or span: nothing judged
-    // The floor alone, however high in σ, no longer makes a verdict: the pedestal rule does (the user's choice, 2026-10-17).
-    expect(stageCheck("flatten", { max_after_floor_sigma: 3, max_floor_trend: 0.31, max_floor_span_fraction: 0.6 })!.verdict).toBe("pass");
-    expect(stageCheck("flatten", { max_after_floor_sigma: 0.5, max_floor_trend: 0.9, max_floor_span_fraction: 0.85 })!.verdict).toBe("attention");
+    const flatten = { max_after_floor_sigma: 1.72, max_floor_trend: 0.314, max_floor_span_fraction: 0.601, pedestal_left: false };
+    const card = buildReport(input({ measured: { ...input().measured, flatten } })).checks.find((c) => c.title === "Flatten")!;
+    expect(card.verdict).toBe("pass"); // "needs attention" under the 1σ clause
+    expect(card.details).toContainEqual(["Largest leftover floor (reported, not judged)", "1.72 σ"]);
+    expect(card.criterion).toMatch(/^No pedestal: .* The largest floor in σ is reported, not judged/);
   });
 
-  it("does not promise a fill-bias check a stage's evaluation never makes", () => {
-    const c = stageCheck("backfill", { mean_median_seam_sigma: 0.6 });
-    expect(c?.verdict).toBe("pass");
-    expect(c?.criterion).toMatch(/texture_check's to say/);
-    expect(c?.criterion).not.toMatch(/no cut whose fill is biased/);
+  it("counts the fill bias on the Backfill card, whose criterion says so", () => {
+    const texture = { per_cut: [{ systematic_fill_bias: true }, { systematic_fill_bias: false }] };
+    const card = buildReport(input({ measured: { ...input().measured, texture } })).checks.find((c) => c.title === "Backfill")!;
+    expect(card.verdict).toBe("attention");
+    expect(card.headline).toMatch(/ · fill bias on 1 of 2 cuts$/);
+    expect(card.criterion).toMatch(/no cut whose fill is biased one way/);
   });
 });

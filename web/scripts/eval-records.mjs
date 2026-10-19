@@ -6,8 +6,10 @@
 // ran it. Its summary holds only what a before/after report needs: per run,
 // whether it passed, the names of the checks it failed (written with the
 // scenarios, no measured figures), how the model server failed it if it did,
-// whether it ended in an exception, at the round cap or by the loop guard, and
-// its time and token counts. Both kinds of file are read alike here.
+// whether it ended in an exception, at the round cap or by the loop guard, its
+// time and token counts, and the context window it had against the run
+// policy's minimum (null in records made before 2026-10-19). Both kinds of
+// file are read alike here.
 
 const TURN_CAP = /^Stopped after \d+ rounds/;
 const LOOP = /repeated calls that brought nothing new/;
@@ -26,6 +28,7 @@ export function runFacts(run) {
     loop: run.loop ?? LOOP.test(run.note ?? ""),
     seconds: run.seconds ?? (typeof run.latency_ms === "number" ? Math.round(run.latency_ms / 1000) : null),
     tokens: run.tokens ?? (run.usage ? { input: run.usage.input, output: run.usage.output, requests: run.usage.requests } : null),
+    context_window: run.context_window ?? null,
   };
 }
 

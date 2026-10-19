@@ -1,6 +1,6 @@
 // THY-18's parts one by one: which results are still evidence after a rerun
 // (evidence.ts), numbers by reference (references.ts) and the verdict on the
-// run computed from the checks (verdict.ts).
+// run computed from the checks (verdicts/, and the line under a reply, verdict.ts).
 
 import { describe, expect, it } from "vitest";
 
@@ -8,8 +8,10 @@ import type { AgentStep } from "../agent";
 import { overallContradiction, evidenceGaps } from "../answerChecks";
 import { recomputedAt } from "../evidence";
 import { fillReferences, resolveReference } from "../references";
-import { achievedFrom, type ReportCheck } from "../report/report";
-import { computedVerdict, verdictLine } from "../verdict";
+import { verdictLine } from "../verdict";
+import { verdicts } from "../verdicts";
+
+const computedVerdict = (steps: readonly AgentStep[]) => verdicts({ reply: steps }).achieved;
 
 let n = 0;
 const step = (name: string, result: unknown, args: Record<string, unknown> = {}, status: AgentStep["status"] = "done"): AgentStep => ({
@@ -20,11 +22,30 @@ const step = (name: string, result: unknown, args: Record<string, unknown> = {},
   result: JSON.stringify(result),
 });
 
-const stage = (verdict: string, extra: Record<string, unknown> = {}) => ({ verdict, ...extra });
 const PASS = "meets its goal";
 const ATTENTION = "needs attention";
+type StageName = "rings" | "punch" | "backfill" | "flatten" | "pdf";
+// Numbers each stage's rule gives the label: a stage is judged from its numbers, not its label (D18).
+const NUMBERS: Record<string, Record<StageName, Record<string, unknown>>> = {
+  [PASS]: {
+    rings: { max_ring_left: 0, max_ring_dent: 0 },
+    punch: { leftover_at_nodes: 0 },
+    backfill: { mean_median_seam_sigma: 0.5 },
+    flatten: { max_floor_trend: 0.31, max_floor_span_fraction: 0.6 },
+    pdf: { back_fft_pearson_r_even: 1 },
+  },
+  [ATTENTION]: {
+    rings: { max_ring_left: 0.14, max_ring_dent: 0 },
+    punch: { leftover_at_nodes: 2 },
+    backfill: { mean_median_seam_sigma: 1.5 },
+    flatten: { max_floor_trend: 0.97, max_floor_span_fraction: 0.97 },
+    pdf: { back_fft_pearson_r_even: 0.97 },
+  },
+};
+/** A stage's result as assess_stage writes it: its label, and numbers that give it. */
+const stage = (name: StageName, verdict: string, extra: Record<string, unknown> = {}) => ({ verdict, ...NUMBERS[verdict][name], ...extra });
 const all = (over: Record<string, unknown> = {}) =>
-  step("assess_stage", { rings: stage(PASS), punch: stage(PASS), backfill: stage(PASS), flatten: stage(PASS, { max_floor_trend: 0.31 }), pdf: stage(PASS), ...over }, { stage: "all" });
+  step("assess_stage", { rings: stage("rings", PASS), punch: stage("punch", PASS), backfill: stage("backfill", PASS), flatten: stage("flatten", PASS), pdf: stage("pdf", PASS), ...over }, { stage: "all" });
 const rerun = (stages: Record<string, string>) => step("run_pipeline", { ended: "done", stages }, { from_stage: "flatten" });
 
 describe("evidence after a rerun", () => {
@@ -61,8 +82,8 @@ describe("evidence after a rerun", () => {
 
 describe("numbers by reference", () => {
   const steps = [
-    step("assess_stage", { rings: stage(ATTENTION, { max_ring_left: 0.14 }) }, { stage: "rings" }),
-    step("assess_stage", { flatten: stage(PASS, { max_floor_trend: 0.025 }) }, { stage: "flatten" }),
+    step("assess_stage", { rings: stage("rings", ATTENTION, { max_ring_left: 0.14 }) }, { stage: "rings" }),
+    step("assess_stage", { flatten: stage("flatten", PASS, { max_floor_trend: 0.025 }) }, { stage: "flatten" }),
     step("ub_check", { orientation_change_deg: 0.601, origin_shift_rlu: null, symmetrised: false, passes: [{ q_max: 3.2 }] }),
     step("dpdf_peaks", { features: [{ sign: "−", vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, 0.497]] }] }),
   ];
@@ -94,7 +115,7 @@ describe("the verdict computed from the checks", () => {
   });
 
   it("is not met when a stage, the window, the symmetry or the fill's texture needs attention", () => {
-    expect(computedVerdict([all({ flatten: stage(ATTENTION) })])!.text).toBe("not met: needs attention: the flatten");
+    expect(computedVerdict([all({ flatten: stage("flatten", ATTENTION) })])!.text).toBe("not met: needs attention: the flatten");
     const checks = [
       all(),
       step("qmax_coverage", { verdict: "too far: the ΔPDF's separable window puts 0.04 of its weight on unmeasured reciprocal space" }),
@@ -108,10 +129,31 @@ describe("the verdict computed from the checks", () => {
     const stale = computedVerdict([all(), rerun({ rings: "reused", punch: "reused", backfill: "reused", flatten: "computed", pdf: "computed" })])!;
     expect(stale).toMatchObject({ achieved: null, notMeasured: ["the flatten", "the 3D-ΔPDF"] });
     expect(stale.text).toBe("not judged: not measured since it was last computed: the flatten, the 3D-ΔPDF");
-    // A result without its verdict label: judged by the report's rule from its numbers.
+    // A result without its verdict label: judged by the stage's rule from its numbers.
     const numbers = step("assess_stage", { flatten: { max_after_floor_sigma: 1.8, max_floor_trend: 0.975, max_floor_span_fraction: 0.971 } }, { stage: "flatten" });
     expect(computedVerdict([numbers])!.stages.flatten).toBe("attention");
     expect(computedVerdict([step("describe_dataset", {})])).toBeNull(); // nothing it rests on
+  });
+
+  it("says why a stage measured on a grid too coarse for its check is not judged, not that it was not measured (G1)", () => {
+    const coarse = { verdict: "not judged", max_ring_left: null, max_ring_dent: null, ring_rule: "not judged: grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1" };
+    const v = computedVerdict([all({ rings: coarse })])!;
+    expect(v).toMatchObject({ achieved: null, attention: [], notMeasured: [], notJudged: ["the ring removal (grid too coarse for the ring check)"] });
+    expect(v.text).toBe("not judged: the ring removal (grid too coarse for the ring check)");
+    expect(resolveReference("achieved", [all({ rings: coarse })])).toBe(v.text);
+    // Beside stages not measured since they were last computed, each with its own words.
+    const stale = computedVerdict([all({ rings: coarse }), rerun({ rings: "reused", punch: "reused", backfill: "reused", flatten: "computed", pdf: "computed" })])!;
+    expect(stale).toMatchObject({ achieved: null, notMeasured: ["the flatten", "the 3D-ΔPDF"], notJudged: ["the ring removal (grid too coarse for the ring check)"] });
+    expect(stale.text).toBe("not judged: the ring removal (grid too coarse for the ring check); not measured since it was last computed: the flatten, the 3D-ΔPDF");
+    // A need for attention elsewhere still decides: not met.
+    expect(computedVerdict([all({ rings: coarse, flatten: stage("flatten", ATTENTION) })])!.text).toBe("not met: needs attention: the flatten");
+    // A ring check that judged nothing for another reason reads as before, with no notJudged.
+    const nothing = computedVerdict([all({ rings: { verdict: "not judged", max_ring_left: null, max_ring_dent: null, ring_rule: "not judged: the test of each bump in 3D could not run" } })])!;
+    expect(nothing.text).toBe("not judged: not measured since it was last computed: the ring removal");
+    expect(nothing).not.toHaveProperty("notJudged");
+    // A claim of success is held to the verdict, which says why: the checks ran.
+    expect(overallContradiction("The 3D-ΔPDF can be trusted.", v)).toBe(`It calls the run a success, but the verdict computed from the checks is "${v.text}"`);
+    expect(overallContradiction("The 3D-ΔPDF can be trusted.", nothing)).toMatch(/did not all run on the outputs as they now are \(not judged: not measured/);
   });
 
   it("names the data's problems no setting fixes, apart from whether the reduction met its goal", () => {
@@ -126,7 +168,7 @@ describe("the verdict computed from the checks", () => {
   });
 
   it("holds a claim that the run succeeded to it, and lets the rest through", () => {
-    const notMet = computedVerdict([all({ flatten: stage(ATTENTION) })]);
+    const notMet = computedVerdict([all({ flatten: stage("flatten", ATTENTION) })]);
     expect(overallContradiction("The 3D-ΔPDF can be trusted.", notMet)).toMatch(/^It calls the run a success, but the verdict computed from the checks is "not met/);
     expect(overallContradiction("Every stage meets its goal, so the result is reliable.", notMet)).not.toBeNull();
     expect(overallContradiction("The 3D-ΔPDF can be trusted.", computedVerdict([all()]))).toBeNull();
@@ -141,11 +183,11 @@ describe("the verdict computed from the checks", () => {
 describe("the line under a reply", () => {
   it("gives the verdict when the reply judged the run, the data's problems when only they were found, else nothing", () => {
     expect(verdictLine(computedVerdict([all()]))).toBe("Verdict from the checks: met: every stage meets its goal.");
-    expect(verdictLine(computedVerdict([step("assess_stage", { rings: stage(ATTENTION) }, { stage: "rings" })]))).toBe(
+    expect(verdictLine(computedVerdict([step("assess_stage", { rings: stage("rings", ATTENTION) }, { stage: "rings" })]))).toBe(
       "Verdict from the checks: not met: needs attention: the ring removal.",
     );
     // A question about one stage that passed: too little to judge the run, nothing to add.
-    expect(verdictLine(computedVerdict([step("assess_stage", { rings: stage(PASS) }, { stage: "rings" })]))).toBeNull();
+    expect(verdictLine(computedVerdict([step("assess_stage", { rings: stage("rings", PASS) }, { stage: "rings" })]))).toBeNull();
     expect(verdictLine(computedVerdict([step("ub_check", { fit: "both", orientation_change_deg: 0, origin_shift_rlu: [0.0305, 0.0195, 0] })]))).toBe(
       "From the checks: data problems no setting fixes: the HKL origin is shifted by (0.0305, 0.0195, 0) r.l.u.",
     );
@@ -153,14 +195,29 @@ describe("the line under a reply", () => {
   });
 });
 
-describe("the report's goal", () => {
-  const check = (title: string, verdict: ReportCheck["verdict"]): ReportCheck => ({ title, verdict, headline: "", details: [] });
-  const stages = ["Ring removal", "Bragg punch", "Backfill", "Flatten", "3D-ΔPDF"];
+describe("what the tool found, read whole where the model read it fitted (readings/)", () => {
+  // The model's copy of a result past the limit, as fit leaves it: some fields
+  // kept, the rest named under left_out; the step keeps the whole beside it.
+  const readFitted = (s: AgentStep, kept: Record<string, unknown>): AgentStep => ({
+    ...s,
+    result: JSON.stringify({ ...kept, left_out: ["the rest"] }),
+    full: s.result,
+  });
 
-  it("is met only when every stage's check passes, and a second grain is the sample's, not the stages'", () => {
-    expect(achievedFrom(stages.map((t) => check(t, "pass")))).toEqual({ met: true, text: "met: every stage meets its goal" });
-    expect(achievedFrom([...stages.map((t) => check(t, "pass")), check("Second grain", "attention")]).met).toBe(true);
-    expect(achievedFrom(stages.map((t) => check(t, t === "Flatten" ? "attention" : "pass")))).toEqual({ met: false, text: "not met: needs attention: Flatten" });
-    expect(achievedFrom(stages.slice(0, 4).map((t) => check(t, "pass")))).toEqual({ met: null, text: "not judged: not measured: 3D-ΔPDF" });
+  it("dates each stage by what the run's whole result says it computed", () => {
+    const run = readFitted(rerun({ rings: "reused", punch: "reused", backfill: "reused", flatten: "computed", pdf: "computed" }), { ended: "done" });
+    expect(recomputedAt([all(), run])).toEqual({ rings: -1, punch: -1, backfill: -1, flatten: 1, pdf: 1 });
+  });
+
+  it("fills a reference from a field only the whole result holds", () => {
+    const ub = readFitted(step("ub_check", { fit: "both", orientation_change_deg: 0, origin_shift_rlu: [0.0305, 0.0195, 0] }), { fit: "both" });
+    expect(resolveReference("ub_check.origin_shift_rlu", [ub])).toBe("(0.0305, 0.0195, 0)");
+    expect(fillReferences("Shifted by {{ub_check.origin_shift_rlu}} r.l.u.", [ub]).text).toBe("Shifted by (0.0305, 0.0195, 0) r.l.u.");
+  });
+
+  it("judges a check from the whole result, its numbers left out of the model's copy", () => {
+    const rings = readFitted(step("assess_stage", { rings: stage("rings", ATTENTION) }, { stage: "rings" }), {});
+    expect(verdicts({ reply: [rings] }).checks.rings).toBe("attention");
+    expect(computedVerdict([rings])?.attention).toEqual(["the ring removal"]);
   });
 });

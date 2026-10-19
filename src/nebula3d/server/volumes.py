@@ -36,6 +36,7 @@ from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import _ALIASES, _PLANE, SliceData
 
 if TYPE_CHECKING:
+    from nebula3d.analysis.bragg_fill_texture import HoleTexture
     from nebula3d.analysis.ub_refine import MeanOffset
 
 #: Plane keys accepted by the slice endpoint (principal pairs + Mantid aliases).
@@ -84,12 +85,16 @@ def load_volume(path: Path) -> HKLVolume:
 
 
 _ring_cache: dict[tuple, dict] = {}
+_floors_cache: dict[tuple, dict] = {}
+_texture_cache: dict[tuple, HoleTexture] = {}
 
 
 def clear_cache() -> None:
     with _lock:
         _cache.clear()
         _ring_cache.clear()
+        _floors_cache.clear()
+        _texture_cache.clear()
 
 
 _CELL_KEYS = ("a", "b", "c", "alpha", "beta", "gamma")
@@ -251,17 +256,19 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
     """Whether the volume's UB puts its Bragg peaks on their nodes
     (:mod:`nebula3d.analysis.ub_refine`), cached by ``(path, mtime, cell, q_max)``.
 
-    The coverage edge is trimmed first, one voxel layer (the pipeline's
-    ``edge_trim`` default, on a copy): its voxels can sit orders of magnitude
-    above the interior and pass for peaks.  The fit is
-    :func:`~nebula3d.analysis.ub_refine.auto_fit`'s: only the
-    changes that commute with the declared operations on a volume symmetrised
-    under them, else the rotation and the cell together.  An unsymmetrised
-    volume takes its operations from its symmetrised export
-    (:func:`symmetry_ops_for`), to constrain the cell.  ``radial`` gives the
-    peaks' offsets along Q relative to |Q| per |Q| band and direction.
+    The refinement is :func:`~nebula3d.analysis.ub_refine.check_ub`'s, on a
+    copy: the coverage edge trimmed first, one voxel layer (the pipeline's
+    ``edge_trim`` default), as its voxels can sit orders of magnitude above
+    the interior and pass for peaks; then :func:`~nebula3d.analysis.ub_refine.
+    auto_fit`'s fit: only the changes that commute with the declared
+    operations on a volume symmetrised under them, else the rotation and the
+    cell together.  An unsymmetrised volume takes its operations from its
+    symmetrised export (:func:`symmetry_ops_for`), to constrain the cell.
+    The regrid (:mod:`nebula3d.server.regrid`) refines the same way.
+    ``radial`` gives the peaks' offsets along Q relative to |Q| per |Q| band
+    and direction.
     """
-    from nebula3d.analysis.ub_refine import auto_fit, mean_offset, radial_offsets, refine_ub
+    from nebula3d.analysis.ub_refine import check_ub, mean_offset, radial_offsets
 
     key = (str(path), path.stat().st_mtime, tuple(cell), q_max)
     with _lock:
@@ -270,17 +277,12 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
         return hit
     from dataclasses import replace
 
-    from nebula3d.preprocessing.sampling import trim_coverage_edge
-    from nebula3d.symmetry import GridSymmetry
-
     cached = load_volume(path)
     vol = replace(cached, data=cached.data.copy(), sigma=cached.sigma.copy(),
                   mask=cached.mask.copy())
     ops, ops_from = symmetry_ops_for(path)
-    fit, broken = auto_fit(vol, ops)
-    sym = GridSymmetry.for_volume(vol, ops) if ops is not None and fit == "symmetric" else None
-    trim_coverage_edge(vol, 1, symmetry=sym)
-    r = refine_ub(vol, fit=fit, ops=ops, cell=cell, q_max=q_max)
+    checked = check_ub(vol, ops, cell=cell, q_max=q_max)
+    fit, broken, r = checked.fit, checked.symmetry_break, checked.refinement
     f = r.fit
 
     def rounded(m: np.ndarray) -> list:
@@ -333,8 +335,9 @@ def _mean_offset_out(m: MeanOffset) -> dict:
 
 def parse_ring_shells(q: str, fwhm: str) -> list[tuple[float, float]]:
     """``"2.45,3.66"``, ``"0.08,0.08"`` → [(2.45, 0.08), (3.66, 0.08)]: finite,
-    positive |Q| centres and widths (Å⁻¹), as many of each, at most 64.
-    Raises ``ValueError`` otherwise (NaN and infinity included)."""
+    positive |Q| centres and widths (Å⁻¹), as many of each, at most 64; none
+    (``""``, ``""``) asks for the grid's own limit alone.  Raises
+    ``ValueError`` otherwise (NaN and infinity included)."""
     import math
 
     try:
@@ -342,7 +345,7 @@ def parse_ring_shells(q: str, fwhm: str) -> list[tuple[float, float]]:
         ws = [float(x) for x in str(fwhm).split(",") if x.strip()]
     except ValueError as exc:
         raise ValueError(f"q and fwhm must be numbers, not {q!r}, {fwhm!r}") from exc
-    if (not qs or len(qs) != len(ws) or len(qs) > 64
+    if (len(qs) != len(ws) or len(qs) > 64
             or not all(math.isfinite(v) and v > 0 for v in qs + ws)):
         raise ValueError("q and fwhm must list as many finite, positive numbers, at most 64")
     return list(zip(qs, ws))
@@ -352,8 +355,12 @@ def volume_ring_isotropy(path: Path, shells: list[tuple[float, float]]) -> dict:
     """Whether each ``(q_center, fwhm)`` shell of the volume (Å⁻¹) is a powder
     ring: it rises in nearly every direction over the sphere
     (:func:`~nebula3d.preprocessing.ring_isotropy.judge_shells`), cached by
-    ``(path, mtime, shells)``. The ring removal subtracts only such shells."""
-    from nebula3d.preprocessing.ring_isotropy import IsotropyConfig, judge_shells
+    ``(path, mtime, shells)``. The ring removal subtracts only such shells.
+    ``not_judged`` is why the grid is too coarse to judge any ring
+    (:func:`~nebula3d.preprocessing.ring_isotropy.grid_too_coarse`), or None:
+    given with no shell too, for the planes' bumps on such a grid are no
+    evidence either."""
+    from nebula3d.preprocessing.ring_isotropy import IsotropyConfig, grid_too_coarse, judge_shells
 
     shells = [(round(float(q), 4), round(float(f), 4)) for q, f in shells]
     key = (str(path), path.stat().st_mtime, tuple(shells))
@@ -362,14 +369,172 @@ def volume_ring_isotropy(path: Path, shells: list[tuple[float, float]]) -> dict:
     if hit is not None:
         return hit
     cfg = IsotropyConfig()
+    vol = load_volume(path)
     out = {
         "rule": {"direction_share": cfg.direction_share, "height_share": cfg.height_share},
-        "shells": [r.as_dict() for r in judge_shells(load_volume(path), shells, cfg)],
+        "shells": [r.as_dict() for r in judge_shells(vol, shells, cfg)],
+        "not_judged": grid_too_coarse(vol, cfg) or None,
     }
     with _lock:
         _ring_cache.clear()  # one volume's shells at a time
         _ring_cache[key] = out
     return out
+
+
+def volume_shell_floors(path: Path, before: Path | None = None, *, q_step: float | None = None,
+                        percentile: float | None = None,
+                        min_count: int | None = None) -> dict:
+    """The floor of every |Q| shell of the volume, over the whole volume
+    (:func:`~nebula3d.preprocessing.flatten_floors.shell_floors`), with *before*
+    (the flatten's input) measured on the same shells; cached by both files'
+    ``(path, mtime)`` and the settings asked for.
+
+    An unset setting is the one the flatten recorded in *path* when it wrote
+    it (:func:`~nebula3d.pipeline.read_flatten_settings`: its ``q_step``,
+    ``floor_percentile`` and ``min_count``, so the floors are measured on the
+    run's own shells), else the flatten's default (0.05 Å⁻¹ shells, the 25th
+    percentile, 20 voxels).  ``flatten`` returns what it recorded, its fit
+    range and Q² term included, or ``None``.  Shell edges and centres are
+    rounded to 1e-6 Å⁻¹; the floors, medians and level are exact, ``None``
+    where a shell has too few voxels.  Raises ``ValueError`` for settings out
+    of range.
+    """
+    from nebula3d.pipeline import read_flatten_settings
+    from nebula3d.preprocessing.flatten_floors import (
+        FLOOR_PERCENTILE,
+        MIN_COUNT,
+        Q_STEP,
+        shell_floors,
+    )
+
+    asked = (q_step, percentile, min_count)
+    key = (str(path), path.stat().st_mtime,
+           None if before is None else (str(before), before.stat().st_mtime), asked)
+    with _lock:
+        hit = _floors_cache.get(key)
+    if hit is not None:
+        return hit
+    recorded = read_flatten_settings(path)
+
+    def setting(value: float | None, name: str, default: float) -> float:
+        if value is not None:
+            return float(value)
+        own = (recorded or {}).get(name)
+        if isinstance(own, (int, float)) and not isinstance(own, bool):
+            return float(own)
+        return default
+
+    r = shell_floors(load_volume(path),
+                     before=None if before is None else load_volume(before),
+                     q_step=setting(q_step, "q_step", Q_STEP),
+                     percentile=setting(percentile, "floor_percentile", FLOOR_PERCENTILE),
+                     min_count=int(setting(min_count, "min_count", MIN_COUNT)))
+
+    def floats(a: np.ndarray | None) -> list[float | None] | None:
+        return None if a is None else [float(x) if np.isfinite(x) else None for x in a]
+
+    def ints(a: np.ndarray | None) -> list[int] | None:
+        return None if a is None else [int(x) for x in a]
+
+    out = {
+        "q_step": r.q_step, "percentile": r.percentile, "min_count": r.min_count,
+        "q_edges": [round(float(x), 6) for x in r.q_edges],
+        "centres": [round(float(x), 6) for x in r.centres],
+        "totals": ints(r.totals), "counts": ints(r.counts),
+        "floors": floats(r.floors), "medians": floats(r.medians),
+        "counts_before": ints(r.counts_before), "floors_before": floats(r.floors_before),
+        "medians_before": floats(r.medians_before),
+        "level": float(r.level) if np.isfinite(r.level) else None,
+        "level_count": int(r.level_count),
+        "flatten": recorded,
+    }
+    with _lock:
+        _floors_cache.clear()  # one volume's floors at a time
+        _floors_cache[key] = out
+    return out
+
+
+#: The most holes a texture request lists.
+TEXTURE_MAX_LIMIT = 100_000
+
+
+def volume_texture(filled: Path, punched: Path, *, limit: int = 20,
+                   min_sigma: float | None = None, one_way: float | None = None,
+                   min_holes: int | None = None, floor: float | None = None) -> dict:
+    """The Pilot's fill-bias check on every punch hole of a backfilled stage
+    *filled*, with the hole's 3-D rim, against the punched stage *punched*
+    (:func:`~nebula3d.analysis.bragg_fill_texture.fill_texture`).  The holes
+    are the punch's record in *punched* (:func:`~nebula3d.pipeline.
+    read_punch_record`) when it has one, else texture.ts's test.
+
+    Each hole's facts are cached by both files' ``(path, mtime)``; the rule's
+    limits (texture.ts's where unset) are applied per call.  ``holes`` lists
+    the *limit* holes (0 – :data:`TEXTURE_MAX_LIMIT`) farthest outside their
+    range in units of their level, then in σ, the holes not judged last.
+    Values are exact, ``None`` where not finite; ``centre_hkl`` is rounded to
+    1e-6 r.l.u.  Raises ``ValueError`` for limits out of range or two stages
+    on different grids.
+    """
+    from nebula3d.analysis.bragg_fill_texture import (
+        FILL_BIAS_FLOOR,
+        MIN_HOLES,
+        MIN_SIGMA,
+        ONE_WAY,
+        hole_texture,
+        judge_fill_bias,
+    )
+    from nebula3d.pipeline import read_punch_record
+
+    if not 0 <= int(limit) <= TEXTURE_MAX_LIMIT:
+        raise ValueError(f"limit must lie in 0–{TEXTURE_MAX_LIMIT}, not {limit!r}")
+    key = (str(filled), filled.stat().st_mtime, str(punched), punched.stat().st_mtime)
+    with _lock:
+        holes = _texture_cache.get(key)
+    if holes is None:
+        record = read_punch_record(punched)
+        holes = hole_texture(load_volume(punched), load_volume(filled), punch_record=record)
+        del record
+        with _lock:
+            _texture_cache.clear()  # one volume's holes at a time
+            _texture_cache[key] = holes
+    t = judge_fill_bias(
+        holes,
+        min_sigma=MIN_SIGMA if min_sigma is None else float(min_sigma),
+        one_way=ONE_WAY if one_way is None else float(one_way),
+        min_holes=MIN_HOLES if min_holes is None else int(min_holes),
+        floor=FILL_BIAS_FLOOR if floor is None else float(floor))
+
+    def num(x: float) -> float | None:
+        return float(x) if np.isfinite(x) else None
+
+    in_sigma, in_level = holes.bias_sigma, holes.bias_level
+    size_level = np.where(np.isfinite(in_level), np.abs(in_level), -1.0)
+    size_sigma = np.where(np.isfinite(in_sigma), np.abs(in_sigma), -1.0)
+    listed = np.lexsort((np.arange(holes.n), -size_sigma, -size_level))[:int(limit)]
+    rows = [{
+        "index": int(i),
+        "centre_hkl": [round(float(v), 6) for v in holes.centre_hkl[i]],
+        "voxels": int(holes.voxels[i]), "rim_voxels": int(holes.rim_voxels[i]),
+        "fill": num(holes.fill[i]), "level": num(holes.level[i]),
+        "sigma": num(holes.sigma[i]), "slope": num(holes.slope[i]),
+        "edge": num(holes.edge[i]), "peaked": num(holes.peaked[i]),
+        "bias": num(holes.bias[i]), "bias_sigma": num(in_sigma[i]),
+        "bias_level": num(in_level[i]), "not_judged": holes.not_judged[i],
+    } for i in listed.tolist()]
+    return {
+        "holes_from": holes.holes_from, "rim": holes.rim, "min_rim": holes.min_rim,
+        "min_sigma": t.min_sigma, "one_way": t.one_way, "min_holes": t.min_holes,
+        "floor": t.floor, "n_holes": t.n_holes, "n_judged": t.n_judged, "judged": t.judged,
+        "node_spacing": num(holes.node_spacing), "room_needed": num(holes.room_needed),
+        "not_judged": t.not_judged,
+        "median_fill_bias_sigma": num(t.median_fill_bias_sigma),
+        "median_fill_bias_level": num(t.median_fill_bias_level),
+        "above_fraction": num(t.above_fraction), "below_fraction": num(t.below_fraction),
+        "above_floor_fraction": num(t.above_floor_fraction),
+        "below_floor_fraction": num(t.below_floor_fraction),
+        "systematic_fill_bias": t.systematic_fill_bias,
+        "holes": rows,
+    }
 
 
 def slice_envelope(path: Path, plane: str, value: float, interp: bool) -> bytes:

@@ -197,3 +197,41 @@ def resolve_volume(cfg: ServerConfig, volume_id: str) -> StageStatus | None:
     if ds is None:
         return None
     return next((s for s in ds.stages if s.name == stage), None)
+
+
+def flatten_input_of(cfg: ServerConfig, volume_id: str) -> tuple[str, StageStatus] | None:
+    """For a flattened stage ``"<dataset_id>.flattened"``, the volume the
+    flatten was given: the dataset's backfilled stage, as its volume id and
+    status, when it is on disk.  None for any other stage, or without it."""
+    dataset_id, _, stage = volume_id.rpartition(".")
+    if stage != "flattened" or not dataset_id:
+        return None
+    ds = find_dataset(cfg, dataset_id)
+    filled = next((s for s in ds.stages if s.name == "backfilled"), None) if ds else None
+    if filled is None or not filled.path.exists():
+        return None
+    return f"{dataset_id}.backfilled", filled
+
+
+def punched_stage_of(cfg: ServerConfig, volume_id: str) -> tuple[str, StageStatus] | None:
+    """For a backfilled stage ``"<dataset_id>.backfilled"``, the volume the
+    backfill filled: the dataset's punched stage, as its volume id and
+    status, when it is on disk.  None for any other stage, or without it."""
+    dataset_id, _, stage = volume_id.rpartition(".")
+    if stage != "backfilled" or not dataset_id:
+        return None
+    ds = find_dataset(cfg, dataset_id)
+    punched = next((s for s in ds.stages if s.name == "braggpunched"), None) if ds else None
+    if punched is None or not punched.path.exists():
+        return None
+    return f"{dataset_id}.braggpunched", punched
+
+
+def raw_input_of(cfg: ServerConfig, volume_id: str) -> Path | None:
+    """The raw input of the dataset a stage ``"<dataset_id>.<stage>"`` belongs
+    to, when it is on disk: the file that declares the point group the data
+    were symmetrised with (the pipeline reads it there, ``PipelineParams.symmetry
+    = "auto"``; the stages it writes declare none)."""
+    ds = find_dataset(cfg, volume_id.rpartition(".")[0])
+    raw = next((s for s in ds.stages if s.name == "raw"), None) if ds is not None else None
+    return raw.path if raw is not None and raw.exists else None

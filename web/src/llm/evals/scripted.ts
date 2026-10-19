@@ -5,7 +5,7 @@
 // reason, a usage chunk when asked for).  And the app's tools answering from
 // recorded results, so the replay needs no backend.
 
-import type { AgentTool } from "../tools";
+import { toolsWhere, type AgentTool } from "../tools";
 
 export interface ScriptTurn {
   text?: string;
@@ -91,14 +91,24 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
   };
 }
 
+// run_log never touches the backend, but it reads the session's last pipeline
+// run, and a replay has none: it answers from the recording, as the tools that
+// read the backend do.
+export const REPLAYED_THOUGH_LOCAL: readonly string[] = ["run_log"];
+
+/**
+ * The tools a replay runs as they are: those that never touch the backend (their
+ * facts' `reachesBackend`): the skills, and the Configure page's settings (the
+ * harness resets them per scenario); save REPLAYED_THOUGH_LOCAL.
+ */
+export const RUN_AS_THEY_ARE: readonly string[] = toolsWhere((f) => !f.reachesBackend).filter((name) => !REPLAYED_THOUGH_LOCAL.includes(name));
+
 /** The app's tools, answering from results recorded as "<dataset>|<tool>|<args JSON>". */
 export function replayTools(
   results: Record<string, string>,
   dataset: string,
   tools: AgentTool[],
-  // Tools that never touch the backend run as they are: the skills, and the
-  // Configure page's settings (the harness resets them per scenario).
-  local: readonly string[] = ["read_skill", "update_settings", "configure_settings"],
+  local: readonly string[] = RUN_AS_THEY_ARE,
 ): AgentTool[] {
   return tools.map((tool) => local.includes(tool.name) ? tool : ({
     ...tool,

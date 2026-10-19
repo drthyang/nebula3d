@@ -5,9 +5,11 @@
 //
 // - the one task every run gets, blind to the case;
 // - arm B, the Pilot as shipped (skills and guardrails), and arm C, the same
-//   without its skills (no read_skill, no skill list, and so no skill gate);
+//   with the skills' switch off (skills.ts): the whole method taken away, by
+//   every builder of the text the model reads, and the guardrails kept;
 // - what each run decided and why, every number it wrote traced to the tool
-//   result it came from, and its conclusion: the record a reviewer reads;
+//   result it came from (what the tool found, whole, however much of it the
+//   model read), and its conclusion: the record a reviewer reads;
 // - the answer's grades: the case's fault reported, no fault claimed that is
 //   not there, and no unsafe action.
 //
@@ -17,12 +19,13 @@
 import type { Dataset } from "../../api/types";
 import type { AgentStep } from "../agent";
 import { ANSWER_WORD, writtenNumbers } from "../answerChecks";
+import type { PipelineContext } from "../context/pipelineContext";
+import { buildChatMessages } from "../prompts/templates";
 import type { ChatMessage } from "../provider/client";
+import { found, seen, whole, type Readable } from "../readings";
 import type { Failure } from "../recovery";
-import { allSkills, skillsPrompt } from "../skills";
 import { SAMPLE_PARAMS } from "../tune/catalog";
-import type { AgentTool } from "../tools";
-import type { ComputedVerdict } from "../verdict";
+import type { ComputedVerdict } from "../verdicts";
 import { answers, NEGATION, numbers, sentences } from "./checks";
 import manifest from "./fixtures/validation-cases.json";
 import type { Check, EvalRun, Grade } from "./harness";
@@ -79,28 +82,28 @@ export const TASK =
 // ---------------------------------------------------------------- the arms
 
 export interface ArmSetup {
-  tools: AgentTool[];
-  messages: ChatMessage[];
-  skillsRead: Set<string>;
+  // The skills' switch (skills.ts): on in arm B, off in arm C. The run's tool
+  // context carries it (ToolContext.skills), so the agent loop, the executor
+  // and the tools read it; the opening messages below were built with it.
+  skills: boolean;
+  messages: ChatMessage[]; // the opening messages for TASK
+  skillsRead: Set<string>; // none yet, in either arm
 }
 
 /**
- * Arm B is the Pilot as shipped. Arm C takes its skills away: read_skill is not
- * offered and the system prompt lists no skill. The skill gate (a stage's
- * settings change only after its skill is read) would then refuse every
- * change, so C starts with every skill counted as read: it may act as B may,
- * without the methods.
+ * Arm B is the Pilot as shipped. Arm C is the same Pilot with the skills'
+ * switch off, which takes the whole method away at the builders of what the
+ * model reads: the system prompt has no skills' section, read_skill is not
+ * offered, no tool description, result, goal or tuning prompt names a skill or
+ * restates a skill's step, and no send-back names a skill, a stage or a tool to
+ * run next. The guardrails stay: the answer checks still check and send the same
+ * answers back (issuesPrompt words them), and C may change what B may. With no
+ * skill to read there is no skill gate: a stage's settings change, and it is
+ * tuned, without one (runToolCall).
  */
-export function armSetup(arm: Arm, tools: AgentTool[], messages: ChatMessage[]): ArmSetup {
-  if (arm === "B") return { tools, messages, skillsRead: new Set() };
-  const listing = skillsPrompt();
-  return {
-    tools: tools.filter((t) => t.name !== "read_skill"),
-    messages: messages.map((m) =>
-      m.role === "system" && typeof m.content === "string" ? { ...m, content: m.content.replace(listing, "") } : m,
-    ),
-    skillsRead: new Set(allSkills().map((s) => s.name)),
-  };
+export function armSetup(arm: Arm, context: PipelineContext): ArmSetup {
+  const skills = arm === "B";
+  return { skills, messages: buildChatMessages(context, [], TASK, null, { tools: true, skills }), skillsRead: new Set() };
 }
 
 // ---------------------------------------------------------------- grading
@@ -298,7 +301,15 @@ export interface Decision {
   why: string; // the model's own words (and thinking) before the call
   status: AgentStep["status"];
   summary: string;
-  result: string; // the whole result the tool returned
+  // The result's two readings (readings/). `result` is what the model read
+  // when the call returned (`seen`), in every record, those made before
+  // `full` included; `full` is the whole result the tool found, only where it
+  // differs (the model read it fitted). `shortened`: the loop later shortened
+  // the model's copy to save room (compaction). Both are absent from records
+  // made before 2026-10-19.
+  result: string;
+  full?: string;
+  shortened?: true;
 }
 
 /** The text the model wrote, and the thinking it showed, before each step: what it said it was doing. */
@@ -330,9 +341,17 @@ export function decisions(steps: readonly AgentStep[], why: readonly string[]): 
     why: why[i] ?? "",
     status: s.status,
     summary: s.summary ?? "",
-    result: s.result ?? "",
+    result: seen(s),
+    ...(s.full !== undefined && s.full !== s.result ? { full: s.full } : {}),
+    ...(s.shortened ? { shortened: true as const } : {}),
   }));
 }
+
+/** A decision as the step it records, for the readings (readings/): what the model read, and the whole where it differs. */
+export const stepOf = (d: Decision): Readable => ({ status: d.status, result: d.result, ...(d.full !== undefined ? { full: d.full } : {}) });
+
+/** What a step's numbers are searched in: what the tool found (an object), else its whole text (an error's, a skill's); null for none. */
+export const numbersIn = (step: Readable): unknown => found(step) ?? (whole(step) || null);
 
 export interface NumberSource {
   text: string; // as written
@@ -366,20 +385,19 @@ export function findIn(node: unknown, v: number, tol: number, path: string): { p
   return null;
 }
 
-/** Every number the answer writes, with the tool result (step, tool, field) it came from: the latest that holds it. */
+/**
+ * Every number the answer writes, with the tool result (step, tool, field) it
+ * came from: the latest that holds it, in what the tool found, whole (a
+ * number a {{reference}} filled from a field the model's copy left out
+ * included).
+ */
 export function numberSources(answer: string, steps: readonly AgentStep[]): NumberSource[] {
-  const parsed = steps.map((s) => {
-    try {
-      return JSON.parse(s.result ?? "null") as unknown;
-    } catch {
-      return s.result ?? null; // a text result (a skill)
-    }
-  });
-  const seen = new Set<string>();
+  const parsed = steps.map(numbersIn);
+  const handled = new Set<string>();
   const out: NumberSource[] = [];
   for (const n of writtenNumbers(answer)) {
-    if (seen.has(n.text)) continue;
-    seen.add(n.text);
+    if (handled.has(n.text)) continue;
+    handled.add(n.text);
     let source: NumberSource["source"] = null;
     for (let i = steps.length - 1; i >= 0 && !source; i--) {
       const hit = findIn(parsed[i], n.percent ? n.value / 100 : n.value, n.tolerance, "") ?? (n.percent ? findIn(parsed[i], n.value, n.tolerance, "") : null);
@@ -398,6 +416,19 @@ export interface ModelInfo {
   local: boolean;
 }
 
+/**
+ * The context window a run had, and the run policy's minimum it was held to
+ * (validationModels.ts: RUN_POLICY, runContext). Read before the run.
+ */
+export interface RunContextWindow {
+  // LM Studio: the context the model was loaded with. Ollama: the longest the
+  // model supports, up to which the window plan sizes num_ctx for each request.
+  // Null where it was not read (a cloud model).
+  tokens: number | null;
+  min_tokens: number | null; // the run policy's minimum; null where none applies (a cloud model)
+  read_from: "lmstudio-loaded" | "ollama-supported" | null;
+}
+
 export interface RunRecord {
   schema: "nebula3d-validation-run/1";
   case: string;
@@ -410,6 +441,8 @@ export interface RunRecord {
   model: ModelInfo;
   task: string;
   max_rounds: number;
+  // The window the run had and the minimum it was held to; absent from records made before 2026-10-19.
+  context_window?: RunContextWindow | null;
   started: string;
   latency_ms: number;
   usage: EvalRun["usage"];
@@ -418,7 +451,7 @@ export interface RunRecord {
   decisions: Decision[];
   numbers: NumberSource[];
   conclusion: string;
-  // The verdict on the run computed from its checks (verdict.ts); absent from records made before 2026-10-17.
+  // The verdict on the run computed from its checks (verdicts/); absent from records made before 2026-10-17.
   computed_verdict?: ComputedVerdict | null;
   note: string | null;
   error: string | null;
@@ -441,6 +474,7 @@ export function buildRecord(p: {
   costUsd: number | null;
   elsewhere?: readonly string[];
   offers?: readonly ToolOffer[];
+  context?: RunContextWindow | null;
 }): RunRecord {
   const r = p.evalRun;
   return {
@@ -455,6 +489,7 @@ export function buildRecord(p: {
     model: p.model,
     task: TASK,
     max_rounds: p.maxRounds,
+    context_window: p.context ?? null,
     started: p.started,
     latency_ms: Math.round(r.latencyMs),
     usage: r.usage,
