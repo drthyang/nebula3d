@@ -303,6 +303,23 @@ describe("grading what a run reported", () => {
     expect(pass(falseAlarmChecks(caseNamed("dev-control")!), run("If the UB is wrong by 0.4°, re-index the sample."))).toBe(false);
   });
 
+  it("reads a UB's angle from its unit, so an axis written as a vector is no alarm", () => {
+    const control = caseNamed("dev-control")!;
+    expect(pass(falseAlarmChecks(control), run("The fit turned the UB by 0.002° about [1 1 0]."))).toBe(true);
+    expect(pass(falseAlarmChecks(control), run("The fit turned the UB by 0.002 about [1 1 0]."))).toBe(true); // no unit: its bare number
+    expect(pass(falseAlarmChecks(control), run("The UB is turned about [1 1 0]."))).toBe(false); // no angle: a claim
+    expect(pass(falseAlarmChecks(control), run("The UB is turned by 0.6° about [1 1 0]."))).toBe(false);
+  });
+
+  it("reads the numbers as the app does: a count, a fraction or a list's number is not a ring's |Q|", () => {
+    const rings = caseNamed("dev-rings")!;
+    const ringAt405 = detectionChecks(rings).find((k) => k.name === "writes the ring at 4.05 Å⁻¹")!;
+    for (const said of ["The punch kept 4,190 broad maxima.", "Each sits within 1/4 of the node spacing.", "Steps:\n4. Check the symmetry."]) {
+      expect(ringAt405.grade(run(said)).pass, said).toBe(false);
+    }
+    expect(ringAt405.grade(run("A second ring sits at 4.05 Å⁻¹.")).pass).toBe(true);
+  });
+
   it("reads a claim after a long label's colon apart from the label, as the answer checks do (the dev-origin colon case)", () => {
     const origin = caseNamed("dev-origin")!;
     // The label's negation is its own: the origin's shift is claimed after it.

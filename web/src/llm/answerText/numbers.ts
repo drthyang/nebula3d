@@ -43,7 +43,7 @@ function flatten(text: string): string {
 
 /** The unit written right after a number, in flattened text. */
 function unitAfter(tail: string): Unit | null {
-  if (/^\s*(°|deg(rees?)?\b)/i.test(tail)) return "deg";
+  if (/^\s*(°|\^\s*\\circ\b|\\degree\b|deg(rees?)?\b)/i.test(tail)) return "deg";
   if (new RegExp(`^\\s*(Å\\s*${PER_ANGSTROM}|Å\\s?-1(?!\\d)|1/Å)`).test(tail)) return "inv_angstrom";
   if (/^\s*Å/.test(tail)) return "angstrom";
   if (/^\s*(r\.\s?l\.\s?u\b\.?|rlu\b)/i.test(tail)) return "rlu";

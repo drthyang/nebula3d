@@ -95,4 +95,16 @@ describe("the witness's reading", () => {
     expect(witness("the band 0.8-10 Å⁻¹").numbers).toEqual([0.8, 10, -1]); // the unit's exponent reads as −1; quotes look for a match, not every number
     expect(witness("a dent of -0.23").numbers).toContain(-0.23);
   });
+
+  it("reads no number glued to a letter, a power of ten as one number, and a thousands separator as none", () => {
+    expect(witness("On hk0 the 3D-ΔPDF, a 201x201 grid, 10⁻³ and 4,190 peaks.").numbers).toEqual([0.001, 4190]);
+  });
+
+  it("reads a span's angles from its degrees, else from its bare numbers outside brackets", () => {
+    const angles = (t: string) => witness(t).clauses[0].angles;
+    expect(angles("Turned 0.002° about [1 1 0].")).toEqual([0.002]);
+    expect(angles("Turned $0.6^\\circ$ and 0.2 deg.")).toEqual([0.6, 0.2]);
+    expect(angles("Turned 0.002 about [1 1 0], 3 % of a voxel, 0.1 Å⁻¹ off.")).toEqual([0.002]);
+    expect(angles("Turned about (1, 1, 0).")).toEqual([]);
+  });
 });

@@ -111,7 +111,7 @@ describe("the numbers", () => {
 
   it("says the unit written after a number", () => {
     const units = (t: string) => writtenNumbers(t).map((x) => [x.text, x.unit]);
-    expect(units("Turned 0.6° and 0.2 deg, 1.5 degrees.")).toEqual([["0.6", "deg"], ["0.2", "deg"], ["1.5", "deg"]]);
+    expect(units("Turned 0.6° and 0.2 deg, 1.5 degrees, $0.3^\\circ$.")).toEqual([["0.6", "deg"], ["0.2", "deg"], ["1.5", "deg"], ["0.3", "deg"]]);
     expect(units("Rings at 2.2 Å⁻¹, 3.1 Å^-1, 4.05 Å^{-1} and 6 1/Å.")).toEqual([["2.2", "inv_angstrom"], ["3.1", "inv_angstrom"], ["4.05", "inv_angstrom"], ["6", "inv_angstrom"]]);
     // An exponent written without its caret is read as a number, as it always was.
     expect(units("A ring at 5 Å−1.")).toEqual([["5", "inv_angstrom"], ["-1", null]]);

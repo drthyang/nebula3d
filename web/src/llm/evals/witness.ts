@@ -14,7 +14,11 @@
 //   more than three words;
 // - a curly apostrophe reads as a straight one ("isn’t");
 // - a span that ends with a question mark asks; one that a condition or a
-//   plan opens ("If …", "I will …") is tentative.
+//   plan opens ("If …", "I will …") is tentative;
+// - a number glued to a letter is a name's, not a number (hk0, 3D, 201x201);
+// - a span's angles are its numbers in degrees, or where it writes none, its
+//   bare numbers (no unit, no power) outside brackets: an axis [1 1 0] is
+//   no angle.
 
 /** A span of the answer, as the witness reads it (graderReading.ts: GradedSpan). */
 export interface WitnessSpan {
@@ -70,19 +74,58 @@ function clauses(text: string): string[] {
 
 const SUPERSCRIPT: Record<string, string> = { "⁻": "-", "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9" };
 
-/** Every number the text writes: decimals, exponents (1e-3, 1×10⁻³, 1 x 10^-3, LaTeX 1 \times 10^{-3}) and percentages as written. */
-export function witnessNumbers(text: string): number[] {
+/** A number the text writes, with what is written around it. */
+interface Found {
+  value: number;
+  exponent: boolean; // written after a caret: a power, as Å⁻¹'s −1, not a quantity
+  degrees: boolean; // ° (or LaTeX ^\circ) or deg after it
+  unit: boolean; // some other unit after it: %, Å, r.l.u.
+  inBrackets: boolean; // one of two or more numbers in [ ], ( ) or ⟨ ⟩
+}
+
+/** A vector: two or more numbers (or ½) in brackets, set apart by commas or spaces. */
+const ITEM = "[-+]?(?:\\d+(?:\\.\\d+)?(?:e[-+]?\\d+)?|[½¼¾])";
+const BRACKETED = new RegExp(`[[(⟨]\\s*${ITEM}(?:\\s*,\\s*${ITEM}|\\s+${ITEM})+\\s*[\\])⟩]`, "gi");
+
+/**
+ * Every number the text writes: decimals, exponents (1e-3, 1×10⁻³, 1 x 10^-3,
+ * LaTeX 1 \times 10^{-3}) and percentages as written; a number glued to a
+ * letter is a name's (hk0, 3D, 201x201), not a number.
+ */
+function found(text: string): Found[] {
   const flat = text
     .replace(/\$/g, "")
     .replace(/\\(times|cdot)/g, "×")
     .replace(/\^\{([^}]*)\}/g, "^$1")
     .replace(/[⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (m) => "^" + [...m].map((c) => SUPERSCRIPT[c]).join(""))
     .replace(/(\d)\s*[×x·]\s*10\s*\^?\s*\(?([-+−]?\d+)\)?/g, (_m, a, e) => `${a}e${String(e).replace("−", "-")}`)
-    .replace(/−/g, "-");
+    .replace(/−/g, "-")
+    // A power of ten alone (10⁻³) is one number, and so is 12,345 in prose.
+    .replace(/(?<![\d.])10\s*\^\s*\(?([-+]?\d+)\)?/g, (_m, e) => `1e${e}`)
+    .replace(/\b\d{1,3}(?:,\d{3})+\b(?![,.]\d)/g, (m) => m.replace(/,/g, ""));
+  const brackets = [...flat.matchAll(BRACKETED)].map((m) => [m.index, m.index + m[0].length]);
+  const out: Found[] = [];
   // A sign counts only where nothing alphanumeric precedes it: "0.8-10" is a range, not −10.
-  return [...flat.matchAll(/(?<![\w)\]}.])[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?|\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi)]
-    .map((m) => Number(m[0]))
-    .filter(Number.isFinite);
+  for (const m of flat.matchAll(/(?<![\w)\]}.])[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?|\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi)) {
+    const value = Number(m[0]);
+    const before = flat.slice(0, m.index);
+    const after = flat.slice(m.index + m[0].length);
+    if (!Number.isFinite(value) || /[A-Za-z]$/.test(before) || /^[A-Za-z]/.test(after)) continue;
+    out.push({
+      value,
+      exponent: /\^\s*\(?$/.test(before),
+      degrees: /^\s*(°|\^\s*\\circ\b|\\degree\b|deg)/i.test(after),
+      unit: /^\s*(%|Å|r\.\s?l\.\s?u|rlu\b)/i.test(after),
+      inBrackets: brackets.some(([from, to]) => m.index >= from && m.index < to),
+    });
+  }
+  return out;
+}
+
+/** The angles among a span's numbers: those in degrees; where it writes none, its bare numbers outside brackets. */
+function angles(numbers: Found[]): number[] {
+  const degrees = numbers.filter((n) => n.degrees);
+  return (degrees.length ? degrees : numbers.filter((n) => !n.exponent && !n.unit && !n.inBrackets)).map((n) => n.value);
 }
 
 /** Words that put what follows them as a condition or a plan, when they come first. */
@@ -90,14 +133,14 @@ const LEADING_CONDITION_OR_PLAN = /^[^a-z0-9]*(if|whether|unless|let me|i will|i
 
 /** A span: whether it negates, is tentative (*words*: the span without a leading answer word) or asks, and its numbers. */
 function span(text: string, words: string): WitnessSpan {
-  const written = witnessNumbers(text);
+  const numbers = found(text);
   return {
     text,
     negated: negates(words),
     tentative: LEADING_CONDITION_OR_PLAN.test(words.replace(/’/g, "'")),
     question: text.endsWith("?"),
-    numbers: written,
-    angles: written,
+    numbers: numbers.map((n) => n.value),
+    angles: angles(numbers),
   };
 }
 
@@ -106,6 +149,6 @@ export function witness(answer: string): WitnessReading {
   return {
     sentences: sentences(answer).map((s) => span(s, s.replace(ANSWER_WORD, ""))),
     clauses: clauses(answer).map((c) => span(c, c)),
-    numbers: witnessNumbers(answer),
+    numbers: found(answer).map((n) => n.value),
   };
 }
