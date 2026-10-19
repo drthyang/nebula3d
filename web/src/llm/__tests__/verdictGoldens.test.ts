@@ -104,6 +104,8 @@ function measuredFrom(steps: readonly AgentStep[]): Measured {
     coverage: newest("qmax_coverage"),
     symmetry: newest("symmetry_check"),
     grains: newest("grain_check"),
+    // The report runs ub_check too since Q11 (2.4.11).
+    ub: newest("ub_check"),
   };
 }
 

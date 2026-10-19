@@ -244,6 +244,22 @@ describe("a card states only what it judges", () => {
     expect(r2.achieved).toEqual({ met: false, text: "not met: needs attention: 3D-ΔPDF" });
   });
 
+  it("names a turned UB in its goal, as {{achieved}} does, from ub_check's result (Q11, 2.4.11)", () => {
+    // Synthetic measurements: every stage passes; ub_check's fit turned the UB by 0.6° and found the origin shifted.
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 } };
+    const ub = { fit: "both", symmetrised: false, orientation_change_deg: 0.6, origin_shift_rlu: [0.03, 0, 0] };
+    const goal = "met: every stage meets its goal; data problems no setting fixes: the UB is turned by 0.6°; the HKL origin is shifted by (0.03, 0, 0) r.l.u.";
+    // As the measurement pass keeps the tool's outcome, and from its result.
+    for (const measured of [{ ...sound, ub, outcomes: [judge("ub", ub)] }, { ...sound, ub }]) {
+      const r = buildReport(input({ measured }));
+      expect(r.achieved).toEqual({ met: true, text: goal });
+      expect(reportMarkdown(r)).toContain(`**Goal: ${goal}.**`);
+    }
+    // A right UB names nothing; a symmetrised volume's UB is not judged, and names nothing either.
+    expect(buildReport(input({ measured: { ...sound, ub: { fit: "both", symmetrised: false, orientation_change_deg: 0.01 } } })).achieved.text).toBe("met: every stage meets its goal");
+    expect(buildReport(input({ measured: { ...sound, ub: { fit: "symmetric", symmetrised: true, orientation_change_deg: 0.3 } } })).achieved.text).toBe("met: every stage meets its goal");
+  });
+
   it("reports the flatten's floor in σ without judging it, by the pedestal rule", () => {
     // The validation's dev volumes (docs/pilot-review.md finding 6): floors of
     // 1.5 to 1.8σ on all eight, whatever the flatten did.

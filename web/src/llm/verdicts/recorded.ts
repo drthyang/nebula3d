@@ -190,5 +190,7 @@ export function outcomesOfMeasured(m: Measured): Outcome[] {
   if (symmetry) out.push(symmetryOutcome(symmetry));
   const grains = obj(m.grains);
   if (grains) out.push(grainOutcome(grains));
+  const ub = obj(m.ub);
+  if (ub) out.push(judge("ub", ub));
   return out;
 }

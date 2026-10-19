@@ -407,12 +407,25 @@ function reportOf(m: Measured): Verdicts {
   const attention = STAGES.filter((s) => checks[s] === "attention").map((s) => REPORT_TITLE[s]);
   const notMeasured = STAGES.filter((s) => checks[s] === undefined || checks[s] === "info").map((s) => REPORT_TITLE[s]);
   const achieved = attention.length ? false : notMeasured.length ? null : true;
-  const text = attention.length
-    ? `not met: needs attention: ${attention.join(", ")}`
-    : notMeasured.length
-      ? `not judged: not measured: ${notMeasured.join(", ")}`
-      : "met: every stage meets its goal";
-  return { achieved: { achieved, stages, attention, notMeasured, dataProblems: [], text }, checks };
+  // The data's problems, named as {{achieved}} names them (Q11): the coverage's,
+  // then the UB's, then the HKL origin's shift. The measurement pass runs
+  // ub_check and grain_check at once on the same outputs, so neither is newer:
+  // the report names what each found (ub_check's turn and grain_check's "UB
+  // off"), where a reply's {{achieved}} takes the newer (D7).
+  const ub = of("ub");
+  const dataProblems = [
+    ...(of("coverage")?.dataProblems ?? []),
+    ...(ub?.dataProblems.filter((p) => !isOriginProblem(p)) ?? []),
+    ...(grain?.reasons.includes("UB off") ? grain.dataProblems : []),
+    ...(ub?.dataProblems.filter(isOriginProblem) ?? []),
+  ];
+  const text =
+    (attention.length
+      ? `not met: needs attention: ${attention.join(", ")}`
+      : notMeasured.length
+        ? `not judged: not measured: ${notMeasured.join(", ")}`
+        : "met: every stage meets its goal") + (dataProblems.length ? `; data problems no setting fixes: ${dataProblems.join("; ")}` : "");
+  return { achieved: { achieved, stages, attention, notMeasured, dataProblems, text }, checks };
 }
 
 /** A run's verdicts: a reply's, from its steps' tool results; a report's, from its measurements. */
