@@ -363,6 +363,19 @@ class BraggPeakWidthOut(BaseModel):
     fit_kind: str
 
 
+class NodeTestOut(BaseModel):
+    """The nodes whose background shell held fewer measured voxels than the
+    Bragg punch's node test needs (server.bragg): with mode "both" not judged
+    and left to the search pass, with mode "integer" judged provisionally."""
+    examined: int                   # the nodes with a measured window
+    under_floor: int                # of them, those whose shell was under min_voxels
+    min_voxels: int                 # the shell median's floor
+    voxel_q: float                  # a voxel, Å⁻¹ (the edge of a cube of its Q-volume)
+    needs_q: float                  # the largest voxel that gives the shell min_voxels, Å⁻¹
+    left_to_search: bool            # mode "both"; else judged provisionally
+    notice: str | None = None       # what the run log says, on a grid too coarse (voxel > needs)
+
+
 class BraggProfileOut(BaseModel):
     dataset_id: str
     profile_path: str | None = None
@@ -375,6 +388,8 @@ class BraggProfileOut(BaseModel):
     fit_covariance: bool = False
     punch_frame: str | None = None
     peaks: list[BraggPeakWidthOut] = []
+    # The nodes the node test could not judge, if any (pipeline.node_test_notice).
+    node_test: NodeTestOut | None = None
 
 
 class StageParamsIn(BaseModel):

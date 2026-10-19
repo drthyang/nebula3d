@@ -110,6 +110,7 @@ __all__ = [
     "RING_GRID_REMEDY",
     "RING_GRID_REMEDY_ONE",
     "unconfirmed_rings_notice",
+    "node_test_notice",
     "pipeline_paths",
     "run_pipeline",
 ]
@@ -1303,6 +1304,51 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
 # ---------------------------------------------------------------------------
 # Stage 2 — Bragg / satellite punch
 # ---------------------------------------------------------------------------
+def node_test_notice(count: int, examined: int, voxel: float, needs: float, *,
+                     left_to_search: bool = True) -> str:
+    """What the Bragg punch says of the *count* nodes, of the *examined*, whose
+    background shell held fewer measured voxels than its node test's median
+    needs, on a grid too coarse for that shell: a voxel of *voxel* Å⁻¹ where the
+    shell needs one of *needs* Å⁻¹ or less
+    (:meth:`~nebula3d.analysis.bragg.BraggRemover.node_test_limit`). With
+    ``mode="both"`` (*left_to_search*) the test did not judge them and left
+    them to the search pass; with ``mode="integer"`` it judged them against
+    their window's median, provisionally. It opens with
+    :data:`~nebula3d.preprocessing.ring_isotropy.GRID_TOO_COARSE` and ends on
+    the remedy. Out loud, in the run log and the punch's record (the
+    manager's decision, on the user's delegation, 2026-10-19: the review's G2).
+    """
+    one = count == 1
+    nodes = f"{count} of {examined} node{'' if examined == 1 else 's'} {'was' if one else 'were'}"
+    what = (f"{nodes} not judged and {'was' if one else 'were'} left to the search pass; "
+            "weaker Bragg peaks may remain" if left_to_search else
+            f"{nodes} judged provisionally, against {'its' if one else 'their'} window's "
+            "median; diffuse maxima at nodes may be punched")
+    return (f"{GRID_TOO_COARSE} for the Bragg punch's node test: a voxel is {voxel:.3g} Å⁻¹; "
+            f"its background shell needs ≤ {needs:.3g} Å⁻¹. {what}. Use a finer grid.")
+
+
+def _node_test_record(report: dict[str, Any]) -> dict[str, Any] | None:
+    """The punch's record of the nodes its node test could not judge (the
+    remover's ``_node_report``), or None when it judged every node it
+    examined. The ⚠ notice (:func:`node_test_notice`) where the grid is too
+    coarse for the background shell (a voxel over the limit); else ``notice``
+    is None, the nodes being few, at the edge of the measured volume or in the
+    directions the grid samples thinnest just under the limit."""
+    under = int(report.get("under_floor", 0))
+    if not under:
+        return None
+    voxel, needs = float(report["voxel_q"]), float(report["needs_q"])
+    left = bool(report["left_to_search"])
+    examined = int(report["examined"])
+    return {
+        "examined": examined, "under_floor": under, "min_voxels": int(report["min_voxels"]),
+        "voxel_q": round(voxel, 4), "needs_q": round(needs, 4), "left_to_search": left,
+        "notice": (node_test_notice(under, examined, voxel, needs, left_to_search=left)
+                   if voxel > needs else None),
+    }
+
+
 def bragg_remover(p: PunchParams) -> BraggRemover:
     """The :class:`BraggRemover` the punch stage runs for *p*."""
     return BraggRemover(
@@ -1370,6 +1416,9 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         remover = dataclasses.replace(remover, symmetry_ops=symmetry.ops)
     peak_records, reference, footprint = remover._detect(vol)  # noqa: SLF001 - avoid refitting
     n_integer = sum(r.source_node_hkl is not None for r in peak_records)
+    # The nodes whose background shell the grid (or the mask) left under the
+    # node test's floor: not judged, or judged provisionally (G2).
+    node_test = _node_test_record(remover._node_report)  # noqa: SLF001
     if p.mode in {"integer", "both"}:
         width = ("" if p.integer_max_shell_fraction is None else
                  f", no broader than a Bragg peak (shell fraction "
@@ -1377,8 +1426,16 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         test = (f"excess over its shell ≥ {p.min_significance:g}σ after the "
                 f"window search{width}, no intensity floor"
                 if p.integer_detect == "significance" else "intensity floors")
+        tally = ""
+        if node_test is not None:
+            shell = (f"fewer than {node_test['min_voxels']} measured voxels in the "
+                     f"background shell")
+            tally = (f"; {node_test['under_floor']} of {node_test['examined']} nodes "
+                     + (f"not judged ({shell}), left to the search pass"
+                        if node_test["left_to_search"] else
+                        f"judged provisionally, against the window's median ({shell})"))
         _emit(progress, "punch", "progress", None,
-              f"integer nodes ({test}): {n_integer} peaks")
+              f"integer nodes ({test}): {n_integer} peaks{tally}")
     found = remover._search_report  # noqa: SLF001 - what the search pass used
     if "min_intensity" in found:
         floors = (f"{found['min_intensity']:.4g} intensity, "
@@ -1415,10 +1472,16 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
               f"{int((vol.mask & ~keep).sum()) - before:,} more voxels punched "
               f"at positions equivalent to punched ones")
     profile = bragg_profile_from_records(vol, remover, peak_records, footprint)
+    notice = None
+    if node_test is not None:
+        # The punch's record of it, for as long as the output it describes.
+        profile["node_test"] = node_test
+        notice = node_test["notice"]
     punched = vol.mask & np.isfinite(vol.data) & ~keep
     out_vol = dataclasses.replace(vol, mask=vol.mask & keep)
     _emit(progress, "punch", "done", 1.0,
-          f"detected {len(peak_records)} peaks; punched {int(punched.sum()):,} voxels")
+          f"detected {len(peak_records)} peaks; punched {int(punched.sum()):,} voxels"
+          + (f". ⚠ {notice}" if notice else ""))
     setattr(out_vol, "_bragg_profile", profile)
     # Which masked voxels are punch holes (the rest are unmeasured coverage):
     # the backfill fills each hole from its own surroundings with it.
