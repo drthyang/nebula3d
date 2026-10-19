@@ -312,16 +312,32 @@ a test case: 16 cases.
 **dev** is for improving the tools, the skills and the prompts. **test** is held
 out: each of its cases has another crystal (cell, order, seed, planted vectors) and
 another fault size, so what is learned on dev cannot fit it by its numbers, and
-its numbers are read once, to be reported. Five tests enforce this:
+its numbers are read once, to be reported. These tests enforce this:
 
+- the test split's definitions are held out in a module of their own,
+  `src/nebula3d/validation/holdout/heldout_cases.py`, which no builder or agent
+  opens, prints or reads. `cases.py` keeps the dev cases and every builder.
+  `cases("test")` loads the module with an opt-in alone, `NEBULA_HOLDOUT_TESTS=1`
+  (tests, CI) or the CLI's `--report`, and without one raises an error that says
+  how to opt in, never an empty split. One loader imports it
+  (`test_only_the_loader_imports_the_held_out_module`, an AST scan of every
+  import in `src`, `tests`, `scripts` and `examples`, checked on a planted tree by
+  `test_the_import_scan_finds_every_kind_of_import`); without the opt-in nothing
+  reaches it (`test_the_test_split_is_unreachable_without_the_opt_in`); and the
+  opt-in gives the cases it gave before the move, by a pinned sha256 of their
+  canonical JSON (`test_the_opt_in_gives_the_test_split_as_it_was`). The web
+  harness's manifest lists every case, so writing it needs the opt-in too:
+  `python -m nebula3d.validation manifest --report`;
 - every command that reads the test split needs `--report`
   (`NEBULA_VALIDATION_REPORT=1` for the live runner): `test_the_test_split_needs_report`,
   `casesToRun` in `validation.test.ts`;
 - nothing that may be tuned names a test case
   (`test_nothing_tuned_names_a_test_case`). The scan reads `web/src`,
-  `web/scripts`, `src`, `tests`, `examples`, `scripts`, `docs`, `.claude/skills`
-  and the top-level Markdown. A case may be named only where the cases are
-  defined (`src/nebula3d/validation/`), in the validation's records
+  `web/scripts`, `src`, `tests`, `examples`, `scripts`, `docs`, `.claude/skills`,
+  `changes` (the changelog's entries before they join it) and the top-level
+  Markdown. A case may be named only where the test split is
+  defined (`src/nebula3d/validation/holdout/`, not the rest of the package, the
+  dev cases' `cases.py` included), in the validation's records
   (`docs/evals/validation/`), in this page's *Arm A* section, which reports the
   test results, and in the manifest the web harness grades against
   (`fixtures/validation-cases.json`). It skips binary files, other people's
@@ -337,8 +353,8 @@ its numbers are read once, to be reported. Five tests enforce this:
   power are not matched. A failure names the file and the kind of value, never
   the value. Two controls check the scan. A made-up test split planted in a
   temporary tree is found kind by kind and nowhere else
-  (`test_the_holdout_scan_finds_a_planted_test_case`). The real cases' module
-  and manifest, copied to a place the scan reads, are found for every kind
+  (`test_the_holdout_scan_finds_a_planted_test_case`). The held-out module and
+  the manifest, copied to a place the scan reads, are found for every kind
   (`test_the_holdout_scan_finds_the_test_cases_out_of_place`);
 - the test crystals share no planted vector, cell or seed with the dev crystal
   (`test_dev_and_test_differ_in_crystal_and_fault`, `validation.test.ts`);
@@ -351,7 +367,16 @@ its numbers are read once, to be reported. Five tests enforce this:
   and set pins both (`test_the_default_run_leaves_the_test_split_out`,
   `test_the_opt_in_runs_the_test_split_under_masked_names_only`); a value other
   than `1`, `0` or unset stops the run (`test_a_mistyped_opt_in_stops_the_run`),
-  and `test_ci_runs_the_test_split` pins CI's setting;
+  and `test_ci_runs_the_test_split` pins CI's setting. Without the opt-in, the
+  tests that need the test split skip and the rest check the dev cases. No
+  failure shows a held-out case: a test that loops over the cases names a test
+  case by its masked name and asserts on a boolean or a count with a message of
+  its own; the manifest's test entries are compared by digest, the dev entries
+  one by one; arm D names a test case's files by its masked name, not its id;
+  and an error on a test case is reported by its kind. Each of these failure
+  paths is run on a made-up test case
+  (`test_a_failure_shows_nothing_of_a_held_out_case`, and in
+  `validation.test.ts` for the web harness's own checks);
 - the one paid model runs the test split only (`validationModels.test.ts`).
 
 ### Scoring
