@@ -357,6 +357,16 @@ describe("the newest current result, as {{achieved}} reads it (D7, 2.4.7)", () =
     expect(contradictions(clean, [unjudged, left]).map((t) => t.id)).toEqual(["rings"]);
   });
 
+  it("never reads a missing ΔPDF output as a pass, over an earlier verdict or alone (D11, 2.4b.3)", () => {
+    // Synthetic: a round trip falling short of the data's even part (r 0.97), then no ΔPDF output.
+    const short = step("assess_stage", { stage: "pdf" }, { pdf: { back_fft_pearson_r_even: 0.97 } });
+    const missing = step("assess_stage", { stage: "pdf" }, { pdf: { missing: "no delta_pdf output yet; run_pipeline computes it" } });
+    const sound = "The 3D-ΔPDF meets its goal.";
+    expect(contradictions(sound, [short, missing]).map((t) => t.id)).toEqual(["pdf"]); // it passed over "short" before 2.4b.3
+    expect(verdicts({ reply: [missing] }).checks.pdf).toBeUndefined();
+    expect(verdicts({ reply: [missing] }).achieved).toBeNull();
+  });
+
   it("reads no result that decides nothing, so it hides no earlier verdict", () => {
     const missing = step("assess_stage", { stage: "rings" }, { rings: { missing: "no ringremoved output yet; run_pipeline computes it" } });
     expect(contradictions(clean, [left, missing]).map((t) => t.id)).toEqual(["rings"]);

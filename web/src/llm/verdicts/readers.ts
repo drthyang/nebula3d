@@ -127,13 +127,14 @@ export const D8_ANSWER_BACKFILL_IGNORES_TEXTURE = false;
 export const D10_ACHIEVED_IGNORES_LEGACY_COVERAGE_WORDS = false;
 
 /**
- * D11: the answer checks judge a stage whose output is missing (assess_stage
- * wrote "missing") from its numbers, as any result without a label: nothing to
- * judge, which decides nothing and is not read (D7), but for the 3D-ΔPDF a pass
- * (D15), which overrides an earlier verdict on it. {{achieved}} skips it.
- * Unify: set this to false; a missing output then decides nothing.
+ * D11, unified (plan 2.4b.3, batch 2, approved by the manager on the user's
+ * delegation, 2026-10-19): a stage whose output is missing (assess_stage wrote
+ * "missing"), the 3D-ΔPDF's included, is not judged, never a pass: both readers
+ * skip it, so it decides nothing and hides no earlier verdict. true: the answer
+ * checks judged it from its (absent) numbers, which for the 3D-ΔPDF passed
+ * (D15) and overrode an earlier verdict, before 2.4b.3.
  */
-export const D11_ANSWER_JUDGES_MISSING_OUTPUT = true;
+export const D11_ANSWER_JUDGES_MISSING_OUTPUT = false;
 
 /**
  * D12: the answer checks take a stage's recorded verdict that is no label as

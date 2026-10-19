@@ -224,12 +224,13 @@ describe("D1–D10, kept and named", () => {
 });
 
 describe("the disagreements found beyond D1–D10, kept and named", () => {
-  it("D11: a ΔPDF with no output yet reads as passing to the answer checks, over an earlier verdict; {{achieved}} skips it", () => {
-    expect(D11_ANSWER_JUDGES_MISSING_OUTPUT).toBe(true);
-    const r = reply(assess("pdf", { verdict: "needs attention", back_fft_pearson_r_even: 0.9 }), assess("pdf", { missing: "no delta_pdf output yet; run_pipeline computes it" }));
-    expect(r.checks.pdf).toBe("pass");
-    expect(r.achieved?.stages.pdf).toBe("attention");
-    // Any other stage's missing output decides nothing.
+  it("D11, unified (2.4b.3): a stage with no output, the ΔPDF's included, is not judged, never a pass: both readers skip it", () => {
+    expect(D11_ANSWER_JUDGES_MISSING_OUTPUT).toBe(false);
+    const missing = assess("pdf", { missing: "no delta_pdf output yet; run_pipeline computes it" });
+    const r = reply(assess("pdf", { verdict: "needs attention", back_fft_pearson_r_even: 0.9 }), missing);
+    expect([r.checks.pdf, r.achieved?.stages.pdf]).toEqual(["attention", "attention"]);
+    // Alone, it decides nothing to either.
+    expect(reply(missing)).toEqual({ achieved: null, checks: {} });
     expect(reply(assess("rings", { missing: "no ringremoved output yet" })).checks.rings).toBeUndefined();
   });
 
