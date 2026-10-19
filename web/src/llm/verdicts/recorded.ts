@@ -38,15 +38,24 @@ function resultOf(step: AgentStep): Obj | null {
 const LABELLED = new Map((Object.keys(WORDS.label) as Kind[]).map((k) => [WORDS.label[k], k]));
 
 /**
- * A stage's result from assess_stage. A stage with no output yet gives an
- * outcome the readers know as such ("no output"); a verdict label gives its
- * kind (the recorded label is trusted, as it was); other words are judged by
- * the stage's rule from the numbers, marked as words that are no label (D12);
- * no words, by the rule.
+ * D18, unified (plan 2.4b.3, batch 2, approved by the manager on the user's
+ * delegation, 2026-10-19): a reply judges a stage from its numbers, by the
+ * stage's rule, and takes no recorded label, as the report does: a recording
+ * made under an older rule is judged by the current one (plan 1.5), and a
+ * label without its numbers judges nothing. true: a reply trusted a recorded
+ * label over its numbers, before 2.4b.3.
+ */
+export const D18_REPLY_TRUSTS_RECORDED_LABEL = false;
+
+/**
+ * A stage's result from assess_stage: judged by the stage's rule from its
+ * numbers (D18). A stage with no output yet gives an outcome the readers know
+ * as such ("no output"). With D18's old reading, a verdict label gave its kind
+ * and other words were marked as no label (D12).
  */
 function stageOutcome(stage: Stage, m: Obj): Outcome {
   const judged = judge(stage, m);
-  if (judged.reasons.includes("no output")) return judged;
+  if (judged.reasons.includes("no output") || !D18_REPLY_TRUSTS_RECORDED_LABEL) return judged;
   const said = words(m);
   if (said === null) return judged;
   const kind = LABELLED.get(said);
@@ -170,23 +179,13 @@ export function outcomesOf(step: AgentStep): Outcome[] {
   }
 }
 
-/**
- * D18: the report judges a stage's measurements by its rule, from the
- * numbers, and takes no recorded label, where the reply's reading trusts the
- * label (stageOutcome). Its measurements come fresh from the producers
- * (collect.ts), whose labels the numbers give; a label they do not give reads
- * apart. Unify: set this to false; the report then reads a label as the reply
- * does.
- */
-export const D18_REPORT_JUDGES_STAGE_NUMBERS = true;
-
-/** The outcomes a report's measurements hold, each tool's result read as a recorded step's is: for the checks whose outcomes the measurement pass did not keep. */
+/** The outcomes a report's measurements hold, each tool's result read as a recorded step's is: for the checks whose outcomes the measurement pass did not keep. A stage, from its numbers (D18). */
 export function outcomesOfMeasured(m: Measured): Outcome[] {
   const obj = (v: unknown): Obj | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null);
   const out: Outcome[] = [];
   for (const stage of STAGES) {
     const x = obj(m[stage]);
-    if (x) out.push(D18_REPORT_JUDGES_STAGE_NUMBERS ? judge(stage, x) : stageOutcome(stage, x));
+    if (x) out.push(judge(stage, x));
   }
   const texture = obj(m.texture);
   if (texture) out.push(judge("texture", texture));

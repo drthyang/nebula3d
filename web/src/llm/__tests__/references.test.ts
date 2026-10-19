@@ -22,11 +22,30 @@ const step = (name: string, result: unknown, args: Record<string, unknown> = {},
   result: JSON.stringify(result),
 });
 
-const stage = (verdict: string, extra: Record<string, unknown> = {}) => ({ verdict, ...extra });
 const PASS = "meets its goal";
 const ATTENTION = "needs attention";
+type StageName = "rings" | "punch" | "backfill" | "flatten" | "pdf";
+// Numbers each stage's rule gives the label: a stage is judged from its numbers, not its label (D18).
+const NUMBERS: Record<string, Record<StageName, Record<string, unknown>>> = {
+  [PASS]: {
+    rings: { max_ring_left: 0, max_ring_dent: 0 },
+    punch: { leftover_at_nodes: 0 },
+    backfill: { mean_median_seam_sigma: 0.5 },
+    flatten: { max_floor_trend: 0.31, max_floor_span_fraction: 0.6 },
+    pdf: { back_fft_pearson_r_even: 1 },
+  },
+  [ATTENTION]: {
+    rings: { max_ring_left: 0.14, max_ring_dent: 0 },
+    punch: { leftover_at_nodes: 2 },
+    backfill: { mean_median_seam_sigma: 1.5 },
+    flatten: { max_floor_trend: 0.97, max_floor_span_fraction: 0.97 },
+    pdf: { back_fft_pearson_r_even: 0.97 },
+  },
+};
+/** A stage's result as assess_stage writes it: its label, and numbers that give it. */
+const stage = (name: StageName, verdict: string, extra: Record<string, unknown> = {}) => ({ verdict, ...NUMBERS[verdict][name], ...extra });
 const all = (over: Record<string, unknown> = {}) =>
-  step("assess_stage", { rings: stage(PASS), punch: stage(PASS), backfill: stage(PASS), flatten: stage(PASS, { max_floor_trend: 0.31 }), pdf: stage(PASS), ...over }, { stage: "all" });
+  step("assess_stage", { rings: stage("rings", PASS), punch: stage("punch", PASS), backfill: stage("backfill", PASS), flatten: stage("flatten", PASS), pdf: stage("pdf", PASS), ...over }, { stage: "all" });
 const rerun = (stages: Record<string, string>) => step("run_pipeline", { ended: "done", stages }, { from_stage: "flatten" });
 
 describe("evidence after a rerun", () => {
@@ -63,8 +82,8 @@ describe("evidence after a rerun", () => {
 
 describe("numbers by reference", () => {
   const steps = [
-    step("assess_stage", { rings: stage(ATTENTION, { max_ring_left: 0.14 }) }, { stage: "rings" }),
-    step("assess_stage", { flatten: stage(PASS, { max_floor_trend: 0.025 }) }, { stage: "flatten" }),
+    step("assess_stage", { rings: stage("rings", ATTENTION, { max_ring_left: 0.14 }) }, { stage: "rings" }),
+    step("assess_stage", { flatten: stage("flatten", PASS, { max_floor_trend: 0.025 }) }, { stage: "flatten" }),
     step("ub_check", { orientation_change_deg: 0.601, origin_shift_rlu: null, symmetrised: false, passes: [{ q_max: 3.2 }] }),
     step("dpdf_peaks", { features: [{ sign: "−", vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, 0.497]] }] }),
   ];
@@ -96,7 +115,7 @@ describe("the verdict computed from the checks", () => {
   });
 
   it("is not met when a stage, the window, the symmetry or the fill's texture needs attention", () => {
-    expect(computedVerdict([all({ flatten: stage(ATTENTION) })])!.text).toBe("not met: needs attention: the flatten");
+    expect(computedVerdict([all({ flatten: stage("flatten", ATTENTION) })])!.text).toBe("not met: needs attention: the flatten");
     const checks = [
       all(),
       step("qmax_coverage", { verdict: "too far: the ΔPDF's separable window puts 0.04 of its weight on unmeasured reciprocal space" }),
@@ -128,7 +147,7 @@ describe("the verdict computed from the checks", () => {
   });
 
   it("holds a claim that the run succeeded to it, and lets the rest through", () => {
-    const notMet = computedVerdict([all({ flatten: stage(ATTENTION) })]);
+    const notMet = computedVerdict([all({ flatten: stage("flatten", ATTENTION) })]);
     expect(overallContradiction("The 3D-ΔPDF can be trusted.", notMet)).toMatch(/^It calls the run a success, but the verdict computed from the checks is "not met/);
     expect(overallContradiction("Every stage meets its goal, so the result is reliable.", notMet)).not.toBeNull();
     expect(overallContradiction("The 3D-ΔPDF can be trusted.", computedVerdict([all()]))).toBeNull();
@@ -143,11 +162,11 @@ describe("the verdict computed from the checks", () => {
 describe("the line under a reply", () => {
   it("gives the verdict when the reply judged the run, the data's problems when only they were found, else nothing", () => {
     expect(verdictLine(computedVerdict([all()]))).toBe("Verdict from the checks: met: every stage meets its goal.");
-    expect(verdictLine(computedVerdict([step("assess_stage", { rings: stage(ATTENTION) }, { stage: "rings" })]))).toBe(
+    expect(verdictLine(computedVerdict([step("assess_stage", { rings: stage("rings", ATTENTION) }, { stage: "rings" })]))).toBe(
       "Verdict from the checks: not met: needs attention: the ring removal.",
     );
     // A question about one stage that passed: too little to judge the run, nothing to add.
-    expect(verdictLine(computedVerdict([step("assess_stage", { rings: stage(PASS) }, { stage: "rings" })]))).toBeNull();
+    expect(verdictLine(computedVerdict([step("assess_stage", { rings: stage("rings", PASS) }, { stage: "rings" })]))).toBeNull();
     expect(verdictLine(computedVerdict([step("ub_check", { fit: "both", orientation_change_deg: 0, origin_shift_rlu: [0.0305, 0.0195, 0] })]))).toBe(
       "From the checks: data problems no setting fixes: the HKL origin is shifted by (0.0305, 0.0195, 0) r.l.u.",
     );
