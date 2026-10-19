@@ -44,7 +44,9 @@ const INSIDE = step("qmax_coverage", { verdict: "the transform reaches 6.283 Å�
 const TOO_FAR = step("qmax_coverage", { verdict: "too far: the ΔPDF's separable window puts 0.04 of its weight on unmeasured reciprocal space", window_weight_on_unmeasured: 0.04 });
 const grain = (verdict: string, judged: number, near: number) => step("grain_check", { judged, near_bragg_nodes: near, verdict });
 const UB_OFF = grain("the off-lattice peaks are the crystal's own Bragg peaks with the UB off: one rotation of 0.9° puts 38 of the 40 strongest orbits back on the Bragg lattice (random directions: 2); refine the UB", 40, 40);
-const BESIDE = grain("no second grain of this phase: a rotated copy of the Bragg lattice indexes only 3 of the 40 strongest off-lattice orbits (random directions: 5). 28 of them sit within a quarter of the node spacing of a Bragg node", 40, 28);
+const BESIDE_WORDS = "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 3 of the 40 strongest off-lattice orbits (random directions: 5). 28 of them sit within a quarter of the node spacing of a Bragg node";
+const BESIDE = grain(BESIDE_WORDS, 40, 28);
+const NO_GRAIN = grain("no second grain of this phase: a rotated copy of the Bragg lattice indexes only 3 of the 40 strongest off-lattice orbits (random directions: 5)", 40, 3);
 const assess = (stage: string, m: Record<string, unknown>) => step("assess_stage", { [stage]: m }, { stage });
 
 describe("the answer checks read each check's result where the module says the stage it reads", () => {
@@ -95,11 +97,21 @@ describe("D1–D10, kept and named", () => {
     const right = step("ub_check", { fit: "both", symmetrised: false, orientation_change_deg: 0.01 });
     expect(reply(right, UB_OFF).checks.ub).toBe("attention");
     expect(reply(UB_OFF, right).checks.ub).toBe("pass");
-    // grain_check's other findings say nothing of the UB, and name no data problem.
-    expect(reply(BESIDE).checks.ub).toBeUndefined();
-    expect(reply(BESIDE).achieved?.dataProblems).toEqual([]);
+    // grain_check's other findings say nothing of the UB, and name no data problem (but its peaks beside the nodes, D3a).
+    expect(reply(NO_GRAIN).checks.ub).toBeUndefined();
+    expect(reply(NO_GRAIN).achieved?.dataProblems).toEqual([]);
     // Most of the strongest beside the nodes: attention to the report, "no second grain" to the answer checks.
     expect(reply(BESIDE).checks.grain).toBe("pass");
+  });
+
+  it("D3a (2.4.3a, the manager on the user's delegation): grain_check's peaks beside the nodes are the UB off too, to both readers", () => {
+    const beside = reply(BESIDE);
+    expect([beside.checks.ub, beside.achieved?.dataProblems]).toEqual(["attention", ["the UB is off (the strongest off-lattice peaks sit beside Bragg nodes)"]]);
+    // With the median offset its words give, a lower bound.
+    const offset = reply(grain(`${BESIDE_WORDS}, offset by a median 1.2° of rotation (a lower bound: a node at an angle to the rotation axis moves less): the Bragg peaks themselves, off their nodes by about that angle (refine the UB)`, 40, 28));
+    expect(offset.achieved?.dataProblems).toEqual(["the UB is off by at least 1.2° (the strongest off-lattice peaks sit beside Bragg nodes)"]);
+    // Still no second grain to the grain topic.
+    expect(beside.checks.grain).toBe("pass");
   });
 
   it("D4, unified (2.4.4): one UB turned, 0.05° or more from an unsymmetrised fit; a symmetrised volume's UB is not judged, and not right", () => {
@@ -168,7 +180,7 @@ describe("D1–D10, kept and named", () => {
     const earlier = reply(right, UB_OFF);
     expect([earlier.checks.ub, earlier.achieved?.dataProblems]).toEqual(["attention", [problem]]);
     // A grain_check finding that names no UB off decides nothing of the UB: the earlier "UB off" stands, for both.
-    const after = reply(UB_OFF, BESIDE);
+    const after = reply(UB_OFF, NO_GRAIN);
     expect([after.checks.ub, after.achieved?.dataProblems]).toEqual(["attention", [problem]]);
   });
 

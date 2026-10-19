@@ -260,6 +260,8 @@ describe("judge: the checks on the result", () => {
       "attention",
       ["no second grain", "peaks beside nodes"],
       "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 3 of the 40 strongest off-lattice orbits (random directions: 5). 20 of them sit within a quarter of the node spacing of a Bragg node, offset by a median 1.23° of rotation (a lower bound: a node at an angle to the rotation axis moves less): copies of the crystal's own Bragg peaks, displaced by symmetrising data whose UB is off by about that angle; a UB refined on the unsymmetrised data would put them back on the nodes",
+      // The UB off, by at least the median offset (D3a).
+      ["the UB is off by at least 1.23° (the strongest off-lattice peaks sit beside Bragg nodes)"],
     ],
     [
       "most beside nodes, unsymmetrised",
@@ -267,6 +269,7 @@ describe("judge: the checks on the result", () => {
       "attention",
       ["no second grain", "peaks beside nodes"],
       "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 3 of the 40 strongest off-lattice orbits (random directions: 5). 28 of them sit within a quarter of the node spacing of a Bragg node, offset by a median 1.23° of rotation (a lower bound: a node at an angle to the rotation axis moves less): the Bragg peaks themselves, off their nodes by about that angle (refine the UB). 12 lie farther from any node; their origin is open (another phase, multiple scattering, or an artefact)",
+      ["the UB is off by at least 1.23° (the strongest off-lattice peaks sit beside Bragg nodes)"],
     ],
   ];
   for (const [why, over, kind, reasons, words, dataProblems = []] of GRAIN) {

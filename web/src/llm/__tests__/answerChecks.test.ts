@@ -126,6 +126,21 @@ describe("contradicting the tools' computed verdicts", () => {
     expect(contradictions("The UB is right.", [right])).toEqual([]);
   });
 
+  it("holds a claim that the UB is right to grain_check's peaks beside the nodes, and names them among the data's problems (D3a, 2.4.3a)", () => {
+    // Synthetic grain facts: 28 of the 40 strongest off-lattice orbits sit beside Bragg nodes, offset by a median 1.2°; no rotation indexes them.
+    const facts: GrainFacts = { off_lattice_orbits: 60, judged: 40, near_bragg_nodes: 28, near_offset_angle_deg: { median: 1.2, quartiles: [0.9, 1.6] }, far: [], rotated_copy: { indexed: 3, misorientation_deg: 24.5 }, random_control: 5, symmetrised: false };
+    const o = judge("grain", facts);
+    expect([o.kind, o.reasons]).toEqual(["attention", ["no second grain", "peaks beside nodes"]]);
+    const grain = step("grain_check", {}, { ...shownGrains(facts, o.words!), off_lattice_peaks: 900 });
+    expect(contradictions("The UB is right.", [grain]).map((t) => t.id)).toEqual(["ub"]);
+    expect(contradictions("There is no second grain.", [grain])).toEqual([]);
+    expect(verdicts({ reply: [grain] }).achieved?.dataProblems).toEqual(["the UB is off by at least 1.2° (the strongest off-lattice peaks sit beside Bragg nodes)"]);
+    // The report's goal names it too (Q11).
+    expect(verdicts({ report: { grains: { ...shownGrains(facts, o.words!), off_lattice_peaks: 900 } } }).achieved?.dataProblems).toEqual([
+      "the UB is off by at least 1.2° (the strongest off-lattice peaks sit beside Bragg nodes)",
+    ]);
+  });
+
   it("holds both readings to one UB turned, 0.05° or more from an unsymmetrised fit, and a symmetrised UB to no claim that it is right (D4, 2.4.4)", () => {
     // Synthetic ub_check results, as the tool writes them.
     const ub = (fit: string, symmetrised: boolean, turn: number) => step("ub_check", {}, { fit, symmetrised, orientation_change_deg: turn, origin_shift_rlu: null });
