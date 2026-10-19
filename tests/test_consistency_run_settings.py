@@ -211,12 +211,17 @@ def test_without_a_record_the_view_takes_the_defaults_and_says_so(tmp_path):
     assert settings["defaulted"] == list(cons.WINDOW_FIELDS)
     assert {f: settings[f] for f in cons.WINDOW_FIELDS} == DEFAULT_WINDOW
 
-    # A ΔPDF that records no transform, and one that is no ΔPDF at all.
+    # A ΔPDF that records no transform, one that records only what the view
+    # does not apply (its crop), and one that is no ΔPDF at all.
     _write_record(paths.delta_pdf, q_max=11.9, source_file=paths.backfilled.name)
     settings = client.get(f"/api/consistency/{SLUG}/meta").json()["settings"]
     assert settings["source"] == "defaults"
     assert settings["note"] == f"{paths.delta_pdf.name} records no transform settings"
     assert {f: settings[f] for f in cons.WINDOW_FIELDS} == DEFAULT_WINDOW
+    _write_record(paths.delta_pdf, transform_config="crop_hkl=2,3,4")
+    settings = client.get(f"/api/consistency/{SLUG}/meta").json()["settings"]
+    assert settings["source"] == "defaults" and settings["run_crop_hkl"] == [2.0, 3.0, 4.0]
+    assert settings["note"] == f"{paths.delta_pdf.name} records no transform settings"
     paths.delta_pdf.write_bytes(b"")
     settings = client.get(f"/api/consistency/{SLUG}/meta").json()["settings"]
     assert settings["source"] == "defaults"

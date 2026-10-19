@@ -32,6 +32,7 @@ pipeline's own check stage saved for the ΔPDF it produced, with no FFT at all.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import json
 import math
 import threading
@@ -122,6 +123,14 @@ def _finite(obj: object) -> object:
     return obj
 
 
+@functools.lru_cache(maxsize=16)
+def _record(path: str, mtime_ns: int, size: int) -> tuple[str, str]:
+    """``(source_file, transform_config)`` of the ΔPDF at *path*, as it was at
+    *mtime_ns*: read once per version of the file, not on every slice."""
+    logs = load_delta_pdf(path, read_data=False).logs
+    return str(logs.get("source_file") or ""), str(logs.get("transform_config") or "")
+
+
 def run_settings(ds: Dataset, input_path: Path) -> tuple[DeltaPdfParams, dict[str, Any]]:
     """The transform the view runs for *ds*, and the response's record of it.
 
@@ -146,18 +155,19 @@ def run_settings(ds: Dataset, input_path: Path) -> tuple[DeltaPdfParams, dict[st
         note = "no ΔPDF on disk for this dataset"
     else:
         try:
-            logs = load_delta_pdf(record, read_data=False).logs
-            made_from = str(logs.get("source_file") or "") or None
-            recorded = delta_pdf_settings_from_config(str(logs.get("transform_config") or ""))
+            stat = record.stat()
+            source, config = _record(str(record), stat.st_mtime_ns, stat.st_size)
+            made_from = source or None
+            recorded = delta_pdf_settings_from_config(config)
         except Exception as exc:  # noqa: BLE001 - an unreadable record means the defaults
             note = f"{record.name} could not be read as a ΔPDF record ({exc})"
         else:
-            if not recorded:
+            if not any(f in recorded for f in WINDOW_FIELDS):
                 note = f"{record.name} records no transform settings"
     run = DeltaPdfParams(**recorded)
     params = dataclasses.replace(run, crop_hkl=None, q_band=None)
     settings: dict[str, Any] = {
-        "source": "run" if recorded else "defaults",
+        "source": "defaults" if note else "run",
         "note": note,
         "delta_pdf": record.name if record is not None else None,
         "made_from": made_from,
@@ -188,10 +198,9 @@ def saved_check(cfg: ServerConfig, dataset_id: str) -> dict | None:
     These are the metrics for the ΔPDF on disk, computed with the run's own ΔPDF
     parameters; :func:`consistency_meta` instead re-runs the round trip, with
     the same transform over the full |Q| range, for the interactive viewer's
-    bands.  ``None`` for an unknown
-    dataset.  ``has_check`` is false when the check never ran, or when it is
-    older than the ΔPDF (re-run with the check disabled), since it then
-    describes a ΔPDF that no longer exists.
+    bands.  ``None`` for an unknown dataset.  ``has_check`` is false when the
+    check never ran, or when it is older than the ΔPDF (re-run with the check
+    disabled), since it then describes a ΔPDF that no longer exists.
     """
     ds = find_dataset(cfg, dataset_id)
     if ds is None:
@@ -251,6 +260,7 @@ def reconstruction(
 def clear_cache() -> None:
     with _lock:
         _cache.clear()
+    _record.cache_clear()
 
 
 def consistency_meta(
