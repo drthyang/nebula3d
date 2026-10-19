@@ -1,5 +1,6 @@
 // Which cards the assistant is on: while a tool step runs, the cards for what
-// that step works on (its stage, the fitted peaks, the run log, …); while it
+// that step works on, as its tool's facts say (its stage, the fitted peaks,
+// the run log, …: `highlights`, tools/facts.ts); while it
 // writes, the cards for what its answer mentions — kept a few seconds after
 // the reply ends.  Pages read the keys and give those cards a breathing edge
 // (.ai-glow), so the user can see where the agent is looking.
@@ -11,6 +12,7 @@ import { useNavStore } from "../state/navStore";
 import { usePipelineStore } from "../state/pipelineStore";
 import type { AgentStep } from "./agent";
 import { useChatStore } from "./chatStore";
+import { factsOf } from "./tools";
 import { ALL_STAGES, keysOf, RECIP, stageKey, type HighlightKey } from "./tools/facts";
 import { TUNE_PARAMS } from "./tune/catalog";
 import { useTuneStore } from "./tune/tuner";
@@ -101,8 +103,9 @@ export function agentKeys(now = Date.now(), lingerUntil = 0): HighlightKey[] {
   if (chat.busy && chat.live) {
     const step = chat.live.steps.find((s) => s.status === "running");
     if (step) {
-      const live = step.name === "run_pipeline" || step.name === "tune_pipeline" ? runningStage() : [];
-      for (const k of live.length ? live : stepKeys(step)) keys.add(k);
+      const facts = factsOf(step.name);
+      const live = facts.startsRuns ? runningStage() : [];
+      for (const k of live.length ? live : facts.highlights(step.args ?? {})) keys.add(k);
     }
     for (const k of mentionKeys(chat.live.content)) keys.add(k);
   } else if (now < lingerUntil) {
