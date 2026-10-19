@@ -102,19 +102,28 @@ describe("D1–D10, kept and named", () => {
     expect(reply(BESIDE).checks.grain).toBe("pass");
   });
 
-  it("D4: a symmetrised UB, a symmetric fit's turn and a recording's angle_deg are off to the answer checks, and no data problem to {{achieved}}", () => {
+  it("D4, unified (2.4.4): one UB turned, 0.05° or more from an unsymmetrised fit; a symmetrised volume's UB is not judged, and not right", () => {
+    // Turned: a data problem to {{achieved}} and off to the answer checks, its angle under either name.
+    for (const [ub, problem] of [
+      [{ fit: "both", symmetrised: false, orientation_change_deg: 0.05 }, "the UB is turned by 0.05°"],
+      [{ angle_deg: 0.4 }, "the UB is turned by 0.4°"],
+    ] as const) {
+      const r = reply(step("ub_check", ub));
+      expect([r.checks.ub, r.achieved?.dataProblems], JSON.stringify(ub)).toEqual(["attention", [problem]]);
+    }
+    // Not judged (a symmetrised volume, its symmetric fit): no data problem, whatever the fit turned, and still off to the answer checks.
     for (const ub of [
       { fit: "symmetric", symmetrised: true, orientation_change_deg: 0 },
+      { fit: "symmetric", symmetrised: true, orientation_change_deg: 0.3 },
       { fit: "symmetric", symmetrised: false, orientation_change_deg: 0.3 },
-      { angle_deg: 0.4 },
     ]) {
       const r = reply(step("ub_check", ub));
-      expect(r.checks.ub, JSON.stringify(ub)).toBe("attention");
-      expect(r.achieved?.dataProblems, JSON.stringify(ub)).toEqual([]);
+      expect([r.checks.ub, r.achieved?.dataProblems], JSON.stringify(ub)).toEqual(["attention", []]);
+      expect(judge("ub", ub).reasons, JSON.stringify(ub)).toEqual(["symmetrised"]);
     }
-    // Where both read it turned.
-    const turned = reply(step("ub_check", { fit: "both", symmetrised: false, orientation_change_deg: 0.05 }));
-    expect([turned.checks.ub, turned.achieved?.dataProblems]).toEqual(["attention", ["the UB is turned by 0.05°"]]);
+    // Under 0.05° from an unsymmetrised fit: right, to both.
+    const right = reply(step("ub_check", { fit: "both", symmetrised: false, orientation_change_deg: 0.049 }));
+    expect([right.checks.ub, right.achieved?.dataProblems]).toEqual(["pass", []]);
   });
 
   it("D5: sharp peaks on protected planes need attention in the punch's verdict, while its goal says they stay by design", () => {

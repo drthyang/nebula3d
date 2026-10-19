@@ -279,9 +279,10 @@ describe("judge: the checks on the result", () => {
   const UB: [string, Obj, Kind, Reason[], string[]][] = [
     ["turned under 0.05°", { fit: "both", symmetrised: false, orientation_change_deg: 0.049 }, "pass", [], []],
     ["turned 0.05°", { fit: "both", symmetrised: false, orientation_change_deg: 0.05 }, "attention", ["UB turned"], ["the UB is turned by 0.05°"]],
-    ["symmetrised: not judged right (D4)", { fit: "symmetric", symmetrised: true, orientation_change_deg: 0 }, "attention", ["symmetrised"], []],
-    ["a symmetric fit's turn is no data problem (D4)", { fit: "symmetric", symmetrised: false, orientation_change_deg: 0.3 }, "attention", ["UB turned"], []],
-    ["a recording's angle_deg, for the answer checks only (D4)", { angle_deg: 0.4 }, "attention", ["UB turned"], []],
+    ["symmetrised: not judged, so not right (D4)", { fit: "symmetric", symmetrised: true, orientation_change_deg: 0 }, "attention", ["symmetrised"], []],
+    ["symmetrised: a symmetric fit's turn is no data problem (D4)", { fit: "symmetric", symmetrised: true, orientation_change_deg: 0.3 }, "attention", ["symmetrised"], []],
+    ["a symmetric fit, whatever the flag says, is not judged (D4)", { fit: "symmetric", symmetrised: false, orientation_change_deg: 0.3 }, "attention", ["symmetrised"], []],
+    ["a recording's angle_deg is the turn, to every reader (D4)", { angle_deg: 0.4 }, "attention", ["UB turned"], ["the UB is turned by 0.4°"]],
     ["the origin shifted", { fit: "both", symmetrised: false, orientation_change_deg: 0.001, origin_shift_rlu: [0.0305, 0.0195, 0] }, "pass", [], ["the HKL origin is shifted by (0.0305, 0.0195, 0) r.l.u."]],
     ["turned, and the origin shifted", { fit: "both", orientation_change_deg: 0.2, origin_shift_rlu: [0.03, 0, 0] }, "attention", ["UB turned"], ["the UB is turned by 0.2°", "the HKL origin is shifted by (0.03, 0, 0) r.l.u."]],
     ["no angle, not symmetrised: right (D16)", {}, "pass", [], []],

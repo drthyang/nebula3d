@@ -378,6 +378,16 @@ resolvable"). The text graders are heuristics (a clause that negates does not
 claim); the outputs' scores carry the verdict, and a reviewer reads each
 transcript.
 
+The UB's two thresholds are two rules, not one. The Pilot calls a UB turned at
+0.05° or more from an unsymmetrised fit, for `{{achieved}}` and the answer
+checks alike, and a symmetrised volume's UB not judged (`UB_TURNED` and
+`UB_NOT_JUDGED`, `web/src/llm/verdicts/rules.ts`; the user's decision of
+2026-10-19, review entry D4). The grader reads a clause that calls the UB off,
+with every angle it writes under 0.1°, as no claim of a misorientation: a turn
+the size of the fit's own noise (`claimed`, `web/src/llm/evals/validation.ts`).
+The grader's 0.1° stays as it is until the answer checks and the graders share
+one reader of an answer's words (plan 3.2).
+
 ### What each run leaves
 
 One JSON record per model and split (`docs/evals/validation/<model>-<split>.json`)
