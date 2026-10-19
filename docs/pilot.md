@@ -60,7 +60,8 @@ Each is described under [How it works](#how-it-works).
   an answer that calls the run a success it does not give goes back to the
   model to quote it (`verdicts/`, `verdict.ts`).
 - **Skills come first.** A stage's settings change, and the stage is tuned,
-  only after its skill has been read in the conversation.
+  only after its skill has been read in the same reply. A skill read in an
+  earlier turn must be read again.
 - **Tuning cannot touch your results.** Each trial runs in its own folder,
   never in `processed/`; the model proposes settings only from a checked
   catalog, every trial is measured on three planes, and a trial past a hard
@@ -188,8 +189,13 @@ are drafts awaiting the user's interview (questions in
 names and descriptions. `read_skill` reads a skill whole, or a document it
 cites (a long one by section). A firm rule rides on them (`llm/skills.ts`): a
 stage's settings change (`update_settings`) and the stage is tuned
-(`tune_pipeline`) only after its skill has been read in the conversation.
-Otherwise the executor refuses the call and names the skill to read. The ring
+(`tune_pipeline`) only after its skill has been read in the same reply, or
+while the skill's whole text is in the messages the reply was sent (a user
+who pastes it, say). Otherwise the executor refuses the call and names the
+skill to read. The chat sends earlier turns as their text alone, so a skill
+read in an earlier turn is no longer in front of the model and does not count;
+the refusal then says so and asks for the skill again (`replyContext` in
+`llm/session.ts`, `startReply` in `llm/tools/round.ts`). The ring
 removal and the flatten belong to `reduction-qc`, the punch and the backfill to
 `bragg-node-audit`, and the ΔPDF to `delta-pdf-interpretation`. The app's own
 tool calls (the report's) are not gated.

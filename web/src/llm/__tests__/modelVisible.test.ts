@@ -479,6 +479,12 @@ const ERRORS: Sample[] = [
   { name: "measure_reciprocal_cut", args: { plane: "hk0", value: 7 }, note: "a cut outside the data" },
   { name: "update_settings", args: { changes: { punchMinSig: 6 } }, note: "a change before its stage's skill was read", ctx: { skillsRead: new Set() } },
   { name: "tune_pipeline", args: { stages: ["flatten"] }, note: "tuning before its stage's skill was read", ctx: { skillsRead: new Set() } },
+  {
+    name: "update_settings",
+    args: { changes: { flattenQ2: true } },
+    note: "a change in a later turn, its stage's skill read in an earlier one and not in this reply",
+    ctx: { skillsRead: new Set(), skillsReadEarlier: new Set(["reduction-qc"]) },
+  },
 ];
 
 async function runSample(s: Sample) {

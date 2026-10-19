@@ -1586,6 +1586,12 @@ Error: read the method first: call read_skill with name "bragg-node-audit". It i
 Error: read the method first: call read_skill with name "reduction-qc". It is how the user works on the flatten stage, and this tuning waits until it has been read in this conversation.
 ```
 
+## update_settings {"changes":{"flattenQ2":true}} (a change in a later turn, its stage's skill read in an earlier one and not in this reply)
+
+```text
+Error: read the method again: call read_skill with name "reduction-qc". It was read earlier in the conversation, but its text is not in this reply. It is how the user works on the flatten stage, and this change waits until it has been read in this reply.
+```
+
 # An older result, shortened
 
 A local model's request past its soft budget has its older results shortened (`compactResult`, compact.ts); the first assess_stage sample above reads so:
