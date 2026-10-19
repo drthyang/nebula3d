@@ -346,8 +346,10 @@ miss is a note.
     3D-ΔPDF's strongest extrema from the whole volume: local extrema above a
     few robust σ (default 5) outside the origin's disk, one per ± pair, each
     with its vector in Å and in lattice units (to a fraction of a voxel), its
-    sign and its size in σ, those of one sign, length and size grouped as the
-    copies of one correlation.
+    sign and its size in σ. The copies of one correlation are one entry: the
+    extrema that are images of one another under the point group the raw
+    file declares, else those of one sign, length and size (see
+    [the ΔPDF's features](algorithms/delta_pdf.md#the-strongest-features-grouped-by-the-declared-symmetry-2026-10-19)).
   - *Display*: `dpdf_contrast` optimises the 3D-ΔPDF viewer's colour range in
     one call (the page's Auto rule, measured on the centre sections), reports the
     robust σ, the strongest feature and what the 99.5th and 99.97th percentiles

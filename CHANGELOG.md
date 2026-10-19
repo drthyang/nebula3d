@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **The ΔPDF's features are grouped by the declared symmetry.** When the raw
+  file declares the point group its data were symmetrised with
+  (`symmetry_ops`), the extrema that are images of one another under it are
+  one entry, to within one voxel. The operations act on the ΔPDF's fractional
+  coordinates as their transposes, in the cell the file records; on a
+  hexagonal cell that differs from the operations themselves. An entry lists
+  its strongest vector first and gives the orbit's `multiplicity`, the
+  extrema found (`n`) and their mean and largest size; `grouped_by` says how
+  the list was grouped. Positive and negative extrema never merge, and the
+  limit counts entries. With no symmetry declared, or none that fits the
+  recorded cell, the list is as before (`GET /api/deltapdf/{id}/features`,
+  `webbridge.dpdf_features_json`, `nebula3d.analysis.dpdf_features`).
+
 - **NEBULA Pilot: no verdict without its evidence, numbers by reference, and
   verdicts computed from the checks (THY-18).** A verdict on a stage needs its
   tool after the last run that recomputed that stage, not before it; a ring
