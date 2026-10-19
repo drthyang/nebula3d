@@ -14,7 +14,7 @@ import type { AgentStep } from "../agent";
 import { current, recomputedAt, type PipelineStage } from "../evidence";
 import type { Measured } from "../report/report";
 import { outcomesOf, outcomesOfMeasured } from "./recorded";
-import { isOriginProblem, judge, STAGES, type CheckId, type Kind, type Outcome, type Stage } from "./rules";
+import { isOriginProblem, judge, STAGE_NAMES, STAGES, type CheckId, type Kind, type Outcome, type Stage } from "./rules";
 
 /** The verdict on a run: computed from its checks, never from the model's words. The validation's records persist it as computed_verdict. */
 export interface ComputedVerdict {
@@ -90,9 +90,10 @@ export const D3_ANSWER_GRAIN_SECOND_GRAIN_ONLY = true;
 /**
  * D3, for the answer checks' UB topic, unified (plan 2.4.3, the user's
  * decision of 2026-10-19): grain_check, which settles the UB topic too (its
- * facts, tools/index.ts), decides it where it finds the UB off, which then
- * holds a claim that the UB is right to account; its other findings say
- * nothing of the UB. true: only ub_check decided it, before 2.4.3.
+ * facts, tools/defs/grain_check.ts), decides it where it finds the UB off,
+ * which then holds a claim that the UB is right to account; its other
+ * findings say nothing of the UB. true: only ub_check decided it, before
+ * 2.4.3.
  */
 export const D3_ANSWER_UB_FROM_UB_CHECK_ONLY = false;
 
@@ -310,14 +311,8 @@ function pick(found: readonly Found[], at: Record<PipelineStage, number>, reader
   return null;
 }
 
-/** How {{achieved}} names a stage. */
-const STAGE_LABEL: Record<Stage, string> = {
-  rings: "the ring removal",
-  punch: "the Bragg punch",
-  backfill: "the backfill",
-  flatten: "the flatten",
-  pdf: "the 3D-ΔPDF",
-};
+/** How {{achieved}} names a stage: by the names the system prompt's checks use too (rules.ts). */
+const STAGE_LABEL: Record<Stage, string> = STAGE_NAMES;
 
 /**
  * The check a grid can be too coarse for, by stage, as the verdicts name it

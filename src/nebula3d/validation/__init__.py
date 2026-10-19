@@ -11,19 +11,40 @@ way for every arm (docs/evals.md, "Does the Pilot help?"):
 - D, the planted truth (:func:`.score.truth_dpdf`).
 
 ``python -m nebula3d.validation --help`` lists the commands.
+
+The dev cases are :data:`DEV_CASES`. The test split is held out in a module of
+its own, which no one opens: ``cases("test")`` loads it with the opt-in alone
+(``NEBULA_HOLDOUT_TESTS=1``, or the CLI's ``--report``) and raises
+:class:`HeldOutError` without it.
 """
 
-from .cases import CASES, FAMILIES, SPLITS, Case, build, case_named, cases
+from .cases import (
+    DEV_CASES,
+    FAMILIES,
+    HOLDOUT_ENV,
+    SPLITS,
+    Case,
+    HeldOutError,
+    all_cases,
+    build,
+    case_named,
+    cases,
+    holdout_opted_in,
+)
 from .score import TOLERANCES, score_outputs
 
 __all__ = [
-    "CASES",
+    "DEV_CASES",
     "FAMILIES",
+    "HOLDOUT_ENV",
     "SPLITS",
     "TOLERANCES",
     "Case",
+    "HeldOutError",
+    "all_cases",
     "build",
     "case_named",
     "cases",
+    "holdout_opted_in",
     "score_outputs",
 ]

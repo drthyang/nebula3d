@@ -35,7 +35,7 @@ import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol, get_args
 
 import numpy as np
 
@@ -58,7 +58,12 @@ from nebula3d.analysis import (
     compute_delta_pdf,
     invert_delta_pdf,
 )
-from nebula3d.analysis.delta_pdf import _q_max_from_axes, real_space_radius
+from nebula3d.analysis.delta_pdf import (
+    Window,
+    WindowShape,
+    _q_max_from_axes,
+    real_space_radius,
+)
 from nebula3d.core import HKLVolume, sigma_note
 from nebula3d.core import low_memory as _low_memory
 from nebula3d.io.delta_pdf_file import load_delta_pdf, save_delta_pdf
@@ -102,6 +107,7 @@ __all__ = [
     "flatten",
     "delta_pdf",
     "delta_pdf_transform_config",
+    "delta_pdf_settings_from_config",
     "pdf_consistency_check",
     "consistency_reconstruction",
     "write_bragg_profile_json",
@@ -1619,6 +1625,77 @@ def delta_pdf_transform_config(p: DeltaPdfParams) -> str:
         f"window_shape={p.window_shape}",
         f"window_support={int(p.window_support)}",
     ))
+
+
+def _config_flag(text: str) -> bool:
+    if text not in ("0", "1"):
+        raise ValueError(f"expected 0 or 1, got {text!r}")
+    return text == "1"
+
+
+def _config_floats(*sizes: int) -> Callable[[str], tuple[float, ...] | None]:
+    def read(text: str) -> tuple[float, ...] | None:
+        if not text:
+            return None
+        values = tuple(float(v) for v in text.split(","))
+        if len(values) not in sizes:
+            raise ValueError(f"expected {' or '.join(map(str, sizes))} values, "
+                             f"got {len(values)}")
+        return values
+    return read
+
+
+def _config_bg(text: str) -> float | tuple[float, ...] | None:
+    values = _config_floats(1, 3)(text)
+    return values[0] if values is not None and len(values) == 1 else values
+
+
+def _config_choice(choices: tuple[str, ...]) -> Callable[[str], str]:
+    def read(text: str) -> str:
+        if text not in choices:
+            raise ValueError(f"expected one of {choices}, got {text!r}")
+        return text
+    return read
+
+
+#: Each ``transform_config`` key, the DeltaPdfParams field it records, and how
+#: its text reads back (the inverse of :func:`delta_pdf_transform_config`).
+_CONFIG_FIELDS: dict[str, tuple[str, Callable[[str], Any]]] = {
+    "apodize": ("apodization", _config_choice(get_args(Window))),
+    "gaussian_sigma": ("gaussian_sigma", float),
+    "zero_pad": ("zero_pad", _config_flag),
+    "subtract_mean": ("subtract_mean", _config_flag),
+    "crop_hkl": ("crop_hkl", _config_floats(3)),
+    "q_band": ("q_band", _config_floats(2)),
+    "subtract_bg": ("subtract_smooth_bg", _config_bg),
+    "window_shape": ("window_shape", _config_choice(get_args(WindowShape))),
+    "window_support": ("window_support", _config_flag),
+}
+
+
+def delta_pdf_settings_from_config(config: str) -> dict[str, Any]:
+    """The :class:`DeltaPdfParams` fields a ``transform_config`` stamp records.
+
+    The inverse of :func:`delta_pdf_transform_config`: the ΔPDF stage writes
+    the stamp into the ΔPDF's provenance, so this is the transform the run
+    made it with.  Returns only the fields the stamp holds, by field name
+    (``DeltaPdfParams(**fields)`` gives the rest their defaults): a stamp
+    written before a setting existed lacks it, and the example scripts' stamps
+    lack ``q_band``, ``window_shape`` and ``window_support``.  Keys it does not
+    know are ignored (the browser's WebGPU path appends ``fft=…``).  Raises
+    ValueError on a value that does not read back.
+    """
+    fields: dict[str, Any] = {}
+    for part in config.split(";"):
+        key, sep, text = part.partition("=")
+        if not sep or key.strip() not in _CONFIG_FIELDS:
+            continue
+        name, read = _CONFIG_FIELDS[key.strip()]
+        try:
+            fields[name] = read(text.strip())
+        except ValueError as exc:
+            raise ValueError(f"transform_config {key.strip()}={text!r}: {exc}") from exc
+    return fields
 
 
 def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,

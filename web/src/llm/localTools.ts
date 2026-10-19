@@ -40,7 +40,7 @@ const ASKS_TO_ACT =
 export const CORE_TOOLS = toolsWhere((f) => f.offeredFor === "always" && !f.actsOnPipeline);
 
 /** The tools to offer a local model for `question`, in their usual order. */
-export function toolsFor(question: string, tools: AgentTool[]): AgentTool[] {
+export function toolsFor(question: string, tools: readonly AgentTool[]): AgentTool[] {
   const asked = askedAbout(question);
   const acting = ASKS_TO_ACT.test(question.trim());
   return tools.filter((t) => {

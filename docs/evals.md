@@ -68,7 +68,7 @@ construction, so the set grades the tools as well as the model.
 
 `examples/make_eval_volumes.py` writes the five volumes. The CI replay
 (`heldout.test.ts`, part of `npm test`) plays each scenario with a good and a
-bad script against tool results recorded on them (`fixtures/heldout.json`). It
+bad script against tool results recorded on them (`fixtures/holdout/heldout.json`). It
 also checks what the tools read against the faults. No live model has run the
 set yet. The measured set's fixture (in `web/src/llm/evals/fixtures/`) was recorded
 before the 3D ring rule, and re-recording it needs the user's data.
@@ -315,7 +315,8 @@ it, so nothing is cut out of a text after it is built. With it off:
   measurement, or how to use the tools; an inference says which reading or tool to
   use for a conclusion, what a value or a pattern is evidence of, or what a finding
   calls for (a change, the check to run next, what to report). The system prompt
-  names the four properties a run is judged by, as what exists and in no order, and
+  names the properties a run is judged by (its five stages and the data's own
+  problems, as `{{achieved}}` reads them), as what exists and in no order, and
   leaves out the checklist, the readings each is settled with and the routing of a
   question to a tool; the tool descriptions, the tools' readings, the stages' goals
   and criteria, the verdicts' words, the context's prose and the tuning prompts'
@@ -357,19 +358,36 @@ a test case: 16 cases.
 **dev** is for improving the tools, the skills and the prompts. **test** is held
 out: each of its cases has another crystal (cell, order, seed, planted vectors) and
 another fault size, so what is learned on dev cannot fit it by its numbers, and
-its numbers are read once, to be reported. Five tests enforce this:
+its numbers are read once, to be reported. These tests enforce this:
 
+- the test split's definitions are held out in a module of their own,
+  `src/nebula3d/validation/holdout/heldout_cases.py`, which no builder or agent
+  opens, prints or reads. `cases.py` keeps the dev cases and every builder.
+  `cases("test")` loads the module with an opt-in alone, `NEBULA_HOLDOUT_TESTS=1`
+  (tests, CI) or the CLI's `--report`, and without one raises an error that says
+  how to opt in, never an empty split. One loader imports it
+  (`test_only_the_loader_imports_the_held_out_module`, an AST scan of every
+  import in `src`, `tests`, `scripts` and `examples`, checked on a planted tree by
+  `test_the_import_scan_finds_every_kind_of_import`); without the opt-in nothing
+  reaches it (`test_the_test_split_is_unreachable_without_the_opt_in`); and the
+  opt-in gives the cases it gave before the move, by a pinned sha256 of their
+  canonical JSON (`test_the_opt_in_gives_the_test_split_as_it_was`). The web
+  harness's manifest lists every case, so writing it needs the opt-in too:
+  `python -m nebula3d.validation manifest --report`;
 - every command that reads the test split needs `--report`
   (`NEBULA_VALIDATION_REPORT=1` for the live runner): `test_the_test_split_needs_report`,
   `casesToRun` in `validation.test.ts`;
 - nothing that may be tuned names a test case
   (`test_nothing_tuned_names_a_test_case`). The scan reads `web/src`,
-  `web/scripts`, `src`, `tests`, `examples`, `scripts`, `docs`, `.claude/skills`
-  and the top-level Markdown. A case may be named only where the cases are
-  defined (`src/nebula3d/validation/`), in the validation's records
-  (`docs/evals/validation/`), in this page's *Arm A* section, which reports the
-  test results, and in the manifest the web harness grades against
-  (`fixtures/validation-cases.json`). It skips binary files, other people's
+  `web/scripts`, `src`, `tests`, `examples`, `scripts`, `docs`, `.claude/skills`,
+  `changes` (the changelog's entries before they join it) and the top-level
+  Markdown. A case may be named only where the test split is
+  defined (`src/nebula3d/validation/holdout/`, not the rest of the package, the
+  dev cases' `cases.py` included), in the validation's held-out records
+  (`docs/evals/validation/holdout/`, where arm A's test results are reported and
+  which builders and agents do not open; every other doc is read, this page and
+  the review's findings included), and in the manifest the web harness grades
+  against (`fixtures/validation-cases.json`). It skips binary files, other people's
   packages (`node_modules`) and generated files (bytecode, caches,
   `*.egg-info`), but it reads a test's `__snapshots__`. It matches each test
   case's id and opaque label; the test crystal's seed after the word *seed*; its
@@ -377,13 +395,16 @@ its numbers are read once, to be reported. Five tests enforce this:
   since one alone is a common rock-salt vector; each planted vector's length in
   Å; and each fault's size with its unit or its key: the UB angle, the origin
   offset as a vector, the coverage edge and fraction, all the ring positions
-  together, the shell's |Q| and the Q² background. A bare number never matches,
+  together, the shell's |Q| and the Q² background; and arm A's scores on each
+  test case, its planted correlations' amplitude shares (×) with its pedestal,
+  read from the held-out record. A number matches however it is written, ½ and
+  3/2 among the forms. A bare number never matches,
   so the cell, the UB's axis, the amplitudes and the shell's width, lobes and
   power are not matched. A failure names the file and the kind of value, never
   the value. Two controls check the scan. A made-up test split planted in a
   temporary tree is found kind by kind and nowhere else
-  (`test_the_holdout_scan_finds_a_planted_test_case`). The real cases' module
-  and manifest, copied to a place the scan reads, are found for every kind
+  (`test_the_holdout_scan_finds_a_planted_test_case`). The held-out module and
+  the manifest, copied to a place the scan reads, are found for every kind
   (`test_the_holdout_scan_finds_the_test_cases_out_of_place`);
 - the test crystals share no planted vector, cell or seed with the dev crystal
   (`test_dev_and_test_differ_in_crystal_and_fault`, `validation.test.ts`);
@@ -396,7 +417,16 @@ its numbers are read once, to be reported. Five tests enforce this:
   and set pins both (`test_the_default_run_leaves_the_test_split_out`,
   `test_the_opt_in_runs_the_test_split_under_masked_names_only`); a value other
   than `1`, `0` or unset stops the run (`test_a_mistyped_opt_in_stops_the_run`),
-  and `test_ci_runs_the_test_split` pins CI's setting;
+  and `test_ci_runs_the_test_split` pins CI's setting. Without the opt-in, the
+  tests that need the test split skip and the rest check the dev cases. No
+  failure shows a held-out case: a test that loops over the cases names a test
+  case by its masked name and asserts on a boolean or a count with a message of
+  its own; the manifest's test entries are compared by digest, the dev entries
+  one by one; arm D names a test case's files by its masked name, not its id;
+  and an error on a test case is reported by its kind. Each of these failure
+  paths is run on a made-up test case
+  (`test_a_failure_shows_nothing_of_a_held_out_case`, and in
+  `validation.test.ts` for the web harness's own checks);
 - the one paid model runs the test split only (`validationModels.test.ts`).
 
 ### Scoring
@@ -591,8 +621,8 @@ a voxel), by `python -m nebula3d.validation arm-a --split {dev,test} --report`. 
 cell is the planted correlation's amplitude as a share of the truth's, and its
 shift. The test split is not tuned on: it is arm A's reported result. The full
 results, with each run's log and digest, are in
-[evals/validation/arm-a-dev.json](evals/validation/arm-a-dev.json) and
-[arm-a-test.json](evals/validation/arm-a-test.json). Dev was run again after the
+[evals/validation/arm-a-dev.json](evals/validation/arm-a-dev.json) for dev; the
+test split's are held out (below). Dev was run again after the
 review's batch 1 (2026-10-17, [pilot-review.md](pilot-review.md#batch-1-the-eight-findings-implemented-2026-10-17)):
 the same digests and scores, since the batch changes the Pilot's tools and not
 what the default pipeline writes.
@@ -610,18 +640,7 @@ what the default pipeline writes.
 | `dev-flatten` | ⟨½ 1 1⟩− 1.12× 0.01 Å; ⟨3/2 0 0⟩+ 0.92× 0.01 Å | – | – | 0.9776 | no | a pedestal left; the fault not reported |
 | `dev-rings-shell` | ⟨½ 1 1⟩− 1.14× 0.04 Å; ⟨3/2 0 0⟩+ 0.95× 0.01 Å | 0.0e+00 | 0.14, 0.14 / 1.03 | 0.1968 | yes | passes |
 
-**Test** (reported; `--report`)
-
-| Case | Planted correlations (amplitude, shift) | Window on unmeasured | Rings left / shell kept | Pedestal | Reported | Where it fails |
-| --- | --- | :---: | :---: | :---: | --- | --- |
-| `test-control` | ⟨½ 1 0⟩+ 0.86× 0.02 Å; ⟨3/2 1 0⟩− 1.20× 0.02 Å | – | – | 0.0289 | – | passes |
-| `test-ub` | ⟨½ 1 0⟩+ 0.84× 0.04 Å; ⟨3/2 1 0⟩− 1.19× 0.04 Å | 1.5e-04 | – | 0.0289 | no | the fault not reported |
-| `test-origin` | ⟨½ 1 0⟩+ 0.81× 0.03 Å; ⟨3/2 1 0⟩− 1.18× 0.02 Å | 9.8e-05 | – | 0.0314 | no | the fault not reported |
-| `test-coverage` | ⟨½ 1 0⟩+ not resolvable; ⟨3/2 1 0⟩− not resolvable | 9.2e-04 | – | – | yes | passes |
-| `test-rings` | ⟨½ 1 0⟩+ 0.69× 0.06 Å ✗; ⟨3/2 1 0⟩− 1.19× 0.04 Å | 0.0e+00 | 0.07, 0.08, 0.13, 0.13 | 0.1146 | yes | a planted correlation off |
-| `test-shell` | ⟨½ 1 0⟩+ 0.87× 0.02 Å; ⟨3/2 1 0⟩− 1.20× 0.04 Å | – | 1.01 | 0.0298 | yes | passes |
-| `test-flatten` | ⟨½ 1 0⟩+ 0.86× 0.02 Å; ⟨3/2 1 0⟩− 1.21× 0.02 Å | – | – | 0.7184 | no | a pedestal left; the fault not reported |
-| `test-rings-shell` | ⟨½ 1 0⟩+ 0.77× 0.06 Å ✗; ⟨3/2 1 0⟩− 1.24× 0.03 Å | 0.0e+00 | 0.07, 0.12, 0.13, 0.14 / 0.98 | 0.1165 | yes | a planted correlation off |
+The test split's results are a held-out record, in `docs/evals/validation/holdout/`, which builders and agents do not open.
 
 "Window on unmeasured" is the window's weight on unmeasured space (limit 1e-3);
 "rings left" is the share of each ring's contrast left (limit 0.15) and "shell kept"
@@ -632,29 +651,21 @@ it did not call the shell a ring). Arm D, the planted truth, passes every criter
 on all 16 cases (a test, `test_arm_d_passes_every_criterion_on_every_case`, which
 runs the test split's cases only with `NEBULA_HOLDOUT_TESTS=1`, as CI does).
 
-What it shows, as the baseline the Pilot is held to:
+What it shows on dev, as the baseline the Pilot is held to (the test split's
+reading is in its held-out record):
 
-- **Eight of 16 cases pass** (dev: control, coverage, rings, shell, rings-shell;
-  test: control, coverage, shell), every one with three bit-identical runs, no unsafe
-  action (A takes none) and the window inside its limit (the closest is 9.8e-4, on
-  the dev coverage case).
+- **Five of the eight dev cases pass** (control, coverage, rings, shell,
+  rings-shell), every one with three bit-identical runs, no unsafe action (A takes
+  none) and the window inside its limit (the closest is 9.8e-4, on the coverage
+  case).
 - **It fails where the answer is a setting or a report.** A background rising as
-  |Q|² stays as a pedestal (a span of 0.98 and 0.72 of the diffuse level against 0.25)
-  and nothing says so. A turned UB and a shifted origin leave every planted
-  correlation within its limits and are never mentioned. The cut coverage is
-  noticed only as a log line that unmeasured voxels reach the box's edge, which does
-  not say where the counts end.
+  |Q|² stays as a pedestal (a span of 0.98 of the diffuse level on the flatten
+  case, against 0.25) and nothing says so. A turned UB and a shifted origin leave
+  every planted correlation within its limits and are never mentioned. The cut
+  coverage is noticed only as a log line that unmeasured voxels reach the box's
+  edge, which does not say where the counts end.
 - **The ring stage finds and removes the rings and keeps the crystal's own shell**
-  (rings left 0.07 to 0.14 of their contrast, shell kept 0.98 to 1.04), but on both test
-  cases with rings it takes the weaker planted correlation down to 0.69 and 0.77 of
-  its amplitude, under the 0.8 limit. The same ring removal costs the dev crystal's
-  correlations nothing.
-- **On the test crystal the baseline sits near the limits on every case, the control
-  included.** Its first planted correlation reads 0.81 to 0.87 of its amplitude outside the
-  ring cases (the lower limit is 0.8) and its second 1.18 to 1.24 (the upper limit is 1.25), against
-  0.91 to 0.95 and 1.09 to 1.16 on the dev crystal: the default reduction and
-  transform bias them, and arm D reads 1.00 on both. A test run that changes a setting
-  has little room on either side, and the limits, fixed before any run, were not
-  moved after this was seen.
-- **Not resolvable:** on the coverage cases the cut leaves the weaker correlation (and
-  on the test crystal both) merged with its neighbours, so no arm is judged on them.
+  (rings left 0.14 of their contrast, shell kept 1.03 to 1.04), and costs the dev
+  crystal's correlations nothing.
+- **Not resolvable:** on the coverage case the cut leaves the weaker correlation
+  merged with its neighbours, so no arm is judged on it.
