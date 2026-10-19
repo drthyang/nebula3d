@@ -1,0 +1,22 @@
+{
+ "source": "review",
+ "ref": "D14",
+ "at": "76a691c",
+ "kind": "bug",
+ "evidence": "The report counts texture_check's fill bias only on a Backfill card whose seam it judged (web/src/llm/verdicts/readers.ts:161, :309, :310): with the backfill not measured, or its seam not judged, a cut filled one way needs no attention in the report, where {{achieved}} names the backfill's texture (readers.ts:249).",
+ "proposed_fix": "The report counts a fill bias on the Backfill card whether or not it judged the seam, the card made for it when the backfill was not measured.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "3bc158f",
+ "tests": [
+  "web/src/llm/__tests__/verdictPins.test.ts (D14, unified (2.4b.4): the report counts the fill bias whether or not it judged the seam, as {{achieved}} names the backfill's texture)",
+  "web/src/llm/__tests__/verdictPins.test.ts (the chat's achieved and the report's, on the same measurements: agree on every measurement)",
+  "web/src/llm/__tests__/report.test.ts (counts a fill bias on the Backfill card whether or not it judged the seam, made for it when the backfill was not measured (D14, 2.4b.4))"
+ ],
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-19",
+  "option": "yes"
+ }
+}

@@ -45,3 +45,10 @@ export async function exists(url: URL): Promise<boolean> {
   const fs = (await import(/* @vite-ignore */ spec)) as { existsSync(p: URL): boolean };
   return fs.existsSync(url);
 }
+
+/** The names of the entries in a folder, in the test process. */
+export async function listDir(url: URL): Promise<string[]> {
+  const spec = "node:fs";
+  const fs = (await import(/* @vite-ignore */ spec)) as { readdirSync(p: URL): string[] };
+  return fs.readdirSync(url);
+}

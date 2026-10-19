@@ -20,9 +20,7 @@ import {
   skillsReadIn,
   STAGE_SKILL,
 } from "../skills";
-import { CHAT_TOOLS, runToolCall, toolsWhere, toolsWithSkills, unreadSkillRefusal, type ToolContext } from "../tools";
-
-const call = (name: string, args: Record<string, unknown>) => ({ id: name, type: "function" as const, function: { name, arguments: JSON.stringify(args) } });
+import { callTool, CHAT_TOOLS, toolsWhere, toolsWithSkills, unreadSkillRefusal, type ToolContext } from "../tools";
 
 describe("the skills", () => {
   it("bundles the three drafts, each with its parts and its status", () => {
@@ -100,25 +98,25 @@ describe("the firm rule", () => {
     usePipelineStore.setState({ punchMinSig: "4" });
     const dataset = { id: "demo", raw_name: "demo.nxs", stem: "demo", temperature: null, stages: [] } as unknown as Dataset;
     const ctx: ToolContext = { dataset, datasets: [dataset], skillsRead: new Set() };
-    const refused = await runToolCall(call("update_settings", { changes: { punchMinSig: 6 } }), CHAT_TOOLS, ctx);
+    const refused = await callTool(ctx, "update_settings", { changes: { punchMinSig: 6 } });
     expect(refused.ok).toBe(false);
     expect(refused.text).toMatch(/^Error: read the method first: call read_skill with name "bragg-node-audit"/);
     expect(usePipelineStore.getState().punchMinSig).toBe("4");
 
-    const skill = await runToolCall(call("read_skill", { name: "bragg-node-audit" }), CHAT_TOOLS, ctx);
+    const skill = await callTool(ctx, "read_skill", { name: "bragg-node-audit" });
     expect(skill.ok).toBe(true);
     expect(skill.text.startsWith("Skill bragg-node-audit\n\n# Bragg-node audit")).toBe(true); // as written, not JSON
     expect(skill.text).not.toContain("… [truncated]");
     expect(ctx.skillsRead?.has("bragg-node-audit")).toBe(true);
 
-    const changed = await runToolCall(call("update_settings", { changes: { punchMinSig: 6 } }), CHAT_TOOLS, ctx);
+    const changed = await callTool(ctx, "update_settings", { changes: { punchMinSig: 6 } });
     expect(changed.ok).toBe(true);
     expect(usePipelineStore.getState().punchMinSig).toBe("6");
 
     // The app's own calls, which set no skillsRead, are not gated.
-    const own = await runToolCall(call("update_settings", { changes: { punchMinSig: 5 } }), CHAT_TOOLS, { dataset, datasets: [dataset] });
+    const own = await callTool({ dataset, datasets: [dataset] }, "update_settings", { changes: { punchMinSig: 5 } });
     expect(own.ok).toBe(true);
-    expect((await runToolCall(call("read_skill", { name: "nope" }), CHAT_TOOLS, ctx)).text).toMatch(/^Error: invalid arguments — no skill named "nope"/);
+    expect((await callTool(ctx, "read_skill", { name: "nope" })).text).toMatch(/^Error: invalid arguments — no skill named "nope"/);
   });
 });
 
@@ -191,10 +189,10 @@ describe("the switch", () => {
     const tools = toolsWithSkills(CHAT_TOOLS, false);
     const ctx: ToolContext = { dataset, datasets: [dataset], skills: false, skillsRead: new Set() };
     expect(unreadSkillRefusal("update_settings", { changes: { punchMinSig: 6 } }, ctx.skillsRead!)).not.toBeNull(); // the gate's own rule stands
-    const changed = await runToolCall(call("update_settings", { changes: { punchMinSig: 6 } }), tools, ctx);
+    const changed = await callTool(ctx, "update_settings", { changes: { punchMinSig: 6 } }, { tools });
     expect(changed.ok, changed.text).toBe(true);
     expect(usePipelineStore.getState().punchMinSig).toBe("6");
-    const read = await runToolCall(call("read_skill", { name: "reduction-qc" }), tools, ctx);
+    const read = await callTool(ctx, "read_skill", { name: "reduction-qc" }, { tools });
     expect(read.ok).toBe(false);
     expect(read.text).toMatch(/^Error: no tool named read_skill\. Available: describe_dataset, /);
     expect(ctx.skillsRead?.size).toBe(0);

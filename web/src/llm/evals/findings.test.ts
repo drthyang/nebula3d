@@ -18,6 +18,7 @@ import {
   type ReviewFinding,
 } from "./findings";
 import { caseNamed, decisions, numberSources, type RunRecord } from "./validation";
+import { BY_REF, loadReviewFindings, NUMBERED, REVIEW_FINDINGS_DIR, reviewFindingFiles } from "./reviewFindings";
 
 // *o* without the fields *keys*.
 const without = (o: object, ...keys: string[]): Record<string, unknown> =>
@@ -322,10 +323,28 @@ describe("the transcript", () => {
 });
 
 describe("the review's findings", () => {
-  const load = async (): Promise<Finding[]> => {
+  const load = loadReviewFindings;
+
+  it("are one file per finding, named by its number or its ref, each written as the record writes JSON", async () => {
     const { readText } = await import("./backend");
-    return JSON.parse(await readText(new URL("../../../../docs/evals/validation/review-findings.json", import.meta.url))) as Finding[];
-  };
+    const files = await reviewFindingFiles();
+    expect(files.length).toBeGreaterThanOrEqual(34);
+    const numbered = files.filter((n) => NUMBERED.test(n));
+    // The entries recorded before the split keep their numbers, 001 on, with no gap.
+    expect(numbered.map((n) => n.slice(0, 3))).toEqual(numbered.map((_, i) => String(i + 1).padStart(3, "0")));
+    for (const name of files) {
+      const text = await readText(new URL(name, REVIEW_FINDINGS_DIR));
+      const f = JSON.parse(text) as Finding;
+      expect(text, name).toBe(JSON.stringify(f, null, 1) + "\n");
+      const byRef = BY_REF.exec(name);
+      if (byRef) {
+        // A finding added after the split is named after its ref.
+        expect(isReviewFinding(f) && f.ref, name).toBe(byRef[1]);
+      } else {
+        expect(NUMBERED.test(name), `${name}: neither a number nor a ref`).toBe(true);
+      }
+    }
+  });
 
   it("are all findings, in the schema, each naming its source, and name what they need from the user", async () => {
     const found = await load();

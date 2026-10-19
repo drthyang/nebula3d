@@ -559,7 +559,7 @@ transcripts.
 ### Findings
 
 One record holds every finding,
-[evals/validation/review-findings.json](evals/validation/review-findings.json),
+[evals/validation/review-findings/](evals/validation/review-findings/) (one file per finding),
 in one schema (`web/src/llm/evals/findings.ts`, checked by `findings.test.ts`).
 Every finding has `{source, kind, evidence, proposed_fix, needs_user_approval}`,
 with `kind` one of `bug`, `missing-tool`, `skill-gap`, `orchestration`,
