@@ -92,10 +92,12 @@ export interface ArmSetup {
  * Arm B is the Pilot as shipped. Arm C is the same Pilot with the skills'
  * switch off, which takes the whole method away at the builders of what the
  * model reads: the system prompt has no skills' section, read_skill is not
- * offered, and no tool description, result, goal or tuning prompt names a skill
- * or restates a skill's step. The guardrails stay: the answer checks still
- * check, and C may change what B may. With no skill to read there is no skill
- * gate: a stage's settings change, and it is tuned, without one (runToolCall).
+ * offered, no tool description, result, goal or tuning prompt names a skill or
+ * restates a skill's step, and no send-back names a skill, a stage or a tool to
+ * run next. The guardrails stay: the answer checks still check and send the same
+ * answers back (issuesPrompt words them), and C may change what B may. With no
+ * skill to read there is no skill gate: a stage's settings change, and it is
+ * tuned, without one (runToolCall).
  */
 export function armSetup(arm: Arm, context: PipelineContext): ArmSetup {
   const skills = arm === "B";

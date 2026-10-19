@@ -37,7 +37,7 @@ import { armSetup, TASK } from "../evals/validation";
 import { toolsFor } from "../localTools";
 import { buildChatMessages, buildStageReviewMessages, systemPrompt, type ReviewStage } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolCall } from "../provider/client";
-import { NAMED_REFERENCES } from "../references";
+import { fillReferences, NAMED_REFERENCES } from "../references";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, skillsPrompt } from "../skills";
 import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolSpecs, toolsWithSkills, type AgentTool, type ToolContext } from "../tools";
@@ -51,6 +51,7 @@ const CRITERIA = WORDS.criterion;
 const VERDICT_LABEL = WORDS.label;
 // What the symmetry's rule says of a volume that declares no symmetry.
 const NOT_DECLARED = (asymmetry: number): string => judge("symmetry", { ops: [{ op: "six-fold (60°)", rms_difference: asymmetry }], declared: null }).words ?? "";
+import { namedInOwnWords, quotations } from "./methodText";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
@@ -663,64 +664,142 @@ const REPLIES: { what: string; reply: string; steps: AgentStep[] }[] = [
   },
 ];
 
-describe("5. the text sent back to the model", () => {
-  it("the answer checks' prompt, for canned replies", async () => {
-    const body = REPLIES.map(({ what, reply, steps }) => {
+// A success the checks did not all measure: shown for arm C, whose wording of it names no stage to measure.
+const UNMEASURED = { what: "a success the checks did not all measure", reply: "The reduction is ready for analysis.", steps: [COVERED] };
+
+/** Each canned reply, the send-back its checks give with the skills on or off, as a snapshot section. */
+function answerChecksBody(replies: typeof REPLIES, skills: boolean): string {
+  return replies
+    .map(({ what, reply, steps }) => {
       const sources = steps.map((s) => s.result ?? "").join("\n");
       const issues = answerIssues(reply, steps, sources);
       const tools = steps.map((s) => `${s.name} ${JSON.stringify(s.args)}`).join(", ");
-      const sent = issues ? fence(issuesPrompt(issues)) : "Nothing: the answer goes to the user, its references filled in.";
+      const sent = issues ? fence(issuesPrompt(issues, { skills })) : "Nothing: the answer goes to the user, its references filled in.";
       return `## ${what}\n\nTools run in the reply: ${tools}.\n\nThe answer:\n\n${fence(reply)}\n\nSent back to the model:\n\n${sent}`;
-    }).join("\n\n");
+    })
+    .join("\n\n");
+}
+
+/** Whether a quotation in a send-back is the answer's own words: a clause of it as the user reads it (clipped), or a reference it wrote. */
+const quotesTheAnswer = (q: string, reply: string, steps: AgentStep[]): boolean =>
+  fillReferences(reply, steps).text.includes(q.replace(/…$/, "")) || reply.includes(q);
+
+// The scripted reply of 5-agent-loop.md: describe_dataset three times with the
+// same arguments, asked to answer, an answer the checks send back, a revision.
+const GRID = "The grid is 97 × 97 × 97 voxels and the cell edge is 7.3 Å."; // a number from nowhere
+
+async function loopReply({ skills, answer }: { skills: boolean; answer: string }) {
+  freshConsole();
+  const seen: { messages: ChatMessage[]; tools: string[]; toolChoice?: string }[] = [];
+  const call = (id: string): StreamDelta => ({ toolCalls: [{ id, type: "function", function: { name: "describe_dataset", arguments: "{}" } }] });
+  const script: StreamDelta[][] = [
+    [call("call_1")],
+    [call("call_2")], // the same call again: pointed at the first result
+    [call("call_3")], // and again: two rounds with nothing new, asked to answer
+    [{ content: answer }],
+    [{ content: "The grid is 97 × 97 × 97 voxels and the cell edge is {{describe_dataset.cell.a}} Å." }],
+  ];
+  model.streamChat.mockImplementation((args: { messages: ChatMessage[]; tools?: { function: { name: string } }[]; toolChoice?: string }) => {
+    seen.push({ messages: [...args.messages], tools: (args.tools ?? []).map((t) => t.function.name), toolChoice: args.toolChoice });
+    const reply = script.shift() ?? [];
+    return (async function* () {
+      for (const d of reply) yield d;
+    })();
+  });
+  const messages = buildChatMessages(context, [], "What grid and cell does this dataset have?", null, { tools: true, skills });
+  // A cloud URL: no window plan to fetch, every tool offered.
+  const settings: LlmSettings = { ...DEFAULT_SETTINGS, baseUrl: "https://scripted.invalid/v1", model: "scripted", useTools: true, followViews: false };
+  const result = await runAgent({
+    messages,
+    tools: CHAT_TOOLS,
+    ctx: { dataset: DATASET, datasets: DATASETS, skills, skillsRead: new Set(), earlierResults: [] },
+    settings,
+    signal: new AbortController().signal,
+  });
+  expect(seen).toHaveLength(5);
+  expect(result.content).toBe("The grid is 97 × 97 × 97 voxels and the cell edge is 4 Å.");
+  const requests = seen
+    .map((r, i) => `${i + 1}. ${r.messages.length} messages, ${r.tools.length} tools offered${r.toolChoice ? `, tool_choice ${r.toolChoice}` : ""}`)
+    .join("\n");
+  const added = seen[seen.length - 1].messages.slice(messages.length);
+  return { requests, added, body: `## The requests\n\n${requests}\n\n## The conversation after the opening messages, as the last request sent it\n\n${renderMessages(seen[seen.length - 1].messages, messages.length)}` };
+}
+
+describe("5. the text sent back to the model", () => {
+  it("the answer checks' prompt, for canned replies", async () => {
     expect(answerIssues(REPLIES[0].reply, REPLIES[0].steps, REPLIES[0].steps[0].result!)).toBeNull();
     await expect(
       doc(
         "Answer checks",
         "`answerIssues` and `issuesPrompt` (answerChecks.ts) on canned replies: what the agent loop sends back, once, before a failing answer reaches the user. Each reply's number sources here are its tools' results.",
-        body,
+        answerChecksBody(REPLIES, true),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/5-answer-checks.md`);
   });
 
+  it("arm C: the answer checks' prompt with the skills off", async () => {
+    const replies = [...REPLIES, UNMEASURED];
+    for (const { what, reply, steps } of replies) {
+      const issues = answerIssues(reply, steps, steps.map((s) => s.result ?? "").join("\n"));
+      if (!issues) continue;
+      const sent = issuesPrompt(issues, { skills: false });
+      // Its own words name no tool, stage or skill; what it quotes is the answer's.
+      expect(namedInOwnWords(sent), `${what}: ${sent}`).toEqual([]);
+      for (const q of quotations(sent)) expect(quotesTheAnswer(q, reply, steps), `${what}: “${q}”`).toBe(true);
+      // Every kind of finding arm B's send-back has goes back.
+      const kinds: [boolean, RegExp][] = [
+        [issues.missing.length > 0, /this verdict needs its evidence from a check run in this reply/],
+        [issues.stale.length > 0, /before the last run recomputed what it measured/],
+        [issues.overall !== null, /the run a success, but the verdict computed from the checks does not give it/],
+        [issues.unknownReferences.length > 0, /These references name no value/],
+        [issues.contradicted.length > 0, /this contradicts the verdict a check computed/],
+        [issues.untraced.length > 0, /These numbers appear in no tool result/],
+      ];
+      for (const [found, line] of kinds) expect(line.test(sent), `${what}: ${line}`).toBe(found);
+    }
+    await expect(
+      doc(
+        "Answer checks with the skills off (validation arm C)",
+        "`issuesPrompt(issues, { skills: false })` (answerChecks.ts) on 5-answer-checks.md's canned replies, and one more: what the agent loop sends back when the skills' switch is off. The checks are arm B's and find the same; the wording names no skill, no stage and no tool to run next. Each finding quotes the answer's own words (“…”) and says what they lack.",
+        answerChecksBody(replies, false),
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/5-answer-checks-arm-c.md`);
+  });
+
   it("the agent loop's own messages, in a scripted reply", async () => {
-    freshConsole();
-    const seen: { messages: ChatMessage[]; tools: string[]; toolChoice?: string }[] = [];
-    const call = (id: string): StreamDelta => ({ toolCalls: [{ id, type: "function", function: { name: "describe_dataset", arguments: "{}" } }] });
-    const script: StreamDelta[][] = [
-      [call("call_1")],
-      [call("call_2")], // the same call again: pointed at the first result
-      [call("call_3")], // and again: two rounds with nothing new, asked to answer
-      [{ content: "The grid is 97 × 97 × 97 voxels and the cell edge is 7.3 Å." }], // a number from nowhere
-      [{ content: "The grid is 97 × 97 × 97 voxels and the cell edge is {{describe_dataset.cell.a}} Å." }],
-    ];
-    model.streamChat.mockImplementation((args: { messages: ChatMessage[]; tools?: { function: { name: string } }[]; toolChoice?: string }) => {
-      seen.push({ messages: [...args.messages], tools: (args.tools ?? []).map((t) => t.function.name), toolChoice: args.toolChoice });
-      const reply = script.shift() ?? [];
-      return (async function* () {
-        for (const d of reply) yield d;
-      })();
-    });
-    const messages = buildChatMessages(context, [], "What grid and cell does this dataset have?", null, { tools: true });
-    // A cloud URL: no window plan to fetch, every tool offered.
-    const settings: LlmSettings = { ...DEFAULT_SETTINGS, baseUrl: "https://scripted.invalid/v1", model: "scripted", useTools: true, followViews: false };
-    const result = await runAgent({
-      messages,
-      tools: CHAT_TOOLS,
-      ctx: { dataset: DATASET, datasets: DATASETS, skillsRead: new Set(), earlierResults: [] },
-      settings,
-      signal: new AbortController().signal,
-    });
-    expect(seen).toHaveLength(5);
-    expect(result.content).toBe("The grid is 97 × 97 × 97 voxels and the cell edge is 4 Å.");
-    const requests = seen
-      .map((r, i) => `${i + 1}. ${r.messages.length} messages, ${r.tools.length} tools offered${r.toolChoice ? `, tool_choice ${r.toolChoice}` : ""}`)
-      .join("\n");
+    const b = await loopReply({ skills: true, answer: GRID });
     await expect(
       doc(
         "The agent loop's messages",
         "A scripted reply through `runAgent` (agent.ts): the model calls describe_dataset three times with the same arguments, is asked to answer, answers with a number from nowhere, is sent the answer checks' prompt, and answers again. Shown: each request, then the messages the loop added after the opening four (1-chat-arm-b.md).",
-        `## The requests\n\n${requests}\n\n## The conversation after the opening messages, as the last request sent it\n\n${renderMessages(seen[seen.length - 1].messages, messages.length)}`,
+        b.body,
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/5-agent-loop.md`);
+  });
+
+  it("arm C: the agent loop's own messages with the skills off", async () => {
+    const answer = `${GRID} The flatten left no pedestal.`; // and a verdict no check in the reply settles
+    const b = await loopReply({ skills: true, answer });
+    const c = await loopReply({ skills: false, answer });
+    // The repeated call's pointer and the answer-now note are arm B's; only the send-back is worded apart.
+    const sentBack = (added: ChatMessage[]) => added.findIndex((m) => m.role === "user" && String(m.content).startsWith("Before this answer"));
+    const at = sentBack(c.added);
+    expect(at).toBe(sentBack(b.added));
+    expect(c.added.filter((_m, i) => i !== at)).toEqual(b.added.filter((_m, i) => i !== at));
+    expect(String(b.added[at].content)).toMatch(/call assess_stage with stage flatten/);
+    const sent = String(c.added[at].content);
+    expect(namedInOwnWords(sent)).toEqual([]);
+    expect(quotations(sent)).toEqual(["The flatten left no pedestal."]);
+    // Nothing else the loop says names one either: the answer-now note, the repeated call's pointer.
+    for (const m of c.added.filter((x) => x.role === "user" || String(x.content).includes("already_called"))) {
+      expect(namedInOwnWords(String(m.content)), String(m.content)).toEqual([]);
+    }
+    await expect(
+      doc(
+        "The agent loop's messages with the skills off (validation arm C)",
+        "The scripted reply of 5-agent-loop.md through `runAgent` with the skills' switch off (`skills: false` in its context), its first answer one sentence longer: a verdict on the flatten that no check in the reply settles, so the send-back shows arm C's wording. The repeated call's pointer and the answer-now note are arm B's. Shown: each request, then the messages the loop added after the opening four (1-chat-arm-c.md).",
+        c.body,
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/5-agent-loop-arm-c.md`);
   });
 });

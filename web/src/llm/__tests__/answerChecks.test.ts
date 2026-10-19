@@ -237,6 +237,35 @@ describe("numbers by reference", () => {
     expect(answerIssues("", [], "")).toBeNull();
     expect(answerIssues("Here is what the stages show.", [], "")).toBeNull();
   });
+
+  it("puts the same issues without the method when the skills are off: the answer's words, no topic, stage or tool", () => {
+    const issues = answerIssues("The ring removal is clean, at a ratio of 0.731.", [], '{"x": 1}')!;
+    const off = issuesPrompt(issues, { skills: false });
+    expect(issuesPrompt(issues, { skills: true })).toBe(issuesPrompt(issues)); // on: as written
+    expect(off).toBe(
+      [
+        "Before this answer goes to the user, fix it:",
+        "- “The ring removal is clean, at a ratio of 0.731.”: this verdict needs its evidence from a check run in this reply. Answer from that check's result.",
+        "- These numbers appear in no tool result or the context: 0.731. Quote the tools' numbers, or leave them out.",
+        "Then write the whole answer again.",
+      ].join("\n"),
+    );
+    expect(issues.said.missing).toEqual(["The ring removal is clean, at a ratio of 0.731."]);
+    // The note under the reply is the user's, and names the tool either way.
+    expect(issuesNote(issues)).toMatch(/assess_stage with stage rings/);
+  });
+
+  it("quotes each clause once, and clips a long one", () => {
+    const long = `The flatten left no pedestal ${"and the floors are level ".repeat(12)}everywhere.`;
+    const issues = answerIssues(`${long} The flatten left no pedestal.`, [], "")!;
+    expect(issues.missing.map((t) => t.id)).toEqual(["flatten"]);
+    const off = issuesPrompt(issues, { skills: false });
+    const quotes = [...off.matchAll(/“([^”]*)”/g)].map((m) => m[1]);
+    expect(quotes).toHaveLength(2);
+    expect(quotes[0].length).toBe(200);
+    expect(quotes[0].endsWith("…")).toBe(true);
+    expect(quotes[1]).toBe("The flatten left no pedestal.");
+  });
 });
 
 // The loop: each streamChat call plays the next scripted reply.
@@ -289,6 +318,23 @@ describe("runAgent holds the final answer to its evidence", () => {
     const sentBack = seen[1][seen[1].length - 1];
     expect(sentBack.role).toBe("user");
     expect(String(sentBack.content)).toMatch(/verdict on the ring removal without its evidence in this reply: call assess_stage with stage rings/);
+  });
+
+  it("with the skills off, sends the same answer back once, worded without the method", async () => {
+    const seen = script([
+      [{ content: "Yes, the ring removal is clean." }],
+      [{ toolCalls: [call] }],
+      [{ content: "Not clean: a ring is left at 7.2 Å⁻¹, so the stage needs attention." }],
+    ]);
+    const r = await runAgent({ messages: question, tools: [assess], ctx: { ...ctx, skills: false }, settings, signal: new AbortController().signal });
+    expect(r.content).toBe("Not clean: a ring is left at 7.2 Å⁻¹, so the stage needs attention.");
+    expect(String(seen[1][seen[1].length - 1].content)).toBe(
+      [
+        "Before this answer goes to the user, fix it:",
+        "- “the ring removal is clean.”: this verdict needs its evidence from a check run in this reply. Answer from that check's result.",
+        "Then write the whole answer again.",
+      ].join("\n"),
+    );
   });
 
   it("notes what still fails after the one revision, and keeps a draft the revision left empty", async () => {

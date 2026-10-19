@@ -23,7 +23,10 @@
 //
 // A failed check sends the answer back once, with what to fix; what still
 // fails is noted under the reply.  The text checks are heuristic by design:
-// a false alarm costs one tool call, a miss is a note.
+// a false alarm costs one tool call, a miss is a note.  With the skills off
+// (the switch, skills.ts: the validation's arm C) the same checks send the
+// same answers back, worded without the method: the answer's own words and
+// what they lack, never a skill, a stage or a tool to run next (issuesPrompt).
 
 import type { AgentStep } from "./agent";
 import { current, recomputedAt, type PipelineStage } from "./evidence";
@@ -252,18 +255,23 @@ const RULES: readonly VerdictRule[] = [
   },
 ];
 
-/** Topics where the answer contradicts the tools' computed verdicts in this reply (on the outputs as they now are). */
-export function contradictions(text: string, steps: readonly AgentStep[]): Topic[] {
+/** Where the answer contradicts the tools' computed verdicts in this reply (on the outputs as they now are): each topic, with the clauses that do. */
+function contradicting(text: string, steps: readonly AgentStep[]): { topic: Topic; said: string[] }[] {
   const claimed = verdictsIn(text);
   // Each check's verdict as the answer checks read it: the newest current result that decides.
   const { checks } = verdicts({ reply: steps });
   return RULES.flatMap((rule) => {
     const kind = checks[rule.topic];
     const lines = claimed.get(rule.topic) ?? [];
-    const wrong = (kind === "attention" && lines.some(rule.claimsOk)) || (kind === "pass" && rule.claimsNotOk !== undefined && lines.some(rule.claimsNotOk));
+    const said = kind === "attention" ? lines.filter(rule.claimsOk) : kind === "pass" && rule.claimsNotOk ? lines.filter(rule.claimsNotOk) : [];
     const topic = TOPICS.find((t) => t.id === rule.topic);
-    return wrong && topic ? [topic] : [];
+    return said.length && topic ? [{ topic, said }] : [];
   });
+}
+
+/** Topics where the answer contradicts the tools' computed verdicts in this reply (on the outputs as they now are). */
+export function contradictions(text: string, steps: readonly AgentStep[]): Topic[] {
+  return contradicting(text, steps).map((c) => c.topic);
 }
 
 // ------------------------------------------------------------------ the run as a whole
@@ -275,6 +283,14 @@ const WHOLE = /Δ\s?PDF|\b(delta-?pdf|result|run|reduction|pipeline|volume|outpu
 const ACHIEVED_CLAIM =
   /\b(trust(worthy|ed)?|reliable|ready (for|to)|fit for (analysis|use|interpretation)|all (the )?(checks|stages) (pass(ed)?|meet|met)|every (check|stage) (passes|passed|meets|met)|(meets?|met) (every|all) (its |their |the )?(goals?|checks)|(goal|target) (is |was |has been )?(met|achieved|reached)|achieved)\b/i;
 
+/** The clauses that call the run a success the computed verdict does not give (none where it gives it). */
+function successClaims(text: string, verdict: ComputedVerdict | null): string[] {
+  if (verdict?.achieved === true) return [];
+  return clauses(text).filter(
+    (c) => !c.endsWith("?") && !NOT_A_VERDICT.test(c) && !NEGATION.test(c) && WHOLE.test(c) && ACHIEVED_CLAIM.test(c),
+  );
+}
+
 /**
  * Where the answer calls the run a success that the computed verdict does not
  * give: the reason, as the model is told it, or null. A claim with the verdict
@@ -282,11 +298,7 @@ const ACHIEVED_CLAIM =
  * all run on the outputs as they now are.
  */
 export function overallContradiction(text: string, verdict: ComputedVerdict | null): string | null {
-  if (verdict?.achieved === true) return null;
-  const claims = clauses(text).filter(
-    (c) => !c.endsWith("?") && !NOT_A_VERDICT.test(c) && !NEGATION.test(c) && WHOLE.test(c) && ACHIEVED_CLAIM.test(c),
-  );
-  if (!claims.length) return null;
+  if (!successClaims(text, verdict).length) return null;
   return verdict?.achieved === false
     ? `It calls the run a success, but the verdict computed from the checks is "${verdict.text}"`
     : `It calls the run a success, but the checks it rests on did not all run on the outputs as they now are (${verdict ? verdict.text : "nothing measured"})`;
@@ -398,7 +410,14 @@ export interface AnswerIssues {
   contradicted: Topic[]; // contradicts the verdict a tool computed
   unknownReferences: string[]; // {{references}} that name nothing in this reply's results
   overall: string | null; // calls the run a success the computed verdict does not give
+  // The answer's own clauses behind those findings, each once, in order: what
+  // a send-back with the skills off quotes instead of naming the topic, its
+  // stage or the tool that settles it (issuesPrompt).
+  said: { missing: string[]; stale: string[]; contradicted: string[]; overall: string[] };
+  achieved: boolean | null; // the computed verdict's: false, not met; null, not judged or nothing measured
 }
+
+const unique = <T>(xs: T[]): T[] => [...new Set(xs)];
 
 /**
  * What the answer fails, or null when it stands on its evidence. The answer is
@@ -409,14 +428,25 @@ export function answerIssues(text: string, steps: readonly AgentStep[], sources:
   if (!text.trim()) return null;
   const { text: filled, unknown } = fillReferences(text, steps);
   const { missing, stale } = evidenceGaps(filled, steps);
+  const claimed = verdictsIn(filled);
+  const about = (topics: readonly Topic[]): string[] => unique(topics.flatMap((t) => claimed.get(t.id) ?? []));
+  const contradicted = contradicting(filled, steps);
+  const verdict = verdicts({ reply: steps }).achieved;
   const issues: AnswerIssues = {
     missing,
     stale,
     // An unfilled reference is no number written; its digits (features.0) are not either.
     untraced: untracedNumbers(filled.replace(/\{\{[^}]*\}\}/g, ""), sources),
-    contradicted: contradictions(filled, steps),
+    contradicted: contradicted.map((c) => c.topic),
     unknownReferences: unknown,
-    overall: overallContradiction(filled, verdicts({ reply: steps }).achieved),
+    overall: overallContradiction(filled, verdict),
+    said: {
+      missing: about(missing),
+      stale: about(stale),
+      contradicted: unique(contradicted.flatMap((c) => c.said)),
+      overall: unique(successClaims(filled, verdict)),
+    },
+    achieved: verdict?.achieved ?? null,
   };
   return issues.missing.length || issues.stale.length || issues.untraced.length || issues.contradicted.length || issues.unknownReferences.length || issues.overall
     ? issues
@@ -426,8 +456,14 @@ export function answerIssues(text: string, steps: readonly AgentStep[], sources:
 const MAX_LISTED = 8;
 const listed = (xs: string[]): string => (xs.length > MAX_LISTED ? `${xs.slice(0, MAX_LISTED).join(", ")}, …` : xs.join(", "));
 
-/** What the model is told, to fix the answer before the user reads it. */
-export function issuesPrompt(issues: AnswerIssues): string {
+/**
+ * What the model is told, to fix the answer before the user reads it. With
+ * the skills off (the switch, skills.ts: the validation's arm C) the same
+ * findings go back as often, worded to name no skill, no stage and no tool
+ * the method would run next (withoutSkills, below).
+ */
+export function issuesPrompt(issues: AnswerIssues, { skills = true }: { skills?: boolean } = {}): string {
+  if (!skills) return withoutSkills(issues);
   const lines = ["Before this answer goes to the user, fix it:"];
   for (const t of issues.missing) lines.push(`- It gives a verdict on ${t.label} without its evidence in this reply: call ${t.evidence}, and answer from its result.`);
   for (const t of issues.stale) {
@@ -442,6 +478,52 @@ export function issuesPrompt(issues: AnswerIssues): string {
     );
   }
   for (const t of issues.contradicted) lines.push(`- What it says about ${t.label} contradicts the verdict the tool computed: quote that verdict and its numbers.`);
+  if (issues.untraced.length) {
+    lines.push(`- These numbers appear in no tool result or the context: ${listed(issues.untraced)}. Quote the tools' numbers, or leave them out.`);
+  }
+  lines.push("Then write the whole answer again.");
+  return lines.join("\n");
+}
+
+/** The longest stretch of the answer a send-back quotes. */
+const QUOTE_MAX = 200;
+
+/** The answer's own words, quoted (and clipped): what a send-back points at instead of a topic's name. */
+const quoted = (s: string): string => `“${s.length > QUOTE_MAX ? `${s.slice(0, QUOTE_MAX - 1)}…` : s}”`;
+
+/**
+ * The send-back with the skills off: the checks hold the answer as they do
+ * with them on (the guardrail is the same), but the method stays out of what
+ * the model is told. Each finding is the answer's own words, quoted, and what
+ * they lack: no topic's label (each is a stage's or a check's), no stage, no
+ * tool to call, no skill. Which check gives the evidence is the model's to
+ * find. The numbers and the references it wrote are its own words too.
+ */
+function withoutSkills(issues: AnswerIssues): string {
+  const lines = ["Before this answer goes to the user, fix it:"];
+  for (const s of issues.said.missing) {
+    lines.push(`- ${quoted(s)}: this verdict needs its evidence from a check run in this reply. Answer from that check's result.`);
+  }
+  for (const s of issues.said.stale) {
+    lines.push(
+      `- ${quoted(s)}: this verdict rests on a measurement taken before the last run recomputed what it measured. It needs its evidence from a check run in this reply, after that run; answer from that check's result.`,
+    );
+  }
+  if (issues.overall) {
+    const claims = issues.said.overall;
+    const why = issues.achieved === false ? "the run did not meet its goal" : "the checks it rests on did not all run on the outputs as they now are";
+    lines.push(
+      `- ${claims.map(quoted).join(", ")}: ${claims.length > 1 ? "these call" : "this calls"} the run a success, but the verdict computed from the checks does not give it: ${why}. That verdict is the checks', not yours: quote it as {{achieved}} and explain what it rests on.`,
+    );
+  }
+  if (issues.unknownReferences.length) {
+    lines.push(
+      `- These references name no value in this reply's tool results: ${listed(issues.unknownReferences.map((k) => quoted(`{{${k}}}`)))}. Write a reference as {{tool.field}}, the path of a field in a result above as the tool returned it, or quote the number itself.`,
+    );
+  }
+  for (const s of issues.said.contradicted) {
+    lines.push(`- ${quoted(s)}: this contradicts the verdict a check computed in this reply. Quote that verdict and its numbers.`);
+  }
   if (issues.untraced.length) {
     lines.push(`- These numbers appear in no tool result or the context: ${listed(issues.untraced)}. Quote the tools' numbers, or leave them out.`);
   }

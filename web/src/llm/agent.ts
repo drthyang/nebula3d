@@ -398,9 +398,11 @@ export async function runAgent({
         rejected = roundText;
         content = before;
         convo.push({ role: "assistant", content: roundText });
-        // The tools the fix asks for are offered.
+        // The tools the fix asks for are offered. With the skills off the
+        // send-back names none of them (issuesPrompt reads the switch), and
+        // the guardrail still keeps them within reach.
         for (const t of [...issues.missing, ...issues.stale]) tools.forEach((tool) => t.evidence.includes(tool.name) && offer(tool.name));
-        convo.push({ role: "user", content: issuesPrompt(issues) });
+        convo.push({ role: "user", content: issuesPrompt(issues, { skills: skillsOn(ctx) }) });
         emit(`_${REVISING_NOTE}_`);
         continue;
       }
