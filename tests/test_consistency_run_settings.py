@@ -46,15 +46,15 @@ def _paths(root):
     return pipeline_paths(root / "raw" / f"{STEM}.nxs", proc_dir=root / "processed")
 
 
-def _run(root, delta_pdf=HANN, stages=None):
+def _run(root, delta_pdf=HANN, stages=None, flatten=True):
     """The pipeline on a small synthetic volume under *root*, as the native app
-    runs it (float64, its ΔPDF made with *delta_pdf*)."""
+    runs it (float64, its ΔPDF made with *delta_pdf*, the flatten on or off)."""
     paths = _paths(root)
     if not paths.input.exists():
         paths.input.parent.mkdir(parents=True, exist_ok=True)
         nebula3d.save(demo_volume(25), paths.input)
     kw = {} if stages is None else {"stages": stages}
-    run_pipeline(paths.input, PipelineParams(delta_pdf=delta_pdf),
+    run_pipeline(paths.input, PipelineParams(delta_pdf=delta_pdf, flatten_enabled=flatten),
                  proc_dir=root / "processed", force=True, **kw)
     return paths
 
@@ -140,6 +140,7 @@ def test_a_run_made_with_hann_05_is_viewed_with_hann_05(tmp_path):
         "note": None,
         "delta_pdf": paths.delta_pdf.name,
         "made_from": paths.flattened.name,
+        "input": paths.flattened.name,
         "same_input": True,
         "defaulted": [],
         "apodization": "hann",
@@ -202,30 +203,37 @@ def test_the_saved_band_records_the_transform_it_was_made_with(tmp_path):
 
 def test_without_a_record_the_view_takes_the_defaults_and_says_so(tmp_path):
     paths = _write_backfilled(tmp_path)
+    record, filled = paths.delta_pdf.name, paths.backfilled.name
+    fallback = f"the view falls back to {filled}"
     client = _client(tmp_path)
     settings = client.get(f"/api/consistency/{SLUG}/meta").json()["settings"]
     assert settings["source"] == "defaults"
-    assert settings["note"] == "no ΔPDF on disk for this dataset"
+    assert settings["note"] == f"no ΔPDF on disk for this dataset; {fallback}"
     assert (settings["delta_pdf"], settings["made_from"], settings["same_input"]) == (
         None, None, None)
+    assert settings["input"] == filled
     assert settings["defaulted"] == list(cons.WINDOW_FIELDS)
     assert {f: settings[f] for f in cons.WINDOW_FIELDS} == DEFAULT_WINDOW
 
-    # A ΔPDF that records no transform, one that records only what the view
-    # does not apply (its crop), and one that is no ΔPDF at all.
-    _write_record(paths.delta_pdf, q_max=11.9, source_file=paths.backfilled.name)
+    # A ΔPDF that records no transform (but its input, which the view takes),
+    # one that records only what the view does not apply (its crop), and one
+    # that is no ΔPDF at all.
+    _write_record(paths.delta_pdf, q_max=11.9, source_file=filled)
     settings = client.get(f"/api/consistency/{SLUG}/meta").json()["settings"]
     assert settings["source"] == "defaults"
-    assert settings["note"] == f"{paths.delta_pdf.name} records no transform settings"
+    assert settings["note"] == f"{record} records no transform settings"
+    assert (settings["input"], settings["same_input"]) == (filled, True)
     assert {f: settings[f] for f in cons.WINDOW_FIELDS} == DEFAULT_WINDOW
     _write_record(paths.delta_pdf, transform_config="crop_hkl=2,3,4")
     settings = client.get(f"/api/consistency/{SLUG}/meta").json()["settings"]
     assert settings["source"] == "defaults" and settings["run_crop_hkl"] == [2.0, 3.0, 4.0]
-    assert settings["note"] == f"{paths.delta_pdf.name} records no transform settings"
+    assert settings["note"] == (f"{record} records no transform settings; "
+                                f"{record} does not name its input; {fallback}")
     paths.delta_pdf.write_bytes(b"")
     settings = client.get(f"/api/consistency/{SLUG}/meta").json()["settings"]
-    assert settings["source"] == "defaults"
-    assert settings["note"].startswith(f"{paths.delta_pdf.name} could not be read")
+    assert settings["source"] == "defaults" and settings["made_from"] is None
+    assert settings["note"].startswith(f"{record} could not be read")
+    assert settings["note"].endswith(f"; {fallback}")
 
 
 def test_a_partial_record_names_the_settings_it_lacks(tmp_path):
@@ -245,15 +253,64 @@ def test_a_partial_record_names_the_settings_it_lacks(tmp_path):
     assert settings["same_input"] is True
 
 
-def test_a_record_of_another_volume_is_still_the_runs_and_says_so(tmp_path):
-    """A run with the flatten off leaves an older flattened volume beside the
-    backfilled one its ΔPDF was made from: the view transforms the flattened
-    one, with the run's window, and says the record describes the other."""
+def _view_and_check(root) -> tuple[dict, dict]:
+    client = _client(root)
+    return (client.get(f"/api/consistency/{SLUG}/meta").json(),
+            client.get(f"/api/consistency/{SLUG}/check").json()["metrics"])
+
+
+def _reproduces(meta: dict, check: dict) -> None:
+    for key in ("pearson_r", "normalized_rms", "pearson_r_even", "n_voxels"):
+        assert meta["metrics"][key] == pytest.approx(check[key], abs=1e-9), key
+
+
+def test_the_view_transforms_what_the_run_transformed(tmp_path):
+    """A run with the flatten off made its ΔPDF from the backfilled volume,
+    and a flattened volume it did not use sits beside it (here written by a
+    flatten run after it), which "flattened, else backfilled" would pick: the
+    view transforms the backfilled one, as the run did, and so reproduces the
+    run's own saved check, which the flattened volume does not."""
+    paths = _run(tmp_path, HANN, flatten=False)
+    _run(tmp_path, HANN, stages=("flatten",))
+    assert paths.flattened.exists()
+    meta, check = _view_and_check(tmp_path)
+    settings = meta["settings"]
+    assert (settings["source"], settings["note"]) == ("run", None)
+    assert settings["made_from"] == settings["input"] == paths.backfilled.name
+    assert settings["same_input"] is True
+    _reproduces(meta, check)
+    flattened = consistency_reconstruction(nebula3d.load(paths.flattened, dtype=None), HANN)
+    assert flattened["metrics"]["normalized_rms"] != pytest.approx(
+        check["normalized_rms"], rel=1e-6)
+    # The browser build follows the same record.
+    webbridge.setup(workdir=str(tmp_path))
+    assert json.loads(webbridge.consistency_meta_json(SLUG))["settings"] == settings
+
+
+def test_after_a_run_with_the_flatten_off_the_view_still_matches_its_check(tmp_path):
+    """The flatten on, then off: whichever volume the second run's ΔPDF stage
+    took (run_pipeline's stage_input takes a flattened volume left on disk
+    even with the flatten off), the view transforms the one its record
+    names, and reproduces that run's saved check."""
+    _run(tmp_path, HANN)
+    _run(tmp_path, HANN, flatten=False)
+    meta, check = _view_and_check(tmp_path)
+    assert meta["settings"]["input"] == meta["settings"]["made_from"]
+    assert meta["settings"]["same_input"] is True
+    _reproduces(meta, check)
+
+
+def test_a_record_whose_input_is_gone_falls_back_and_says_so(tmp_path):
+    """The record names an input that is no longer on disk: the view keeps the
+    run's window, falls back to the flattened volume, else the backfilled one,
+    and says so."""
     paths = _write_backfilled(tmp_path)
-    nebula3d.save(nebula3d.load(paths.backfilled), paths.flattened)
-    _write_record(paths.delta_pdf, source_file=paths.backfilled.name,
+    _write_record(paths.delta_pdf, source_file="removed_flattened.h5",
                   transform_config=delta_pdf_transform_config(HANN))
     settings = _client(tmp_path).get(f"/api/consistency/{SLUG}/meta").json()["settings"]
     assert settings["source"] == "run" and settings["apodization"] == "hann"
-    assert settings["made_from"] == paths.backfilled.name
-    assert settings["same_input"] is False
+    assert settings["made_from"] == "removed_flattened.h5"
+    assert (settings["input"], settings["same_input"]) == (paths.backfilled.name, False)
+    assert settings["note"] == (
+        f"{paths.delta_pdf.name} was made from removed_flattened.h5, which is not on disk; "
+        f"the view falls back to {paths.backfilled.name}")

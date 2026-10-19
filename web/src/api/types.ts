@@ -215,18 +215,21 @@ export interface ConsistencyCheck {
   > | null;
 }
 
-// The transform the viewer's round trip runs, and where it came from: the run's
-// ΔPDF records its window, σ, shape, support, padding and subtractions
-// (source "run"); without a readable record the package defaults are used and
-// note says why (source "defaults"). defaulted names the settings a record
-// lacked. The view keeps the full |Q| range and its own band: the run's crop
-// and band are reported, not applied. same_input is false when the record's
-// ΔPDF was made from another volume than the one the view transforms.
+// What the viewer's round trip transforms and how, and where both came from:
+// the run's ΔPDF records the volume it was made from (made_from) and its
+// window, σ, shape, support, padding and subtractions (source "run"); without
+// a readable record the package defaults are used (source "defaults").
+// defaulted names the settings a record lacked. input is the volume the view
+// transforms: the record's (same_input true), else the flattened volume, else
+// the backfilled one (same_input false when the record's is gone, null when no
+// record names one). note says why for every fallback. The view keeps the full
+// |Q| range and its own band: the run's crop and band are reported, not applied.
 export interface ConsistencySettings {
   source: "run" | "defaults";
   note: string | null;
   delta_pdf: string | null;
   made_from: string | null;
+  input: string | null;
   same_input: boolean | null;
   defaulted: string[];
   apodization: string;

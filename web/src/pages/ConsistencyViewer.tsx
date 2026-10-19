@@ -60,22 +60,22 @@ const R_PLANE_AXES: Record<RealAxis, [string, string]> = { X: ["y", "z"], Y: ["z
 
 type Band = { min: number; max: number };
 
-// The round trip's window and where it came from (the response's settings):
-// the run's ΔPDF record, or the package defaults, with why, when there is none.
+// The round trip's window and volume and where they came from (the response's
+// settings): the run's ΔPDF record, or a fallback the note explains.
 const windowName = (s: ConsistencySettings) =>
   s.apodization === "gaussian" ? `gaussian σ ${s.gaussian_sigma}` : s.apodization;
 const settingsLabel = (s: ConsistencySettings) =>
-  s.source === "run" ? `the run's window: ${windowName(s)}` : `the default window, ${windowName(s)}: ${s.note ?? "no ΔPDF record"}`;
-const settingsDetail = (s: ConsistencySettings) =>
   s.source === "run"
-    ? [
-        `The settings ${s.delta_pdf} records`,
-        s.defaulted.length ? `the defaults for ${s.defaulted.join(", ")}, which it lacks` : "",
-        s.same_input === false ? `that ΔPDF was made from ${s.made_from}` : "",
-      ]
-        .filter(Boolean)
-        .join("; ")
-    : "No transform recorded for this dataset: the package defaults";
+    ? `the run's window: ${windowName(s)}${s.note ? ` (${s.note})` : ""}`
+    : `the default window, ${windowName(s)}: ${s.note ?? "no ΔPDF record"}`;
+const settingsDetail = (s: ConsistencySettings) =>
+  [
+    `The round trip of ${s.input}`,
+    s.source === "run" ? `with the settings ${s.delta_pdf} records` : "with the package defaults",
+    s.defaulted.length && s.source === "run" ? `the defaults for ${s.defaulted.join(", ")}, which it lacks` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
 
 export function ConsistencyViewer() {
   const checkLit = useGlow("check");

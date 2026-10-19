@@ -9,16 +9,18 @@ band-limited input), ``recon`` (the inverse-FFT of that band's ΔPDF), and
 ``residual`` — as the same binary slice envelope the cleanup viewer uses, plus
 the agreement metrics.
 
-The round trip transforms as the dataset's run did: the window, its σ, shape
-and support, the zero padding and the mean and smooth-background subtraction
-come from the run's ΔPDF, which records them in its provenance
-(``transform_config``, read back by
+The round trip transforms what the dataset's run transformed, as the run did:
+the volume its ΔPDF was made from, with the window, its σ, shape and support,
+the zero padding and the mean and smooth-background subtraction the run used.
+The ΔPDF records both in its provenance (``source_file`` and
+``transform_config``, read back by
 :func:`nebula3d.pipeline.delta_pdf_settings_from_config`).  The view keeps the
 full |Q| range by design (no crop: see ``DeltaPdfParams.crop_hkl``), and its
 |Q| band is the request's.  A dataset whose ΔPDF records no transform (none on
 disk, or one that predates the record) gets the package defaults,
-``DeltaPdfParams()``, and the response says so: :func:`run_settings` builds its
-``settings`` field.
+``DeltaPdfParams()``; without an input to follow, the view takes the flattened
+volume, else the backfilled one.  The response says so: :func:`run_settings`
+builds its ``settings`` field.
 
 A reconstruction (one forward+inverse FFT) is the expensive part, so it is LRU
 cached by ``(pdf-input path, mtime, transform, |Q| and |R| bands)``: changing
@@ -86,10 +88,10 @@ WINDOW_FIELDS: tuple[str, ...] = (
 class ViewInput:
     """What the consistency view transforms, and how.
 
-    ``path`` is the volume the ΔPDF is built from, ``params`` the transform
-    the view runs (the run's, else the defaults; crop off), and ``settings``
-    the response's record of where that transform came from
-    (:func:`run_settings`).
+    ``path`` is the volume the run's ΔPDF was made from (else the flattened
+    volume, else the backfilled one), ``params`` the transform the view runs
+    (the run's, else the defaults; crop off), and ``settings`` the response's
+    record of where both came from (:func:`run_settings`).
     """
 
     path: Path
@@ -98,13 +100,27 @@ class ViewInput:
 
 
 def _input_volume(ds: Dataset) -> Path | None:
-    """The volume the ΔPDF was built from: flattened if present, else backfilled."""
+    """The fallback input, without a record to follow: flattened if present,
+    else backfilled (the volume the pipeline's ΔPDF stage takes)."""
     by_name = {s.name: s for s in ds.stages}
     for name in ("flattened", "backfilled"):
         stage = by_name.get(name)
         if stage is not None and stage.exists:
             return stage.path
     return None
+
+
+def _named_input(ds: Dataset, record: Path, made_from: str) -> Path | None:
+    """The volume a ΔPDF record names as its input, when it is on disk: the
+    dataset's stage of that name (a tuning view's stages live in its run's
+    folders), else the file of that name beside the ΔPDF.  Only the name is
+    read, so a record cannot point the view outside the dataset's folders."""
+    name = Path(made_from).name
+    for stage in ds.stages:
+        if stage.kind == "hkl" and stage.path.name == name and stage.path.is_file():
+            return stage.path
+    beside = record.parent / name
+    return beside if beside.is_file() else None
 
 
 def _finite(obj: object) -> object:
@@ -126,28 +142,32 @@ def _record(path: str, mtime_ns: int, size: int) -> tuple[str, str]:
     return str(logs.get("source_file") or ""), str(logs.get("transform_config") or "")
 
 
-def run_settings(ds: Dataset, input_path: Path) -> tuple[DeltaPdfParams, dict[str, Any]]:
-    """The transform the view runs for *ds*, and the response's record of it.
+def run_settings(ds: Dataset) -> tuple[Path | None, DeltaPdfParams, dict[str, Any]]:
+    """What the view transforms for *ds* and how, and the response's record of it.
 
-    The settings are the ones the dataset's ΔPDF records in its provenance
-    (``transform_config``): the run's.  A setting the record lacks (one
-    written before the setting existed) takes its default, and ``defaulted``
-    names it.  Without a readable record (no ΔPDF on disk, or one that
-    records no transform) every setting is the default: ``source`` is then
-    ``"defaults"`` and ``note`` says why, so a default is never silent.
-    ``made_from`` is the volume the record's ΔPDF was made from, and
-    ``same_input`` whether that is *input_path*, the volume the view
-    transforms (not when a run with the flatten off left an older flattened
-    volume beside its backfilled one, for instance).  The run's crop and |Q|
-    band are reported (``run_crop_hkl``, ``run_q_band``), not applied.
+    The view transforms what the run transformed, as the run did: the volume
+    the dataset's ΔPDF records it was made from (``source_file``, reported as
+    ``made_from``), with the settings it records (``transform_config``).  A
+    setting the record lacks (one written before the setting existed) takes
+    its default, and ``defaulted`` names it.  Without a readable record (no
+    ΔPDF on disk, or one that records no transform) every setting is the
+    default and ``source`` is ``"defaults"``.  Without an input to follow (no
+    record names one, or the file it names is gone) the view falls back to
+    the flattened volume, else the backfilled one.  Each fallback is said in
+    ``note``, so none is silent; ``input`` is the volume the view transforms
+    and ``same_input`` whether that is the record's (None when no record
+    names one).  The run's crop and |Q| band are reported (``run_crop_hkl``,
+    ``run_q_band``), not applied.  The path is None when there is nothing to
+    transform.
     """
     stage = next((s for s in ds.stages if s.name == "delta_pdf"), None)
     record = stage.path if stage is not None and stage.exists else None
     recorded: dict[str, Any] = {}
     made_from: str | None = None
-    note: str | None = None
+    notes: list[str] = []
+    read = False
     if record is None:
-        note = "no ΔPDF on disk for this dataset"
+        notes.append("no ΔPDF on disk for this dataset")
     else:
         try:
             stat = record.stat()
@@ -155,36 +175,49 @@ def run_settings(ds: Dataset, input_path: Path) -> tuple[DeltaPdfParams, dict[st
             made_from = source or None
             recorded = delta_pdf_settings_from_config(config)
         except Exception as exc:  # noqa: BLE001 - an unreadable record means the defaults
-            note = f"{record.name} could not be read as a ΔPDF record ({exc})"
+            made_from = None  # nor is its input taken from a record that does not read
+            notes.append(f"{record.name} could not be read as a ΔPDF record ({exc})")
         else:
+            read = True
             if not any(f in recorded for f in WINDOW_FIELDS):
-                note = f"{record.name} records no transform settings"
+                notes.append(f"{record.name} records no transform settings")
+    from_run = not notes
+    followed = (_named_input(ds, record, made_from)
+                if record is not None and made_from is not None else None)
+    path = followed or _input_volume(ds)
+    if followed is None and path is not None:
+        if record is not None and made_from is not None:
+            notes.append(f"{record.name} was made from {made_from}, which is not on disk")
+        elif record is not None and read:
+            notes.append(f"{record.name} does not name its input")
+        notes.append(f"the view falls back to {path.name}")
     run = DeltaPdfParams(**recorded)
     params = dataclasses.replace(run, crop_hkl=None, q_band=None)
     settings: dict[str, Any] = {
-        "source": "defaults" if note else "run",
-        "note": note,
+        "source": "run" if from_run else "defaults",
+        "note": "; ".join(notes) or None,
         "delta_pdf": record.name if record is not None else None,
         "made_from": made_from,
-        "same_input": None if made_from is None else made_from == input_path.name,
+        "input": path.name if path is not None else None,
+        "same_input": None if made_from is None else followed is not None,
         "defaulted": [f for f in WINDOW_FIELDS if f not in recorded],
         **{f: getattr(params, f) for f in WINDOW_FIELDS},
         "run_crop_hkl": run.crop_hkl,
         "run_q_band": run.q_band,
     }
-    return params, _finite(settings)  # type: ignore[return-value]
+    return path, params, _finite(settings)  # type: ignore[return-value]
 
 
 def view_input(cfg: ServerConfig, dataset_id: str) -> ViewInput | None:
-    """The consistency view's input for *dataset_id*: the ΔPDF's input volume
-    and the run's transform (:func:`run_settings`).  None for an unknown
-    dataset, or one with neither a flattened nor a backfilled volume."""
+    """The consistency view's input for *dataset_id*: the volume and the
+    transform of the run's ΔPDF (:func:`run_settings`).  None for an unknown
+    dataset, or one with nothing to transform: no record to follow and
+    neither a flattened nor a backfilled volume."""
     ds = find_dataset(cfg, dataset_id)
-    path = None if ds is None else _input_volume(ds)
-    if ds is None or path is None:
+    if ds is None:
         return None
-    params, settings = run_settings(ds, path)
-    return ViewInput(path, params, settings)
+    path, params, settings = run_settings(ds)
+    return None if path is None else ViewInput(path, params, settings)
 
 
 def saved_check(cfg: ServerConfig, dataset_id: str) -> dict | None:
