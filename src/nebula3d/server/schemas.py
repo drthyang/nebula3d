@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -164,6 +166,9 @@ class ShellFloorsOut(BaseModel):
     medians_before: list[float | None] | None = None
     level: float | None             # the diffuse level the floors' span is a share of
     level_count: int
+    # The settings the flatten recorded in the file (FlattenParams: q_step,
+    # floor_percentile, min_count, fit_q_range, q2_term, ion, …), or None.
+    flatten: dict[str, Any] | None = None
 
 
 class UbPassOut(BaseModel):

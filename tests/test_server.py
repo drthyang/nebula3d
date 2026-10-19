@@ -1087,25 +1087,28 @@ def test_job_manager_runs_pipeline_in_process(tmp_path):
     assert {"backfill", "flatten", "pdf"} <= stages_done
 
 
-def write_flatten_stages(root):
+def write_flatten_stages(root, settings=None):
     """A dataset under *root* whose backfilled and flattened stages exist:
-    a uniform diffuse on a constant and a Q² pedestal, flattened by the
-    flatten itself (constant only, so the Q² stays).  Returns both volumes."""
-    from nebula3d.preprocessing import flatten_radial_background
+    a uniform diffuse on a constant and a Q² pedestal, flattened as the
+    pipeline's flatten stage writes it (constant only by default, so the Q²
+    stays; its *settings* recorded).  Returns both volumes."""
+    from nebula3d.pipeline import FlattenParams, _write_flatten_settings, flatten
 
+    settings = settings or FlattenParams()
     rng = np.random.default_rng(11)
     filled = HKLVolume.from_arrays(np.zeros((33, 35, 37)), (-3, 3), (-3, 3), (-3, 3),
                                    ub_matrix=UB)
     q = filled.q_magnitude()
     filled.data[...] = 0.5 + 0.03 * q ** 2 + 0.2 * rng.random(q.shape)
     filled.mask &= q < 4.5
-    flat = flatten_radial_background(filled).volume
+    flat = flatten(filled, settings)
     for name in ("raw", "processed"):
         (root / name).mkdir(exist_ok=True)
     paths = pipeline_paths(root / "raw" / f"{STEM}.nxs", proc_dir=root / "processed")
     nebula3d.save(filled, paths.ringremoved)
     nebula3d.save(filled, paths.backfilled)
     nebula3d.save(flat, paths.flattened)
+    _write_flatten_settings(paths.flattened, settings)
     return filled, flat
 
 
@@ -1122,6 +1125,7 @@ def test_volume_shell_floors(tmp_path):
     body = r.json()
     assert body["id"] == f"{SLUG}.flattened" and body["before_id"] == f"{SLUG}.backfilled"
     assert (body["q_step"], body["percentile"], body["min_count"]) == (0.05, 25.0, 20)
+    assert body["flatten"]["fit_q_range"] == [0.8, 10.0] and body["flatten"]["q2_term"] is False
     want = shell_floors(flat, before=filled)
 
     def listed(a):
@@ -1142,7 +1146,33 @@ def test_volume_shell_floors(tmp_path):
     assert alone["before_id"] is None and alone["floors_before"] is None
     assert (alone["q_step"], alone["percentile"], alone["min_count"]) == (0.1, 10.0, 5)
     assert alone["level_count"] == int((filled.mask & np.isfinite(filled.data)).sum())
+    assert alone["flatten"] is None  # the backfilled stage records no flatten
     for bad in ({"percentile": 101}, {"q_step": 0}, {"min_count": 0}, {"q_step": 1e-5}):
         assert client.get(f"/api/volumes/{SLUG}.flattened/shell-floors",
                           params=bad).status_code == 422
     assert client.get("/api/volumes/nope.flattened/shell-floors").status_code == 404
+
+
+def test_volume_shell_floors_take_the_runs_own_settings(tmp_path):
+    """A flattened stage is measured with the settings its flatten recorded,
+    here the 20th percentile, so the input's floors are that flatten's own
+    levels; a setting asked for wins, and a stage without them takes the
+    flatten's defaults."""
+    from nebula3d.pipeline import FlattenParams
+    from nebula3d.preprocessing import flatten_radial_background
+
+    run = FlattenParams(floor_percentile=20.0, q2_term=True, fit_q_range=(1.0, 4.0))
+    filled, _flat = write_flatten_stages(tmp_path, run)
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    body = client.get(f"/api/volumes/{SLUG}.flattened/shell-floors").json()
+    assert body["percentile"] == 20.0
+    assert body["flatten"]["floor_percentile"] == 20.0
+    assert body["flatten"]["fit_q_range"] == [1.0, 4.0] and body["flatten"]["q2_term"] is True
+    levels = flatten_radial_background(filled, floor_percentile=20.0).raw_levels
+    assert body["floors_before"] == [None if not np.isfinite(x) else float(x) for x in levels]
+    asked = client.get(f"/api/volumes/{SLUG}.flattened/shell-floors",
+                       params={"percentile": 25}).json()
+    assert asked["percentile"] == 25.0 and asked["flatten"] == body["flatten"]
+    alone = client.get(f"/api/volumes/{SLUG}.backfilled/shell-floors").json()
+    assert alone["percentile"] == 25.0 and alone["flatten"] is None

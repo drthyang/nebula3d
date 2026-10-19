@@ -221,12 +221,16 @@ value for value. For the flattened stage it measures the flatten's input
 | `medians` | yes | Their median, the same way |
 | `counts_before`, `floors_before`, `medians_before` | yes | The same of the flatten's input (`before_id`); `null` for other stages |
 | `level`, `level_count` | no | The flatten input's median over the voxels measured in both, and how many: the span's denominator. Without an input, the volume's own median |
-| `q_step`, `percentile`, `min_count` | no | The settings measured with (the flatten's defaults unless asked) |
+| `q_step`, `percentile`, `min_count` | no | The settings measured with: those asked for, else those the flatten recorded, else its defaults |
+| `flatten` | no | The settings the flatten recorded in its output (`FlattenParams`: its `fit_q_range`, `floor_percentile`, `q2_term`, `ion`, …), `null` for a stage it did not write or a file written before it recorded them |
 
 `floors`, `centres`, `counts` and `totals` are what `judgedShells` takes from
 a plane, so the same rule reads the whole volume: the trend is `rankTrend` of
 the judged `floors` in |Q| order, the span is their range over `level`, and
-`pedestalLeft` judges the two. On a synthetic volume with an isotropic Q²
+`pedestalLeft` judges the two. The flatten records its settings in its output
+(a `flatten_settings` attribute of the file's `nebula3d` group), so a run
+whose flatten took another percentile is measured with it, and the rule can
+start the judged shells at the run's own fit range (`flatten.fit_q_range`). On a synthetic volume with an isotropic Q²
 pedestal (a uniform diffuse, measured out to 6 Å⁻¹) the planes and the volume
 read the same pedestal: a trend of 1 on all, a span of 0.99 on each plane and
 0.94 on the volume, with the planes' floors within 0.03 of the volume's. The
