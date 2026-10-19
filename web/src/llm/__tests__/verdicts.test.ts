@@ -218,7 +218,7 @@ describe("judge: the checks on the result", () => {
     symmetrised: false,
     ...over,
   });
-  const GRAIN: [string, Obj, Kind, Reason[], string][] = [
+  const GRAIN: [string, Obj, Kind, Reason[], string, string[]?][] = [
     ["no off-lattice peaks", { judged: 0, near_bragg_nodes: 0, near_offset_angle_deg: null, far: [] }, "pass", [], "no off-lattice peaks were recorded by the punch's search"],
     [
       "one rotation of 23° indexing most",
@@ -240,6 +240,8 @@ describe("judge: the checks on the result", () => {
       "attention",
       ["UB off"],
       "the off-lattice peaks are the crystal's own Bragg peaks with the UB off: one rotation of 2° puts 30 of the 40 strongest orbits back on the Bragg lattice (random directions: 2); refine the UB",
+      // The data's problem (D3), at the angle the verdict shows.
+      ["the UB is off by 2° (one rotation puts the off-lattice peaks back on the Bragg lattice)"],
     ],
     [
       "too few indexed against the control",
@@ -263,9 +265,9 @@ describe("judge: the checks on the result", () => {
       "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 3 of the 40 strongest off-lattice orbits (random directions: 5). 28 of them sit within a quarter of the node spacing of a Bragg node, offset by a median 1.23° of rotation (a lower bound: a node at an angle to the rotation axis moves less): the Bragg peaks themselves, off their nodes by about that angle (refine the UB). 12 lie farther from any node; their origin is open (another phase, multiple scattering, or an artefact)",
     ],
   ];
-  for (const [why, over, kind, reasons, words] of GRAIN) {
+  for (const [why, over, kind, reasons, words, dataProblems = []] of GRAIN) {
     it(`grain: ${why}`, () => {
-      expect(judge("grain", facts(over) as never)).toEqual({ check: "grain", kind, reasons, dataProblems: [], words, criterion: WORDS.criterion.grains });
+      expect(judge("grain", facts(over) as never)).toEqual({ check: "grain", kind, reasons, dataProblems, words, criterion: WORDS.criterion.grains });
     });
     it(`grain: ${why}, the same verdicts as a sidecar and as words`, () => {
       const g = facts(over) as unknown as GrainFacts;

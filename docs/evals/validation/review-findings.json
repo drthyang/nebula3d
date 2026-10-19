@@ -203,8 +203,14 @@
   "evidence": "grain_check settles the UB topic (answerChecks.ts:124), but ubSays reads only ub_check (:276-281), and verdict.ts never reads grain_check.",
   "proposed_fix": "grain_check's \"UB off\" counts as a UB problem: a data problem in {{achieved}} and \"not OK\" for UB claims. grain_check stays the check for a second grain.",
   "needs_user_approval": true,
-  "status": "open",
-  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.3, after the check-verdict module (2.3).",
+  "status": "implemented",
+  "commit": "6634f5b",
+  "tests": [
+   "web/src/llm/__tests__/verdictPins.test.ts (D3, unified (2.4.3): grain_check's \"UB off\" is a data problem in {{achieved}} and not OK for the UB topic; it stays the check for a second grain)",
+   "web/src/llm/__tests__/answerChecks.test.ts (holds a claim that the UB is right to grain_check's UB off, and names it among the data's problems (D3, 2.4.3))",
+   "web/src/llm/__tests__/verdicts.test.ts (grain: a rotation under 2°, judged unrounded: the UB, though it reads 2°)"
+  ],
+  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.3, after the check-verdict module (2.3). Implemented by plan row 2.4.3.",
   "decision": {
    "by": "the user",
    "on": "2026-10-19",

@@ -373,6 +373,15 @@ const texture: CheckRule<Readonly<Record<string, unknown>>> = {
   },
 };
 
+/**
+ * The data's problem in grain_check's "UB off", in {{achieved}}'s words (D3,
+ * plan 2.4.3): the UB off by the rotation that puts the off-lattice peaks, the
+ * crystal's own Bragg peaks, back on the Bragg lattice. The angle as the
+ * verdict shows it; a recording without one names none.
+ */
+export const ubOffProblem = (turnDeg: number | null): string =>
+  `the UB is off${turnDeg != null ? ` by ${turnDeg}°` : ""} (one rotation puts the off-lattice peaks back on the Bragg lattice)`;
+
 const grain: CheckRule<GrainFacts> = {
   criterion: "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.",
   judge: (g) => {
@@ -395,6 +404,7 @@ const grain: CheckRule<GrainFacts> = {
         kind: "attention",
         reasons: ["UB off", ...beside],
         words: `the off-lattice peaks are the crystal's own Bragg peaks with the UB off: one rotation of ${r2(turn!)}° puts ${indexed} of the ${n} strongest orbits back on the Bragg lattice (random directions: ${control}); refine the UB`,
+        dataProblems: [ubOffProblem(r2(turn!))],
       };
     }
     if (second) {

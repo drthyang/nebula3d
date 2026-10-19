@@ -66,11 +66,13 @@ const unread: Cell = () => undefined;
 export const D1_REACH_PASS_SETTLES_NOTHING = false;
 
 /**
- * D3, for {{achieved}}: grain_check counts for nothing in the run's verdict, not
- * even as measured. Unify (2.4.3): set this to false, with the grain rule
- * writing its "UB off" data problem (it writes none yet, as nobody read one).
+ * D3, for {{achieved}}, unified (plan 2.4.3, the user's decision of
+ * 2026-10-19): grain_check counts as measured, and its "UB off" is a data
+ * problem of the run's verdict (the grain rule writes it, ubOffProblem). true:
+ * grain_check counted for nothing in the run's verdict, not even as measured,
+ * its reading before 2.4.3.
  */
-export const D3_ACHIEVED_IGNORES_GRAIN = true;
+export const D3_ACHIEVED_IGNORES_GRAIN = false;
 
 /**
  * D3, for the answer checks' grain topic: grain_check decides it only where its
@@ -81,12 +83,13 @@ export const D3_ACHIEVED_IGNORES_GRAIN = true;
 export const D3_ANSWER_GRAIN_SECOND_GRAIN_ONLY = true;
 
 /**
- * D3, for the answer checks' UB topic: only ub_check decides it, though
- * grain_check settles the UB topic too (its facts, tools/index.ts). Unify
- * (2.4.3): set this to false; grain_check's "UB off" then holds a claim that
- * the UB is right to account.
+ * D3, for the answer checks' UB topic, unified (plan 2.4.3, the user's
+ * decision of 2026-10-19): grain_check, which settles the UB topic too (its
+ * facts, tools/index.ts), decides it where it finds the UB off, which then
+ * holds a claim that the UB is right to account; its other findings say
+ * nothing of the UB. true: only ub_check decided it, before 2.4.3.
  */
-export const D3_ANSWER_UB_FROM_UB_CHECK_ONLY = true;
+export const D3_ANSWER_UB_FROM_UB_CHECK_ONLY = false;
 
 /**
  * D7: which of a check's current results a reader reads. {{achieved}} reads
@@ -174,7 +177,7 @@ const stageForAnswer: Cell = (o) => {
   return o.kind;
 };
 
-/** grain_check's outcome as the answer checks' UB topic would read it, were D3 unified. */
+/** grain_check's outcome as the answer checks' UB topic reads it (D3): the UB off needs attention; anything else says nothing of the UB. */
 const grainAsUb: Cell = (o) => (o.reasons.includes("UB off") ? "attention" : undefined);
 
 interface Row {

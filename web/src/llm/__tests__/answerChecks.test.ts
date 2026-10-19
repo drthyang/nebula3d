@@ -21,8 +21,9 @@ import {
 } from "../answerChecks";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";
+import { shownGrains, type GrainFacts } from "../metrics/grains";
 import type { AgentTool } from "../tools";
-import { judge } from "../verdicts";
+import { judge, verdicts } from "../verdicts";
 
 const step = (name: string, args: Record<string, unknown> = {}, result: unknown = {}, status: AgentStep["status"] = "done"): AgentStep => ({
   id: name,
@@ -123,6 +124,21 @@ describe("contradicting the tools' computed verdicts", () => {
     expect(contradictions("The UB is fine: the fit changed nothing.", [symmetrised]).map((t) => t.id)).toEqual(["ub"]);
     const right = step("ub_check", {}, { symmetrised: false, orientation_change_deg: 0.01 });
     expect(contradictions("The UB is right.", [right])).toEqual([]);
+  });
+
+  it("holds a claim that the UB is right to grain_check's UB off, and names it among the data's problems (D3, 2.4.3)", () => {
+    // Synthetic measurements: one rotation of 0.9° puts 38 of the 40 strongest off-lattice orbits back on the Bragg lattice (random directions: 2).
+    const facts: GrainFacts = { off_lattice_orbits: 60, judged: 40, near_bragg_nodes: 6, near_offset_angle_deg: null, far: [], rotated_copy: { indexed: 38, misorientation_deg: 0.9 }, random_control: 2, symmetrised: false };
+    const o = judge("grain", facts);
+    expect([o.kind, o.reasons]).toEqual(["attention", ["UB off"]]);
+    const grain = step("grain_check", {}, { ...shownGrains(facts, o.words!), off_lattice_peaks: 900 });
+    expect(contradictions("The UB is right.", [grain]).map((t) => t.id)).toEqual(["ub"]);
+    expect(contradictions("The UB is off by about a degree; refine it.", [grain])).toEqual([]);
+    // It stays the check for a second grain: the UB off settles nothing there.
+    expect(contradictions("There is no second grain.", [grain])).toEqual([]);
+    expect(verdicts({ reply: [grain] }).achieved?.dataProblems).toEqual(["the UB is off by 0.9° (one rotation puts the off-lattice peaks back on the Bragg lattice)"]);
+    // A ub_check run after it, finding the UB right, is the newest that decides.
+    expect(contradictions("The UB is right.", [grain, step("ub_check", {}, { fit: "both", symmetrised: false, orientation_change_deg: 0.01 })])).toEqual([]);
   });
 });
 
