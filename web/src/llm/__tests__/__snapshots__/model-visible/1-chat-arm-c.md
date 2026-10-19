@@ -62,7 +62,7 @@ voxels sit below 0 after a good flatten by construction (after_negative_fraction
 floor_trend (rank correlation of the floors with |Q|) and floor_span_fraction (their range as a
 share of the diffuse level), over the outer half of the |Q| shells the counts reach (floor_judged_q gives their |Q| range),
 catch a pedestal the floor in σ hides beside strong diffuse.
-The flatten's verdict judges these two alone, over the whole volume's shells: a trend (in magnitude) and a span both 0.8 or more are a pedestal left.
+The flatten's verdict judges these two alone, over the volume's shells: a trend (in magnitude) and a span both 0.8 or more are a pedestal left.
 
 - delta_pdf: feature_snr is the strongest feature amplitude in background-σ units (the
 origin self-correlation peak is excluded).

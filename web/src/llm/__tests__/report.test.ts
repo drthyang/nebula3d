@@ -358,7 +358,7 @@ describe("a card states only what it judges", () => {
       ["Floor span (share of the diffuse, the whole volume)", "0.72"],
       ["|Q| judged (Å⁻¹)", "5.58–11.1"],
     ]);
-    expect(card.criterion).toMatch(/^No pedestal: the whole volume's floor trend and span both 0\.8 or more/);
+    expect(card.criterion).toMatch(/^No pedestal: the volume's floor trend and span both 0\.8 or more/);
     const planes = { max_after_floor_sigma: 1.72, max_floor_trend: 0.314, max_floor_span_fraction: 0.601, pedestal_left: false };
     const old = buildReport(input({ measured: { ...input().measured, flatten: planes } })).checks.find((c) => c.title === "Flatten")!;
     expect(old.headline).toBe("floor ≤ 1.72σ · trend ≤ 0.314 · span ≤ 0.601");

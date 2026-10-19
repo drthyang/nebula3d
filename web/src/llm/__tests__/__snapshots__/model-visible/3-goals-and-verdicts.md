@@ -65,7 +65,7 @@ The fills meet their surroundings: a median seam of 1σ or less, and no cut whos
 ### flatten
 
 ```text
-No pedestal: the whole volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.
+No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.
 ```
 
 ### pdf

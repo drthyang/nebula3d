@@ -121,7 +121,7 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
   },
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: the whole volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
     "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
     "floor_trend": 0.00268,
@@ -156,7 +156,7 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
 {
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: the whole volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
     "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
     "floor_trend": 0.00268,

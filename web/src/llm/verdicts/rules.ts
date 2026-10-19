@@ -276,8 +276,14 @@ export const FLOOR_SIGMA_WHY = "σ is the cut's own spread, and the floors follo
 /** The shells the flatten's rule judges a pedestal on (judgedShells, metrics/flatten.ts), in its criterion and the system prompt. */
 export const PEDESTAL_SHELLS = "the outer half of the |Q| shells the counts reach";
 
-/** Where the flatten's verdict reads the pedestal (plan 4.1): over the whole volume's shells, not three planes', in its criterion. */
-export const PEDESTAL_WHERE = "the whole volume's";
+/**
+ * Where the flatten's verdict reads the pedestal (plan 4.1): over the whole
+ * volume's shells, not three planes', in its criterion and the system prompt.
+ * "The volume", as the system prompt calls the data a cut is taken from: in
+ * as few words as the criterion's own before it, so the results it is in grow
+ * no longer.
+ */
+export const PEDESTAL_WHERE = "the volume's";
 
 /**
  * Whether a flatten evaluation measured the pedestal over the whole volume
