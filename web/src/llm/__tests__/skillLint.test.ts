@@ -178,6 +178,14 @@ const GATES: Gate[] = [
   { skill: "reduction-qc", phrase: "in 90 % of the directions", stated: 0.9, limit: LIMITS.ringDirections },
   { skill: "reduction-qc", phrase: "holds to about 1e-3 or better", stated: 1e-3, limit: LIMITS.symmetryHolds },
   { skill: "reduction-qc", phrase: "more than 1e-3 of its weight on unmeasured space", stated: 1e-3, limit: LIMITS.tuningWeight },
+  { skill: "reduction-qc", phrase: "a trend and a span both 0.8 or more", stated: 0.8, limit: LIMITS.pedestalTrend },
+  { skill: "reduction-qc", phrase: "a trend and a span both 0.8 or more", stated: 0.8, limit: LIMITS.pedestalSpan },
+  {
+    skill: "reduction-qc",
+    phrase: "the outer half of the shells the counts reach",
+    stated: 0.5,
+    none: "the judged range, not a line: the flatten's verdict reads the floors on the outer half of the shells the counts reach (judgedShells, metrics/flatten.ts), a fraction written in its code with no named constant (batch 1's provisional range; interview R10).",
+  },
   // bragg-node-audit
   { skill: "bragg-node-audit", phrase: "A rotation under 2°", stated: 2, limit: LIMITS.secondGrain },
   {
@@ -186,18 +194,7 @@ const GATES: Gate[] = [
     stated: null,
     none: "'several' names no number. The search's width limit (punchSearchMaxWidth) is off by default and its help suggests 2 Bragg widths; the punch's evaluation calls a leftover broad at a FWHM of 5 voxels or more (BROAD_VOXELS, a constant metrics/punch.ts keeps to itself). Interview B7.",
   },
-  {
-    skill: "bragg-node-audit",
-    phrase: "a fill bias near 0σ",
-    stated: 0,
-    none: "the clean reading, not a line. texture_check calls a cut's fill biased at a median of 0.5σ or more (a literal in textureMetrics, metrics/texture.ts) that is also FILL_BIAS_FLOOR of the level, with 75 % of the holes one way; FILL_BIAS_FLOOR is in UNSTATED.",
-  },
-  {
-    skill: "bragg-node-audit",
-    phrase: "about half the holes brighter",
-    stated: 0.5,
-    none: "the clean reading under the comparison with the rim's median that batch 1 replaced (docs/pilot-review.md, finding 4). texture_check's line is 75 % of the holes one way, a literal in textureMetrics.",
-  },
+  { skill: "bragg-node-audit", phrase: "a fifth of the local diffuse level", stated: 0.2, limit: LIMITS.fillBiasFloor },
   {
     skill: "bragg-node-audit",
     phrase: "an azimuthal ratio near 1",
@@ -226,7 +223,8 @@ const NOT_GATES: { skill: SkillName; phrase: string; why: string }[] = [
   { skill: "delta-pdf-interpretation", phrase: "⟨1 ½ ½⟩a and ⟨2 0 0⟩a", why: "example vectors" },
   { skill: "delta-pdf-interpretation", phrase: "each (001) layer", why: "an example plane" },
   { skill: "delta-pdf-interpretation", phrase: "the z = 0 plane", why: "an example plane" },
-  { skill: "delta-pdf-interpretation", phrase: "on the three sections", why: "the ΔPDF's three sections through the origin" },
+  { skill: "delta-pdf-interpretation", phrase: "gives all three", why: "the three quantities dpdf_peaks gives: a feature's vector, sign and size" },
+  { skill: "reduction-qc", phrase: "from 0.025 to 0.066 to 0.107", why: "evidence, not a line: what the Q² term did to the scored pedestal span on the validation's clean controls (batch 1, finding 5)" },
   { skill: "delta-pdf-interpretation", phrase: "Taking a back-FFT r near 1 as proof", why: "a failure mode quoting trust check 4, whose gate is in GATES" },
 ];
 
@@ -285,8 +283,12 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "bragg-node-audit", phrase: "tested against the nodes", what: "the orbits beside the nodes", fields: ["near_bragg_nodes"] },
   { skill: "bragg-node-audit", phrase: "as a rotated copy of the lattice", what: "the rotated copy", fields: ["rotated_copy.indexed"] },
   { skill: "bragg-node-audit", phrase: "the same search at random directions", what: "the random directions' control", fields: ["random_control"] },
-  { skill: "bragg-node-audit", phrase: "a fill bias near 0σ", what: "the fill bias in σ", fields: ["per_cut.median_fill_bias_sigma"] },
-  { skill: "bragg-node-audit", phrase: "about half the holes brighter", what: "the share of the holes brighter", fields: ["per_cut.above_fraction"] },
+  {
+    skill: "bragg-node-audit",
+    phrase: "no cut whose fills sit systematically outside the range their rims allow",
+    what: "whether a cut's fills sit systematically outside their rims' range",
+    fields: ["per_cut.systematic_fill_bias"],
+  },
   { skill: "bragg-node-audit", phrase: "an azimuthal ratio near 1", what: "the azimuthal ratio", fields: ["per_cut.azimuthal_ratio"] },
   // delta-pdf-interpretation
   { skill: "delta-pdf-interpretation", phrase: "the window's shape and scale", what: "the window's shape", fields: ["window_shape", "settings.pdfWindowShape"] },
@@ -330,12 +332,6 @@ type Kind = "tool" | "field" | "setting" | "name" | "claim" | "gate" | "unstated
 const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [
   {
     skill: "reduction-qc",
-    kind: "field",
-    names: "floor_trend",
-    why: "step 6 names floor_trend for assess_stage; the flatten's assessment gives max_floor_trend, max_floor_span_fraction and pedestal_left, and floor_trend only per plane (agent plan E; interview R9).",
-  },
-  {
-    skill: "reduction-qc",
     kind: "claim",
     names: "the symmetry the file declares",
     why: "step 1 takes the declared symmetry from describe_dataset, whose result has none; ub_check (symmetry_from), grain_check (declared_symmetry), symmetry_check and assess_stage for the ΔPDF (symmetry_declared) give it (agent plan E; interview R5).",
@@ -366,12 +362,6 @@ const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = 
   },
   {
     skill: "delta-pdf-interpretation",
-    kind: "claim",
-    names: "a feature's vector, sign and size",
-    why: "step 3 asks for each feature's vector, sign and size and names no tool; dpdf_peaks gives all three (agent plan E; interview P5).",
-  },
-  {
-    skill: "delta-pdf-interpretation",
     kind: "gate",
     names: "a back-FFT r near 1 only shows the transform ran correctly",
     why: "trust check 4 reads the round trip as r near 1; the verdict's line is r of 0.999 or more (BACK_FFT_R_OK) against the data's even part (back_fft_pearson_r_even), which the check does not name (agent plan E; interview P4).",
@@ -399,24 +389,6 @@ const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = 
     kind: "unstated",
     names: LIMITS.ringNoise.constant,
     why: "step 5 reports leftovers and dents as shares of the diffuse; the verdict counts one only beyond three times its plane's noise (agent plan E; interview R8).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "unstated",
-    names: LIMITS.pedestalTrend.constant,
-    why: "step 6 asks for no trend with |Q| and states no limit; the verdict calls a pedestal at a trend of 0.8 or more over the outer half of the shells (agent plan E; interview R10).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "unstated",
-    names: LIMITS.pedestalSpan.constant,
-    why: "step 6 asks for a span small against the diffuse level and states no limit; the verdict's is 0.8 of it (agent plan E; interview R10).",
-  },
-  {
-    skill: "bragg-node-audit",
-    kind: "unstated",
-    names: LIMITS.fillBiasFloor.constant,
-    why: "step 7 reads a fill bias near 0σ with about half the holes brighter as clean; texture_check judges a fill against the range its rim allows, and counts a bias only at a fifth of the local level (agent plan E; interview B8).",
   },
 ];
 
