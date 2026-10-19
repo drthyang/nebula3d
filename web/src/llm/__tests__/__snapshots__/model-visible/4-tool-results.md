@@ -288,7 +288,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {}
 
-3261 characters sent.
+3276 characters sent.
 
 ```json
 {
@@ -391,7 +391,7 @@ References of this skill (read one with read_skill and `reference`):
     "window_weight_on_unmeasured": 0.00024,
     "window_shape": "ellipsoid",
     "max_symmetry_break": 0,
-    "worst_symmetry_op": "mirror ⊥ a",
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
     "symmetry_declared": true
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
@@ -1675,7 +1675,7 @@ A local model's request past its soft budget has its older results shortened (`c
     "window_weight_on_unmeasured": 0.00024,
     "window_shape": "ellipsoid",
     "max_symmetry_break": 0,
-    "worst_symmetry_op": "mirror ⊥ a",
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
     "symmetry_declared": true
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"],
