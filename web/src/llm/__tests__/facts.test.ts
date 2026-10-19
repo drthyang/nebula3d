@@ -111,9 +111,9 @@ describe("the declared facts", () => {
 
 describe("the skill gate", () => {
   it("is worded in skills.ts, which never imports the registry: the registry imports it, and the cycle would read SKILL_TREE before it is set", () => {
-    const imports = [...skillsSource.matchAll(/^import (?!type )[^;]*?from "([^"]+)"/gms)].map((m) => m[1]);
+    const imports = [...skillsSource.matchAll(/^import (type )?[^;]*?from "([^"]+)"/gms)].map((m) => ({ types: Boolean(m[1]), from: m[2] }));
     expect(imports.length).toBeGreaterThan(0);
-    for (const from of imports) expect(from, from).not.toMatch(/^\.\/tools(\/index)?$/);
+    for (const { types, from } of imports) if (!types) expect(from, from).not.toMatch(/^\.\/tools(\/index)?$/);
   });
 });
 

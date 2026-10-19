@@ -17,7 +17,7 @@
 
 import type { AgentStep } from "./agent";
 import type { Gate } from "./tools/facts";
-import { SAMPLE_PARAMS, TUNE_PARAMS, TUNE_STAGES, type TuneStage } from "./tune/catalog";
+import type { TuneStage } from "./tune/catalog";
 
 /** Every Markdown file under the skills folder, keyed by repo path. */
 const SKILL_TREE = repoKeyed(import.meta.glob("../../../.claude/skills/**/*.md", { query: "?raw", import: "default", eager: true }));
@@ -201,22 +201,6 @@ export function readSkill(name: string, reference?: string, section?: string): s
     ? `\n\n---\nReferences of this skill (read one with read_skill and \`reference\`):\n${skill.references.map((r) => `- ${r.name}: ${r.description}`).join("\n")}`
     : "";
   return `Skill ${skill.name}\n\n${skill.body}${refs}`;
-}
-
-const SETTING_STAGE = new Map([...TUNE_PARAMS, ...SAMPLE_PARAMS].map((p) => [p.key as string, p.stage]));
-
-/** The stages a tool call changes or tunes: update_settings by its keys, tune_pipeline by its stages. */
-export function stagesActedOn(tool: string, args: Record<string, unknown>): TuneStage[] {
-  if (tool === "update_settings") {
-    const changes = args.changes;
-    if (!changes || typeof changes !== "object" || Array.isArray(changes)) return [];
-    return unique(Object.keys(changes).flatMap((k) => (SETTING_STAGE.has(k) ? [SETTING_STAGE.get(k)!] : [])));
-  }
-  if (tool === "tune_pipeline") {
-    const stages = Array.isArray(args.stages) && args.stages.length ? args.stages : TUNE_STAGES;
-    return unique(stages.filter((s): s is TuneStage => (TUNE_STAGES as readonly unknown[]).includes(s)));
-  }
-  return [];
 }
 
 /**

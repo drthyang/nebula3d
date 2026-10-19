@@ -10,53 +10,10 @@ import { create } from "zustand";
 
 import { useNavStore } from "../state/navStore";
 import { usePipelineStore } from "../state/pipelineStore";
-import type { AgentStep } from "./agent";
 import { useChatStore } from "./chatStore";
 import { factsOf } from "./tools";
-import { ALL_STAGES, keysOf, RECIP, stageKey, type HighlightKey } from "./tools/facts";
-import { TUNE_PARAMS } from "./tune/catalog";
+import { stageKey, type HighlightKey } from "./tools/facts";
 import { useTuneStore } from "./tune/tuner";
-
-/** What a tool step works on, from its name and arguments. */
-export function stepKeys(step: Pick<AgentStep, "name" | "args">): readonly HighlightKey[] {
-  const a = step.args ?? {};
-  switch (step.name) {
-    case "assess_stage": {
-      const s = typeof a.stage === "string" ? a.stage : "all";
-      if (s === "all") return ALL_STAGES;
-      const k = stageKey(s);
-      return k === "pdf" ? ["pdf", "check"] : k ? [k] : [];
-    }
-    case "measure_reciprocal_cut":
-      return RECIP;
-    case "measure_dpdf_cut":
-      return ["pdf"];
-    case "line_profile":
-      return keysOf([a.stage]);
-    case "radial_profile":
-      return a.stages === undefined ? ["raw", ...RECIP] : keysOf(a.stages);
-    case "texture_check":
-      return ["punch", "backfill"];
-    case "qmax_coverage":
-      return ["raw", "pdf"];
-    case "bragg_peaks":
-      return ["bragg"];
-    case "consistency_details":
-      return ["check"];
-    case "run_log":
-      return ["log"];
-    case "update_settings": {
-      const changes = a.changes && typeof a.changes === "object" ? Object.keys(a.changes) : [];
-      return keysOf(changes.map((key) => TUNE_PARAMS.find((p) => p.key === key)?.stage));
-    }
-    case "run_pipeline":
-      return a.from_stage === undefined ? ALL_STAGES : keysOf([a.from_stage]);
-    case "tune_pipeline":
-      return a.stages === undefined ? ALL_STAGES : keysOf(a.stages);
-    default:
-      return [];
-  }
-}
 
 // Words in an answer that point at a card.
 const MENTIONS: [HighlightKey, RegExp][] = [

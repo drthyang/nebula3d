@@ -15,7 +15,6 @@ import {
   skillsPrompt,
   skillsReadIn,
   STAGE_SKILL,
-  stagesActedOn,
 } from "../skills";
 import { CHAT_TOOLS, runToolCall, unreadSkillRefusal, type ToolContext } from "../tools";
 
@@ -75,14 +74,6 @@ describe("the skills", () => {
 });
 
 describe("the firm rule", () => {
-  it("knows which stages a call changes or tunes", () => {
-    expect(stagesActedOn("update_settings", { changes: { punchMinSig: 6, pdfApod: "hann", nope: 1 } })).toEqual(["punch", "pdf"]);
-    expect(stagesActedOn("update_settings", { changes: "x" })).toEqual([]);
-    expect(stagesActedOn("tune_pipeline", { stages: ["rings", "flatten"] })).toEqual(["rings", "flatten"]);
-    expect(stagesActedOn("tune_pipeline", {})).toEqual(["rings", "punch", "backfill", "flatten", "pdf"]);
-    expect(stagesActedOn("assess_stage", { stage: "punch" })).toEqual([]);
-  });
-
   it("refuses until each stage's skill is read, and names what to read", () => {
     const none = new Set<string>();
     expect(unreadSkillRefusal("update_settings", { changes: { punchMinSig: 6 } }, none)).toMatch(/call read_skill with name "bragg-node-audit"\. It is how the user works on the Bragg punch stage/);
