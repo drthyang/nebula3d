@@ -633,5 +633,35 @@
    "on": "2026-10-19",
    "option": "yes"
   }
+ },
+ {
+  "source": "review",
+  "ref": "G1",
+  "at": "054a753",
+  "kind": "science-error",
+  "evidence": "On a grid too coarse for the powder-ring test, under one voxel across the widest FWHM it judges, fwhm_cap 0.16 Å⁻¹ (src/nebula3d/preprocessing/ring_isotropy.py:220, :231), the test judges no shell (ring_isotropy.py:280-283). The pooled ring removal confirms its rings with the same test (pooled_confirm_rings, on by default: src/nebula3d/pipeline.py:1079) and subtracts only the shells it confirms (src/nebula3d/preprocessing/pooled_rings.py:575-579), so on such a grid it subtracts none of the rings it detects, real powder rings included, and its log only counted them (\"and N not judged (…; kept)\", pipeline.py:1091-1098). Without the guard, the test judged a bump of the crystal's own at 1.75 Å⁻¹ a powder ring on the validation's dev crystal at n=81 (0.99 voxels across 0.16 Å⁻¹), which the removal would subtract. With it, on dev-rings at n=81 the removal detects three shells (2.18, 3.23 and 4.04 Å⁻¹, the planted rings at 2.2 and 4.05 Å⁻¹ among them), confirms none and subtracts none; at n=161 it confirms two and keeps one as the crystal's own.",
+  "proposed_fix": "Accept that on a grid too coarse to confirm a ring the ring removal subtracts no unconfirmed ring, and say so out loud wherever the ring stage reports: its run log line and its diagnostics (GET /api/rings/{id}/diagnostics), the Execution page, the report's ring card and caveats, and the Pilot's ring check (assess_stage rings, notice; run_log): \"N rings detected but not confirmed at this grid (needs ≥ <the limit, from the rule's constants>); not subtracted. Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.\", its second sentence a remedy arm C reads without. {{achieved}} says why the ring removal is not judged (\"not judged: the ring removal (grid too coarse for the ring check)\"), not that it was not measured.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "ea43a5f",
+  "tests": [
+   "tests/test_ring_isotropy.py::test_on_the_dev_grid_the_ring_removal_says_how_many_rings_it_left_and_the_ways_out",
+   "tests/test_ring_isotropy.py::test_the_ring_removal_subtracts_no_ring_on_a_grid_too_coarse_to_confirm_it",
+   "tests/test_ring_isotropy.py::test_what_the_grid_needs_is_the_rules_own",
+   "tests/test_server.py::test_ring_diagnostics_give_the_rings_left_unconfirmed_on_the_grid",
+   "tests/test_webbridge.py::test_ring_diagnostics_json_is_the_servers_response",
+   "web/src/llm/evals/devData/knownAnswers.replay.test.ts (dev-rings and dev-rings-shell: the ring removal says how many rings it left unconfirmed at n=81, the planted ones among them, in its log, its record and the ring check, and leaves none at n=161; dev-control: the verdict on the run is met, or says why the ring removal is not judged)",
+   "web/src/llm/__tests__/tools.test.ts (assess_stage and run_log: the notice whole with the skills on, without its remedy with them off (G1))",
+   "web/src/llm/__tests__/verdicts.test.ts (judges the rings alike with the ring removal's notice, which arm C reads without the remedy the backend writes (G1))",
+   "web/src/llm/__tests__/report.test.ts (the notice on the ring card and among the caveats; the goal says why it is not judged (G1))",
+   "web/src/llm/__tests__/references.test.ts (says why a stage measured on a grid too coarse for its check is not judged, not that it was not measured (G1))",
+   "web/src/pages/__tests__/executionLog.test.ts (reads the ring removal's done line that ends on its notice as a warning, not a success (G1))"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "accept: no unconfirmed ring is subtracted; the notice is loud"
+  }
  }
 ]
