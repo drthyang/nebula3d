@@ -199,6 +199,55 @@ that moves a verdict shows in the goldens; one that unifies a disagreement
 flips its rule's constant (or deletes its matrix cell, as its comment says)
 and updates its pin and the goldens it moves, saying which and why.
 
+### An answer's words
+
+One reader reads the words of a NEBULA Pilot answer,
+`web/src/llm/answerText/`, for the answer checks (`web/src/llm/answerChecks.ts`,
+which send an answer back before the user reads it) and for the validation's
+graders (`web/src/llm/evals/`) alike. It reads an answer into plain data and
+decides nothing: its sentences and their clauses, the cues each holds
+(negation, absence, doubt, condition, plan, modal, sequence, purpose) and the
+cue that opens it, whether it asks, and the numbers it writes, each with its
+unit and whether it sits in a vector. What a cue does to a verdict or a grade
+is each reader's policy.
+
+- **The answer checks** read it with their own options and keep their own
+  reading of it, which nothing the model sees may change: a clause splits at
+  "; " and at ": " after a long label, not at a dash; a negation alone
+  negates, not an absence; a hedge anywhere in a clause makes it no verdict.
+  Each difference from the graders is a flag in `answerChecks.ts`, off
+  (`W1_GATE_SPLITS_AT_DASHES`, `W2_GATE_NEGATES_ABSENCE`,
+  `W9_GATE_READS_CURLY_APOSTROPHE`, their blind spot for "isn’t"), kept until
+  after the validation.
+- **The graders** read it through a port (`evals/graderReading.ts`) whose
+  shared reader is answerText/ with its own options, and decide on that
+  (`credits` and `charges` in `evals/validation.ts`, the sentence checks in
+  `evals/checks.ts`). Every text check is decided again on the witness's
+  reading (`evals/witness.ts`), an independent minimal parse with the same
+  rules written apart, which imports nothing: a check the shared reader passes
+  and the witness fails is a dispute, recorded on the run.
+
+The tests:
+
+- `web/src/llm/__tests__/answerText.test.ts`: the reader's splits, cues,
+  questions and numbers;
+- `web/src/llm/__tests__/answerTextPins.test.ts`: each kept difference between
+  the two readings, W1 to W8 and the curly apostrophe, with both readings, in
+  the manner of the verdict pins: unifying one flips its flag and updates its
+  pin;
+- `web/src/llm/evals/answerTextGoldens.test.ts`: characterisation goldens over
+  the dev corpus (`evals/answerCorpus.ts`: the canned dev answers, the scripted
+  replays and the scenario records' 121 answers), every grade on every dev
+  case and on its own scenario's checks, and the answer checks' reading by
+  digest; booleans and digests only, dev cases only. A diff there is a moved
+  grade: update it (`-u` after the file) only in a commit that means it, and
+  say which grades moved and why;
+- `web/src/llm/evals/witness.test.ts`: the import scans (the graders import
+  nothing of the app's verdicts or of the answer checks, and the witness
+  nothing at all), the disputes over the dev corpus against a declared list,
+  empty, and planted controls that show the witness catching a shared reader
+  that misreads.
+
 ### What the Pilot's model sees
 
 `web/src/llm/__tests__/modelVisible.test.ts` writes everything NEBULA Pilot's
