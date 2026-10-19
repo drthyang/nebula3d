@@ -708,5 +708,29 @@
    "on": "2026-10-19",
    "option": "the prompts state what the checks judge; the four checks name all five stages and the UB"
   }
+ },
+ {
+  "source": "review",
+  "ref": "P1.7",
+  "at": "d8be858",
+  "kind": "bug",
+  "evidence": "The chat sends earlier turns as their text alone (web/src/llm/components/ChatView.tsx:191, each turn mapped to its role and content), so a skill read with read_skill in an earlier turn is not in the next reply's messages. Yet each reply's read set was seeded from every earlier turn's read_skill steps (ChatView.tsx:196-197 for a question, and :219 for a stage review, which sends no earlier turn at all; web/src/llm/skills.ts:240-248), the agent loop copied it into the reply (web/src/llm/agent.ts:233), and the gate read it (web/src/llm/tools/index.ts:2016). So in a later turn a stage's settings changed, and the stage was tuned, without its method in the model's context, past a gate whose refusal says the call waits until the skill \"has been read in this conversation\" (skills.ts:235).",
+  "proposed_fix": "The gate opens only within the reply: a skill counts as read if it was read in this reply, or if its whole text is in the messages the reply was sent. The chat's next reply, a question or a stage review, starts with none read (replyContext, web/src/llm/session.ts), and the reply's first history adds those its opening messages carry (startReply, web/src/llm/tools/round.ts; skillsCarriedIn, skills.ts). The earlier turns' reads go with the context as skillsReadEarlier, which opens no gate and words the refusal: the gate's own, asking for the skill again and saying its text is not in this reply. With none read earlier the refusal is the existing one, word for word; with the skills off (arm C) there is still no gate.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "cb40db2",
+  "tests": [
+   "web/src/llm/__tests__/skillGate.test.ts (through the chat's path: turn 1 reads reduction-qc and changes a flatten setting, which passes; turn 2's flatten change, without the read, is refused with the read-again text, and passes once the skill is read in turn 2; a single reply that reads and then changes is unchanged; a skill whose text the messages carry counts; a stage review asks for the skill again)",
+   "web/src/llm/__tests__/skills.test.ts (the refusal's wording, first and again; skillsCarriedIn; no gate with the skills off, a skill read earlier included)",
+   "web/src/llm/__tests__/round.test.ts (startReply counts the skills the opening messages carry, never the earlier turns' reads)",
+   "web/src/llm/__tests__/armC.test.ts (arm C's text holds neither refusal)",
+   "web/src/llm/__tests__/modelVisible.test.ts (4-tool-results.md gains the read-again refusal; nothing else changes)"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 1.7). Implemented in cb40db2 (the gate) and 735e82d (the read-again refusal in the model-visible snapshot). Validation runs are one reply each, so the arms are unaffected: the token budget, the validation tests and the arms' model-visible text are unchanged. Left for a decision: the system prompt's skills section and read_skill's description still say a skill is read \"in this conversation\"; rewording them would change arm B's prompt.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "the gate opens only within the reply; the refusal asks for the skill again"
+  }
  }
 ]
