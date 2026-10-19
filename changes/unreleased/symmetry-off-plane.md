@@ -13,7 +13,8 @@
   why. The ΔPDF is centrosymmetric by construction, so an operation and its
   product with the inversion give the same number: they are one entry ("two-fold
   ∥ c / mirror ⊥ c"), and m-3m's 47 operations read as 24. Each entry reports
-  `rms_difference` (its worst section's), `pairs`, `tested_on` and `moves_c`.
+  `rms_difference` (its worst section's), `pairs`, and `tested_on`, the
+  sections it was compared on, those off the x–y plane included.
   The limit stays 1e-3, and an operation that moves c is judged as one that
   keeps it. Only the declared group is judged: a lattice operation the declared
   group lacks (the mirrors ⊥ a and ⊥ b of data symmetrised with 4/m on a

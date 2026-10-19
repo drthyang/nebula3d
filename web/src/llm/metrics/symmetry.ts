@@ -141,7 +141,6 @@ export interface OperationSymmetry {
   rms_difference: number; // the worst section's RMS(v − v∘op) / RMS(v) over its pairs
   pairs: number; // over every section it was tested on
   tested_on: string; // those sections, or the points
-  moves_c: boolean; // it moves the c axis (a mirror ⊥ c, a two-fold ⊥ c, a cubic three-fold, the inversion)
 }
 
 /** An operation the sections could not test, and why. */
@@ -448,7 +447,6 @@ export function operationSymmetry(
         rms_difference: roundSig(Math.max(...units.map((u) => Math.sqrt(u.diff2 / u.val2))), 2),
         pairs: units.reduce((s, u) => s + u.pairs, 0),
         tested_on: units.map((u) => u.label).join("; "),
-        moves_c: entry.movesC,
       },
       order: entry.order,
     });
@@ -465,14 +463,14 @@ const INVERSION_KEY = keyOf(IDENTITY.map((row) => row.map((x) => -x)));
 /**
  * The entries to test: each operation with its product with the inversion,
  * where the set holds both, as one ("two-fold ∥ c / mirror ⊥ c": the rotation
- * first, tested for both; moves_c when either moves c); an operation whose
- * product is not in the set alone; and the inversion alone, its partner the
- * identity, which is not tested.
+ * first, tested for both); an operation whose product is not in the set
+ * alone; and the inversion alone, its partner the identity, which is not
+ * tested.
  */
-function entriesOf(ops: readonly Mat3[]): { test: Mat3; op: string; movesC: boolean; order: number }[] {
+function entriesOf(ops: readonly Mat3[]): { test: Mat3; op: string; order: number }[] {
   const keys = new Set(ops.map(keyOf));
   const done = new Set<string>([IDENTITY_KEY]);
-  const out: { test: Mat3; op: string; movesC: boolean; order: number }[] = [];
+  const out: { test: Mat3; op: string; order: number }[] = [];
   for (const m of ops) {
     const key = keyOf(m);
     if (done.has(key)) continue;
@@ -482,15 +480,16 @@ function entriesOf(ops: readonly Mat3[]): { test: Mat3; op: string; movesC: bool
       done.add(keyOf(partner));
       const [rotation, other] = det3(m) > 0 ? [m, partner] : [partner, m];
       const name = operationName(rotation);
-      out.push({ test: rotation, op: `${name} / ${operationName(other)}`, movesC: movesC(rotation) || movesC(other), order: displayOrder(rotation, name) });
+      out.push({ test: rotation, op: `${name} / ${operationName(other)}`, order: displayOrder(rotation, name) });
     } else {
       const name = operationName(m);
-      out.push({ test: m, op: name, movesC: movesC(m), order: displayOrder(m, name) });
+      out.push({ test: m, op: name, order: displayOrder(m, name) });
     }
   }
   return out;
 }
 
+// By kind (an entry led by a rotation about c, or by a mirror that contains c, first).
 const KINDS = ["six-fold", "four-fold", "three-fold", "two-fold", "mirror", "inversion", "-6", "-4", "-3"];
 const displayOrder = (m: Mat3, name: string): number => {
   const kind = KINDS.findIndex((k) => name.startsWith(k));

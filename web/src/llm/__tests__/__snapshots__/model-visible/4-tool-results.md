@@ -678,7 +678,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## symmetry_check {}
 
-713 characters sent.
+653 characters sent.
 
 ```json
 {
@@ -689,29 +689,25 @@ References of this skill (read one with read_skill and `reference`):
       "op": "two-fold ∥ c / mirror ⊥ c",
       "rms_difference": 0,
       "pairs": 4608,
-      "tested_on": "xz; yz",
-      "moves_c": true
+      "tested_on": "xz; yz"
     },
     {
       "op": "two-fold ∥ a / mirror ⊥ a",
       "rms_difference": 0,
       "pairs": 4608,
-      "tested_on": "xy; xz",
-      "moves_c": true
+      "tested_on": "xy; xz"
     },
     {
       "op": "two-fold ∥ b / mirror ⊥ b",
       "rms_difference": 0,
       "pairs": 4608,
-      "tested_on": "xy; yz",
-      "moves_c": true
+      "tested_on": "xy; yz"
     },
     {
       "op": "inversion",
       "rms_difference": 0,
       "pairs": 7200,
-      "tested_on": "xy; xz; yz",
-      "moves_c": true
+      "tested_on": "xy; xz; yz"
     }
   ],
   "holds": ["two-fold ∥ c / mirror ⊥ c", "two-fold ∥ a / mirror ⊥ a", "two-fold ∥ b / mirror ⊥ b", "inversion"],

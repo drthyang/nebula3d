@@ -652,7 +652,7 @@ describe("symmetry_check", () => {
     expect(out.operations).toBe("the cell's in-plane ones (hexagonal): no operations declared");
     expect(out.symmetry_declared).toBe(true);
     expect(out.holds).toEqual(["two-fold ∥ c"]);
-    expect(out.ops.map((o: { moves_c: boolean }) => o.moves_c)).toEqual([false, false, false, false]);
+    expect(out.ops.map((o: { op: string }) => o.op)).toEqual(["six-fold ∥ c (60°)", "three-fold ∥ c (120°)", "two-fold ∥ c", "mirror ⊥ [1-10]"]);
     expect(r.outcomes).toMatchObject([{ check: "symmetry", kind: "attention", reasons: ["symmetry broken"], words: out.verdict }]);
     expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xy", 0);
     expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xz", 0);
@@ -666,9 +666,8 @@ describe("symmetry_check", () => {
     expect(out.operations).toBe("declared (6/mmm): 23 besides the identity");
     // Each of the eleven rotations with its product with the inversion, and the inversion.
     expect(out.ops).toHaveLength(12);
-    expect(out.ops.map((o: { op: string }) => o.op)).toContain("two-fold ∥ c / mirror ⊥ c");
-    // Each holds a member that moves c.
-    expect(out.ops.every((o: { moves_c: boolean }) => o.moves_c)).toBe(true);
+    // The mirror ⊥ c, with the two-fold ∥ c, on the sections it maps onto themselves, off the x–y plane.
+    expect(out.ops.find((o: { op: string }) => o.op === "two-fold ∥ c / mirror ⊥ c")).toMatchObject({ tested_on: "xz; yz" });
   });
 
   it("does not call an asymmetry a break when the file declares no symmetry: the data were not symmetrised", async () => {

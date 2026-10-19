@@ -207,8 +207,10 @@ describe("known answers", () => {
       expect(o.pairs, o.op).toBeGreaterThan(1000);
       expect(o.tested_on, o.op).not.toMatch(/^points/);
     }
-    // Each pair holds a member that moves c: the inversion's product of an operation that keeps c sends c to −c.
-    expect(out.ops.every((o) => o.moves_c)).toBe(true);
+    // No moves_c: every pair holds a member that moves c (the inversion's
+    // product of an operation that keeps c sends c to −c), so tested_on says
+    // where each was tested instead.
+    expect(out.ops.some((o) => "moves_c" in o)).toBe(false);
     const by = byName(out.ops);
     // Each entry on the sections it maps onto one another. On the x–y section
     // through the origin the two-fold ∥ c sends every voxel to its inverse: it is tested off it.
@@ -234,7 +236,7 @@ describe("known answers", () => {
     serve(CUBIC, features, { symmetry: "m-3m", ops: DECLARED["m-3m"] });
     const { out, outcome } = await check();
     const by = byName(out.ops);
-    expect(by[MIRROR_C]).toMatchObject({ moves_c: true, tested_on: "xz; yz" });
+    expect(by[MIRROR_C]).toMatchObject({ tested_on: "xz; yz" });
     expect(by[MIRROR_C].rms_difference).toBeGreaterThan(0.05);
     // The ΔPDF is centrosymmetric, so the mirror ⊥ c is the two-fold ∥ c times
     // the inversion: the two break together, by as much (each member alone
@@ -255,7 +257,7 @@ describe("known answers", () => {
     expect(intact.out.ops.map((o) => o.op).sort()).toEqual(entriesOf(DECLARED["6/mmm"]).sort());
     expect(intact.out.ops).toHaveLength(12);
     for (const o of intact.out.ops) expect(o.rms_difference, o.op).toBeLessThan(1e-6);
-    expect(byName(intact.out.ops)[MIRROR_C]).toMatchObject({ moves_c: true, tested_on: "xz; yz" });
+    expect(byName(intact.out.ops)[MIRROR_C]).toMatchObject({ tested_on: "xz; yz" });
     expect(intact.outcome).toMatchObject({ kind: "pass" });
     expectMembersAgree(sectionsOf(HEXAGONAL, hexagonalBase()), DECLARED["6/mmm"]);
 

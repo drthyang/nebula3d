@@ -172,13 +172,16 @@ describe("dev-control symmetrised over m-3m: every declared operation holds", ()
     const c = devCase("dev-control", { symmetrise: "m-3m" });
     for (const z of [0, 1]) {
       const r = ran(await c.tool("symmetry_check", { z }), "symmetry_check");
-      const ops = r.result.ops as { op: string; rms_difference: number; moves_c: boolean; tested_on: string }[];
+      const ops = r.result.ops as { op: string; rms_difference: number; tested_on: string }[];
       const worst = ops.reduce((w, o) => (o.rms_difference > w.rms_difference ? o : w));
       const [outcome] = outcomeOf(r);
       const msg = evidence(c, { z, operations: r.result.operations, sections: r.result.sections, worst, not_tested: r.result.not_tested ?? [], outcome });
       expect(r.result.operations, msg).toBe("declared (m-3m): 47 besides the identity");
       expect(ops, msg).toHaveLength(24);
-      expect(ops.every((o) => o.moves_c), msg).toBe(true);
+      // The three-folds, which move c, on the x–z and y–z sections they map.
+      const threeFolds = ops.filter((o) => o.op.startsWith("three-fold"));
+      expect(threeFolds, msg).toHaveLength(8);
+      expect(threeFolds.every((o) => o.tested_on.includes("xz")), msg).toBe(true);
       expect(r.result.not_tested, msg).toBeUndefined();
       expect(worst.rms_difference, msg).toBeLessThanOrEqual(SYMMETRY_HOLDS);
       expect(outcome, msg).toMatchObject({ kind: "pass", reasons: [] });
