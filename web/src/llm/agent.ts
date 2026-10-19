@@ -252,11 +252,13 @@ export async function runAgent({
   // The calls that ran since the state last changed, by key → their step number.
   const called = new Map<string, number>();
   // This reply's tool results in the conversation, oldest first: where each
-  // sits and which call made it.
-  const results: { index: number; key: string }[] = [];
-  // Shorten all but the newest `keep` results; a shortened call may run again.
+  // sits, which call made it, and its step.
+  const results: { index: number; key: string; id: string }[] = [];
+  // Shorten all but the newest `keep` results in the conversation, the model's
+  // copies: each step keeps its result as it was sent (`seen`), and is marked
+  // `shortened`. A shortened call may run again.
   const compactOlder = (keep: number): boolean => {
-    let changed = false;
+    const shortened = new Set<string>();
     for (const r of results.slice(0, Math.max(0, results.length - keep))) {
       const m = convo[r.index];
       if (typeof m.content !== "string") continue;
@@ -264,9 +266,10 @@ export async function runAgent({
       if (short === m.content) continue;
       convo[r.index] = { ...m, content: short };
       called.delete(r.key);
-      changed = true;
+      shortened.add(r.id);
     }
-    return changed;
+    if (shortened.size) steps = steps.map((s) => (shortened.has(s.id) ? { ...s, shortened: true } : s));
+    return shortened.size > 0;
   };
   const windowKey = `${settings.baseUrl}|${settings.model}`;
   // A local model is offered the reading tools and those its question is
@@ -464,7 +467,7 @@ export async function runAgent({
       }
       // The console follows what the model looked at, step by step.
       if (run.ok && run.view && settings.followViews) openView(run.view);
-      results.push({ index: convo.length, key });
+      results.push({ index: convo.length, key, id });
       convo.push({ role: "tool", tool_call_id: call.id, content: run.text });
     }
     barren = fresh ? 0 : barren + 1;

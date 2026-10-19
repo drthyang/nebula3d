@@ -484,6 +484,12 @@ describe("runAgent", () => {
       // 1.199 is only in the whole first series: the checks read it there.
       expect(r.content).toBe("The first series reaches 1.199.");
       expect(r.note).toBeUndefined();
+      // The model's copy was shortened; what the model read when the call
+      // returned was not: `seen` stays the text sent then, and the step says so.
+      expect(r.steps.map((s) => s.shortened)).toEqual([true, undefined, undefined, undefined]);
+      expect(readings.seen(r.steps[0])).toBe(toolTexts(seen[1].messages)[0]);
+      expect(readings.seen(r.steps[0])).not.toBe(sent[0]);
+      expect(readings.found(r.steps[0])).toMatchObject({ peak: 1, series: expect.arrayContaining([1.199]) });
     });
 
     it("lets a shortened call run again, for the whole result", async () => {
@@ -526,6 +532,8 @@ describe("runAgent", () => {
       });
       expect(seen).toHaveLength(3);
       expect(toolTexts(seen[2].messages).map(isCompacted)).toEqual([true, false]);
+      expect(r.steps.map((s) => s.shortened)).toEqual([true, undefined]);
+      expect(readings.seen(r.steps[0])).toBe(toolTexts(seen[1].messages)[0]);
       expect(r.content).toBe("Done.");
     });
   });
