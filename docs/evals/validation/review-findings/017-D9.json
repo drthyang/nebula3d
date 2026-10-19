@@ -1,0 +1,22 @@
+{
+ "source": "review",
+ "ref": "D9",
+ "at": "f807320",
+ "kind": "bug",
+ "evidence": "The report judges its ΔPDF card from coverage and symmetry when no ΔPDF evaluation ran (report.ts:353); the chat says not judged.",
+ "proposed_fix": "The card is \"not judged\" without a ΔPDF evaluation.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "20576a5",
+ "tests": [
+  "web/src/llm/__tests__/verdictPins.test.ts (D9, unified (2.4.9): without a ΔPDF evaluation the report's ΔPDF card is not judged, as {{achieved}} says not measured; a check on it that needs attention still counts)",
+  "web/src/llm/__tests__/verdictPins.test.ts (the chat's achieved and the report's, on the same measurements: agree on every measurement)",
+  "web/src/llm/__tests__/report.test.ts (leaves the 3D-ΔPDF's card not judged without a ΔPDF evaluation, unless the coverage or the symmetry needs attention (D9, 2.4.9))"
+ ],
+ "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.9, after the check-verdict module (2.3). Implemented by plan row 2.4.9. The coverage and the symmetry the card reads still make it need attention, so the report's goal stays the chat's.",
+ "decision": {
+  "by": "the user",
+  "on": "2026-10-19",
+  "option": "yes"
+ }
+}
