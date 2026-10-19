@@ -21,8 +21,9 @@
   vector, so "turned by 0.002° about [1 1 0]" is no alarm. Over the dev corpus
   (the canned dev answers, the scripted replays and the scenario records' 121
   answers) 31 grades moved, each a false credit gone: a plan to check a
-  misorientation was credited as reporting one, and a 4 read out of "4,190",
-  "1/4" or a list's "4." was credited as the ring at 4.05 Å⁻¹. Every
+  misorientation was credited as reporting one, and a 4 read out of a count
+  with a thousands separator, a fraction (1/4) or a list's "4." was credited
+  as the ring at 4.05 Å⁻¹. Every
   scenario record re-graded with it gives the same grades.
 - **Validation: a witness checks the graders' reading.** Every text check is
   decided again on an independent minimal parse with the same rules, written

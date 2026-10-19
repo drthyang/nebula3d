@@ -178,7 +178,7 @@ describe("the witness's reading", () => {
   });
 
   it("reads no number glued to a letter, a power of ten as one number, and a thousands separator as none", () => {
-    expect(witness("On hk0 the 3D-ΔPDF, a 201x201 grid, 10⁻³ and 4,190 peaks.").numbers).toEqual([0.001, 4190]);
+    expect(witness("On hk0 the 3D-ΔPDF, a 201x201 grid, 10⁻³ and 4,321 peaks.").numbers).toEqual([0.001, 4321]);
   });
 
   it("reads a span's angles from its degrees, else from its bare numbers outside brackets", () => {

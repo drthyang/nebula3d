@@ -476,7 +476,7 @@ through one reader (`web/src/llm/answerText/`; [development.md](development.md#a
   fault, but no hedge excuses an alarm: "if the UB is off by 0.4°" on a case
   without a turned UB is charged;
 - the numbers are read as the app reads them (a number inside a name such as
-  hk0 is none; 4,190 is one number), a percentage as written; a clause's
+  hk0 is none; 12,345 is one number), a percentage as written; a clause's
   angles are its numbers in degrees, or where it writes none, its bare numbers
   outside a vector, so an axis written as [1 1 0] is no turn.
 

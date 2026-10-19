@@ -316,7 +316,7 @@ describe("grading what a run reported", () => {
   it("reads the numbers as the app does: a count, a fraction or a list's number is not a ring's |Q|", () => {
     const rings = caseNamed("dev-rings")!;
     const ringAt405 = detectionChecks(rings).find((k) => k.name === "writes the ring at 4.05 Å⁻¹")!;
-    for (const said of ["The punch kept 4,190 broad maxima.", "Each sits within 1/4 of the node spacing.", "Steps:\n4. Check the symmetry."]) {
+    for (const said of ["The punch kept 4,321 broad maxima.", "Each sits within 1/4 of the node spacing.", "Steps:\n4. Check the symmetry."]) {
       expect(ringAt405.grade(run(said)).pass, said).toBe(false);
     }
     expect(ringAt405.grade(run("A second ring sits at 4.05 Å⁻¹.")).pass).toBe(true);
