@@ -1,0 +1,22 @@
+{
+ "source": "review",
+ "ref": "Q11",
+ "at": "f807320",
+ "kind": "orchestration",
+ "evidence": "The report never runs ub_check (web/src/llm/report/collect.ts:24, :57-64), so its achieved cannot name a turned UB the way {{achieved}} does.",
+ "proposed_fix": "The report also runs ub_check.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "50cc728",
+ "tests": [
+  "web/src/llm/__tests__/reportCollect.test.ts (the report's measurement pass)",
+  "web/src/llm/__tests__/report.test.ts (names a turned UB in its goal, as {{achieved}} does, from ub_check's result (Q11, 2.4.11))",
+  "web/src/llm/__tests__/verdictPins.test.ts (the chat's achieved and the report's, on the same measurements: name the same data problems, the report's run of ub_check included (Q11, 2.4.11))"
+ ],
+ "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.11, after the check-verdict module (2.3). Implemented by plan row 2.4.11. The report's goal names every data problem as {{achieved}} does (the counts' edge, the UB's, the HKL origin's); ub_check and grain_check run at once in the report, so it names what each found. ub_check is reportable: a reply that ran only ub_check gets a report.",
+ "decision": {
+  "by": "the user",
+  "on": "2026-10-19",
+  "option": "yes"
+ }
+}

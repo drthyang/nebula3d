@@ -1,0 +1,22 @@
+{
+ "source": "review",
+ "ref": "D17",
+ "at": "76a691c",
+ "kind": "bug",
+ "evidence": "The agent loop answers a repeated call with a pointer to the earlier result (already_called, web/src/llm/agent.ts:422). The word-reading adapter reads that pointer as a result of its tool that holds nothing (web/src/llm/verdicts/recorded.ts:127, :139), and {{achieved}} reads each check's newest result (web/src/llm/verdicts/readers.ts:231, :267): a qmax_coverage \"too far\" followed by its repeat no longer needs attention, and a repeated ub_check, holding no angle, reads as a right UB (web/src/llm/verdicts/rules.ts:454).",
+ "proposed_fix": "A repeated call's pointer holds no outcome of its own; both readers read the result it points to.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "382fde1",
+ "tests": [
+  "web/src/llm/__tests__/answerChecks.test.ts (keeps {{achieved}} at not met after a pointer to a too far, and the answer checks send the claim back)",
+  "web/src/llm/__tests__/answerChecks.test.ts (reads a repeated ub_check as the UB it points to, not as a right one)",
+  "web/src/llm/__tests__/verdictPins.test.ts (D17, unified (2.4b.1): a repeated call's pointer holds no outcome; both readers read the result it points to)"
+ ],
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-19",
+  "option": "yes"
+ }
+}

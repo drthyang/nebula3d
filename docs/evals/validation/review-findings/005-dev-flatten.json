@@ -1,0 +1,17 @@
+{
+ "source": "validation",
+ "case": "dev-flatten",
+ "run": 1,
+ "step": null,
+ "kind": "skill-gap",
+ "evidence": "reduction-qc step 6 says a rising floor wants the Q² term but not when to turn it on. assess_stage now states pedestal_left (true on this case, trend 0.84 and span 0.84; false after the term: trend 0.29). The term is not free where there is no such background: on the clean controls it raised the scored pedestal span from 0.025 to 0.066 to 0.107.",
+ "proposed_fix": "Add to step 6: turn flattenQ2 on when assess_stage for the flatten reports pedestal_left, rerun, and read it again; leave it off otherwise.",
+ "needs_user_approval": true,
+ "arm": "sweep",
+ "status": "implemented",
+ "commit": "baca65c",
+ "tests": [
+  "web/src/llm/__tests__/skills.test.ts (says when the flatten's Q² term goes on; on validation/batch-1-skills)"
+ ],
+ "note": "Skill text, in its own PR (validation/batch-1-skills), which waits for the user's review; the skill stays a draft awaiting the user's interview. That PR also holds the skill lines findings 1, 3 and 4 touch (delta-pdf-interpretation steps 2–3 and check 4, bragg-node-audit step 7)."
+}

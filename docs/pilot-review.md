@@ -87,7 +87,7 @@ limit, tuning never writing to `processed/`) are enforced in code and tested.
 ## Findings left for the user
 
 In the schema of [evals.md](evals.md#findings), with their evidence, in
-[evals/validation/review-findings.json](evals/validation/review-findings.json),
+[evals/validation/review-findings/](evals/validation/review-findings/) (one file per finding),
 checked by a test.
 
 1. **Missing tool: the ΔPDF's strongest features.** The task and the
@@ -135,7 +135,7 @@ checked by a test.
 
 The user approved all eight. Each is implemented by one commit, with
 regression tests that pin it, and recorded as such in
-[review-findings.json](evals/validation/review-findings.json) (`status`,
+[review-findings/](evals/validation/review-findings/) (`status`,
 `commit`, `tests`, `note`). Every new criterion was derived from the physics and
 the dev cases; the test split was not read.
 
