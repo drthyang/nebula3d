@@ -328,6 +328,11 @@ afterAll(() => {
 
 // ---------------------------------------------------------------- the measures
 
+// Each case drives whole replies through the agent loop (a dozen requests, each
+// counted by the guard's estimator): about a second locally, but near vitest's
+// default 5 s on a slow CI runner. A runner's speed is not what this test pins.
+const TURN_TIMEOUT = 30_000;
+
 describe("NEBULA Pilot's worst turn against a 32k window", () => {
   it("the console: every tool, nothing shortened (Claude)", async () => {
     const run = await drive(CLAUDE, ORDERS.method);
@@ -339,7 +344,7 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     columns.push({ head: ["console (Claude)", "all tools"], b, reserve: CLAUDE_REPLY });
     expectPinned("the console's prompt", b.prompt, PINNED.console.prompt);
     expectPinned("the console's total", b.prompt + CLAUDE_REPLY, PINNED.console.total);
-  });
+  }, TURN_TIMEOUT);
 
   it("arm B on a local model: the TASK's offer, before and after the loop's compaction", async () => {
     // The tools offered for the TASK; those called all the same join them.
@@ -397,7 +402,7 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
       `Reply reserve: Claude ${n(CLAUDE_REPLY)} (anthropic.ts); a local run ${n(REPLY_RESERVE)} (REPLY_RESERVE: no cap is sent, the window plan keeps it free; ` +
         `a request is refused below MIN_REPLY ${n(MIN_REPLY)}).`,
     );
-  });
+  }, TURN_TIMEOUT);
 
   it("on LM Studio loaded with 32k: the guard shortens the results down to the newest, the skills read among them", async () => {
     model.loadedContext.mockResolvedValue({ loaded: WINDOW, max: 131_072 });
@@ -422,5 +427,5 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
         `On the last request both skills read arrive as ${n(Math.max(...bodies.map((t) => t.length)))}-character stubs; ` +
         `the reference page ${page.every(isCompacted) ? "too" : "stays whole"}.`,
     );
-  });
+  }, TURN_TIMEOUT);
 });
