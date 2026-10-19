@@ -31,7 +31,6 @@ export const TEXT_HEAD = 400;
 // most about 1.9k tokens over today's stubs once compacted: inside the 3.7k a
 // 32k window keeps past MIN_REPLY on the worst turn (tokenBudget.test.ts
 // holds it).
-export const GATES_HEADING = "## Gates";
 export const GATES_MAX = 1_200;
 const GATES_MARKER = (lines: number): string =>
   `[${lines} more line${lines === 1 ? "" : "s"} of the gates left out to save room: read the skill again for them]`;
