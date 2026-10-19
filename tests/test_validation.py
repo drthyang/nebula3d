@@ -7,6 +7,8 @@ test split stays out of everything that is tuned."""
 
 import json
 import re
+import shutil
+from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from pathlib import Path
 
@@ -15,11 +17,18 @@ import pytest
 
 from nebula3d.io.hkl_reader import save
 from nebula3d.pipeline import DeltaPdfParams, delta_pdf, write_delta_pdf_h5
-from nebula3d.validation import CASES, FAMILIES, TOLERANCES, build, case_named, cases
+from nebula3d.validation import CASES, FAMILIES, TOLERANCES, Case, build, case_named, cases
 from nebula3d.validation.__main__ import main, manifest
 from nebula3d.validation.arm_a import run_case_a
 from nebula3d.validation.arm_d import run_case_d
-from nebula3d.validation.cases import orbit, planted_intensity
+from nebula3d.validation.cases import (
+    Crystal,
+    Planted,
+    answer_truth,
+    label_of,
+    orbit,
+    planted_intensity,
+)
 from nebula3d.validation.report import run_outcome, summarize_record
 from nebula3d.validation.score import resolved_features, score_outputs
 
@@ -149,33 +158,287 @@ def test_the_test_split_needs_report(tmp_path):
         main(["make", "--split", "test", "--root", str(tmp_path)])
 
 
-# What may be tuned: the tools, the skills, the prompts and the pipeline. None
-# may name a held-out case; the validation harness and its docs alone do.
-TUNED = [
-    (
-        "web/src/llm",
-        re.compile(r"evals/(validation|findings)[^/]*\.ts$|evals/fixtures/validation-cases\.json$"),
-    ),
-    (".claude/skills", None),
-    ("src/nebula3d", re.compile(r"/validation/")),
-    ("docs/algorithms", None),
+# ---------------------------------------------------------------- the held-out scan
+#
+# What may be tuned is everything a model, a skill, a prompt or the pipeline is
+# built from, with their tests, examples and docs. None may name a held-out
+# case; where the cases are defined and the validation's records alone do.
+
+#: What the scan reads: globs from the repo root, a folder read whole.
+HOLDOUT_SCANNED = (
+    "web/src",
+    "web/scripts",
+    "src",
+    "tests",
+    "examples",
+    "scripts",
+    "docs",
+    ".claude/skills",
+    "*.md",
+)
+#: Where a test case may be named: where the cases are defined, the validation's
+#: records and tables, and the manifest the web harness grades answers against
+#: (validation.ts reads every case from it, by design).
+HOLDOUT_ALLOWED = re.compile(
+    r"^src/nebula3d/validation/"
+    r"|^docs/evals/validation/"
+    r"|^web/src/llm/evals/fixtures/validation-cases\.json$"
+)
+#: The doc sections that report the test split's results, by their heading.
+HOLDOUT_SECTIONS = {"docs/evals.md": "### Arm A"}
+#: Never read: other people's packages, and what tools generate from the files
+#: that are read (bytecode, caches, the metadata ``pip install -e`` writes into
+#: src/). A test's __snapshots__ are read: a test fixes what they hold.
+HOLDOUT_SKIP_DIRS = {"node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+#: Binary formats, compressed or encoded, whose numbers are not text. The
+#: manual's .docx and .pdf are built from docs/*.md, which are read.
+HOLDOUT_BINARY = {
+    ".gif", ".png", ".jpg", ".jpeg", ".webp", ".ico", ".pdf", ".docx", ".pptx", ".xlsx",
+    ".zip", ".gz", ".h5", ".nxs", ".npy", ".npz", ".pyc", ".whl", ".woff", ".woff2", ".ttf",
+}  # fmt: skip
+
+_NUMBER = r"[-−]?(?:\d+\.?\d*|\.\d+)"
+# More numbers that one unit closes: "a and b Å⁻¹", "a, b, c°".
+_THEN = rf"(?:\s*(?:,|;|&|\band\b|\bor\b|\bto\b|–)\s*{_NUMBER})*"
+# What may stand between a key and its number: "q: 3", '"q": [1, 3]', "|Q| = 3".
+_KEYED = rf"[\s\"'`:=≈~|(\[{{]*(?:{_NUMBER}\s*,\s*)*"
+_ANG = r"(?:[ÅÅ]|(?i:[aå]ngstr[oö]ms?))"  # Å: U+00C5 or U+212B
+_DEG = r"\s*(?:°|deg(?:rees?)?\b)"
+_PER_ANG = (
+    rf"\s*(?:(?:{_ANG}|A)\s*(?:⁻¹|\^\s*\{{?\s*[-−]\s*1\s*\}}?|[-−]1\b|\*\*\s*\(?[-−]1\)?)"
+    rf"|(?:1\s*)?/\s*(?:{_ANG}|A\b)|(?i:inverse|reciprocal)\s+{_ANG})"
+)
+_LEN_ANG = rf"\s*{_ANG}(?!\s*(?:⁻|\^|[-−]1|\*\*))"
+_TIMES_Q2 = r"\s*[·*×]?\s*\|?Q\|?\s*(?:²|\^\s*2|\*\*\s*2)"
+_SEED = r"(?i:\bseeds?|random_state|default_rng|randomstate|seedsequence)\W{0,4}"
+#: A fault's size in the truth: its name there, its kind, its unit and its keys.
+_SIZES = [
+    ("angle_deg", "a test case's UB angle", _DEG, r"(?i:angle\w*)"),
+    ("q_cut", "a test case's coverage edge", _PER_ANG, r"(?i:q_?cut|q_?max|edge)\w*"),
+    ("shell_q", "a test case's shell |Q|", _PER_ANG, r"(?i:shell\w*|\bq\b)"),
+    ("q2", "a test case's Q² background", _TIMES_Q2, r"(?i:\bq2\w*|q²|\bb\b)"),
 ]
 
 
+def _num(x: float) -> str:
+    """The number *x* however it is written (0.5, .5, 0.50 or 1/2; 1 or 1.0), and
+    never as part of a longer one."""
+    x = float(x)
+    whole, _, frac = f"{abs(x):.10f}".rstrip("0").partition(".")
+    if frac:
+        forms = [("0?" if whole == "0" else whole) + rf"\.{frac}0*"]
+        if (2 * abs(x)).is_integer():
+            forms.append(f"{round(2 * abs(x))}/2")
+    else:
+        forms = [rf"{whole}(?:\.0*)?"]
+    sign = "[-−]" if x < 0 else r"(?<![-−])\+?"
+    return rf"(?<![\w.]){sign}(?:{'|'.join(forms)})(?![\d/]|\.\d)"
+
+
+def _vector(v: Sequence[float]) -> str:
+    """The vector *v* written as one, in its order: (a, b, c), [a b c] or ⟨a,b,c⟩."""
+    sep = r"(?:\s*[,;]\s*|\s+)"
+    return r"[(\[⟨]\s*" + sep.join(_num(float(x)) for x in v) + r"\s*[)\]⟩]"
+
+
+def _sized(x: float, unit: str, key: str) -> str:
+    """The size *x* with its unit after it (perhaps closing a list), or after its key."""
+    return rf"{_num(x)}{_THEN}{unit}|{key}{_KEYED}{_num(x)}"
+
+
+def holdout_needles(test_cases: Sequence[Case]) -> list[tuple[str, list[re.Pattern[str]]]]:
+    """What names a test case, by kind: a file names one when it matches all of its
+    patterns. The rule is test_nothing_tuned_names_a_test_case's docstring."""
+    assert test_cases
+    out: dict[tuple[str, tuple[str, ...]], list[re.Pattern[str]]] = {}
+
+    def add(kind: str, *patterns: str) -> None:
+        out.setdefault((kind, patterns), [re.compile(p) for p in patterns])
+
+    ids = "|".join(re.escape(c.id) for c in test_cases)
+    add("a test case's id", rf"(?<![\w-])(?:{ids})(?![\w-])")
+    labels = "|".join(label_of(c) for c in test_cases)
+    add("a test case's label", rf"(?<![0-9A-Za-z])(?:{labels})(?![0-9A-Za-z])")
+    for crystal in dict.fromkeys(c.crystal for c in test_cases):
+        add("a test crystal's seed", _SEED + _num(crystal.seed))
+        add("a test crystal's planted vectors", *(_vector(p.vector) for p in crystal.planted))
+        for p in crystal.planted:
+            length = round(crystal.a * sum(x * x for x in p.vector) ** 0.5, 3)
+            key = r"(?i:distance\w*|length\w*)"
+            add("a test planted vector's length", _sized(length, _LEN_ANG, key))
+    for c in test_cases:
+        truth = answer_truth(c)
+        for name, kind, unit, key in _SIZES:
+            if name in truth:
+                add(kind, _sized(truth[name], unit, key))
+        if "ring_q" in truth:  # every ring, in the one file
+            rings = (_sized(q, _PER_ANG, r"(?i:ring\w*|q_?rings?|\"q\")") for q in truth["ring_q"])
+            add("a test case's ring positions", *rings)
+        if "offset_rlu" in truth:
+            add("a test case's origin offset", _vector(truth["offset_rlu"]))
+        if "fraction" in c.fault:
+            fraction = r"(?i:fraction)\w*" + _KEYED + _num(c.fault["fraction"])
+            add("a test case's coverage fraction", fraction)
+    return [(kind, patterns) for (kind, _), patterns in out.items()]
+
+
+def _without_section(text: str, heading: str) -> str:
+    """*text* with the section under *heading* blanked, to the next heading of its
+    level or above (a heading in a code block does not count)."""
+    level = len(heading) - len(heading.lstrip("#"))
+    out, inside, fenced = [], False, False
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        elif not fenced and re.match(rf"#{{1,{level}}} ", line):
+            inside = line.startswith(heading)
+        out.append("\n" if inside else line)
+    return "".join(out)
+
+
+def _holdout_files(root: Path) -> Iterator[tuple[str, Path]]:
+    seen: set[str] = set()
+    for entry in HOLDOUT_SCANNED:
+        for match in sorted(root.glob(entry)):
+            for path in [match] if match.is_file() else sorted(match.rglob("*")):
+                parts = path.relative_to(root).parts
+                rel = "/".join(parts)
+                if (
+                    rel in seen
+                    or not path.is_file()
+                    or path.suffix.lower() in HOLDOUT_BINARY
+                    or any(p in HOLDOUT_SKIP_DIRS or p.endswith(".egg-info") for p in parts)
+                ):
+                    continue
+                seen.add(rel)
+                yield rel, path
+
+
+def holdout_scan(root: Path, needles: list[tuple[str, list[re.Pattern[str]]]]) -> list[str]:
+    """Each file the scan reads under *root* that names a test case, as "file: kind"."""
+    hits = set()
+    for rel, path in _holdout_files(root):
+        if HOLDOUT_ALLOWED.search(rel):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if rel in HOLDOUT_SECTIONS:
+            text = _without_section(text, HOLDOUT_SECTIONS[rel])
+        hits.update(f"{rel}: {kind}" for kind, pats in needles if all(p.search(text) for p in pats))
+    return sorted(hits)
+
+
 def test_nothing_tuned_names_a_test_case():
-    ids = [c.id for c in cases("test")]
-    pattern = re.compile(r"\b(" + "|".join(re.escape(i) for i in ids) + r")\b")
-    hits = []
-    for folder, allowed in TUNED:
-        for path in (REPO / folder).rglob("*"):
-            if not path.is_file() or path.suffix not in {".ts", ".tsx", ".md", ".py", ".json"}:
-                continue
-            rel = path.relative_to(REPO).as_posix()
-            if allowed and allowed.search(rel):
-                continue
-            if pattern.search(path.read_text(errors="ignore")):
-                hits.append(rel)
-    assert hits == []
+    """No file the scan reads (HOLDOUT_SCANNED, less HOLDOUT_ALLOWED and the
+    HOLDOUT_SECTIONS) names a held-out case. A file names one when it holds, for
+    any test case:
+
+    - its id or its opaque label, as a whole token;
+    - its crystal's seed after the word seed (or random_state, default_rng): the
+      seed alone is a small number, which appears everywhere;
+    - every one of its crystal's planted vectors in the one file, each written as
+      a vector in brackets, in its order: one alone, or a symmetry image of one,
+      is an interatomic vector of rock salt that any test or doc may name;
+    - a planted vector's length to the manifest's three decimals, with its unit
+      or its key (Å, distance or length);
+    - its fault's size with its unit after it, or after its key: the UB angle (°
+      or angle), the origin offset (written as a vector), the coverage edge (Å⁻¹,
+      q_cut, edge) and fraction (fraction), every ring's |Q| (Å⁻¹ or ring) in the
+      one file, the shell's |Q| (Å⁻¹, shell or q) and the Q² background's
+      coefficient (·Q², q2 or b).
+
+    A number matches however it is written (0.5, .5, 0.50 or 1/2; 1 or 1.0), but
+    never inside a longer one, and a bare number never: a fault's size is a small
+    number that appears everywhere without its unit. Not matched at all, for that
+    reason: the cell, the UB's axis, the amplitudes, and the shell's width, lobes
+    and power. The failure names the file and the kind, never the value.
+    """
+    for doc, heading in HOLDOUT_SECTIONS.items():
+        assert re.search(rf"^{re.escape(heading)}", (REPO / doc).read_text(), re.M), doc
+    hits = holdout_scan(REPO, holdout_needles(cases("test")))
+    assert hits == [], "names a held-out test case (file: kind):\n" + "\n".join(hits)
+
+
+def test_the_holdout_scan_finds_a_planted_test_case(tmp_path):
+    # A made-up test split in a tree laid out like the repo's: the scan finds each
+    # kind where it is planted, and nothing where a case may be named, where the
+    # scan does not read, or where the number is bare or a vector stands alone.
+    crystal = Crystal(
+        a=5.25,
+        sro_amp=0.1,
+        seed=4321,
+        planted=(Planted((0.25, 1.75, 0.5), 0.1), Planted((1.25, 0.25, 0.0), -0.1)),
+    )
+    fake = [
+        Case(f"test-fake-{family}", family, "test", crystal, fault)
+        for family, fault in [
+            ("ub", {"angle_deg": 1.37, "axis": (0.0, 0.0, 1.0)}),
+            ("origin", {"offset": (0.07, -0.015, 0.0)}),
+            ("coverage", {"fraction": 0.55}),
+            ("rings", {"q": (1.91, 3.42), "amplitude": 0.5, "width": 0.025}),
+            ("shell", {"q": 2.71, "amplitude": 0.2, "width": 0.03, "lobes": "110", "power": 3}),
+            ("flatten", {"q2": 0.0123}),
+        ]
+    ]
+    ub, origin, coverage = fake[:3]
+    q_cut = answer_truth(coverage)["q_cut"]
+    length = round(crystal.a * sum(x * x for x in crystal.planted[0].vector) ** 0.5, 3)
+    named = {
+        "web/src/llm/prompts/task.md": ("Compare it with test-fake-ub.", "case's id"),
+        "web/src/llm/tools/stem.ts": (f'const stem = "{label_of(origin)}_B1";', "case's label"),
+        "src/nebula3d/rng.py": ("rng = np.random.default_rng(seed=4321)", "crystal's seed"),
+        "docs/algorithms/peaks.md": (
+            "A peak at (0.25, 1.75, 1/2), a dip at [1.25 .25 0].",
+            "crystal's planted vectors",
+        ),
+        "tests/test_pairs.py": (f"# the pair {length} Å apart", "planted vector's length"),
+        ".claude/skills/ub/SKILL.md": ("The UB is turned by 1.37°.", "case's UB angle"),
+        "examples/origin.py": ("offset = (0.070, -0.015, 0)", "case's origin offset"),
+        "scripts/edge.sh": (f"# the counts end at {q_cut} Å⁻¹", "case's coverage edge"),
+        "tests/test_cover.py": ('fault = {"fraction": .55}', "case's coverage fraction"),
+        "web/scripts/rings.mjs": ("// rings at 1.91 and 3.42 Å^-1", "case's ring positions"),
+        "README.md": ("A shell at |Q| = 2.71.", "case's shell |Q|"),
+        "docs/evals.md": (  # the Arm A section is not read; the next one is
+            "# Evals\n\n### Arm A: results\n\ntest-fake-ub\n\n## Next\n\nb = 0.0123\n",
+            "case's Q² background",
+        ),
+        "web/src/__snapshots__/run.snap": ("exports[`run`] = `test-fake-shell`;", "case's id"),
+    }
+    not_named = {
+        "src/nebula3d/validation/cases.py": "test-fake-ub",
+        "docs/evals/validation/table.md": "test-fake-ub",
+        "web/src/llm/evals/fixtures/validation-cases.json": "test-fake-ub",
+        "data/notes.md": "test-fake-ub",
+        "web/src/node_modules/pkg/index.js": "test-fake-ub",
+        "docs/media/frame.png": "test-fake-ub",
+        "tests/test_one_vector.py": "PLANTED = [((0.25, 1.75, 0.5), 1.0)]",
+        "web/src/bare.ts": "const n = [4321, 1.37, 0.55, 2.71, 0.0123];",
+        "tests/test_longer.py": "seed = 43210  # angle = 1.375, q = 2.715",
+    }
+    for rel, text in [*((r, t) for r, (t, _) in named.items()), *not_named.items()]:
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    needles = holdout_needles(fake)
+    assert {f"a test {k}" for _, k in named.values()} == {kind for kind, _ in needles}
+    expected = sorted(f"{rel}: a test {k}" for rel, (_, k) in named.items())
+    assert holdout_scan(tmp_path, needles) == expected
+
+
+def test_the_holdout_scan_finds_the_test_cases_out_of_place(tmp_path):
+    # The real test cases as the validation writes them, in the cases' module and
+    # in the web harness's manifest, copied where the scan reads: every kind is
+    # found (the seed in the module; the manifest has none). The needles are never
+    # held in a local, so a failure shows kinds, not values.
+    for src, dst in [
+        ("web/src/llm/evals/fixtures/validation-cases.json", "docs/manifest.json"),
+        ("src/nebula3d/validation/cases.py", "examples/cases.py"),
+    ]:
+        (tmp_path / dst).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO / src, tmp_path / dst)
+    hits = holdout_scan(tmp_path, holdout_needles(cases("test")))
+    kinds = {kind for kind, _ in holdout_needles(cases("test"))}
+    in_manifest = {h.split(": ", 1)[1] for h in hits if h.startswith("docs/manifest.json: ")}
+    assert in_manifest == kinds - {"a test crystal's seed"}
+    assert "examples/cases.py: a test crystal's seed" in hits
 
 
 def test_the_web_harness_reads_the_current_cases():

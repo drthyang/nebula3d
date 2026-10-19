@@ -317,8 +317,29 @@ its numbers are read once, to be reported. Four tests enforce this:
 - every command that reads the test split needs `--report`
   (`NEBULA_VALIDATION_REPORT=1` for the live runner): `test_the_test_split_needs_report`,
   `casesToRun` in `validation.test.ts`;
-- no tool, skill, prompt, algorithm page or pipeline file names a test case
-  (`test_nothing_tuned_names_a_test_case`);
+- nothing that may be tuned names a test case
+  (`test_nothing_tuned_names_a_test_case`). The scan reads `web/src`,
+  `web/scripts`, `src`, `tests`, `examples`, `scripts`, `docs`, `.claude/skills`
+  and the top-level Markdown. A case may be named only where the cases are
+  defined (`src/nebula3d/validation/`), in the validation's records
+  (`docs/evals/validation/`), in this page's *Arm A* section, which reports the
+  test results, and in the manifest the web harness grades against
+  (`fixtures/validation-cases.json`). It skips binary files, other people's
+  packages (`node_modules`) and generated files (bytecode, caches,
+  `*.egg-info`), but it reads a test's `__snapshots__`. It matches each test
+  case's id and opaque label; the test crystal's seed after the word *seed*; its
+  planted vectors only when all of them are written as vectors in one file,
+  since one alone is a common rock-salt vector; each planted vector's length in
+  Å; and each fault's size with its unit or its key: the UB angle, the origin
+  offset as a vector, the coverage edge and fraction, all the ring positions
+  together, the shell's |Q| and the Q² background. A bare number never matches,
+  so the cell, the UB's axis, the amplitudes and the shell's width, lobes and
+  power are not matched. A failure names the file and the kind of value, never
+  the value. Two controls check the scan. A made-up test split planted in a
+  temporary tree is found kind by kind and nowhere else
+  (`test_the_holdout_scan_finds_a_planted_test_case`). The real cases' module
+  and manifest, copied to a place the scan reads, are found for every kind
+  (`test_the_holdout_scan_finds_the_test_cases_out_of_place`);
 - the test crystals share no planted vector, cell or seed with the dev crystal
   (`test_dev_and_test_differ_in_crystal_and_fault`, `validation.test.ts`);
 - the one paid model runs the test split only (`validationModels.test.ts`).
