@@ -67,8 +67,9 @@ Each is described under [How it works](#how-it-works).
   going, and *Stop* cancels the one the model started.
 - **No loops.** A call repeated with the same arguments, with nothing
   changed in between, is not run again: the model is pointed at the result it
-  has. After two rounds in a row that brought nothing new, the model is asked
-  to answer with what it has, and the reply says so.
+  has. A call to a tool that acts (its `acts` fact) always runs, and the
+  readings after it run again. After two rounds in a row that brought nothing
+  new, the model is asked to answer with what it has, and the reply says so.
 - **A failing server is asked again, then explained.** A crash, a model
   unloaded, a dropped connection or a server gone quiet gets the same
   request again after a pause; what still fails ends the reply with what to
@@ -76,9 +77,12 @@ Each is described under [How it works](#how-it-works).
 - **A local model gets the tools its question needs.** All the tools'
   definitions come to about 5k tokens on every request, so a local model is
   offered the reading tools, the ones its question is about (the rings, the
-  punch, the lattice, the 3D-ΔPDF …), and the acting ones only when the
-  message asks for an action (`localTools.ts`). A tool it calls by name all
-  the same still runs and stays offered, as does one an answer check asks for.
+  punch, the lattice, the 3D-ΔPDF …), and the ones that change the settings or
+  start a run only when the message asks for an action (`localTools.ts`
+  reads the question; each tool declares the questions it is for, its
+  `offeredFor` fact, and one that declares none is offered for every
+  question). A tool it calls by name all the same still runs and stays
+  offered, as does one an answer check asks for.
   Cloud models get them all.
 - **A long reply keeps its numbers.** Once a local model's request passes
   about 24k tokens, the reply's older tool results go back to it shortened to
@@ -286,7 +290,14 @@ miss is a note.
   tuning run is on), then those its answer mentions, for 8 s after the reply.
   The cleanup, 3D-ΔPDF and Q–R views, the Bragg profile panels, the Execution
   stages and log, and the Configure stage boxes all take it. A model or server
-  that refuses tools gets the plain request and a note saying so.
+  that refuses tools gets the plain request and a note saying so. Each tool
+  declares its facts beside its definition (`tools/facts.ts`): whether it only
+  reads or acts, and on what; the verdicts it settles for the answer checks;
+  the questions a local model is offered it for; its line in the transcript;
+  the cards it lights; whether a reply that ran it gets a report; the skill it
+  waits for. The agent loop, the answer checks, the report, the transcript,
+  the highlights and the evals read them there instead of keeping their own
+  lists of tool names; the model never sees them.
   - *Reading*: `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
     `measure_dpdf_cut`, `line_profile`, `bragg_peaks`, `consistency_details`,
     `compare_datasets`, `configure_settings`, `run_log` (the last run's log).
@@ -354,15 +365,15 @@ miss is a note.
     one call (the page's Auto rule, measured on the centre sections), reports the
     robust σ, the strongest feature and what the 99.5th and 99.97th percentiles
     would give, and warns when a range the user asks for is brighter than the
-    optimum, where the FFT ripple shows.
+    optimum, where the FFT ripple shows. It acts: it sets the viewer's limit.
   - *Acting*: `update_settings` (the method choices and thresholds in
     `tune/catalog.ts`, and, when the user names them, the sample facts the
     tuner never proposes: the search's protected planes and the punch cell),
     `run_pipeline` (as the Run button: the console moves to the Execution page;
     without `from_stage` it computes what is missing, with it it recomputes from
-    that stage on), `tune_pipeline` (below), and `show_in_viewer`. Neither run
-    starts while another is going, and *Stop* cancels the one the model
-    started.
+    that stage on), `tune_pipeline` (below), and `show_in_viewer` (it acts on
+    the view, as `dpdf_contrast` does). Neither run starts while another is
+    going, and *Stop* cancels the one the model started.
 - **Report** (`report/`, `components/ReportView.tsx`) — a reply that assessed,
   tuned or ran the pipeline gets a *Report* button. The report is measured
   afresh when opened (`report/collect.ts` runs the agent's own tools:

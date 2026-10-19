@@ -13,15 +13,16 @@ import type { ChatTurn } from "../chatStore";
 import { datasetLabel, dpdfVolumeId, safe } from "../context/loadContext";
 import { isLocalUrl, providerForUrl } from "../provider/presets";
 import type { LlmSettings } from "../settings";
-import { CHAT_TOOLS, type ToolContext } from "../tools";
+import { CHAT_TOOLS, toolsWhere, type ToolContext } from "../tools";
 import { currentStageSettings, displayValue, SAMPLE_PARAMS, TUNE_STAGES, type ParamValue } from "../tune/catalog";
 import { headline } from "../tune/evaluate";
 import { useTuneStore } from "../tune/tuner";
 import { fullHalf, pngDataUrl, rasterize } from "./figures";
 import { buildReport, type Measured, type Report, type ReportFigure, type ReportTuningStage } from "./report";
 
-// The tools whose replies make a reply an analysis worth a report.
-export const REPORT_TOOLS = new Set(["assess_stage", "tune_pipeline", "run_pipeline", "texture_check", "qmax_coverage", "symmetry_check", "grain_check"]);
+// The tools whose replies make a reply an analysis worth a report: those whose
+// facts say it (`reportable`, in the registry).
+export const REPORT_TOOLS = new Set(toolsWhere((f) => f.reportable));
 export const reportable = (turn: ChatTurn): boolean =>
   turn.role === "assistant" && Boolean(turn.steps?.some((s) => REPORT_TOOLS.has(s.name) && s.status === "done"));
 

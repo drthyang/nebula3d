@@ -20,7 +20,7 @@ import { runAgent, type AgentResult } from "../agent";
 import type { ChatMessage } from "../provider/client";
 import { CHAT_TOOLS, type AgentTool } from "../tools";
 import fixture from "./fixtures/validation-dev.json";
-import { scriptedModel, SCRIPTED_URL, type ScriptTurn } from "./scripted";
+import { RUN_AS_THEY_ARE, scriptedModel, SCRIPTED_URL, type ScriptTurn } from "./scripted";
 
 const results = fixture.results as Record<string, string[]>;
 const DATASETS = fixture.datasets as Record<"control" | "flatten" | "origin", string>;
@@ -38,7 +38,7 @@ const RERUN_FROM_FLATTEN = {
 function replayed(dataset: string): AgentTool[] {
   const served = new Map<string, number>();
   return CHAT_TOOLS.map((tool) =>
-    ["read_skill", "update_settings", "configure_settings"].includes(tool.name)
+    RUN_AS_THEY_ARE.includes(tool.name)
       ? tool
       : {
           ...tool,

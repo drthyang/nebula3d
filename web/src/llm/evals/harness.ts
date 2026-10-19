@@ -16,7 +16,7 @@ import { buildChatMessages } from "../prompts/templates";
 import type { Failure } from "../recovery";
 import type { LlmSettings } from "../settings";
 import type { ComputedVerdict } from "../verdict";
-import { CHAT_TOOLS, type AgentTool } from "../tools";
+import { CHAT_TOOLS, toolsWhere, type AgentTool } from "../tools";
 
 export interface EvalRun {
   scenario: string;
@@ -60,8 +60,8 @@ export interface ScenarioResult {
   run: EvalRun;
 }
 
-/** Tools that start pipeline runs on the backend: an eval never runs them. */
-export const ACTIONS = new Set(["run_pipeline", "tune_pipeline"]);
+/** Tools that start pipeline runs on the backend (their facts' `startsRuns`): an eval never runs them. */
+export const ACTIONS = new Set(toolsWhere((f) => f.startsRuns));
 
 /**
  * *tools* with the actions stubbed: a call is recorded (and graded) but fails

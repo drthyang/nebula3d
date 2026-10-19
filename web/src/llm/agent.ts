@@ -26,7 +26,7 @@ import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, Stall
 import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
 import { planWindow } from "./provider/window";
 import type { LlmSettings } from "./settings";
-import { runToolCall, toolSpecs, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
+import { factsOf, runToolCall, toolSpecs, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
 import { openView } from "./tools/openView";
 
 export interface AgentStep {
@@ -105,9 +105,12 @@ const ANSWER_NOW = "The tool calls are bringing nothing new. Answer now from the
 export const SOFT_BUDGET = 24_000;
 export const KEEP_FULL = 3;
 
-// Calls after which the same reading may differ: they change the settings, the
-// files on disk, or what the console shows.
-const CHANGES_STATE = new Set(["update_settings", "run_pipeline", "tune_pipeline", "show_in_viewer"]);
+// Calls after which the same reading may differ: those of a tool that acts (its
+// facts' `acts`, tools/facts.ts), which change the settings, the files on disk,
+// or what the console shows (dpdf_contrast sets the ΔPDF viewer's colour
+// limit). One of these runs every time it is called, an identical call
+// included: what it set is what the console now shows.
+const changesState = (name: string): boolean => factsOf(name).acts !== null;
 
 const canonical = (v: unknown): unknown =>
   Array.isArray(v)
@@ -438,7 +441,7 @@ export async function runAgent({
       if (run.ok) {
         offer(call.function.name);
         fresh += 1;
-        if (CHANGES_STATE.has(call.function.name)) called.clear();
+        if (changesState(call.function.name)) called.clear();
         else called.set(key, steps.length);
       }
       // The console follows what the model looked at, step by step.

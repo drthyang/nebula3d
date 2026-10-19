@@ -1,11 +1,13 @@
-// Which tool results still describe the outputs on disk. run_pipeline
-// recomputes stages and leaves the rest as they were (its result says which:
-// "computed" or "reused"), so a measurement taken before it is evidence for a
-// stage it reused and stale for one it computed. The answer checks
-// (answerChecks.ts) and the computed verdict (verdict.ts) count a stage's
-// measurement only when it came after that stage was last computed.
+// Which tool results still describe the outputs on disk. A run (a tool whose
+// facts say it changes the outputs: run_pipeline) recomputes stages and leaves
+// the rest as they were (its result says which: "computed" or "reused"), so a
+// measurement taken before it is evidence for a stage it reused and stale for
+// one it computed. The answer checks (answerChecks.ts) and the computed verdict
+// (verdict.ts) count a stage's measurement only when it came after that stage
+// was last computed.
 
 import type { AgentStep } from "./agent";
+import { factsOf } from "./tools";
 
 export const PIPELINE_STAGES = ["rings", "punch", "backfill", "flatten", "pdf"] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
@@ -14,7 +16,7 @@ export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 export function recomputedAt(steps: readonly AgentStep[]): Record<PipelineStage, number> {
   const at = Object.fromEntries(PIPELINE_STAGES.map((s) => [s, -1])) as Record<PipelineStage, number>;
   steps.forEach((step, i) => {
-    if (step.name !== "run_pipeline" || step.status !== "done") return;
+    if (!factsOf(step.name).invalidates.includes("outputs") || step.status !== "done") return;
     let stages: Record<string, unknown> | null = null;
     try {
       const r = JSON.parse(step.result ?? "") as { stages?: Record<string, unknown> };

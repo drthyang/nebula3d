@@ -1,8 +1,10 @@
-// The review's sweep (docs/pilot-review.md): every reading tool on every dev
-// case of a served validation root, with no model, written to one JSON file a
-// reviewer compares before and after a change to the tools. The dev split only:
-// a dataset of a test case is refused. Skipped unless NEBULA_VALIDATION_SWEEP
-// names the output file:
+// The review's sweep (docs/pilot-review.md): the measuring tools a validation
+// run's task needs (dpdf_contrast among them, though it also acts: it sets the
+// ΔPDF viewer's limit) on every dev case of a served validation root, with no
+// model, written to one JSON file a reviewer compares before and after a change
+// to the tools. The dev split only: a dataset of a test case is refused.
+// Skipped unless NEBULA_VALIDATION_SWEEP names the output file (the calls'
+// names are held to the registry always):
 //
 //   NEBULA_VALIDATION_SWEEP=/tmp/sweep.json NEBULA_EVAL_API=http://127.0.0.1:8011 \
 //     npx vitest run src/llm/evals/validationSweep.test.ts
@@ -21,7 +23,7 @@ import { caseOfDataset } from "./validation";
 
 const out = env("NEBULA_VALIDATION_SWEEP");
 
-/** The calls, in order: every reading tool a validation run's task needs. */
+/** The calls, in order: every measuring tool a validation run's task needs. */
 export const SWEEP_CALLS: { name: string; args: Record<string, unknown> }[] = [
   ...["rings", "punch", "backfill", "flatten", "pdf"].map((stage) => ({ name: "assess_stage", args: { stage } })),
   { name: "texture_check", args: {} },
@@ -33,8 +35,14 @@ export const SWEEP_CALLS: { name: string; args: Record<string, unknown> }[] = [
   { name: "dpdf_peaks", args: {} },
 ];
 
+describe("the sweep's calls", () => {
+  it("name tools the registry holds", () => {
+    for (const call of SWEEP_CALLS) expect(CHAT_TOOLS.map((t) => t.name), call.name).toContain(call.name);
+  });
+});
+
 describe.skipIf(!out)("the dev sweep", () => {
-  it("runs every reading tool on every dev dataset", async () => {
+  it("runs the measuring tools on every dev dataset", async () => {
     useBackend();
     const datasets = await fetchDatasets();
     const rows: Record<string, unknown>[] = [];

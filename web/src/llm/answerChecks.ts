@@ -27,13 +27,16 @@ import type { AgentStep } from "./agent";
 import { current, recomputedAt, type PipelineStage } from "./evidence";
 import { fillReferences } from "./references";
 import { stageCheck, VERDICT_LABEL } from "./report/report";
+import { factsOf } from "./tools";
+import type { VerdictTopic } from "./tools/facts";
 import { computedVerdict, type ComputedVerdict } from "./verdict";
 
+// The tools that settle a topic declare it (their facts' `settles`, in the
+// registry); `evidence` names one of them, as the model is told.
 export interface Topic {
-  id: string;
+  id: VerdictTopic;
   label: string; // what the verdict is about, as the note says it
   evidence: string; // the tool that settles it, as the model is told
-  settles: (step: AgentStep) => boolean;
   subject: RegExp;
   verdict?: RegExp; // the words that make a sentence a verdict on it, where VERDICT is too broad
   // The stage whose outputs the evidence reads: a run that recomputes it makes
@@ -41,16 +44,15 @@ export interface Topic {
   stage: PipelineStage | null;
 }
 
-const stageIs = (step: AgentStep, ...stages: string[]): boolean =>
-  step.name === "assess_stage" && (step.args.stage === undefined || ["all", ...stages].includes(String(step.args.stage)));
+/** Whether the step is evidence on the topic: its tool settles it, with these arguments. */
+const settles = (step: AgentStep, topic: VerdictTopic): boolean => factsOf(step.name).settles(step.args).includes(topic);
 
 export const TOPICS: readonly Topic[] = [
   {
     id: "rings",
     label: "the ring removal",
-    evidence: "assess_stage with stage rings",
     // A ring is judged in 3D (assess_stage); a radial profile shows a bump on one plane only.
-    settles: (s) => stageIs(s, "rings"),
+    evidence: "assess_stage with stage rings",
     subject: /\b(powder[- ]?rings?|rings?|ring[- ]removal)\b/i,
     stage: "rings",
   },
@@ -58,7 +60,6 @@ export const TOPICS: readonly Topic[] = [
     id: "punch",
     label: "the Bragg punch",
     evidence: "assess_stage with stage punch",
-    settles: (s) => stageIs(s, "punch"),
     // The peaks' offset from their nodes is the UB's verdict, not the punch's.
     subject: /^(?!.*\b(UB|ub_check|grain_check|offsets?|orientation|rotation)\b)(?=.*\b(bragg (peaks?|punch|nodes?)|punch(ed|ing)?|(?<!off-)lattice peaks?|leftover peaks?|missed peaks?)\b)/is,
     stage: "punch",
@@ -67,7 +68,6 @@ export const TOPICS: readonly Topic[] = [
     id: "backfill",
     label: "the backfill",
     evidence: "texture_check, or assess_stage with stage backfill",
-    settles: (s) => s.name === "texture_check" || stageIs(s, "backfill"),
     subject: /\b(backfill(ed|ing)?|fill bias|texture)\b/i,
     stage: "backfill",
   },
@@ -75,7 +75,6 @@ export const TOPICS: readonly Topic[] = [
     id: "flatten",
     label: "the flatten",
     evidence: "assess_stage with stage flatten",
-    settles: (s) => stageIs(s, "flatten"),
     subject: /\b(flatten(ed|ing)?|floors?|pedestal)\b/i,
     stage: "flatten",
   },
@@ -83,7 +82,6 @@ export const TOPICS: readonly Topic[] = [
     id: "coverage",
     label: "the ΔPDF window against the coverage",
     evidence: "qmax_coverage",
-    settles: (s) => s.name === "qmax_coverage",
     subject: /\b(q[ _-]?max|coverage|unmeasured)\b/i,
     stage: "pdf",
   },
@@ -91,7 +89,6 @@ export const TOPICS: readonly Topic[] = [
     id: "symmetry",
     label: "the ΔPDF's symmetry",
     evidence: "symmetry_check",
-    settles: (s) => s.name === "symmetry_check",
     // A verdict on the ΔPDF itself; "a separable window breaks the six-fold
     // symmetry" is about a setting, not this run.
     subject: /^(?=.*\b(symmetr(y|ic)|six-?fold|6-?fold|three-?fold|3-?fold)\b)(?=.*(Δ\s?PDF|delta-?pdf|section)).*/is,
@@ -101,7 +98,6 @@ export const TOPICS: readonly Topic[] = [
     id: "grain",
     label: "a second grain",
     evidence: "grain_check",
-    settles: (s) => s.name === "grain_check",
     subject: /\b(second grains?|grains?|twin(s|ned|ning)?)\b/i,
     stage: "punch",
   },
@@ -109,7 +105,6 @@ export const TOPICS: readonly Topic[] = [
     id: "pdf",
     label: "the 3D-ΔPDF",
     evidence: "assess_stage with stage pdf",
-    settles: (s) => stageIs(s, "pdf"),
     // A verdict on the stage as a whole; its symmetry and its coverage are
     // their own topics, and a feature the ΔPDF shows is no verdict.
     subject: /^(?!.*\b(symmetr(y|ic)|six-?fold|three-?fold|coverage|unmeasured)\b)(?=.*(Δ\s?PDF|delta-?pdf)).*/is,
@@ -120,8 +115,6 @@ export const TOPICS: readonly Topic[] = [
     id: "ub",
     label: "the UB",
     evidence: "ub_check",
-    // grain_check measures the Bragg peaks' offset from their nodes too.
-    settles: (s) => s.name === "ub_check" || s.name === "grain_check",
     subject: /\bUB\b|\borientation matrix\b/,
     stage: null,
   },
@@ -129,7 +122,6 @@ export const TOPICS: readonly Topic[] = [
     id: "origin",
     label: "the HKL origin",
     evidence: "ub_check",
-    settles: (s) => s.name === "ub_check",
     subject: /\borigin\b/i,
     // "The origin is shifted", not "the origin's peak is cut off" (the ΔPDF's origin).
     verdict: /\b(shift\w*|offset|displaced|moved)\b|\b(is|was|looks|seems)\s+(off|wrong|right|correct|fine)\b/i,
@@ -139,8 +131,6 @@ export const TOPICS: readonly Topic[] = [
     id: "features",
     label: "the 3D-ΔPDF's pair correlations",
     evidence: "dpdf_peaks",
-    // The whole volume's extrema, or a measured section or line through the ΔPDF.
-    settles: (s) => s.name === "dpdf_peaks" || s.name === "measure_dpdf_cut" || (s.name === "line_profile" && s.args.stage === "delta_pdf"),
     // Not the origin's self-correlation, which is no pair correlation.
     subject: /\b(pair[- ]correlations?|(?<!self-)correlations?|(positive|negative) (features?|peaks?|lobes?))\b/i,
     // A correlation named with a vector or a sign.
@@ -213,7 +203,7 @@ export function evidenceGaps(text: string, steps: readonly AgentStep[]): { missi
   const stale: Topic[] = [];
   for (const t of TOPICS) {
     if (!claimed.has(t.id)) continue;
-    const ran = steps.map((s, i) => [s, i] as const).filter(([s]) => s.status === "done" && t.settles(s));
+    const ran = steps.map((s, i) => [s, i] as const).filter(([s]) => s.status === "done" && settles(s, t.id));
     if (ran.some(([, i]) => current(at, t.stage, i))) continue;
     (ran.length ? stale : missing).push(t);
   }

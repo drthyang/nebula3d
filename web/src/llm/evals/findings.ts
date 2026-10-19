@@ -5,6 +5,12 @@
 // have done differently. `candidateFindings` lists what a run's scores and
 // transcript point at, each with its evidence, for a reviewer to confirm or
 // drop; nothing here is a verdict.
+//
+// One record holds two sources of finding. A "validation" finding comes from a
+// run: it names the case, the run and the step. A "review" finding comes from
+// reading the code: it names no case and no run, and its evidence cites
+// file:line on the commit `at` names. Only validation findings enter per-case
+// logic (the transcript, a case's checks).
 
 import { offerChanges } from "./offers";
 import { findIn, type RunRecord, type ValidationCase } from "./validation";
@@ -12,15 +18,15 @@ import { findIn, type RunRecord, type ValidationCase } from "./validation";
 export const FINDING_KINDS = ["bug", "missing-tool", "skill-gap", "orchestration", "science-error"] as const;
 export type FindingKind = (typeof FINDING_KINDS)[number];
 
-export interface Finding {
-  case: string;
-  run: number;
-  step: number | null; // 1-based, as the transcript numbers its steps; null: the run as a whole
+export const FINDING_SOURCES = ["validation", "review"] as const;
+export type FindingSource = (typeof FINDING_SOURCES)[number];
+
+/** What every finding holds, whatever its source. */
+interface FindingCommon {
   kind: FindingKind;
   evidence: string;
   proposed_fix: string;
   needs_user_approval: boolean;
-  arm?: string; // which arm's run it came from
   // What became of it: implemented by `commit`, with the regression `tests`
   // that pin it, or deferred; `note` says what is provisional or left open.
   status?: FindingStatus;
@@ -30,6 +36,29 @@ export interface Finding {
   // Where the fix offered options, the one chosen, by whom and when.
   decision?: { by: string; on: string; option: string };
 }
+
+/** A finding from a validation run. Without `source` a finding reads as one, so records made before the field stay valid. */
+export interface ValidationFinding extends FindingCommon {
+  source?: "validation";
+  case: string;
+  run: number;
+  step: number | null; // 1-based, as the transcript numbers its steps; null: the run as a whole
+  arm?: string; // which arm's run it came from
+}
+
+/** A finding from a review of the code: no case, run or step; its evidence cites file:line on the commit `at`. */
+export interface ReviewFinding extends FindingCommon {
+  source: "review";
+  at: string; // the commit (SHA) the evidence's file:line citations read on
+  ref?: string; // the review's own handle for it ("D1"), for the change that implements it to find it
+}
+
+export type Finding = ValidationFinding | ReviewFinding;
+
+export const sourceOf = (f: Finding): FindingSource => f.source ?? "validation";
+// A source neither of these (a record findingProblems would refuse) is neither: it enters no per-case logic.
+export const isValidationFinding = (f: Finding): f is ValidationFinding => sourceOf(f) === "validation";
+export const isReviewFinding = (f: Finding): f is ReviewFinding => f.source === "review";
 
 export const FINDING_STATUSES = ["open", "implemented", "deferred"] as const;
 export type FindingStatus = (typeof FINDING_STATUSES)[number];
@@ -49,23 +78,48 @@ export const APPROVAL_BY_DEFAULT: Readonly<Record<FindingKind, boolean>> = {
   "science-error": true,
 };
 
-/** What is wrong with *x* as a finding: empty when it is one. */
+const SHA = /^[0-9a-f]{7,40}$/;
+// A file:line citation: "web/src/llm/verdict.ts:99", "report.ts:333-336".
+const CITES_FILE_LINE = /[\w.-]+\.[A-Za-z]+:\d+/;
+const REF = /^[A-Za-z][\w.-]{0,15}$/;
+const COMMON_FIELDS = ["source", "kind", "evidence", "proposed_fix", "needs_user_approval", "status", "commit", "tests", "note", "decision"];
+// The fields each source alone has: on the other source they are an error.
+const SOURCE_FIELDS: Readonly<Record<FindingSource, readonly string[]>> = {
+  validation: ["case", "run", "step", "arm"],
+  review: ["at", "ref"],
+};
+
+/** What is wrong with *x* as a finding: empty when it is one. Each source has its own shape; a finding without `source` is a validation one. */
 export function findingProblems(x: unknown): string[] {
   if (!x || typeof x !== "object" || Array.isArray(x)) return ["a finding is an object"];
   const f = x as Record<string, unknown>;
   const out: string[] = [];
-  for (const k of ["case", "evidence", "proposed_fix"]) {
+  const named = f.source === undefined ? "validation" : f.source;
+  const source = (FINDING_SOURCES as readonly unknown[]).includes(named) ? (named as FindingSource) : null;
+  if (!source) out.push(`source must be one of ${FINDING_SOURCES.join(", ")}`);
+  for (const k of [...(source === "validation" ? ["case"] : []), "evidence", "proposed_fix"]) {
     if (typeof f[k] !== "string" || !(f[k] as string).trim()) out.push(`${k} must be a non-empty string`);
   }
-  if (!Number.isInteger(f.run) || (f.run as number) < 1) out.push("run must be a whole number from 1");
-  if (f.step !== null && (!Number.isInteger(f.step) || (f.step as number) < 1)) out.push("step must be null or a whole number from 1");
+  if (source === "validation") {
+    if (!Number.isInteger(f.run) || (f.run as number) < 1) out.push("run must be a whole number from 1");
+    if (f.step !== null && (!Number.isInteger(f.step) || (f.step as number) < 1)) out.push("step must be null or a whole number from 1");
+  }
+  if (source === "review") {
+    if (typeof f.at !== "string" || !SHA.test(f.at)) out.push("at must name the commit the evidence reads (7 to 40 hex digits)");
+    if (typeof f.evidence === "string" && f.evidence.trim() && !CITES_FILE_LINE.test(f.evidence)) out.push("a review finding's evidence cites file:line");
+    if (f.ref !== undefined && (typeof f.ref !== "string" || !REF.test(f.ref))) out.push("ref must be a short handle, as D1");
+  }
+  if (source) {
+    const other = source === "validation" ? "review" : "validation";
+    for (const k of SOURCE_FIELDS[other]) if (f[k] !== undefined) out.push(`a ${source} finding has no ${k}`);
+  }
   if (!(FINDING_KINDS as readonly unknown[]).includes(f.kind)) out.push(`kind must be one of ${FINDING_KINDS.join(", ")}`);
   if (typeof f.needs_user_approval !== "boolean") out.push("needs_user_approval must be true or false");
   if (f.status !== undefined && !(FINDING_STATUSES as readonly unknown[]).includes(f.status)) {
     out.push(`status must be one of ${FINDING_STATUSES.join(", ")}`);
   }
   if (f.status === "implemented") {
-    if (typeof f.commit !== "string" || !/^[0-9a-f]{7,40}$/.test(f.commit)) out.push("an implemented finding names its commit");
+    if (typeof f.commit !== "string" || !SHA.test(f.commit)) out.push("an implemented finding names its commit");
     if (!Array.isArray(f.tests) || !f.tests.length || f.tests.some((t) => typeof t !== "string" || !t.trim())) {
       out.push("an implemented finding names its regression tests");
     }
@@ -76,14 +130,20 @@ export function findingProblems(x: unknown): string[] {
     const ok = d && typeof d === "object" && ["by", "on", "option"].every((k) => typeof d[k] === "string" && (d[k] as string).trim());
     if (!ok || !/^\d{4}-\d{2}-\d{2}$/.test(String(d!.on))) out.push("decision must give by, on (YYYY-MM-DD) and option");
   }
-  const known = new Set(["case", "run", "step", "kind", "evidence", "proposed_fix", "needs_user_approval", "arm", "status", "commit", "tests", "note", "decision"]);
+  // A field of the other source is named above; any other field is unknown.
+  const known = new Set([...COMMON_FIELDS, ...SOURCE_FIELDS.validation, ...SOURCE_FIELDS.review]);
   for (const k of Object.keys(f)) if (!known.has(k)) out.push(`unknown field ${k}`);
   return out;
 }
 
-/** A finding that needs the user as its kind says, unless told otherwise; throws if it is not one. */
-export function finding(f: Omit<Finding, "needs_user_approval"> & { needs_user_approval?: boolean }): Finding {
-  const out: Finding = { ...f, needs_user_approval: f.needs_user_approval ?? APPROVAL_BY_DEFAULT[f.kind] };
+type Draft<F extends Finding> = Omit<F, "needs_user_approval"> & { needs_user_approval?: boolean };
+
+/** A finding that needs the user as its kind says, unless told otherwise, with its source written out (validation, unless named); throws if it is not one. */
+export function finding(f: Draft<ValidationFinding>): ValidationFinding;
+export function finding(f: Draft<ReviewFinding>): ReviewFinding;
+export function finding(f: Draft<ValidationFinding> | Draft<ReviewFinding>): Finding {
+  const { source, ...rest } = f;
+  const out = { source: source ?? "validation", ...rest, needs_user_approval: f.needs_user_approval ?? APPROVAL_BY_DEFAULT[f.kind] } as Finding;
   const bad = findingProblems(out);
   if (bad.length) throw new Error(`not a finding: ${bad.join("; ")}`);
   return out;
@@ -128,11 +188,11 @@ const CRITERION: Record<string, [FindingKind, string]> = {
   outputs: ["orchestration", "no ΔPDF was made: the run never completed the pipeline"],
 };
 
-/** What a run's scores and transcript point at, for a reviewer to confirm. */
-export function candidateFindings(rec: RunRecord, c: ValidationCase): Finding[] {
-  const out: Finding[] = [];
-  const add = (f: Omit<Finding, "needs_user_approval" | "case" | "run" | "arm">) =>
-    out.push(finding({ case: rec.case, run: rec.run, arm: rec.arm, ...f }));
+/** What a run's scores and transcript point at, for a reviewer to confirm: validation findings, on this run's case. */
+export function candidateFindings(rec: RunRecord, c: ValidationCase): ValidationFinding[] {
+  const out: ValidationFinding[] = [];
+  const add = (f: Omit<ValidationFinding, "source" | "needs_user_approval" | "case" | "run" | "arm">) =>
+    out.push(finding({ source: "validation", case: rec.case, run: rec.run, arm: rec.arm, ...f }));
 
   if (rec.error) {
     add({ step: null, kind: "orchestration", evidence: `the run ended in an error: ${clip(rec.error)}`, proposed_fix: "find why it could not finish (the model server, the time limit, a tool that hung) before reading its score" });
@@ -179,8 +239,9 @@ export function candidateFindings(rec: RunRecord, c: ValidationCase): Finding[] 
 const fence = (s: string): string => `\n\`\`\`\n${s.replace(/```/g, "'''")}\n\`\`\``;
 const RESULT_CHARS = 1200;
 
-/** A run as Markdown: the task, each step with its arguments, reason and result, the numbers and their sources, the conclusion and the scores. */
-export function renderTranscript(rec: RunRecord, findings: readonly Finding[] = []): string {
+/** A run as Markdown: the task, each step with its arguments, reason and result, the numbers and their sources, the conclusion and the scores. A review finding is on no run, so it is never listed. */
+export function renderTranscript(rec: RunRecord, given: readonly Finding[] = []): string {
+  const findings = given.filter(isValidationFinding);
   const g = rec.grades;
   const lines: string[] = [
     `# ${rec.case}, arm ${rec.arm}, run ${rec.run}`,
