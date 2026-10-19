@@ -117,12 +117,14 @@ export const D7_SELECTION: Record<Reader, "newest" | "newest that decides"> = { 
 export const D8_ANSWER_BACKFILL_IGNORES_TEXTURE = false;
 
 /**
- * D10: words no producer wrote ("past", "unmeasured", "not" opening a coverage
- * verdict, recorded.ts) are "not ok" to the answer checks and no attention to
- * {{achieved}}. Unify: set this to false; {{achieved}} then reads them as the
- * attention they are to the answer checks.
+ * D10, unified (plan 2.4b.2, batch 2, approved by the manager on the user's
+ * delegation, 2026-10-19): words no producer wrote ("past", "unmeasured",
+ * "not" opening a coverage verdict, recorded.ts) need attention to both
+ * readers, and so to the report's 3D-ΔPDF card, which reads the coverage as
+ * {{achieved}} does. true: they were no attention to {{achieved}}, before
+ * 2.4b.2.
  */
-export const D10_ACHIEVED_IGNORES_LEGACY_COVERAGE_WORDS = true;
+export const D10_ACHIEVED_IGNORES_LEGACY_COVERAGE_WORDS = false;
 
 /**
  * D11: the answer checks judge a stage whose output is missing (assess_stage
@@ -226,7 +228,7 @@ const MATRIX: Record<CheckId, Row> = {
   flatten: stage("flatten"),
   pdf: stage("pdf"),
   coverage: {
-    // D10: legacy words are no verdict to {{achieved}}.
+    // D10: legacy words need attention, as to the answer checks (they were no verdict to {{achieved}} before 2.4b.2).
     achieved: (o) => (D10_ACHIEVED_IGNORES_LEGACY_COVERAGE_WORDS && o.reasons.includes("legacy coverage words") ? "info" : o.kind),
     // D1: a pass by the reach inside full coverage is a pass (it settled nothing before 2.4.1).
     answer: [["coverage", (o) => (D1_REACH_PASS_SETTLES_NOTHING && o.kind === "pass" && o.reasons.includes("reach inside coverage") ? "info" : o.kind)]],

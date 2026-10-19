@@ -78,10 +78,10 @@ describe("D1–D10, kept and named", () => {
     expect(chatOf(tooFar)?.attention).toEqual(["the ΔPDF window against the coverage"]);
     // Its weight, where the evaluation records none, it reads as before.
     expect(verdicts({ report: { ...PASSING, pdf: { back_fft_pearson_r_even: 1 }, coverage: { verdict: "too far: …", window_weight_on_unmeasured: 0.04 } } }).checks.pdf).toBe("attention");
-    // Words no producer wrote are no "too far" to either reader (D10 keeps them apart for the answer checks).
+    // Words no producer wrote read as {{achieved}} reads them: attention since D10 (2.4b.2), to both.
     const legacy: Measured = { ...PASSING, coverage: { verdict: "past full coverage: the window reaches the box corners" } };
-    expect(verdicts({ report: legacy }).checks.pdf).toBe("pass");
-    expect(chatOf(legacy)?.attention).toEqual([]);
+    expect(verdicts({ report: legacy }).checks.pdf).toBe("attention");
+    expect(chatOf(legacy)?.attention).toEqual(["the ΔPDF window against the coverage"]);
   });
 
   it("D3, unified (2.4.3): grain_check's \"UB off\" is a data problem in {{achieved}} and not OK for the UB topic; it stays the check for a second grain", () => {
@@ -212,12 +212,13 @@ describe("D1–D10, kept and named", () => {
     expect([verdicts({ report: far }).achieved?.achieved, chatOf(far)?.achieved]).toEqual([false, false]);
   });
 
-  it("D10: a recording's coverage words no producer wrote are not ok to the answer checks and no attention to {{achieved}}", () => {
-    expect(D10_ACHIEVED_IGNORES_LEGACY_COVERAGE_WORDS).toBe(true);
+  it("D10, unified (2.4b.2): a recording's coverage words no producer wrote need attention to both readers, and to the report's card", () => {
+    expect(D10_ACHIEVED_IGNORES_LEGACY_COVERAGE_WORDS).toBe(false);
     for (const verdict of ["past full coverage: the window reaches the box corners", "unmeasured space inside the window", "not inside the coverage"]) {
       const r = reply(step("qmax_coverage", { verdict }));
       expect(r.checks.coverage, verdict).toBe("attention");
-      expect(r.achieved?.attention, verdict).toEqual([]);
+      expect(r.achieved?.attention, verdict).toEqual(["the ΔPDF window against the coverage"]);
+      expect(verdicts({ report: { ...PASSING, coverage: { verdict } } }).checks.pdf, verdict).toBe("attention");
     }
   });
 });

@@ -101,6 +101,13 @@ describe("contradicting the tools' computed verdicts", () => {
     expect(contradictions("The ΔPDF keeps its six-fold symmetry.", [notKept]).map((t) => t.id)).toEqual(["symmetry"]);
   });
 
+  it("reads a recording's coverage words no producer wrote as attention, to the answer checks and {{achieved}} alike (D10, 2.4b.2)", () => {
+    // Words an older qmax_coverage wrote, kept in a recording.
+    const legacy = step("qmax_coverage", {}, { verdict: "past full coverage: the window reaches the box corners" });
+    expect(contradictions("The window stays inside the coverage.", [legacy]).map((t) => t.id)).toEqual(["coverage"]);
+    expect(verdicts({ reply: [legacy] }).achieved).toMatchObject({ achieved: false, attention: ["the ΔPDF window against the coverage"] });
+  });
+
   it("takes the transform's reach inside full coverage as coverage OK (D1, 2.4.1)", () => {
     // Synthetic measurements: a window tapered to the coverage reaches 6.283 Å⁻¹, and full coverage ends at 6.5 Å⁻¹.
     const reach = { window_weight: null, window: "the ΔPDF's ellipsoid window", unit_cell: true, full_coverage_q: 6.5, reach_from: "the window is tapered to the measured coverage", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } };

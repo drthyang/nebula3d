@@ -64,12 +64,10 @@ const weightReasons = (r: Obj): Reason[] => {
 /**
  * qmax_coverage's words. "clean" passes and "too far" needs attention; the
  * reach inside full coverage passes with that reason, a pass to every reader
- * (D1, unified by 2.4.1). D10: "past", "unmeasured" and
- * "not", words no producer wrote, need attention to the answer checks and are
- * no attention to {{achieved}}: this one mapping gives them the reason
- * "legacy coverage words", which the achieved reader's cell reads as no
- * verdict. Anything else is nothing to judge. The weight it records, if any,
- * is a reason of its own.
+ * (D1, unified by 2.4.1). "past", "unmeasured" and "not", words no producer
+ * wrote, need attention, with the reason "legacy coverage words" (D10: to every
+ * reader since 2.4b.2). Anything else is nothing to judge. The weight it
+ * records, if any, is a reason of its own.
  */
 function coverageOutcome(r: Obj): Outcome {
   const said = words(r) ?? "";
