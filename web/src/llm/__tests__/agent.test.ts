@@ -7,13 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../api/types";
 import { useDpdfStore, type ManualLimit } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
-import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, toolResultsIn, TOOLS_UNSUPPORTED_NOTE } from "../agent";
+import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, toolResultsIn, TOOLS_UNSUPPORTED_NOTE, type AgentStep } from "../agent";
 import { resetTokenState } from "../provider/tokens";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import * as readings from "../readings";
 import { isCompacted } from "../readings/compact";
 import { DEFAULT_SETTINGS } from "../settings";
-import { CHAT_TOOLS, type AgentTool } from "../tools";
+import { CHAT_TOOLS, MAX_RESULT_CHARS, type AgentTool } from "../tools";
+import type { Outcome } from "../verdicts";
 import { makeSlice } from "./helpers";
 
 const client = vi.hoisted(() => ({ streamChat: vi.fn() }));
@@ -383,6 +384,126 @@ describe("runAgent", () => {
         const sent = seen[2].messages.filter((m) => m.role === "tool").map((m) => m.content as string);
         expect(sent[1]).not.toMatch(/already_called/);
       });
+    });
+  });
+
+  // What a round of calls leaves behind, pinned as it is: the steps, key for
+  // key; the figure each step opens, before the next call; the calls the
+  // loop forgets when it shortens a result.
+  describe("what a round of calls leaves behind", () => {
+    const outcome: Outcome = { check: "rings", kind: "info", reasons: ["no output"], dataProblems: [], words: null };
+    const tool = (name: string, run: AgentTool["run"]): AgentTool => ({ name, description: name, parameters: { type: "object", properties: {} }, run });
+    const look = tool("look", async () => ({ result: {}, summary: "looked", view: { view: "execution", label: "the run log" }, outcomes: [outcome] }));
+    const slow = tool("slow", async (_args, _ctx, io) => {
+      io.progress?.("halfway");
+      return { result: {}, summary: "finished" };
+    });
+    const items = { items: Array.from({ length: 2000 }, (_, i) => i) }; // past the result limit: the model reads it fitted
+    const long = tool("long", async () => ({ result: items, summary: "2000 items" }));
+    const broken = (id: string) => ({ id, type: "function" as const, function: { name: "echo", arguments: '{"x":' } });
+
+    it("builds each step key for key, and shows each change as it happens", async () => {
+      script([
+        [{ toolCalls: [call("c1", "echo", { x: 1 }), call("c2", "look", {}), call("c3", "nope", {}), broken("c4"), call("c5", "slow", {})] }],
+        [{ toolCalls: [call("c6", "echo", { x: 1 }), call("c7", "long", {})] }],
+        [{ content: "Done." }],
+      ]);
+      const shown: string[] = [];
+      const r = await runAgent({
+        messages: base,
+        tools: [echo, look, slow, long],
+        ctx,
+        settings: { ...settings, followViews: false },
+        signal: new AbortController().signal,
+        onProgress: (p) => shown.push(p.steps.map((s) => s.status + (s.progress ? `(${s.progress})` : "")).join(",")),
+      });
+      const fitted = readings.fit(items, MAX_RESULT_CHARS);
+      const already = JSON.stringify({
+        already_called: "Called with these arguments earlier in this reply (step 1); its result is above. Use it, or call with other arguments.",
+      });
+      const ran = (s: Partial<AgentStep>) => ({ progress: undefined, ...s, view: s.view, outcomes: s.outcomes });
+      expect(r.steps).toStrictEqual([
+        ran({ id: "0:c1", name: "echo", args: { x: 1 }, status: "done", summary: "got 1", result: '{"got":1}' }),
+        ran({ id: "1:c2", name: "look", args: {}, status: "done", summary: "looked", result: "{}", view: { view: "execution", label: "the run log" }, outcomes: [outcome] }),
+        ran({ id: "2:c3", name: "nope", args: {}, status: "error", summary: "unknown tool nope", result: "Error: no tool named nope. Available: echo, look, slow, long" }),
+        ran({ id: "3:c4", name: "echo", args: {}, status: "error", summary: "invalid arguments", result: 'Error: the arguments were not a JSON object: {"x":' }),
+        ran({ id: "4:c5", name: "slow", args: {}, status: "done", summary: "finished", result: "{}" }),
+        { id: "5:c6", name: "echo", args: { x: 1 }, status: "done", summary: "same call as step 1: not run again", result: already },
+        ran({ id: "6:c7", name: "long", args: {}, status: "done", summary: "2000 items", result: fitted.text, full: fitted.full }),
+      ]);
+      // In this order: a step's live fields after the ones it starts with.
+      const keys = ["id", "name", "args", "status", "progress", "summary", "result", "view", "outcomes"];
+      expect(r.steps.map((s) => Object.keys(s))).toEqual([
+        keys,
+        keys,
+        keys,
+        keys,
+        keys,
+        ["id", "name", "args", "status", "summary", "result"],
+        ["id", "name", "args", "status", "progress", "summary", "result", "full", "view", "outcomes"],
+      ]);
+      // One change at a time: each step as it starts, its live line, its end.
+      expect(shown).toEqual([
+        "",
+        "running",
+        "done",
+        "done,running",
+        "done,done",
+        "done,done,running",
+        "done,done,error",
+        "done,done,error,running",
+        "done,done,error,error",
+        "done,done,error,error,running",
+        "done,done,error,error,running(halfway)",
+        "done,done,error,error,done",
+        "done,done,error,error,done",
+        "done,done,error,error,done,done",
+        "done,done,error,error,done,done,running",
+        "done,done,error,error,done,done,done",
+        "done,done,error,error,done,done,done",
+      ]);
+    });
+
+    it("opens a step's figure before the next call runs", async () => {
+      const tabs: string[] = [];
+      const peek = tool("peek", async () => {
+        tabs.push(useNavStore.getState().tab);
+        return { result: {}, summary: "peeked" };
+      });
+      const signal = new AbortController().signal;
+      useNavStore.setState({ tab: "config" });
+      script([[{ toolCalls: [call("c1", "look", {}), call("c2", "peek", {})] }], [{ content: "ok" }]]);
+      await runAgent({ messages: base, tools: [look, peek], ctx, settings, signal });
+      useNavStore.setState({ tab: "config" });
+      script([[{ toolCalls: [call("c1", "look", {}), call("c2", "peek", {})] }], [{ content: "ok" }]]);
+      await runAgent({ messages: base, tools: [look, peek], ctx, settings: { ...settings, followViews: false }, signal });
+      expect(tabs).toEqual(["execution", "config"]);
+    });
+
+    it("forgets a shortened result's call by its key, a later run of the same call included", async () => {
+      const runs: unknown[] = [];
+      const series = tool("series", async (args) => {
+        runs.push(args.x);
+        const x = args.x as number;
+        return { result: { verdict: "meets its goal", peak: x, series: Array.from({ length: 200 }, (_, i) => Number((x + i / 1000).toFixed(3))) }, summary: `series ${x}` };
+      });
+      // A tool that acts (its facts': update_settings changes the settings).
+      const change = tool("update_settings", async () => ({ result: { changed: [] }, summary: "changed" }));
+      script([
+        [{ toolCalls: [call("c1", "series", { x: 1 })] }],
+        [{ toolCalls: [call("c2", "update_settings", {})] }],
+        [{ toolCalls: [call("c3", "series", { x: 1 })] }], // runs: the change between read nothing yet
+        [{ toolCalls: [call("c4", "series", { x: 2 })] }],
+        // Before this request the first result is shortened, and its call
+        // forgotten by its key: step 3's run of the same call with it.
+        [{ toolCalls: [call("c5", "series", { x: 1 })] }],
+        [{ content: "Done." }],
+      ]);
+      const r = await runAgent({ messages: base, tools: [series, change], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
+      expect(runs).toEqual([1, 1, 2, 1]);
+      expect(r.steps.map((s) => s.summary)).toEqual(["series 1", "changed", "series 1", "series 2", "series 1"]);
+      expect(r.steps.map((s) => s.shortened)).toEqual([true, undefined, undefined, undefined, undefined]);
+      expect(Object.keys(r.steps[0])).toEqual(["id", "name", "args", "status", "progress", "summary", "result", "view", "outcomes", "shortened"]);
     });
   });
 
