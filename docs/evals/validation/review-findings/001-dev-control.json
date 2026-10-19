@@ -1,0 +1,21 @@
+{
+ "source": "validation",
+ "case": "dev-control",
+ "run": 1,
+ "step": null,
+ "kind": "missing-tool",
+ "evidence": "No tool lists the 3D-ΔPDF's strongest features with their vectors and signs, which the task and delta-pdf-interpretation step 3 ask for: dpdf_contrast reports the strongest feature in σ without its place, measure_dpdf_cut an SNR and an anisotropy, and line_profile reads a line the model must already have chosen.",
+ "proposed_fix": "A dpdf_peaks tool: the extrema of the ΔPDF above a few robust σ outside the origin's disk, each with its vector in Å and r.l.u., its sign and its size in σ, read from the 3D volume on the server.",
+ "needs_user_approval": false,
+ "arm": "sweep",
+ "status": "implemented",
+ "commit": "007b5bf",
+ "tests": [
+  "tests/test_dpdf_features.py",
+  "tests/test_server.py::test_dpdf_features_lists_extrema_in_angstrom_and_lattice_units",
+  "tests/test_webbridge.py::test_dpdf_features_json",
+  "web/src/llm/__tests__/tools.test.ts (dpdf_peaks)",
+  "web/src/llm/__tests__/localTools.test.ts (offers the ΔPDF's feature list)"
+ ],
+ "note": "dpdf_peaks, default 5σ and 12 entries. On the dev control the planted ⟨3/2 0 0⟩+ is entry 7 (238σ) and the weaker ⟨½ 1 1⟩− entry 19 (73σ): a model asks for up to 30."
+}

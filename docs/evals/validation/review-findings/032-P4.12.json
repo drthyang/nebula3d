@@ -1,0 +1,22 @@
+{
+ "source": "review",
+ "ref": "P4.12",
+ "at": "d8be858",
+ "kind": "bug",
+ "evidence": "compute_delta_pdf defaulted to apodization \"hann\" and gaussian_sigma 0.5 (src/nebula3d/analysis/delta_pdf.py:387-388, and _prepare_forward at :560-561), while the pipeline's ΔPDF stage runs DeltaPdfParams' \"gaussian\" and 0.4 (src/nebula3d/pipeline.py:621-622), so a call with no window transformed differently from the stage. The ring texture order is 8 on the page (web/src/state/pipelineStore.ts:156, web/src/llm/tune/catalog.ts:149-157) and 6 in the package (src/nebula3d/_ringplane.py:63), with nothing saying why.",
+ "proposed_fix": "compute_delta_pdf and _prepare_forward default to the pipeline's window, gaussian 0.4, as a behaviour change of the Python API; a test pins every keyword they share with DeltaPdfParams. The ring texture order stays 8 on the page and 6 in the package, each with a comment, and a test pins both: it applies only to the patched and parametric ring models, not the default pooled one, and changing either would change runs on that path.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "5233fda",
+ "tests": [
+  "tests/test_defaults_agreed.py::test_compute_delta_pdf_defaults_are_the_pipelines",
+  "tests/test_defaults_agreed.py::test_a_call_with_no_window_transforms_as_the_pipelines_stage",
+  "tests/test_defaults_agreed.py::test_ring_texture_order_is_8_on_the_page_and_6_in_the_package"
+ ],
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 4.12, the defaults). Every caller in the package passes its own window, so the pipeline, the server, the browser and arm A are unchanged: arm A on dev re-run, 32 of 32 entries identical, 5 of 8 cases pass, as recorded. The dpdf_features known-answer tests, which call compute_delta_pdf with its defaults, pass under the new window. The rest of 4.12 (the consistency view on the run's settings, the native–browser parity test) is still to come.",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-19",
+  "option": "the function takes the pipeline's window; the ring order stays 8 on the page and 6 in the package, with a comment"
+ }
+}

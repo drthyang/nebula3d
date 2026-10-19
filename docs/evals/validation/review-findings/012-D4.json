@@ -1,0 +1,22 @@
+{
+ "source": "review",
+ "ref": "D4",
+ "at": "f807320",
+ "kind": "science-error",
+ "evidence": "verdict.ts:99 calls the UB turned at ≥0.05° unless the fit is \"symmetric\". answerChecks.ts:278 calls it not OK when the volume is symmetrised, or at ≥0.05° counting the legacy angle_deg.",
+ "proposed_fix": "One rule: ≥0.05° from an unsymmetrised fit. A symmetrised volume's UB cannot be judged, and a claim that it is right is still sent back. The validation grader's 0.1° stays until the shared answer reader (plan 3.2).",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "d3e44d5",
+ "tests": [
+  "web/src/llm/__tests__/verdictPins.test.ts (D4, unified (2.4.4): one UB turned, 0.05° or more from an unsymmetrised fit; a symmetrised volume's UB is not judged, and not right)",
+  "web/src/llm/__tests__/answerChecks.test.ts (holds both readings to one UB turned, 0.05° or more from an unsymmetrised fit, and a symmetrised UB to no claim that it is right (D4, 2.4.4))",
+  "web/src/llm/__tests__/verdicts.test.ts (ub: symmetrised: not judged, so not right (D4))"
+ ],
+ "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.4, after the check-verdict module (2.3). Implemented by plan row 2.4.4.",
+ "decision": {
+  "by": "the user",
+  "on": "2026-10-19",
+  "option": "yes"
+ }
+}
