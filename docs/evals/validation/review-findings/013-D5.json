@@ -1,0 +1,25 @@
+{
+ "source": "review",
+ "ref": "D5",
+ "at": "f807320",
+ "kind": "science-error",
+ "evidence": "Sharp peaks on protected planes count as attention in the punch verdict (web/src/llm/metrics/punch.ts:238-250 → tune/evaluate.ts:255-261 → report.ts:206). STAGE_GOALS.punch says they stay by design (tune/prompts.ts:25).",
+ "proposed_fix": "They are by design. They are left out of the verdict and kept on their own line in what the model sees, with a test.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "7fac736",
+ "tests": [
+  "web/src/llm/__tests__/verdictPins.test.ts (D5, unified (2.4.5): the sharp peaks on protected planes stay out of the punch's verdict, as its goal says they stay by design)",
+  "web/src/llm/__tests__/evaluate.test.ts (counts every sharp leftover on the protected planes, on its own line, and leaves them out of the verdict (D5, 2.4.5))",
+  "web/src/llm/__tests__/tools.test.ts (shows the sharp leftovers on protected planes on their own line, out of the punch's verdict (D5, 2.4.5))",
+  "web/src/llm/__tests__/verdicts.test.ts (punch: the sharp peaks on protected planes stay by design (D5))",
+  "web/src/llm/__tests__/modelVisible.test.ts (each tool's result text after runToolCall)",
+  "web/src/llm/__tests__/report.test.ts (counts the punch's sharp leftovers outside the protected planes, and shows those on them on their own line (D5, 2.4.5b))"
+ ],
+ "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.5, after the check-verdict module (2.3). Implemented by plan row 2.4.5. The criterion and the report card follow it (plan row 2.4.5b, c906479).",
+ "decision": {
+  "by": "the user",
+  "on": "2026-10-19",
+  "option": "yes"
+ }
+}
