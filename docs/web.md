@@ -93,23 +93,35 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   off, the server's parameters and endpoints) and through `nebula3d.webbridge`
   as the Pyodide worker drives it (float32, low-memory on, `run_async`), and
   pins which verdicts must agree. *Equal*: every log line's words, and its
-  numbers to the digit printed (the one textual difference is the sign of the
-  flatten's zero R², `-0.000`); the ring decision (the shells found, the ones
-  confirmed as powder rings and the crystal's kept, the share removed); the
-  punch (the same peaks at the same nodes, the same voxels punched); the ΔPDF's
-  grid, window, provenance and strongest features; the consistency view's
+  numbers to the digit printed (the lines are identical: the flatten's
+  summary no longer prints a constant fit's zero R² as `-0.000`, as the
+  browser did); the ring decision (the shells found, the ones confirmed as
+  powder rings and the crystal's kept, the share removed); the punch (the
+  same peaks at the same nodes, the same voxels punched); the ΔPDF's grid,
+  window, provenance and strongest features; the consistency view's
   settings. *To float32 rounding*: the cleaned volumes (normalised RMS 3e-8),
   the ΔPDF (1.5e-7), the peaks' intensities (1.4e-7), the back-FFT r and RMS
   (4e-10). *Allowed to differ*: the round trip against the data's even part
   (1e-14 natively, about 6e-6 in float32, both sound), and the ring test's
-  measurements per direction. The low-memory mode reads at most an eighth of
-  the volume's voxels for the shells (`ring_isotropy.shell_isotropy`), so its
-  medians are noisier: on the 161³ demo the confirmed rings' signal-to-noise
-  fell by up to 2.6× (103 → 48 at 3.09 Å⁻¹, 7.0 → 3.8 at 6.94 Å⁻¹, against the
-  rule's 3) and their isotropy moved by up to 0.27. The decisions agreed on
-  every dev case and the demo at 121³ and 161³, but a ring near the threshold
-  could be confirmed natively and left in the browser. float32 plays no part
-  in it: the native engine in low-memory mode measures what the browser does.
+  measurements per direction, which the low-memory mode samples more thinly.
+
+  **Known limit: a ring near the ring test's `min_snr`.** In low-memory mode
+  the ring test reads at most an eighth of the volume's voxels for the shells
+  (`ring_isotropy.shell_isotropy`), so its medians per direction are noisier
+  and a confirmed ring's signal-to-noise drops by up to about 2.6× (on the
+  161³ demo 103 → 48 at 3.09 Å⁻¹ and 7.0 → 3.8 at 6.94 Å⁻¹, against the
+  rule's 3; their isotropy moved by up to 0.27). A ring near `min_snr` can be
+  confirmed natively and left in the browser. The decisions agreed on every
+  dev case and the demo at 121³ and 161³; a ring planted just above the
+  threshold shows the limit (`test_a_ring_just_above_min_snr_is_confirmed_in_both_runtimes`,
+  a strict expected failure that fails the run once a fix lifts it): the
+  native engine confirms it at a signal-to-noise of 3.8, while the browser,
+  reading about a third of that shell's voxels, measures 2.1 and keeps it,
+  counted among the crystal's own shells. float32 plays no part in it: the
+  native engine in low-memory mode measures what the browser does. The
+  validation is unaffected, since its live runs use the native server.
+  Whether the browser should sample more, at a memory cost, is a question for
+  the user after v1.
 - **WebGPU ΔPDF.** When WebGPU is available, the ΔPDF forward FFT and the
   back-FFT consistency inverse run on the GPU (`web/src/gpu/` — a mixed
   radix-2/3/4/5 Stockham line kernel with CPU-precomputed twiddles; index math
