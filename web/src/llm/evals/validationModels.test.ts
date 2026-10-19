@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TOOLS_CONTEXT } from "../provider/client";
-import { costOf, MODELS, modelNamed, paidRunGate, plan, RUN_POLICY, runContext, SPEND_CAP_USD, SpendTracker } from "./validationModels";
+import { costOf, modelAt, MODELS, modelNamed, paidRunGate, plan, RUN_POLICY, runContext, SPEND_CAP_USD, SpendTracker } from "./validationModels";
 import { casesIn } from "./validation";
 
 // What LM Studio says a model is loaded with, and what Ollama says it supports;
@@ -154,6 +154,83 @@ describe("the run policy's minimum context", () => {
 
   it("does not ask a cloud model", async () => {
     expect(await runContext(claude, claude.baseUrl)).toEqual({ tokens: null, min_tokens: null, read_from: null, refusal: null });
+    expect(server.loadedContext).not.toHaveBeenCalled();
+    expect(server.ollamaModel).not.toHaveBeenCalled();
+  });
+});
+
+// The scenario evals (live.test.ts, and scripts/eval-local.sh through it) name a
+// model by NEBULA_EVAL_BASE_URL and NEBULA_EVAL_MODEL alone; modelAt makes it one
+// runContext holds to the same minimum, with the same refusals.
+describe("the scenario evals' context check", () => {
+  const LM_STUDIO = "http://localhost:1234/v1";
+  const OLLAMA = "http://localhost:11434/v1"; // live.test.ts's default base URL
+  const qwen = modelNamed("lmstudio-qwen3.8-27b");
+
+  beforeEach(() => {
+    server.loadedContext.mockReset();
+    server.ollamaModel.mockReset();
+  });
+
+  it("holds a model on a local server to the run policy's minimum, and a cloud one to none", () => {
+    for (const url of [LM_STUDIO, OLLAMA, "http://127.0.0.1:1234/v1", "http://localhost:8080/v1"]) {
+      expect(modelAt(url, "m")).toEqual({ model: "m", minContextTokens: RUN_POLICY.minLocalContextTokens });
+    }
+    for (const url of ["https://api.anthropic.com", "https://api.openai.com/v1"]) {
+      expect(modelAt(url, "m").minContextTokens).toBeNull();
+    }
+  });
+
+  it("refuses LM Studio loaded with 32k before the first run, as the validation's runner does", async () => {
+    server.loadedContext.mockResolvedValue({ loaded: 32_768, max: 131_072 });
+    const c = await runContext(modelAt(LM_STUDIO, "qwen/qwen3.8-27b"), LM_STUDIO);
+    expect(server.loadedContext).toHaveBeenCalledWith(LM_STUDIO, "qwen/qwen3.8-27b", expect.anything());
+    expect(c).toMatchObject({ tokens: 32_768, min_tokens: 49_152, read_from: "lmstudio-loaded" });
+    expect(c.refusal).toMatch(/^qwen\/qwen3\.8-27b is loaded with a 32,768-token context, under the run policy's minimum of 49,152/);
+    expect(c.refusal).toMatch(/lms load qwen\/qwen3\.8-27b --context-length 49152/);
+    // Word for word the validation runner's refusal for the same model and window.
+    expect(c.refusal).toBe((await runContext(qwen, LM_STUDIO)).refusal);
+  });
+
+  it("passes LM Studio loaded with 48k or more, with the window a run's record keeps", async () => {
+    server.loadedContext.mockResolvedValue({ loaded: 49_152, max: 131_072 });
+    expect(await runContext(modelAt(LM_STUDIO, "qwen/qwen3.8-27b"), LM_STUDIO)).toEqual({
+      tokens: 49_152,
+      min_tokens: 49_152,
+      read_from: "lmstudio-loaded",
+      refusal: null,
+    });
+  });
+
+  it("refuses a local window it cannot read: a model LM Studio has not loaded, or a server that does not say", async () => {
+    server.loadedContext.mockResolvedValue({ loaded: null, max: 262_144 });
+    expect((await runContext(modelAt(LM_STUDIO, "qwen/qwen3.8-27b"), LM_STUDIO)).refusal).toMatch(/^qwen\/qwen3\.8-27b is not loaded: /);
+    server.loadedContext.mockResolvedValue(null);
+    const other = await runContext(modelAt("http://localhost:8080/v1", "some-model"), "http://localhost:8080/v1");
+    expect(other).toMatchObject({ tokens: null, min_tokens: 49_152 });
+    expect(other.refusal).toMatch(/^Could not read the context some-model is loaded with .*minimum of 49,152/);
+  });
+
+  it("holds Ollama to the longest context the model supports", async () => {
+    server.ollamaModel.mockResolvedValue({ maxContext: 32_768 });
+    const short = await runContext(modelAt(OLLAMA, "gemma4:26b"), OLLAMA);
+    expect(server.ollamaModel).toHaveBeenCalledWith(OLLAMA, "gemma4:26b", undefined);
+    expect(short).toMatchObject({ tokens: 32_768, min_tokens: 49_152, read_from: "ollama-supported" });
+    expect(short.refusal).toMatch(/^gemma4:26b supports a context of at most 32,768 tokens .* under the run policy's minimum of 49,152/);
+    server.ollamaModel.mockResolvedValue({ maxContext: 262_144 });
+    expect(await runContext(modelAt(OLLAMA, "gemma4:26b"), OLLAMA)).toEqual({
+      tokens: 262_144,
+      min_tokens: 49_152,
+      read_from: "ollama-supported",
+      refusal: null,
+    });
+    expect(server.loadedContext).not.toHaveBeenCalled();
+  });
+
+  it("does not ask a cloud model", async () => {
+    for (const url of ["https://api.anthropic.com", "https://api.openai.com/v1"]) {
+      expect(await runContext(modelAt(url, "a-cloud-model"), url)).toEqual({ tokens: null, min_tokens: null, read_from: null, refusal: null });
+    }
     expect(server.loadedContext).not.toHaveBeenCalled();
     expect(server.ollamaModel).not.toHaveBeenCalled();
   });

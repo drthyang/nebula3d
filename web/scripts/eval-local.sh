@@ -5,13 +5,23 @@
 # The full records (every tool call, result and answer) go to
 # .eval-runs/<date>/, which git ignores: on the measured datasets they hold
 # figures from unpublished data. Their summaries (eval-records.mjs: pass or
-# fail, the failed checks' names, failure kinds, time and tokens) go to
-# docs/evals/local/<date>/, to be committed; scripts/eval-report.mjs makes the
-# before/after report from them.
+# fail, the failed checks' names, failure kinds, time, tokens and the context
+# window) go to docs/evals/local/<date>/, to be committed;
+# scripts/eval-report.mjs makes the before/after report from them.
 #
 #   scripts/eval-local.sh <base-url> <model> <label>
 #   scripts/eval-local.sh http://localhost:1234/v1 qwen/qwen3.8-27b lmstudio-qwen3.8-27b
 #   scripts/eval-local.sh http://localhost:11434/v1 gemma4:26b ollama-gemma4-26b
+#
+# The model needs a context window of 48k or more, the run policy's minimum for
+# a local live run (RUN_POLICY in src/llm/evals/validationModels.ts). In LM
+# Studio, load it with a Context Length of 49152 or more before the script,
+#   lms load qwen/qwen3.8-27b --context-length 49152
+# and make that the model's default Context Length: LM Studio reloads an idle
+# model with its defaults. In Ollama the model must support 49152 or more
+# (ollama show gemma4:26b); the run sizes num_ctx itself. The scenario evals
+# read the window before the first run and again before each, and refuse less
+# or one they cannot read: a set refused before its first run leaves no record.
 #
 # NEBULA_EVAL_API          the backend serving the eval datasets (default http://127.0.0.1:8000)
 # NEBULA_EVAL_HELDOUT_API  the backend serving the held-out volumes (default http://127.0.0.1:8001)
@@ -67,7 +77,7 @@ for set in "$label" "$label-heldout"; do
     node scripts/eval-summary.mjs "$raw/$set.json" "$public/$set.json"
     summaries+=("$public/$set.json")
   else
-    echo "no record for $set: its backend may be down" >&2
+    echo "no record for $set: its backend may be down, or the model's context window was refused (above)" >&2
   fi
 done
 if [ ${#summaries[@]} -eq 0 ]; then
