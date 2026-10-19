@@ -94,6 +94,9 @@ const noTools = new Set<string>();
 export const toolsKnownUnsupported = (s: Pick<LlmSettings, "baseUrl" | "model">): boolean =>
   noTools.has(`${s.baseUrl}|${s.model}`);
 
+/** Forget the servers found to refuse tools: each is offered them again (a validation run starts so, evals/validationRun.ts). */
+export const forgetToolsUnsupported = (): void => noTools.clear();
+
 export const TOOLS_UNSUPPORTED_NOTE =
   "This model cannot call tools, so it answered from the fixed-cut metrics only. Pick a tool-capable model (Ollama and LM Studio mark them) to let it measure other cuts.";
 
