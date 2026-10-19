@@ -72,7 +72,7 @@ bright_fill_fraction flags fills left implausibly bright⟦evidence:  (a peak no
 checkerboard_fraction ≈ 0.5 is random⟦evidence: ; approaching 1 signals a periodic interpolation
 artefact (a 'strange pattern')⟧.
 
-- flatten: the per-|Q|-shell low floor (25th percentile) of the backfilled (floor_before)
+- flatten: the per-|Q|-shell low floor (the run's own floor percentile, the 25th by default) of the backfilled (floor_before)
 and flattened (floor_after) slice, averaged over the inner / middle / outer third of |Q|.
 ⟦reading: After a good flatten floor_after is near 0 in all three thirds; ⟧after_floor_max_sigma (the
 largest |shell floor| in robust σ) is reported, not judged, in the flatten's verdict: σ is the cut's own spread, and the floors follow the diffuse level. removed_fraction is the pedestal removed as a share of the level.

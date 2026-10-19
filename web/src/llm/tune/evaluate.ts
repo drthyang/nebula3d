@@ -5,9 +5,9 @@
 
 import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy } from "../../api/client";
 import type { Dataset } from "../../api/types";
-import { dpdfVolumeId, loadPipelineContext, safe, hklVolumeId, type Cut } from "../context/loadContext";
+import { dpdfVolumeId, loadPipelineContext, readFlattenRecord, safe, hklVolumeId, type Cut } from "../context/loadContext";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
-import { pedestalLeft } from "../metrics/flatten";
+import { FLATTEN_UNRECORDED_NOTE, pedestalLeft } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
 import { sectionSymmetry, type SectionSymmetry } from "../metrics/symmetry";
 import { judge, shownWeight, UNROUNDED, WEIGHT_FIGURES, type Unrounded } from "../verdicts/rules";
@@ -136,8 +136,12 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     const r = ranges?.[fixed[c.plane]];
     return !r || (c.value >= r[0] && c.value <= r[1]);
   });
+  // What the flatten recorded, read once for the three cuts: its floors are
+  // judged over the run's own fit range and at its percentile (plan 4.11). The
+  // other stages do not read the flatten's numbers.
+  const flattenRecord = stage === "flatten" ? await readFlattenRecord(dataset) : { settings: undefined };
   // Every leftover peak, marked, not only the strongest few the chat's context lists: the punch counts them by their marks.
-  const contexts = await Promise.all(cuts.map((recip) => loadPipelineContext(dataset, { recip, dpdf: null, records: false, allLeftovers: true })));
+  const contexts = await Promise.all(cuts.map((recip) => loadPipelineContext(dataset, { recip, dpdf: null, records: false, allLeftovers: true, flattenRecord })));
   const per = (f: (i: number) => unknown) => Object.fromEntries(cuts.map((c, i) => [c.plane, f(i)]));
 
   if (stage === "rings") {
@@ -309,6 +313,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
   // flatten
   const f = contexts.map((c) => c.context.flatten);
   return {
+    // A file from before the flatten recorded its settings: judged with the defaults, said so.
+    ...(flattenRecord.settings === null ? { settings_note: FLATTEN_UNRECORDED_NOTE } : {}),
     max_after_floor_sigma: max(f.map((x) => x?.after_floor_max_sigma)),
     // The strongest leftover |Q| trend of the floors (by |rank correlation|),
     // and the widest floor span, over the planes: each on the outer half of the

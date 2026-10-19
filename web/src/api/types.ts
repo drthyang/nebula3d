@@ -138,6 +138,28 @@ export interface VolumeMeta {
   // that leaves a significance in σ meaningless (normalized values).
   sigma?: "measured" | "estimated";
   sigma_note?: string | null;
+  // The settings the flatten that wrote this file ran with: null for a stage
+  // the flatten did not write, or wrote before it recorded them; absent from
+  // a backend that predates the field.
+  flatten_settings?: FlattenSettings | null;
+}
+
+/**
+ * What the flatten recorded in its output (nebula3d.pipeline.FlattenParams, as
+ * read_flatten_settings returns it: ranges as lists). Every field is optional:
+ * a file records the fields of the version that wrote it.
+ */
+export interface FlattenSettings {
+  estimator?: string;
+  ion?: string | null;
+  fit_q_range?: [number, number] | null; // Å⁻¹; null: every shell with a level was fitted
+  q2_term?: boolean;
+  floor_percentile?: number; // 0–100
+  q_step?: number; // Å⁻¹
+  smooth?: number;
+  snip_width?: number;
+  min_count?: number;
+  q_range?: [number, number] | null;
 }
 
 export interface DeltaPdfMeta {
