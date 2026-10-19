@@ -215,6 +215,31 @@ export interface ConsistencyCheck {
   > | null;
 }
 
+// The transform the viewer's round trip runs, and where it came from: the run's
+// ΔPDF records its window, σ, shape, support, padding and subtractions
+// (source "run"); without a readable record the package defaults are used and
+// note says why (source "defaults"). defaulted names the settings a record
+// lacked. The view keeps the full |Q| range and its own band: the run's crop
+// and band are reported, not applied. same_input is false when the record's
+// ΔPDF was made from another volume than the one the view transforms.
+export interface ConsistencySettings {
+  source: "run" | "defaults";
+  note: string | null;
+  delta_pdf: string | null;
+  made_from: string | null;
+  same_input: boolean | null;
+  defaulted: string[];
+  apodization: string;
+  gaussian_sigma: number;
+  zero_pad: boolean;
+  subtract_mean: boolean;
+  subtract_smooth_bg: number | number[] | null;
+  window_shape: string;
+  window_support: boolean;
+  run_crop_hkl: number[] | null;
+  run_q_band: number[] | null;
+}
+
 export interface ConsistencyMeta {
   shape: [number, number, number];
   h_range: [number, number];
@@ -229,6 +254,7 @@ export interface ConsistencyMeta {
   q_data_max: number;
   r_data_max: number;
   metrics: ConsistencyMetrics;
+  settings: ConsistencySettings;
 }
 
 export interface BraggPeakWidth {
