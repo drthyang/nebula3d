@@ -40,31 +40,27 @@ import {
   type TuneParam,
   type TuneStage,
 } from "../tune/catalog";
-import { evaluateStage, headline, type StageEvaluation } from "../tune/evaluate";
+import { headline, type StageEvaluation } from "../tune/evaluate";
 import { startTuning, stopTuning, useTuneStore, type StageRun } from "../tune/tuner";
 import {
   dpdfVolumeId,
   hklVolumeId,
-  RECIP_STAGES,
   safe,
   stageVolumeId,
 } from "../context/loadContext";
 import { qRadius } from "../context/pipelineContext";
 import type { ToolCall, ToolSpec } from "../provider/client";
-import { ALL_STAGES, keysOf, RECIP, resolveFacts, stageKey, type Facts } from "./facts";
+import { ALL_STAGES, keysOf, resolveFacts, type Facts } from "./facts";
 import type { ViewTarget } from "./openView";
 import { built, connective, evidence, inference, joined, reading, withoutInference, written } from "../inference";
 import { fit } from "../readings";
 import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS, skillsOn } from "../skills";
-import { judge, WORDS, type Outcome } from "../verdicts/rules";
+import { judge, type Outcome } from "../verdicts/rules";
 import { num, oneOf } from "./shared/args";
 import {
-  checkInRange,
   cleanupView,
   dpdfMeta,
   dpdfView,
-  HKL,
-  planeLabel,
   RECIP_FIXED,
   RECIP_PLANES,
   recipMeta,
@@ -82,6 +78,11 @@ import { compare_datasets } from "./defs/compare_datasets";
 import { current_view } from "./defs/current_view";
 import { configure_settings } from "./defs/configure_settings";
 import { show_in_viewer } from "./defs/show_in_viewer";
+import { assess_stage } from "./defs/assess_stage";
+import { radial_profile } from "./defs/radial_profile";
+import { run_log } from "./defs/run_log";
+import { texture_check } from "./defs/texture_check";
+import { symmetry_check } from "./defs/symmetry_check";
 import { ToolArgError, type AgentTool, type Args, type ChatTool, type ToolContext, type ToolIO } from "./types";
 
 export type { AgentTool, Args, ChatTool, ToolContext, ToolIO, ToolOutcome } from "./types";
@@ -90,271 +91,9 @@ export type { ViewTarget } from "./openView";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
 import { COVERAGE_SHELLS, coverageMetrics } from "../metrics/coverage";
 import { grainCheck, shownGrains } from "../metrics/grains";
-import { sectionSymmetry, SYMMETRY_HOLDS } from "../metrics/symmetry";
-import { median, radialProfile, roundSig } from "../metrics/sliceStats";
-import { textureMetrics } from "../metrics/texture";
+import { median, roundSig } from "../metrics/sliceStats";
 
 // ---------------------------------------------------------------- assessing
-
-// The output each stage writes, as the dataset lists it.
-const STAGE_OUTPUT: Record<TuneStage, string> = {
-  rings: "ringremoved",
-  punch: "braggpunched",
-  backfill: "backfilled",
-  flatten: "flattened",
-  pdf: "delta_pdf",
-};
-
-const ASSESS_CHOICES = [...TUNE_STAGES, "all"] as const;
-
-// The per-plane number that is worse when larger, for each reciprocal stage.
-const WORSE_WHEN_LARGER: Partial<Record<TuneStage, string>> = {
-  rings: "ring_energy_ratio",
-  punch: "at_nodes",
-  backfill: "median_seam_sigma",
-  flatten: "after_floor_max_sigma",
-};
-
-// The plane where a stage did worst, to show it there; the first plane when
-// none stands out.
-function worstPlane(stage: TuneStage, evaluation: Record<string, unknown>): string | null {
-  const per = evaluation.per_plane as Record<string, Record<string, unknown> | null> | undefined;
-  const key = WORSE_WHEN_LARGER[stage];
-  if (!per || !key) return null;
-  let worst: string | null = null;
-  let worstValue = -Infinity;
-  for (const [plane, m] of Object.entries(per)) {
-    const v = m?.[key];
-    if (typeof v === "number" && v > worstValue) [worst, worstValue] = [plane, v];
-  }
-  return worst ?? Object.keys(per)[0] ?? null;
-}
-
-const assessStage: ChatTool = {
-  name: "assess_stage",
-  facts: {
-    label: "Assessed a stage",
-    acts: null,
-    // A stage's verdict; with no stage, or "all", every stage's.
-    settles: (args) => TUNE_STAGES.filter((st) => args.stage === undefined || ["all", st].includes(String(args.stage))),
-    reportable: true,
-    highlights: (args) => {
-      const s = typeof args.stage === "string" ? args.stage : "all";
-      if (s === "all") return ALL_STAGES;
-      const k = stageKey(s);
-      return k === "pdf" ? ["pdf", "check"] : k ? [k] : [];
-    },
-  },
-  description:
-    "Judge a stage's output against its goal, on the three principal planes through the origin plus the records the stage writes — the evaluation the tuning run judges trials by. rings: ring-energy ratio and over-subtraction per plane; punch: leftover peaks, punched fraction, fitted peaks; backfill: seam σ and bright fills; flatten: shell floors in σ; pdf: back-FFT r and RMS, feature SNR per section. Returns the stage's goal with the numbers. stage=all gives each stage's headline numbers; one stage adds the per-plane detail. Use it for a verdict on a stage, after a run, and before and after a change.",
-  parameters: {
-    type: "object",
-    properties: {
-      stage: { type: "string", enum: ASSESS_CHOICES, description: "The stage to judge, or all (default)" },
-    },
-  },
-  run: async (args, ctx) => {
-    const { dataset } = ctx;
-    // A stage's goal as the skills' switch has it (skills.ts): off, without a skill's step.
-    const goals = skillsOn(ctx) ? WORDS.goal : WORDS.goalWithoutSkills;
-    const pick = oneOf(args, "stage", ASSESS_CHOICES, "all");
-    const stages: TuneStage[] = pick === "all" ? [...TUNE_STAGES] : [pick];
-    const result: Record<string, unknown> = {};
-    const outcomes: Outcome[] = [];
-    const lines: string[] = [];
-    let view: ViewTarget | undefined;
-    let measuredOn: string[] | undefined;
-    for (const stage of stages) {
-      if (!stageVolumeId(dataset, STAGE_OUTPUT[stage])) {
-        result[stage] = { missing: `no ${STAGE_OUTPUT[stage]} output yet; run_pipeline computes it` };
-        outcomes.push(judge(stage, result[stage] as Record<string, unknown>));
-        continue;
-      }
-      const evaluation = await evaluateStage(stage, dataset);
-      const planes = Object.keys((evaluation.per_plane as object | undefined) ?? {});
-      if (!measuredOn && planes.length) measuredOn = planes.map((p) => planeLabel(p, 0));
-      if (!view) {
-        const plane = stage === "pdf" ? null : worstPlane(stage, evaluation);
-        if (plane) view = cleanupView(plane, 0);
-        else if (stage === "pdf") view = { view: "consistency", label: "the back-FFT check" };
-      }
-      // The verdict is computed from the numbers, by the stage's rule
-      // (verdicts/), never left to the model (answerChecks.ts holds the model to it).
-      const outcome = judge(stage, evaluation, { skills: skillsOn(ctx) });
-      outcomes.push(outcome);
-      const verdict = outcome.words;
-      // All five stages' per-plane detail, or their goals, would overflow the
-      // result (MAX_RESULT_CHARS): one stage at a time gives both.
-      if (pick === "all") delete evaluation.per_plane;
-      result[stage] = {
-        verdict,
-        criterion: outcome.criterion,
-        headline: headline(stage, evaluation),
-        ...evaluation,
-        ...(pick === "all" ? {} : { goal: goals[stage] }),
-      };
-      lines.push(`${TUNE_STAGE_LABELS[stage]}: ${verdict} · ${headline(stage, evaluation)}`);
-    }
-    if (measuredOn) result.measured_on = measuredOn;
-    return { result, summary: lines.join(" · ") || "no stage outputs yet", view, outcomes };
-  },
-};
-
-const radialProfileTool: ChatTool = {
-  name: "radial_profile",
-  facts: {
-    label: "Took a radial profile",
-    acts: null,
-    offeredFor: ["rings", "backfill", "flatten", "general"],
-    // No verdict: a ring is judged in 3D (assess_stage); a radial profile
-    // shows a bump on one plane only.
-    highlights: (args) => (args.stages === undefined ? ["raw", ...RECIP] : keysOf(args.stages)),
-  },
-  ...described(
-    description("radial_profile")`The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings${evidence(", which are bumps in raw that ring removal should take out without denting the diffuse")}${reading("; after flatten the floor should sit near 0 at every |Q|")}.${reading(" Use it to see where in |Q| a stage left or removed signal.")}`,
-  ),
-  parameters: {
-    type: "object",
-    properties: {
-      plane: { type: "string", enum: RECIP_PLANES, description: "hk0 (default), h0l or 0kl" },
-      value: { type: "number", description: "Cut position along the fixed axis, in r.l.u. (default 0)" },
-      stages: {
-        type: "array",
-        items: { type: "string", enum: RECIP_STAGES },
-        description: "Stages to compare (default every one that exists)",
-      },
-      bins: { type: "integer", minimum: 8, maximum: 64, description: "Number of |Q| shells (default 32)" },
-    },
-  },
-  run: async (args, { dataset }) => {
-    const plane = oneOf(args, "plane", RECIP_PLANES, "hk0");
-    const value = num(args, "value", 0);
-    const bins = Math.round(num(args, "bins", 32));
-    if (bins < 8 || bins > 64) throw new ToolArgError("bins must be within [8, 64]");
-    let stages = RECIP_STAGES.filter((s) => stageVolumeId(dataset, s));
-    if (args.stages !== undefined) {
-      if (!Array.isArray(args.stages) || !args.stages.length) throw new ToolArgError("stages must be a non-empty list");
-      const wanted = args.stages.map((s) => oneOf({ stage: s }, "stage", RECIP_STAGES));
-      stages = stages.filter((s) => wanted.includes(s));
-    }
-    if (!stages.length) throw new Error("none of those stage outputs exist yet; run_pipeline computes them");
-    const meta = await recipMeta(dataset);
-    checkInRange(HKL[RECIP_FIXED[plane]], value, recipRange(meta, RECIP_FIXED[plane]));
-    const radius = qRadius(plane, value, meta);
-    const slices = await Promise.all(stages.map((s) => fetchSlice(stageVolumeId(dataset, s)!, plane, value)));
-    // The stages share one grid, so their shells line up.
-    const profiles = slices.map((s) => radialProfile(s, bins, radius, "median"));
-    const rows = profiles[0].r
-      .map((r, i) => ({
-        q: roundSig(r, 3),
-        ...Object.fromEntries(
-          stages.map((s, j) => {
-            const v = profiles[j].intensity[i];
-            return [s, Number.isFinite(v) ? roundSig(v, 3) : null];
-          }),
-        ),
-      }))
-      .filter((row) => stages.some((s) => (row as Record<string, number | null>)[s] != null));
-    return {
-      result: {
-        cut: planeLabel(plane, value),
-        q_unit: radius ? "|Q| in Å⁻¹" : "in-plane radius in r.l.u. (no cell)",
-        stat: "median per shell",
-        rows,
-      },
-      summary: `${planeLabel(plane, value)}: ${rows.length} shells × ${stages.length} stages`,
-      view: cleanupView(plane, value),
-    };
-  },
-};
-
-const runLog: ChatTool = {
-  name: "run_log",
-  facts: { label: "Read the run log", acts: null, reachesBackend: false, highlights: ["log"] },
-  description:
-    "The log of the last pipeline run in this session: each stage's start, skip, result and error lines (how many ring shells were fitted, peaks punched, voxels left unmeasured, the back-FFT r, …) and how the run ended. Use it to explain a result or a failure.",
-  parameters: {
-    type: "object",
-    properties: {
-      stage: { type: "string", enum: STAGES, description: "Only this stage's lines (default all)" },
-      limit: { type: "integer", minimum: 1, maximum: 60, description: "The last N lines (default 30)" },
-    },
-  },
-  run: async (args) => {
-    const { events, terminal, running } = usePipelineStore.getState();
-    if (!events.length) throw new Error("no pipeline run in this session yet");
-    const stage = args.stage === undefined ? null : oneOf(args, "stage", STAGES);
-    const limit = Math.round(num(args, "limit", 30));
-    if (limit < 1 || limit > 60) throw new ToolArgError("limit must be within [1, 60]");
-    const lines = events
-      .filter((e) => e.message && (!stage || e.stage === stage))
-      .slice(-limit)
-      .map((e) => ({ stage: e.stage ?? null, status: e.status ?? null, message: e.message }));
-    const ended = running ? "still running" : (terminal ?? "unknown");
-    return {
-      result: { ended, lines },
-      summary: `${lines.length} line${lines.length === 1 ? "" : "s"} · ${ended}`,
-      view: { view: "execution", label: "the run log" },
-    };
-  },
-};
-
-const textureCheck: ChatTool = {
-  name: "texture_check",
-  facts: {
-    label: "Checked for texture",
-    acts: null,
-    // A generic question too: the system prompt's method checks the fill (the user's decision, Q10, 2026-10-19).
-    offeredFor: ["rings", "backfill", "general"],
-    settles: ["backfill"],
-    reportable: true,
-    highlights: ["punch", "backfill"],
-  },
-  ...described(
-    description("texture_check")`Check whether the punch and backfill printed a pattern of their own into reciprocal space, on a cut (default: the three principal planes through the origin). Fill bias: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly${evidence(" (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median)")}; the part outside that range, signed, in the rim's σ and in units of the local diffuse level. Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture${evidence(" that the ΔPDF turns into features at lattice vectors")}. Azimuthal texture: per |Q| shell, how much the sector means vary around the shell before the punch (unpunched voxels) and after the backfill${evidence("; a ratio near 1 adds none")}.`,
-  ),
-  parameters: {
-    type: "object",
-    properties: {
-      plane: { type: "string", enum: RECIP_PLANES, description: "One plane instead of all three" },
-      value: { type: "number", description: "Cut position for that plane, in r.l.u. (default 0)" },
-    },
-  },
-  run: async (args, { dataset }) => {
-    const ids = (["ringremoved", "braggpunched", "backfilled"] as const).map((s) => stageVolumeId(dataset, s));
-    if (!ids[1] || !ids[2]) throw new Error("this needs the punched and backfilled outputs; run_pipeline computes them");
-    const meta = await recipMeta(dataset);
-    const cuts =
-      args.plane === undefined
-        ? RECIP_PLANES.filter((p) => {
-            const r = recipRange(meta, RECIP_FIXED[p]);
-            return r[0] <= 0 && r[1] >= 0;
-          }).map((plane) => ({ plane, value: 0 }))
-        : [{ plane: oneOf(args, "plane", RECIP_PLANES), value: num(args, "value", 0) }];
-    for (const c of cuts) checkInRange(HKL[RECIP_FIXED[c.plane]], c.value, recipRange(meta, RECIP_FIXED[c.plane]));
-    const rows = await Promise.all(
-      cuts.map(async ({ plane, value }) => {
-        const [before, punched, filled] = await Promise.all(
-          ids.map((id) => (id ? safe(fetchSlice(id, plane, value)) : Promise.resolve(null))),
-        );
-        return { cut: planeLabel(plane, value), ...textureMetrics(before, punched, filled, qRadius(plane, value, meta)) };
-      }),
-    );
-    const biased = rows.filter((r) => r.systematic_fill_bias).length;
-    const bias = (i: number) => Math.abs(rows[i].median_fill_bias_sigma ?? 0);
-    const strongest = rows.reduce((best, _r, i) => (bias(i) > bias(best) ? i : best), 0);
-    const ratios = rows.map((r) => r.azimuthal_ratio).filter((x): x is number => x != null);
-    const result = { per_cut: rows };
-    return {
-      result,
-      outcomes: [judge("texture", result)],
-      summary:
-        `${biased ? `systematic fill bias on ${biased} of ${rows.length} cut(s)` : "no systematic fill bias"}` +
-        (ratios.length ? ` · azimuthal ratio ${Math.min(...ratios)}–${Math.max(...ratios)}` : ""),
-      view: cleanupView(cuts[strongest].plane, cuts[strongest].value),
-    };
-  },
-};
 
 // How far the forward transform reaches in |Q|, from the Configure page: an
 // explicit |Q| band; else the box corners for a flat separable window (no
@@ -378,65 +117,6 @@ function windowReach(
 // Two evaluations with the same numbers: the change had no measurable effect.
 const sameNumbers = (a: StageEvaluation | undefined, b: StageEvaluation | undefined): boolean =>
   !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
-
-const symmetryCheck: ChatTool = {
-  name: "symmetry_check",
-  facts: {
-    label: "Checked the ΔPDF's symmetry",
-    acts: null,
-    offeredFor: ["pdf", "symmetry", "general"],
-    settles: ["symmetry"],
-    reportable: true,
-  },
-  ...described(
-    description("symmetry_check")`Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell, when the file declares that its data were symmetrised${evidence(" (with none declared the asymmetry is the data's own and is not judged)")}: an x–y section (default z = 0) compared with its image under each in-plane operation (hexagonal: six-, three-, two-fold and the a ↔ b mirror; orthogonal: the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b), as the RMS of the difference over the section's RMS. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it${evidence("; a larger share means a stage broke it, or the sample lacks that operation")}. Which operations the sample has is the user's to say.`,
-  ),
-  parameters: {
-    type: "object",
-    properties: { z: { type: "number", description: "Height of the x–y section along c, in Å (default 0)" } },
-  },
-  run: async (args, ctx) => {
-    const { dataset } = ctx;
-    const z = args.z === undefined ? 0 : num(args, "z");
-    const meta = await dpdfMeta(dataset);
-    const slice = await fetchDpdfSlice(dpdfVolumeId(dataset)!, "xy", z);
-    // The point group the raw file declares its data were symmetrised with; none read: not known.
-    const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset);
-    const rawMeta = rawId ? await safe(fetchMeta(rawId)) : null;
-    const declared = rawMeta ? rawMeta.symmetry ?? null : undefined;
-    const { a, b } = meta.lattice ?? {};
-    const sym = a && b ? sectionSymmetry(slice, { a, b }) : null;
-    const outcome = judge("symmetry", { ops: sym?.ops ?? null, declared }, { skills: skillsOn(ctx) });
-    if (!sym) {
-      return {
-        result: { note: "no in-plane symmetry to test: the cell is neither hexagonal nor orthogonal, or the section is not centred on the origin" },
-        summary: "nothing to test",
-        outcomes: [outcome],
-      };
-    }
-    const holds = sym.ops.filter((o) => o.rms_difference <= SYMMETRY_HOLDS).map((o) => o.op);
-    const broken = sym.ops.filter((o) => o.rms_difference > SYMMETRY_HOLDS).map((o) => `${o.op} (${o.rms_difference})`);
-    return {
-      result: {
-        section: `ΔPDF x–y section at z = ${z} Å`,
-        cell: sym.kind,
-        ops: sym.ops,
-        holds,
-        symmetry_declared: declared === undefined ? null : Boolean(declared),
-        // Judged by the symmetry's rule (verdicts/): not judged where the file declares none.
-        verdict: outcome.words,
-      },
-      outcomes: [outcome],
-      summary:
-        declared === null || declared === ""
-          ? "no symmetry declared: not judged"
-          : broken.length
-            ? `not kept: ${broken.join(", ")}`
-            : "every in-plane operation holds",
-      view: dpdfView(meta, "xy", z),
-    };
-  },
-};
 
 // The q-quantile of ascending magnitudes.
 const quantileOf = (sorted: number[], q: number): number =>
@@ -1266,19 +946,19 @@ export const CHAT_TOOLS: ChatTool[] = [
   current_view,
   measure_reciprocal_cut,
   measure_dpdf_cut,
-  assessStage,
-  textureCheck,
+  assess_stage,
+  texture_check,
   qmaxCoverage,
-  symmetryCheck,
+  symmetry_check,
   dpdfContrast,
   dpdfPeaks,
   grainCheckTool,
   ubCheckTool,
-  radialProfileTool,
+  radial_profile,
   line_profile,
   bragg_peaks,
   consistency_details,
-  runLog,
+  run_log,
   compare_datasets,
   configure_settings,
   updateSettings,
