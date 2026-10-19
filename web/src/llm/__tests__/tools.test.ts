@@ -4,7 +4,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BraggProfile, Dataset, VolumeMeta } from "../../api/types";
+import type { BraggProfile, Dataset, VolumeMeta, VolumeTexture } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
@@ -24,6 +24,7 @@ const api = vi.hoisted(() => ({
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -895,43 +896,182 @@ describe("consistency_details", () => {
 });
 
 describe("texture_check", () => {
-  // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs,
-  // the nodes 10 voxels apart (±1.5 r.l.u., 0.1 r.l.u. a voxel).
+  // The cuts, for the azimuthal texture: 3×3 holes on the nodes of a noisy
+  // diffuse (±3 r.l.u., 0.05 r.l.u. a voxel), filled with the diffuse, or
+  // `plug` above it.
   const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;
-  const hole = (ix: number, iy: number) => [4, 5, 6].includes(ix % 10) && [4, 5, 6].includes(iy % 10);
-  const cut = (f: (ix: number, iy: number) => number, half = 1.5) => makeSlice(31, 31, (_x, _y, ix, iy) => f(ix, iy), { half });
-  const stages = (half?: number): Record<string, ReturnType<typeof makeSlice>> => ({
-    "demo.ringremoved": cut((ix, iy) => 100 + 4 * noise(ix, iy), half),
-    "demo.braggpunched": cut((ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy)), half),
-    "demo.backfilled": cut((ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? 30 : 0), half),
+  const hole = (ix: number, iy: number) => [19, 0, 1].includes(ix % 20) && [19, 0, 1].includes(iy % 20);
+  const cut = (f: (ix: number, iy: number) => number) => makeSlice(121, 121, (_x, _y, ix, iy) => f(ix, iy), { half: 3 });
+  const stages = (plug: number): Record<string, ReturnType<typeof makeSlice>> => ({
+    "demo.ringremoved": cut((ix, iy) => 100 + 4 * noise(ix, iy)),
+    "demo.braggpunched": cut((ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy))),
+    "demo.backfilled": cut((ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? plug : 0)),
   });
-
-  it("flags fills that sit above their rims on every plane", async () => {
-    const slices = stages();
+  const onCuts = (plug: number) => {
+    const slices = stages(plug);
     api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
+  };
+
+  // What the server returns (GET /api/volumes/{id}/texture, limit 1, the
+  // rule's limits asked for) on the constructed volumes of
+  // tests/test_fill_texture.py (_lattice; the coarse grid as its _on_grid
+  // puts it), written as a dataset's stages as tests/test_server.py writes
+  // them: holes three voxels in radius, punched on the nodes of a smooth
+  // diffuse that peaks at them, the nodes 20 voxels apart. Each lists the hole
+  // farthest outside its range.
+  type Hole = VolumeTexture["holes"][number];
+  const row = (index: number, centre_hkl: number[], voxels: number, rim_voxels: number, values: number[]): Hole => {
+    const [fill, level, sigma, slope, edge, peaked, bias, bias_sigma, bias_level] = values;
+    return { index, centre_hkl, voxels, rim_voxels, fill, level, sigma, slope, edge, peaked, bias, bias_sigma, bias_level, not_judged: null };
+  };
+  const server = (over: Partial<VolumeTexture>): VolumeTexture => ({
+    id: "demo.backfilled", punched_id: "demo.braggpunched", holes_from: "punch_record", rim: 4, min_rim: 8,
+    min_sigma: 0.5, one_way: 0.75, min_holes: 5, floor: 0.2,
+    n_holes: 125, n_judged: 125, judged: true, node_spacing: 20, room_needed: 14, not_judged: null,
+    median_fill_bias_sigma: 0, median_fill_bias_level: 0, above_fraction: 0, below_fraction: 0,
+    above_floor_fraction: 0, below_floor_fraction: 0, systematic_fill_bias: false, holes: [],
+    ...over,
+  });
+  // A fill equal to the truth (_lattice()): no hole outside its range.
+  const TRUTH = server({
+    holes: [row(0, [-1.951724, -1.951724, -1.951724], 29, 363, [1.2676029908859836, 1.2407635975742777, 0.012642325063012515, -0.010843542091501825, 1.2636129322113534, 1.277073881014597, 0, 0, 0])],
+  });
+  // Half the level too high in 80 % of the holes (bias=0.5, share=0.8).
+  const BIAS_80 = server({
+    median_fill_bias_sigma: 39.119839779229835, median_fill_bias_level: 0.5061428748347895, above_fraction: 0.8, above_floor_fraction: 0.8, systematic_fill_bias: true,
+    holes: [row(62, [0, 0, 0], 123, 2418, [1.9523023411431835, 1.2671364760287895, 0.011486059140566576, -0.011051517523915392, 1.2904796045027955, 1.30323826701008, 0.6490640741331035, 56.508857057921, 0.5122290190613664])],
+  });
+  // Satellites at (½, ½, 0.15) beside the nodes on a diffuse sharply peaked at
+  // every one, all filled 12 % too high (width=4, amp=1, bias=0.12): 125 nodes
+  // and 80 satellites, 64 of them whole. Every node and every whole satellite
+  // reads 0.28 to 0.30 of the level outside its range, nodes and satellites
+  // alike: the 16 holes under the floor (0.17) are the satellites the box's
+  // face cuts down to a single voxel, their poles, as a cut through the nodes
+  // crossed them (docs/pipeline.md, the fills' texture).
+  const SATELLITES = server({
+    n_holes: 205, n_judged: 205,
+    median_fill_bias_sigma: 5.363201185121478, median_fill_bias_level: 0.2910240219427689, above_fraction: 1, above_floor_fraction: 0.9219512195121952, systematic_fill_bias: true,
+    holes: [row(90, [0, -1.953191, -1.953191], 47, 684, [2.0284386042421496, 1.2916152081934598, 0.06682883141019066, -0.10194819777087087, 1.512923388159816, 1.636562691839383, 0.39187591240276665, 5.86387497931035, 0.30339989024352754])],
+  });
+  // Half the level too high in every hole, the grid's nodes 13 voxels apart:
+  // under the 14 the holes, reaching 3 voxels, and their rims need.
+  const COARSE = server({
+    n_holes: 27, n_judged: 27, judged: false, node_spacing: 13,
+    not_judged: "grid too coarse: the nodes are 13 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more",
+    median_fill_bias_sigma: 4.727975561695145, median_fill_bias_level: 0.5102970053410898, above_fraction: 1, above_floor_fraction: 1,
+    holes: [row(0, [-1, -1, -1], 123, 2418, [2.1367289559837643, 1.3582709527243337, 0.1495568028563944, -0.017704561668688803, 1.4134041424917692, 1.4338435551499302, 0.7028854008338341, 4.699788892309701, 0.5174854099795266])],
+  });
+  // Half the level too high in each of four holes: under the five the rule needs.
+  const FOUR = server({
+    n_holes: 4, n_judged: 4, judged: false,
+    median_fill_bias_sigma: 41.412564914693164, median_fill_bias_level: 0.5163301414738879, above_fraction: 1, above_floor_fraction: 1,
+    holes: [row(0, [-1, -1, 0], 123, 2418, [1.7900651656929363, 1.1389149366967461, 0.013955049115759488, -0.01893101790564045, 1.179545958419301, 1.2014012799038618, 0.5886638857890745, 42.182860189599346, 0.5168637857155572])],
+  });
+  const LIMITS = { minSigma: 0.5, oneWay: 0.75, minHoles: 5, floor: 0.2 };
+
+  it("judges a fill equal to the truth by every hole in 3-D: no bias", async () => {
+    onCuts(0);
+    api.fetchVolumeTexture.mockResolvedValue(TRUTH);
     const r = await runOn(full, "texture_check", {});
+    expect(r.ok).toBe(true);
+    // The backfilled stage's holes, judged by the rule's own limits, the farthest one listed.
+    expect(api.fetchVolumeTexture).toHaveBeenCalledWith("demo.backfilled", 1, LIMITS);
     const out = JSON.parse(r.text);
-    expect(out.per_cut).toHaveLength(3);
-    expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, above_fraction: 1 });
-    expect(out.per_cut[0].not_judged).toBeUndefined();
-    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
-    expect(r.summary).toMatch(/^systematic fill bias on 3 of 3 cut\(s\)/);
+    expect(out).toEqual({
+      n_holes: 125, n_judged: 125, median_fill_bias_sigma: 0, median_fill_bias_level: 0, above_fraction: 0, below_fraction: 0,
+      above_floor_fraction: 0, below_floor_fraction: 0, systematic_fill_bias: false,
+      // The cuts carry the azimuthal texture only.
+      per_cut: ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"].map((c) => ({ cut: c, azimuthal_ratio: expect.any(Number) })),
+    });
+    for (const c of out.per_cut) expect(Math.abs(c.azimuthal_ratio - 1)).toBeLessThan(0.25); // as texture.test.ts holds a fill that matches
+    expect(r.outcomes).toEqual([{ check: "texture", kind: "pass", reasons: [], dataProblems: [], words: null }]);
+    expect(r.summary).toMatch(/^no systematic fill bias over 125 holes in 3-D · azimuthal ratio /);
+    // No hole outside its range: the first cut.
     expect(r.view?.label).toBe("H–K plane at L = 0");
   });
 
-  it("does not judge cuts whose grid leaves the holes no room for their rims, and says why", async () => {
-    // The same cuts at 0.2 r.l.u. a voxel: the nodes 5 voxels apart, under the 10 a hole reaching one voxel and its rim need.
-    const slices = stages(3);
-    api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
+  it("flags half the level too high in 80 % of the holes, and shows the plane through the farthest", async () => {
+    onCuts(30);
+    api.fetchVolumeTexture.mockResolvedValue(BIAS_80);
     const r = await runOn(full, "texture_check", {});
     const out = JSON.parse(r.text);
-    expect(out.per_cut[0]).toMatchObject({ n_holes: 9, not_judged: expect.stringMatching(/^grid too coarse: the nodes are 5 voxels apart, under 10/), systematic_fill_bias: null });
-    expect(r.outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
-    expect(r.summary).toMatch(/^fill bias not judged · 3 of 3 cut\(s\) not judged: grid too coarse/);
+    expect(out).toMatchObject({ n_holes: 125, n_judged: 125, median_fill_bias_sigma: 39.1, median_fill_bias_level: 0.506, above_fraction: 0.8, below_fraction: 0, above_floor_fraction: 0.8, systematic_fill_bias: true });
+    expect(out).not.toHaveProperty("not_judged");
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
+    expect(r.summary).toMatch(/^systematic fill bias over 125 holes in 3-D \(median 0\.506 of the level\)/);
+    expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, label: "H–K plane at L = 0" });
+  });
+
+  it("reads satellites beside the nodes as the nodes: all filled 12 % high, every whole hole past the floor", async () => {
+    onCuts(0);
+    api.fetchVolumeTexture.mockResolvedValue(SATELLITES);
+    const r = await runOn(full, "texture_check", {});
+    const out = JSON.parse(r.text);
+    // 189 of the 205 holes beyond the floor: the 125 nodes and the 64 whole satellites.
+    expect(out).toMatchObject({ n_holes: 205, n_judged: 205, median_fill_bias_level: 0.291, above_fraction: 1, above_floor_fraction: 0.922, systematic_fill_bias: true });
+    expect(Math.round(out.above_floor_fraction * out.n_judged)).toBe(125 + 64);
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
+    // The hole farthest outside its range: the H–K plane through it.
+    expect(r.view).toMatchObject({ plane: "hk0", value: -1.953, label: "H–K plane at L = -1.953" });
+    // A cut asked for is the figure.
+    expect((await runOn(full, "texture_check", { plane: "h0l", value: 0.5 })).view).toMatchObject({ plane: "h0l", value: 0.5 });
+  });
+
+  it("does not judge the fills on a grid too coarse for the holes' rims, and says why (the 3-D not_judged)", async () => {
+    onCuts(30);
+    api.fetchVolumeTexture.mockResolvedValue(COARSE);
+    const r = await runOn(full, "texture_check", {});
+    const out = JSON.parse(r.text);
+    // No bias measured, though the rims read past the midpoint call it 0.51 of the level: no verdict either way.
+    expect(out).toEqual({
+      n_holes: 27,
+      not_judged: "grid too coarse: the nodes are 13 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more",
+      median_fill_bias_sigma: null, median_fill_bias_level: null, above_fraction: null, below_fraction: null,
+      above_floor_fraction: null, below_floor_fraction: null, systematic_fill_bias: null,
+      per_cut: expect.any(Array),
+    });
+    expect(r.outcomes).toEqual([{ check: "texture", kind: "info", reasons: ["grid too coarse"], dataProblems: [], words: null }]);
+    expect(r.summary).toMatch(/^fill bias not judged: grid too coarse · azimuthal ratio /);
+    expect(r.view?.label).toBe("H–K plane at L = 0");
+  });
+
+  it("does not judge fewer holes than the rule needs, and says why", async () => {
+    onCuts(30);
+    api.fetchVolumeTexture.mockResolvedValue(FOUR);
+    const out = JSON.parse((await runOn(full, "texture_check", {})).text);
+    expect(out).toMatchObject({ n_holes: 4, n_judged: 4, not_judged: "too few holes judged: 4 of 4, under 5", median_fill_bias_level: 0.516, above_floor_fraction: 1, systematic_fill_bias: null });
+    expect((await runOn(full, "texture_check", {})).outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["too few holes"] });
+    api.fetchVolumeTexture.mockResolvedValue(server({ n_holes: 0, n_judged: 0, judged: false, median_fill_bias_sigma: null, median_fill_bias_level: null, above_fraction: null, below_fraction: null, above_floor_fraction: null, below_floor_fraction: null }));
+    const none = await runOn(full, "texture_check", {});
+    expect(JSON.parse(none.text)).toMatchObject({ n_holes: 0, not_judged: "no filled punch hole", systematic_fill_bias: null });
+    expect(none.outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["too few holes"] });
+  });
+
+  it("reads the fill bias from the volume's holes, not from the cuts", async () => {
+    // Bright plugs on every cut, as the per-cut rule flagged them before 4.2, where the 3-D read finds none.
+    onCuts(30);
+    api.fetchVolumeTexture.mockResolvedValue(TRUTH);
+    const r = await runOn(full, "texture_check", {});
+    const out = JSON.parse(r.text);
+    expect(out.systematic_fill_bias).toBe(false);
+    for (const c of out.per_cut) {
+      expect(Object.keys(c)).toEqual(["cut", "azimuthal_ratio"]);
+      expect(c.azimuthal_ratio).toBeGreaterThan(1.25); // the plugs vary around the shells
+    }
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "pass" });
+  });
+
+  it("refuses a 3-D read judged by other limits than the rule's", async () => {
+    onCuts(0);
+    api.fetchVolumeTexture.mockResolvedValue({ ...TRUTH, floor: 0.1 });
+    const r = await runOn(full, "texture_check", {});
+    expect(r.ok).toBe(false);
+    expect(r.text).toMatch(/the backend judged the fills by other limits \(\{"minSigma":0\.5,"oneWay":0\.75,"minHoles":5,"floor":0\.1\}\)/);
   });
 
   it("needs the punched and backfilled outputs", async () => {
     expect((await run("texture_check", {})).text).toMatch(/needs the punched and backfilled outputs/);
+    expect(api.fetchVolumeTexture).not.toHaveBeenCalled();
   });
 });
 

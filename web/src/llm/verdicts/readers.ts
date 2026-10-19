@@ -14,7 +14,7 @@ import type { AgentStep } from "../agent";
 import { current, recomputedAt, type PipelineStage } from "../evidence";
 import type { Measured } from "../report/report";
 import { outcomesOf, outcomesOfMeasured } from "./recorded";
-import { isOriginProblem, judge, STAGE_NAMES, STAGES, type CheckId, type Kind, type Outcome, type Stage } from "./rules";
+import { isOriginProblem, judge, STAGE_NAMES, STAGES, type CheckId, type Kind, type Outcome, type Reason, type Stage } from "./rules";
 
 /** The verdict on a run: computed from its checks, never from the model's words. The validation's records persist it as computed_verdict. */
 export interface ComputedVerdict {
@@ -23,7 +23,9 @@ export interface ComputedVerdict {
   attention: string[]; // what needs attention
   notMeasured: string[]; // stages not measured since they were computed
   // Stages measured but not judged, for the grid too coarse for their check, each
-  // with why (G1): "the ring removal (grid too coarse for the ring check)". Only
+  // with why (G1): "the ring removal (grid too coarse for the ring check)"; then
+  // the checks on the result that ran and could not judge, likewise (plan 4.2):
+  // "the backfill's texture (grid too coarse)", or "(too few holes)". Only
   // where there is one, so a verdict without one reads as before.
   notJudged?: string[];
   dataProblems: string[]; // what the data hold that no setting fixes
@@ -330,7 +332,25 @@ function notJudgedForTheGrid(stage: Stage, o: Outcome | undefined, name: string)
   return `${name} (grid too coarse for ${GRID_LIMITED_CHECK[stage] ?? "its check"})`;
 }
 
-/** The words of a verdict not judged: the stages not judged for the grid, each with why, then those not measured (as `measured` words them). */
+/**
+ * Why a check on the result that ran could not judge, where the run's verdict
+ * says so (plan 4.2, as G1 says it of a stage): the grid too coarse for it, or
+ * too few holes for the fills' texture (rules.ts). No evidence never passes:
+ * the run is not judged, not met, and the verdict names the check and why.
+ * Today only the texture's outcome carries either; a check on the result
+ * that judged nothing for any other reason (nothing to judge, a symmetry not
+ * declared) says nothing of the run, as before.
+ */
+const COULD_NOT_JUDGE: readonly Reason[] = ["grid too coarse", "too few holes"];
+
+/** A check on the result not judged for one of COULD_NOT_JUDGE, in the verdict's words: its name and why; null otherwise. */
+function notJudgedOnResult(o: Outcome | undefined, name: string): string | null {
+  if (o?.kind !== "info") return null;
+  const why = o.reasons.find((r) => COULD_NOT_JUDGE.includes(r));
+  return why ? `${name} (${why})` : null;
+}
+
+/** The words of a verdict not judged: what was measured and not judged, each with why (the stages for the grid, then the checks on the result), then the stages not measured (as `measured` words them). */
 const notJudgedWords = (forTheGrid: readonly string[], notMeasured: readonly string[], measured: string): string =>
   `not judged: ${[...(forTheGrid.length ? [forTheGrid.join(", ")] : []), ...(notMeasured.length ? [`${measured}: ${notMeasured.join(", ")}`] : [])].join("; ")}`;
 
@@ -344,7 +364,7 @@ const ON_RESULT: [CheckId, string][] = [
 /** grain_check's outcome as UB evidence to {{achieved}} (D3, D3a, D7): the UB off; anything else says nothing of the UB. */
 const grainUbForAchieved: Cell = (o) => (grainFindsUbOff(o) ? MATRIX.grain.achieved(o) : undefined);
 
-/** {{achieved}}: met when every stage, measured as it now is, meets its goal and no check on the result needs attention; not judged with a stage not measured since it was computed, or measured on a grid too coarse for its check (saying so, G1); null when the reply measured nothing it rests on. */
+/** {{achieved}}: met when every stage, measured as it now is, meets its goal and no check on the result needs attention; not judged with a stage not measured since it was computed, or measured on a grid too coarse for its check (saying so, G1), or with a check on the result that ran and could not judge (saying why, plan 4.2); null when the reply measured nothing it rests on. */
 function achievedOf(found: readonly Found[], at: Record<PipelineStage, number>): ComputedVerdict | null {
   const stages: Partial<Record<Stage, Kind>> = {};
   const read: Partial<Record<Stage, Outcome>> = {};
@@ -362,12 +382,15 @@ function achievedOf(found: readonly Found[], at: Record<PipelineStage, number>):
   const notMeasured = STAGES.filter((s) => (stages[s] === undefined || stages[s] === "info") && forTheGrid(s) === null).map((s) => STAGE_LABEL[s]);
   const dataProblems: string[] = [];
   let measuredAny = Object.keys(stages).length > 0;
-  // The checks on the result: the newest of each, on the outputs as they now are.
+  // The checks on the result: the newest of each, on the outputs as they now
+  // are. One that ran and could not judge is named with why (COULD_NOT_JUDGE).
   for (const [check, label] of ON_RESULT) {
     const p = pick(found, at, "achieved", [[check, MATRIX[check].achieved]]);
     if (!p) continue;
     measuredAny = true;
     if (p.kind === "attention") attention.push(label);
+    const why = p.kind === "info" ? notJudgedOnResult(p.o, label) : null;
+    if (why) notJudged.push(why);
     dataProblems.push(...p.o.dataProblems);
   }
   // The UB (D7): the newest UB evidence across ub_check and grain_check's "UB
@@ -423,6 +446,9 @@ const REPORT_TITLE: Record<Stage, string> = {
   pdf: "3D-ΔPDF",
 };
 
+/** How the report names the fills' texture, which has no card of its own (the Backfill card shows it): as {{achieved}} names it ("the backfill's texture"). */
+const REPORT_TEXTURE = "Backfill's texture";
+
 /** The Backfill card: the seam's verdict, and a cut whose fill is biased one way (D14). */
 function backfillCard(own: Outcome | undefined, texture: Outcome | undefined): Kind | undefined {
   const biased = texture?.kind === "attention";
@@ -449,7 +475,7 @@ function pdfCard(pdf: Outcome | undefined, coverage: Outcome | undefined, symmet
   return pdf.kind === "info" ? "info" : "pass";
 }
 
-/** A report's verdicts: each card's, and the goal, met when every stage's card passes (a second grain is the sample's, reported apart). */
+/** A report's verdicts: each card's, and the goal, met when every stage's card passes and the fills' texture did not go unjudged (a second grain is the sample's, reported apart). */
 function reportOf(m: Measured): Verdicts {
   // Each check's outcome as its producer judged it in the measurement pass
   // (collect.ts keeps them), else read from its measurements.
@@ -474,6 +500,11 @@ function reportOf(m: Measured): Verdicts {
   // A card not judged for the grid, with why, as {{achieved}} says it (G1); not measured, the rest that judged nothing.
   const forTheGrid = (s: Stage) => (checks[s] === "info" ? notJudgedForTheGrid(s, of(s), REPORT_TITLE[s]) : null);
   const notJudged = STAGES.map(forTheGrid).filter((w): w is string => w !== null);
+  // The fills' texture that could not be judged, with why, as {{achieved}}
+  // says it (plan 4.2). The Backfill card still shows its seam's verdict, and
+  // its fill bias "not judged".
+  const texture = notJudgedOnResult(of("texture"), REPORT_TEXTURE);
+  if (texture) notJudged.push(texture);
   const notMeasured = STAGES.filter((s) => (checks[s] === undefined || checks[s] === "info") && forTheGrid(s) === null).map((s) => REPORT_TITLE[s]);
   const achieved = attention.length ? false : notMeasured.length || notJudged.length ? null : true;
   // The data's problems, named as {{achieved}} names them (Q11): the coverage's,

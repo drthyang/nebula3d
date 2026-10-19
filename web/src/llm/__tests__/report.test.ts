@@ -348,10 +348,55 @@ describe("a card states only what it judges", () => {
   });
 
   it("counts the fill bias on the Backfill card, whose criterion says so", () => {
+    // Recorded before plan 4.2: by cut.
     const texture = { per_cut: [{ systematic_fill_bias: true }, { systematic_fill_bias: false }] };
     const card = buildReport(input({ measured: { ...input().measured, texture } })).checks.find((c) => c.title === "Backfill")!;
     expect(card.verdict).toBe("attention");
     expect(card.headline).toMatch(/ · fill bias on 1 of 2 cuts$/);
-    expect(card.criterion).toMatch(/no cut whose fill is biased one way/);
+    expect(card.details).toContainEqual(["Cuts with a systematic fill bias", "1 of 2"]);
+    expect(card.criterion).toMatch(/, and the fills not biased one way\.$/);
+  });
+
+  it("says the fill bias over every hole in 3-D on the Backfill card (plan 4.2)", () => {
+    // Synthetic: texture_check's result as it reads the volume's holes, its cuts carrying the azimuthal texture only.
+    const volume = (over: Record<string, unknown>) => ({
+      n_holes: 125, n_judged: 125, median_fill_bias_sigma: 0, median_fill_bias_level: 0, above_fraction: 0, below_fraction: 0,
+      above_floor_fraction: 0, below_floor_fraction: 0, systematic_fill_bias: false, per_cut: [{ cut: "H–K plane at L = 0", azimuthal_ratio: 1 }], ...over,
+    });
+    const cardOf = (texture: Record<string, unknown>) => buildReport(input({ measured: { ...input().measured, texture } })).checks.find((c) => c.title === "Backfill")!;
+    const clean = cardOf(volume({}));
+    expect(clean.verdict).toBe("pass");
+    expect(clean.headline).toMatch(/ · no fill bias over 125 holes$/);
+    expect(clean.details).toContainEqual(["Systematic fill bias, every hole in 3-D", "no, over 125 holes judged"]);
+    const biased = cardOf(volume({ median_fill_bias_sigma: 39.1, median_fill_bias_level: 0.506, above_fraction: 0.8, above_floor_fraction: 0.8, systematic_fill_bias: true }));
+    expect(biased.verdict).toBe("attention");
+    expect(biased.headline).toMatch(/ · systematic fill bias over 125 holes$/);
+    expect(biased.details).toContainEqual(["Systematic fill bias, every hole in 3-D", "yes, over 125 holes judged (median 0.506 of the level)"]);
+    const why = "grid too coarse: the nodes are 10 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more";
+    const coarse = cardOf(volume({ n_judged: undefined, not_judged: why, median_fill_bias_sigma: null, median_fill_bias_level: null, systematic_fill_bias: null }));
+    expect(coarse.headline).toMatch(/ · fill bias not judged \(grid too coarse\)$/);
+    expect(coarse.details).toContainEqual(["Systematic fill bias, every hole in 3-D", `not judged: ${why}`]);
+  });
+
+  it("says why its goal is not judged when the fills' texture could not be judged, as {{achieved}} does (plan 4.2)", () => {
+    // Synthetic: every stage meets its goal; texture_check's 3-D read not judged, for the grid or for too few holes.
+    const unmeasured = { median_fill_bias_sigma: null, median_fill_bias_level: null, above_fraction: null, below_fraction: null, above_floor_fraction: null, below_floor_fraction: null };
+    const coarse = { n_holes: 277, not_judged: "grid too coarse: the nodes are 10 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more", ...unmeasured, systematic_fill_bias: null, per_cut: [] };
+    const few = { n_holes: 4, n_judged: 4, not_judged: "too few holes judged: 4 of 4, under 5", ...unmeasured, systematic_fill_bias: null, per_cut: [] };
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 } };
+    const r = buildReport(input({ measured: { ...sound, texture: coarse } }));
+    expect(r.achieved).toEqual({ met: null, text: "not judged: Backfill's texture (grid too coarse)" });
+    expect(verdicts({ report: { ...sound, texture: coarse } }).achieved).toMatchObject({ notMeasured: [], notJudged: ["Backfill's texture (grid too coarse)"] });
+    // The Backfill card still shows its seam's verdict, and says the fill bias was not judged.
+    const card = r.checks.find((c) => c.title === "Backfill")!;
+    expect(card.verdict).toBe("pass");
+    expect(card.headline).toMatch(/ · fill bias not judged \(grid too coarse\)$/);
+    expect(buildReport(input({ measured: { ...sound, texture: few } })).achieved.text).toBe("not judged: Backfill's texture (too few holes)");
+    // Beside the ring removal not judged for the grid (G1): the stages first.
+    expect(buildReport(input({ measured: { ...COARSE_RUN, texture: coarse } })).achieved.text).toBe(
+      "not judged: Ring removal (grid too coarse for the ring check), Backfill's texture (grid too coarse)",
+    );
+    // A recorded result that judged nothing (no cuts) says nothing of the goal.
+    expect(buildReport(input({ measured: { ...sound, texture: { per_cut: [] } } })).achieved.text).toBe("met: every stage meets its goal");
   });
 });
