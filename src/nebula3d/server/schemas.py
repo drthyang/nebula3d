@@ -361,6 +361,10 @@ class BraggPeakWidthOut(BaseModel):
     principal_width_q: list[float] | None = None
     principal_directions_hkl: list[list[float]]
     fit_kind: str
+    # Which pass found it: "integer" (the node test) or "search"; a search peak
+    # with a source node is the Bragg peak of a node the node test left to the
+    # search. None in a profile written before the punch recorded it.
+    found_by: str | None = None
 
 
 class NodeTestOut(BaseModel):

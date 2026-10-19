@@ -340,6 +340,9 @@ def test_bragg_profile_json_is_the_servers_response(ran_pipeline, tmp_path):
                                               left["voxel_q"], left["needs_q"])
     (done,) = [m for stage, status, _f, m in events if stage == "punch" and status == "done"]
     assert done.endswith(f". ⚠ {left['notice']}")
+    # Every node was left to the search: the peaks at nodes are its, as their records say.
+    assert {p["found_by"] for p in bridged["peaks"]} == {"search"}
+    assert any(p["source_node_hkl"] is not None for p in bridged["peaks"])
 
 
 def test_bragg_profile_json_missing_file(ran_pipeline):

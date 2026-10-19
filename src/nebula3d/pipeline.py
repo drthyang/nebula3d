@@ -324,6 +324,10 @@ def bragg_profile_from_records(
             "principal_width_q": widths_q_principal,
             "principal_directions_hkl": directions,
             "fit_kind": fit_kind,
+            # Which pass found it: "integer" (the node test) or "search"; a
+            # search peak with a source node is the Bragg peak of a node the
+            # node test left to the search (BraggRemover._claim_left_nodes).
+            "found_by": str(getattr(peak, "found_by", "integer")),
         })
     return {
         "schema_version": 1,
@@ -342,6 +346,8 @@ def bragg_profile_from_records(
             "axes": ["ρ", "θ", "φ"],
             "q_centers": [float(v) for v in footprint.q_centers],
             "n_peaks": list(footprint.n_peaks),
+            # Of those, the peaks the search found at nodes the node test left to it.
+            "from_search": int(footprint.from_search),
             "distances_q": [float(v) for v in footprint.distances],
             "template": footprint.profiles.tolist(),
             "stacked": None if footprint.raw is None else footprint.raw.tolist(),
@@ -1318,8 +1324,11 @@ def node_test_notice(count: int, examined: int, voxel: float, needs: float, *,
     shell needs one of *needs* Å⁻¹ or less
     (:meth:`~nebula3d.analysis.bragg.BraggRemover.node_test_limit`). With
     ``mode="both"`` (*left_to_search*) the test did not judge them and left
-    them to the search pass; with ``mode="integer"`` it judged them against
-    their window's median, provisionally. It opens with
+    them to the search pass, whose peak in a node's window is that node's
+    Bragg peak; one the search cannot see may remain (below its floors, or in
+    a |Q| shell too thin for it, as at the box's far corners, where they are
+    strong). With ``mode="integer"`` it judged them against their window's
+    median, provisionally. It opens with
     :data:`~nebula3d.preprocessing.ring_isotropy.GRID_TOO_COARSE` and ends on
     the remedy. Out loud, in the run log and the punch's record (the
     manager's decision, on the user's delegation, 2026-10-19: the review's G2).
@@ -1327,7 +1336,7 @@ def node_test_notice(count: int, examined: int, voxel: float, needs: float, *,
     one = count == 1
     nodes = f"{count} of {examined} node{'' if examined == 1 else 's'} {'was' if one else 'were'}"
     what = (f"{nodes} not judged and {'was' if one else 'were'} left to the search pass; "
-            "weaker Bragg peaks may remain" if left_to_search else
+            "Bragg peaks the search cannot see may remain" if left_to_search else
             f"{nodes} judged provisionally, against {'its' if one else 'their'} window's "
             "median; diffuse maxima at nodes may be punched")
     return (f"{GRID_TOO_COARSE} for the Bragg punch's node test: a voxel is {voxel:.3g} Å⁻¹; "
@@ -1421,7 +1430,13 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     if symmetry is not None:
         remover = dataclasses.replace(remover, symmetry_ops=symmetry.ops)
     peak_records, reference, footprint = remover._detect(vol)  # noqa: SLF001 - avoid refitting
-    n_integer = sum(r.source_node_hkl is not None for r in peak_records)
+    n_integer = sum(r.found_by == "integer" for r in peak_records)
+    # The search's Bragg peaks at the nodes the node test left to it (G2).
+    n_claimed = sum(r.found_by == "search" and r.source_node_hkl is not None
+                    for r in peak_records)
+    from_search = 0 if footprint is None else int(footprint.from_search)
+    learned = (f", {from_search} of them the search's at nodes the node test left to it"
+               if from_search else "")
     # The nodes whose background shell the grid (or the mask) left under the
     # node test's floor: not judged, or judged provisionally (G2).
     node_test = _node_test_record(remover._node_report)  # noqa: SLF001
@@ -1452,12 +1467,15 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         broad = found.get("broad_kept")
         _emit(progress, "punch", "progress", None,
               f"search floors {floors}: {len(peak_records) - n_integer} peaks"
+              + (f", {n_claimed} of them the Bragg peaks of nodes the node test left to it"
+                 if n_claimed else "")
               + (f" ({broad} broader than {p.search_max_width_ratio:g} × the Bragg "
                  "width left as diffuse)" if broad else ""))
     if p.punch_footprint == "profile":
         _emit(progress, "punch", "progress", None, (
             f"profile-matched punch: Bragg profile learned from "
             f"{sum(footprint.n_peaks)} peaks in {len(footprint.n_peaks)} |Q| range(s)"
+            f"{learned}"
             if footprint is not None else
             "profile-matched punch: too few bright peaks to learn the Bragg "
             "profile; every peak gets the ellipsoid punch"))
@@ -1466,7 +1484,9 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         _emit(progress, "punch", "progress", None,
               f"own-width punch: {own:,} of {len(peak_records):,} peaks punched to their "
               f"own measured width, the rest to the "
-              + ("shared Bragg profile" if footprint is not None else "ellipsoid"))
+              + (f"shared Bragg profile (learned from {sum(footprint.n_peaks)} peaks"
+                 f"{learned})" if footprint is not None and from_search else
+                 "shared Bragg profile" if footprint is not None else "ellipsoid"))
     keep = remover._punch_centers(  # noqa: SLF001
         vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference)
     keep = remover._punch_incident_beam(vol, keep)  # noqa: SLF001

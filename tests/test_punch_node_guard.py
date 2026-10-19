@@ -125,15 +125,17 @@ def test_the_notice_prints_the_limit_it_derives(monkeypatch):
 
 def test_the_notice_in_words():
     """Opens with the grid's reason (GRID_TOO_COARSE), the voxel against what
-    the shell needs; says what became of the nodes, by mode; ends on the remedy."""
+    the shell needs; says what became of the nodes, by mode; ends on the remedy.
+    What may remain is said of the Bragg peaks the search cannot see, not of
+    weak ones: at the box's far corners they are strong."""
     assert node_test_notice(703, 728, 0.16111, 0.14332) == (
         "grid too coarse for the Bragg punch's node test: a voxel is 0.161 Å⁻¹; its background "
         "shell needs ≤ 0.143 Å⁻¹. 703 of 728 nodes were not judged and were left to the search "
-        "pass; weaker Bragg peaks may remain. Use a finer grid.")
+        "pass; Bragg peaks the search cannot see may remain. Use a finer grid.")
     assert node_test_notice(1, 728, 0.16111, 0.14332) == (
         "grid too coarse for the Bragg punch's node test: a voxel is 0.161 Å⁻¹; its background "
         "shell needs ≤ 0.143 Å⁻¹. 1 of 728 nodes was not judged and was left to the search "
-        "pass; weaker Bragg peaks may remain. Use a finer grid.")
+        "pass; Bragg peaks the search cannot see may remain. Use a finer grid.")
     assert node_test_notice(703, 728, 0.16111, 0.14332, left_to_search=False) == (
         "grid too coarse for the Bragg punch's node test: a voxel is 0.161 Å⁻¹; its background "
         "shell needs ≤ 0.143 Å⁻¹. 703 of 728 nodes were judged provisionally, against their "
@@ -225,7 +227,11 @@ def test_a_node_whose_shell_the_mask_cuts_is_not_judged():
     report = both._node_report
     assert report["nodes"] == [(0, 0, 2), (1, 0, 0)] and report["under_floor"] == 2
     assert report["examined"] == 59 and report["left_to_search"] is True
-    assert {_node_of(p) for p in both._detect_peak_records(edge)} == {(1, 0, 0), (-1, -1, 0)}
+    records = both._detect_peak_records(edge)
+    assert {_node_of(p) for p in records} == {(1, 0, 0), (-1, -1, 0)}
+    # The search found the peak at (1, 0, 0), in that node's window: its Bragg peak.
+    assert {(p.source_node_hkl, p.found_by) for p in records} == {
+        ((1, 0, 0), "search"), ((-1, -1, 0), "integer")}
 
     provisional = _significance(mode="integer")
     assert integer_nodes(provisional, edge) == {(1, 0, 0), (-1, -1, 0)}
@@ -285,7 +291,9 @@ def test_on_the_coarse_dev_grid_the_punch_says_how_many_nodes_it_left():
     ±4 r.l.u. but the origin, each with a measured window) 703 have under 8
     voxels in their background shell. The punch leaves them to the search pass
     and says so: a tally on the integer nodes' line, the ⚠ notice on its done
-    line, and its record (the profile JSON) with the same notice."""
+    line, and its record (the profile JSON) with the same notice. The search
+    finds 172 peaks, each in the window of a node left to it: those nodes'
+    Bragg peaks, recorded with their node and found_by "search"."""
     vol = build(case_named("dev-control"), 81).raw
     lines: list[str] = []
     out = punch_bragg(vol, PunchParams(), progress=lambda s, st, f, m: lines.append(m or ""))
@@ -293,14 +301,74 @@ def test_on_the_coarse_dev_grid_the_punch_says_how_many_nodes_it_left():
     assert notice == (
         "grid too coarse for the Bragg punch's node test: a voxel is 0.161 Å⁻¹; its background "
         "shell needs ≤ 0.143 Å⁻¹. 703 of 728 nodes were not judged and were left to the search "
-        "pass; weaker Bragg peaks may remain. Use a finer grid.")
+        "pass; Bragg peaks the search cannot see may remain. Use a finer grid.")
     (tally,) = [m for m in lines if m.startswith("integer nodes")]
     assert tally.endswith(": 8 peaks; 703 of 728 nodes not judged (fewer than 8 measured voxels "
                           "in the background shell), left to the search pass")
+    (search,) = [m for m in lines if m.startswith("search floors")]
+    assert search.endswith(": 172 peaks, 172 of them the Bragg peaks of nodes the node test "
+                           "left to it")
     assert lines[-1].endswith(f" voxels. ⚠ {notice}")
-    assert getattr(out, "_bragg_profile")["node_test"] == {
+    profile = getattr(out, "_bragg_profile")
+    assert profile["node_test"] == {
         "examined": 728, "under_floor": 703, "min_voxels": 8, "voxel_q": 0.1611,
         "needs_q": 0.1433, "left_to_search": True, "notice": notice}
+    found = sorted((r["found_by"], r["source_node_hkl"] is not None) for r in profile["peaks"])
+    assert found == [("integer", True)] * 8 + [("search", True)] * 172
+
+
+def test_on_the_coarse_dev_grid_the_profile_is_learned_from_the_searchs_bragg_peaks_too():
+    """With 8 peaks from the node test the punch could learn no Bragg profile
+    (it needs 20). The search's Bragg peaks at the nodes left to it are learned
+    from like the node test's: on dev-control at 81 points the profile stacks
+    180 peaks in three |Q| ranges, 172 of them the search's, and the peaks whose
+    own width cannot be measured (within 5 voxels of the box's faces) get its
+    footprint, not the bare resolution ellipsoid."""
+    vol = build(case_named("dev-control"), 81).raw
+    lines: list[str] = []
+    out = punch_bragg(vol, PunchParams(), progress=lambda s, st, f, m: lines.append(m or ""))
+    learned = getattr(out, "_bragg_profile")["footprint_profile"]
+    assert learned is not None
+    assert learned["n_peaks"] == [58, 54, 68] and learned["from_search"] == 172
+    kinds = sorted(r["fit_kind"] for r in getattr(out, "_bragg_profile")["peaks"])
+    assert kinds == ["own"] * 90 + ["profile"] * 90
+    (own,) = [m for m in lines if m.startswith("own-width punch")]
+    assert own == ("own-width punch: 90 of 180 peaks punched to their own measured width, the "
+                   "rest to the shared Bragg profile (learned from 180 peaks, 172 of them the "
+                   "search's at nodes the node test left to it)")
+
+
+def test_the_search_peak_in_a_left_nodes_window_is_that_nodes_bragg_peak():
+    """On a coarse grid (a = 3.9 Å, 0.1 r.l.u.: 0.161 Å⁻¹ a voxel) the node test
+    leaves (1, 0, 0) and (0, 1, 1) to the search. The search's peak in a left
+    node's window, the box the node test searches (±2 voxels here), is that
+    node's Bragg peak: the brightest only, so a weaker peak 0.2 r.l.u. from
+    (1, 0, 0) stays a search peak of its own, as does one between the nodes."""
+    a, step, extent = 3.9, 0.1, 2.0
+    n = int(round(2 * extent / step)) + 1
+    ax = np.linspace(-extent, extent, n)
+    hh, kk, ll = np.meshgrid(ax, ax, ax, indexing="ij")
+    rng = np.random.default_rng(7)
+    data = 1.0 + 0.05 * rng.standard_normal((n, n, n))
+    for c, amp in (((1, 0, 0), 20.0), ((1.2, 0, 0), 8.0), ((0, 1, 1), 20.0),
+                   ((0.5, 0.5, 0), 20.0)):
+        data += amp * np.exp(-0.5 * ((hh - c[0]) ** 2 + (kk - c[1]) ** 2 + (ll - c[2]) ** 2)
+                             / 0.03 ** 2)
+    vol = HKLVolume.from_arrays(data, (-extent, extent), (-extent, extent), (-extent, extent),
+                                sigma=np.full_like(data, 0.05),
+                                ub_matrix=(2 * np.pi / a) * np.eye(3))
+    r = _significance(mode="both")
+    records = r._detect_peak_records(vol)
+    assert {(1, 0, 0), (0, 1, 1)} <= set(r._node_report["nodes"])
+    assert r._detect_half_widths(vol) == (2, 2, 2)
+    found = {tuple(round(x, 2) for x in p.center_hkl): (p.source_node_hkl, p.found_by)
+             for p in records}
+    assert found == {(1.0, 0.0, 0.0): ((1, 0, 0), "search"),
+                     (1.2, 0.0, 0.0): (None, "search"),
+                     (0.0, 1.0, 1.0): ((0, 1, 1), "search"),
+                     (0.5, 0.5, 0.0): (None, "search")}
+    # Without nodes left to it the search claims none.
+    assert r._claim_left_nodes(vol, records, []) == records
 
 
 def test_with_mode_integer_the_nodes_are_judged_provisionally_and_it_says_so():
