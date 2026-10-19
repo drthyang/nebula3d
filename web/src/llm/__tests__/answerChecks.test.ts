@@ -322,6 +322,34 @@ describe("the checks judge what the tools found, and nothing the assistant said"
   });
 });
 
+describe("a repeated call's pointer reads as the result it points to (D17, 2.4b.1)", () => {
+  // qmax_coverage finding the window too far, its outcome judged by the coverage's rule, as its tool writes it.
+  const tooFar = judge("coverage", { window_weight: 0.04, window: "the ΔPDF's separable window", unit_cell: true, full_coverage_q: null, reach: null, reach_from: "", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } });
+  const coverage: AgentTool = {
+    name: "qmax_coverage",
+    description: "checks the window against the coverage",
+    parameters: { type: "object", properties: {} },
+    run: async () => ({ result: { verdict: tooFar.words, window_weight_on_unmeasured: 0.04 }, summary: "too far", outcomes: [tooFar] }),
+  };
+  const callCoverage = (id: string) => ({ id, type: "function" as const, function: { name: "qmax_coverage", arguments: "{}" } });
+
+  it("keeps {{achieved}} at not met after a pointer to a too far, and the answer checks send the claim back", async () => {
+    script([[{ toolCalls: [callCoverage("c1")] }], [{ toolCalls: [callCoverage("c2")] }], [{ content: "The window stays inside the coverage." }], [{ content: "" }]]);
+    const r = await runAgent({ messages: [{ role: "user", content: "Does the window stay inside the coverage?" }], tools: [coverage], ctx, settings, signal: new AbortController().signal });
+    // The loop ran it once, and pointed the repeat at that result.
+    expect(JSON.parse(r.steps[1].result!)).toHaveProperty("already_called");
+    expect(verdicts({ reply: r.steps }).achieved).toMatchObject({ achieved: false, attention: ["the ΔPDF window against the coverage"] });
+    expect(r.note).toMatch(/Contradicts the tools' verdict on the ΔPDF window against the coverage/);
+  });
+
+  it("reads a repeated ub_check as the UB it points to, not as a right one", () => {
+    const pointer = step("ub_check", {}, { already_called: "Called with these arguments earlier in this reply (step 1); its result is above. Use it, or call with other arguments." });
+    const turned = step("ub_check", {}, { fit: "both", symmetrised: false, orientation_change_deg: 0.6 });
+    expect(contradictions("The UB is right.", [turned, pointer]).map((t) => t.id)).toEqual(["ub"]);
+    expect(verdicts({ reply: [turned, pointer] }).achieved?.dataProblems).toEqual(["the UB is turned by 0.6°"]);
+  });
+});
+
 describe("offsets no UB explains", () => {
   it("does not let the UB take the blame when the fit finds it right", () => {
     const shifted = step("ub_check", {}, { symmetrised: false, orientation_change_deg: 0.001, unexplained: true });

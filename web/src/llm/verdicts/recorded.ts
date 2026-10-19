@@ -121,15 +121,15 @@ function grainOutcome(r: Obj): Outcome {
 }
 
 /**
- * D17: the pointer the agent loop writes for a repeated call (already_called,
- * agent.ts) reads as a result of its tool that holds nothing: {{achieved}}
- * reads it as the newest result, so it hides the verdict it points to (a
- * qmax_coverage "too far" no longer needs attention); the answer checks, which
- * read the newest result that decides, keep the earlier one. Unify: set this
- * to false; a pointer then holds no outcome, and both read the result it
- * points to.
+ * D17, unified (plan 2.4b.1, batch 2, approved by the manager on the user's
+ * delegation, 2026-10-19): the pointer the agent loop writes for a repeated
+ * call (already_called, agent.ts) holds no outcome of its own, so both readers
+ * read the result it points to. true: it read as a result of its tool that held
+ * nothing, which hid the verdict it points to from {{achieved}} (a
+ * qmax_coverage "too far" no longer needed attention) and read a repeated
+ * ub_check as a right UB (D16), before 2.4b.1.
  */
-export const D17_REPEAT_POINTER_READS_AS_A_RESULT = true;
+export const D17_REPEAT_POINTER_READS_AS_A_RESULT = false;
 
 /**
  * The outcomes a step holds: the producer's, kept beside its result (the
