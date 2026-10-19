@@ -66,6 +66,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
@@ -596,7 +597,7 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
       stage: "flatten",
       current: currentStageSettings("flatten", config),
       earlier: {},
-      trials: [{ trial: 1, settings: currentStageSettings("flatten", config), metrics: { max_floor_trend: 0.97, max_floor_span_fraction: 1.2, pedestal_left: true } }],
+      trials: [{ trial: 1, settings: currentStageSettings("flatten", config), metrics: { floor_trend: 0.97, floor_span_fraction: 1.2, pedestal_left: true } }],
       count: 2,
       skills: false,
     });

@@ -276,18 +276,38 @@ export const FLOOR_SIGMA_WHY = "σ is the cut's own spread, and the floors follo
 /** The shells the flatten's rule judges a pedestal on (judgedShells, metrics/flatten.ts), in its criterion and the system prompt. */
 export const PEDESTAL_SHELLS = "the outer half of the |Q| shells the counts reach";
 
+/**
+ * Where the flatten's verdict reads the pedestal (plan 4.1): over the whole
+ * volume's shells, not three planes', in its criterion and the system prompt.
+ * "The volume", as the system prompt calls the data a cut is taken from: in
+ * as few words as the criterion's own before it, so the results it is in grow
+ * no longer.
+ */
+export const PEDESTAL_WHERE = "the volume's";
+
+/**
+ * Whether a flatten evaluation measured the pedestal over the whole volume
+ * (plan 4.1: floor_trend and floor_span_fraction, of the volume's shell
+ * floors) or, recorded before that, over three planes (max_floor_trend and
+ * max_floor_span_fraction, the largest of the planes'). The rule reads the
+ * one the evaluation holds; the report too.
+ */
+export const pedestalOfVolume = (m: Readonly<Record<string, unknown>>): boolean => "floor_trend" in m || "floor_span_fraction" in m;
+
 // The flatten's goal: what to change about a pedestal left is reduction-qc's
 // step 6 (a floor rising with |Q| wants the b·Q² term and a fit range reaching
 // the coverage), and what a trend and a span near 1 are evidence of goes with it.
 const flatten: StageRule = {
-  criterion: criterionOf("flatten")`No pedestal: a floor trend and a span both ${PEDESTAL_LIMIT} or more over ${PEDESTAL_SHELLS}. The largest floor in σ is ${FLATTEN_FLOOR_SIGMA_NOTE}: ${FLOOR_SIGMA_WHY}.`,
-  goal: goalOf("flatten")`Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.${evidence(
+  criterion: criterionOf("flatten")`No pedestal: ${PEDESTAL_WHERE} floor trend and span both ${PEDESTAL_LIMIT} or more over ${PEDESTAL_SHELLS}. The largest floor in σ is ${FLATTEN_FLOOR_SIGMA_NOTE}: ${FLOOR_SIGMA_WHY}.`,
+  goal: goalOf("flatten")`Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.${evidence(
     " A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ",
   )}${remedy(": a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations.")}`,
   judge: (m) => {
-    // A trend near 1 with a span near 1 is a pedestal left. The floor in σ is
-    // reported, not judged (FLATTEN_FLOOR_SIGMA_NOTE).
-    const pedestal = pedestalLeft(num(m.max_floor_trend), num(m.max_floor_span_fraction));
+    // A trend near 1 with a span near 1 is a pedestal left: the whole volume's
+    // (plan 4.1), or the planes' largest in an evaluation recorded before it.
+    // The floor in σ is reported, not judged (FLATTEN_FLOOR_SIGMA_NOTE).
+    const volume = pedestalOfVolume(m);
+    const pedestal = pedestalLeft(num(volume ? m.floor_trend : m.max_floor_trend), num(volume ? m.floor_span_fraction : m.max_floor_span_fraction));
     if (pedestal == null) return nothing();
     return judged(pedestal ? ["pedestal"] : []);
   },

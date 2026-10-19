@@ -55,6 +55,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
@@ -268,7 +269,7 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "reduction-qc", phrase: "the share of the transform window's weight on unmeasured space", what: "the window's weight on unmeasured space", fields: ["window_weight_on_unmeasured"] },
   { skill: "reduction-qc", phrase: "`assess_stage` for the rings", what: "the rings' assessment", fields: ["rings"] },
   { skill: "reduction-qc", phrase: "`assess_stage` for the flatten", what: "the flatten's assessment", fields: ["flatten"] },
-  { skill: "reduction-qc", phrase: "a span small against the diffuse level", what: "the floors' span against the diffuse level", fields: ["flatten.max_floor_span_fraction"] },
+  { skill: "reduction-qc", phrase: "a span small against the diffuse level", what: "the floors' span against the diffuse level", fields: ["flatten.floor_span_fraction"] },
   { skill: "reduction-qc", phrase: "An operation the data were symmetrised with holds", what: "each operation's difference", fields: ["ops.rms_difference"] },
   { skill: "reduction-qc", phrase: "fits only the symmetric part of the UB on a symmetrised volume", what: "which part of the UB was fitted", fields: ["fit"] },
   // bragg-node-audit
@@ -328,12 +329,6 @@ type Kind = "tool" | "field" | "setting" | "name" | "claim" | "gate" | "unstated
  * take the entry off: the lint fails while an entry no longer fails.
  */
 const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [
-  {
-    skill: "reduction-qc",
-    kind: "field",
-    names: "floor_trend",
-    why: "step 6 names floor_trend for assess_stage; the flatten's assessment gives max_floor_trend, max_floor_span_fraction and pedestal_left, and floor_trend only per plane (agent plan E; interview R9).",
-  },
   {
     skill: "reduction-qc",
     kind: "claim",

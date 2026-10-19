@@ -91,6 +91,15 @@ const STAGE_CASES: Record<"rings" | "punch" | "backfill" | "flatten" | "pdf", Ca
     c("a trend under 0.8", { max_floor_trend: 0.79, max_floor_span_fraction: 0.9 }, "pass"),
     c("the floor in σ is reported, not judged", { max_after_floor_sigma: 3, max_floor_trend: 0.31, max_floor_span_fraction: 0.6 }, "pass"),
     c("no span", { max_floor_trend: 0.9 }, "info", ["nothing to judge"]),
+    // Over the whole volume's shells (plan 4.1): the volume's signed trend and its span.
+    c("the volume: a trend and a span of 0.8", { floor_trend: 0.8, floor_span_fraction: 0.8 }, "attention", ["pedestal"]),
+    c("the volume: a falling floor", { floor_trend: -0.85, floor_span_fraction: 0.9 }, "attention", ["pedestal"]),
+    c("the volume: a trend under 0.8", { floor_trend: 0.79, floor_span_fraction: 0.9 }, "pass"),
+    c("the volume: a span under 0.8", { floor_trend: 0.99, floor_span_fraction: 0.79 }, "pass"),
+    c("the volume not measured", { max_after_floor_sigma: 1.7, floor_trend: null, floor_span_fraction: null }, "info", ["nothing to judge"]),
+    // The volume's numbers are judged, the planes' largest beside them are not.
+    c("the volume level, the planes' a pedestal", { floor_trend: 0.3, floor_span_fraction: 0.6, max_floor_trend: 0.97, max_floor_span_fraction: 0.97 }, "pass"),
+    c("the volume a pedestal, the planes' level", { floor_trend: 0.99, floor_span_fraction: 0.96, max_floor_trend: 0.2, max_floor_span_fraction: 0.04 }, "attention", ["pedestal"]),
   ],
   pdf: [
     c("the even part reproduced", { back_fft_pearson_r: 0.989, back_fft_pearson_r_even: 0.999 }, "pass"),

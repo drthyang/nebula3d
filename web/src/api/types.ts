@@ -162,6 +162,36 @@ export interface FlattenSettings {
   q_range?: [number, number] | null;
 }
 
+/**
+ * The floor of every |Q| shell over the whole volume, on the flatten's own
+ * shells (GET /api/volumes/{id}/shell-floors, the bridge's
+ * volume_shell_floors_json; nebula3d.preprocessing.shell_floors). One entry
+ * per shell in each list. For the flattened stage, the flatten's input (the
+ * backfilled stage, `before_id`) is measured on the same shells, and `level`
+ * is its median over the voxels measured in both: the diffuse level a
+ * pedestal's span is a share of. Without an input (`before_id` null) `level`
+ * is the volume's own median.
+ */
+export interface ShellFloors {
+  id: string;
+  before_id: string | null;
+  q_step: number; // Å⁻¹
+  percentile: number; // 0–100
+  min_count: number;
+  q_edges: number[]; // one more than the shells, Å⁻¹
+  centres: number[]; // Å⁻¹
+  totals: number[]; // the grid's voxels in the shell, measured or not
+  counts: number[]; // ... measured (mask and finite)
+  floors: (number | null)[]; // null under min_count
+  medians: (number | null)[];
+  counts_before?: number[] | null;
+  floors_before?: (number | null)[] | null;
+  medians_before?: (number | null)[] | null;
+  level: number | null;
+  level_count: number;
+  flatten?: FlattenSettings | null; // what the flatten recorded in the file, or null
+}
+
 export interface DeltaPdfMeta {
   id: string;
   shape: [number, number, number];
