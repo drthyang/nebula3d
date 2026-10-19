@@ -227,10 +227,13 @@ value for value. For the flattened stage it measures the flatten's input
 `floors`, `centres`, `counts` and `totals` are what `judgedShells` takes from
 a plane, so the same rule reads the whole volume: the trend is `rankTrend` of
 the judged `floors` in |Q| order, the span is their range over `level`, and
-`pedestalLeft` judges the two. The flatten records its settings in its output
-(a `flatten_settings` attribute of the file's `nebula3d` group), so a run
-whose flatten took another percentile is measured with it, and the rule can
-start the judged shells at the run's own fit range (`flatten.fit_q_range`). On a synthetic volume with an isotropic Q²
+`pedestalLeft` judges the two. The pipeline's flatten stage records its
+settings in its output (a `flatten_settings` attribute of the file's
+`nebula3d` group; `examples/run_pipeline.py`, the server and the browser all
+run it, the standalone `examples/flatten_background_3d.py` does not), so a
+run whose flatten took another percentile is measured with it, and the rule
+can start the judged shells at the run's own fit range
+(`flatten.fit_q_range`). On a synthetic volume with an isotropic Q²
 pedestal (a uniform diffuse, measured out to 6 Å⁻¹) the planes and the volume
 read the same pedestal: a trend of 1 on all, a span of 0.99 on each plane and
 0.94 on the volume, with the planes' floors within 0.03 of the volume's. The
