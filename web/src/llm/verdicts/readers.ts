@@ -57,12 +57,13 @@ const unread: Cell = () => undefined;
 // ---------------------------------------------------------------- the rules the readers keep
 
 /**
- * D1: the answer checks take nothing from a passing coverage verdict that
- * rests on the reach inside full coverage ("the transform reaches … inside full
- * coverage"): it settles nothing, where {{achieved}} reads it as a pass.
- * Unify (2.4.1): set this to false.
+ * D1, unified (plan 2.4.1, the user's decision of 2026-10-19): a passing
+ * coverage verdict that rests on the reach inside full coverage ("the
+ * transform reaches … inside full coverage") is coverage OK to the answer
+ * checks, as to {{achieved}}. true: it settles nothing for the answer checks,
+ * their reading before 2.4.1.
  */
-export const D1_REACH_PASS_SETTLES_NOTHING = true;
+export const D1_REACH_PASS_SETTLES_NOTHING = false;
 
 /**
  * D3, for {{achieved}}: grain_check counts for nothing in the run's verdict, not
@@ -191,7 +192,7 @@ const MATRIX: Record<CheckId, Row> = {
   coverage: {
     // D10: legacy words are no verdict to {{achieved}}.
     achieved: (o) => (D10_ACHIEVED_IGNORES_LEGACY_COVERAGE_WORDS && o.reasons.includes("legacy coverage words") ? "info" : o.kind),
-    // D1: a pass by the reach inside full coverage settles nothing.
+    // D1: a pass by the reach inside full coverage is a pass (it settled nothing before 2.4.1).
     answer: [["coverage", (o) => (D1_REACH_PASS_SETTLES_NOTHING && o.kind === "pass" && o.reasons.includes("reach inside coverage") ? "info" : o.kind)]],
   },
   symmetry: { achieved: asIs, answer: [["symmetry", asIs]] },

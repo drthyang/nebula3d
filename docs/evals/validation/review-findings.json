@@ -160,8 +160,13 @@
   "evidence": "qmax_coverage's passing reach-based verdict (\"the transform reaches … inside full coverage\", web/src/llm/tools/index.ts:1304-1305) matches neither answer-check pattern (web/src/llm/answerChecks.ts:300), so it settles nothing.",
   "proposed_fix": "A passing reach-based coverage verdict counts as coverage OK in the answer checks, as in {{achieved}}.",
   "needs_user_approval": true,
-  "status": "open",
-  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.1, after the check-verdict module (2.3).",
+  "status": "implemented",
+  "commit": "b44f350",
+  "tests": [
+   "web/src/llm/__tests__/verdictPins.test.ts (D1, unified (2.4.1): a pass by the reach inside full coverage is coverage OK to the answer checks, as to {{achieved}})",
+   "web/src/llm/__tests__/answerChecks.test.ts (takes the transform's reach inside full coverage as coverage OK (D1, 2.4.1))"
+  ],
+  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.1, after the check-verdict module (2.3). Implemented by plan row 2.4.1.",
   "decision": {
    "by": "the user",
    "on": "2026-10-19",
