@@ -82,7 +82,7 @@ export const labelled = (x: Variant): Obj => ({ verdict: LABEL[x.kind!], ...x.m 
 export const COVERAGE: Variant[] = [
   v("clean by weight", { verdict: "clean: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space", window_weight_on_unmeasured: 0.00024, counts_end_inside_box: false }),
   v("too far by weight", { verdict: "too far: the ΔPDF's separable window puts 0.04 of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band", window_weight_on_unmeasured: 0.04 }),
-  // 1.04e-3 raw: past the limit here, 1.0e-3 in a ΔPDF evaluation's two figures (D6).
+  // 1.04e-3 raw: past the limit here, 1.0e-3 in a ΔPDF evaluation's two figures before 2.4.6b (D6); words as recorded then.
   v("too far at 1.04e-3", { verdict: "too far: the ΔPDF's ellipsoid window puts 0.001 of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band", window_weight_on_unmeasured: 0.00104 }),
   v("reach inside", { verdict: "the transform reaches 6.283 Å⁻¹ (the window is tapered to the measured coverage), inside full coverage at 6.5 Å⁻¹", window_weight_on_unmeasured: null, transform_reach_q: 6.283 }),
   v("reach past", { verdict: "too far: the transform reaches 9.1 Å⁻¹ (the window tapers to zero at the box faces), past full coverage at 6.5 Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage", window_weight_on_unmeasured: null }),

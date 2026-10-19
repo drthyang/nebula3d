@@ -211,6 +211,25 @@ describe("a card states only what it judges", () => {
     expect(card(past, true).checks.find((c) => c.title === "3D-ΔPDF")!.details).toContainEqual(["Coverage", past.words]);
   });
 
+  it("counts the punch's sharp leftovers outside the protected planes, and shows those on them on their own line (D5, 2.4.5b)", () => {
+    // Synthetic measurements: five sharp off-lattice leftovers, three of them on protected planes.
+    const punch = { leftover_at_nodes: 0, leftover_off_lattice_sharp: 5, leftover_on_protected_planes: 4, leftover_on_protected_planes_sharp: 3, leftover_off_lattice_broad: 7, mean_punched_fraction: 0.03 };
+    const card = (m: Record<string, unknown>) => buildReport(input({ measured: { ...input().measured, punch: m } })).checks.find((c) => c.title === "Bragg punch")!;
+    const two = card(punch);
+    expect(two.verdict).toBe("attention");
+    expect(two.headline).toBe("0 missed at nodes · 2 sharp off-lattice · 7 broad maxima kept · punched 0.03");
+    expect(two.details).toContainEqual(["Sharp off-lattice leftovers (outside the protected planes)", "2"]);
+    expect(two.details).toContainEqual(["Sharp leftovers on protected planes (kept by design)", "3"]);
+    expect(two.criterion).toMatch(/no sharp peak left off the lattice outside the protected planes/);
+    // All of them on the protected planes: none counted, and the card passes.
+    const none = card({ ...punch, leftover_off_lattice_sharp: 3 });
+    expect([none.verdict, none.headline]).toEqual(["pass", "0 missed at nodes · 0 sharp off-lattice · 7 broad maxima kept · punched 0.03"]);
+    // An evaluation recorded without the split counts every sharp one, under the old label.
+    const old = card({ leftover_at_nodes: 0, leftover_off_lattice_sharp: 5, leftover_on_protected_planes: 4 });
+    expect(old.details).toContainEqual(["Sharp off-lattice leftovers", "5"]);
+    expect(old.details.map(([k]) => k)).not.toContain("Sharp leftovers on protected planes (kept by design)");
+  });
+
   it("reports the flatten's floor in σ without judging it, by the pedestal rule", () => {
     // The validation's dev volumes (docs/pilot-review.md finding 6): floors of
     // 1.5 to 1.8σ on all eight, whatever the flatten did.
