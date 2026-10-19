@@ -352,6 +352,19 @@ describe("the review's findings", () => {
     }
   });
 
+  it("from the open point on D3 is D3a, the manager's on the user's delegation, implemented with tests that exist", async () => {
+    const { exists } = await import("./backend");
+    const d3a = (await load()).filter(isReviewFinding).find((f) => f.ref === "D3a");
+    expect(d3a).toMatchObject({
+      kind: "science-error",
+      needs_user_approval: true,
+      status: "implemented",
+      note: "Approved by the manager on the user's delegation, 2026-10-19.",
+      decision: { by: "the manager, on the user's delegation", on: "2026-10-19", option: "yes" },
+    });
+    for (const t of d3a!.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
+  });
+
   it("says what became of a finding: an implemented one names its commit and its tests", () => {
     const base = { case: "dev-control", run: 1, step: null, kind: "bug", evidence: "e", proposed_fix: "p", needs_user_approval: false };
     expect(findingProblems({ ...base, status: "implemented", commit: "47c3537", tests: ["tests/test_faults.py"] })).toEqual([]);
