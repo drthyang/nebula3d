@@ -34,13 +34,19 @@ import { toolsFor } from "../localTools";
 import { buildChatMessages, buildStageReviewMessages, type ReviewStage } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolCall } from "../provider/client";
 import { NAMED_REFERENCES } from "../references";
-import { CRITERIA, NOT_DECLARED, VERDICT_LABEL } from "../report/report";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, skillsPrompt } from "../skills";
 import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolSpecs, type AgentTool, type ToolContext } from "../tools";
 import { currentStageSettings } from "../tune/catalog";
 import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS, TUNE_SYSTEM } from "../tune/prompts";
 import { useTuneStore } from "../tune/tuner";
+import { judge, WORDS } from "../verdicts";
+
+// The verdicts' words (verdicts/rules.ts), under the names the snapshot gives them.
+const CRITERIA = WORDS.criterion;
+const VERDICT_LABEL = WORDS.label;
+// What the symmetry's rule says of a volume that declares no symmetry.
+const NOT_DECLARED = (asymmetry: number): string => judge("symmetry", { ops: [{ op: "six-fold (60°)", rms_difference: asymmetry }], declared: null }).words ?? "";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({

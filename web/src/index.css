@@ -4160,7 +4160,7 @@ body.ai-resizing iframe {
   font-style: italic;
 }
 
-/* The verdict computed from the checks (verdict.ts), under the reply. */
+/* The verdict computed from the checks (verdicts/), under the reply (verdict.ts). */
 .ai-verdict {
   font-size: 12px;
   line-height: 1.5;

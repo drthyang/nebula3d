@@ -42,7 +42,6 @@ import {
   type TuneStage,
 } from "../tune/catalog";
 import { evaluateStage, headline, type StageEvaluation } from "../tune/evaluate";
-import { STAGE_GOALS } from "../tune/prompts";
 import { startTuning, stopTuning, useTuneStore, type StageRun } from "../tune/tuner";
 import { AXIS_INDEX, AXIS_TO_PLANE, useViewerStore, type FixedAxis } from "../../state/viewerStore";
 import {
@@ -59,12 +58,12 @@ import type { ToolCall, ToolSpec } from "../provider/client";
 import { ALL_STAGES, keysOf, RECIP, resolveFacts, stageKey, type Facts, type ToolFacts } from "./facts";
 import { openView, type ViewTarget } from "./openView";
 import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS } from "../skills";
-import { NOT_DECLARED, stageCheck, VERDICT_LABEL } from "../report/report";
+import { judge, WORDS, type Outcome } from "../verdicts";
 
 export type { ViewTarget } from "./openView";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
-import { COVERAGE_SHELLS, coverageMetrics, OPEN_WEIGHT_OK } from "../metrics/coverage";
-import { grainCheck } from "../metrics/grains";
+import { COVERAGE_SHELLS, coverageMetrics } from "../metrics/coverage";
+import { grainCheck, shownGrains } from "../metrics/grains";
 import { sectionSymmetry, SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { median, radialProfile, roundSig } from "../metrics/sliceStats";
 import { textureMetrics } from "../metrics/texture";
@@ -88,6 +87,9 @@ export interface ToolOutcome {
   result: unknown;
   summary: string; // one line for the transcript
   view?: ViewTarget;
+  // The checks' outcomes the tool judged (verdicts/): beside the result, never
+  // in it, so the model reads no more than the result.
+  outcomes?: Outcome[];
 }
 
 // What a long tool gets besides its arguments: the reply's abort signal, and a
@@ -758,12 +760,14 @@ const assessStage: ChatTool = {
     const pick = oneOf(args, "stage", ASSESS_CHOICES, "all");
     const stages: TuneStage[] = pick === "all" ? [...TUNE_STAGES] : [pick];
     const result: Record<string, unknown> = {};
+    const outcomes: Outcome[] = [];
     const lines: string[] = [];
     let view: ViewTarget | undefined;
     let measuredOn: string[] | undefined;
     for (const stage of stages) {
       if (!stageVolumeId(dataset, STAGE_OUTPUT[stage])) {
         result[stage] = { missing: `no ${STAGE_OUTPUT[stage]} output yet; run_pipeline computes it` };
+        outcomes.push(judge(stage, result[stage] as Record<string, unknown>));
         continue;
       }
       const evaluation = await evaluateStage(stage, dataset);
@@ -774,24 +778,25 @@ const assessStage: ChatTool = {
         if (plane) view = cleanupView(plane, 0);
         else if (stage === "pdf") view = { view: "consistency", label: "the back-FFT check" };
       }
-      // The verdict is computed from the numbers, by the report's rule, never
-      // left to the model (answerChecks.ts holds the model to it).
-      const check = stageCheck(stage, evaluation);
-      const verdict = check ? VERDICT_LABEL[check.verdict] : VERDICT_LABEL.info;
+      // The verdict is computed from the numbers, by the stage's rule
+      // (verdicts/), never left to the model (answerChecks.ts holds the model to it).
+      const outcome = judge(stage, evaluation);
+      outcomes.push(outcome);
+      const verdict = outcome.words;
       // All five stages' per-plane detail, or their goals, would overflow the
       // result (MAX_RESULT_CHARS): one stage at a time gives both.
       if (pick === "all") delete evaluation.per_plane;
       result[stage] = {
         verdict,
-        criterion: check?.criterion,
+        criterion: outcome.criterion,
         headline: headline(stage, evaluation),
         ...evaluation,
-        ...(pick === "all" ? {} : { goal: STAGE_GOALS[stage] }),
+        ...(pick === "all" ? {} : { goal: WORDS.goal[stage] }),
       };
       lines.push(`${TUNE_STAGE_LABELS[stage]}: ${verdict} · ${headline(stage, evaluation)}`);
     }
     if (measuredOn) result.measured_on = measuredOn;
-    return { result, summary: lines.join(" · ") || "no stage outputs yet", view };
+    return { result, summary: lines.join(" · ") || "no stage outputs yet", view, outcomes };
   },
 };
 
@@ -936,8 +941,10 @@ const textureCheck: ChatTool = {
     const bias = (i: number) => Math.abs(rows[i].median_fill_bias_sigma ?? 0);
     const strongest = rows.reduce((best, _r, i) => (bias(i) > bias(best) ? i : best), 0);
     const ratios = rows.map((r) => r.azimuthal_ratio).filter((x): x is number => x != null);
+    const result = { per_cut: rows };
     return {
-      result: { per_cut: rows },
+      result,
+      outcomes: [judge("texture", result)],
       summary:
         `${biased ? `systematic fill bias on ${biased} of ${rows.length} cut(s)` : "no systematic fill bias"}` +
         (ratios.length ? ` · azimuthal ratio ${Math.min(...ratios)}–${Math.max(...ratios)}` : ""),
@@ -945,9 +952,6 @@ const textureCheck: ChatTool = {
     };
   },
 };
-
-// A share, in exponent form when it is tiny (1.5e-6, not 0.0000015).
-const share = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(roundSig(x, 2)));
 
 // How far the forward transform reaches in |Q|, from the Configure page: an
 // explicit |Q| band; else the box corners for a flat separable window (no
@@ -997,10 +1001,12 @@ const symmetryCheck: ChatTool = {
     const declared = rawMeta ? rawMeta.symmetry ?? null : undefined;
     const { a, b } = meta.lattice ?? {};
     const sym = a && b ? sectionSymmetry(slice, { a, b }) : null;
+    const outcome = judge("symmetry", { ops: sym?.ops ?? null, declared });
     if (!sym) {
       return {
         result: { note: "no in-plane symmetry to test: the cell is neither hexagonal nor orthogonal, or the section is not centred on the origin" },
         summary: "nothing to test",
+        outcomes: [outcome],
       };
     }
     const holds = sym.ops.filter((o) => o.rms_difference <= SYMMETRY_HOLDS).map((o) => o.op);
@@ -1012,13 +1018,10 @@ const symmetryCheck: ChatTool = {
         ops: sym.ops,
         holds,
         symmetry_declared: declared === undefined ? null : Boolean(declared),
-        verdict:
-          declared === null || declared === ""
-            ? NOT_DECLARED(Math.max(...sym.ops.map((o) => o.rms_difference)))
-            : broken.length
-              ? `not kept: ${broken.join(", ")}; a symmetry the data were symmetrised with should hold to ~${SYMMETRY_HOLDS} or better`
-              : `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better`,
+        // Judged by the symmetry's rule (verdicts/): not judged where the file declares none.
+        verdict: outcome.words,
       },
+      outcomes: [outcome],
       summary:
         declared === null || declared === ""
           ? "no symmetry declared: not judged"
@@ -1204,10 +1207,14 @@ const grainCheckTool: ChatTool = {
     const ops = (meta.symmetry_ops?.length ? meta.symmetry_ops : [identity]) as Parameters<typeof grainCheck>[0]["ops"];
     const s = usePipelineStore.getState();
     const cell = [s.punchSupercellH, s.punchSupercellK, s.punchSupercellL].map((v) => Number(v) || 1) as [number, number, number];
-    const g = grainCheck({ peaks, ub: meta.ub_matrix as Parameters<typeof grainCheck>[0]["ub"], ops, cell, top });
+    const facts = grainCheck({ peaks, ub: meta.ub_matrix as Parameters<typeof grainCheck>[0]["ub"], ops, cell, top });
+    // The grain's rule (verdicts/) judges the unrounded facts and writes the verdict.
+    const outcome = judge("grain", facts);
+    const g = shownGrains(facts, outcome.words!);
     return {
       result: { ...g, off_lattice_peaks: peaks.length, declared_symmetry: meta.symmetry ?? null, punch_cell: cell },
       summary: g.verdict.length > 160 ? `${g.verdict.slice(0, 157)}…` : g.verdict,
+      outcomes: [outcome],
     };
   },
 };
@@ -1305,6 +1312,8 @@ const ubCheckTool: ChatTool = {
       summary:
         `${u.fit}: RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹ over ${u.n_used} peaks; a ${u.cell_start[0].toFixed(3)} → ${u.cell[0].toFixed(3)} Å, c ${u.cell_start[2].toFixed(3)} → ${u.cell[2].toFixed(3)} Å; turned ${u.angle_deg.toFixed(3)}°` +
         (shift ? `; origin shifted ${rlu(shift)} r.l.u.` : ""),
+      // No verdict in the result: the UB's rule (verdicts/) judges what the fit found.
+      outcomes: [judge("ub", result)],
     };
   },
 };
@@ -1368,26 +1377,21 @@ const qmaxCoverage: ChatTool = {
       : "the ΔPDF's window";
     const counts = await rawCounts;
     const band = rawBand(counts, s.pdfQMin, s.pdfQMax);
-    // The counts end inside the box and no band is set: only the window's taper
-    // keeps the transform on the counts. Said in the verdict, which a model
-    // quotes, and not only in raw_counts and suggested_band, which it may not.
-    const cutNote =
-      band.counts_end_inside_box && !s.pdfQMax
-        ? `; the raw counts end at ${band.raw_counts.q_max_edge} Å⁻¹, inside the box (its nearest face at ${band.raw_counts.box_face_q} Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is ${band.suggested_band![0]}–${band.suggested_band![1]} Å⁻¹ (suggested_band), the user's to set`
-        : "";
-    const verdict = (openWeight != null
-      ? openWeight <= OPEN_WEIGHT_OK
-        ? `clean: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space`
-        : `too far: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`
-      : !qRadius("hk0", 0, meta)
-      ? "no unit cell: |Q| is unknown, so the reach cannot be compared"
-      : fullQ == null
-        ? "no |Q| shell is fully measured on these planes"
-        : reach == null
-          ? "no ΔPDF yet to read the box corner from"
-          : reach <= fullQ + shell
-            ? `the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), inside full coverage at ${fullQ} Å⁻¹`
-            : `too far: the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), past full coverage at ${fullQ} Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage`) + cutNote;
+    // The verdict, by the coverage's rule (verdicts/): the recorded weight
+    // when there is one, else the reach against full coverage, and where the
+    // raw counts end when no band is set.
+    const outcome = judge("coverage", {
+      window_weight: openWeight,
+      window: windowNote,
+      unit_cell: Boolean(qRadius("hk0", 0, meta)),
+      full_coverage_q: fullQ,
+      reach,
+      reach_from: how,
+      shell,
+      band_set: Boolean(s.pdfQMax),
+      counts: band,
+    });
+    const verdict = outcome.words!;
     return {
       result: {
         verdict,
@@ -1423,6 +1427,7 @@ const qmaxCoverage: ChatTool = {
       },
       summary: verdict,
       view: shortest ? cleanupView(shortest, 0) : undefined,
+      outcomes: [outcome],
     };
   },
 };
@@ -1899,6 +1904,7 @@ export interface ToolRun {
   full?: string; // the whole result, when the model reads it trimmed (answerChecks.ts reads this)
   summary: string;
   view?: ViewTarget;
+  outcomes?: Outcome[]; // the tool's outcomes (ToolOutcome), carried to the step
 }
 
 /**
@@ -1986,7 +1992,7 @@ export async function runToolCall(
     const full = typeof out.result === "string" ? out.result : (JSON.stringify(out.result) ?? "null");
     const text =
       full.length <= max ? full : typeof out.result === "string" ? `${full.slice(0, max)}… [truncated]` : fitResult(out.result, max);
-    return { ok: true, args, text, ...(text !== full ? { full } : {}), summary: out.summary, view: out.view };
+    return { ok: true, args, text, ...(text !== full ? { full } : {}), summary: out.summary, view: out.view, ...(out.outcomes ? { outcomes: out.outcomes } : {}) };
   } catch (e) {
     const msg = (e as Error).message;
     const text = e instanceof ToolArgError ? `Error: invalid arguments — ${msg}` : `Error: ${msg}`;

@@ -2,9 +2,9 @@
 // facts say it changes the outputs: run_pipeline) recomputes stages and leaves
 // the rest as they were (its result says which: "computed" or "reused"), so a
 // measurement taken before it is evidence for a stage it reused and stale for
-// one it computed. The answer checks (answerChecks.ts) and the computed verdict
-// (verdict.ts) count a stage's measurement only when it came after that stage
-// was last computed.
+// one it computed. The answer checks (answerChecks.ts) and the check-verdict
+// module's readers (verdicts/) count a stage's measurement only when it came
+// after that stage was last computed.
 
 import type { AgentStep } from "./agent";
 import { factsOf } from "./tools";

@@ -5,8 +5,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
-import { stageCheck } from "../report/report";
 import { evaluateStage, headline } from "../tune/evaluate";
+import { judge } from "../verdicts";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -147,7 +147,7 @@ describe("evaluateStage", () => {
     expect(typeof e.worst_symmetry_op).toBe("string");
     expect(e.symmetry_declared).toBe(true);
     expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.044 · symmetry off ≤ \d/);
-    expect(stageCheck("pdf", e)?.headline).toMatch(/ · symmetry broken$/);
+    expect(judge("pdf", e).reasons).toContain("symmetry broken");
   });
 
   it("does not judge a symmetry the file never declared: unsymmetrised data differ from their images by their own noise", async () => {
@@ -165,11 +165,9 @@ describe("evaluateStage", () => {
     expect(e.symmetry_declared).toBe(false);
     expect(e.max_symmetry_break as number).toBeGreaterThan(1); // still measured, and reported
     expect(headline("pdf", e)).toMatch(/ · no symmetry declared \(asymmetry \d/);
-    const check = stageCheck("pdf", e)!;
-    expect(check.verdict).toBe("pass"); // nothing else fails
-    expect(check.headline).toMatch(/ · symmetry not judged$/);
+    expect(judge("pdf", e).kind).toBe("pass"); // nothing else fails
     // The rule still bites where symmetry is declared.
-    expect(stageCheck("pdf", { ...e, symmetry_declared: true })!.verdict).toBe("attention");
+    expect(judge("pdf", { ...e, symmetry_declared: true })).toMatchObject({ kind: "attention", reasons: ["symmetry broken", "window within limit"] });
   });
 
   it("judges the round trip against the data's even part: the clean control passes, a transform fault does not", async () => {
@@ -186,17 +184,15 @@ describe("evaluateStage", () => {
     const e = await evaluateStage("pdf", withPdf); // declares no symmetry
     expect([e.back_fft_pearson_r, e.back_fft_pearson_r_even, e.back_fft_odd_share]).toEqual([0.98901, 1, 0.0219]);
     expect(headline("pdf", e)).toMatch(/^r 0\.98901 \(even part 1\) · RMS 0\.1253/);
-    const check = stageCheck("pdf", e)!;
-    expect(check.verdict).toBe("pass"); // failed at r < 0.999 before
-    expect(check.headline).toMatch(/^r 0\.989 \(even part 1\)/);
+    expect(judge("pdf", e).kind).toBe("pass"); // failed at r < 0.999 before
     // A transform that loses part of the ΔPDF falls short of its own even part.
-    expect(stageCheck("pdf", { ...e, back_fft_pearson_r_even: 0.97 })!.verdict).toBe("attention");
+    expect(judge("pdf", { ...e, back_fft_pearson_r_even: 0.97 }).reasons).toContain("back-FFT");
     // A check recorded before the even part was compared: r against the data is
     // judged only where the file declares the data symmetrised.
     const old = { ...e, back_fft_pearson_r_even: null };
-    expect(stageCheck("pdf", old)!.verdict).toBe("pass");
-    expect(stageCheck("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4 })!.verdict).toBe("attention");
-    expect(stageCheck("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4, back_fft_pearson_r: 0.9995 })!.verdict).toBe("pass");
+    expect(judge("pdf", old).kind).toBe("pass");
+    expect(judge("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4 }).reasons).toEqual(["back-FFT"]);
+    expect(judge("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4, back_fft_pearson_r: 0.9995 }).kind).toBe("pass");
   });
 
   it("says whether the flatten left a pedestal, so the Q² term's question has a stated answer", async () => {

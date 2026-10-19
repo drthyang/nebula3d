@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import { grainCheck, orbits, type OffLatticePeak } from "../metrics/grains";
+import { judge } from "../verdicts";
 
 type V3 = [number, number, number];
 type M3 = [V3, V3, V3];
@@ -55,14 +56,15 @@ function rotatedNodes(R: M3, qmax: number): OffLatticePeak[] {
 describe("grainCheck", () => {
   it("finds a second grain, and how far it is turned from the main one", () => {
     const g = grainCheck({ peaks: rotatedNodes(rot([1, 2, 3], 23), 4.5), ub: UB, ops: [I3] });
-    expect(g.verdict).toMatch(/^a second grain: one rotation of the Bragg lattice indexes/);
+    expect(judge("grain", g).reasons).toEqual(["second grain"]);
     expect(g.rotated_copy!.indexed).toBeGreaterThan(g.judged / 2);
     expect(g.rotated_copy!.misorientation_deg).toBeCloseTo(23, 0);
   });
 
   it("reads Bragg peaks displaced by a UB 0.9° off as a UB error, not a grain", () => {
     const g = grainCheck({ peaks: rotatedNodes(rot([0, 1, 1], 0.9), 4.5), ub: UB, ops: [I3] });
-    expect(g.verdict).toMatch(/^the off-lattice peaks are the crystal's own Bragg peaks with the UB off: one rotation of 0\.9° /);
+    expect(judge("grain", g).reasons).toEqual(["UB off", "peaks beside nodes"]);
+    expect(Math.round(g.rotated_copy!.misorientation_deg! * 100) / 100).toBe(0.9);
     expect(g.near_bragg_nodes).toBe(g.judged);
     // Each node moves by the angle times the sine of its angle to the axis: a lower bound.
     expect(g.near_offset_angle_deg!.median).toBeGreaterThan(0.5);
@@ -74,7 +76,7 @@ describe("grainCheck", () => {
     const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647) - 0.5;
     const peaks: OffLatticePeak[] = Array.from({ length: 60 }, (_v, i) => ({ hkl: [rnd() * 8, rnd() * 8, rnd() * 6] as V3, intensity: 100 - i }));
     const g = grainCheck({ peaks, ub: UB, ops: [I3] });
-    expect(g.verdict).toMatch(/^no second grain of this phase/);
+    expect(judge("grain", g).reasons).toContain("no second grain");
     expect(g.rotated_copy!.indexed).toBeLessThan(g.judged / 2);
   });
 

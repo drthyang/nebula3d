@@ -12,7 +12,7 @@
 import { create } from "zustand";
 
 import type { AgentProgress, AgentStep } from "./agent";
-import type { ComputedVerdict } from "./verdict";
+import type { ComputedVerdict } from "./verdicts";
 
 export interface ChatTurn {
   id: number;
@@ -21,7 +21,7 @@ export interface ChatTurn {
   reasoning?: string;
   steps?: AgentStep[];
   note?: string;
-  verdict?: ComputedVerdict | null; // computed from the checks the reply ran (verdict.ts)
+  verdict?: ComputedVerdict | null; // computed from the checks the reply ran (verdicts/)
 }
 
 interface ChatState {
@@ -76,13 +76,22 @@ export const fitTranscript = (turns: ChatTurn[], budget = TRANSCRIPT_BYTES): str
 const restored = restore();
 let nextId = restored.turns.reduce((m, t) => Math.max(m, t.id), 0) + 1;
 
+// A step's outcomes (verdicts/) serve the reply's own checks: the transcript
+// keeps what the model and the user read, at the size it had.
+const withoutOutcomes = (steps: AgentStep[]): AgentStep[] =>
+  steps.map((step) => {
+    const { outcomes, ...kept } = step;
+    void outcomes;
+    return kept;
+  });
+
 export const useChatStore = create<ChatState>((set) => ({
   turns: restored.turns,
   draft: restored.draft,
   busy: false,
   live: null,
   error: null,
-  addTurn: (turn) => set((s) => ({ turns: [...s.turns, { ...turn, id: nextId++ }] })),
+  addTurn: (turn) => set((s) => ({ turns: [...s.turns, { ...turn, ...(turn.steps ? { steps: withoutOutcomes(turn.steps) } : {}), id: nextId++ }] })),
   setDraft: (draft) => set({ draft }),
   clear: () => set({ turns: [], draft: "", error: null }),
 }));

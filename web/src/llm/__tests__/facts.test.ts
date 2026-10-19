@@ -15,7 +15,7 @@ import skillsSource from "../skills.ts?raw";
 import { CHAT_TOOLS, factsOf, toolSpecs, toolsWhere, type AgentTool } from "../tools";
 import { ASKED_ABOUT, VERDICT_TOPICS, type HighlightKey } from "../tools/facts";
 import { TUNE_STAGES } from "../tune/catalog";
-import verdictSource from "../verdict.ts?raw";
+import recordedSource from "../verdicts/recorded.ts?raw";
 
 const NAMES = CHAT_TOOLS.map((t) => t.name);
 const HIGHLIGHT_KEYS: readonly HighlightKey[] = ["raw", "rings", "punch", "backfill", "flatten", "pdf", "check", "bragg", "log"];
@@ -164,8 +164,9 @@ describe("what the facts say", () => {
 describe("the tool names written by hand", () => {
   const found = (source: string, re: RegExp): string[] => [...new Set([...source.matchAll(re)].map((m) => m[1]))];
 
-  it("the computed verdict reads only tools the registry holds", () => {
-    const names = found(verdictSource, /(?:resultsNewestFirst\(steps, |latest\()"([a-z_]+)"/g);
+  it("the verdicts read only tools the registry holds", () => {
+    // The word-reading adapter names the tools whose results hold outcomes.
+    const names = found(recordedSource, /\bcase "([a-z_]+)":/g);
     expect(names.length).toBeGreaterThan(0);
     for (const name of names) expect(NAMES, name).toContain(name);
   });

@@ -4,12 +4,12 @@
 // path in its result. The app fills it in from the result where the words are
 // shown (the reply, and the report that quotes it), so no number is mistyped,
 // invented or rounded otherwise than the tool rounded it. {{achieved}} is the
-// computed verdict on the whole run (verdict.ts). A reference the reply's
+// computed verdict on the whole run (the check-verdict module, verdicts/). A reference the reply's
 // results cannot fill stays as written; the answer checks send it back.
 
 import type { AgentStep } from "./agent";
 import { resultsNewestFirst } from "./evidence";
-import { computedVerdict } from "./verdict";
+import { verdicts } from "./verdicts";
 
 /** {{key}}: a letter, then letters, digits and _ . : − (assess_stage.flatten.verdict, dpdf_peaks.features.0.vectors_rlu.0). */
 export const REFERENCE = /\{\{\s*([A-Za-z][\w.:-]*)\s*\}\}/g;
@@ -46,7 +46,7 @@ function at(root: unknown, path: string[]): unknown {
 
 /** One reference's text, or null when this reply's results hold no such value. */
 export function resolveReference(key: string, steps: readonly AgentStep[]): string | null {
-  if (key === "achieved") return computedVerdict(steps)?.text ?? null;
+  if (key === "achieved") return verdicts({ reply: steps }).achieved?.text ?? null;
   const [tool, ...path] = key.split(".");
   if (!path.length) return null;
   // The newest result of that tool that holds the field (an assess_stage for

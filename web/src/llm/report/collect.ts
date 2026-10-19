@@ -17,6 +17,7 @@ import { CHAT_TOOLS, toolsWhere, type ToolContext } from "../tools";
 import { currentStageSettings, displayValue, SAMPLE_PARAMS, TUNE_STAGES, type ParamValue } from "../tune/catalog";
 import { headline } from "../tune/evaluate";
 import { useTuneStore } from "../tune/tuner";
+import type { Outcome } from "../verdicts";
 import { fullHalf, pngDataUrl, rasterize } from "./figures";
 import { buildReport, type Measured, type Report, type ReportFigure, type ReportTuningStage } from "./report";
 
@@ -43,15 +44,22 @@ const DPDF_HALF = 25; // Å: the near-origin correlations
 
 type Obj = Record<string, unknown>;
 
+interface Run {
+  result: Obj | null;
+  outcomes: Outcome[]; // the checks' outcomes the tool judged (verdicts/)
+}
+
 async function measure(ctx: ToolContext): Promise<Measured> {
-  const run = async (name: string, args: Obj = {}): Promise<Obj | null> => {
+  const none: Run = { result: null, outcomes: [] };
+  const run = async (name: string, args: Obj = {}): Promise<Run> => {
     const tool = CHAT_TOOLS.find((t) => t.name === name);
-    if (!tool) return null;
+    if (!tool) return none;
     try {
       const out = await tool.run(args, ctx, {});
-      return out.result && typeof out.result === "object" ? (out.result as Obj) : null;
+      const result = out.result && typeof out.result === "object" ? (out.result as Obj) : null;
+      return result ? { result, outcomes: out.outcomes ?? [] } : none;
     } catch {
-      return null;
+      return none;
     }
   };
   const punched = ctx.dataset.stages.some((s) => s.name === "braggpunched" && s.exists);
@@ -60,24 +68,26 @@ async function measure(ctx: ToolContext): Promise<Measured> {
     run("assess_stage", { stage: "all" }),
     run("texture_check"),
     run("qmax_coverage"),
-    dpdfVolumeId(ctx.dataset) ? run("symmetry_check") : Promise.resolve(null),
-    punched ? run("grain_check") : Promise.resolve(null),
+    dpdfVolumeId(ctx.dataset) ? run("symmetry_check") : Promise.resolve(none),
+    punched ? run("grain_check") : Promise.resolve(none),
   ]);
   const stage = (k: string): Obj | null => {
-    const s = all?.[k];
+    const s = all.result?.[k];
     return s && typeof s === "object" && !("missing" in (s as Obj)) ? (s as Obj) : null;
   };
   return {
-    describe,
+    describe: describe.result,
     rings: stage("rings"),
     punch: stage("punch"),
     backfill: stage("backfill"),
     flatten: stage("flatten"),
     pdf: stage("pdf"),
-    texture,
-    coverage,
-    symmetry,
-    grains,
+    texture: texture.result,
+    coverage: coverage.result,
+    symmetry: symmetry.result,
+    grains: grains.result,
+    // What the tools judged, which the report's verdicts read (verdicts/readers.ts).
+    outcomes: [all, texture, coverage, symmetry, grains].flatMap((r) => r.outcomes),
   };
 }
 

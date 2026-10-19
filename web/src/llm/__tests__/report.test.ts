@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { Slice } from "../../api/types";
 import { rasterize } from "../report/figures";
 import { reportHtml, reportMarkdown } from "../report/render";
-import { buildReport, fmt, stageCheck, type ReportInput } from "../report/report";
+import { buildReport, fmt, type ReportInput } from "../report/report";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
 
@@ -183,36 +183,29 @@ describe("rasterize", () => {
   });
 });
 
-describe("a stage's check states only what it judges", () => {
-  it("judges the 3D-ΔPDF's symmetry from its worst in-plane break", () => {
-    const base = { back_fft_pearson_r: 0.9995, window_weight_on_unmeasured: 1e-4 };
-    const broken = stageCheck("pdf", { ...base, max_symmetry_break: 0.05, worst_symmetry_op: "six-fold (60°)" });
-    expect(broken?.verdict).toBe("attention");
-    expect(broken?.headline).toMatch(/symmetry broken/);
-    expect(stageCheck("pdf", { ...base, max_symmetry_break: 5e-4 })?.verdict).toBe("pass");
-    expect(stageCheck("pdf", base)?.verdict).toBe("pass");
+describe("a card states only what it judges", () => {
+  it("shows the symmetry_check's verdict on the 3D-ΔPDF's card", () => {
+    const r = buildReport(input({ measured: { ...input().measured, symmetry: { verdict: "not kept: six-fold (60°) (0.05)" } } }));
+    const pdf = r.checks.find((c) => c.title === "3D-ΔPDF")!;
+    expect(pdf.verdict).toBe("attention");
+    expect(pdf.headline).toMatch(/ · symmetry broken$/);
   });
 
-  it("judges the flatten by the pedestal rule, and reports its floor in σ without judging it", () => {
+  it("reports the flatten's floor in σ without judging it, by the pedestal rule", () => {
     // The validation's dev volumes (docs/pilot-review.md finding 6): floors of
     // 1.5 to 1.8σ on all eight, whatever the flatten did.
-    const control = stageCheck("flatten", { max_after_floor_sigma: 1.72, max_floor_trend: 0.314, max_floor_span_fraction: 0.601, pedestal_left: false })!;
-    expect(control.verdict).toBe("pass"); // "needs attention" under the 1σ clause
-    expect(control.details).toContainEqual(["Largest leftover floor (reported, not judged)", "1.72 σ"]);
-    expect(control.criterion).toMatch(/^No pedestal: .* The largest floor in σ is reported, not judged/);
-    const planted = { max_after_floor_sigma: 1.8, max_floor_trend: 0.975, max_floor_span_fraction: 0.971 };
-    expect(stageCheck("flatten", planted)!.verdict).toBe("attention");
-    expect(stageCheck("flatten", { max_after_floor_sigma: 1.52, max_floor_trend: 0.025, max_floor_span_fraction: 0.333 })!.verdict).toBe("pass");
-    expect(stageCheck("flatten", { max_after_floor_sigma: 0.8 })!.verdict).toBe("info"); // no trend or span: nothing judged
-    // The floor alone, however high in σ, no longer makes a verdict: the pedestal rule does (the user's choice, 2026-10-17).
-    expect(stageCheck("flatten", { max_after_floor_sigma: 3, max_floor_trend: 0.31, max_floor_span_fraction: 0.6 })!.verdict).toBe("pass");
-    expect(stageCheck("flatten", { max_after_floor_sigma: 0.5, max_floor_trend: 0.9, max_floor_span_fraction: 0.85 })!.verdict).toBe("attention");
+    const flatten = { max_after_floor_sigma: 1.72, max_floor_trend: 0.314, max_floor_span_fraction: 0.601, pedestal_left: false };
+    const card = buildReport(input({ measured: { ...input().measured, flatten } })).checks.find((c) => c.title === "Flatten")!;
+    expect(card.verdict).toBe("pass"); // "needs attention" under the 1σ clause
+    expect(card.details).toContainEqual(["Largest leftover floor (reported, not judged)", "1.72 σ"]);
+    expect(card.criterion).toMatch(/^No pedestal: .* The largest floor in σ is reported, not judged/);
   });
 
-  it("does not promise a fill-bias check a stage's evaluation never makes", () => {
-    const c = stageCheck("backfill", { mean_median_seam_sigma: 0.6 });
-    expect(c?.verdict).toBe("pass");
-    expect(c?.criterion).toMatch(/texture_check's to say/);
-    expect(c?.criterion).not.toMatch(/no cut whose fill is biased/);
+  it("counts the fill bias on the Backfill card, whose criterion says so", () => {
+    const texture = { per_cut: [{ systematic_fill_bias: true }, { systematic_fill_bias: false }] };
+    const card = buildReport(input({ measured: { ...input().measured, texture } })).checks.find((c) => c.title === "Backfill")!;
+    expect(card.verdict).toBe("attention");
+    expect(card.headline).toMatch(/ · fill bias on 1 of 2 cuts$/);
+    expect(card.criterion).toMatch(/no cut whose fill is biased one way/);
   });
 });
