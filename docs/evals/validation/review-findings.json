@@ -708,5 +708,29 @@
    "on": "2026-10-19",
    "option": "the prompts state what the checks judge; the four checks name all five stages and the UB"
   }
+ },
+ {
+  "source": "review",
+  "ref": "P4.12b",
+  "at": "d8be858",
+  "kind": "bug",
+  "evidence": "The back-FFT consistency view built its round trip with DeltaPdfParams(crop_hkl=None) (src/nebula3d/server/consistency.py:137, and a band saved from it recorded the same, :202): the package defaults, whatever transform the run used, though the ΔPDF stage records its transform in the ΔPDF's provenance (transform_config, src/nebula3d/pipeline.py:1542, written at :1595). After a run with hann or another σ the view showed a round trip the run never made. No test compared the browser build's results with the native ones: tests/test_float32_equivalence.py compares float32 with float64, both in the low-memory mode its own webbridge.setup() call leaves on. And webbridge.setup() sets NEBULA3D_LOW_MEMORY=1 for the whole process (src/nebula3d/webbridge.py:209), which nothing unsets: tests/test_pooled_rings.py failed after tests/test_webbridge.py.",
+  "proposed_fix": "The view, natively and in the browser (server.consistency.view_input), reads the run's window, σ, shape, support, padding and subtractions back from the ΔPDF's transform_config (pipeline.delta_pdf_settings_from_config), keeps the full |Q| range (crop_hkl stays None, by design) and the band applied in the view, and says where its settings came from in its response: settings.source is run, or defaults with a note saying why when the dataset has no readable record, and defaulted names what a partial record lacked. The reconstruction cache keys on the transform, and the page's header names the window and whose it is. A parity test runs one dev-split volume through the native engine and the browser bridge and pins which verdict-level outputs must be equal and which may differ, by the measured amount. An autouse fixture in tests/conftest.py puts the NEBULA3D_* environment back after each test and each module.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "baaf115",
+  "tests": [
+   "tests/test_consistency_run_settings.py::test_a_run_made_with_hann_05_is_viewed_with_hann_05",
+   "tests/test_consistency_run_settings.py::test_without_a_record_the_view_takes_the_defaults_and_says_so",
+   "tests/test_consistency_run_settings.py::test_the_view_follows_a_re_run_of_the_delta_pdf",
+   "tests/test_native_browser_parity.py (the stages' summaries, the ring decision, the punch, the ΔPDF, the back-FFT check and the consistency view; the ring test's thinner sampling in low-memory mode)",
+   "tests/test_package_env.py::test_the_bridge_tests_then_the_pooled_rings_tests_pass"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 4.12, the rest). Implemented in baaf115 (the view, server and browser), c9209ac (the page's header), 8ff6c82 (the environment fixture) and dc05962 (the parity test). Arm A on dev re-run before and after: 32 of 32 entries identical, 5 of 8 cases pass, as recorded. The model-visible snapshots are unchanged: consistency_details reads the run's saved check, not the view. Measured on every dev case and the demo at 121³ and 161³, the browser's decisions are the native ones. Found, not tuned: the low-memory mode samples the ring test's shells more thinly (at most an eighth of the volume's voxels, src/nebula3d/preprocessing/ring_isotropy.py:290), so the browser measures the confirmed rings' signal-to-noise up to 2.6 times lower (on the 161³ demo, 7.0 against 3.8 at 6.94 Å⁻¹, where the rule asks 3): a ring near that threshold could be confirmed natively and left in the browser. Left: validation/score.py keeps its own reader of the same stamp (_params_from), which could take the new one.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "the consistency view takes the run's settings; the browser build's verdicts pinned against the native ones"
+  }
  }
 ]

@@ -87,6 +87,29 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   voxels flipped out of 48.4 M, identical peak counts — and ~15–25 % faster
   (`tests/test_float32_equivalence.py` gates it; a `"precision"` key in the run
   params JSON pins either mode for A/B validation).
+- **Native and browser parity.** `tests/test_native_browser_parity.py` runs a
+  synthetic volume (the validation's dev case with powder rings and a shell
+  of the crystal's own, 121³) through the native engine (float64, low-memory
+  off, the server's parameters and endpoints) and through `nebula3d.webbridge`
+  as the Pyodide worker drives it (float32, low-memory on, `run_async`), and
+  pins which verdicts must agree. *Equal*: every log line's words, and its
+  numbers to the digit printed (the one textual difference is the sign of the
+  flatten's zero R², `-0.000`); the ring decision (the shells found, the ones
+  confirmed as powder rings and the crystal's kept, the share removed); the
+  punch (the same peaks at the same nodes, the same voxels punched); the ΔPDF's
+  grid, window, provenance and strongest features; the consistency view's
+  settings. *To float32 rounding*: the cleaned volumes (normalised RMS 3e-8),
+  the ΔPDF (1.5e-7), the peaks' intensities (1.4e-7), the back-FFT r and RMS
+  (4e-10). *Allowed to differ*: the round trip against the data's even part
+  (1e-14 natively, about 6e-6 in float32, both sound), and the ring test's
+  measurements per direction. The low-memory mode reads at most an eighth of
+  the volume's voxels for the shells (`ring_isotropy.shell_isotropy`), so its
+  medians are noisier: on the 161³ demo the confirmed rings' signal-to-noise
+  fell by up to 2.6× (103 → 48 at 3.09 Å⁻¹, 7.0 → 3.8 at 6.94 Å⁻¹, against the
+  rule's 3) and their isotropy by up to 0.27. The decisions agreed on every
+  dev case and the demo at 121³ and 161³, but a ring near the threshold could
+  be confirmed natively and left in the browser. float32 plays no part in it:
+  the native engine in low-memory mode measures what the browser does.
 - **WebGPU ΔPDF.** When WebGPU is available, the ΔPDF forward FFT and the
   back-FFT consistency inverse run on the GPU (`web/src/gpu/` — a mixed
   radix-2/3/4/5 Stockham line kernel with CPU-precomputed twiddles; index math
@@ -231,7 +254,7 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 | **Reciprocal cleanup** | `explore_slice.py` | One view per HKLVolume stage (raw / ring-removed / punched / backfilled / flattened) on one H/K/L plane and cut, in the [viewer workspace](#viewer-workspace). All views share **one colour range**, set from a reference stage (the output stage by default, or *Each view* to scale each stage on its own), and one linked zoom and crosshair; hovering reads every stage's value at the same (K, L). The cut readout is an **editable box** — type `0.3333` and it snaps to the nearest plane. |
 | **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range, a gray dashed unit-cell overlay and an optional [structure overlay](#structure-overlay) of interatomic vectors. Views open at ±40 Å. In *Navigate* mode a click on one view moves the other two cuts through the point. |
 | **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related ΔPDF files × the three planes as a square grid, sharing cut, window, and contrast; a per-plane colour scale pooled across files. Component retained; unrouted from the sidebar for now. |
-| **Q–R Band Transform** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data, ΔPDF, back-FFT and residual** as four views (focus layout, data large, by default), with agreement metrics (Pearson r, normalised RMS) in the header. Data, back-FFT and residual share one plane, cut, colour range and view; the residual has its own ± range on a diverging map. The ΔPDF plane follows the Q plane (H ↔ x, K ↔ y, L ↔ z) while *Link orientation* is on. **\|Q\|** and real-space **\|R\|** bands, each with its own *Apply* in the view footer, isolate which ranges support a signal; applying a band keeps both cuts. The \|Q\| band is drawn as its true contour on the r.l.u. axes: a circle for an orthogonal cell, a tilted ellipse (centred off the origin where the cut axis is not normal to the plane) for any other. |
+| **Q–R Band Transform** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data, ΔPDF, back-FFT and residual** as four views (focus layout, data large, by default), with agreement metrics (Pearson r, normalised RMS) in the header. Data, back-FFT and residual share one plane, cut, colour range and view; the residual has its own ± range on a diverging map. The ΔPDF plane follows the Q plane (H ↔ x, K ↔ y, L ↔ z) while *Link orientation* is on. **\|Q\|** and real-space **\|R\|** bands, each with its own *Apply* in the view footer, isolate which ranges support a signal; applying a band keeps both cuts. The \|Q\| band is drawn as its true contour on the r.l.u. axes: a circle for an orthogonal cell, a tilted ellipse (centred off the origin where the cut axis is not normal to the plane) for any other. The round trip transforms as the run did: the window, its σ, shape and support, the padding and the subtractions come from the run's ΔPDF, which records them (`transform_config`), over the full \|Q\| range and the band applied here. A dataset whose ΔPDF records none (none on disk, or one written before the record) gets the package defaults, and the header says which: "the run's window: hann", or "the default window, gaussian σ 0.4" and why. |
 | **NEBULA Pilot** | — (new) | A column docked beside every page, which the page reflows beside, never over it: drag its edge to resize it, or collapse it to a slim rail (opened from the sidebar or the rail). In a window under 1000 px wide (900 px in landscape) it is a bottom sheet under the page instead. With *Follow* on, the figure it works on stays fully in view beside it. Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic) model. One **chat**: free questions, five one-click stage reviews, and two one-click requests (*Assess the run*, *Tune for the best result*), grounded in metrics computed in the browser. With **Tools** on, the model measures any cut, judges each stage on three planes, checks the punch and backfill for texture, the ΔPDF's window against the data coverage (and where the raw counts begin and end in \|Q\|) and the ΔPDF's symmetry, sets the ΔPDF view's contrast, reads the Bragg profile, back-FFT check and run log, compares datasets, opens the viewer beside the chat, and acts: it runs the pipeline (shown live on the Execution page and in the chat), changes settings, and tunes the pipeline one stage at a time, keeping the best settings for each. Optional vision opt-in attaches the rendered slice for image-capable models. |
 
 ### Viewer workspace
@@ -361,7 +384,7 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 | GET | `/api/deltapdf/{id}/meta` | ΔPDF shape, ranges, lattice, \|Q\|max |
 | GET | `/api/deltapdf/{id}/slice?plane=xy\|xz\|yz&value=` | binary ΔPDF orthoslice |
 | GET | `/api/deltapdf/{id}/features?min_sigma=&limit=` | the strongest extrema outside the origin's disk, grouped by the point group the raw file declares, else by sign, length and size (`grouped_by`) |
-| GET | `/api/consistency/{dataset_id}/meta?q_min=&q_max=&r_min=&r_max=` | back-FFT metadata and metrics |
+| GET | `/api/consistency/{dataset_id}/meta?q_min=&q_max=&r_min=&r_max=` | back-FFT metadata and metrics, and `settings`: the transform the round trip ran and where it came from (`source` `"run"`, from the ΔPDF's record, or `"defaults"` with a `note` saying why; `defaulted` names what a partial record lacked) |
 | GET | `/api/consistency/{dataset_id}/check` | the pipeline's saved back-FFT check metrics (no FFT) |
 | GET | `/api/consistency/{dataset_id}/slice?panel=data\|recon\|residual\|dpdf&...` | binary consistency slice |
 | POST | `/api/consistency/{dataset_id}/save` | save the band-limited back-FFT result |
