@@ -429,17 +429,45 @@ architecture review filed on 2026-10-19 (`D1` to `D9`, `Q10`, `Q11`, read on
 ### The models
 
 All four are set up the same way and reported side by side. Each runs three times
-per case and arm; the context is what the Pilot's tools need loaded.
+per case and arm; the context is the least window the run policy accepts.
 
 | Model | Served by | Context | Splits | Notes |
 | --- | --- | --- | --- | --- |
-| qwen/qwen3.8-27b | LM Studio | 32k | dev, test | Local |
-| gemma4:26b | Ollama | 32k (`OLLAMA_CONTEXT_LENGTH`) | dev, test | Local |
-| meta/muse-glimmer | LM Studio | 32k | dev, test | Local |
+| qwen/qwen3.8-27b | LM Studio | 48k or more (loaded) | dev, test | Local |
+| gemma4:26b | Ollama | 48k or more (supported) | dev, test | Local |
+| meta/muse-glimmer | LM Studio | 48k or more (loaded) | dev, test | Local |
 | Claude Sonnet 5.5 | Anthropic | – | **test only** | Paid; spend capped at $12 |
 
-The runner checks an LM Studio model's loaded context and stops if it is short
-(Ollama's cannot be read). The paid model also needs its cap typed
+**A local live run needs at least 48k of context (49,152 tokens).** This is
+the run policy (`RUN_POLICY.minLocalContextTokens` in
+`web/src/llm/evals/validationModels.ts`), as the sibling app RMC holds its local
+runs. Arm B's worst turn on a local model, the validation task with two skills
+read whole, is about 45.6k tokens with the reply reserve before the loop's
+compaction and 37k to 42k after it (`web/src/llm/__tests__/tokenBudget.test.ts`).
+A 32k window holds it only by shortening the skills just read to stubs, so a
+run at 32k would grade arm B on stubs of its method. Before the plan starts,
+and again before each run, the runner reads the window the run will get
+(`runContext`), without loading anything, and refuses one under the minimum or
+one it cannot read, saying the model, the window found, the minimum and how
+to load it with more:
+
+- **LM Studio:** the context the model is loaded with (`/api/v0/models`). Load
+  it with a Context Length of 49152 or more in its load settings, or with
+  `lms load qwen/qwen3.8-27b --context-length 49152` once it is unloaded, and
+  make that the model's default Context Length: LM Studio reloads an idle
+  model with its defaults. A model it has not loaded is refused, since its
+  defaults cannot be read.
+- **Ollama:** the longest context the model supports (`/api/show`; `ollama
+  show gemma4:26b` lists it). The run goes through Ollama's own chat API, and
+  the window plan sizes `num_ctx` for each request up to it (64k for the worst
+  turn, where the model supports it), so there is nothing to load; the machine
+  needs the memory for that window. A model that supports less than 48k cannot run.
+
+Each run's record keeps the window it had and the minimum it was held to
+(`context_window`: `tokens`, `min_tokens`, and `read_from`,
+`lmstudio-loaded` or `ollama-supported`), and the record's `model` keeps
+`min_context_tokens`. The field is optional, so records made before it keep the
+schema `nebula3d-validation-run/1`. The paid model also needs its cap typed
 (`NEBULA_VALIDATION_ALLOW_SPEND=12`) and a key in `ANTHROPIC_API_KEY`, which is
 never written out. The spend tracker (`SpendTracker`) refuses a run that could pass
 the cap at its worst: the first run is held to a ceiling set by the round limit and
