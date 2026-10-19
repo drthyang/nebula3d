@@ -13,6 +13,7 @@
 
 import { readAnswer, type Span, type WrittenNumber } from "../answerText";
 import type { Check, EvalRun } from "./harness";
+import { witness } from "./witness";
 
 export interface GradedSpan {
   text: string; // as written (a sentence's with its answer word)
@@ -71,13 +72,46 @@ export const sharedReader: GraderReader = (answer) => {
   return { sentences: read.sentences.map(graded), clauses: read.clauses.map(graded), numbers: values(read.numbers) };
 };
 
-/** The reader the graders grade by. */
-export const graderReader: GraderReader = sharedReader;
+/** The witness, through the port. */
+export const witnessReader: GraderReader = witness;
+
+/** The two readers a check reads an answer by: the one it grades by, and the one it is checked against. */
+export interface Readers {
+  shared: GraderReader;
+  witness: GraderReader;
+}
+
+export const READERS: Readers = { shared: sharedReader, witness: witnessReader };
+
+/**
+ * A check the shared reader passes and the witness fails: the two read the
+ * answer's words apart, and one of them misread it. The grade is the shared
+ * reader's; the dispute is recorded beside it, for a reviewer to settle.
+ */
+export interface Dispute {
+  check: string;
+  reader: string; // what the shared reader found, as the check says it
+  witness: string; // what the witness found
+}
 
 /** What a check decides of an answer, read, in its run. */
 export type Decide = (answer: GradedAnswer, run: EvalRun) => { pass: boolean; detail: string };
 
-/** A check on an answer's words: it decides on the answer as the graders' reader reads it. */
-export function readCheck(name: string, decide: Decide): Check {
-  return { name, grade: (run) => decide(graderReader(run.content), run) };
+/**
+ * A check on an answer's words, cross-checked: it grades the answer as the
+ * shared reader reads it, and where that passes, decides again on the
+ * witness's reading; a check the witness fails is a dispute. A check the
+ * shared reader fails is graded as failed, whatever the witness reads: a
+ * dispute only ever questions a pass.
+ */
+export function crossChecked(name: string, decide: Decide, readers: Readers = READERS): Check {
+  return {
+    name,
+    grade: (run) => {
+      const graded = decide(readers.shared(run.content), run);
+      if (!graded.pass) return graded;
+      const witnessed = decide(readers.witness(run.content), run);
+      return witnessed.pass ? graded : { ...graded, dispute: { check: name, reader: graded.detail, witness: witnessed.detail } };
+    },
+  };
 }

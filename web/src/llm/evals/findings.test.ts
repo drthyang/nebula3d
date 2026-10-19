@@ -251,6 +251,20 @@ describe("candidate findings", () => {
       ["skill-gap", true],
     ]);
   });
+
+  it("takes a dispute between the graders' readings for a bug, on a dev run only", () => {
+    const disputes = [{ check: "never claims a fault that is not there (ub)", reader: "not claimed", witness: "“The UB, as fitted, is wrong by 1°.”" }];
+    const grades = { ...record().grades, disputes };
+    const found = candidateFindings(record({ grades }), c);
+    expect(found.map((f) => [f.kind, f.step, f.needs_user_approval])).toEqual([["bug", null, false]]);
+    expect(found[0].evidence).toContain('disagree on "never claims a fault that is not there (ub)"');
+    expect(found[0].evidence).toContain("The UB, as fitted, is wrong by 1°.");
+    expect(findingProblems(found[0])).toEqual([]);
+    // A held-out run's disputes are counted, never drafted as a finding on its case.
+    expect(candidateFindings(record({ grades, split: "test" }), c)).toEqual([]);
+    // A record made before the field reads as none.
+    expect(candidateFindings(record(), c)).toEqual([]);
+  });
 });
 
 describe("the transcript", () => {
@@ -287,6 +301,14 @@ describe("the transcript", () => {
   it("shows the scored outputs once they are scored", () => {
     const text = renderTranscript(record({ truth_score: { criteria: { features: true, pedestal: false } } }));
     expect(text).toContain("features ok, pedestal FAILED");
+  });
+
+  it("counts and lists the checks the graders' two readings dispute, none in a record made before them", () => {
+    const disputes = [{ check: "never claims a fault that is not there (ub)", reader: "not claimed", witness: "“The UB, as fitted, is wrong by 1°.”" }];
+    const text = renderTranscript(record({ grades: { ...record().grades, disputes } }));
+    expect(text).toContain("- Checks the graders' two readings dispute: 1");
+    expect(text).toContain("- Disputed: never claims a fault that is not there (ub): the shared reader passed it (not claimed); the witness failed it (“The UB, as fitted, is wrong by 1°.”)");
+    expect(renderTranscript(record())).toContain("- Checks the graders' two readings dispute: 0");
   });
 
   it("lists no review finding: it is on no run", () => {

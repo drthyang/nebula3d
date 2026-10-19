@@ -14,6 +14,7 @@ import { fit, found, seen } from "../readings";
 import { allSkills } from "../skills";
 import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolsWithSkills, unreadSkillRefusal } from "../tools";
 import { UB_TURNED } from "../verdicts/rules";
+import { READERS, sharedReader, type Readers } from "./graderReading";
 import type { EvalRun } from "./harness";
 import {
   ARMS,
@@ -43,6 +44,7 @@ import {
   type Decision,
   type RunRecord,
   type ValidationCase,
+  type ValidationGrades,
 } from "./validation";
 
 // No failure here shows a held-out case: a check that meets the test split names a
@@ -539,6 +541,33 @@ describe("the record", () => {
     expect(rec.task).toBe(TASK);
     // No window given: recorded as unknown, not left out.
     expect(back.context_window).toBeNull();
+  });
+
+  it("keeps the checks the graders' two readings dispute, a field the schema takes as optional", () => {
+    // A shared reader that reads no clause passes every alarm; the witness raises the one there.
+    const blind: Readers = { shared: (a) => ({ ...sharedReader(a), clauses: [] }), witness: READERS.witness };
+    const g = gradeRun(caseNamed("dev-control")!, run("The UB is wrong by 0.4°."), [], blind);
+    const dispute = { check: "never claims a fault that is not there (ub)", reader: "not claimed", witness: "“The UB is wrong by 0.4°.”" };
+    expect([g.noFalseAlarm, g.disputes]).toEqual([true, [dispute]]);
+    expect(g.falseAlarms.find((x) => x.check === dispute.check)).toMatchObject({ pass: true, dispute });
+    const rec = buildRecord({
+      case: caseNamed("dev-control")!,
+      arm: "B",
+      run: 1,
+      dataset: dataset("v000001-B1", "v000001_B1"),
+      model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+      evalRun: run("The UB is wrong by 0.4°."),
+      why: [],
+      maxRounds: 12,
+      started: "2026-10-19T00:00:00Z",
+      costUsd: null,
+    });
+    const back = JSON.parse(JSON.stringify(rec)) as RunRecord;
+    expect([back.schema, back.grades.disputes, back.grades.noFalseAlarm]).toEqual(["nebula3d-validation-run/1", [], false]);
+    // `delete` compiles only on an optional field: records made before it stay valid.
+    const old: ValidationGrades = { ...back.grades };
+    delete old.disputes;
+    expect(old.disputes).toBeUndefined();
   });
 
   it("keeps the context window the run had and the minimum it was held to", () => {

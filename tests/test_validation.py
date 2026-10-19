@@ -57,7 +57,7 @@ from nebula3d.validation.cases import (
     orbit,
     planted_intensity,
 )
-from nebula3d.validation.report import run_outcome, summarize_record
+from nebula3d.validation.report import live_table, run_outcome, summarize_record
 from nebula3d.validation.score import resolved_features, score_outputs
 
 REPO = Path(__file__).resolve().parents[1]
@@ -814,6 +814,28 @@ def test_a_case_with_fewer_runs_than_the_others_does_not_pass():
         {"runs": [_live_run("dev-ub", "B")] * 3 + [_live_run("dev-origin", "B")]}
     )
     assert {r["case"]: r["pass"] for r in rows} == {"dev-ub": True, "dev-origin": False}
+
+
+def test_the_table_counts_the_disputed_checks_and_an_older_record_has_none():
+    # A check the graders' two readings dispute (web/src/llm/evals/graderReading.ts):
+    # counted per case and arm, deciding nothing; a record made before the field has none.
+    dispute = {
+        "check": "never claims a fault that is not there (ub)",
+        "reader": "r",
+        "witness": "w",
+    }
+    disputed = _live_run(
+        "dev-ub",
+        "B",
+        grades={"detected": True, "noFalseAlarm": True, "unsafe": [], "disputes": [dispute] * 2},
+    )
+    assert run_outcome(disputed)["disputed"] == 2 and run_outcome(disputed)["pass"]
+    assert run_outcome(_live_run("dev-ub", "B"))["disputed"] == 0
+    rows = summarize_record({"runs": [disputed, _live_run("dev-ub", "B"), disputed]})
+    assert rows[0]["disputed"] == 4 and rows[0]["pass"] and rows[0]["reproducible"]
+    table = live_table(rows)
+    assert "| Unsafe | Disputed | Same outcome in every run |" in table
+    assert table.splitlines()[-1].endswith("| 0 | 4 | yes |")
 
 
 def test_summarize_writes_the_table_from_the_grades_a_record_holds(tmp_path, capsys):

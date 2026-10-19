@@ -5,8 +5,89 @@
 
 import { describe, expect, it } from "vitest";
 
+import { answerCorpus, type CorpusAnswer } from "./answerCorpus";
 import { readText } from "./backend";
+import { READERS, sharedReader, type Dispute, type GradedAnswer, type GraderReader, type Readers } from "./graderReading";
+import { grade } from "./harness";
+import { casesIn, gradeRun } from "./validation";
 import { witness } from "./witness";
+
+/**
+ * The disputes the dev corpus raises, declared: each answer of it (answerCorpus.ts)
+ * graded on every dev case and on its own scenario's checks. None: where one
+ * appears, read the answer, find which reader misread it, and fix that one.
+ */
+const DECLARED_DISPUTES: readonly string[] = [];
+
+/** Every dispute the corpus raises read by *readers*, as "answer | case or scenario | check". */
+function disputesOver(corpus: readonly CorpusAnswer[], readers: Readers = READERS): string[] {
+  const out: string[] = [];
+  const add = (where: string, ds: readonly Dispute[]) => out.push(...ds.map((d) => `${where} | ${d.check}`));
+  for (const a of corpus) {
+    for (const c of casesIn("dev")) add(`${a.id} | ${c.id}`, gradeRun(c, a.run, [], readers).disputes ?? []);
+    // The scenarios' checks read with the readers they were built with (READERS).
+    if (readers === READERS && a.scenario) add(`${a.id} | ${a.scenario.id}`, grade(a.scenario, a.run).grades.flatMap((g) => (g.dispute ? [g.dispute] : [])));
+  }
+  return out;
+}
+
+/** The false-alarm checks over the corpus read by *readers*: how many failed, and the disputes among them. */
+function alarmsOver(corpus: readonly CorpusAnswer[], readers: Readers): { failed: number; disputes: Dispute[] } {
+  const grades = corpus.flatMap((a) => casesIn("dev").flatMap((c) => gradeRun(c, a.run, [], readers).falseAlarms));
+  return { failed: grades.filter((g) => !g.pass).length, disputes: grades.flatMap((g) => (g.dispute ? [g.dispute] : [])) };
+}
+
+/** A shared reader planted with a fault: each of its spans as *mark* reads it, its clauses re-cut by *cut*. */
+function planted(mark: (s: GradedAnswer["clauses"][number]) => GradedAnswer["clauses"][number], cut?: (clause: string) => string[]): GraderReader {
+  return (answer) => {
+    const read = sharedReader(answer);
+    const clauses = cut ? read.clauses.flatMap((c) => cut(c.text).flatMap((piece) => sharedReader(piece).clauses)) : read.clauses;
+    return { ...read, sentences: read.sentences.map(mark), clauses: clauses.map(mark) };
+  };
+}
+
+describe("the disputes over the dev corpus", () => {
+  it("are the declared ones", async () => {
+    expect(disputesOver(await answerCorpus())).toEqual(DECLARED_DISPUTES);
+  });
+});
+
+describe("the witness catches a shared reader that misreads", () => {
+  // Planted controls: shared readers with a fault planted in them, over the
+  // dev corpus and two answers that raise a fault in a clause commas cut
+  // into pieces; the witness as it is.
+  const withShared = (shared: GraderReader): Readers => ({ shared, witness: READERS.witness });
+  const asRun = (id: string, text: string): CorpusAnswer => ({ id, text, run: { scenario: id, steps: [], content: text, latencyMs: 0, usage: null }, scenario: null });
+  const answers = async (): Promise<CorpusAnswer[]> => [
+    ...(await answerCorpus()),
+    asRun("planted 1", "The UB, as fitted, is wrong by 1°."),
+    asRun("planted 2", "Powder rings, as the ring check found, are present at 2.2 Å⁻¹."),
+  ];
+  const ALARM = /^never (claims|calls)/;
+
+  it("one that reads “the” as a negator passes alarms the witness raises: alarm disputes", async () => {
+    const { disputes } = alarmsOver(await answers(), withShared(planted((s) => ({ ...s, negated: s.negated || /\bthe\b/i.test(s.text) }))));
+    expect(disputes.length).toBeGreaterThan(0);
+    expect(disputes.filter((d) => !ALARM.test(d.check))).toEqual([]);
+  });
+
+  it("one that splits a clause at every comma passes alarms the witness raises: alarm disputes", async () => {
+    const { disputes } = alarmsOver(await answers(), withShared(planted((s) => s, (clause) => clause.split(/,\s*/))));
+    expect(disputes.length).toBeGreaterThan(0);
+    expect(disputes.filter((d) => !ALARM.test(d.check))).toEqual([]);
+  });
+
+  it("one that misses negators raises false alarms the witness does not: failures, not disputes", async () => {
+    const all = await answers();
+    const blind = alarmsOver(all, withShared(planted((s) => ({ ...s, negated: false }))));
+    expect(blind.failed).toBeGreaterThan(alarmsOver(all, READERS).failed);
+    expect(blind.disputes).toEqual([]);
+  });
+
+  it("the real shared reader raises no dispute on the planted answers", async () => {
+    expect(alarmsOver(await answers(), READERS).disputes).toEqual([]);
+  });
+});
 
 /** The modules a source imports or re-exports from, as written: type-only, side-effect and dynamic imports included. */
 const importsOf = (source: string): string[] =>

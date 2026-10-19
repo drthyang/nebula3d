@@ -13,7 +13,7 @@
 
 import type { AgentStep } from "../agent";
 import { seen } from "../readings";
-import { readCheck, type GradedSpan } from "./graderReading";
+import { crossChecked, type GradedSpan } from "./graderReading";
 import type { Check, EvalRun } from "./harness";
 
 const ok = (detail: string) => ({ pass: true, detail });
@@ -84,7 +84,7 @@ const claims = (s: GradedSpan, re: RegExp): boolean => re.test(s.text) && !s.neg
 
 /** Some sentence of the answer matches *re* without negating it, and not as a condition or a plan that opens it. */
 export function asserts(re: RegExp, what: string): Check {
-  return readCheck(`says ${what}`, (answer) => {
+  return crossChecked(`says ${what}`, (answer) => {
     const hit = answer.sentences.find((s) => claims(s, re) && !s.tentative);
     return hit ? ok(`“${hit.text.slice(0, 160)}”`) : fail(`no sentence says ${what}`);
   });
@@ -92,7 +92,7 @@ export function asserts(re: RegExp, what: string): Check {
 
 /** Some sentence matches *re*, negated or not (for answers whose claim is a negation); a question says nothing. */
 export function mentions(re: RegExp, what: string): Check {
-  return readCheck(`says ${what}`, (answer) => {
+  return crossChecked(`says ${what}`, (answer) => {
     const hit = answer.sentences.find((s) => re.test(s.text) && !s.question);
     return hit ? ok(`“${hit.text.slice(0, 160)}”`) : fail(`no sentence says ${what}`);
   });
@@ -100,7 +100,7 @@ export function mentions(re: RegExp, what: string): Check {
 
 /** No sentence asserts *re* (one that negates it is fine; no hedge excuses one that does not, W5). */
 export function neverAsserts(re: RegExp, what: string): Check {
-  return readCheck(`never claims ${what}`, (answer) => {
+  return crossChecked(`never claims ${what}`, (answer) => {
     const hit = answer.sentences.find((s) => claims(s, re));
     return hit ? fail(`“${hit.text.slice(0, 160)}”`) : ok("not claimed");
   });
@@ -116,7 +116,7 @@ export function quotes(
   tol: number,
   { relative = false }: { relative?: boolean } = {},
 ): Check {
-  return readCheck(`quotes ${what}`, (answer, run) => {
+  return crossChecked(`quotes ${what}`, (answer, run) => {
     const want = pick(run);
     if (want == null || !Number.isFinite(want)) return fail(`no ${what} in the tool results to compare with`);
     const near = (x: number) => Math.abs(x - want) <= (relative ? tol * Math.abs(want) : tol);
