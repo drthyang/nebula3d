@@ -336,6 +336,22 @@ describe("the review's findings", () => {
     }
   });
 
+  it("from the review's batch 2 are the manager's, on the user's delegation, each implemented with tests that exist", async () => {
+    const { exists } = await import("./backend");
+    const found = await load();
+    const batch2 = found.filter(isReviewFinding).filter((f) => /^D1[0-8]$/.test(f.ref ?? ""));
+    expect(batch2.length).toBeGreaterThanOrEqual(1);
+    for (const f of batch2) {
+      expect(f, f.ref).toMatchObject({
+        needs_user_approval: true,
+        status: "implemented",
+        note: "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
+        decision: { by: "the manager, on the user's delegation", on: "2026-10-19", option: "yes" },
+      });
+      for (const t of f.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
+    }
+  });
+
   it("says what became of a finding: an implemented one names its commit and its tests", () => {
     const base = { case: "dev-control", run: 1, step: null, kind: "bug", evidence: "e", proposed_fix: "p", needs_user_approval: false };
     expect(findingProblems({ ...base, status: "implemented", commit: "47c3537", tests: ["tests/test_faults.py"] })).toEqual([]);
