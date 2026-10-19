@@ -18,7 +18,7 @@ Each answer lands in one of four places:
   the stage is tuned, only after its skill has been read in the conversation. A
   tool can also hold a rule of its own, as `ub_check` does on a symmetrised
   volume. A limit that changes goes in its own PR, with a decision record in the
-  findings record (`docs/evals/validation/review-findings.json`);
+  findings record (`docs/evals/validation/review-findings/`);
 - **a tool description or a stage's goal** that restates a skill (X1). It
   changes with the skill text, in the same PR;
 - **an eval scenario** (`web/src/llm/evals/scenarios.ts`): a request the user
@@ -851,7 +851,7 @@ late in a long reply?
 ## Decided already
 
 The interviews do not reopen these. Each is filed in the findings record
-(`docs/evals/validation/review-findings.json`) as its PR lands. What a decision
+(`docs/evals/validation/review-findings/`) as its PR lands. What a decision
 leaves open (a provisional number, the skill's wording) is asked above. "The
 manager" decided on the user's delegation of 2026-10-19.
 
