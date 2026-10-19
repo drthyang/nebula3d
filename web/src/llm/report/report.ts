@@ -179,14 +179,24 @@ function punchCheck(measured: Obj | null | undefined, verdict: Verdict | undefin
   const m = measured ?? {};
   const atNodes = num(m.leftover_at_nodes);
   const sharp = num(m.leftover_off_lattice_sharp);
+  // The sharp ones on the protected planes stay by design, out of the verdict
+  // (verdicts/rules.ts, D5): the count leaves them out, and they get their own
+  // line. An evaluation without them split out counts every sharp one.
+  const protectedSharp = num(m.leftover_on_protected_planes_sharp);
+  const counted = sharp != null && protectedSharp != null ? sharp - protectedSharp : sharp;
   return {
     title: "Bragg punch",
     verdict,
-    headline: `${fmt(atNodes)} missed at nodes · ${fmt(sharp)} sharp off-lattice · ${fmt(m.leftover_off_lattice_broad)} broad maxima kept · punched ${fmt(m.mean_punched_fraction)}`,
+    headline: `${fmt(atNodes)} missed at nodes · ${fmt(counted)} sharp off-lattice · ${fmt(m.leftover_off_lattice_broad)} broad maxima kept · punched ${fmt(m.mean_punched_fraction)}`,
     criterion,
     details: [
       ["Missed lattice peaks (at nodes)", fmt(atNodes)],
-      ["Sharp off-lattice leftovers", fmt(sharp)],
+      ...(protectedSharp != null
+        ? ([
+            ["Sharp off-lattice leftovers (outside the protected planes)", fmt(counted)],
+            ["Sharp leftovers on protected planes (kept by design)", fmt(protectedSharp)],
+          ] as [string, string][])
+        : ([["Sharp off-lattice leftovers", fmt(sharp)]] as [string, string][])),
       ["Broad maxima kept (diffuse, by width)", fmt(m.leftover_off_lattice_broad)],
       ["On protected planes (kept by design)", fmt(m.leftover_on_protected_planes)],
       ["Mean punched fraction", fmt(m.mean_punched_fraction)],
