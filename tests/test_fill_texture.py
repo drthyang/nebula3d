@@ -247,6 +247,62 @@ def test_holes_not_judged(monkeypatch):
     assert np.isnan(t.median_fill_bias_sigma) and np.isnan(t.above_fraction)
 
 
+# ---------------------------------------------------------------------------
+# Room for the rim
+# ---------------------------------------------------------------------------
+def _on_grid(lat, spacing):
+    """The lattice's stages on axes that put the grid's nodes (integer h, k
+    and l) *spacing* voxels apart, where the lattice's own nodes are."""
+    n = lat.punched.data.shape[0]
+    ax = (np.arange(n) - n // 2) / spacing
+
+    def put(v):
+        return dataclasses.replace(v, h_axis=ax.copy(), k_axis=ax.copy(), l_axis=ax.copy())
+
+    return put(lat.punched), put(lat.filled)
+
+
+@pytest.mark.parametrize("spacing, room", [(14, True), (13, False)])
+def test_the_median_hole_needs_room_for_its_rim(spacing, room):
+    """Balls of radius 3 reach 3 voxels from their centres; with their rim of
+    RIM voxels they keep it on their own side of the midpoint to the next node
+    when the nodes are 2·(3 + RIM) = 14 voxels apart.  A voxel less and the
+    fills, half the level too high in every hole, are not judged: no verdict
+    either way, and the reason says why."""
+    ks = (-spacing, 0, spacing)            # 27 nodes, every ball clear of the box's faces
+    lat = _lattice(n=61, nodes=[(a, b, c) for a in ks for b in ks for c in ks], radius=3, bias=0.5)
+    punched, filled = _on_grid(lat, spacing)
+    t = fill_texture(punched, filled, punch_record=lat.record)
+    h = t.holes
+    assert h.node_spacing == spacing and np.median(h.reach) == 3.0
+    assert h.room_needed == 2 * (3 + bft.RIM) == 14
+    assert t.n_judged == t.n_holes                       # every hole measured either way
+    assert t.judged is room and t.systematic_fill_bias is room
+    if room:
+        assert t.not_judged is None
+    else:
+        assert t.not_judged == (f"grid too coarse: the nodes are 13 voxels apart, under 14: "
+                                f"a hole reaches 3 voxels and its rim {bft.RIM} more")
+        # The limit is the rim's: a rim of three voxels has room at 13.
+        assert fill_texture(punched, filled, punch_record=lat.record, rim=3).judged
+
+
+def test_the_nodes_are_the_grids_and_a_holes_reach_its_boxs():
+    lat = _lattice(n=41)
+    assert lat.punched.h_axis[1] - lat.punched.h_axis[0] == pytest.approx(0.05)
+    h = hole_texture(lat.punched, lat.filled, punch_record=lat.record)
+    assert h.node_spacing == 20                          # 0.05 r.l.u. a voxel, to six figures
+    assert bft.node_spacing((np.zeros(1), np.linspace(-1, 1, 41), np.linspace(-2, 2, 21))) == 5
+    assert bft.node_spacing((np.zeros(1),) * 3) == np.inf
+    # The middle hole, a ball of radius 3 on its node: 3 voxels each way. The
+    # box's faces cut the others down to a half, a quarter or an eighth of a
+    # ball, whose centre moves in: an eighth reaches 2.03 voxels from it.
+    middle = np.all(h.centre == 20, axis=1)
+    assert h.reach[middle].tolist() == [3.0] and h.reach.max() == 3.0
+    eighth = h.voxels == 29
+    assert eighth.sum() == 8 and np.allclose(h.reach[eighth], 3 - 28 / 29)  # centre 28/29 in
+
+
 def test_bad_arguments():
     lat = _lattice(n=41)
     for bad in ({"rim": 0}, {"min_rim": 0}, {"min_sigma": -1.0}, {"one_way": 1.5},
@@ -345,7 +401,9 @@ def ts_holes(punched, filled):
                 if 1 <= d <= TS_RIM:
                     rim_s.append(d)
                     rim_v.append(p)
-        row = {"n": len(hole), "centre": (sum(ys) / len(hole), sum(xs) / len(hole))}
+        cy, cx = sum(ys) / len(hole), sum(xs) / len(hole)
+        row = {"n": len(hole), "centre": (cy, cx),
+               "reach": max(x1 - cx, cx - x0, y1 - cy, cy - y0)}       # holeReach
         out.append(row)
         if len(rim_v) < 8 or len(set(rim_s)) < 2:
             continue
@@ -369,8 +427,20 @@ def ts_holes(punched, filled):
     return out
 
 
-def ts_summary(holes, floor=0.2):
-    """texture.ts ``textureMetrics``, its fill-bias part."""
+def ts_summary(holes, floor=0.2, spacing=20.0):
+    """texture.ts ``textureMetrics``, its fill-bias part, on a cut whose
+    grid's nodes are *spacing* voxels apart (``roomForRims``)."""
+    if holes:
+        need = 2 * (float(np.median([h["reach"] for h in holes])) + TS_RIM)
+        if need > spacing:
+            reach = need / 2 - TS_RIM
+            return {"n_holes": len(holes),
+                    "not_judged": (f"grid too coarse: the nodes are {spacing:.3g} voxels apart, "
+                                   f"under {need:.3g}: a hole reaches {reach:.2g} "
+                                   f"voxel{'' if f'{reach:.2g}' == '1' else 's'} and its rim "
+                                   f"{TS_RIM} more"),
+                    "median_fill_bias_sigma": None, "median_fill_bias_level": None,
+                    "above_fraction": None, "below_fraction": None, "systematic_fill_bias": None}
     judged = [h for h in holes if "bias" in h]
     in_sigma = [h["bias"] / h["sigma"] for h in judged]
     in_level = [h["bias"] / abs(h["level"]) for h in judged if abs(h["level"]) > 0]
@@ -425,6 +495,25 @@ def test_on_one_plane_the_3d_rule_is_texture_ts():
             got = getattr(t, name)
             assert got == (pytest.approx(value, rel=1e-9) if isinstance(value, float)
                            else value), name
+
+
+def test_on_one_plane_the_room_for_the_rim_is_texture_ts():
+    """The same plane with its axes putting the grid's nodes 12 voxels apart:
+    its holes, with their rims, need more, and both rules say so, in the same
+    words, and judge nothing."""
+    lat = _lattice(width=4.0, amp=1.0, bias=0.12)
+    p, f = _cut(lat.punched, 40), _cut(lat.filled, 40)
+    a = (p.shape[0] - 1) / 2 / 12                         # 1/12 r.l.u. a voxel
+    plane = HKLVolume.from_arrays(np.nan_to_num(p)[None], (0, 0), (-a, a), (-a, a))
+    punched = dataclasses.replace(plane, mask=np.isfinite(p)[None])
+    filled = dataclasses.replace(plane, data=np.nan_to_num(f)[None], mask=np.isfinite(f)[None])
+    t = fill_texture(punched, filled)
+    want = ts_summary(ts_holes(p, f), spacing=12.0)
+    assert t.not_judged == want["not_judged"]
+    assert t.not_judged.startswith("grid too coarse: the nodes are 12 voxels apart, under ")
+    assert not t.judged and not t.systematic_fill_bias and want["systematic_fill_bias"] is None
+    # On the cut's own axes (0.05 r.l.u. a voxel) both judge it: the plane above.
+    assert "not_judged" not in ts_summary(ts_holes(p, f))
 
 
 def test_a_hole_crossed_at_its_edge_is_judged_as_one_crossed_at_its_centre():

@@ -68,6 +68,24 @@ volume:
   ``FILL_BIAS_FLOOR``) or more, and ``one_way`` (0.75) of the judged holes or
   more lean the median's way.  These limits are provisional, derived on the
   validation's dev cases; they are parameters here, at texture.ts's values.
+- **Room for the rim.**  The rim's trend is the diffuse falling away from the
+  hole's own node, which holds on the node's side of the midpoint to the next
+  node only: past it the diffuse turns toward that one.  A hole that reaches
+  ``r`` voxels from its centre (chessboard: its bounding box's farthest face),
+  with its rim ``rim`` voxels more, keeps the rim on its own side when the
+  nodes are 2·(r + ``rim``) voxels apart or more.  The nodes are the grid's
+  (``node_spacing``): those of integer h, k and l, one r.l.u. apart along the
+  axis with the coarsest step (a supercell's parent nodes lie further apart,
+  so this errs toward not judging).  The rule reads the median hole, so the
+  fills are judged only where the median hole has that room; else they are
+  not (``not_judged``: "grid too coarse: …", and ``systematic_fill_bias`` is
+  False).  The fill's gap band is the rim's first ring or two, inside its
+  ``rim``, so it adds nothing to the reach; it leaves the trend two rings or
+  more while it is two voxels deep or less (a thinner rim is a hole's "thin
+  rim").  On the validation's dev crystal (a = 3.9 Å) the 81-point grid puts
+  the nodes 10 voxels apart, and its holes reach 3 voxels (cuts through them,
+  2): their rims need 14 (12).  The 161-point grid puts them 20 apart, with
+  holes of the same reach.
 
 Beyond texture.ts, each hole's facts are returned, and the shares of the
 judged holes filled above (below) their range by ``floor`` of their level or
@@ -184,9 +202,14 @@ class HoleTexture:
         Why a hole was not judged (:data:`NotJudged`), or None.  For a hole
         not judged ``level`` … ``bias`` are NaN (``fill`` too when its box is
         too large), and ``rim_voxels`` is 0 when it was not measured.
+    ``reach``
+        How far the hole reaches from its centre, in voxels (chessboard: its
+        bounding box's farthest face).
 
     ``holes_from`` is ``"punch_record"`` or ``"masks"`` (texture.ts's test);
-    ``rim`` and ``min_rim`` are the rim's depth and fewest voxels.
+    ``rim`` and ``min_rim`` are the rim's depth and fewest voxels;
+    ``node_spacing`` the voxels between neighbouring nodes of the grid's cell,
+    along its coarsest axis (the module docstring, *Room for the rim*).
     """
 
     voxels: NDArray[np.int64]
@@ -204,10 +227,31 @@ class HoleTexture:
     holes_from: Literal["punch_record", "masks"]
     rim: int
     min_rim: int
+    reach: NDArray[np.float64]
+    node_spacing: float
 
     @property
     def n(self) -> int:
         return int(self.voxels.size)
+
+    @property
+    def room_needed(self) -> float:
+        """The node spacing the median hole needs to keep its rim on its own
+        side of the midpoint, 2·(its reach + ``rim``), in voxels (NaN without
+        holes)."""
+        return 2.0 * (float(np.median(self.reach)) + self.rim) if self.n else math.nan
+
+    @property
+    def too_coarse(self) -> str | None:
+        """Why the grid is too coarse for the rule (the median hole's rim
+        reaches past the midpoint to the next node), or None."""
+        need = self.room_needed
+        if not need > self.node_spacing:
+            return None
+        reach = f"{need / 2 - self.rim:.2g}"
+        return (f"grid too coarse: the nodes are {self.node_spacing:.3g} voxels apart, under "
+                f"{need:.3g}: a hole reaches {reach} voxel{'' if reach == '1' else 's'} and its "
+                f"rim {self.rim} more")
 
     @property
     def judged(self) -> NDArray[np.bool_]:
@@ -239,8 +283,9 @@ class FillTexture:
     ``n_holes``, ``n_judged``
         The holes, and those judged.
     ``judged``
-        Enough holes were judged to apply the rule (``n_judged ≥
-        min_holes``); with fewer the fills are not judged and
+        The rule applies: the grid leaves the median hole room for its rim
+        (``not_judged`` is None) and enough holes were judged (``n_judged ≥
+        min_holes``); else the fills are not judged and
         ``systematic_fill_bias`` is False.
     ``median_fill_bias_sigma``, ``median_fill_bias_level``
         The median bias in the rim's σ and in units of the local level (NaN
@@ -254,6 +299,10 @@ class FillTexture:
     ``systematic_fill_bias``
         texture.ts's verdict: the fills are systematically off their
         surroundings, in one direction.
+    ``not_judged``
+        Why the grid is too coarse for the rule (:attr:`HoleTexture.too_coarse`:
+        the median hole's rim reaches past the midpoint to the next node), or
+        None.  The holes' facts and the summary are still measured.
     """
 
     holes: HoleTexture
@@ -271,6 +320,7 @@ class FillTexture:
     one_way: float
     min_holes: int
     floor: float
+    not_judged: str | None = None
 
 
 def fill_texture(
@@ -357,15 +407,19 @@ def judge_fill_bias(
     below_floor = float(down) / n_judged if n_judged else nan
     # texture.ts: the median's sign picks the side (0 counts as below).
     one_sided = n_judged > 0 and (above >= one_way if med_sigma > 0 else below >= one_way)
-    systematic = (n_judged >= min_holes and abs(med_sigma) >= min_sigma
+    # The grid's room for the rims (the module docstring, Room for the rim).
+    coarse = holes.too_coarse
+    applies = coarse is None and n_judged >= min_holes
+    systematic = (applies and abs(med_sigma) >= min_sigma
                   and math.isfinite(med_level) and abs(med_level) >= floor and one_sided)
     return FillTexture(
-        holes=holes, n_holes=holes.n, n_judged=n_judged, judged=n_judged >= min_holes,
+        holes=holes, n_holes=holes.n, n_judged=n_judged, judged=applies,
         median_fill_bias_sigma=med_sigma, median_fill_bias_level=med_level,
         above_fraction=above, below_fraction=below,
         above_floor_fraction=above_floor, below_floor_fraction=below_floor,
         systematic_fill_bias=bool(systematic),
         min_sigma=min_sigma, one_way=one_way, min_holes=min_holes, floor=floor,
+        not_judged=coarse,
     )
 
 
@@ -415,6 +469,9 @@ def hole_texture(
     n = found.seed.size
     axes = (punched.h_axis, punched.k_axis, punched.l_axis)
     centre = found.coord_sum / np.maximum(found.count, 1)[:, None]
+    # Each hole's chessboard reach from its centre: its box's farthest face.
+    reach = (np.max(np.maximum(found.hi - 1 - centre, centre - found.lo), axis=1) if n
+             else np.zeros(0))
     centre_hkl = np.stack(
         [np.interp(centre[:, d], np.arange(axes[d].size), axes[d]) for d in range(3)],
         axis=1) if n else np.zeros((0, 3))
@@ -439,8 +496,17 @@ def hole_texture(
         edge=cols["edge"], peaked=cols["peaked"], bias=cols["bias"],
         not_judged=tuple(not_judged),
         holes_from="punch_record" if record is not None else "masks",
-        rim=rim, min_rim=min_rim,
+        rim=rim, min_rim=min_rim, reach=reach.astype(np.float64), node_spacing=node_spacing(axes),
     )
+
+
+def node_spacing(axes: tuple[NDArray[np.floating], ...]) -> float:
+    """The voxels between neighbouring nodes of the grid's cell (integer h, k
+    and l): one r.l.u. along the axis with the coarsest step, axes of one
+    plane aside (infinite with none), to six figures, so the axes' rounding
+    (0.1 r.l.u. a voxel reads 9.999999999999991) moves no limit."""
+    steps = [abs(float(a[1] - a[0])) for a in axes if np.size(a) > 1]
+    return float(f"{1.0 / max(steps):.6g}") if steps and max(steps) > 0 else math.inf
 
 
 @dataclass(frozen=True)
