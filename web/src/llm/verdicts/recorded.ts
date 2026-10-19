@@ -5,6 +5,7 @@
 // verdict, and judges its numbers by the check's rule where it writes none.
 
 import type { AgentStep } from "../agent";
+import type { Measured } from "../report/report";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { countsProblems, judge, STAGES, WORDS, type Kind, type Outcome, type Reason, type Stage } from "./rules";
 
@@ -156,4 +157,33 @@ export function outcomesOf(step: AgentStep): Outcome[] {
     default:
       return [];
   }
+}
+
+/**
+ * D18: the report judges a stage's measurements by its rule, from the
+ * numbers, and takes no recorded label, where the reply's reading trusts the
+ * label (stageOutcome). Its measurements come fresh from the producers
+ * (collect.ts), whose labels the numbers give; a label they do not give reads
+ * apart. Unify: set this to false; the report then reads a label as the reply
+ * does.
+ */
+export const D18_REPORT_JUDGES_STAGE_NUMBERS = true;
+
+/** The outcomes a report's measurements hold, where the measurement pass kept none: each tool's result read as a recorded step's is. */
+export function outcomesOfMeasured(m: Measured): Outcome[] {
+  const obj = (v: unknown): Obj | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null);
+  const out: Outcome[] = [];
+  for (const stage of STAGES) {
+    const x = obj(m[stage]);
+    if (x) out.push(D18_REPORT_JUDGES_STAGE_NUMBERS ? judge(stage, x) : stageOutcome(stage, x));
+  }
+  const texture = obj(m.texture);
+  if (texture) out.push(judge("texture", texture));
+  const coverage = obj(m.coverage);
+  if (coverage) out.push(coverageOutcome(coverage));
+  const symmetry = obj(m.symmetry);
+  if (symmetry) out.push(symmetryOutcome(symmetry));
+  const grains = obj(m.grains);
+  if (grains) out.push(grainOutcome(grains));
+  return out;
 }

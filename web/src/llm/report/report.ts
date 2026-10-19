@@ -4,9 +4,8 @@
 // text; the model's own answer goes in as a clearly labelled narrative.  This
 // module only assembles: it is pure, so the report can be tested end to end.
 
-import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import type { ParamValue } from "../tune/catalog";
-import { judge, WORDS, type Kind } from "../verdicts";
+import { judge, verdicts, WORDS, type Kind, type Outcome } from "../verdicts";
 
 /** A check's verdict: its outcome's kind (verdicts/). */
 export type Verdict = Kind;
@@ -111,6 +110,9 @@ export interface Measured {
   coverage?: Record<string, unknown> | null;
   symmetry?: Record<string, unknown> | null;
   grains?: Record<string, unknown> | null;
+  // The checks' outcomes the tools judged in the measurement pass (collect.ts):
+  // the report's verdicts read them, else judge the results above.
+  outcomes?: Outcome[];
 }
 
 export interface ReportInput {
@@ -162,8 +164,12 @@ const rangeText = (v: unknown): string => (Array.isArray(v) && v.length === 2 ? 
 // What each check's verdict is judged by: its rule (verdicts/rules.ts), in words.
 const CRITERIA = WORDS.criterion;
 
-function ringsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m) return null;
+// Each card's verdict is the report's reading of its check (verdicts/readers.ts):
+// no verdict, no card.
+
+function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
+  const m = measured ?? {};
   const left = num(m.max_ring_left);
   const dent = num(m.max_ring_dent);
   // The shells judged not to be rings; runs recorded before the 3D test
@@ -173,7 +179,7 @@ function ringsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck 
     : Array.isArray(m.single_plane_bumps) ? m.single_plane_bumps : [];
   return {
     title: "Ring removal",
-    verdict: judge("rings", m).kind,
+    verdict,
     headline: `ring ratio ${fmt(m.mean_ring_energy_ratio)} · over-sub ≤ ${fmt(m.max_over_subtraction_fraction)} · dent ≤ ${fmt(dent)}${where(m.worst_ring_dent)} · left ≤ ${fmt(left)}${where(m.worst_ring_left)}`,
     criterion,
     details: [
@@ -186,13 +192,14 @@ function ringsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck 
   };
 }
 
-function punchCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m) return null;
+function punchCheck(measured: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
+  const m = measured ?? {};
   const atNodes = num(m.leftover_at_nodes);
   const sharp = num(m.leftover_off_lattice_sharp);
   return {
     title: "Bragg punch",
-    verdict: judge("punch", m).kind,
+    verdict,
     headline: `${fmt(atNodes)} missed at nodes · ${fmt(sharp)} sharp off-lattice · ${fmt(m.leftover_off_lattice_broad)} broad maxima kept · punched ${fmt(m.mean_punched_fraction)}`,
     criterion,
     details: [
@@ -207,8 +214,8 @@ function punchCheck(m: Obj | null | undefined, criterion?: string): ReportCheck 
 }
 
 // The second-grain test on the punch's off-lattice peaks (grain_check's result).
-function grainsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m || typeof m.verdict !== "string") return null;
+function grainsCheck(m: Obj | null | undefined, kind: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (kind === undefined || !m || typeof m.verdict !== "string") return null;
   const verdict = m.verdict as string;
   const judged = num(m.judged) ?? 0;
   const near = num(m.near_bragg_nodes) ?? 0;
@@ -230,7 +237,7 @@ function grainsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck
   details.push(["Verdict", verdict]);
   return {
     title: "Second grain",
-    verdict: grain || ubOff ? "attention" : "pass",
+    verdict: kind,
     headline: judged
       ? `${state} · ${fmt(near)} of ${fmt(judged)} orbits beside Bragg nodes${angle ? ` (≥ ${fmt(angle.median)}°)` : ""} · one rotation indexes ${fmt(copy?.indexed ?? 0)}, random ${fmt(m.random_control)}`
       : state,
@@ -239,10 +246,10 @@ function grainsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck
   };
 }
 
-function backfillCheck(m: Obj | null | undefined, texture: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m) return null;
+function backfillCheck(measured: Obj | null | undefined, texture: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
+  const m = measured ?? {};
   const seam = num(m.mean_median_seam_sigma);
-  const own = judge("backfill", m).kind;
   const cuts = Array.isArray(texture?.per_cut) ? (texture!.per_cut as Obj[]) : [];
   const biased = cuts.filter((c) => c.systematic_fill_bias === true).length;
   const details: [string, string][] = [
@@ -252,23 +259,23 @@ function backfillCheck(m: Obj | null | undefined, texture: Obj | null | undefine
   if (texture) details.push(["Cuts with a systematic fill bias", `${biased} of ${cuts.length}`]);
   return {
     title: "Backfill",
-    // The seam's verdict, and any cut whose fill is biased one way.
-    verdict: own === "info" ? "info" : own === "attention" || biased > 0 ? "attention" : "pass",
+    verdict,
     headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${texture ? ` · fill bias on ${biased} of ${cuts.length} cuts` : ""}`,
     criterion,
     details,
   };
 }
 
-function flattenCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m) return null;
+function flattenCheck(measured: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
+  const m = measured ?? {};
   const floor = num(m.max_after_floor_sigma);
   const trend = num(m.max_floor_trend);
   const span = num(m.max_floor_span_fraction);
   return {
     title: "Flatten",
     // The pedestal rule; the floor in σ is reported, not judged (verdicts/rules.ts, FLATTEN_FLOOR_SIGMA_NOTE).
-    verdict: judge("flatten", m).kind,
+    verdict,
     headline: `floor ≤ ${fmt(floor)}σ · trend ≤ ${fmt(trend)} · span ≤ ${fmt(span)}`,
     criterion,
     details: [
@@ -279,18 +286,13 @@ function flattenCheck(m: Obj | null | undefined, criterion?: string): ReportChec
   };
 }
 
-function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m && !cov && !sym) return null;
+function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
   const r = num(m?.back_fft_pearson_r);
   const rEven = num(m?.back_fft_pearson_r_even);
   const open = num(m?.window_weight_on_unmeasured) ?? num(cov?.window_weight_on_unmeasured);
   const symVerdict = typeof sym?.verdict === "string" ? (sym.verdict as string) : null;
   const covVerdict = typeof cov?.verdict === "string" ? (cov.verdict as string) : null;
-  // The ΔPDF's round trip by its rule; its window and its symmetry as the
-  // report reads them: the evaluation's weight, else the coverage's, and
-  // symmetry_check's verdict.
-  const backFft = m ? !judge("pdf", m).reasons.includes("back-FFT") : true;
-  const ok = backFft && (open == null || open <= OPEN_WEIGHT_OK) && !(symVerdict && symVerdict.startsWith("not kept"));
   const details: [string, string][] = [
     ["Back-FFT Pearson r", fmt(r)],
     ["Back-FFT r against the data's even part (what the transform keeps)", fmt(rEven)],
@@ -307,7 +309,7 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
   if (symVerdict) details.push(["Symmetry", symVerdict]);
   return {
     title: "3D-ΔPDF",
-    verdict: m || cov || sym ? (ok ? "pass" : "attention") : "info",
+    verdict,
     headline: `r ${fmt(r)}${rEven != null ? ` (even part ${fmt(rEven)})` : ""} · SNR ${fmt(m?.mean_feature_snr)} · unmeasured ${fmt(open)}${symVerdict ? ` · symmetry ${symVerdict.startsWith("kept") ? "kept" : symVerdict.startsWith("not judged") ? "not judged" : "broken"}` : ""}`,
     criterion,
     details,
@@ -339,19 +341,19 @@ const kindOf = (steps: ReportStep[]): string => {
 export function stageCheck(stage: "rings" | "punch" | "backfill" | "flatten" | "pdf", m: Obj): ReportCheck | null {
   switch (stage) {
     case "rings":
-      return ringsCheck(m, CRITERIA.rings);
+      return ringsCheck(m, judge("rings", m).kind, CRITERIA.rings);
     case "punch":
-      return punchCheck(m, CRITERIA.punch);
+      return punchCheck(m, judge("punch", m).kind, CRITERIA.punch);
     case "backfill":
       // A stage's evaluation measures no fill bias (texture_check does): its
       // criterion says only what it judges.
-      return backfillCheck(m, null, judge("backfill", m).criterion);
+      return backfillCheck(m, null, judge("backfill", m).kind, judge("backfill", m).criterion);
     case "flatten":
-      return flattenCheck(m, CRITERIA.flatten);
+      return flattenCheck(m, judge("flatten", m).kind, CRITERIA.flatten);
     case "pdf":
       // The evaluation's worst in-plane symmetry break, judged as symmetry_check
       // judges each operation.
-      return pdfCheck(m, null, symmetryOf(m), CRITERIA.pdf);
+      return pdfCheck(m, null, symmetryOf(m), judge("pdf", m).kind, CRITERIA.pdf);
   }
 }
 
@@ -370,13 +372,15 @@ export function buildReport(input: ReportInput): Report {
   const d = m.describe ?? null;
   const recip = obj(d?.reciprocal);
   const dpdf = obj(d?.delta_pdf);
+  // The verdicts, as the report reads its measurements (verdicts/readers.ts).
+  const v = verdicts({ report: m });
   const checks = [
-    ringsCheck(m.rings, CRITERIA.rings),
-    punchCheck(m.punch, CRITERIA.punch),
-    grainsCheck(m.grains, CRITERIA.grains),
-    backfillCheck(m.backfill, m.texture, CRITERIA.backfill),
-    flattenCheck(m.flatten, CRITERIA.flatten),
-    pdfCheck(m.pdf, m.coverage, m.symmetry, CRITERIA.pdf),
+    ringsCheck(m.rings, v.checks.rings, CRITERIA.rings),
+    punchCheck(m.punch, v.checks.punch, CRITERIA.punch),
+    grainsCheck(m.grains, v.checks.grain, CRITERIA.grains),
+    backfillCheck(m.backfill, m.texture, v.checks.backfill, CRITERIA.backfill),
+    flattenCheck(m.flatten, v.checks.flatten, CRITERIA.flatten),
+    pdfCheck(m.pdf, m.coverage, m.symmetry, v.checks.pdf, CRITERIA.pdf),
   ].filter((c): c is ReportCheck => c != null);
 
   const caveats: string[] = [];
@@ -415,7 +419,8 @@ export function buildReport(input: ReportInput): Report {
     steps: input.steps,
     tuning: input.tuning,
     checks,
-    achieved: achievedFrom(checks),
+    // A report's goal is always judged, met or not (verdicts/readers.ts).
+    achieved: { met: v.achieved!.achieved, text: v.achieved!.text },
     figures: input.figures,
     narrative: input.answer.trim(),
     caveats,

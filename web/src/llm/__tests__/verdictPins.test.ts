@@ -7,22 +7,28 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentStep } from "../agent";
 import { TOPICS } from "../answerChecks";
+import type { Measured } from "../report/report";
 import { outOfBounds } from "../tune/evaluate";
 import { judge, UNROUNDED, verdicts, WORDS, type CheckId } from "../verdicts";
 import {
   D10_ACHIEVED_IGNORES_LEGACY_COVERAGE_WORDS,
   D11_ANSWER_JUDGES_MISSING_OUTPUT,
   D12_ANSWER_SKIPS_WORDS_THAT_ARE_NO_LABEL,
+  D13_REPORT_SYMMETRY_FROM_SYMMETRY_CHECK_ONLY,
+  D14_REPORT_FILL_BIAS_ON_A_JUDGED_SEAM_ONLY,
   D1_REACH_PASS_SETTLES_NOTHING,
+  D2_REPORT_COVERAGE_BY_WEIGHT_ONLY,
   D3_ACHIEVED_IGNORES_GRAIN,
   D3_ANSWER_GRAIN_SECOND_GRAIN_ONLY,
   D3_ANSWER_UB_FROM_UB_CHECK_ONLY,
   D7_SELECTION,
   D8_ANSWER_BACKFILL_IGNORES_TEXTURE,
+  D9_REPORT_PDF_CARD_WITHOUT_EVALUATION,
   READS,
 } from "../verdicts/readers";
-import { D17_REPEAT_POINTER_READS_AS_A_RESULT } from "../verdicts/recorded";
+import { D17_REPEAT_POINTER_READS_AS_A_RESULT, D18_REPORT_JUDGES_STAGE_NUMBERS } from "../verdicts/recorded";
 import { D15_PDF_PASSES_UNMEASURED, D16_UB_UNMEASURED_READS_RIGHT, D5_PROTECTED_SHARP_PEAKS_COUNT, D6_PDF_READS_ROUNDED_WEIGHT } from "../verdicts/rules";
+import { COVERAGE, GRAIN, GRID_STAGES, STAGE_VARIANTS, SYMMETRY, TEXTURE, type GridStage } from "./verdictGrid";
 
 let n = 0;
 const step = (name: string, result: unknown, args: Record<string, unknown> = {}): AgentStep => ({
@@ -56,6 +62,16 @@ describe("D1–D10, kept and named", () => {
     const after = reply(TOO_FAR, INSIDE);
     expect(after.checks.coverage).toBe("attention");
     expect(after.achieved?.attention).toEqual([]);
+  });
+
+  it("D2: the report's ΔPDF card reads the coverage's weight, never its verdict; {{achieved}} reads the verdict", () => {
+    expect(D2_REPORT_COVERAGE_BY_WEIGHT_ONLY).toBe(true);
+    const reach = { verdict: "too far: the transform reaches 9.1 Å⁻¹ (the window tapers to zero at the box faces), past full coverage at 6.5 Å⁻¹", window_weight_on_unmeasured: null };
+    const measured: Measured = { ...PASSING, coverage: reach };
+    expect(verdicts({ report: measured }).checks.pdf).toBe("pass");
+    expect(chatOf(measured)?.attention).toEqual(["the ΔPDF window against the coverage"]);
+    // Its weight, where the evaluation records none, it does read.
+    expect(verdicts({ report: { ...PASSING, pdf: { back_fft_pearson_r_even: 1 }, coverage: { verdict: "too far: …", window_weight_on_unmeasured: 0.04 } } }).checks.pdf).toBe("attention");
   });
 
   it("D3: grain_check counts for nothing in {{achieved}}, decides the grain topic by a second grain only, and never the UB", () => {
@@ -116,6 +132,14 @@ describe("D1–D10, kept and named", () => {
     expect(r.checks.backfill).toBe("pass");
   });
 
+  it("D9: without a ΔPDF evaluation the report judges its ΔPDF card from the coverage and the symmetry; {{achieved}} says not measured", () => {
+    expect(D9_REPORT_PDF_CARD_WITHOUT_EVALUATION).toBe(true);
+    const measured: Measured = { ...PASSING, pdf: null };
+    expect(verdicts({ report: measured }).checks.pdf).toBe("pass");
+    expect(verdicts({ report: measured }).achieved?.achieved).toBe(true);
+    expect(chatOf(measured)).toMatchObject({ achieved: null, notMeasured: ["the 3D-ΔPDF"] });
+  });
+
   it("D10: a recording's coverage words no producer wrote are not ok to the answer checks and no attention to {{achieved}}", () => {
     expect(D10_ACHIEVED_IGNORES_LEGACY_COVERAGE_WORDS).toBe(true);
     for (const verdict of ["past full coverage: the window reaches the box corners", "unmeasured space inside the window", "not inside the coverage"]) {
@@ -143,6 +167,37 @@ describe("the disagreements found beyond D1–D10, kept and named", () => {
     expect(r.checks.rings).toBeUndefined();
   });
 
+  it("D13: the report's ΔPDF card reads the symmetry from symmetry_check alone; the chat's ΔPDF stage counts the evaluation's own break", () => {
+    expect(D13_REPORT_SYMMETRY_FROM_SYMMETRY_CHECK_ONLY).toBe(true);
+    const broken = { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.0001, max_symmetry_break: 0.05, worst_symmetry_op: "six-fold (60°)", symmetry_declared: true };
+    for (const symmetry of [SYMMETRY[0].m, null]) {
+      const measured: Measured = { ...PASSING, pdf: broken, symmetry };
+      expect(verdicts({ report: measured }).checks.pdf).toBe("pass");
+      expect(chatOf(measured)?.stages.pdf).toBe("attention");
+    }
+  });
+
+  it("D14: the report counts the fill bias only on a Backfill card that judged its seam; {{achieved}} names the backfill's texture", () => {
+    expect(D14_REPORT_FILL_BIAS_ON_A_JUDGED_SEAM_ONLY).toBe(true);
+    for (const backfill of [null, { max_bright_fill_fraction: 0 }]) {
+      const measured: Measured = { ...PASSING, backfill, texture: TEXTURE[1].m };
+      expect(verdicts({ report: measured }).checks.backfill).toBe(backfill ? "info" : undefined);
+      expect(chatOf(measured)?.attention).toContain("the backfill's texture");
+    }
+    // With the seam judged, the bias counts there.
+    expect(verdicts({ report: { ...PASSING, texture: TEXTURE[1].m } }).checks.backfill).toBe("attention");
+  });
+
+  it("D18: the report judges a stage from its numbers and takes no recorded label; a reply trusts the label", () => {
+    expect(D18_REPORT_JUDGES_STAGE_NUMBERS).toBe(true);
+    const labelled = { verdict: "needs attention", max_ring_left: 0, max_ring_dent: 0 };
+    expect(verdicts({ report: { ...PASSING, rings: labelled } }).checks.rings).toBe("pass");
+    expect(reply(assess("rings", labelled)).achieved?.stages.rings).toBe("attention");
+    // The outcomes the measurement pass kept come first.
+    const said = { check: "rings" as const, kind: "attention" as const, reasons: ["ring left" as const], dataProblems: [], words: "needs attention" };
+    expect(verdicts({ report: { ...PASSING, outcomes: [said] } }).checks.rings).toBe("attention");
+  });
+
   it("D15: the ΔPDF's rule passes an evaluation that measured nothing, where every other stage's says nothing to judge", () => {
     expect(D15_PDF_PASSES_UNMEASURED).toBe(true);
     expect(judge("pdf", {})).toMatchObject({ kind: "pass", reasons: [] });
@@ -163,5 +218,77 @@ describe("the disagreements found beyond D1–D10, kept and named", () => {
     const r = reply(step("ub_check", { fit: "both", symmetrised: false }));
     expect(r.checks.ub).toBe("pass");
     expect(r.achieved?.dataProblems).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------- the chat's achieved against the report's
+
+/** A report's measurements that pass every check. */
+const PASSING: Measured = {
+  rings: STAGE_VARIANTS.rings[0].m,
+  punch: STAGE_VARIANTS.punch[0].m,
+  backfill: STAGE_VARIANTS.backfill[0].m,
+  flatten: STAGE_VARIANTS.flatten[0].m,
+  pdf: STAGE_VARIANTS.pdf[0].m,
+  texture: TEXTURE[0].m,
+  coverage: COVERAGE[0].m,
+  symmetry: SYMMETRY[0].m,
+  grains: GRAIN[2].m,
+};
+
+/** The same measurements as a reply's tool results: each stage as assess_stage writes it, then the checks on the result. */
+function replyOf(m: Measured): AgentStep[] {
+  const stages = Object.fromEntries(
+    GRID_STAGES.filter((s) => m[s]).map((s) => [s, { verdict: judge(s, m[s]!).words, ...m[s] }]),
+  );
+  const tools: [string, unknown][] = [
+    ["texture_check", m.texture],
+    ["qmax_coverage", m.coverage],
+    ["symmetry_check", m.symmetry],
+    ["grain_check", m.grains],
+  ];
+  return [
+    ...(Object.keys(stages).length ? [step("assess_stage", stages, { stage: "all" })] : []),
+    ...tools.filter(([, r]) => r).map(([name, r]) => step(name, r)),
+  ];
+}
+
+const chatOf = (m: Measured) => verdicts({ reply: replyOf(m) }).achieved;
+
+type Rule = "D2" | "D9" | "D13" | "D14";
+
+/** The grid's measurements, one change from passing at a time, tagged with the rule that makes the two goals differ there. */
+function cases(): { id: string; m: Measured; differs?: Rule }[] {
+  const out: { id: string; m: Measured; differs?: Rule }[] = [{ id: "every check passes", m: PASSING }];
+  const d13 = new Set(["symmetry broken", "asymmetry, not read"]);
+  for (const s of GRID_STAGES as GridStage[]) {
+    for (const x of STAGE_VARIANTS[s]) out.push({ id: `${s} ${x.id}`, m: { ...PASSING, [s]: x.m }, differs: s === "pdf" && d13.has(x.id) ? "D13" : undefined });
+    out.push({ id: `no ${s}`, m: { ...PASSING, [s]: null }, differs: s === "pdf" ? "D9" : undefined });
+  }
+  const d2 = new Set(["too far by weight", "too far at 1.04e-3", "reach past", "upper case"]);
+  for (const x of COVERAGE) out.push({ id: `coverage ${x.id}`, m: { ...PASSING, coverage: x.m }, differs: d2.has(x.id) ? "D2" : undefined });
+  for (const x of SYMMETRY) out.push({ id: `symmetry ${x.id}`, m: { ...PASSING, symmetry: x.m } });
+  for (const x of TEXTURE) out.push({ id: `texture ${x.id}`, m: { ...PASSING, texture: x.m } });
+  for (const x of GRAIN) out.push({ id: `grain ${x.id}`, m: { ...PASSING, grains: x.m } });
+  out.push({ id: "no ΔPDF evaluation, the coverage too far by weight", m: { ...PASSING, pdf: null, coverage: COVERAGE[1].m } });
+  out.push({ id: "no ΔPDF evaluation, the symmetry not kept", m: { ...PASSING, pdf: null, symmetry: SYMMETRY[1].m } });
+  out.push({ id: "no ΔPDF, coverage or symmetry", m: { ...PASSING, pdf: null, coverage: null, symmetry: null } });
+  out.push({ id: "a fill bias, no backfill", m: { ...PASSING, backfill: null, texture: TEXTURE[1].m }, differs: "D14" });
+  out.push({ id: "a fill bias, the seam not judged", m: { ...PASSING, backfill: STAGE_VARIANTS.backfill[3].m, texture: TEXTURE[1].m }, differs: "D14" });
+  out.push({ id: "a fill bias, the seam failing", m: { ...PASSING, backfill: STAGE_VARIANTS.backfill[2].m, texture: TEXTURE[1].m } });
+  out.push({ id: "the evaluation's symmetry broken, no symmetry_check", m: { ...PASSING, pdf: STAGE_VARIANTS.pdf[8].m, symmetry: null }, differs: "D13" });
+  out.push({ id: "nothing measured", m: {} });
+  out.push({ id: "a grain only", m: { grains: GRAIN[0].m } });
+  return out;
+}
+
+describe("the chat's achieved and the report's, on the same measurements", () => {
+  it("agree, but where a named rule of the report's makes them differ", () => {
+    for (const { id, m, differs } of cases()) {
+      const chat = chatOf(m)?.achieved ?? null;
+      const report = verdicts({ report: m }).achieved?.achieved ?? null;
+      if (differs) expect(report, `${id} (${differs})`).not.toBe(chat);
+      else expect(report, id).toBe(chat);
+    }
   });
 });

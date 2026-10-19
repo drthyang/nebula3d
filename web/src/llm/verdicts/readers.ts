@@ -12,7 +12,8 @@
 
 import type { AgentStep } from "../agent";
 import { current, recomputedAt, type PipelineStage } from "../evidence";
-import { outcomesOf } from "./recorded";
+import type { Measured } from "../report/report";
+import { outcomesOf, outcomesOfMeasured } from "./recorded";
 import { judge, STAGES, type CheckId, type Kind, type Outcome, type Stage } from "./rules";
 
 /** The verdict on a run: computed from its checks, never from the model's words. The validation's records persist it as computed_verdict. */
@@ -25,7 +26,7 @@ export interface ComputedVerdict {
   text: string; // the verdict in words, as {{achieved}} quotes it
 }
 
-/** A run's verdicts: the run's achieved, and each check's kind as the run's other reader reads it (a reply's: the answer checks). */
+/** A run's verdicts: the run's achieved, and each check's kind as the run's other reader reads it (a reply's: the answer checks; a report's: its cards). */
 export interface Verdicts {
   achieved: ComputedVerdict | null;
   checks: Partial<Record<CheckId, Kind>>;
@@ -124,6 +125,40 @@ export const D11_ANSWER_JUDGES_MISSING_OUTPUT = true;
  * this to false; both judge the numbers.
  */
 export const D12_ANSWER_SKIPS_WORDS_THAT_ARE_NO_LABEL = true;
+
+/**
+ * D2: the report's 3D-ΔPDF card reads qmax_coverage's weight on unmeasured
+ * space, where the ΔPDF's evaluation records none, and never its verdict: a
+ * reach past full coverage ("too far: the transform reaches …") needs
+ * attention in {{achieved}} and none in the report. Unify (2.4.2): set this to
+ * false; the card then also counts the coverage's "too far".
+ */
+export const D2_REPORT_COVERAGE_BY_WEIGHT_ONLY = true;
+
+/**
+ * D9: without a ΔPDF evaluation, the report judges its 3D-ΔPDF card from the
+ * coverage and the symmetry alone, where {{achieved}} says the ΔPDF was not
+ * measured. Unify (2.4.9): set this to false; the card is then not judged.
+ */
+export const D9_REPORT_PDF_CARD_WITHOUT_EVALUATION = true;
+
+/**
+ * D13: the report's 3D-ΔPDF card reads the symmetry from symmetry_check alone,
+ * never from the ΔPDF evaluation's own worst break, which the chat's ΔPDF stage
+ * counts (the evaluation broken, symmetry_check kept or not run: attention in
+ * the chat, none in the report). Unify: set this to false; the card then also
+ * counts the evaluation's break.
+ */
+export const D13_REPORT_SYMMETRY_FROM_SYMMETRY_CHECK_ONLY = true;
+
+/**
+ * D14: the report counts texture_check's fill bias only on a Backfill card
+ * whose seam it judged: with no backfill measured, or its seam not judged, a
+ * fill bias needs no attention there, where {{achieved}} names the backfill's
+ * texture. Unify: set this to false; the bias then needs attention on the
+ * card (made for it when nothing else is measured).
+ */
+export const D14_REPORT_FILL_BIAS_ON_A_JUDGED_SEAM_ONLY = true;
 
 // ---------------------------------------------------------------- the matrix
 
@@ -257,8 +292,72 @@ function answerOf(found: readonly Found[], at: Record<PipelineStage, number>): P
   return checks;
 }
 
-/** A run's verdicts: a reply's, from its steps' tool results. */
-export function verdicts(run: { reply: readonly AgentStep[] }): Verdicts {
+// ---------------------------------------------------------------- a report
+
+/** How the report names a stage: its card's title. */
+const REPORT_TITLE: Record<Stage, string> = {
+  rings: "Ring removal",
+  punch: "Bragg punch",
+  backfill: "Backfill",
+  flatten: "Flatten",
+  pdf: "3D-ΔPDF",
+};
+
+/** The Backfill card: the seam's verdict, and a cut whose fill is biased one way (D14). */
+function backfillCard(own: Outcome | undefined, texture: Outcome | undefined): Kind | undefined {
+  const biased = texture?.kind === "attention";
+  if (own === undefined) return D14_REPORT_FILL_BIAS_ON_A_JUDGED_SEAM_ONLY || !biased ? undefined : "attention";
+  if (own.kind === "info" && D14_REPORT_FILL_BIAS_ON_A_JUDGED_SEAM_ONLY) return "info";
+  return own.kind === "attention" || biased ? "attention" : own.kind;
+}
+
+/** The weight on unmeasured space an outcome judged: past the limit, within it, or none judged. */
+const windowOf = (o: Outcome | undefined): "past" | "within" | null =>
+  o?.reasons.includes("window past limit") ? "past" : o?.reasons.includes("window within limit") ? "within" : null;
+
+/** The 3D-ΔPDF card: the round trip by the ΔPDF's rule, its window (D2), the symmetry (D13), and without an evaluation (D9). */
+function pdfCard(pdf: Outcome | undefined, coverage: Outcome | undefined, symmetry: Outcome | undefined): Kind | undefined {
+  if (!pdf && !coverage && !symmetry) return undefined;
+  if (!pdf && !D9_REPORT_PDF_CARD_WITHOUT_EVALUATION) return "info";
+  const back = pdf?.reasons.includes("back-FFT") ?? false;
+  // The evaluation's weight, else the coverage's; the coverage's verdict only once D2 is unified.
+  const window = windowOf(pdf) ?? windowOf(coverage);
+  const far = !D2_REPORT_COVERAGE_BY_WEIGHT_ONLY && coverage?.kind === "attention";
+  const broken = symmetry?.kind === "attention" || (!D13_REPORT_SYMMETRY_FROM_SYMMETRY_CHECK_ONLY && (pdf?.reasons.includes("symmetry broken") ?? false));
+  return back || window === "past" || far || broken ? "attention" : "pass";
+}
+
+/** A report's verdicts: each card's, and the goal, met when every stage's card passes (a second grain is the sample's, reported apart). */
+function reportOf(m: Measured): Verdicts {
+  // The producers' outcomes the measurement pass kept (collect.ts), else judged from the measurements.
+  const found = m.outcomes ?? outcomesOfMeasured(m);
+  const of = (check: CheckId): Outcome | undefined => [...found].reverse().find((o) => o.check === check && !o.reasons.includes("no output"));
+  const grain = of("grain");
+  const cards: Partial<Record<CheckId, Kind | undefined>> = {
+    rings: of("rings")?.kind,
+    punch: of("punch")?.kind,
+    // Without its words, grain_check's result makes no card.
+    grain: grain && grain.words !== null ? grain.kind : undefined,
+    backfill: backfillCard(of("backfill"), of("texture")),
+    flatten: of("flatten")?.kind,
+    pdf: pdfCard(of("pdf"), of("coverage"), of("symmetry")),
+  };
+  const checks = Object.fromEntries(Object.entries(cards).filter(([, k]) => k !== undefined)) as Partial<Record<CheckId, Kind>>;
+  const stages = Object.fromEntries(STAGES.filter((s) => checks[s] !== undefined).map((s) => [s, checks[s]])) as Partial<Record<Stage, Kind>>;
+  const attention = STAGES.filter((s) => checks[s] === "attention").map((s) => REPORT_TITLE[s]);
+  const notMeasured = STAGES.filter((s) => checks[s] === undefined || checks[s] === "info").map((s) => REPORT_TITLE[s]);
+  const achieved = attention.length ? false : notMeasured.length ? null : true;
+  const text = attention.length
+    ? `not met: needs attention: ${attention.join(", ")}`
+    : notMeasured.length
+      ? `not judged: not measured: ${notMeasured.join(", ")}`
+      : "met: every stage meets its goal";
+  return { achieved: { achieved, stages, attention, notMeasured, dataProblems: [], text }, checks };
+}
+
+/** A run's verdicts: a reply's, from its steps' tool results; a report's, from its measurements. */
+export function verdicts(run: { reply: readonly AgentStep[] } | { report: Measured }): Verdicts {
+  if ("report" in run) return reportOf(run.report);
   const steps = run.reply;
   const at = recomputedAt(steps);
   const found = steps.flatMap((step, index) => outcomesOf(step).map((o) => ({ index, o })));
