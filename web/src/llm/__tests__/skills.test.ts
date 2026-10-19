@@ -1,22 +1,26 @@
 // NEBULA Pilot's skills: bundled from .claude/skills, listed by name in the
 // system prompt, read whole with read_skill, and a firm rule on top: a stage's
 // settings change, and the stage is tuned, only after its skill has been read.
+// One switch takes them away (the validation's arm C).
 
 import { describe, expect, it } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
+import { SYSTEM_PROMPT, TOOLS_PROMPT } from "../prompts/system";
+import { buildChatMessages, buildStageReviewMessages, systemPrompt } from "../prompts/templates";
 import {
   allSkills,
   frontmatter,
   readSkill,
   REFERENCE_MAX_CHARS,
   sectionsOf,
+  skillsOn,
   skillsPrompt,
   skillsReadIn,
   STAGE_SKILL,
 } from "../skills";
-import { CHAT_TOOLS, runToolCall, unreadSkillRefusal, type ToolContext } from "../tools";
+import { CHAT_TOOLS, runToolCall, toolsWhere, toolsWithSkills, unreadSkillRefusal, type ToolContext } from "../tools";
 
 const call = (name: string, args: Record<string, unknown>) => ({ id: name, type: "function" as const, function: { name, arguments: JSON.stringify(args) } });
 
@@ -115,5 +119,52 @@ describe("the firm rule", () => {
     const own = await runToolCall(call("update_settings", { changes: { punchMinSig: 5 } }), CHAT_TOOLS, { dataset, datasets: [dataset] });
     expect(own.ok).toBe(true);
     expect((await runToolCall(call("read_skill", { name: "nope" }), CHAT_TOOLS, ctx)).text).toMatch(/^Error: invalid arguments — no skill named "nope"/);
+  });
+});
+
+describe("the switch", () => {
+  const dataset = { id: "demo", raw_name: "demo.nxs", stem: "demo", temperature: null, stages: [] } as unknown as Dataset;
+
+  it("has the skills on unless it says skills: false", () => {
+    expect([skillsOn(), skillsOn(null), skillsOn({}), skillsOn({ skills: true })]).toEqual([true, true, true, true]);
+    expect(skillsOn({ skills: false })).toBe(false);
+  });
+
+  it("builds the system prompt from its sections, the skills' section only with the tools and the skills on", () => {
+    expect(systemPrompt({ tools: true })).toBe([SYSTEM_PROMPT, TOOLS_PROMPT, skillsPrompt()].join("\n"));
+    expect(systemPrompt({ tools: true, skills: true })).toBe(systemPrompt({ tools: true }));
+    expect(systemPrompt({ tools: true, skills: false })).toBe([SYSTEM_PROMPT, TOOLS_PROMPT].join("\n"));
+    expect(systemPrompt({ tools: false })).toBe(SYSTEM_PROMPT);
+    expect(systemPrompt({ tools: false, skills: false })).toBe(SYSTEM_PROMPT);
+    // Every builder of the opening messages reads it: the chat and the stage reviews.
+    const chat = buildChatMessages({} as never, [], "How clean is this reduction?", null, { tools: true, skills: false });
+    const review = buildStageReviewMessages({} as never, "flatten", null, { tools: true, skills: false });
+    for (const opening of [chat, review]) {
+      expect(opening[0].content).toBe(systemPrompt({ tools: true, skills: false }));
+      for (const s of allSkills()) expect(JSON.stringify(opening)).not.toContain(s.name);
+      expect(JSON.stringify(opening)).not.toMatch(/skill/i);
+    }
+    expect(buildChatMessages({} as never, [], "q", null, { tools: true })[0].content).toBe(systemPrompt({ tools: true }));
+  });
+
+  it("offers no read_skill with the skills off, and every other tool as it is", () => {
+    expect(toolsWhere((f) => f.needsSkills)).toEqual(["read_skill"]);
+    expect(toolsWithSkills(CHAT_TOOLS, true)).toBe(CHAT_TOOLS);
+    const off = toolsWithSkills(CHAT_TOOLS, false);
+    expect(off.map((t) => t.name)).toEqual(CHAT_TOOLS.map((t) => t.name).filter((n) => n !== "read_skill"));
+  });
+
+  it("leaves no gate with the skills off: a change goes through with no skill read, and read_skill is no tool of the conversation", async () => {
+    usePipelineStore.setState({ punchMinSig: "4" });
+    const tools = toolsWithSkills(CHAT_TOOLS, false);
+    const ctx: ToolContext = { dataset, datasets: [dataset], skills: false, skillsRead: new Set() };
+    expect(unreadSkillRefusal("update_settings", { changes: { punchMinSig: 6 } }, ctx.skillsRead!)).not.toBeNull(); // the gate's own rule stands
+    const changed = await runToolCall(call("update_settings", { changes: { punchMinSig: 6 } }), tools, ctx);
+    expect(changed.ok, changed.text).toBe(true);
+    expect(usePipelineStore.getState().punchMinSig).toBe("6");
+    const read = await runToolCall(call("read_skill", { name: "reduction-qc" }), tools, ctx);
+    expect(read.ok).toBe(false);
+    expect(read.text).toMatch(/^Error: no tool named read_skill\. Available: describe_dataset, /);
+    expect(ctx.skillsRead?.size).toBe(0);
   });
 });

@@ -25,7 +25,8 @@ import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, Stall
 import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
 import { planWindow } from "./provider/window";
 import type { LlmSettings } from "./settings";
-import { factsOf, runToolCall, toolSpecs, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
+import { skillsOn } from "./skills";
+import { factsOf, runToolCall, toolSpecs, toolsWithSkills, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
 import { openView } from "./tools/openView";
 import { verdicts, type ComputedVerdict, type Outcome } from "./verdicts";
 
@@ -186,7 +187,7 @@ const callKey = (call: ToolCall): string => `${call.function.name}|${JSON.string
 
 export async function runAgent({
   messages,
-  tools,
+  tools: given,
   ctx,
   settings,
   signal,
@@ -211,6 +212,10 @@ export async function runAgent({
   retryDelaysMs?: number[]; // the pauses before each retry
   softBudget?: number; // a local request's tokens past which older results are shortened
 }): Promise<AgentResult> {
+  // The skills' switch (skills.ts), as the conversation's context carries it:
+  // the tools the reply offers, runs and checks answers against are the given
+  // ones under it (with the skills off, no read_skill).
+  const tools = toolsWithSkills(given, skillsOn(ctx));
   const convo = [...messages];
   const arrived = convo.length;
   let revisions = 0;

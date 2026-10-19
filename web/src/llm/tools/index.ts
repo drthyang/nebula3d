@@ -57,7 +57,7 @@ import { qRadius } from "../context/pipelineContext";
 import type { ToolCall, ToolSpec } from "../provider/client";
 import { ALL_STAGES, keysOf, RECIP, resolveFacts, stageKey, type Facts, type ToolFacts } from "./facts";
 import { openView, type ViewTarget } from "./openView";
-import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS } from "../skills";
+import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS, skillsOn } from "../skills";
 import { judge, WORDS, type Outcome } from "../verdicts";
 
 export type { ViewTarget } from "./openView";
@@ -73,6 +73,10 @@ import { textureMetrics } from "../metrics/texture";
 export interface ToolContext {
   dataset: Dataset;
   datasets: Dataset[];
+  // The skills' switch (skills.ts): on unless false. Off (the validation's arm
+  // C), the conversation has no skills: read_skill is not offered (toolsWithSkills)
+  // and no stage waits for one to be read (runToolCall).
+  skills?: boolean;
   // The skills read in this conversation (read_skill adds to it). Set on every
   // call the model makes, which gates a stage's changes on its skill; left
   // unset by the app's own calls (the report), which change nothing.
@@ -1803,7 +1807,7 @@ const tunePipeline: ChatTool = {
 // this reads one, or a document it cites, when the task calls for it.
 const readSkillTool: ChatTool = {
   name: "read_skill",
-  facts: { label: "Read a skill", acts: null, reachesBackend: false },
+  facts: { label: "Read a skill", acts: null, reachesBackend: false, needsSkills: true },
   description:
     "Read one of the user's skills: their method for a topic, with the steps, the checks and what to report. " +
     "Name it from the list in the system prompt. With reference, read one of the documents the skill cites (a long " +
@@ -1888,6 +1892,19 @@ export const toolsWhere = (pred: (facts: Facts) => boolean): string[] =>
 export function unreadSkillRefusal(name: string, args: Args, read: ReadonlySet<string>): string | null {
   const gate = factsOf(name).gate;
   return gate ? refusalFor(gate.stages(args), gate.doing, read) : null;
+}
+
+/**
+ * The tools as a conversation with the skills on or off offers them (the
+ * switch, skills.ts): on, the tools as they are (the same list); off (the
+ * validation's arm C), without the tools that work only with the skills (their
+ * facts' `needsSkills`: read_skill). The agent loop offers, runs and checks
+ * answers against this list alone, so a call to a tool it left out is refused
+ * as one the registry does not hold.
+ */
+export function toolsWithSkills(tools: AgentTool[], skills: boolean): AgentTool[] {
+  if (skills) return tools;
+  return tools.filter((t) => !factsOf(t.name).needsSkills);
 }
 
 // Only name, description and parameters: the facts never reach the model.
@@ -1984,8 +2001,9 @@ export async function runToolCall(
     return { ok: false, args, text, summary: `unknown tool ${call.function.name}` };
   }
   // A firm rule: a stage's settings change, and the stage is tuned, only after
-  // its skill has been read in the conversation (skills.ts).
-  const refusal = ctx.skillsRead ? unreadSkillRefusal(tool.name, args, ctx.skillsRead) : null;
+  // its skill has been read in the conversation (skills.ts). With the skills
+  // off (the switch) there is no skill to read, so there is no gate.
+  const refusal = skillsOn(ctx) && ctx.skillsRead ? unreadSkillRefusal(tool.name, args, ctx.skillsRead) : null;
   if (refusal) return { ok: false, args, text: `Error: ${refusal}`, summary: "refused until its skill is read" };
   try {
     const out = await tool.run(args, ctx, io);

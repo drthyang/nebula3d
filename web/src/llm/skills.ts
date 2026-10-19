@@ -14,6 +14,15 @@
 // stage declare their gate in their facts (tools/index.ts); this module words
 // the refusal. It never imports the registry: the registry imports it, and the
 // cycle would read SKILL_TREE before it is set.
+//
+// One switch takes the skills away (the validation's arm C): `skills: false`,
+// on the conversation's tool context (ToolContext, which the agent loop, the
+// executor and the tools read) and on the builders of the opening messages
+// (prompts/templates.ts). It is the seam every builder of model-visible text
+// reads, so nothing that names a skill is cut out of text after it is built.
+// Off, the system prompt has no skills' section, read_skill is not offered (its
+// facts' `needsSkills`), and no stage waits for a skill to be read. Left unset,
+// the skills are on: the console and arm B.
 
 import type { AgentStep } from "./agent";
 import type { Gate } from "./tools/facts";
@@ -140,6 +149,14 @@ export function allSkills(): readonly Skill[] {
 }
 
 export const skillNamed = (name: string): Skill | undefined => allSkills().find((s) => s.name === name);
+
+/** The switch, as a conversation or a builder carries it: the skills are on unless it says `skills: false`. */
+export interface SkillsSwitch {
+  skills?: boolean;
+}
+
+/** Whether the switch has the skills on: anything but an explicit `skills: false` (the validation's arm C). */
+export const skillsOn = (s?: SkillsSwitch | null): boolean => s?.skills !== false;
 
 /** The system prompt's skills: names and descriptions only, and the rule that rides on them. */
 export function skillsPrompt(): string {

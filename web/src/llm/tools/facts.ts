@@ -2,7 +2,8 @@
 // model reads: whether it reads or acts, and on what; which later readings it
 // may change; the questions a local model is offered it for; the verdicts it
 // settles; whether a reply that ran it gets a report; the cards it lights; the
-// skill it waits for; its label in the transcript. One facts object per tool,
+// skill it waits for, and whether it works only with the skills on; its label
+// in the transcript. One facts object per tool,
 // declared on the tool in the registry (tools/index.ts), so a tool's facts live
 // beside its implementation: adding or changing a tool is one edit, in one
 // place. The agent loop's repeat guard, the local offer, the answer checks, the
@@ -106,6 +107,9 @@ export interface ToolFacts {
   reportable?: true; // a reply that ran it gets a Report button (report/collect.ts)
   highlights?: ByArgs<readonly HighlightKey[]>; // the cards a step lights; left out: none
   gate?: Gate; // left out: no skill gate
+  // It works only with the skills on (read_skill): with the switch off
+  // (skills.ts, the validation's arm C) it is not offered. Left out: offered either way.
+  needsSkills?: true;
 }
 
 /** A tool's facts with every field resolved, as factsOf returns them. */
@@ -123,6 +127,7 @@ export interface Facts {
   reportable: boolean;
   highlights: (args: Args) => readonly HighlightKey[];
   gate: Gate | null;
+  needsSkills: boolean;
 }
 
 const byArgs = <T>(fact: ByArgs<T> | undefined, fallback: T): ((args: Args) => T) =>
@@ -149,5 +154,6 @@ export function resolveFacts(name: string, declared?: ToolFacts): Facts {
     reportable: declared?.reportable ?? false,
     highlights: byArgs(declared?.highlights, []),
     gate: declared?.gate ?? null,
+    needsSkills: declared?.needsSkills ?? false,
   };
 }
