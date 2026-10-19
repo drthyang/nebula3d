@@ -1,0 +1,20 @@
+{
+ "source": "validation",
+ "case": "dev-origin",
+ "run": 1,
+ "step": null,
+ "kind": "missing-tool",
+ "evidence": "ub_check reads the shifted origin (planted at (0.03, 0.02, 0) r.l.u.) as an offset RMS of 0.0583 Å⁻¹ that the fit leaves at 0.0583, and says to look at the origin. No tool gives the shift itself, so a report on the origin can name no size.",
+ "proposed_fix": "Report the mean offset of the node centres from their nodes in r.l.u. (a vector, before and after the fit) in ub_check's result.",
+ "needs_user_approval": false,
+ "arm": "sweep",
+ "status": "implemented",
+ "commit": "47c3537",
+ "tests": [
+  "tests/test_faults.py::test_the_mean_offset_is_the_origin_shift_and_zero_for_a_turned_ub",
+  "tests/test_server.py::test_volume_ub_check",
+  "tests/test_webbridge.py::test_volume_ub_check_json",
+  "web/src/llm/__tests__/tools.test.ts (ub_check)"
+ ],
+ "note": "mean_offset_rlu before and after the fit; origin_shift_rlu when the offsets are unexplained and that vector makes 0.8 or more of the RMS the fit leaves. Dev origin case: (0.0305, 0.0195, 0) for (0.03, 0.02, 0)."
+}

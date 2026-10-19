@@ -1,0 +1,21 @@
+{
+ "source": "review",
+ "ref": "D10",
+ "at": "76a691c",
+ "kind": "bug",
+ "evidence": "Coverage verdicts that open \"past\", \"unmeasured\" or \"not\", which no producer writes but recordings may hold, need attention to the answer checks (web/src/llm/verdicts/recorded.ts:83) and none to {{achieved}} (web/src/llm/verdicts/readers.ts:111, :193), so a recording read two ways; since D2 the report's 3D-ΔPDF card reads the coverage as {{achieved}} does, and needed none either.",
+ "proposed_fix": "Legacy coverage words need attention to both readers.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "d310c29",
+ "tests": [
+  "web/src/llm/__tests__/verdictPins.test.ts (D10, unified (2.4b.2): a recording's coverage words no producer wrote need attention to both readers, and to the report's card)",
+  "web/src/llm/__tests__/answerChecks.test.ts (reads a recording's coverage words no producer wrote as attention, to the answer checks and {{achieved}} alike (D10, 2.4b.2))"
+ ],
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-19",
+  "option": "yes"
+ }
+}

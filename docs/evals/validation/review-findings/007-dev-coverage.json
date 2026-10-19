@@ -1,0 +1,17 @@
+{
+ "source": "validation",
+ "case": "dev-coverage",
+ "run": 1,
+ "step": null,
+ "kind": "orchestration",
+ "evidence": "The counts end at 4.507 Å⁻¹ (put in at 4.511) of a box whose nearest face is 6.44 Å⁻¹, and qmax_coverage opens \"clean: … 9.8e-4 of its weight on unmeasured reciprocal space\", just under the 1e-3 limit. The counts' edge and the band 0 to 4.5 are in raw_counts and suggested_band, not in the verdict a model quotes.",
+ "proposed_fix": "When the counts end inside the box and no band is set, say so in the verdict or band_check, with the edge and the suggested band.",
+ "needs_user_approval": false,
+ "arm": "sweep",
+ "status": "implemented",
+ "commit": "e381f51",
+ "tests": [
+  "web/src/llm/__tests__/tools.test.ts (qmax_coverage: says in the verdict when the counts end inside the box)"
+ ],
+ "note": "The verdict and band_check give the edge, the box face and the band when the counts end at least 0.1 Å⁻¹ inside the nearest face and no band is set."
+}
