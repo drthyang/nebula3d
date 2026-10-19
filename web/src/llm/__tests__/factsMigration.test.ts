@@ -12,7 +12,8 @@ import { describe, expect, it } from "vitest";
 import { HELDOUT_SCENARIOS } from "../evals/heldout";
 import { SCENARIOS } from "../evals/scenarios";
 import { TASK } from "../evals/validation";
-import { toolsFor } from "../localTools";
+import { CORE_TOOLS as DERIVED_CORE_TOOLS, toolsFor } from "../localTools";
+import { REPORT_TOOLS as DERIVED_REPORT_TOOLS } from "../report/collect";
 import { unreadSkillRefusal } from "../skills";
 import { CHAT_TOOLS, factsOf, toolsWhere, type AgentTool } from "../tools";
 import type { HighlightKey } from "../tools/facts";
@@ -243,6 +244,7 @@ describe("the old lists against the facts", () => {
 
   it("2. the local offer: CORE_TOOLS, ACT_TOOLS, and each tool's questions turned around", () => {
     expect(sorted(toolsWhere((f) => f.offeredFor === "always" && !f.actsOnPipeline))).toEqual(sorted(CORE_TOOLS));
+    expect(sorted(DERIVED_CORE_TOOLS)).toEqual(sorted(CORE_TOOLS));
     expect(sorted(toolsWhere((f) => f.actsOnPipeline))).toEqual(sorted(ACT_TOOLS));
     for (const name of NAMES) {
       const asked = LOCAL_TOPICS.flatMap((t, i) => (t.tools.includes(name) ? [LOCAL_TOPIC_NAMES[i]] : []));
@@ -283,6 +285,7 @@ describe("the old lists against the facts", () => {
 
   it("5. the report: the same seven tools", () => {
     expect(sorted(toolsWhere((f) => f.reportable))).toEqual(sorted(REPORT_TOOLS));
+    expect(sorted(DERIVED_REPORT_TOOLS)).toEqual(sorted(REPORT_TOOLS));
   });
 
   it("6. the transcript's labels, running and done, with the name as the fallback", () => {
