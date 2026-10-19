@@ -179,7 +179,7 @@ describe("evaluateStage", () => {
     expect(judge("pdf", e).reasons).toContain("symmetry broken");
   });
 
-  it("judges the ΔPDF's window by its raw weight, as qmax_coverage does: 1.04e-3 is past 1e-3, though shown 0.001 (D6, 2.4.6)", async () => {
+  it("judges the ΔPDF's window by its raw weight, as qmax_coverage does: 1.04e-3 is past 1e-3 (D6, 2.4.6), and shows it so (2.4.6b)", async () => {
     const withPdf: Dataset = {
       ...dataset,
       stages: [...dataset.stages, { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" }],
