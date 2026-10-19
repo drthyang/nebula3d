@@ -278,11 +278,12 @@ describe("judge: the checks on the result", () => {
 
   it("texture, in 3-D: not judged on a grid too coarse for the holes' rims, nor with too few holes judged", () => {
     expect(judge("texture", coarse3d)).toEqual({ check: "texture", kind: "info", reasons: ["grid too coarse"], dataProblems: [], words: null });
-    // Fewer holes judged than the rule needs: nothing to judge, however large their bias (the backend's judged: false).
-    expect(judge("texture", fewHoles)).toEqual({ check: "texture", kind: "info", reasons: ["nothing to judge"], dataProblems: [], words: null });
-    expect(judge("texture", volume({ n_holes: 0, n_judged: 0, not_judged: "no filled punch hole", systematic_fill_bias: null }))).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
-    // Anything but true or false is no verdict.
+    // Fewer holes judged than the rule needs, or none: not judged, however large their bias (the backend's judged: false).
+    expect(judge("texture", fewHoles)).toEqual({ check: "texture", kind: "info", reasons: ["too few holes"], dataProblems: [], words: null });
+    expect(judge("texture", volume({ n_holes: 0, n_judged: 0, not_judged: "no filled punch hole", systematic_fill_bias: null }))).toMatchObject({ kind: "info", reasons: ["too few holes"] });
+    // Anything but true or false, without its reason, is no verdict: nothing to judge.
     expect(judge("texture", volume({ systematic_fill_bias: "yes" }))).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    expect(judge("texture", volume({ systematic_fill_bias: null }))).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
     for (const m of [coarse3d, fewHoles]) roundTrip("texture_check", m, [judge("texture", m)]);
   });
 

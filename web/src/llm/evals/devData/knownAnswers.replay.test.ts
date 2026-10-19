@@ -140,8 +140,9 @@ describe("dev-control: nothing flagged", () => {
   });
 
   // The verdict on the run, {{achieved}}, from the checks a reply ran: met, or
-  // on a grid too coarse for the ring check not judged, saying why (G1).
-  check("dev-control", named("rings", "the verdict on the run is met, or says why the ring removal is not judged"), async () => {
+  // on a grid too coarse for the ring check not judged, saying why (G1), and
+  // likewise on one too coarse for the fills' texture (plan 4.2).
+  check("dev-control", named("rings", "the verdict on the run is met, or says why the ring removal and the fills' texture are not judged"), async () => {
     const c = devCase("dev-control");
     const steps: AgentStep[] = [];
     for (const [name, args] of [
@@ -155,7 +156,11 @@ describe("dev-control: nothing flagged", () => {
     }
     const v = verdicts({ reply: steps }).achieved;
     const msg = evidence(c, { achieved: v });
-    expect(v?.text, msg).toBe(tooCoarse("rings") ? "not judged: the ring removal (grid too coarse for the ring check)" : "met: every stage meets its goal");
+    const notJudged = [
+      ...(tooCoarse("rings") ? ["the ring removal (grid too coarse for the ring check)"] : []),
+      ...(tooCoarse("texture") ? ["the backfill's texture (grid too coarse)"] : []),
+    ];
+    expect(v?.text, msg).toBe(notJudged.length ? `not judged: ${notJudged.join(", ")}` : "met: every stage meets its goal");
   });
 });
 

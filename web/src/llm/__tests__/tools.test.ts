@@ -1040,9 +1040,11 @@ describe("texture_check", () => {
     api.fetchVolumeTexture.mockResolvedValue(FOUR);
     const out = JSON.parse((await runOn(full, "texture_check", {})).text);
     expect(out).toMatchObject({ n_holes: 4, n_judged: 4, not_judged: "too few holes judged: 4 of 4, under 5", median_fill_bias_level: 0.516, above_floor_fraction: 1, systematic_fill_bias: null });
-    expect((await runOn(full, "texture_check", {})).outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    expect((await runOn(full, "texture_check", {})).outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["too few holes"] });
     api.fetchVolumeTexture.mockResolvedValue(server({ n_holes: 0, n_judged: 0, judged: false, median_fill_bias_sigma: null, median_fill_bias_level: null, above_fraction: null, below_fraction: null, above_floor_fraction: null, below_floor_fraction: null }));
-    expect(JSON.parse((await runOn(full, "texture_check", {})).text)).toMatchObject({ n_holes: 0, not_judged: "no filled punch hole", systematic_fill_bias: null });
+    const none = await runOn(full, "texture_check", {});
+    expect(JSON.parse(none.text)).toMatchObject({ n_holes: 0, not_judged: "no filled punch hole", systematic_fill_bias: null });
+    expect(none.outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["too few holes"] });
   });
 
   it("reads the fill bias from the volume's holes, not from the cuts", async () => {

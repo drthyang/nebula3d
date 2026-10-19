@@ -7,8 +7,9 @@
 // outcome is "info" with the reason "nothing to judge" (the named exceptions:
 // D15, the ΔPDF's rule, and D16, the UB's); on a grid too coarse for the
 // check's measurement, "info" with the reason "grid too coarse", which the
-// measurement states in its result. An "attention" outcome always carries a
-// reason.
+// measurement states in its result; and for the fills' texture over fewer
+// holes than its rule needs, "info" with the reason "too few holes". An
+// "attention" outcome always carries a reason.
 
 import { built, evidence, inference, inferred, joined, quotedInference, reading, remedy, written, type Span, type Tagged } from "../inference";
 import { isTooCoarse } from "../metrics/coarse";
@@ -62,6 +63,8 @@ export type Reason =
   | "symmetrised"
   // The grid is too coarse for the check's measurement (metrics/coarse.ts): not judged.
   | "grid too coarse"
+  // Fewer holes judged than the fill-bias rule needs, or none (metrics/texture.ts, volumeFillBias): not judged.
+  | "too few holes"
   // What a recorded result says of itself (recorded.ts).
   | "no output"
   | "recorded verdict"
@@ -483,10 +486,11 @@ const texture: CheckRule<Readonly<Record<string, unknown>>> = {
   // texture_check writes no verdict: its result says whether the fills are
   // biased. Since plan 4.2 it reads every punch hole of the volume in 3-D
   // (metrics/texture.ts, volumeFillBias): systematic_fill_bias true needs
-  // attention, false passes, and null is not judged, for the grid too coarse
-  // for the holes' rims (not_judged, "grid too coarse: …") or for too few
-  // holes (nothing to judge). A result recorded before 4.2 has none of that:
-  // each of its cuts says whether its fill is biased, and it reads as it did.
+  // attention, false passes, and null is not judged, with why (not_judged):
+  // the grid too coarse for the holes' rims ("grid too coarse: …"), else too
+  // few holes judged, or none ("too few holes"). The run's verdict says either
+  // (readers.ts). A result recorded before 4.2 has none of that: each of its
+  // cuts says whether its fill is biased, and it reads as it did.
   // A cut whose grid is too coarse to judge its fills (not_judged, texture.ts's
   // roomForRims) is no evidence either way: the fills pass only when every cut
   // was judged, and a judged cut's bias still needs attention.
@@ -494,7 +498,10 @@ const texture: CheckRule<Readonly<Record<string, unknown>>> = {
     if ("systematic_fill_bias" in m) {
       if (m.systematic_fill_bias === true) return { kind: "attention", reasons: ["fill bias"], words: null };
       if (isTooCoarse(m.not_judged)) return { ...tooCoarse(), words: null };
-      return m.systematic_fill_bias === false ? { kind: "pass", reasons: [], words: null } : { ...nothing(), words: null };
+      if (m.systematic_fill_bias === false) return { kind: "pass", reasons: [], words: null };
+      return m.systematic_fill_bias === null && typeof m.not_judged === "string"
+        ? { kind: "info", reasons: ["too few holes"], words: null }
+        : { ...nothing(), words: null };
     }
     const cuts = (Array.isArray(m.per_cut) ? (m.per_cut as unknown[]) : []).filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
     if (cuts.some((x) => x.systematic_fill_bias === true)) return { kind: "attention", reasons: ["fill bias"], words: null };

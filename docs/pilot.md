@@ -53,7 +53,10 @@ Each is described under [How it works](#how-it-works).
   no check on the result needs attention; not met, naming what needs it; or
   not judged, naming the stages not measured, and those measured on a grid
   too coarse for their check with that reason ("not judged: the ring removal
-  (grid too coarse for the ring check)"). The data's problems that no
+  (grid too coarse for the ring check)"), and likewise a check on the result
+  that ran and could not judge: the fills' texture on a grid too coarse for
+  the holes' rims, or with too few holes ("the backfill's texture (grid too
+  coarse)", "(too few holes)"). The data's problems that no
   setting fixes (a turned UB, a shifted origin, counts that end inside the
   box) are listed with it. It shows under a reply that judged the run (or
   found such a problem) and the report heads its own, and

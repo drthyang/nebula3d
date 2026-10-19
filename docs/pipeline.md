@@ -337,11 +337,17 @@ fewer than five holes judged it gives no verdict either. Its cuts give the
 azimuthal texture only (`per_cut`: each cut's `azimuthal_ratio`), which is no
 hole's measure. Its verdict needs attention for a systematic bias, passes
 without one, and is not judged otherwise; a result recorded by cut, before
-4.2, is judged as it was. On the validation's eight dev cases the verdicts
-are as before: at 161 points none has a systematic bias (the medians within
-0.07 of the level, where the cuts read up to 0.14), and at 81 points the grid
-is too coarse for the rims on all eight, in 3-D as on the cuts, so the fills
-are not judged.
+4.2, is judged as it was. Not judged, the fills keep the run's verdict from
+"met", as the ring removal does on a grid too coarse for its check: it is
+"not judged: the backfill's texture (grid too coarse)", or "(too few
+holes)", in `{{achieved}}` and in the report's goal (where the Backfill card
+still shows its seam's verdict). On the validation's eight dev cases the
+check's verdicts are as before: at 161 points none has a systematic bias
+(the medians within 0.07 of the level, where the cuts read up to 0.14), and
+at 81 points the grid is too coarse for the rims on all eight, in 3-D as on
+the cuts, so the fills are not judged, and the control's run is "not judged:
+the ring removal (grid too coarse for the ring check), the backfill's
+texture (grid too coarse)".
 
 ### 4. Flatten The Radial Background (Background Removal)
 
