@@ -25,6 +25,7 @@
 import { describe, expect, it } from "vitest";
 
 import { fetchRingDiagnostics } from "../../../api/client";
+import { usePipelineStore } from "../../../state/pipelineStore";
 import type { AgentStep } from "../../agent";
 import { withoutInference } from "../../inference";
 import { verdicts } from "../../verdicts";
@@ -225,6 +226,40 @@ describe("dev-coverage: the counts end inside the box", () => {
     expect(full, msg).toBe(fully?.[1]);
     expect(Math.abs(full - c.truth.q_cut!), msg).toBeLessThanOrEqual(COUNTS_SHELL);
     expect(full, msg).toBeLessThan(cov.result.box_face_q as number);
+  });
+
+  // Plan 4.5: the default run fits the window to the coverage (the support on,
+  // an auto window), so the weight it records on unmeasured space is the
+  // backend's own target: the verdict says so, and judges where the counts end
+  // and a band the user sets (on the Configure page; the model sets none).
+  check("dev-coverage", "qmax_coverage says the fitted window's weight is the backend's target, and judges the counts' edge", async () => {
+    const c = devCase("dev-coverage");
+    const cov = ran(await c.tool("qmax_coverage"), "qmax_coverage");
+    const [outcome] = outcomeOf(cov);
+    const msg = evidence(c, { verdict: cov.result.verdict, window_weight_on_unmeasured: cov.result.window_weight_on_unmeasured, window_scale: cov.result.window_scale, outcome });
+    expect(cov.result.window_weight_on_unmeasured as number, msg).toBeLessThanOrEqual(1e-3);
+    expect(outcome, msg).toMatchObject({ kind: "pass", reasons: ["window fitted", "window within limit"] });
+    expect(outcome.dataProblems, msg).toEqual([`the counts end at ${(cov.result.raw_counts as { q_max_edge: number }).q_max_edge} Å⁻¹, inside the box`]);
+    expect(String(cov.result.verdict), msg).toMatch(/^fitted to the coverage: .*: its own target, not a check; the raw counts end at [\d.]+ Å⁻¹, inside the box/);
+  });
+
+  check("dev-coverage", "a band set inside the counts passes; past their upper edge it needs attention, the transform rerun with it", async () => {
+    const c = devCase("dev-coverage");
+    const before = ran(await c.tool("qmax_coverage"), "qmax_coverage");
+    const [lo, hi] = before.result.suggested_band as [number, number];
+    const banded = async (qMax: number) => {
+      usePipelineStore.setState({ pdfQMin: String(lo), pdfQMax: String(qMax) });
+      ran(await c.tool("run_pipeline", { from_stage: "pdf" }), "run_pipeline");
+      const r = ran(await c.tool("qmax_coverage"), "qmax_coverage");
+      return { band: [lo, qMax], band_check: r.result.band_check, weight: r.result.window_weight_on_unmeasured, outcome: outcomeOf(r)[0] };
+    };
+    const inside = await banded(hi);
+    const past = await banded(hi + 1);
+    const msg = evidence(c, { suggested_band: [lo, hi], inside, past });
+    expect(inside.outcome, msg).toMatchObject({ kind: "pass", reasons: ["window fitted", "window within limit"] });
+    expect(inside.band_check, msg).toBe(`the band ${lo}–${hi} Å⁻¹ stays inside the counts`);
+    expect(past.outcome, msg).toMatchObject({ kind: "attention", reasons: ["band past counts", "window within limit"] });
+    expect(String(past.band_check), msg).toMatch(/^Qmax past the counts' upper edge/);
   });
 });
 

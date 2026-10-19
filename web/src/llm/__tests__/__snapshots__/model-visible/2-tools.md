@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (24 tools, 22300 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (24 tools, 22490 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -165,7 +165,7 @@ Parameters:
 ## 8. qmax_coverage
 
 ```text
-Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. Otherwise it compares how far the transform's window reaches (the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window) with full_coverage_q, where the raw volume's |Q| shells, in 3D, stop holding counts (measured and non-zero) in 95 % of their voxels. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. raw_counts gives where the counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts. When the counts end inside the box and no band is set, the verdict says so, with the edge and the band they allow (counts_end_inside_box).
+Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. Otherwise it compares how far the transform's window reaches (the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window) with full_coverage_q, where the raw volume's |Q| shells, in 3D, stop holding counts (measured and non-zero) in 95 % of their voxels. With the window fitted to the coverage (pdfWindowSupport), that share and that reach are the backend's own target, not a check: the verdict judges where the counts end and the band instead. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. raw_counts gives where the counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts. When the counts end inside the box and no band is set, the verdict says so, with the edge and the band they allow (counts_end_inside_box).
 ```
 
 Parameters:

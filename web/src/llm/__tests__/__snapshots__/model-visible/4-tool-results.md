@@ -499,11 +499,11 @@ References of this skill (read one with read_skill and `reference`):
 
 ## qmax_coverage {}
 
-1147 characters sent.
+1270 characters sent.
 
 ```json
 {
-  "verdict": "clean: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space; the raw counts end at 4.4 Å⁻¹, inside the box (its nearest face at 4.712 Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0.25–4.4 Å⁻¹ (suggested_band), the user's to set",
+  "verdict": "fitted to the coverage: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the raw counts end at 4.4 Å⁻¹, inside the box (its nearest face at 4.712 Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0.25–4.4 Å⁻¹ (suggested_band), the user's to set",
   "window_weight_on_unmeasured": 0.00024,
   "window_shape": "ellipsoid",
   "window_scale": 1,
