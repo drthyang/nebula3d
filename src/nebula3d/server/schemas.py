@@ -120,8 +120,13 @@ class CoverageOut(BaseModel):
     q_max_edge: float | None
     full_q_min: float | None
     full_q_max: float | None
+    # Where the shells stop being fully measured (mask, finite): the ΔPDF
+    # window's support, which a volume storing zeros for unmeasured space
+    # carries past its counts.
+    measured_q_max: float | None
     box_q: float
     box_corner_q: float
+    q_step: float  # the shells' width (Å⁻¹): every edge is known to one shell
 
 
 class RingShellOut(BaseModel):

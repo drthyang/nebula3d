@@ -245,6 +245,7 @@ def test_volume_coverage(env):
     assert c["id"] == f"{SLUG}.ringremoved"
     assert len(c["q"]) == len(c["counted"])  # a 7×9×11 volume has no 50-voxel shell
     assert 0 < c["box_q"] < c["box_corner_q"]
+    assert c["measured_q_max"] is None and c["q_step"] == 0.1
     assert client.get("/api/volumes/nope.ringremoved/coverage").status_code == 404
 
 
