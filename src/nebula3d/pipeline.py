@@ -103,6 +103,7 @@ __all__ = [
     "pdf_consistency_check",
     "consistency_reconstruction",
     "write_bragg_profile_json",
+    "read_flatten_settings",
     "pipeline_paths",
     "run_pipeline",
 ]
@@ -360,6 +361,45 @@ def _write_punched(path: Path, punched: np.ndarray) -> None:
             compression="gzip", compression_opts=1, shuffle=True)
         for i in range(shape[0]):  # slab by slab: no volume-sized int8 copy
             ds[i] = punched[i].astype(np.int8)
+
+
+#: The flatten's settings in its output: a JSON text attribute of the file's
+#: NEBULA3D group (``FlattenParams`` as a dict), so a measurement of the floors
+#: after it takes the run's own shells, percentile and fit range.
+_FLATTEN_SETTINGS_GROUP = f"/MDHistoWorkspace/{NEBULA3D_GROUP}"
+_FLATTEN_SETTINGS_ATTR = "flatten_settings"
+
+
+def _write_flatten_settings(path: Path, params: FlattenParams) -> None:
+    import h5py
+
+    text = json.dumps(dataclasses.asdict(params), sort_keys=True)  # ASCII
+    with h5py.File(path, "a") as fh:
+        grp = fh.get(_FLATTEN_SETTINGS_GROUP)
+        if isinstance(grp, h5py.Group):
+            grp.attrs.create(_FLATTEN_SETTINGS_ATTR, text.encode("ascii"),
+                             dtype=h5py.string_dtype("ascii"))
+
+
+def read_flatten_settings(path: str | Path) -> dict[str, Any] | None:
+    """The settings the flatten that wrote *path* ran with (the fields of
+    :class:`FlattenParams`, ranges as lists), or None when the file records
+    none: one the flatten did not write, or wrote before it recorded them."""
+    import h5py
+
+    try:
+        with h5py.File(path, "r") as fh:
+            grp = fh.get(_FLATTEN_SETTINGS_GROUP)
+            raw = grp.attrs.get(_FLATTEN_SETTINGS_ATTR) if isinstance(grp, h5py.Group) else None
+    except OSError:
+        return None
+    if raw is None:
+        return None
+    try:
+        settings = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else str(raw))
+    except ValueError:
+        return None
+    return settings if isinstance(settings, dict) else None
 
 
 def _read_punched(path: Path) -> np.ndarray | None:
@@ -2227,6 +2267,7 @@ def run_pipeline(
                       f"flatten averaged over {symmetry.order} symmetry operations "
                       f"({n:,} voxels)")
             nebula3d.save(out, paths.flattened)
+            _write_flatten_settings(paths.flattened, p.flatten)
             carry, carry_path = out, paths.flattened
             del vol, out  # free the input; `carry` hands the output onward
     elif want("flatten"):

@@ -172,3 +172,32 @@ def test_flatten_bins_and_subtracts_by_slab(monkeypatch):
     assert np.array_equal(res.volume.data, whole.volume.data)
     assert np.array_equal(res.bg_curve, whole.bg_curve)
     assert peak < 16 * vol.data.size  # was ~25 B/voxel: full |Q| + temporaries
+
+
+def test_shell_floors_hold_no_volume_sized_array(monkeypatch):
+    # The whole-volume shell floors (the Pilot's flatten check) read a pair of
+    # volumes one slab at a time and select each percentile from histograms:
+    # what they hold is fixed by the shells, not the grid.  On a grid 1.5 times
+    # as fine over the same box (the same shells, 3.4 times the voxels) the
+    # traced peak grows by under a quarter of the extra float32 data (by 1 %
+    # when measured, 26 MiB both); a volume-sized int16 array alone would add
+    # half of it.
+    # The numbers are the native path's.
+    from nebula3d.preprocessing import shell_floors
+
+    def pair(n):
+        vol = _topaz_like(shape=(n, n, n))
+        return vol, dataclasses.replace(vol, data=vol.data - np.float32(0.5))
+
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # native, whatever ran before
+    small, small_after = pair(128)
+    big, big_after = pair(192)
+    native = shell_floors(big_after, before=big)
+    monkeypatch.setenv("NEBULA3D_LOW_MEMORY", "1")
+    _, peak_small = _traced_peak(shell_floors, small_after, before=small)
+    lean, peak_big = _traced_peak(shell_floors, big_after, before=big)
+
+    assert np.array_equal(lean.floors, native.floors, equal_nan=True)
+    assert np.array_equal(lean.floors_before, native.floors_before, equal_nan=True)
+    assert lean.level == native.level
+    assert peak_big - peak_small < 0.25 * (big.data.nbytes - small.data.nbytes)

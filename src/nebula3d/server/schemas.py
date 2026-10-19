@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -141,6 +143,32 @@ class RingIsotropyOut(BaseModel):
     id: str
     rule: dict[str, float]
     shells: list[RingShellOut]
+
+
+class ShellFloorsOut(BaseModel):
+    """The floor of every |Q| shell over the whole volume, and of the volume
+    the flatten was given (see preprocessing.flatten_floors).  One entry per
+    shell in each list; ``floors``, ``centres``, ``counts`` and ``totals`` are
+    the Pilot's ``radialFloorShells`` fields."""
+    id: str
+    before_id: str | None           # the flatten's input, for the flattened stage
+    q_step: float                   # shell width, Å⁻¹
+    percentile: float               # the floor's percentile, 0–100
+    min_count: int                  # fewer measured voxels: no floor
+    q_edges: list[float]            # one more than the shells, Å⁻¹
+    centres: list[float]            # Å⁻¹
+    totals: list[int]               # the grid's voxels in the shell
+    counts: list[int]               # ... measured (mask and finite)
+    floors: list[float | None]
+    medians: list[float | None]
+    counts_before: list[int] | None = None
+    floors_before: list[float | None] | None = None
+    medians_before: list[float | None] | None = None
+    level: float | None             # the diffuse level the floors' span is a share of
+    level_count: int
+    # The settings the flatten recorded in the file (FlattenParams: q_step,
+    # floor_percentile, min_count, fit_q_range, q2_term, ion, …), or None.
+    flatten: dict[str, Any] | None = None
 
 
 class UbPassOut(BaseModel):

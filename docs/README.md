@@ -100,7 +100,8 @@ sits in the standard place:
     sample/oriented_lattice           UB/2π (crystallographic) and the unit cell
   nebula3d/                           what Mantid does not know: exact bin centres
                                       and UB, in-memory dtype, instrument text,
-                                      the punch record (punched, int8, 1 = punched)
+                                      the punch record (punched, int8, 1 = punched),
+                                      the flatten's settings (flatten_settings, JSON)
 ```
 
 A volume `(nh, nk, nl)` has D2 = `[H,0,0]`, D1 = `[0,K,0]`, D0 = `[0,0,L]`
