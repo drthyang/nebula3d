@@ -6,7 +6,7 @@
 // in the transcript. One facts object per tool, declared on the tool in its
 // own module (tools/defs/<tool_name>.ts), so a tool's facts live beside its
 // implementation: adding or changing a tool is one edit, in one place. The
-// agent loop's repeat guard, the local offer, the answer checks, the
+// executor's repeat guard (round.ts), the local offer, the answer checks, the
 // report, the transcript, the highlights and the evals read them through the
 // registry's interface, factsOf and toolsWhere, instead of each keeping its own
 // list of tool names. The model never sees them: toolSpecs sends a tool's
