@@ -1,0 +1,18 @@
+{
+ "source": "validation",
+ "case": "dev-coverage",
+ "run": 1,
+ "step": null,
+ "kind": "science-error",
+ "evidence": "The flatten reads a falling floor on the cut-coverage case (trend −0.82, span 1.19) and so pedestal_left, where the planted truth has no pedestal (the default run's pedestal span is 0.015 of the diffuse level, against the 0.25 limit). floor_before is empty there.",
+ "proposed_fix": "Judge the pedestal over the shells the counts reach only, and find why the floors fall on a cut volume.",
+ "needs_user_approval": true,
+ "arm": "sweep",
+ "status": "implemented",
+ "commit": "9ae1e86",
+ "tests": [
+  "web/src/llm/__tests__/metrics.test.ts (judges a volume cut short)",
+  "web/src/llm/__tests__/evaluate.test.ts (says whether the flatten left a pedestal)"
+ ],
+ "note": "Why the floors fall: they follow the crystal's own diffuse level (a hump at 1.7 Å⁻¹ and its fall), which the full control reads the same over the same shells. The trend and span are now judged over the outer half of the fully measured shells; provisional, as the 0.8 limits are."
+}
