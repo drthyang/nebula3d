@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import type { AgentStep } from "../agent";
-import { allSkills, unreadSkillRefusal } from "../skills";
-import { CHAT_TOOLS } from "../tools";
+import { allSkills } from "../skills";
+import { CHAT_TOOLS, unreadSkillRefusal } from "../tools";
 import type { EvalRun } from "./harness";
 import {
   ARMS,

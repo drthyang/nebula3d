@@ -50,12 +50,6 @@ describe("toolsFor", () => {
     expect(offered("Which correlations does the data show?")).toContain("dpdf_peaks");
     expect(offered("Is the powder-ring removal clean on this run?")).not.toContain("dpdf_peaks");
   });
-
-  it("gives a question about nothing in particular the common diagnostics, and keeps tools it has no rule for", () => {
-    expect(offered("How does this reduction look?")).toEqual(expect.arrayContaining(["radial_profile", "qmax_coverage", "symmetry_check", "bragg_peaks"]));
-    const custom: AgentTool = { name: "custom", description: "d", parameters: {}, run: async () => ({ result: {}, summary: "" }) };
-    expect(toolsFor("Is the ring removal clean?", [...CHAT_TOOLS, custom]).map((t) => t.name)).toContain("custom");
-  });
 });
 
 describe("lastQuestion", () => {

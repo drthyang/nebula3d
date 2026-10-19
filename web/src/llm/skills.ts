@@ -10,10 +10,14 @@
 //
 // A firm rule rides on them: a pipeline stage's settings change, and the stage
 // is tuned, only after its skill has been read in the conversation (runToolCall
-// enforces it on every call the model makes).
+// enforces it on every call the model makes). The tools that change or tune a
+// stage declare their gate in their facts (tools/index.ts); this module words
+// the refusal. It never imports the registry: the registry imports it, and the
+// cycle would read SKILL_TREE before it is set.
 
 import type { AgentStep } from "./agent";
-import { SAMPLE_PARAMS, TUNE_PARAMS, TUNE_STAGES, type TuneStage } from "./tune/catalog";
+import type { Gate } from "./tools/facts";
+import type { TuneStage } from "./tune/catalog";
 
 /** Every Markdown file under the skills folder, keyed by repo path. */
 const SKILL_TREE = repoKeyed(import.meta.glob("../../../.claude/skills/**/*.md", { query: "?raw", import: "default", eager: true }));
@@ -199,34 +203,18 @@ export function readSkill(name: string, reference?: string, section?: string): s
   return `Skill ${skill.name}\n\n${skill.body}${refs}`;
 }
 
-const SETTING_STAGE = new Map([...TUNE_PARAMS, ...SAMPLE_PARAMS].map((p) => [p.key as string, p.stage]));
-
-/** The stages a tool call changes or tunes: update_settings by its keys, tune_pipeline by its stages. */
-export function stagesActedOn(tool: string, args: Record<string, unknown>): TuneStage[] {
-  if (tool === "update_settings") {
-    const changes = args.changes;
-    if (!changes || typeof changes !== "object" || Array.isArray(changes)) return [];
-    return unique(Object.keys(changes).flatMap((k) => (SETTING_STAGE.has(k) ? [SETTING_STAGE.get(k)!] : [])));
-  }
-  if (tool === "tune_pipeline") {
-    const stages = Array.isArray(args.stages) && args.stages.length ? args.stages : TUNE_STAGES;
-    return unique(stages.filter((s): s is TuneStage => (TUNE_STAGES as readonly unknown[]).includes(s)));
-  }
-  return [];
-}
-
 /**
- * Why a tool call must wait, or null: the skills of the stages it changes or
- * tunes that have not been read in the conversation.
+ * Why a call that changes or tunes the stages `acted` must wait, or null: the
+ * skills of those stages that have not been read in the conversation.
  */
-export function unreadSkillRefusal(tool: string, args: Record<string, unknown>, read: ReadonlySet<string>): string | null {
-  const stages = stagesActedOn(tool, args).filter((s) => !read.has(STAGE_SKILL[s]) && skillNamed(STAGE_SKILL[s]));
+export function refusalFor(acted: readonly TuneStage[], doing: Gate["doing"], read: ReadonlySet<string>): string | null {
+  const stages = acted.filter((s) => !read.has(STAGE_SKILL[s]) && skillNamed(STAGE_SKILL[s]));
   if (!stages.length) return null;
   const skills = unique(stages.map((s) => STAGE_SKILL[s]));
   const what = stages.map((s) => STAGE_LABEL[s]).join(", ");
   return (
     `read the method first: call read_skill with name ${skills.map((s) => `"${s}"`).join(" and ")}. ` +
-    `It is how the user works on the ${what} stage${stages.length > 1 ? "s" : ""}, and this ${tool === "tune_pipeline" ? "tuning" : "change"} ` +
+    `It is how the user works on the ${what} stage${stages.length > 1 ? "s" : ""}, and this ${doing} ` +
     "waits until it has been read in this conversation."
   );
 }
