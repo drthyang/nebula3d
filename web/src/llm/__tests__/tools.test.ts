@@ -852,23 +852,39 @@ describe("consistency_details", () => {
 });
 
 describe("texture_check", () => {
-  // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs.
+  // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs,
+  // the nodes 10 voxels apart (±1.5 r.l.u., 0.1 r.l.u. a voxel).
   const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;
-  const hole = (ix: number, iy: number) => ix > 2 && iy > 2 && ix < 18 && iy < 18 && [4, 0, 1].includes(ix % 5) && [4, 0, 1].includes(iy % 5);
-  const slices: Record<string, ReturnType<typeof makeSlice>> = {
-    "demo.ringremoved": makeSlice(21, 21, (_x, _y, ix, iy) => 100 + 4 * noise(ix, iy)),
-    "demo.braggpunched": makeSlice(21, 21, (_x, _y, ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy))),
-    "demo.backfilled": makeSlice(21, 21, (_x, _y, ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? 30 : 0)),
-  };
+  const hole = (ix: number, iy: number) => [4, 5, 6].includes(ix % 10) && [4, 5, 6].includes(iy % 10);
+  const cut = (f: (ix: number, iy: number) => number, half = 1.5) => makeSlice(31, 31, (_x, _y, ix, iy) => f(ix, iy), { half });
+  const stages = (half?: number): Record<string, ReturnType<typeof makeSlice>> => ({
+    "demo.ringremoved": cut((ix, iy) => 100 + 4 * noise(ix, iy), half),
+    "demo.braggpunched": cut((ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy)), half),
+    "demo.backfilled": cut((ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? 30 : 0), half),
+  });
 
   it("flags fills that sit above their rims on every plane", async () => {
+    const slices = stages();
     api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
     const r = await runOn(full, "texture_check", {});
     const out = JSON.parse(r.text);
     expect(out.per_cut).toHaveLength(3);
     expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, above_fraction: 1 });
+    expect(out.per_cut[0].not_judged).toBeUndefined();
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
     expect(r.summary).toMatch(/^systematic fill bias on 3 of 3 cut\(s\)/);
     expect(r.view?.label).toBe("H–K plane at L = 0");
+  });
+
+  it("does not judge cuts whose grid leaves the holes no room for their rims, and says why", async () => {
+    // The same cuts at 0.2 r.l.u. a voxel: the nodes 5 voxels apart, under the 10 a hole reaching one voxel and its rim need.
+    const slices = stages(3);
+    api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
+    const r = await runOn(full, "texture_check", {});
+    const out = JSON.parse(r.text);
+    expect(out.per_cut[0]).toMatchObject({ n_holes: 9, not_judged: expect.stringMatching(/^grid too coarse: the nodes are 5 voxels apart, under 10/), systematic_fill_bias: null });
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+    expect(r.summary).toMatch(/^fill bias not judged · 3 of 3 cut\(s\) not judged: grid too coarse/);
   });
 
   it("needs the punched and backfilled outputs", async () => {

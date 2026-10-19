@@ -967,6 +967,8 @@ const textureCheck: ChatTool = {
       }),
     );
     const biased = rows.filter((r) => r.systematic_fill_bias).length;
+    // Cuts whose grid is too coarse to judge their fills (texture.ts, roomForRims).
+    const coarse = rows.filter((r) => r.not_judged).length;
     const bias = (i: number) => Math.abs(rows[i].median_fill_bias_sigma ?? 0);
     const strongest = rows.reduce((best, _r, i) => (bias(i) > bias(best) ? i : best), 0);
     const ratios = rows.map((r) => r.azimuthal_ratio).filter((x): x is number => x != null);
@@ -975,7 +977,8 @@ const textureCheck: ChatTool = {
       result,
       outcomes: [judge("texture", result)],
       summary:
-        `${biased ? `systematic fill bias on ${biased} of ${rows.length} cut(s)` : "no systematic fill bias"}` +
+        `${biased ? `systematic fill bias on ${biased} of ${rows.length} cut(s)` : coarse < rows.length ? "no systematic fill bias" : "fill bias not judged"}` +
+        (coarse ? ` · ${coarse} of ${rows.length} cut(s) not judged: grid too coarse` : "") +
         (ratios.length ? ` · azimuthal ratio ${Math.min(...ratios)}–${Math.max(...ratios)}` : ""),
       view: cleanupView(cuts[strongest].plane, cuts[strongest].value),
     };

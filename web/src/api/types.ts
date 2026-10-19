@@ -66,6 +66,9 @@ export interface RingIsotropy {
   id: string;
   rule: { direction_share: number; height_share: number };
   shells: RingShell[];
+  // Why the grid is too coarse to judge any ring ("grid too coarse: …"), or null;
+  // given with no shell asked too. Absent from a backend before it was measured.
+  not_judged?: string | null;
 }
 
 export interface UbCheck {

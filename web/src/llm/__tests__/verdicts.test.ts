@@ -61,6 +61,9 @@ const STAGE_CASES: Record<"rings" | "punch" | "backfill" | "flatten" | "pdf", Ca
     c("a ring dented", { max_ring_left: 0, max_ring_dent: 0.05 }, "attention", ["ring dent"]),
     c("both", { max_ring_left: 0.1, max_ring_dent: 0.1 }, "attention", ["ring left", "ring dent"]),
     c("the 3D test could not run", { max_ring_left: null, max_ring_dent: 0 }, "info", ["nothing to judge"]),
+    c("the 3D test could not run, as the evaluation says it", { max_ring_left: null, max_ring_dent: null, ring_rule: "not judged: the test of each bump in 3D could not run" }, "info", ["nothing to judge"]),
+    // A grid too coarse for the 3D test (nebula3d.preprocessing.ring_isotropy): not judged, for that reason.
+    c("the grid too coarse for the 3D test", { max_ring_left: null, max_ring_dent: null, ring_rule: "not judged: grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1" }, "info", ["grid too coarse"]),
   ],
   punch: [
     c("nothing missed", { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0, leftover_off_lattice_broad: 9 }, "pass"),
@@ -209,6 +212,21 @@ describe("judge: the checks on the result", () => {
     expect(judge("texture", { per_cut: [] })).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
     expect(judge("texture", {})).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
     for (const m of [{ per_cut: [cut(false), cut(true)] }, { per_cut: [cut(false)] }, { per_cut: [] }, {}]) roundTrip("texture_check", m, [judge("texture", m)]);
+  });
+
+  it("texture: a cut whose grid leaves its holes no room for their rims is no evidence; a judged cut's bias still needs attention", () => {
+    const cut = (bias: boolean) => ({ cut: "H–K plane at L = 0", systematic_fill_bias: bias });
+    const coarse = {
+      cut: "H–L plane at K = 0",
+      n_holes: 41,
+      not_judged: "grid too coarse: the nodes are 10 voxels apart, under 12: a hole reaches 2 voxels and its rim 4 more",
+      systematic_fill_bias: null,
+    };
+    expect(judge("texture", { per_cut: [coarse, coarse] })).toEqual({ check: "texture", kind: "info", reasons: ["grid too coarse"], dataProblems: [], words: null });
+    // A clean cut beside one not judged does not pass the fills: the other cut says nothing of them.
+    expect(judge("texture", { per_cut: [cut(false), coarse] })).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+    expect(judge("texture", { per_cut: [cut(true), coarse] })).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
+    for (const m of [{ per_cut: [coarse] }, { per_cut: [cut(false), coarse] }, { per_cut: [cut(true), coarse] }]) roundTrip("texture_check", m, [judge("texture", m)]);
   });
 
   const facts = (over: Obj) => ({

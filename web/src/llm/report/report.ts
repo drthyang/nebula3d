@@ -6,6 +6,7 @@
 // module's (verdicts/, the report's reader), and this one writes the headlines
 // and details around them. It is pure, so the report can be tested end to end.
 
+import { isTooCoarse } from "../metrics/coarse";
 import type { ParamValue } from "../tune/catalog";
 import { verdicts, WORDS, type Kind, type Outcome } from "../verdicts";
 
@@ -171,6 +172,8 @@ function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefin
       ["Deepest ring dent", `${fmt(dent)}${where(m.worst_ring_dent)}`],
       ["Largest ring left", `${fmt(left)}${where(m.worst_ring_left)}`],
       ["Bumps that are not rings (the crystal's own scattering, kept)", String(notRings.length)],
+      // A grid too coarse for the 3D test: the rings are not judged, and why.
+      ...(isTooCoarse(m.ring_rule) ? ([["Not judged", String(m.ring_rule).replace(/^not judged: /, "")]] as [string, string][]) : []),
     ],
   };
 }
@@ -245,15 +248,18 @@ function backfillCheck(measured: Obj | null | undefined, texture: Obj | null | u
   const seam = num(m.mean_median_seam_sigma);
   const cuts = Array.isArray(texture?.per_cut) ? (texture!.per_cut as Obj[]) : [];
   const biased = cuts.filter((c) => c.systematic_fill_bias === true).length;
+  // Cuts whose grid is too coarse to judge their fills (texture.ts, roomForRims).
+  const coarse = cuts.filter((c) => isTooCoarse(c.not_judged)).length;
+  const notJudged = coarse ? `, ${coarse} not judged (grid too coarse)` : "";
   const details: [string, string][] = [
     ["Mean median seam", `${fmt(seam)} σ`],
     ["Largest bright-fill fraction", fmt(m.max_bright_fill_fraction)],
   ];
-  if (texture) details.push(["Cuts with a systematic fill bias", `${biased} of ${cuts.length}`]);
+  if (texture) details.push(["Cuts with a systematic fill bias", `${biased} of ${cuts.length}${notJudged}`]);
   return {
     title: "Backfill",
     verdict,
-    headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${texture ? ` · fill bias on ${biased} of ${cuts.length} cuts` : ""}`,
+    headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${texture ? ` · fill bias on ${biased} of ${cuts.length} cuts${notJudged}` : ""}`,
     criterion,
     details,
   };

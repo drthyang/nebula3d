@@ -259,8 +259,11 @@ miss is a note.
   `rules.ts` with its rule, the words its tool writes, the criterion the rule
   is stated as and a stage's goal. The tools that judge call `judge`, which
   gives an outcome: met, needs attention or not judged, with its reasons and
-  the data's problems no setting fixes. The outcome travels beside the tool's
-  result, never in the text the model reads. `verdicts` reads a run's
+  the data's problems no setting fixes. A check the grid is too coarse for
+  (the ring check's 3D test, the fills' texture: pipeline.md) is not judged
+  for that reason, "grid too coarse", its measurement saying why in the
+  result the model reads (`ring_rule`, a cut's `not_judged`). The outcome
+  travels beside the tool's result, never in the text the model reads. `verdicts` reads a run's
   outcomes: a reply's for `{{achieved}}` and the answer checks, a report's for
   its cards and its goal. A result recorded without its outcomes (a replay, a
   validation record) is read from its words and numbers (`recorded.ts`).

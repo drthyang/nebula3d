@@ -154,6 +154,39 @@ describe("evaluateStage", () => {
     expect(e.max_ring_left).toBeNull();
     expect(e.max_ring_dent).toBeNull();
     expect(e.ring_rule).toMatch(/^not judged/);
+    expect(judge("rings", e)).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+  });
+
+  it("does not judge the rings on a grid too coarse for the 3D test, and says why, with a bump on the planes or none", async () => {
+    const coarse = "grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1";
+    api.fetchRingIsotropy.mockImplementation(async (_id: string, shells: { q: number; fwhm: number }[]) => ({
+      id: "demo.raw",
+      rule: { direction_share: 0.9, height_share: 0.15 },
+      shells: shells.map((sh) => ({ q_center: sh.q, fwhm: sh.fwhm, n_cells: 0, median_height: null, relative_height: null, isotropy: null, is_ring: false, not_judged: coarse })),
+      not_judged: coarse,
+    }));
+    ringAndBump();
+    const e = await evaluateStage("rings", dataset);
+    expect([e.max_ring_left, e.max_ring_dent, e.shells_judged]).toEqual([null, null, undefined]);
+    expect(e.ring_rule).toBe(`not judged: ${coarse}`);
+    expect(judge("rings", e)).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+    expect(headline("rings", e)).toMatch(/ring dent ≤ – · left ≤ –$/);
+    // No bump on any plane: on such a grid that is no evidence either, so the grid's limit is asked all the same.
+    api.fetchSlice.mockImplementation(async () => makeSlice(161, 161, () => 1, { half: 20 }));
+    api.fetchRingIsotropy.mockClear();
+    const flat = await evaluateStage("rings", dataset);
+    expect(api.fetchRingIsotropy).toHaveBeenCalledWith("demo.raw", []);
+    expect(flat.ring_rule).toBe(`not judged: ${coarse}`);
+    expect(judge("rings", flat)).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+  });
+
+  it("asks for the grid's limit with no bump on the planes, and passes an empty shell list as before where the grid is fine", async () => {
+    api.fetchSlice.mockImplementation(async () => makeSlice(161, 161, () => 1, { half: 20 }));
+    judgeIn3d();
+    const e = await evaluateStage("rings", dataset);
+    expect(api.fetchRingIsotropy).toHaveBeenCalledWith("demo.raw", []);
+    expect([e.max_ring_left, e.max_ring_dent, e.shells_judged]).toEqual([0, 0, []]);
+    expect(judge("rings", e)).toMatchObject({ kind: "pass" });
   });
 
   it("reports the ΔPDF window's weight on unmeasured space and the section's symmetry", async () => {

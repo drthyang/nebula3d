@@ -151,12 +151,18 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     // cell; h0l and 0kl on a hexagonal or tetragonal one), so every bump is
     // judged in 3D on the raw volume, and only confirmed rings count.
     const shells = shellsOf(all);
-    const judged = metaId && shells.length ? await safe(fetchRingIsotropy(metaId, shells)) : null;
+    // The 3D test of each bump, and the grid's own limit, asked with no bump
+    // too: on a grid too coarse for the test (too few voxels across a ring's
+    // width, nebula3d.preprocessing.ring_isotropy), the planes' bumps, or
+    // their absence, are no evidence either, and the rings are not judged.
+    const tested = metaId ? await safe(fetchRingIsotropy(metaId, shells)) : null;
+    const tooCoarse = typeof tested?.not_judged === "string" ? tested.not_judged : null;
+    const judged = shells.length && !tooCoarse ? (tested ?? null) : null;
     const shellOf = new Map<number, number>();
     shells.forEach((sh, k) => sh.members.forEach((i) => shellOf.set(i, k)));
     const verdictOf = (i: number) => judged?.shells[shellOf.get(i) ?? -1] ?? null;
     const isRing = (i: number) => verdictOf(i)?.is_ring === true;
-    const unjudged = shells.length > 0 && !judged;
+    const unjudged = (shells.length > 0 && !judged) || tooCoarse !== null;
     const rings = all.map((x, i) => ({ x, i })).filter(({ x, i }) => x.significant && isRing(i)).map(({ x }) => x);
     const worstOf = <T extends { at: number; residual_fraction: number }>(xs: T[], sign: 1 | -1) =>
       xs.reduce<T | null>(
@@ -196,7 +202,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),
       max_over_subtraction_fraction: max(r.map((x) => x?.over_subtraction_fraction)),
       // The deepest dent and largest leftover at the confirmed rings, over the
-      // planes; not judged when the 3D test could not run.
+      // planes; not judged when the 3D test could not run, or the grid is too
+      // coarse for it.
       max_ring_dent: planesMeasured && !unjudged ? roundSig(dent ? -dent.residual_fraction : 0) : null,
       max_ring_left: planesMeasured && !unjudged ? roundSig(left ? left.residual_fraction : 0) : null,
       worst_ring_dent: dent,
@@ -206,7 +213,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       // (isotropy: the height there over the median); the others are the
       // crystal's own scattering, which the removal must leave.
       ...(unjudged
-        ? { ring_rule: "not judged: the test of each bump in 3D could not run" }
+        ? { ring_rule: `not judged: ${tooCoarse ?? "the test of each bump in 3D could not run"}` }
         : {
             ring_rule: { direction_share: rule?.direction_share ?? null, height_share: rule?.height_share ?? null },
             // The rings, and the bumps significant on some plane (the rest are noise).
