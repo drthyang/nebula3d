@@ -562,8 +562,10 @@ const grain: CheckRule<GrainFacts> = {
 
 /**
  * A UB turned by this much (degrees) or more is reported: the fit's own noise
- * lies below it. The validation's grader keeps its own 0.1° (evals/validation.ts)
- * until the shared answer reader (plan 3.2): a separate rule, docs/evals.md.
+ * lies below it. The validation's grader holds an answer to the same limit
+ * with a number of its own (UB_NOISE_DEG, evals/validation.ts, which imports
+ * nothing of this module); a test holds the two to one boundary by behaviour
+ * (evals/validation.test.ts), so changing this one fails it (plan 3.2).
  */
 const UB_TURN = 0.05;
 

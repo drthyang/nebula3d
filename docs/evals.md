@@ -453,15 +453,24 @@ resolvable"). The text graders are heuristics (a clause that negates does not
 claim); the outputs' scores carry the verdict, and a reviewer reads each
 transcript.
 
-The UB's two thresholds are two rules, not one. The Pilot calls a UB turned at
-0.05° or more from an unsymmetrised fit, for `{{achieved}}` and the answer
-checks alike, and a symmetrised volume's UB not judged (`UB_TURNED` and
+A turned UB has one limit, 0.05°. The Pilot calls a UB turned at 0.05° or
+more from an unsymmetrised fit, for `{{achieved}}` and the answer checks
+alike, and a symmetrised volume's UB not judged (`UB_TURNED` and
 `UB_NOT_JUDGED`, `web/src/llm/verdicts/rules.ts`; the user's decision of
 2026-10-19, review entry D4). The grader reads a clause that calls the UB off,
-with every angle it writes under 0.1°, as no claim of a misorientation: a turn
-the size of the fit's own noise (`claimed`, `web/src/llm/evals/validation.ts`).
-The grader's 0.1° stays as it is until the answer checks and the graders share
-one reader of an answer's words (plan 3.2).
+with every angle it writes under 0.05°, as no claim of a misorientation: a
+turn the size of the fit's own noise (`claimed`, `web/src/llm/evals/validation.ts`).
+The grader keeps the number as its own (`UB_NOISE_DEG`) and imports nothing
+of the app's verdicts; a test holds the two to one boundary by what each does,
+bisecting the app's `UB_TURNED` and the grader's charge of "The UB is turned
+by x°" on `dev-control` to within 1e-9 (`validation.test.ts`), so a change to
+either rule fails it. On the dev cases built at 81³, the seven without a
+turned UB turn by far less, and the two agree on each
+(`devData/ubAgreement.replay.test.ts`). The grader's limit was 0.1° until
+2026-10-19 (plan 3.2, the manager on the user's delegation, review entry
+P3.2); the change moved no grade of the dev corpus
+(`web/src/llm/evals/answerTextGoldens.test.ts`), and the scenarios' checks do
+not read the UB's angle.
 
 ### What each run leaves
 
