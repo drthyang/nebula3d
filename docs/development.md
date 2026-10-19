@@ -91,6 +91,34 @@ CI sets it for every job; a value other than `1`, `0` or unset stops the run.
 `tests/conftest.py` wires it: a test that takes a `validation_case` argument
 gets the dev cases, and the test split's with the opt-in.
 
+Without it the test split cannot load at all. Its definitions are held out in a
+module of their own, `src/nebula3d/validation/holdout/heldout_cases.py`: do not
+open, print or read it. `cases("test")` imports it only with the opt-in (or the
+CLI's `--report`) and raises without it, so the tests that need the test split
+skip in a default run. No failure in the validation's tests shows a held-out
+case: names are masked, and values compared by count or digest. The web
+harness's manifest lists every case, so writing it needs the opt-in too:
+
+```bash
+PYTHONPATH=src python3 -m nebula3d.validation manifest --report \
+  > web/src/llm/evals/fixtures/validation-cases.json
+```
+
+The same opt-in gates the scenario evals' held-out fixture,
+`web/src/llm/evals/fixtures/holdout/heldout.json`: do not open, print or read it
+either. Its one reader, `web/src/llm/evals/heldoutFixture.ts`, reads it only with
+`NEBULA_HOLDOUT_TESTS=1`; without it `npm test` neither collects nor runs the
+held-out scenarios' replay (`heldout.test.ts`), and `localTools.test.ts` leaves
+their questions out. `heldoutFixture.test.ts` checks that no other module in
+`web/src` imports the file, names it or globs its way to it. CI's frontend job
+runs them, under the workflow's opt-in.
+
+What the validation reports on the test split is held out too, in
+`docs/evals/validation/holdout/` (arm A's `arm-a-test.json` and its table): do
+not open, print or read anything in it. `arm-a --split test --report` writes only
+there and prints how many cases pass. The held-out scan allows test values in
+that folder and nowhere else in the docs, `docs/evals.md` included.
+
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request,
 with `NEBULA_HOLDOUT_TESTS=1`:
 

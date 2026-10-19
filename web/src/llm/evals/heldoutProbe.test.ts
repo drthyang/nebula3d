@@ -17,6 +17,7 @@ import { CHAT_TOOLS, runToolCall } from "../tools";
 import { env, useBackend, writeText } from "./backend";
 import { pickDataset } from "./harness";
 import { HELDOUT_CALLS } from "./heldout";
+import { HELDOUT_FIXTURE_URL } from "./heldoutFixture";
 
 const probe = env("NEBULA_EVAL_PROBE_HELDOUT") === "1";
 
@@ -45,6 +46,7 @@ describe.skipIf(!probe)("record the held-out fixtures", () => {
       }
     }
     const fixture = { recorded: new Date().toISOString().slice(0, 10), datasets: used, contexts, results };
-    await writeText(new URL("./fixtures/heldout.json", import.meta.url), JSON.stringify(fixture, null, 1) + "\n");
+    // Written where the gated loader reads it (heldoutFixture.ts); never read back here.
+    await writeText(HELDOUT_FIXTURE_URL, JSON.stringify(fixture, null, 1) + "\n");
   }, 600_000);
 });

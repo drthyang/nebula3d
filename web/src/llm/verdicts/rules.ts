@@ -13,7 +13,7 @@
 import { built, evidence, inference, inferred, joined, quotedInference, reading, remedy, written, type Span, type Tagged } from "../inference";
 import { isTooCoarse } from "../metrics/coarse";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
-import { pedestalLeft } from "../metrics/flatten";
+import { PEDESTAL_LIMIT, pedestalLeft } from "../metrics/flatten";
 import { r2, SECOND_GRAIN_DEG, type GrainFacts } from "../metrics/grains";
 import { roundSig } from "../metrics/sliceStats";
 import { SYMMETRY_HOLDS } from "../metrics/symmetry";
@@ -24,6 +24,15 @@ export type Kind = "pass" | "attention" | "info";
 
 export type Stage = TuneStage;
 export const STAGES: readonly Stage[] = ["rings", "punch", "backfill", "flatten", "pdf"];
+
+/** How {{achieved}} names a stage (readers.ts), and the system prompt's checks after it (prompts/system.ts). */
+export const STAGE_NAMES: Record<Stage, string> = {
+  rings: "the ring removal",
+  punch: "the Bragg punch",
+  backfill: "the backfill",
+  flatten: "the flatten",
+  pdf: "the 3D-ΔPDF",
+};
 
 /** The checks: the five stages, and the checks on the result. */
 export type CheckId = Stage | "coverage" | "symmetry" | "texture" | "grain" | "ub";
@@ -261,11 +270,17 @@ const backfill: StageRule = {
  */
 export const FLATTEN_FLOOR_SIGMA_NOTE = "reported, not judged";
 
+/** Why the largest floor in σ is FLATTEN_FLOOR_SIGMA_NOTE, in the flatten's criterion and the system prompt (prompts/system.ts). */
+export const FLOOR_SIGMA_WHY = "σ is the cut's own spread, and the floors follow the diffuse level";
+
+/** The shells the flatten's rule judges a pedestal on (judgedShells, metrics/flatten.ts), in its criterion and the system prompt. */
+export const PEDESTAL_SHELLS = "the outer half of the |Q| shells the counts reach";
+
 // The flatten's goal: what to change about a pedestal left is reduction-qc's
 // step 6 (a floor rising with |Q| wants the b·Q² term and a fit range reaching
 // the coverage), and what a trend and a span near 1 are evidence of goes with it.
 const flatten: StageRule = {
-  criterion: criterionOf("flatten")`No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (the 1σ limit dropped at the user's choice, 2026-10-17; provisional).`,
+  criterion: criterionOf("flatten")`No pedestal: a floor trend and a span both ${PEDESTAL_LIMIT} or more over ${PEDESTAL_SHELLS}. The largest floor in σ is ${FLATTEN_FLOOR_SIGMA_NOTE}: ${FLOOR_SIGMA_WHY}.`,
   goal: goalOf("flatten")`Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.${evidence(
     " A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ",
   )}${remedy(": a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations.")}`,
@@ -280,6 +295,9 @@ const flatten: StageRule = {
 
 /** The back-FFT round trip's limit on r (the ΔPDF's criterion). */
 export const BACK_FFT_R_OK = 0.999;
+
+/** What the forward transform keeps, which the round trip is judged against (backFftOk): in the ΔPDF's criterion and the prompts (prompts/). */
+export const EVEN_PART = "the data's even part under Q → −Q";
 
 /**
  * Whether the back-FFT round trip passes, or null when it does not judge. The
@@ -328,7 +346,7 @@ function windowWeight(m: StageNumbers): number | null {
 export const D15_PDF_PASSES_UNMEASURED = false;
 
 const pdf: StageRule = {
-  criterion: criterionOf("pdf")`The back-FFT reproduces what the transform keeps, the data's even part under Q → −Q, to an r of 0.999 or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.`,
+  criterion: criterionOf("pdf")`The back-FFT reproduces what the transform keeps, ${EVEN_PART}, to an r of ${BACK_FFT_R_OK} or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.`,
   goal: goalOf("pdf")`The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate).${evidence(
     " A window that reaches further raises feature_snr with the backfill's guesses and the box's empty corners, which is worse, not better.",
   )} max_symmetry_break is the x–y section's largest RMS difference from its image under the cell's in-plane operations (worst_symmetry_op names it)${evidence(

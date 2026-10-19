@@ -8,6 +8,11 @@ argument runs on the dev cases alone by default: the test split's cases are
 neither collected nor run. ``NEBULA_HOLDOUT_TESTS=1`` adds them (CI sets it in
 every job that runs pytest), each under an opaque name, ``test-split-case-0``,
 ``-1`` and so on in the order the cases are defined, never under its id.
+
+The opt-in is also what lets the test split load at all: its definitions are held
+out in a module of their own, which ``cases("test")`` imports only with it and
+refuses without it (nebula3d.validation.cases). The tests that need the test split
+skip without it (tests/test_validation.py).
 """
 
 import os

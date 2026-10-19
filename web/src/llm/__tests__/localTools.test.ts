@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { HELDOUT_SCENARIOS } from "../evals/heldout";
+import { holdoutOptedIn } from "../evals/heldoutFixture";
 import { SCENARIOS } from "../evals/scenarios";
 import { CORE_TOOLS, lastQuestion, toolsFor } from "../localTools";
 import { CHAT_TOOLS, toolSpecs, type AgentTool } from "../tools";
@@ -14,13 +15,21 @@ const offered = (question: string) => toolsFor(question, CHAT_TOOLS).map((t) => 
 
 describe("toolsFor", () => {
   it("offers each eval question every tool its checks call for, and no action a check forbids", () => {
-    for (const s of [...SCENARIOS, ...HELDOUT_SCENARIOS]) {
+    // The held-out scenarios need no recorded data here, only their questions and
+    // checks; they still run with the opt-in alone (heldoutFixture.ts), and a failure
+    // names one by its place in the held-out set, not its id or check.
+    const named = [
+      ...SCENARIOS.map((s) => ({ s, name: s.id, held: false })),
+      ...(holdoutOptedIn() ? HELDOUT_SCENARIOS : []).map((s, i) => ({ s, name: `held-out scenario ${i}`, held: true })),
+    ];
+    for (const { s, name, held } of named) {
       const names = offered(s.question);
       for (const c of s.checks) {
+        const what = held ? name : `${name}: ${c.name}`;
         const needs = /^calls ([a-z_]+)/.exec(c.name)?.[1];
-        if (needs) expect(names, `${s.id}: ${c.name}`).toContain(needs);
+        if (needs) expect(names.includes(needs), `${what} is not offered a tool its checks call for`).toBe(true);
         const forbids = /^does not call ([a-z_]+)/.exec(c.name)?.[1];
-        if (forbids) expect(names, `${s.id}: ${c.name}`).not.toContain(forbids);
+        if (forbids) expect(names.includes(forbids), `${what} is offered an action a check forbids`).toBe(false);
       }
     }
   });
