@@ -816,6 +816,31 @@ def test_a_case_with_fewer_runs_than_the_others_does_not_pass():
     assert {r["case"]: r["pass"] for r in rows} == {"dev-ub": True, "dev-origin": False}
 
 
+def test_summarize_writes_the_table_from_the_grades_a_record_holds(tmp_path, capsys):
+    # After NEBULA_VALIDATION_REGRADE graded a record's words again: its table from what it holds.
+    missed = _live_run(
+        "dev-ub", "B", grades={"detected": False, "noFalseAlarm": True, "unsafe": []}
+    )
+    path = tmp_path / "record.json"
+    path.write_text(json.dumps({"split": "dev", "runs": [_live_run("dev-ub", "B"), missed]}))
+    main(["summarize", "--record", str(path)])
+    summary = json.loads(path.read_text())["summary"]
+    assert [(r["case"], r["passed"], r["detected"]) for r in summary] == [("dev-ub", 1, 1)]
+    assert "| `dev-ub` | B | 1/2 |" in capsys.readouterr().out
+
+
+def test_summarize_refuses_a_test_split_record_without_report(tmp_path, capsys):
+    # A made-up held-out record: refused before its runs are read, and named nowhere.
+    run = {"case": "test-made-up", "split": "test", "arm": "B", "grades": {}}
+    for record in ({"split": "test", "runs": [run]}, {"runs": [run]}):
+        path = tmp_path / "record.json"
+        path.write_text(json.dumps(record))
+        with pytest.raises(SystemExit, match="held-out test split"):
+            main(["summarize", "--record", str(path)])
+        assert "summary" not in json.loads(path.read_text())
+    assert "test-made-up" not in capsys.readouterr().out
+
+
 def test_what_a_model_can_see_names_no_case_fault_or_split(tmp_path):
     # The tools show a model its dataset's id and stem, and the other datasets the server lists.
     # (Every case's label is its own: test_every_case_has_a_label_of_its_own.)

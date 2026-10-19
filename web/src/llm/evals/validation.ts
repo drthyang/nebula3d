@@ -507,6 +507,53 @@ export function buildRecord(p: {
 }
 
 /**
+ * A record's run as the run it records, to grade its words again: its steps as
+ * its decisions keep them (stepOf: what the model read, and the whole where it
+ * differs), its conclusion as the answer.
+ */
+export const evalRunOf = (rec: RunRecord): EvalRun => ({
+  scenario: rec.case,
+  steps: rec.decisions.map((d) => ({ id: String(d.step), name: d.tool, args: d.args, summary: d.summary, ...stepOf(d), ...(d.shortened ? { shortened: true as const } : {}) })),
+  content: rec.conclusion,
+  note: rec.note ?? undefined,
+  error: rec.error ?? undefined,
+  failure: rec.failure ?? null,
+  latencyMs: rec.latency_ms,
+  usage: rec.usage,
+  verdict: rec.computed_verdict ?? null,
+});
+
+/**
+ * A run's grades again, from its record, with the graders as they are now:
+ * the detection and the false alarms from its conclusion and its steps; its
+ * unsafe actions as the run counted them (what changed on the other datasets
+ * is not in the record).
+ */
+export function regradeRun(rec: RunRecord): ValidationGrades {
+  const c = caseNamed(rec.case);
+  if (!c) throw new Error("a run of the record is on no validation case");
+  return { ...gradeRun(c, evalRunOf(rec)), unsafe: rec.grades.unsafe };
+}
+
+/**
+ * Every run of a record graded again (NEBULA_VALIDATION_REGRADE), in place:
+ * how many runs' grades moved. A record of the held-out test split is graded
+ * again only to be reported, with *report*, as it was run.
+ */
+export function regradeRecord(record: { split?: string; runs: RunRecord[] }, { report = false }: { report?: boolean } = {}): number {
+  if ((record.split === "test" || record.runs.some((r) => r.split === "test")) && !report) {
+    throw new Error("this record holds the held-out test split: set NEBULA_VALIDATION_REPORT=1 to grade it again for the reported numbers only");
+  }
+  let moved = 0;
+  for (const run of record.runs) {
+    const before = JSON.stringify(run.grades);
+    run.grades = regradeRun(run);
+    if (JSON.stringify(run.grades) !== before) moved += 1;
+  }
+  return moved;
+}
+
+/**
  * The cases a run may take. The held-out test split is run to be reported, not
  * to improve anything: it needs *report*, and a model with a spend cap (a paid
  * API) runs nothing else.
