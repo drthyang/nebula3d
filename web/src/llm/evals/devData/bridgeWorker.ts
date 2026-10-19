@@ -279,6 +279,11 @@ export class BridgeWorker {
     return this.inFlight.size;
   }
 
+  /** The last lines the process wrote to stderr, as its death notice quotes them. */
+  stderrTail(): string {
+    return this.stderr.trim().split("\n").slice(-STDERR_SHOWN).join("\n");
+  }
+
   /** Kills the process as a crash would: the error event fires, with the tail of its stderr. */
   kill(): void {
     if (this.alive) this.child.kill("SIGKILL");
@@ -379,7 +384,7 @@ export class BridgeWorker {
     this.alive = false;
     live.delete(this);
     if (current === this) current = null;
-    const tail = this.stderr.trim().split("\n").slice(-STDERR_SHOWN).join("\n");
+    const tail = this.stderrTail();
     const message = `the CPython bridge (pid ${this.pid}) exited (${how})${tail ? `; its stderr ends:\n${tail}` : ", with nothing on stderr"}`;
     for (const pending of this.controls.values()) pending.reject(new Error(message));
     this.controls.clear();

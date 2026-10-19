@@ -139,8 +139,8 @@ describe("the tools, through the bridge", () => {
 
 describe("a bridge that dies", () => {
   it("fails the calls in flight with the tail of its stderr, and the next handle starts a new one", async () => {
-    // The Cancel button's path first: the worker ends, and the next call boots
-    // a bridge whose stderr holds its start alone (the case's run is restored).
+    // The Cancel button's path first: the worker ends without an error, and
+    // the next call boots a new bridge (the case's run is restored in it).
     cancelPipeline();
     const c = devCase("dev-control");
     const { id } = await c.dataset();
@@ -153,8 +153,10 @@ describe("a bridge that dies", () => {
     expect(await run).toBe("error");
     const { events } = usePipelineStore.getState();
     const failed = events[events.length - 1]?.message ?? "";
-    expect(failed).toMatch(/^Worker error: the CPython bridge \(pid \d+\) exited \(signal SIGKILL\); its stderr ends:/);
-    expect(failed).toContain(`nebula3d dev-data bridge: pid ${dying.pid}`);
+    expect(failed).toMatch(/^Worker error: the CPython bridge \(pid \d+\) exited \(signal SIGKILL\); its stderr ends:\n/);
+    // The bridge writes a line to stderr as it starts, so its tail is never empty.
+    expect(dying.stderrTail()).not.toBe("");
+    expect(failed.endsWith(`\n${dying.stderrTail()}`)).toBe(true);
     expect(currentBridge()).toBeNull();
 
     const next = devCase("dev-control");
