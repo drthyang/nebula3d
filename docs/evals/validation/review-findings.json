@@ -663,5 +663,28 @@
    "on": "2026-10-19",
    "option": "accept: no unconfirmed ring is subtracted; the notice is loud"
   }
+ },
+ {
+  "source": "review",
+  "ref": "P1.6",
+  "at": "d8be858",
+  "kind": "orchestration",
+  "evidence": "The model-visible prompts stated criteria the verdicts no longer use. The system prompt said after_floor_max_sigma \"≲ 1 is flat\" (web/src/llm/prompts/system.ts:67), finding 6's 1σ clause, dropped on 2026-10-17: the flatten's verdict judges the pedestal alone (web/src/llm/verdicts/rules.ts:275; web/src/llm/metrics/flatten.ts:100), over the outer half of the |Q| shells the counts reach (flatten.ts:74), where the prompt took floor_trend \"over the whole coverage\" (system.ts:71). It said a back-FFT r \"clearly below 1 flags a transform, crop or band problem\" (system.ts:87-88), and the ΔPDF review asks whether the ΔPDF is \"trustworthy (consistency_pearson_r)\" (web/src/llm/prompts/templates.ts:86), while the verdict judges the round trip against the data's even part, back_fft_pearson_r_even, to 0.999 (rules.ts:295-297), and on unsymmetrised data r against the data is legitimately below 1; the flatten review asks for after_floor_max_sigma (templates.ts:85). The four checks (system.ts:130-135) covered the rings, the Bragg punch, the texture and Qmax, while {{achieved}} judges all five stages and the checks on their result and names the data's own problems (web/src/llm/verdicts/readers.ts:343, :353-390), so a reply that settled the four left it not judged. The ring check named the ring-energy ratio and the over-subtraction (system.ts:131-132), where the verdict reads max_ring_left and max_ring_dent at the confirmed rings; CRITERIA.flatten carried an internal note (rules.ts:268); \"the context above\" (system.ts:104) named context that arrives after the system prompt; and update_settings gives punchSearchMaxWidth as \"number 1–6\" with its default, 0 (off), outside it (web/src/llm/tools/index.ts:1556-1563; web/src/llm/tune/catalog.ts:233-238).",
+  "proposed_fix": "Each sentence states what the verdict judges, in the verdict module's own words and limits (FLATTEN_FLOOR_SIGMA_NOTE, FLOOR_SIGMA_WHY, PEDESTAL_SHELLS, PEDESTAL_LIMIT, EVEN_PART, BACK_FFT_R_OK; the criteria built from the same constants), tagged by class: a criterion stated as what the verdict judges is a definition, read in both arms, and what a value is evidence of stays evidence. The four checks become six, the five stages as {{achieved}} names them (STAGE_NAMES), with the checks on their result, and the data's own problems (the UB, the HKL origin, the counts' edge); arm C reads the same properties as a plain, unordered list. The criterion's note goes, and the context is \"in the first user message\". punchSearchMaxWidth's range is written in a tool file and checked by the catalog's validator, which refuses 0: left for after the tools' refactor (#4).",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "5f14231",
+  "tests": [
+   "web/src/llm/__tests__/prompts.test.ts (each sentence in the verdict module's words, in both arms: the flatten, the ΔPDF, the ring check, the criteria and the context; the checks name every stage and the data's own problems, and settling them judges {{achieved}}, where the four of before left it not judged)",
+   "web/src/llm/__tests__/modelVisible.test.ts (1-chat-arm-b.md, 1-chat-arm-c.md, 1-chat-tools-off.md, 3-goals-and-verdicts.md, 3-stage-reviews.md, 4-tool-results.md, 4-tool-results-arm-c.md, 6-inference.md)",
+   "web/src/llm/__tests__/armC.test.ts (arm C's text holds no inference span, no skill's name and no skill's sentence)",
+   "web/src/llm/__tests__/verdictGoldens.test.ts (the verdicts unchanged, the goldens untouched)"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 1.6). Implemented in e45a95e (the criteria's words: the flatten, the ΔPDF, the ring check, the stage reviews, the criterion's note, the context) and 5f14231 (the checks). The verdicts are unchanged and arm A is unaffected (TypeScript prompts only). The system prompt grows from 3,879 to 4,209 estimated tokens; every token-budget value stays within 5 % of its pin. Left: punchSearchMaxWidth's range (tools/index.ts), after #4.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "the prompts state what the checks judge; the four checks name all five stages and the UB"
+  }
  }
 ]
