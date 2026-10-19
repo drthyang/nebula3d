@@ -1,0 +1,23 @@
+{
+ "source": "validation",
+ "case": "dev-control",
+ "run": 1,
+ "step": null,
+ "kind": "science-error",
+ "evidence": "The flatten verdict is \"needs attention\" on all eight dev volumes, the clean control and the planted case after the Q² term included, because the floors read 1.5 to 1.8 σ against the limit of 1σ (control 1.72σ, trend 0.52, span 1.24). The clause cannot be met on these volumes whatever the flatten did; the pedestal rule separates them.",
+ "proposed_fix": "The user's call: keep the 1σ clause, widen it, or drop it where the floors follow the diffuse level.",
+ "needs_user_approval": true,
+ "arm": "sweep",
+ "status": "implemented",
+ "commit": "7e5f4de",
+ "tests": [
+  "web/src/llm/__tests__/report.test.ts (judges the flatten by the pedestal rule)",
+  "web/src/llm/__tests__/tools.test.ts (assess_stage)"
+ ],
+ "note": "Approved by the user on 2026-10-17, option \"drop\": the 1σ clause is dropped from the flatten's verdict, which rests on the pedestal rule (a trend and a span both 0.8 or more of the diffuse level); the floor in σ is still reported. Labelled provisional in the code and docs, as the 0.8 limits are.",
+ "decision": {
+  "by": "the user",
+  "on": "2026-10-17",
+  "option": "drop"
+ }
+}
