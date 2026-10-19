@@ -175,6 +175,73 @@ end, and `FIT_Q_MAX` carries the fit to the data's coverage (default 10 Å⁻¹)
 Use `examples/validate_flatten.py` to check isotropy, feature retention, and
 over-subtraction on your own volumes.
 
+#### The floors and the pedestal
+
+The flatten's **floor** of a |Q| shell is the 25th percentile of the shell's
+measured voxels (`np.percentile`, linear interpolation), in shells 0.05 Å⁻¹
+wide from the smallest measured |Q| to the largest; a shell with fewer than 20
+measured voxels has none. The model is fitted to the floors inside the fit
+range (0.8–10 Å⁻¹ by default). After a good flatten the floors sit near zero
+and level at every |Q|. Floors that still rise with |Q| are a **pedestal** the
+model left, most often the inelastic background (thermal diffuse and
+multiphonon scattering with neutrons, Compton scattering with X-rays), whose
+leading term grows as Q²: that is what `Q2=1` (the Pilot's `flattenQ2`) takes.
+
+NEBULA Pilot judges it by one rule (`web/src/llm/metrics/flatten.ts`,
+provisional):
+
+1. **The shells judged** are the shells the counts reach, at least 0.95 of
+   the shell's voxels measured and the centre at or past the fit range's
+   start, from half the outermost such shell's |Q| outward (`judgedShells`).
+   Inside, the floors follow the crystal's own diffuse level; the outer half
+   is where an inelastic background is largest.
+2. **The trend** is the judged floors' rank correlation with |Q| (Spearman,
+   at least five shells).
+3. **The span** is the judged floors' range over the diffuse level: the
+   median of the flatten's input over the voxels measured both before and
+   after it.
+4. **A pedestal is left** when the trend is 0.8 or more in size and the span
+   0.8 or more (`pedestalLeft`).
+
+The Pilot reads those floors on the three planes through the origin (hk0,
+h0l, 0kl; 30 shells out to each plane's farthest |Q|). The whole volume's are
+measured by `nebula3d.preprocessing.shell_floors` (server:
+`GET /api/volumes/{id}/shell-floors`; browser:
+`webbridge.volume_shell_floors_json`, the same fields), on the flatten's own
+shells, so on the flatten's input the floors are the flatten's own levels,
+value for value. For the flattened stage it measures the flatten's input
+(the backfilled stage) as well, on the same shells, and the level:
+
+| Field | Per shell? | What it is |
+| --- | --- | --- |
+| `centres`, `q_edges` | yes | The shells' centres and edges (Å⁻¹) |
+| `totals` | yes | The grid's voxels in the shell, measured or not |
+| `counts` | yes | The volume's measured voxels in it (mask set, value finite) |
+| `floors` | yes | Their floor (the `percentile`, 25 by default); `null` under `min_count` |
+| `medians` | yes | Their median, the same way |
+| `counts_before`, `floors_before`, `medians_before` | yes | The same of the flatten's input (`before_id`); `null` for other stages |
+| `level`, `level_count` | no | The flatten input's median over the voxels measured in both, and how many: the span's denominator. Without an input, the volume's own median |
+| `q_step`, `percentile`, `min_count` | no | The settings measured with (the flatten's defaults unless asked) |
+
+`floors`, `centres`, `counts` and `totals` are what `judgedShells` takes from
+a plane, so the same rule reads the whole volume: the trend is `rankTrend` of
+the judged `floors` in |Q| order, the span is their range over `level`, and
+`pedestalLeft` judges the two. On a synthetic volume with an isotropic Q²
+pedestal (a uniform diffuse, measured out to 6 Å⁻¹) the planes and the volume
+read the same pedestal: a trend of 1 on all, a span of 0.99 on each plane and
+0.94 on the volume, with the planes' floors within 0.03 of the volume's. The
+spans differ by the level: a shell's voxels grow as Q² in the volume and as Q
+on a plane, so the volume's median sits further out, higher where a pedestal
+rises. With the same pedestal kept off the three planes, the planes read a
+level floor (span 0.03–0.05) and the volume the pedestal (trend 1, span 0.96).
+
+The measurement reads the volumes one slab of H planes at a time and finds
+each percentile by a radix select on the values' sort keys, narrowing a
+histogram pass by pass, three passes in all, where the flatten sorts every
+measured voxel at once. On a 401×401×301 float32 volume and its input, a third
+of it measured, it holds 28 MiB at its peak in low-memory mode (the browser)
+and 68 MiB natively, and takes 3–5 s; both modes give the same numbers.
+
 ### 5. Compute The 3D-ΔPDF
 
 ```bash

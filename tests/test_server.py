@@ -1085,3 +1085,64 @@ def test_job_manager_runs_pipeline_in_process(tmp_path):
     assert paths.delta_pdf.exists()
     stages_done = {e["stage"] for e in job.events if e.get("status") == "done"}
     assert {"backfill", "flatten", "pdf"} <= stages_done
+
+
+def write_flatten_stages(root):
+    """A dataset under *root* whose backfilled and flattened stages exist:
+    a uniform diffuse on a constant and a Q² pedestal, flattened by the
+    flatten itself (constant only, so the Q² stays).  Returns both volumes."""
+    from nebula3d.preprocessing import flatten_radial_background
+
+    rng = np.random.default_rng(11)
+    filled = HKLVolume.from_arrays(np.zeros((33, 35, 37)), (-3, 3), (-3, 3), (-3, 3),
+                                   ub_matrix=UB)
+    q = filled.q_magnitude()
+    filled.data[...] = 0.5 + 0.03 * q ** 2 + 0.2 * rng.random(q.shape)
+    filled.mask &= q < 4.5
+    flat = flatten_radial_background(filled).volume
+    for name in ("raw", "processed"):
+        (root / name).mkdir(exist_ok=True)
+    paths = pipeline_paths(root / "raw" / f"{STEM}.nxs", proc_dir=root / "processed")
+    nebula3d.save(filled, paths.ringremoved)
+    nebula3d.save(filled, paths.backfilled)
+    nebula3d.save(flat, paths.flattened)
+    return filled, flat
+
+
+def test_volume_shell_floors(tmp_path):
+    """/shell-floors: the flattened stage's floors over the whole volume, its
+    input's on the same shells (the flatten's own levels) and the level."""
+    from nebula3d.preprocessing import flatten_radial_background, shell_floors
+
+    filled, flat = write_flatten_stages(tmp_path)
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    r = client.get(f"/api/volumes/{SLUG}.flattened/shell-floors")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] == f"{SLUG}.flattened" and body["before_id"] == f"{SLUG}.backfilled"
+    assert (body["q_step"], body["percentile"], body["min_count"]) == (0.05, 25.0, 20)
+    want = shell_floors(flat, before=filled)
+
+    def listed(a):
+        return [None if not np.isfinite(x) else float(x) for x in a]
+
+    assert body["floors"] == listed(want.floors)
+    assert body["floors_before"] == listed(flatten_radial_background(filled).raw_levels)
+    assert body["medians_before"] == listed(want.medians_before)
+    assert body["counts"] == want.counts.tolist() and body["totals"] == want.totals.tolist()
+    assert len(body["q_edges"]) == len(body["centres"]) + 1 == want.centres.size + 1
+    assert body["level"] == float(want.level)
+    # The flatten took the constant: the floors after it rise with the Q².
+    floors = [f for f in body["floors"] if f is not None]
+    assert floors[-1] - floors[0] > 0.3
+    # Another stage alone, and the settings as asked.
+    alone = client.get(f"/api/volumes/{SLUG}.backfilled/shell-floors",
+                       params={"percentile": 10, "q_step": 0.1, "min_count": 5}).json()
+    assert alone["before_id"] is None and alone["floors_before"] is None
+    assert (alone["q_step"], alone["percentile"], alone["min_count"]) == (0.1, 10.0, 5)
+    assert alone["level_count"] == int((filled.mask & np.isfinite(filled.data)).sum())
+    for bad in ({"percentile": 101}, {"q_step": 0}, {"min_count": 0}, {"q_step": 1e-5}):
+        assert client.get(f"/api/volumes/{SLUG}.flattened/shell-floors",
+                          params=bad).status_code == 422
+    assert client.get("/api/volumes/nope.flattened/shell-floors").status_code == 404

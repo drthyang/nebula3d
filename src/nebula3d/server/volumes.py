@@ -84,12 +84,14 @@ def load_volume(path: Path) -> HKLVolume:
 
 
 _ring_cache: dict[tuple, dict] = {}
+_floors_cache: dict[tuple, dict] = {}
 
 
 def clear_cache() -> None:
     with _lock:
         _cache.clear()
         _ring_cache.clear()
+        _floors_cache.clear()
 
 
 _CELL_KEYS = ("a", "b", "c", "alpha", "beta", "gamma")
@@ -366,6 +368,62 @@ def volume_ring_isotropy(path: Path, shells: list[tuple[float, float]]) -> dict:
     with _lock:
         _ring_cache.clear()  # one volume's shells at a time
         _ring_cache[key] = out
+    return out
+
+
+def volume_shell_floors(path: Path, before: Path | None = None, *, q_step: float | None = None,
+                        percentile: float | None = None,
+                        min_count: int | None = None) -> dict:
+    """The floor of every |Q| shell of the volume, over the whole volume
+    (:func:`~nebula3d.preprocessing.shell_floors.shell_floors`), with *before*
+    (the flatten's input) measured on the same shells; cached by both files'
+    ``(path, mtime)`` and the settings.
+
+    Unset settings are the flatten's defaults (0.05 Å⁻¹ shells, the 25th
+    percentile, 20 voxels).  Shell edges and centres are rounded to 1e-6 Å⁻¹;
+    the floors, medians and level are exact, ``None`` where a shell has too
+    few voxels.  Raises ``ValueError`` for settings out of range.
+    """
+    from nebula3d.preprocessing.shell_floors import (
+        FLOOR_PERCENTILE,
+        MIN_COUNT,
+        Q_STEP,
+        shell_floors,
+    )
+
+    settings = (Q_STEP if q_step is None else float(q_step),
+                FLOOR_PERCENTILE if percentile is None else float(percentile),
+                MIN_COUNT if min_count is None else int(min_count))
+    key = (str(path), path.stat().st_mtime,
+           None if before is None else (str(before), before.stat().st_mtime), settings)
+    with _lock:
+        hit = _floors_cache.get(key)
+    if hit is not None:
+        return hit
+    r = shell_floors(load_volume(path),
+                     before=None if before is None else load_volume(before),
+                     q_step=settings[0], percentile=settings[1], min_count=settings[2])
+
+    def floats(a: np.ndarray | None) -> list[float | None] | None:
+        return None if a is None else [float(x) if np.isfinite(x) else None for x in a]
+
+    def ints(a: np.ndarray | None) -> list[int] | None:
+        return None if a is None else [int(x) for x in a]
+
+    out = {
+        "q_step": r.q_step, "percentile": r.percentile, "min_count": r.min_count,
+        "q_edges": [round(float(x), 6) for x in r.q_edges],
+        "centres": [round(float(x), 6) for x in r.centres],
+        "totals": ints(r.totals), "counts": ints(r.counts),
+        "floors": floats(r.floors), "medians": floats(r.medians),
+        "counts_before": ints(r.counts_before), "floors_before": floats(r.floors_before),
+        "medians_before": floats(r.medians_before),
+        "level": float(r.level) if np.isfinite(r.level) else None,
+        "level_count": int(r.level_count),
+    }
+    with _lock:
+        _floors_cache.clear()  # one volume's floors at a time
+        _floors_cache[key] = out
     return out
 
 

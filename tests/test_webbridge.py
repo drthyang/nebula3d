@@ -190,6 +190,42 @@ def test_dpdf_features_json_is_the_servers_response(tmp_path, declared):
     assert bridged["grouped_by"].startswith("declared symmetry (m-3m" if declared else "sign,")
 
 
+def test_volume_shell_floors_json_is_the_servers_response(tmp_path, monkeypatch):
+    """The browser build's whole-volume shell floors are the native server's,
+    field for field: computed natively by the server and in low-memory mode
+    by the bridge, as in the browser."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d.server import volumes as vol_mod
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+    from nebula3d.server.schemas import ShellFloorsOut
+    from tests.test_server import SLUG, write_flatten_stages
+
+    write_flatten_stages(tmp_path)
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    for vid, settings in ((f"{SLUG}.flattened", {}),
+                          (f"{SLUG}.flattened", {"percentile": 10.0, "q_step": 0.1,
+                                                 "min_count": 5}),
+                          (f"{SLUG}.backfilled", {})):
+        monkeypatch.setenv("NEBULA3D_LOW_MEMORY", "0")  # native; restored after the test
+        vol_mod.clear_cache()
+        served = client.get(f"/api/volumes/{vid}/shell-floors", params=settings)
+        assert served.status_code == 200, served.text
+        vol_mod.clear_cache()  # the bridge computes its own
+        webbridge.setup(workdir=str(tmp_path))  # low-memory mode, as in the browser
+        bridged = json.loads(webbridge.volume_shell_floors_json(vid, **settings))
+        assert bridged == served.json()
+        assert set(bridged) == set(ShellFloorsOut.model_fields)
+    assert bridged["before_id"] is None
+    flattened = json.loads(webbridge.volume_shell_floors_json(f"{SLUG}.flattened"))
+    assert flattened["before_id"] == f"{SLUG}.backfilled"
+    with pytest.raises(ValueError):
+        webbridge.volume_shell_floors_json(f"{SLUG}.flattened", percentile=101.0)
+    with pytest.raises(KeyError):
+        webbridge.volume_shell_floors_json("nope.flattened")
+
+
 def test_consistency_meta_and_slice(ran_pipeline):
     dataset_id, _datasets, _events = ran_pipeline
     meta = json.loads(webbridge.consistency_meta_json(dataset_id))

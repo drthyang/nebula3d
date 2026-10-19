@@ -88,6 +88,7 @@ __all__ = [
     "volume_ub_check_json",
     "dataset_regrid_json",
     "volume_ring_isotropy_json",
+    "volume_shell_floors_json",
     "dpdf_meta_json",
     "dpdf_slice",
     "dpdf_features_json",
@@ -1194,6 +1195,23 @@ def volume_ring_isotropy_json(volume_id: str, q: str, fwhm: str) -> str:
     stage = _resolve(volume_id, "hkl")
     m = _vol.volume_ring_isotropy(stage.path, _vol.parse_ring_shells(q, fwhm))
     return _json({**m, "id": volume_id})
+
+
+def volume_shell_floors_json(volume_id: str, q_step: float | None = None,
+                             percentile: float | None = None,
+                             min_count: int | None = None) -> str:
+    """The floor of every |Q| shell of an HKL stage over the whole volume, and
+    of the flatten's input for the flattened stage (mirrors
+    GET /api/volumes/{id}/shell-floors: the same fields).  Low-memory mode, as
+    every bridge call: the volumes are read a slab at a time."""
+    stage = _resolve(volume_id, "hkl")
+    pair = _ds.flatten_input_of(_require_cfg(), volume_id)
+    m = _vol.volume_shell_floors(
+        stage.path, pair[1].path if pair else None,
+        q_step=None if q_step is None else float(q_step),
+        percentile=None if percentile is None else float(percentile),
+        min_count=None if min_count is None else int(min_count))
+    return _json({"id": volume_id, "before_id": pair[0] if pair else None, **m})
 
 
 def dpdf_meta_json(volume_id: str) -> str:
