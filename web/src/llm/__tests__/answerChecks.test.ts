@@ -431,12 +431,12 @@ describe("an earlier turn's result, once a later run recomputed what it measured
     const { standing, stale } = earlierSources([all], [recomputed]);
     expect(standing.map((s) => JSON.parse(s))).toEqual([{ rings: { max_ring_left: 0.012 } }]);
     expect(JSON.parse(stale)).toEqual({ flatten: { max_floor_trend: 0.83 }, pdf: { back_fft_pearson_r_even: 0.9993 } });
-    const peaks = step("dpdf_peaks", {}, { features: [{ length_A: 2.97, size_sigma: 41 }] });
+    const peaks = step("dpdf_peaks", {}, { features: [{ sign: "+", size_sigma: 41 }] });
     expect(earlierSources([peaks], [recomputed])).toEqual({ standing: [], stale: peaks.result });
   });
 
   it("keeps what measured no stage a run recomputes: the raw volume, or no topic at all", () => {
-    const ub = step("ub_check", {}, { orientation_change_deg: 0.61 });
+    const ub = step("ub_check", {}, { orientation_change_deg: 0.612 });
     const cut = step("measure_reciprocal_cut", { plane: "hk0", value: 0 }, { flattened: { floor: 0.4 } });
     expect(earlierSources([ub, cut], [recomputed])).toEqual({ standing: [ub.result, cut.result], stale: "" });
   });
