@@ -10,13 +10,20 @@
   sections through the origin, read as before. An operation that maps none of
   them onto one is tested on the voxels it maps from one onto another; one
   that mixes axes whose grid steps differ is not tested, and `not_tested` says
-  why. Each operation reports `rms_difference` (its worst section's), `pairs`,
-  `tested_on` and `moves_c`. The limit stays 1e-3, and an operation that
-  moves c is judged as one that keeps it. Only the declared group is judged:
-  a lattice operation the declared group lacks (the a ↔ b mirror of data
-  symmetrised with 6/m, the four-fold of mmm on a square cell) is no longer
-  tested; with no operations declared, the cell's in-plane ones are, as
-  before, now on the x–z and y–z sections too. Known answers on constructed
-  ΔPDFs, and dev-control symmetrised over m-3m through the default run (every
-  one of its 47 operations within 2e-7), pin it (plan 4.3, the manager's
-  decision on the user's delegation, 2026-10-19).
+  why. The ΔPDF is centrosymmetric by construction, so an operation and its
+  product with the inversion give the same number: they are one entry ("two-fold
+  ∥ c / mirror ⊥ c"), and m-3m's 47 operations read as 24. Each entry reports
+  `rms_difference` (its worst section's), `pairs`, `tested_on` and `moves_c`.
+  The limit stays 1e-3, and an operation that moves c is judged as one that
+  keeps it. Only the declared group is judged: a lattice operation the declared
+  group lacks (the mirrors ⊥ a and ⊥ b of data symmetrised with 4/m on a
+  square cell, the four-fold of mmm) is no longer tested, and the ΔPDF
+  evaluation's `max_symmetry_break` (`assess_stage` for the ΔPDF, the tuning,
+  the report's card) tests the same group, those of its operations that map
+  the x–y section through the origin onto itself. With no operations declared,
+  the cell's in-plane ones are tested, as before, now on the x–z and y–z
+  sections too. Where no operation can be tested the verdict is "not judged",
+  and says why, never a pass. Known answers on constructed ΔPDFs, and
+  dev-control symmetrised over m-3m through the default run (every operation
+  within 2e-7), pin it (plan 4.3, the manager's decision on the user's
+  delegation, 2026-10-19).
