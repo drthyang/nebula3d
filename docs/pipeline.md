@@ -127,10 +127,19 @@ scattering there in some directions only
 (`assess_stage` with stage rings) asks the same of every bump its three planes
 show. A grid too coarse for that test cannot tell a ring from the crystal's own
 scattering, so the test says so ("grid too coarse: …") and judges nothing: the
-removal subtracts no shell it cannot confirm, its log says how many it could
-not judge and why, and the Pilot's ring check is not judged, giving the reason
-in `ring_rule`, never a verdict. Two limits, each from the rule's own
-constants:
+removal subtracts no shell it cannot confirm, and the Pilot's ring check is not
+judged, giving the reason in `ring_rule`, never a verdict. The removal says so
+out loud. Its log line ends on a notice, marked ⚠, such as
+
+```text
+4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.
+```
+
+with the count, and what the grid needs from the limit it failed (below). Its
+diagnostics record it (`unconfirmed_at_grid`: the count, the need, the notice
+and the shells' |Q|; `GET /api/rings/{id}/diagnostics`).
+`pooled_confirm_rings` is a `RingParams` setting of the Python API: the
+console does not offer it. Two limits, each from the rule's own constants:
 
 - **Across a ring.** The test reads each direction's radial profile in |Q|
   bins of 0.02 Å⁻¹, never finer than half a voxel (finer bins share the

@@ -64,6 +64,7 @@ from nebula3d.core import low_memory as _low_memory
 from nebula3d.io.delta_pdf_file import load_delta_pdf, save_delta_pdf
 from nebula3d.io.mantid_nxs import NEBULA3D_GROUP
 from nebula3d.preprocessing import (
+    GRID_TOO_COARSE,
     GlobalRingConfig,
     IsotropyConfig,
     PooledRingConfig,
@@ -71,6 +72,7 @@ from nebula3d.preprocessing import (
     fit_global_rings,
     fit_pooled_rings,
     flatten_radial_background,
+    grid_needs,
     trim_coverage_edge,
     write_global_ring_diagnostics,
 )
@@ -105,6 +107,8 @@ __all__ = [
     "write_bragg_profile_json",
     "read_flatten_settings",
     "read_punch_record",
+    "RING_GRID_REMEDY",
+    "unconfirmed_rings_notice",
     "pipeline_paths",
     "run_pipeline",
 ]
@@ -1052,6 +1056,26 @@ async def remove_rings_async(
     return out_vol
 
 
+#: The two ways to have the rings the pooled ring removal could not confirm on
+#: its grid subtracted, as its notice ends (:func:`unconfirmed_rings_notice`).
+#: The console tags this sentence as a remedy (web/src/llm/verdicts/rules.ts,
+#: written the same), so the validation's arm C reads the notice without it.
+RING_GRID_REMEDY = ("Use a finer grid, or set pooled_confirm_rings=False to subtract every "
+                    "detected ring.")
+
+
+def unconfirmed_rings_notice(count: int, needs: str) -> str:
+    """What the pooled ring removal says of the *count* shells it detected and
+    could not confirm as powder rings on its grid, which it does not subtract:
+    the grid's need (*needs*, from :func:`~nebula3d.preprocessing.ring_isotropy.
+    grid_needs`), then :data:`RING_GRID_REMEDY`. Out loud, in the run log and
+    the stage's diagnostics (the manager's condition, on the user's delegation,
+    2026-10-19, for subtracting no unconfirmed ring)."""
+    rings = "1 ring" if count == 1 else f"{count} rings"
+    return (f"{rings} detected but not confirmed at this grid (needs ≥ {needs}); "
+            f"not subtracted. {RING_GRID_REMEDY}")
+
+
 def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
                          progress: ProgressFn | None) -> HKLVolume:
     """The ``ring_model="pooled"`` stage: whole-volume, two passes over the stack."""
@@ -1064,6 +1088,8 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
     def _progress(fraction: float, message: str) -> None:
         _emit(progress, "rings", "progress", fraction, message)
 
+    isotropy = IsotropyConfig(direction_share=p.pooled_ring_direction_share,
+                              height_share=p.pooled_ring_height_share)
     result = fit_pooled_rings(vol, PooledRingConfig(
         plane=cfg.plane,
         q_min=p.q_min,
@@ -1077,8 +1103,7 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
         envelope_scale=p.pooled_envelope_scale,
         amp_cap=p.pooled_amp_cap,
         confirm_rings=p.pooled_confirm_rings,
-        isotropy=IsotropyConfig(direction_share=p.pooled_ring_direction_share,
-                                height_share=p.pooled_ring_height_share),
+        isotropy=isotropy,
     ), progress=_progress)
     out = result.cleaned
     # Attached transiently (as global_v2 does) so run_pipeline writes the sidecar.
@@ -1088,17 +1113,30 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
     rejected_shells: list[Any] = listed if isinstance(listed, list) else []
     # The shells the test could not judge (a grid too coarse, no clean flank)
     # are kept too, but they are not shown to be the crystal's own.
-    unjudged = [str(s["isotropy"]["not_judged"]) for s in rejected_shells
-                if (s.get("isotropy") or {}).get("not_judged")]
+    unjudged = [s for s in rejected_shells if (s.get("isotropy") or {}).get("not_judged")]
+    reason = [str(s["isotropy"]["not_judged"]) for s in unjudged]
+    # Those the grid left unjudged are rings it detected and could not confirm:
+    # not subtracted, which the log says out loud, with what the grid needs and
+    # the two ways out, and the diagnostics record (G1).
+    at_grid = [s for s, w in zip(unjudged, reason) if w.startswith(GRID_TOO_COARSE)]
+    other = [w for w in reason if not w.startswith(GRID_TOO_COARSE)]
     rejected = len(rejected_shells) - len(unjudged)
-    why = "; ".join(dict.fromkeys(unjudged))  # each reason once, in the shells' order
+    why = "; ".join(dict.fromkeys(other))  # each reason once, in the shells' order
+    notice = ""
+    if at_grid:
+        needs = grid_needs(vol, isotropy)
+        notice = unconfirmed_rings_notice(len(at_grid), needs)
+        d["unconfirmed_at_grid"] = {
+            "count": len(at_grid), "needs": needs, "notice": notice,
+            "q_centers": [round(float(s["q_center"]), 4) for s in at_grid]}
     _emit(progress, "rings", "done", 1.0,
           f"pooled ring removal {d['status']}: {len(d['shells'])} shells "  # type: ignore[arg-type]
           + (f"confirmed as rings, {rejected} not (the crystal's own scattering, kept) "
-             + (f"and {len(unjudged)} not judged ({why}; kept) " if unjudged else "")
+             + (f"and {len(other)} not judged ({why}; kept) " if other else "")
              if p.pooled_confirm_rings else "")
           + f"(of {d['n_planes_fitted']}/{d['n_planes']} planes fitted), removed "
-          f"{100.0 * float(d['removed_fraction']):.3g}% of |I|")  # type: ignore[arg-type]
+          f"{100.0 * float(d['removed_fraction']):.3g}% of |I|"  # type: ignore[arg-type]
+          + (f". ⚠ {notice}" if notice else ""))
     return out
 
 

@@ -366,6 +366,7 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 | GET | `/api/consistency/{dataset_id}/slice?panel=data\|recon\|residual\|dpdf&...` | binary consistency slice |
 | POST | `/api/consistency/{dataset_id}/save` | save the band-limited back-FFT result |
 | GET | `/api/bragg/{dataset_id}/profile` | the fitted Bragg profile the punch recorded |
+| GET | `/api/rings/{dataset_id}/diagnostics` | what the ring stage recorded in its diagnostics: their `status`, and `unconfirmed_at_grid`, the rings the pooled model detected and could not confirm on its grid, which it did not subtract (`count`, `needs`, the `notice` its run log ends on, `q_centers`), else null. Diagnostics older than the ring-removed volume give none (`has_diagnostics` false). The bridge's `ring_diagnostics_json` returns the same fields. See [which shells are rings](pipeline.md#which-shells-are-rings-and-the-grid-that-takes) |
 | GET, PUT | `/api/data-root` | the data root the server reads, and changing it |
 | POST | `/api/data-root/browse` | pick the data root in a native folder dialog |
 | GET | `/api/health` | liveness |

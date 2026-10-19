@@ -15,9 +15,11 @@ import pytest
 from nebula3d.core import HKLVolume
 from nebula3d.demo import DemoModel, demo_volume
 from nebula3d.preprocessing import (
+    GRID_TOO_COARSE,
     IsotropyConfig,
     PooledRingConfig,
     fit_pooled_rings,
+    grid_needs,
     grid_too_coarse,
     judge_shells,
     shell_isotropy,
@@ -168,6 +170,24 @@ def test_the_validation_dev_grids_either_side_of_the_limit():
     assert grid_too_coarse(_grid(0.05, ub=a_star)) == ""
 
 
+@pytest.mark.parametrize("cap", [IsotropyConfig().fwhm_cap, 0.3])
+def test_what_the_grid_needs_is_the_rules_own(cap):
+    """The need the ring removal's notice states, from the same constants as
+    the limit: on a grid too coarse for any ring, the voxels its reason says
+    the grid is under, across fwhm_cap; else the share of a shell's direction
+    cells, and the voxels in each of their |Q| bins, that the rule asks."""
+    cfg = IsotropyConfig(fwhm_cap=cap)
+    coarse = _grid(cap / (SAMPLES_PER_FWHM * 0.5) * 1.01)
+    assert grid_too_coarse(coarse, cfg).endswith(", under 1")
+    assert grid_needs(coarse, cfg) == f"1 voxel across {cap:g} Å⁻¹"
+    fine = _grid(cfg.q_step)
+    assert grid_needs(fine, cfg) == "90 % of the direction cells with 5 voxels in each |Q| bin"
+    assert grid_needs(fine, IsotropyConfig(fwhm_cap=cap, direction_share=0.75, min_voxels=8)) == (
+        "75 % of the direction cells with 8 voxels in each |Q| bin")
+    assert GRID_TOO_COARSE == "grid too coarse"
+    assert grid_too_coarse(coarse, cfg).startswith(GRID_TOO_COARSE)
+
+
 def test_a_grid_too_coarse_judges_no_shell():
     # 0.1875 Å⁻¹ a voxel: 0.85 voxels across 0.16 Å⁻¹.
     vol = _volume("ring", n=33)
@@ -181,8 +201,9 @@ def test_a_grid_too_coarse_judges_no_shell():
 def test_the_ring_removal_subtracts_no_ring_on_a_grid_too_coarse_to_confirm_it():
     """The demo's aluminium rings on 0.2 r.l.u. a voxel (0.3 Å⁻¹): the shells
     are found but none can be confirmed, so none is subtracted, and the log
-    says they were not judged (not that they are the crystal's own)."""
-    from nebula3d.pipeline import RingParams, remove_rings
+    says so out loud (not that they are the crystal's own): how many, what
+    the grid needs, and the two ways out."""
+    from nebula3d.pipeline import RING_GRID_REMEDY, RingParams, remove_rings
 
     vol = demo_volume(41, seed=3, model=DemoModel(sro_amp=0.09, ring_amp=0.9), dtype=np.float32)
     reason = grid_too_coarse(vol)
@@ -194,11 +215,18 @@ def test_the_ring_removal_subtracts_no_ring_on_a_grid_too_coarse_to_confirm_it()
     assert all(s["isotropy"]["not_judged"] == reason for s in d["rejected_shells"])
     assert np.array_equal(res.cleaned.data, vol.data)
     lines: list[str] = []
-    remove_rings(vol, RingParams(ring_model="pooled"),
-                 progress=lambda stage, status, frac, msg: lines.append(msg or ""))
+    out = remove_rings(vol, RingParams(ring_model="pooled"),
+                       progress=lambda stage, status, frac, msg: lines.append(msg or ""))
     done = lines[-1]
-    assert (f"0 not (the crystal's own scattering, kept) and {len(d['rejected_shells'])} not "
-            f"judged ({reason}; kept)") in done, done
+    n = len(d["rejected_shells"])
+    notice = (f"{n} ring{'s' if n > 1 else ''} detected but not confirmed at this grid (needs ≥ "
+              f"{grid_needs(vol)}); not subtracted. {RING_GRID_REMEDY}")
+    assert done.endswith(f"0 not (the crystal's own scattering, kept) (of 41/41 planes fitted), "
+                         f"removed 0% of |I|. ⚠ {notice}"), done
+    assert "not judged" not in done
+    record = getattr(out, "_ring_diagnostics")["unconfirmed_at_grid"]
+    assert record == {"count": n, "needs": "1 voxel across 0.16 Å⁻¹", "notice": notice,
+                      "q_centers": [round(s["q_center"], 4) for s in d["rejected_shells"]]}
 
 
 def test_a_shell_whose_direction_cells_the_grid_cannot_fill_is_not_judged():
@@ -286,6 +314,62 @@ def test_the_demo_aluminium_rings_are_confirmed_and_removed():
         assert any(abs(q - q_al) < 0.05 for q in kept), (q_al, kept)
     assert all(s["isotropy"]["is_ring"] for s in d["shells"])
     assert all(not s["isotropy"]["is_ring"] for s in d["rejected_shells"])
+
+
+def _al_lines(min_rel: float) -> list[float]:
+    """The demo's Al powder lines (|Q|, Å⁻¹) planted at min_rel or more of the strongest."""
+    from nebula3d.demo import _AL_A, _AL_LINES
+
+    return [2 * np.pi * np.sqrt(sum(i * i for i in hkl)) / _AL_A
+            for hkl, rel in _AL_LINES if rel >= min_rel]
+
+
+def test_on_the_dev_grid_the_ring_removal_says_how_many_rings_it_left_and_the_ways_out():
+    """A known answer on a synthetic coarse volume (G1): the demo crystal on
+    the validation's dev cell (a = 3.9 Å) and its replays' grid, 81 points
+    over ±4 r.l.u. (0.99 voxels across 0.16 Å⁻¹). The ring removal detects the
+    demo's four strong Al lines, confirms none and subtracts none, and its log
+    says so with that count, what the grid needs and the two ways out. Both
+    hold: with the confirmation off it subtracts those shells; on the
+    validation's own 161 points it confirms and subtracts the lines, and says
+    nothing of the kind."""
+    from nebula3d.pipeline import RING_GRID_REMEDY, RingParams, remove_rings
+
+    def run(n: int, confirm: bool = True) -> tuple[HKLVolume, HKLVolume, dict, str]:
+        vol = demo_volume(n, seed=3, model=DemoModel(a=3.9), dtype=np.float32)
+        lines: list[str] = []
+        out = remove_rings(vol, RingParams(ring_model="pooled", pooled_confirm_rings=confirm),
+                           progress=lambda stage, status, frac, msg: lines.append(msg or ""))
+        return vol, out, getattr(out, "_ring_diagnostics"), lines[-1]
+
+    strong = _al_lines(0.28)  # 111, 200, 220 and 311
+    vol, out, d, done = run(81)
+    assert grid_too_coarse(vol).startswith("grid too coarse: 0.99 voxels")
+    record = d["unconfirmed_at_grid"]
+    assert record["count"] == len(record["q_centers"]) == len(strong) == 4
+    for q in strong:
+        assert any(abs(c - q) < 0.1 for c in record["q_centers"]), (q, record)
+    assert done.endswith(
+        f"removed 0% of |I|. ⚠ 4 rings detected but not confirmed at this grid (needs ≥ 1 voxel "
+        f"across 0.16 Å⁻¹); not subtracted. {RING_GRID_REMEDY}"), done
+    assert record["notice"] == done.split("⚠ ", 1)[1]
+    assert d["shells"] == [] and np.array_equal(out.data, vol.data)
+
+    _, _, off, done_off = run(81, confirm=False)
+    subtracted = [s["q_center"] for s in off["shells"]]
+    for q in record["q_centers"]:
+        assert any(abs(c - q) < 1e-3 for c in subtracted), (q, subtracted)
+    assert float(off["removed_fraction"]) > 0
+    assert "unconfirmed_at_grid" not in off and "⚠" not in done_off
+
+    fine_vol, _, fine, done_fine = run(161)
+    assert grid_too_coarse(fine_vol) == ""
+    assert "unconfirmed_at_grid" not in fine and "⚠" not in done_fine
+    assert not any(GRID_TOO_COARSE in str((s.get("isotropy") or {}).get("not_judged"))
+                   for s in fine["rejected_shells"])
+    confirmed = [s["q_center"] for s in fine["shells"]]
+    for q in strong:
+        assert any(abs(c - q) < 0.1 for c in confirmed), (q, confirmed)
 
 
 def test_low_memory_mode_confirms_the_rings_native_mode_does(monkeypatch):

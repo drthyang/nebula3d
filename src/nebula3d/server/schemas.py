@@ -146,6 +146,24 @@ class RingIsotropyOut(BaseModel):
     not_judged: str | None = None   # why the grid is too coarse to judge any ring
 
 
+class UnconfirmedRingsOut(BaseModel):
+    """The shells the ring removal detected and could not confirm as powder
+    rings on its grid, which it did not subtract (pipeline.unconfirmed_rings_notice)."""
+    count: int
+    needs: str                      # what the grid needs (ring_isotropy.grid_needs)
+    notice: str                     # what the run log says of them
+    q_centers: list[float] = []     # their |Q| (Å⁻¹)
+
+
+class RingDiagnosticsOut(BaseModel):
+    """The ring removal's record, from its diagnostics (see server.rings)."""
+    dataset_id: str
+    diagnostics_path: str
+    has_diagnostics: bool
+    status: str | None = None
+    unconfirmed_at_grid: UnconfirmedRingsOut | None = None
+
+
 class ShellFloorsOut(BaseModel):
     """The floor of every |Q| shell over the whole volume, and of the volume
     the flatten was given (see preprocessing.flatten_floors).  One entry per

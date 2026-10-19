@@ -100,6 +100,11 @@ from nebula3d.core import HKLVolume, low_memory
 #: FWHM it measures, and with ``fwhm_cap`` the grid's limit.
 SAMPLES_PER_FWHM = 2
 
+#: How every reason the grid gives for judging nothing opens, on either limit
+#: (the module docstring, *Resolution*): :func:`grid_too_coarse`, and a shell
+#: whose direction cells the grid cannot fill.
+GRID_TOO_COARSE = "grid too coarse"
+
 
 @dataclass(frozen=True)
 class IsotropyConfig:
@@ -230,8 +235,27 @@ def grid_too_coarse(vol: HKLVolume, config: IsotropyConfig | None = None) -> str
     floor = SAMPLES_PER_FWHM * profile_step(vol, cfg)
     if not np.isfinite(voxel) or floor <= cfg.fwhm_cap:
         return ""
-    return (f"grid too coarse: {cfg.fwhm_cap / voxel:.2g} voxels across a ring's width "
+    return (f"{GRID_TOO_COARSE}: {cfg.fwhm_cap / voxel:.2g} voxels across a ring's width "
             f"(at most {cfg.fwhm_cap:g} Å⁻¹), under {floor / voxel:.2g}")
+
+
+def grid_needs(vol: HKLVolume, config: IsotropyConfig | None = None) -> str:
+    """What the grid of *vol* must give the test to judge a ring, in words, from
+    the rule's own constants (the module docstring, *Resolution*).
+
+    Where the grid is too coarse to judge any ring (:func:`grid_too_coarse`):
+    the narrowest FWHM the test measures in voxels, :data:`SAMPLES_PER_FWHM`
+    |Q| bins of half a voxel, across ``fwhm_cap`` ("1 voxel across 0.16 Å⁻¹",
+    the number its reason says the grid is under). Else, what a shell whose
+    direction cells the grid cannot fill lacks: ``direction_share`` of the
+    cells with ``min_voxels`` voxels in each |Q| bin of its profile.
+    """
+    cfg = config or IsotropyConfig()
+    if grid_too_coarse(vol, cfg):
+        need = f"{SAMPLES_PER_FWHM * profile_step(vol, cfg) / voxel_q_step(vol):.2g}"
+        return f"{need} voxel{'' if need == '1' else 's'} across {cfg.fwhm_cap:g} Å⁻¹"
+    return (f"{100 * cfg.direction_share:g} % of the direction cells with {cfg.min_voxels} "
+            f"voxels in each |Q| bin")
 
 
 def shell_isotropy(
@@ -419,7 +443,7 @@ def shell_isotropy(
         if inside_box and reached and filled < cfg.direction_share * reached:
             out.append(ShellIsotropy(
                 q0, fwhm, int(np.count_nonzero(good)), np.nan, np.nan, np.nan, False,
-                f"grid too coarse: {filled} of the {reached} direction cells get "
+                f"{GRID_TOO_COARSE}: {filled} of the {reached} direction cells get "
                 f"{cfg.min_voxels} voxels in each |Q| bin, under {100 * cfg.direction_share:g} %"))
             continue
         # A line through the flanks gives each cell's height, which a ring whose
@@ -497,5 +521,6 @@ def _verdict(q0: float, fwhm: float, heights: NDArray[np.float64], levels: NDArr
                          snr=snr, beyond_curve=curve)
 
 
-__all__ = ["SAMPLES_PER_FWHM", "IsotropyConfig", "ShellIsotropy", "grid_too_coarse", "inscribed_q",
-           "judge_shells", "profile_step", "shell_isotropy", "voxel_q_step"]
+__all__ = ["GRID_TOO_COARSE", "SAMPLES_PER_FWHM", "IsotropyConfig", "ShellIsotropy", "grid_needs",
+           "grid_too_coarse", "inscribed_q", "judge_shells", "profile_step", "shell_isotropy",
+           "voxel_q_step"]

@@ -60,8 +60,10 @@ from nebula3d.preprocessing.radial_flatten import (
     flatten_radial_background,
 )
 from nebula3d.preprocessing.ring_isotropy import (
+    GRID_TOO_COARSE,
     IsotropyConfig,
     ShellIsotropy,
+    grid_needs,
     grid_too_coarse,
     judge_shells,
     shell_isotropy,
@@ -83,8 +85,10 @@ __all__ = [
     "PooledRingConfig",
     "PooledRingResult",
     "fit_pooled_rings",
+    "GRID_TOO_COARSE",
     "IsotropyConfig",
     "ShellIsotropy",
+    "grid_needs",
     "grid_too_coarse",
     "judge_shells",
     "shell_isotropy",

@@ -507,6 +507,72 @@ def test_bragg_profile_reads_saved_json(tmp_path):
     assert body["peaks"][0]["width_q"] == [0.12, 0.08, 0.04]
 
 
+def test_ring_diagnostics_missing_returns_empty_state(env):
+    client, _ = env
+    r = client.get(f"/api/rings/{SLUG}/diagnostics")
+    assert r.status_code == 200
+    assert r.json() == {
+        "dataset_id": SLUG,
+        "diagnostics_path": r.json()["diagnostics_path"],
+        "has_diagnostics": False,
+        "status": None,
+        "unconfirmed_at_grid": None,
+    }
+    assert r.json()["diagnostics_path"].endswith("_ringremoved_diagnostics.json")
+    assert client.get("/api/rings/nope/diagnostics").status_code == 404
+
+
+def test_ring_diagnostics_give_the_rings_left_unconfirmed_on_the_grid(tmp_path):
+    """The ring removal's record (G1): the rings the pooled model detected and
+    could not confirm on its grid, as its run log gives them, from the
+    diagnostics the ring stage writes. The demo's Al rings on 0.2 r.l.u. a
+    voxel (0.3 Å⁻¹). Diagnostics older than the volume describe a removal
+    that no longer exists, and give nothing; a removal that left no shell
+    unconfirmed gives none."""
+    import os
+
+    from nebula3d.demo import DemoModel, demo_volume
+    from nebula3d.pipeline import RingParams, remove_rings
+    from nebula3d.preprocessing import write_global_ring_diagnostics
+
+    (tmp_path / "raw").mkdir()
+    proc = tmp_path / "processed"
+    proc.mkdir()
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=proc)
+    vol = demo_volume(41, seed=3, model=DemoModel(sro_amp=0.09), dtype=np.float32)
+    lines: list[str] = []
+    out = remove_rings(vol, RingParams(ring_model="pooled"),
+                       progress=lambda stage, status, frac, msg: lines.append(msg))
+    nebula3d.save(out, paths.ringremoved)
+    write_global_ring_diagnostics(getattr(out, "_ring_diagnostics"), paths.ring_diagnostics_json)
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+
+    body = client.get(f"/api/rings/{SLUG}/diagnostics").json()
+    assert body["has_diagnostics"] is True and body["status"] == "no_confirmed_rings"
+    left = body["unconfirmed_at_grid"]
+    assert left["count"] == len(left["q_centers"]) > 0
+    assert left["needs"] == "1 voxel across 0.16 Å⁻¹"
+    assert lines[-1].endswith(f". ⚠ {left['notice']}")
+    assert left["notice"].startswith(
+        f"{left['count']} rings detected but not confirmed at this grid")
+
+    written = paths.ring_diagnostics_json.stat().st_mtime
+    os.utime(paths.ringremoved, (written + 10, written + 10))
+    stale = client.get(f"/api/rings/{SLUG}/diagnostics").json()
+    assert stale["has_diagnostics"] is False and stale["unconfirmed_at_grid"] is None
+
+    paths.ring_diagnostics_json.write_text(json.dumps({"algorithm": "pooled", "status": "fitted"}),
+                                           encoding="utf-8")
+    os.utime(paths.ring_diagnostics_json, (written + 20, written + 20))
+    none_left = client.get(f"/api/rings/{SLUG}/diagnostics").json()
+    assert none_left["has_diagnostics"] is True and none_left["status"] == "fitted"
+    assert none_left["unconfirmed_at_grid"] is None
+
+    paths.ring_diagnostics_json.write_text("{not json", encoding="utf-8")
+    os.utime(paths.ring_diagnostics_json, (written + 30, written + 30))
+    assert client.get(f"/api/rings/{SLUG}/diagnostics").status_code == 500
+
+
 @pytest.mark.parametrize("plane,value", [("hk", 0.0), ("0kl", 0.0), ("h0l", 1.0)])
 def test_slice_matches_extract_slice(env, plane, value):
     client, vol = env
