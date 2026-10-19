@@ -380,8 +380,12 @@ def hole_texture(
 ) -> HoleTexture:
     """Each hole's fill against the range its 3-D rim allows (the facts
     :func:`fill_texture` judges; same parameters)."""
-    if punched.data.shape != filled.data.shape or punched.data.ndim != 3:
-        raise ValueError("punched and filled must be 3-D volumes on one grid")
+    if (punched.data.ndim != 3 or punched.data.shape != filled.data.shape
+            or not all(np.array_equal(a, b) for a, b in
+                       ((punched.h_axis, filled.h_axis), (punched.k_axis, filled.k_axis),
+                        (punched.l_axis, filled.l_axis)))):
+        raise ValueError("punched and filled must be 3-D volumes on one grid: "
+                         "the same shape and axes")
     if punch_record is not None:
         if np.shape(punch_record) != punched.data.shape:
             raise ValueError("punch_record must have the volume's shape")

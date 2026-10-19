@@ -258,6 +258,9 @@ def test_bad_arguments():
     other = HKLVolume.from_arrays(np.zeros((41, 41, 40)), (-1, 1), (-1, 1), (-1, 1))
     with pytest.raises(ValueError, match="grid"):
         fill_texture(lat.punched, other)
+    shifted = dataclasses.replace(lat.filled, l_axis=lat.filled.l_axis + 0.05)
+    with pytest.raises(ValueError, match="grid"):                 # same shape, other axes
+        fill_texture(lat.punched, shifted)
 
 
 def test_low_memory_gives_the_same_numbers(monkeypatch):
