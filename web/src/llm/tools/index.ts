@@ -20,7 +20,7 @@ import {
   fetchUbCheck,
   fetchVolumeCoverage,
 } from "../../api/client";
-import type { JobEvent, Slice, UbCheck, VolumeCoverage } from "../../api/types";
+import type { JobEvent, UbCheck, VolumeCoverage } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import {
@@ -80,8 +80,13 @@ import {
   XYZ,
 } from "./shared/cuts";
 import { described, description } from "./shared/describe";
-import { r4, r6, range4 } from "./shared/figures";
+import { r4, r6 } from "./shared/figures";
 import { checkIdle, unique } from "./shared/pipeline";
+import { measure_reciprocal_cut } from "./defs/measure_reciprocal_cut";
+import { measure_dpdf_cut } from "./defs/measure_dpdf_cut";
+import { describe_dataset } from "./defs/describe_dataset";
+import { line_profile } from "./defs/line_profile";
+import { bragg_peaks } from "./defs/bragg_peaks";
 import { ToolArgError, type AgentTool, type Args, type ChatTool, type ToolContext, type ToolIO } from "./types";
 
 export type { AgentTool, Args, ChatTool, ToolContext, ToolIO, ToolOutcome } from "./types";
@@ -94,296 +99,7 @@ import { sectionSymmetry, SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { median, radialProfile, roundSig } from "../metrics/sliceStats";
 import { textureMetrics } from "../metrics/texture";
 
-// ---------------------------------------------------------------- measuring
-
-const recipSummary = (m: Awaited<ReturnType<typeof measureRecip>>): string =>
-  [
-    m.ring_removal?.ring_energy_ratio != null && `ring ratio ${m.ring_removal.ring_energy_ratio}`,
-    m.bragg_punch_leftover &&
-      (m.bragg_punch_leftover.n_at_nodes != null
-        ? `${m.bragg_punch_leftover.n_at_nodes} missed at nodes, ${(m.bragg_punch_leftover.n_off_nodes ?? 0) - (m.bragg_punch_leftover.n_broad_off_nodes ?? 0)} sharp off-lattice, ${m.bragg_punch_leftover.n_broad_off_nodes ?? 0} broad maxima`
-        : `${m.bragg_punch_leftover.n_suspicious} leftover peak(s)`),
-    m.backfill?.median_seam_sigma != null && `seam ${m.backfill.median_seam_sigma}σ`,
-    m.flatten?.after_floor_max_sigma != null && `floor ≤ ${m.flatten.after_floor_max_sigma}σ`,
-  ]
-    .filter(Boolean)
-    .join(" · ") || "no stage metrics at this cut";
-
-const measureReciprocalCut: ChatTool = {
-  name: "measure_reciprocal_cut",
-  facts: { label: "Measured a reciprocal cut", acts: null, highlights: RECIP },
-  ...described(
-    description("measure_reciprocal_cut")`Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane.${reading(" Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).")}`,
-  ),
-  parameters: {
-    type: "object",
-    properties: {
-      plane: { type: "string", enum: RECIP_PLANES, description: "hk0 = H–K plane (cut along L), h0l = H–L plane (cut along K), 0kl = K–L plane (cut along H)" },
-      value: { type: "number", description: "Cut position along the fixed axis, in r.l.u." },
-    },
-    required: ["plane", "value"],
-  },
-  run: async (args, { dataset }) => {
-    const plane = oneOf(args, "plane", RECIP_PLANES);
-    const value = num(args, "value");
-    const result = await measureRecip(dataset, plane, value);
-    return { result, summary: `${result.cut}: ${recipSummary(result)}`, view: cleanupView(plane, value) };
-  },
-};
-
-const measureDpdfCut: ChatTool = {
-  name: "measure_dpdf_cut",
-  facts: { label: "Measured a ΔPDF section", acts: null, offeredFor: ["pdf"], settles: ["features"], highlights: ["pdf"] },
-  description:
-    "Compute the 3D-ΔPDF feature metrics (feature SNR, strong-feature fraction, sign balance, anisotropy and its direction, radial trend) on any real-space section. The opening context used only z=0.",
-  parameters: {
-    type: "object",
-    properties: {
-      plane: { type: "string", enum: DPDF_PLANES, description: "xy (cut along z), xz (cut along y), yz (cut along x); x ∥ a, y ∥ b, z ∥ c" },
-      value: { type: "number", description: "Cut position along the fixed axis, in Å" },
-    },
-    required: ["plane", "value"],
-  },
-  run: async (args, { dataset }) => {
-    const plane = oneOf(args, "plane", DPDF_PLANES);
-    const value = num(args, "value");
-    const result = await measureDpdf(dataset, plane, value);
-    const d = result.delta_pdf;
-    return {
-      result,
-      summary: `${result.cut}: SNR ${d.feature_snr ?? "–"}, anisotropy ${d.anisotropy_ratio ?? "–"}`,
-      view: dpdfView(await dpdfMeta(dataset), plane, value),
-    };
-  },
-};
-
 // ---------------------------------------------------------------- lookups
-
-const describeDataset: ChatTool = {
-  name: "describe_dataset",
-  facts: { label: "Read the dataset", acts: null },
-  description:
-    "The selected dataset: which stage outputs exist, the reciprocal grid and its H/K/L ranges, the unit cell, the ΔPDF grid and x/y/z ranges, and the other datasets (e.g. other temperatures) available for compare_datasets.",
-  parameters: { type: "object", properties: {} },
-  run: async (_args, { dataset, datasets }) => {
-    const hklId = hklVolumeId(dataset);
-    const dId = dpdfVolumeId(dataset);
-    const [meta, dmeta] = await Promise.all([
-      hklId ? safe(fetchMeta(hklId)) : null,
-      dId ? safe(fetchDpdfMeta(dId)) : null,
-    ]);
-    const stages = dataset.stages.filter((s) => s.exists).map((s) => s.name);
-    const result = {
-      dataset: datasetLabel(dataset, datasets),
-      id: dataset.id,
-      stages,
-      reciprocal: meta && {
-        grid: meta.shape,
-        H: range4(meta.h_range),
-        K: range4(meta.k_range),
-        L: range4(meta.l_range),
-        planes: RECIP_PLANES,
-      },
-      cell: meta?.lattice ?? dmeta?.lattice ?? null,
-      // Whether σ came with the data; the note says when √|I| makes the
-      // punch's significance test count nothing fixed.
-      sigma: meta?.sigma ?? null,
-      ...(meta?.sigma_note ? { sigma_note: meta.sigma_note } : {}),
-      delta_pdf: dmeta && {
-        grid: dmeta.shape,
-        x: range4(dmeta.x_range),
-        y: range4(dmeta.y_range),
-        z: range4(dmeta.z_range),
-        q_max: r4(dmeta.q_max),
-        planes: DPDF_PLANES,
-      },
-      other_datasets: datasets.filter((d) => d.id !== dataset.id).map((d) => ({ id: d.id, label: datasetLabel(d, datasets) })),
-    };
-    return { result, summary: `${result.dataset}: ${stages.join(", ")}` };
-  },
-};
-
-const LINE_STAGES = [...RECIP_STAGES, "delta_pdf"] as const;
-const ALL_AXES = ["H", "K", "L", "x", "y", "z"] as const;
-
-const lineProfile: ChatTool = {
-  name: "line_profile",
-  facts: {
-    label: "Took a line profile",
-    acts: null,
-    // A line through the ΔPDF measures its correlations.
-    settles: (args) => (args.stage === "delta_pdf" ? ["features"] : []),
-    highlights: (args) => keysOf([args.stage]),
-  },
-  ...described(
-    description("line_profile")`Intensity along a straight line parallel to one axis through any stage volume${reading(" — e.g. along H through (H, 1/3, 0) to see a satellite row, or across a residual ring")}. Reciprocal stages take H/K/L (r.l.u.); delta_pdf takes x/y/z (Å). Returns sampled points plus the exact maximum, minimum and median.`,
-  ),
-  parameters: {
-    type: "object",
-    properties: {
-      stage: { type: "string", enum: LINE_STAGES },
-      along: { type: "string", enum: ALL_AXES, description: "The axis the line runs along" },
-      at: {
-        type: "object",
-        description: "The other two coordinates the line passes through (missing ones are 0), e.g. {\"K\": 0.333, \"L\": 0} for a line along H",
-        properties: Object.fromEntries(ALL_AXES.map((a) => [a, { type: "number" }])),
-      },
-      n_points: { type: "integer", minimum: 16, maximum: 128, description: "Points to return (block-averaged); default 64" },
-    },
-    required: ["stage", "along"],
-  },
-  run: async (args, { dataset }) => {
-    const stage = oneOf(args, "stage", LINE_STAGES);
-    const real = stage === "delta_pdf";
-    const axes: readonly string[] = real ? XYZ : HKL;
-    const along = oneOf(args, "along", axes);
-    const a = axes.indexOf(along);
-    const at = (args.at && typeof args.at === "object" ? args.at : {}) as Args;
-    const others = [0, 1, 2].filter((i) => i !== a);
-    const coord = (i: number) => num(at, axes[i], 0);
-    const [o1, fixed] = others; // the plane is cut along `fixed`; the line sits at o1
-    const nPoints = Math.round(Math.min(128, Math.max(16, num(args, "n_points", 64))));
-
-    let slice: Slice | null;
-    let plane: string;
-    let view: ViewTarget;
-    if (real) {
-      const meta = await dpdfMeta(dataset);
-      plane = DPDF_PLANES.find((p) => DPDF_FIXED[p] === fixed)!;
-      checkInRange(axes[fixed], coord(fixed), dpdfRange(meta, fixed));
-      slice = await safe(fetchDpdfSlice(dpdfVolumeId(dataset)!, plane, coord(fixed)));
-      view = dpdfView(meta, plane, coord(fixed));
-    } else {
-      const meta = await recipMeta(dataset);
-      const id = stageVolumeId(dataset, stage);
-      if (!id) throw new ToolArgError(`stage ${stage} has no output for this dataset`);
-      plane = RECIP_PLANES.find((p) => RECIP_FIXED[p] === fixed)!;
-      checkInRange(axes[fixed], coord(fixed), recipRange(meta, fixed));
-      slice = await safe(fetchSlice(id, plane, coord(fixed)));
-      view = cleanupView(plane, coord(fixed));
-    }
-    if (!slice) throw new Error(`could not read the ${stage} slice`);
-
-    // In each plane the lower-indexed in-plane axis is x, the other y.
-    const { nx, ny, x_axis, y_axis } = slice.header;
-    const alongIsX = a < o1;
-    const lineAxis = alongIsX ? x_axis : y_axis;
-    const crossAxis = alongIsX ? y_axis : x_axis;
-    let cross = 0;
-    for (let i = 1; i < crossAxis.length; i++) {
-      if (Math.abs(crossAxis[i] - coord(o1)) < Math.abs(crossAxis[cross] - coord(o1))) cross = i;
-    }
-    const n = alongIsX ? nx : ny;
-    const value = (i: number) => slice!.data[alongIsX ? cross * nx + i : i * nx + cross];
-
-    const finite: number[] = [];
-    let max = -Infinity, min = Infinity, argMax = 0, argMin = 0;
-    for (let i = 0; i < n; i++) {
-      const v = value(i);
-      if (!Number.isFinite(v)) continue;
-      finite.push(v);
-      if (v > max) [max, argMax] = [v, i];
-      if (v < min) [min, argMin] = [v, i];
-    }
-    const points: [number, number | null][] = [];
-    const block = Math.max(1, Math.ceil(n / nPoints));
-    for (let start = 0; start < n; start += block) {
-      let sum = 0, cnt = 0, pos = 0;
-      for (let i = start; i < Math.min(n, start + block); i++) {
-        pos += lineAxis[i];
-        const v = value(i);
-        if (Number.isFinite(v)) [sum, cnt] = [sum + v, cnt + 1];
-      }
-      const m = Math.min(n, start + block) - start;
-      points.push([roundSig(pos / m, 4), cnt ? roundSig(sum / cnt, 4) : null]);
-    }
-    const through = Object.fromEntries(
-      [o1, fixed].map((i) => [axes[i], roundSig(i === o1 ? crossAxis[cross] : coord(fixed), 4)]),
-    );
-    const result = {
-      stage,
-      along,
-      through,
-      units: real ? "Å" : "r.l.u.",
-      points, // [position, block mean]; null = masked
-      max: finite.length ? { at: roundSig(lineAxis[argMax], 4), value: roundSig(max, 4) } : null,
-      min: finite.length ? { at: roundSig(lineAxis[argMin], 4), value: roundSig(min, 4) } : null,
-      median: finite.length ? roundSig(median(finite), 4) : null,
-      masked_fraction: roundSig(1 - finite.length / Math.max(1, n), 3),
-    };
-    const where = Object.entries(through).map(([k, v]) => `${k}=${v}`).join(", ");
-    return {
-      result,
-      summary: `${stage} along ${along} at ${where}: max ${result.max?.value ?? "–"} at ${result.max?.at ?? "–"}`,
-      view,
-    };
-  },
-};
-
-const braggPeaks: ChatTool = {
-  name: "bragg_peaks",
-  facts: { label: "Looked up Bragg peaks", acts: null, offeredFor: ["punch", "lattice", "general"], highlights: ["bragg"] },
-  description:
-    "Peaks from the punch stage's fitted Bragg profile: position (HKL and |Q|), intensity, local background, significance, measured width per axis (Å⁻¹), whether each axis is resolution-limited, and anisotropy (largest/smallest principal width). Sort by a property or by distance to an HKL point.",
-  parameters: {
-    type: "object",
-    properties: {
-      sort_by: { type: "string", enum: ["significance", "intensity", "anisotropy", "width", "q"], description: "Default significance" },
-      near_hkl: { type: "array", items: { type: "number" }, minItems: 3, maxItems: 3, description: "Sort by distance to this (H, K, L) instead" },
-      limit: { type: "integer", minimum: 1, maximum: 25, description: "Default 10" },
-    },
-  },
-  run: async (args, { dataset }) => {
-    const sortBy = oneOf(args, "sort_by", ["significance", "intensity", "anisotropy", "width", "q"] as const, "significance");
-    const limit = Math.round(Math.min(25, Math.max(1, num(args, "limit", 10))));
-    const near = Array.isArray(args.near_hkl) && args.near_hkl.length === 3 ? args.near_hkl.map(Number) : null;
-    if (near && near.some((v) => !Number.isFinite(v))) throw new ToolArgError("near_hkl must be three numbers");
-    const profile = await safe(fetchBraggProfile(dataset.id));
-    if (!profile?.has_profile) {
-      return { result: { has_profile: false }, summary: "no fitted Bragg profile (run the punch stage)" };
-    }
-    const peaks = profile.peaks.map((p) => {
-      const w = p.principal_width_q ?? p.measured_width_q ?? p.width_q;
-      const ws = (w ?? []).filter((v): v is number => Number.isFinite(v) && v > 0);
-      return {
-        hkl: p.center_hkl.map((v) => roundSig(v, 4)),
-        q: r4(p.q_abs),
-        intensity: r4(p.intensity),
-        local_background: r4(p.local_background),
-        significance: r4(p.significance ?? null),
-        measured_width_q: p.measured_width_q?.map((v) => roundSig(v, 3)) ?? null,
-        resolution_limited: p.resolution_limited ?? null,
-        anisotropy: ws.length >= 2 ? roundSig(Math.max(...ws) / Math.min(...ws), 3) : null,
-        fit: p.fit_kind,
-      };
-    });
-    // Larger key first; a missing value sorts last.
-    const LAST = -Number.MAX_VALUE;
-    const key = (p: (typeof peaks)[number]): number => {
-      if (near) return -Math.hypot(...p.hkl.map((v, i) => v - near[i]));
-      if (sortBy === "width") return p.measured_width_q?.length ? Math.max(...p.measured_width_q) : LAST;
-      if (sortBy === "q") return p.q != null ? -p.q : LAST;
-      return p[sortBy] ?? LAST;
-    };
-    peaks.sort((x, y) => key(y) - key(x));
-    const result = {
-      n_peaks: profile.n_peaks,
-      punch_frame: profile.punch_frame,
-      sorted_by: near ? `distance to ${near.join(", ")}` : sortBy,
-      peaks: peaks.slice(0, limit),
-    };
-    const top = result.peaks[0];
-    return {
-      result,
-      summary: `${profile.n_peaks} fitted peaks; top ${result.peaks.length} by ${result.sorted_by}`,
-      view: top && {
-        view: "bragg",
-        hkl: top.hkl as [number, number, number],
-        label: `the peak at (${top.hkl.join(", ")})`,
-      },
-    };
-  },
-};
 
 const consistencyDetails: ChatTool = {
   name: "consistency_details",
@@ -1733,10 +1449,10 @@ const readSkillTool: ChatTool = {
 
 export const CHAT_TOOLS: ChatTool[] = [
   readSkillTool,
-  describeDataset,
+  describe_dataset,
   currentView,
-  measureReciprocalCut,
-  measureDpdfCut,
+  measure_reciprocal_cut,
+  measure_dpdf_cut,
   assessStage,
   textureCheck,
   qmaxCoverage,
@@ -1746,8 +1462,8 @@ export const CHAT_TOOLS: ChatTool[] = [
   grainCheckTool,
   ubCheckTool,
   radialProfileTool,
-  lineProfile,
-  braggPeaks,
+  line_profile,
+  bragg_peaks,
   consistencyDetails,
   runLog,
   compareDatasets,
