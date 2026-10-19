@@ -156,8 +156,8 @@ assess_stage pdf and symmetry_check; qmax_coverage says how far the forward tran
 whether that stays inside the fully measured shells⟧⟨connective: “.
 ” → “; ”⟩⟦reading: (6) ⟧⟨connective: “A” → “a”⟩ UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes⟦reading: :
 ub_check and grain_check for the UB, ub_check for the origin, qmax_coverage for the counts⟧.
-On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
-symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
+On symmetrised data, symmetry_check says whether the ΔPDF kept each operation of the
+declared symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features
 carry the colour and the FFT ripple stays near neutral⟦remedy: : use it when the ΔPDF looks too
 bright or full of ripple, and before describing a ΔPDF figure⟧. dpdf_peaks lists the ΔPDF's
@@ -266,7 +266,7 @@ The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell, when the file declares that its data were symmetrised⟦evidence:  (with none declared the asymmetry is the data's own and is not judged)⟧: an x–y section (default z = 0) compared with its image under each in-plane operation (hexagonal: six-, three-, two-fold and the a ↔ b mirror; orthogonal: the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b), as the RMS of the difference over the section's RMS. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it⟦evidence: ; a larger share means a stage broke it, or the sample lacks that operation⟧. Which operations the sample has is the user's to say.
+Check that the 3D-ΔPDF keeps the symmetry its data were declared symmetrised with⟦evidence:  (with none declared the asymmetry is the data's own and is not judged)⟧: the ΔPDF against its image under each operation of the declared point group, an operation and its product with the inversion one entry (equal on the centrosymmetric ΔPDF), those that move c included (none declared: the cell's in-plane ones), on the sections the operation maps onto sections (the x–y sections at z and −z, default z = 0, and the x–z and y–z sections through the origin), else on the voxels it maps from one onto another (tested_on says which; not_tested, any it cannot test), as the RMS of the difference over the RMS, the worst section's. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it⟦evidence: ; a larger share means a stage broke it, or the sample lacks that operation⟧. Which operations the sample has is the user's to say.
 ```
 
 ## tools/index.ts: texture_check's description
@@ -357,7 +357,7 @@ Spans of a text built for each call (its numbers vary), each as written:
 
 Spans of a text built for each call (its numbers vary), each as written:
 
-- evidence: “, so the section's asymmetry (”
+- evidence: “, so the sections' asymmetry (”
 - evidence: “) is the data's own, counting noise included, not a break by a stage”
 
 ## verdicts/rules.ts: the backfill goal
@@ -397,7 +397,7 @@ Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate).⟦evidence:  A window that reaches further raises feature_snr with the backfill's guesses and the box's empty corners, which is worse, not better.⟧ max_symmetry_break is the x–y section's largest RMS difference from its image under the cell's in-plane operations (worst_symmetry_op names it)⟦evidence: : a trial that raises it far above your settings' value broke a symmetry your settings kept, as a separable window does on a hexagonal cell⟧. back_fft_pearson_r_even, the round trip against the data's even part under Q → −Q (what the real transform keeps), must stay near 1; back_fft_pearson_r against the data is lower by the odd part (back_fft_odd_share, counting noise on unsymmetrised data). Without a band or crop the round trip is the identity, so neither can rank trials⟦evidence: : back_fft_pearson_r_even below ~0.999 only flags a transform problem⟧. Apodization trades real-space resolution against truncation ripples; prefer the default unless another is clearly better on feature_snr without the reach leaving the coverage.
+The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate).⟦evidence:  A window that reaches further raises feature_snr with the backfill's guesses and the box's empty corners, which is worse, not better.⟧ max_symmetry_break is the x–y section's largest RMS difference from its image under the declared group's operations that map it onto itself (none declared: the cell's in-plane operations; worst_symmetry_op names it)⟦evidence: : a trial that raises it far above your settings' value broke a symmetry your settings kept, as a separable window does on a hexagonal cell⟧. back_fft_pearson_r_even, the round trip against the data's even part under Q → −Q (what the real transform keeps), must stay near 1; back_fft_pearson_r against the data is lower by the odd part (back_fft_odd_share, counting noise on unsymmetrised data). Without a band or crop the round trip is the identity, so neither can rank trials⟦evidence: : back_fft_pearson_r_even below ~0.999 only flags a transform problem⟧. Apodization trades real-space resolution against truncation ripples; prefer the default unless another is clearly better on feature_snr without the reach leaving the coverage.
 ```
 
 ## verdicts/rules.ts: the punch criterion

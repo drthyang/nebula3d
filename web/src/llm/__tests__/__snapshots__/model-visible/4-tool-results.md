@@ -288,7 +288,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {}
 
-3261 characters sent.
+3276 characters sent.
 
 ```json
 {
@@ -391,7 +391,7 @@ References of this skill (read one with read_skill and `reference`):
     "window_weight_on_unmeasured": 0.00024,
     "window_shape": "ellipsoid",
     "max_symmetry_break": 0,
-    "worst_symmetry_op": "mirror ⊥ a",
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
     "symmetry_declared": true
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
@@ -678,37 +678,41 @@ References of this skill (read one with read_skill and `reference`):
 
 ## symmetry_check {}
 
-452 characters sent.
+653 characters sent.
 
 ```json
 {
-  "section": "ΔPDF x–y section at z = 0 Å",
-  "cell": "orthogonal",
+  "sections": "xy at z = 0 Å, xz at y = 0, yz at x = 0",
+  "operations": "declared (mmm): 7 besides the identity",
   "ops": [
     {
-      "op": "mirror ⊥ a",
+      "op": "two-fold ∥ c / mirror ⊥ c",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 4608,
+      "tested_on": "xz; yz"
     },
     {
-      "op": "mirror ⊥ b",
+      "op": "two-fold ∥ a / mirror ⊥ a",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 4608,
+      "tested_on": "xy; xz"
     },
     {
-      "op": "two-fold (180°)",
+      "op": "two-fold ∥ b / mirror ⊥ b",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 4608,
+      "tested_on": "xy; yz"
     },
     {
-      "op": "four-fold (90°)",
+      "op": "inversion",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 7200,
+      "tested_on": "xy; xz; yz"
     }
   ],
-  "holds": ["mirror ⊥ a", "mirror ⊥ b", "two-fold (180°)", "four-fold (90°)"],
+  "holds": ["two-fold ∥ c / mirror ⊥ c", "two-fold ∥ a / mirror ⊥ a", "two-fold ∥ b / mirror ⊥ b", "inversion"],
   "symmetry_declared": true,
-  "verdict": "kept: every in-plane operation holds to 0.001 or better"
+  "verdict": "kept: every operation tested holds to 0.001 or better"
 }
 ```
 
@@ -1667,7 +1671,7 @@ A local model's request past its soft budget has its older results shortened (`c
     "window_weight_on_unmeasured": 0.00024,
     "window_shape": "ellipsoid",
     "max_symmetry_break": 0,
-    "worst_symmetry_op": "mirror ⊥ a",
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
     "symmetry_declared": true
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"],

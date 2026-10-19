@@ -750,6 +750,16 @@ def test_the_stdio_bridge_answers_every_message_type(tmp_path):
         reply, _, _ = bridge.call({"id": "ctl-4", "type": "dev_case", "case": "not-a-dev-case",
                                    "n": 81})
         assert reply["type"] == "error" and "is not a dev case" in reply["message"]
+        # Symmetrised and declared so: a case of its own, its snapshot apart.
+        from nebula3d.server.volumes import declared_symmetry
+
+        sym = {"label": "m-3m", "ops": "-k,h,l; l,h,k; -h,-k,-l"}
+        reply, _, _ = bridge.call({"id": "ctl-6", "type": "dev_case", "case": "dev-control",
+                                   "n": 81, "arm": "B", "run": 1, "symmetrise": sym})
+        assert reply["payload"] == {"dataset_id": dev_id, "restored": False}, reply
+        (raw,) = (tmp_path / "root" / "snapshots").glob("*-n81-m3m/raw/*.nxs")
+        label, ops = declared_symmetry(raw)
+        assert label == "m-3m" and len(ops) == 48
         reply, _, _ = bridge.call({"id": 22, "type": "no_such_type"})
         assert reply["type"] == "error" and "no message 'no_such_type'" in reply["message"]
 
@@ -760,6 +770,34 @@ def test_the_stdio_bridge_answers_every_message_type(tmp_path):
         if bridge.proc.poll() is None:
             bridge.proc.kill()
     assert answered == set(_worker_request_types())
+
+
+def test_the_bridge_symmetrises_a_volume_and_declares_it_as_the_nexus_viewer_does(tmp_path):
+    """``dev_case``'s ``symmetrise``: the volume symmetrised over the group the
+    operations generate, a voxel unmeasured wherever an equivalent is, and the
+    file declaring the symmetry and every operation of its group."""
+    from nebula3d.demo import demo_volume
+    from nebula3d.server.volumes import declared_symmetry
+
+    bridge = _bridge_module()
+    vol = demo_volume(17)  # counting noise: no symmetry to rounding
+    vol.data[2, 3, 4] = np.nan
+    group = bridge.symmetrised(vol, "-k,h,l; l,h,k; -h,-k,-l")
+    assert group.order == 48
+    holes = ~np.isfinite(vol.data)
+    assert holes.sum() == 48  # the one unmeasured voxel's orbit (a general position)
+    for r, t in group.index_ops[1:]:
+        idx = np.indices(vol.data.shape).reshape(3, -1)
+        image = tuple((r @ idx) + t[:, None])
+        np.testing.assert_allclose(vol.data[image], vol.data.reshape(-1), rtol=1e-12,
+                                   equal_nan=True)
+
+    path = tmp_path / "sym.nxs"
+    nebula3d.save(vol, path)
+    bridge.declare(path, "m-3m", group)
+    label, ops = declared_symmetry(path)
+    assert label == "m-3m" and len(ops) == 48
+    assert {json.dumps(m) for m in ops} == {json.dumps(m.tolist()) for m in group.ops}
 
 
 def test_the_bridge_check_reads_the_browser_pins(tmp_path):
