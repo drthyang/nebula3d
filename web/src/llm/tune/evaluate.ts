@@ -136,7 +136,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     const r = ranges?.[fixed[c.plane]];
     return !r || (c.value >= r[0] && c.value <= r[1]);
   });
-  const contexts = await Promise.all(cuts.map((recip) => loadPipelineContext(dataset, { recip, dpdf: null, records: false })));
+  // Every leftover peak, marked, not only the strongest few the chat's context lists: the punch counts them by their marks.
+  const contexts = await Promise.all(cuts.map((recip) => loadPipelineContext(dataset, { recip, dpdf: null, records: false, allLeftovers: true })));
   const per = (f: (i: number) => unknown) => Object.fromEntries(cuts.map((c, i) => [c.plane, f(i)]));
 
   if (stage === "rings") {
@@ -246,6 +247,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     );
     const total = (key: "n_suspicious" | "n_at_nodes" | "n_off_nodes" | "n_on_protected" | "n_broad_off_nodes" | "n_skipped_noisy") =>
       leftovers.reduce((s, l) => s + (l?.[key] ?? 0), 0);
+    // The sharp off-lattice leftovers on the protected H planes, from each peak's marks: they stay by design.
+    const sharpOnProtected = leftovers.reduce((s, l) => s + (l?.suspicious_peaks ?? []).filter((p) => p.on_protected_plane === true && !p.broad).length, 0);
     // The strongest leftover over the planes, with its plane.
     const strongest = cuts.reduce<Record<string, unknown> | null>((best, c, i) => {
       const p = leftovers[i]?.suspicious_peaks[0];
@@ -260,6 +263,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       // Of those, on the H planes the search leaves alone (protected satellites),
       // and broad enough to be diffuse maxima rather than reflections.
       leftover_on_protected_planes: total("n_on_protected"),
+      // The sharp ones of those, on their own line: by design, as the punch's goal says, and out of its verdict (verdicts/rules.ts, D5).
+      leftover_on_protected_planes_sharp: sharpOnProtected,
       leftover_off_lattice_broad: total("n_broad_off_nodes"),
       leftover_off_lattice_sharp: total("n_off_nodes") - total("n_broad_off_nodes"),
       strongest_leftover: strongest,

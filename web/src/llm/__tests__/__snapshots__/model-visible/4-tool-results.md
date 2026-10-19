@@ -288,7 +288,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {}
 
-3262 characters sent.
+3301 characters sent.
 
 ```json
 {
@@ -341,6 +341,7 @@ References of this skill (read one with read_skill and `reference`):
     "leftover_at_nodes": 1,
     "leftover_off_lattice": 0,
     "leftover_on_protected_planes": 0,
+    "leftover_on_protected_planes_sharp": 0,
     "leftover_off_lattice_broad": 0,
     "leftover_off_lattice_sharp": 0,
     "strongest_leftover": {
@@ -1619,6 +1620,7 @@ A local model's request past its soft budget has its older results shortened (`c
     "leftover_at_nodes": 1,
     "leftover_off_lattice": 0,
     "leftover_on_protected_planes": 0,
+    "leftover_on_protected_planes_sharp": 0,
     "leftover_off_lattice_broad": 0,
     "leftover_off_lattice_sharp": 0,
     "strongest_leftover": {
