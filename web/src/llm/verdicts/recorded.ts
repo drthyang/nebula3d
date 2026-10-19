@@ -7,7 +7,7 @@
 import type { AgentStep } from "../agent";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import type { Measured } from "../report/report";
-import { countsProblems, judge, STAGES, ubOffProblem, WORDS, type Kind, type Outcome, type Reason, type Stage } from "./rules";
+import { besideNodesProblem, countsProblems, judge, STAGES, ubOffProblem, WORDS, type Kind, type Outcome, type Reason, type Stage } from "./rules";
 
 type Obj = Record<string, unknown>;
 
@@ -99,7 +99,8 @@ function symmetryOutcome(r: Obj): Outcome {
  * grain_check's words and counts: "a second grain", "no second grain", "with
  * the UB off", and half or more of the strongest orbits beside Bragg nodes.
  * The UB off is the data's problem too (D3), with the rotation its words give,
- * else its result's. Without words, nothing to judge.
+ * else its result's, and so are the peaks beside the nodes (D3a). Without
+ * words, nothing to judge.
  */
 function grainOutcome(r: Obj): Outcome {
   const said = words(r);
@@ -116,7 +117,14 @@ function grainOutcome(r: Obj): Outcome {
   const off = reasons.some((x) => x === "second grain" || x === "UB off" || x === "peaks beside nodes");
   const turn = /one rotation of (\d+(?:\.\d+)?)° puts/.exec(said)?.[1];
   const copy = r.rotated_copy && typeof r.rotated_copy === "object" ? (r.rotated_copy as Obj) : null;
-  const problems = ubOff ? [ubOffProblem(turn !== undefined ? Number(turn) : num(copy?.misorientation_deg))] : [];
+  // The peaks beside the nodes are the UB off too (D3a), with the median offset its words give, else its result's.
+  const median = /offset by a median (\d+(?:\.\d+)?)° of rotation/.exec(said)?.[1];
+  const offset = r.near_offset_angle_deg && typeof r.near_offset_angle_deg === "object" ? (r.near_offset_angle_deg as Obj) : null;
+  const problems = ubOff
+    ? [ubOffProblem(turn !== undefined ? Number(turn) : num(copy?.misorientation_deg))]
+    : reasons.includes("peaks beside nodes")
+      ? [besideNodesProblem(median !== undefined ? Number(median) : num(offset?.median))]
+      : [];
   return outcome("grain", off ? "attention" : "pass", reasons, said, problems);
 }
 

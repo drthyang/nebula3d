@@ -393,6 +393,17 @@ const texture: CheckRule<Readonly<Record<string, unknown>>> = {
 export const ubOffProblem = (turnDeg: number | null): string =>
   `the UB is off${turnDeg != null ? ` by ${turnDeg}°` : ""} (one rotation puts the off-lattice peaks back on the Bragg lattice)`;
 
+/**
+ * The data's problem in grain_check's peaks beside the Bragg nodes, worded as
+ * ubOffProblem (D3a, approved by the manager on the user's delegation,
+ * 2026-10-19): half or more of the strongest off-lattice orbits sit beside
+ * Bragg nodes, the crystal's own Bragg peaks displaced by a UB that is off by
+ * at least their median offset (a lower bound, as the verdict says). The
+ * angle as the verdict shows it; without one, none.
+ */
+export const besideNodesProblem = (medianDeg: number | null): string =>
+  `the UB is off${medianDeg != null ? ` by at least ${medianDeg}°` : ""} (the strongest off-lattice peaks sit beside Bragg nodes)`;
+
 const grain: CheckRule<GrainFacts> = {
   criterion: "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.",
   judge: (g) => {
@@ -403,8 +414,9 @@ const grain: CheckRule<GrainFacts> = {
     const control = g.random_control;
     const near = g.near_bragg_nodes ?? 0;
     const median = g.near_offset_angle_deg?.median ?? null;
-    // Half or more of the strongest orbits beside Bragg nodes: the crystal's own peaks, displaced by a UB that is off.
+    // Half or more of the strongest orbits beside Bragg nodes: the crystal's own peaks, displaced by a UB that is off (D3a).
     const beside: Reason[] = n > 0 && near >= n / 2 ? ["peaks beside nodes"] : [];
+    const besideProblem = beside.length ? [besideNodesProblem(median != null ? r2(median) : null)] : [];
     if (!n) return { kind: "pass", reasons: [], words: "no off-lattice peaks were recorded by the punch's search" };
     const fits = n >= 4 && indexed >= Math.max(n / 2, 3 * control + 3);
     // A rotated copy within a couple of degrees of the main lattice is the main
@@ -423,6 +435,7 @@ const grain: CheckRule<GrainFacts> = {
         kind: "attention",
         reasons: ["second grain", ...beside],
         words: `a second grain: one rotation of the Bragg lattice indexes ${indexed} of the ${n} strongest off-lattice orbits (random directions: ${control})${turn != null ? `, misoriented by ${r2(turn)}° from the main grain` : ""}`,
+        dataProblems: besideProblem,
       };
     }
     let words = `no second grain of this phase: a rotated copy of the Bragg lattice indexes only ${indexed} of the ${n} strongest off-lattice orbits (random directions: ${control})`;
@@ -434,7 +447,7 @@ const grain: CheckRule<GrainFacts> = {
           : ": the Bragg peaks themselves, off their nodes by about that angle (refine the UB)");
     }
     if (g.far?.length) words += `. ${n - near} lie farther from any node; their origin is open (another phase, multiple scattering, or an artefact)`;
-    return { kind: beside.length ? "attention" : "pass", reasons: ["no second grain", ...beside], words };
+    return { kind: beside.length ? "attention" : "pass", reasons: ["no second grain", ...beside], words, dataProblems: besideProblem };
   },
 };
 

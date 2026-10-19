@@ -68,7 +68,8 @@ export const D1_REACH_PASS_SETTLES_NOTHING = false;
 /**
  * D3, for {{achieved}}, unified (plan 2.4.3, the user's decision of
  * 2026-10-19): grain_check counts as measured, and its "UB off" is a data
- * problem of the run's verdict (the grain rule writes it, ubOffProblem). true:
+ * problem of the run's verdict (the grain rule writes it, ubOffProblem; and
+ * its peaks beside the nodes, besideNodesProblem, since D3a). true:
  * grain_check counted for nothing in the run's verdict, not even as measured,
  * its reading before 2.4.3.
  */
@@ -192,8 +193,16 @@ const stageForAnswer: Cell = (o) => {
   return o.kind;
 };
 
-/** grain_check's outcome as the answer checks' UB topic reads it (D3): the UB off needs attention; anything else says nothing of the UB. */
-const grainAsUb: Cell = (o) => (o.reasons.includes("UB off") ? "attention" : undefined);
+/**
+ * Whether grain_check found the UB off: one rotation under 2° indexing the
+ * off-lattice peaks (D3), or half or more of the strongest beside Bragg nodes
+ * (D3a, approved by the manager on the user's delegation, 2026-10-19), as the
+ * report's grain card ("one grain, UB off") and grain_check's description say.
+ */
+const grainFindsUbOff = (o: Outcome): boolean => o.reasons.includes("UB off") || o.reasons.includes("peaks beside nodes");
+
+/** grain_check's outcome as the answer checks' UB topic reads it (D3, D3a): the UB off needs attention; anything else says nothing of the UB. */
+const grainAsUb: Cell = (o) => (grainFindsUbOff(o) ? "attention" : undefined);
 
 /** The outcomes a reader reads for one reading, and how it reads each. */
 type Sources = [CheckId, Cell][];
@@ -285,8 +294,8 @@ const ON_RESULT: [CheckId, string][] = [
   ["texture", "the backfill's texture"],
 ];
 
-/** grain_check's outcome as UB evidence to {{achieved}} (D3, D7): its "UB off"; anything else says nothing of the UB. */
-const grainUbForAchieved: Cell = (o) => (o.reasons.includes("UB off") ? MATRIX.grain.achieved(o) : undefined);
+/** grain_check's outcome as UB evidence to {{achieved}} (D3, D3a, D7): the UB off; anything else says nothing of the UB. */
+const grainUbForAchieved: Cell = (o) => (grainFindsUbOff(o) ? MATRIX.grain.achieved(o) : undefined);
 
 /** {{achieved}}: met when every stage, measured as it now is, meets its goal and no check on the result needs attention; not judged with a stage not measured since it was computed; null when the reply measured nothing it rests on. */
 function achievedOf(found: readonly Found[], at: Record<PipelineStage, number>): ComputedVerdict | null {
@@ -416,7 +425,7 @@ function reportOf(m: Measured): Verdicts {
   const dataProblems = [
     ...(of("coverage")?.dataProblems ?? []),
     ...(ub?.dataProblems.filter((p) => !isOriginProblem(p)) ?? []),
-    ...(grain?.reasons.includes("UB off") ? grain.dataProblems : []),
+    ...(grain && grainFindsUbOff(grain) ? grain.dataProblems : []),
     ...(ub?.dataProblems.filter(isOriginProblem) ?? []),
   ];
   const text =

@@ -437,5 +437,27 @@
    "on": "2026-10-19",
    "option": "yes"
   }
+ },
+ {
+  "source": "review",
+  "ref": "D3a",
+  "at": "d52bf26",
+  "kind": "science-error",
+  "evidence": "grain_check's peaks beside the Bragg nodes (half or more of the strongest off-lattice orbits, web/src/llm/verdicts/rules.ts:407, :437) are the UB off on the report's grain card (web/src/llm/report/report.ts:219, \"one grain, UB off\") and in grain_check's description (web/src/llm/tools/index.ts:1192), but no UB claim or {{achieved}} reads them so: the answer checks' UB topic and {{achieved}}'s UB evidence take its \"UB off\" alone (web/src/llm/verdicts/readers.ts:196, :289), and so does the report's goal (:419).",
+  "proposed_fix": "grain_check's peaks beside the nodes count as the UB off: a data problem in {{achieved}} and the report's goal, worded as ubOffProblem, and not OK for a claim that the UB is right; grain_check stays the check for a second grain.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "945e617",
+  "tests": [
+   "web/src/llm/__tests__/answerChecks.test.ts (holds a claim that the UB is right to grain_check's peaks beside the nodes, and names them among the data's problems (D3a, 2.4.3a))",
+   "web/src/llm/__tests__/verdictPins.test.ts (D3a (2.4.3a, the manager on the user's delegation): grain_check's peaks beside the nodes are the UB off too, to both readers)",
+   "web/src/llm/__tests__/verdicts.test.ts (grain: most beside nodes, unsymmetrised)"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "yes"
+  }
  }
 ]
