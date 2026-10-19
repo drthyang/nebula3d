@@ -230,7 +230,7 @@ export function candidateFindings(rec: RunRecord, c: ValidationCase): Validation
       add({
         step: first.step,
         kind: "bug",
-        evidence: `the conclusion missed the fault: ${first.tool} (step ${first.step}) found ${foundOnly.map((x) => x.what).join(", ")}, but the text the model read left it out`,
+        evidence: `the conclusion missed the fault: ${first.tool} (step ${first.step}) found ${foundOnly.map((x) => x.what).join(", ")}, but the text the model read left ${foundOnly.length > 1 ? "them" : "it"} out`,
         proposed_fix: "keep that field in the text the model reads: a long result is fitted to the limit by dropping its bulkiest parts (readings/fit.ts), and the field the fault shows in must stay",
       });
     } else if (truths.length && read.every((h) => h === null)) {

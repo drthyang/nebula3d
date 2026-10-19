@@ -138,11 +138,11 @@ export const ANSWER_REVISIONS = 1;
 export const REVISING_NOTE = "Checking the answer against its evidence…";
 
 // What an answer's numbers may come from: the conversation as it arrived (the
-// system prompt, the context, the user's words), the tool results of this reply
-// (whole, though the model may read them fitted or shortened) and of earlier turns, and
-// the tools' own guidance. No assistant text: an earlier answer's number from
-// nowhere would otherwise vouch for the next answer, and this reply's drafts,
-// and the notes sent back about them, for themselves.
+// system prompt, the context, the user's words), the tool results of this
+// reply (whole, though the model may read them fitted or shortened) and of
+// earlier turns, and the tools' own guidance. No assistant text: an earlier
+// answer's number from nowhere would otherwise vouch for the next answer, and
+// this reply's drafts, and the notes sent back about them, for themselves.
 function numberSources(convo: ChatMessage[], arrived: number, results: readonly string[], tools: AgentTool[], earlier: readonly string[]): string {
   const text = (m: ChatMessage): string =>
     typeof m.content === "string"
