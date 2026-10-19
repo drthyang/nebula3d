@@ -18,20 +18,22 @@
 
 import type { Dataset } from "../../api/types";
 import type { AgentStep } from "../agent";
-import { ANSWER_WORD, writtenNumbers } from "../answerText";
+import { writtenNumbers } from "../answerText";
 import type { PipelineContext } from "../context/pipelineContext";
 import { buildChatMessages } from "../prompts/templates";
 import type { ChatMessage } from "../provider/client";
 import { found, seen, whole, type Readable } from "../readings";
 import type { Failure } from "../recovery";
 import { SAMPLE_PARAMS } from "../tune/catalog";
-import { answers, NEGATION, numbers, sentences } from "./checks";
+import { answers } from "./checks";
 import manifest from "./fixtures/validation-cases.json";
+import { readCheck, type GradedSpan } from "./graderReading";
 import type { Check, EvalRun, Grade } from "./harness";
 import type { ToolOffer } from "./offers";
 
-// The graders import nothing of the app's verdicts (validation.test.ts scans
-// it): the verdict a run computed is the harness's to carry.
+// The graders import nothing of the app's verdicts or of the answer checks
+// (witness.test.ts scans them): the verdict a run computed is the harness's
+// to carry, and an answer's words are read through the graders' port.
 type ComputedVerdict = NonNullable<EvalRun["verdict"]>;
 
 export type Split = "dev" | "test";
@@ -161,40 +163,40 @@ const OWN = /\b(crystal's own|sample's own|intrinsic|its own)\b/i;
  */
 const UB_NOISE_DEG = 0.05;
 
-/** The answer's clauses. */
-export const clauses = (text: string): string[] =>
-  sentences(text)
-    .flatMap((s) => s.split(/;\s+|\s[—–]\s/))
-    .map((s) => s.trim())
-    .filter(Boolean);
+/**
+ * The clause credits the run with *re*: it says it, and does not negate it
+ * (a leading "No," answers; it does not negate), and it is no question and
+ * not tentative (a condition or a plan opens it).
+ */
+const credits = (c: GradedSpan, re: RegExp): boolean => re.test(c.text) && !c.negated && !c.tentative && !c.question;
 
-/** The clause says *re*, without negating it (a leading "No," answers; it does not negate). */
-const claimed = (clause: string, re: RegExp, { alarm = false, own = false } = {}): boolean => {
-  if (!re.test(clause) || NEGATION.test(clause.replace(ANSWER_WORD, ""))) return false;
-  if (!alarm) return true;
-  if (FINE.test(clause) || (own && OWN.test(clause))) return false;
+/**
+ * The clause charges the run with *re*, a fault the case does not have: it
+ * says it, does not negate it, and is no question; it says no FINE word of it
+ * (nor, of a crystal's own feature, an OWN word); and of the UB it writes an
+ * angle the size of the fit's noise or more. No hedge excuses an alarm (W5):
+ * "if the UB is off" raises a fault the case does not have.
+ */
+const charges = (c: GradedSpan, re: RegExp, own = false): boolean => {
+  if (!re.test(c.text) || c.negated || c.question) return false;
+  if (FINE.test(c.text) || (own && OWN.test(c.text))) return false;
   // A turn the size of the fit's own noise is no claim that the UB is off.
-  const angles = numbers(clause);
-  return !(re === ALARMS.ub && angles.length > 0 && angles.every((x) => Math.abs(x) < UB_NOISE_DEG));
+  return !(re === ALARMS.ub && c.angles.length > 0 && c.angles.every((x) => Math.abs(x) < UB_NOISE_DEG));
 };
 
 /** Some clause of the answer says *re*. */
-const says = (re: RegExp, what: string): Check => ({
-  name: `says ${what}`,
-  grade: (run) => {
-    const hit = clauses(run.content).find((c) => claimed(c, re));
-    return hit ? ok(`“${hit.slice(0, 160)}”`) : fail(`no clause says ${what}`);
-  },
-});
+const says = (re: RegExp, what: string): Check =>
+  readCheck(`says ${what}`, (answer) => {
+    const hit = answer.clauses.find((c) => credits(c, re));
+    return hit ? ok(`“${hit.text.slice(0, 160)}”`) : fail(`no clause says ${what}`);
+  });
 
 /** No clause of the answer claims *re*. */
-const neverSays = (re: RegExp, what: string): Check => ({
-  name: `never claims ${what}`,
-  grade: (run) => {
-    const hit = clauses(run.content).find((c) => claimed(c, re, { alarm: true }));
-    return hit ? fail(`“${hit.slice(0, 160)}”`) : ok("not claimed");
-  },
-});
+const neverSays = (re: RegExp, what: string): Check =>
+  readCheck(`never claims ${what}`, (answer) => {
+    const hit = answer.clauses.find((c) => charges(c, re));
+    return hit ? fail(`“${hit.text.slice(0, 160)}”`) : ok("not claimed");
+  });
 
 // The families whose fault each case has: what it must report.
 const REPORTS: Record<string, string[]> = {
@@ -212,24 +214,18 @@ const ok = (detail: string) => ({ pass: true, detail });
 const fail = (detail: string) => ({ pass: false, detail });
 
 /** The answer writes a number within *tol* of *value*. */
-const writes = (what: string, value: number, tol: number): Check => ({
-  name: `writes ${what}`,
-  grade: (run) => {
-    const hit = numbers(run.content).find((x) => Math.abs(x - value) <= tol);
+const writes = (what: string, value: number, tol: number): Check =>
+  readCheck(`writes ${what}`, (answer) => {
+    const hit = answer.numbers.find((x) => Math.abs(x - value) <= tol);
     return hit !== undefined ? ok(`wrote ${hit} (put in: ${value})`) : fail(`no number within ${tol} of ${value}`);
-  },
-});
+  });
 
 /** No clause calls the shell at *q* a powder ring (it is the crystal's own). */
-const shellNotARing = (q: number): Check => ({
-  name: `never calls the crystal's shell at ${q} Å⁻¹ a ring`,
-  grade: (run) => {
-    const hit = clauses(run.content).find(
-      (c) => claimed(c, ALARMS.rings, { alarm: true, own: true }) && numbers(c).some((x) => Math.abs(x - q) <= 0.1),
-    );
-    return hit ? fail(`“${hit.slice(0, 160)}”`) : ok("not called a ring");
-  },
-});
+const shellNotARing = (q: number): Check =>
+  readCheck(`never calls the crystal's shell at ${q} Å⁻¹ a ring`, (answer) => {
+    const hit = answer.clauses.find((c) => charges(c, ALARMS.rings, true) && c.numbers.some((x) => Math.abs(x - q) <= 0.1));
+    return hit ? fail(`“${hit.text.slice(0, 160)}”`) : ok("not called a ring");
+  });
 
 /** The checks on what a run reported about its case (the outputs are scored in Python). */
 export function detectionChecks(c: ValidationCase): Check[] {

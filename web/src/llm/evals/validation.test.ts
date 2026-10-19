@@ -14,7 +14,6 @@ import { fit, found, seen } from "../readings";
 import { allSkills } from "../skills";
 import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolsWithSkills, unreadSkillRefusal } from "../tools";
 import { UB_TURNED } from "../verdicts/rules";
-import { readText } from "./backend";
 import type { EvalRun } from "./harness";
 import {
   ARMS,
@@ -359,34 +358,6 @@ describe("a turned UB: the grader's limit is the app's 0.05°, held by behaviour
     expect(Math.abs(app - grader)).toBeLessThan(1e-9);
     expect([turned(0.05), charges(0.05)]).toEqual([true, true]);
   });
-});
-
-describe("the graders import nothing of the app's verdicts", () => {
-  /** The modules a source imports or re-exports from, as written: type-only, side-effect and dynamic imports included. */
-  const importsOf = (source: string): string[] =>
-    [...source.matchAll(/\b(?:import|export)\b[^;'"]*?\bfrom\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|^\s*import\s*["']([^"']+)["']/gm)].map((m) => m[1] ?? m[2] ?? m[3]);
-  const fromVerdicts = (spec: string): boolean => /^\.\.\/verdicts(\/|$)/.test(spec);
-
-  it("finds every kind of import in a planted source", () => {
-    const planted = [
-      'import type { ComputedVerdict } from "../verdicts";',
-      "import {\n  UB_TURNED,\n} from '../verdicts/rules';",
-      'export { verdicts } from "../verdicts/readers";',
-      'const later = await import("../verdicts");',
-      'import "../verdicts/rules";',
-      'import { seen } from "../readings";',
-    ].join("\n");
-    expect(importsOf(planted).filter(fromVerdicts)).toHaveLength(5);
-    expect(importsOf(planted)).toContain("../readings");
-  });
-
-  for (const file of ["checks.ts", "validation.ts"]) {
-    it(file, async () => {
-      const source = await readText(new URL(`./${file}`, import.meta.url));
-      expect(importsOf(source).length).toBeGreaterThan(0);
-      expect(importsOf(source).filter(fromVerdicts)).toEqual([]);
-    });
-  }
 });
 
 describe("unsafe actions", () => {
