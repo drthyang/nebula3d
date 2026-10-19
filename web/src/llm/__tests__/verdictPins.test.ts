@@ -54,13 +54,13 @@ describe("the answer checks read each check's result where the module says the s
 });
 
 describe("D1–D10, kept and named", () => {
-  it("D1: a pass by the reach inside full coverage settles nothing for the answer checks; {{achieved}} reads it", () => {
-    expect(D1_REACH_PASS_SETTLES_NOTHING).toBe(true);
-    expect(reply(INSIDE).checks.coverage).toBeUndefined();
+  it("D1, unified (2.4.1): a pass by the reach inside full coverage is coverage OK to the answer checks, as to {{achieved}}", () => {
+    expect(D1_REACH_PASS_SETTLES_NOTHING).toBe(false);
+    expect(reply(INSIDE).checks.coverage).toBe("pass");
     expect(reply(INSIDE).achieved).toMatchObject({ attention: [] });
-    // After "too far", the answer checks still read "too far"; {{achieved}} reads the newest.
+    // After "too far", both read the newest: the reach inside.
     const after = reply(TOO_FAR, INSIDE);
-    expect(after.checks.coverage).toBe("attention");
+    expect(after.checks.coverage).toBe("pass");
     expect(after.achieved?.attention).toEqual([]);
   });
 

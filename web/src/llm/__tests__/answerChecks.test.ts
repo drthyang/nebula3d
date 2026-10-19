@@ -22,6 +22,7 @@ import {
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";
 import type { AgentTool } from "../tools";
+import { judge } from "../verdicts";
 
 const step = (name: string, args: Record<string, unknown> = {}, result: unknown = {}, status: AgentStep["status"] = "done"): AgentStep => ({
   id: name,
@@ -97,6 +98,22 @@ describe("contradicting the tools' computed verdicts", () => {
     expect(contradictions("The window stays inside the coverage.", [tooFar]).map((t) => t.id)).toEqual(["coverage"]);
     const notKept = step("symmetry_check", {}, { verdict: "not kept: the six-fold fails" });
     expect(contradictions("The ΔPDF keeps its six-fold symmetry.", [notKept]).map((t) => t.id)).toEqual(["symmetry"]);
+  });
+
+  it("takes the transform's reach inside full coverage as coverage OK (D1, 2.4.1)", () => {
+    // Synthetic measurements: a window tapered to the coverage reaches 6.283 Å⁻¹, and full coverage ends at 6.5 Å⁻¹.
+    const reach = { window_weight: null, window: "the ΔPDF's ellipsoid window", unit_cell: true, full_coverage_q: 6.5, reach_from: "the window is tapered to the measured coverage", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } };
+    const inside = judge("coverage", { ...reach, reach: 6.283 });
+    const past = judge("coverage", { ...reach, reach: 9.1, reach_from: "the window tapers to zero at the box faces" });
+    expect([inside.kind, past.kind]).toEqual(["pass", "attention"]);
+    const reached = step("qmax_coverage", {}, { verdict: inside.words, window_weight_on_unmeasured: null });
+    const tooFar = step("qmax_coverage", {}, { verdict: past.words, window_weight_on_unmeasured: null });
+    const claim = "The window stays inside the coverage.";
+    // The reach brought inside: the claim stands (it was sent back on the "too far" before 2.4.1).
+    expect(contradictions(claim, [tooFar, reached])).toEqual([]);
+    expect(contradictions(claim, [reached])).toEqual([]);
+    // The reach past it, newest: sent back.
+    expect(contradictions(claim, [reached, tooFar]).map((t) => t.id)).toEqual(["coverage"]);
   });
 
   it("knows a UB turned by the fit, or on a symmetrised volume, is not fine", () => {
