@@ -151,13 +151,13 @@ the scope to all seven and every phase, with approvals delegated to the manager:
 
 | # | Candidate | Strength | Dependency | The user's decision |
 | --- | --- | --- | --- | --- |
-| 1 | The check-verdict module | Strong | in-process | start set (2.3) |
-| 2 | Each tool declares its facts | Strong | in-process | start set (2.2), after the `dpdf_contrast` fix alone (2.1) |
-| 3 | A tool result carries both readings | Strong | in-process | start set (2.6) |
-| 4 | The executor owns a round of calls | Worth exploring | in-process | approved by the manager, 2026-10-19 (3.1) |
+| 1 | The check-verdict module | Strong | in-process | start set (2.3; #28, merged) |
+| 2 | Each tool declares its facts | Strong | in-process | start set (2.2; #23, merged), after the `dpdf_contrast` fix alone (2.1) |
+| 3 | A tool result carries both readings | Strong | in-process | start set (2.6; #59, merged) |
+| 4 | The executor owns a round of calls | Worth exploring | in-process | approved by the manager, 2026-10-19 (3.1; in progress) |
 | 5 | One reader of an answer's words | Worth exploring | in-process | approved by the manager, 2026-10-19 (3.2) |
 | 6 | Coverage measured once, in Python | Worth exploring | local-substitutable | approved by the manager, 2026-10-19 (3.3) |
-| 7 | Replays record at the client seam | Speculative | ports & adapters | approved by the manager, 2026-10-19 (3.4) |
+| 7 | Replays record at the client seam | Speculative | ports & adapters | approved by the manager, 2026-10-19 (3.4; built without recordings, #58, merged) |
 
 1. **The check-verdict module.** The rules for judging a check live in
    `report/report.ts`, which calls itself an assembler (`:1-5`). The tools
@@ -225,6 +225,9 @@ the scope to all seven and every phase, with approvals delegated to the manager:
 7. **Replays record at the client seam.** `web/src/api/client.ts` already has
    two adapters, HTTP and Pyodide. A recorded third would let CI replays run
    the real tools and rules, which they now mock (`evals/scripted.ts:95-112`).
+   Built (#58) as the second of two designs: CI builds the dev cases where the
+   tests run, and a CPython adapter fills the Pyodide adapter's Worker
+   messages. Nothing is recorded, so nothing can go stale.
 
 Leads checked and dropped by the review:
 - **The scorer sharing the app's limits** (`score.py:70`, `:85-96`): the
@@ -268,7 +271,16 @@ not architecture. Each change here moves a number or a verdict. Each was
   - the browser build (float32, the low-memory ring test) is never validated
     (`webbridge.py:160`, `:201`; `ring_isotropy.py:171`, `:243-244`).
 
-  See 4.12.
+  See 4.12. Decided by the manager on 2026-10-19: the page keeps ring order 8
+  against the package's 6, which is arm A's baseline, with a comment saying
+  why; `compute_delta_pdf`'s own default window becomes the pipeline's
+  gaussian 0.4, as a behaviour change with its own fragment and a test against
+  `DeltaPdfParams`.
+- **Coarse grids** (found by #58's known-answer tests at n = 81): the ring and
+  texture checks judged grids too coarse to resolve what they test, and the
+  punch removes forbidden nodes there. The checks are now "not judged" below
+  the resolution they need (G1, 4.13). The punch has a recommendation waiting
+  for the manager (4.14).
 - **The window's 1e-3 limit is written four times** (`delta_pdf.py:397`,
   `metrics/coverage.ts:34`, `report.ts:336`, `score.py:70`). The scorer's copy
   is independent by design; the check-verdict module (2.3) retires
@@ -487,12 +499,12 @@ Beyond single contradictions:
 | --- | --- | --- |
 | 1.1 | **One run policy, recorded.** A `RunPolicy` states what each transport runs under: turn cap, tool scoping, pruning budget, temperature (none where the transport drops it), output cap, whether reasoning is replayed, and the window plan. `runAgent` reads it, and each run record and transcript keeps it. The Claude entry's `temperature: null` becomes what is sent and recorded, not `?? 0.2` (`validation.live.test.ts:164`). Arm B stays the Pilot as it ships, so the defaults stay per transport; evals.md lists what a comparison across models also compares. | M |
 | 1.2 | **State reset per run.** Between runs the validation runner clears the pipeline store's log and terminal state, the tuning store, the console's view stores and `noTools` (`agent.ts:70`), and records the token calibration it starts from. A test runs two scripted runs back to back: the second's `run_log` must not read the first's log. In the app, an earlier turn's result stops counting as a number source once a later run recomputed its stage (`evidence.ts`). | S |
-| 1.3 | **The ablation is structural** **(approved 2026-10-19; built as 2.5)**. The system prompt is built from sections, not edited by string replace (`evals/validation.ts:96-100`). With skills off, no tool description, tool result or goal names a skill or carries a skill's step: `dpdf_peaks`'s description drops "(delta-pdf-interpretation)" and its order (`tools/index.ts:1062`), and the flatten's goal drops "a rising one wants flattenQ2" (`tune/prompts.ts:29`), which belongs to reduction-qc. A test runs a scripted arm-C session and finds no skill name, and no sentence of a skill, in any request or result. | M |
+| 1.3 | **The ablation is structural** **(approved 2026-10-19; built as 2.5, #57, merged)**. The system prompt is built from sections, not edited by string replace (`evals/validation.ts:96-100`). With skills off, no tool description, tool result or goal names a skill or carries a skill's step: `dpdf_peaks`'s description drops "(delta-pdf-interpretation)" and its order (`tools/index.ts:1062`), and the flatten's goal drops "a rising one wants flattenQ2" (`tune/prompts.ts:29`), which belongs to reduction-qc. A test runs a scripted arm-C session and finds no skill name, and no sentence of a skill, in any request or result. | M |
 | 1.4 | **The holdout scan widened** (#21, merged) to all of `web/src`, `src`, `tests`, `examples`, `scripts` and `docs` (the validation's own records and tables allowed), and to the test cases' opaque labels, seeds, planted vectors and fault sizes as well as their ids (`tests/test_validation.py:154-178`). | S |
 | 1.5 | **Replays recompute, fixtures are checked.** The answer checks and `verdict.ts` recompute a stage's verdict from its numbers by the current rule instead of trusting a recorded label (`verdict.ts:43`, `answerChecks.ts:253`). Each fixture (`evals/fixtures/*.json`) is re-recorded by its probe, and a test checks every recorded result against the current tool's output shape (3.5), so a fixture cannot lag a tool. | M |
-| 1.6 | **The prompts say what the checks judge.** The system prompt and the stage-review prompts stop stating the old criteria: the flatten's 1σ "flat" and "over the whole coverage" (`prompts/system.ts:59-64`), "r clearly below 1 flags a transform problem" (`system.ts:80-81`), and "trustworthy (consistency_pearson_r)" (`prompts/templates.ts:70`). They say what the verdicts now judge, from the check-verdict module (2.3). The four checks in the system prompt (`system.ts:120-128`) name all five stages and the UB, as `{{achieved}}` needs **(approved by the manager: it changes the Pilot's method in both arms)**. | S |
+| 1.6 | **The prompts say what the checks judge** (in progress). The system prompt and the stage-review prompts stop stating the old criteria: the flatten's 1σ "flat" and "over the whole coverage" (`prompts/system.ts:59-64`), "r clearly below 1 flags a transform problem" (`system.ts:80-81`), and "trustworthy (consistency_pearson_r)" (`prompts/templates.ts:70`). They say what the verdicts now judge, from the check-verdict module (2.3). The four checks in the system prompt (`system.ts:120-128`) name all five stages and the UB, as `{{achieved}}` needs **(approved by the manager: it changes the Pilot's method in both arms)**. The snapshot (2.0) found more of the kind, fixed in the same PR: an internal note in the flatten's criteria, "the context above" for context that comes after it, `punchSearchMaxWidth`'s range leaving out its default 0 (off), and the ring check's words against its rule at confirmed rings. | S |
 | 1.7 | **The skill gate holds within a reply.** A skill read in an earlier turn no longer opens the gate in a later one, since its text is not carried (`components/ChatView.tsx:218`, `:224`, `skills.ts:235-243`); the model is told to read it again. The arms are unaffected: a validation run is one turn. | S |
-| 1.8 | **Run records keep whole results** (now 2.6). `runAgent` returns each step's whole result beside the text the model read (`agent.ts:222`, `:465-473`), and the record's decisions, number provenance and candidate findings read the whole one (`evals/validation.ts:298-303`), as its field already says. | S |
+| 1.8 | **Run records keep whole results** (now 2.6; #59, merged). `runAgent` returns each step's whole result beside the text the model read (`agent.ts:222`, `:465-473`), and the record's decisions, number provenance and candidate findings read the whole one (`evals/validation.ts:298-303`), as its field already says. | S |
 | 1.9 | **One reader of an answer's words** (now 3.2, after the approval batch). The answer checks and the validation's graders share `NEGATION`, `clauses`, `sentences` and the number reader (`answerChecks.ts:160-190`, `:393-410`; `evals/checks.ts:15-55`; `evals/validation.ts:147-151`), or a test lists the sentences on which they differ and why. | S |
 | 1.10 | **Done.** The findings record takes the status, the commit, the regression tests, a note and the user's decision (`evals/findings.ts`, `docs/evals/validation/review-findings.json`); a test holds every implemented finding to them. | S |
 | 1.11 | **The test split stays out of pytest's default output** (#25, merged; the definitions' own module is in progress). It runs only under `NEBULA_HOLDOUT_TESTS=1`, which CI sets, under masked names. Follow-ups, approved by the manager: the test split's definitions move to their own module, which only the opt-in loader imports, and test failures and files on disk never carry a test case. Two builders saw test values while reading `cases.py`; each was closed out, and later work went to fresh builders. | S |
@@ -516,8 +528,8 @@ Each PR:
 | 2.2 | **Each tool declares its facts** (candidate 2; #23, merged). Whether it acts, reaches the backend or changes a later reading; the topic it settles and the stage it reads; whether it makes a reply reportable; its labels and what it highlights. The side lists derive from the registry, and a test over the registry replaces them. A list that was stale is named; any difference that changes behaviour is kept as a named exception. | M |
 | 2.3 | **The check-verdict module** (candidate 1; #28, merged). One module owns each check's rule, its outcome kind (met, needs attention, not judged, with reasons and data problems), the words built from that kind, and the run's achieved. Tools attach the kind; `verdict.ts`, the answer checks and the report read it. Recorded results with words only are read by one adapter. D1–D18 are kept, named and pinned. D1–D9 were decided by the user (2.4), and D10–D18 by the manager (2.4b). | L |
 | 2.4 | **The user's answers of 2026-10-19, one small PR each, after 2.3** **(approved; all merged: D1–D6 #30–#35, follow-ups #39, D7–D9 #41–#43, Q10 #44, Q11 #45, D3a #46, D7's follow-up #51)**. Each re-runs arm A on dev and the snapshot, and says which case moved and why if arm A moves. See the table below. | 11 × S |
-| 2.5 | **Arm C removes the whole method** **(approved 2026-10-19; was 1.3)**. With skills off, no tool description, tool result or goal names a skill or carries a skill's step: `dpdf_peaks`' description (`tools/index.ts:1062`), the flatten's goal (`tune/prompts.ts:29`). The system prompt is built from sections, not by string replace (`evals/validation.ts:96-100`). A structural switch, built after 2.4; it changes what the model sees under skills off only. | M |
-| 2.6 | **A tool result carries both readings** (candidate 3; was 1.8). **(approved by the manager)** A step holds the whole result and the text the model read, parsed once. The record's decisions, number provenance and candidate findings read the whole result, as its field says (`evals/validation.ts:301`). It changes the record, not what the model sees. | M |
+| 2.5 | **Arm C removes the whole method** **(approved 2026-10-19; was 1.3; #57, merged)**. With skills off, no tool description, tool result or goal names a skill or carries a skill's step: `dpdf_peaks`' description (`tools/index.ts:1062`), the flatten's goal (`tune/prompts.ts:29`). The system prompt is built from sections, not by string replace (`evals/validation.ts:96-100`). A structural switch, built after 2.4; it changes what the model sees under skills off only. The manager's rules for it (2026-10-19): arm C keeps the definitions (what a field is, its units, how it is computed, its limits as a measurement) and drops the inference (which reading to use, what a pattern is evidence of, a remedy), sentence by sentence, tagged in `web/src/llm/inference.ts` and listed in the snapshot's `6-inference.md`; generic procedure stays; the four checks are a plain list, not a checklist, and route to no tool; the evidence gate still runs, and its send-backs name no skill, stage or tool. | M |
+| 2.6 | **A tool result carries both readings** (candidate 3; was 1.8; #59, merged). **(approved by the manager)** A step holds the whole result and the text the model read, parsed once. The record's decisions, number provenance and candidate findings read the whole result, as its field says (`evals/validation.ts:301`). It changes the record, not what the model sees. `web/src/llm/readings/` gives what the tool found, what the model read and the whole text; the graders keep their own parse of what the model read, so they stay independent. | M |
 
 The answers (batch 1, decided by the user on 2026-10-19, every recommendation
 accepted). They are filed in the findings record
@@ -570,10 +582,10 @@ Each is its own commit with a decision record. D's in one function share a PR. A
 
 | PR | Change | Size |
 | --- | --- | --- |
-| 3.1 | **The executor owns a round of calls** (candidate 4) **(approved by the manager)**: parsing, the call key, repeats, invalidation, the skill gate and the result budget in one module. The tools then split out of `tools/index.ts` (1830 lines) for locality. | M |
+| 3.1 | **The executor owns a round of calls** (candidate 4; in progress) **(approved by the manager)**: parsing, the call key, repeats, invalidation, the skill gate and the result budget in one module. The tools then split out of `tools/index.ts` (1830 lines) for locality. Chosen by design-it-twice: a pure round over an explicit history, a call by name for the tests and the report, and a helper the loop's compaction uses to forget calls, so the loop never edits the history itself; one file per tool, named as the model names it. | M |
 | 3.2 | **One reader of an answer's words** (candidate 5; was 1.9). It shares the tokenising, and the gate's topics and the grader's claims stay apart. **(approved by the manager)**: the grader takes the app's 0.05° UB rule and retires its 0.1°; every grading change on dev is reported, and earlier records are re-scored. | S |
 | 3.3 | **Coverage measured once, in Python** (candidate 6). **(approved by the manager)** `qmax_coverage` reads `src/nebula3d/analysis/coverage.py` behind both adapters; the planes only show where. The coverage verdict can change on a volume that stores zeros. | S |
-| 3.4 | **A recorded adapter at the client seam** (candidate 7) **(approved by the manager)**, so CI replays run the real tools and rules on synthetic recorded slices. | M |
+| 3.4 | **The dev cases at the client seam** (candidate 7; #58, merged) **(approved by the manager)**. CI builds the dev cases and runs the real tools and rules on them through a CPython adapter under the Pyodide adapter's Worker messages, pinned to the browser's package versions; nothing is recorded. Each dev case's planted fault has a known-answer test. At n = 81 the ring cases invented a ring, the shell cases missed theirs, and three cases read a false fill bias; all pass at n = 161. The misses were reported as findings, not tuned away, and led to G1 (4.13). | M |
 | 3.5 | **Shape contracts and limits across languages.** Each tool's result has a shape contract that the fixtures are checked against (1.5). A test fails when a limit shared between Python and TypeScript differs. No value changes. | M |
 
 ### Phase 4 — Tool science
@@ -596,7 +608,9 @@ them.
 | 4.9 | **The pedestal, mapped.** `docs/evals.md` states how the tool's pedestal rule and the scorer's pedestal relate, and the dev sweep reports both on every case, so a run's tool verdict and its score can be read side by side. **(approved by the manager)** for any change to either rule. | S |
 | 4.10 | **One σ and one Auto in the ΔPDF tools.** Each ΔPDF tool says which σ it quotes, or they share one (`metrics/dpdf.ts:120-124`, `tools/index.ts:1002-1003`, `dpdf_features.py:85-87`). `dpdf_contrast` calls the page's `autoLevels` (`components/colorScale.ts`). **(approved by the manager)** for any σ whose value changes. | S |
 | 4.11 | **The flatten judged over the run's own range.** `assess_stage` passes the run's fit range and floor percentile instead of [0.8, 10] and 0.25 (`context/pipelineContext.ts:151`, `sliceStats.ts:180`). **(approved by the manager)**: it moves which shells the floors are judged on. | S |
-| 4.12 | **Defaults agreed, the browser build checked.** The page's and the package's defaults agree, or a comment says why not: the ring texture order (`tune/catalog.ts:141` against `_ringplane.py:63`) and the ΔPDF window (`pipeline.py:562-563` against `delta_pdf.py:387-388`). The consistency view uses the run's settings (`server/consistency.py:136-138`). A parity test runs a small synthetic volume through the native and the browser paths (float32, low memory) and pins the verdicts that may differ. **(approved by the manager)** for which ring order or window becomes the default. | M |
+| 4.12 | **Defaults agreed, the browser build checked.** The page's and the package's defaults agree, or a comment says why not: the ring texture order (`tune/catalog.ts:141` against `_ringplane.py:63`) and the ΔPDF window (`pipeline.py:562-563` against `delta_pdf.py:387-388`). The consistency view uses the run's settings (`server/consistency.py:136-138`). A parity test runs a small synthetic volume through the native and the browser paths (float32, low memory) and pins the verdicts that may differ. **(approved by the manager)** for which ring order or window becomes the default. Decided (the manager, 2026-10-19): ring order 8 on the page and 6 in the package, with a comment and a pinning test; `compute_delta_pdf` defaults to gaussian 0.4, as a behaviour change with its own fragment and a test against `DeltaPdfParams`. | M |
+| 4.13 | **The ring and texture checks know the grid they need** (G1, #60, merged) **(approved by the manager)**. Below the resolution a check needs, derived from the physics and not fitted to the dev cases, it is "not judged": the ring test needs at least one voxel across its width cap of 0.16 Å⁻¹ and 90 % of its 128 direction cells holding five voxels per bin; the texture check needs nodes at least 2(r + 4) voxels apart. The pipeline then subtracts no unconfirmed ring candidate and says so loudly wherever the ring stage reports, with the remedy: a finer grid, or `pooled_confirm_rings=False` from the Python API. Known-answer tests at n = 81 (not judged) and n = 161 (judged as before); arm A on dev unchanged. A console setting for `pooled_confirm_rings` is new model-visible text, so it waits until after the validation. | S |
+| 4.14 | **The punch on a coarse grid** (recommended; waiting for the manager). At n = 81 the punch removes forbidden nodes, where the shell that sets a node's background holds too few voxels. The lead's recommendation: a guard per node, where the shell from R to 2R needs at least 8 measured voxels (a grid step of at most 0.143 Å⁻¹ at the default R); below it the node is left to the search pass, with a notice. On the dev cases the forbidden punches at n = 81 drop to none, and n = 161 is unchanged. | S |
 
 ### Phase 5 — Skills
 
@@ -626,6 +640,22 @@ Skill text goes in its own PR, which waits for the user (5.2 to 5.4). The lint (
    split runs once, as the protocol describes. A paid model runs only with the
    user's go-ahead and cap.
 
+### Follow-ups found while building
+
+Small, each its own PR when its files are free:
+- `numberSources` counts the digits inside an unfilled `{{reference}}`.
+- `docs/SKILL_INTERVIEWS.md:835` cites compaction's old path.
+- The probes record the text the model read; they should record the whole
+  result (with 1.5).
+- The dev-data replay could read what the tool found through `readings/`.
+- `webbridge.setup()` leaves `NEBULA3D_LOW_MEMORY` set for later tests, so the
+  pooled ring test fails after it; an autouse fixture, after the holdout
+  module's conftest lands.
+- The chat's reply line is empty when the run is not judged.
+- The browser's 32-bit bincount under the 3-D floors (4.1) is unverified.
+- After the validation, the user's: a console setting for
+  `pooled_confirm_rings` (4.13).
+
 ## Order
 
 The whole plan goes ahead (the user's scope of 2026-10-19), as far as it can
@@ -633,7 +663,8 @@ without the user's own items: skill text, the descriptions that restate a skill,
 live runs and releases. Phase 2 goes first, stacked: 2.0 to 2.6. Phase 1, the
 Python halves of phase 4, and 5.6 run beside it where they share no files.
 Phase 3 follows phase 2. Phase 4's TypeScript halves follow 2.3, so each science
-fix lands in one check's rule and its outcome kind. Phase 5's lint and gates
+fix lands in one check's rule and its outcome kind, and 3.1, which gives each
+tool its own file, so they can be built side by side. Phase 5's lint and gates
 code follow the tools they check. Its skill text (5.2–5.4) waits for the user,
 and 5.5 prepares the interview guide. Phase 6 is last. It freezes the code, runs
 arm A on dev and on the test split (`--report`, from a clean committed tree),
