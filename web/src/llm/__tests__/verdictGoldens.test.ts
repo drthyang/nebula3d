@@ -3,12 +3,14 @@
 // ({{achieved}}), the answer checks' contradictions and their reading of a
 // claimed success, and the report's checks and goal. Over the synthetic grid
 // (verdictGrid.ts) and the replay fixtures of the dev and eval scenarios
-// (evals/fixtures: validation-dev.json, heldout.json, hex90k.json). The code
-// must reproduce them exactly; a disagreement the module keeps is in them as
-// it was.
+// (evals/fixtures: validation-dev.json, hex90k.json, and the scenario evals'
+// held-out set). The code must reproduce them exactly; a disagreement the
+// module keeps is in them as it was.
 //
 // hex90k.json was recorded on a measured dataset, so its outputs are kept as a
-// digest only: nothing measured is written here.
+// digest only: nothing measured is written here. The held-out set's outputs
+// are a digest too, checked only under its opt-in (heldoutFixture.ts): nothing
+// of it is written here or read without the opt-in.
 //
 // Taken with `npx vitest run src/llm/__tests__/verdictGoldens.test.ts` on a
 // tree without the golden file (commit 1 of the module's PR). A diff here is a
@@ -19,14 +21,16 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentStep } from "../agent";
 import { contradictions, overallContradiction } from "../answerChecks";
-import heldout from "../evals/fixtures/heldout.json";
 import hex90k from "../evals/fixtures/hex90k.json";
 import dev from "../evals/fixtures/validation-dev.json";
+import { HOLDOUT_ENV, holdoutOptedIn, loadHeldoutFixture } from "../evals/heldoutFixture";
 import { buildReport, type Measured } from "../report/report";
 import { verdicts } from "../verdicts";
 import { CLAIMS, rerun, replyCases, reportCases, step, SUCCESS } from "./verdictGrid";
 
 const GOLDEN = "./__goldens__/verdicts.json";
+// SHA-256 of the held-out fixture's outputs, as the goldens held them.
+const HELDOUT_DIGEST = "7a969ef4abc0778a3a991f870480cbb69c684167f2373e70aa31aa173a50b765";
 
 type Obj = Record<string, unknown>;
 
@@ -133,7 +137,6 @@ describe("the verdicts, as before the check-verdict module", () => {
       ...replyCases().map(({ id, steps }) => [`reply: ${id}`, replyOutputs(steps)] as [string, unknown]),
       ...reportCases().map(({ id, measured }) => [`report: ${id}`, reportOutputs(measured)] as [string, unknown]),
       ...fixtureOutputs("validation-dev", dev as Fixture),
-      ...fixtureOutputs("heldout", heldout as Fixture),
       // Recorded on a measured dataset: its outputs by digest only.
       ["hex90k (SHA-256 of its outputs)", await digest(JSON.stringify(fixtureOutputs("hex90k", hex90k as Fixture)))],
     ];
@@ -141,5 +144,10 @@ describe("the verdicts, as before the check-verdict module", () => {
     expect(new Set(keys).size, "every case named once").toBe(keys.length);
     const text = `{\n${entries.map(([k, v]) => ` ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(",\n")}\n}\n`;
     await expect(text).toMatchFileSnapshot(GOLDEN);
+  });
+
+  it.runIf(holdoutOptedIn())(`reproduce the held-out fixture's, by digest (${HOLDOUT_ENV}=1)`, async () => {
+    const heldout = (await loadHeldoutFixture()) as unknown as Fixture;
+    expect(await digest(JSON.stringify(fixtureOutputs("heldout", heldout)))).toBe(HELDOUT_DIGEST);
   });
 });
