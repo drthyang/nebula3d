@@ -104,3 +104,16 @@ npx vitest run src/llm/__tests__/modelVisible.test.ts -u
 
 Put `-u` after the file: before it, vitest takes the path as `-u`'s value and
 updates every snapshot in the suite.
+
+### A Pilot tool's facts
+
+Each of the Pilot's tools declares, beside its definition in
+`web/src/llm/tools/index.ts`, the facts the code around the model reads
+(`web/src/llm/tools/facts.ts`): whether it only reads or acts, and on what,
+the verdicts it settles, the questions a local model is offered it for, its
+line in the transcript, the cards it lights, whether a reply that ran it gets
+a report, and the skill it waits for. A new tool declares them there and
+nowhere else. `web/src/llm/__tests__/facts.test.ts` holds what every
+declaration keeps: a tool that acts says what it changes, one that changes a
+stage's settings or tunes it waits for the stage's skill, and every verdict
+topic and every kind of question has a tool.
