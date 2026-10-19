@@ -24,7 +24,9 @@
 import { describe, expect, it } from "vitest";
 
 import { fetchRingDiagnostics } from "../../../api/client";
+import type { AgentStep } from "../../agent";
 import { withoutInference } from "../../inference";
+import { verdicts } from "../../verdicts";
 import { bridgeConfig } from "./bridgeWorker";
 import { devCase, type DevCase, type DevCaseId, type ToolRunResult } from "./index";
 
@@ -134,6 +136,25 @@ describe("dev-control: nothing flagged", () => {
     const msg = evidence(c, { flagged, problems, kinds: outcomes.map((o) => `${o.check}: ${o.kind}`) });
     expect(flagged, msg).toEqual([]);
     expect(problems, msg).toEqual([]);
+  });
+
+  // The verdict on the run, {{achieved}}, from the checks a reply ran: met, or
+  // on a grid too coarse for the ring check not judged, saying why (G1).
+  check("dev-control", named("rings", "the verdict on the run is met, or says why the ring removal is not judged"), async () => {
+    const c = devCase("dev-control");
+    const steps: AgentStep[] = [];
+    for (const [name, args] of [
+      ["assess_stage", { stage: "all" }],
+      ["qmax_coverage", {}],
+      ["texture_check", {}],
+      ["symmetry_check", {}],
+    ] as const) {
+      const r = ran(await c.tool(name, args), name);
+      steps.push({ id: name, name, args, status: "done", result: JSON.stringify(r.result), outcomes: r.outcomes });
+    }
+    const v = verdicts({ reply: steps }).achieved;
+    const msg = evidence(c, { achieved: v });
+    expect(v?.text, msg).toBe(tooCoarse("rings") ? "not judged: the ring removal (grid too coarse for the ring check)" : "met: every stage meets its goal");
   });
 });
 

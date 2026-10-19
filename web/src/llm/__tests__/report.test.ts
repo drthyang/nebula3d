@@ -324,6 +324,18 @@ describe("a card states only what it judges", () => {
     expect(plain.caveats.filter((c) => c.startsWith("Ring removal: ") && c.includes("not confirmed at this grid"))).toEqual([]);
   });
 
+  it("says why its goal is not judged on a grid too coarse for the ring check, as {{achieved}} does, not that the stage was not measured (G1)", () => {
+    const r = buildReport(input({ measured: COARSE_RUN }));
+    expect(r.achieved).toEqual({ met: null, text: "not judged: Ring removal (grid too coarse for the ring check)" });
+    expect(verdicts({ report: COARSE_RUN }).achieved).toMatchObject({ notMeasured: [], notJudged: ["Ring removal (grid too coarse for the ring check)"] });
+    // Beside a stage not measured: each with its own words.
+    const noFlatten = buildReport(input({ measured: { ...COARSE_RUN, flatten: null } }));
+    expect(noFlatten.achieved.text).toBe("not judged: Ring removal (grid too coarse for the ring check); not measured: Flatten");
+    // A ring check that judged nothing for another reason reads as before.
+    const rings = { max_ring_dent: null, max_ring_left: null, ring_rule: "not judged: the test of each bump in 3D could not run" };
+    expect(buildReport(input({ measured: { ...COARSE_RUN, rings } })).achieved.text).toBe("not judged: not measured: Ring removal");
+  });
+
   it("reports the flatten's floor in σ without judging it, by the pedestal rule", () => {
     // The validation's dev volumes (docs/pilot-review.md finding 6): floors of
     // 1.5 to 1.8σ on all eight, whatever the flatten did.

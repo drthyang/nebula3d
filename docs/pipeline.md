@@ -140,9 +140,11 @@ diagnostics record it (`unconfirmed_at_grid`: the count, the need, the notice
 and the shells' |Q|; `GET /api/rings/{id}/diagnostics`), so the console says it
 too: the Execution page shows the stage's line as a warning, the Pilot's ring
 check gives it first (`notice`, which the validation's arm C reads without the
-remedy), and the report puts it on its ring card and among its caveats.
-`pooled_confirm_rings` is a `RingParams` setting of the Python API: the console
-does not offer it. Two limits, each from the rule's own constants:
+remedy), and the report puts it on its ring card and among its caveats. The
+verdict on the run says why the ring removal is not judged: "not judged: the
+ring removal (grid too coarse for the ring check)". `pooled_confirm_rings` is a
+`RingParams` setting of the Python API: the console does not offer it. Two
+limits, each from the rule's own constants:
 
 - **Across a ring.** The test reads each direction's radial profile in |Q|
   bins of 0.02 Å⁻¹, never finer than half a voxel (finer bins share the

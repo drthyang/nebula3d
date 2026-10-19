@@ -22,6 +22,10 @@ export interface ComputedVerdict {
   stages: Partial<Record<Stage, Kind>>; // each stage measured as it now is
   attention: string[]; // what needs attention
   notMeasured: string[]; // stages not measured since they were computed
+  // Stages measured but not judged, for the grid too coarse for their check, each
+  // with why (G1): "the ring removal (grid too coarse for the ring check)". Only
+  // where there is one, so a verdict without one reads as before.
+  notJudged?: string[];
   dataProblems: string[]; // what the data hold that no setting fixes
   text: string; // the verdict in words, as {{achieved}} quotes it
 }
@@ -315,6 +319,26 @@ const STAGE_LABEL: Record<Stage, string> = {
   pdf: "the 3D-ΔPDF",
 };
 
+/**
+ * The check a grid can be too coarse for, by stage, as the verdicts name it
+ * where it is (rules.ts, the reason "grid too coarse"): the rings' 3D test.
+ */
+const GRID_LIMITED_CHECK: Partial<Record<Stage, string>> = { rings: "the ring check" };
+
+/**
+ * A stage measured as it now is and not judged for the grid, in the verdict's
+ * words: its name, and why, the outcome's reason carried through (G1). Not
+ * "not measured since it was last computed": it was. null for any other stage.
+ */
+function notJudgedForTheGrid(stage: Stage, o: Outcome | undefined, name: string): string | null {
+  if (o?.kind !== "info" || !o.reasons.includes("grid too coarse")) return null;
+  return `${name} (grid too coarse for ${GRID_LIMITED_CHECK[stage] ?? "its check"})`;
+}
+
+/** The words of a verdict not judged: the stages not judged for the grid, each with why, then those not measured (as `measured` words them). */
+const notJudgedWords = (forTheGrid: readonly string[], notMeasured: readonly string[], measured: string): string =>
+  `not judged: ${[...(forTheGrid.length ? [forTheGrid.join(", ")] : []), ...(notMeasured.length ? [`${measured}: ${notMeasured.join(", ")}`] : [])].join("; ")}`;
+
 /** The checks on the result that {{achieved}} names when they need attention, in its order, and how. The UB's two checks follow them (achievedOf). */
 const ON_RESULT: [CheckId, string][] = [
   ["coverage", "the ΔPDF window against the coverage"],
@@ -325,15 +349,22 @@ const ON_RESULT: [CheckId, string][] = [
 /** grain_check's outcome as UB evidence to {{achieved}} (D3, D3a, D7): the UB off; anything else says nothing of the UB. */
 const grainUbForAchieved: Cell = (o) => (grainFindsUbOff(o) ? MATRIX.grain.achieved(o) : undefined);
 
-/** {{achieved}}: met when every stage, measured as it now is, meets its goal and no check on the result needs attention; not judged with a stage not measured since it was computed; null when the reply measured nothing it rests on. */
+/** {{achieved}}: met when every stage, measured as it now is, meets its goal and no check on the result needs attention; not judged with a stage not measured since it was computed, or measured on a grid too coarse for its check (saying so, G1); null when the reply measured nothing it rests on. */
 function achievedOf(found: readonly Found[], at: Record<PipelineStage, number>): ComputedVerdict | null {
   const stages: Partial<Record<Stage, Kind>> = {};
+  const read: Partial<Record<Stage, Outcome>> = {};
   for (const s of STAGES) {
     const p = pick(found, at, "achieved", [[s, MATRIX[s].achieved]]);
-    if (p) stages[s] = p.kind;
+    if (p) {
+      stages[s] = p.kind;
+      read[s] = p.o;
+    }
   }
   const attention = STAGES.filter((s) => stages[s] === "attention").map((s) => STAGE_LABEL[s]);
-  const notMeasured = STAGES.filter((s) => stages[s] === undefined || stages[s] === "info").map((s) => STAGE_LABEL[s]);
+  // Not judged for the grid, with why (G1); not measured, the rest that judged nothing.
+  const forTheGrid = (s: Stage) => (stages[s] === "info" ? notJudgedForTheGrid(s, read[s], STAGE_LABEL[s]) : null);
+  const notJudged = STAGES.map(forTheGrid).filter((w): w is string => w !== null);
+  const notMeasured = STAGES.filter((s) => (stages[s] === undefined || stages[s] === "info") && forTheGrid(s) === null).map((s) => STAGE_LABEL[s]);
   const dataProblems: string[] = [];
   let measuredAny = Object.keys(stages).length > 0;
   // The checks on the result: the newest of each, on the outputs as they now are.
@@ -356,15 +387,15 @@ function achievedOf(found: readonly Found[], at: Record<PipelineStage, number>):
   if (evidence) dataProblems.push(...evidence.o.dataProblems.filter((p) => !isOriginProblem(p)));
   if (ubCheck) dataProblems.push(...ubCheck.o.dataProblems.filter(isOriginProblem));
   if (!measuredAny) return null;
-  const achieved = attention.length ? false : notMeasured.length ? null : true;
+  const achieved = attention.length ? false : notMeasured.length || notJudged.length ? null : true;
   const words =
     achieved === true
       ? "met: every stage meets its goal"
       : achieved === false
         ? `not met: needs attention: ${attention.join(", ")}`
-        : `not judged: not measured since it was last computed: ${notMeasured.join(", ")}`;
+        : notJudgedWords(notJudged, notMeasured, "not measured since it was last computed");
   const text = words + (dataProblems.length ? `; data problems no setting fixes: ${dataProblems.join("; ")}` : "");
-  return { achieved, stages, attention, notMeasured, dataProblems, text };
+  return { achieved, stages, attention, notMeasured, ...(notJudged.length ? { notJudged } : {}), dataProblems, text };
 }
 
 /** Each check's kind as the answer checks read it: the result that decides, by its selection (D7). */
@@ -445,8 +476,11 @@ function reportOf(m: Measured): Verdicts {
   const checks = Object.fromEntries(Object.entries(cards).filter(([, k]) => k !== undefined)) as Partial<Record<CheckId, Kind>>;
   const stages = Object.fromEntries(STAGES.filter((s) => checks[s] !== undefined).map((s) => [s, checks[s]])) as Partial<Record<Stage, Kind>>;
   const attention = STAGES.filter((s) => checks[s] === "attention").map((s) => REPORT_TITLE[s]);
-  const notMeasured = STAGES.filter((s) => checks[s] === undefined || checks[s] === "info").map((s) => REPORT_TITLE[s]);
-  const achieved = attention.length ? false : notMeasured.length ? null : true;
+  // A card not judged for the grid, with why, as {{achieved}} says it (G1); not measured, the rest that judged nothing.
+  const forTheGrid = (s: Stage) => (checks[s] === "info" ? notJudgedForTheGrid(s, of(s), REPORT_TITLE[s]) : null);
+  const notJudged = STAGES.map(forTheGrid).filter((w): w is string => w !== null);
+  const notMeasured = STAGES.filter((s) => (checks[s] === undefined || checks[s] === "info") && forTheGrid(s) === null).map((s) => REPORT_TITLE[s]);
+  const achieved = attention.length ? false : notMeasured.length || notJudged.length ? null : true;
   // The data's problems, named as {{achieved}} names them (Q11): the coverage's,
   // then the UB's, then the HKL origin's shift. The measurement pass runs
   // ub_check and grain_check at once on the same outputs, so neither is newer:
@@ -462,10 +496,10 @@ function reportOf(m: Measured): Verdicts {
   const text =
     (attention.length
       ? `not met: needs attention: ${attention.join(", ")}`
-      : notMeasured.length
-        ? `not judged: not measured: ${notMeasured.join(", ")}`
+      : notMeasured.length || notJudged.length
+        ? notJudgedWords(notJudged, notMeasured, "not measured")
         : "met: every stage meets its goal") + (dataProblems.length ? `; data problems no setting fixes: ${dataProblems.join("; ")}` : "");
-  return { achieved: { achieved, stages, attention, notMeasured, dataProblems, text }, checks };
+  return { achieved: { achieved, stages, attention, notMeasured, ...(notJudged.length ? { notJudged } : {}), dataProblems, text }, checks };
 }
 
 /** A run's verdicts: a reply's, from its steps' tool results; a report's, from its measurements. */

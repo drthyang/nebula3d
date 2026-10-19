@@ -135,6 +135,27 @@ describe("the verdict computed from the checks", () => {
     expect(computedVerdict([step("describe_dataset", {})])).toBeNull(); // nothing it rests on
   });
 
+  it("says why a stage measured on a grid too coarse for its check is not judged, not that it was not measured (G1)", () => {
+    const coarse = { verdict: "not judged", max_ring_left: null, max_ring_dent: null, ring_rule: "not judged: grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1" };
+    const v = computedVerdict([all({ rings: coarse })])!;
+    expect(v).toMatchObject({ achieved: null, attention: [], notMeasured: [], notJudged: ["the ring removal (grid too coarse for the ring check)"] });
+    expect(v.text).toBe("not judged: the ring removal (grid too coarse for the ring check)");
+    expect(resolveReference("achieved", [all({ rings: coarse })])).toBe(v.text);
+    // Beside stages not measured since they were last computed, each with its own words.
+    const stale = computedVerdict([all({ rings: coarse }), rerun({ rings: "reused", punch: "reused", backfill: "reused", flatten: "computed", pdf: "computed" })])!;
+    expect(stale).toMatchObject({ achieved: null, notMeasured: ["the flatten", "the 3D-ΔPDF"], notJudged: ["the ring removal (grid too coarse for the ring check)"] });
+    expect(stale.text).toBe("not judged: the ring removal (grid too coarse for the ring check); not measured since it was last computed: the flatten, the 3D-ΔPDF");
+    // A need for attention elsewhere still decides: not met.
+    expect(computedVerdict([all({ rings: coarse, flatten: stage("flatten", ATTENTION) })])!.text).toBe("not met: needs attention: the flatten");
+    // A ring check that judged nothing for another reason reads as before, with no notJudged.
+    const nothing = computedVerdict([all({ rings: { verdict: "not judged", max_ring_left: null, max_ring_dent: null, ring_rule: "not judged: the test of each bump in 3D could not run" } })])!;
+    expect(nothing.text).toBe("not judged: not measured since it was last computed: the ring removal");
+    expect(nothing).not.toHaveProperty("notJudged");
+    // A claim of success is held to the verdict, which says why: the checks ran.
+    expect(overallContradiction("The 3D-ΔPDF can be trusted.", v)).toBe(`It calls the run a success, but the verdict computed from the checks is "${v.text}"`);
+    expect(overallContradiction("The 3D-ΔPDF can be trusted.", nothing)).toMatch(/did not all run on the outputs as they now are \(not judged: not measured/);
+  });
+
   it("names the data's problems no setting fixes, apart from whether the reduction met its goal", () => {
     const v = computedVerdict([
       all(),

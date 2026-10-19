@@ -51,7 +51,9 @@ Each is described under [How it works](#how-it-works).
   verdict on the whole run, `{{achieved}}`, is computed from the checks the
   reply ran: met when every stage, measured as it now is, meets its goal and
   no check on the result needs attention; not met, naming what needs it; or
-  not judged, naming the stages not measured. The data's problems that no
+  not judged, naming the stages not measured, and those measured on a grid
+  too coarse for their check with that reason ("not judged: the ring removal
+  (grid too coarse for the ring check)"). The data's problems that no
   setting fixes (a turned UB, a shifted origin, counts that end inside the
   box) are listed with it. It shows under a reply that judged the run (or
   found such a problem) and the report heads its own, and
