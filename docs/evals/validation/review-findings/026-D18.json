@@ -1,0 +1,21 @@
+{
+ "source": "review",
+ "ref": "D18",
+ "at": "76a691c",
+ "kind": "bug",
+ "evidence": "The report judges a stage's measurements by the stage's rule (web/src/llm/verdicts/recorded.ts:170, :178), while a reply's readers trust a recorded label over the numbers beside it (recorded.ts:55): a recording labelled \"needs attention\" over numbers that pass, an older rule's label, needs attention to {{achieved}} and the answer checks.",
+ "proposed_fix": "The report and a reply both judge a stage from its numbers; a recorded label is never read, and a label without its numbers judges nothing.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "ff957ec",
+ "tests": [
+  "web/src/llm/__tests__/verdictPins.test.ts (D18, unified (2.4b.3): a reply judges a stage from its numbers, as the report does, and takes no recorded label)",
+  "web/src/llm/__tests__/answerChecks.test.ts (judges a stage from its numbers, whatever label a recording gives it (D18, 2.4b.3))"
+ ],
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-19",
+  "option": "yes"
+ }
+}

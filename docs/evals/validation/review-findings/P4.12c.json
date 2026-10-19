@@ -1,0 +1,22 @@
+{
+ "source": "review",
+ "ref": "P4.12c",
+ "at": "637adfe",
+ "kind": "bug",
+ "evidence": "In low-memory mode, which the browser bridge turns on for the whole run (src/nebula3d/webbridge.py:209), the ring test reads at most an eighth of the volume's voxels for the candidate shells (src/nebula3d/preprocessing/ring_isotropy.py:290), so its medians per direction are noisier and a confirmed ring's signal-to-noise is up to 2.6 times lower than natively (on the 161³ demo 103.5 against 48.4 at 3.09 Å⁻¹, and 7.0 against 3.8 at 6.94 Å⁻¹, where the rule asks 3); float32 plays no part. The decisions agreed on every dev case and the demo, but a ring just above min_snr natively can fall under it in the browser and be left in, which nothing said. And the flatten's summary printed R² to three decimals as it came (src/nebula3d/pipeline.py:1506): a constant fit's R² is 0 up to rounding, of either sign (src/nebula3d/preprocessing/radial_flatten.py:413), and the browser printed R² -0.000 where the native engine printed 0.000.",
+ "proposed_fix": "Leave the browser's ring sampling as it is and say it as a known limit in docs/web.md's \"Native and browser parity\" note: what it costs in signal-to-noise, that a ring near min_snr can be confirmed natively and left in the browser, that the validation is unaffected (its live runs use the native server), and that whether the browser should sample more, at a memory cost, is a question for the user after v1. A parity test pins today's behaviour on a ring planted just above min_snr, both engines' decisions and signal-to-noise, as a strict expected failure that a fix flips. The flatten's summary rounds R² first and drops the sign of a zero.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "53cf04b",
+ "tests": [
+  "tests/test_native_browser_parity.py::test_a_ring_just_above_min_snr_is_confirmed_in_both_runtimes (a strict expected failure: the ring confirmed natively at a signal-to-noise of 3.8 and left in the browser at 2.1; it fails the run once a fix lifts the limit)",
+  "tests/test_native_browser_parity.py::test_the_stage_summaries_say_the_same (identical in both engines, no number printed as a negative zero)",
+  "tests/test_pipeline_orchestration.py::test_the_flatten_summary_prints_a_zero_r2_without_a_sign"
+ ],
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 4.12, the follow-up to the limit P4.12b found). The manager first approved sampling the candidate shells at full density in low-memory mode, then, in a consolidated decision the same day, chose to document the limit and leave the sampling as it is: the ring test is unchanged. Implemented in 53cf04b (the note, docs/web.md, and the change note), 4e59adc (the parity test that pins the limit; about 5 s) and a2706f2 (the signed zero, a log line's formatting only). Arm A on dev re-run after: 32 of 32 entries identical, 5 of 8 cases pass, as recorded (src/ changed only in that log line). Left for the user, after v1: whether the browser should sample the ring test's shells more densely, at a memory cost.",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-19",
+  "option": "the browser's ring sampling documented as a known limit; a post-v1 question for the user; the signed zero fixed"
+ }
+}
