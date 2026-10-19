@@ -1,11 +1,14 @@
 // The agent loop: tool calls run in the browser and their results go back to
 // the model; a server that refuses tools gets the plain request; the loop
-// stops at its round budget.
+// stops at its round budget. The executor's round (tools/round.ts) has tests
+// of its own (round.test.ts): the repeats, the calls that act, the history.
+// Here, the loop's wiring around it: the steps it shows, the figures it
+// follows, the answer it asks for when a round is stuck, and the calls it
+// forgets when it shortens their results.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
-import { useDpdfStore, type ManualLimit } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, toolResultsIn, TOOLS_UNSUPPORTED_NOTE, type AgentStep } from "../agent";
 import { resetTokenState } from "../provider/tokens";
@@ -13,22 +16,13 @@ import type { ChatMessage, StreamDelta } from "../provider/client";
 import * as readings from "../readings";
 import { isCompacted } from "../readings/compact";
 import { DEFAULT_SETTINGS } from "../settings";
-import { CHAT_TOOLS, MAX_RESULT_CHARS, type AgentTool } from "../tools";
+import { MAX_RESULT_CHARS, type AgentTool } from "../tools";
 import type { Outcome } from "../verdicts";
-import { makeSlice } from "./helpers";
 
 const client = vi.hoisted(() => ({ streamChat: vi.fn() }));
 vi.mock("../provider/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../provider/client")>()),
   streamChat: client.streamChat,
-}));
-
-// The ΔPDF reads dpdf_contrast makes, for the loop guard's tests of it.
-const api = vi.hoisted(() => ({ fetchDpdfMeta: vi.fn(), fetchDpdfSlice: vi.fn() }));
-vi.mock("../../api/client", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../api/client")>()),
-  fetchDpdfMeta: api.fetchDpdfMeta,
-  fetchDpdfSlice: api.fetchDpdfSlice,
 }));
 
 type Reply = StreamDelta[] | Error;
@@ -156,30 +150,6 @@ describe("runAgent", () => {
     expect(r.note).toMatch(/Stopped after 2 rounds/);
   });
 
-  it("shows a running tool's live line on its step, then clears it", async () => {
-    script([[{ toolCalls: [call("c1", "slow", {})] }], [{ content: "Done." }]]);
-    const slow: AgentTool = {
-      name: "slow",
-      description: "reports progress",
-      parameters: { type: "object", properties: {} },
-      run: async (_args, _ctx, io) => {
-        io.progress?.("halfway");
-        return { result: {}, summary: "finished" };
-      },
-    };
-    const lines: (string | undefined)[] = [];
-    const r = await runAgent({
-      messages: base,
-      tools: [slow],
-      ctx,
-      settings,
-      signal: new AbortController().signal,
-      onProgress: (p) => lines.push(p.steps[0]?.progress),
-    });
-    expect(lines).toContain("halfway");
-    expect(r.steps[0]).toMatchObject({ status: "done", summary: "finished", progress: undefined });
-  });
-
   it("sends a tool-calling turn back in the provider's own form", async () => {
     const native = [{ type: "thinking", thinking: "", signature: "sig" }, { type: "tool_use", id: "c1", name: "echo", input: { x: 1 } }];
     const seen = script([[{ toolCalls: [call("c1", "echo", { x: 1 })], native }], [{ content: "x is 1." }]]);
@@ -189,23 +159,36 @@ describe("runAgent", () => {
     expect(replayed.native).toBe(native);
   });
 
-  it("moves the console to each step's figure while Follow is on", async () => {
+  it("moves the console to each step's figure while Follow is on, before the next call runs", async () => {
     const look: AgentTool = {
       name: "look",
       description: "looks at the run log",
       parameters: { type: "object", properties: {} },
       run: async () => ({ result: {}, summary: "looked", view: { view: "execution", label: "the run log" } }),
     };
+    // The page each call finds the console on.
+    const tabs: string[] = [];
+    const peek: AgentTool = {
+      name: "peek",
+      description: "notes the console's page",
+      parameters: { type: "object", properties: {} },
+      run: async () => {
+        tabs.push(useNavStore.getState().tab);
+        return { result: {}, summary: "peeked" };
+      },
+    };
     const signal = new AbortController().signal;
     useNavStore.setState({ tab: "config" });
-    script([[{ toolCalls: [call("c1", "look", {})] }], [{ content: "ok" }]]);
-    const r = await runAgent({ messages: base, tools: [look], ctx, settings, signal });
+    script([[{ toolCalls: [call("c1", "look", {}), call("c2", "peek", {})] }], [{ content: "ok" }]]);
+    const r = await runAgent({ messages: base, tools: [look, peek], ctx, settings, signal });
     expect(useNavStore.getState().tab).toBe("execution");
     expect(r.steps[0].view).toEqual({ view: "execution", label: "the run log" });
     useNavStore.setState({ tab: "config" });
-    script([[{ toolCalls: [call("c2", "look", {})] }], [{ content: "ok" }]]);
-    await runAgent({ messages: base, tools: [look], ctx, settings: { ...settings, followViews: false }, signal });
+    script([[{ toolCalls: [call("c3", "look", {}), call("c4", "peek", {})] }], [{ content: "ok" }]]);
+    await runAgent({ messages: base, tools: [look, peek], ctx, settings: { ...settings, followViews: false }, signal });
     expect(useNavStore.getState().tab).toBe("config");
+    // Followed, the figure was open when the next call ran; not followed, it never opened.
+    expect(tabs).toEqual(["execution", "config"]);
   });
 
   it("ends the reply with a note on an error a retry would not cure", async () => {
@@ -233,7 +216,10 @@ describe("runAgent", () => {
     expect(kept.note).toMatch(/peg-native format/);
   });
 
-  describe("the loop guard", () => {
+  // The round decides what repeats an earlier call and when a round brought
+  // nothing new (round.test.ts); the loop asks for the answer then, and keeps
+  // what it has when the model calls again all the same.
+  describe("a round that brought nothing new", () => {
     // A tool that counts its runs.
     const counting = (name: string) => {
       const runs: unknown[] = [];
@@ -248,34 +234,6 @@ describe("runAgent", () => {
       };
       return { tool, runs };
     };
-
-    it("does not run a call again with the same arguments, in any order, and points at the result", async () => {
-      const { tool, runs } = counting("measure");
-      const seen = script([
-        [{ toolCalls: [call("c1", "measure", { a: 1, b: 2 })] }],
-        [{ toolCalls: [call("c2", "measure", { b: 2, a: 1 }), call("c3", "measure", { a: 5 })] }],
-        [{ content: "Done." }],
-      ]);
-      const r = await runAgent({ messages: base, tools: [tool], ctx, settings, signal: new AbortController().signal });
-      expect(runs).toEqual([{ a: 1, b: 2 }, { a: 5 }]);
-      expect(r.steps.map((st) => st.summary)).toEqual(["run 1", "same call as step 1: not run again", "run 2"]);
-      const sent = seen[2].messages.filter((m) => m.role === "tool").map((m) => m.content);
-      expect(sent[1]).toMatch(/already_called.*step 1/);
-      expect(r.note).toBeUndefined(); // a round with something new is no loop
-    });
-
-    it("reads again after a call that changes the settings", async () => {
-      const { tool, runs } = counting("measure");
-      const change = counting("update_settings");
-      script([
-        [{ toolCalls: [call("c1", "measure", { a: 1 })] }],
-        [{ toolCalls: [call("c2", "update_settings", { a: 9 })] }],
-        [{ toolCalls: [call("c3", "measure", { a: 1 })] }],
-        [{ content: "Changed." }],
-      ]);
-      await runAgent({ messages: base, tools: [tool, change.tool], ctx, settings, signal: new AbortController().signal });
-      expect(runs).toHaveLength(2);
-    });
 
     it("asks for the answer after two rounds that brought nothing new, and says so", async () => {
       const { tool, runs } = counting("measure");
@@ -306,91 +264,11 @@ describe("runAgent", () => {
       expect(r.content).toBe("Measuring.");
       expect(r.steps).toHaveLength(3); // the call after the request to answer did not run
     });
-
-    // dpdf_contrast acts: it sets the 3D-ΔPDF viewer's ± colour limit, so the
-    // limit the viewer shows is the one the last call set. A call pointed at an
-    // earlier result instead of run would leave the model quoting a limit the
-    // viewer no longer shows.
-    describe("dpdf_contrast, which sets the ΔPDF viewer's colour limit", () => {
-      const contrast = CHAT_TOOLS.find((t) => t.name === "dpdf_contrast")!;
-      const dpdfCtx = {
-        dataset: { id: "d", stages: [{ name: "delta_pdf", exists: true, kind: "delta_pdf", volume_id: "d.delta_pdf" }] } as Dataset,
-        datasets: [],
-      };
-      // Ripple of amplitude 1, a huge origin peak and four compact features of
-      // 100 (synthetic): the optimised limit lands on the features, at 100.
-      const section = makeSlice(81, 81, (u, v) => {
-        if (Math.hypot(u, v) < 1) return 1e6;
-        const feature = [[20, 0], [-20, 0], [0, 20], [0, -20]].some(([a, b]) => Math.hypot(u - a, v - b) < 1.5);
-        return feature ? 100 : Math.sin(3 * u) * Math.cos(3 * v);
-      });
-      const optimised: ManualLimit = { value: 100, dataset: "d" };
-      // The viewer's limit, each time it changed.
-      let shown: (ManualLimit | null)[] = [];
-      let unsubscribe = () => {};
-      beforeEach(() => {
-        api.fetchDpdfMeta.mockReset();
-        api.fetchDpdfSlice.mockReset();
-        api.fetchDpdfMeta.mockResolvedValue({
-          id: "d.delta_pdf",
-          shape: [81, 81, 81],
-          x_range: [-40, 40],
-          y_range: [-40, 40],
-          z_range: [-40, 40],
-          lattice: { a: 4, b: 4, c: 4, alpha: 90, beta: 90, gamma: 90 },
-          q_max: 6,
-          planes: ["xy", "xz", "yz"],
-        });
-        api.fetchDpdfSlice.mockResolvedValue(section);
-        useDpdfStore.setState({ limit: null });
-        shown = [];
-        unsubscribe = useDpdfStore.subscribe((s, prev) => {
-          if (s.limit !== prev.limit) shown.push(s.limit);
-        });
-      });
-      afterEach(() => unsubscribe());
-
-      it("runs a call again after another call changed the limit in between", async () => {
-        const seen = script([
-          [{ toolCalls: [call("c1", "dpdf_contrast", {})] }],
-          [{ toolCalls: [call("c2", "dpdf_contrast", { reset: true })] }],
-          [{ toolCalls: [call("c3", "dpdf_contrast", {})] }],
-          [{ content: "Done." }],
-        ]);
-        const r = await runAgent({ messages: base, tools: [contrast], ctx: dpdfCtx, settings, signal: new AbortController().signal });
-        expect(r.steps.map((st) => st.status)).toEqual(["done", "done", "done"]);
-        expect(r.steps.map((st) => st.summary)).toEqual([expect.stringMatching(/^± 100 /), "back on Auto", expect.stringMatching(/^± 100 /)]);
-        // The viewer followed each call: optimised, Auto, optimised again.
-        expect(shown).toEqual([optimised, null, optimised]);
-        expect(useDpdfStore.getState().limit).toEqual(optimised);
-        expect(api.fetchDpdfSlice).toHaveBeenCalledTimes(6); // three sections for each optimised call
-        // The model was told what the third call applied, not pointed at the first.
-        const sent = seen[3].messages.filter((m) => m.role === "tool").map((m) => m.content as string);
-        expect(sent[2]).not.toMatch(/already_called/);
-        expect(JSON.parse(sent[2]).applied).toMatchObject({ limit: 100, from: expect.stringMatching(/^optimised/) });
-      });
-
-      it("runs an identical call again, with nothing in between, as the other calls that act do", async () => {
-        const seen = script([
-          [{ toolCalls: [call("c1", "dpdf_contrast", {})] }],
-          [{ toolCalls: [call("c2", "dpdf_contrast", {})] }],
-          [{ content: "Done." }],
-        ]);
-        const r = await runAgent({ messages: base, tools: [contrast], ctx: dpdfCtx, settings, signal: new AbortController().signal });
-        expect(r.steps.map((st) => st.summary)).toEqual([expect.stringMatching(/^± 100 /), expect.stringMatching(/^± 100 /)]);
-        expect(api.fetchDpdfSlice).toHaveBeenCalledTimes(6);
-        // Set twice to the same value: the viewer shows it.
-        expect(shown).toEqual([optimised, optimised]);
-        const sent = seen[2].messages.filter((m) => m.role === "tool").map((m) => m.content as string);
-        expect(sent[1]).not.toMatch(/already_called/);
-      });
-    });
   });
 
-  // What a round of calls leaves behind, pinned as it is: the steps, key for
-  // key; the figure each step opens, before the next call; the calls the
-  // loop forgets when it shortens a result.
-  describe("what a round of calls leaves behind", () => {
+  // The steps the transcript shows, as the round hands them over: each key
+  // for key, and each change as it happens.
+  describe("the steps", () => {
     const outcome: Outcome = { check: "rings", kind: "info", reasons: ["no output"], dataProblems: [], words: null };
     const tool = (name: string, run: AgentTool["run"]): AgentTool => ({ name, description: name, parameters: { type: "object", properties: {} }, run });
     const look = tool("look", async () => ({ result: {}, summary: "looked", view: { view: "execution", label: "the run log" }, outcomes: [outcome] }));
@@ -402,7 +280,7 @@ describe("runAgent", () => {
     const long = tool("long", async () => ({ result: items, summary: "2000 items" }));
     const broken = (id: string) => ({ id, type: "function" as const, function: { name: "echo", arguments: '{"x":' } });
 
-    it("builds each step key for key, and shows each change as it happens", async () => {
+    it("builds each step key for key, and shows each change as it happens: its start, its live line, its end", async () => {
       script([
         [{ toolCalls: [call("c1", "echo", { x: 1 }), call("c2", "look", {}), call("c3", "nope", {}), broken("c4"), call("c5", "slow", {})] }],
         [{ toolCalls: [call("c6", "echo", { x: 1 }), call("c7", "long", {})] }],
@@ -462,48 +340,6 @@ describe("runAgent", () => {
         "done,done,error,error,done,done,done",
         "done,done,error,error,done,done,done",
       ]);
-    });
-
-    it("opens a step's figure before the next call runs", async () => {
-      const tabs: string[] = [];
-      const peek = tool("peek", async () => {
-        tabs.push(useNavStore.getState().tab);
-        return { result: {}, summary: "peeked" };
-      });
-      const signal = new AbortController().signal;
-      useNavStore.setState({ tab: "config" });
-      script([[{ toolCalls: [call("c1", "look", {}), call("c2", "peek", {})] }], [{ content: "ok" }]]);
-      await runAgent({ messages: base, tools: [look, peek], ctx, settings, signal });
-      useNavStore.setState({ tab: "config" });
-      script([[{ toolCalls: [call("c1", "look", {}), call("c2", "peek", {})] }], [{ content: "ok" }]]);
-      await runAgent({ messages: base, tools: [look, peek], ctx, settings: { ...settings, followViews: false }, signal });
-      expect(tabs).toEqual(["execution", "config"]);
-    });
-
-    it("forgets a shortened result's call by its key, a later run of the same call included", async () => {
-      const runs: unknown[] = [];
-      const series = tool("series", async (args) => {
-        runs.push(args.x);
-        const x = args.x as number;
-        return { result: { verdict: "meets its goal", peak: x, series: Array.from({ length: 200 }, (_, i) => Number((x + i / 1000).toFixed(3))) }, summary: `series ${x}` };
-      });
-      // A tool that acts (its facts': update_settings changes the settings).
-      const change = tool("update_settings", async () => ({ result: { changed: [] }, summary: "changed" }));
-      script([
-        [{ toolCalls: [call("c1", "series", { x: 1 })] }],
-        [{ toolCalls: [call("c2", "update_settings", {})] }],
-        [{ toolCalls: [call("c3", "series", { x: 1 })] }], // runs: the change between read nothing yet
-        [{ toolCalls: [call("c4", "series", { x: 2 })] }],
-        // Before this request the first result is shortened, and its call
-        // forgotten by its key: step 3's run of the same call with it.
-        [{ toolCalls: [call("c5", "series", { x: 1 })] }],
-        [{ content: "Done." }],
-      ]);
-      const r = await runAgent({ messages: base, tools: [series, change], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
-      expect(runs).toEqual([1, 1, 2, 1]);
-      expect(r.steps.map((s) => s.summary)).toEqual(["series 1", "changed", "series 1", "series 2", "series 1"]);
-      expect(r.steps.map((s) => s.shortened)).toEqual([true, undefined, undefined, undefined, undefined]);
-      expect(Object.keys(r.steps[0])).toEqual(["id", "name", "args", "status", "progress", "summary", "result", "view", "outcomes", "shortened"]);
     });
   });
 
@@ -619,25 +455,37 @@ describe("runAgent", () => {
       expect(readings.found(r.steps[0])).toMatchObject({ peak: 1, series: expect.arrayContaining([1.199]) });
     });
 
-    it("lets a shortened call run again, for the whole result", async () => {
-      let runs = 0;
+    it("lets a shortened call run again, for the whole result: forgotten by its key, a later run of the same call with it", async () => {
+      const runs: unknown[] = [];
       const counted: AgentTool = {
         ...seriesTool,
         run: async (args, c, io) => {
-          runs += 1;
+          runs.push(args.x);
           return seriesTool.run(args, c, io);
         },
       };
+      // A tool that acts (its facts': update_settings changes the settings).
+      const change: AgentTool = {
+        name: "update_settings",
+        description: "changes settings",
+        parameters: { type: "object", properties: {} },
+        run: async () => ({ result: { changed: [] }, summary: "changed" }),
+      };
       script([
         [{ toolCalls: [call("c1", "series", { x: 1 })] }],
-        [{ toolCalls: [call("c2", "series", { x: 2 })] }],
-        [{ toolCalls: [call("c3", "series", { x: 3 })] }],
-        [{ toolCalls: [call("c4", "series", { x: 4 })] }],
+        [{ toolCalls: [call("c2", "update_settings", {})] }],
+        [{ toolCalls: [call("c3", "series", { x: 1 })] }], // runs: the change in between emptied the record
+        [{ toolCalls: [call("c4", "series", { x: 2 })] }],
+        // Before this request the first result is shortened, and its call
+        // forgotten by its key: step 3's run of the same call with it.
         [{ toolCalls: [call("c5", "series", { x: 1 })] }],
         [{ content: "Done." }],
       ]);
-      await runAgent({ messages: base, tools: [counted], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
-      expect(runs).toBe(5); // the first result was shortened, so asking again runs it
+      const r = await runAgent({ messages: base, tools: [counted, change], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
+      expect(runs).toEqual([1, 1, 2, 1]);
+      expect(r.steps.map((s) => s.summary)).toEqual(["series 1", "changed", "series 1", "series 2", "series 1"]);
+      expect(r.steps.map((s) => s.shortened)).toEqual([true, undefined, undefined, undefined, undefined]);
+      expect(Object.keys(r.steps[0])).toEqual(["id", "name", "args", "status", "progress", "summary", "result", "view", "outcomes", "shortened"]);
     });
 
     it("shortens a request too long for LM Studio's window down to its newest result before refusing it", async () => {
