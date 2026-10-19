@@ -9,8 +9,10 @@
 
 import { describe, expect, it } from "vitest";
 
+import { ACTIONS } from "../evals/harness";
 import { HELDOUT_SCENARIOS } from "../evals/heldout";
 import { SCENARIOS } from "../evals/scenarios";
+import { REPLAYED_THOUGH_LOCAL, RUN_AS_THEY_ARE } from "../evals/scripted";
 import { TASK } from "../evals/validation";
 import { CORE_TOOLS as DERIVED_CORE_TOOLS, toolsFor } from "../localTools";
 import { REPORT_TOOLS as DERIVED_REPORT_TOOLS } from "../report/collect";
@@ -301,11 +303,14 @@ describe("the old lists against the facts", () => {
 
   it("8. the runs: the tools that start them", () => {
     expect(toolsWhere((f) => f.startsRuns)).toEqual(STARTS_RUNS);
+    expect([...ACTIONS]).toEqual(STARTS_RUNS);
   });
 
   it("9. the replays: the tools that reach no backend, save run_log, which stays replayed", () => {
     const local = toolsWhere((f) => !f.reachesBackend);
     expect(sorted(local)).toEqual(sorted([...REPLAY_LOCAL, "run_log"]));
+    expect(REPLAYED_THOUGH_LOCAL).toEqual(["run_log"]);
+    expect(sorted(RUN_AS_THEY_ARE)).toEqual(sorted(REPLAY_LOCAL));
   });
 
   it("11. the skill gate: the stages each call changes or tunes, and its refusal's words", () => {
