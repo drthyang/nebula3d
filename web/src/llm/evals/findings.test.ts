@@ -161,10 +161,11 @@ describe("the review's findings", () => {
     const { exists, readText } = await import("./backend");
     const found = JSON.parse(await readText(new URL("../../../../docs/evals/validation/review-findings.json", import.meta.url))) as Finding[];
     expect(found.length).toBeGreaterThanOrEqual(8);
-    for (const f of found) {
+    for (const [i, f] of found.entries()) {
+      // The test split was not read. Checked first, and by the finding's number: a
+      // finding on a test case would name it and quote it, and no failure may show either.
+      expect(caseNamed(f.case)?.split === "dev", `finding ${i + 1} is not on a dev case`).toBe(true);
       expect(findingProblems(f), f.evidence.slice(0, 40)).toEqual([]);
-      expect(caseNamed(f.case), f.case).toBeDefined();
-      expect(caseNamed(f.case)!.split).toBe("dev"); // the test split was not read
       if (f.kind === "skill-gap" || f.kind === "science-error") expect(f.needs_user_approval).toBe(true);
     }
     expect(new Set(found.map((f) => f.kind))).toEqual(new Set(["missing-tool", "science-error", "skill-gap", "orchestration"]));
