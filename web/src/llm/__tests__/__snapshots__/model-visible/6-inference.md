@@ -1,6 +1,6 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 90 spans in 29 texts or sets: reading 25, evidence 50, remedy 15.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 94 spans in 29 texts or sets: reading 29, evidence 50, remedy 15.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -110,7 +110,7 @@ scientifically cautious; do not overstate certainty from summary statistics.
 
 ## prompts/system.ts: the system prompt, the tools' guidance
 
-20 spans: reading 14, evidence 4, remedy 2.
+24 spans: reading 18, evidence 4, remedy 2.
 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
 
@@ -142,15 +142,20 @@ measure the same cuts before and after, and if it made things worse, change it b
 rerun. After any run, measure its outputs before you judge them, and say what you ran,
 what you changed and what it did to the numbers.
 
-⟦reading: To judge a run, settle these four checks, each with numbers, and say which pass:
-⟧⟨connective: “” → “A run is judged on four properties: ”⟩⟦reading: (1) ⟧⟨connective: “Ring” → “ring”⟩ removal is clean⟦reading: : assess_stage rings (max_ring_left and max_ring_dent: a ring left
+⟦reading: To judge a run, settle these checks, each with numbers, and say which pass:
+⟧⟨connective: “” → “A run is judged on these properties: ”⟩⟦reading: (1) ⟧⟨connective: “The ring removal” → “the ring removal”⟩ is clean⟦reading: : assess_stage rings (max_ring_left and max_ring_dent: a ring left
 over, or diffuse dented, at the rings confirmed in 3D)⟧⟦evidence: ; radial_profile shows any ring left as a bump, or diffuse dented as a dip⟧⟨connective: “.
-” → “; ”⟩⟦reading: (2) ⟧Bragg peaks are removed cleanly⟦reading: : assess_stage punch (leftover peaks on every plane,
+” → “; ”⟩⟦reading: (2) ⟧⟨connective: “The Bragg punch” → “the Bragg punch”⟩ removes the Bragg peaks cleanly⟦reading: : assess_stage punch (leftover peaks on every plane,
 and how much was punched to get there); check an off-zero cut too⟧⟨connective: “.
-” → “; ”⟩⟦reading: (3) ⟧⟨connective: “The” → “the”⟩ punch and backfill add no texture to reciprocal space⟦reading: : texture_check (no cut whose
-fills sit systematically outside the range their rims allow, azimuthal ratio near 1)⟧⟨connective: “.
-” → “; ”⟩⟦reading: (4) ⟧Qmax is not past the data coverage⟦reading: : qmax_coverage says how far the forward transform's
-window reaches in |Q| and whether that stays inside the fully measured shells⟧.
+” → “; ”⟩⟦reading: (3) ⟧⟨connective: “The backfill” → “the backfill”⟩ meets its surroundings, and the punch and backfill add no texture to reciprocal space⟦reading: :
+assess_stage backfill (the seam) and texture_check (no cut whose fills sit systematically outside the range their
+rims allow, azimuthal ratio near 1)⟧⟨connective: “.
+” → “; ”⟩⟦reading: (4) ⟧⟨connective: “The flatten” → “the flatten”⟩ leaves no pedestal⟦reading: : assess_stage flatten (the floors' trend and span)⟧⟨connective: “.
+” → “; ”⟩⟦reading: (5) ⟧⟨connective: “The 3D-ΔPDF” → “the 3D-ΔPDF”⟩'s back-FFT reproduces the data's even part under Q → −Q, its declared symmetry is kept, and Qmax is not past the data coverage⟦reading: :
+assess_stage pdf and symmetry_check; qmax_coverage says how far the forward transform's window reaches in |Q| and
+whether that stays inside the fully measured shells⟧⟨connective: “.
+” → “; ”⟩⟦reading: (6) ⟧⟨connective: “A” → “a”⟩ UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes⟦reading: :
+ub_check and grain_check for the UB, ub_check for the origin, qmax_coverage for the counts⟧.
 On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
 symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features

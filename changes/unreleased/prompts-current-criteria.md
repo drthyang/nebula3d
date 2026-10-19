@@ -20,3 +20,14 @@
   `web/src/llm/metrics/flatten.ts`), so they follow the rules if the rules
   change. The verdicts are unchanged (plan 1.6, the manager's decision on the
   user's delegation, 2026-10-19).
+- **NEBULA Pilot: the system prompt's checks name every stage and the data's
+  own problems.** They named four, the rings, the Bragg peaks, the fills'
+  texture and Qmax, so a reply that settled only those left the run's verdict
+  (`{{achieved}}`) not judged, the backfill, the flatten and the 3D-ΔPDF not
+  measured. They now name the five stages as `{{achieved}}` names them, each
+  with the checks that judge it (the backfill with `texture_check`, the
+  3D-ΔPDF with `symmetry_check` and `qmax_coverage`), and the data's own
+  problems, which no setting fixes: a UB that is off (`ub_check`,
+  `grain_check`), a shifted HKL origin (`ub_check`) and raw counts that end
+  inside the box (`qmax_coverage`). The validation's arm C reads the same
+  properties as a plain list, in no order and without the checks.

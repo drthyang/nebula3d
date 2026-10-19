@@ -315,7 +315,8 @@ it, so nothing is cut out of a text after it is built. With it off:
   measurement, or how to use the tools; an inference says which reading or tool to
   use for a conclusion, what a value or a pattern is evidence of, or what a finding
   calls for (a change, the check to run next, what to report). The system prompt
-  names the four properties a run is judged by, as what exists and in no order, and
+  names the properties a run is judged by (its five stages and the data's own
+  problems, as `{{achieved}}` reads them), as what exists and in no order, and
   leaves out the checklist, the readings each is settled with and the routing of a
   question to a tool; the tool descriptions, the tools' readings, the stages' goals
   and criteria, the verdicts' words, the context's prose and the tuning prompts'

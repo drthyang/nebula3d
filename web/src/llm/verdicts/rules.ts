@@ -25,6 +25,15 @@ export type Kind = "pass" | "attention" | "info";
 export type Stage = TuneStage;
 export const STAGES: readonly Stage[] = ["rings", "punch", "backfill", "flatten", "pdf"];
 
+/** How {{achieved}} names a stage (readers.ts), and the system prompt's checks after it (prompts/system.ts). */
+export const STAGE_NAMES: Record<Stage, string> = {
+  rings: "the ring removal",
+  punch: "the Bragg punch",
+  backfill: "the backfill",
+  flatten: "the flatten",
+  pdf: "the 3D-ΔPDF",
+};
+
 /** The checks: the five stages, and the checks on the result. */
 export type CheckId = Stage | "coverage" | "symmetry" | "texture" | "grain" | "ub";
 

@@ -109,7 +109,7 @@ measure the same cuts before and after, and if it made things worse, change it b
 rerun. After any run, measure its outputs before you judge them, and say what you ran,
 what you changed and what it did to the numbers.
 
-A run is judged on four properties: ring removal is clean; Bragg peaks are removed cleanly; the punch and backfill add no texture to reciprocal space; Qmax is not past the data coverage.
+A run is judged on these properties: the ring removal is clean; the Bragg punch removes the Bragg peaks cleanly; the backfill meets its surroundings, and the punch and backfill add no texture to reciprocal space; the flatten leaves no pedestal; the 3D-ΔPDF's back-FFT reproduces the data's even part under Q → −Q, its declared symmetry is kept, and Qmax is not past the data coverage; a UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes.
 On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
 symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features

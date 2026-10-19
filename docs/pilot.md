@@ -342,9 +342,10 @@ miss is a note.
   - *Reading*: `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
     `measure_dpdf_cut`, `line_profile`, `bragg_peaks`, `consistency_details`,
     `compare_datasets`, `configure_settings`, `run_log` (the last run's log).
-  - *Assessing* — the four checks the system prompt asks of every run
-    (`assess_stage`, `radial_profile`, `texture_check`, `qmax_coverage`), then
-    `symmetry_check`, `grain_check` and `ub_check`:
+  - *Assessing* — the checks the system prompt asks of every run, the five
+    stages and the data's own problems that `{{achieved}}` reads
+    (`assess_stage`, `radial_profile`, `texture_check`, `qmax_coverage`,
+    `symmetry_check`, `grain_check` and `ub_check`):
     `assess_stage` judges a stage against its goal on the three principal
     planes (the tuning run's own evaluation, `tune/evaluate.ts`);
     `radial_profile` puts the stages' |Q|-shell medians side by side (rings

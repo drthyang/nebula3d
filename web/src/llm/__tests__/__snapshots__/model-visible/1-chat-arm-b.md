@@ -121,15 +121,20 @@ measure the same cuts before and after, and if it made things worse, change it b
 rerun. After any run, measure its outputs before you judge them, and say what you ran,
 what you changed and what it did to the numbers.
 
-To judge a run, settle these four checks, each with numbers, and say which pass:
-(1) Ring removal is clean: assess_stage rings (max_ring_left and max_ring_dent: a ring left
+To judge a run, settle these checks, each with numbers, and say which pass:
+(1) The ring removal is clean: assess_stage rings (max_ring_left and max_ring_dent: a ring left
 over, or diffuse dented, at the rings confirmed in 3D); radial_profile shows any ring left as a bump, or diffuse dented as a dip.
-(2) Bragg peaks are removed cleanly: assess_stage punch (leftover peaks on every plane,
+(2) The Bragg punch removes the Bragg peaks cleanly: assess_stage punch (leftover peaks on every plane,
 and how much was punched to get there); check an off-zero cut too.
-(3) The punch and backfill add no texture to reciprocal space: texture_check (no cut whose
-fills sit systematically outside the range their rims allow, azimuthal ratio near 1).
-(4) Qmax is not past the data coverage: qmax_coverage says how far the forward transform's
-window reaches in |Q| and whether that stays inside the fully measured shells.
+(3) The backfill meets its surroundings, and the punch and backfill add no texture to reciprocal space:
+assess_stage backfill (the seam) and texture_check (no cut whose fills sit systematically outside the range their
+rims allow, azimuthal ratio near 1).
+(4) The flatten leaves no pedestal: assess_stage flatten (the floors' trend and span).
+(5) The 3D-ΔPDF's back-FFT reproduces the data's even part under Q → −Q, its declared symmetry is kept, and Qmax is not past the data coverage:
+assess_stage pdf and symmetry_check; qmax_coverage says how far the forward transform's window reaches in |Q| and
+whether that stays inside the fully measured shells.
+(6) A UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes:
+ub_check and grain_check for the UB, ub_check for the origin, qmax_coverage for the counts.
 On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
 symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features
