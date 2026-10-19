@@ -1266,13 +1266,24 @@ export function originShift(u: Pick<UbCheck, "rms_start" | "rms" | "voxel_q" | "
 
 const rlu = (v: (number | null)[]): string => `(${v.map((x) => (x == null ? "–" : x.toFixed(4))).join(", ")})`;
 
+// ub_check's description, in its parts: what it fits, what radial is, and the
+// rest. How to read radial (a UB error gives the same relative offset at every
+// |Q| along a direction) is reduction-qc's step 2, word for word: with the
+// skills off it goes, and the system prompt's own line on it stays.
+const UB_CHECK_FITS =
+  "Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both').";
+const UB_CHECK_RADIAL = "radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit";
+const UB_CHECK_REST =
+  "mean_offset_rlu is the peaks' mean offset from their nodes in r.l.u., before and after the fit: a UB error averages out over the nodes and the fit removes it, while a shifted HKL origin moves every peak by one vector that stays after the fit (origin_shift_rlu, when that vector makes most of the offset the fit leaves). About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, what radial shows, and an origin shift when it gives one.";
+
 const ubCheckTool: ChatTool = {
   name: "ub_check",
   // Offered for a generic question too: the system prompt's method checks the UB (the user's decision, Q10, 2026-10-19).
   // Reportable, as the other checks on the result are: the report runs it, and names what it finds (Q11).
   facts: { label: "Checked the UB", acts: null, offeredFor: ["punch", "lattice", "general"], settles: ["ub", "origin"], reportable: true },
   description:
-    "Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit: a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it. mean_offset_rlu is the peaks' mean offset from their nodes in r.l.u., before and after the fit: a UB error averages out over the nodes and the fit removes it, while a shifted HKL origin moves every peak by one vector that stays after the fit (origin_shift_rlu, when that vector makes most of the offset the fit leaves). About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, what radial shows, and an origin shift when it gives one.",
+    `${UB_CHECK_FITS} ${UB_CHECK_RADIAL}: a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it. ${UB_CHECK_REST}`,
+  descriptionWithoutSkills: `${UB_CHECK_FITS} ${UB_CHECK_RADIAL}. ${UB_CHECK_REST}`,
   parameters: {
     type: "object",
     properties: { q_max: { type: "number", description: "The nodes' |Q| limit in Å⁻¹ (default: everything the box holds)" } },

@@ -161,9 +161,15 @@ describe("the switch", () => {
       expect(t.parameters).toBe(own.parameters);
     }
     // dpdf_peaks: with the skills on, the skill's name and its order; off, neither.
-    const peaks = (tools: readonly { name: string; description: string }[]) => tools.find((t) => t.name === "dpdf_peaks")!.description;
-    expect(peaks(CHAT_TOOLS)).toMatch(/after the trust checks \(qmax_coverage, .*\(delta-pdf-interpretation\)/);
-    expect(peaks(off)).not.toMatch(/trust checks/);
+    const of = (tools: readonly { name: string; description: string }[], name: string) => tools.find((t) => t.name === name)!.description;
+    expect(of(CHAT_TOOLS, "dpdf_peaks")).toMatch(/after the trust checks \(qmax_coverage, .*\(delta-pdf-interpretation\)/);
+    expect(of(off, "dpdf_peaks")).not.toMatch(/trust checks/);
+    // ub_check: with the skills on, how to read radial, reduction-qc's step 2 word for word; off, what radial is.
+    const reading = /a UB error gives the same relative offset at every \|Q\| along a direction/;
+    expect(of(CHAT_TOOLS, "ub_check")).toMatch(reading);
+    expect(of(off, "ub_check")).not.toMatch(reading);
+    expect(of(off, "ub_check")).toMatch(/radial is the peaks' median offset along Q from their nodes/);
+    expect(off.filter((t) => t.description !== of(CHAT_TOOLS, t.name)).map((t) => t.name)).toEqual(["dpdf_peaks", "ub_check"]);
     expect(toolsWithSkills(off, false)).toEqual(off); // the same either way it is applied
   });
 
