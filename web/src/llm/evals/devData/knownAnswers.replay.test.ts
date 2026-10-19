@@ -1,7 +1,8 @@
 // Known answers: each dev case's planted fault, found by the real tools and
 // their rules on the case built where the tests run (devData), against the
-// case's truth (the validation's manifest). The tools, the verdict rules and
-// the pipeline are the app's own; nothing is recorded.
+// case's truth (the validation's manifest), and the dev control's planted
+// correlations in dpdf_peaks' list. The tools, the verdict rules and the
+// pipeline are the app's own; nothing is recorded.
 //
 // The tolerances are the validation's own where it has one, else the tools':
 // - a turn of the UB within 0.15° of the planted one (the validation's grader,
@@ -23,10 +24,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { fetchRingDiagnostics } from "../../../api/client";
+import { fetchDpdfFeatures, fetchRingDiagnostics } from "../../../api/client";
 import type { AgentStep } from "../../agent";
+import { dpdfVolumeId } from "../../context/loadContext";
 import { withoutInference } from "../../inference";
+import { fit } from "../../readings";
+import { CHAT_TOOLS, MAX_RESULT_CHARS } from "../../tools";
 import { verdicts } from "../../verdicts";
+import { casesIn, type ValidationCase } from "../validation";
 import { bridgeConfig } from "./bridgeWorker";
 import { devCase, type DevCase, type DevCaseId, type ToolRunResult } from "./index";
 
@@ -36,14 +41,37 @@ const ANGLE_DEG = 0.15;
 const COUNTS_SHELL = 0.1;
 const SAME_Q = 0.1;
 
+// The planted correlations by dpdf_peaks' entries: an entry of the correlation's
+// sign whose vectors hold an image of its vector under the cube's 48 operations
+// (the planted correlations keep all of them, docs/algorithms/delta_pdf.md),
+// within 0.15 lattice units: about one voxel of the ΔPDF at either grid (0.124
+// of a cell), where the vectors of the crystal's other correlations lie half a
+// lattice unit or more away.
+const SAME_VECTOR = 0.15;
+
 /**
  * The faults the tools miss, by case and check, with what they found instead:
- * each grid's own (81: the default; 161: the nightly run's). None now: the
- * misses at 81 (a false ring at 1.75 Å⁻¹, the shell at 2.9 Å⁻¹ never seen, and
- * fill biases on three cases' cuts) were the ring and texture checks judging a
- * grid too coarse for them, which they now say (TOO_COARSE).
+ * each grid's own (81: the default; 161: the nightly run's). The misses at 81
+ * (a false ring at 1.75 Å⁻¹, the shell at 2.9 Å⁻¹ never seen, and fill biases
+ * on three cases' cuts) were the ring and texture checks judging a grid too
+ * coarse for them, which they now say (TOO_COARSE).
+ *
+ * One now: the dev control's weaker planted correlation, ⟨½ 1 1⟩−, lies past
+ * dpdf_peaks' default limit of 12 entries at both grids. The dev cases declare
+ * no symmetry, so the list is grouped by sign, length and size, as before the
+ * grouping by the declared symmetry (plan 4.4). The default is still to be
+ * decided: the list the executor hands the model is cut at MAX_RESULT_CHARS,
+ * about 20 of these entries, and a longer list costs the worst turn tokens
+ * (tokenBudget.test.ts).
  */
-const MISSES: Partial<Record<DevCaseId, Record<string, Partial<Record<number, string>>>>> = {};
+const MISSES: Partial<Record<DevCaseId, Record<string, Partial<Record<number, string>>>>> = {
+  "dev-control": {
+    "dpdf_peaks, as the model reads it, lists each planted correlation": {
+      81: "⟨½ 1 1⟩− is entry 28 and ⟨3/2 0 0⟩+ entry 10, of a default 12",
+      161: "⟨½ 1 1⟩− is entry 19 and ⟨3/2 0 0⟩+ entry 7, of a default 12",
+    },
+  },
+};
 
 /**
  * The checks the grid is too coarse for, by grid: there each says "not
@@ -155,6 +183,67 @@ describe("dev-control: nothing flagged", () => {
     const v = verdicts({ reply: steps }).achieved;
     const msg = evidence(c, { achieved: v });
     expect(v?.text, msg).toBe(tooCoarse("rings") ? "not judged: the ring removal (grid too coarse for the ring check)" : "met: every stage meets its goal");
+  });
+});
+
+type Planted = ValidationCase["planted"][number];
+interface PeakEntry {
+  sign: string;
+  vectors_rlu: (number[] | null)[];
+}
+
+/** A vector's images under the cube's 48 operations: every signed permutation of its components. */
+const cubeImages = (v: number[]): number[][] =>
+  [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]].flatMap((p) =>
+    [1, -1].flatMap((a) => [1, -1].flatMap((b) => [1, -1].map((c) => [a * v[p[0]], b * v[p[1]], c * v[p[2]]]))),
+  );
+
+/** Whether an entry of dpdf_peaks is the planted correlation: its sign, and an image of its vector among the entry's. */
+const listsCorrelation = (e: PeakEntry, p: Planted): boolean =>
+  e.sign === (p.sign === "+" ? "+" : "−") &&
+  e.vectors_rlu.some((u) => u !== null && cubeImages(p.vector).some((w) => Math.hypot(u[0] - w[0], u[1] - w[1], u[2] - w[2]) <= SAME_VECTOR));
+
+/** The entry (1-based) each planted correlation first comes in, 0 where none is it. */
+const entriesOf = (list: PeakEntry[], planted: Planted[]): number[] => planted.map((p) => list.findIndex((e) => listsCorrelation(e, p)) + 1);
+
+describe("dev-control: dpdf_peaks lists the planted correlations", () => {
+  // What the model reads of dpdf_peaks with its defaults: the result fitted
+  // to MAX_RESULT_CHARS, as the executor hands it over (runToolCall).
+  check("dev-control", "dpdf_peaks, as the model reads it, lists each planted correlation", async () => {
+    const c = devCase("dev-control");
+    const planted = casesIn("dev").find((x) => x.id === c.id)!.planted;
+    const r = ran(await c.tool("dpdf_peaks"), "dpdf_peaks");
+    const max = CHAT_TOOLS.find((t) => t.name === "dpdf_peaks")!.maxResultChars ?? MAX_RESULT_CHARS;
+    const read = (JSON.parse(fit(r.result, max).text) as { features: PeakEntry[] }).features;
+    // Where they come among the 30 strongest entries, the tool's longest list.
+    const longest = ran(await c.tool("dpdf_peaks", { limit: 30 }), "dpdf_peaks").result.features as PeakEntry[];
+    const msg = evidence(c, { planted, entries_read: read.length, read_at: entriesOf(read, planted), among_30_at: entriesOf(longest, planted) });
+    expect(planted.length, msg).toBeGreaterThan(0);
+    expect(entriesOf(read, planted), msg).not.toContain(0);
+  });
+
+  // The dev cases declare no symmetry: the list says so, and is grouped as
+  // before the grouping by the declared symmetry, each entry as it was.
+  check("dev-control", "dpdf_peaks says no symmetry is declared, and groups by sign, length and size as before", async () => {
+    const c = devCase("dev-control");
+    const r = ran(await c.tool("dpdf_peaks"), "dpdf_peaks");
+    const entries = r.result.features as Record<string, unknown>[];
+    // The server's list, as the tool reads it: no orbit, each size within 5 % of its group's largest.
+    const served = await fetchDpdfFeatures(dpdfVolumeId(await c.dataset())!, 5, 12);
+    const msg = evidence(c, {
+      grouped_by: r.result.grouped_by,
+      fields: [...new Set(entries.map((e) => Object.keys(e).join(", ")))],
+      served: served.groups.map((g) => ({ n: g.n, multiplicity: g.multiplicity, size_sigma: g.size_sigma, mean_size_sigma: g.mean_size_sigma })),
+    });
+    expect(r.result.grouped_by, msg).toBe("sign, length and size (no symmetry declared)");
+    expect(served.grouped_by, msg).toBe(r.result.grouped_by);
+    for (const g of served.groups) {
+      expect(g.multiplicity, msg).toBeNull();
+      expect(g.mean_size_sigma, msg).toBeLessThanOrEqual(g.size_sigma);
+      expect(g.mean_size_sigma, msg).toBeGreaterThanOrEqual(0.95 * g.size_sigma);
+    }
+    expect(entries.map((e) => e.n_vectors), msg).toEqual(served.groups.map((g) => g.n));
+    for (const e of entries) expect(Object.keys(e), msg).toEqual(["sign", "length_A", "size_sigma", "n_vectors", "vectors_rlu", "vectors_A"]);
   });
 });
 
