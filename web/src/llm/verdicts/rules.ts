@@ -9,6 +9,8 @@
 
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
+import { r2, SECOND_GRAIN_DEG, type GrainFacts } from "../metrics/grains";
+import { roundSig } from "../metrics/sliceStats";
 import { SYMMETRY_HOLDS } from "../metrics/symmetry";
 import type { TuneStage } from "../tune/catalog";
 
@@ -18,7 +20,7 @@ export type Kind = "pass" | "attention" | "info";
 export type Stage = TuneStage;
 
 /** The checks: the five stages, and the checks on the result. */
-export type CheckId = Stage;
+export type CheckId = Stage | "coverage" | "symmetry" | "texture" | "grain" | "ub";
 
 /** Why an outcome is what it is. */
 export type Reason =
@@ -32,7 +34,17 @@ export type Reason =
   | "back-FFT"
   | "window past limit"
   | "window within limit"
-  | "symmetry broken";
+  | "symmetry broken"
+  | "not declared"
+  | "fill bias"
+  | "reach past coverage"
+  | "reach inside coverage"
+  | "second grain"
+  | "no second grain"
+  | "UB off"
+  | "peaks beside nodes"
+  | "UB turned"
+  | "symmetrised";
 
 export interface Outcome {
   check: CheckId;
@@ -56,6 +68,33 @@ export interface Unrounded {
 /** A stage's evaluation (tune/evaluate.ts), as assess_stage reports it. */
 export type StageNumbers = Readonly<Record<string, unknown>> & { readonly [UNROUNDED]?: Unrounded };
 
+/**
+ * What qmax_coverage measured: the ΔPDF window's recorded weight on unmeasured
+ * space; else the transform's reach against full coverage; and where the raw
+ * counts end (its result's raw_counts, suggested_band and counts_end_inside_box).
+ */
+export interface CoverageMeasurements {
+  window_weight: number | null; // the ΔPDF's record, raw
+  window: string; // the window, as the verdict names it
+  unit_cell: boolean; // |Q| is known
+  full_coverage_q: number | null;
+  reach: number | null; // how far the transform's window reaches in |Q|
+  reach_from: string; // why it reaches that far
+  shell: number; // the coverage edge's resolution in |Q|
+  band_set: boolean; // a |Q| band is set on the Configure page
+  counts: {
+    counts_end_inside_box: boolean;
+    raw_counts?: { q_max_edge: number | null; box_face_q: number };
+    suggested_band?: readonly number[] | null;
+  };
+}
+
+/** What symmetry_check measured: each in-plane operation's share (null: nothing to test), and the symmetry the file declares. */
+export interface SymmetryMeasurements {
+  ops: readonly { op: string; rms_difference: number }[] | null;
+  declared: string | null | undefined; // null or "": none declared; undefined: the file was not read
+}
+
 /** What each check's rule judges. */
 export interface Measurements {
   rings: StageNumbers;
@@ -63,6 +102,11 @@ export interface Measurements {
   backfill: StageNumbers;
   flatten: StageNumbers;
   pdf: StageNumbers;
+  coverage: CoverageMeasurements;
+  symmetry: SymmetryMeasurements;
+  texture: Readonly<Record<string, unknown>>; // texture_check's result
+  grain: GrainFacts;
+  ub: Readonly<Record<string, unknown>>; // ub_check's result
 }
 
 /** How a verdict reads, in the report, the chat and the tools' results. */
@@ -235,8 +279,190 @@ const pdf: StageRule = {
 
 const STAGE_RULES: Record<Stage, StageRule> = { rings, punch, backfill, flatten, pdf };
 
-/** The second-grain test's criterion (the report's "Second grain" card). */
-const GRAIN_CRITERION = "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.";
+// ---------------------------------------------------------------- the checks on the result
+
+interface Words extends Judged {
+  words: string | null;
+  dataProblems?: string[];
+}
+
+interface CheckRule<M> {
+  criterion?: string; // the report's statement of the rule (WORDS.criterion)
+  judge: (m: M) => Words;
+}
+
+// A share, in exponent form when it is tiny (1.5e-6, not 0.0000015).
+const share = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(roundSig(x, 2)));
+
+const coverage: CheckRule<CoverageMeasurements> = {
+  judge: (m) => {
+    const w = m.window_weight ?? null;
+    const full = m.full_coverage_q ?? null;
+    // The ΔPDF on disk records the share of its window's weight on unmeasured
+    // space: the direct measure of a reach past the coverage. Without it, the
+    // reach from the Configure page's settings against full coverage.
+    const [outcome, text]: [Judged, string] =
+      w != null
+        ? w <= OPEN_WEIGHT_OK
+          ? [{ kind: "pass", reasons: ["window within limit"] }, `clean: ${m.window} puts ${share(w)} of its weight on unmeasured reciprocal space`]
+          : [
+              { kind: "attention", reasons: ["window past limit"] },
+              `too far: ${m.window} puts ${share(w)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`,
+            ]
+        : !m.unit_cell
+          ? [NOTHING, "no unit cell: |Q| is unknown, so the reach cannot be compared"]
+          : full == null
+            ? [NOTHING, "no |Q| shell is fully measured on these planes"]
+            : m.reach == null
+              ? [NOTHING, "no ΔPDF yet to read the box corner from"]
+              : m.reach <= full + m.shell
+                ? [{ kind: "pass", reasons: ["reach inside coverage"] }, `the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), inside full coverage at ${full} Å⁻¹`]
+                : [
+                    { kind: "attention", reasons: ["reach past coverage"] },
+                    `too far: the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), past full coverage at ${full} Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage`,
+                  ];
+    // The counts end inside the box and no band is set: only the window's taper
+    // keeps the transform on the counts. Said in the verdict, which a model
+    // quotes, and not only in raw_counts and suggested_band, which it may not.
+    const c = m.counts ?? { counts_end_inside_box: false };
+    const cut =
+      c.counts_end_inside_box && !m.band_set
+        ? `; the raw counts end at ${c.raw_counts?.q_max_edge} Å⁻¹, inside the box (its nearest face at ${c.raw_counts?.box_face_q} Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is ${c.suggested_band?.[0]}–${c.suggested_band?.[1]} Å⁻¹ (suggested_band), the user's to set`
+        : "";
+    return { ...outcome, words: text + cut, dataProblems: countsProblems(c) };
+  },
+};
+
+/** The data's problem where the raw counts end inside the box, in {{achieved}}'s words (a band set or not). */
+export function countsProblems(c: { counts_end_inside_box?: unknown; raw_counts?: unknown }): string[] {
+  const edge = (c.raw_counts as { q_max_edge?: unknown } | null | undefined)?.q_max_edge;
+  return c.counts_end_inside_box === true && num(edge) != null ? [`the counts end at ${edge} Å⁻¹, inside the box`] : [];
+}
+
+/** What the symmetry verdict says of a volume that declares no symmetry. */
+const NOT_DECLARED = (asymmetry: unknown): string =>
+  `not judged: the file declares no symmetry, so the section's asymmetry (${String(asymmetry)}) is the data's own, counting noise included, not a break by a stage`;
+
+const symmetry: CheckRule<SymmetryMeasurements> = {
+  judge: (m) => {
+    if (!m.ops) return { ...NOTHING, words: null };
+    // A file that declares no symmetry was not symmetrised: the section's
+    // asymmetry is the data's own, and no stage broke anything.
+    if (m.declared === null || m.declared === "") return { kind: "info", reasons: ["not declared"], words: NOT_DECLARED(Math.max(...m.ops.map((o) => o.rms_difference))) };
+    const broken = m.ops.filter((o) => o.rms_difference > SYMMETRY_HOLDS).map((o) => `${o.op} (${o.rms_difference})`);
+    return broken.length
+      ? { kind: "attention", reasons: ["symmetry broken"], words: `not kept: ${broken.join(", ")}; a symmetry the data were symmetrised with should hold to ~${SYMMETRY_HOLDS} or better` }
+      : { kind: "pass", reasons: [], words: `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better` };
+  },
+};
+
+const texture: CheckRule<Readonly<Record<string, unknown>>> = {
+  // texture_check writes no verdict: each cut says whether its fill is biased.
+  judge: (m) => {
+    const cuts = (Array.isArray(m.per_cut) ? (m.per_cut as unknown[]) : []).filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
+    if (cuts.some((x) => x.systematic_fill_bias === true)) return { kind: "attention", reasons: ["fill bias"], words: null };
+    return cuts.length ? { kind: "pass", reasons: [], words: null } : { ...NOTHING, words: null };
+  },
+};
+
+const grain: CheckRule<GrainFacts> = {
+  criterion: "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.",
+  judge: (g) => {
+    const n = g.judged;
+    if (typeof n !== "number") return { ...NOTHING, words: null };
+    const indexed = g.rotated_copy?.indexed ?? 0;
+    const turn = g.rotated_copy?.misorientation_deg ?? null;
+    const control = g.random_control;
+    const near = g.near_bragg_nodes ?? 0;
+    const median = g.near_offset_angle_deg?.median ?? null;
+    // Half or more of the strongest orbits beside Bragg nodes: the crystal's own peaks, displaced by a UB that is off.
+    const beside: Reason[] = n > 0 && near >= n / 2 ? ["peaks beside nodes"] : [];
+    if (!n) return { kind: "pass", reasons: [], words: "no off-lattice peaks were recorded by the punch's search" };
+    const fits = n >= 4 && indexed >= Math.max(n / 2, 3 * control + 3);
+    // A rotated copy within a couple of degrees of the main lattice is the main
+    // crystal with its UB off, not another grain.
+    const second = fits && (turn == null || turn >= SECOND_GRAIN_DEG);
+    if (fits && !second) {
+      return {
+        kind: "attention",
+        reasons: ["UB off", ...beside],
+        words: `the off-lattice peaks are the crystal's own Bragg peaks with the UB off: one rotation of ${r2(turn!)}° puts ${indexed} of the ${n} strongest orbits back on the Bragg lattice (random directions: ${control}); refine the UB`,
+      };
+    }
+    if (second) {
+      return {
+        kind: "attention",
+        reasons: ["second grain", ...beside],
+        words: `a second grain: one rotation of the Bragg lattice indexes ${indexed} of the ${n} strongest off-lattice orbits (random directions: ${control})${turn != null ? `, misoriented by ${r2(turn)}° from the main grain` : ""}`,
+      };
+    }
+    let words = `no second grain of this phase: a rotated copy of the Bragg lattice indexes only ${indexed} of the ${n} strongest off-lattice orbits (random directions: ${control})`;
+    if (near >= n / 2 && median != null) {
+      words +=
+        `. ${near} of them sit within a quarter of the node spacing of a Bragg node, offset by a median ${r2(median)}° of rotation (a lower bound: a node at an angle to the rotation axis moves less)` +
+        (g.symmetrised
+          ? ": copies of the crystal's own Bragg peaks, displaced by symmetrising data whose UB is off by about that angle; a UB refined on the unsymmetrised data would put them back on the nodes"
+          : ": the Bragg peaks themselves, off their nodes by about that angle (refine the UB)");
+    }
+    if (g.far?.length) words += `. ${n - near} lie farther from any node; their origin is open (another phase, multiple scattering, or an artefact)`;
+    return { kind: beside.length ? "attention" : "pass", reasons: ["no second grain", ...beside], words };
+  },
+};
+
+/** A UB turned by this much (degrees) or more is reported. */
+const UB_TURN = 0.05;
+
+/**
+ * D4, the first of two "UB turned" rules: {{achieved}} names a turned UB as a
+ * data problem when the fit turned it by UB_TURN or more and the fit was not
+ * the symmetric one (verdict.ts:99 before this module). Its pair is
+ * UB_OFF_FOR_ANSWER. Unify (2.4.4): make UB_OFF_FOR_ANSWER read
+ * `(u) => u.symmetrised === true || UB_TURNED_FOR_ACHIEVED(u)`, one line: one
+ * rule, from an unsymmetrised fit, and a symmetrised volume's UB still not
+ * judged right.
+ */
+export const UB_TURNED_FOR_ACHIEVED = (u: Readonly<Record<string, unknown>>): boolean => {
+  const angle = num(u.orientation_change_deg);
+  return angle != null && angle >= UB_TURN && u.fit !== "symmetric";
+};
+
+/**
+ * D4, the second: the answer checks hold a claim that the UB is right to a UB
+ * that is symmetrised (its orientation cannot be judged), or turned by UB_TURN
+ * or more, counting the angle_deg of recordings made before
+ * orientation_change_deg (answerChecks.ts:278 before this module).
+ */
+export const UB_OFF_FOR_ANSWER = (u: Readonly<Record<string, unknown>>): boolean => {
+  const angle = typeof u.orientation_change_deg === "number" ? u.orientation_change_deg : typeof u.angle_deg === "number" ? u.angle_deg : null;
+  return u.symmetrised === true || (angle != null && angle >= UB_TURN);
+};
+
+/**
+ * D16: a ub_check result without an angle, on a volume not symmetrised, reads
+ * as a right UB, as the answer checks read it (ub_check always writes its
+ * angle; recordings may not), where the other rules say "nothing to judge".
+ * Unify: set this to false; such a result is then not judged.
+ */
+export const D16_UB_UNMEASURED_READS_RIGHT = true;
+
+const ub: CheckRule<Readonly<Record<string, unknown>>> = {
+  // ub_check writes no verdict: what the fit found, and the data's problems it shows.
+  judge: (u) => {
+    const dataProblems: string[] = [];
+    if (UB_TURNED_FOR_ACHIEVED(u)) dataProblems.push(`the UB is turned by ${num(u.orientation_change_deg)}°`);
+    const shift = Array.isArray(u.origin_shift_rlu) ? (u.origin_shift_rlu as unknown[]) : null;
+    if (shift) dataProblems.push(`the HKL origin is shifted by (${shift.join(", ")}) r.l.u.`);
+    const angle = typeof u.orientation_change_deg === "number" ? u.orientation_change_deg : typeof u.angle_deg === "number" ? u.angle_deg : null;
+    if (UB_OFF_FOR_ANSWER(u)) {
+      const reasons: Reason[] = [...(u.symmetrised === true ? (["symmetrised"] as const) : []), ...(angle != null && angle >= UB_TURN ? (["UB turned"] as const) : [])];
+      return { kind: "attention", reasons, words: null, dataProblems };
+    }
+    if (!D16_UB_UNMEASURED_READS_RIGHT && angle == null) return { ...NOTHING, words: null, dataProblems };
+    return { kind: "pass", reasons: [], words: null, dataProblems };
+  },
+};
+
+const CHECK_RULES: { [C in Exclude<CheckId, Stage>]: CheckRule<Measurements[C]> } = { coverage, symmetry, texture, grain, ub };
 
 // ---------------------------------------------------------------- the interface's words
 
@@ -250,7 +476,7 @@ export const WORDS: {
   criterion: {
     rings: rings.criterion,
     punch: punch.criterion,
-    grains: GRAIN_CRITERION,
+    grains: grain.criterion!,
     backfill: backfill.criterion,
     flatten: flatten.criterion,
     pdf: pdf.criterion,
@@ -258,9 +484,16 @@ export const WORDS: {
   goal: { rings: rings.goal, punch: punch.goal, backfill: backfill.goal, flatten: flatten.goal, pdf: pdf.goal },
 };
 
+const isStage = (check: CheckId): check is Stage => check in STAGE_RULES;
+
 /** A check's outcome from its measurements, by its rule: what its tool writes, and what the readers read. */
 export function judge<C extends CheckId>(check: C, m: Measurements[C]): Outcome {
-  const rule = STAGE_RULES[check];
-  const { kind, reasons } = rule.judge(m ?? {});
-  return { check, kind, reasons, dataProblems: [], words: LABEL[kind], criterion: rule.ownCriterion ?? rule.criterion };
+  if (isStage(check)) {
+    const rule = STAGE_RULES[check];
+    const { kind, reasons } = rule.judge((m ?? {}) as StageNumbers);
+    return { check, kind, reasons, dataProblems: [], words: LABEL[kind], criterion: rule.ownCriterion ?? rule.criterion };
+  }
+  const rule = CHECK_RULES[check as Exclude<CheckId, Stage>] as CheckRule<unknown>;
+  const { kind, reasons, words, dataProblems = [] } = rule.judge(m ?? {});
+  return { check, kind, reasons, dataProblems, words, ...(rule.criterion ? { criterion: rule.criterion } : {}) };
 }

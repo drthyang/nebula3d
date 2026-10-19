@@ -5,7 +5,6 @@
 // module only assembles: it is pure, so the report can be tested end to end.
 
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
-import { SYMMETRY_HOLDS } from "../metrics/symmetry";
 import type { ParamValue } from "../tune/catalog";
 import { judge, WORDS, type Kind } from "../verdicts";
 
@@ -356,23 +355,14 @@ export function stageCheck(stage: "rings" | "punch" | "backfill" | "flatten" | "
   }
 }
 
-/** What the verdict says of a volume that declares no symmetry (symmetry_check says the same). */
-export const NOT_DECLARED = (asymmetry: unknown): string =>
-  `not judged: the file declares no symmetry, so the section's asymmetry (${String(asymmetry)}) is the data's own, counting noise included, not a break by a stage`;
-
-/** symmetry_check's verdict, from a ΔPDF evaluation's worst in-plane break (null without one). */
+/** symmetry_check's verdict, by its rule, from a ΔPDF evaluation's worst in-plane break (null without one). */
 function symmetryOf(m: Obj): Obj | null {
   const worst = num(m.max_symmetry_break);
   if (worst == null) return null;
   // A file that declares no symmetry was not symmetrised: the section's
   // asymmetry is the data's own, and no stage broke anything (docs/pilot-review.md).
-  if (m.symmetry_declared === false) return { verdict: NOT_DECLARED(worst) };
-  return {
-    verdict:
-      worst <= SYMMETRY_HOLDS
-        ? `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better`
-        : `not kept: ${String(m.worst_symmetry_op ?? "an in-plane operation")} (${worst})`,
-  };
+  const ops = [{ op: String(m.worst_symmetry_op ?? "an in-plane operation"), rms_difference: worst }];
+  return { verdict: judge("symmetry", { ops, declared: m.symmetry_declared === false ? null : undefined }).words };
 }
 
 export function buildReport(input: ReportInput): Report {

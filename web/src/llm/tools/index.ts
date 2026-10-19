@@ -58,13 +58,12 @@ import type { ToolCall, ToolSpec } from "../provider/client";
 import { ALL_STAGES, keysOf, RECIP, resolveFacts, stageKey, type Facts, type ToolFacts } from "./facts";
 import { openView, type ViewTarget } from "./openView";
 import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS } from "../skills";
-import { NOT_DECLARED } from "../report/report";
 import { judge, WORDS } from "../verdicts";
 
 export type { ViewTarget } from "./openView";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
-import { COVERAGE_SHELLS, coverageMetrics, OPEN_WEIGHT_OK } from "../metrics/coverage";
-import { grainCheck } from "../metrics/grains";
+import { COVERAGE_SHELLS, coverageMetrics } from "../metrics/coverage";
+import { grainCheck, shownGrains } from "../metrics/grains";
 import { sectionSymmetry, SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { median, radialProfile, roundSig } from "../metrics/sliceStats";
 import { textureMetrics } from "../metrics/texture";
@@ -946,9 +945,6 @@ const textureCheck: ChatTool = {
   },
 };
 
-// A share, in exponent form when it is tiny (1.5e-6, not 0.0000015).
-const share = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(roundSig(x, 2)));
-
 // How far the forward transform reaches in |Q|, from the Configure page: an
 // explicit |Q| band; else the box corners for a flat separable window (no
 // apodization), where every voxel counts at full weight; else the box faces
@@ -1012,12 +1008,8 @@ const symmetryCheck: ChatTool = {
         ops: sym.ops,
         holds,
         symmetry_declared: declared === undefined ? null : Boolean(declared),
-        verdict:
-          declared === null || declared === ""
-            ? NOT_DECLARED(Math.max(...sym.ops.map((o) => o.rms_difference)))
-            : broken.length
-              ? `not kept: ${broken.join(", ")}; a symmetry the data were symmetrised with should hold to ~${SYMMETRY_HOLDS} or better`
-              : `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better`,
+        // Judged by the symmetry's rule (verdicts/): not judged where the file declares none.
+        verdict: judge("symmetry", { ops: sym.ops, declared }).words,
       },
       summary:
         declared === null || declared === ""
@@ -1204,7 +1196,9 @@ const grainCheckTool: ChatTool = {
     const ops = (meta.symmetry_ops?.length ? meta.symmetry_ops : [identity]) as Parameters<typeof grainCheck>[0]["ops"];
     const s = usePipelineStore.getState();
     const cell = [s.punchSupercellH, s.punchSupercellK, s.punchSupercellL].map((v) => Number(v) || 1) as [number, number, number];
-    const g = grainCheck({ peaks, ub: meta.ub_matrix as Parameters<typeof grainCheck>[0]["ub"], ops, cell, top });
+    const facts = grainCheck({ peaks, ub: meta.ub_matrix as Parameters<typeof grainCheck>[0]["ub"], ops, cell, top });
+    // The grain's rule (verdicts/) judges the unrounded facts and writes the verdict.
+    const g = shownGrains(facts, judge("grain", facts).words!);
     return {
       result: { ...g, off_lattice_peaks: peaks.length, declared_symmetry: meta.symmetry ?? null, punch_cell: cell },
       summary: g.verdict.length > 160 ? `${g.verdict.slice(0, 157)}…` : g.verdict,
@@ -1368,26 +1362,21 @@ const qmaxCoverage: ChatTool = {
       : "the ΔPDF's window";
     const counts = await rawCounts;
     const band = rawBand(counts, s.pdfQMin, s.pdfQMax);
-    // The counts end inside the box and no band is set: only the window's taper
-    // keeps the transform on the counts. Said in the verdict, which a model
-    // quotes, and not only in raw_counts and suggested_band, which it may not.
-    const cutNote =
-      band.counts_end_inside_box && !s.pdfQMax
-        ? `; the raw counts end at ${band.raw_counts.q_max_edge} Å⁻¹, inside the box (its nearest face at ${band.raw_counts.box_face_q} Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is ${band.suggested_band![0]}–${band.suggested_band![1]} Å⁻¹ (suggested_band), the user's to set`
-        : "";
-    const verdict = (openWeight != null
-      ? openWeight <= OPEN_WEIGHT_OK
-        ? `clean: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space`
-        : `too far: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`
-      : !qRadius("hk0", 0, meta)
-      ? "no unit cell: |Q| is unknown, so the reach cannot be compared"
-      : fullQ == null
-        ? "no |Q| shell is fully measured on these planes"
-        : reach == null
-          ? "no ΔPDF yet to read the box corner from"
-          : reach <= fullQ + shell
-            ? `the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), inside full coverage at ${fullQ} Å⁻¹`
-            : `too far: the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), past full coverage at ${fullQ} Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage`) + cutNote;
+    // The verdict, by the coverage's rule (verdicts/): the recorded weight
+    // when there is one, else the reach against full coverage, and where the
+    // raw counts end when no band is set.
+    const { words } = judge("coverage", {
+      window_weight: openWeight,
+      window: windowNote,
+      unit_cell: Boolean(qRadius("hk0", 0, meta)),
+      full_coverage_q: fullQ,
+      reach,
+      reach_from: how,
+      shell,
+      band_set: Boolean(s.pdfQMax),
+      counts: band,
+    });
+    const verdict = words!;
     return {
       result: {
         verdict,

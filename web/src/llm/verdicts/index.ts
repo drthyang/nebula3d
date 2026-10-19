@@ -6,4 +6,15 @@
 // verdicts/ is implementation: rules.ts, the table of the checks' rules.
 
 export { judge, UNROUNDED, WORDS } from "./rules";
-export type { CheckId, Kind, Measurements, Outcome, Reason, Stage, StageNumbers, Unrounded } from "./rules";
+export type {
+  CheckId,
+  CoverageMeasurements,
+  Kind,
+  Measurements,
+  Outcome,
+  Reason,
+  Stage,
+  StageNumbers,
+  SymmetryMeasurements,
+  Unrounded,
+} from "./rules";
