@@ -66,6 +66,7 @@ from nebula3d.preprocessing.ring_isotropy import (
 )
 from nebula3d.preprocessing.ring_model import FittedRingModel, PatchedRingModel, RingParams
 from nebula3d.preprocessing.sampling import azimuthal_sampling_mask, trim_coverage_edge
+from nebula3d.preprocessing.shell_floors import ShellFloors, shell_floors
 
 __all__ = [
     # Primary pipeline
@@ -96,6 +97,8 @@ __all__ = [
     "confirm_ring_shells_across_h",
     "flatten_radial_background",
     "RadialFlattenResult",
+    "shell_floors",
+    "ShellFloors",
     "azimuthal_sampling_mask",
     "trim_coverage_edge",
     # Utilities / diagnostics

@@ -68,7 +68,10 @@ Validation
 **isotropy** — is the level we subtract really azimuthally flat? and (2)
 **feature preservation / over-subtraction**.  The subtraction is a function of
 |Q| alone, so it cannot create or distort anisotropic structure (regression:
-``test_radial_flatten.py``).
+``test_radial_flatten.py``).  Whether it left a pedestal is read from the
+floors after it: :func:`nebula3d.preprocessing.shell_floors.shell_floors`
+measures them over the whole volume, on these shells (:func:`measured_q_range`,
+:func:`shell_edges`) and at this percentile.
 """
 
 from __future__ import annotations
@@ -221,21 +224,12 @@ def flatten_radial_background(
 
     qs = max(float(q_step), 1e-12)
     if q_range is None:
-        q0, q1 = np.inf, -np.inf
-        for lo in range(0, data.shape[0], _SLAB):
-            v = valid[lo:lo + _SLAB]
-            if v.any():
-                qv = q_slab(lo)[v]
-                q0, q1 = min(q0, float(qv.min())), max(q1, float(qv.max()))
+        measured = measured_q_range(vol, valid, slab=_SLAB)
+        assert measured is not None  # valid.any() above
+        q0, q1 = measured
     else:
         q0, q1 = float(q_range[0]), float(q_range[1])
-    edges = np.arange(q0, q1 + qs, qs)
-    if edges.size < 2:
-        # numpy's shape-typed stubs (which differ across the supported numpy
-        # versions) infer `edges` as 1-D from np.arange, so the generic-shape
-        # np.array fallback trips [assignment].  Behaviour is identical; the
-        # config disables unused-ignore, so this is safe on every version.
-        edges = np.array([q0, q0 + qs])  # type: ignore[assignment]
+    edges = shell_edges(q0, q1, qs)
     q_grid = 0.5 * (edges[:-1] + edges[1:])
     nb = q_grid.size
     # int32 indices: the shell count is tiny, and the full-volume index array
@@ -320,6 +314,47 @@ def flatten_radial_background(
         model_q2=q2 if (estimator == "model" and q2_term) else None,
         model_q2_cap=q2_cap if estimator == "model" else None,
     )
+
+
+def measured_q_range(
+    vol: HKLVolume, valid: NDArray[np.bool_] | None = None, *, slab: int = _SLAB,
+) -> tuple[float, float] | None:
+    """The smallest and largest |Q| (Å⁻¹) of the measured voxels, or None when
+    none is measured.
+
+    Measured is *valid* when given, else ``mask`` and finite.  |Q| is computed
+    one slab of *slab* H planes at a time, in float64 (exact min/max, so the
+    result does not depend on *slab*).  The flatten's shells run from the first
+    to the second (:func:`shell_edges`).
+    """
+    q0, q1 = np.inf, -np.inf
+    for lo in range(0, vol.data.shape[0], max(1, int(slab))):
+        sl = slice(lo, lo + max(1, int(slab)))
+        v = valid[sl] if valid is not None else vol.mask[sl] & np.isfinite(vol.data[sl])
+        if v.any():
+            qv = q_magnitude_from_axes(vol.h_axis[sl], vol.k_axis, vol.l_axis,
+                                       vol.ub_matrix)[v]
+            q0, q1 = min(q0, float(qv.min())), max(q1, float(qv.max()))
+    return (q0, q1) if q0 <= q1 else None
+
+
+def shell_edges(q0: float, q1: float, q_step: float) -> NDArray[np.float64]:
+    """The flatten's |Q| shell edges (Å⁻¹): ``q_step`` apart from *q0* up to
+    *q1* (``np.arange``; at least one shell).
+
+    Shell ``b`` holds the |Q| with ``np.digitize(|Q|, edges) − 1 == b``
+    (:func:`nebula3d.core.q_bin_indices`); the flatten clips the measured
+    voxels at the ends of the range into the first and last shells.
+    """
+    qs = max(float(q_step), 1e-12)
+    edges = np.arange(q0, q1 + qs, qs)
+    if edges.size < 2:
+        # numpy's shape-typed stubs (which differ across the supported numpy
+        # versions) infer `edges` as 1-D from np.arange, so the generic-shape
+        # np.array fallback trips [assignment].  Behaviour is identical; the
+        # config disables unused-ignore, so this is safe on every version.
+        edges = np.array([q0, q0 + qs])  # type: ignore[assignment]
+    return edges
 
 
 def _pedestal(
