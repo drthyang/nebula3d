@@ -61,6 +61,16 @@ Each is described under [How it works](#how-it-works).
   model to quote it (`verdicts/`, `verdict.ts`).
 - **Skills come first.** A stage's settings change, and the stage is tuned,
   only after its skill has been read in the conversation.
+- **Facts about the sample are yours.** The search's protected planes and the
+  punch cell change only when your latest message names them: by the
+  setting's name, or in words such as "protected planes", "H fractions",
+  "punch cell", "supercell" or "doubled cell" (the planes' half width needs a
+  width named as well). `update_settings` refuses any other change to them,
+  makes the rest of the call, and the model asks you. The gate reads names,
+  not intent: "satellites", a "plane" or a "cell" alone name nothing, nor does
+  a bare "yes" (say which), while a question that names a fact names it.
+  `tune/catalog.ts` lists the words. The magnetic ion and the |Q| band the
+  model cannot change at all.
 - **Tuning cannot touch your results.** Each trial runs in its own folder,
   never in `processed/`; the model proposes settings only from a checked
   catalog, every trial is measured on three planes, and a trial past a hard
@@ -409,8 +419,11 @@ miss is a note.
     would give, and warns when a range the user asks for is brighter than the
     optimum, where the FFT ripple shows. It acts: it sets the viewer's limit.
   - *Acting*: `update_settings` (the method choices and thresholds in
-    `tune/catalog.ts`, and, when the user names them, the sample facts the
-    tuner never proposes: the search's protected planes and the punch cell),
+    `tune/catalog.ts`, and the sample facts the tuner never proposes, the
+    search's protected planes and the punch cell, only when the user's latest
+    message names them: the agent loop hands that message to the tools, and a
+    change to a fact it does not name is refused, the call's other changes
+    made; see [Guardrails](#guardrails)),
     `run_pipeline` (as the Run button: the console moves to the Execution page;
     without `from_stage` it computes what is missing, with it it recomputes from
     that stage on), `tune_pipeline` (below), and `show_in_viewer` (it acts on

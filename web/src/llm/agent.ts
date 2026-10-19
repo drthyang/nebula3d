@@ -192,9 +192,12 @@ export async function runAgent({
   // against are the given ones under the skills' switch (skills.ts), as the
   // conversation's context carries it (with the skills off, no read_skill);
   // the tool context is the reply's own copy, so a run's fresh dataset and
-  // the skills read stay this reply's. Without a context no tool runs, and
+  // the skills read stay this reply's. It carries the user's latest message,
+  // as the conversation arrived: what the loop later sends as the user (a
+  // send-back, the note to answer now) is not the user's, and names no fact
+  // about the sample to update_settings. Without a context no tool runs, and
   // the tools are the given ones.
-  let history: History | null = ctx && startReply(ctx, given);
+  let history: History | null = ctx && startReply({ ...ctx, userMessage: lastQuestion(messages) }, given);
   const tools = history ? history.tools : given;
   const convo = [...messages];
   const arrived = convo.length;

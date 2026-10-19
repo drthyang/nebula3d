@@ -1480,6 +1480,29 @@ References of this skill (read one with read_skill and `reference`):
 }
 ```
 
+## update_settings {"changes":{"punchMinSig":6,"punchSupercellH":2}} (the punch's skill read; the user's latest message, “Raise the punch significance to 6.”, names no fact about the sample)
+
+243 characters sent.
+
+```json
+{
+  "changed": [
+    {
+      "setting": "punchMinSig",
+      "from": 5,
+      "to": 6
+    }
+  ],
+  "refused": [
+    {
+      "setting": "punchSupercellH",
+      "why": "punchSupercellH is a fact about the sample, which only the user sets: ask the user, and change it once they name it."
+    }
+  ],
+  "rerun_from": "punch"
+}
+```
+
 ## run_pipeline {"from_stage":"punch"} (a stubbed run of 42.3 s)
 
 460 characters sent.
@@ -1578,6 +1601,12 @@ Error: invalid arguments — L = 7 is outside the data range [-3, 3]
 
 ```text
 Error: read the method first: call read_skill with name "bragg-node-audit". It is how the user works on the Bragg punch stage, and this change waits until it has been read in this conversation.
+```
+
+## update_settings {"changes":{"punchSupercellH":2}} (a fact about the sample that the user's latest message, “Is the punch clean?”, does not name; the punch's skill read)
+
+```text
+Error: punchSupercellH is a fact about the sample, which only the user sets: ask the user, and change it once they name it.
 ```
 
 ## tune_pipeline {"stages":["flatten"]} (tuning before its stage's skill was read)
