@@ -234,16 +234,23 @@ A node whose shell holds fewer than 8 measured voxels is not judged. Before
 this guard the test fell back on the window's median, which on a coarse grid
 passes the diffuse at a node: a saddle's corner stands many σ above its
 window's median. With `mode="both"` (the default) such a node is left to the
-search pass, which punches it only if it stands out of its |Q| shell by the
-search floors. A weak Bragg peak below those floors may remain, the lesser
-error, and so may one in a |Q| shell too thin for the search's statistics
-(under 20 voxels, at the box's far corners). With `mode="integer"` there is
-no search pass to leave it to: the node is judged against its window's median
-as before, provisionally. On a grid coarser than the limit the punch says so
-out loud. Its done line ends on a notice, marked ⚠, such as
+search pass, which punches a peak only if it stands out of its |Q| shell by
+the search floors. A search peak inside the window of a node left to it, the
+box the node test searches about the node, is that node's Bragg peak (the
+brightest, if there are more): its record takes the node as
+`source_node_hkl` and says the search found it (`found_by: "search"`; the
+node test's peaks say `"integer"`), and it is punched and learned from like
+the node test's peaks, the punch's Bragg profile (and the `integer_h_guard_hkl`
+slab) included. A Bragg peak the search cannot see may remain: one below its
+floors, the lesser error, or one in a |Q| shell too thin for its statistics
+(under 20 voxels, at the box's far corners), which may be strong. With
+`mode="integer"` there is no search pass to leave it to: the node is judged
+against its window's median as before, provisionally. On a grid coarser than
+the limit the punch says so out loud. Its done line ends on a notice, marked
+⚠, such as
 
 ```text
-grid too coarse for the Bragg punch's node test: a voxel is 0.161 Å⁻¹; its background shell needs ≤ 0.143 Å⁻¹. 703 of 728 nodes were not judged and were left to the search pass; weaker Bragg peaks may remain. Use a finer grid.
+grid too coarse for the Bragg punch's node test: a voxel is 0.161 Å⁻¹; its background shell needs ≤ 0.143 Å⁻¹. 703 of 728 nodes were not judged and were left to the search pass; Bragg peaks the search cannot see may remain. Use a finer grid.
 ```
 
 with `mode="integer"`: "… 703 of 728 nodes were judged provisionally,
@@ -253,7 +260,12 @@ peaks; 703 of 728 nodes not judged (fewer than 8 measured voxels in the
 background shell), left to the search pass"): on a grid finer than the limit
 only the nodes at the edge of the measured volume or on the box's faces can
 fall short, and the line counts them without the ⚠ notice. The nodes are the
-ones the test examined, those with a measured window. The punch's record, its
+ones the test examined, those with a measured window. The search's line
+counts the Bragg peaks it found at them ("172 peaks, 172 of them the Bragg
+peaks of nodes the node test left to it"), and the footprint's line what the
+profile was learned from ("… the shared Bragg profile (learned from 180
+peaks, 172 of them the search's at nodes the node test left to it)"; the
+record's `footprint_profile.from_search`). The punch's record, its
 profile beside the punched volume (`*_braggpunched_profile.json`), keeps
 them as `node_test`: `examined`, `under_floor`, `min_voxels`, `voxel_q`,
 `needs_q` (Å⁻¹), `left_to_search` and the `notice` (none on a grid finer
@@ -271,15 +283,19 @@ forbidden node is punched (on the ring cases, where the ring removal confirms
 no ring at this grid, the four and two the test judges with a full shell on
 the 4.05 Å⁻¹ ring aside), the three keep 0.89–0.93, and broad maxima planted
 at the (1,1,0) nodes under the search floors go unpunched, where the test
-as it was punched all twelve. The search pass punches the Bragg peaks
-instead, with smaller holes: from 8 integer peaks the punch learns no Bragg
-profile (it needs 20), so a peak whose own width it cannot measure (within
-5 voxels of the box's faces) gets the resolution ellipsoid, where the
-profile's footprint reached further. On five of the eight cases it misses
-all eight Bragg peaks at the box's corners (±4, ±4, ±4), on a sixth two:
-their |Q| shell holds 8 voxels, under the 20 its statistics need. 161
+as it was punched all twelve. The search finds the Bragg peaks instead: on
+the control 172, each the Bragg peak of a node left to it, and the punch
+learns its profile from them and the node test's 8 (180 peaks in three |Q|
+ranges; from 8 it could learn none, needing 20), so a peak whose own width it
+cannot measure (within 5 voxels of the box's faces) gets the profile's
+footprint, not the bare resolution ellipsoid. The ΔPDF then scores as it does
+with the forbidden nodes' punches simply taken out (the control's ⟨3/2 0 0⟩
+at 0.926, the ΔPDF's rms error 0.266). On five of the eight cases the search
+misses all eight Bragg peaks at the box's corners (±4, ±4, ±4), on a sixth
+two: their |Q| shell holds 8 voxels, under the 20 its statistics need. 161
 points (0.081 Å⁻¹) leave 9 voxels or more in every node's shell, the box's
-corners included: every node is judged, and the punch is as it was.
+corners included: every node is judged, nothing is left to the search, and
+the punch is as it was.
 
 ### 3. Backfill Bragg Holes
 
