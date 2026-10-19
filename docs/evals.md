@@ -440,12 +440,23 @@ and one Markdown transcript per run beside it, readable offline. Each run holds:
 
 - **the tools offered on each request**, as they went over the wire (a recording
   `fetch`), so a reviewer sees what the model could call and when a tool joined it;
-- **the decisions:** every step's tool, arguments, status, summary and whole
-  result, and the model's own words before it as the reason;
+- **the decisions:** every step's tool, arguments, status, summary and result,
+  and the model's own words before it as the reason. A step's result has two
+  readings (`web/src/llm/readings/`): `result` is what the model read when the
+  call returned, and `full` the whole result the tool found, kept only where
+  the two differ (a result past the limit, which the model reads fitted to
+  valid JSON, with what it left out named under `left_out`). `shortened` says
+  that the loop later shortened the model's copy, in a long reply on a local
+  model, to save room; `result` stays what was sent. Every record holds
+  `result` as what the model read, those made before the two new fields
+  (2026-10-19) included; `full` and `shortened` are optional, so the schema
+  stays `nebula3d-validation-run/1`;
 - **every number the conclusion writes, with its source:** the step, tool and
   field it came from, or that no tool result holds it (the latest result holding a
   value that matches to the written precision; a coincidence is possible, so read
-  the transcript);
+  the transcript). The source is searched in what each tool found, whole, so a
+  number a `{{reference}}` filled from a field the model's copy left out has
+  one;
 - **the conclusion**, and the grades above; then, after `score`, the scored outputs.
 
 ### Findings
