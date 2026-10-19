@@ -9,6 +9,11 @@
 //   one; the rest ended in an error), each with its own run's steps. The
 //   records name no sample (scrub.ts); what they measured is never written out
 //   of them: the goldens keep booleans and digests.
+//
+// Every list here is named, never "whatever loads": the measured set's
+// scenarios (SCENARIOS, scenarios.ts), never the held-out set's (heldout.ts),
+// and the six records by name, so the corpus is the same with the held-out
+// opt-in (NEBULA_HOLDOUT_TESTS=1) as without it.
 
 import { readText } from "./backend";
 import { runOfRecord, type EvalRun, type RecordedRun, type Scenario } from "./harness";
@@ -78,14 +83,18 @@ const two = (n: number): string => String(n).padStart(2, "0");
 /** A canned answer as the run that wrote it: no steps, as validation.test.ts grades it. */
 const cannedRun = (text: string): EvalRun => ({ scenario: "canned", steps: [], content: text, latencyMs: 0, usage: null });
 
-/** The scenario records' runs that wrote an answer, each with its own run. */
+/**
+ * The scenario records' runs that wrote an answer to one of the measured set's
+ * scenarios (SCENARIOS, never the held-out set's), each with its own run.
+ */
 export async function recordAnswers(): Promise<CorpusAnswer[]> {
   const out: CorpusAnswer[] = [];
   for (const name of RESULT_RECORDS) {
     const record = JSON.parse(await readText(new URL(`${name}.json`, RESULTS))) as { runs: RecordedRun[] };
     record.runs.forEach((r, i) => {
-      if (!r.answer) return;
-      out.push({ id: `${name} run ${two(i + 1)} (${r.scenario})`, text: r.answer, run: runOfRecord(r), scenario: SCENARIOS.find((s) => s.id === r.scenario) ?? null });
+      const scenario = SCENARIOS.find((s) => s.id === r.scenario);
+      if (!r.answer || !scenario) return;
+      out.push({ id: `${name} run ${two(i + 1)} (${r.scenario})`, text: r.answer, run: runOfRecord(r), scenario });
     });
   }
   return out;
