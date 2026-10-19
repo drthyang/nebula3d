@@ -361,6 +361,23 @@ class BraggPeakWidthOut(BaseModel):
     principal_width_q: list[float] | None = None
     principal_directions_hkl: list[list[float]]
     fit_kind: str
+    # Which pass found it: "integer" (the node test) or "search"; a search peak
+    # with a source node is the Bragg peak of a node the node test left to the
+    # search. None in a profile written before the punch recorded it.
+    found_by: str | None = None
+
+
+class NodeTestOut(BaseModel):
+    """The nodes whose background shell held fewer measured voxels than the
+    Bragg punch's node test needs (server.bragg): with mode "both" not judged
+    and left to the search pass, with mode "integer" judged provisionally."""
+    examined: int                   # the nodes with a measured window
+    under_floor: int                # of them, those whose shell was under min_voxels
+    min_voxels: int                 # the shell median's floor
+    voxel_q: float                  # a voxel, Å⁻¹ (the edge of a cube of its Q-volume)
+    needs_q: float                  # the largest voxel that gives the shell min_voxels, Å⁻¹
+    left_to_search: bool            # mode "both"; else judged provisionally
+    notice: str | None = None       # what the run log says, on a grid too coarse (voxel > needs)
 
 
 class BraggProfileOut(BaseModel):
@@ -375,6 +392,8 @@ class BraggProfileOut(BaseModel):
     fit_covariance: bool = False
     punch_frame: str | None = None
     peaks: list[BraggPeakWidthOut] = []
+    # The nodes the node test could not judge, if any (pipeline.node_test_notice).
+    node_test: NodeTestOut | None = None
 
 
 class StageParamsIn(BaseModel):

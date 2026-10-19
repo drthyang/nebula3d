@@ -313,6 +313,38 @@ def test_bragg_profile_json(ran_pipeline):
     assert prof["width_labels"]
 
 
+def test_bragg_profile_json_is_the_servers_response(ran_pipeline, tmp_path):
+    """The punch's record in the browser build is the native server's, field
+    for field. On the run's 25 points (0.5 Å⁻¹ a voxel) no node's background
+    shell holds the node test's 8 voxels: the record says how many nodes the
+    test left to the search pass, with the notice the punch's done line ends
+    on (G2)."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d.pipeline import node_test_notice
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+    from nebula3d.server.schemas import BraggProfileOut
+
+    dataset_id, _datasets, events = ran_pipeline
+    bridged = json.loads(webbridge.bragg_profile_json(dataset_id))
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path / "work")))
+    served = client.get(f"/api/bragg/{dataset_id}/profile")
+    assert served.status_code == 200, served.text
+    assert bridged == served.json()
+    assert set(bridged) == set(BraggProfileOut.model_fields)
+    left = bridged["node_test"]
+    assert left["under_floor"] == left["examined"] > 0 and left["left_to_search"] is True
+    assert left["voxel_q"] > left["needs_q"] == 0.1433
+    assert left["notice"] == node_test_notice(left["under_floor"], left["examined"],
+                                              left["voxel_q"], left["needs_q"])
+    (done,) = [m for stage, status, _f, m in events if stage == "punch" and status == "done"]
+    assert done.endswith(f". ⚠ {left['notice']}")
+    # Every node was left to the search: the peaks at nodes are its, as their records say.
+    assert {p["found_by"] for p in bridged["peaks"]} == {"search"}
+    assert any(p["source_node_hkl"] is not None for p in bridged["peaks"])
+
+
 def test_bragg_profile_json_missing_file(ran_pipeline):
     from pathlib import Path
 
