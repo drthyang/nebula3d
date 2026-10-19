@@ -241,11 +241,11 @@ function backFftOk(m: StageNumbers): boolean | null {
  * D6, unified (plan 2.4.6, the user's decision of 2026-10-19): every check
  * compares the window's raw weight on unmeasured space against 1e-3. The ΔPDF's
  * rule, and the tuning's limit (outOfBounds, which reads this rule), read the
- * raw weight the evaluation keeps beside the one it shows at two significant
- * figures (UNROUNDED), as qmax_coverage does: at 1.04e-3 all three are past the
- * limit, though the evaluation shows 0.001. An evaluation read back from its
- * JSON has only the shown weight. true: the ΔPDF's rule compared the shown
- * weight, before 2.4.6.
+ * raw weight the evaluation keeps beside the one it shows (UNROUNDED), as
+ * qmax_coverage does: at 1.04e-3 all three are past the limit. Since 2.4.6b the
+ * weight is shown to WEIGHT_FIGURES figures (0.00104, where two showed 0.001).
+ * An evaluation read back from its JSON has only the shown weight. true: the
+ * ΔPDF's rule compared the shown weight, before 2.4.6.
  */
 export const D6_PDF_READS_ROUNDED_WEIGHT = false;
 
@@ -300,8 +300,18 @@ interface CheckRule<M> {
   judge: (m: M) => Words;
 }
 
-// A share, in exponent form when it is tiny (1.5e-6, not 0.0000015).
-const share = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(roundSig(x, 2)));
+/**
+ * The significant figures a window's weight on unmeasured space is shown to
+ * (plan 2.4.6b, after D6): three, so a weight past the 1e-3 limit never reads
+ * as 0.001 beside a verdict that it is past it (1.04e-3 shows as 0.00104).
+ */
+export const WEIGHT_FIGURES = 3;
+
+/** A window's weight on unmeasured space as the checks show it: WEIGHT_FIGURES figures, in exponent form when tiny (2.4e-4, not 0.00024). */
+export const shownWeight = (x: number): string => {
+  const r = roundSig(x, WEIGHT_FIGURES);
+  return r !== 0 && Math.abs(r) < 1e-3 ? r.toExponential() : String(r);
+};
 
 const coverage: CheckRule<CoverageMeasurements> = {
   judge: (m) => {
@@ -313,10 +323,10 @@ const coverage: CheckRule<CoverageMeasurements> = {
     const [outcome, text]: [Judged, string] =
       w != null
         ? w <= OPEN_WEIGHT_OK
-          ? [{ kind: "pass", reasons: ["window within limit"] }, `clean: ${m.window} puts ${share(w)} of its weight on unmeasured reciprocal space`]
+          ? [{ kind: "pass", reasons: ["window within limit"] }, `clean: ${m.window} puts ${shownWeight(w)} of its weight on unmeasured reciprocal space`]
           : [
               { kind: "attention", reasons: ["window past limit"] },
-              `too far: ${m.window} puts ${share(w)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`,
+              `too far: ${m.window} puts ${shownWeight(w)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`,
             ]
         : !m.unit_cell
           ? [nothing(), "no unit cell: |Q| is unknown, so the reach cannot be compared"]

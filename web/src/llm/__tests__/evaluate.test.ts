@@ -170,12 +170,12 @@ describe("evaluateStage", () => {
     });
     api.fetchMeta.mockResolvedValue({ ...(await api.fetchMeta()), symmetry: "6/mmm" }); // declared symmetrised
     const e = await evaluateStage("pdf", withPdf);
-    expect(e.window_weight_on_unmeasured).toBe(0.044);
+    expect(e.window_weight_on_unmeasured).toBe(0.0436); // three figures (2.4.6b)
     expect(e.window_shape).toBe("separable");
     expect(e.max_symmetry_break as number).toBeGreaterThan(1);
     expect(typeof e.worst_symmetry_op).toBe("string");
     expect(e.symmetry_declared).toBe(true);
-    expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.044 · symmetry off ≤ \d/);
+    expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.0436 · symmetry off ≤ \d/);
     expect(judge("pdf", e).reasons).toContain("symmetry broken");
   });
 
@@ -192,7 +192,9 @@ describe("evaluateStage", () => {
       return evaluateStage("pdf", withPdf);
     };
     const past = await evaluate(0.00104);
-    expect(past.window_weight_on_unmeasured).toBe(0.001); // shown at two figures
+    // Shown to three figures (2.4.6b): 0.00104 beside its verdict, where two showed 0.001.
+    expect(past.window_weight_on_unmeasured).toBe(0.00104);
+    expect(headline("pdf", past)).toMatch(/ · unmeasured 0\.00104 · /);
     expect(judge("pdf", past)).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
     expect(outOfBounds("pdf", past)).toMatch(/^its window puts 0\.00104 of its weight/);
     // qmax_coverage reads the same raw weight the same way.
@@ -201,6 +203,11 @@ describe("evaluateStage", () => {
     // At 1e-3, within the limit, to both.
     const at = await evaluate(0.001);
     expect([judge("pdf", at).kind, outOfBounds("pdf", at), judge("coverage", { ...coverage, window_weight: 0.001 }).kind]).toEqual(["pass", null, "pass"]);
+    // Past the limit at the fourth figure: shown 0.001, still judged raw.
+    const fourth = await evaluate(0.0010004);
+    expect([fourth.window_weight_on_unmeasured, judge("pdf", fourth).kind]).toEqual([0.001, "attention"]);
+    // A tiny weight, in exponent form, to three figures.
+    expect(headline("pdf", await evaluate(0.000976))).toMatch(/ · unmeasured 9\.76e-4 · /);
   });
 
   it("does not judge a symmetry the file never declared: unsymmetrised data differ from their images by their own noise", async () => {

@@ -142,7 +142,7 @@ describe("D1–D10, kept and named", () => {
     expect(D6_PDF_READS_ROUNDED_WEIGHT).toBe(false);
     const coverage = judge("coverage", { window_weight: 0.00104, window: "the ΔPDF's ellipsoid window", unit_cell: true, full_coverage_q: null, reach: null, reach_from: "", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } });
     expect(coverage).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
-    // The evaluation as tune/evaluate.ts writes it: two figures shown, the raw weight kept beside.
+    // An evaluation as tune/evaluate.ts wrote it before 2.4.6b: two figures shown, the raw weight kept beside.
     const evaluation = { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.001, [UNROUNDED]: { window_weight_on_unmeasured: 0.00104 } };
     expect(judge("pdf", evaluation)).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
     expect(outOfBounds("pdf", evaluation)).toBe("its window puts 0.00104 of its weight on unmeasured reciprocal space, past the 0.001 the backend's own window allows");

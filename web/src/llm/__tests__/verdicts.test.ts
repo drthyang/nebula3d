@@ -120,7 +120,7 @@ describe("judge: a stage's evaluation", () => {
   }
 
   it("compares the ΔPDF's raw window weight, kept beside the one its evaluation shows (D6)", () => {
-    // evaluate.ts writes the weight at two figures, and keeps the raw one where JSON never reads it.
+    // A weight shown rounded (two figures before 2.4.6b, three since), the raw one kept where JSON never reads it.
     const shown = { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.001, [UNROUNDED]: { window_weight_on_unmeasured: 0.00104 } };
     expect(judge("pdf", shown)).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
     expect(JSON.stringify(shown)).toBe('{"back_fft_pearson_r_even":1,"window_weight_on_unmeasured":0.001}');
@@ -153,7 +153,9 @@ describe("judge: the checks on the result", () => {
   const COVERAGE: [string, Obj, Kind, Reason[], string, string[]?][] = [
     ["a recorded weight at the limit", { window_weight: 0.001 }, "pass", ["window within limit"], "clean: the ΔPDF's ellipsoid window puts 0.001 of its weight on unmeasured reciprocal space"],
     ["a tiny weight, in exponent form", { window_weight: 4.1e-6 }, "pass", ["window within limit"], "clean: the ΔPDF's ellipsoid window puts 4.1e-6 of its weight on unmeasured reciprocal space"],
-    ["the raw weight past the limit (D6)", { window_weight: 0.00104 }, "attention", ["window past limit"], "too far: the ΔPDF's ellipsoid window puts 0.001 of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band"],
+    // Three figures (2.4.6b): past the limit, and shown so.
+    ["the raw weight past the limit (D6)", { window_weight: 0.00104 }, "attention", ["window past limit"], "too far: the ΔPDF's ellipsoid window puts 0.00104 of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band"],
+    ["a tiny weight, to three figures (2.4.6b)", { window_weight: 0.000976 }, "pass", ["window within limit"], "clean: the ΔPDF's ellipsoid window puts 9.76e-4 of its weight on unmeasured reciprocal space"],
     ["the reach inside full coverage", {}, "pass", ["reach inside coverage"], "the transform reaches 6.283 Å⁻¹ (the window is tapered to the measured coverage), inside full coverage at 6.5 Å⁻¹"],
     ["the reach one shell past it", { reach: 6.6 }, "pass", ["reach inside coverage"], "the transform reaches 6.6 Å⁻¹ (the window is tapered to the measured coverage), inside full coverage at 6.5 Å⁻¹"],
     ["the reach past it", { reach: 6.61 }, "attention", ["reach past coverage"], "too far: the transform reaches 6.61 Å⁻¹ (the window is tapered to the measured coverage), past full coverage at 6.5 Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage"],

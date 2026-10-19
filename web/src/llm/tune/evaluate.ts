@@ -10,7 +10,7 @@ import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
 import { sectionSymmetry, type SectionSymmetry } from "../metrics/symmetry";
-import { judge, UNROUNDED, type Unrounded } from "../verdicts/rules";
+import { judge, shownWeight, UNROUNDED, WEIGHT_FIGURES, type Unrounded } from "../verdicts/rules";
 import type { TuneStage } from "./catalog";
 
 const RECIP_CUTS: Cut[] = [
@@ -113,8 +113,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       back_fft_per_plane_r: m?.per_plane_r ?? null,
       mean_feature_snr: mean(Object.values(perPlane).map((p) => p?.feature_snr)),
       // The share of the window's weight on unmeasured reciprocal space
-      // (qmax_coverage's verdict), and the window's shape.
-      window_weight_on_unmeasured: typeof open === "number" ? roundSig(open, 2) : null,
+      // (qmax_coverage's verdict), shown to three figures, and the window's shape.
+      window_weight_on_unmeasured: typeof open === "number" ? roundSig(open, WEIGHT_FIGURES) : null,
       window_shape: dmeta?.window_shape ?? null,
       max_symmetry_break: worstOp ? worstOp.rms_difference : null,
       worst_symmetry_op: worstOp?.op ?? null,
@@ -338,7 +338,7 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
         `r ${v("back_fft_pearson_r")}` +
         (typeof e.back_fft_pearson_r_even === "number" ? ` (even part ${v("back_fft_pearson_r_even")})` : "") +
         ` · RMS ${v("back_fft_normalized_rms")} · SNR ${v("mean_feature_snr")}` +
-        (typeof open === "number" ? ` · unmeasured ${tiny(open)}` : "") +
+        (typeof open === "number" ? ` · unmeasured ${shownWeight(open)}` : "") +
         (typeof broken === "number"
           ? e.symmetry_declared === false
             ? ` · no symmetry declared (asymmetry ${tiny(broken)})`
@@ -360,7 +360,7 @@ export function outOfBounds(stage: TuneStage, e: StageEvaluation | undefined): s
   const shown = e?.window_weight_on_unmeasured;
   if (stage === "pdf" && typeof shown === "number" && judge("pdf", e ?? {}).reasons.includes("window past limit")) {
     const raw = e?.[UNROUNDED]?.window_weight_on_unmeasured;
-    return `its window puts ${tiny(typeof raw === "number" ? raw : shown)} of its weight on unmeasured reciprocal space, past the ${OPEN_WEIGHT_OK} the backend's own window allows`;
+    return `its window puts ${shownWeight(typeof raw === "number" ? raw : shown)} of its weight on unmeasured reciprocal space, past the ${OPEN_WEIGHT_OK} the backend's own window allows`;
   }
   return null;
 }
