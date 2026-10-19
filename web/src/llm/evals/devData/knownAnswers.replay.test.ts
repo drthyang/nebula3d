@@ -285,10 +285,10 @@ for (const id of ["dev-shell", "dev-rings-shell"] as const) {
 // The fills' texture (texture_check): the default backfill prints no fill bias
 // of its own over the punch's holes, every one judged in 3-D with its rim
 // (plan 4.2). On a grid too coarse to leave the holes room for their rims the
-// check is not judged, says why, and measures no bias; at 81 points the cuts
-// read before 4.2 flagged three of these cases (dev-origin, dev-rings,
-// dev-shell) with a bias the room rule now keeps from any verdict, in 3-D as
-// on the cuts.
+// check is not judged, says why, and measures no bias. At 81 points, before
+// that rule (#60), the cuts read a false bias on three of these cases
+// (dev-origin, dev-rings, dev-shell), and the 3-D read, past it, would read
+// one on six: the rule, not the 3-D read, keeps them from a verdict.
 for (const id of DEV_CASE_IDS) {
   describe(`${id}: the fills leave no texture`, () => {
     check(id, named("texture", "texture_check finds no systematic fill bias over the holes in 3-D"), async () => {
