@@ -119,10 +119,10 @@ describe("judge: a stage's evaluation", () => {
     }
   }
 
-  it("compares the ΔPDF's window as its evaluation shows it, its raw weight kept beside (D6)", () => {
+  it("compares the ΔPDF's raw window weight, kept beside the one its evaluation shows (D6)", () => {
     // evaluate.ts writes the weight at two figures, and keeps the raw one where JSON never reads it.
     const shown = { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.001, [UNROUNDED]: { window_weight_on_unmeasured: 0.00104 } };
-    expect(judge("pdf", shown)).toMatchObject({ kind: "pass", reasons: ["window within limit"] });
+    expect(judge("pdf", shown)).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
     expect(JSON.stringify(shown)).toBe('{"back_fft_pearson_r_even":1,"window_weight_on_unmeasured":0.001}');
   });
 

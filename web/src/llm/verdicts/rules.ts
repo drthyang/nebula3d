@@ -238,15 +238,16 @@ function backFftOk(m: StageNumbers): boolean | null {
 }
 
 /**
- * D6: the ΔPDF's rule compares the window's weight on unmeasured space as its
- * evaluation shows it, at two significant figures (tune/evaluate.ts), and so
- * does the tuning's limit (outOfBounds, which reads this rule), while
- * qmax_coverage compares the raw weight: at 1.04e-3 the coverage is "too far"
- * and the ΔPDF, shown 0.001, passes. Unify (2.4.6): set this to false; the
- * rule then compares the raw weight, which the evaluation keeps beside the
- * shown one (UNROUNDED).
+ * D6, unified (plan 2.4.6, the user's decision of 2026-10-19): every check
+ * compares the window's raw weight on unmeasured space against 1e-3. The ΔPDF's
+ * rule, and the tuning's limit (outOfBounds, which reads this rule), read the
+ * raw weight the evaluation keeps beside the one it shows at two significant
+ * figures (UNROUNDED), as qmax_coverage does: at 1.04e-3 all three are past the
+ * limit, though the evaluation shows 0.001. An evaluation read back from its
+ * JSON has only the shown weight. true: the ΔPDF's rule compared the shown
+ * weight, before 2.4.6.
  */
-export const D6_PDF_READS_ROUNDED_WEIGHT = true;
+export const D6_PDF_READS_ROUNDED_WEIGHT = false;
 
 /** The ΔPDF window's weight on unmeasured space, as the ΔPDF's rule compares it (D6), or null. */
 function windowWeight(m: StageNumbers): number | null {
