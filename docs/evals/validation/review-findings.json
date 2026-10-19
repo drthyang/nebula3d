@@ -543,5 +543,27 @@
    "on": "2026-10-19",
    "option": "yes"
   }
+ },
+ {
+  "source": "review",
+  "ref": "D13",
+  "at": "76a691c",
+  "kind": "bug",
+  "evidence": "The report's 3D-ΔPDF card reads the symmetry from symmetry_check alone (web/src/llm/verdicts/readers.ts:152, :326), never from the ΔPDF evaluation's own worst break, which the ΔPDF stage's rule counts (web/src/llm/verdicts/rules.ts:276) and so the chat's ΔPDF stage: with the evaluation broken and symmetry_check kept or not run, the chat needs attention and the report passes.",
+  "proposed_fix": "The report's 3D-ΔPDF card counts the evaluation's symmetry break too.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "2577c4d",
+  "tests": [
+   "web/src/llm/__tests__/verdictPins.test.ts (D13, unified (2.4b.4): the report's ΔPDF card counts the evaluation's own symmetry break, as the chat's ΔPDF stage does)",
+   "web/src/llm/__tests__/verdictPins.test.ts (the chat's achieved and the report's, on the same measurements: agree, but where a named rule of the report's makes them differ)",
+   "web/src/llm/__tests__/report.test.ts (counts the ΔPDF evaluation's own symmetry break on its card, symmetry_check kept or not run (D13, 2.4b.4))"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "yes"
+  }
  }
 ]
