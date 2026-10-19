@@ -359,8 +359,14 @@
   "evidence": "For a generic question, a local model is offered neither ub_check nor texture_check (web/src/llm/localTools.ts:11-45), though the system prompt's method needs both.",
   "proposed_fix": "Offer both for a generic question. Report the token change against the 32k window.",
   "needs_user_approval": true,
-  "status": "open",
-  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.10, after the check-verdict module (2.3).",
+  "status": "implemented",
+  "commit": "372b90f",
+  "tests": [
+   "web/src/llm/__tests__/localTools.test.ts (offers a generic question ub_check and texture_check, which the method's checks need (Q10, 2.4.10))",
+   "web/src/llm/__tests__/modelVisible.test.ts (the tools a local model is offered, by question)",
+   "web/src/llm/__tests__/tokenBudget.test.ts (arm B on a local model: the TASK's offer, before and after the loop's compaction)"
+  ],
+  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.10, after the check-verdict module (2.3). Implemented by plan row 2.4.10. Tokens (the context guard's estimate): the two definitions add 782 to each request of a generic reply, whose first request goes from 8,914 to 9,696 (15,840 with the 6,144 reply reserve, against 32,768); the validation TASK already offered both, so the worst turn is unchanged, and a local live run still needs 48k (#29).",
   "decision": {
    "by": "the user",
    "on": "2026-10-19",

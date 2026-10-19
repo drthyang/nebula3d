@@ -8,7 +8,7 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 > How clean is this reduction?
 
-13 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, qmax_coverage, symmetry_check, radial_profile, line_profile, bragg_peaks, run_log, configure_settings, show_in_viewer.
+15 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, ub_check, radial_profile, line_profile, bragg_peaks, run_log, configure_settings, show_in_viewer.
 
 ## a ΔPDF question
 

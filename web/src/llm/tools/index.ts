@@ -903,7 +903,8 @@ const textureCheck: ChatTool = {
   facts: {
     label: "Checked for texture",
     acts: null,
-    offeredFor: ["rings", "backfill"],
+    // A generic question too: the system prompt's method checks the fill (the user's decision, Q10, 2026-10-19).
+    offeredFor: ["rings", "backfill", "general"],
     settles: ["backfill"],
     reportable: true,
     highlights: ["punch", "backfill"],
@@ -1247,7 +1248,8 @@ const rlu = (v: (number | null)[]): string => `(${v.map((x) => (x == null ? "–
 
 const ubCheckTool: ChatTool = {
   name: "ub_check",
-  facts: { label: "Checked the UB", acts: null, offeredFor: ["punch", "lattice"], settles: ["ub", "origin"] },
+  // Offered for a generic question too: the system prompt's method checks the UB (the user's decision, Q10, 2026-10-19).
+  facts: { label: "Checked the UB", acts: null, offeredFor: ["punch", "lattice", "general"], settles: ["ub", "origin"] },
   description:
     "Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit: a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it. mean_offset_rlu is the peaks' mean offset from their nodes in r.l.u., before and after the fit: a UB error averages out over the nodes and the fit removes it, while a shifted HKL origin moves every peak by one vector that stays after the fit (origin_shift_rlu, when that vector makes most of the offset the fit leaves). About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, what radial shows, and an origin shift when it gives one.",
   parameters: {
