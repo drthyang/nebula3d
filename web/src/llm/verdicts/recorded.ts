@@ -7,7 +7,7 @@
 import type { AgentStep } from "../agent";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import type { Measured } from "../report/report";
-import { countsProblems, judge, STAGES, WORDS, type Kind, type Outcome, type Reason, type Stage } from "./rules";
+import { countsProblems, judge, STAGES, ubOffProblem, WORDS, type Kind, type Outcome, type Reason, type Stage } from "./rules";
 
 type Obj = Record<string, unknown>;
 
@@ -98,21 +98,26 @@ function symmetryOutcome(r: Obj): Outcome {
 /**
  * grain_check's words and counts: "a second grain", "no second grain", "with
  * the UB off", and half or more of the strongest orbits beside Bragg nodes.
- * Without words, nothing to judge.
+ * The UB off is the data's problem too (D3), with the rotation its words give,
+ * else its result's. Without words, nothing to judge.
  */
 function grainOutcome(r: Obj): Outcome {
   const said = words(r);
   if (said === null) return outcome("grain", "info", ["nothing to judge"], null);
   const judged = num(r.judged) ?? 0;
   const near = num(r.near_bragg_nodes) ?? 0;
+  const ubOff = said.includes("with the UB off");
   const reasons: Reason[] = [
     ...(/^a second grain/i.test(said) ? (["second grain"] as const) : []),
     ...(/^no second grain/i.test(said) ? (["no second grain"] as const) : []),
-    ...(said.includes("with the UB off") ? (["UB off"] as const) : []),
+    ...(ubOff ? (["UB off"] as const) : []),
     ...(judged > 0 && near >= judged / 2 ? (["peaks beside nodes"] as const) : []),
   ];
   const off = reasons.some((x) => x === "second grain" || x === "UB off" || x === "peaks beside nodes");
-  return outcome("grain", off ? "attention" : "pass", reasons, said);
+  const turn = /one rotation of (\d+(?:\.\d+)?)° puts/.exec(said)?.[1];
+  const copy = r.rotated_copy && typeof r.rotated_copy === "object" ? (r.rotated_copy as Obj) : null;
+  const problems = ubOff ? [ubOffProblem(turn !== undefined ? Number(turn) : num(copy?.misorientation_deg))] : [];
+  return outcome("grain", off ? "attention" : "pass", reasons, said, problems);
 }
 
 /**

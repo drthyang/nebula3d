@@ -82,15 +82,22 @@ describe("D1–D10, kept and named", () => {
     expect(chatOf(legacy)?.attention).toEqual([]);
   });
 
-  it("D3: grain_check counts for nothing in {{achieved}}, decides the grain topic by a second grain only, and never the UB", () => {
-    expect([D3_ACHIEVED_IGNORES_GRAIN, D3_ANSWER_GRAIN_SECOND_GRAIN_ONLY, D3_ANSWER_UB_FROM_UB_CHECK_ONLY]).toEqual([true, true, true]);
-    // The UB off: the grain's outcome needs attention, as the report's card says.
-    expect(judge("grain", { off_lattice_orbits: 60, judged: 40, near_bragg_nodes: 40, near_offset_angle_deg: { median: 0.6, quartiles: [0.5, 0.7] }, far: [], rotated_copy: { indexed: 38, misorientation_deg: 0.9 }, random_control: 2, symmetrised: false })).toMatchObject({ kind: "attention", reasons: ["UB off", "peaks beside nodes"] });
+  it("D3, unified (2.4.3): grain_check's \"UB off\" is a data problem in {{achieved}} and not OK for the UB topic; it stays the check for a second grain", () => {
+    expect([D3_ACHIEVED_IGNORES_GRAIN, D3_ANSWER_GRAIN_SECOND_GRAIN_ONLY, D3_ANSWER_UB_FROM_UB_CHECK_ONLY]).toEqual([false, true, false]);
+    const problem = "the UB is off by 0.9° (one rotation puts the off-lattice peaks back on the Bragg lattice)";
+    // The UB off: the grain's outcome needs attention, as the report's card says, and names the data's problem.
+    expect(judge("grain", { off_lattice_orbits: 60, judged: 40, near_bragg_nodes: 40, near_offset_angle_deg: { median: 0.6, quartiles: [0.5, 0.7] }, far: [], rotated_copy: { indexed: 38, misorientation_deg: 0.9 }, random_control: 2, symmetrised: false })).toMatchObject({ kind: "attention", reasons: ["UB off", "peaks beside nodes"], dataProblems: [problem] });
     const off = reply(UB_OFF);
-    expect(off.achieved).toBeNull(); // nothing measured, for {{achieved}}
+    expect(off.achieved).toMatchObject({ achieved: null, attention: [], dataProblems: [problem] }); // measured; no stage is
     expect(off.checks.grain).toBeUndefined(); // no second grain named, either way
-    expect(off.checks.ub).toBeUndefined(); // and nothing said of the UB
-    expect(reply(step("ub_check", { fit: "both", symmetrised: false, orientation_change_deg: 0.01 }), UB_OFF).checks.ub).toBe("pass");
+    expect(off.checks.ub).toBe("attention");
+    // Of a ub_check and the grain's UB off, the newest decides the UB.
+    const right = step("ub_check", { fit: "both", symmetrised: false, orientation_change_deg: 0.01 });
+    expect(reply(right, UB_OFF).checks.ub).toBe("attention");
+    expect(reply(UB_OFF, right).checks.ub).toBe("pass");
+    // grain_check's other findings say nothing of the UB, and name no data problem.
+    expect(reply(BESIDE).checks.ub).toBeUndefined();
+    expect(reply(BESIDE).achieved?.dataProblems).toEqual([]);
     // Most of the strongest beside the nodes: attention to the report, "no second grain" to the answer checks.
     expect(reply(BESIDE).checks.grain).toBe("pass");
   });
