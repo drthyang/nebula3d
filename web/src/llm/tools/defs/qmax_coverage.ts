@@ -18,14 +18,19 @@ import { judge } from "../../verdicts/rules";
 import { cleanupView, RECIP_FIXED, RECIP_PLANES, recipMeta, recipRange } from "../shared/cuts";
 import type { ChatTool } from "../types";
 
+// Whether the backend fits the ΔPDF's window to the coverage, by the Configure
+// page: with the support on, an auto or ellipsoid window, never a separable
+// one the page asks for, nor a flat auto one, which is separable
+// (analysis/delta_pdf.py, _apodization_window).
+const fitsWindow = (s: PipelineConfig): boolean =>
+  s.pdfWindowSupport && s.pdfWindowShape !== "separable" && !(s.pdfApod === "none" && s.pdfWindowShape !== "ellipsoid");
+
 // How far the forward transform reaches in |Q|, from the Configure page: an
 // explicit |Q| band; else the box corners for a flat separable window (no
 // apodization), where every voxel counts at full weight; else the box faces
 // where the window tapers to zero, or, where the backend fits it to the
-// coverage, the edge of its support: the measured voxels. It fits an auto or
-// ellipsoid window, never a separable one the page asks for
-// (analysis/delta_pdf.py, _apodization_window). A volume that stores zeros it
-// marks measured carries that support past its counts.
+// coverage, the edge of its support: the measured voxels. A volume that
+// stores zeros it marks measured carries that support past its counts.
 function windowReach(
   s: PipelineConfig,
   q: { corner: number | null; box: number | null; measured: number | null; zeros: boolean },
@@ -34,7 +39,7 @@ function windowReach(
   if (s.pdfApod === "none" && s.pdfWindowShape !== "ellipsoid") {
     return { reach: q.corner, how: "apodization off: a flat separable window counts the data out to the box corners" };
   }
-  const fits = s.pdfWindowSupport && s.pdfWindowShape !== "separable";
+  const fits = fitsWindow(s);
   if (fits && q.measured != null && q.box != null && q.measured < q.box) {
     return {
       reach: q.measured,
@@ -60,7 +65,7 @@ export const qmax_coverage: ChatTool = {
     highlights: ["raw", "pdf"],
   },
   description:
-    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. Otherwise it compares how far the transform's window reaches (the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window) with full_coverage_q, where the raw volume's |Q| shells, in 3D, stop holding counts (measured and non-zero) in 95 % of their voxels. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. raw_counts gives where the counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts. When the counts end inside the box and no band is set, the verdict says so, with the edge and the band they allow (counts_end_inside_box).",
+    "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. Otherwise it compares how far the transform's window reaches (the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window) with full_coverage_q, where the raw volume's |Q| shells, in 3D, stop holding counts (measured and non-zero) in 95 % of their voxels. With the window fitted to the coverage (pdfWindowSupport), that share and that reach are the backend's own target, not a check: the verdict judges where the counts end and the band instead. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. raw_counts gives where the counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts. When the counts end inside the box and no band is set, the verdict says so, with the edge and the band they allow (counts_end_inside_box).",
   parameters: { type: "object", properties: {} },
   run: async (_args, ctx) => {
     const { dataset } = ctx;
@@ -96,11 +101,17 @@ export const qmax_coverage: ChatTool = {
     const windowNote = dmeta?.window_shape
       ? `the ΔPDF's ${dmeta.window_shape} window${dmeta.window_scale != null && dmeta.window_scale < 1 ? ` (shrunk to ${roundSig(dmeta.window_scale, 3)} × to fit the coverage)` : ""}`
       : "the ΔPDF's window";
-    const band = rawBand(c, s.pdfQMin, s.pdfQMax);
+    // The backend fits the window to the coverage, its support seeing where the
+    // counts end: the weight on unmeasured space the ΔPDF records, or, without
+    // it, the taper to where the measured voxels end inside the box, is then
+    // its own target (plan 4.5).
+    const fitted = fitsWindow(s) && !zeros && (openWeight != null || (c.measured_q_max != null && boxQ != null && c.measured_q_max < boxQ));
+    const { shown: band, problems } = countsAndBand(c, s.pdfQMin, s.pdfQMax);
     const full = fullQ == null ? null : roundSig(fullQ, 4);
-    // The verdict, by the coverage's rule (verdicts/): the recorded weight
-    // when there is one, else the reach against full coverage, and where the
-    // raw counts end when no band is set.
+    // The verdict, by the coverage's rule (verdicts/): with the window fitted
+    // to the coverage, where the counts end and the band; else the recorded
+    // weight when there is one, else the reach against full coverage, and
+    // where the raw counts end when no band is set.
     const outcome = judge("coverage", {
       window_weight: openWeight,
       window: windowNote,
@@ -111,6 +122,8 @@ export const qmax_coverage: ChatTool = {
       shell: c.q_step, // the coverage edge is known to one shell
       band_set: Boolean(s.pdfQMax),
       zeros_stored: zeros,
+      fitted,
+      band_problems: problems,
       counts: band,
     }, { skills: skillsOn(ctx) });
     const verdict = outcome.words!;
@@ -144,12 +157,15 @@ export const qmax_coverage: ChatTool = {
 
 // Where the raw counts begin and end in |Q| (most voxels past an edge hold no
 // counts), the band that keeps inside them, and whether the band that is set
-// does.  The box can end first along one axis: past box_face_q the window,
-// not the band, limits the reach in that direction.
+// does: `shown` is what the result gives, `problems` where the band set leaves
+// the counts.  The box can end first along one axis: past box_face_q the
+// window, not the band, limits the reach in that direction.
 // The counts end inside the box when their upper edge sits at least one of the
 // coverage's shells (q_step, the edge's own resolution) inside its nearest
 // face: then part of every direction's reach is empty, not only the corners.
-function rawBand(c: VolumeCoverage, qMinSet: string, qMaxSet: string) {
+// A band set without a Qmin starts at 0, below the counts' lower edge only
+// where they begin above the origin (a beam stop).
+function countsAndBand(c: VolumeCoverage, qMinSet: string, qMaxSet: string) {
   const lo = c.q_min_edge != null ? Math.ceil(c.q_min_edge * 20) / 20 : 0;
   const hi = c.q_max_edge != null ? Math.floor(c.q_max_edge * 20) / 20 : null;
   const qMin = qMinSet ? Number(qMinSet) : null;
@@ -157,10 +173,10 @@ function rawBand(c: VolumeCoverage, qMinSet: string, qMaxSet: string) {
   const inside = c.q_max_edge != null && c.q_max_edge <= c.box_q - c.q_step;
   const problems: string[] = [];
   if (qMax != null) {
-    if (qMin == null || qMin < lo - 0.025) problems.push(`Qmin below the counts' lower edge (${roundSig(c.q_min_edge ?? 0, 3)} Å⁻¹): the beam stop's empty voxels enter the transform`);
+    if (c.q_min_edge != null && (qMin ?? 0) < lo - 0.025) problems.push(`Qmin below the counts' lower edge (${roundSig(c.q_min_edge, 3)} Å⁻¹): the beam stop's empty voxels enter the transform`);
     if (hi != null && qMax > hi + 0.025) problems.push(`Qmax past the counts' upper edge (${roundSig(c.q_max_edge!, 4)} Å⁻¹): empty voxels enter the transform`);
   }
-  return {
+  const shown = {
     raw_counts: {
       q_min_edge: c.q_min_edge == null ? null : roundSig(c.q_min_edge, 3),
       q_max_edge: c.q_max_edge == null ? null : roundSig(c.q_max_edge, 4),
@@ -179,4 +195,5 @@ function rawBand(c: VolumeCoverage, qMinSet: string, qMaxSet: string) {
           ? problems.join("; ")
           : `the band ${qMin ?? 0}–${qMax} Å⁻¹ stays inside the counts`,
   };
+  return { shown, problems };
 }
