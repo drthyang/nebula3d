@@ -1181,3 +1181,98 @@ def test_volume_shell_floors_take_the_runs_own_settings(tmp_path, monkeypatch):
     assert asked["percentile"] == 25.0 and asked["flatten"] == body["flatten"]
     alone = client.get(f"/api/volumes/{SLUG}.backfilled/shell-floors").json()
     assert alone["percentile"] == 25.0 and alone["flatten"] is None
+
+
+def write_texture_stages(root, record=True, **lattice):
+    """A dataset under *root* whose punched and backfilled stages exist:
+    holes punched on a lattice of nodes and filled as
+    ``tests.test_fill_texture._lattice(**lattice)`` builds them, the punch's
+    record written into the punched stage unless *record* is False (a file
+    from before the punch recorded its holes).  Returns the lattice."""
+    import dataclasses
+
+    from nebula3d.pipeline import _write_punched
+    from tests.test_fill_texture import _lattice
+
+    lat = _lattice(**lattice)
+    for name in ("raw", "processed"):
+        (root / name).mkdir(exist_ok=True)
+    paths = pipeline_paths(root / "raw" / f"{STEM}.nxs", proc_dir=root / "processed")
+    nebula3d.save(dataclasses.replace(lat.punched, mask=np.ones(lat.record.shape, bool)),
+                  paths.ringremoved)
+    nebula3d.save(lat.punched, paths.braggpunched)
+    if record:
+        _write_punched(paths.braggpunched, lat.record)
+    nebula3d.save(lat.filled, paths.backfilled)
+    return lat
+
+
+def test_volume_texture(tmp_path, monkeypatch):
+    """/texture: the backfilled stage's fills against the punched stage's
+    holes, read from the punch's record, judged by texture.ts's rule with
+    their 3-D rims: fill_texture's numbers, the holes farthest outside their
+    range listed first, the rule's limits as asked."""
+    from nebula3d.analysis import fill_texture
+
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # whatever ran before
+    lat = write_texture_stages(tmp_path, n=61, bias=0.5, share=0.8)
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    url = f"/api/volumes/{SLUG}.backfilled/texture"
+    r = client.get(url)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] == f"{SLUG}.backfilled" and body["punched_id"] == f"{SLUG}.braggpunched"
+    assert body["holes_from"] == "punch_record" and (body["rim"], body["min_rim"]) == (4, 8)
+    assert ((body["min_sigma"], body["one_way"], body["min_holes"], body["floor"])
+            == (0.5, 0.75, 5, 0.2))
+    want = fill_texture(lat.punched, lat.filled, punch_record=lat.record)
+    for name in ("n_holes", "n_judged", "judged", "median_fill_bias_sigma",
+                 "median_fill_bias_level", "above_fraction", "below_fraction",
+                 "above_floor_fraction", "below_floor_fraction", "systematic_fill_bias"):
+        assert body[name] == getattr(want, name), name
+    assert body["n_holes"] == 27 and body["systematic_fill_bias"]
+    # The 20 holes farthest outside their range, in units of their level.
+    rows = body["holes"]
+    assert len(rows) == 20
+    sizes = [abs(row["bias_level"]) for row in rows]
+    assert sizes == sorted(sizes, reverse=True) and sizes[-1] > 0.45
+    h = want.holes
+    for row in rows:
+        i = row["index"]
+        assert row["centre_hkl"] == [round(float(v), 6) for v in h.centre_hkl[i]]
+        assert (row["voxels"], row["rim_voxels"]) == (int(h.voxels[i]), int(h.rim_voxels[i]))
+        for name in ("fill", "level", "sigma", "slope", "edge", "peaked", "bias",
+                     "bias_sigma", "bias_level"):
+            assert row[name] == float(getattr(h, name)[i]), name
+        assert row["not_judged"] is None
+    # Every hole, none, and the rule's limits as asked.
+    assert len(client.get(url, params={"limit": 1000}).json()["holes"]) == 27
+    assert client.get(url, params={"limit": 0}).json()["holes"] == []
+    high = client.get(url, params={"floor": 0.6, "one_way": 0.5, "min_holes": 3}).json()
+    assert (high["floor"], high["one_way"], high["min_holes"]) == (0.6, 0.5, 3)
+    assert not high["systematic_fill_bias"]                   # the median is half the level
+    assert high["median_fill_bias_level"] == body["median_fill_bias_level"]
+    for bad in ({"limit": -1}, {"limit": 100_001}, {"one_way": 1.5}, {"min_holes": 0},
+                {"floor": -0.1}, {"min_sigma": -1}, {"floor": "inf"}):
+        assert client.get(url, params=bad).status_code == 422, bad
+    assert client.get(f"/api/volumes/{SLUG}.braggpunched/texture").status_code == 400
+    assert client.get("/api/volumes/nope.backfilled/texture").status_code == 404
+
+
+def test_volume_texture_without_a_punch_record(tmp_path, monkeypatch):
+    """A punched stage written before the punch recorded its holes: they are
+    texture.ts's own (unmeasured when punched, measured when filled), the
+    same holes here; without the punched stage there is nothing to read."""
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # whatever ran before
+    write_texture_stages(tmp_path, record=False, n=61, bias=0.5, share=0.8)
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    url = f"/api/volumes/{SLUG}.backfilled/texture"
+    body = client.get(url).json()
+    assert body["holes_from"] == "masks" and body["n_holes"] == 27
+    assert body["systematic_fill_bias"]
+    assert body["above_floor_fraction"] == pytest.approx(0.8, abs=0.02)
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=tmp_path / "processed")
+    paths.braggpunched.unlink()
+    assert client.get(url).status_code == 404

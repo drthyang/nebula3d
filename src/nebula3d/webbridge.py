@@ -89,6 +89,7 @@ __all__ = [
     "dataset_regrid_json",
     "volume_ring_isotropy_json",
     "volume_shell_floors_json",
+    "volume_texture_json",
     "dpdf_meta_json",
     "dpdf_slice",
     "dpdf_features_json",
@@ -1212,6 +1213,30 @@ def volume_shell_floors_json(volume_id: str, q_step: float | None = None,
         percentile=None if percentile is None else float(percentile),
         min_count=None if min_count is None else int(min_count))
     return _json({"id": volume_id, "before_id": pair[0] if pair else None, **m})
+
+
+def volume_texture_json(volume_id: str, limit: int = 20, min_sigma: float | None = None,
+                        one_way: float | None = None, min_holes: int | None = None,
+                        floor: float | None = None) -> str:
+    """Whether the backfill's fills sit systematically off the diffuse around
+    their holes, on every punch hole of a backfilled stage with its 3-D rim,
+    against the dataset's punched stage (mirrors
+    GET /api/volumes/{id}/texture: the same fields).  Low-memory mode, as
+    every bridge call: the holes are labelled a slab at a time."""
+    stage = _resolve(volume_id, "hkl")
+    if stage.name != "backfilled":
+        raise ValueError(
+            f"the fills' texture is measured on a backfilled stage, not {stage.name!r}")
+    pair = _ds.punched_stage_of(_require_cfg(), volume_id)
+    if pair is None:
+        raise FileNotFoundError(f"no punched stage on disk for {volume_id!r}")
+    m = _vol.volume_texture(
+        stage.path, pair[1].path, limit=int(limit),
+        min_sigma=None if min_sigma is None else float(min_sigma),
+        one_way=None if one_way is None else float(one_way),
+        min_holes=None if min_holes is None else int(min_holes),
+        floor=None if floor is None else float(floor))
+    return _json({"id": volume_id, "punched_id": pair[0], **m})
 
 
 def dpdf_meta_json(volume_id: str) -> str:

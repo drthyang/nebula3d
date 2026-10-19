@@ -226,6 +226,48 @@ def test_volume_shell_floors_json_is_the_servers_response(tmp_path, monkeypatch)
         webbridge.volume_shell_floors_json("nope.flattened")
 
 
+def test_volume_texture_json_is_the_servers_response(tmp_path, monkeypatch):
+    """The browser build's fill texture over every punch hole is the native
+    server's, field for field: computed natively by the server and in
+    low-memory mode by the bridge, as in the browser."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d.pipeline import pipeline_paths
+    from nebula3d.server import volumes as vol_mod
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+    from nebula3d.server.schemas import TextureOut
+    from tests.test_server import SLUG, STEM, write_texture_stages
+
+    write_texture_stages(tmp_path, n=61, bias=0.5, share=0.8)
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    vid = f"{SLUG}.backfilled"
+    for params in ({}, {"limit": 5, "floor": 0.6, "one_way": 0.5},
+                   {"limit": 0, "min_holes": 30, "min_sigma": 2.0}):
+        monkeypatch.setenv("NEBULA3D_LOW_MEMORY", "0")  # native; restored after the test
+        vol_mod.clear_cache()
+        served = client.get(f"/api/volumes/{vid}/texture", params=params)
+        assert served.status_code == 200, served.text
+        vol_mod.clear_cache()  # the bridge computes its own
+        webbridge.setup(workdir=str(tmp_path))  # low-memory mode, as in the browser
+        bridged = json.loads(webbridge.volume_texture_json(vid, **params))
+        assert bridged == served.json()
+        assert set(bridged) == set(TextureOut.model_fields)
+    assert bridged["holes"] == [] and not bridged["judged"]  # 27 holes, 30 asked for
+    with pytest.raises(ValueError):
+        webbridge.volume_texture_json(vid, one_way=1.5)
+    with pytest.raises(ValueError):
+        webbridge.volume_texture_json(vid, limit=-1)
+    with pytest.raises(ValueError, match="backfilled"):
+        webbridge.volume_texture_json(f"{SLUG}.braggpunched")
+    with pytest.raises(KeyError):
+        webbridge.volume_texture_json("nope.backfilled")
+    pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
+                   proc_dir=tmp_path / "processed").braggpunched.unlink()
+    with pytest.raises(FileNotFoundError):
+        webbridge.volume_texture_json(vid)
+
+
 def test_consistency_meta_and_slice(ran_pipeline):
     dataset_id, _datasets, _events = ran_pipeline
     meta = json.loads(webbridge.consistency_meta_json(dataset_id))
