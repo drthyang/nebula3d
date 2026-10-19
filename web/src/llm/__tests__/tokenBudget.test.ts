@@ -1,19 +1,21 @@
 // How long NEBULA Pilot's worst realistic turn grows, in the tokens the context
 // guard counts, against a 32k local context window.
 //
-// VERDICT (measured 2026-10-19): OVER 32k in both configurations.
+// VERDICT (measured 2026-10-19, with the ΔPDF's features a real, full list):
+// OVER 32k in both configurations.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 39.7k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 39.5k + 6,144
-//   = 45.6k before the loop's compaction, and 37.4k to 41.6k after it, by the
-//   order the skills are read (38.1k in the method's order).
+//   about 41.7k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 41.5k + 6,144
+//   = 47.6k before the loop's compaction, and 37.7k to 42.0k after it, by the
+//   order the skills are read (39.3k in the method's order).
 // - A model LM Studio loaded with 32k gets the turn in only because the window
 //   guard then shortens the results down to the newest: the two skills just
 //   read reach the model as stubs of a few hundred characters.
 // A local live run needs a context of 48k (49,152) or more: it holds the
-// whole turn before compaction, with room to reply. The estimate is
-// conservative (every tool result, the skills' prose included, counts at the
-// data rate), but at the prose rate for the skills the turn is still over 32k.
+// whole turn before compaction, with room to reply (1.5k of it free now). The
+// estimate is conservative (every tool result, the skills' prose included,
+// counts at the data rate), but at the prose rate for the skills the turn is
+// still over 32k.
 //
 // The turn is driven through the real agent loop (runAgent, agent.ts) with a
 // scripted model, and every request it sends is counted by the guard's own
@@ -27,7 +29,12 @@
 //   reference page either of them cites (read_skill cuts a page at 12,000
 //   characters, REFERENCE_MAX_CHARS);
 // - one result of each tool the system prompt's method asks for, as the
-//   executor hands it over (runToolCall);
+//   executor hands it over (runToolCall): the synthetic crystal's, but for
+//   dpdf_peaks, whose list a real ΔPDF fills to the tool's default limit
+//   where the crystal has a handful of features: the validation's dev
+//   control's list at the tool's defaults, on its own grid, recorded from the
+//   dev-data bridge (__fixtures__/dpdf-peaks-dev-control.json, written by
+//   evals/devData/budgetFixture.replay.test.ts);
 // - the reply reserve: the 64,000 tokens anthropic.ts asks of Claude
 //   (STREAM_MAX_TOKENS, pinned by anthropic.test.ts), and REPLY_RESERVE for a
 //   local run. The local transports send no output cap (no max_tokens, no
@@ -51,10 +58,12 @@
 // --reporter=default).
 //
 // Hermetic and synthetic: no model is loaded, no backend or API is called, and
-// no measured data is used.
+// no measured data is used (the dev control is a synthetic case, its list
+// recorded beforehand).
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import type { DpdfFeatures } from "../../api/types";
 import { KEEP_FULL, runAgent, SOFT_BUDGET } from "../agent";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
@@ -73,8 +82,13 @@ import {
 import { isCompacted } from "../readings/compact";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, readSkill, REFERENCE_MAX_CHARS } from "../skills";
-import { CHAT_TOOLS } from "../tools";
+import { callTool, CHAT_TOOLS } from "../tools";
+import devControlPeaks from "./__fixtures__/dpdf-peaks-dev-control.json";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
+
+// The dev control's dpdf_peaks list at the tool's defaults, on its own grid,
+// recorded from the dev-data bridge (evals/devData/budgetFixture.replay.test.ts).
+const DEV_CONTROL_PEAKS = devControlPeaks as unknown as { case: string; n: number; min_sigma: number; limit: number; response: DpdfFeatures };
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -111,12 +125,12 @@ const BAND = 0.05;
 // The current sizes (estimated prompt tokens, and with the reply reserve).
 // Update deliberately, with the verdict in the header, when the turn changes.
 const PINNED = {
-  console: { prompt: 39_660, total: 103_660 },
-  localBefore: { prompt: 39_458, total: 45_602 },
-  localSkillsFirst: { prompt: 31_272, total: 37_416 },
-  localMethod: { prompt: 31_946, total: 38_090 },
-  localSkillsLast: { prompt: 35_422, total: 41_566 },
-  lmStudio32k: { prompt: 26_621, total: 32_765 },
+  console: { prompt: 41_661, total: 105_661 },
+  localBefore: { prompt: 41_459, total: 47_603 },
+  localSkillsFirst: { prompt: 31_601, total: 37_745 },
+  localMethod: { prompt: 33_157, total: 39_301 },
+  localSkillsLast: { prompt: 35_824, total: 41_968 },
+  lmStudio32k: { prompt: 28_650, total: 34_794 },
 };
 
 // ---------------------------------------------------------------- the turn
@@ -174,6 +188,9 @@ let opening: ChatMessage[];
 
 beforeAll(async () => {
   installBackend(api);
+  // The ΔPDF's strongest features: the dev control's list, as long as the
+  // tool's default makes it, where the synthetic crystal has a handful.
+  api.fetchDpdfFeatures.mockImplementation(async (id: string) => ({ ...DEV_CONTROL_PEAKS.response, id }));
   freshConsole();
   context = (await loadPipelineContext(DATASET)).context;
   opening = buildChatMessages(context, [], TASK, null, { tools: true });
@@ -337,6 +354,21 @@ afterAll(() => {
 // counted by the guard's estimator): about a second locally, but near vitest's
 // default 5 s on a slow CI runner. A runner's speed is not what this test pins.
 const TURN_TIMEOUT = 30_000;
+
+describe("the turn's dpdf_peaks result", () => {
+  it("is the dev control's list at the tool's default call", async () => {
+    const r = await callTool({ dataset: DATASET, datasets: DATASETS }, "dpdf_peaks", {});
+    expect(r.ok, r.text).toBe(true);
+    // Recorded for the call the tool makes with its defaults: a new default
+    // needs it recorded again (evals/devData/budgetFixture.replay.test.ts).
+    expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith(expect.any(String), DEV_CONTROL_PEAKS.min_sigma, DEV_CONTROL_PEAKS.limit);
+    expect([DEV_CONTROL_PEAKS.case, DEV_CONTROL_PEAKS.n]).toEqual(["dev-control", 161]);
+    const out = JSON.parse(r.text) as { grouped_by: string; features: unknown[] };
+    expect(out.grouped_by).toBe(DEV_CONTROL_PEAKS.response.grouped_by);
+    expect(out.features).toHaveLength(DEV_CONTROL_PEAKS.limit);
+    notes.push(`dpdf_peaks' result: the ${DEV_CONTROL_PEAKS.case}'s list at n=${DEV_CONTROL_PEAKS.n}, ${out.features.length} entries, ${n(r.text.length)} characters sent.`);
+  });
+});
 
 describe("NEBULA Pilot's worst turn against a 32k window", () => {
   it("the console: every tool, nothing shortened (Claude)", async () => {
