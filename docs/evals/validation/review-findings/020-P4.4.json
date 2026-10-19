@@ -1,0 +1,21 @@
+{
+ "source": "review",
+ "ref": "P4.4",
+ "at": "f807320",
+ "kind": "missing-tool",
+ "evidence": "dpdf_features groups the ΔPDF's extrema by sign, length (half a voxel) and size (5 %) and never uses the declared symmetry (src/nebula3d/analysis/dpdf_features.py:25-28), so an orbit whose copies differ by a few per cent splits into several entries and a planted correlation falls down the list (the dev control's weaker one is entry 19 of a default 12).",
+ "proposed_fix": "When the raw file declares a point group, group the extrema by it: the declared operations (closed into a group, with r ≡ −r) act on the ΔPDF's fractional coordinates as their transpose, and an image claims the nearest unclaimed extremum of its sign within one voxel, in the cell's metric; without a declaration, today's grouping, bit for bit. The limit counts groups.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "1b6df04",
+ "tests": [
+  "tests/test_dpdf_features.py (m-3m and hexagonal 6/mmm and −3 orbits, a near miss, signs apart, no declaration as before, the four cases it does not apply)",
+  "tests/test_server.py and tests/test_webbridge.py (the features endpoint, and server–webbridge parity with and without a declaration)"
+ ],
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 4.4). Evidence on the dev split, default pipeline: the cases declare no symmetry, so their entries are unchanged (dev control 19 and 7); as what-ifs, m-3m would put the control's at 18 and 6, and the origin case's split orbit rejoins at 17. Arm A on dev is unchanged (dpdf_features is not in the default pipeline). The TypeScript half, d8f9e36: dpdf_peaks passes grouped_by on and, grouped by the declared symmetry, each entry's mean_size_sigma and multiplicity; grouped by sign, length and size its entries are as they were, so on the dev cases the result grows only by grouped_by. Its tests: web/src/llm/__tests__/tools.test.ts (dpdf_peaks: a constructed ΔPDF declaring m-3m, two orbits of 24 of 24 and 2 of 3 vectors; the same undeclared, seven entries as before; a declaration not applied) and web/src/llm/evals/devData/knownAnswers.replay.test.ts (the dev control: no symmetry declared, grouped as before; its planted correlations in what the model reads, a known miss at the default 12: ⟨½ 1 1⟩− is entry 28 at n=81 and 19 at n=161). The default stays 12 (the manager, on the user's delegation, 2026-10-19): no default reaches both planted correlations on every dev case (⟨½ 1 1⟩− is entry 19 to 29 at n=161 and 27 to 30 at n=81 where it is listed at all; the coverage case never lists it, nor the origin case at n=81), and what the model reads of a list is cut at 5,000 characters, about 20 entries, so the replay's known miss stays. The minimum context: the token budget's worst turn now carries the dev control's full list at that default (fa2bfd8: a fixture recorded from the dev-data bridge), 47,603 tokens with the reply reserve, 1,549 under the old 48k; a local live run needs 56k (57,344) since de6cd55, which leaves 9,741 (with #66's re-pin about 8.4k), and tokenBudget.test.ts asserts at least 3k. The description's sentence that the grouping does not use the symmetry waits with the rest of that text for the user.",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-19",
+  "option": "group by the declared point group; no declaration: as before"
+ }
+}
