@@ -83,7 +83,7 @@ type ByArgs<T> = T | ((args: Args) => T);
 
 /**
  * The skill gate (skills.ts): a call that changes or tunes a stage waits until
- * that stage's skill has been read in the conversation.
+ * that stage's skill has been read in this reply.
  */
 export interface Gate {
   doing: "change" | "tuning"; // what the refusal calls the call
