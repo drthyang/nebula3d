@@ -14,7 +14,7 @@ import type { AgentStep } from "../agent";
 import { current, recomputedAt, type PipelineStage } from "../evidence";
 import type { Measured } from "../report/report";
 import { outcomesOf, outcomesOfMeasured } from "./recorded";
-import { judge, STAGES, type CheckId, type Kind, type Outcome, type Stage } from "./rules";
+import { isOriginProblem, judge, STAGES, type CheckId, type Kind, type Outcome, type Stage } from "./rules";
 
 /** The verdict on a run: computed from its checks, never from the model's words. The validation's records persist it as computed_verdict. */
 export interface ComputedVerdict {
@@ -92,12 +92,17 @@ export const D3_ANSWER_GRAIN_SECOND_GRAIN_ONLY = true;
 export const D3_ANSWER_UB_FROM_UB_CHECK_ONLY = false;
 
 /**
- * D7: which of a check's current results a reader reads. {{achieved}} reads
- * the newest, even one that judged nothing ("info"); the answer checks the
- * newest that decides (passes or needs attention). Unify (2.4.7): set the
- * answer checks' to "newest".
+ * D7, unified (plan 2.4.7, the user's decision of 2026-10-19): which of a
+ * check's current results a reader reads. Both read the newest, even one that
+ * judged nothing ("info"). A result that decides nothing for a topic is not
+ * read at all (its cell gives undefined), so it hides no earlier verdict: a
+ * missing output (D11, but the 3D-ΔPDF's), words that are no label (D12), and
+ * grain_check's findings that name no second grain (D3). On the UB, the newest
+ * evidence across ub_check and grain_check's "UB off" wins, for both readers
+ * (achievedOf, and the ub row's sources). "newest that decides" (passes or
+ * needs attention): the answer checks' reading before 2.4.7.
  */
-export const D7_SELECTION: Record<Reader, "newest" | "newest that decides"> = { achieved: "newest", answer: "newest that decides" };
+export const D7_SELECTION: Record<Reader, "newest" | "newest that decides"> = { achieved: "newest", answer: "newest" };
 
 /**
  * D8: the answer checks' backfill topic reads assess_stage only, where
@@ -116,17 +121,17 @@ export const D10_ACHIEVED_IGNORES_LEGACY_COVERAGE_WORDS = true;
 
 /**
  * D11: the answer checks judge a stage whose output is missing (assess_stage
- * wrote "missing") from its numbers, as any result without a label: not judged,
- * but for the 3D-ΔPDF a pass (D15), which overrides an earlier verdict on it.
- * {{achieved}} skips it. Unify: set this to false; a missing output then
- * decides nothing.
+ * wrote "missing") from its numbers, as any result without a label: nothing to
+ * judge, which decides nothing and is not read (D7), but for the 3D-ΔPDF a pass
+ * (D15), which overrides an earlier verdict on it. {{achieved}} skips it.
+ * Unify: set this to false; a missing output then decides nothing.
  */
 export const D11_ANSWER_JUDGES_MISSING_OUTPUT = true;
 
 /**
  * D12: the answer checks take a stage's recorded verdict that is no label as
- * deciding nothing; {{achieved}} judges the stage from its numbers. Unify: set
- * this to false; both judge the numbers.
+ * deciding nothing (not read, D7); {{achieved}} judges the stage from its
+ * numbers. Unify: set this to false; both judge the numbers.
  */
 export const D12_ANSWER_SKIPS_WORDS_THAT_ARE_NO_LABEL = true;
 
@@ -170,10 +175,14 @@ export const D14_REPORT_FILL_BIAS_ON_A_JUDGED_SEAM_ONLY = true;
 /** A stage, as {{achieved}} reads it: its kind; a missing output is no result. */
 const stageForAchieved: Cell = (o) => (o.reasons.includes("no output") ? undefined : o.kind);
 
-/** A stage, as the answer checks read it (D11, D12). */
+/** A stage, as the answer checks read it (D11, D12): what decides nothing is not read (D7), so it hides no earlier verdict. */
 const stageForAnswer: Cell = (o) => {
-  if (o.reasons.includes("no output")) return D11_ANSWER_JUDGES_MISSING_OUTPUT ? judge(o.check, {} as never).kind : "info";
-  if (D12_ANSWER_SKIPS_WORDS_THAT_ARE_NO_LABEL && o.reasons.includes("words not a label")) return "info";
+  if (o.reasons.includes("no output")) {
+    if (!D11_ANSWER_JUDGES_MISSING_OUTPUT) return undefined;
+    const kind = judge(o.check, {} as never).kind;
+    return kind === "info" ? undefined : kind;
+  }
+  if (D12_ANSWER_SKIPS_WORDS_THAT_ARE_NO_LABEL && o.reasons.includes("words not a label")) return undefined;
   return o.kind;
 };
 
@@ -203,12 +212,20 @@ const MATRIX: Record<CheckId, Row> = {
   texture: { achieved: asIs, answer: [] },
   grain: {
     achieved: D3_ACHIEVED_IGNORES_GRAIN ? unread : () => "info",
-    // D3: decided only by a second grain or none.
+    // D3: decided only by a second grain or none; a result without words judged nothing; any other finding is not read (D7).
     answer: [
       [
         "grain",
         (o) =>
-          !D3_ANSWER_GRAIN_SECOND_GRAIN_ONLY ? o.kind : o.reasons.includes("second grain") ? "attention" : o.reasons.includes("no second grain") ? "pass" : "info",
+          !D3_ANSWER_GRAIN_SECOND_GRAIN_ONLY
+            ? o.kind
+            : o.reasons.includes("second grain")
+              ? "attention"
+              : o.reasons.includes("no second grain")
+                ? "pass"
+                : o.reasons.includes("nothing to judge")
+                  ? "info"
+                  : undefined,
       ],
     ],
   },
@@ -247,14 +264,15 @@ const STAGE_LABEL: Record<Stage, string> = {
   pdf: "the 3D-ΔPDF",
 };
 
-/** The checks on the result, in the order {{achieved}} names them: how it names one that needs attention (null: it adds the data's problems only). */
-const ON_RESULT: [CheckId, string | null][] = [
+/** The checks on the result that {{achieved}} names when they need attention, in its order, and how. The UB's two checks follow them (achievedOf). */
+const ON_RESULT: [CheckId, string][] = [
   ["coverage", "the ΔPDF window against the coverage"],
   ["symmetry", "the ΔPDF's symmetry"],
   ["texture", "the backfill's texture"],
-  ["ub", null],
-  ["grain", null],
 ];
+
+/** grain_check's outcome as UB evidence to {{achieved}} (D3, D7): its "UB off"; anything else says nothing of the UB. */
+const grainUbForAchieved: Cell = (o) => (o.reasons.includes("UB off") ? MATRIX.grain.achieved(o) : undefined);
 
 /** {{achieved}}: met when every stage, measured as it now is, meets its goal and no check on the result needs attention; not judged with a stage not measured since it was computed; null when the reply measured nothing it rests on. */
 function achievedOf(found: readonly Found[], at: Record<PipelineStage, number>): ComputedVerdict | null {
@@ -272,9 +290,19 @@ function achievedOf(found: readonly Found[], at: Record<PipelineStage, number>):
     const p = pick(found, at, "achieved", [[check, MATRIX[check].achieved]]);
     if (!p) continue;
     measuredAny = true;
-    if (p.kind === "attention" && label) attention.push(label);
+    if (p.kind === "attention") attention.push(label);
     dataProblems.push(...p.o.dataProblems);
   }
+  // The UB (D7): the newest UB evidence across ub_check and grain_check's "UB
+  // off" names the UB's problem, as the answer checks read the UB topic; the
+  // HKL origin's shift is ub_check's alone, from its newest result. Either
+  // check counts as measured, whatever it found (D3).
+  const ubCheck = pick(found, at, "achieved", [["ub", MATRIX.ub.achieved]]);
+  const grainCheck = pick(found, at, "achieved", [["grain", MATRIX.grain.achieved]]);
+  if (ubCheck || grainCheck) measuredAny = true;
+  const evidence = pick(found, at, "achieved", [["ub", MATRIX.ub.achieved], ["grain", grainUbForAchieved]]);
+  if (evidence) dataProblems.push(...evidence.o.dataProblems.filter((p) => !isOriginProblem(p)));
+  if (ubCheck) dataProblems.push(...ubCheck.o.dataProblems.filter(isOriginProblem));
   if (!measuredAny) return null;
   const achieved = attention.length ? false : notMeasured.length ? null : true;
   const words =
