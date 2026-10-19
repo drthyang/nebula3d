@@ -8,7 +8,7 @@ import type { Slice } from "../../api/types";
 import { rasterize } from "../report/figures";
 import { reportHtml, reportMarkdown } from "../report/render";
 import { buildReport, fmt, type ReportInput } from "../report/report";
-import { judge, type Outcome } from "../verdicts";
+import { judge, verdicts, type Outcome } from "../verdicts";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
 
@@ -284,6 +284,17 @@ describe("a card states only what it judges", () => {
       expect(card.headline).toMatch(/ · fill bias on 1 of 2 cuts$/);
       expect(r.achieved.text).toBe("not met: needs attention: Backfill");
     }
+  });
+
+  it("leaves the 3D-ΔPDF's card not judged when its evaluation measured nothing (D15, 2.4b.5)", () => {
+    // Synthetic: an evaluation with no round trip, no window weight and no section symmetry; the coverage clean.
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 } };
+    const nothing = { back_fft_pearson_r: null, back_fft_pearson_r_even: null, window_weight_on_unmeasured: null, max_symmetry_break: null };
+    const r = buildReport(input({ measured: { ...sound, pdf: nothing } }));
+    expect(r.checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("info");
+    expect(r.achieved).toEqual({ met: null, text: "not judged: not measured: 3D-ΔPDF" }); // met before 2.4b.5
+    // As a reply's {{achieved}} reads it.
+    expect(verdicts({ reply: [{ id: "a", name: "assess_stage", args: { stage: "pdf" }, status: "done", result: JSON.stringify({ pdf: nothing }) }] }).achieved?.stages.pdf).toBe("info");
   });
 
   it("reports the flatten's floor in σ without judging it, by the pedestal rule", () => {

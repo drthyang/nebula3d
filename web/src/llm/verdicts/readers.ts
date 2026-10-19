@@ -394,8 +394,9 @@ function pdfCard(pdf: Outcome | undefined, coverage: Outcome | undefined, symmet
   const far = !D2_REPORT_COVERAGE_BY_WEIGHT_ONLY && coverage !== undefined && MATRIX.coverage.achieved(coverage) === "attention";
   const broken = symmetry?.kind === "attention" || (!D13_REPORT_SYMMETRY_FROM_SYMMETRY_CHECK_ONLY && (pdf?.reasons.includes("symmetry broken") ?? false));
   if (back || window === "past" || far || broken) return "attention";
-  // Nothing judged the ΔPDF itself without its evaluation: not judged (D9).
-  return pdf || D9_REPORT_PDF_CARD_WITHOUT_EVALUATION ? "pass" : "info";
+  // Nothing judged the ΔPDF itself without its evaluation (D9), or with one that judged nothing (D15): not judged.
+  if (!pdf) return D9_REPORT_PDF_CARD_WITHOUT_EVALUATION ? "pass" : "info";
+  return pdf.kind === "info" ? "info" : "pass";
 }
 
 /** A report's verdicts: each card's, and the goal, met when every stage's card passes (a second grain is the sample's, reported apart). */

@@ -277,10 +277,15 @@ describe("the disagreements found beyond D1–D10, kept and named", () => {
     expect(verdicts({ report: { ...PASSING, outcomes: [said] } }).checks.rings).toBe("attention");
   });
 
-  it("D15: the ΔPDF's rule passes an evaluation that measured nothing, where every other stage's says nothing to judge", () => {
-    expect(D15_PDF_PASSES_UNMEASURED).toBe(true);
-    expect(judge("pdf", {})).toMatchObject({ kind: "pass", reasons: [] });
+  it("D15, unified (2.4b.5): a ΔPDF evaluation that measured nothing is not judged, as every other stage's rule says of nothing", () => {
+    expect(D15_PDF_PASSES_UNMEASURED).toBe(false);
+    expect(judge("pdf", {})).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
     expect(judge("rings", {})).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    // To both readers, and on the report's card.
+    const nothing = { back_fft_pearson_r: null, window_weight_on_unmeasured: null, max_symmetry_break: null };
+    const r = reply(assess("pdf", nothing));
+    expect([r.achieved?.stages.pdf, r.checks.pdf]).toEqual(["info", "info"]);
+    expect(verdicts({ report: { ...PASSING, pdf: nothing } }).checks.pdf).toBe("info");
   });
 
   it("D17, unified (2.4b.1): a repeated call's pointer holds no outcome; both readers read the result it points to", () => {
@@ -297,11 +302,12 @@ describe("the disagreements found beyond D1–D10, kept and named", () => {
     expect(reply(pointer("qmax_coverage"))).toEqual({ achieved: null, checks: {} });
   });
 
-  it("D16: a ub_check result without an angle reads as a right UB", () => {
-    expect(D16_UB_UNMEASURED_READS_RIGHT).toBe(true);
+  it("D16, unified (2.4b.5): a ub_check result without an angle is not judged, no right UB", () => {
+    expect(D16_UB_UNMEASURED_READS_RIGHT).toBe(false);
     const r = reply(step("ub_check", { fit: "both", symmetrised: false }));
-    expect(r.checks.ub).toBe("pass");
+    expect(r.checks.ub).toBe("info");
     expect(r.achieved?.dataProblems).toEqual([]);
+    expect(judge("ub", {})).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
   });
 });
 

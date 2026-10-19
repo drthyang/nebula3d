@@ -148,6 +148,16 @@ describe("contradicting the tools' computed verdicts", () => {
     ]);
   });
 
+  it("judges nothing of a ub_check result without an angle: no right UB, and no claim held to it (D16, 2.4b.5)", () => {
+    // A recording that kept no angle, on a volume not symmetrised.
+    const noAngle = step("ub_check", {}, { fit: "both", symmetrised: false, origin_shift_rlu: null });
+    expect(verdicts({ reply: [noAngle] }).checks.ub).toBe("info");
+    expect(contradictions("The UB is off by half a degree; refine it.", [noAngle])).toEqual([]); // sent back on a right UB before 2.4b.5
+    // Newest, it hides an older turn as not judged (D7), and names no problem.
+    const turned = step("ub_check", {}, { fit: "both", symmetrised: false, orientation_change_deg: 0.6 });
+    expect(verdicts({ reply: [turned, noAngle] }).checks.ub).toBe("info");
+  });
+
   it("holds both readings to one UB turned, 0.05° or more from an unsymmetrised fit, and a symmetrised UB to no claim that it is right (D4, 2.4.4)", () => {
     // Synthetic ub_check results, as the tool writes them.
     const ub = (fit: string, symmetrised: boolean, turn: number) => step("ub_check", {}, { fit, symmetrised, orientation_change_deg: turn, origin_shift_rlu: null });

@@ -88,7 +88,7 @@ const STAGE_CASES: Record<"rings" | "punch" | "backfill" | "flatten" | "pdf", Ca
     c("the even part reproduced", { back_fft_pearson_r: 0.989, back_fft_pearson_r_even: 0.999 }, "pass"),
     c("the even part short", { back_fft_pearson_r_even: 0.9989 }, "attention", ["back-FFT"]),
     c("an old r, the data declared symmetrised", { back_fft_pearson_r: 0.998, symmetry_declared: true }, "attention", ["back-FFT"]),
-    c("an old r, no symmetry declared: not judged", { back_fft_pearson_r: 0.98, symmetry_declared: false }, "pass"),
+    c("an old r, no symmetry declared: not judged, and nothing else measured (D15)", { back_fft_pearson_r: 0.98, symmetry_declared: false }, "info", ["nothing to judge"]),
     c("the window at the limit", { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.001 }, "pass", ["window within limit"]),
     c("the window past it", { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.0011 }, "attention", ["window past limit"]),
     c("the symmetry held to 1e-3", { max_symmetry_break: 0.001, symmetry_declared: true }, "pass"),
@@ -96,8 +96,8 @@ const STAGE_CASES: Record<"rings" | "punch" | "backfill" | "flatten" | "pdf", Ca
     c("an asymmetry the file declares no symmetry for", { max_symmetry_break: 0.05, symmetry_declared: false }, "pass"),
     c("every fault", { back_fft_pearson_r_even: 0.9, window_weight_on_unmeasured: 0.04, max_symmetry_break: 0.05 }, "attention", ["back-FFT", "window past limit", "symmetry broken"]),
     c("faults, the window within", { back_fft_pearson_r_even: 0.9, window_weight_on_unmeasured: 1e-4 }, "attention", ["back-FFT", "window within limit"]),
-    // D15: the ΔPDF's rule passes an evaluation that measured nothing.
-    c("nothing measured (D15)", { back_fft_pearson_r: null, window_weight_on_unmeasured: null, max_symmetry_break: null }, "pass"),
+    // D15: an evaluation that measured nothing is not judged (it passed before 2.4b.5).
+    c("nothing measured: not judged (D15)", { back_fft_pearson_r: null, window_weight_on_unmeasured: null, max_symmetry_break: null }, "info", ["nothing to judge"]),
   ],
 };
 
@@ -292,7 +292,7 @@ describe("judge: the checks on the result", () => {
     ["a recording's angle_deg is the turn, to every reader (D4)", { angle_deg: 0.4 }, "attention", ["UB turned"], ["the UB is turned by 0.4°"]],
     ["the origin shifted", { fit: "both", symmetrised: false, orientation_change_deg: 0.001, origin_shift_rlu: [0.0305, 0.0195, 0] }, "pass", [], ["the HKL origin is shifted by (0.0305, 0.0195, 0) r.l.u."]],
     ["turned, and the origin shifted", { fit: "both", orientation_change_deg: 0.2, origin_shift_rlu: [0.03, 0, 0] }, "attention", ["UB turned"], ["the UB is turned by 0.2°", "the HKL origin is shifted by (0.03, 0, 0) r.l.u."]],
-    ["no angle, not symmetrised: right (D16)", {}, "pass", [], []],
+    ["no angle, not symmetrised: not judged (D16)", {}, "info", ["nothing to judge"], []],
   ];
   for (const [why, m, kind, reasons, dataProblems] of UB) {
     it(`ub: ${why}`, () => {
@@ -323,9 +323,9 @@ describe("judge is total", () => {
         const o = judge(check, m as never);
         expect(["pass", "attention", "info"]).toContain(o.kind);
         if (o.kind === "attention") expect(o.reasons.length).toBeGreaterThan(0);
-        // D15 and D16 are the rules that pass on nothing; the symmetry's
-        // rule holds an empty list of operations kept.
-        if (["rings", "punch", "backfill", "flatten", "texture", "grain"].includes(check)) {
+        // No rule passes on nothing (D15, D16); the symmetry's rule holds an
+        // empty list of operations kept, and the coverage's reads its counts.
+        if (["rings", "punch", "backfill", "flatten", "pdf", "texture", "grain", "ub"].includes(check)) {
           expect(o, `${check} ${JSON.stringify(m)}`).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
         }
       }

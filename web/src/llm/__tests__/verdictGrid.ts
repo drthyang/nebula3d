@@ -58,7 +58,7 @@ export const STAGE_VARIANTS: Record<GridStage, Variant[]> = {
     v("sound", { back_fft_pearson_r: 0.989, back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.00024, window_shape: "ellipsoid", max_symmetry_break: 0, worst_symmetry_op: "mirror ⊥ a", symmetry_declared: true }, "pass"),
     v("even part short", { back_fft_pearson_r: 0.98, back_fft_pearson_r_even: 0.97, window_weight_on_unmeasured: 0.00024, symmetry_declared: true }, "attention"),
     v("old r, symmetrised", { back_fft_pearson_r: 0.98, back_fft_pearson_r_even: null, symmetry_declared: true, max_symmetry_break: 0.0001 }, "attention"),
-    v("old r, declared none", { back_fft_pearson_r: 0.98, symmetry_declared: false }, "pass"),
+    v("old r, declared none", { back_fft_pearson_r: 0.98, symmetry_declared: false }, "info"), // nothing else measured: not judged (D15)
     v("old r, not read", { back_fft_pearson_r: 0.98 }, "attention"),
     v("old r at 0.999", { back_fft_pearson_r: 0.999, symmetry_declared: true }, "pass"),
     v("window past", { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.0011, window_shape: "separable" }, "attention"),
@@ -67,8 +67,8 @@ export const STAGE_VARIANTS: Record<GridStage, Variant[]> = {
     v("symmetry at limit", { back_fft_pearson_r_even: 1, max_symmetry_break: 0.001, symmetry_declared: true }, "pass"),
     v("asymmetry undeclared", { back_fft_pearson_r_even: 1, max_symmetry_break: 0.05, symmetry_declared: false }, "pass"),
     v("asymmetry, not read", { back_fft_pearson_r_even: 1, max_symmetry_break: 0.05, symmetry_declared: null }, "attention"),
-    // Nothing measured: the ΔPDF's rule passes it.
-    v("nothing measured", { back_fft_pearson_r: null, window_weight_on_unmeasured: null, max_symmetry_break: null }, "pass"),
+    // Nothing measured: not judged since D15 (2.4b.5); its rule passed it before.
+    v("nothing measured", { back_fft_pearson_r: null, window_weight_on_unmeasured: null, max_symmetry_break: null }, "info"),
   ],
 };
 
