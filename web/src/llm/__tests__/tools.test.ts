@@ -832,18 +832,64 @@ describe("ub_check", () => {
 
 describe("dpdf_peaks", () => {
   // What the server returns on the dev control (docs/pilot-review.md finding 1),
-  // shortened: the strongest correlation, and a planted one at ⟨3/2 0 0⟩.
+  // shortened: the strongest correlation, and a planted one at ⟨3/2 0 0⟩. Its
+  // raw file declares no symmetry: grouped by sign, length and size.
   const features = {
     id: "demo.delta_pdf", sigma: 6.174, min_sigma: 5, origin_radius: 1.95, n_extrema: 619,
+    grouped_by: "sign, length and size (no symmetry declared)",
     groups: [
-      { sign: -1, length: 2.7393, size_sigma: 1515.5, value: -9357, n: 6,
+      { sign: -1, length: 2.7393, size_sigma: 1515.5, mean_size_sigma: 1514.2, value: -9357, n: 6, multiplicity: null,
         vectors: [[1.9383, 1.9383, 0], [0, 1.9383, -1.9383], [0, 1.9383, 1.9383], [1.9383, 0, -1.9383], [1.9383, 0, 1.9383]],
         vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497], [0.497, 0, 0.497]],
         sizes_sigma: [1515.5, 1515.3, 1514.1, 1513.7, 1513.4] },
-      { sign: 1, length: 5.8383, size_sigma: 238.39, value: 1472, n: 3,
+      { sign: 1, length: 5.8383, size_sigma: 238.39, mean_size_sigma: 238.3, value: 1472, n: 3, multiplicity: null,
         vectors: [[5.8383, 0.0039, 0]], vectors_rlu: [[1.497, 0.001, 0]], sizes_sigma: [238.39] },
     ],
   };
+
+  // What the server returns on a constructed ΔPDF (cubic, a = 4 Å, built as
+  // tests/test_dpdf_features.py's write_declared_dataset builds it, with its
+  // ⟨1 0 0⟩ copy along c left out), shortened: peaks on the m-3m orbit of
+  // (¼, ½, ¾), their copies 0.9 to 1.1 of one size, and a negative ⟨1 0 0⟩
+  // along a and b. Its raw file declares m-3m: each orbit is one entry, the
+  // general one 24 of its 24 vectors (one per ± pair), ⟨1 0 0⟩ 2 of its 3.
+  const general = {
+    vectors: [[2.9913, -0.9994, 2.0022], [1.0049, 2.0006, -2.9958], [3.0014, 0.9954, 2.0027], [1.0029, -2.9916, 1.9997], [0.9964, -2.998, -1.9977]],
+    vectors_rlu: [[0.7478, -0.2498, 0.5005], [0.2512, 0.5002, -0.7489], [0.7503, 0.2489, 0.5007], [0.2507, -0.7479, 0.4999], [0.2491, -0.7495, -0.4994]],
+    sizes_sigma: [63.669, 62.9163, 61.9904, 61.9312, 61.7096],
+  };
+  const declared = {
+    id: "demo.delta_pdf", sigma: 1.0458, min_sigma: 8, origin_radius: 0.375, n_extrema: 26,
+    grouped_by: "declared symmetry (m-3m: 48 operations, r ≡ −r)",
+    groups: [
+      { sign: 1, length: 3.7357, size_sigma: 63.669, mean_size_sigma: 57.8497, value: 66.587, n: 24, multiplicity: 24, ...general },
+      { sign: -1, length: 3.9999, size_sigma: 38.8873, mean_size_sigma: 37.2247, value: -40.67, n: 2, multiplicity: 3,
+        vectors: [[3.9999, -0.0121, 0.0027], [0.0048, 3.9911, 0.0046]], vectors_rlu: [[1, -0.003, 0.0007], [0.0012, 0.9978, 0.0012]],
+        sizes_sigma: [38.8873, 35.562] },
+    ],
+  };
+  // The same ΔPDF with nothing declared: by sign, length and size the unequal
+  // copies of the general orbit split by size, and ⟨1 0 0⟩'s two by size too
+  // (shortened to one vector an entry).
+  const byShape = (sign: 1 | -1, length: number, size: number, mean: number, n: number, rlu: number[]) => ({
+    sign, length, size_sigma: size, mean_size_sigma: mean, value: sign * size * declared.sigma, n, multiplicity: null,
+    vectors: [rlu.map((x) => 4 * x)], vectors_rlu: [rlu], sizes_sigma: [size],
+  });
+  const plain = {
+    ...declared,
+    grouped_by: "sign, length and size (no symmetry declared)",
+    groups: [
+      byShape(1, 3.7357, 63.669, 62.1074, 7, [0.7478, -0.2498, 0.5005]),
+      byShape(1, 3.7458, 60.1438, 58.784, 7, [0.2513, 0.5018, 0.7497]),
+      byShape(1, 3.7473, 56.8872, 55.4586, 6, [0.5007, 0.2502, -0.7513]),
+      byShape(1, 3.7472, 53.8623, 53.0155, 3, [0.5007, -0.2517, -0.7507]),
+      byShape(1, 3.7501, 50.3539, 50.3539, 1, [0.2496, 0.7514, -0.502]),
+      byShape(-1, 3.9999, 38.8873, 38.8873, 1, [1, -0.003, 0.0007]),
+      byShape(-1, 3.9911, 35.562, 35.562, 1, [0.0012, 0.9978, 0.0012]),
+    ],
+  };
+  // An entry's fields when the extrema are grouped by sign, length and size: as they were before.
+  const PLAIN_ENTRY = ["sign", "length_A", "size_sigma", "n_vectors", "vectors_rlu", "vectors_A"];
 
   it("lists the strongest features with their vectors, signs and sizes", async () => {
     api.fetchDpdfFeatures.mockResolvedValue(features);
@@ -851,12 +897,14 @@ describe("dpdf_peaks", () => {
     expect(r.ok).toBe(true);
     expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith("demo.delta_pdf", 5, 12);
     const out = JSON.parse(r.text);
+    expect(out.grouped_by).toBe("sign, length and size (no symmetry declared)");
     expect(out.features[0]).toEqual({
       sign: "−", length_A: 2.739, size_sigma: 1520, n_vectors: 6,
       vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497]],
       vectors_A: [[1.938, 1.938, 0], [0, 1.938, -1.938], [0, 1.938, 1.938], [1.938, 0, -1.938]],
     });
     expect(out.features[1]).toMatchObject({ sign: "+", length_A: 5.838, n_vectors: 3, vectors_rlu: [[1.5, 0.001, 0]] });
+    for (const e of out.features) expect(Object.keys(e)).toEqual(PLAIN_ENTRY);
     expect([out.robust_sigma, out.threshold_sigma, out.origin_disk_A, out.extrema_above_threshold]).toEqual([6.17, 5, 1.95, 619]);
     expect(r.summary).toBe("619 extrema above 5σ; strongest − at (0.497, 0.497, 0) r.l.u., 2.74 Å, 1520σ");
     expect(r.view).toMatchObject({ view: "dpdf", plane: "xy", value: 0 });
@@ -869,6 +917,46 @@ describe("dpdf_peaks", () => {
     const r = await run("dpdf_peaks", { min_sigma: 900, limit: 3 });
     expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith("demo.delta_pdf", 900, 3);
     expect(r.summary).toBe("no extremum above 5σ outside the origin's disk");
+  });
+
+  it("with a declared point group, names it, and gives each orbit its multiplicity and its copies' mean size", async () => {
+    api.fetchDpdfFeatures.mockResolvedValue(declared);
+    const r = await run("dpdf_peaks", { min_sigma: 8 });
+    expect(r.ok).toBe(true);
+    const out = JSON.parse(r.text);
+    expect(out.grouped_by).toBe("declared symmetry (m-3m: 48 operations, r ≡ −r)");
+    // Each orbit one entry: the vectors found (n_vectors) and the orbit's (multiplicity) apart.
+    expect(out.features.map((e: Record<string, unknown>) => [e.sign, e.n_vectors, e.multiplicity])).toEqual([["+", 24, 24], ["−", 2, 3]]);
+    expect(out.features[0]).toEqual({
+      sign: "+", length_A: 3.736, size_sigma: 63.7, mean_size_sigma: 57.8, n_vectors: 24, multiplicity: 24,
+      vectors_rlu: [[0.748, -0.25, 0.5], [0.251, 0.5, -0.749], [0.75, 0.249, 0.501], [0.251, -0.748, 0.5]],
+      vectors_A: [[2.991, -0.9994, 2.002], [1.005, 2.001, -2.996], [3.001, 0.9954, 2.003], [1.003, -2.992, 2]],
+    });
+    expect(out.features[1]).toEqual({
+      sign: "−", length_A: 4, size_sigma: 38.9, mean_size_sigma: 37.2, n_vectors: 2, multiplicity: 3,
+      vectors_rlu: [[1, -0.003, 0.0007], [0.0012, 0.998, 0.0012]],
+      vectors_A: [[4, -0.0121, 0.0027], [0.0048, 3.991, 0.0046]],
+    });
+    expect([out.robust_sigma, out.threshold_sigma, out.extrema_above_threshold]).toEqual([1.05, 8, 26]);
+    expect(r.summary).toBe("26 extrema above 8σ; strongest + at (0.748, -0.25, 0.5) r.l.u., 3.74 Å, 63.7σ");
+  });
+
+  it("without one, says so, and lists the entries as before: no multiplicity, no mean size", async () => {
+    api.fetchDpdfFeatures.mockResolvedValue(plain);
+    const out = JSON.parse((await run("dpdf_peaks", { min_sigma: 8 })).text);
+    expect(out.grouped_by).toBe("sign, length and size (no symmetry declared)");
+    // The orbits split by size: seven entries, the 26 extrema between them.
+    expect(out.features.map((e: Record<string, unknown>) => [e.sign, e.n_vectors])).toEqual([["+", 7], ["+", 7], ["+", 6], ["+", 3], ["+", 1], ["−", 1], ["−", 1]]);
+    expect(out.features.reduce((sum: number, e: { n_vectors: number }) => sum + e.n_vectors, 0)).toBe(26);
+    for (const e of out.features) expect(Object.keys(e)).toEqual(PLAIN_ENTRY);
+    expect(out.features[0]).toEqual({ sign: "+", length_A: 3.736, size_sigma: 63.7, n_vectors: 7, vectors_rlu: [[0.748, -0.25, 0.5]], vectors_A: [[2.991, -0.9992, 2.002]] });
+
+    // A symmetry declared that cannot be applied: grouped as without one, and grouped_by says why.
+    const why = "sign, length and size (the declared symmetry 6/mmm is not applied: the ΔPDF file records no cell)";
+    api.fetchDpdfFeatures.mockResolvedValue({ ...plain, grouped_by: why });
+    const notApplied = JSON.parse((await run("dpdf_peaks", { min_sigma: 8 })).text);
+    expect(notApplied.grouped_by).toBe(why);
+    expect(notApplied.features).toEqual(out.features);
   });
 });
 

@@ -331,25 +331,28 @@ const UB_CHECK: UbCheck = {
   mean_offset_rlu: { before: [0.0011, -0.0007, 0.0002], after: [0.0009, -0.0006, 0.0002], standard_error: [0.0008, 0.0008, 0.0009], n: 112 },
 };
 
+// The ΔPDF's features grouped as the backend groups them: by the point group
+// the raw file declares (mmm, volumeMeta below). Its orbits are smaller than
+// the cube's, so each cube orbit of the crystal's correlations is three
+// entries: ⟨1 0 0⟩ one vector each, ⟨1 1 0⟩ two.
+const mmmOrbit = (sign: 1 | -1, length: number, size: number, value: number, rlu: number[][]): DpdfFeatures["groups"][number] => ({
+  sign, length, size_sigma: size, mean_size_sigma: size, value, n: rlu.length, multiplicity: rlu.length,
+  vectors: rlu.map((v) => v.map((x) => A * x)), vectors_rlu: rlu, sizes_sigma: rlu.map(() => size),
+});
 const DPDF_FEATURES: DpdfFeatures = {
   id: "synthetic_a.delta_pdf",
   sigma: 0.71,
   min_sigma: 5,
   origin_radius: 1.8,
   n_extrema: 26,
+  grouped_by: "declared symmetry (mmm: 8 operations, r ≡ −r)",
   groups: [
-    {
-      sign: -1, length: 4, size_sigma: 35.2, value: -25, n: 3,
-      vectors: [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
-      vectors_rlu: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      sizes_sigma: [35.2, 35.2, 35.2],
-    },
-    {
-      sign: 1, length: 5.657, size_sigma: 21.1, value: 15, n: 6,
-      vectors: [[4, 4, 0], [4, -4, 0], [4, 0, 4], [4, 0, -4], [0, 4, 4], [0, 4, -4]],
-      vectors_rlu: [[1, 1, 0], [1, -1, 0], [1, 0, 1], [1, 0, -1], [0, 1, 1], [0, 1, -1]],
-      sizes_sigma: [21.1, 21.1, 21.1, 21.1, 21.1, 21.1],
-    },
+    mmmOrbit(-1, 4, 35.2, -25, [[1, 0, 0]]),
+    mmmOrbit(-1, 4, 35.2, -25, [[0, 1, 0]]),
+    mmmOrbit(-1, 4, 35.2, -25, [[0, 0, 1]]),
+    mmmOrbit(1, 5.657, 21.1, 15, [[1, 1, 0], [1, -1, 0]]),
+    mmmOrbit(1, 5.657, 21.1, 15, [[1, 0, 1], [1, 0, -1]]),
+    mmmOrbit(1, 5.657, 21.1, 15, [[0, 1, 1], [0, 1, -1]]),
   ],
 };
 
