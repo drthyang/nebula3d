@@ -31,6 +31,7 @@ import {
   unsafeActions,
   validationDatasets,
   WhyTracker,
+  type RunRecord,
 } from "./validation";
 
 const step = (name: string, args: Record<string, unknown> = {}, result: unknown = {}, status: AgentStep["status"] = "done"): AgentStep => ({
@@ -302,5 +303,32 @@ describe("the record", () => {
     expect(back.failure).toBeNull();
     expect(back.tool_offers).toEqual([]);
     expect(rec.task).toBe(TASK);
+    // No window given: recorded as unknown, not left out.
+    expect(back.context_window).toBeNull();
+  });
+
+  it("keeps the context window the run had and the minimum it was held to", () => {
+    const context = { tokens: 65_536, min_tokens: 49_152, read_from: "lmstudio-loaded" as const };
+    const rec = buildRecord({
+      case: caseNamed("dev-ub")!,
+      arm: "C",
+      run: 2,
+      dataset: dataset("v000001-C2", "v000001_C2"),
+      model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+      evalRun: run("No fault found.", []),
+      why: [],
+      maxRounds: 12,
+      started: "2026-10-19T00:00:00Z",
+      costUsd: null,
+      context,
+    });
+    const back = JSON.parse(JSON.stringify(rec));
+    expect(back.context_window).toEqual(context);
+    // The schema is unchanged: the field is optional (`delete` compiles only on an
+    // optional field), so records made before it stay valid.
+    expect(back.schema).toBe("nebula3d-validation-run/1");
+    const old: RunRecord = { ...rec };
+    delete old.context_window;
+    expect(old.context_window).toBeUndefined();
   });
 });
