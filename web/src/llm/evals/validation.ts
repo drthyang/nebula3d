@@ -25,11 +25,14 @@ import type { ChatMessage } from "../provider/client";
 import { found, seen, whole, type Readable } from "../readings";
 import type { Failure } from "../recovery";
 import { SAMPLE_PARAMS } from "../tune/catalog";
-import type { ComputedVerdict } from "../verdicts";
 import { answers, NEGATION, numbers, sentences } from "./checks";
 import manifest from "./fixtures/validation-cases.json";
 import type { Check, EvalRun, Grade } from "./harness";
 import type { ToolOffer } from "./offers";
+
+// The graders import nothing of the app's verdicts (validation.test.ts scans
+// it): the verdict a run computed is the harness's to carry.
+type ComputedVerdict = NonNullable<EvalRun["verdict"]>;
 
 export type Split = "dev" | "test";
 export type Arm = "B" | "C";
@@ -146,6 +149,18 @@ export const ALARMS: Record<string, RegExp> = {
 const FINE = /\b(correct|right|fine|good|negligible|consistent|within (the )?(error|tolerance|noise)|clean|as expected|meets? (its|the) goal|(0|zero) (powder )?rings?)\b/i;
 const OWN = /\b(crystal's own|sample's own|intrinsic|its own)\b/i;
 
+/**
+ * A UB turned by less than this (degrees) is the fit's own noise: a clause that
+ * calls the UB off with every angle it writes under it claims no
+ * misorientation. The app's rule, held to it by behaviour and not by import
+ * (validation.test.ts bisects both boundaries): the app calls a UB turned at
+ * 0.05° or more from an unsymmetrised fit (UB_TURNED, verdicts/rules.ts; D4).
+ * The grader keeps its own number, so the graders import nothing of the app's
+ * verdicts, and a change to either rule fails the pin. 0.1° before 2026-10-19
+ * (plan 3.2, the manager on the user's delegation).
+ */
+const UB_NOISE_DEG = 0.05;
+
 /** The answer's clauses. */
 export const clauses = (text: string): string[] =>
   sentences(text)
@@ -160,7 +175,7 @@ const claimed = (clause: string, re: RegExp, { alarm = false, own = false } = {}
   if (FINE.test(clause) || (own && OWN.test(clause))) return false;
   // A turn the size of the fit's own noise is no claim that the UB is off.
   const angles = numbers(clause);
-  return !(re === ALARMS.ub && angles.length > 0 && angles.every((x) => Math.abs(x) < 0.1));
+  return !(re === ALARMS.ub && angles.length > 0 && angles.every((x) => Math.abs(x) < UB_NOISE_DEG));
 };
 
 /** Some clause of the answer says *re*. */
