@@ -92,7 +92,7 @@ export interface Gate {
 /** The facts a tool declares. Every one but its label and `acts` may be left out. */
 export interface ToolFacts {
   label: string; // the transcript's line for a step
-  runningLabel?: string; // the line while it runs; left out: the label
+  runningLabel?: string; // the line while it runs, for a tool long enough to be watched; left out: the label
   // Required, so a tool that acts cannot pass as one that only reads by
   // leaving it out. null: it only reads.
   acts: Act | null;
