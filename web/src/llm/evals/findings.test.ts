@@ -323,9 +323,10 @@ describe("the review's findings", () => {
     for (const [i, f] of reviewed.entries()) {
       expect(f, refs[i]).toMatchObject({ at: "f807320", needs_user_approval: true, decision: { by: "the user", on: "2026-10-19", option: "yes" } });
       const decided = `Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.${i + 1}, after the check-verdict module (2.3).`;
-      // Open until its plan row lands; then it names its commit and the tests that pin it, which exist.
+      // Open until its plan row lands; then it names its commit and the tests that pin it, which exist
+      // (a follow-up row may add a sentence).
       if (f.status === "implemented") {
-        expect(f.note, refs[i]).toBe(`${decided} Implemented by plan row 2.4.${i + 1}.`);
+        expect(f.note?.startsWith(`${decided} Implemented by plan row 2.4.${i + 1}.`), `${refs[i]}: ${f.note}`).toBe(true);
         for (const t of f.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
       } else {
         expect(f.status, refs[i]).toBe("open");
