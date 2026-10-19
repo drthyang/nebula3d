@@ -12,6 +12,7 @@ import {
   answerIssues,
   clauses,
   contradictions,
+  earlierSources,
   issuesNote,
   issuesPrompt,
   missingEvidence,
@@ -392,11 +393,64 @@ describe("the checks judge what the tools found, and nothing the assistant said"
     const traced = await runAgent({
       messages: earlier,
       tools: [assess],
-      ctx: { ...ctx, earlierResults: ['{"rings":{"worst_ring_left":{"at":9.99}}}'] },
+      ctx: { ...ctx, earlierSteps: [step("assess_stage", { stage: "rings" }, { rings: { worst_ring_left: { at: 9.99 } } })] },
       settings,
       signal: new AbortController().signal,
     });
     expect(traced.note).toBeUndefined();
+  });
+});
+
+describe("an earlier turn's result, once a later run recomputed what it measured", () => {
+  // Synthetic: a flatten assessment, one of every stage, and runs that recompute the flatten (and the ΔPDF) or reuse it.
+  const flatten = step("assess_stage", { stage: "flatten" }, { flatten: { verdict: "needs attention", max_floor_trend: 0.83 }, measured_on: ["hk0"] });
+  const all = step("assess_stage", {}, { rings: { max_ring_left: 0.012 }, flatten: { max_floor_trend: 0.83 }, pdf: { back_fft_pearson_r_even: 0.9993 } });
+  const run = (stages: Record<string, string>) => step("run_pipeline", { from_stage: "flatten" }, { ended: "done", stages });
+  const recomputed = run({ flatten: "computed", pdf: "computed", pdf_check: "computed" });
+  const reused = run({ flatten: "reused", pdf: "reused" });
+
+  it("counts while no later run recomputed its stage: a run before it, one that reused it, or none", () => {
+    expect(earlierSources([flatten], [])).toEqual({ standing: [flatten.result], stale: "" });
+    expect(earlierSources([recomputed, flatten], [])).toEqual({ standing: [recomputed.result, flatten.result], stale: "" });
+    expect(earlierSources([flatten, reused], [])).toEqual({ standing: [flatten.result, reused.result], stale: "" });
+    expect(earlierSources([flatten], [step("assess_stage", { stage: "rings" })]).stale).toBe("");
+  });
+
+  it("stops counting once a later run recomputed it, in a turn between or in this reply", () => {
+    for (const [earlier, steps] of [
+      [[flatten, recomputed], []],
+      [[flatten], [recomputed]],
+    ] as const) {
+      const { standing, stale } = earlierSources(earlier, steps);
+      expect(standing.join("\n")).not.toContain("0.83");
+      expect(JSON.parse(stale)).toEqual({ flatten: { verdict: "needs attention", max_floor_trend: 0.83 } });
+    }
+  });
+
+  it("keeps the stages still standing of an assessment of several, and takes any other result out whole", () => {
+    const { standing, stale } = earlierSources([all], [recomputed]);
+    expect(standing.map((s) => JSON.parse(s))).toEqual([{ rings: { max_ring_left: 0.012 } }]);
+    expect(JSON.parse(stale)).toEqual({ flatten: { max_floor_trend: 0.83 }, pdf: { back_fft_pearson_r_even: 0.9993 } });
+    const peaks = step("dpdf_peaks", {}, { features: [{ length_A: 2.97, size_sigma: 41 }] });
+    expect(earlierSources([peaks], [recomputed])).toEqual({ standing: [], stale: peaks.result });
+  });
+
+  it("keeps what measured no stage a run recomputes: the raw volume, or no topic at all", () => {
+    const ub = step("ub_check", {}, { orientation_change_deg: 0.61 });
+    const cut = step("measure_reciprocal_cut", { plane: "hk0", value: 0 }, { flattened: { floor: 0.4 } });
+    expect(earlierSources([ub, cut], [recomputed])).toEqual({ standing: [ub.result, cut.result], stale: "" });
+  });
+
+  it("tells a number a later run made stale from one from nowhere, to the model in either arm and in the note", () => {
+    const { standing, stale } = earlierSources([flatten], [recomputed]);
+    const issues = answerIssues("The floor trend is 0.83, and 0.42 elsewhere.", [recomputed], standing.join("\n"), stale)!;
+    expect([issues.staleNumbers, issues.untraced]).toEqual([["0.83"], ["0.42"]]);
+    const line = "- These numbers were measured before the last run recomputed the outputs they describe: 0.83. Quote numbers measured since, or leave them out.";
+    expect(issuesPrompt(issues).split("\n")).toContain(line);
+    expect(issuesPrompt(issues, { skills: false }).split("\n")).toContain(line);
+    expect(issuesNote(issues)).toBe("Not found in any tool result or the context: 0.42. Measured before the last run recomputed the outputs they describe: 0.83.");
+    // Standing, the same number goes through.
+    expect(answerIssues("The floor trend is 0.83.", [], earlierSources([flatten], []).standing.join("\n"))).toBeNull();
   });
 });
 

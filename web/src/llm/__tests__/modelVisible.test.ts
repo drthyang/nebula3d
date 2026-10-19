@@ -29,7 +29,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { JobEvent } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { runAgent, type AgentStep } from "../agent";
-import { answerIssues, issuesPrompt } from "../answerChecks";
+import { answerIssues, earlierSources, issuesPrompt } from "../answerChecks";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
@@ -683,7 +683,7 @@ const RINGS = step("assess_stage", { stage: "rings" }, {
 const RERUN = step("run_pipeline", { from_stage: "rings" }, { ended: "done", seconds: 42.3, stages: { rings: "computed", punch: "computed" } });
 const COVERED = step("qmax_coverage", {}, { verdict: "clean: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space", window_weight_on_unmeasured: 2.4e-4 });
 
-const REPLIES: { what: string; reply: string; steps: AgentStep[] }[] = [
+const REPLIES: { what: string; reply: string; steps: AgentStep[]; earlier?: AgentStep[] }[] = [
   {
     what: "an answer that stands on its evidence",
     reply: "The ring removal needs attention: a ring is left at 3.2 Å⁻¹, {{assess_stage.rings.max_ring_left}} of the diffuse there.",
@@ -714,7 +714,19 @@ const REPLIES: { what: string; reply: string; steps: AgentStep[] }[] = [
     reply: "The ring removal is clean, so the 3D-ΔPDF is ready for analysis.",
     steps: [RINGS],
   },
+  {
+    what: "numbers from an earlier turn's result, measured before a later run",
+    reply: "The worst ring sat at 3.2 Å⁻¹, at 0.12 of the diffuse.",
+    steps: [RERUN],
+    earlier: [RINGS],
+  },
 ];
+
+/** A canned reply's issues: its number sources are its tools' results, and an earlier turn's while what each measured stands. */
+function issuesOf({ reply, steps, earlier = [] }: (typeof REPLIES)[number]) {
+  const { standing, stale } = earlierSources(earlier, steps);
+  return answerIssues(reply, steps, [...steps.map((s) => s.result ?? ""), ...standing].join("\n"), stale);
+}
 
 // A success the checks did not all measure: shown for arm C, whose wording of it names no stage to measure.
 const UNMEASURED = { what: "a success the checks did not all measure", reply: "The reduction is ready for analysis.", steps: [COVERED] };
@@ -722,12 +734,12 @@ const UNMEASURED = { what: "a success the checks did not all measure", reply: "T
 /** Each canned reply, the send-back its checks give with the skills on or off, as a snapshot section. */
 function answerChecksBody(replies: typeof REPLIES, skills: boolean): string {
   return replies
-    .map(({ what, reply, steps }) => {
-      const sources = steps.map((s) => s.result ?? "").join("\n");
-      const issues = answerIssues(reply, steps, sources);
-      const tools = steps.map((s) => `${s.name} ${JSON.stringify(s.args)}`).join(", ");
+    .map((r) => {
+      const issues = issuesOf(r);
+      const named = (steps: AgentStep[]) => steps.map((s) => `${s.name} ${JSON.stringify(s.args)}`).join(", ");
+      const earlier = r.earlier?.length ? `Tools run in an earlier turn: ${named(r.earlier)}.\n\n` : "";
       const sent = issues ? fence(issuesPrompt(issues, { skills })) : "Nothing: the answer goes to the user, its references filled in.";
-      return `## ${what}\n\nTools run in the reply: ${tools}.\n\nThe answer:\n\n${fence(reply)}\n\nSent back to the model:\n\n${sent}`;
+      return `## ${r.what}\n\n${earlier}Tools run in the reply: ${named(r.steps)}.\n\nThe answer:\n\n${fence(r.reply)}\n\nSent back to the model:\n\n${sent}`;
     })
     .join("\n\n");
 }
@@ -764,7 +776,7 @@ async function loopReply({ skills, answer }: { skills: boolean; answer: string }
   const result = await runAgent({
     messages,
     tools: CHAT_TOOLS,
-    ctx: { dataset: DATASET, datasets: DATASETS, skills, skillsRead: new Set(), earlierResults: [] },
+    ctx: { dataset: DATASET, datasets: DATASETS, skills, skillsRead: new Set(), earlierSteps: [] },
     settings,
     signal: new AbortController().signal,
   });
@@ -783,7 +795,7 @@ describe("5. the text sent back to the model", () => {
     await expect(
       doc(
         "Answer checks",
-        "`answerIssues` and `issuesPrompt` (answerChecks.ts) on canned replies: what the agent loop sends back, once, before a failing answer reaches the user. Each reply's number sources here are its tools' results.",
+        "`answerIssues` and `issuesPrompt` (answerChecks.ts) on canned replies: what the agent loop sends back, once, before a failing answer reaches the user. Each reply's number sources here are its tools' results, and an earlier turn's while what each measured stands (`earlierSources`).",
         answerChecksBody(REPLIES, true),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/5-answer-checks.md`);
@@ -791,8 +803,9 @@ describe("5. the text sent back to the model", () => {
 
   it("arm C: the answer checks' prompt with the skills off", async () => {
     const replies = [...REPLIES, UNMEASURED];
-    for (const { what, reply, steps } of replies) {
-      const issues = answerIssues(reply, steps, steps.map((s) => s.result ?? "").join("\n"));
+    for (const r of replies) {
+      const { what, reply, steps } = r;
+      const issues = issuesOf(r);
       if (!issues) continue;
       const sent = issuesPrompt(issues, { skills: false });
       // Its own words name no tool, stage or skill; what it quotes is the answer's.
@@ -806,6 +819,7 @@ describe("5. the text sent back to the model", () => {
         [issues.unknownReferences.length > 0, /These references name no value/],
         [issues.contradicted.length > 0, /this contradicts the verdict a check computed/],
         [issues.untraced.length > 0, /These numbers appear in no tool result/],
+        [issues.staleNumbers.length > 0, /These numbers were measured before the last run recomputed the outputs they describe/],
       ];
       for (const [found, line] of kinds) expect(line.test(sent), `${what}: ${line}`).toBe(found);
     }

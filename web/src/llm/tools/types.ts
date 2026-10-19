@@ -6,6 +6,7 @@
 // modules around the agent loop can import it without a cycle.
 
 import type { Dataset } from "../../api/types";
+import type { AgentStep } from "../agent";
 import type { Outcome } from "../verdicts/rules";
 import type { ToolFacts } from "./facts";
 import type { ViewTarget } from "./openView";
@@ -26,9 +27,11 @@ export interface ToolContext {
   // call the model makes, which gates a stage's changes on its skill; left
   // unset by the app's own calls (the report), which change nothing.
   skillsRead?: Set<string>;
-  // The tool results of the conversation's earlier turns: what an answer's
-  // numbers may come from besides this reply's own results (agent.ts).
-  earlierResults?: readonly string[];
+  // The tool calls of the conversation's earlier turns that ran, oldest first
+  // (toolStepsIn, agent.ts): what an answer's numbers may come from besides
+  // this reply's own results, while what each measured stands (earlierSources,
+  // answerChecks.ts).
+  earlierSteps?: readonly AgentStep[];
 }
 
 export interface ToolOutcome {
