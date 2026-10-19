@@ -68,7 +68,7 @@ construction, so the set grades the tools as well as the model.
 
 `examples/make_eval_volumes.py` writes the five volumes. The CI replay
 (`heldout.test.ts`, part of `npm test`) plays each scenario with a good and a
-bad script against tool results recorded on them (`fixtures/heldout.json`). It
+bad script against tool results recorded on them (`fixtures/holdout/heldout.json`). It
 also checks what the tools read against the faults. No live model has run the
 set yet. The measured set's fixture (in `web/src/llm/evals/fixtures/`) was recorded
 before the 3D ring rule, and re-recording it needs the user's data.
@@ -338,7 +338,8 @@ its numbers are read once, to be reported. These tests enforce this:
   Markdown. A case may be named only where the test split is
   defined (`src/nebula3d/validation/holdout/`, not the rest of the package, the
   dev cases' `cases.py` included), in the validation's records
-  (`docs/evals/validation/`), in this page's *Arm A* section, which reports the
+  (`docs/evals/validation/`, less the review's findings and decisions,
+  `review-findings.json`, which are read), in this page's *Arm A* section, which reports the
   test results, and in the manifest the web harness grades against
   (`fixtures/validation-cases.json`). It skips binary files, other people's
   packages (`node_modules`) and generated files (bytecode, caches,

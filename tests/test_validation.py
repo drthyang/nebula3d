@@ -277,11 +277,13 @@ HOLDOUT_SCANNED = (
 )
 #: Where a test case may be named: the module that defines the test split (the rest
 #: of the validation package, the dev cases' module included, may not), the
-#: validation's records and tables, and the manifest the web harness grades answers
-#: against (validation.ts reads every case from it, by design).
+#: validation's records of its runs (arm A's reported results among them), and the
+#: manifest the web harness grades answers against (validation.ts reads every case
+#: from it, by design). The review's findings and decisions are read: they are what
+#: the tools, skills and prompts are changed by.
 HOLDOUT_ALLOWED = re.compile(
     r"^src/nebula3d/validation/holdout/"
-    r"|^docs/evals/validation/"
+    r"|^docs/evals/validation/(?!review-findings\.json$)"
     r"|^web/src/llm/evals/fixtures/validation-cases\.json$"
 )
 #: The doc sections that report the test split's results, by their heading.

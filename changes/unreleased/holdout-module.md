@@ -13,3 +13,16 @@
   test values in that module only. No test failure shows a held-out case any
   more (masked names, counts and digests; arm D names a test case's files by
   its masked name), and each failure path is checked on a made-up case.
+
+- **The scenario evals' held-out fixture loads on the same opt-in.** It moved to
+  `web/src/llm/evals/fixtures/holdout/heldout.json`, and one loader,
+  `heldoutFixture.ts`, reads it, only with `NEBULA_HOLDOUT_TESTS=1`. Without it
+  `npm test` neither collects nor runs the held-out scenarios' replay and leaves
+  their questions out of the local-tools check, so none of their names is
+  printed; CI's frontend job runs them, as before. A test checks that no other
+  module in `web/src` imports the file, names it or globs its way to it.
+
+- **The held-out scan reads the review's findings and the changelog's entries.**
+  `docs/evals/validation/review-findings.json` is no longer allowed to name a
+  test case (arm A's reported results still are), and the fragments in
+  `changes/` are read, as `CHANGELOG.md` is. None names one.
