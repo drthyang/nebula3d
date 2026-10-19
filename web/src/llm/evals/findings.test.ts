@@ -433,6 +433,20 @@ describe("the review's findings", () => {
     for (const t of g1!.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
   });
 
+  it("from plan 4.8 is P4.8, the manager's on the user's delegation: the sample facts refused in code, implemented with tests that exist", async () => {
+    const { exists } = await import("./backend");
+    const p48 = (await load()).filter(isReviewFinding).find((f) => f.ref === "P4.8");
+    expect(p48).toMatchObject({
+      kind: "bug",
+      needs_user_approval: true,
+      status: "implemented",
+      decision: { by: "the manager, on the user's delegation", on: "2026-10-19", option: "sample facts are refused in code unless the user's latest message names the change" },
+    });
+    expect(p48!.evidence).toMatch(/SKILL\.md:\d+/);
+    expect(p48!.evidence).toMatch(/update_settings\.ts:\d+/);
+    for (const t of p48!.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
+  });
+
   it("says what became of a finding: an implemented one names its commit and its tests", () => {
     const base = { case: "dev-control", run: 1, step: null, kind: "bug", evidence: "e", proposed_fix: "p", needs_user_approval: false };
     expect(findingProblems({ ...base, status: "implemented", commit: "47c3537", tests: ["tests/test_faults.py"] })).toEqual([]);

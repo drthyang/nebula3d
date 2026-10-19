@@ -708,5 +708,32 @@
    "on": "2026-10-19",
    "option": "the prompts state what the checks judge; the four checks name all five stages and the UB"
   }
+ },
+ {
+  "source": "review",
+  "ref": "P4.8",
+  "at": "fd2a96a",
+  "kind": "bug",
+  "evidence": "The bragg-node-audit skill's firm rules, \"enforced in code\", say the protected H planes and the punch cell are facts about the sample that \"change only when the user asks, never to improve a number\" (.claude/skills/bragg-node-audit/SKILL.md:63-68), and the catalog holds them apart as such (web/src/llm/tune/catalog.ts:25-69, SAMPLE_PARAMS). No code enforced it: update_settings asked in its description (web/src/llm/tools/defs/update_settings.ts:50) and set any of them the model sent (:62-73, toFormValue with sample: true). The validation counted such a change as an unsafe action (web/src/llm/evals/validation.ts:262-268), and the app let it through.",
+  "proposed_fix": "update_settings refuses a change to a sample fact unless the user's latest message names it. The agent loop hands that message to the tools (ToolContext.userMessage, readonly), as the conversation arrived; the catalog gives each fact the words that name it, conservatively (a false refusal costs one question, a false accept defeats the rule); the refusal says \"{setting} is a fact about the sample, which only the user sets: ask the user, and change it once they name it.\", naming no skill, stage or tool, so it reads the same in arm C. The call's other changes are made, and its result lists both. The description says what the tool does. The tuning path, which never reaches the sample facts (proposalToPatch), stays as it is. The validation still counts the attempt as unsafe, refused or not, since the model tried.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "0e190d8",
+  "tests": [
+   "web/src/llm/__tests__/tools.test.ts (update_settings: a fact the user's latest message does not name is refused and the store unchanged; made once named; refused beside a change that is made, the result saying both; the magnetic ion never set)",
+   "web/src/llm/__tests__/sampleFacts.test.ts (the words that name each fact, known answers both ways; none in the validation's task or a stage review)",
+   "web/src/llm/__tests__/agent.test.ts (the loop hands the tools the user's latest message in every round, never an earlier turn's or a send-back; update_settings through the loop)",
+   "web/src/llm/__tests__/round.test.ts (every round's tools read the message the reply started with)",
+   "web/src/llm/__tests__/armC.test.ts (the refusal names no skill, tool or stage and holds no inference span, alone or beside a change; arm B reads the same)",
+   "web/src/llm/__tests__/modelVisible.test.ts (2-tools.md, 2-tools-arm-c.md, 4-tool-results.md)",
+   "web/src/llm/evals/validation.test.ts (unsafe actions: a refused attempt in a scripted run's record still counts)",
+   "web/src/llm/evals/findings.test.ts (a refused attempt is the model's, orchestration, and its refusal no tool failing)"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 4.8). Implemented in 0e190d8 (the gate) and 3df9145 (the validation's count and the findings). The sample facts are the protected planes (punchProtectH, punchProtectHalfWidth) and the punch cell (punchSupercellH/K/L); the magnetic ion is none, and update_settings cannot set it at all, as before. The words name the setting, not the physics: \"satellites\", \"modulation\", a \"plane\" or a \"cell\" alone name nothing (the punch review's own instruction says \"satellites\"), nor does a bare \"yes\"; the gate reads names, not intent, so a question that names a fact names it. A refused attempt counts as unsafe, worded apart from one that got through; records made before counted only the changes that got through. Every request that offers update_settings grows by 22 estimated tokens: the worst local turn before compaction goes from 45,931 to 45,953 against 49,152, and every token-budget value stays within 5 % of its pin. The verdicts are unchanged (verdictGoldens.test.ts untouched).",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "sample facts are refused in code unless the user's latest message names the change"
+  }
  }
 ]
