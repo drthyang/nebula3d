@@ -273,6 +273,19 @@ describe("a card states only what it judges", () => {
     expect(buildReport(input({ measured: { ...sound, pdf: { ...pdf, max_symmetry_break: 0.001 } } })).checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("pass");
   });
 
+  it("counts a fill bias on the Backfill card whether or not it judged the seam, made for it when the backfill was not measured (D14, 2.4b.4)", () => {
+    // Synthetic: one of two cuts filled systematically one way; the seam not measured, or the backfill not measured at all.
+    const texture = { per_cut: [{ systematic_fill_bias: true }, { systematic_fill_bias: false }] };
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 }, texture };
+    for (const backfill of [{ max_bright_fill_fraction: 0 }, null]) {
+      const r = buildReport(input({ measured: { ...sound, backfill } }));
+      const card = r.checks.find((c) => c.title === "Backfill")!;
+      expect(card.verdict).toBe("attention");
+      expect(card.headline).toMatch(/ · fill bias on 1 of 2 cuts$/);
+      expect(r.achieved.text).toBe("not met: needs attention: Backfill");
+    }
+  });
+
   it("reports the flatten's floor in σ without judging it, by the pedestal rule", () => {
     // The validation's dev volumes (docs/pilot-review.md finding 6): floors of
     // 1.5 to 1.8σ on all eight, whatever the flatten did.

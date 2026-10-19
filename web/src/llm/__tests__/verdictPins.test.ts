@@ -252,14 +252,14 @@ describe("the disagreements found beyond D1–D10, kept and named", () => {
     }
   });
 
-  it("D14: the report counts the fill bias only on a Backfill card that judged its seam; {{achieved}} names the backfill's texture", () => {
-    expect(D14_REPORT_FILL_BIAS_ON_A_JUDGED_SEAM_ONLY).toBe(true);
+  it("D14, unified (2.4b.4): the report counts the fill bias whether or not it judged the seam, as {{achieved}} names the backfill's texture", () => {
+    expect(D14_REPORT_FILL_BIAS_ON_A_JUDGED_SEAM_ONLY).toBe(false);
     for (const backfill of [null, { max_bright_fill_fraction: 0 }]) {
       const measured: Measured = { ...PASSING, backfill, texture: TEXTURE[1].m };
-      expect(verdicts({ report: measured }).checks.backfill).toBe(backfill ? "info" : undefined);
+      expect(verdicts({ report: measured }).checks.backfill).toBe("attention");
       expect(chatOf(measured)?.attention).toContain("the backfill's texture");
     }
-    // With the seam judged, the bias counts there.
+    // With the seam judged, the bias counts there, as before.
     expect(verdicts({ report: { ...PASSING, texture: TEXTURE[1].m } }).checks.backfill).toBe("attention");
   });
 
@@ -340,11 +340,9 @@ function replyOf(m: Measured): AgentStep[] {
 
 const chatOf = (m: Measured) => verdicts({ reply: replyOf(m) }).achieved;
 
-type Rule = "D14";
-
-/** The grid's measurements, one change from passing at a time, tagged with the rule that makes the two goals differ there. */
-function cases(): { id: string; m: Measured; differs?: Rule }[] {
-  const out: { id: string; m: Measured; differs?: Rule }[] = [{ id: "every check passes", m: PASSING }];
+/** The grid's measurements, one change from passing at a time. No named rule of the report's makes the two goals differ any more (D2, D9, D13, D14 unified). */
+function cases(): { id: string; m: Measured }[] {
+  const out: { id: string; m: Measured }[] = [{ id: "every check passes", m: PASSING }];
   for (const s of GRID_STAGES as GridStage[]) {
     for (const x of STAGE_VARIANTS[s]) out.push({ id: `${s} ${x.id}`, m: { ...PASSING, [s]: x.m } });
     out.push({ id: `no ${s}`, m: { ...PASSING, [s]: null } });
@@ -357,8 +355,8 @@ function cases(): { id: string; m: Measured; differs?: Rule }[] {
   out.push({ id: "no ΔPDF evaluation, the coverage too far by weight", m: { ...PASSING, pdf: null, coverage: COVERAGE[1].m } });
   out.push({ id: "no ΔPDF evaluation, the symmetry not kept", m: { ...PASSING, pdf: null, symmetry: SYMMETRY[1].m } });
   out.push({ id: "no ΔPDF, coverage or symmetry", m: { ...PASSING, pdf: null, coverage: null, symmetry: null } });
-  out.push({ id: "a fill bias, no backfill", m: { ...PASSING, backfill: null, texture: TEXTURE[1].m }, differs: "D14" });
-  out.push({ id: "a fill bias, the seam not judged", m: { ...PASSING, backfill: STAGE_VARIANTS.backfill[3].m, texture: TEXTURE[1].m }, differs: "D14" });
+  out.push({ id: "a fill bias, no backfill", m: { ...PASSING, backfill: null, texture: TEXTURE[1].m } });
+  out.push({ id: "a fill bias, the seam not judged", m: { ...PASSING, backfill: STAGE_VARIANTS.backfill[3].m, texture: TEXTURE[1].m } });
   out.push({ id: "a fill bias, the seam failing", m: { ...PASSING, backfill: STAGE_VARIANTS.backfill[2].m, texture: TEXTURE[1].m } });
   out.push({ id: "the evaluation's symmetry broken, no symmetry_check", m: { ...PASSING, pdf: STAGE_VARIANTS.pdf[8].m, symmetry: null } });
   out.push({ id: "nothing measured", m: {} });
@@ -367,12 +365,11 @@ function cases(): { id: string; m: Measured; differs?: Rule }[] {
 }
 
 describe("the chat's achieved and the report's, on the same measurements", () => {
-  it("agree, but where a named rule of the report's makes them differ", () => {
-    for (const { id, m, differs } of cases()) {
+  it("agree on every measurement", () => {
+    for (const { id, m } of cases()) {
       const chat = chatOf(m)?.achieved ?? null;
       const report = verdicts({ report: m }).achieved?.achieved ?? null;
-      if (differs) expect(report, `${id} (${differs})`).not.toBe(chat);
-      else expect(report, id).toBe(chat);
+      expect(report, id).toBe(chat);
     }
   });
 
