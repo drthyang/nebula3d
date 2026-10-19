@@ -1092,6 +1092,8 @@ def write_flatten_stages(root, settings=None):
     a uniform diffuse on a constant and a Q² pedestal, flattened as the
     pipeline's flatten stage writes it (constant only by default, so the Q²
     stays; its *settings* recorded).  Returns both volumes."""
+    import dataclasses
+
     from nebula3d.pipeline import FlattenParams, _write_flatten_settings, flatten
 
     settings = settings or FlattenParams()
@@ -1101,7 +1103,8 @@ def write_flatten_stages(root, settings=None):
     q = filled.q_magnitude()
     filled.data[...] = 0.5 + 0.03 * q ** 2 + 0.2 * rng.random(q.shape)
     filled.mask &= q < 4.5
-    flat = flatten(filled, settings)
+    # A copy: in low-memory mode the flatten subtracts in place over its input.
+    flat = flatten(dataclasses.replace(filled, data=filled.data.copy()), settings)
     for name in ("raw", "processed"):
         (root / name).mkdir(exist_ok=True)
     paths = pipeline_paths(root / "raw" / f"{STEM}.nxs", proc_dir=root / "processed")
@@ -1112,11 +1115,12 @@ def write_flatten_stages(root, settings=None):
     return filled, flat
 
 
-def test_volume_shell_floors(tmp_path):
+def test_volume_shell_floors(tmp_path, monkeypatch):
     """/shell-floors: the flattened stage's floors over the whole volume, its
     input's on the same shells (the flatten's own levels) and the level."""
     from nebula3d.preprocessing import flatten_radial_background, shell_floors
 
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # whatever ran before
     filled, flat = write_flatten_stages(tmp_path)
     vol_mod.clear_cache()
     client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
@@ -1153,7 +1157,7 @@ def test_volume_shell_floors(tmp_path):
     assert client.get("/api/volumes/nope.flattened/shell-floors").status_code == 404
 
 
-def test_volume_shell_floors_take_the_runs_own_settings(tmp_path):
+def test_volume_shell_floors_take_the_runs_own_settings(tmp_path, monkeypatch):
     """A flattened stage is measured with the settings its flatten recorded,
     here the 20th percentile, so the input's floors are that flatten's own
     levels; a setting asked for wins, and a stage without them takes the
@@ -1161,6 +1165,7 @@ def test_volume_shell_floors_take_the_runs_own_settings(tmp_path):
     from nebula3d.pipeline import FlattenParams
     from nebula3d.preprocessing import flatten_radial_background
 
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # whatever ran before
     run = FlattenParams(floor_percentile=20.0, q2_term=True, fit_q_range=(1.0, 4.0))
     filled, _flat = write_flatten_stages(tmp_path, run)
     vol_mod.clear_cache()

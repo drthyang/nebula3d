@@ -69,7 +69,7 @@ Validation
 **feature preservation / over-subtraction**.  The subtraction is a function of
 |Q| alone, so it cannot create or distort anisotropic structure (regression:
 ``test_radial_flatten.py``).  Whether it left a pedestal is read from the
-floors after it: :func:`nebula3d.preprocessing.shell_floors.shell_floors`
+floors after it: :func:`nebula3d.preprocessing.flatten_floors.shell_floors`
 measures them over the whole volume, on these shells (:func:`measured_q_range`,
 :func:`shell_edges`) and at this percentile.
 """

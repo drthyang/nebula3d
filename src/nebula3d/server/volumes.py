@@ -375,7 +375,7 @@ def volume_shell_floors(path: Path, before: Path | None = None, *, q_step: float
                         percentile: float | None = None,
                         min_count: int | None = None) -> dict:
     """The floor of every |Q| shell of the volume, over the whole volume
-    (:func:`~nebula3d.preprocessing.shell_floors.shell_floors`), with *before*
+    (:func:`~nebula3d.preprocessing.flatten_floors.shell_floors`), with *before*
     (the flatten's input) measured on the same shells; cached by both files'
     ``(path, mtime)`` and the settings asked for.
 
@@ -390,7 +390,7 @@ def volume_shell_floors(path: Path, before: Path | None = None, *, q_step: float
     of range.
     """
     from nebula3d.pipeline import read_flatten_settings
-    from nebula3d.preprocessing.shell_floors import (
+    from nebula3d.preprocessing.flatten_floors import (
         FLOOR_PERCENTILE,
         MIN_COUNT,
         Q_STEP,

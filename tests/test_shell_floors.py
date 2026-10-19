@@ -24,6 +24,14 @@ from nebula3d.visualization import extract_slice
 DTYPES = pytest.mark.parametrize("dtype", [np.float64, np.float32])
 
 
+@pytest.fixture(autouse=True)
+def _native(monkeypatch):
+    """Native mode unless a test asks for low memory: an earlier test's
+    ``webbridge.setup()`` leaves ``NEBULA3D_LOW_MEMORY=1`` set, under which
+    the flatten subtracts in place over the volume it is given."""
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)
+
+
 def _skewed(shape=(41, 45, 49), seed=0, dtype=np.float64):
     """A triclinic-ish volume: a Q² pedestal on a gamma-distributed diffuse,
     ties at 0 and at a fill value, NaNs, and the low-|Q| core and the box's
@@ -109,13 +117,55 @@ def test_hard_distributions_are_exact():
     data[(q > 1.0) & (q < 1.6)] = 4.0                                 # constant shells
     ties = (q > 3.0) & (rng.random(q.shape) < 0.6)
     data[ties] = 0.125                                                # most of a shell tied
-    data[(q > 0.5) & (q < 0.9)] *= 1e30                               # past float32's range
+    data[(q > 0.5) & (q < 0.9)] *= 1e45      # past float32's range: their keys are ±inf
     vol.data[...] = data
     r = shell_floors(vol, q_step=0.1)
     q1 = float(q.max())
     assert np.array_equal(r.floors, _reference(vol, r.q_edges, q1, 25.0, 20), equal_nan=True)
     assert np.array_equal(r.medians, _reference(vol, r.q_edges, q1, 50.0, 20), equal_nan=True)
     assert np.isfinite(r.floors).sum() > 30
+
+
+@DTYPES
+def test_every_path_of_the_select_gives_numpys_numbers(dtype, monkeypatch):
+    """Budgets so small that every path of the select runs: bins left for a
+    later pass past a pass's row and collect caps, bins narrowed down to a
+    single key and collected (float64 values float32 cannot tell apart, and
+    values past its range), bins of one value.  Still np.percentile's."""
+    import nebula3d.preprocessing.flatten_floors as ff
+
+    monkeypatch.setattr(ff, "_NATIVE", ff._Budget(slab_voxels=4096, collect=300,
+                                                  first_bins=256, rows=8, batch=512))
+    monkeypatch.setattr(ff, "_COLLECT_BIN", 16)
+    monkeypatch.setattr(ff, "_MAX_PASSES", 400)
+    paths = {"one_key": 0, "narrowed": 0, "deferred": 0}
+    plan = ff._plan
+
+    def counted(frontier, exact, budget, values):
+        narrow, collect, later = plan(frontier, exact, budget, values)
+        paths["one_key"] += sum(b.bits == 0 for b in collect)
+        paths["narrowed"] += len(narrow)
+        paths["deferred"] += len(later)
+        return narrow, collect, later
+
+    monkeypatch.setattr(ff, "_plan", counted)
+    rng = np.random.default_rng(9)
+    vol = _skewed(shape=(25, 27, 29), seed=8, dtype=dtype)
+    q = vol.q_magnitude()
+    if dtype == np.float64:
+        near_one = (q > 2.0) & (q < 2.6)
+        vol.data[near_one] = 1.0 + 1e-12 * rng.random(int(near_one.sum()))  # one float32 key
+        huge = (q > 3.0) & (q < 3.3)
+        vol.data[huge] = 1e39 * (1 + rng.random(int(huge.sum())))           # past float32
+    vol.data[(q > 1.2) & (q < 1.5)] = 2.0                                     # one value
+    r = shell_floors(vol, q_step=0.2, min_count=1)
+    valid = vol.mask & np.isfinite(vol.data)
+    q1 = float(q[valid].max())
+    assert np.array_equal(r.floors, _reference(vol, r.q_edges, q1, 25.0, 1), equal_nan=True)
+    assert np.array_equal(r.medians, _reference(vol, r.q_edges, q1, 50.0, 1), equal_nan=True)
+    assert r.level == np.percentile(vol.data[valid].astype(np.float64), 50.0)
+    assert paths["narrowed"] and paths["deferred"]
+    assert paths["one_key"] or dtype == np.float32  # float32: one key is one value
 
 
 def test_level_is_the_median_over_voxels_measured_in_both():

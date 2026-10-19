@@ -19,6 +19,7 @@ components remain public for comparison and specialized workflows.
 """
 
 from nebula3d.preprocessing.empty_subtraction import EmptySubtractor
+from nebula3d.preprocessing.flatten_floors import ShellFloors, shell_floors
 from nebula3d.preprocessing.global_rings import (
     AluminumLine,
     GlobalRingConfig,
@@ -66,7 +67,6 @@ from nebula3d.preprocessing.ring_isotropy import (
 )
 from nebula3d.preprocessing.ring_model import FittedRingModel, PatchedRingModel, RingParams
 from nebula3d.preprocessing.sampling import azimuthal_sampling_mask, trim_coverage_edge
-from nebula3d.preprocessing.shell_floors import ShellFloors, shell_floors
 
 __all__ = [
     # Primary pipeline

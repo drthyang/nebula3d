@@ -147,7 +147,7 @@ class RingIsotropyOut(BaseModel):
 
 class ShellFloorsOut(BaseModel):
     """The floor of every |Q| shell over the whole volume, and of the volume
-    the flatten was given (see preprocessing.shell_floors).  One entry per
+    the flatten was given (see preprocessing.flatten_floors).  One entry per
     shell in each list; ``floors``, ``centres``, ``counts`` and ``totals`` are
     the Pilot's ``radialFloorShells`` fields."""
     id: str

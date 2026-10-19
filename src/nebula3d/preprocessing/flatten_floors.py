@@ -45,13 +45,13 @@ needs (the two ranks either side of the floor and of the median, in every
 shell) by a radix select on sort keys that order as the values do:
 
 1. the first pass counts each shell's measured voxels and histograms the top
-   10 to 12 bits of their keys (a quarter to an eighth of an octave of value
-   per bin), which names the bin each wanted rank falls in;
+   bits of their keys (an eighth to a half of an octave of value per bin with
+   a few hundred shells), which names the bin each wanted rank falls in;
 2. a later pass histograms the next ten bits of the voxels in those bins only
    (a thousandth of a bin), or, once a bin holds few enough voxels (or a
    single key), collects them;
-3. the collected voxels are sorted, some tens per rank on measured data, and
-   give the ranks exactly.
+3. the collected voxels (16 384 a bin at most, and half a million a pass in
+   low-memory mode) are sorted and give the ranks exactly.
 
 A bin whose voxels all hold one value is resolved without narrowing further.
 Three passes are typical.  What stays resident is the histograms (a few MB),
@@ -405,7 +405,9 @@ class _Bin:
 
 class _Bincount:
     """``np.bincount`` summed over many index arrays, a batch at a time (one
-    ``minlength``-long count per batch, not one per slab)."""
+    ``minlength``-long count per batch, not one per slab).  The indices are
+    cast to ``intp`` first: int32 in the browser's 32-bit WASM build, where
+    ``np.bincount`` need not take int64."""
 
     def __init__(self, n_bins: int, batch: int) -> None:
         self.total = np.zeros(n_bins, dtype=np.int64)
@@ -421,7 +423,8 @@ class _Bincount:
 
     def flush(self) -> NDArray[np.int64]:
         if self._parts:
-            self.total += np.bincount(np.concatenate(self._parts), minlength=self.total.size)
+            index = np.concatenate(self._parts).astype(np.intp, copy=False)
+            self.total += np.bincount(index, minlength=self.total.size)
             self._parts, self._size = [], 0
         return self.total
 
@@ -558,7 +561,7 @@ def _pass(stream: Stream, n_groups: int, first: int, narrow: list[_Bin],
     first_key = np.array([b.start for b in bins], dtype=np.uint32)
     narrow_ids = {id(b): i for i, b in enumerate(narrow)}
     collect_ids = {id(b): i for i, b in enumerate(collect)}
-    row = np.array([narrow_ids.get(id(b), -1) for b in bins], dtype=np.int64)
+    row = np.array([narrow_ids.get(id(b), -1) for b in bins], dtype=np.intp)
     slot = np.array([collect_ids.get(id(b), -1) for b in bins], dtype=np.int32)
     digits = [min(_NEXT_BITS, b.bits) for b in narrow]
     down = np.array([b.bits - min(_NEXT_BITS, b.bits) for b in bins], dtype=np.uint32)

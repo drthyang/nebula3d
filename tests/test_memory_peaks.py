@@ -189,6 +189,7 @@ def test_shell_floors_hold_no_volume_sized_array(monkeypatch):
         vol = _topaz_like(shape=(n, n, n))
         return vol, dataclasses.replace(vol, data=vol.data - np.float32(0.5))
 
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # native, whatever ran before
     small, small_after = pair(128)
     big, big_after = pair(192)
     native = shell_floors(big_after, before=big)
