@@ -124,18 +124,20 @@ export const symmetry_check: ChatTool = {
     const tested = operationsOf(declaredOps, label, { a, b }, xy.header.axes_angle ?? 90);
     const sym = tested ? operationSymmetry(sections, tested.ops, steps) : null;
     const ops = sym?.ops.length ? sym.ops : null;
-    const outcome = judge("symmetry", { ops, declared, untested: sym?.not_tested.length ?? 0 }, { skills: skillsOn(ctx) });
+    // With no operation tested there is no evidence: the verdict says why, and judges nothing.
+    const why = !tested
+      ? "no operations are declared, and the cell is neither hexagonal nor orthogonal"
+      : !sym
+        ? "the sections are not centred on the origin"
+        : `none of the ${sym.not_tested.length} entries could be tested on the sections (not_tested says why)`;
+    const outcome = judge("symmetry", { ops, declared, untested: sym?.not_tested.length ?? 0, why }, { skills: skillsOn(ctx) });
     if (!sym || !ops) {
       return {
         result: {
-          note: !tested
-            ? "nothing to test: no operations are declared, and the cell is neither hexagonal nor orthogonal"
-            : !sym
-              ? "nothing to test: the sections are not centred on the origin"
-              : "nothing to test: no operation could be tested on the sections (not_tested says why)",
+          verdict: outcome.words,
           ...(sym?.not_tested.length ? { not_tested: sym.not_tested } : {}),
         },
-        summary: "nothing to test",
+        summary: "not judged: nothing to test",
         outcomes: [outcome],
       };
     }

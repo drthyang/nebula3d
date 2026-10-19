@@ -343,6 +343,26 @@ describe("where an operation is tested", () => {
     expect(GRID_MATCH).toBe(0.05);
   });
 
+  it("judges nothing where it could test nothing, and says why: no evidence never passes", async () => {
+    const notJudged = async (why: string) => {
+      const r = await callTool(ctx, "symmetry_check", {});
+      const out = JSON.parse(r.text) as { verdict: string; not_tested?: unknown[] };
+      expect(out.verdict).toBe(`not judged: ${why}`);
+      expect(r.outcomes).toMatchObject([{ check: "symmetry", kind: "info", reasons: ["nothing to judge"], words: out.verdict }]);
+      return out;
+    };
+    // Every operation untested: the three-fold alone, on a grid whose steps differ along every axis it mixes.
+    serve(CUBIC, cubicBase(), { symmetry: "3", ops: [HKL.threeCubic] }, { n: [41, 37, 31], half: [1, 1, 1] });
+    const untested = await notJudged("none of the 2 entries could be tested on the sections (not_tested says why)");
+    expect(untested.not_tested).toHaveLength(2);
+    // Sections with no voxel at the origin: 40 points over ±1 cell.
+    serve(CUBIC, cubicBase(), { symmetry: "m-3m", ops: DECLARED["m-3m"] }, { n: [40, 40, 40], half: [1, 1, 1] });
+    await notJudged("the sections are not centred on the origin");
+    // No operations declared, and a cell with no in-plane operations to fall back on.
+    serve({ a: 4, c: 6, gamma: 105 }, cubicBase(), { symmetry: "2/m" });
+    await notJudged("no operations are declared, and the cell is neither hexagonal nor orthogonal");
+  });
+
   it("with no operations declared, tests the cell's in-plane ones, off the x–y plane too, and judges them only where a symmetry is named", async () => {
     serve(HEXAGONAL, hexagonalBase(), { symmetry: "6/mmm" });
     const named = await check();

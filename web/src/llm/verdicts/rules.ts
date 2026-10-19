@@ -116,6 +116,7 @@ export interface SymmetryMeasurements {
   ops: readonly { op: string; rms_difference: number }[] | null;
   declared: string | null | undefined; // null or "": none declared; undefined: the file was not read
   untested?: number;
+  why?: string; // with no operation tested, why none could be
 }
 
 /** What each check's rule judges. */
@@ -469,7 +470,8 @@ const NOT_DECLARED = (asymmetry: unknown): Tagged =>
 
 const symmetry: CheckRule<SymmetryMeasurements> = {
   judge: (m) => {
-    if (!m.ops) return { ...nothing(), words: null };
+    // No operation tested is no evidence: not judged, and why, never a pass.
+    if (!m.ops?.length) return { ...nothing(), words: `not judged: ${m.why ?? "no operation could be tested on the sections"}` };
     // A file that declares no symmetry was not symmetrised: the sections'
     // asymmetry is the data's own, and no stage broke anything.
     if (m.declared === null || m.declared === "") return { kind: "info", reasons: ["not declared"], words: NOT_DECLARED(Math.max(...m.ops.map((o) => o.rms_difference))) };

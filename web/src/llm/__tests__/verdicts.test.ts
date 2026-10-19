@@ -231,7 +231,11 @@ describe("judge: the checks on the result", () => {
     ["a file read, no symmetry declared", { ops: ops(0.02), declared: null }, "info", ["not declared"], "not judged: the file declares no symmetry, so the sections' asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
     ["an empty declaration", { ops: ops(0.02), declared: "" }, "info", ["not declared"], "not judged: the file declares no symmetry, so the sections' asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
     ["the file not read: judged", { ops: ops(0.02), declared: undefined }, "attention", ["symmetry broken"], "not kept: six-fold ∥ c (60°) (0.02); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
-    ["no operation to test", { ops: null, declared: "6/mmm" }, "info", ["nothing to judge"], null],
+    // No operation tested is no evidence: not judged, and why, never a pass (P4.3).
+    ["no operation to test", { ops: null, declared: "6/mmm", why: "the sections are not centred on the origin" }, "info", ["nothing to judge"], "not judged: the sections are not centred on the origin"],
+    ["every operation untested", { ops: [], declared: "m-3m", untested: 24, why: "none of the 24 entries could be tested on the sections (not_tested says why)" }, "info", ["nothing to judge"], "not judged: none of the 24 entries could be tested on the sections (not_tested says why)"],
+    ["no operation to test, and no reason given", { ops: null, declared: "6/mmm" }, "info", ["nothing to judge"], "not judged: no operation could be tested on the sections"],
+    ["no operation to test, nothing declared", { ops: null, declared: null, why: "no operations are declared, and the cell is neither hexagonal nor orthogonal" }, "info", ["nothing to judge"], "not judged: no operations are declared, and the cell is neither hexagonal nor orthogonal"],
   ];
   for (const [why, m, kind, reasons, words] of SYMMETRY) {
     it(`symmetry: ${why}`, () => {
@@ -239,9 +243,15 @@ describe("judge: the checks on the result", () => {
     });
     it(`symmetry: ${why}, the same verdicts as a sidecar and as words`, () => {
       const o = judge("symmetry", m as never);
-      roundTrip("symmetry_check", m.ops === null ? { note: "nothing to test: the sections are not centred on the origin" } : { ops: m.ops, symmetry_declared: m.declared === undefined ? null : Boolean(m.declared), verdict: o.words }, [o]);
+      const ops = m.ops as unknown[] | null;
+      roundTrip("symmetry_check", !ops?.length ? { verdict: o.words } : { ops, symmetry_declared: m.declared === undefined ? null : Boolean(m.declared), verdict: o.words }, [o]);
     });
   }
+  it("symmetry: a recording of before, a note and no verdict, judges nothing", () => {
+    roundTrip("symmetry_check", { note: "no in-plane symmetry to test: the cell is neither hexagonal nor orthogonal, or the section is not centred on the origin" }, [
+      { check: "symmetry", kind: "info", reasons: ["nothing to judge"], dataProblems: [], words: null },
+    ]);
+  });
 
   it("texture: a cut whose fill is biased one way needs attention; no cut, nothing to judge", () => {
     const cut = (bias: boolean) => ({ cut: "H–K plane at L = 0", systematic_fill_bias: bias });
