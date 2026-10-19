@@ -18,6 +18,10 @@ lists every case, so it needs one too; the web harness's copy is written by
 
     python -m nebula3d.validation manifest --report \
         > web/src/llm/evals/fixtures/validation-cases.json
+
+Arm A on the test split writes its results into a held-out folder only (``--out``
+with a ``holdout`` folder in its path, docs/evals/validation/holdout/ here), and
+prints how many cases pass, never the cases.
 """
 
 from __future__ import annotations
@@ -169,11 +173,24 @@ def cmd_score(args: argparse.Namespace) -> None:
     print(out)
 
 
+#: Where arm A's results on the test split may go: a held-out folder, which no one
+#: opens (docs/evals/validation/holdout/ in this repo).
+HELD_OUT_FOLDER = "holdout"
+
+
 def cmd_arm_a(args: argparse.Namespace) -> None:
     from .arm_a import run_arm_a
-    from .report import arm_a_table
+    from .report import arm_a_table, fails
 
     split = _split(args)
+    # The test split's results go into a held-out folder only, and are never printed:
+    # whoever runs it reads the count, not the cases.
+    if split == "test" and not (args.out and HELD_OUT_FOLDER in Path(args.out).parts):
+        sys.exit(
+            "arm A on the test split writes its results into a held-out folder only, and "
+            f"prints none: pass --out with a '{HELD_OUT_FOLDER}' folder in its path, e.g. "
+            "docs/evals/validation/holdout/arm-a-test.json"
+        )
     root = Path(args.root) if args.root else Path(tempfile.mkdtemp(prefix="nebula-arm-a-"))
     results = run_arm_a(cases(split, report=args.report), root, n=args.n, runs=args.runs)
     if args.out:
@@ -185,6 +202,13 @@ def cmd_arm_a(args: argparse.Namespace) -> None:
             )
             + "\n"
         )
+    if split == "test":
+        passed = sum(not fails(r) for r in results)
+        print(
+            f"arm A on the test split: {passed} of {len(results)} cases pass; "
+            f"the results are in {args.out}"
+        )
+        return
     print(arm_a_table(results))
 
 

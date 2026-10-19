@@ -276,18 +276,18 @@ HOLDOUT_SCANNED = (
     "*.md",
 )
 #: Where a test case may be named: the module that defines the test split (the rest
-#: of the validation package, the dev cases' module included, may not), the
-#: validation's records of its runs (arm A's reported results among them), and the
-#: manifest the web harness grades answers against (validation.ts reads every case
-#: from it, by design). The review's findings and decisions are read: they are what
-#: the tools, skills and prompts are changed by.
+#: of the validation package, the dev cases' module included, may not), the held-out
+#: records the validation reports the test split's runs in (arm A's results), which no
+#: one opens either, and the manifest the web harness grades answers against
+#: (validation.ts reads every case from it, by design). Every other doc is read, the
+#: review's findings and decisions and docs/evals.md included.
 HOLDOUT_ALLOWED = re.compile(
     r"^src/nebula3d/validation/holdout/"
-    r"|^docs/evals/validation/(?!review-findings\.json$)"
+    r"|^docs/evals/validation/holdout/"
     r"|^web/src/llm/evals/fixtures/validation-cases\.json$"
 )
-#: The doc sections that report the test split's results, by their heading.
-HOLDOUT_SECTIONS = {"docs/evals.md": "### Arm A"}
+#: Arm A's reported results on the test split, in the held-out records.
+ARM_A_TEST = REPO / "docs/evals/validation/holdout/arm-a-test.json"
 #: Never read: other people's packages, and what tools generate from the files
 #: that are read (bytecode, caches, the metadata ``pip install -e`` writes into
 #: src/). A test's __snapshots__ are read: a test fixes what they hold.
@@ -322,15 +322,23 @@ _SIZES = [
 ]
 
 
+#: Unicode's vulgar fractions, by their value.
+_VULGAR = {1 / 4: "¼", 1 / 3: "⅓", 1 / 2: "½", 2 / 3: "⅔", 3 / 4: "¾"}
+
+
 def _num(x: float) -> str:
-    """The number *x* however it is written (0.5, .5, 0.50 or 1/2; 1 or 1.0), and
-    never as part of a longer one."""
+    """The number *x* however it is written (0.5, .5, 0.50, 1/2 or ½; 1.5, 3/2 or
+    1½; 1 or 1.0), and never as part of a longer one."""
     x = float(x)
     whole, _, frac = f"{abs(x):.10f}".rstrip("0").partition(".")
     if frac:
         forms = [("0?" if whole == "0" else whole) + rf"\.{frac}0*"]
         if (2 * abs(x)).is_integer():
             forms.append(f"{round(2 * abs(x))}/2")
+        part = abs(x) % 1
+        for value, glyph in _VULGAR.items():
+            if abs(part - value) < 1e-6:
+                forms.append(("" if abs(x) < 1 else str(int(abs(x)))) + glyph)
     else:
         forms = [rf"{whole}(?:\.0*)?"]
     sign = "[-−]" if x < 0 else r"(?<![-−])\+?"
@@ -384,18 +392,38 @@ def holdout_needles(test_cases: Sequence[Case]) -> list[tuple[str, list[re.Patte
     return [(kind, patterns) for (kind, _), patterns in out.items()]
 
 
-def _without_section(text: str, heading: str) -> str:
-    """*text* with the section under *heading* blanked, to the next heading of its
-    level or above (a heading in a code block does not count)."""
-    level = len(heading) - len(heading.lstrip("#"))
-    out, inside, fenced = [], False, False
-    for line in text.splitlines(keepends=True):
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-        elif not fenced and re.match(rf"#{{1,{level}}} ", line):
-            inside = line.startswith(heading)
-        out.append("\n" if inside else line)
-    return "".join(out)
+def holdout_score_needles(
+    records: Sequence[dict[str, Any]],
+) -> list[tuple[str, list[re.Pattern[str]]]]:
+    """Arm A's scores on each test case, as its table writes them: every judged
+    planted correlation's amplitude share to two decimals before "×", with the
+    case's pedestal span to four, all in the one file. A share or a span alone is
+    a small number that appears everywhere."""
+    out = []
+    for record in records:
+        score = record["runs"][0]["score"]
+        shares = [
+            f["amplitude_ratio"]
+            for f in score["features"]
+            if f.get("judged") and f.get("amplitude_ratio") is not None
+        ]
+        patterns = [rf"(?<![\d.]){share:.2f}\s*×" for share in shares]
+        if score.get("pedestal_span") is not None:
+            patterns.append(rf"(?<![\d.]){score['pedestal_span']:.4f}(?!\d)")
+        if len(patterns) >= 2:
+            out.append(("a test case's arm A scores", [re.compile(p) for p in patterns]))
+    return out
+
+
+def _arm_a_test() -> list[dict[str, Any]]:
+    """Arm A's records on the test split, read from the held-out records, never shown."""
+    return json.loads(ARM_A_TEST.read_text())["cases"]
+
+
+def _held_out_needles() -> list[tuple[str, list[re.Pattern[str]]]]:
+    """Every needle of the real test split, its cases' and arm A's scores. Called
+    inline, never held in a local: a failure, even with pytest's -l, shows kinds."""
+    return holdout_needles(cases("test")) + holdout_score_needles(_arm_a_test())
 
 
 def _holdout_files(root: Path) -> Iterator[tuple[str, Path]]:
@@ -423,17 +451,14 @@ def holdout_scan(root: Path, needles: list[tuple[str, list[re.Pattern[str]]]]) -
         if HOLDOUT_ALLOWED.search(rel):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        if rel in HOLDOUT_SECTIONS:
-            text = _without_section(text, HOLDOUT_SECTIONS[rel])
         hits.update(f"{rel}: {kind}" for kind, pats in needles if all(p.search(text) for p in pats))
     return sorted(hits)
 
 
 @needs_holdout
 def test_nothing_tuned_names_a_test_case():
-    """No file the scan reads (HOLDOUT_SCANNED, less HOLDOUT_ALLOWED and the
-    HOLDOUT_SECTIONS) names a held-out case. A file names one when it holds, for
-    any test case:
+    """No file the scan reads (HOLDOUT_SCANNED, less HOLDOUT_ALLOWED) names a
+    held-out case. A file names one when it holds, for any test case:
 
     - its id or its opaque label, as a whole token;
     - its crystal's seed after the word seed (or random_state, default_rng): the
@@ -447,20 +472,28 @@ def test_nothing_tuned_names_a_test_case():
       or angle), the origin offset (written as a vector), the coverage edge (Å⁻¹,
       q_cut, edge) and fraction (fraction), every ring's |Q| (Å⁻¹ or ring) in the
       one file, the shell's |Q| (Å⁻¹, shell or q) and the Q² background's
-      coefficient (·Q², q2 or b).
+      coefficient (·Q², q2 or b);
+    - arm A's scores on it, as the held-out record's table writes them: its
+      planted correlations' amplitude shares (×) with its pedestal span.
 
-    A number matches however it is written (0.5, .5, 0.50 or 1/2; 1 or 1.0), but
-    never inside a longer one, and a bare number never: a fault's size is a small
-    number that appears everywhere without its unit. Not matched at all, for that
-    reason: the cell, the UB's axis, the amplitudes, and the shell's width, lobes
-    and power. The failure names the file and the kind, never the value (nor the
-    text of a doc whose section heading is missing: that section holds test results).
+    A number matches however it is written (0.5, .5, 0.50, 1/2 or ½; 1 or 1.0),
+    but never inside a longer one, and a bare number never: a fault's size is a
+    small number that appears everywhere without its unit. Not matched at all, for
+    that reason: the cell, the UB's axis, the amplitudes, and the shell's width,
+    lobes and power. The failure names the file and the kind, never the value.
     """
-    for doc, heading in HOLDOUT_SECTIONS.items():
-        found = re.search(rf"^{re.escape(heading)}", (REPO / doc).read_text(), re.M) is not None
-        assert found, f"{doc} has no {heading!r} section"
-    hits = holdout_scan(REPO, holdout_needles(cases("test")))
+    hits = holdout_scan(REPO, _held_out_needles())
     assert hits == [], "names a held-out test case (file: kind):\n" + "\n".join(hits)
+
+
+def test_arm_a_on_the_test_split_writes_into_a_held_out_folder_only(tmp_path, capsys):
+    # Before anything runs: no --out, or one outside a held-out folder, is refused,
+    # and the refusal names no case.
+    for out in ([], ["--out", str(tmp_path / "arm-a-test.json")]):
+        with pytest.raises(SystemExit, match="held-out folder"):
+            main(["arm-a", "--split", "test", "--report", *out])
+    assert not (tmp_path / "arm-a-test.json").exists()
+    assert "test-" not in capsys.readouterr().out
 
 
 def test_the_holdout_scan_finds_a_planted_test_case(tmp_path):
@@ -495,6 +528,11 @@ def test_the_holdout_scan_finds_a_planted_test_case(tmp_path):
             "A peak at (0.25, 1.75, 1/2), a dip at [1.25 .25 0].",
             "crystal's planted vectors",
         ),
+        "docs/orbits.md": ("A peak at ⟨¼ 1¾ ½⟩−, a dip at ⟨1¼ ¼ 0⟩+.", "crystal's planted vectors"),
+        "docs/scores.md": (
+            "| ⟨…⟩ 1.07× 0.01 Å; ⟨…⟩ 0.88× 0.00 Å | 0.0311 |",
+            "case's arm A scores",
+        ),
         "tests/test_pairs.py": (f"# the pair {length} Å apart", "planted vector's length"),
         ".claude/skills/ub/SKILL.md": ("The UB is turned by 1.37°.", "case's UB angle"),
         "examples/origin.py": ("offset = (0.070, -0.015, 0)", "case's origin offset"),
@@ -502,16 +540,14 @@ def test_the_holdout_scan_finds_a_planted_test_case(tmp_path):
         "tests/test_cover.py": ('fault = {"fraction": .55}', "case's coverage fraction"),
         "web/scripts/rings.mjs": ("// rings at 1.91 and 3.42 Å^-1", "case's ring positions"),
         "README.md": ("A shell at |Q| = 2.71.", "case's shell |Q|"),
-        "docs/evals.md": (  # the Arm A section is not read; the next one is
-            "# Evals\n\n### Arm A: results\n\ntest-fake-ub\n\n## Next\n\nb = 0.0123\n",
-            "case's Q² background",
-        ),
+        "docs/evals.md": ("# Evals\n\n### Arm A\n\nb = 0.0123\n", "case's Q² background"),
+        "docs/evals/validation/table.md": ("| `test-fake-ub` | passes |", "case's id"),
         "web/src/__snapshots__/run.snap": ("exports[`run`] = `test-fake-shell`;", "case's id"),
         "src/nebula3d/validation/cases.py": ("# test-fake-ub is held out", "case's id"),
     }
     not_named = {
         "src/nebula3d/validation/holdout/heldout_cases.py": "test-fake-ub",
-        "docs/evals/validation/table.md": "test-fake-ub",
+        "docs/evals/validation/holdout/arm-a-test.md": "test-fake-ub ⟨¼ 1¾ ½⟩ 1.07× 0.88× 0.0311",
         "web/src/llm/evals/fixtures/validation-cases.json": "test-fake-ub",
         "data/notes.md": "test-fake-ub",
         "web/src/node_modules/pkg/index.js": "test-fake-ub",
@@ -519,11 +555,30 @@ def test_the_holdout_scan_finds_a_planted_test_case(tmp_path):
         "tests/test_one_vector.py": "PLANTED = [((0.25, 1.75, 0.5), 1.0)]",
         "web/src/bare.ts": "const n = [4321, 1.37, 0.55, 2.71, 0.0123];",
         "tests/test_longer.py": "seed = 43210  # angle = 1.375, q = 2.715",
+        "docs/partial.md": "a share of 1.07× and a span of 0.0311",
     }
     for rel, text in [*((r, t) for r, (t, _) in named.items()), *not_named.items()]:
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).write_text(text, encoding="utf-8")
-    needles = holdout_needles(fake)
+    scored = {"judged": True}
+    records = [
+        {
+            "case": ub.id,
+            "runs": [
+                {
+                    "score": {
+                        "features": [
+                            {**scored, "amplitude_ratio": 1.0712},
+                            {**scored, "amplitude_ratio": 0.8833},
+                            {"judged": False, "amplitude_ratio": None},
+                        ],
+                        "pedestal_span": 0.0311,
+                    }
+                }
+            ],
+        }
+    ]
+    needles = holdout_needles(fake) + holdout_score_needles(records)
     assert {f"a test {k}" for _, k in named.values()} == {kind for kind, _ in needles}
     expected = sorted(f"{rel}: a test {k}" for rel, (_, k) in named.items())
     assert holdout_scan(tmp_path, needles) == expected
@@ -538,14 +593,20 @@ def test_the_holdout_scan_finds_the_test_cases_out_of_place(tmp_path):
     for src, dst in [
         ("web/src/llm/evals/fixtures/validation-cases.json", "docs/manifest.json"),
         ("src/nebula3d/validation/holdout/heldout_cases.py", "examples/cases.py"),
+        ("docs/evals/validation/holdout/arm-a-test.md", "docs/results.md"),
     ]:
         (tmp_path / dst).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / src, tmp_path / dst)
-    hits = holdout_scan(tmp_path, holdout_needles(cases("test")))
+    hits = holdout_scan(tmp_path, _held_out_needles())
     kinds = {kind for kind, _ in holdout_needles(cases("test"))}
     in_manifest = {h.split(": ", 1)[1] for h in hits if h.startswith("docs/manifest.json: ")}
     assert in_manifest == kinds - {"a test crystal's seed"}
     assert "examples/cases.py: a test crystal's seed" in hits
+    # Arm A's held-out table, out of its folder: its ids, its orbits and its scores.
+    in_results = {h.split(": ", 1)[1] for h in hits if h.startswith("docs/results.md: ")}
+    table = {"a test case's id", "a test crystal's planted vectors", "a test case's arm A scores"}
+    missed = sorted(table - in_results)
+    assert not missed, f"the held-out arm A table, copied to docs/, is not found by: {missed}"
 
 
 MANIFEST = REPO / "web/src/llm/evals/fixtures/validation-cases.json"
@@ -1027,11 +1088,6 @@ def test_a_failure_shows_nothing_of_a_held_out_case(monkeypatch, tmp_path):
     text = _failure(test_the_web_harness_reads_the_current_cases)
     assert "the dev case dev-fake-ub" in text and "test split's entries" in text
     assert _fake_shown(text, fake) == [] and "1.38" not in text
-
-    # A doc whose results section has lost its heading: the heading, not the doc's text.
-    monkeypatch.setattr(this, "HOLDOUT_SECTIONS", {"docs/evals.md": "### No such section"})
-    text = _failure(test_nothing_tuned_names_a_test_case)
-    assert "has no '### No such section' section" in text and "Arm A" not in text
 
     # Arm D on a held-out case: its files named by the masked name, a failure by its
     # criteria, an error by its kind.
