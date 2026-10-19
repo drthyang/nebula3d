@@ -37,11 +37,11 @@
 //   MIN_REPLY).
 //
 // A local model's request past SOFT_BUDGET has its older results shortened
-// (shorten, readings/), all but the newest KEEP_FULL, so its size depends on what was
-// read last: the skills read first, last, and in the method's order (each
-// before the checks of its topic) are measured. A model loaded with a window
-// too small for a request gets its results shortened down to the newest one
-// (window.ts, agent.ts): measured on LM Studio loaded with 32k.
+// (shorten, readings/), all but the newest KEEP_FULL, so its size depends on
+// what was read last: the skills read first, last, and in the method's order
+// (each before the checks of its topic) are measured. A model loaded with a
+// window too small for a request gets its results shortened down to the
+// newest one (window.ts, agent.ts): measured on LM Studio loaded with 32k.
 //
 // Measurement only: no prompt, skill, tool description or loop setting is
 // changed here. The pins hold the current sizes within ±5 %: a change that
@@ -56,7 +56,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { KEEP_FULL, runAgent, SOFT_BUDGET } from "../agent";
-import { isCompacted } from "../readings/compact";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
@@ -71,6 +70,7 @@ import {
   REPLY_RESERVE,
   resetTokenState,
 } from "../provider/tokens";
+import { isCompacted } from "../readings/compact";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, readSkill, REFERENCE_MAX_CHARS } from "../skills";
 import { CHAT_TOOLS } from "../tools";
