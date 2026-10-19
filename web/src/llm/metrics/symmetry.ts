@@ -293,12 +293,11 @@ interface Prepared {
   ny: number;
 }
 
-/** The section's value at the voxel offset (d0, d1, d2) from the origin, or undefined where it does not hold that voxel. */
-function valueAt(s: Prepared, d0: number, d1: number, d2: number): number | undefined {
-  const along = (axis: number) => (axis === 0 ? d0 : axis === 1 ? d1 : d2);
-  if (along(s.k) !== s.section.at) return undefined;
-  const ix = s.ox + along(s.p);
-  const iy = s.oy + along(s.q);
+/** The section's value at the voxel offset `e` from the origin, or undefined where it does not hold that voxel. */
+function valueAt(s: Prepared, e: readonly number[]): number | undefined {
+  if (e[s.k] !== s.section.at) return undefined;
+  const ix = s.ox + e[s.p];
+  const iy = s.oy + e[s.q];
   if (ix < 0 || ix >= s.nx || iy < 0 || iy >= s.ny) return undefined;
   return s.section.slice.data[iy * s.nx + ix];
 }
@@ -326,7 +325,9 @@ const voxelKey = (d0: number, d1: number, d2: number): number => ((d0 + 32768) *
  */
 function compare(m: Mat3, from: Prepared, targets: readonly Prepared[], tally: Tally, seen: Set<number> | null): void {
   const { data } = from.section.slice;
+  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = m;
   const d = [0, 0, 0];
+  const e = [0, 0, 0];
   d[from.k] = from.section.at;
   for (let iy = 0; iy < from.ny; iy++) {
     d[from.q] = iy - from.oy;
@@ -334,13 +335,13 @@ function compare(m: Mat3, from: Prepared, targets: readonly Prepared[], tally: T
       const v = data[iy * from.nx + ix];
       if (!Number.isFinite(v)) continue;
       d[from.p] = ix - from.ox;
-      const e0 = m[0][0] * d[0] + m[0][1] * d[1] + m[0][2] * d[2];
-      const e1 = m[1][0] * d[0] + m[1][1] * d[1] + m[1][2] * d[2];
-      const e2 = m[2][0] * d[0] + m[2][1] * d[1] + m[2][2] * d[2];
-      if (e0 === d[0] && e1 === d[1] && e2 === d[2]) continue;
+      e[0] = m00 * d[0] + m01 * d[1] + m02 * d[2];
+      e[1] = m10 * d[0] + m11 * d[1] + m12 * d[2];
+      e[2] = m20 * d[0] + m21 * d[1] + m22 * d[2];
+      if (e[0] === d[0] && e[1] === d[1] && e[2] === d[2]) continue;
       let w: number | undefined;
       for (const t of targets) {
-        w = valueAt(t, e0, e1, e2);
+        w = valueAt(t, e);
         if (w !== undefined) break;
       }
       if (w === undefined || !Number.isFinite(w)) continue;
