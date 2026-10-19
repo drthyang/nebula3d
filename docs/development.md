@@ -142,11 +142,11 @@ NEBULA_PYTHON=/path/to/python npx vitest --project replay
 ```
 
 The dev cases are built on an 81³ grid (every Bragg node on a voxel; each
-case's default run takes about a second). `NEBULA_DEV_N=161` builds them on
-the validation's own 161³ grid, for a nightly run (about five minutes). The
-known-answer tests (`knownAnswers.replay.test.ts`) hold each case's planted
-fault to its truth; a fault the tools miss on a grid stays listed in its
-`MISSES`, an expected failure with the reason, until the tools find it.
+case's default run takes a second or two). `NEBULA_DEV_N=161` builds them on
+the validation's own 161³ grid, for a nightly run (about five times as long).
+The known-answer tests (`knownAnswers.replay.test.ts`) hold each case's
+planted fault to its truth; a fault the tools miss on a grid stays listed in
+its `MISSES`, an expected failure with the reason, until the tools find it.
 
 ### The verdicts, before and after a change
 
