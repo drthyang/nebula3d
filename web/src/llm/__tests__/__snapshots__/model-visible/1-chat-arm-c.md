@@ -42,7 +42,7 @@ lattice (Bragg) peaks. n_off_nodes are sharp off-lattice peaks, which the search
 protected; whether they should go depends on the sample. on_protected_plane marks those
 on the protected planes (n_on_protected): they stay by design, and are satellites only
 if the user said so. Each peak carries fwhm_voxels; broad (FWHM ≥ 5 voxels along a slice
-axis; n_broad_off_nodes). n_skipped_noisy counts spikes
+axis; n_broad_off_nodes) off-lattice leftovers are counted on their own. n_skipped_noisy counts spikes
 in noisy regions such as the coverage edge.
 bragg_punch.peak_profile summarises the fitted peaks: resolution_limited_fraction near 1
 means most peaks are as narrow as the grid allows; median_measured_width_q is the typical peak

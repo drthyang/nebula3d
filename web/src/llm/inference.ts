@@ -16,7 +16,9 @@
 // whose `${inferred(kind, "…")}` spans are inference and the rest definition,
 // or a sequence of such spans. Rendered whole it is the text as written, byte
 // for byte (the console and arm B); rendered for arm C its inference spans are
-// left out, and the spaces they leave are tidied. A text written once at load
+// left out, and the spaces they leave are tidied. Where the definitions left
+// would not read as a whole sentence, a `connective` beside the span gives
+// them the few words they need, in arm C only. A text written once at load
 // registers its spans under where it is written (`writtenInferences`), so the
 // tests can list, and look for, every one; a text built for each call (a
 // verdict with its numbers) takes its spans from constants written with
@@ -30,10 +32,28 @@ export interface Inferred {
   readonly text: string;
 }
 
-/** A span of a text: a definition (a string) or an inference. */
-export type Span = string | Inferred;
+/**
+ * A small connective where an inference span is left out: as written with the
+ * skills on (often nothing), and, with them off, the few words the definitions
+ * need to read as a whole sentence (an anaphor whose antecedent was the
+ * inference, a predicate the inference carried). It is written beside the
+ * inference it stands in for.
+ */
+export interface Connective {
+  readonly connective: true;
+  readonly whole: string;
+  readonly definitions: string;
+}
 
-const isInferred = (s: Span): s is Inferred => typeof s !== "string";
+/** A span of a text: a definition (a string), an inference, or a connective beside one. */
+export type Span = string | Inferred | Connective;
+
+const isInferred = (s: Span): s is Inferred => typeof s !== "string" && "kind" in s;
+const isConnective = (s: Span): s is Connective => typeof s !== "string" && "connective" in s;
+
+/** A span as the text whole has it, and as its definitions do. */
+const asWhole = (s: Span): string => (typeof s === "string" ? s : isInferred(s) ? s.text : s.whole);
+const asDefinition = (s: Span): string => (typeof s === "string" ? s : isInferred(s) ? "" : s.definitions);
 
 /** Where each inference span is written, and the text it sits in where that is written once. */
 export interface WrittenInference {
@@ -79,12 +99,12 @@ export class Tagged {
 
   /** The text whole, as written: with the skills on (the console, arm B). */
   get whole(): string {
-    return this.spans.map((s) => (isInferred(s) ? s.text : s)).join("");
+    return this.spans.map(asWhole).join("");
   }
 
-  /** The text without its inference: with the skills off (arm C). */
+  /** The text without its inference, its connectives as the definitions need them: with the skills off (arm C). */
   get definitions(): string {
-    return this.hasInference ? tidy(this.spans.filter((s): s is string => !isInferred(s)).join("")) : this.whole;
+    return this.hasInference ? tidy(this.spans.map(asDefinition).join("")) : this.whole;
   }
 
   /** The text as the switch has it: whole with the skills on, its definitions with them off. */
@@ -100,9 +120,13 @@ export class Tagged {
     return this.spans.some(isInferred);
   }
 
-  /** The text whole, its inference spans marked ⟦…⟧: how the listing of what arm C does not read shows it. */
+  get connectives(): readonly Connective[] {
+    return this.spans.filter(isConnective);
+  }
+
+  /** The text whole, its inference spans marked ⟦…⟧ and its connectives ⟨whole → definitions⟩: how the listing of what arm C does not read shows it. */
   get marked(): string {
-    return this.spans.map((s) => (isInferred(s) ? `⟦${s.text}⟧` : s)).join("");
+    return this.spans.map((s) => (typeof s === "string" ? s : isInferred(s) ? `⟦${s.text}⟧` : `⟨${s.whole} → ${s.definitions}⟩`)).join("");
   }
 }
 
@@ -116,6 +140,9 @@ export const evidence = (text: string): Inferred => inferred("evidence", text);
 /** What a finding calls for: a change, the check to run next, what to report. */
 export const remedy = (text: string): Inferred => inferred("remedy", text);
 
+/** A connective beside an inference span: `whole` as written (with the skills on), `definitions` with them off. */
+export const connective = (whole: string, definitions: string): Connective => ({ connective: true, whole, definitions });
+
 /** A span of inference written as a constant, for a text built for each call: registered under `source`. */
 export function inference(source: string, kind: InferenceKind, text: string): Inferred {
   const span = inferred(kind, text);
@@ -123,8 +150,8 @@ export function inference(source: string, kind: InferenceKind, text: string): In
   return span;
 }
 
-/** What a template takes between its strings: a number or a string (definition), an inference, or a tagged text. */
-export type Value = string | number | Inferred | Tagged;
+/** What a template takes between its strings: a number or a string (definition), an inference, a connective, or a tagged text. */
+export type Value = string | number | Inferred | Connective | Tagged;
 
 const spansOf = (strings: readonly string[], values: readonly Value[]): Span[] => {
   const spans: Span[] = [];

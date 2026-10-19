@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { built, evidence, inference, joined, reading, remedy, Tagged, withoutInference, writtenInferences, written } from "../inference";
+import { built, connective, evidence, inference, joined, reading, remedy, Tagged, withoutInference, writtenInferences, written } from "../inference";
 
 describe("a text tagged by class", () => {
   const t = written("inference.test.ts: a sample")`ring_energy_ratio = after/before${evidence("; lower is cleaner")}. Its
@@ -43,6 +43,22 @@ Next line.`;
     const j = joined(["The fit removed little.", words(1.5)], " ");
     expect(j).toBeInstanceOf(Tagged);
     expect([j.whole, j.definitions]).toEqual(["The fit removed little. one rotation of 1.5° puts them back; refine the UB", "The fit removed little. one rotation of 1.5° puts them back"]);
+  });
+
+  it("gives the definitions the connective they need where an inference span is left out, and the whole text none of it", () => {
+    const t = written("inference.test.ts: connectives")`broad (n_broad) leftovers${evidence(" are diffuse maxima")}${connective("", " are counted on their own")}. mean is the offset${evidence(
+      ": a shifted origin moves every peak by one vector",
+    )} (shift, when ${connective("that vector", "its value after the fit")} makes most of it).`;
+    expect(t.whole).toBe("broad (n_broad) leftovers are diffuse maxima. mean is the offset: a shifted origin moves every peak by one vector (shift, when that vector makes most of it).");
+    expect(t.definitions).toBe("broad (n_broad) leftovers are counted on their own. mean is the offset (shift, when its value after the fit makes most of it).");
+    expect(t.marked).toBe(
+      "broad (n_broad) leftovers⟦ are diffuse maxima⟧⟨ →  are counted on their own⟩. mean is the offset⟦: a shifted origin moves every peak by one vector⟧ (shift, when ⟨that vector → its value after the fit⟩ makes most of it).",
+    );
+    expect(t.connectives).toHaveLength(2);
+    expect(t.inferences.map((s) => s.text)).toEqual([" are diffuse maxima", ": a shifted origin moves every peak by one vector"]); // a connective is no inference
+    // Without inference beside it a connective changes nothing: the text is whole either way.
+    const alone = written("inference.test.ts: a lone connective")`a${connective(" b", " c")}`;
+    expect([alone.whole, alone.definitions]).toEqual(["a b", "a b"]);
   });
 
   it("renders a JSON value's strings written once without their inference, and leaves the rest", () => {

@@ -633,8 +633,11 @@ describe("6. the inference, which arm C does not read", () => {
       const loose = here.filter((e) => !e.in);
       const parts = [`## ${source}\n\n${here.length} span${here.length === 1 ? "" : "s"}: ${kinds(here.map((e) => e.span))}.`];
       for (const t of texts) {
-        const marked = t.spans.map((s) => (typeof s === "string" ? s : `⟦${s.kind}: ${s.text}⟧`)).join("");
-        parts.push(`The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:\n\n${fence(marked)}`);
+        const marked = t.spans
+          .map((s) => (typeof s === "string" ? s : "kind" in s ? `⟦${s.kind}: ${s.text}⟧` : `⟨connective: “${s.whole}” → “${s.definitions}”⟩`))
+          .join("");
+        const joints = t.connectives.length ? ", and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩" : "";
+        parts.push(`The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧${joints}:\n\n${fence(marked)}`);
       }
       if (loose.length) {
         parts.push(`Spans of a text built for each call (its numbers vary), each as written:\n\n${loose.map((e) => `- ${e.span.kind}: “${e.span.text}”`).join("\n")}`);
@@ -645,7 +648,7 @@ describe("6. the inference, which arm C does not read", () => {
     await expect(
       doc(
         "The inference arm C does not read",
-        "Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span. " +
+        "Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. " +
           `${entries.length} spans in ${sources.length} texts or sets: ${total}.`,
         body.join("\n\n"),
       ),

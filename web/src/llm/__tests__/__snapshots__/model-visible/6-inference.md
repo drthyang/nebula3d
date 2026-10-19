@@ -1,6 +1,6 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span. 79 spans in 28 texts or sets: reading 16, evidence 51, remedy 12.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 79 spans in 28 texts or sets: reading 16, evidence 51, remedy 12.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -18,7 +18,7 @@ peaks the search punched off the Bragg nodes⟦reading: ; grain_check says wheth
 
 20 spans: reading 3, evidence 17.
 
-The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
+The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
 
 ```text
 You are NEBULA Pilot, the assistant embedded in nebula3d, a tool that cleans 3D reciprocal-space
@@ -57,8 +57,8 @@ satellites or spurious peaks⟧, which the search punches unless their H planes 
 protected; whether they should go depends on the sample. on_protected_plane marks those
 on the protected planes (n_on_protected): they stay by design, and are satellites only
 if the user said so. Each peak carries fwhm_voxels; broad (FWHM ≥ 5 voxels along a slice
-axis; n_broad_off_nodes)⟦evidence:  off-lattice leftovers are diffuse maxima such as short-range
-order — signal to keep, not missed reflections⟧. n_skipped_noisy counts spikes
+axis; n_broad_off_nodes) off-lattice leftovers⟦evidence:  are diffuse maxima such as short-range
+order — signal to keep, not missed reflections⟧⟨connective: “” → “ are counted on their own”⟩. n_skipped_noisy counts spikes
 in noisy regions such as the coverage edge⟦evidence: : noise, not peaks⟧.⟦evidence:  n_suspicious=0 is clean.⟧
 bragg_punch.peak_profile summarises the fitted peaks: resolution_limited_fraction near 1
 means most peaks are as narrow as the grid allows⟦evidence:  (sharp Bragg peaks, so the punch
@@ -268,17 +268,17 @@ Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell, when the file d
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Check whether the punch and backfill printed a pattern of their own into reciprocal space, on a cut (default: the three principal planes through the origin). Fill bias: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly⟦evidence:  (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median)⟧; the part outside that range, signed, in the rim's σ and in units of the local diffuse level. Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more)⟦evidence:  add a lattice-periodic texture that the ΔPDF turns into features at lattice vectors⟧. Azimuthal texture: per |Q| shell, how much the sector means vary around the shell before the punch (unpunched voxels) and after the backfill⟦evidence: ; a ratio near 1 adds none⟧.
+Check whether the punch and backfill printed a pattern of their own into reciprocal space, on a cut (default: the three principal planes through the origin). Fill bias: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly⟦evidence:  (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median)⟧; the part outside that range, signed, in the rim's σ and in units of the local diffuse level. Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture⟦evidence:  that the ΔPDF turns into features at lattice vectors⟧. Azimuthal texture: per |Q| shell, how much the sector means vary around the shell before the punch (unpunched voxels) and after the backfill⟦evidence: ; a ratio near 1 adds none⟧.
 ```
 
 ## tools/index.ts: ub_check's description
 
 2 spans: evidence 2.
 
-The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
+The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
 
 ```text
-Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit⟦evidence: : a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it⟧. mean_offset_rlu is the peaks' mean offset from their nodes in r.l.u., before and after the fit⟦evidence: : a UB error averages out over the nodes and the fit removes it, while a shifted HKL origin moves every peak by one vector that stays after the fit⟧ (origin_shift_rlu, when that vector makes most of the offset the fit leaves). About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, what radial shows, and an origin shift when it gives one.
+Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit⟦evidence: : a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it⟧. mean_offset_rlu is the peaks' mean offset from their nodes in r.l.u., before and after the fit⟦evidence: : a UB error averages out over the nodes and the fit removes it, while a shifted HKL origin moves every peak by one vector that stays after the fit⟧ (origin_shift_rlu, when ⟨connective: “that vector” → “its value after the fit”⟩ makes most of the offset the fit leaves). About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, what radial shows, and an origin shift when it gives one.
 ```
 
 ## tools/index.ts: ub_check's reading

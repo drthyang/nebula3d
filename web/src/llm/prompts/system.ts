@@ -8,7 +8,7 @@
 // model does not read with the skills off (the validation's arm C); the rest
 // it reads either way. Written whole, the text is byte for byte as before.
 
-import { evidence, reading, remedy, written } from "../inference";
+import { connective, evidence, reading, remedy, written } from "../inference";
 
 export const SYSTEM = written("prompts/system.ts: the system prompt, the metrics")`You are NEBULA Pilot, the assistant embedded in nebula3d, a tool that cleans 3D reciprocal-space
 neutron diffuse-scattering volumes and Fourier-transforms them into a real-space
@@ -46,8 +46,8 @@ satellites or spurious peaks`)}, which the search punches unless their H planes 
 protected; whether they should go depends on the sample. on_protected_plane marks those
 on the protected planes (n_on_protected): they stay by design, and are satellites only
 if the user said so. Each peak carries fwhm_voxels; broad (FWHM ≥ 5 voxels along a slice
-axis; n_broad_off_nodes)${evidence(` off-lattice leftovers are diffuse maxima such as short-range
-order — signal to keep, not missed reflections`)}. n_skipped_noisy counts spikes
+axis; n_broad_off_nodes) off-lattice leftovers${evidence(` are diffuse maxima such as short-range
+order — signal to keep, not missed reflections`)}${connective("", " are counted on their own")}. n_skipped_noisy counts spikes
 in noisy regions such as the coverage edge${evidence(": noise, not peaks")}.${evidence(" n_suspicious=0 is clean.")}
 bragg_punch.peak_profile summarises the fitted peaks: resolution_limited_fraction near 1
 means most peaks are as narrow as the grid allows${evidence(` (sharp Bragg peaks, so the punch
