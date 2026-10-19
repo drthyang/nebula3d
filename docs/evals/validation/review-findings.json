@@ -501,5 +501,26 @@
    "on": "2026-10-19",
    "option": "yes"
   }
+ },
+ {
+  "source": "review",
+  "ref": "D12",
+  "at": "76a691c",
+  "kind": "bug",
+  "evidence": "A recorded stage verdict whose words are no label is marked as such (web/src/llm/verdicts/recorded.ts:53) and decides nothing for the answer checks (web/src/llm/verdicts/readers.ts:127, :171), while {{achieved}} judges the stage from its numbers (readers.ts:166): \"The ring removal is clean\" stands beside a ring left.",
+  "proposed_fix": "Where a stage's recorded words are no label, both readers judge the stage from its numbers.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "c098ba5",
+  "tests": [
+   "web/src/llm/__tests__/verdictPins.test.ts (D12, unified (2.4b.3): where a stage's recorded words are no label, both readers judge its numbers)",
+   "web/src/llm/__tests__/answerChecks.test.ts (judges a stage from its numbers where its recorded words are no label (D12, 2.4b.3))"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "yes"
+  }
  }
 ]
