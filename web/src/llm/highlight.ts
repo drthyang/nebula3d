@@ -11,45 +11,12 @@ import { useNavStore } from "../state/navStore";
 import { usePipelineStore } from "../state/pipelineStore";
 import type { AgentStep } from "./agent";
 import { useChatStore } from "./chatStore";
+import { ALL_STAGES, keysOf, RECIP, stageKey, type HighlightKey } from "./tools/facts";
 import { TUNE_PARAMS } from "./tune/catalog";
 import { useTuneStore } from "./tune/tuner";
 
-export type HighlightKey =
-  | "raw" // the measured volume and its coverage
-  | "rings"
-  | "punch"
-  | "backfill"
-  | "flatten"
-  | "pdf" // the 3D-ΔPDF transform
-  | "check" // the back-FFT consistency check
-  | "bragg" // the fitted Bragg peaks
-  | "log"; // the run log
-
-const RECIP: HighlightKey[] = ["rings", "punch", "backfill", "flatten"];
-const ALL_STAGES: HighlightKey[] = [...RECIP, "pdf"];
-
-// Pipeline stage names and stage-output names, as highlight keys.
-const STAGE_KEY: Record<string, HighlightKey> = {
-  raw: "raw",
-  rings: "rings",
-  ringremoved: "rings",
-  punch: "punch",
-  braggpunched: "punch",
-  backfill: "backfill",
-  backfilled: "backfill",
-  flatten: "flatten",
-  flattened: "flatten",
-  pdf: "pdf",
-  delta_pdf: "pdf",
-  pdf_check: "check",
-};
-export const stageKey = (name: string): HighlightKey | undefined => STAGE_KEY[name];
-
-const keysOf = (names: unknown): HighlightKey[] =>
-  Array.isArray(names) ? names.map((n) => stageKey(String(n))).filter((k): k is HighlightKey => Boolean(k)) : [];
-
 /** What a tool step works on, from its name and arguments. */
-export function stepKeys(step: Pick<AgentStep, "name" | "args">): HighlightKey[] {
+export function stepKeys(step: Pick<AgentStep, "name" | "args">): readonly HighlightKey[] {
   const a = step.args ?? {};
   switch (step.name) {
     case "assess_stage": {
