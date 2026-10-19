@@ -279,6 +279,7 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "bragg-node-audit", phrase: "the punch cell (", what: "the punch cell", fields: ["settings.punchSupercellH"] },
   { skill: "bragg-node-audit", phrase: "the search's protected H planes", what: "the search's protected H planes", fields: ["settings.punchProtectH"] },
   { skill: "bragg-node-audit", phrase: "`assess_stage` for the punch", what: "the punch's assessment", fields: ["punch"] },
+  { skill: "bragg-node-audit", phrase: "check an off-zero cut too", what: "the peaks left at nodes on an off-zero cut", fields: ["bragg_punch_leftover.n_at_nodes"] },
   { skill: "bragg-node-audit", phrase: "the peaks left at nodes", what: "the peaks left at nodes", fields: ["punch.leftover_at_nodes"] },
   { skill: "bragg-node-audit", phrase: "the sharp peaks off the lattice", what: "the sharp peaks off the lattice", fields: ["punch.leftover_off_lattice_sharp"] },
   { skill: "bragg-node-audit", phrase: "the broad maxima kept", what: "the broad maxima kept", fields: ["punch.leftover_off_lattice_broad"] },
@@ -334,12 +335,6 @@ type Kind = "tool" | "field" | "setting" | "name" | "claim" | "gate" | "unstated
  * take the entry off: the lint fails while an entry no longer fails.
  */
 const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [
-  {
-    skill: "bragg-node-audit",
-    kind: "claim",
-    names: "the symmetry the file declares",
-    why: "step 1 takes the declared symmetry from describe_dataset and configure_settings, neither of which gives it (agent plan E; interview R5).",
-  },
   {
     skill: "delta-pdf-interpretation",
     kind: "claim",
