@@ -708,5 +708,31 @@
    "on": "2026-10-19",
    "option": "the prompts state what the checks judge; the four checks name all five stages and the UB"
   }
+ },
+ {
+  "source": "review",
+  "ref": "P4.3",
+  "at": "fd2a96a",
+  "kind": "science-error",
+  "evidence": "symmetry_check compared the ΔPDF's x–y section at one z (default 0; web/src/llm/tools/defs/symmetry_check.ts:35) with its images under the cell's in-plane operations only, chosen from the cell's metric and not from the operations the raw file declares (sectionSymmetry, web/src/llm/metrics/symmetry.ts:30-90; symmetry_check.ts:41): hexagonal, the six-, three- and two-fold and the a ↔ b mirror; orthogonal, the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b. An operation that moves c (a mirror ⊥ c, a two-fold ⊥ c, a cubic three-fold, the inversion) was never tested, so a ΔPDF could break one and pass: the symmetry's rule judges the operations it is given (web/src/llm/verdicts/rules.ts:469-478), and the ΔPDF's card reads that verdict (web/src/llm/verdicts/readers.ts:445, web/src/llm/report/report.ts:322). The transform keeps the data's even part (src/nebula3d/analysis/delta_pdf.py:326), so the ΔPDF is centrosymmetric and an operation and its product with the inversion are one test: on the x–y section through the origin the two-fold ∥ c held by the inversion alone, and a correlation off that plane broke the mirror ⊥ c unseen. On a constructed m-3m ΔPDF with a pair ±(0.35, 0, 0.4) (fractional) on the x–z section, the old check read every in-plane operation within 5.1e-8, while the mirror ⊥ c is off by 0.076 on the x–z and y–z sections. The check also judged lattice operations the declared group lacks (the a ↔ b mirror of data symmetrised with 6/m, the four-fold of mmm on a square cell), which no symmetrisation keeps.",
+  "proposed_fix": "Test each operation of the declared point group (symmetry_ops, closed into its group, acting on real space as its transpose), those that move c included, on the sections it maps onto sections: the x–y sections at z and −z, and the x–z and y–z sections through the origin, read through the client as before (four slices at most). An operation that maps none of them onto one is tested on the voxels it maps from one onto another; one that mixes axes whose grid steps differ (in the cell's fractional units, past 0.05 voxel at the grid's edge) is not tested, and not_tested says why. A voxel an operation leaves where it is is left out. Each op reports rms_difference (its worst section's), pairs, tested_on and moves_c; the verdict says \"every operation tested\" and how many could not be. With no operations declared, the cell's in-plane ones, as before. The limit stays 1e-3, and an operation that moves c is judged as one that keeps it.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "6fb483b",
+  "tests": [
+   "web/src/llm/__tests__/symmetry.test.ts (known answers on constructed ΔPDFs: m-3m symmetric, all 47 operations within rounding; its mirror ⊥ c broken, 0.076, where the old check passed every in-plane operation, and the two-fold ∥ c with it by as much; 6/mmm intact, and its mirror ⊥ c broken, 0.17; a cubic three-fold broken, 0.34, with every operation that keeps c held; the x–y section at −z; the points; a grid whose steps differ; the in-plane fallback)",
+   "web/src/llm/__tests__/tools.test.ts (symmetry_check: the declared group's operations, those that move c included; with none declared, the cell's in-plane ones; not judged where the file declares no symmetry)",
+   "web/src/llm/__tests__/verdicts.test.ts (an operation that moves c judged as one that keeps it, at the same limit; operations not tested named in the verdict)",
+   "web/src/llm/evals/devData/knownAnswers.replay.test.ts (dev-control symmetrised over m-3m and declared so, through the default run: each of its 47 operations held, at z = 0 and off it, within 2e-7 at n=81 and n=161)",
+   "tests/test_webbridge.py::test_the_bridge_symmetrises_a_volume_and_declares_it_as_the_nexus_viewer_does",
+   "web/src/llm/__tests__/modelVisible.test.ts (2-tools.md, 2-tools-arm-c.md, 3-goals-and-verdicts.md, 4-tool-results.md, 6-inference.md, 1-chat-arm-b.md, 1-chat-arm-c.md)",
+   "web/src/llm/__tests__/verdictGoldens.test.ts (no golden moved)"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 4.3). Implemented in 6fb483b (the check), aa79434 (the system prompt's sentence on it) and 12777ef (a dev case symmetrised and declared so, in the replay harness: no dev case of the validation declares a symmetry, so each reads \"not judged\", before and after). TypeScript only in the package: arm A is unchanged, and re-run on dev it is identical. The worst turn grows by 414 estimated tokens (45,931 to 46,345 before compaction), every pin within 5 %. Left: the ΔPDF evaluation's max_symmetry_break (tune/evaluate.ts) still reads the cell's in-plane operations on the x–y section through the origin.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "symmetry_check tests every declared operation, those that move c included; the limit unchanged"
+  }
  }
 ]
