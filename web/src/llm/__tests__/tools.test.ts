@@ -440,7 +440,7 @@ describe("assess_stage", () => {
       ["punch", "info", "no output"],
       ["backfill", "info", "no output"],
       ["flatten", "attention", "pedestal"],
-      ["pdf", "pass", null],
+      ["pdf", "info", "nothing to judge"], // a ΔPDF evaluation that measured nothing is not judged (D15)
     ]);
     expect(r.text).not.toMatch(/"(outcomes|reasons|dataProblems)"/);
   });
