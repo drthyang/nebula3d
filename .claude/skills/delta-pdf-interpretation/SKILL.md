@@ -44,23 +44,25 @@ z = 0 plane: rods in reciprocal space are planes in real space.
 
 ## Trust checks, before any interpretation
 
-1. **The settings that made it.** `describe_dataset` and `configure_settings`:
-   the window's shape and scale, the |Q| band, the symmetry used.
+1. **The settings that made it.** `qmax_coverage`: the window's shape and
+   scale; `consistency_details`: the |Q| band; `grain_check`: the symmetry
+   used.
 2. **Coverage.** `qmax_coverage`: the window's weight on unmeasured space up to
    about 1e-3, and the band inside the raw counts' edges (reduction-qc). Past
    them, features come from empty voxels.
-3. **Symmetry.** On symmetrised data, `symmetry_check`: every operation the data
-   were symmetrised with holds to about 1e-3 or better. A ΔPDF that lost a clear
-   share of its symmetry while the raw data were exact was broken by
-   processing: a stage computed on index-space neighbourhoods without orbit
-   averaging, or a separable window on a hexagonal cell. Find which; do not
-   interpret it.
+3. **Symmetry.** On symmetrised data, `symmetry_check`, which tests the in-plane
+   operations only: each one the data were symmetrised with holds to about 1e-3
+   or better. A ΔPDF that lost a clear share of its symmetry while the raw data
+   were exact was broken by processing: a stage computed on index-space
+   neighbourhoods without orbit averaging, or a separable window on a hexagonal
+   cell. Find which; do not interpret it.
 4. **Round trip.** `assess_stage` for the ΔPDF, or `consistency_details`: a
-   back-FFT r near 1 only shows the transform ran correctly. Without a band or
-   a crop the round trip is the identity. It is not evidence that a feature is
-   real. The transform keeps only the data's even part under Q → −Q, so r is
-   judged against that part (`pearson_r_even`); r against unsymmetrised data is
-   lower by their odd part, counting noise (`odd_share`), which is no fault.
+   back-FFT r of 0.999 or more only shows the transform ran correctly. Without
+   a band or a crop the round trip is the identity. It is not evidence that a
+   feature is real. The transform keeps only the data's even part under
+   Q → −Q, so r is judged against that part (`back_fft_pearson_r_even`,
+   `pearson_r_even`); r against unsymmetrised data is lower by their odd part,
+   counting noise (`odd_share`), which is no fault.
 5. **Colour range.** `dpdf_contrast`: the range is set from the sections, so
    the features carry the colour and the ripple stays near neutral. Never
    describe a figure whose features are saturated.
