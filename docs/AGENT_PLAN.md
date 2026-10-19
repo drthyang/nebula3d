@@ -143,7 +143,7 @@ seven candidates. The user decided on 2026-10-19:
 | --- | --- | --- | --- | --- |
 | 1 | The check-verdict module | Strong | in-process | start set (2.3) |
 | 2 | Each tool declares its facts | Strong | in-process | start set (2.2), after the `dpdf_contrast` fix alone (2.1) |
-| 3 | A tool result carries both readings | Strong | in-process | start set (2.5) |
+| 3 | A tool result carries both readings | Strong | in-process | start set (2.6) |
 | 4 | The executor owns a round of calls | Worth exploring | in-process | waits for the approval batch (3.1) |
 | 5 | One reader of an answer's words | Worth exploring | in-process | waits (3.2) |
 | 6 | Coverage measured once, in Python | Worth exploring | local-substitutable | waits (3.3) |
@@ -167,10 +167,21 @@ seven candidates. The user decided on 2026-10-19:
      `tune/prompts.ts:25`);
    - **D6** the window weight is rounded before one check and not another
      (`tune/evaluate.ts:113`, `tools/index.ts:1295`).
+   - **D7** the answer checks read a stage's newest result that decides, and
+     `{{achieved}}` its newest current one, even "not judged"
+     (`answerChecks.ts:248-270`, `verdict.ts:57-66`);
+   - **D8** the answer checks' backfill topic ignores `texture_check`'s fill
+     bias, which `{{achieved}}` and the report count (`answerChecks.ts:295`,
+     `verdict.ts:89-93`, `report.ts:253-265`);
+   - **D9** the report judges its ΔPDF card from coverage and symmetry when no
+     ΔPDF evaluation ran, where the chat says not judged (`report.ts:353`).
+
+   D7–D9 were found while designing the module.
 
    Deepened, one module owns each check's rule, its outcome kind and the run's
    achieved, and readers read the kind. Each disagreement is kept, named and
-   pinned until the user decides it **(approval)**.
+   pinned in 2.3, then unified in its own PR (2.4). The user decided D1–D9 on
+   2026-10-19 **(approved)**: each reader takes the recommended rule (2.4).
 2. **Each tool declares its facts.** Ten lists kept by hand name tools by
    string: `CHANGES_STATE` (`agent.ts:110`), the local model's sets
    (`localTools.ts:11-45`), `TOPICS` (`answerChecks.ts:47-150`), the tools
@@ -438,12 +449,12 @@ Beyond single contradictions:
 | --- | --- | --- |
 | 1.1 | **One run policy, recorded.** A `RunPolicy` states what each transport runs under: turn cap, tool scoping, pruning budget, temperature (none where the transport drops it), output cap, whether reasoning is replayed, and the window plan. `runAgent` reads it, and each run record and transcript keeps it. The Claude entry's `temperature: null` becomes what is sent and recorded, not `?? 0.2` (`validation.live.test.ts:164`). Arm B stays the Pilot as it ships, so the defaults stay per transport; evals.md lists what a comparison across models also compares. | M |
 | 1.2 | **State reset per run.** Between runs the validation runner clears the pipeline store's log and terminal state, the tuning store, the console's view stores and `noTools` (`agent.ts:70`), and records the token calibration it starts from. A test runs two scripted runs back to back: the second's `run_log` must not read the first's log. In the app, an earlier turn's result stops counting as a number source once a later run recomputed its stage (`evidence.ts`). | S |
-| 1.3 | **The ablation is structural** **(approved 2026-10-19; built as 2.4)**. The system prompt is built from sections, not edited by string replace (`evals/validation.ts:96-100`). With skills off, no tool description, tool result or goal names a skill or carries a skill's step: `dpdf_peaks`'s description drops "(delta-pdf-interpretation)" and its order (`tools/index.ts:1062`), and the flatten's goal drops "a rising one wants flattenQ2" (`tune/prompts.ts:29`), which belongs to reduction-qc. A test runs a scripted arm-C session and finds no skill name, and no sentence of a skill, in any request or result. | M |
+| 1.3 | **The ablation is structural** **(approved 2026-10-19; built as 2.5)**. The system prompt is built from sections, not edited by string replace (`evals/validation.ts:96-100`). With skills off, no tool description, tool result or goal names a skill or carries a skill's step: `dpdf_peaks`'s description drops "(delta-pdf-interpretation)" and its order (`tools/index.ts:1062`), and the flatten's goal drops "a rising one wants flattenQ2" (`tune/prompts.ts:29`), which belongs to reduction-qc. A test runs a scripted arm-C session and finds no skill name, and no sentence of a skill, in any request or result. | M |
 | 1.4 | **The holdout scan widened** to all of `web/src`, `src`, `tests`, `examples`, `scripts` and `docs` (the validation's own records and tables allowed), and to the test cases' opaque labels, seeds, planted vectors and fault sizes as well as their ids (`tests/test_validation.py:154-178`). | S |
 | 1.5 | **Replays recompute, fixtures are checked.** The answer checks and `verdict.ts` recompute a stage's verdict from its numbers by the current rule instead of trusting a recorded label (`verdict.ts:43`, `answerChecks.ts:253`). Each fixture (`evals/fixtures/*.json`) is re-recorded by its probe, and a test checks every recorded result against the current tool's output shape (3.5), so a fixture cannot lag a tool. | M |
 | 1.6 | **The prompts say what the checks judge.** The system prompt and the stage-review prompts stop stating the old criteria: the flatten's 1σ "flat" and "over the whole coverage" (`prompts/system.ts:59-64`), "r clearly below 1 flags a transform problem" (`system.ts:80-81`), and "trustworthy (consistency_pearson_r)" (`prompts/templates.ts:70`). They say what the verdicts now judge, from the check-verdict module (2.3). The four checks in the system prompt (`system.ts:120-128`) name all five stages and the UB, as `{{achieved}}` needs **(approval: it changes the Pilot's method in both arms)**. | S |
 | 1.7 | **The skill gate holds within a reply.** A skill read in an earlier turn no longer opens the gate in a later one, since its text is not carried (`components/ChatView.tsx:218`, `:224`, `skills.ts:235-243`); the model is told to read it again. The arms are unaffected: a validation run is one turn. | S |
-| 1.8 | **Run records keep whole results** (now 2.5). `runAgent` returns each step's whole result beside the text the model read (`agent.ts:222`, `:465-473`), and the record's decisions, number provenance and candidate findings read the whole one (`evals/validation.ts:298-303`), as its field already says. | S |
+| 1.8 | **Run records keep whole results** (now 2.6). `runAgent` returns each step's whole result beside the text the model read (`agent.ts:222`, `:465-473`), and the record's decisions, number provenance and candidate findings read the whole one (`evals/validation.ts:298-303`), as its field already says. | S |
 | 1.9 | **One reader of an answer's words** (now 3.2, after the approval batch). The answer checks and the validation's graders share `NEGATION`, `clauses`, `sentences` and the number reader (`answerChecks.ts:160-190`, `:393-410`; `evals/checks.ts:15-55`; `evals/validation.ts:147-151`), or a test lists the sentences on which they differ and why. | S |
 | 1.10 | **Done.** The findings record takes the status, the commit, the regression tests, a note and the user's decision (`evals/findings.ts`, `docs/evals/validation/review-findings.json`); a test holds every implemented finding to them. | S |
 
@@ -464,8 +475,26 @@ Each PR:
 | 2.1 | **`dpdf_contrast` clears the repeat guard.** It acts but is missing from `CHANGES_STATE` (`agent.ts:110`, `:441`). It changes the repeat path only; a test runs `{}`, `{reset: true}`, `{}`. | S |
 | 2.2 | **Each tool declares its facts** (candidate 2). Whether it acts, reaches the backend or changes a later reading; the topic it settles and the stage it reads; whether it makes a reply reportable; its labels and what it highlights. The side lists derive from the registry, and a test over the registry replaces them. A list that was stale is named; any difference that changes behaviour is kept as a named exception. | M |
 | 2.3 | **The check-verdict module** (candidate 1). One module owns each check's rule, its outcome kind (met, needs attention, not judged, with reasons and data problems), the words built from that kind, and the run's achieved. Tools attach the kind; `verdict.ts`, the answer checks and the report read it. Recorded results with words only are read by one adapter. D1–D6 are kept, named and pinned; each unification is a question for the user before it changes a verdict **(approval)**. | L |
-| 2.4 | **Arm C removes the whole method** **(approved 2026-10-19; was 1.3)**. With skills off, no tool description, tool result or goal names a skill or carries a skill's step: `dpdf_peaks`' description (`tools/index.ts:1062`), the flatten's goal (`tune/prompts.ts:29`). The system prompt is built from sections, not by string replace (`evals/validation.ts:96-100`). A structural switch, built after 2.3; it changes what the model sees under skills off only. | M |
-| 2.5 | **A tool result carries both readings** (candidate 3; was 1.8). A step holds the whole result and the text the model read, parsed once. The record's decisions, number provenance and candidate findings read the whole result, as its field says (`evals/validation.ts:301`). It changes the record, not what the model sees. | M |
+| 2.4 | **The user's answers of 2026-10-19, one small PR each, after 2.3** **(approved)**. Each re-runs arm A on dev and the snapshot, and says which case moved and why if arm A moves. See the table below. | 11 × S |
+| 2.5 | **Arm C removes the whole method** **(approved 2026-10-19; was 1.3)**. With skills off, no tool description, tool result or goal names a skill or carries a skill's step: `dpdf_peaks`' description (`tools/index.ts:1062`), the flatten's goal (`tune/prompts.ts:29`). The system prompt is built from sections, not by string replace (`evals/validation.ts:96-100`). A structural switch, built after 2.4; it changes what the model sees under skills off only. | M |
+| 2.6 | **A tool result carries both readings** (candidate 3; was 1.8). A step holds the whole result and the text the model read, parsed once. The record's decisions, number provenance and candidate findings read the whole result, as its field says (`evals/validation.ts:301`). It changes the record, not what the model sees. | M |
+
+The answers (batch 1, decided by the user on 2026-10-19, every recommendation
+accepted):
+
+| PR | Answer | What changes |
+| --- | --- | --- |
+| 2.4.1 | **D1** yes | A passing reach-based coverage verdict counts as coverage OK in the answer checks, as in `{{achieved}}`. |
+| 2.4.2 | **D2** yes | The report's ΔPDF card also counts `qmax_coverage`'s "too far". |
+| 2.4.3 | **D3** yes | `grain_check`'s "UB off" counts as a UB problem: a data problem in `{{achieved}}` and "not OK" for UB claims. `grain_check` stays the check for a second grain. |
+| 2.4.4 | **D4** yes | One "UB turned": 0.05° or more from an unsymmetrised fit. A symmetrised volume's UB cannot be judged, and a claim that it is right is still sent back. The validation grader's 0.1° stays as it is until 3.2 (the shared answer reader): the PR and `docs/evals.md` say so, so the two are not read as one rule. |
+| 2.4.5 | **D5** yes | Sharp off-lattice peaks on protected planes are by design, as the punch goal says: left out of the verdict, and kept on their own line in what the model sees, with a test. |
+| 2.4.6 | **D6** yes | Every check compares the raw window weight against 1e-3. |
+| 2.4.7 | **D7** yes | The answer checks read a stage's newest current result, even a "not judged" one, as `{{achieved}}` does. |
+| 2.4.8 | **D8** yes | The answer checks' backfill topic counts `texture_check`'s fill bias. |
+| 2.4.9 | **D9** yes | The report's ΔPDF card is "not judged" without a ΔPDF evaluation. |
+| 2.4.10 | **10** yes | A local model is also offered `ub_check` and `texture_check` for a generic question. The PR reports the token change against the 32k window. |
+| 2.4.11 | **11** yes | The report also runs `ub_check`, so its achieved names a turned UB. |
 
 ### Phase 3 — After the user's approval batch
 
@@ -528,7 +557,7 @@ Skill text goes in its own PR, which waits for the user (5.2 to 5.4). The lint (
 
 ## Order
 
-Phase 2 goes first, as the user decided on 2026-10-19: 2.0 to 2.5, stacked in
+Phase 2 goes first, as the user decided on 2026-10-19: 2.0 to 2.6, stacked in
 that order. Phase 1's other items and 5.1 can run beside it, since they touch the
 harness and the skills' lint, not the modules phase 2 deepens. Phase 3 waits for
 the user's approval batch. Phase 4 needs 2.3, so each science fix lands in one
