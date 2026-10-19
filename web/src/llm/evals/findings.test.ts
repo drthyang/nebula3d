@@ -309,6 +309,7 @@ describe("the review's findings", () => {
   });
 
   it("from the architecture review are the eleven the user decided on 2026-10-19, each with its plan row", async () => {
+    const { exists } = await import("./backend");
     const found = await load();
     const reviewed = found.slice(8, 19);
     expect(reviewed.every(isReviewFinding)).toBe(true);
@@ -319,13 +320,19 @@ describe("the review's findings", () => {
     expect(reviewed.map((f) => f.kind)).toEqual([
       "bug", "bug", "science-error", "science-error", "science-error", "bug", "bug", "bug", "bug", "orchestration", "orchestration",
     ]);
-    reviewed.forEach((f, i) => {
-      expect(f, refs[i]).toMatchObject({ at: "f807320", status: "open", needs_user_approval: true, decision: { by: "the user", on: "2026-10-19", option: "yes" } });
-      expect(f.note, refs[i]).toBe(
-        `Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.${i + 1}, after the check-verdict module (2.3).`,
-      );
+    for (const [i, f] of reviewed.entries()) {
+      expect(f, refs[i]).toMatchObject({ at: "f807320", needs_user_approval: true, decision: { by: "the user", on: "2026-10-19", option: "yes" } });
+      const decided = `Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.${i + 1}, after the check-verdict module (2.3).`;
+      // Open until its plan row lands; then it names its commit and the tests that pin it, which exist.
+      if (f.status === "implemented") {
+        expect(f.note, refs[i]).toBe(`${decided} Implemented by plan row 2.4.${i + 1}.`);
+        for (const t of f.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
+      } else {
+        expect(f.status, refs[i]).toBe("open");
+        expect(f.note, refs[i]).toBe(decided);
+      }
       for (const k of ["case", "run", "step", "arm"]) expect(k in f, `${refs[i]} has no ${k}`).toBe(false);
-    });
+    }
   });
 
   it("says what became of a finding: an implemented one names its commit and its tests", () => {
