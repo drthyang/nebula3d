@@ -32,7 +32,9 @@ bash scripts/check.sh
 ```
 
 It runs `pytest`, `ruff check src/ tests/`, and `mypy src/nebula3d`. Set
-`PY=/path/to/python` to choose the interpreter. To run it automatically on every
+`PY=/path/to/python` to choose the interpreter. Unlike CI, it does not set
+`NEBULA_HOLDOUT_TESTS`, so the held-out test split stays out (see
+[Tests and CI](#tests-and-ci)). To run it automatically on every
 push, install it as a git hook in your clone:
 
 ```bash
@@ -71,7 +73,23 @@ python3 -m mypy src/nebula3d --ignore-missing-imports --python-version 3.12
 npm --prefix web test
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
+By default pytest leaves out the validation's held-out test split
+([evals.md](evals.md#the-cases-and-the-split)): nothing that is tuned may see it,
+and pytest prints every test's name, so a builder tuning against the suite would
+read the held-out cases' names and verdicts. `NEBULA_HOLDOUT_TESTS=1` runs them
+too, each under an opaque name (`test-split-case-0`, `-1`, ...) and with a
+failure that names only the failed criteria:
+
+```bash
+NEBULA_HOLDOUT_TESTS=1 PYTHONPATH=src python3 -m pytest tests/test_validation.py
+```
+
+CI sets it for every job; a value other than `1`, `0` or unset stops the run.
+`tests/conftest.py` wires it: a test that takes a `validation_case` argument
+gets the dev cases, and the test split's with the opt-in.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request,
+with `NEBULA_HOLDOUT_TESTS=1`:
 
 - the tests (with coverage) and ruff on Python 3.10, 3.11, 3.12 and 3.13;
 - mypy once, against the pinned numpy stubs in
