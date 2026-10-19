@@ -299,9 +299,11 @@
   "commit": "80358ca",
   "tests": [
    "web/src/llm/__tests__/verdictPins.test.ts (D7, unified (2.4.7): both readers read a check's newest current result, even one not judged; what decides nothing is not read; on the UB the newest evidence of either check wins)",
-   "web/src/llm/__tests__/answerChecks.test.ts (the newest current result, as {{achieved}} reads it (D7, 2.4.7))"
+   "web/src/llm/__tests__/answerChecks.test.ts (the newest current result, as {{achieved}} reads it (D7, 2.4.7))",
+   "web/src/llm/__tests__/verdictPins.test.ts (D7, the UB (2.4.7b): a ub_check that cannot judge the UB is not read for the UB topic, in either reader; alone, it still sends a right UB back)",
+   "web/src/llm/__tests__/answerChecks.test.ts (reads no ub_check that cannot judge the UB over earlier UB evidence: the grain's UB off stands (2.4.7b))"
   ],
-  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.7, after the check-verdict module (2.3). Implemented by plan row 2.4.7. A result that decides nothing for a topic is not read, so it hides no earlier verdict; on the UB the newest evidence across ub_check and grain_check's UB off wins in both readers (the form the lead confirmed).",
+  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.7, after the check-verdict module (2.3). Implemented by plan row 2.4.7. A result that decides nothing for a topic is not read, so it hides no earlier verdict; on the UB the newest evidence across ub_check and grain_check's UB off wins in both readers (the form the lead confirmed). A UB check that cannot judge the UB (symmetrised) is not read for the UB topic (plan row 2.4.7b, 29e1a32).",
   "decision": {
    "by": "the user",
    "on": "2026-10-19",
