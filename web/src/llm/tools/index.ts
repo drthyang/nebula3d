@@ -20,7 +20,7 @@ import {
   fetchUbCheck,
   fetchVolumeCoverage,
 } from "../../api/client";
-import type { Dataset, DeltaPdfMeta, JobEvent, Slice, UbCheck, VolumeCoverage, VolumeMeta } from "../../api/types";
+import type { JobEvent, Slice, UbCheck, VolumeCoverage } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import {
@@ -43,25 +43,49 @@ import {
 } from "../tune/catalog";
 import { evaluateStage, headline, type StageEvaluation } from "../tune/evaluate";
 import { startTuning, stopTuning, useTuneStore, type StageRun } from "../tune/tuner";
-import { AXIS_INDEX, AXIS_TO_PLANE, useViewerStore, type FixedAxis } from "../../state/viewerStore";
+import { AXIS_INDEX, AXIS_TO_PLANE, useViewerStore } from "../../state/viewerStore";
 import {
   datasetLabel,
   dpdfVolumeId,
   hklVolumeId,
-  loadPipelineContext,
   RECIP_STAGES,
   safe,
   stageVolumeId,
 } from "../context/loadContext";
 import { qRadius } from "../context/pipelineContext";
 import type { ToolCall, ToolSpec } from "../provider/client";
-import { ALL_STAGES, keysOf, RECIP, resolveFacts, stageKey, type Facts, type ToolFacts } from "./facts";
+import { ALL_STAGES, keysOf, RECIP, resolveFacts, stageKey, type Facts } from "./facts";
 import { openView, type ViewTarget } from "./openView";
-import { built, connective, evidence, inference, joined, reading, withoutInference, written, type Tagged } from "../inference";
+import { built, connective, evidence, inference, joined, reading, withoutInference, written } from "../inference";
 import { fit } from "../readings";
 import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS, skillsOn } from "../skills";
 import { judge, WORDS, type Outcome } from "../verdicts/rules";
+import { num, oneOf } from "./shared/args";
+import {
+  checkInRange,
+  cleanupView,
+  DPDF_FIXED,
+  DPDF_PLANES,
+  dpdfMeta,
+  dpdfRange,
+  dpdfView,
+  HKL,
+  measureDpdf,
+  measureRecip,
+  planeLabel,
+  RECIP_FIXED,
+  RECIP_PLANES,
+  recipMeta,
+  recipRange,
+  XYZ,
+} from "./shared/cuts";
+import { described, description } from "./shared/describe";
+import { r4, r6, range4 } from "./shared/figures";
+import { checkIdle, unique } from "./shared/pipeline";
+import { ToolArgError, type AgentTool, type Args, type ChatTool, type ToolContext, type ToolIO } from "./types";
 
+export type { AgentTool, Args, ChatTool, ToolContext, ToolIO, ToolOutcome } from "./types";
+export { ToolArgError } from "./types";
 export type { ViewTarget } from "./openView";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
 import { COVERAGE_SHELLS, coverageMetrics } from "../metrics/coverage";
@@ -70,175 +94,7 @@ import { sectionSymmetry, SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { median, radialProfile, roundSig } from "../metrics/sliceStats";
 import { textureMetrics } from "../metrics/texture";
 
-// The dataset the tools read.  run_pipeline replaces `dataset` with its fresh
-// listing after a run, so the tools called after it see the new outputs.
-export interface ToolContext {
-  dataset: Dataset;
-  datasets: Dataset[];
-  // The skills' switch (skills.ts): on unless false. Off (the validation's arm
-  // C), the conversation has no skills: read_skill is not offered (toolsWithSkills)
-  // and no stage waits for one to be read (runToolCall).
-  skills?: boolean;
-  // The skills read in this conversation (read_skill adds to it). Set on every
-  // call the model makes, which gates a stage's changes on its skill; left
-  // unset by the app's own calls (the report), which change nothing.
-  skillsRead?: Set<string>;
-  // The tool results of the conversation's earlier turns: what an answer's
-  // numbers may come from besides this reply's own results (agent.ts).
-  earlierResults?: readonly string[];
-}
-
-
-export interface ToolOutcome {
-  result: unknown;
-  summary: string; // one line for the transcript
-  view?: ViewTarget;
-  // The checks' outcomes the tool judged (verdicts/): beside the result, never
-  // in it, so the model reads no more than the result.
-  outcomes?: Outcome[];
-}
-
-// What a long tool gets besides its arguments: the reply's abort signal, and a
-// live line for its transcript step while it runs.
-export interface ToolIO {
-  signal?: AbortSignal;
-  progress?: (text: string) => void;
-}
-
-export interface AgentTool {
-  name: string;
-  description: string;
-  // The description with the skills off (the switch, skills.ts): without what
-  // names a skill or restates a skill's step. Left out: the description names
-  // none, and serves either way.
-  descriptionWithoutSkills?: string;
-  parameters: Record<string, unknown>; // JSON Schema of the arguments
-  run: (args: Record<string, unknown>, ctx: ToolContext, io: ToolIO) => Promise<ToolOutcome>;
-  maxResultChars?: number; // above MAX_RESULT_CHARS, for a result that must arrive whole (a skill)
-}
-
-/** A tool of the registry: what the model reads and runs, and the facts the modules around it read. */
-export type ChatTool = AgentTool & { facts: ToolFacts };
-
-/**
- * A tool's description from its text tagged by class (inference.ts): whole as
- * written, and, where it holds inference, its definitions for the skills off.
- * Both come from the one text, so each class is decided once.
- */
-const described = (text: Tagged): Pick<AgentTool, "description" | "descriptionWithoutSkills"> =>
-  text.hasInference ? { description: text.whole, descriptionWithoutSkills: text.definitions } : { description: text.whole };
-
-/** A tool's description, tagged: registered under the tool's name. */
-const description = (tool: string) => written(`tools/index.ts: ${tool}'s description`);
-
-/** Bad arguments: the message goes back to the model so it can correct itself. */
-export class ToolArgError extends Error {}
-
-type Args = Record<string, unknown>;
-
-const oneOf = <T extends string>(args: Args, key: string, allowed: readonly T[], fallback?: T): T => {
-  const v = args[key];
-  if (v === undefined && fallback !== undefined) return fallback;
-  if (typeof v === "string" && (allowed as readonly string[]).includes(v)) return v as T;
-  throw new ToolArgError(`${key} must be one of ${allowed.join(", ")}; got ${JSON.stringify(v)}`);
-};
-
-const num = (args: Args, key: string, fallback?: number): number => {
-  const v = args[key] ?? fallback;
-  const n = typeof v === "string" ? Number(v) : v;
-  if (typeof n !== "number" || !Number.isFinite(n)) {
-    throw new ToolArgError(`${key} must be a number; got ${JSON.stringify(args[key])}`);
-  }
-  return n;
-};
-
-const r4 = (v: number | null | undefined): number | null => (v == null ? null : roundSig(v, 4));
-// Six figures, so that a check at 0.999 reads apart from 1.
-const r6 = (v: number | null | undefined): number | null => (v == null ? null : roundSig(v, 6));
-const range4 = (r: [number, number]): [number, number] => [roundSig(r[0], 4), roundSig(r[1], 4)];
-
-const RECIP_PLANES = ["hk0", "h0l", "0kl"] as const;
-const DPDF_PLANES = ["xy", "xz", "yz"] as const;
-// The fixed (cut) axis of each plane, as an H/K/L or x/y/z index.
-const RECIP_FIXED: Record<string, 0 | 1 | 2> = { hk0: 2, h0l: 1, "0kl": 0 };
-const DPDF_FIXED: Record<string, 0 | 1 | 2> = { xy: 2, xz: 1, yz: 0 };
-const HKL = ["H", "K", "L"] as const;
-const XYZ = ["x", "y", "z"] as const;
-
-export const planeLabel = (plane: string, value: number): string => {
-  const v = roundSig(value, 4);
-  if (plane in RECIP_FIXED) {
-    const fixed = RECIP_FIXED[plane];
-    const inPlane = HKL.filter((_a, i) => i !== fixed).join("–");
-    return `${inPlane} plane at ${HKL[fixed]} = ${v}`;
-  }
-  const fixed = DPDF_FIXED[plane] ?? 2;
-  const inPlane = XYZ.filter((_a, i) => i !== fixed).join("–");
-  return `ΔPDF ${inPlane} section at ${XYZ[fixed]} = ${v} Å`;
-};
-
-const recipRange = (meta: VolumeMeta, axis: number): [number, number] =>
-  [meta.h_range, meta.k_range, meta.l_range][axis];
-const dpdfRange = (meta: DeltaPdfMeta, axis: number): [number, number] =>
-  [meta.x_range, meta.y_range, meta.z_range][axis];
-
-const checkInRange = (name: string, value: number, range: [number, number]) => {
-  const tol = 1e-6 * Math.max(1, Math.abs(range[1] - range[0]));
-  if (value < range[0] - tol || value > range[1] + tol) {
-    throw new ToolArgError(`${name} = ${value} is outside the data range [${roundSig(range[0], 4)}, ${roundSig(range[1], 4)}]`);
-  }
-};
-
-async function recipMeta(dataset: Dataset): Promise<VolumeMeta> {
-  const id = hklVolumeId(dataset);
-  const meta = id ? await safe(fetchMeta(id)) : null;
-  if (!meta) throw new Error("this dataset has no reciprocal-space volume");
-  return meta;
-}
-
-async function dpdfMeta(dataset: Dataset): Promise<DeltaPdfMeta> {
-  const id = dpdfVolumeId(dataset);
-  const meta = id ? await safe(fetchDpdfMeta(id)) : null;
-  if (!meta) throw new Error("this dataset has no 3D-ΔPDF yet");
-  return meta;
-}
-
-// The figure a cut is drawn in: the cleanup page (every stage side by side)
-// at a reciprocal plane, or the 3D-ΔPDF page at a real-space section, centred
-// in the other two axes.
-const cleanupView = (plane: string, value: number): ViewTarget => ({
-  view: "cleanup",
-  plane,
-  value,
-  label: planeLabel(plane, value),
-  axis: HKL[RECIP_FIXED[plane]] as FixedAxis,
-});
-
-const dpdfView = (meta: DeltaPdfMeta, plane: string, value: number): ViewTarget => {
-  const fixed = DPDF_FIXED[plane];
-  const index = meta.shape.map((n, i) => {
-    if (i !== fixed) return Math.floor(n / 2);
-    const [lo, hi] = dpdfRange(meta, i);
-    return n > 1 ? Math.round(((value - lo) / (hi - lo)) * (n - 1)) : 0;
-  }) as [number, number, number];
-  return { view: "dpdf", plane, value, label: planeLabel(plane, value), index };
-};
-
 // ---------------------------------------------------------------- measuring
-
-async function measureRecip(dataset: Dataset, plane: string, value: number) {
-  const meta = await recipMeta(dataset);
-  checkInRange(HKL[RECIP_FIXED[plane]], value, recipRange(meta, RECIP_FIXED[plane]));
-  const { context } = await loadPipelineContext(dataset, { recip: { plane, value }, dpdf: null, records: false });
-  return {
-    cut: planeLabel(plane, value),
-    ring_removal: context.ring_removal ?? null,
-    bragg_punch_leftover: context.bragg_punch?.leftover ?? null,
-    backfill: context.backfill ?? null,
-    flatten: context.flatten ?? null,
-    notes: (context.notes ?? []).filter((n) => !n.startsWith("delta pdf")),
-  };
-}
 
 const recipSummary = (m: Awaited<ReturnType<typeof measureRecip>>): string =>
   [
@@ -252,18 +108,6 @@ const recipSummary = (m: Awaited<ReturnType<typeof measureRecip>>): string =>
   ]
     .filter(Boolean)
     .join(" · ") || "no stage metrics at this cut";
-
-async function measureDpdf(dataset: Dataset, plane: string, value: number) {
-  const meta = await dpdfMeta(dataset);
-  checkInRange(XYZ[DPDF_FIXED[plane]], value, dpdfRange(meta, DPDF_FIXED[plane]));
-  const { context } = await loadPipelineContext(dataset, { recip: null, dpdf: { plane, value }, records: false });
-  if (!context.delta_pdf) throw new Error("could not read that ΔPDF section");
-  // The back-FFT check is volume-wide (consistency_details), not per section.
-  const dpdf = { ...context.delta_pdf };
-  delete dpdf.consistency_pearson_r;
-  delete dpdf.consistency_normalized_rms;
-  return { cut: planeLabel(plane, value), delta_pdf: dpdf };
-}
 
 const measureReciprocalCut: ChatTool = {
   name: "measure_reciprocal_cut",
@@ -1537,18 +1381,11 @@ function rawBand(c: VolumeCoverage | null, qMinSet: string, qMaxSet: string) {
 
 // ---------------------------------------------------------------- actions
 
-// Neither acts while a run or a tuning run is going: both own the pipeline.
-const checkIdle = () => {
-  if (usePipelineStore.getState().running) throw new Error("a pipeline run is in progress; wait for it to end");
-  if (useTuneStore.getState().active) throw new Error("a tuning run is in progress; wait for it to end");
-};
-
 const SETTABLE = [...TUNE_PARAMS, ...SAMPLE_PARAMS];
 const findParam = (key: string): TuneParam | undefined => SETTABLE.find((p) => p.key === key);
 
 // The stage of each setting, for the skill gate (skills.ts).
 const SETTING_STAGE = new Map([...TUNE_PARAMS, ...SAMPLE_PARAMS].map((p) => [p.key as string, p.stage]));
-const unique = <T>(xs: T[]): T[] => [...new Set(xs)];
 
 const allowedValues = (p: TuneParam): string =>
   p.kind === "enum"
