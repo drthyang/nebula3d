@@ -173,9 +173,13 @@ type Gate = { skill: SkillName; phrase: string; stated: number | null } & ({ lim
 
 const GATES: Gate[] = [
   // reduction-qc
+  { skill: "reduction-qc", phrase: "the UB turned at 0.05° or more", stated: 0.05, limit: LIMITS.ubTurn },
   { skill: "reduction-qc", phrase: "up to about 1e-3 is clean", stated: 1e-3, limit: LIMITS.openWeight },
   { skill: "reduction-qc", phrase: "at least 0.15 of its median height", stated: 0.15, limit: LIMITS.ringHeight },
   { skill: "reduction-qc", phrase: "in 90 % of the directions", stated: 0.9, limit: LIMITS.ringDirections },
+  { skill: "reduction-qc", phrase: "three times its noise above its flanks", stated: 3, limit: LIMITS.ringSnr },
+  { skill: "reduction-qc", phrase: "a quarter of its height above a curve", stated: 0.25, limit: LIMITS.ringCurve },
+  { skill: "reduction-qc", phrase: "beyond three times its plane's noise", stated: 3, limit: LIMITS.ringNoise },
   { skill: "reduction-qc", phrase: "holds to about 1e-3 or better", stated: 1e-3, limit: LIMITS.symmetryHolds },
   { skill: "reduction-qc", phrase: "more than 1e-3 of its weight on unmeasured space", stated: 1e-3, limit: LIMITS.tuningWeight },
   { skill: "reduction-qc", phrase: "a trend and a span both 0.8 or more", stated: 0.8, limit: LIMITS.pedestalTrend },
@@ -257,8 +261,8 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "reduction-qc", phrase: "the stages on disk", what: "the stages on disk", fields: ["stages"] },
   { skill: "reduction-qc", phrase: "the reciprocal grid and its range", what: "the reciprocal grid", fields: ["reciprocal.grid"] },
   { skill: "reduction-qc", phrase: "the reciprocal grid and its range", what: "the reciprocal grid's range", fields: ["reciprocal.H"] },
-  { skill: "reduction-qc", phrase: "the cell, and the symmetry the file declares", what: "the cell", fields: ["cell"] },
-  { skill: "reduction-qc", phrase: "the cell, and the symmetry the file declares", what: "the symmetry the file declares", fields: SYMMETRY_FIELDS },
+  { skill: "reduction-qc", phrase: "its range, and the cell", what: "the cell", fields: ["cell"] },
+  { skill: "reduction-qc", phrase: "and the symmetry the file declares", what: "the symmetry the file declares", fields: SYMMETRY_FIELDS },
   { skill: "reduction-qc", phrase: "Note whether the volume is symmetrised", what: "whether the volume is symmetrised", fields: ["symmetrised"] },
   { skill: "reduction-qc", phrase: "with the punch cell as the Bragg nodes", what: "the Bragg nodes it fits", fields: ["bragg_nodes_every"] },
   { skill: "reduction-qc", phrase: "only the changes that commute with the symmetry operations can be fitted", what: "whether only the symmetric part was fitted", fields: ["fit", "symmetrised"] },
@@ -331,18 +335,6 @@ type Kind = "tool" | "field" | "setting" | "name" | "claim" | "gate" | "unstated
  */
 const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [
   {
-    skill: "reduction-qc",
-    kind: "claim",
-    names: "the symmetry the file declares",
-    why: "step 1 takes the declared symmetry from describe_dataset, whose result has none; ub_check (symmetry_from), grain_check (declared_symmetry), symmetry_check and assess_stage for the ΔPDF (symmetry_declared) give it (agent plan E; interview R5).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "claim",
-    names: "whether the volume is symmetrised",
-    why: "step 1 has the reader note whether the volume is symmetrised, from describe_dataset, which does not say; ub_check does (symmetrised) (interview R5).",
-  },
-  {
     skill: "bragg-node-audit",
     kind: "claim",
     names: "the symmetry the file declares",
@@ -365,30 +357,6 @@ const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = 
     kind: "gate",
     names: "a back-FFT r near 1 only shows the transform ran correctly",
     why: "trust check 4 reads the round trip as r near 1; the verdict's line is r of 0.999 or more (BACK_FFT_R_OK) against the data's even part (back_fft_pearson_r_even), which the check does not name (agent plan E; interview P4).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "unstated",
-    names: LIMITS.ubTurn.constant,
-    why: "step 2 leaves the turn worth acting on to the user; the verdict calls the UB turned at 0.05° or more from an unsymmetrised fit (D4; interview R3).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "unstated",
-    names: LIMITS.ringSnr.constant,
-    why: "step 5 states the ring rule's 0.15 and 90 % only; a ring must also stand three times its noise above its flanks (agent plan E; interview R8).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "unstated",
-    names: LIMITS.ringCurve.constant,
-    why: "step 5 states the ring rule's 0.15 and 90 % only; a quarter of a ring's height must also stand above a curve through its flanks (agent plan E; interview R8).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "unstated",
-    names: LIMITS.ringNoise.constant,
-    why: "step 5 reports leftovers and dents as shares of the diffuse; the verdict counts one only beyond three times its plane's noise (agent plan E; interview R8).",
   },
 ];
 
