@@ -1,6 +1,6 @@
 # Tool definitions with the skills off (validation arm C)
 
-`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (23 tools, 20402 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
+`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (23 tools, 20183 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -15,7 +15,7 @@ read_skill: it works only with the skills on (its facts' `needsSkills`).
 ## measure_reciprocal_cut: its description with the skills off
 
 ```text
-Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane. Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5).
+Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane.
 ```
 
 Its parameters are as in 2-tools.md.
@@ -39,7 +39,7 @@ Its parameters are as in 2-tools.md.
 ## dpdf_peaks: its description with the skills off
 
 ```text
-The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors), though the grouping does not use the symmetry and two correlations can share a length. Use it for the strongest pair correlations with their vectors and signs. What size is worth interpreting, and what a feature means, is the user's call. Quote the vectors, signs and sizes it returns.
+The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors), though the grouping does not use the symmetry and two correlations can share a length. What size is worth interpreting, and what a feature means, is the user's call. Quote the vectors, signs and sizes it returns.
 ```
 
 Its parameters are as in 2-tools.md.
@@ -63,7 +63,7 @@ Its parameters are as in 2-tools.md.
 ## radial_profile: its description with the skills off
 
 ```text
-The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings. Use it to see where in |Q| a stage left or removed signal.
+The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings.
 ```
 
 Its parameters are as in 2-tools.md.

@@ -1,6 +1,6 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 79 spans in 28 texts or sets: reading 16, evidence 51, remedy 12.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 89 spans in 28 texts or sets: reading 25, evidence 51, remedy 13.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -107,9 +107,9 @@ scientifically cautious; do not overstate certainty from summary statistics.
 
 ## prompts/system.ts: the system prompt, the tools' guidance
 
-11 spans: reading 6, evidence 4, remedy 1.
+20 spans: reading 14, evidence 4, remedy 2.
 
-The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
+The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
 
 ```text
 
@@ -139,28 +139,28 @@ measure the same cuts before and after, and if it made things worse, change it b
 rerun. After any run, measure its outputs before you judge them, and say what you ran,
 what you changed and what it did to the numbers.
 
-To judge a run, settle these four checks, each with numbers, and say which pass:
-(1) Ring removal is clean⟦reading: : assess_stage rings (ring-energy ratio and over-subtraction on
-every plane)⟧⟦evidence: ; radial_profile shows any ring left as a bump, or diffuse dented as a dip⟧.
-(2) Bragg peaks are removed cleanly⟦reading: : assess_stage punch (leftover peaks on every plane,
-and how much was punched to get there); check an off-zero cut too⟧.
-(3) The punch and backfill add no texture to reciprocal space⟦reading: : texture_check (no cut whose
-fills sit systematically outside the range their rims allow, azimuthal ratio near 1)⟧.
-(4) Qmax is not past the data coverage⟦reading: : qmax_coverage says how far the forward transform's
+⟦reading: To judge a run, settle these four checks, each with numbers, and say which pass:
+⟧⟨connective: “” → “A run is judged on four properties: ”⟩⟦reading: (1) ⟧⟨connective: “Ring” → “ring”⟩ removal is clean⟦reading: : assess_stage rings (ring-energy ratio and over-subtraction on
+every plane)⟧⟦evidence: ; radial_profile shows any ring left as a bump, or diffuse dented as a dip⟧⟨connective: “.
+” → “; ”⟩⟦reading: (2) ⟧Bragg peaks are removed cleanly⟦reading: : assess_stage punch (leftover peaks on every plane,
+and how much was punched to get there); check an off-zero cut too⟧⟨connective: “.
+” → “; ”⟩⟦reading: (3) ⟧⟨connective: “The” → “the”⟩ punch and backfill add no texture to reciprocal space⟦reading: : texture_check (no cut whose
+fills sit systematically outside the range their rims allow, azimuthal ratio near 1)⟧⟨connective: “.
+” → “; ”⟩⟦reading: (4) ⟧Qmax is not past the data coverage⟦reading: : qmax_coverage says how far the forward transform's
 window reaches in |Q| and whether that stays inside the fully measured shells⟧.
 On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
 symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features
-carry the colour and the FFT ripple stays near neutral: use it when the ΔPDF looks too
-bright or full of ripple, and before describing a ΔPDF figure. dpdf_peaks lists the ΔPDF's
-strongest features from the whole volume, each with its vector, sign and size: quote it
-for the strongest pair correlations rather than reading them off a figure.
-Asked about a second grain, a twin, or the off-lattice peaks the punch's search found, call
-grain_check: it reads every peak the search punched and says whether they are a second grain,
+carry the colour and the FFT ripple stays near neutral⟦remedy: : use it when the ΔPDF looks too
+bright or full of ripple, and before describing a ΔPDF figure⟧. dpdf_peaks lists the ΔPDF's
+strongest features from the whole volume, each with its vector, sign and size⟦reading: : quote it
+for the strongest pair correlations rather than reading them off a figure⟧.
+⟦reading: Asked about a second grain, a twin, or the off-lattice peaks the punch's search found, call
+⟧grain_check⟨connective: “: it” → “”⟩ reads every peak the search punched and says whether they are a second grain,
 Bragg peaks displaced by a UB that is slightly off⟦evidence:  (symmetrised into copies around the nodes)⟧,
 or neither. The leftover counts (bragg_punch.leftover) are only what the punch missed on one
 cut, never what its search found⟦reading: ; use grain_check before calling such peaks spurious or real⟧.
-Asked whether the UB is right, or why the Bragg peaks sit off their nodes, call ub_check: it fits
+⟦reading: Asked whether the UB is right, or why the Bragg peaks sit off their nodes, call ⟧ub_check⟨connective: “: it” → “”⟩ fits
 the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
 keeps⟦remedy: : say so, and that the orientation needs the unsymmetrised file⟧.⟦evidence:  A relative offset along
 Q that changes with |Q| is not a UB error, whatever the fit returns.⟧
@@ -208,7 +208,7 @@ Each entry: the sign, |r|, the largest size in σ, how many vectors (one per ± 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors)⟦evidence: : copies of one correlation under the crystal's symmetry, most likely⟧, though the grouping does not use the symmetry and two correlations can share a length. Use it for the strongest pair correlations with their vectors and signs⟦reading: , after the trust checks (qmax_coverage, symmetry_check on symmetrised data, assess_stage pdf)⟧. What size is worth interpreting, and what a feature means, is the user's call⟦reading:  (delta-pdf-interpretation)⟧. Quote the vectors, signs and sizes it returns.
+The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors)⟦evidence: : copies of one correlation under the crystal's symmetry, most likely⟧, though the grouping does not use the symmetry and two correlations can share a length.⟦reading:  Use it for the strongest pair correlations with their vectors and signs, after the trust checks (qmax_coverage, symmetry_check on symmetrised data, assess_stage pdf).⟧ What size is worth interpreting, and what a feature means, is the user's call⟦reading:  (delta-pdf-interpretation)⟧. Quote the vectors, signs and sizes it returns.
 ```
 
 ## tools/index.ts: grain_check's description
@@ -238,17 +238,17 @@ Intensity along a straight line parallel to one axis through any stage volume⟦
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane. Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5⟦reading: , or K=1/3 for satellites⟧).
+Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane.⟦reading:  Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).⟧
 ```
 
 ## tools/index.ts: radial_profile's description
 
-2 spans: reading 1, evidence 1.
+3 spans: reading 2, evidence 1.
 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings⟦evidence: , which are bumps in raw that ring removal should take out without denting the diffuse⟧⟦reading: ; after flatten the floor should sit near 0 at every |Q|⟧. Use it to see where in |Q| a stage left or removed signal.
+The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings⟦evidence: , which are bumps in raw that ring removal should take out without denting the diffuse⟧⟦reading: ; after flatten the floor should sit near 0 at every |Q|⟧.⟦reading:  Use it to see where in |Q| a stage left or removed signal.⟧
 ```
 
 ## tools/index.ts: symmetry_check's description

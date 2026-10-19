@@ -312,13 +312,14 @@ it, so nothing is cut out of a text after it is built. With it off:
 - every text the model reads keeps its definitions and leaves out its inference
   (`web/src/llm/inference.ts`, the manager's rule): a definition says what a field,
   a setting, a tool or a reading is, its units, how it is computed, its limits as a
-  measurement, or how to use the tools; an inference says which reading to use for
-  a conclusion, what a value or a pattern is evidence of, or what a finding calls
-  for (a change, the check to run next, what to report). The system prompt keeps
-  the four checks a run is judged by, and leaves out the readings each is settled
-  with; the tool descriptions, the tools' readings, the stages' goals and criteria,
-  the verdicts' words, the context's prose and the tuning prompts' settings lose
-  theirs. Each span is tagged once, where the text is written, and
+  measurement, or how to use the tools; an inference says which reading or tool to
+  use for a conclusion, what a value or a pattern is evidence of, or what a finding
+  calls for (a change, the check to run next, what to report). The system prompt
+  names the four properties a run is judged by, as what exists and in no order, and
+  leaves out the checklist, the readings each is settled with and the routing of a
+  question to a tool; the tool descriptions, the tools' readings, the stages' goals
+  and criteria, the verdicts' words, the context's prose and the tuning prompts'
+  settings lose theirs. Each span is tagged once, where the text is written, and
   `web/src/llm/__tests__/__snapshots__/model-visible/6-inference.md` lists every
   one, by class, in the text it sits in;
 - no send-back or refusal names a skill, a stage or a tool to run next: the answer

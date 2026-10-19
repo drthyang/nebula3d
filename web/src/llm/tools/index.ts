@@ -269,7 +269,7 @@ const measureReciprocalCut: ChatTool = {
   name: "measure_reciprocal_cut",
   facts: { label: "Measured a reciprocal cut", acts: null, highlights: RECIP },
   ...described(
-    description("measure_reciprocal_cut")`Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane. Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5${reading(", or K=1/3 for satellites")}).`,
+    description("measure_reciprocal_cut")`Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane.${reading(" Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).")}`,
   ),
   parameters: {
     type: "object",
@@ -838,7 +838,7 @@ const radialProfileTool: ChatTool = {
     highlights: (args) => (args.stages === undefined ? ["raw", ...RECIP] : keysOf(args.stages)),
   },
   ...described(
-    description("radial_profile")`The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings${evidence(", which are bumps in raw that ring removal should take out without denting the diffuse")}${reading("; after flatten the floor should sit near 0 at every |Q|")}. Use it to see where in |Q| a stage left or removed signal.`,
+    description("radial_profile")`The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings${evidence(", which are bumps in raw that ring removal should take out without denting the diffuse")}${reading("; after flatten the floor should sit near 0 at every |Q|")}.${reading(" Use it to see where in |Q| a stage left or removed signal.")}`,
   ),
   parameters: {
     type: "object",
@@ -1168,7 +1168,7 @@ const dpdfPeaks: ChatTool = {
   name: "dpdf_peaks",
   facts: { label: "Listed the ΔPDF's strongest features", acts: null, offeredFor: ["pdf"], settles: ["features"] },
   ...described(
-    description("dpdf_peaks")`The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors)${evidence(": copies of one correlation under the crystal's symmetry, most likely")}, though the grouping does not use the symmetry and two correlations can share a length. Use it for the strongest pair correlations with their vectors and signs${reading(", after the trust checks (qmax_coverage, symmetry_check on symmetrised data, assess_stage pdf)")}. What size is worth interpreting, and what a feature means, is the user's call${reading(" (delta-pdf-interpretation)")}. Quote the vectors, signs and sizes it returns.`,
+    description("dpdf_peaks")`The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors)${evidence(": copies of one correlation under the crystal's symmetry, most likely")}, though the grouping does not use the symmetry and two correlations can share a length.${reading(" Use it for the strongest pair correlations with their vectors and signs, after the trust checks (qmax_coverage, symmetry_check on symmetrised data, assess_stage pdf).")} What size is worth interpreting, and what a feature means, is the user's call${reading(" (delta-pdf-interpretation)")}. Quote the vectors, signs and sizes it returns.`,
   ),
   parameters: {
     type: "object",

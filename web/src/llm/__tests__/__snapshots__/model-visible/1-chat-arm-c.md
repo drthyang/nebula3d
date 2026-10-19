@@ -105,24 +105,17 @@ measure the same cuts before and after, and if it made things worse, change it b
 rerun. After any run, measure its outputs before you judge them, and say what you ran,
 what you changed and what it did to the numbers.
 
-To judge a run, settle these four checks, each with numbers, and say which pass:
-(1) Ring removal is clean.
-(2) Bragg peaks are removed cleanly.
-(3) The punch and backfill add no texture to reciprocal space.
-(4) Qmax is not past the data coverage.
+A run is judged on four properties: ring removal is clean; Bragg peaks are removed cleanly; the punch and backfill add no texture to reciprocal space; Qmax is not past the data coverage.
 On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
 symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features
-carry the colour and the FFT ripple stays near neutral: use it when the ΔPDF looks too
-bright or full of ripple, and before describing a ΔPDF figure. dpdf_peaks lists the ΔPDF's
-strongest features from the whole volume, each with its vector, sign and size: quote it
-for the strongest pair correlations rather than reading them off a figure.
-Asked about a second grain, a twin, or the off-lattice peaks the punch's search found, call
-grain_check: it reads every peak the search punched and says whether they are a second grain,
+carry the colour and the FFT ripple stays near neutral. dpdf_peaks lists the ΔPDF's
+strongest features from the whole volume, each with its vector, sign and size.
+grain_check reads every peak the search punched and says whether they are a second grain,
 Bragg peaks displaced by a UB that is slightly off,
 or neither. The leftover counts (bragg_punch.leftover) are only what the punch missed on one
 cut, never what its search found.
-Asked whether the UB is right, or why the Bragg peaks sit off their nodes, call ub_check: it fits
+ub_check fits
 the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
 keeps.
 assess_stage pdf gives the back-FFT r and RMS; run_log says what a stage did or why it
