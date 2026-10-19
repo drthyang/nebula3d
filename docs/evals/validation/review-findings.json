@@ -708,5 +708,28 @@
    "on": "2026-10-19",
    "option": "the prompts state what the checks judge; the four checks name all five stages and the UB"
   }
+ },
+ {
+  "source": "review",
+  "ref": "P5.3",
+  "at": "fd2a96a",
+  "kind": "orchestration",
+  "evidence": "When a local model's request passes SOFT_BUDGET, the loop shortens every result but the newest KEEP_FULL (web/src/llm/agent.ts:259), and a request the window cannot hold is shortened to its newest result (agent.ts:281), both through compactOlder (agent.ts:224) and shorten. A skill's text, as read_skill returns it (\"Skill <name>\" and the body: web/src/llm/skills.ts:220), is no JSON, so it was cut to its first 400 characters (web/src/llm/readings/compact.ts:47): a skill's gates, its thresholds and rules, lie past that, and the model then worked on without them.",
+  "proposed_fix": "A skill opts in by writing its gates under a heading of their own, exactly `## Gates`. Shortened, its text keeps its name and the same 400-character head as before, and the section whole, to the next heading of level 1 or 2 or the `---` before read_skill's references; the section is capped at GATES_MAX, 1,200 characters (10 to 12 one-line gates, twice the most a skill states today), cut past it at a line boundary with a marker that says how many lines were left out, so the stub stays under SKILL_STUB_MAX (1,800 characters) and a skill whose stub would save nothing stays whole. A skill without the section, and any text that is no skill's, is shortened as before, byte for byte. Each skill's `## Gates` text is the user's to write.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "6c80144",
+  "tests": [
+   "web/src/llm/__tests__/readings.test.ts (a synthetic skill with `## Gates`: its name, its head and every gate number survive; the section's bounds; the cap, cut at a line boundary with its marker; a skill without the section, and a text that is no skill's, shortened byte for byte as before; each real skill without the section pinned to the old rule; per real skill, a test skipped until it gains `## Gates`, that every number in the section survives)",
+   "web/src/llm/__tests__/agent.test.ts (the loop keeps a skill's `## Gates` when it compacts the skill's text)",
+   "web/src/llm/__tests__/tokenBudget.test.ts (on LM Studio at 32k, were both skills read gated at the cap, the largest request still leaves MIN_REPLY)",
+   "web/src/llm/__tests__/modelVisible.test.ts (the snapshots unchanged)"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 5.3), for the code only. Each skill's `## Gates` text waits for the user: no skill has the section yet, so every skill is shortened byte for byte as before, the model-visible snapshots are unchanged, and the token-budget breakdown is identical, value for value. Once both skills of the worst turn carry gates at the cap, its largest request on LM Studio at 32k grows by at most about 1.9k of the 3.7k tokens it has to spare past MIN_REPLY.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "the code only: a skill's `## Gates` section survives compaction whole, capped at 1,200 characters; the gates' text waits for the user"
+  }
  }
 ]
