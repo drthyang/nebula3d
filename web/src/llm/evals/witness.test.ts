@@ -12,6 +12,10 @@ import { grade } from "./harness";
 import { casesIn, gradeRun } from "./validation";
 import { witness } from "./witness";
 
+// Grading the whole corpus takes seconds, more on CI's slower runners than the
+// default 5 s allows (tokenBudget.test.ts does the same for its turns).
+const CORPUS_TIMEOUT = 60_000;
+
 /**
  * The disputes the dev corpus raises, declared: each answer of it (answerCorpus.ts)
  * graded on every dev case and on its own scenario's checks. None: where one
@@ -50,7 +54,7 @@ describe("the disputes over the dev corpus", () => {
   it("are the declared ones", async () => {
     expect(disputesOver(await answerCorpus())).toEqual(DECLARED_DISPUTES);
   });
-});
+}, CORPUS_TIMEOUT);
 
 describe("the witness catches a shared reader that misreads", () => {
   // Planted controls: shared readers with a fault planted in them, over the
@@ -87,7 +91,7 @@ describe("the witness catches a shared reader that misreads", () => {
   it("the real shared reader raises no dispute on the planted answers", async () => {
     expect(alarmsOver(await answers(), READERS).disputes).toEqual([]);
   });
-});
+}, CORPUS_TIMEOUT);
 
 /** The modules a source imports or re-exports from, as written: type-only, side-effect and dynamic imports included. */
 const importsOf = (source: string): string[] =>

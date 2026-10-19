@@ -33,6 +33,10 @@ import { grade, type Check, type EvalRun } from "./harness";
 import { SCENARIOS } from "./scenarios";
 import { casesIn, detectionChecks, falseAlarmChecks, type ValidationCase } from "./validation";
 
+// Grading the whole corpus takes seconds, more on CI's slower runners than the
+// default 5 s allows (tokenBudget.test.ts does the same for its turns).
+const CORPUS_TIMEOUT = 60_000;
+
 const GOLDEN = "./__goldens__/answerText.json";
 
 /** Every check on the run passing, and every one failing, as the verdict grid builds them (verdictGrid.ts). */
@@ -166,4 +170,4 @@ describe("an answer's words, as the graders and the answer checks read them", ()
     }
     await expect(text).toMatchFileSnapshot(GOLDEN);
   });
-});
+}, CORPUS_TIMEOUT);
