@@ -217,13 +217,14 @@ describe("a card states only what it judges", () => {
     const card = (m: Record<string, unknown>) => buildReport(input({ measured: { ...input().measured, punch: m } })).checks.find((c) => c.title === "Bragg punch")!;
     const two = card(punch);
     expect(two.verdict).toBe("attention");
-    expect(two.headline).toBe("0 missed at nodes · 2 sharp off-lattice · 7 broad maxima kept · punched 0.03");
+    // The headline names them too, so nothing on those planes goes unsaid.
+    expect(two.headline).toBe("0 missed at nodes · 2 sharp off-lattice (3 more on protected planes, kept) · 7 broad maxima kept · punched 0.03");
     expect(two.details).toContainEqual(["Sharp off-lattice leftovers (outside the protected planes)", "2"]);
     expect(two.details).toContainEqual(["Sharp leftovers on protected planes (kept by design)", "3"]);
     expect(two.criterion).toMatch(/no sharp peak left off the lattice outside the protected planes/);
     // All of them on the protected planes: none counted, and the card passes.
     const none = card({ ...punch, leftover_off_lattice_sharp: 3 });
-    expect([none.verdict, none.headline]).toEqual(["pass", "0 missed at nodes · 0 sharp off-lattice · 7 broad maxima kept · punched 0.03"]);
+    expect([none.verdict, none.headline]).toEqual(["pass", "0 missed at nodes · 0 sharp off-lattice (3 more on protected planes, kept) · 7 broad maxima kept · punched 0.03"]);
     // An evaluation recorded without the split counts every sharp one, under the old label.
     const old = card({ leftover_at_nodes: 0, leftover_off_lattice_sharp: 5, leftover_on_protected_planes: 4 });
     expect(old.details).toContainEqual(["Sharp off-lattice leftovers", "5"]);
