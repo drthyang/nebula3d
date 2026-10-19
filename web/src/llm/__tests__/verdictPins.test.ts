@@ -238,13 +238,18 @@ describe("the disagreements found beyond D1–D10, kept and named", () => {
     expect(judge("rings", {})).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
   });
 
-  it("D17: a repeated call's pointer reads as a result that holds nothing: {{achieved}} loses the verdict it points to, the answer checks keep it", () => {
-    expect(D17_REPEAT_POINTER_READS_AS_A_RESULT).toBe(true);
-    const pointer = step("qmax_coverage", { already_called: "Called with these arguments earlier in this reply (step 1); its result is above. Use it, or call with other arguments." });
+  it("D17, unified (2.4b.1): a repeated call's pointer holds no outcome; both readers read the result it points to", () => {
+    expect(D17_REPEAT_POINTER_READS_AS_A_RESULT).toBe(false);
+    const pointer = (name: string) => step(name, { already_called: "Called with these arguments earlier in this reply (step 1); its result is above. Use it, or call with other arguments." });
     expect(reply(TOO_FAR).achieved?.attention).toEqual(["the ΔPDF window against the coverage"]);
-    const r = reply(TOO_FAR, pointer);
-    expect(r.achieved?.attention).toEqual([]);
+    const r = reply(TOO_FAR, pointer("qmax_coverage"));
+    expect(r.achieved?.attention).toEqual(["the ΔPDF window against the coverage"]);
     expect(r.checks.coverage).toBe("attention");
+    // A repeated ub_check reads as the UB it points to, no longer as a right UB (D16).
+    const turned = reply(step("ub_check", { fit: "both", symmetrised: false, orientation_change_deg: 0.6 }), pointer("ub_check"));
+    expect([turned.checks.ub, turned.achieved?.dataProblems]).toEqual(["attention", ["the UB is turned by 0.6°"]]);
+    // A pointer alone holds nothing to read.
+    expect(reply(pointer("qmax_coverage"))).toEqual({ achieved: null, checks: {} });
   });
 
   it("D16: a ub_check result without an angle reads as a right UB", () => {
