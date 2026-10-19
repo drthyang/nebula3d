@@ -480,5 +480,26 @@
    "on": "2026-10-19",
    "option": "yes"
   }
+ },
+ {
+  "source": "review",
+  "ref": "D11",
+  "at": "76a691c",
+  "kind": "bug",
+  "evidence": "The answer checks judge a stage whose output is missing from its absent numbers (web/src/llm/verdicts/readers.ts:120, :170): for the 3D-ΔPDF the rule passes an evaluation that measured nothing (web/src/llm/verdicts/rules.ts:263, :272), so a missing ΔPDF reads as a pass and overrides an earlier \"needs attention\", while {{achieved}} skips a missing output (readers.ts:166).",
+  "proposed_fix": "A stage with no output, the 3D-ΔPDF's included, is not judged, never a pass: both readers skip it.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "fe0e8f8",
+  "tests": [
+   "web/src/llm/__tests__/verdictPins.test.ts (D11, unified (2.4b.3): a stage with no output, the ΔPDF's included, is not judged, never a pass: both readers skip it)",
+   "web/src/llm/__tests__/answerChecks.test.ts (never reads a missing ΔPDF output as a pass, over an earlier verdict or alone (D11, 2.4b.3))"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "yes"
+  }
  }
 ]
