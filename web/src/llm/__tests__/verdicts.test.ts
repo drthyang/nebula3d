@@ -283,6 +283,39 @@ describe("judge: the checks on the result", () => {
     });
   }
 
+  // With the skills off (the validation's arm C) each check's words are their
+  // definitions (inference.ts): the verdict and its numbers, with no remedy and
+  // no reading of what a pattern is evidence of. Kinds, reasons and data
+  // problems are the same either way; words without inference read the same.
+  const OFF: Record<string, string> = {
+    "the raw weight past the limit (D6)": "too far: the ΔPDF's ellipsoid window puts 0.00104 of its weight on unmeasured reciprocal space",
+    "the reach past it": "too far: the transform reaches 6.61 Å⁻¹ (the window is tapered to the measured coverage), past full coverage at 6.5 Å⁻¹",
+    "a file read, no symmetry declared": "not judged: the file declares no symmetry",
+    "an empty declaration": "not judged: the file declares no symmetry",
+    "a rotation under 2°, judged unrounded: the UB, though it reads 2°":
+      "the off-lattice peaks are the crystal's own Bragg peaks with the UB off: one rotation of 2° puts 30 of the 40 strongest orbits back on the Bragg lattice (random directions: 2)",
+    "too few indexed against the control":
+      "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 20 of the 40 strongest off-lattice orbits (random directions: 6). 37 lie farther from any node",
+    "half of them beside nodes, a symmetrised volume":
+      "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 3 of the 40 strongest off-lattice orbits (random directions: 5). 20 of them sit within a quarter of the node spacing of a Bragg node, offset by a median 1.23° of rotation (a lower bound: a node at an angle to the rotation axis moves less)",
+    "most beside nodes, unsymmetrised":
+      "no second grain of this phase: a rotated copy of the Bragg lattice indexes only 3 of the 40 strongest off-lattice orbits (random directions: 5). 28 of them sit within a quarter of the node spacing of a Bragg node, offset by a median 1.23° of rotation (a lower bound: a node at an angle to the rotation axis moves less). 12 lie farther from any node",
+  };
+  it("with the skills off, words are their definitions: no remedy, no reading of evidence; the verdicts the same", () => {
+    const cases: [string, CheckId, Obj][] = [
+      ...COVERAGE.map(([why, over]) => [why, "coverage", { ...reach, ...over }] as [string, CheckId, Obj]),
+      ...SYMMETRY.map(([why, m]) => [why, "symmetry", m] as [string, CheckId, Obj]),
+      ...GRAIN.map(([why, over]) => [why, "grain", facts(over)] as [string, CheckId, Obj]),
+    ];
+    for (const [why, check, m] of cases) {
+      const on = judge(check, m as never);
+      const off = judge(check, m as never, { skills: false });
+      expect({ ...off, words: null }, why).toEqual({ ...on, words: null });
+      expect(off.words, why).toBe(why in OFF ? OFF[why] : on.words);
+    }
+    expect(Object.keys(OFF).every((why) => cases.some(([w]) => w === why))).toBe(true);
+  });
+
   const UB: [string, Obj, Kind, Reason[], string[]][] = [
     ["turned under 0.05°", { fit: "both", symmetrised: false, orientation_change_deg: 0.049 }, "pass", [], []],
     ["turned 0.05°", { fit: "both", symmetrised: false, orientation_change_deg: 0.05 }, "attention", ["UB turned"], ["the UB is turned by 0.05°"]],

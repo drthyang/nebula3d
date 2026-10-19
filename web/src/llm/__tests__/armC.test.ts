@@ -9,8 +9,9 @@
 //
 // - no request (system prompt, messages, tool definitions) and no tool result
 //   holds a skill's name, or the word "skill";
-// - none holds a sentence of a skill's text whole, of MIN_WORDS words or more,
-//   but the one the system prompt shares by design (SHARED_BY_DESIGN);
+// - none holds a sentence of a skill's text whole, of MIN_WORDS words or more;
+// - none holds a span of inference written anywhere (inference.ts): the rule
+//   the manager set, definitions kept and inference left out;
 // - no send-back's own words name a tool of the registry, a stage (evidence.ts,
 //   catalog.ts) or a skill: what one quotes is the answer's own words.
 //
@@ -26,7 +27,8 @@ import { answerIssues, issuesPrompt } from "../answerChecks";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
-import { TOOLS_PROMPT } from "../prompts/system";
+import { writtenInferences } from "../inference";
+import { TOOLS } from "../prompts/system";
 import { buildChatMessages } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolSpec } from "../provider/client";
 import { fillReferences } from "../references";
@@ -69,26 +71,22 @@ vi.mock("../provider/client", async (importOriginal) => ({
  * The shortest skill sentence the check holds a text to. Below seven words a
  * skill's "sentence" is a heading ("Failure modes"), a step's label ("Know the
  * data.") or a checklist item that names a quantity or a check ("the flatten
- * floor, trend and span"), and the Pilot's own text names such things in its
- * own right: the ΔPDF's verdict criterion says "the window's weight on
- * unmeasured space" (six words), and the system prompt's checks "check an
- * off-zero cut too" (five), both a skill's sentence word for word. From seven
- * words up a skill's sentence states a step, a reading or a rule (the shortest:
- * "Never report it as a missed peak."); about 150 of them are that long, and
- * no text of arm C holds one whole but SHARED_BY_DESIGN. A test below pins the
- * near misses, so the line stays where the data put it.
+ * floor, trend and span"), and the Pilot's own definitions name such things in
+ * their own right: the ΔPDF's verdict criterion says "the window's weight on
+ * unmeasured space" (six words), a skill's checklist item word for word. From
+ * seven words up a skill's sentence states a step, a reading or a rule (the
+ * shortest: "Never report it as a missed peak."); about 150 of them are that
+ * long, and no text of arm C holds one whole. A test below pins the near miss,
+ * so the line stays where the data put it.
  */
 const MIN_WORDS = 7;
 
 /**
- * The skills' sentences of MIN_WORDS words or more that the Pilot's own system
- * prompt holds whole: TOOLS_PROMPT says this of ub_check in its own right ("On
- * a symmetrised volume it fits only what the symmetry keeps: say so, and that
- * the orientation needs the unsymmetrised file"), and the system prompt's own
- * method stays in arm C by design. Pinned, so a sentence a later change shares
- * is seen; nothing else arm C reads holds one.
+ * The skill's sentences arm B's system prompt holds whole, which arm C's does
+ * not: inference the Pilot's own guidance shares with a skill word for word,
+ * left out of arm C with the rest of the inference (inference.ts).
  */
-const SHARED_BY_DESIGN = ["reduction-qc: say so, and that the orientation needs the unsymmetrised file"];
+const SHARED_WITH_THE_SKILLS = ["reduction-qc: say so, and that the orientation needs the unsymmetrised file"];
 
 /**
  * What arm B's text says with the skills on that the switch takes out: a
@@ -304,15 +302,25 @@ describe("arm C's session, with the skills off", () => {
     }
   });
 
-  it(`holds no sentence of a skill's text of ${MIN_WORDS} words or more in any request or tool result, but the one the system prompt shares by design`, () => {
-    expect(skillSentencesIn(TOOLS_PROMPT, MIN_WORDS).map(label)).toEqual(SHARED_BY_DESIGN);
-    for (const s of requests()) {
-      const [system, ...rest] = s.messages;
-      expect(system.role).toBe("system");
-      expect(skillSentencesIn(String(system.content), MIN_WORDS).map(label)).toEqual(SHARED_BY_DESIGN);
-      for (const text of textsOf({ ...s, messages: rest })) expect(skillSentencesIn(text, MIN_WORDS).map(label), text.slice(0, 200)).toEqual([]);
+  it(`holds no sentence of a skill's text of ${MIN_WORDS} words or more in any request or tool result`, () => {
+    for (const text of [...requests().flatMap(textsOf), ...results()]) {
+      expect(skillSentencesIn(text, MIN_WORDS).map(label), text.slice(0, 200)).toEqual([]);
     }
-    for (const text of results()) expect(skillSentencesIn(text, MIN_WORDS).map(label), text.slice(0, 200)).toEqual([]);
+    // What arm B's system prompt shares with a skill word for word is inference, and arm C's does not hold it.
+    expect(skillSentencesIn(TOOLS.whole, MIN_WORDS).map(label)).toEqual(SHARED_WITH_THE_SKILLS);
+    expect(skillSentencesIn(TOOLS.definitions, MIN_WORDS)).toEqual([]);
+  });
+
+  it("holds none of the inference written anywhere: no span arm B reads that arm C leaves out", () => {
+    const spans = writtenInferences()
+      .map((e) => e.span.text.trim())
+      .filter((t) => t.split(/\s+/).length >= 3);
+    expect(spans.length).toBeGreaterThan(60);
+    const c = [...requests().flatMap(textsOf), ...results()].join("\n");
+    expect(spans.filter((t) => c.includes(t))).toEqual([]);
+    // And arm B's opening does hold them: the system prompt's spans.
+    const b = String(armSetup("B", context).messages[0].content);
+    expect(writtenInferences().filter((e) => e.source.startsWith("prompts/system.ts")).every((e) => b.includes(e.span.text))).toBe(true);
   });
 
   it("checks most of the skills' text, finds a skill's sentence where there is one, and puts the line where the data do", () => {
@@ -321,7 +329,7 @@ describe("arm C's session, with the skills off", () => {
     expect(checked.length).toBeGreaterThanOrEqual(150);
     // A skill's text is found where it is: in arm B's system prompt (the skills' section) and in what read_skill returns.
     const b = String(armSetup("B", context).messages[0].content);
-    expect(skillSentencesIn(b, MIN_WORDS).length).toBeGreaterThan(SHARED_BY_DESIGN.length);
+    expect(skillSentencesIn(b, MIN_WORDS).length).toBeGreaterThan(SHARED_WITH_THE_SKILLS.length);
     for (const s of allSkills()) expect(skillSentencesIn(readSkill(s.name), MIN_WORDS).filter((x) => x.skill === s.name).length, s.name).toBeGreaterThan(20);
     // Just below the line, the short sentences arm C's own text holds whole: what the Pilot names in its own right.
     const near = requests()
@@ -329,7 +337,7 @@ describe("arm C's session, with the skills off", () => {
       .concat(results())
       .flatMap((t) => skillSentencesIn(t, MIN_WORDS - 2))
       .filter((s) => s.words < MIN_WORDS);
-    expect([...new Set(near.map(label))].sort()).toEqual(["bragg-node-audit: check an off-zero cut too", "reduction-qc: the window's weight on unmeasured space"]);
+    expect([...new Set(near.map(label))].sort()).toEqual(["reduction-qc: the window's weight on unmeasured space"]);
   });
 
   it("sends back nothing whose own words name a tool, a stage or a skill; what it quotes is the answer's", () => {

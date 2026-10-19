@@ -5,6 +5,16 @@
 // the model proposes is checked against this before anything runs.
 
 import { parseFractions, type PipelineConfig } from "../../state/pipelineStore";
+import { evidence, remedy, written, type Tagged, type Value } from "../inference";
+
+/**
+ * A setting's help from its text tagged by class (inference.ts): whole as
+ * written, and, where it holds inference, its definitions for the skills off.
+ */
+const helped = (key: string) => (strings: TemplateStringsArray, ...values: Value[]): Pick<TuneParam, "help" | "helpWithoutSkills"> => {
+  const text: Tagged = written(`tune/catalog.ts: ${key}'s help`)(strings, ...values);
+  return text.hasInference ? { help: text.whole, helpWithoutSkills: text.definitions } : { help: text.whole };
+};
 
 export const TUNE_STAGES = ["rings", "punch", "backfill", "flatten", "pdf"] as const;
 export type TuneStage = (typeof TUNE_STAGES)[number];
@@ -226,7 +236,9 @@ export const TUNE_PARAMS: TuneParam[] = [
     min: 1,
     max: 6,
     defaultValue: 0,
-    help: "Off-lattice search width test: a candidate broader than this × the dataset's Bragg width along any axis is left as diffuse (a short-range-order maximum) instead of punched. 0 (blank) is off and punches every candidate; spurious reflections are as sharp as Bragg peaks, so 2 keeps them punched while broad diffuse maxima stay.",
+    ...helped("punchSearchMaxWidth")`Off-lattice search width test: a candidate broader than this × the dataset's Bragg width along any axis is left as diffuse${evidence(
+      " (a short-range-order maximum)",
+    )} instead of punched. 0 (blank) is off and punches every candidate${remedy("; spurious reflections are as sharp as Bragg peaks, so 2 keeps them punched while broad diffuse maxima stay")}.`,
   },
   {
     key: "punchMargin",
@@ -267,8 +279,9 @@ export const TUNE_PARAMS: TuneParam[] = [
     stage: "flatten",
     kind: "boolean",
     defaultValue: false,
-    help: "model only: also fit b·Q², the smooth rise of an inelastic background (thermal diffuse; with X-rays also Compton). Use it when the shell floors climb with |Q| after the flatten (floor_trend near 1); it varies too slowly to follow pair correlations.",
-    helpWithoutSkills: "model only: also fit b·Q², the smooth rise of an inelastic background (thermal diffuse; with X-rays also Compton); it varies too slowly to follow pair correlations.",
+    ...helped("flattenQ2")`model only: also fit b·Q², the smooth rise of an inelastic background (thermal diffuse; with X-rays also Compton)${remedy(
+      ". Use it when the shell floors climb with |Q| after the flatten (floor_trend near 1)",
+    )}; it varies too slowly to follow pair correlations.`,
     appliesWhen: (s) => s.flattenEstimator === "" || s.flattenEstimator === "model",
   },
   {
@@ -278,8 +291,9 @@ export const TUNE_PARAMS: TuneParam[] = [
     min: 3,
     max: 25,
     defaultValue: 10,
-    help: "model only: end (Å⁻¹) of the |Q| range the model is fitted to (from 0.8). Raise it toward the data's coverage when the background keeps changing past 10 Å⁻¹.",
-    helpWithoutSkills: "model only: end (Å⁻¹) of the |Q| range the model is fitted to (from 0.8).",
+    ...helped("flattenFitQMax")`model only: end (Å⁻¹) of the |Q| range the model is fitted to (from 0.8).${remedy(
+      " Raise it toward the data's coverage when the background keeps changing past 10 Å⁻¹.",
+    )}`,
     appliesWhen: (s) => s.flattenEstimator === "" || s.flattenEstimator === "model",
   },
   {

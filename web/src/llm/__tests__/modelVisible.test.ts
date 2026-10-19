@@ -35,6 +35,7 @@ import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
 import { toolsFor } from "../localTools";
+import { SYSTEM, TOOLS } from "../prompts/system";
 import { buildChatMessages, buildStageReviewMessages, systemPrompt, type ReviewStage } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolCall } from "../provider/client";
 import { fillReferences, NAMED_REFERENCES } from "../references";
@@ -51,6 +52,7 @@ const CRITERIA = WORDS.criterion;
 const VERDICT_LABEL = WORDS.label;
 // What the symmetry's rule says of a volume that declares no symmetry.
 const NOT_DECLARED = (asymmetry: number): string => judge("symmetry", { ops: [{ op: "six-fold (60°)", rms_difference: asymmetry }], declared: null }).words ?? "";
+import { writtenInferences } from "../inference";
 import { namedInOwnWords, quotations } from "./methodText";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
 
@@ -178,14 +180,22 @@ describe("1. the system prompt and the first user message, as the app builds the
   it("arm C: tools on, skills off (the skills' switch off)", async () => {
     const b = armSetup("B", context);
     const c = armSetup("C", context);
-    // Built with the switch off: the system prompt without its skills' section, never cut from B's; the rest is B's.
+    // Built with the switch off from the same sections, never cut from B's: without the skills' section, and the
+    // others without their inference (inference.ts).
     expect(c.messages[0].content).toBe(systemPrompt({ tools: true, skills: false }));
-    expect(b.messages[0].content).toBe(`${c.messages[0].content}\n${skillsPrompt()}`);
-    expect(c.messages.slice(1)).toEqual(b.messages.slice(1));
+    expect(c.messages[0].content).toBe(`${SYSTEM.definitions}\n${TOOLS.definitions}`);
+    expect(b.messages[0].content).toBe(`${SYSTEM.whole}\n${TOOLS.whole}\n${skillsPrompt()}`);
+    // The context: B's, but the search's note, its definition only. The rest is B's.
+    const json = (m: ChatMessage) => JSON.parse(/```json\n([\s\S]*)\n```/.exec(String(m.content))![1]) as { bragg_punch: { peak_profile: { search_note: string } } };
+    const [bc, cc] = [json(b.messages[1]), json(c.messages[1])];
+    expect(cc.bragg_punch.peak_profile.search_note).toBe("peaks the search punched off the Bragg nodes");
+    expect(bc.bragg_punch.peak_profile.search_note).toMatch(/; grain_check says whether/);
+    expect({ ...cc, bragg_punch: { ...cc.bragg_punch, peak_profile: bc.bragg_punch.peak_profile } }).toEqual(bc);
+    expect(c.messages.slice(2)).toEqual(b.messages.slice(2));
     await expect(
       doc(
         "Opening messages: tools on, skills off (validation arm C)",
-        "`buildChatMessages(context, [], TASK, null, { tools: true, skills: false })`, as `armSetup(\"C\")` builds them (evals/validation.ts): the skills' switch off (skills.ts), so the system prompt is built without its skills' section and read_skill is not offered. The rest is arm B's.\n\n" +
+        "`buildChatMessages(context, [], TASK, null, { tools: true, skills: false })`, as `armSetup(\"C\")` builds them (evals/validation.ts): the skills' switch off (skills.ts), so the system prompt is built without its skills' section, its other sections and the context's prose without their inference (inference.ts; 6-inference.md lists each span left out), and read_skill is not offered. The rest is arm B's.\n\n" +
           tools(toolsWithSkills(CHAT_TOOLS, c.skills)),
         renderMessages(c.messages),
       ),
@@ -242,7 +252,7 @@ describe("2. the tools, as sent to the model", () => {
     await expect(
       doc(
         "Tool definitions with the skills off (validation arm C)",
-        `\`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))\`: what arm C's model is offered with every request (${c.length} tools, ${JSON.stringify(c).length} characters as JSON). A tool whose description names a skill or restates a skill's step has its text with the skills off (\`descriptionWithoutSkills\`), shown in full; every other definition is arm B's.`,
+        `\`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))\`: what arm C's model is offered with every request (${c.length} tools, ${JSON.stringify(c).length} characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (\`descriptionWithoutSkills\`, from the same tagged text), shown in full; every other definition is arm B's.`,
         body,
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/2-tools-arm-c.md`);
@@ -533,29 +543,32 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
       return { run, text: `## ${sampleTitle(s)}\n\n${why}\n\n${showResult(run.text)}` };
     };
 
-    // Every sampled call but read_skill reads the same in arm C as in arm B, but
-    // the one whose result carries a goal a skill's step is cut from.
-    const differs: string[] = [];
+    // Every sampled call but read_skill runs in arm C; those whose results carry
+    // inference (a goal, a criterion, a verdict's or a reading's words) read
+    // otherwise, and are shown whole; the rest read as in arm B.
+    const differ: string[] = [];
     for (const s of SAMPLES.filter((x) => x.name !== "read_skill")) {
       const b = await runSample(s);
       const c = await runC(s);
       expect(c.ok, `${sampleTitle(s)}: ${c.text}`).toBe(true);
-      if (c.text !== b.text) differs.push(`${s.name} ${JSON.stringify(s.args)}`);
+      if (c.text !== b.text) differ.push(`## ${sampleTitle(s)}\n\n${showResult(c.text)}`);
     }
-    expect(differs).toEqual(['assess_stage {"stage":"flatten"}']);
+    expect(differ.map((d) => d.split("\n")[0])).toEqual([
+      "## assess_stage {}",
+      '## assess_stage {"stage":"flatten"}',
+      "## dpdf_peaks {}",
+      "## grain_check {}",
+    ]);
 
-    // The stages' goals: arm C's, shown in full where they differ from arm B's.
+    // The stages' goals: arm C's, each its definitions only.
     const stages = Object.keys(STAGE_GOALS) as (keyof typeof STAGE_GOALS)[];
-    const differ = stages.filter((st) => STAGE_GOALS_WITHOUT_SKILLS[st] !== STAGE_GOALS[st]);
-    expect(differ).toEqual(["flatten"]);
     const goals = stages.map((st) =>
-      differ.includes(st) ? `### ${st}\n\n${fence(STAGE_GOALS_WITHOUT_SKILLS[st])}` : `### ${st}\n\nAs in arm B (3-goals-and-verdicts.md).`,
+      STAGE_GOALS_WITHOUT_SKILLS[st] !== STAGE_GOALS[st] ? `### ${st}\n\n${fence(STAGE_GOALS_WITHOUT_SKILLS[st])}` : `### ${st}\n\nAs in arm B (3-goals-and-verdicts.md).`,
     );
 
-    // A stage's result carries the goal as arm C reads it.
-    const flatten = await shown({ name: "assess_stage", args: { stage: "flatten" } }, "The flatten's result, its goal with the skills off.");
-    expect(flatten.run.ok).toBe(true);
-    expect((JSON.parse(flatten.run.text) as { flatten: { goal: string } }).flatten.goal).toBe(STAGE_GOALS_WITHOUT_SKILLS.flatten);
+    // A stage's result carries its goal as arm C reads it.
+    const flatten = await runC({ name: "assess_stage", args: { stage: "flatten" } });
+    expect((JSON.parse(flatten.text) as { flatten: { goal: string } }).flatten.goal).toBe(STAGE_GOALS_WITHOUT_SKILLS.flatten);
 
     // The calls arm B's skill gate refuses until a skill is read: arm C has no gate, so they run.
     const change = await shown(
@@ -591,10 +604,11 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
     await expect(
       doc(
         "Tool results and goals with the skills off (validation arm C)",
-        "Arm C's text where it differs from arm B's: the stages' goals, a stage's result that carries one, the calls arm B's skill gate refuses, read_skill called by name, and the tuning prompt for the flatten. Each tool is called through `runToolCall` with the skills' switch off (`skills: false` in its context) and the tools `toolsWithSkills(CHAT_TOOLS, false)` gives; every other tool's result is as in 4-tool-results.md, since no other result carries a skill's text.",
+        "Arm C's text where it differs from arm B's: the stages' goals, the results that carry inference (a goal, a criterion, a verdict's or a reading's words: inference.ts, 6-inference.md), the calls arm B's skill gate refuses, read_skill called by name, and the tuning prompt for the flatten. Each tool is called through `runToolCall` with the skills' switch off (`skills: false` in its context) and the tools `toolsWithSkills(CHAT_TOOLS, false)` gives; every other sampled result reads as in 4-tool-results.md.",
         [
           `## The stages' goals with the skills off\n\n\`STAGE_GOALS_WITHOUT_SKILLS\` (tune/prompts.ts; \`WORDS.goalWithoutSkills\`, verdicts/rules.ts): in assess_stage's single-stage result and the tuning prompts.\n\n${goals.join("\n\n")}`,
-          flatten.text,
+          `# The results that read otherwise\n\n${differ.join("\n\n")}`,
+          `# The calls arm B's gate refuses, and read_skill`,
           change.text,
           tune.text,
           `## read_skill {"name":"reduction-qc"} (called by name: it is not offered)\n\n${fence(read.text)}`,
@@ -602,6 +616,40 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
         ].join("\n\n"),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/4-tool-results-arm-c.md`);
+  });
+});
+
+// ---------------------------------------------------------------- 6. what arm C does not read
+
+describe("6. the inference, which arm C does not read", () => {
+  it("every span, where it is written, by class, in the text it sits in", async () => {
+    const entries = writtenInferences();
+    const sources = [...new Set(entries.map((e) => e.source))].sort();
+    const kinds = (spans: readonly { kind: string }[]) =>
+      ["reading", "evidence", "remedy"].map((k) => [k, spans.filter((s) => s.kind === k).length] as const).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(", ");
+    const body = sources.map((source) => {
+      const here = entries.filter((e) => e.source === source);
+      const texts = [...new Set(here.flatMap((e) => (e.in ? [e.in] : [])))];
+      const loose = here.filter((e) => !e.in);
+      const parts = [`## ${source}\n\n${here.length} span${here.length === 1 ? "" : "s"}: ${kinds(here.map((e) => e.span))}.`];
+      for (const t of texts) {
+        const marked = t.spans.map((s) => (typeof s === "string" ? s : `⟦${s.kind}: ${s.text}⟧`)).join("");
+        parts.push(`The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:\n\n${fence(marked)}`);
+      }
+      if (loose.length) {
+        parts.push(`Spans of a text built for each call (its numbers vary), each as written:\n\n${loose.map((e) => `- ${e.span.kind}: “${e.span.text}”`).join("\n")}`);
+      }
+      return parts.join("\n\n");
+    });
+    const total = kinds(entries.map((e) => e.span));
+    await expect(
+      doc(
+        "The inference arm C does not read",
+        "Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span. " +
+          `${entries.length} spans in ${sources.length} texts or sets: ${total}.`,
+        body.join("\n\n"),
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/6-inference.md`);
   });
 });
 

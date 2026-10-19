@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
-import { SYSTEM_PROMPT, TOOLS_PROMPT } from "../prompts/system";
+import { SYSTEM, SYSTEM_PROMPT, TOOLS, TOOLS_PROMPT } from "../prompts/system";
 import { buildChatMessages, buildStageReviewMessages, systemPrompt } from "../prompts/templates";
 import {
   allSkills,
@@ -133,9 +133,11 @@ describe("the switch", () => {
   it("builds the system prompt from its sections, the skills' section only with the tools and the skills on", () => {
     expect(systemPrompt({ tools: true })).toBe([SYSTEM_PROMPT, TOOLS_PROMPT, skillsPrompt()].join("\n"));
     expect(systemPrompt({ tools: true, skills: true })).toBe(systemPrompt({ tools: true }));
-    expect(systemPrompt({ tools: true, skills: false })).toBe([SYSTEM_PROMPT, TOOLS_PROMPT].join("\n"));
     expect(systemPrompt({ tools: false })).toBe(SYSTEM_PROMPT);
-    expect(systemPrompt({ tools: false, skills: false })).toBe(SYSTEM_PROMPT);
+    // Off: no skills' section, and the other sections without their inference (inference.ts).
+    expect(systemPrompt({ tools: true, skills: false })).toBe([SYSTEM.definitions, TOOLS.definitions].join("\n"));
+    expect(systemPrompt({ tools: false, skills: false })).toBe(SYSTEM.definitions);
+    expect([SYSTEM.whole, TOOLS.whole]).toEqual([SYSTEM_PROMPT, TOOLS_PROMPT]);
     // Every builder of the opening messages reads it: the chat and the stage reviews.
     const chat = buildChatMessages({} as never, [], "How clean is this reduction?", null, { tools: true, skills: false });
     const review = buildStageReviewMessages({} as never, "flatten", null, { tools: true, skills: false });
@@ -169,7 +171,18 @@ describe("the switch", () => {
     expect(of(CHAT_TOOLS, "ub_check")).toMatch(reading);
     expect(of(off, "ub_check")).not.toMatch(reading);
     expect(of(off, "ub_check")).toMatch(/radial is the peaks' median offset along Q from their nodes/);
-    expect(off.filter((t) => t.description !== of(CHAT_TOOLS, t.name)).map((t) => t.name)).toEqual(["dpdf_peaks", "ub_check"]);
+    // Every description that holds inference (inference.ts) has its definitions only, and only those differ.
+    expect(off.filter((t) => t.description !== of(CHAT_TOOLS, t.name)).map((t) => t.name)).toEqual([
+      "measure_reciprocal_cut",
+      "texture_check",
+      "symmetry_check",
+      "dpdf_peaks",
+      "grain_check",
+      "ub_check",
+      "radial_profile",
+      "line_profile",
+      "consistency_details",
+    ]);
     expect(toolsWithSkills(off, false)).toEqual(off); // the same either way it is applied
   });
 

@@ -2,15 +2,17 @@
 // skills' switch off (skills.ts) and nothing else. Run through the real agent
 // loop against a scripted model server (no model): what goes over the wire,
 // request by request, must differ between B and C only by what the switch
-// changes: read_skill is not offered, the system prompt has no skills' section,
-// and a tool whose description restates a skill has its text without the skill
-// (descriptionWithoutSkills), whatever tools the shipped code offers a model.
+// changes: read_skill is not offered, the system prompt has no skills' section
+// and its other sections no inference, and a tool whose description holds
+// inference has its definitions only (descriptionWithoutSkills, inference.ts),
+// whatever tools the shipped code offers a model.
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { runAgent } from "../agent";
 import { toolsFor } from "../localTools";
+import { SYSTEM, TOOLS } from "../prompts/system";
 import { systemPrompt } from "../prompts/templates";
 import { allSkills, skillsPrompt } from "../skills";
 import { CHAT_TOOLS, type AgentTool } from "../tools";
@@ -127,8 +129,9 @@ describe.each([
       expect(c.offers[i].tools).toEqual(offer.tools.filter((n) => n !== "read_skill"));
     });
 
-    // The system prompt: B's is C's with the skills' section after it, and C's
-    // is built without that section, never cut out of B's.
+    // The system prompt, from the same sections: B's whole, with the skills'
+    // section after them; C's without that section and without the sections'
+    // inference (inference.ts), never cut out of B's.
     const listing = skillsPrompt();
     expect(listing).toContain(allSkills()[0].name);
     // The tools' definitions: B's, but read_skill, each with its text with the skills off where it has one.
@@ -146,7 +149,8 @@ describe.each([
       const system = (x: Body) => String(x.messages[0].content);
       expect(system(body)).toBe(systemPrompt({ tools: true }));
       expect(system(other)).toBe(systemPrompt({ tools: true, skills: false }));
-      expect(system(body)).toBe(`${system(other)}\n${listing}`);
+      expect(system(body)).toBe(`${SYSTEM.whole}\n${TOOLS.whole}\n${listing}`);
+      expect(system(other)).toBe(`${SYSTEM.definitions}\n${TOOLS.definitions}`);
       for (const s of allSkills()) expect(system(other)).not.toContain(s.name);
       expect(other.tools).toEqual(withoutSkills(body.tools));
       // The rest of each request: the model, the settings and every other message are the same.
