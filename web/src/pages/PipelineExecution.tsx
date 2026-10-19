@@ -300,7 +300,7 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
             </span>
             <span className={`exec-stage-status ${ns}`}>{statusLabel}</span>
           </div>
-          {/* A summary that holds a warning reads as one: the ring removal's rings left on a coarse grid. */}
+          {/* A summary that holds a warning reads as one: the ring removal's candidates left on a coarse grid. */}
           {meta && <div className={`exec-stage-meta${dim ? " dim" : warns(meta) ? " warn" : ""}`}>{meta}</div>}
           {ns === "active" && info?.fraction != null && (
             <div className="exec-stage-bar">

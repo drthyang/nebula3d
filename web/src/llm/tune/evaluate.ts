@@ -155,7 +155,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     // too: on a grid too coarse for the test (too few voxels across a ring's
     // width, nebula3d.preprocessing.ring_isotropy), the planes' bumps, or
     // their absence, are no evidence either, and the rings are not judged.
-    // And what the ring removal recorded of the rings it detected and could not
+    // And what the ring removal recorded of the ring candidates it detected and could not
     // confirm on its grid, which it did not subtract: its notice, said first.
     const [tested, record] = await Promise.all([
       metaId ? safe(fetchRingIsotropy(metaId, shells)) : Promise.resolve(null),
@@ -205,7 +205,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       worstOf((xs ?? []).filter((x) => x.significant && "ring" in x && x.ring), sign);
     const rule = judged?.rule;
     return {
-      // The rings the removal left unsubtracted, unconfirmed on its grid, said out
+      // The ring candidates the removal left unsubtracted, unconfirmed on its grid, said out
       // loud (verdicts/rules.ts, RING_NOTICE_REMEDY: arm C reads it without its remedy).
       ...(notice ? { notice } : {}),
       mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),

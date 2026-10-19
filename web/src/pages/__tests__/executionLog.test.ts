@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { logClass, warns } from "../executionLog";
 
 const NOTICE =
-  "4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.";
+  "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.";
 const RINGS_DONE = `pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 0 not (the crystal's own scattering, kept) (of 81/81 planes fitted), removed 0% of |I|. ⚠ ${NOTICE}`;
 
 describe("the Execution page's log lines", () => {

@@ -478,8 +478,9 @@ describe("assess_stage", () => {
 });
 
 // The ring removal's notice as the pipeline writes it (nebula3d.pipeline.unconfirmed_rings_notice), and its definition: arm C's.
-const NOTICE_DEFINITION = "4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
-const NOTICE = `${NOTICE_DEFINITION} Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.`;
+const NOTICE_DEFINITION =
+  "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
+const NOTICE = `${NOTICE_DEFINITION} Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.`;
 const call = (name: string, args: object) => ({ id: "c", type: "function" as const, function: { name, arguments: JSON.stringify(args) } });
 
 describe("run_log", () => {

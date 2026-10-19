@@ -108,6 +108,7 @@ __all__ = [
     "read_flatten_settings",
     "read_punch_record",
     "RING_GRID_REMEDY",
+    "RING_GRID_REMEDY_ONE",
     "unconfirmed_rings_notice",
     "pipeline_paths",
     "run_pipeline",
@@ -1056,24 +1057,34 @@ async def remove_rings_async(
     return out_vol
 
 
-#: The two ways to have the rings the pooled ring removal could not confirm on
-#: its grid subtracted, as its notice ends (:func:`unconfirmed_rings_notice`).
-#: The console tags this sentence as a remedy (web/src/llm/verdicts/rules.ts,
-#: written the same), so the validation's arm C reads the notice without it.
-RING_GRID_REMEDY = ("Use a finer grid, or set pooled_confirm_rings=False to subtract every "
-                    "detected ring.")
+#: The two ways to have the ring candidates the pooled ring removal could not
+#: confirm on its grid subtracted, as its notice ends
+#: (:func:`unconfirmed_rings_notice`): for more than one candidate, and for one
+#: (``RING_GRID_REMEDY_ONE``). The console tags both as a remedy
+#: (web/src/llm/verdicts/rules.ts, written the same, which a test holds), so
+#: the validation's arm C reads the notice without it.
+RING_GRID_REMEDY = ("Use a finer grid, or, from the Python API, set pooled_confirm_rings=False "
+                    "to subtract every candidate, the crystal's own shells included.")
+RING_GRID_REMEDY_ONE = ("Use a finer grid, or, from the Python API, set pooled_confirm_rings=False "
+                        "to subtract it, even if it is the crystal's own shell.")
 
 
 def unconfirmed_rings_notice(count: int, needs: str) -> str:
     """What the pooled ring removal says of the *count* shells it detected and
     could not confirm as powder rings on its grid, which it does not subtract:
+    ring candidates, which may be powder rings or the crystal's own scattering;
     the grid's need (*needs*, from :func:`~nebula3d.preprocessing.ring_isotropy.
-    grid_needs`), then :data:`RING_GRID_REMEDY`. Out loud, in the run log and
-    the stage's diagnostics (the manager's condition, on the user's delegation,
-    2026-10-19, for subtracting no unconfirmed ring)."""
-    rings = "1 ring" if count == 1 else f"{count} rings"
-    return (f"{rings} detected but not confirmed at this grid (needs ≥ {needs}); "
-            f"not subtracted. {RING_GRID_REMEDY}")
+    grid_needs`); then :data:`RING_GRID_REMEDY`, or :data:`RING_GRID_REMEDY_ONE`
+    for one. Out loud, in the run log and the stage's diagnostics (the
+    manager's condition, on the user's delegation, 2026-10-19, for subtracting
+    no unconfirmed ring)."""
+    found, remedy = (
+        ("1 ring candidate (a shell that may be a powder ring or the crystal's own scattering)",
+         RING_GRID_REMEDY_ONE) if count == 1 else
+        (f"{count} ring candidates (shells that may be powder rings or the crystal's own "
+         f"scattering)", RING_GRID_REMEDY))
+    return (f"{found} detected but not confirmed at this grid (needs ≥ {needs}); "
+            f"not subtracted. {remedy}")
 
 
 def _remove_rings_pooled(vol: HKLVolume, p: RingParams,

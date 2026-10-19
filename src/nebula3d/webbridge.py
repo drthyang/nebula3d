@@ -1099,8 +1099,8 @@ def bragg_profile_json(dataset_id: str) -> str:
 
 def ring_diagnostics_json(dataset_id: str) -> str:
     """The ring removal's record (mirrors GET /api/rings/{id}/diagnostics): the
-    rings it detected and could not confirm on its grid, which it did not
-    subtract.  The ring stage writes ``*_diagnostics.json`` next to its output
+    ring candidates it detected and could not confirm on its grid, which it did
+    not subtract.  The ring stage writes ``*_diagnostics.json`` next to its output
     volume (here the Pyodide virtual FS), so this only re-reads a small JSON
     file, through the same helper as the server (:mod:`nebula3d.server.rings`)."""
     out = _rings.saved_ring_diagnostics(_require_cfg(), dataset_id)

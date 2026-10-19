@@ -132,10 +132,13 @@ judged, giving the reason in `ring_rule`, never a verdict. The removal says so
 out loud. Its log line ends on a notice, marked ⚠, such as
 
 ```text
-4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.
+4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.
 ```
 
-with the count, and what the grid needs from the limit it failed (below). Its
+with the count, and what the grid needs from the limit it failed (below); of
+one candidate it says "1 ring candidate (a shell that may be a powder ring or
+the crystal's own scattering)", and the setting subtracts it "even if it is
+the crystal's own shell". Its
 diagnostics record it (`unconfirmed_at_grid`: the count, the need, the notice
 and the shells' |Q|; `GET /api/rings/{id}/diagnostics`), so the console says it
 too: the Execution page shows the stage's line as a warning, the Pilot's ring

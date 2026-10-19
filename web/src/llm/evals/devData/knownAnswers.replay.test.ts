@@ -218,13 +218,18 @@ for (const id of ["dev-rings", "dev-rings-shell"] as const) {
 }
 
 // The ring removal's notice (G1): on a grid too coarse to confirm a ring, the
-// removal subtracts none of the rings it detected and says so out loud, with
-// how many, what the grid needs and the two ways out, in its run log line, its
-// record (the diagnostics) and the ring check's result; arm C reads it without
-// the remedy. On a grid fine enough it leaves no ring unconfirmed, and says
-// nothing of the kind. The planted rings are among those it detected.
-const NOTICE =
-  /^(\d+) rings? detected but not confirmed at this grid \(needs ≥ 1 voxel across 0\.16 Å⁻¹\); not subtracted\. Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring\.$/;
+// removal subtracts none of the ring candidates it detected (powder rings or
+// the crystal's own scattering) and says so out loud, with how many, what the
+// grid needs and the two ways out, in its run log line, its record (the
+// diagnostics) and the ring check's result; arm C reads it without the remedy.
+// On a grid fine enough it leaves no ring unconfirmed, and says nothing of the
+// kind. The planted rings are among those it detected. Its words, for more
+// than one candidate (the count in group 1) and for one (group 2):
+const NEEDS_AND_WAYS = String.raw` detected but not confirmed at this grid \(needs ≥ 1 voxel across 0\.16 Å⁻¹\); not subtracted\. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract`;
+const NOTICE = new RegExp(
+  String.raw`^(?:(\d+) ring candidates \(shells that may be powder rings or the crystal's own scattering\)${NEEDS_AND_WAYS} every candidate, the crystal's own shells included\.` +
+    String.raw`|(1) ring candidate \(a shell that may be a powder ring or the crystal's own scattering\)${NEEDS_AND_WAYS} it, even if it is the crystal's own shell\.)$`,
+);
 
 for (const id of ["dev-rings", "dev-rings-shell"] as const) {
   describe(`${id}: the rings the removal could not confirm, said out loud`, () => {
@@ -248,8 +253,10 @@ for (const id of ["dev-rings", "dev-rings-shell"] as const) {
       const notice = done.split(". ⚠ ")[1] ?? "";
       const said = NOTICE.exec(notice);
       expect(said, msg).not.toBeNull();
+      const count = Number(said![1] ?? said![2]);
+      if (said![1] !== undefined) expect(count, msg).toBeGreaterThan(1); // "1 ring candidate" is said in the singular
       expect(rings.notice, msg).toBe(notice);
-      expect(left, msg).toMatchObject({ count: Number(said![1]), needs: "1 voxel across 0.16 Å⁻¹", notice });
+      expect(left, msg).toMatchObject({ count, needs: "1 voxel across 0.16 Å⁻¹", notice });
       expect(left!.q_centers.length, msg).toBe(left!.count);
       for (const q of c.truth.ring_q!) expect(left!.q_centers.some((x) => Math.abs(x - q) <= SAME_Q), `${msg} (no ${q} among them)`).toBe(true);
       // Arm C reads the notice without its remedy, in the ring check's result and the run log.

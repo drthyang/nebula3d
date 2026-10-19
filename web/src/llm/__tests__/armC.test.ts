@@ -369,8 +369,9 @@ describe("arm C's session, with the skills off", () => {
   });
 
   it("gives the tuning model a trial's ring removal notice without its remedy, and arm B's whole (G1)", () => {
-    const definition = "4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
-    const remedy = "Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.";
+    const definition =
+      "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
+    const remedy = "Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.";
     const trials = [{ trial: 1, settings: {}, metrics: { notice: `${definition} ${remedy}`, max_ring_left: null } }];
     const asked = (skills: boolean) =>
       [...buildProposeMessages({ stage: "rings", current: {}, earlier: {}, trials, count: 2, skills }), ...buildJudgeMessages({ stage: "rings", trials, skills })]

@@ -20,8 +20,9 @@ def diagnostics(
     dataset_id: str,
     cfg: ServerConfig = Depends(get_config),
 ) -> RingDiagnosticsOut:
-    """What the ring stage recorded of one dataset: the rings it detected and
-    could not confirm on its grid, which it did not subtract (a file read)."""
+    """What the ring stage recorded of one dataset: the ring candidates it
+    detected and could not confirm on its grid, which it did not subtract (a
+    file read)."""
     try:
         out = saved_ring_diagnostics(cfg, dataset_id)
     except (OSError, ValueError) as exc:

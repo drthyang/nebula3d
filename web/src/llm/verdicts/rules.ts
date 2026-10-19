@@ -164,18 +164,26 @@ const goalOf = (stage: string) => written(`verdicts/rules.ts: the ${stage} goal`
 /**
  * The ring removal's notice (nebula3d.pipeline.unconfirmed_rings_notice): on a
  * grid too coarse to confirm a ring, the removal subtracts no shell it could
- * not confirm, and says how many it detected, what the grid needs and the two
- * ways out, in its run log line and its diagnostics, whose notice the rings'
- * evaluation carries (notice, tune/evaluate.ts). Its first sentence is a
- * definition; its last, the remedy, is tagged here as the backend writes it
- * (RING_GRID_REMEDY there), so arm C reads the notice without it, wherever it
- * stands (the review's G1, accepted by the manager on the user's delegation,
- * 2026-10-19).
+ * not confirm, and says how many ring candidates it detected (which may be
+ * powder rings or the crystal's own scattering), what the grid needs and the
+ * two ways out, in its run log line and its diagnostics, whose notice the
+ * rings' evaluation carries (notice, tune/evaluate.ts). Its first sentence is a
+ * definition; its last, the remedy with what it would subtract, is tagged here
+ * as the backend writes it, for more than one candidate and for one
+ * (RING_GRID_REMEDY and RING_GRID_REMEDY_ONE there), so arm C reads the notice
+ * without it, wherever it stands (the review's G1, accepted by the manager on
+ * the user's delegation, 2026-10-19).
  */
+const RING_NOTICE = "verdicts/rules.ts: the ring removal's notice";
 export const RING_NOTICE_REMEDY = quotedInference(
-  "verdicts/rules.ts: the ring removal's notice",
+  RING_NOTICE,
   "remedy",
-  " Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.",
+  " Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.",
+);
+export const RING_NOTICE_REMEDY_ONE = quotedInference(
+  RING_NOTICE,
+  "remedy",
+  " Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract it, even if it is the crystal's own shell.",
 );
 
 const rings: StageRule = {

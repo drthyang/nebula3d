@@ -203,7 +203,7 @@ def test_the_ring_removal_subtracts_no_ring_on_a_grid_too_coarse_to_confirm_it()
     are found but none can be confirmed, so none is subtracted, and the log
     says so out loud (not that they are the crystal's own): how many, what
     the grid needs, and the two ways out."""
-    from nebula3d.pipeline import RING_GRID_REMEDY, RingParams, remove_rings
+    from nebula3d.pipeline import RingParams, remove_rings, unconfirmed_rings_notice
 
     vol = demo_volume(41, seed=3, model=DemoModel(sro_amp=0.09, ring_amp=0.9), dtype=np.float32)
     reason = grid_too_coarse(vol)
@@ -219,14 +219,37 @@ def test_the_ring_removal_subtracts_no_ring_on_a_grid_too_coarse_to_confirm_it()
                        progress=lambda stage, status, frac, msg: lines.append(msg or ""))
     done = lines[-1]
     n = len(d["rejected_shells"])
-    notice = (f"{n} ring{'s' if n > 1 else ''} detected but not confirmed at this grid (needs ≥ "
-              f"{grid_needs(vol)}); not subtracted. {RING_GRID_REMEDY}")
+    notice = unconfirmed_rings_notice(n, grid_needs(vol))
+    assert notice.startswith(f"{n} ring candidate")
     assert done.endswith(f"0 not (the crystal's own scattering, kept) (of 41/41 planes fitted), "
                          f"removed 0% of |I|. ⚠ {notice}"), done
     assert "not judged" not in done
     record = getattr(out, "_ring_diagnostics")["unconfirmed_at_grid"]
     assert record == {"count": n, "needs": "1 voxel across 0.16 Å⁻¹", "notice": notice,
                       "q_centers": [round(s["q_center"], 4) for s in d["rejected_shells"]]}
+
+
+def test_the_notice_calls_them_ring_candidates_and_says_what_each_way_out_subtracts():
+    """The words, for more than one candidate and for one: shells that may be
+    powder rings or the crystal's own scattering, what the grid needs, and the
+    two ways out, the Python API's setting subtracting the crystal's own shells
+    too. The first sentence is the definition the validation's arm C reads; the
+    second, the remedy, is RING_GRID_REMEDY or RING_GRID_REMEDY_ONE whole."""
+    from nebula3d.pipeline import RING_GRID_REMEDY, RING_GRID_REMEDY_ONE, unconfirmed_rings_notice
+
+    needs = "1 voxel across 0.16 Å⁻¹"
+    assert unconfirmed_rings_notice(3, needs) == (
+        "3 ring candidates (shells that may be powder rings or the crystal's own scattering) "
+        "detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not "
+        "subtracted. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to "
+        "subtract every candidate, the crystal's own shells included.")
+    assert unconfirmed_rings_notice(1, needs) == (
+        "1 ring candidate (a shell that may be a powder ring or the crystal's own scattering) "
+        "detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not "
+        "subtracted. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to "
+        "subtract it, even if it is the crystal's own shell.")
+    for count, remedy in ((3, RING_GRID_REMEDY), (1, RING_GRID_REMEDY_ONE)):
+        assert unconfirmed_rings_notice(count, needs).endswith(f"; not subtracted. {remedy}")
 
 
 def test_a_shell_whose_direction_cells_the_grid_cannot_fill_is_not_judged():
@@ -350,7 +373,8 @@ def test_on_the_dev_grid_the_ring_removal_says_how_many_rings_it_left_and_the_wa
     for q in strong:
         assert any(abs(c - q) < 0.1 for c in record["q_centers"]), (q, record)
     assert done.endswith(
-        f"removed 0% of |I|. ⚠ 4 rings detected but not confirmed at this grid (needs ≥ 1 voxel "
+        f"removed 0% of |I|. ⚠ 4 ring candidates (shells that may be powder rings or the "
+        f"crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel "
         f"across 0.16 Å⁻¹); not subtracted. {RING_GRID_REMEDY}"), done
     assert record["notice"] == done.split("⚠ ", 1)[1]
     assert d["shells"] == [] and np.array_equal(out.data, vol.data)

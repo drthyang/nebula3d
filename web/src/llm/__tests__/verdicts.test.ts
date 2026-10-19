@@ -8,7 +8,7 @@ import type { AgentStep } from "../agent";
 import { withoutInference } from "../inference";
 import { shownGrains, type GrainFacts } from "../metrics/grains";
 import { judge, UNROUNDED, verdicts, WORDS, type CheckId, type Kind, type Outcome, type Reason } from "../verdicts";
-import { RING_NOTICE_REMEDY } from "../verdicts/rules";
+import { RING_NOTICE_REMEDY, RING_NOTICE_REMEDY_ONE } from "../verdicts/rules";
 
 type Obj = Record<string, unknown>;
 
@@ -145,19 +145,31 @@ describe("judge: a stage's evaluation", () => {
   });
 
   it("judges the rings alike with the ring removal's notice, which arm C reads without the remedy the backend writes (G1)", () => {
-    // The pipeline's own words, read off its source: the remedy, and the notice's last sentence.
-    const written = /^RING_GRID_REMEDY = \(([^)]*)\)/m.exec(PIPELINE)?.[1];
-    const remedy = (written?.match(/"[^"]*"/g) ?? []).map((s) => s.slice(1, -1)).join("");
-    expect(remedy).toBe("Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.");
-    expect(PIPELINE).toContain('f"not subtracted. {RING_GRID_REMEDY}")');
+    // The pipeline's own words, read off its source: each remedy, for more than one candidate and for one, and the notice's last sentence.
+    const remedyOf = (name: string): string => {
+      const written = new RegExp(`^${name} = \\(([^)]*)\\)`, "m").exec(PIPELINE)?.[1];
+      return (written?.match(/"[^"]*"/g) ?? []).map((s) => s.slice(1, -1)).join("");
+    };
+    const remedy = remedyOf("RING_GRID_REMEDY");
+    const remedyOne = remedyOf("RING_GRID_REMEDY_ONE");
+    expect(remedy).toBe("Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.");
+    expect(remedyOne).toBe("Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract it, even if it is the crystal's own shell.");
+    expect(PIPELINE).toContain('f"not subtracted. {remedy}")');
     expect(RING_NOTICE_REMEDY).toEqual({ kind: "remedy", text: ` ${remedy}` });
-    const notice = `4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. ${remedy}`;
-    const coarse = { notice, max_ring_left: null, max_ring_dent: null, ring_rule: "not judged: grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1" };
-    const { notice: _said, ...numbers } = coarse;
-    void _said;
-    expect(judge("rings", coarse)).toEqual(judge("rings", numbers));
-    expect(judge("rings", coarse)).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
-    expect(withoutInference(coarse)).toEqual({ ...coarse, notice: "4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted." });
+    expect(RING_NOTICE_REMEDY_ONE).toEqual({ kind: "remedy", text: ` ${remedyOne}` });
+    const ruled = "not judged: grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1";
+    for (const [definition, said] of [
+      ["4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.", remedy],
+      ["1 ring candidate (a shell that may be a powder ring or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.", remedyOne],
+    ]) {
+      const coarse = { notice: `${definition} ${said}`, max_ring_left: null, max_ring_dent: null, ring_rule: ruled };
+      const { notice: _said, ...numbers } = coarse;
+      void _said;
+      expect(judge("rings", coarse)).toEqual(judge("rings", numbers));
+      expect(judge("rings", coarse)).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+      // Arm C: the definition, up to "not subtracted.", and none of the remedy.
+      expect(withoutInference(coarse)).toEqual({ ...coarse, notice: definition });
+    }
   });
 });
 

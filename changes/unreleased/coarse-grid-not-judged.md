@@ -36,11 +36,15 @@
   subtracted what the test, unable to resolve them, called rings (the
   manager's decision on the user's delegation, 2026-10-19, review finding G1).
   It says so out loud: its log line ends on a notice, marked ⚠, such as "4
-  rings detected but not confirmed at this grid (needs ≥ 1 voxel across
-  0.16 Å⁻¹); not subtracted. Use a finer grid, or set
-  pooled_confirm_rings=False to subtract every detected ring.", with the
-  count and what the grid needs, from the test's own constants
-  (`grid_needs`), and the two ways out. Its diagnostics record it
+  ring candidates (shells that may be powder rings or the crystal's own
+  scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across
+  0.16 Å⁻¹); not subtracted. Use a finer grid, or, from the Python API, set
+  pooled_confirm_rings=False to subtract every candidate, the crystal's own
+  shells included." (of one: "1 ring candidate (a shell that may be a powder
+  ring or the crystal's own scattering) … to subtract it, even if it is the
+  crystal's own shell."), with the count and what the grid needs, from the
+  test's own constants (`grid_needs`), and the two ways out, the second
+  subtracting the crystal's own shells too. Its diagnostics record it
   (`unconfirmed_at_grid`: the count, the need, the notice, the shells' |Q|),
   served by the new `GET /api/rings/{id}/diagnostics` (the bridge's
   `ring_diagnostics_json`), so the console says it wherever the ring stage

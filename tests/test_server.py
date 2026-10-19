@@ -532,7 +532,7 @@ def test_ring_diagnostics_give_the_rings_left_unconfirmed_on_the_grid(tmp_path):
     import os
 
     from nebula3d.demo import DemoModel, demo_volume
-    from nebula3d.pipeline import RingParams, remove_rings
+    from nebula3d.pipeline import RingParams, remove_rings, unconfirmed_rings_notice
     from nebula3d.preprocessing import write_global_ring_diagnostics
 
     (tmp_path / "raw").mkdir()
@@ -553,8 +553,8 @@ def test_ring_diagnostics_give_the_rings_left_unconfirmed_on_the_grid(tmp_path):
     assert left["count"] == len(left["q_centers"]) > 0
     assert left["needs"] == "1 voxel across 0.16 Å⁻¹"
     assert lines[-1].endswith(f". ⚠ {left['notice']}")
-    assert left["notice"].startswith(
-        f"{left['count']} rings detected but not confirmed at this grid")
+    assert left["notice"] == unconfirmed_rings_notice(left["count"], left["needs"])
+    assert " ring candidate" in left["notice"] and "not confirmed at this grid" in left["notice"]
 
     written = paths.ring_diagnostics_json.stat().st_mtime
     os.utime(paths.ringremoved, (written + 10, written + 10))

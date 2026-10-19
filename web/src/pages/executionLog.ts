@@ -6,7 +6,7 @@ import type { JobEvent } from "../api/types";
 /**
  * Whether a line holds a warning (⚠): something the run says the user must not
  * miss. A stage's done line can end on one, as the ring removal's does when its
- * grid is too coarse to confirm the rings it detected (it subtracts none, and
+ * grid is too coarse to confirm the ring candidates it detected (it subtracts none, and
  * says how many): the line, and the stage's summary that shows it, read as a
  * warning, not as a success.
  */

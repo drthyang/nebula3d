@@ -152,7 +152,7 @@ const CRITERIA = WORDS.criterion;
 // no verdict, no card.
 
 /**
- * What the ring removal said of the rings it detected and could not confirm on
+ * What the ring removal said of the ring candidates it detected and could not confirm on
  * its grid, which it did not subtract (the evaluation's notice, from the stage's
  * diagnostics), or null: on the ring card, and among the caveats.
  */
@@ -175,7 +175,7 @@ function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefin
     headline: `ring ratio ${fmt(m.mean_ring_energy_ratio)} · over-sub ≤ ${fmt(m.max_over_subtraction_fraction)} · dent ≤ ${fmt(dent)}${where(m.worst_ring_dent)} · left ≤ ${fmt(left)}${where(m.worst_ring_left)}`,
     criterion,
     details: [
-      // The rings the removal detected and could not confirm on its grid, and left: said first (ringNotice).
+      // The ring candidates the removal detected and could not confirm on its grid, and left: said first (ringNotice).
       ...(notice ? ([["Not subtracted", notice]] as [string, string][]) : []),
       ["Mean ring-energy ratio", fmt(m.mean_ring_energy_ratio)],
       ["Largest over-subtraction fraction", fmt(m.max_over_subtraction_fraction)],
@@ -360,7 +360,7 @@ export function buildReport(input: ReportInput): Report {
   ].filter((c): c is ReportCheck => c != null);
 
   const caveats: string[] = [];
-  // Out loud: the rings the removal left, unconfirmed on its grid, whatever the card's verdict.
+  // Out loud: the ring candidates the removal left, unconfirmed on its grid, whatever the card's verdict.
   const left = ringNotice(m.rings);
   if (left) caveats.push(`Ring removal: ${left}`);
   for (const c of checks) if (c.verdict === "attention") caveats.push(`${c.title}: ${c.headline}.`);

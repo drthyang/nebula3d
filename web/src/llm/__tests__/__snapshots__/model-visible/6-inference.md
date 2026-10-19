@@ -1,6 +1,6 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 90 spans in 29 texts or sets: reading 25, evidence 51, remedy 14.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 91 spans in 29 texts or sets: reading 25, evidence 51, remedy 15.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -414,11 +414,12 @@ Remove every sharp peak that should go while punching as little as possible (pun
 
 ## verdicts/rules.ts: the ring removal's notice
 
-1 span: remedy 1.
+2 spans: remedy 2.
 
 Spans of a text built for each call (its numbers vary), each as written:
 
-- remedy: “ Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.”
+- remedy: “ Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.”
+- remedy: “ Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract it, even if it is the crystal's own shell.”
 
 ## verdicts/rules.ts: the rings criterion
 
