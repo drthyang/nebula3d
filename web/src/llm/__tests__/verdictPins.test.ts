@@ -152,11 +152,24 @@ describe("D1–D10, kept and named", () => {
     expect(judge("pdf", JSON.parse(JSON.stringify(evaluation)))).toMatchObject({ kind: "pass", reasons: ["window within limit"] });
   });
 
-  it("D7: {{achieved}} reads a stage's newest result, even one not judged; the answer checks the newest that decides", () => {
-    expect(D7_SELECTION).toEqual({ achieved: "newest", answer: "newest that decides" });
-    const r = reply(assess("rings", { verdict: "needs attention", max_ring_left: 0.1, max_ring_dent: 0 }), assess("rings", { verdict: "not judged", max_ring_left: null }));
-    expect(r.achieved?.stages.rings).toBe("info");
-    expect(r.checks.rings).toBe("attention");
+  it("D7, unified (2.4.7): both readers read a check's newest current result, even one not judged; what decides nothing is not read; on the UB the newest evidence of either check wins", () => {
+    expect(D7_SELECTION).toEqual({ achieved: "newest", answer: "newest" });
+    const needs = assess("rings", { verdict: "needs attention", max_ring_left: 0.1, max_ring_dent: 0 });
+    const r = reply(needs, assess("rings", { verdict: "not judged", max_ring_left: null }));
+    expect([r.achieved?.stages.rings, r.checks.rings]).toEqual(["info", "info"]);
+    // A missing output decides nothing, and hides nothing, to either reader (D11 keeps the 3D-ΔPDF's apart).
+    const missing = reply(needs, assess("rings", { missing: "no ringremoved output yet" }));
+    expect([missing.achieved?.stages.rings, missing.checks.rings]).toEqual(["attention", "attention"]);
+    // On the UB, the newest evidence across ub_check and grain_check's "UB off" wins, for both readers.
+    const problem = "the UB is off by 0.9° (one rotation puts the off-lattice peaks back on the Bragg lattice)";
+    const right = step("ub_check", { fit: "both", symmetrised: false, orientation_change_deg: 0.01 });
+    const later = reply(UB_OFF, right);
+    expect([later.checks.ub, later.achieved?.dataProblems]).toEqual(["pass", []]);
+    const earlier = reply(right, UB_OFF);
+    expect([earlier.checks.ub, earlier.achieved?.dataProblems]).toEqual(["attention", [problem]]);
+    // A grain_check finding that names no UB off decides nothing of the UB: the earlier "UB off" stands, for both.
+    const after = reply(UB_OFF, BESIDE);
+    expect([after.checks.ub, after.achieved?.dataProblems]).toEqual(["attention", [problem]]);
   });
 
   it("D8: the answer checks' backfill topic ignores the fill bias that {{achieved}} counts", () => {

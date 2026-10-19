@@ -295,8 +295,13 @@
   "evidence": "The answer checks read a stage's newest result that decides (answerChecks.ts:248-270). {{achieved}} reads the newest current one, even when it is \"not judged\" (verdict.ts:57-66).",
   "proposed_fix": "The answer checks read the newest current result, as {{achieved}} does.",
   "needs_user_approval": true,
-  "status": "open",
-  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.7, after the check-verdict module (2.3).",
+  "status": "implemented",
+  "commit": "80358ca",
+  "tests": [
+   "web/src/llm/__tests__/verdictPins.test.ts (D7, unified (2.4.7): both readers read a check's newest current result, even one not judged; what decides nothing is not read; on the UB the newest evidence of either check wins)",
+   "web/src/llm/__tests__/answerChecks.test.ts (the newest current result, as {{achieved}} reads it (D7, 2.4.7))"
+  ],
+  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.7, after the check-verdict module (2.3). Implemented by plan row 2.4.7. A result that decides nothing for a topic is not read, so it hides no earlier verdict; on the UB the newest evidence across ub_check and grain_check's UB off wins in both readers (the form the lead confirmed).",
   "decision": {
    "by": "the user",
    "on": "2026-10-19",

@@ -473,6 +473,10 @@ export const UB_TURNED = (u: Readonly<Record<string, unknown>>): boolean => {
   return angle != null && angle >= UB_TURN && !UB_NOT_JUDGED(u);
 };
 
+/** How ub_check's data problem of a shifted HKL origin opens: it is no UB evidence, so {{achieved}} keeps it whichever check's UB evidence is newest (D7). */
+const ORIGIN_PROBLEM = "the HKL origin is shifted by ";
+export const isOriginProblem = (p: string): boolean => p.startsWith(ORIGIN_PROBLEM);
+
 /**
  * D16: a ub_check result without an angle, on a volume not symmetrised, reads
  * as a right UB, as the answer checks read it (ub_check always writes its
@@ -488,7 +492,7 @@ const ub: CheckRule<Readonly<Record<string, unknown>>> = {
     const turned = UB_TURNED(u);
     if (turned) dataProblems.push(`the UB is turned by ${ubTurn(u)}°`);
     const shift = Array.isArray(u.origin_shift_rlu) ? (u.origin_shift_rlu as unknown[]) : null;
-    if (shift) dataProblems.push(`the HKL origin is shifted by (${shift.join(", ")}) r.l.u.`);
+    if (shift) dataProblems.push(`${ORIGIN_PROBLEM}(${shift.join(", ")}) r.l.u.`);
     // Not judged, or turned: either holds a claim that the UB is right to account.
     if (UB_NOT_JUDGED(u)) return { kind: "attention", reasons: ["symmetrised"], words: null, dataProblems };
     if (turned) return { kind: "attention", reasons: ["UB turned"], words: null, dataProblems };

@@ -322,6 +322,42 @@ describe("the checks judge what the tools found, and nothing the assistant said"
   });
 });
 
+describe("the newest current result, as {{achieved}} reads it (D7, 2.4.7)", () => {
+  // Synthetic ring evaluations: a ring left at 0.12 of the diffuse, then a 3D test that could not run.
+  const left = step("assess_stage", { stage: "rings" }, { rings: { max_ring_left: 0.12, max_ring_dent: 0 } });
+  const unjudged = step("assess_stage", { stage: "rings" }, { rings: { max_ring_left: null, max_ring_dent: null } });
+  const clean = "The ring removal is clean.";
+
+  it("holds a claim to the newest result, even one that judged nothing", () => {
+    expect(contradictions(clean, [left]).map((t) => t.id)).toEqual(["rings"]);
+    expect(contradictions(clean, [left, unjudged])).toEqual([]); // sent back before 2.4.7, on the older result
+    expect(verdicts({ reply: [left, unjudged] }).achieved?.stages.rings).toBe("info");
+    expect(contradictions(clean, [unjudged, left]).map((t) => t.id)).toEqual(["rings"]);
+  });
+
+  it("reads no result that decides nothing, so it hides no earlier verdict", () => {
+    const missing = step("assess_stage", { stage: "rings" }, { rings: { missing: "no ringremoved output yet; run_pipeline computes it" } });
+    expect(contradictions(clean, [left, missing]).map((t) => t.id)).toEqual(["rings"]);
+    expect(verdicts({ reply: [left, missing] }).achieved?.stages.rings).toBe("attention");
+  });
+
+  it("takes the newest UB evidence across ub_check and grain_check's UB off, for both readers", () => {
+    // Synthetic grain facts: one rotation of 0.9° puts 38 of the 40 strongest orbits back on the lattice.
+    const facts: GrainFacts = { off_lattice_orbits: 60, judged: 40, near_bragg_nodes: 6, near_offset_angle_deg: null, far: [], rotated_copy: { indexed: 38, misorientation_deg: 0.9 }, random_control: 2, symmetrised: false };
+    const off = step("grain_check", {}, { ...shownGrains(facts, judge("grain", facts).words!), off_lattice_peaks: 900 });
+    const offProblem = "the UB is off by 0.9° (one rotation puts the off-lattice peaks back on the Bragg lattice)";
+    const right = step("ub_check", {}, { fit: "both", symmetrised: false, orientation_change_deg: 0.01, origin_shift_rlu: [0.0305, 0.0195, 0] });
+    const originProblem = "the HKL origin is shifted by (0.0305, 0.0195, 0) r.l.u.";
+    const ubRight = "The UB is right.";
+    // ub_check after the grain: the UB is right, to both readers; the origin's shift is ub_check's either way.
+    expect(contradictions(ubRight, [off, right])).toEqual([]);
+    expect(verdicts({ reply: [off, right] }).achieved?.dataProblems).toEqual([originProblem]);
+    // The grain after ub_check: the UB is off, to both.
+    expect(contradictions(ubRight, [right, off]).map((t) => t.id)).toEqual(["ub"]);
+    expect(verdicts({ reply: [right, off] }).achieved?.dataProblems).toEqual([offProblem, originProblem]);
+  });
+});
+
 describe("a repeated call's pointer reads as the result it points to (D17, 2.4b.1)", () => {
   // qmax_coverage finding the window too far, its outcome judged by the coverage's rule, as its tool writes it.
   const tooFar = judge("coverage", { window_weight: 0.04, window: "the ΔPDF's separable window", unit_cell: true, full_coverage_q: null, reach: null, reach_from: "", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } });
