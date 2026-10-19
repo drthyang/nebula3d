@@ -152,14 +152,42 @@ def test_dpdf_meta_and_slice(ran_pipeline):
 
 
 def test_dpdf_features_json(ran_pipeline):
+    from nebula3d.server.schemas import DpdfFeatureGroupOut, DpdfFeaturesOut
+
     dataset_id, _datasets, _events = ran_pipeline
     vid = f"{dataset_id}.delta_pdf"
     f = json.loads(webbridge.dpdf_features_json(vid, 5.0, 4))
     assert f["id"] == vid and f["min_sigma"] == 5.0
     assert 0 < len(f["groups"]) <= 4
     assert all(g["size_sigma"] >= 5.0 and g["length"] >= f["origin_radius"] for g in f["groups"])
+    # The fields the server's response has, no more and no fewer.
+    assert set(f) == set(DpdfFeaturesOut.model_fields)
+    assert all(set(g) == set(DpdfFeatureGroupOut.model_fields) for g in f["groups"])
+    # The demo's raw file declares no symmetry.
+    assert f["grouped_by"] == "sign, length and size (no symmetry declared)"
     with pytest.raises(ValueError):
         webbridge.dpdf_features_json(vid, 0.0, 4)
+
+
+@pytest.mark.parametrize("declared", [True, False])
+def test_dpdf_features_json_is_the_servers_response(tmp_path, declared):
+    """The browser build's features are the native server's, field for field,
+    with the raw file declaring m-3m and declaring nothing."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+    from tests.test_dpdf_features import M3M, write_declared_dataset
+
+    write_declared_dataset(tmp_path, "sample_cubic", ("m-3m", M3M) if declared else None)
+    vid = "sample-cubic.delta_pdf"
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    served = client.get(f"/api/deltapdf/{vid}/features", params={"min_sigma": 8, "limit": 30})
+    assert served.status_code == 200, served.text
+    webbridge.setup(workdir=str(tmp_path))
+    bridged = json.loads(webbridge.dpdf_features_json(vid, 8.0, 30))
+    assert bridged == served.json()
+    assert bridged["grouped_by"].startswith("declared symmetry (m-3m" if declared else "sign,")
 
 
 def test_consistency_meta_and_slice(ran_pipeline):
