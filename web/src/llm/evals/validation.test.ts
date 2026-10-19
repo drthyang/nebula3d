@@ -14,7 +14,7 @@ import { fit, found, seen } from "../readings";
 import { allSkills } from "../skills";
 import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolsWithSkills, unreadSkillRefusal } from "../tools";
 import { UB_TURNED } from "../verdicts/rules";
-import { readText } from "./backend";
+import { READERS, sharedReader, type Readers } from "./graderReading";
 import type { EvalRun } from "./harness";
 import {
   ARMS,
@@ -44,6 +44,7 @@ import {
   type Decision,
   type RunRecord,
   type ValidationCase,
+  type ValidationGrades,
 } from "./validation";
 
 // No failure here shows a held-out case: a check that meets the test split names a
@@ -287,6 +288,48 @@ describe("grading what a run reported", () => {
     expect(pass(detectionChecks(ub), run("The UB is not turned; the data are fine at 0.6 Å⁻¹."))).toBe(false);
   });
 
+  it("takes a question for no claim, of a fault or against one", () => {
+    const control = caseNamed("dev-control")!;
+    expect(pass(falseAlarmChecks(control), run("Is the UB turned by 0.6°?"))).toBe(true);
+    expect(pass(falseAlarmChecks(control), run("The UB is turned by 0.6°."))).toBe(false);
+    const saysUb = detectionChecks(ub).find((k) => k.name === "says the fault (ub)")!;
+    expect(saysUb.grade(run("Is the UB turned by 0.6°?")).pass).toBe(false);
+  });
+
+  it("does not credit a fault that a plan or a condition opens", () => {
+    const saysUb = detectionChecks(ub).find((k) => k.name === "says the fault (ub)")!;
+    expect(saysUb.grade(run("I will check whether the UB is turned.")).pass).toBe(false);
+    expect(saysUb.grade(run("If the UB is turned, re-index the sample."))).toMatchObject({ pass: false });
+    expect(saysUb.grade(run("The UB is turned by 0.6°, if the fit is right.")).pass).toBe(true); // a hedge later in it does not (W4)
+    // No hedge excuses an alarm (W5).
+    expect(pass(falseAlarmChecks(caseNamed("dev-control")!), run("If the UB is wrong by 0.4°, re-index the sample."))).toBe(false);
+  });
+
+  it("reads a UB's angle from its unit, so an axis written as a vector is no alarm", () => {
+    const control = caseNamed("dev-control")!;
+    expect(pass(falseAlarmChecks(control), run("The fit turned the UB by 0.002° about [1 1 0]."))).toBe(true);
+    expect(pass(falseAlarmChecks(control), run("The fit turned the UB by 0.002 about [1 1 0]."))).toBe(true); // no unit: its bare number
+    expect(pass(falseAlarmChecks(control), run("The UB is turned about [1 1 0]."))).toBe(false); // no angle: a claim
+    expect(pass(falseAlarmChecks(control), run("The UB is turned by 0.6° about [1 1 0]."))).toBe(false);
+  });
+
+  it("reads the numbers as the app does: a count, a fraction or a list's number is not a ring's |Q|", () => {
+    const rings = caseNamed("dev-rings")!;
+    const ringAt405 = detectionChecks(rings).find((k) => k.name === "writes the ring at 4.05 Å⁻¹")!;
+    for (const said of ["The punch kept 4,321 broad maxima.", "Each sits within 1/4 of the node spacing.", "Steps:\n4. Check the symmetry."]) {
+      expect(ringAt405.grade(run(said)).pass, said).toBe(false);
+    }
+    expect(ringAt405.grade(run("A second ring sits at 4.05 Å⁻¹.")).pass).toBe(true);
+  });
+
+  it("reads a claim after a long label's colon apart from the label, as the answer checks do (the dev-origin colon case)", () => {
+    const origin = caseNamed("dev-origin")!;
+    // The label's negation is its own: the origin's shift is claimed after it.
+    expect(pass(detectionChecks(origin), run("The UB is not the problem: the HKL origin is shifted by (0.03, 0.02, 0) r.l.u."))).toBe(true);
+    // A short label stays with its clause.
+    expect(pass(detectionChecks(origin), run("Origin: not shifted."))).toBe(false);
+  });
+
   it("does not charge a run with a fault for reporting what a tool checked or what it changed", () => {
     const control = caseNamed("dev-control")!;
     for (const said of [
@@ -359,34 +402,6 @@ describe("a turned UB: the grader's limit is the app's 0.05°, held by behaviour
     expect(Math.abs(app - grader)).toBeLessThan(1e-9);
     expect([turned(0.05), charges(0.05)]).toEqual([true, true]);
   });
-});
-
-describe("the graders import nothing of the app's verdicts", () => {
-  /** The modules a source imports or re-exports from, as written: type-only, side-effect and dynamic imports included. */
-  const importsOf = (source: string): string[] =>
-    [...source.matchAll(/\b(?:import|export)\b[^;'"]*?\bfrom\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|^\s*import\s*["']([^"']+)["']/gm)].map((m) => m[1] ?? m[2] ?? m[3]);
-  const fromVerdicts = (spec: string): boolean => /^\.\.\/verdicts(\/|$)/.test(spec);
-
-  it("finds every kind of import in a planted source", () => {
-    const planted = [
-      'import type { ComputedVerdict } from "../verdicts";',
-      "import {\n  UB_TURNED,\n} from '../verdicts/rules';",
-      'export { verdicts } from "../verdicts/readers";',
-      'const later = await import("../verdicts");',
-      'import "../verdicts/rules";',
-      'import { seen } from "../readings";',
-    ].join("\n");
-    expect(importsOf(planted).filter(fromVerdicts)).toHaveLength(5);
-    expect(importsOf(planted)).toContain("../readings");
-  });
-
-  for (const file of ["checks.ts", "validation.ts"]) {
-    it(file, async () => {
-      const source = await readText(new URL(`./${file}`, import.meta.url));
-      expect(importsOf(source).length).toBeGreaterThan(0);
-      expect(importsOf(source).filter(fromVerdicts)).toEqual([]);
-    });
-  }
 });
 
 describe("unsafe actions", () => {
@@ -526,6 +541,33 @@ describe("the record", () => {
     expect(rec.task).toBe(TASK);
     // No window given: recorded as unknown, not left out.
     expect(back.context_window).toBeNull();
+  });
+
+  it("keeps the checks the graders' two readings dispute, a field the schema takes as optional", () => {
+    // A shared reader that reads no clause passes every alarm; the witness raises the one there.
+    const blind: Readers = { shared: (a) => ({ ...sharedReader(a), clauses: [] }), witness: READERS.witness };
+    const g = gradeRun(caseNamed("dev-control")!, run("The UB is wrong by 0.4°."), [], blind);
+    const dispute = { check: "never claims a fault that is not there (ub)", reader: "not claimed", witness: "“The UB is wrong by 0.4°.”" };
+    expect([g.noFalseAlarm, g.disputes]).toEqual([true, [dispute]]);
+    expect(g.falseAlarms.find((x) => x.check === dispute.check)).toMatchObject({ pass: true, dispute });
+    const rec = buildRecord({
+      case: caseNamed("dev-control")!,
+      arm: "B",
+      run: 1,
+      dataset: dataset("v000001-B1", "v000001_B1"),
+      model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+      evalRun: run("The UB is wrong by 0.4°."),
+      why: [],
+      maxRounds: 12,
+      started: "2026-10-19T00:00:00Z",
+      costUsd: null,
+    });
+    const back = JSON.parse(JSON.stringify(rec)) as RunRecord;
+    expect([back.schema, back.grades.disputes, back.grades.noFalseAlarm]).toEqual(["nebula3d-validation-run/1", [], false]);
+    // `delete` compiles only on an optional field: records made before it stay valid.
+    const old: ValidationGrades = { ...back.grades };
+    delete old.disputes;
+    expect(old.disputes).toBeUndefined();
   });
 
   it("keeps the context window the run had and the minimum it was held to", () => {

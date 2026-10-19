@@ -17,6 +17,7 @@ import type { Failure } from "../recovery";
 import type { LlmSettings } from "../settings";
 import type { ComputedVerdict } from "../verdicts";
 import { CHAT_TOOLS, toolsWhere, type AgentTool } from "../tools";
+import type { Dispute } from "./graderReading";
 
 export interface EvalRun {
   scenario: string;
@@ -36,11 +37,14 @@ export interface Grade {
   check: string;
   pass: boolean;
   detail: string;
+  // The graders' two readings of the answer disagree on this check: the shared
+  // reader passes it, the witness fails it (graderReading.ts). Absent where they agree.
+  dispute?: Dispute;
 }
 
 export interface Check {
   name: string;
-  grade: (run: EvalRun) => { pass: boolean; detail: string };
+  grade: (run: EvalRun) => { pass: boolean; detail: string; dispute?: Dispute };
 }
 
 export interface Scenario {

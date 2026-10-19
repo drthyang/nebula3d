@@ -150,6 +150,7 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
           `${r.passed ? "✓" : "✗"} ${scenario.id} (${(r.run.latencyMs / 1000).toFixed(0)} s` +
             `${u ? `, ${u.input} in / ${u.output} out over ${u.requests} requests` : ""})` +
             (r.run.failure ? ` [server: ${r.run.failure.kind} after ${r.run.failure.attempts} tries]` : "") +
+            (r.grades.some((g) => g.dispute) ? ` [disputed: ${r.grades.filter((g) => g.dispute).map((g) => g.check).join("; ")}]` : "") +
             (r.passed ? "" : `\n${r.grades.filter((g) => !g.pass).map((g) => `    ✗ ${g.check}: ${g.detail}`).join("\n")}\n${transcript(r.run)}`),
         );
       }
