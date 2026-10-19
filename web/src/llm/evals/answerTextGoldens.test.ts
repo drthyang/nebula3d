@@ -23,7 +23,8 @@ import { describe, expect, it } from "vitest";
 
 import { assess, COVERAGE, GRAIN, GRID_STAGES, labelled, STAGE_VARIANTS, step, SYMMETRY, TEXTURE, UB } from "../__tests__/verdictGrid";
 import type { AgentStep } from "../agent";
-import { answerIssues, clauses, contradictions, overallContradiction, verdictsIn, writtenNumbers } from "../answerChecks";
+import { answerIssues, clauses, contradictions, overallContradiction, verdictsIn } from "../answerChecks";
+import { writtenNumbers } from "../answerText";
 import { answerCorpus, CANNED_DEV_ANSWERS } from "./answerCorpus";
 import { grade, type Check, type EvalRun } from "./harness";
 import { casesIn, detectionChecks, falseAlarmChecks, type ValidationCase } from "./validation";

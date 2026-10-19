@@ -11,7 +11,7 @@
 // and is not credited.
 
 import type { AgentStep } from "../agent";
-import { ANSWER_WORD } from "../answerChecks";
+import { ANSWER_WORD } from "../answerText";
 import { seen } from "../readings";
 import type { Check, EvalRun } from "./harness";
 

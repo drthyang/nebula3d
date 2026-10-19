@@ -18,7 +18,7 @@
 
 import type { Dataset } from "../../api/types";
 import type { AgentStep } from "../agent";
-import { ANSWER_WORD, writtenNumbers } from "../answerChecks";
+import { ANSWER_WORD, writtenNumbers } from "../answerText";
 import type { PipelineContext } from "../context/pipelineContext";
 import { buildChatMessages } from "../prompts/templates";
 import type { ChatMessage } from "../provider/client";
