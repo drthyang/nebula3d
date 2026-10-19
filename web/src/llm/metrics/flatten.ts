@@ -14,7 +14,7 @@
 // counts reach (judgedShells, below), not on every shell past the fit range's
 // start: docs/pilot-review.md, finding 8.
 
-import type { FlattenSettings } from "../../api/types";
+import type { FlattenSettings, ShellFloors } from "../../api/types";
 import type { GridSlice, RadiusFn } from "./sliceStats";
 import { median, radialFloorShells, robustStats, roundSig } from "./sliceStats";
 
@@ -113,6 +113,14 @@ export const FULL_SHELL = 0.95;
  * span of 0.49, and the controls stay under 0.62 and 0.65. The validation's
  * scorer judges the pedestal on the outer shells too (3.5 Å⁻¹ out to the
  * coverage, nebula3d.validation.score). Provisional, as the 0.8 limits are.
+ *
+ * Over the whole volume's shells (volumePedestal, plan 4.1), on the dev
+ * cases at 161³: the planted background trend 0.996, span 1.30 (with the Q²
+ * term on, 0.76 and 0.46), the cut case 0.16 and 0.19, the other controls
+ * under 0.11 and 0.65. Where the counts fill the box, the volume's outer half
+ * runs into its corners (5.6–11.1 Å⁻¹ there, the planes' 4.7–9.0): shells
+ * past the nearest face hold only the corners' voxels, and they set the
+ * controls' largest spans and most of the planted one's.
  */
 export function judgedShells(
   shells: { floors: number[]; centres: number[]; counts: number[]; totals: number[] },
@@ -161,6 +169,34 @@ const rankTrend = (y: number[]): number | null => {
   }
   return sxx > 0 ? sxy / sxx : null;
 };
+
+/** The pedestal rule's numbers: what pedestalLeft judges, and the |Q| of the first and last shell they were read over. */
+export interface Pedestal {
+  floor_trend: number | null; // the judged floors' rank correlation with |Q|
+  floor_span_fraction: number | null; // their range over the diffuse level
+  floor_judged_q: [number, number] | null;
+}
+
+/**
+ * The pedestal rule's numbers over `shells` (a plane's, radialFloorShells, or
+ * the whole volume's, volumePedestal): the floors of the shells judgedShells
+ * picks, their rank trend with |Q| (five shells or more), and their span over
+ * `level`, the diffuse level (null: not known, no span).
+ */
+export function pedestalOf(
+  shells: { floors: number[]; centres: number[]; counts: number[]; totals: number[] },
+  level: number | null,
+  qRange?: [number, number],
+): Pedestal {
+  const judged = judgedShells(shells, qRange);
+  const outward = judged.map((i) => shells.floors[i]);
+  const trend = rankTrend(outward);
+  return {
+    floor_trend: trend != null ? roundSig(trend) : null,
+    floor_span_fraction: outward.length >= 5 && level != null && level > 0 ? roundSig((Math.max(...outward) - Math.min(...outward)) / level) : null,
+    floor_judged_q: judged.length ? [roundSig(shells.centres[judged[0]]), roundSig(shells.centres[judged[judged.length - 1]])] : null,
+  };
+}
 
 const NBINS = 30;
 
@@ -211,38 +247,55 @@ export const flattenMetrics = (
   const floorsAfter = floorsIn(after, radius, qRange, percentile);
   const sigma = afterStats && afterStats.sigma > 0 ? afterStats.sigma : null;
   const finiteAfter = floorsAfter.filter(Number.isFinite);
-  // The outer half of the shells the counts reach (judgedShells).
+  // The outer half of the shells the counts reach (judgedShells), the span a
+  // share of the diffuse level when the flatten's input is at hand.
   const shells = radialFloorShells(after, NBINS, radius, percentile / 100);
-  const judged = judgedShells(shells, qRange);
-  const outward = judged.map((i) => shells.floors[i]);
-  const trend = rankTrend(outward);
-  const out: FlattenMetrics = {
+  const paired = before !== null && before.data.length === after.data.length;
+  let base = 0;
+  let removedFraction: number | null = null;
+  if (paired) {
+    const removed: number[] = [];
+    const level: number[] = [];
+    for (let i = 0; i < before.data.length; i++) {
+      const b = before.data[i];
+      const a = after.data[i];
+      if (!Number.isFinite(b) || !Number.isFinite(a)) continue;
+      removed.push(b - a);
+      level.push(b);
+    }
+    base = level.length ? median(level) : 0;
+    if (removed.length && base > 0) removedFraction = roundSig(median(removed) / base);
+  }
+  const pedestal = pedestalOf(shells, paired ? base : null, qRange);
+  return {
     ...nulls,
-    floor_trend: trend != null ? roundSig(trend) : null,
-    floor_judged_q: judged.length
-      ? [roundSig(shells.centres[judged[0]]), roundSig(shells.centres[judged[judged.length - 1]])]
-      : null,
+    removed_fraction: removedFraction,
+    floor_before: paired ? thirds(floorsIn(before, radius, qRange, percentile)) : null,
     floor_after: thirds(floorsAfter),
     after_floor_max_sigma:
       sigma && finiteAfter.length ? roundSig(Math.max(...finiteAfter.map(Math.abs)) / sigma) : null,
     after_negative_fraction: afterStats ? roundSig(afterStats.negativeFraction) : null,
+    ...pedestal,
   };
-  if (!before || before.data.length !== after.data.length) return out;
-
-  out.floor_before = thirds(floorsIn(before, radius, qRange, percentile));
-  const removed: number[] = [];
-  const level: number[] = [];
-  for (let i = 0; i < before.data.length; i++) {
-    const b = before.data[i];
-    const a = after.data[i];
-    if (!Number.isFinite(b) || !Number.isFinite(a)) continue;
-    removed.push(b - a);
-    level.push(b);
-  }
-  const base = level.length ? median(level) : 0;
-  if (removed.length && base > 0) out.removed_fraction = roundSig(median(removed) / base);
-  if (outward.length >= 5 && base > 0) {
-    out.floor_span_fraction = roundSig((Math.max(...outward) - Math.min(...outward)) / base);
-  }
-  return out;
 };
+
+/**
+ * The pedestal over the whole volume (plan 4.1): the same rule over the
+ * floors of every voxel of the flatten's own shells (ShellFloors,
+ * nebula3d.preprocessing.shell_floors) in place of a plane's 30, the judged
+ * shells from the run's fit range (fitQ, flattenJudging), the span a share
+ * of the flatten input's level over the voxels measured in both. Measured
+ * without the flatten's input (`before_id` null) the level is the volume's
+ * own, no diffuse level: the span is not measured then.
+ *
+ * Why the volume. A plane's floors see the background only along its own
+ * directions, and the three principal planes all the sphere only where the
+ * background is isotropic: a pedestal off them is missed, and the crystal's
+ * own diffuse in them reads as a trend. Every voxel weighs the same in the
+ * volume, so each shell's floor is the whole sphere's. Its shells run past
+ * the planes', into the box's corners where the counts reach them.
+ */
+export function volumePedestal(floors: ShellFloors, fitQ: [number, number] | null): Pedestal {
+  const shells = { floors: floors.floors.map((f) => (f == null ? NaN : f)), centres: floors.centres, counts: floors.counts, totals: floors.totals };
+  return pedestalOf(shells, floors.before_id ? floors.level : null, fitQ ?? undefined);
+}

@@ -13,6 +13,7 @@ import type {
   PipelineRunRequest,
   RingDiagnostics,
   RingIsotropy,
+  ShellFloors,
   Slice,
   SliceHeader,
   TuningPromote,
@@ -157,6 +158,16 @@ export async function fetchUbCheck(volumeId: string, cell: [number, number, numb
     throw new Error(detail ?? `${r.status} ${r.statusText}: ${url}`);
   }
   return (await r.json()) as UbCheck;
+}
+
+/**
+ * The floor of every |Q| shell over the whole volume, on the shells and at
+ * the percentile the flatten recorded in the file (its defaults without a
+ * record); for the flattened stage, its input's too, and the diffuse level.
+ */
+export function fetchShellFloors(volumeId: string): Promise<ShellFloors> {
+  if (PYODIDE_MODE) return engine.shellFloors(volumeId);
+  return getJSON<ShellFloors>(`/api/volumes/${encodeURIComponent(volumeId)}/shell-floors`);
 }
 
 /** Which shells (|Q| centre, FWHM in Å⁻¹) of a volume are powder rings: each rises in nearly every direction. */
