@@ -8,6 +8,8 @@ on:
 # The validation's held-out test split runs only on this opt-in, under masked
 # names (tests/conftest.py): a local run leaves it out of the output that whoever
 # tunes reads, and CI covers it in every job, the Pyodide-pinned one included.
+# The scenario evals' held-out fixture loads on it too (web/src/llm/evals/
+# heldoutFixture.ts), so the frontend job's `npm run test` replays them.
 # test_ci_runs_the_test_split pins this block.
 env:
   NEBULA_HOLDOUT_TESTS: "1"

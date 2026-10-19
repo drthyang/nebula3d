@@ -101,6 +101,15 @@ PYTHONPATH=src python3 -m nebula3d.validation manifest --report \
   > web/src/llm/evals/fixtures/validation-cases.json
 ```
 
+The same opt-in gates the scenario evals' held-out fixture,
+`web/src/llm/evals/fixtures/holdout/heldout.json`: do not open, print or read it
+either. Its one reader, `web/src/llm/evals/heldoutFixture.ts`, reads it only with
+`NEBULA_HOLDOUT_TESTS=1`; without it `npm test` neither collects nor runs the
+held-out scenarios' replay (`heldout.test.ts`), and `localTools.test.ts` leaves
+their questions out. `heldoutFixture.test.ts` checks that no other module in
+`web/src` imports the file, names it or globs its way to it. CI's frontend job
+runs them, under the workflow's opt-in.
+
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request,
 with `NEBULA_HOLDOUT_TESTS=1`:
 

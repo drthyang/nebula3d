@@ -1,5 +1,5 @@
 // The held-out scenarios' CI replay: each played by a scripted model against
-// the tool results recorded on the held-out volumes (fixtures/heldout.json,
+// the tool results recorded on the held-out volumes (heldoutFixture.ts's,
 // from heldoutProbe.test.ts), through the real agent loop, its answer checks
 // and the graders, as evals.test.ts does for the measured set. A good script
 // writes what a careful model would, and must pass every check on its first
@@ -13,10 +13,19 @@ import type { Dataset } from "../../api/types";
 import type { PipelineContext } from "../context/pipelineContext";
 import { VERDICT_LABEL } from "../report/report";
 import { CHAT_TOOLS } from "../tools";
-import fixture from "./fixtures/heldout.json";
 import { runScenario, transcript, type Scenario } from "./harness";
 import { HELDOUT, HELDOUT_CALLS, HELDOUT_SCENARIOS, TRUTH } from "./heldout";
+import { HOLDOUT_ENV, holdoutOptedIn, loadHeldoutFixture } from "./heldoutFixture";
 import { replayTools, scriptedModel, SCRIPTED_URL, type ScriptTurn } from "./scripted";
+
+// The recording is held out: read with NEBULA_HOLDOUT_TESTS=1 alone (CI sets it).
+// Without it nothing below runs and no held-out scenario is collected, so none of
+// their names is printed; one test says why.
+const fixture = holdoutOptedIn() ? await loadHeldoutFixture() : null;
+
+it.runIf(fixture === null)(`leaves the held-out scenarios out without ${HOLDOUT_ENV}=1`, async () => {
+  await expect(loadHeldoutFixture()).rejects.toThrow(`${HOLDOUT_ENV}=1`);
+});
 
 interface Replay {
   good: ScriptTurn[];
@@ -86,9 +95,10 @@ const REPLAYS: Record<string, Replay> = {
   },
 };
 
-const datasets = fixture.datasets as unknown as Dataset[];
-const contexts = fixture.contexts as unknown as Record<string, PipelineContext>;
-const results = fixture.results as Record<string, string>;
+const datasets = (fixture?.datasets ?? []) as unknown as Dataset[];
+const contexts = (fixture?.contexts ?? {}) as unknown as Record<string, PipelineContext>;
+const results = (fixture?.results ?? {}) as Record<string, string>;
+const scenarios = fixture ? HELDOUT_SCENARIOS : [];
 const recorded = <T,>(dataset: string, call: string, args: Record<string, unknown> = {}) =>
   JSON.parse(results[`${dataset}|${call}|${JSON.stringify(args)}`]) as T;
 
@@ -110,7 +120,7 @@ afterEach(() => {
   uninstall = null;
 });
 
-describe("held-out evals, replayed", () => {
+describe.runIf(fixture !== null)("held-out evals, replayed", () => {
   it("has a replay for every scenario, and a recording of every call", () => {
     expect(Object.keys(REPLAYS).sort()).toEqual(HELDOUT_SCENARIOS.map((s) => s.id).sort());
     for (const [dataset, calls] of Object.entries(HELDOUT_CALLS)) {
@@ -118,7 +128,7 @@ describe("held-out evals, replayed", () => {
     }
   });
 
-  for (const scenario of HELDOUT_SCENARIOS) {
+  for (const scenario of scenarios) {
     it(`${scenario.id}: a good run passes on its first answer, a bad one is caught`, async () => {
       const r = REPLAYS[scenario.id];
       const good = await replay(scenario, r.good);
@@ -142,7 +152,7 @@ describe("held-out evals, replayed", () => {
 // What the tools read on the held-out volumes, as recorded: these pin the
 // recording the replays use. tests/test_faults.py runs the tools themselves
 // (the UB fit, the coverage edge, the ring stage) on faults made live.
-describe("the recorded tools, against the faults put in", () => {
+describe.runIf(fixture !== null)("the recorded tools, against the faults put in", () => {
   interface UbCheck {
     orientation_change_deg: number;
     rms_start: number;
