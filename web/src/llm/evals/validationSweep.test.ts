@@ -49,7 +49,8 @@ describe.skipIf(!out)("the dev sweep", () => {
     for (const dataset of datasets) {
       const of = caseOfDataset(dataset.id);
       if (!of) continue;
-      expect(of.case.split, `${dataset.id} is a test case: the sweep reads dev only`).toBe("dev");
+      // Not the dataset's id: a test case's holds its label.
+      expect(of.case.split, "a test case's dataset is served: the sweep reads dev only").toBe("dev");
       usePipelineStore.getState().patch(configOf(usePipelineStore.getInitialState()));
       const results: Record<string, unknown> = {};
       for (const call of SWEEP_CALLS) {

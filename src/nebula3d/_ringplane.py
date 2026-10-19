@@ -60,6 +60,12 @@ class RingParams:
     q_max: float = 10.5
     slice_axis: str = "H"          # H fits 0kl/KL slices; K → h0l; L → hk0
     profile_method: str = "median"
+    # Azimuthal texture order of the "patched" and "parametric" models only;
+    # the default "pooled" model has none.  The web page sends 8
+    # (web/src/state/pipelineStore.ts, web/src/llm/tune/catalog.ts); this
+    # package default, which scripts and the Python API run, stays 6.  The two
+    # differ on purpose (AGENT_PLAN 4.12, 2026-10-19): changing either would
+    # change runs on that path, and tests/test_defaults_agreed.py pins both.
     n_fourier: int = 6
     n_patches: int = 36
     q_step: float = 0.02
