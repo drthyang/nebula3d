@@ -106,10 +106,10 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   the volume's voxels for the shells (`ring_isotropy.shell_isotropy`), so its
   medians are noisier: on the 161³ demo the confirmed rings' signal-to-noise
   fell by up to 2.6× (103 → 48 at 3.09 Å⁻¹, 7.0 → 3.8 at 6.94 Å⁻¹, against the
-  rule's 3) and their isotropy by up to 0.27. The decisions agreed on every
-  dev case and the demo at 121³ and 161³, but a ring near the threshold could
-  be confirmed natively and left in the browser. float32 plays no part in it:
-  the native engine in low-memory mode measures what the browser does.
+  rule's 3) and their isotropy moved by up to 0.27. The decisions agreed on
+  every dev case and the demo at 121³ and 161³, but a ring near the threshold
+  could be confirmed natively and left in the browser. float32 plays no part
+  in it: the native engine in low-memory mode measures what the browser does.
 - **WebGPU ΔPDF.** When WebGPU is available, the ΔPDF forward FFT and the
   back-FFT consistency inverse run on the GPU (`web/src/gpu/` — a mixed
   radix-2/3/4/5 Stockham line kernel with CPU-precomputed twiddles; index math
