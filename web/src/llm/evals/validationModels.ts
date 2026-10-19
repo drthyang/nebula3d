@@ -1,11 +1,13 @@
-// The models the validation runs (docs/evals.md, "Does the Pilot help?"), and
-// the spend tracker that caps a paid one. Wired only: nothing here starts a
+// The models the validation runs (docs/evals.md, "Does the Pilot help?"), the
+// run policy that holds every local live run (the scenario evals' too), and
+// the spend tracker that caps a paid model. Wired only: nothing here starts a
 // run, and a paid model needs the user to type its cap (paidRunGate).
 //
 // Every model is described the same way: where it is served, the context the
 // run needs it loaded with, the splits it may run, and the runs per case.
 
 import { isOllamaUrl, loadedContext, ollamaModel } from "../provider/client";
+import { isLocalUrl } from "../provider/presets";
 import { casesToRun, datasetStem, type Arm, type RunContextWindow, type Split, type ValidationCase } from "./validation";
 
 export interface Price {
@@ -38,16 +40,18 @@ const OLLAMA = "http://localhost:11434/v1";
 
 /**
  * The run policy: settings that hold for every run of the validation, whatever
- * the model.
+ * the model, and for every local run of the scenario evals.
  *
  * minLocalContextTokens: the least context window a local live run may have,
  * 48k. The Pilot's worst turn on a local model (arm B on the validation TASK,
  * two skills read whole) is about 45.6k tokens with the reply reserve before
  * the loop's compaction, and 37k to 42k after it (tokenBudget.test.ts). A 32k
  * window holds it only by shortening the skills just read to stubs, so a run
- * at 32k would grade arm B on stubs of the skills it read. The runner refuses a
- * window under it before the first run, and reads it again before each run
- * (runContext). The sibling app RMC holds its local live runs to the same rule.
+ * at 32k would grade arm B on stubs of the skills it read. The validation's
+ * runner (validation.live.test.ts) and the scenario evals (live.test.ts, which
+ * scripts/eval-local.sh runs) refuse a window under it before the first run,
+ * and read it again before each run (runContext). The sibling app RMC holds
+ * its local live runs to the same rule.
  */
 export const RUN_POLICY = {
   minLocalContextTokens: 49_152,
@@ -157,9 +161,14 @@ const tokens = (x: number): string => x.toLocaleString("en-US");
  *   plan (provider/window.ts) sizes num_ctx for each request up to it, so it is
  *   the most a run's window can grow to.
  * A window that cannot be read is refused: the minimum would go unchecked. A
- * cloud model has no minimum and is not asked.
+ * cloud model has no minimum and is not asked. *model* is one of MODELS, or
+ * one a run names by its server and id alone (modelAt).
  */
-export async function runContext(model: ValidationModel, baseUrl: string, signal?: AbortSignal): Promise<RunContext> {
+export async function runContext(
+  model: Pick<ValidationModel, "model" | "minContextTokens">,
+  baseUrl: string,
+  signal?: AbortSignal,
+): Promise<RunContext> {
   const min = model.minContextTokens;
   if (min == null) return { tokens: null, min_tokens: null, read_from: null, refusal: null };
   const policy = `the run policy's minimum of ${tokens(min)} for a local live run (RUN_POLICY in validationModels.ts: the Pilot's worst turn needs about 45.6k tokens, tokenBudget.test.ts)`;
@@ -215,6 +224,17 @@ export async function runContext(model: ValidationModel, baseUrl: string, signal
   }
   return { ...seen, refusal: null };
 }
+
+/**
+ * A model a run names by its server and id alone, as the scenario evals do
+ * (live.test.ts: NEBULA_EVAL_BASE_URL and NEBULA_EVAL_MODEL), for runContext.
+ * On a local server it is a local live run, held to the run policy's minimum
+ * like the validation's local models; a cloud model has none and is not asked.
+ */
+export const modelAt = (baseUrl: string, model: string): Pick<ValidationModel, "model" | "minContextTokens"> => ({
+  model,
+  minContextTokens: isLocalUrl(baseUrl) ? RUN_POLICY.minLocalContextTokens : null,
+});
 
 /** What a run cost, from its token counts: null when the server did not say, or the model has no price. */
 export function costOf(
