@@ -1,0 +1,21 @@
+{
+ "source": "review",
+ "ref": "D8",
+ "at": "f807320",
+ "kind": "bug",
+ "evidence": "The answer checks' backfill topic reads assess_stage only (answerChecks.ts:295). {{achieved}} and the report count texture_check's fill bias (verdict.ts:89-93, report.ts:253-265).",
+ "proposed_fix": "The answer checks' backfill topic counts the fill bias.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "79e7013",
+ "tests": [
+  "web/src/llm/__tests__/verdictPins.test.ts (D8, unified (2.4.8): the answer checks' backfill topic counts the fill bias {{achieved}} counts: attention if either check needs it, a pass only when both pass)",
+  "web/src/llm/__tests__/answerChecks.test.ts (the backfill topic counts the fill bias (D8, 2.4.8))"
+ ],
+ "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.8, after the check-verdict module (2.3). Implemented by plan row 2.4.8. The combined form the lead confirmed: the newest of each check, attention if either needs it, a pass only when both pass.",
+ "decision": {
+  "by": "the user",
+  "on": "2026-10-19",
+  "option": "yes"
+ }
+}

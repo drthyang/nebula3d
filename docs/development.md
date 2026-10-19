@@ -226,10 +226,67 @@ npx vitest run src/llm/__tests__/modelVisible.test.ts -u
 Put `-u` after the file: before it, vitest takes the path as `-u`'s value and
 updates every snapshot in the suite.
 
+### The Pilot's tools
+
+The tools NEBULA Pilot's model calls live in `web/src/llm/tools/`, one module
+per job. The rest of the app imports them from the barrel, `tools/index.ts`,
+and the two leaf modules, `facts.ts` and `openView.ts`, directly:
+
+```text
+web/src/llm/tools/
+├── index.ts             the barrel: the tools' interface to the app
+├── types.ts             AgentTool and ChatTool, ToolContext, ToolIO, ToolOutcome, ToolArgError
+├── defs/<tool_name>.ts  one tool each: its facts, description, parameters and run
+├── shared/              what several tools use: argument checks (args.ts), rounding
+│                        (figures.ts), cuts and the figure each is drawn in (cuts.ts),
+│                        the guard on the tools that act on the pipeline (pipeline.ts),
+│                        descriptions tagged for the skills' switch (describe.ts)
+├── registry.ts          CHAT_TOOLS in the order the model reads them; factsOf,
+│                        toolsWhere, toolsWithSkills, toolSpecs, unreadSkillRefusal
+├── call.ts              one call: runToolCall (as the model wrote it), callTool (by name)
+├── round.ts             the executor's round: a model turn's calls over the reply's history
+├── facts.ts             what a tool declares beside what the model reads
+└── openView.ts          moves the console to the figure a step looked at
+```
+
+The agent loop (`web/src/llm/agent.ts`) sends the requests and hands each
+model turn's calls to the executor's round, `runRound(calls, history)`. The
+round runs them one at a time over the reply's history (the tools the reply
+offers, its own copy of the tool context, the calls that ran since the state
+last changed): a repeated call is pointed at its earlier step, a call of a
+tool that acts empties that record, and after `BARREN_ROUNDS` rounds that
+brought nothing new the round is stuck, and the loop asks the model to
+answer. The round hands back a new history and never changes the one it was
+given. The loop keeps the retries, the context window, compaction (it calls
+`forget` for each result it shortens, by the call's key), the local offer, the
+figures it follows and the answer checks. The app's own callers and the tests
+run one tool by its name with `callTool(ctx, name, args)`.
+
+To add a tool:
+
+1. Write `web/src/llm/tools/defs/<tool_name>.ts`, exporting the tool as
+   `<tool_name>` (a `ChatTool`) and nothing else, with its facts (below). A
+   description that holds inference is written with `description("<tool_name>")`
+   (`shared/describe.ts`) and the spans of `web/src/llm/inference.ts`, so that
+   validation arm C reads it without them. A tool that judges a check imports
+   `judge` and `WORDS` from `verdicts/rules.ts`, never from the verdicts
+   barrel: its readers import the registry back.
+2. Import it in `registry.ts` and put it in `CHAT_TOOLS` where the model should
+   read it, and add its name to the list in
+   `web/src/llm/__tests__/registry.test.ts`, which holds the order.
+3. Sample its result in `modelVisible.test.ts` and `skillLint.test.ts`, call it
+   in `armC.test.ts`'s session if arm C is offered it, then update the
+   model-visible snapshots (above) and read the diff. `tokenBudget.test.ts`
+   shows what its definition adds to every request.
+
+`registry.test.ts` holds the files under `defs/` to `CHAT_TOOLS` one to one,
+each exporting its tool under its file's name, and `imports.test.ts` holds the
+modules under `web/src/llm/` to no import cycle at run time.
+
 ### A Pilot tool's facts
 
-Each of the Pilot's tools declares, beside its definition in
-`web/src/llm/tools/index.ts`, the facts the code around the model reads
+Each of the Pilot's tools declares, in its own module under
+`web/src/llm/tools/defs/`, the facts the code around the model reads
 (`web/src/llm/tools/facts.ts`): whether it only reads or acts, and on what,
 the verdicts it settles, the questions a local model is offered it for, its
 line in the transcript, the cards it lights, whether a reply that ran it gets

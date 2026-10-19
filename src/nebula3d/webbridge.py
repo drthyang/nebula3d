@@ -1294,13 +1294,14 @@ def _band(lo: float | None, hi: float | None) -> tuple[float, float] | None:
     return (float(lo), float(hi)) if lo is not None and hi is not None else None
 
 
-def _pdf_input(dataset_id: str) -> Path:
-    cfg = _require_cfg()
-    path = _cons.pdf_input_path(cfg, dataset_id)
-    if path is None:
+def _view_input(dataset_id: str) -> _cons.ViewInput:
+    """The view's input volume and the run's transform, as the server takes
+    them (:func:`nebula3d.server.consistency.view_input`)."""
+    view = _cons.view_input(_require_cfg(), dataset_id)
+    if view is None:
         raise FileNotFoundError(
             f"no ΔPDF-input volume (flattened/backfilled) for {dataset_id!r}")
-    return path
+    return view
 
 
 def consistency_meta_json(
@@ -1310,8 +1311,9 @@ def consistency_meta_json(
     r_min: float | None = None,
     r_max: float | None = None,
 ) -> str:
-    """Consistency grid + agreement metrics (mirrors /api/consistency/{id}/meta)."""
-    path = _pdf_input(dataset_id)
+    """Consistency grid + agreement metrics, with the run's transform settings
+    (mirrors /api/consistency/{id}/meta)."""
+    view = _view_input(dataset_id)
     # The back-FFT round trip is the heaviest interactive computation (a forward
     # AND inverse 3-D FFT plus its comparison volumes).  Free the off-screen
     # views' caches first — the ΔPDF cache and the cleanup slice volumes are not
@@ -1321,7 +1323,7 @@ def consistency_meta_json(
     # run; the consistency cache itself is kept (the reconstruction manages its
     # own eviction).
     _release_other_caches("cons")
-    meta = _cons.consistency_meta(path, _band(q_min, q_max), _band(r_min, r_max))
+    meta = _cons.consistency_meta(view, _band(q_min, q_max), _band(r_min, r_max))
     return _json(meta)
 
 
@@ -1346,9 +1348,8 @@ def consistency_slice(
     r_max: float | None = None,
 ) -> bytes:
     """Binary slice envelope of one comparison panel (data/recon/residual/dpdf)."""
-    path = _pdf_input(dataset_id)
     return _cons.consistency_slice_envelope(
-        path, _band(q_min, q_max), _band(r_min, r_max),
+        _view_input(dataset_id), _band(q_min, q_max), _band(r_min, r_max),
         panel=panel, plane=plane, value=float(value))
 
 
@@ -1368,9 +1369,9 @@ def save_dpdf(
     which turns it into a browser download.
     """
     cfg = _require_cfg()
-    path = _pdf_input(dataset_id)
     out = _cons.save_reconstruction(
-        path, _band(q_min, q_max), _band(r_min, r_max), cfg.processed_dir)
+        _view_input(dataset_id), _band(q_min, q_max), _band(r_min, r_max),
+        cfg.processed_dir)
     payload = out.read_bytes()
     out.unlink()
     header = json.dumps({"filename": out.name}).encode("utf-8")

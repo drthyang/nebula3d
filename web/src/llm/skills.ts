@@ -11,9 +11,9 @@
 // A firm rule rides on them: a pipeline stage's settings change, and the stage
 // is tuned, only after its skill has been read in the conversation (runToolCall
 // enforces it on every call the model makes). The tools that change or tune a
-// stage declare their gate in their facts (tools/index.ts); this module words
-// the refusal. It never imports the registry: the registry imports it, and the
-// cycle would read SKILL_TREE before it is set.
+// stage declare their gate in their facts (tools/defs/); this module words the
+// refusal. It never imports the registry: the registry imports it, and the
+// cycle would read SKILL_TREE before it is set (imports.test.ts holds it).
 //
 // One switch takes the skills away (the validation's arm C): `skills: false`,
 // on the conversation's tool context (ToolContext, which the agent loop, the
