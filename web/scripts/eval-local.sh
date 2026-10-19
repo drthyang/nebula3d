@@ -13,12 +13,12 @@
 #   scripts/eval-local.sh http://localhost:1234/v1 qwen/qwen3.8-27b lmstudio-qwen3.8-27b
 #   scripts/eval-local.sh http://localhost:11434/v1 gemma4:26b ollama-gemma4-26b
 #
-# The model needs a context window of 48k or more, the run policy's minimum for
+# The model needs a context window of 56k or more, the run policy's minimum for
 # a local live run (RUN_POLICY in src/llm/evals/validationModels.ts). In LM
-# Studio, load it with a Context Length of 49152 or more before the script,
-#   lms load qwen/qwen3.8-27b --context-length 49152
+# Studio, load it with a Context Length of 57344 or more before the script,
+#   lms load qwen/qwen3.8-27b --context-length 57344
 # and make that the model's default Context Length: LM Studio reloads an idle
-# model with its defaults. In Ollama the model must support 49152 or more
+# model with its defaults. In Ollama the model must support 57344 or more
 # (ollama show gemma4:26b); the run sizes num_ctx itself. The scenario evals
 # read the window before the first run and again before each, and refuse less
 # or one they cannot read: a set refused before its first run leaves no record.

@@ -77,13 +77,13 @@ describe("the run policy's minimum context", () => {
     server.ollamaModel.mockReset();
   });
 
-  it("is 48k for every local model, none for the cloud, and the app suggests the same", () => {
-    expect(RUN_POLICY.minLocalContextTokens).toBe(49_152);
+  it("is 56k for every local model, none for the cloud, and the app suggests the same", () => {
+    expect(RUN_POLICY.minLocalContextTokens).toBe(57_344);
     for (const m of MODELS) {
       expect(m.minContextTokens).toBe(m.local ? RUN_POLICY.minLocalContextTokens : null);
       if (m.local) {
         expect(m.contextTokens).toBeGreaterThanOrEqual(RUN_POLICY.minLocalContextTokens);
-        expect(m.how).toMatch(/49152/);
+        expect(m.how).toMatch(/57344/);
       }
     }
     // The console's own guidance (contextWarning, the window's refusal) names the same window.
@@ -94,18 +94,21 @@ describe("the run policy's minimum context", () => {
     server.loadedContext.mockResolvedValue({ loaded: 32_768, max: 131_072 });
     const c = await runContext(qwen, qwen.baseUrl);
     expect(server.loadedContext).toHaveBeenCalledWith(qwen.baseUrl, "qwen/qwen3.8-27b", expect.anything());
-    expect(c).toMatchObject({ tokens: 32_768, min_tokens: 49_152, read_from: "lmstudio-loaded" });
-    expect(c.refusal).toMatch(/^qwen\/qwen3\.8-27b is loaded with a 32,768-token context, under the run policy's minimum of 49,152/);
-    expect(c.refusal).toMatch(/Context Length of 49,152 or more/);
-    expect(c.refusal).toMatch(/lms load qwen\/qwen3\.8-27b --context-length 49152/);
+    expect(c).toMatchObject({ tokens: 32_768, min_tokens: 57_344, read_from: "lmstudio-loaded" });
+    expect(c.refusal).toMatch(/^qwen\/qwen3\.8-27b is loaded with a 32,768-token context, under the run policy's minimum of 57,344/);
+    expect(c.refusal).toMatch(/Context Length of 57,344 or more/);
+    expect(c.refusal).toMatch(/lms load qwen\/qwen3\.8-27b --context-length 57344/);
     expect(c.refusal).toMatch(/default Context Length/);
     expect(c.refusal).not.toMatch(/supports at most/);
     expect(server.ollamaModel).not.toHaveBeenCalled();
   });
 
-  it("passes LM Studio loaded with 48k or more, and keeps the window", async () => {
+  it("passes LM Studio loaded with 56k or more, and keeps the window", async () => {
+    server.loadedContext.mockResolvedValue({ loaded: 57_344, max: 131_072 });
+    expect(await runContext(qwen, qwen.baseUrl)).toEqual({ tokens: 57_344, min_tokens: 57_344, read_from: "lmstudio-loaded", refusal: null });
+    // The minimum was 48k until the worst turn carried a full list of the ΔPDF's features: 48k is refused now.
     server.loadedContext.mockResolvedValue({ loaded: 49_152, max: 131_072 });
-    expect(await runContext(qwen, qwen.baseUrl)).toEqual({ tokens: 49_152, min_tokens: 49_152, read_from: "lmstudio-loaded", refusal: null });
+    expect((await runContext(qwen, qwen.baseUrl)).refusal).toMatch(/^qwen\/qwen3\.8-27b is loaded with a 49,152-token context, under the run policy's minimum of 57,344/);
     server.loadedContext.mockResolvedValue({ loaded: 65_536, max: null });
     expect((await runContext(modelNamed("lmstudio-muse-glimmer"), qwen.baseUrl)).refusal).toBeNull();
   });
@@ -114,13 +117,13 @@ describe("the run policy's minimum context", () => {
     // Not loaded: LM Studio would load it with its defaults, which the run cannot read.
     server.loadedContext.mockResolvedValue({ loaded: null, max: 262_144 });
     const idle = await runContext(qwen, qwen.baseUrl);
-    expect(idle).toMatchObject({ tokens: null, min_tokens: 49_152 });
-    expect(idle.refusal).toMatch(/^qwen\/qwen3\.8-27b is not loaded: .*minimum of 49,152.*--context-length 49152/);
+    expect(idle).toMatchObject({ tokens: null, min_tokens: 57_344 });
+    expect(idle.refusal).toMatch(/^qwen\/qwen3\.8-27b is not loaded: .*minimum of 57,344.*--context-length 57344/);
     server.loadedContext.mockResolvedValue(null);
     const unread = await runContext(qwen, qwen.baseUrl);
     expect(unread.tokens).toBeNull();
     expect(unread.refusal).toMatch(/^Could not read the context qwen\/qwen3\.8-27b is loaded with from LM Studio at http:\/\/localhost:1234\/v1/);
-    expect(unread.refusal).toMatch(/minimum of 49,152/);
+    expect(unread.refusal).toMatch(/minimum of 57,344/);
   });
 
   it("says when an LM Studio model cannot hold the minimum at all", async () => {
@@ -132,14 +135,14 @@ describe("the run policy's minimum context", () => {
     server.ollamaModel.mockResolvedValue({ maxContext: 262_144 });
     const ok = await runContext(gemma, gemma.baseUrl);
     expect(server.ollamaModel).toHaveBeenCalledWith(gemma.baseUrl, "gemma4:26b", undefined);
-    expect(ok).toEqual({ tokens: 262_144, min_tokens: 49_152, read_from: "ollama-supported", refusal: null });
+    expect(ok).toEqual({ tokens: 262_144, min_tokens: 57_344, read_from: "ollama-supported", refusal: null });
     expect(server.loadedContext).not.toHaveBeenCalled();
 
     server.ollamaModel.mockResolvedValue({ maxContext: 32_768 });
     const short = await runContext(gemma, gemma.baseUrl);
-    expect(short).toMatchObject({ tokens: 32_768, min_tokens: 49_152 });
-    expect(short.refusal).toMatch(/^gemma4:26b supports a context of at most 32,768 tokens .* under the run policy's minimum of 49,152/);
-    expect(short.refusal).toMatch(/pick a model that supports 49,152 or more/);
+    expect(short).toMatchObject({ tokens: 32_768, min_tokens: 57_344 });
+    expect(short.refusal).toMatch(/^gemma4:26b supports a context of at most 32,768 tokens .* under the run policy's minimum of 57,344/);
+    expect(short.refusal).toMatch(/pick a model that supports 57,344 or more/);
 
     server.ollamaModel.mockResolvedValue({ maxContext: null });
     expect((await runContext(gemma, gemma.baseUrl)).refusal).toMatch(/did not say how long a context gemma4:26b supports.*ollama pull gemma4:26b/);
@@ -185,18 +188,18 @@ describe("the scenario evals' context check", () => {
     server.loadedContext.mockResolvedValue({ loaded: 32_768, max: 131_072 });
     const c = await runContext(modelAt(LM_STUDIO, "qwen/qwen3.8-27b"), LM_STUDIO);
     expect(server.loadedContext).toHaveBeenCalledWith(LM_STUDIO, "qwen/qwen3.8-27b", expect.anything());
-    expect(c).toMatchObject({ tokens: 32_768, min_tokens: 49_152, read_from: "lmstudio-loaded" });
-    expect(c.refusal).toMatch(/^qwen\/qwen3\.8-27b is loaded with a 32,768-token context, under the run policy's minimum of 49,152/);
-    expect(c.refusal).toMatch(/lms load qwen\/qwen3\.8-27b --context-length 49152/);
+    expect(c).toMatchObject({ tokens: 32_768, min_tokens: 57_344, read_from: "lmstudio-loaded" });
+    expect(c.refusal).toMatch(/^qwen\/qwen3\.8-27b is loaded with a 32,768-token context, under the run policy's minimum of 57,344/);
+    expect(c.refusal).toMatch(/lms load qwen\/qwen3\.8-27b --context-length 57344/);
     // Word for word the validation runner's refusal for the same model and window.
     expect(c.refusal).toBe((await runContext(qwen, LM_STUDIO)).refusal);
   });
 
-  it("passes LM Studio loaded with 48k or more, with the window a run's record keeps", async () => {
-    server.loadedContext.mockResolvedValue({ loaded: 49_152, max: 131_072 });
+  it("passes LM Studio loaded with 56k or more, with the window a run's record keeps", async () => {
+    server.loadedContext.mockResolvedValue({ loaded: 57_344, max: 131_072 });
     expect(await runContext(modelAt(LM_STUDIO, "qwen/qwen3.8-27b"), LM_STUDIO)).toEqual({
-      tokens: 49_152,
-      min_tokens: 49_152,
+      tokens: 57_344,
+      min_tokens: 57_344,
       read_from: "lmstudio-loaded",
       refusal: null,
     });
@@ -207,20 +210,20 @@ describe("the scenario evals' context check", () => {
     expect((await runContext(modelAt(LM_STUDIO, "qwen/qwen3.8-27b"), LM_STUDIO)).refusal).toMatch(/^qwen\/qwen3\.8-27b is not loaded: /);
     server.loadedContext.mockResolvedValue(null);
     const other = await runContext(modelAt("http://localhost:8080/v1", "some-model"), "http://localhost:8080/v1");
-    expect(other).toMatchObject({ tokens: null, min_tokens: 49_152 });
-    expect(other.refusal).toMatch(/^Could not read the context some-model is loaded with .*minimum of 49,152/);
+    expect(other).toMatchObject({ tokens: null, min_tokens: 57_344 });
+    expect(other.refusal).toMatch(/^Could not read the context some-model is loaded with .*minimum of 57,344/);
   });
 
   it("holds Ollama to the longest context the model supports", async () => {
     server.ollamaModel.mockResolvedValue({ maxContext: 32_768 });
     const short = await runContext(modelAt(OLLAMA, "gemma4:26b"), OLLAMA);
     expect(server.ollamaModel).toHaveBeenCalledWith(OLLAMA, "gemma4:26b", undefined);
-    expect(short).toMatchObject({ tokens: 32_768, min_tokens: 49_152, read_from: "ollama-supported" });
-    expect(short.refusal).toMatch(/^gemma4:26b supports a context of at most 32,768 tokens .* under the run policy's minimum of 49,152/);
+    expect(short).toMatchObject({ tokens: 32_768, min_tokens: 57_344, read_from: "ollama-supported" });
+    expect(short.refusal).toMatch(/^gemma4:26b supports a context of at most 32,768 tokens .* under the run policy's minimum of 57,344/);
     server.ollamaModel.mockResolvedValue({ maxContext: 262_144 });
     expect(await runContext(modelAt(OLLAMA, "gemma4:26b"), OLLAMA)).toEqual({
       tokens: 262_144,
-      min_tokens: 49_152,
+      min_tokens: 57_344,
       read_from: "ollama-supported",
       refusal: null,
     });

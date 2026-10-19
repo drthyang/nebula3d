@@ -11,11 +11,12 @@
 // - A model LM Studio loaded with 32k gets the turn in only because the window
 //   guard then shortens the results down to the newest: the two skills just
 //   read reach the model as stubs of a few hundred characters.
-// A local live run needs a context of 48k (49,152) or more: it holds the
-// whole turn before compaction, with room to reply (1.5k of it free now). The
-// estimate is conservative (every tool result, the skills' prose included,
-// counts at the data rate), but at the prose rate for the skills the turn is
-// still over 32k.
+// A local live run needs a context of 56k (57,344) or more, the run policy's
+// minimum (RUN_POLICY): it holds the whole turn before compaction, with room
+// to reply, and leaves free the 3k a model-visible addition must leave (9.7k
+// now). The estimate is conservative (every tool result, the skills' prose
+// included, counts at the data rate), but at the prose rate for the skills
+// the turn is still over 32k.
 //
 // The turn is driven through the real agent loop (runAgent, agent.ts) with a
 // scripted model, and every request it sends is counted by the guard's own
@@ -68,6 +69,7 @@ import { KEEP_FULL, runAgent, SOFT_BUDGET } from "../agent";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
+import { RUN_POLICY } from "../evals/validationModels";
 import { toolsFor } from "../localTools";
 import { buildChatMessages } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolSpec } from "../provider/client";
@@ -355,6 +357,10 @@ afterAll(() => {
 // default 5 s on a slow CI runner. A runner's speed is not what this test pins.
 const TURN_TIMEOUT = 30_000;
 
+// What a model-visible addition must leave free under the run policy's minimum
+// context for a local live run: 3k.
+const HEADROOM = 3 * 1024;
+
 describe("the turn's dpdf_peaks result", () => {
   it("is the dev control's list at the tool's default call", async () => {
     const r = await callTool({ dataset: DATASET, datasets: DATASETS }, "dpdf_peaks", {});
@@ -399,6 +405,12 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     expectPinned("arm B local, before compaction: total", b.prompt + REPLY_RESERVE, PINNED.localBefore.total);
     // Past the soft budget, so the loop compacts.
     expect(b.prompt).toBeGreaterThan(SOFT_BUDGET);
+    // The worst local turn, with the reply reserve, fits the run policy's
+    // minimum context for a local live run, and leaves the headroom there.
+    const worst = b.prompt + REPLY_RESERVE;
+    const min = RUN_POLICY.minLocalContextTokens;
+    expect(worst, `the worst local turn, ${n(worst)} tokens, does not fit the run policy's minimum of ${n(min)}`).toBeLessThanOrEqual(min);
+    expect(min - worst, `the worst local turn leaves ${n(min - worst)} of the ${n(HEADROOM)} tokens of headroom under ${n(min)}`).toBeGreaterThanOrEqual(HEADROOM);
 
     // After: the loop as it runs, the skills read in each order. The largest
     // request of the reply is what the window must hold.
@@ -438,6 +450,8 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
         `and the turn before compaction about ${n(b.prompt - b.skills + skillChars / PROSE_CHARS_PER_TOKEN + REPLY_RESERVE)} with the reserve.`,
       `Reply reserve: Claude ${n(CLAUDE_REPLY)} (anthropic.ts); a local run ${n(REPLY_RESERVE)} (REPLY_RESERVE: no cap is sent, the window plan keeps it free; ` +
         `a request is refused below MIN_REPLY ${n(MIN_REPLY)}).`,
+      `The run policy's minimum for a local live run (RUN_POLICY): ${n(min)}; the worst local turn ${n(worst)} leaves ${n(min - worst)} ` +
+        `(at least ${n(HEADROOM)} must stay free).`,
     );
   }, TURN_TIMEOUT);
 
