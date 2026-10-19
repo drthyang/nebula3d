@@ -234,11 +234,12 @@ describe("the disagreements found beyond D1–D10, kept and named", () => {
     expect(reply(assess("rings", { missing: "no ringremoved output yet" })).checks.rings).toBeUndefined();
   });
 
-  it("D12: a stage's recorded words that are no label decide nothing for the answer checks; {{achieved}} judges the numbers", () => {
-    expect(D12_ANSWER_SKIPS_WORDS_THAT_ARE_NO_LABEL).toBe(true);
+  it("D12, unified (2.4b.3): where a stage's recorded words are no label, both readers judge its numbers", () => {
+    expect(D12_ANSWER_SKIPS_WORDS_THAT_ARE_NO_LABEL).toBe(false);
     const r = reply(assess("rings", { verdict: "fine", max_ring_left: 0.12, max_ring_dent: 0 }));
-    expect(r.achieved?.stages.rings).toBe("attention");
-    expect(r.checks.rings).toBeUndefined();
+    expect([r.achieved?.stages.rings, r.checks.rings]).toEqual(["attention", "attention"]);
+    const clean = reply(assess("rings", { verdict: "pass", max_ring_left: 0, max_ring_dent: 0 }));
+    expect([clean.achieved?.stages.rings, clean.checks.rings]).toEqual(["pass", "pass"]);
   });
 
   it("D13: the report's ΔPDF card reads the symmetry from symmetry_check alone; the chat's ΔPDF stage counts the evaluation's own break", () => {

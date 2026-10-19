@@ -367,6 +367,13 @@ describe("the newest current result, as {{achieved}} reads it (D7, 2.4.7)", () =
     expect(verdicts({ reply: [missing] }).achieved).toBeNull();
   });
 
+  it("judges a stage from its numbers where its recorded words are no label (D12, 2.4b.3)", () => {
+    // A recording whose words were never a verdict label, over numbers with a ring left (0.12 of the diffuse).
+    const fine = step("assess_stage", { stage: "rings" }, { rings: { verdict: "fine", max_ring_left: 0.12, max_ring_dent: 0 } });
+    expect(contradictions(clean, [fine]).map((t) => t.id)).toEqual(["rings"]); // decided nothing before 2.4b.3
+    expect(verdicts({ reply: [fine] }).achieved?.stages.rings).toBe("attention");
+  });
+
   it("reads no result that decides nothing, so it hides no earlier verdict", () => {
     const missing = step("assess_stage", { stage: "rings" }, { rings: { missing: "no ringremoved output yet; run_pipeline computes it" } });
     expect(contradictions(clean, [left, missing]).map((t) => t.id)).toEqual(["rings"]);
