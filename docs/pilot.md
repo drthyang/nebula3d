@@ -33,8 +33,11 @@ Each is described under [How it works](#how-it-works).
   reply, measured after the last run that recomputed that stage (a run that
   reused a stage leaves its measurement standing), that every number comes
   from a tool result or the context, and that no claim contradicts a verdict a
-  tool computed. A ring or punch verdict needs `assess_stage`, the ΔPDF's
-  correlations `dpdf_peaks` (or a measured section), the origin `ub_check`.
+  tool computed. An earlier turn's result counts as a number's source only
+  until a run in the conversation recomputes the stage it measured; a number
+  only such a result holds goes back as measured before that run. A ring or
+  punch verdict needs `assess_stage`, the ΔPDF's correlations `dpdf_peaks`
+  (or a measured section), the origin `ub_check`.
   The check runs in code after the answer, not as a forced tool call, which the
   paid models do not take. A failing answer goes back to the model once; what
   still fails is noted under the reply (`answerChecks.ts`, `evidence.ts`).

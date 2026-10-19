@@ -13,7 +13,8 @@
 //   {{tool.field}}, which the app fills in from the result (references.ts);
 //   one that names nothing is sent back. Every other number written must come
 //   from a tool result, the context, the user's words or the tools' own
-//   guidance, within its written precision.
+//   guidance, within its written precision; an earlier turn's result only
+//   while no later run has recomputed the stage it measured (earlierSources).
 // - **Verdicts from the checks.** A stage the tools judged to need attention
 //   is never called clean, and the run is not called trustworthy unless the
 //   verdict computed from the checks says it met its goal: the check-verdict
@@ -30,6 +31,7 @@
 
 import type { AgentStep } from "./agent";
 import { current, recomputedAt, type PipelineStage } from "./evidence";
+import { found, seen } from "./readings";
 import { fillReferences } from "./references";
 import { factsOf } from "./tools";
 import type { VerdictTopic } from "./tools/facts";
@@ -390,6 +392,47 @@ function traced(v: number, tolerance: number, sorted: readonly number[]): boolea
   return lo < sorted.length && sorted[lo] <= target + tol;
 }
 
+/** The stages whose outputs a step measured, as its evidence reads them: the stage of each topic it settles (none for the raw volume). */
+const measuredStages = (step: AgentStep): PipelineStage[] => {
+  const topics = factsOf(step.name).settles(step.args);
+  return [...new Set(TOPICS.flatMap((t) => (t.stage !== null && topics.includes(t.id) ? [t.stage] : [])))];
+};
+
+/**
+ * The results of a conversation's earlier turns as number sources for this
+ * reply (`steps`), each as the model read it, while what it measured stands:
+ * a run after it (in a later turn, or in this reply) that recomputed the stage
+ * it measured takes it out, as it takes such a measurement out of a verdict's
+ * evidence (evidence.ts). An assessment of several stages (assess_stage, one
+ * part per stage) keeps the parts of the stages still standing; any other
+ * result goes whole. A result that settles no topic counts as it is. What is
+ * taken out is kept apart (`stale`), so that a number only it holds is told
+ * from one from nowhere.
+ */
+export function earlierSources(earlier: readonly AgentStep[], steps: readonly AgentStep[]): { standing: string[]; stale: string } {
+  const at = recomputedAt([...earlier, ...steps]);
+  const standing: string[] = [];
+  const stale: string[] = [];
+  earlier.forEach((step, i) => {
+    const text = step.status === "done" ? seen(step) : "";
+    if (!text) return;
+    const gone: string[] = measuredStages(step).filter((s) => !current(at, s, i));
+    if (!gone.length) {
+      standing.push(text);
+      return;
+    }
+    const r = found({ status: "done", result: text });
+    if (r && gone.every((s) => s in r)) {
+      const part = (keep: boolean) => JSON.stringify(Object.fromEntries(Object.entries(r).filter(([k]) => gone.includes(k) !== keep)));
+      standing.push(part(true));
+      stale.push(part(false));
+    } else {
+      stale.push(text);
+    }
+  });
+  return { standing, stale: stale.join("\n") };
+}
+
 /** The numbers an answer writes that no source holds (distinct, as written). */
 export function untracedNumbers(text: string, sources: string): string[] {
   const found = sourceNumbers(sources);
@@ -409,6 +452,7 @@ export interface AnswerIssues {
   missing: Topic[]; // verdicts without their tool
   stale: Topic[]; // verdicts on a measurement a later run made stale
   untraced: string[]; // numbers from nowhere
+  staleNumbers: string[]; // numbers only an earlier result holds that a later run made stale (earlierSources)
   contradicted: Topic[]; // contradicts the verdict a tool computed
   unknownReferences: string[]; // {{references}} that name nothing in this reply's results
   overall: string | null; // calls the run a success the computed verdict does not give
@@ -424,39 +468,48 @@ const unique = <T>(xs: T[]): T[] => [...new Set(xs)];
 /**
  * What the answer fails, or null when it stands on its evidence. The answer is
  * read with its references filled in from this reply's results, as the user
- * will read it.
+ * will read it. `stale`: what earlierSources took out of the sources, which
+ * tells a number measured before a later run from one from nowhere.
  */
-export function answerIssues(text: string, steps: readonly AgentStep[], sources: string): AnswerIssues | null {
+export function answerIssues(text: string, steps: readonly AgentStep[], sources: string, stale = ""): AnswerIssues | null {
   if (!text.trim()) return null;
   const { text: filled, unknown } = fillReferences(text, steps);
-  const { missing, stale } = evidenceGaps(filled, steps);
+  const { missing, stale: staleTopics } = evidenceGaps(filled, steps);
   const claimed = verdictsIn(filled);
   const about = (topics: readonly Topic[]): string[] => unique(topics.flatMap((t) => claimed.get(t.id) ?? []));
   const contradicted = contradicting(filled, steps);
   const verdict = verdicts({ reply: steps }).achieved;
+  // An unfilled reference is no number written; its digits (features.0) are not either.
+  const written = filled.replace(/\{\{[^}]*\}\}/g, "");
+  const notCurrent = untracedNumbers(written, sources);
+  const nowhere = stale && notCurrent.length ? untracedNumbers(written, `${sources}\n${stale}`) : notCurrent;
   const issues: AnswerIssues = {
     missing,
-    stale,
-    // An unfilled reference is no number written; its digits (features.0) are not either.
-    untraced: untracedNumbers(filled.replace(/\{\{[^}]*\}\}/g, ""), sources),
+    stale: staleTopics,
+    untraced: nowhere,
+    staleNumbers: notCurrent.filter((n) => !nowhere.includes(n)),
     contradicted: contradicted.map((c) => c.topic),
     unknownReferences: unknown,
     overall: overallContradiction(filled, verdict),
     said: {
       missing: about(missing),
-      stale: about(stale),
+      stale: about(staleTopics),
       contradicted: unique(contradicted.flatMap((c) => c.said)),
       overall: unique(successClaims(filled, verdict)),
     },
     achieved: verdict?.achieved ?? null,
   };
-  return issues.missing.length || issues.stale.length || issues.untraced.length || issues.contradicted.length || issues.unknownReferences.length || issues.overall
+  return issues.missing.length || issues.stale.length || issues.untraced.length || issues.staleNumbers.length || issues.contradicted.length || issues.unknownReferences.length || issues.overall
     ? issues
     : null;
 }
 
 const MAX_LISTED = 8;
 const listed = (xs: string[]): string => (xs.length > MAX_LISTED ? `${xs.slice(0, MAX_LISTED).join(", ")}, …` : xs.join(", "));
+
+/** The send-back's line on numbers a later run made stale, in either arm: it names no tool, stage or skill. */
+const staleNumbersLine = (xs: string[]): string =>
+  `- These numbers were measured before the last run recomputed the outputs they describe: ${listed(xs)}. Quote numbers measured since, or leave them out.`;
 
 /**
  * What the model is told, to fix the answer before the user reads it. With
@@ -483,6 +536,7 @@ export function issuesPrompt(issues: AnswerIssues, { skills = true }: { skills?:
   if (issues.untraced.length) {
     lines.push(`- These numbers appear in no tool result or the context: ${listed(issues.untraced)}. Quote the tools' numbers, or leave them out.`);
   }
+  if (issues.staleNumbers.length) lines.push(staleNumbersLine(issues.staleNumbers));
   lines.push("Then write the whole answer again.");
   return lines.join("\n");
 }
@@ -529,6 +583,7 @@ function withoutSkills(issues: AnswerIssues): string {
   if (issues.untraced.length) {
     lines.push(`- These numbers appear in no tool result or the context: ${listed(issues.untraced)}. Quote the tools' numbers, or leave them out.`);
   }
+  if (issues.staleNumbers.length) lines.push(staleNumbersLine(issues.staleNumbers));
   lines.push("Then write the whole answer again.");
   return lines.join("\n");
 }
@@ -542,5 +597,6 @@ export function issuesNote(issues: AnswerIssues): string {
   if (issues.unknownReferences.length) parts.push(`References that name no tool value: ${listed(issues.unknownReferences.map((k) => `{{${k}}}`))}.`);
   if (issues.contradicted.length) parts.push(`Contradicts the tools' verdict on ${issues.contradicted.map((t) => t.label).join(" and ")}.`);
   if (issues.untraced.length) parts.push(`Not found in any tool result or the context: ${listed(issues.untraced)}.`);
+  if (issues.staleNumbers.length) parts.push(`Measured before the last run recomputed the outputs they describe: ${listed(issues.staleNumbers)}.`);
   return parts.join(" ");
 }

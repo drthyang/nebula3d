@@ -483,4 +483,29 @@ describe("the record", () => {
     delete old.context_window;
     expect(old.context_window).toBeUndefined();
   });
+
+  it("keeps the token calibration the run started from, which carries over from run to run", () => {
+    const args = {
+      case: caseNamed("dev-ub")!,
+      arm: "B" as const,
+      run: 2,
+      dataset: dataset("v000001-B2", "v000001_B2"),
+      model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+      evalRun: run("No fault found.", []),
+      why: [],
+      maxRounds: 12,
+      started: "2026-10-19T00:00:00Z",
+      costUsd: null,
+    };
+    const tokensAtStart = { scale: 0.62, ollama_num_ctx: 65_536 };
+    expect(JSON.parse(JSON.stringify(buildRecord({ ...args, tokensAtStart }))).tokens_at_start).toEqual(tokensAtStart);
+    // None given: recorded as unknown, not left out.
+    const back = JSON.parse(JSON.stringify(buildRecord(args)));
+    expect(back.tokens_at_start).toBeNull();
+    // The schema is unchanged: the field is optional, so records made before it stay valid.
+    expect(back.schema).toBe("nebula3d-validation-run/1");
+    const old: RunRecord = { ...buildRecord(args) };
+    delete old.tokens_at_start;
+    expect(old.tokens_at_start).toBeUndefined();
+  });
 });

@@ -10,7 +10,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { useNavStore } from "../../state/navStore";
-import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, toolResultsIn, TOOLS_UNSUPPORTED_NOTE, type AgentStep } from "../agent";
+import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, toolStepsIn, TOOLS_UNSUPPORTED_NOTE, type AgentStep } from "../agent";
+import { earlierSources } from "../answerChecks";
 import { resetTokenState } from "../provider/tokens";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import * as readings from "../readings";
@@ -414,7 +415,64 @@ describe("runAgent", () => {
     it("gives the next reply an earlier turn's results as the model read them", () => {
       const step = { id: "0:c1", name: "long", args: {}, status: "done" as const, result: '{"items":[1],"left_out":["items: its last items"]}', full: '{"items":[1,2,3]}' };
       const turns = [{ steps: [step] }, { steps: [{ ...step, id: "1:c1", status: "error" as const }] }, {}];
-      expect(toolResultsIn(turns)).toEqual(['{"items":[1],"left_out":["items: its last items"]}']);
+      // The calls that ran, oldest first; each result as the model read it.
+      expect(toolStepsIn(turns).map((s) => s.id)).toEqual(["0:c1"]);
+      expect(earlierSources(toolStepsIn(turns), []).standing).toEqual(['{"items":[1],"left_out":["items: its last items"]}']);
+    });
+  });
+
+  describe("an earlier turn's result as a number source", () => {
+    // A flatten assessment, and a run that recomputes the flatten (and the ΔPDF after it).
+    const assess: AgentTool = {
+      name: "assess_stage",
+      description: "judges a stage",
+      parameters: { type: "object", properties: { stage: { type: "string" } } },
+      run: async () => ({ result: { flatten: { verdict: "needs attention", max_floor_trend: 0.83 } }, summary: "flatten judged" }),
+    };
+    const rerun: AgentTool = {
+      name: "run_pipeline",
+      description: "runs the pipeline",
+      parameters: { type: "object", properties: { from_stage: { type: "string" } } },
+      run: async () => ({ result: { ended: "done", stages: { flatten: "computed", pdf: "computed", pdf_check: "computed" } }, summary: "done" }),
+    };
+    const QUOTED = "The floor trend is 0.83.";
+    const SENT_BACK = [
+      "Before this answer goes to the user, fix it:",
+      "- These numbers were measured before the last run recomputed the outputs they describe: 0.83. Quote numbers measured since, or leave them out.",
+      "Then write the whole answer again.",
+    ].join("\n");
+    /** One turn of the conversation, its model scripted: the reply, and what each request carried. */
+    const turn = async (replies: Reply[], earlierSteps: AgentStep[] = []) => {
+      const seen = script(replies);
+      const r = await runAgent({ messages: base, tools: [assess, rerun], ctx: { ...ctx, earlierSteps }, settings, signal: new AbortController().signal });
+      return { r, seen };
+    };
+    const lastSent = (seen: { messages: ChatMessage[] }[], i: number): string => String(seen[i].messages[seen[i].messages.length - 1].content);
+
+    it("stops counting once the stage it measured was run again between the turns", async () => {
+      // Turn 1 reads the flatten, and quotes it.
+      const first = await turn([[{ toolCalls: [call("c1", "assess_stage", { stage: "flatten" })] }], [{ content: QUOTED }]]);
+      expect(first.r.note).toBeUndefined();
+      // The next turn may quote it while the flatten stands.
+      const standing = await turn([[{ content: QUOTED }]], toolStepsIn([first.r]));
+      expect([standing.r.content, standing.r.note, standing.seen.length]).toEqual([QUOTED, undefined, 1]);
+      // Between the turns, the flatten is run again.
+      const between = await turn([[{ toolCalls: [call("c1", "run_pipeline", { from_stage: "flatten" })] }], [{ content: "The pipeline ran again." }]], toolStepsIn([first.r]));
+      expect(between.r.note).toBeUndefined();
+      // Turn 2's number from turn 1's result is no source for the flatten as it now is: sent back once.
+      const second = await turn([[{ content: QUOTED }], [{ content: "The floor trend needs a new measurement." }]], toolStepsIn([first.r, between.r]));
+      expect(lastSent(second.seen, 1)).toBe(SENT_BACK);
+      expect([second.r.content, second.r.note]).toEqual(["The floor trend needs a new measurement.", undefined]);
+    });
+
+    it("stops counting once this reply ran the stage again, and says so under an answer that keeps it", async () => {
+      const first = await turn([[{ toolCalls: [call("c1", "assess_stage", { stage: "flatten" })] }], [{ content: QUOTED }]]);
+      const second = await turn(
+        [[{ toolCalls: [call("c1", "run_pipeline", { from_stage: "flatten" })] }], [{ content: QUOTED }], [{ content: QUOTED }]],
+        toolStepsIn([first.r]),
+      );
+      expect(lastSent(second.seen, 2)).toBe(SENT_BACK);
+      expect(second.r.note).toBe("Measured before the last run recomputed the outputs they describe: 0.83.");
     });
   });
 

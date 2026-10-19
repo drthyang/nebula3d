@@ -2,14 +2,19 @@
 // server played from a fixed script, one turn per request, by intercepting
 // fetch for its base URL.  Each turn streams as the local servers do (SSE
 // deltas: text in pieces, tool calls with their JSON arguments, a finish
-// reason, a usage chunk when asked for).  And the app's tools answering from
-// recorded results, so the replay needs no backend.
+// reason, a usage chunk when asked for), or fails as a server does.  A tuning
+// run's model, content with the current settings.  And the app's tools
+// answering from recorded results, so the replay needs no backend.
 
+import { loadSettings, saveSettings } from "../settings";
 import { toolsWhere, type AgentTool } from "../tools";
 
 export interface ScriptTurn {
   text?: string;
   calls?: { name: string; args?: Record<string, unknown> }[];
+  // The server fails the request instead, with this HTTP status and message
+  // (one that cannot call tools: 400, "… does not support tools").
+  fail?: { status: number; message: string };
 }
 
 export const SCRIPTED_URL = "http://scripted.invalid/v1";
@@ -39,6 +44,12 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
     }
     const turn = turns[next++];
     if (!turn) overrun += 1;
+    if (turn?.fail) {
+      return new Response(JSON.stringify({ error: { message: turn.fail.message } }), {
+        status: turn.fail.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     // Past the script the model has nothing more to say: an empty reply (the
     // agent keeps the answer it had), counted as an overrun.
     const text = turn ? (turn.text ?? "") : "";
@@ -88,6 +99,28 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
     requests: () => requests,
     overrun: () => overrun,
     sent: () => [...sent],
+  };
+}
+
+// A tuning run asks its model for alternatives, not through the agent loop, at
+// the console's settings (settings.ts): a model content with the current
+// settings proposes none.
+export const TUNER_URL = "http://tuner.invalid/v1";
+
+/** Points the tuning run's model at one content with the current settings; returns the function that puts fetch and the settings back. */
+export function contentTuner(): () => void {
+  const real = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (!url.startsWith(TUNER_URL)) return real(input, init);
+    const reply = { choices: [{ message: { content: JSON.stringify({ candidates: [], best: 1, why: "the current settings" }) } }] };
+    return Promise.resolve(new Response(JSON.stringify(reply), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  const settings = loadSettings();
+  saveSettings({ baseUrl: TUNER_URL, model: "content" });
+  return () => {
+    globalThis.fetch = real;
+    saveSettings(settings);
   };
 }
 
