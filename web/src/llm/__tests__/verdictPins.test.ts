@@ -242,12 +242,12 @@ describe("the disagreements found beyond D1–D10, kept and named", () => {
     expect([clean.achieved?.stages.rings, clean.checks.rings]).toEqual(["pass", "pass"]);
   });
 
-  it("D13: the report's ΔPDF card reads the symmetry from symmetry_check alone; the chat's ΔPDF stage counts the evaluation's own break", () => {
-    expect(D13_REPORT_SYMMETRY_FROM_SYMMETRY_CHECK_ONLY).toBe(true);
+  it("D13, unified (2.4b.4): the report's ΔPDF card counts the evaluation's own symmetry break, as the chat's ΔPDF stage does", () => {
+    expect(D13_REPORT_SYMMETRY_FROM_SYMMETRY_CHECK_ONLY).toBe(false);
     const broken = { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.0001, max_symmetry_break: 0.05, worst_symmetry_op: "six-fold (60°)", symmetry_declared: true };
     for (const symmetry of [SYMMETRY[0].m, null]) {
       const measured: Measured = { ...PASSING, pdf: broken, symmetry };
-      expect(verdicts({ report: measured }).checks.pdf).toBe("pass");
+      expect(verdicts({ report: measured }).checks.pdf).toBe("attention");
       expect(chatOf(measured)?.stages.pdf).toBe("attention");
     }
   });
@@ -340,14 +340,13 @@ function replyOf(m: Measured): AgentStep[] {
 
 const chatOf = (m: Measured) => verdicts({ reply: replyOf(m) }).achieved;
 
-type Rule = "D13" | "D14";
+type Rule = "D14";
 
 /** The grid's measurements, one change from passing at a time, tagged with the rule that makes the two goals differ there. */
 function cases(): { id: string; m: Measured; differs?: Rule }[] {
   const out: { id: string; m: Measured; differs?: Rule }[] = [{ id: "every check passes", m: PASSING }];
-  const d13 = new Set(["symmetry broken", "asymmetry, not read"]);
   for (const s of GRID_STAGES as GridStage[]) {
-    for (const x of STAGE_VARIANTS[s]) out.push({ id: `${s} ${x.id}`, m: { ...PASSING, [s]: x.m }, differs: s === "pdf" && d13.has(x.id) ? "D13" : undefined });
+    for (const x of STAGE_VARIANTS[s]) out.push({ id: `${s} ${x.id}`, m: { ...PASSING, [s]: x.m } });
     out.push({ id: `no ${s}`, m: { ...PASSING, [s]: null } });
   }
   for (const x of COVERAGE) out.push({ id: `coverage ${x.id}`, m: { ...PASSING, coverage: x.m } });
@@ -361,7 +360,7 @@ function cases(): { id: string; m: Measured; differs?: Rule }[] {
   out.push({ id: "a fill bias, no backfill", m: { ...PASSING, backfill: null, texture: TEXTURE[1].m }, differs: "D14" });
   out.push({ id: "a fill bias, the seam not judged", m: { ...PASSING, backfill: STAGE_VARIANTS.backfill[3].m, texture: TEXTURE[1].m }, differs: "D14" });
   out.push({ id: "a fill bias, the seam failing", m: { ...PASSING, backfill: STAGE_VARIANTS.backfill[2].m, texture: TEXTURE[1].m } });
-  out.push({ id: "the evaluation's symmetry broken, no symmetry_check", m: { ...PASSING, pdf: STAGE_VARIANTS.pdf[8].m, symmetry: null }, differs: "D13" });
+  out.push({ id: "the evaluation's symmetry broken, no symmetry_check", m: { ...PASSING, pdf: STAGE_VARIANTS.pdf[8].m, symmetry: null } });
   out.push({ id: "nothing measured", m: {} });
   out.push({ id: "a grain only", m: { grains: GRAIN[0].m } });
   return out;
