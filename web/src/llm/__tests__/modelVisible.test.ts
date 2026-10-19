@@ -30,7 +30,6 @@ import type { JobEvent } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { runAgent, type AgentStep } from "../agent";
 import { answerIssues, issuesPrompt } from "../answerChecks";
-import { compactResult } from "../compact";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
@@ -38,6 +37,7 @@ import { toolsFor } from "../localTools";
 import { SYSTEM, TOOLS } from "../prompts/system";
 import { buildChatMessages, buildStageReviewMessages, systemPrompt, type ReviewStage } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolCall } from "../provider/client";
+import { shorten } from "../readings";
 import { fillReferences, NAMED_REFERENCES } from "../references";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, skillsPrompt } from "../skills";
@@ -510,7 +510,7 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
         : `${run.text.length} characters sent`;
       parts.push(`## ${sampleTitle(s)}\n\n${size}.\n\n${showResult(run.text)}`);
       if (s.name === "assess_stage" && !compacted.length) {
-        compacted.push(`## ${sampleTitle(s)}\n\n${showResult(compactResult(run.text))}`);
+        compacted.push(`## ${sampleTitle(s)}\n\n${showResult(shorten(run.text))}`);
       }
     }
     const errors: string[] = [];

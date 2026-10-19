@@ -19,6 +19,7 @@ import {
   STAGE_REVIEW_LABELS,
   type ReviewStage,
 } from "../prompts/templates";
+import { seen } from "../readings";
 import { renderSliceToDataUrl } from "../render/sliceImage";
 import { askAssistant, stopAssistant } from "../session";
 import { saveSettings, type LlmSettings } from "../settings";
@@ -118,7 +119,7 @@ function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
               </summary>
               <pre className="ai-step-detail">
                 {JSON.stringify(s.args)}
-                {s.result ? `\n→ ${s.result}` : ""}
+                {seen(s) ? `\n→ ${seen(s)}` : ""}
               </pre>
             </details>
             {s.view && (

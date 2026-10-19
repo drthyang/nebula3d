@@ -9,8 +9,10 @@ import type { Dataset } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
 import { buildChatMessages, systemPrompt } from "../prompts/templates";
+import * as readings from "../readings";
+import { fit, found, seen } from "../readings";
 import { allSkills } from "../skills";
-import { CHAT_TOOLS, runToolCall, toolsWithSkills, unreadSkillRefusal } from "../tools";
+import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolsWithSkills, unreadSkillRefusal } from "../tools";
 import type { EvalRun } from "./harness";
 import {
   ARMS,
@@ -29,10 +31,12 @@ import {
   falseAlarmChecks,
   gradeRun,
   numberSources,
+  stepOf,
   TASK,
   unsafeActions,
   validationDatasets,
   WhyTracker,
+  type Decision,
   type RunRecord,
 } from "./validation";
 
@@ -291,6 +295,63 @@ describe("the record", () => {
     expect(byText["0.61"]).toMatchObject({ step: 2, tool: "ub_check", path: "angle_deg", value: 0.612 });
     expect(byText["3.9"]).toMatchObject({ step: 2, tool: "ub_check", path: "cell.a" });
     expect(byText["7777"]).toBeNull(); // from nowhere
+  });
+
+  describe("a result the model read fitted (readings/)", () => {
+    // ub_check's whole result: 400 nodes, past the limit, so the model reads
+    // the first nodes only; the last node's offset, 0.777, is left out.
+    const whole = { angle_deg: 0.612, nodes: Array.from({ length: 400 }, (_, i) => ({ hkl: [i, 0, 0], offset: i === 399 ? 0.777 : 0.001 })) };
+    const { text, full } = fit(whole, MAX_RESULT_CHARS);
+    const fitted: AgentStep = { ...step("ub_check"), result: text, ...(full !== undefined ? { full } : {}), shortened: true };
+
+    it("keeps what the model read as the result, and the whole beside it where they differ", () => {
+      expect(full).toBe(JSON.stringify(whole));
+      const d = decisions([steps[0], fitted], []);
+      expect(d[0]).not.toHaveProperty("full");
+      expect(d[0]).not.toHaveProperty("shortened");
+      expect(d[1]).toMatchObject({ result: text, full, shortened: true });
+      // A step whose `full` is no different keeps none.
+      expect(decisions([{ ...steps[0], full: steps[0].result }], [])[0]).not.toHaveProperty("full");
+    });
+
+    it("maps a decision back to the step's readings, through JSON as a record keeps it", () => {
+      const [d] = JSON.parse(JSON.stringify(decisions([fitted], []))) as Decision[];
+      expect(stepOf(d)).toEqual({ status: "done", result: text, full });
+      expect([seen(stepOf(d)), readings.whole(stepOf(d))]).toEqual([seen(fitted), readings.whole(fitted)]);
+      expect(found(stepOf(d))).toEqual(whole);
+      // A decision from a record made before `full`: its result is all there is.
+      const [old] = decisions([steps[1]], []);
+      expect(stepOf(old)).toEqual({ status: "done", result: steps[1].result });
+    });
+
+    it("traces a number only the whole result holds to it", () => {
+      expect(text).not.toContain("0.777");
+      const n = numberSources("The last node is offset by 0.777.", [steps[0], fitted]);
+      expect(n[0].source).toEqual({ step: 2, tool: "ub_check", path: "nodes[399].offset", value: 0.777 });
+    });
+
+    it("keeps the schema: the record's new fields are optional", () => {
+      const rec = buildRecord({
+        case: caseNamed("dev-ub")!,
+        arm: "B",
+        run: 1,
+        dataset: dataset("v000001-B1", "v000001_B1"),
+        model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+        evalRun: run("The UB is turned by {{ub_check.angle_deg}}°; the last node is offset by 0.777.", [fitted]),
+        why: [""],
+        maxRounds: 12,
+        started: "2026-10-19T00:00:00Z",
+        costUsd: null,
+      });
+      const back = JSON.parse(JSON.stringify(rec)) as RunRecord;
+      expect(back.schema).toBe("nebula3d-validation-run/1");
+      expect(back.decisions[0]).toMatchObject({ result: text, full, shortened: true });
+      expect(back.numbers.find((x) => x.text === "0.777")?.source).toMatchObject({ step: 1, path: "nodes[399].offset" });
+      const old: Decision = { ...back.decisions[0] };
+      delete old.full;
+      delete old.shortened;
+      expect(stepOf(old)).toEqual({ status: "done", result: text });
+    });
   });
 
   it("holds everything a reviewer reads, as JSON", () => {

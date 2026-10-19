@@ -76,12 +76,14 @@ export const fitTranscript = (turns: ChatTurn[], budget = TRANSCRIPT_BYTES): str
 const restored = restore();
 let nextId = restored.turns.reduce((m, t) => Math.max(m, t.id), 0) + 1;
 
-// A step's outcomes (verdicts/) serve the reply's own checks: the transcript
-// keeps what the model and the user read, at the size it had.
-const withoutOutcomes = (steps: AgentStep[]): AgentStep[] =>
+// A step's outcomes (verdicts/) and its whole result (`full`, readings/)
+// serve the reply's own checks and its record: the transcript keeps what the
+// model and the user read, at the size it had.
+const asRead = (steps: AgentStep[]): AgentStep[] =>
   steps.map((step) => {
-    const { outcomes, ...kept } = step;
+    const { outcomes, full, ...kept } = step;
     void outcomes;
+    void full;
     return kept;
   });
 
@@ -91,7 +93,7 @@ export const useChatStore = create<ChatState>((set) => ({
   busy: false,
   live: null,
   error: null,
-  addTurn: (turn) => set((s) => ({ turns: [...s.turns, { ...turn, ...(turn.steps ? { steps: withoutOutcomes(turn.steps) } : {}), id: nextId++ }] })),
+  addTurn: (turn) => set((s) => ({ turns: [...s.turns, { ...turn, ...(turn.steps ? { steps: asRead(turn.steps) } : {}), id: nextId++ }] })),
   setDraft: (draft) => set({ draft }),
   clear: () => set({ turns: [], draft: "", error: null }),
 }));

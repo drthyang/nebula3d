@@ -18,12 +18,12 @@ import {
 } from "./provider/client";
 import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
 import { fillReferences } from "./references";
-import { compactResult, isCompacted } from "./compact";
 import { lastQuestion, toolsFor } from "./localTools";
 import { isLocalUrl } from "./provider/presets";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
 import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
 import { planWindow } from "./provider/window";
+import { seen, shorten, whole } from "./readings";
 import type { LlmSettings } from "./settings";
 import { skillsOn } from "./skills";
 import { factsOf, runToolCall, toolSpecs, toolsWithSkills, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
@@ -37,7 +37,14 @@ export interface AgentStep {
   status: "running" | "done" | "error";
   summary?: string;
   progress?: string; // a running tool's live line (run_pipeline: stage, %, log)
-  result?: string; // the JSON the model read
+  // The result's two readings (readings/): what the model read when the call
+  // returned, byte for byte as it was sent (`seen`), and, only where the model
+  // read it fitted, the whole result the tool found (`whole`, `found`).
+  result?: string;
+  full?: string;
+  // The loop later shortened the model's copy, in the conversation, to save
+  // room (compaction): `result` stays what was sent.
+  shortened?: true;
   view?: ViewTarget;
   // The checks' outcomes the tool judged (verdicts/), kept beside the result
   // and never in it: the model reads the result alone.
@@ -102,10 +109,10 @@ export const LOOP_NOTE = "The model repeated calls that brought nothing new, so 
 const ANSWER_NOW = "The tool calls are bringing nothing new. Answer now from the results above, without calling more tools.";
 
 // A local model's request past this many tokens has its older tool results
-// shortened to their readings and numbers (compact.ts), the newest KEEP_FULL
-// left whole: it keeps the request inside a 32k window with room to reply, and
-// fast. A request no window can hold is shortened down to the newest result
-// before it is refused.
+// shortened to their verdicts, headlines and numbers (shorten, readings/), the
+// newest KEEP_FULL left whole: it keeps the request inside a 32k window with
+// room to reply, and fast. A request no window can hold is shortened down to
+// the newest result before it is refused.
 export const SOFT_BUDGET = 24_000;
 export const KEEP_FULL = 3;
 
@@ -131,11 +138,11 @@ export const ANSWER_REVISIONS = 1;
 export const REVISING_NOTE = "Checking the answer against its evidence…";
 
 // What an answer's numbers may come from: the conversation as it arrived (the
-// system prompt, the context, the user's words), the tool results of this reply
-// (whole, though the model may read them shortened) and of earlier turns, and
-// the tools' own guidance. No assistant text: an earlier answer's number from
-// nowhere would otherwise vouch for the next answer, and this reply's drafts,
-// and the notes sent back about them, for themselves.
+// system prompt, the context, the user's words), the tool results of this
+// reply (whole, though the model may read them fitted or shortened) and of
+// earlier turns, and the tools' own guidance. No assistant text: an earlier
+// answer's number from nowhere would otherwise vouch for the next answer, and
+// this reply's drafts, and the notes sent back about them, for themselves.
 function numberSources(convo: ChatMessage[], arrived: number, results: readonly string[], tools: AgentTool[], earlier: readonly string[]): string {
   const text = (m: ChatMessage): string =>
     typeof m.content === "string"
@@ -151,9 +158,9 @@ function numberSources(convo: ChatMessage[], arrived: number, results: readonly 
   ].join("\n");
 }
 
-/** The tool results of a conversation's turns, as the model read them: number sources for the next reply. */
+/** The tool results of a conversation's turns, as the model read them (`seen`): number sources for the next reply. */
 export const toolResultsIn = (turns: readonly { steps?: readonly AgentStep[] }[]): string[] =>
-  turns.flatMap((t) => (t.steps ?? []).flatMap((s) => (s.status === "done" && s.result ? [s.result] : [])));
+  turns.flatMap((t) => (t.steps ?? []).flatMap((s) => (s.status === "done" && seen(s) ? [seen(s)] : [])));
 
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
@@ -227,10 +234,10 @@ export async function runAgent({
   let useTools = tools.length > 0 && ctx !== null && !toolsKnownUnsupported(settings);
   let content = "";
   let reasoning = "";
+  // Each step carries its result's two readings (readings/): the answer
+  // checks, the references and the verdict read what the tools found, not
+  // what fit.
   let steps: AgentStep[] = [];
-  // Each step's whole result, where the model read it trimmed: the answer
-  // checks judge against what the tools found, not against what fit.
-  const fullResults = new Map<string, string>();
   let note: string | undefined = tools.length && !useTools && ctx ? TOOLS_UNSUPPORTED_NOTE : undefined;
   const emit = (roundText = "") => onProgress?.({ content: joinText(content, roundText), reasoning, steps });
   const setStep = (id: string, patch: Partial<AgentStep>) => {
@@ -245,21 +252,24 @@ export async function runAgent({
   // The calls that ran since the state last changed, by key → their step number.
   const called = new Map<string, number>();
   // This reply's tool results in the conversation, oldest first: where each
-  // sits and which call made it.
-  const results: { index: number; key: string }[] = [];
-  // Shorten all but the newest `keep` results; a shortened call may run again.
+  // sits, which call made it, and its step.
+  const results: { index: number; key: string; id: string }[] = [];
+  // Shorten all but the newest `keep` results in the conversation, the model's
+  // copies: each step keeps its result as it was sent (`seen`), and is marked
+  // `shortened`. A shortened call may run again.
   const compactOlder = (keep: number): boolean => {
-    let changed = false;
+    const shortened = new Set<string>();
     for (const r of results.slice(0, Math.max(0, results.length - keep))) {
       const m = convo[r.index];
-      if (typeof m.content !== "string" || isCompacted(m.content)) continue;
-      const short = compactResult(m.content);
+      if (typeof m.content !== "string") continue;
+      const short = shorten(m.content);
       if (short === m.content) continue;
       convo[r.index] = { ...m, content: short };
       called.delete(r.key);
-      changed = true;
+      shortened.add(r.id);
     }
-    return changed;
+    if (shortened.size) steps = steps.map((s) => (shortened.has(s.id) ? { ...s, shortened: true } : s));
+    return shortened.size > 0;
   };
   const windowKey = `${settings.baseUrl}|${settings.model}`;
   // A local model is offered the reading tools and those its question is
@@ -390,9 +400,8 @@ export async function runAgent({
       // The final answer: held to its evidence before the user reads it. A
       // revision that wrote nothing leaves the answer it revised.
       const answer = roundText.trim() ? roundText : rejected;
-      const checked = steps.map((st) => (fullResults.has(st.id) ? { ...st, result: fullResults.get(st.id) } : st));
-      const sources = numberSources(convo, arrived, checked.map((st) => st.result ?? ""), tools, ctx?.earlierResults ?? []);
-      const issues = useTools && checkAnswers ? answerIssues(answer, checked, sources) : null;
+      const sources = numberSources(convo, arrived, steps.map(whole), tools, ctx?.earlierResults ?? []);
+      const issues = useTools && checkAnswers ? answerIssues(answer, steps, sources) : null;
       if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
         revisions += 1;
         rejected = roundText;
@@ -439,16 +448,17 @@ export async function runAgent({
         signal,
         progress: (progress) => setStep(id, { progress }),
       });
+      // The whole result arrives with the status, where the model reads it fitted.
       setStep(id, {
         progress: undefined,
         args: run.args,
         status: run.ok ? "done" : "error",
         summary: run.summary,
         result: run.text,
+        ...(run.full !== undefined ? { full: run.full } : {}),
         view: run.view,
         outcomes: run.outcomes,
       });
-      if (run.full) fullResults.set(id, run.full);
       if (run.ok) {
         offer(call.function.name);
         fresh += 1;
@@ -457,7 +467,7 @@ export async function runAgent({
       }
       // The console follows what the model looked at, step by step.
       if (run.ok && run.view && settings.followViews) openView(run.view);
-      results.push({ index: convo.length, key });
+      results.push({ index: convo.length, key, id });
       convo.push({ role: "tool", tool_call_id: call.id, content: run.text });
     }
     barren = fresh ? 0 : barren + 1;
@@ -471,11 +481,11 @@ export async function runAgent({
   // A server that reported some requests' counts but not all leaves the total unknown.
   const usage = wantUsage ? (tokens.requests > 0 && tokens.requests === requests ? tokens : null) : undefined;
   // Numbers by reference: the words the user reads have each {{tool.field}}
-  // filled in from the result (whole, as the tools found it); and the verdict
-  // on the run is computed from the checks, never taken from the words.
-  const measured = steps.map((st) => (fullResults.has(st.id) ? { ...st, result: fullResults.get(st.id) } : st));
-  content = fillReferences(content, measured).text;
-  const verdict = useTools ? verdicts({ reply: measured }).achieved : null;
+  // filled in from what the tools found (whole, however much the model read);
+  // and the verdict on the run is computed from the checks, never taken from
+  // the words.
+  content = fillReferences(content, steps).text;
+  const verdict = useTools ? verdicts({ reply: steps }).achieved : null;
   return {
     content,
     reasoning,

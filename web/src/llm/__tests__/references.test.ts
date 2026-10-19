@@ -173,3 +173,30 @@ describe("the line under a reply", () => {
     expect(verdictLine(null)).toBeNull();
   });
 });
+
+describe("what the tool found, read whole where the model read it fitted (readings/)", () => {
+  // The model's copy of a result past the limit, as fit leaves it: some fields
+  // kept, the rest named under left_out; the step keeps the whole beside it.
+  const readFitted = (s: AgentStep, kept: Record<string, unknown>): AgentStep => ({
+    ...s,
+    result: JSON.stringify({ ...kept, left_out: ["the rest"] }),
+    full: s.result,
+  });
+
+  it("dates each stage by what the run's whole result says it computed", () => {
+    const run = readFitted(rerun({ rings: "reused", punch: "reused", backfill: "reused", flatten: "computed", pdf: "computed" }), { ended: "done" });
+    expect(recomputedAt([all(), run])).toEqual({ rings: -1, punch: -1, backfill: -1, flatten: 1, pdf: 1 });
+  });
+
+  it("fills a reference from a field only the whole result holds", () => {
+    const ub = readFitted(step("ub_check", { fit: "both", orientation_change_deg: 0, origin_shift_rlu: [0.0305, 0.0195, 0] }), { fit: "both" });
+    expect(resolveReference("ub_check.origin_shift_rlu", [ub])).toBe("(0.0305, 0.0195, 0)");
+    expect(fillReferences("Shifted by {{ub_check.origin_shift_rlu}} r.l.u.", [ub]).text).toBe("Shifted by (0.0305, 0.0195, 0) r.l.u.");
+  });
+
+  it("judges a check from the whole result, its numbers left out of the model's copy", () => {
+    const rings = readFitted(step("assess_stage", { rings: stage("rings", ATTENTION) }, { stage: "rings" }), {});
+    expect(verdicts({ reply: [rings] }).checks.rings).toBe("attention");
+    expect(computedVerdict([rings])?.attention).toEqual(["the ring removal"]);
+  });
+});

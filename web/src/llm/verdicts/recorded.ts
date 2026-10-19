@@ -2,10 +2,13 @@
 // results that carry their words and numbers only (recorded replies, the
 // validation's records, a reply whose tools were replayed). Reached only from
 // readers.ts. Each tool's mapping reads its words where its tool writes a
-// verdict, and judges its numbers by the check's rule where it writes none.
+// verdict, and judges its numbers by the check's rule where it writes none. It
+// reads what the tool found, whole (`found`, readings/), however much of it the
+// model read.
 
 import type { AgentStep } from "../agent";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
+import { found } from "../readings";
 import type { Measured } from "../report/report";
 import { besideNodesProblem, countsProblems, judge, STAGES, ubOffProblem, WORDS, type Kind, type Outcome, type Reason, type Stage } from "./rules";
 
@@ -20,20 +23,6 @@ const outcome = (check: Outcome["check"], kind: Kind, reasons: Reason[], text: s
   dataProblems,
   words: text,
 });
-
-/** The result a step's tool returned, parsed: an object, or null (an error, a step still running, a result cut off). */
-function resultOf(step: AgentStep): Obj | null {
-  if (step.status !== "done") return null;
-  // #3 (a tool result carries both readings) plugs in here: the whole result, step.full ?? step.result.
-  const text = step.result;
-  if (!text) return null;
-  try {
-    const r: unknown = JSON.parse(text);
-    return r && typeof r === "object" && !Array.isArray(r) ? (r as Obj) : null;
-  } catch {
-    return null; // a trimmed or non-JSON result holds no fields
-  }
-}
 
 const LABELLED = new Map((Object.keys(WORDS.label) as Kind[]).map((k) => [WORDS.label[k], k]));
 
@@ -155,7 +144,7 @@ export const D17_REPEAT_POINTER_READS_AS_A_RESULT = false;
 export function outcomesOf(step: AgentStep): Outcome[] {
   if (step.status !== "done") return [];
   if (step.outcomes) return step.outcomes;
-  const r = resultOf(step);
+  const r = found(step); // what the tool found, whole; null for a result that holds no fields
   if (!r || (!D17_REPEAT_POINTER_READS_AS_A_RESULT && "already_called" in r)) return [];
   switch (step.name) {
     case "assess_stage":

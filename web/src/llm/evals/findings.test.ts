@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import type { AgentStep } from "../agent";
 import {
   APPROVAL_BY_DEFAULT,
   candidateFindings,
@@ -16,7 +17,7 @@ import {
   type Finding,
   type ReviewFinding,
 } from "./findings";
-import { caseNamed, type RunRecord } from "./validation";
+import { caseNamed, decisions, numberSources, type RunRecord } from "./validation";
 
 // *o* without the fields *keys*.
 const without = (o: object, ...keys: string[]): Record<string, unknown> =>
@@ -186,6 +187,34 @@ describe("candidate findings", () => {
     expect(shown[0]).toMatchObject({ step: 2, arm: "B", run: 2 });
     const blind = candidateFindings(record({ ...missed, decisions: [record().decisions[0]] }), c);
     expect(blind.map((f) => f.kind)).toEqual(["missing-tool"]);
+  });
+
+  it("tells a fault a tool found but the text the model read left out (a bug) from one no tool showed", () => {
+    const missed = { grades: { detection: [], falseAlarms: [], unsafe: [], detected: false, noFalseAlarm: true } };
+    const angle = c.truth.angle_deg!;
+    // ub_check found the turn; the model read its result fitted, without the angle.
+    const fitted = { ...record().decisions[1], result: '{"fit":"both","left_out":["angle_deg"]}', full: JSON.stringify({ fit: "both", angle_deg: angle }) };
+    const found = candidateFindings(record({ ...missed, decisions: [record().decisions[0], fitted] }), c);
+    expect(found.map((f) => [f.kind, f.step, f.needs_user_approval])).toEqual([["bug", 2, false]]);
+    expect(found[0].evidence).toBe("the conclusion missed the fault: ub_check (step 2) found the UB's turn (°), but the text the model read left it out");
+    expect(found[0].proposed_fix).toMatch(/^keep that field in the text the model reads/);
+    for (const f of found) expect(findingProblems(f)).toEqual([]);
+    // The same angle in the text the model read: the answer missed what it read.
+    const read = { ...fitted, result: fitted.full };
+    expect(candidateFindings(record({ ...missed, decisions: [record().decisions[0], read] }), c).map((f) => [f.kind, f.evidence])).toEqual([
+      ["orchestration", "the conclusion missed the fault though ub_check (step 2) showed it"],
+    ]);
+  });
+
+  it("takes a number only the whole result holds as sourced, not as one from nowhere", () => {
+    // A {{reference}} filled the angle from the whole result; the model's copy left it out.
+    const steps: AgentStep[] = [
+      { id: "0:c1", name: "ub_check", args: {}, status: "done", summary: "angle", result: '{"fit":"both","left_out":["angle_deg"]}', full: '{"fit":"both","angle_deg":0.61}' },
+    ];
+    const conclusion = "The UB is turned by 0.61°.";
+    const rec = record({ decisions: decisions(steps, []), numbers: numberSources(conclusion, steps), conclusion });
+    expect(rec.numbers).toEqual([{ text: "0.61", value: 0.61, source: { step: 1, tool: "ub_check", path: "angle_deg", value: 0.61 } }]);
+    expect(candidateFindings(rec, c)).toEqual([]);
   });
 
   it("flags an error, a tool that failed, an unsafe action and a number from nowhere", () => {
