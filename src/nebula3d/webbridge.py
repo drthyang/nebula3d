@@ -1212,11 +1212,14 @@ def dpdf_slice(volume_id: str, plane: str, value: float) -> bytes:
 
 
 def dpdf_features_json(volume_id: str, min_sigma: float = 5.0, limit: int = 12) -> str:
-    """The ΔPDF's strongest extrema, grouped (mirrors GET /api/deltapdf/{id}/features)."""
+    """The ΔPDF's strongest extrema, grouped by the point group the dataset's
+    raw file declares, else by sign, length and size (mirrors
+    GET /api/deltapdf/{id}/features)."""
     if not float(min_sigma) > 0 or int(limit) < 1:
         raise ValueError("min_sigma must be positive and limit at least 1")
     stage = _resolve(volume_id, "delta_pdf")
-    m = _dpdf.dpdf_features(stage.path, float(min_sigma), int(limit))
+    m = _dpdf.dpdf_features(stage.path, float(min_sigma), int(limit),
+                            declared_by=_ds.raw_input_of(_require_cfg(), volume_id))
     return _json({**m, "id": volume_id})
 
 

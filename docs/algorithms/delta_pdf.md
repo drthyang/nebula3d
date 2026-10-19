@@ -107,6 +107,84 @@ the band circles). The matplotlib viewers read the `.h5` attrs and apply the sam
 skew (`nebula3d.visualization.slices.oblique_transform` / `draw_unit_cell`).
 Files written before the angles were stored are drawn at 90°.
 
+## The strongest features, grouped by the declared symmetry (2026-10-19)
+
+`nebula3d.analysis.dpdf_features.strongest_features` lists the ΔPDF's local
+extrema above `min_sigma` robust σ outside the origin's disk. Each ± pair is
+listed once, since the ΔPDF is centrosymmetric, and each extremum is placed to
+a fraction of a voxel. The server serves the list as
+`GET /api/deltapdf/{id}/features`, the browser build as
+`webbridge.dpdf_features_json`, and the Pilot's `dpdf_peaks` reads it. The
+extrema come in groups, the copies of one correlation, ordered by each
+group's strongest extremum. The limit counts groups, not extrema.
+
+**Which symmetry.** A NeXus Viewer export declares the point group its data
+were symmetrised with (`symmetry`, `symmetry_ops`; see `nebula3d.symmetry`).
+The ΔPDF file does not record it, and neither do the stage files the pipeline
+writes. So the server reads it from the dataset's raw input, where the
+pipeline reads it too (`PipelineParams.symmetry = "auto"`) and where the
+volume meta reports it. With operations declared, two extrema of one sign are
+one group when one lies within one voxel of an image of the other. Their sizes
+are not compared, because on data that were not symmetrised the copies
+differ.
+
+**The basis.** The operations are matrices `M` on `(h, k, l)`. On the ΔPDF's
+fractional coordinates `u = (x/a, y/b, z/c)` the same symmetry acts as `Mᵀ`:
+
+    ΔI(M·h) = ΔI(h)  ⇒  ΔPDF(Mᵀu) = Σ_h ΔI(h) cos 2π h·Mᵀu
+                                  = Σ_h ΔI(M·h) cos 2π (M·h)·u = ΔPDF(u)
+
+For the signed permutations of cubic, tetragonal and orthorhombic axes,
+`Mᵀ = M⁻¹` is itself in the group, so the difference does not show. On a
+hexagonal cell it does: the 6-fold `(h, k, l) → (h + k, −h, l)` acts on the
+ΔPDF as `(u, v, w) → (u − v, u, w)`. Applied as `M` itself, it would map a
+vector to one of a different length. Each image goes back to Å with the
+recorded cell. It is compared in the oblique coordinates along a, b, c, with
+the cell's angles, in units of the grid's steps, which is a true distance when
+the steps are equal. The inversion is added to the declared operations.
+
+- **Tolerance: one voxel** (`SYMMETRY_TOLERANCE`). Each image takes the
+  extremum nearest to it, if that one lies within the tolerance. Two extrema
+  of one sign are at least two voxels apart along some axis, since a 3×3×3
+  neighbourhood holds only one. The per-axis parabola that places an
+  extremum is biased on an oblique grid. On constructed peaks 0.3–0.6 Å wide
+  on 0.25 Å voxels, a copy lay a median 0.15 voxel (cubic) and 0.23 voxel
+  (hexagonal) from the image of its group's strongest, at most 0.61 and 0.74.
+- **Each group** lists its strongest extremum first (the representative),
+  with its vectors in Å and in lattice units. It gives `n`, the extrema found,
+  and `multiplicity`, the orbit's distinct vectors, one per ± pair. A vector
+  on a mirror or an axis has fewer distinct vectors than the group has
+  operations. The group also gives its largest and mean size in σ. `n` below
+  the multiplicity means some copies are under the threshold or outside the
+  volume, or the data lack the symmetry.
+- **Not applied** in three cases: the file records no cell; an operation
+  changes the recorded cell's metric by more than 5 % of `√(G_ii·G_jj)` (the
+  tolerance of the window's lattice symmetry above; a legacy file without
+  angles reads as 90°, which no hexagonal operation keeps); or the
+  operations generate no crystallographic point group. The grouping is then
+  by sign, length and size, and `grouped_by` says why.
+
+**Without a declared symmetry** the grouping is unchanged: extrema of one
+sign, one length (within half a voxel) and one size (within 5 %). These are
+most likely the copies under the crystal's point symmetry. But the rule can
+merge different correlations that share a length, and split unequal copies
+of one. `grouped_by` names the rule: `"declared symmetry (6/m: 12 operations,
+r ≡ −r)"` or `"sign, length and size (no symmetry declared)"`.
+
+**On the validation's dev control** (default pipeline), the raw file
+declares nothing. The planted ⟨3/2 0 0⟩+ is entry 7 and the weaker
+⟨½ 1 1⟩− entry 19, as before. Declared as the cube's m-3m, they are entries 6
+and 18. That crystal is 4/mmm, though: the demo's rods break the cube's
+3-fold, while the planted correlations follow all 48 operations. Declared as
+4/mmm, each planted orbit becomes two orbits of that group. ⟨½ 1 1⟩ is then
+8 + 4 vectors, entries 28 and 29, and ⟨3/2 0 0⟩ is 2 + 1, entries 9 and 10.
+A declared group keeps apart what it does not relate. Sign, length and size
+merged those orbits only because the synthetic correlations are equal.
+Unequal copies show the other side. On the dev case whose HKL origin is
+shifted by δ, the ΔPDF the transform keeps is ΔPDF(u)·cos 2π δ·u, so the
+copies differ by a few per cent. Sign, length and size then split ⟨½ 1 1⟩−
+into entries 29 and 31, and m-3m keeps it one entry, 17.
+
 ## Inverse transform & consistency check (`invert_delta_pdf`)
 
 The recipe is exactly invertible, so the ΔPDF can be transformed **back** to the

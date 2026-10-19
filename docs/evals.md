@@ -312,7 +312,7 @@ a test case: 16 cases.
 **dev** is for improving the tools, the skills and the prompts. **test** is held
 out: each of its cases has another crystal (cell, order, seed, planted vectors) and
 another fault size, so what is learned on dev cannot fit it by its numbers, and
-its numbers are read once, to be reported. Four tests enforce this:
+its numbers are read once, to be reported. Five tests enforce this:
 
 - every command that reads the test split needs `--report`
   (`NEBULA_VALIDATION_REPORT=1` for the live runner): `test_the_test_split_needs_report`,
@@ -342,6 +342,16 @@ its numbers are read once, to be reported. Four tests enforce this:
   (`test_the_holdout_scan_finds_the_test_cases_out_of_place`);
 - the test crystals share no planted vector, cell or seed with the dev crystal
   (`test_dev_and_test_differ_in_crystal_and_fault`, `validation.test.ts`);
+- pytest leaves the test split out of the output whoever tunes reads. A test
+  that takes `validation_case` (arm D's) runs on the dev cases by default; the
+  test split's cases are collected only with `NEBULA_HOLDOUT_TESTS=1`, and then
+  as `test-split-case-0`, `-1` and so on, never by id, with a failure that names
+  the failed criteria and nothing of the case (`tests/conftest.py`). CI sets it
+  for every job, so CI covers the test split as before. Collecting with it unset
+  and set pins both (`test_the_default_run_leaves_the_test_split_out`,
+  `test_the_opt_in_runs_the_test_split_under_masked_names_only`); a value other
+  than `1`, `0` or unset stops the run (`test_a_mistyped_opt_in_stops_the_run`),
+  and `test_ci_runs_the_test_split` pins CI's setting;
 - the one paid model runs the test split only (`validationModels.test.ts`).
 
 ### Scoring
@@ -521,7 +531,8 @@ the share of the crystal's own shell kept (at least 0.85); "pedestal" is the spa
 a |Q|-dependent background as a share of the diffuse level (limit 0.25); "reported"
 is whether the run's own log and records tell the user of the fault (for `shell`, that
 it did not call the shell a ring). Arm D, the planted truth, passes every criterion
-on all 16 cases (a test, `test_arm_d_passes_every_criterion_on_every_case`).
+on all 16 cases (a test, `test_arm_d_passes_every_criterion_on_every_case`, which
+runs the test split's cases only with `NEBULA_HOLDOUT_TESTS=1`, as CI does).
 
 What it shows, as the baseline the Pilot is held to:
 

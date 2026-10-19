@@ -201,13 +201,19 @@ class UbCheckOut(BaseModel):
 
 
 class DpdfFeatureGroupOut(BaseModel):
-    """Extrema of one sign, length and size (see analysis.dpdf_features)."""
+    """The copies of one correlation: extrema of one sign that are images of one
+    another under the declared point group, or of one sign, length and size
+    with none declared (see analysis.dpdf_features)."""
     sign: int
-    length: float  # Å
+    length: float  # |r| of the strongest, Å
     size_sigma: float  # the largest |ΔPDF| in the group, in robust σ
+    mean_size_sigma: float  # the mean |ΔPDF| of its n extrema, in robust σ
     value: float
     n: int  # extrema in the group, one per ± pair
-    vectors: list[list[float]]  # (x, y, z) along a, b, c, Å
+    # With a declared symmetry, the orbit's distinct vectors, one per ± pair (n is
+    # fewer when some are below the threshold or outside the volume); None without.
+    multiplicity: int | None
+    vectors: list[list[float]]  # (x, y, z) along a, b, c, Å, the strongest (representative) first
     vectors_rlu: list[list[float] | None]  # the same in lattice units
     sizes_sigma: list[float]
 
@@ -219,6 +225,9 @@ class DpdfFeaturesOut(BaseModel):
     min_sigma: float
     origin_radius: float  # Å
     n_extrema: int
+    # "declared symmetry (<label or operations>: <n> operations, r ≡ −r)", or
+    # "sign, length and size (<why: none declared, or why it was not applied>)"
+    grouped_by: str
     groups: list[DpdfFeatureGroupOut]
 
 

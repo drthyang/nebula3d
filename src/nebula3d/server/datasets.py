@@ -197,3 +197,13 @@ def resolve_volume(cfg: ServerConfig, volume_id: str) -> StageStatus | None:
     if ds is None:
         return None
     return next((s for s in ds.stages if s.name == stage), None)
+
+
+def raw_input_of(cfg: ServerConfig, volume_id: str) -> Path | None:
+    """The raw input of the dataset a stage ``"<dataset_id>.<stage>"`` belongs
+    to, when it is on disk: the file that declares the point group the data
+    were symmetrised with (the pipeline reads it there, ``PipelineParams.symmetry
+    = "auto"``; the stages it writes declare none)."""
+    ds = find_dataset(cfg, volume_id.rpartition(".")[0])
+    raw = next((s for s in ds.stages if s.name == "raw"), None) if ds is not None else None
+    return raw.path if raw is not None and raw.exists else None

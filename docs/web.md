@@ -358,6 +358,7 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 | GET | `/api/volumes/{id}/rings?q=&fwhm=` | which shells are powder rings: each rises in nearly every direction |
 | GET | `/api/deltapdf/{id}/meta` | ΔPDF shape, ranges, lattice, \|Q\|max |
 | GET | `/api/deltapdf/{id}/slice?plane=xy\|xz\|yz&value=` | binary ΔPDF orthoslice |
+| GET | `/api/deltapdf/{id}/features?min_sigma=&limit=` | the strongest extrema outside the origin's disk, grouped by the point group the raw file declares, else by sign, length and size (`grouped_by`) |
 | GET | `/api/consistency/{dataset_id}/meta?q_min=&q_max=&r_min=&r_max=` | back-FFT metadata and metrics |
 | GET | `/api/consistency/{dataset_id}/check` | the pipeline's saved back-FFT check metrics (no FFT) |
 | GET | `/api/consistency/{dataset_id}/slice?panel=data\|recon\|residual\|dpdf&...` | binary consistency slice |
