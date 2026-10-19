@@ -140,8 +140,9 @@ describe("judge: a stage's evaluation", () => {
   });
 
   it("states the backfill's own criterion without the fill bias it does not measure", () => {
-    expect(judge("backfill", { mean_median_seam_sigma: 0.6 }).criterion).not.toMatch(/no cut whose fill is biased/);
-    expect(WORDS.criterion.backfill).toMatch(/no cut whose fill is biased one way/);
+    expect(judge("backfill", { mean_median_seam_sigma: 0.6 }).criterion).not.toMatch(/the fills not biased/);
+    expect(judge("backfill", { mean_median_seam_sigma: 0.6 }).criterion).toMatch(/ Whether the fills are biased one way is texture_check's to say\.$/);
+    expect(WORDS.criterion.backfill).toMatch(/, and the fills not biased one way\.$/);
   });
 
   it("judges the rings alike with the ring removal's notice, which arm C reads without the remedy the backend writes (G1)", () => {
@@ -238,7 +239,55 @@ describe("judge: the checks on the result", () => {
     });
   }
 
-  it("texture: a cut whose fill is biased one way needs attention; no cut, nothing to judge", () => {
+  // texture_check's result since plan 4.2: every punch hole in 3-D (metrics/texture.ts, volumeFillBias).
+  const volume = (over: Obj): Obj => ({
+    n_holes: 125,
+    n_judged: 125,
+    median_fill_bias_sigma: 0,
+    median_fill_bias_level: 0,
+    above_fraction: 0,
+    below_fraction: 0,
+    above_floor_fraction: 0,
+    below_floor_fraction: 0,
+    systematic_fill_bias: false,
+    per_cut: [{ cut: "H–K plane at L = 0", azimuthal_ratio: 1.01 }],
+    ...over,
+  });
+  const coarse3d = volume({
+    n_judged: undefined,
+    not_judged: "grid too coarse: the nodes are 10 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more",
+    median_fill_bias_sigma: null,
+    median_fill_bias_level: null,
+    above_fraction: null,
+    below_fraction: null,
+    above_floor_fraction: null,
+    below_floor_fraction: null,
+    systematic_fill_bias: null,
+  });
+  const fewHoles = volume({ n_holes: 4, n_judged: 4, not_judged: "too few holes judged: 4 of 4, under 5", median_fill_bias_level: 0.5, systematic_fill_bias: null });
+
+  it("texture, in 3-D: a systematic fill bias over the holes needs attention, none passes", () => {
+    expect(judge("texture", volume({}))).toEqual({ check: "texture", kind: "pass", reasons: [], dataProblems: [], words: null });
+    const biased = volume({ median_fill_bias_sigma: 39.1, median_fill_bias_level: 0.506, above_fraction: 0.8, above_floor_fraction: 0.8, systematic_fill_bias: true });
+    expect(judge("texture", biased)).toEqual({ check: "texture", kind: "attention", reasons: ["fill bias"], dataProblems: [], words: null });
+    // The cuts carry the azimuthal texture only: no cut of a 3-D result is read for the fill bias.
+    expect(judge("texture", volume({ per_cut: [{ cut: "H–K plane at L = 0", systematic_fill_bias: true }] }))).toMatchObject({ kind: "pass" });
+    expect(judge("texture", { ...biased, per_cut: [] })).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
+    for (const m of [volume({}), biased]) roundTrip("texture_check", m, [judge("texture", m)]);
+  });
+
+  it("texture, in 3-D: not judged on a grid too coarse for the holes' rims, nor with too few holes judged", () => {
+    expect(judge("texture", coarse3d)).toEqual({ check: "texture", kind: "info", reasons: ["grid too coarse"], dataProblems: [], words: null });
+    // Fewer holes judged than the rule needs: nothing to judge, however large their bias (the backend's judged: false).
+    expect(judge("texture", fewHoles)).toEqual({ check: "texture", kind: "info", reasons: ["nothing to judge"], dataProblems: [], words: null });
+    expect(judge("texture", volume({ n_holes: 0, n_judged: 0, not_judged: "no filled punch hole", systematic_fill_bias: null }))).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    // Anything but true or false is no verdict.
+    expect(judge("texture", volume({ systematic_fill_bias: "yes" }))).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    for (const m of [coarse3d, fewHoles]) roundTrip("texture_check", m, [judge("texture", m)]);
+  });
+
+  // A result recorded before 4.2, each of three cuts judged on its own: it reads as it did.
+  it("texture, recorded by cut: a cut whose fill is biased one way needs attention; no cut, nothing to judge", () => {
     const cut = (bias: boolean) => ({ cut: "H–K plane at L = 0", systematic_fill_bias: bias });
     expect(judge("texture", { per_cut: [cut(false), cut(true)] })).toEqual({ check: "texture", kind: "attention", reasons: ["fill bias"], dataProblems: [], words: null });
     expect(judge("texture", { per_cut: [cut(false)] })).toMatchObject({ kind: "pass", reasons: [], words: null });
@@ -247,7 +296,7 @@ describe("judge: the checks on the result", () => {
     for (const m of [{ per_cut: [cut(false), cut(true)] }, { per_cut: [cut(false)] }, { per_cut: [] }, {}]) roundTrip("texture_check", m, [judge("texture", m)]);
   });
 
-  it("texture: a cut whose grid leaves its holes no room for their rims is no evidence; a judged cut's bias still needs attention", () => {
+  it("texture, recorded by cut: a cut whose grid leaves its holes no room for their rims is no evidence; a judged cut's bias still needs attention", () => {
     const cut = (bias: boolean) => ({ cut: "H–K plane at L = 0", systematic_fill_bias: bias });
     const coarse = {
       cut: "H–L plane at K = 0",

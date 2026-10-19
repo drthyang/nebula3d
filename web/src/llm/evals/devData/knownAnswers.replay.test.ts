@@ -28,7 +28,7 @@ import type { AgentStep } from "../../agent";
 import { withoutInference } from "../../inference";
 import { verdicts } from "../../verdicts";
 import { bridgeConfig } from "./bridgeWorker";
-import { devCase, type DevCase, type DevCaseId, type ToolRunResult } from "./index";
+import { DEV_CASE_IDS, devCase, type DevCase, type DevCaseId, type ToolRunResult } from "./index";
 
 const { n } = bridgeConfig();
 
@@ -49,11 +49,12 @@ const MISSES: Partial<Record<DevCaseId, Record<string, Partial<Record<number, st
  * The checks the grid is too coarse for, by grid: there each says "not
  * judged", with the grid's reason ("grid too coarse: …"), and gives no
  * verdict. The minimums are the checks' own (nebula3d.preprocessing.
- * ring_isotropy, Resolution; metrics/texture.ts, roomForRims): on 81 points
- * the dev crystal (a = 3.9 Å, ±4 r.l.u.) puts 0.99 voxels across the widest
- * ring the ring check judges, under one, and its holes with their rims need
- * the nodes 12 voxels apart or more, where they are 10. On 161 points neither
- * check is too coarse, and the known answers hold.
+ * ring_isotropy, Resolution; metrics/texture.ts, roomForRims, which the
+ * fills' 3-D read applies to the volume's holes): on 81 points the dev crystal
+ * (a = 3.9 Å, ±4 r.l.u.) puts 0.99 voxels across the widest ring the ring
+ * check judges, under one, and its holes, reaching 2 to 3 voxels in 3-D, with
+ * their rims need the nodes 12 to 14 voxels apart, where they are 10. On 161
+ * points neither check is too coarse, and the known answers hold.
  */
 type GridLimited = "rings" | "texture";
 const TOO_COARSE: Record<GridLimited, readonly number[]> = { rings: [81], texture: [81] };
@@ -282,39 +283,35 @@ for (const id of ["dev-shell", "dev-rings-shell"] as const) {
 }
 
 // The fills' texture (texture_check): the default backfill prints no fill bias
-// of its own on the three principal cuts. On a grid too coarse to leave its
-// holes room for their rims the check is not judged, each cut it cannot judge
-// saying why, and none flagged.
-for (const id of ["dev-origin", "dev-rings", "dev-shell"] as const) {
+// of its own over the punch's holes, every one judged in 3-D with its rim
+// (plan 4.2). On a grid too coarse to leave the holes room for their rims the
+// check is not judged, says why, and measures no bias; at 81 points the cuts
+// read before 4.2 flagged three of these cases (dev-origin, dev-rings,
+// dev-shell) with a bias the room rule now keeps from any verdict, in 3-D as
+// on the cuts.
+for (const id of DEV_CASE_IDS) {
   describe(`${id}: the fills leave no texture`, () => {
-    check(id, named("texture", "texture_check finds no systematic fill bias on any cut"), async () => {
+    check(id, named("texture", "texture_check finds no systematic fill bias over the holes in 3-D"), async () => {
       const c = devCase(id);
       const r = ran(await c.tool("texture_check"), "texture_check");
-      const cuts = r.result.per_cut as Record<string, unknown>[];
+      const fills = r.result;
       const [outcome] = outcomeOf(r);
-      const shown = cuts.map((x) => ({
-        cut: x.cut,
-        n_holes: x.n_holes,
-        ...(x.not_judged ? { not_judged: x.not_judged } : {}),
-        median_fill_bias_sigma: x.median_fill_bias_sigma,
-        median_fill_bias_level: x.median_fill_bias_level,
-        systematic_fill_bias: x.systematic_fill_bias,
-      }));
-      const msg = evidence(c, { per_cut: shown, outcome });
-      expect(cuts.filter((x) => x.systematic_fill_bias === true), msg).toEqual([]);
+      const { per_cut: cuts, ...shown } = fills;
+      const msg = evidence(c, { fills: shown, per_cut: cuts, outcome });
+      expect(fills.systematic_fill_bias, msg).not.toBe(true);
+      // The cuts carry the azimuthal texture only.
+      for (const x of cuts as Record<string, unknown>[]) expect(Object.keys(x), msg).toEqual(["cut", "azimuthal_ratio"]);
       if (tooCoarse("texture")) {
         expect(outcome, msg).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
-        const notJudged = cuts.filter((x) => typeof x.not_judged === "string");
-        expect(notJudged.length, msg).toBeGreaterThan(0);
-        for (const x of notJudged) {
-          const why = /^grid too coarse: the nodes are ([\d.]+) voxels apart, under ([\d.]+): a hole reaches [\d.]+ voxels? and its rim \d+ more$/.exec(String(x.not_judged));
-          expect(why, msg).not.toBeNull();
-          expect(Number(why![1]), msg).toBeLessThan(Number(why![2]));
-          expect([x.systematic_fill_bias, x.median_fill_bias_sigma], msg).toEqual([null, null]);
-        }
+        const why = /^grid too coarse: the nodes are ([\d.]+) voxels apart, under ([\d.]+): a hole reaches [\d.]+ voxels? and its rim \d+ more$/.exec(String(fills.not_judged));
+        expect(why, msg).not.toBeNull();
+        expect(Number(why![1]), msg).toBeLessThan(Number(why![2]));
+        expect([fills.systematic_fill_bias, fills.median_fill_bias_sigma, fills.median_fill_bias_level], msg).toEqual([null, null, null]);
       } else {
         expect(outcome, msg).toMatchObject({ kind: "pass", reasons: [] });
-        expect(cuts.filter((x) => "not_judged" in x), msg).toEqual([]);
+        expect(fills, msg).not.toHaveProperty("not_judged");
+        expect(fills.systematic_fill_bias, msg).toBe(false);
+        expect(fills.n_judged, msg).toBeGreaterThan(0);
       }
     });
   });

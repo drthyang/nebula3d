@@ -148,7 +148,7 @@ over, or diffuse dented, at the rings confirmed in 3D)⟧⟦evidence: ; radial_p
 ” → “; ”⟩⟦reading: (2) ⟧⟨connective: “The Bragg punch” → “the Bragg punch”⟩ removes the Bragg peaks cleanly⟦reading: : assess_stage punch (leftover peaks on every plane,
 and how much was punched to get there); check an off-zero cut too⟧⟨connective: “.
 ” → “; ”⟩⟦reading: (3) ⟧⟨connective: “The backfill” → “the backfill”⟩ meets its surroundings, and the punch and backfill add no texture to reciprocal space⟦reading: :
-assess_stage backfill (the seam) and texture_check (no cut whose fills sit systematically outside the range their
+assess_stage backfill (the seam) and texture_check (no fills sitting systematically outside the range their
 rims allow, azimuthal ratio near 1)⟧⟨connective: “.
 ” → “; ”⟩⟦reading: (4) ⟧⟨connective: “The flatten” → “the flatten”⟩ leaves no pedestal⟦reading: : assess_stage flatten (the floors' trend and span)⟧⟨connective: “.
 ” → “; ”⟩⟦reading: (5) ⟧⟨connective: “The 3D-ΔPDF” → “the 3D-ΔPDF”⟩'s back-FFT reproduces the data's even part under Q → −Q, its declared symmetry is kept, and Qmax is not past the data coverage⟦reading: :
@@ -276,7 +276,7 @@ Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell, when the file d
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Check whether the punch and backfill printed a pattern of their own into reciprocal space, on a cut (default: the three principal planes through the origin). Fill bias: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly⟦evidence:  (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median)⟧; the part outside that range, signed, in the rim's σ and in units of the local diffuse level. Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture⟦evidence:  that the ΔPDF turns into features at lattice vectors⟧. Azimuthal texture: per |Q| shell, how much the sector means vary around the shell before the punch (unpunched voxels) and after the backfill⟦evidence: ; a ratio near 1 adds none⟧.
+Check whether the punch and backfill printed a pattern of their own into reciprocal space. Fill bias, over every punch hole in 3-D: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly⟦evidence:  (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median)⟧; the part outside that range, signed, in the rim's σ and in units of the local diffuse level, and the shares of holes above and below it, and beyond it by a fifth of the level or more (above_floor_fraction, below_floor_fraction). Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture⟦evidence:  that the ΔPDF turns into features at lattice vectors⟧. Azimuthal texture, on a cut (default: the three principal planes through the origin): per |Q| shell, how much the sector means vary around the shell after the backfill against before the punch (unpunched voxels)⟦evidence: ; a ratio near 1 adds none⟧.
 ```
 
 ## tools/index.ts: ub_check's description
@@ -377,7 +377,7 @@ Fill punched holes seamlessly: median_seam_sigma ≲ 1, bright_fill_fraction sma
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-The fills meet their surroundings: a median seam of 1σ or less.⟦reading:  Whether a cut's fill is biased one way is texture_check's to say.⟧
+The fills meet their surroundings: a median seam of 1σ or less.⟦reading:  Whether the fills are biased one way is texture_check's to say.⟧
 ```
 
 ## verdicts/rules.ts: the flatten goal

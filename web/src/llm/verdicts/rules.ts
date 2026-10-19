@@ -240,14 +240,14 @@ const punch: StageRule = {
 };
 
 const backfill: StageRule = {
-  criterion: criterionOf("backfill")`The fills meet their surroundings: a median seam of 1σ or less, and no cut whose fill is biased one way.`,
+  criterion: criterionOf("backfill")`The fills meet their surroundings: a median seam of 1σ or less, and the fills not biased one way.`,
   goal: goalOf("backfill")`Fill punched holes seamlessly: median_seam_sigma ≲ 1, bright_fill_fraction small${evidence(" (no bright plugs where peaks were)")}, checkerboard_fraction near 0.5${evidence(
     " (near 1 is a periodic interpolation artefact)",
   )}.`,
   // A stage's evaluation measures no fill bias (texture_check does): its
   // criterion says only what it judges.
   ownCriterion: written("verdicts/rules.ts: the backfill's own criterion")`The fills meet their surroundings: a median seam of 1σ or less.${reading(
-    " Whether a cut's fill is biased one way is texture_check's to say.",
+    " Whether the fills are biased one way is texture_check's to say.",
   )}`,
   judge: (m) => {
     const seam = num(m.mean_median_seam_sigma);
@@ -480,11 +480,22 @@ const symmetry: CheckRule<SymmetryMeasurements> = {
 };
 
 const texture: CheckRule<Readonly<Record<string, unknown>>> = {
-  // texture_check writes no verdict: each cut says whether its fill is biased.
+  // texture_check writes no verdict: its result says whether the fills are
+  // biased. Since plan 4.2 it reads every punch hole of the volume in 3-D
+  // (metrics/texture.ts, volumeFillBias): systematic_fill_bias true needs
+  // attention, false passes, and null is not judged, for the grid too coarse
+  // for the holes' rims (not_judged, "grid too coarse: …") or for too few
+  // holes (nothing to judge). A result recorded before 4.2 has none of that:
+  // each of its cuts says whether its fill is biased, and it reads as it did.
   // A cut whose grid is too coarse to judge its fills (not_judged, texture.ts's
   // roomForRims) is no evidence either way: the fills pass only when every cut
   // was judged, and a judged cut's bias still needs attention.
   judge: (m) => {
+    if ("systematic_fill_bias" in m) {
+      if (m.systematic_fill_bias === true) return { kind: "attention", reasons: ["fill bias"], words: null };
+      if (isTooCoarse(m.not_judged)) return { ...tooCoarse(), words: null };
+      return m.systematic_fill_bias === false ? { kind: "pass", reasons: [], words: null } : { ...nothing(), words: null };
+    }
     const cuts = (Array.isArray(m.per_cut) ? (m.per_cut as unknown[]) : []).filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
     if (cuts.some((x) => x.systematic_fill_bias === true)) return { kind: "attention", reasons: ["fill bias"], words: null };
     if (cuts.some((x) => isTooCoarse(x.not_judged))) return { ...tooCoarse(), words: null };

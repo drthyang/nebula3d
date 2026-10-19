@@ -58,6 +58,7 @@ const api = vi.hoisted(() => ({
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -190,13 +191,13 @@ const GATES: Gate[] = [
     skill: "bragg-node-audit",
     phrase: "a fill bias near 0σ",
     stated: 0,
-    none: "the clean reading, not a line. texture_check calls a cut's fill biased at a median of 0.5σ or more (a literal in textureMetrics, metrics/texture.ts) that is also FILL_BIAS_FLOOR of the level, with 75 % of the holes one way; FILL_BIAS_FLOOR is in UNSTATED.",
+    none: "the clean reading, not a line. texture_check calls the fills biased, over every hole in 3-D, at a median of 0.5σ or more (FILL_BIAS_MIN_SIGMA, metrics/texture.ts) that is also FILL_BIAS_FLOOR of the level, with 75 % of the holes one way (FILL_BIAS_ONE_WAY); FILL_BIAS_FLOOR is in UNSTATED.",
   },
   {
     skill: "bragg-node-audit",
     phrase: "about half the holes brighter",
     stated: 0.5,
-    none: "the clean reading under the comparison with the rim's median that batch 1 replaced (docs/pilot-review.md, finding 4). texture_check's line is 75 % of the holes one way, a literal in textureMetrics.",
+    none: "the clean reading under the comparison with the rim's median that batch 1 replaced (docs/pilot-review.md, finding 4). texture_check's line is 75 % of the holes one way (FILL_BIAS_ONE_WAY, metrics/texture.ts).",
   },
   {
     skill: "bragg-node-audit",
@@ -285,8 +286,8 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "bragg-node-audit", phrase: "tested against the nodes", what: "the orbits beside the nodes", fields: ["near_bragg_nodes"] },
   { skill: "bragg-node-audit", phrase: "as a rotated copy of the lattice", what: "the rotated copy", fields: ["rotated_copy.indexed"] },
   { skill: "bragg-node-audit", phrase: "the same search at random directions", what: "the random directions' control", fields: ["random_control"] },
-  { skill: "bragg-node-audit", phrase: "a fill bias near 0σ", what: "the fill bias in σ", fields: ["per_cut.median_fill_bias_sigma"] },
-  { skill: "bragg-node-audit", phrase: "about half the holes brighter", what: "the share of the holes brighter", fields: ["per_cut.above_fraction"] },
+  { skill: "bragg-node-audit", phrase: "a fill bias near 0σ", what: "the fill bias in σ", fields: ["median_fill_bias_sigma"] },
+  { skill: "bragg-node-audit", phrase: "about half the holes brighter", what: "the share of the holes brighter", fields: ["above_fraction"] },
   { skill: "bragg-node-audit", phrase: "an azimuthal ratio near 1", what: "the azimuthal ratio", fields: ["per_cut.azimuthal_ratio"] },
   // delta-pdf-interpretation
   { skill: "delta-pdf-interpretation", phrase: "the window's shape and scale", what: "the window's shape", fields: ["window_shape", "settings.pdfWindowShape"] },

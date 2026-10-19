@@ -20,6 +20,7 @@ import type {
   UbCheck,
   VolumeCoverage,
   VolumeMeta,
+  VolumeTexture,
 } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
@@ -40,7 +41,8 @@ export type BackendMocks = Record<
   | "fetchRingIsotropy"
   | "fetchSlice"
   | "fetchUbCheck"
-  | "fetchVolumeCoverage",
+  | "fetchVolumeCoverage"
+  | "fetchVolumeTexture",
   Mock
 >;
 
@@ -353,6 +355,42 @@ const DPDF_FEATURES: DpdfFeatures = {
   ],
 };
 
+// The fills' texture over every punch hole, each with its 3-D rim: the 79
+// punched nodes (every one with 0.25 ≤ |Q| ≤ 4.4 Å⁻¹ but (2, 1, 0)), filled
+// with the diffuse they hide, read as a fill equal to the truth reads
+// (tests/test_fill_texture.py): no bias. The numbers are made up in that shape;
+// the limits are the ones asked for, as the server echoes them.
+const volumeTexture = (id: string, limit: number, limits: { minSigma?: number; oneWay?: number; minHoles?: number; floor?: number } = {}): VolumeTexture => ({
+  id,
+  punched_id: id.replace(/\.backfilled$/, ".braggpunched"),
+  holes_from: "punch_record",
+  rim: 4,
+  min_rim: 8,
+  min_sigma: limits.minSigma ?? 0.5,
+  one_way: limits.oneWay ?? 0.75,
+  min_holes: limits.minHoles ?? 5,
+  floor: limits.floor ?? 0.2,
+  n_holes: 79,
+  n_judged: 79,
+  judged: true,
+  node_spacing: 16,
+  room_needed: 10,
+  not_judged: null,
+  median_fill_bias_sigma: 0,
+  median_fill_bias_level: 0,
+  above_fraction: 0.152,
+  below_fraction: 0.0886,
+  above_floor_fraction: 0,
+  below_floor_fraction: 0,
+  systematic_fill_bias: false,
+  holes: [
+    {
+      index: 31, centre_hkl: [1, 1, 0], voxels: 19, rim_voxels: 1180, fill: 17.9, level: 17.5, sigma: 0.52, slope: -0.21,
+      edge: 17.62, peaked: 17.81, bias: 0.09, bias_sigma: 0.173, bias_level: 0.00514, not_judged: null,
+    },
+  ].slice(0, limit),
+});
+
 // The 3D test of each bump: the one at the powder ring's |Q| rises in nearly every direction.
 const ringIsotropy = (id: string, shells: { q: number; fwhm: number }[]): RingIsotropy => ({
   id,
@@ -397,6 +435,7 @@ export function installBackend(api: BackendMocks): void {
   api.fetchBraggProfile.mockImplementation(async (id: string) => ({ ...BRAGG_PROFILE, dataset_id: id }));
   api.fetchConsistencyCheck.mockImplementation(async (id: string) => ({ ...CONSISTENCY, dataset_id: id }));
   api.fetchVolumeCoverage.mockImplementation(async (id: string) => ({ ...COVERAGE, id }));
+  api.fetchVolumeTexture.mockImplementation(async (id: string, limit?: number, limits?: Record<string, number>) => volumeTexture(id, limit ?? 20, limits));
   api.fetchUbCheck.mockImplementation(async (id: string) => ({ ...UB_CHECK, id }));
   api.fetchDpdfFeatures.mockImplementation(async (id: string) => ({ ...DPDF_FEATURES, id }));
   api.fetchRingIsotropy.mockImplementation(async (id: string, shells: { q: number; fwhm: number }[]) => ringIsotropy(id, shells));
