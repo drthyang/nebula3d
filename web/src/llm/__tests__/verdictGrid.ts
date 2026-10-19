@@ -258,6 +258,8 @@ export function replyCases(): ReplyCase[] {
   ]);
   add("data problems only", [step("qmax_coverage", COVERAGE[12].m), step("ub_check", UB[8].m)]);
   add("a second grain and a UB off, then a UB check that finds it right", [step("grain_check", GRAIN[0].m), step("grain_check", GRAIN[1].m), step("ub_check", UB[0].m)]);
+  // A UB check that cannot judge the UB hides no earlier UB evidence (2.4.7b).
+  add("a UB off, then a UB check on a symmetrised volume", [step("grain_check", GRAIN[1].m), step("ub_check", UB[3].m)]);
   add("an unknown tool's verdict", [step("verdict_tool", { verdict: "needs attention" })]);
   return out;
 }

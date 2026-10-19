@@ -100,8 +100,9 @@ export const D3_ANSWER_UB_FROM_UB_CHECK_ONLY = false;
  * missing output (D11, but the 3D-ΔPDF's), words that are no label (D12), and
  * grain_check's findings that name no second grain (D3). On the UB, the newest
  * evidence across ub_check and grain_check's "UB off" wins, for both readers
- * (achievedOf, and the ub row's sources). "newest that decides" (passes or
- * needs attention): the answer checks' reading before 2.4.7.
+ * (achievedOf, and the ub row's sources); a ub_check that cannot judge the UB
+ * (symmetrised) is not read for it, but alone (2.4.7b). "newest that decides"
+ * (passes or needs attention): the answer checks' reading before 2.4.7.
  */
 export const D7_SELECTION: Record<Reader, "newest" | "newest that decides"> = { achieved: "newest", answer: "newest" };
 
@@ -210,6 +211,19 @@ const grainFindsUbOff = (o: Outcome): boolean => o.reasons.includes("UB off") ||
 /** grain_check's outcome as the answer checks' UB topic reads it (D3, D3a): the UB off needs attention; anything else says nothing of the UB. */
 const grainAsUb: Cell = (o) => (grainFindsUbOff(o) ? "attention" : undefined);
 
+/**
+ * Whether a ub_check judged the UB. One that cannot (a symmetrised volume, its
+ * symmetric fit: UB_NOT_JUDGED, the reason "symmetrised") decides nothing of
+ * the UB, so it is not read for the UB topic's newest evidence and hides no
+ * earlier evidence, in either reader (D7, plan 2.4.7b). Alone, the answer
+ * checks still read it as needing attention, so a claim that the UB is right
+ * is sent back (D4): the ub row's orElse.
+ */
+const ubJudged = (o: Outcome): boolean => !o.reasons.includes("symmetrised");
+
+/** ub_check's outcome as UB evidence to the answer checks: its kind, where it judged the UB (D7). */
+const ubAsEvidence: Cell = (o) => (ubJudged(o) ? o.kind : undefined);
+
 /** The outcomes a reader reads for one reading, and how it reads each. */
 type Sources = [CheckId, Cell][];
 
@@ -219,6 +233,9 @@ interface Row {
   // across these sources; or (every) each group's newest, combined: it needs
   // attention if one does, and passes only when all pass (D8).
   answer: Sources | { every: Sources[] };
+  // Read only when the answer's sources read nothing: evidence that decides
+  // nothing beside other evidence, yet is not nothing alone (the UB's).
+  orElse?: Sources;
 }
 
 const stage = (check: Stage): Row => ({ achieved: stageForAchieved, answer: [[check, stageForAnswer]] });
@@ -259,7 +276,12 @@ const MATRIX: Record<CheckId, Row> = {
     ],
   },
   // ub_check writes the UB's data problems and its kind for the answer checks by one rule (D4, in rules.ts: UB_TURNED, UB_NOT_JUDGED).
-  ub: { achieved: () => "info", answer: D3_ANSWER_UB_FROM_UB_CHECK_ONLY ? [["ub", asIs]] : [["ub", asIs], ["grain", grainAsUb]] },
+  // The newest UB evidence across it and grain_check's "UB off" (D3, D7); a ub_check that cannot judge the UB is read only alone (2.4.7b).
+  ub: {
+    achieved: () => "info",
+    answer: D3_ANSWER_UB_FROM_UB_CHECK_ONLY ? [["ub", ubAsEvidence]] : [["ub", ubAsEvidence], ["grain", grainAsUb]],
+    orElse: [["ub", asIs]],
+  },
 };
 
 // ---------------------------------------------------------------- a reply
@@ -329,7 +351,8 @@ function achievedOf(found: readonly Found[], at: Record<PipelineStage, number>):
   const ubCheck = pick(found, at, "achieved", [["ub", MATRIX.ub.achieved]]);
   const grainCheck = pick(found, at, "achieved", [["grain", MATRIX.grain.achieved]]);
   if (ubCheck || grainCheck) measuredAny = true;
-  const evidence = pick(found, at, "achieved", [["ub", MATRIX.ub.achieved], ["grain", grainUbForAchieved]]);
+  // A ub_check that cannot judge the UB is no UB evidence here (2.4.7b): it names no problem, and hides none.
+  const evidence = pick(found, at, "achieved", [["ub", (o) => (ubJudged(o) ? MATRIX.ub.achieved(o) : undefined)], ["grain", grainUbForAchieved]]);
   if (evidence) dataProblems.push(...evidence.o.dataProblems.filter((p) => !isOriginProblem(p)));
   if (ubCheck) dataProblems.push(...ubCheck.o.dataProblems.filter(isOriginProblem));
   if (!measuredAny) return null;
@@ -348,8 +371,9 @@ function achievedOf(found: readonly Found[], at: Record<PipelineStage, number>):
 function answerOf(found: readonly Found[], at: Record<PipelineStage, number>): Partial<Record<CheckId, Kind>> {
   const checks: Partial<Record<CheckId, Kind>> = {};
   for (const check of Object.keys(MATRIX) as CheckId[]) {
-    const answer = MATRIX[check].answer;
-    const kind = Array.isArray(answer) ? pick(found, at, "answer", answer)?.kind : combined(answer.every.map((sources) => pick(found, at, "answer", sources)?.kind));
+    const { answer, orElse } = MATRIX[check];
+    const read = Array.isArray(answer) ? pick(found, at, "answer", answer)?.kind : combined(answer.every.map((sources) => pick(found, at, "answer", sources)?.kind));
+    const kind = read ?? (orElse ? pick(found, at, "answer", orElse)?.kind : undefined);
     if (kind) checks[check] = kind;
   }
   return checks;

@@ -401,6 +401,20 @@ describe("the newest current result, as {{achieved}} reads it (D7, 2.4.7)", () =
     expect(verdicts({ reply: [left, missing] }).achieved?.stages.rings).toBe("attention");
   });
 
+  it("reads no ub_check that cannot judge the UB over earlier UB evidence: the grain's UB off stands (2.4.7b)", () => {
+    // Synthetic: grain_check finds one rotation of 0.9° putting 38 of the 40 strongest orbits back on the lattice;
+    // then ub_check runs on a symmetrised volume, whose symmetric fit cannot see a misorientation.
+    const facts: GrainFacts = { off_lattice_orbits: 60, judged: 40, near_bragg_nodes: 6, near_offset_angle_deg: null, far: [], rotated_copy: { indexed: 38, misorientation_deg: 0.9 }, random_control: 2, symmetrised: true };
+    const off = step("grain_check", {}, { ...shownGrains(facts, judge("grain", facts).words!), off_lattice_peaks: 900 });
+    const symmetrised = step("ub_check", {}, { fit: "symmetric", symmetrised: true, orientation_change_deg: 0.3, origin_shift_rlu: null });
+    expect(verdicts({ reply: [off, symmetrised] }).achieved?.dataProblems).toEqual(["the UB is off by 0.9° (one rotation puts the off-lattice peaks back on the Bragg lattice)"]); // none before 2.4.7b
+    expect(contradictions("The UB is right.", [off, symmetrised]).map((t) => t.id)).toEqual(["ub"]);
+    expect(contradictions("The UB is off by about a degree; refine it.", [off, symmetrised])).toEqual([]);
+    // Alone, the symmetrised check still sends a right UB back, and names no problem.
+    expect(contradictions("The UB is right.", [symmetrised]).map((t) => t.id)).toEqual(["ub"]);
+    expect(verdicts({ reply: [symmetrised] }).achieved?.dataProblems).toEqual([]);
+  });
+
   it("takes the newest UB evidence across ub_check and grain_check's UB off, for both readers", () => {
     // Synthetic grain facts: one rotation of 0.9° puts 38 of the 40 strongest orbits back on the lattice.
     const facts: GrainFacts = { off_lattice_orbits: 60, judged: 40, near_bragg_nodes: 6, near_offset_angle_deg: null, far: [], rotated_copy: { indexed: 38, misorientation_deg: 0.9 }, random_control: 2, symmetrised: false };
