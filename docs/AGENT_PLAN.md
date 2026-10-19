@@ -23,13 +23,22 @@ prompt or test.
   skill, and a threshold change that alters the science all need the user's
   approval. Items waiting for it are marked **(approval)**; items the user has
   approved are marked **(approved)**. Skill text goes in its own PR, which waits
-  for the user (the rule of 2026-10-17); the rest merges when green.
+  for the user (the rule of 2026-10-17); the rest merges when green. On
+  2026-10-19 the user delegated approvals to the manager, for everything except
+  skill text, the tool descriptions that restate a skill, live runs and
+  releases. Items approved on that delegation are marked **(approved by the
+  manager)**. Each one is decided on the physics and the dev cases with a
+  known-answer test, re-runs arm A on dev, shows its snapshot diff, and has a
+  decision record in the findings record.
 - **No API spend.** Local models and scripted CI only, until the user says
   otherwise. The live runs are postponed until this plan's core is done.
 - **Each PR** passes CI (the Python matrix, mypy, the web lint, tests and both
   builds), updates its docs, and leaves the app working. A refactor PR keeps the
   model-visible text unchanged; the snapshot test (2.0) shows any change to it
-  in the diff.
+  in the diff. Since 2026-10-19 no PR edits `CHANGELOG.md` or this plan. Each
+  adds a fragment in `changes/unreleased/`, which one PR folds in at phase 6.
+  This plan is brought up to date by a status PR after about every five
+  merges.
 
 ## What is wrong now
 
@@ -137,17 +146,18 @@ harness. Its terms: a **module** is **deep** when a small **interface** hides a
 lot of behaviour, and **shallow** when the interface is nearly the
 implementation; a **seam** is where an interface lives, and an **adapter** fills
 it; depth gives callers **leverage** and maintainers **locality**. It found
-seven candidates. The user decided on 2026-10-19:
+seven candidates. The user decided on 2026-10-19, and on the same day widened
+the scope to all seven and every phase, with approvals delegated to the manager:
 
 | # | Candidate | Strength | Dependency | The user's decision |
 | --- | --- | --- | --- | --- |
 | 1 | The check-verdict module | Strong | in-process | start set (2.3) |
 | 2 | Each tool declares its facts | Strong | in-process | start set (2.2), after the `dpdf_contrast` fix alone (2.1) |
 | 3 | A tool result carries both readings | Strong | in-process | start set (2.6) |
-| 4 | The executor owns a round of calls | Worth exploring | in-process | waits for the approval batch (3.1) |
-| 5 | One reader of an answer's words | Worth exploring | in-process | waits (3.2) |
-| 6 | Coverage measured once, in Python | Worth exploring | local-substitutable | waits (3.3) |
-| 7 | Replays record at the client seam | Speculative | ports & adapters | waits (3.4) |
+| 4 | The executor owns a round of calls | Worth exploring | in-process | approved by the manager, 2026-10-19 (3.1) |
+| 5 | One reader of an answer's words | Worth exploring | in-process | approved by the manager, 2026-10-19 (3.2) |
+| 6 | Coverage measured once, in Python | Worth exploring | local-substitutable | approved by the manager, 2026-10-19 (3.3) |
+| 7 | Replays record at the client seam | Speculative | ports & adapters | approved by the manager, 2026-10-19 (3.4) |
 
 1. **The check-verdict module.** The rules for judging a check live in
    `report/report.ts`, which calls itself an assembler (`:1-5`). The tools
@@ -235,8 +245,8 @@ Leads checked and dropped by the review:
 
 The first draft of this section (this PR's first commit) listed every limit or
 measurement written in more than one place. The review kept these as science,
-not architecture. Each change here moves a number or a verdict, so each is
-**(approval)**:
+not architecture. Each change here moves a number or a verdict. Each was
+**(approved by the manager)** on 2026-10-19, on the user's delegation:
 
 - **The pedestal**: the tools' rule and the scorer's differ by design but are
   not mapped to each other (`metrics/flatten.ts:99-100`,
@@ -274,7 +284,7 @@ These are on top of the review's list ([pilot-review.md](pilot-review.md#tools))
   `verdict.ts`). A model that wants to know whether the run met its goal has to
   infer it from each stage's result, and a wrong guess costs it a send-back
   (`answerChecks.ts`, `overallContradiction`). A reading tool that returns the
-  computed verdict would close the gap **(approval)**.
+  computed verdict would close the gap **(approved by the manager; 4.6)**.
 - **The coverage verdict cannot fail on the default window.** The backend
   shrinks its window until at most `support_tol` = 1e-3 of the window's weight
   is on unmeasured space (`src/nebula3d/analysis/delta_pdf.py:397`,
@@ -298,7 +308,7 @@ These are on top of the review's list ([pilot-review.md](pilot-review.md#tools))
 - **No in-app regrid onto a refined UB.** A turned UB can only be reported. The
   skill points at `examples/refine_ub.py`
   (`.claude/skills/reduction-qc/SKILL.md:37-38`). Whether that wants an action
-  tool is the user's call **(approval)**.
+  tool was the user's call **(approved by the manager; 4.7)**.
 - **Forbidden nodes, λ/2 and multiple scattering** are judged from
   `line_profile` by eye (`.claude/skills/bragg-node-audit/SKILL.md:43-44`). No
   tool measures the 2h 2k 2l test or an orbit's members.
@@ -452,11 +462,13 @@ Beyond single contradictions:
 | 1.3 | **The ablation is structural** **(approved 2026-10-19; built as 2.5)**. The system prompt is built from sections, not edited by string replace (`evals/validation.ts:96-100`). With skills off, no tool description, tool result or goal names a skill or carries a skill's step: `dpdf_peaks`'s description drops "(delta-pdf-interpretation)" and its order (`tools/index.ts:1062`), and the flatten's goal drops "a rising one wants flattenQ2" (`tune/prompts.ts:29`), which belongs to reduction-qc. A test runs a scripted arm-C session and finds no skill name, and no sentence of a skill, in any request or result. | M |
 | 1.4 | **The holdout scan widened** (#21, merged) to all of `web/src`, `src`, `tests`, `examples`, `scripts` and `docs` (the validation's own records and tables allowed), and to the test cases' opaque labels, seeds, planted vectors and fault sizes as well as their ids (`tests/test_validation.py:154-178`). | S |
 | 1.5 | **Replays recompute, fixtures are checked.** The answer checks and `verdict.ts` recompute a stage's verdict from its numbers by the current rule instead of trusting a recorded label (`verdict.ts:43`, `answerChecks.ts:253`). Each fixture (`evals/fixtures/*.json`) is re-recorded by its probe, and a test checks every recorded result against the current tool's output shape (3.5), so a fixture cannot lag a tool. | M |
-| 1.6 | **The prompts say what the checks judge.** The system prompt and the stage-review prompts stop stating the old criteria: the flatten's 1σ "flat" and "over the whole coverage" (`prompts/system.ts:59-64`), "r clearly below 1 flags a transform problem" (`system.ts:80-81`), and "trustworthy (consistency_pearson_r)" (`prompts/templates.ts:70`). They say what the verdicts now judge, from the check-verdict module (2.3). The four checks in the system prompt (`system.ts:120-128`) name all five stages and the UB, as `{{achieved}}` needs **(approval: it changes the Pilot's method in both arms)**. | S |
+| 1.6 | **The prompts say what the checks judge.** The system prompt and the stage-review prompts stop stating the old criteria: the flatten's 1σ "flat" and "over the whole coverage" (`prompts/system.ts:59-64`), "r clearly below 1 flags a transform problem" (`system.ts:80-81`), and "trustworthy (consistency_pearson_r)" (`prompts/templates.ts:70`). They say what the verdicts now judge, from the check-verdict module (2.3). The four checks in the system prompt (`system.ts:120-128`) name all five stages and the UB, as `{{achieved}}` needs **(approved by the manager: it changes the Pilot's method in both arms)**. | S |
 | 1.7 | **The skill gate holds within a reply.** A skill read in an earlier turn no longer opens the gate in a later one, since its text is not carried (`components/ChatView.tsx:218`, `:224`, `skills.ts:235-243`); the model is told to read it again. The arms are unaffected: a validation run is one turn. | S |
 | 1.8 | **Run records keep whole results** (now 2.6). `runAgent` returns each step's whole result beside the text the model read (`agent.ts:222`, `:465-473`), and the record's decisions, number provenance and candidate findings read the whole one (`evals/validation.ts:298-303`), as its field already says. | S |
 | 1.9 | **One reader of an answer's words** (now 3.2, after the approval batch). The answer checks and the validation's graders share `NEGATION`, `clauses`, `sentences` and the number reader (`answerChecks.ts:160-190`, `:393-410`; `evals/checks.ts:15-55`; `evals/validation.ts:147-151`), or a test lists the sentences on which they differ and why. | S |
 | 1.10 | **Done.** The findings record takes the status, the commit, the regression tests, a note and the user's decision (`evals/findings.ts`, `docs/evals/validation/review-findings.json`); a test holds every implemented finding to them. | S |
+| 1.11 | **The test split stays out of pytest's default output** (#25, merged). It runs only under `NEBULA_HOLDOUT_TESTS=1`, which CI sets, under masked names. Follow-ups, approved by the manager: the test split's definitions move to their own module, which only the opt-in loader imports, and test failures and files on disk never carry a test case. Two builders saw test values while reading `cases.py`; each was closed out, and later work went to fresh builders. | S |
+| 1.12 | **Local live runs need a 48k context** (#29). Measured by #27: the worst local turn needs about 45.6k tokens before compaction, and 37–42k after. The run policy sets a minimum of 49,152, the harness refuses a run below it, and each run record keeps its window. The context guard's numbers are unchanged. Still to do: `CUT_OFF_NOTE` in `agent.ts`, the live scenario evals' own check, and `docs/evals.md:155`. | S |
 
 ### Phase 2 — The start set (the user's decision, 2026-10-19)
 
@@ -474,10 +486,10 @@ Each PR:
 | 2.0 | **A snapshot of what the model sees** (#19, merged). A test snapshots the system prompt in both arms, every tool's name, description and parameters, the local model's tool sets, the goals and criteria, the answer checks' send-back text, and a sample of each tool's result text, so any change to them shows in the diff. | S |
 | 2.1 | **`dpdf_contrast` clears the repeat guard** (#20, merged). It acts but is missing from `CHANGES_STATE` (`agent.ts:110`, `:441`). It changes the repeat path only; a test runs `{}`, `{reset: true}`, `{}`. | S |
 | 2.2 | **Each tool declares its facts** (candidate 2; #23, merged). Whether it acts, reaches the backend or changes a later reading; the topic it settles and the stage it reads; whether it makes a reply reportable; its labels and what it highlights. The side lists derive from the registry, and a test over the registry replaces them. A list that was stale is named; any difference that changes behaviour is kept as a named exception. | M |
-| 2.3 | **The check-verdict module** (candidate 1). One module owns each check's rule, its outcome kind (met, needs attention, not judged, with reasons and data problems), the words built from that kind, and the run's achieved. Tools attach the kind; `verdict.ts`, the answer checks and the report read it. Recorded results with words only are read by one adapter. D1–D6 are kept, named and pinned; each unification is a question for the user before it changes a verdict **(approval)**. | L |
+| 2.3 | **The check-verdict module** (candidate 1; #28, merged). One module owns each check's rule, its outcome kind (met, needs attention, not judged, with reasons and data problems), the words built from that kind, and the run's achieved. Tools attach the kind; `verdict.ts`, the answer checks and the report read it. Recorded results with words only are read by one adapter. D1–D18 are kept, named and pinned. D1–D9 were decided by the user (2.4), and D10–D18 by the manager (2.4b). | L |
 | 2.4 | **The user's answers of 2026-10-19, one small PR each, after 2.3** **(approved)**. Each re-runs arm A on dev and the snapshot, and says which case moved and why if arm A moves. See the table below. | 11 × S |
 | 2.5 | **Arm C removes the whole method** **(approved 2026-10-19; was 1.3)**. With skills off, no tool description, tool result or goal names a skill or carries a skill's step: `dpdf_peaks`' description (`tools/index.ts:1062`), the flatten's goal (`tune/prompts.ts:29`). The system prompt is built from sections, not by string replace (`evals/validation.ts:96-100`). A structural switch, built after 2.4; it changes what the model sees under skills off only. | M |
-| 2.6 | **A tool result carries both readings** (candidate 3; was 1.8). A step holds the whole result and the text the model read, parsed once. The record's decisions, number provenance and candidate findings read the whole result, as its field says (`evals/validation.ts:301`). It changes the record, not what the model sees. | M |
+| 2.6 | **A tool result carries both readings** (candidate 3; was 1.8). **(approved by the manager)** A step holds the whole result and the text the model read, parsed once. The record's decisions, number provenance and candidate findings read the whole result, as its field says (`evals/validation.ts:301`). It changes the record, not what the model sees. | M |
 
 The answers (batch 1, decided by the user on 2026-10-19, every recommendation
 accepted). They are filed in the findings record
@@ -508,14 +520,32 @@ The field and the 11 entries are in #22 (merged).
 | 2.4.10 | **10** yes | A local model is also offered `ub_check` and `texture_check` for a generic question. The PR reports the token change against the 32k window. |
 | 2.4.11 | **11** yes | The report also runs `ub_check`, so its achieved names a turned UB. |
 
+Batch 2, decided by the manager on the user's delegation on 2026-10-19, all as
+recommended. These are the disagreements found while building 2.3. They follow
+one rule: a check with no evidence never passes ("not judged"), and verdicts
+come from the numbers, not from recorded labels. D17 goes first, as a bug fix.
+Each is its own commit with a decision record. D's in one function share a PR.
+
+| PR | Disagreement | What changes |
+| --- | --- | --- |
+| 2.4b.1 | **D17** | The loop's `already_called` pointer resolves to the result it points at, so `{{achieved}}` keeps a "too far" it repeats. |
+| 2.4b.2 | **D10** | Legacy coverage words ("past", "unmeasured", "not"), found only in recordings, read as attention for every reader. |
+| 2.4b.3 | **D11** | A ΔPDF with no output is "not judged", never a pass. |
+| 2.4b.4 | **D12** | The answer checks judge a stage from its numbers when the recorded words are no verdict label. |
+| 2.4b.5 | **D13** | The report's ΔPDF card counts the evaluation's own symmetry break. |
+| 2.4b.6 | **D14** | The report counts a fill bias even when no seam was judged. |
+| 2.4b.7 | **D15** | A ΔPDF evaluation that measured nothing is "not judged". |
+| 2.4b.8 | **D16** | A `ub_check` with no angle is "not judged". |
+| 2.4b.9 | **D18** | The report and a reply both judge a stage from its numbers (with 1.5). |
+
 ### Phase 3 — After the user's approval batch
 
 | PR | Change | Size |
 | --- | --- | --- |
-| 3.1 | **The executor owns a round of calls** (candidate 4): parsing, the call key, repeats, invalidation, the skill gate and the result budget in one module. The tools then split out of `tools/index.ts` (1830 lines) for locality. | M |
-| 3.2 | **One reader of an answer's words** (candidate 5; was 1.9). It shares the tokenising, and the gate's topics and the grader's claims stay apart. **(approval)**: grades can shift, and earlier records would be re-scored. | S |
-| 3.3 | **Coverage measured once, in Python** (candidate 6). `qmax_coverage` reads `src/nebula3d/analysis/coverage.py` behind both adapters; the planes only show where. **(approval)**: the coverage verdict can change on a volume that stores zeros. | S |
-| 3.4 | **A recorded adapter at the client seam** (candidate 7), so CI replays run the real tools and rules on synthetic recorded slices. | M |
+| 3.1 | **The executor owns a round of calls** (candidate 4) **(approved by the manager)**: parsing, the call key, repeats, invalidation, the skill gate and the result budget in one module. The tools then split out of `tools/index.ts` (1830 lines) for locality. | M |
+| 3.2 | **One reader of an answer's words** (candidate 5; was 1.9). It shares the tokenising, and the gate's topics and the grader's claims stay apart. **(approved by the manager)**: the grader takes the app's 0.05° UB rule and retires its 0.1°; every grading change on dev is reported, and earlier records are re-scored. | S |
+| 3.3 | **Coverage measured once, in Python** (candidate 6). **(approved by the manager)** `qmax_coverage` reads `src/nebula3d/analysis/coverage.py` behind both adapters; the planes only show where. The coverage verdict can change on a volume that stores zeros. | S |
+| 3.4 | **A recorded adapter at the client seam** (candidate 7) **(approved by the manager)**, so CI replays run the real tools and rules on synthetic recorded slices. | M |
 | 3.5 | **Shape contracts and limits across languages.** Each tool's result has a shape contract that the fixtures are checked against (1.5). A test fails when a limit shared between Python and TypeScript differs. No value changes. | M |
 
 ### Phase 4 — Tool science
@@ -527,18 +557,18 @@ them.
 
 | PR | Change | Size |
 | --- | --- | --- |
-| 4.1 | **The pedestal in 3-D.** The flatten's verdict reads the shell floors of the whole volume, which the flatten already computes (`src/nebula3d/preprocessing/radial_flatten.py:107`, `raw_levels`), instead of three planes (`tune/evaluate.ts:15`, `:295`), over the same outer half of the shells the counts reach. A known-answer test on a constructed volume; the dev sweep must still flag only the planted background. **(approval)** if it moves the verdict on any dev case. | M |
-| 4.2 | **The fill's texture in 3-D.** `texture_check` takes each hole as a 3-D component with its 3-D rim, served by the Python server, instead of 2-D components of a cut (`metrics/texture.ts:77`). The criterion stays batch 1's; a test pins that the dev cases read as before or better. **(approval)** if it moves the verdict on any dev case. | M |
-| 4.3 | **The symmetry off the x–y plane.** `symmetry_check` also tests the operations that move c, on the x–z and y–z sections (`tools/index.ts:924-934`). Known-answer tests on symmetric and broken constructed ΔPDFs. **(approval)**: it judges operations the check never judged, so it can turn a verdict. | M |
-| 4.4 | **`dpdf_peaks` groups by the declared symmetry** when the file declares operations, and says so; by sign, length and size otherwise (`src/nebula3d/analysis/dpdf_features.py:25-28`). Its default limit is set so that an orbit-grouped list reaches the planted correlations on the dev control. | S |
+| 4.1 | **The pedestal in 3-D.** The flatten's verdict reads the shell floors of the whole volume, which the flatten already computes (`src/nebula3d/preprocessing/radial_flatten.py:107`, `raw_levels`), instead of three planes (`tune/evaluate.ts:15`, `:295`), over the same outer half of the shells the counts reach. A known-answer test on a constructed volume; the dev sweep must still flag only the planted background. **(approved by the manager)** if it moves the verdict on any dev case. | M |
+| 4.2 | **The fill's texture in 3-D.** `texture_check` takes each hole as a 3-D component with its 3-D rim, served by the Python server, instead of 2-D components of a cut (`metrics/texture.ts:77`). The criterion stays batch 1's; a test pins that the dev cases read as before or better. **(approved by the manager)** if it moves the verdict on any dev case. | M |
+| 4.3 | **The symmetry off the x–y plane.** `symmetry_check` also tests the operations that move c, on the x–z and y–z sections (`tools/index.ts:924-934`). Known-answer tests on symmetric and broken constructed ΔPDFs. **(approved by the manager)**: it judges operations the check never judged, so it can turn a verdict. | M |
+| 4.4 | **`dpdf_peaks` groups by the declared symmetry** (Python half #24, merged; the TypeScript half raises the default limit from 12 to 24) when the file declares operations, and says so; by sign, length and size otherwise (`src/nebula3d/analysis/dpdf_features.py:25-28`). Its default limit is set so that an orbit-grouped list reaches the planted correlations on the dev control. | S |
 | 4.5 | **The coverage verdict says what it can judge.** With the window fitted to the coverage, `qmax_coverage` says that the weight is the backend's own target and judges the counts' edge and the band instead (`metrics/coverage.ts:34`, `src/nebula3d/analysis/delta_pdf.py:397`). | S |
-| 4.6 | **A reading tool for the computed verdict** **(approval)**: `run_verdict` returns what `{{achieved}}` would say now (`verdict.ts`), so a model reads it before it writes. | S |
-| 4.7 | **A regrid onto the refined UB** **(approval)**: an action tool that writes a regridded raw volume (`examples/refine_ub.py`), for the user to run when `ub_check` finds a turn. Changes what arm A can report only if the user adds it to the default pipeline; it does not by itself. | M |
+| 4.6 | **A reading tool for the computed verdict** **(approved by the manager)**: `run_verdict` returns what `{{achieved}}` would say now (`verdict.ts`), so a model reads it before it writes. | S |
+| 4.7 | **A regrid onto the refined UB** **(approved by the manager; Python half #26, merged)**: an action tool that writes a regridded raw volume (`examples/refine_ub.py`), for the user to run when `ub_check` finds a turn. Changes what arm A can report only if the user adds it to the default pipeline; it does not by itself. | M |
 | 4.8 | **Sample facts are refused in code** unless the user's message in this turn names the change, as bragg-node-audit says they already are (`bragg-node-audit/SKILL.md:67-68`). Today `update_settings` takes them from the model (`tools/index.ts:1436`) and only its description asks it to wait (`:1413`). The validation already counts such a change as unsafe; the app should refuse it. | S |
-| 4.9 | **The pedestal, mapped.** `docs/evals.md` states how the tool's pedestal rule and the scorer's pedestal relate, and the dev sweep reports both on every case, so a run's tool verdict and its score can be read side by side. **(approval)** for any change to either rule. | S |
-| 4.10 | **One σ and one Auto in the ΔPDF tools.** Each ΔPDF tool says which σ it quotes, or they share one (`metrics/dpdf.ts:120-124`, `tools/index.ts:1002-1003`, `dpdf_features.py:85-87`). `dpdf_contrast` calls the page's `autoLevels` (`components/colorScale.ts`). **(approval)** for any σ whose value changes. | S |
-| 4.11 | **The flatten judged over the run's own range.** `assess_stage` passes the run's fit range and floor percentile instead of [0.8, 10] and 0.25 (`context/pipelineContext.ts:151`, `sliceStats.ts:180`). **(approval)**: it moves which shells the floors are judged on. | S |
-| 4.12 | **Defaults agreed, the browser build checked.** The page's and the package's defaults agree, or a comment says why not: the ring texture order (`tune/catalog.ts:141` against `_ringplane.py:63`) and the ΔPDF window (`pipeline.py:562-563` against `delta_pdf.py:387-388`). The consistency view uses the run's settings (`server/consistency.py:136-138`). A parity test runs a small synthetic volume through the native and the browser paths (float32, low memory) and pins the verdicts that may differ. **(approval)** for which ring order or window becomes the default. | M |
+| 4.9 | **The pedestal, mapped.** `docs/evals.md` states how the tool's pedestal rule and the scorer's pedestal relate, and the dev sweep reports both on every case, so a run's tool verdict and its score can be read side by side. **(approved by the manager)** for any change to either rule. | S |
+| 4.10 | **One σ and one Auto in the ΔPDF tools.** Each ΔPDF tool says which σ it quotes, or they share one (`metrics/dpdf.ts:120-124`, `tools/index.ts:1002-1003`, `dpdf_features.py:85-87`). `dpdf_contrast` calls the page's `autoLevels` (`components/colorScale.ts`). **(approved by the manager)** for any σ whose value changes. | S |
+| 4.11 | **The flatten judged over the run's own range.** `assess_stage` passes the run's fit range and floor percentile instead of [0.8, 10] and 0.25 (`context/pipelineContext.ts:151`, `sliceStats.ts:180`). **(approved by the manager)**: it moves which shells the floors are judged on. | S |
+| 4.12 | **Defaults agreed, the browser build checked.** The page's and the package's defaults agree, or a comment says why not: the ring texture order (`tune/catalog.ts:141` against `_ringplane.py:63`) and the ΔPDF window (`pipeline.py:562-563` against `delta_pdf.py:387-388`). The consistency view uses the run's settings (`server/consistency.py:136-138`). A parity test runs a small synthetic volume through the native and the browser paths (float32, low memory) and pins the verdicts that may differ. **(approved by the manager)** for which ring order or window becomes the default. | M |
 
 ### Phase 5 — Skills
 
@@ -547,10 +577,11 @@ Skill text goes in its own PR, which waits for the user (5.2 to 5.4). The lint (
 | PR | Change | Size |
 | --- | --- | --- |
 | 5.1 | **Skill lint in CI.** Every tool and result field a skill names exists (from the tool registry, 2.2, and the tools' shape contracts, 3.5), and every gate number is bound to its constant in the check-verdict module (2.3). It lands with an allow-list of today's violations, which 5.2 empties. | M |
-| 5.2 | **(approval; each draft goes to the user before it merges)** #17, then the contradictions in E. The tool descriptions and goals that restate a skill change in the same PR **(approval)**: `ub_check` (`tools/index.ts:1169`), `grain_check` (`:1113`), `dpdf_peaks` (`:1062`), `radial_profile` (`:766`) and the flatten's goal (`tune/prompts.ts:29`). | M |
+| 5.2 | **(approval; each draft goes to the user before it merges)** #17, then the contradictions in E, and the `ub_refinement` reference pointing at `docs/regrid.md` for the regrid action and its refusals (from #26, where the reference stayed as on main, since `read_skill` serves it). The tool descriptions and goals that restate a skill change in the same PR **(approval)**: `ub_check` (`tools/index.ts:1169`), `grain_check` (`:1113`), `dpdf_peaks` (`:1062`), `radial_profile` (`:766`) and the flatten's goal (`tune/prompts.ts:29`). | M |
 | 5.3 | **A compacted skill keeps its gates** **(approval for each skill's `## Gates` text)**. Each skill gets a `## Gates` section with its numbers and rules, and compaction keeps a skill's gates whole instead of its first 400 characters (`compact.ts:44-45`). A test compacts each skill and finds every gate number. | S |
 | 5.4 | **The skills read the tools as they are** **(approval)**: the declared symmetry from the tools that give it, not `describe_dataset`; the window on disk from `qmax_coverage` and `assess_stage`; a feature's size against the volume's σ; the ring rule's two further conditions and the verdict's three-times-noise rule; the grain tests' controls as they are; each reference by the section it means, by its exact heading, or the references split so a whole read is not cut at 12,000 characters (`skills.ts:154`). | M |
-| 5.5 | **The interviews brought up to date** (`docs/SKILL_INTERVIEWS.md`): batch 1's provisional limits (the fill-bias floor of 0.2, the pedestal's outer half), finding 6 recorded as decided, the origin's shift, `dpdf_peaks`' threshold and limit, and when a turned UB wants a regrid. | S |
+| 5.5 | **The interview guide brought up to date** (`docs/SKILL_INTERVIEWS.md`), with questions per skill; the interviews themselves are the user's time (the manager, 2026-10-19): batch 1's provisional limits (the fill-bias floor of 0.2, the pedestal's outer half), finding 6 recorded as decided, the origin's shift, `dpdf_peaks`' threshold and limit, and when a turned UB wants a regrid. | S |
+| 5.6 | **The worst turn's token budget** (#27, merged). A test runs the worst realistic turn through the agent loop and the guard's estimator, and pins the total: about 45.6k on a local model before compaction. Any growth fails the test, which then has to be updated deliberately. | S |
 
 ### Phase 6 — Freeze and re-baseline
 
@@ -569,17 +600,16 @@ Skill text goes in its own PR, which waits for the user (5.2 to 5.4). The lint (
 
 ## Order
 
-Phase 2 goes first, as the user decided on 2026-10-19: 2.0 to 2.6, stacked in
-that order. Phase 1's other items and 5.1 can run beside it, since they touch the
-harness and the skills' lint, not the modules phase 2 deepens. Phase 3 waits for
-the user's approval batch. Phase 4 needs 2.3, so each science fix lands in one
-check's rule and its outcome kind. Phase 5's content (5.2 to 5.5) waits for
-phase 4, so the skills describe the final tools, and goes in its own PRs for the
-user. Phase 6 is last.
-
-The core goes first: phase 2, then 1.1, 1.2, 1.4–1.7, 1.10, 4.8 and 5.1–5.3. These
-change what the validation would find. The rest is upkeep that can follow, before
-or after the validation.
+The whole plan goes ahead (the user's scope of 2026-10-19), as far as it can
+without the user's own items: skill text, the descriptions that restate a skill,
+live runs and releases. Phase 2 goes first, stacked: 2.0 to 2.6. Phase 1, the
+Python halves of phase 4, and 5.6 run beside it where they share no files.
+Phase 3 follows phase 2. Phase 4's TypeScript halves follow 2.3, so each science
+fix lands in one check's rule and its outcome kind. Phase 5's lint and gates
+code follow the tools they check. Its skill text (5.2–5.4) waits for the user,
+and 5.5 prepares the interview guide. Phase 6 is last. It freezes the code, runs
+arm A on dev and on the test split (`--report`, from a clean committed tree),
+reports, and stops. The live runs wait for the user.
 
 ## Risks
 
