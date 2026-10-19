@@ -85,7 +85,9 @@ const STAGE_INSTRUCTION: Record<ReviewStage, string> = {
 };
 
 // With tools, a review must look beyond the opening cut before its verdict,
-// with the tools that judge that stage.
+// with the tools that judge that stage. They are the system prompt's own
+// checks (TOOLS_PROMPT), the Pilot's method rather than a skill's, so the
+// skills' switch leaves them as they are.
 const REVIEW_TOOLS: Record<ReviewStage, string> = {
   rings: "assess_stage rings and radial_profile",
   punch: "assess_stage punch and an off-zero cut",

@@ -1,6 +1,6 @@
 # Opening messages: tools on, skills off (validation arm C)
 
-The same messages as arm B with the skills' listing cut from the system prompt, as `armSetup("C")` builds them (evals/validation.ts).
+`buildChatMessages(context, [], TASK, null, { tools: true, skills: false })`, as `armSetup("C")` builds them (evals/validation.ts): the skills' switch off (skills.ts), so the system prompt is built without its skills' section and read_skill is not offered. The rest is arm B's.
 
 Tools offered (23): describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer.
 
@@ -158,7 +158,6 @@ fills it in from the result. Any other number you write must come from a tool re
 context: the app checks each answer and sends one back that gives a verdict without its tool,
 a number from nowhere, a reference that names nothing, or a verdict the checks contradict.
 Quote the numbers the tools return. Keep tool calls purposeful — a few well-chosen ones.
-
 ```
 
 ### 1. user

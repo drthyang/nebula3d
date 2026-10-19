@@ -6,9 +6,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { Dataset } from "../../api/types";
+import { usePipelineStore } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
+import { buildChatMessages, systemPrompt } from "../prompts/templates";
 import { allSkills } from "../skills";
-import { CHAT_TOOLS, unreadSkillRefusal } from "../tools";
+import { CHAT_TOOLS, runToolCall, toolsWithSkills, unreadSkillRefusal } from "../tools";
 import type { EvalRun } from "./harness";
 import {
   ARMS,
@@ -88,27 +90,39 @@ describe("the split", () => {
 });
 
 describe("the arms", () => {
-  it("gives arm B the Pilot as shipped: its skills listed, read_skill offered, nothing read yet", async () => {
-    const { buildChatMessages } = await import("../prompts/templates");
-    const real = buildChatMessages({} as never, [], TASK, null, { tools: true });
-    const b = armSetup("B", CHAT_TOOLS, real);
-    expect(b.tools).toBe(CHAT_TOOLS);
+  const change = { id: "c1", type: "function" as const, function: { name: "update_settings", arguments: JSON.stringify({ changes: { punchMinSig: 6 } }) } };
+  const ds = dataset("v000000-B1");
+
+  it("gives arm B the Pilot as shipped: the skills on, their section in the system prompt, nothing read yet", async () => {
+    const b = armSetup("B", {} as never);
+    expect(b.skills).toBe(true);
     expect(b.skillsRead.size).toBe(0);
+    expect(b.messages).toEqual(buildChatMessages({} as never, [], TASK, null, { tools: true }));
+    expect(b.messages[0].content).toBe(systemPrompt({ tools: true }));
     expect(JSON.stringify(b.messages)).toContain("read_skill");
+    expect(toolsWithSkills(CHAT_TOOLS, b.skills)).toBe(CHAT_TOOLS);
+    // B's change waits for the punch's skill.
+    const refused = await runToolCall(change, CHAT_TOOLS, { dataset: ds, datasets: [ds], skills: b.skills, skillsRead: b.skillsRead });
+    expect(refused.text).toMatch(/^Error: read the method first/);
   });
 
-  it("takes arm C's skills away without leaving the gate to refuse its changes", async () => {
-    const { buildChatMessages } = await import("../prompts/templates");
-    const real = buildChatMessages({} as never, [], TASK, null, { tools: true });
-    const c = armSetup("C", CHAT_TOOLS, real);
-    expect(c.tools.some((t) => t.name === "read_skill")).toBe(false);
-    expect(c.tools.length).toBe(CHAT_TOOLS.length - 1);
-    const system = JSON.stringify(c.messages[0]);
-    for (const s of allSkills()) expect(system).not.toContain(s.name);
-    expect(JSON.stringify(real[0])).toContain(allSkills()[0].name); // B's prompt does list them
-    const change = { changes: { punchMinSig: 6 } };
-    expect(unreadSkillRefusal("update_settings", change, armSetup("B", CHAT_TOOLS, real).skillsRead)).not.toBeNull();
-    expect(unreadSkillRefusal("update_settings", change, c.skillsRead)).toBeNull();
+  it("gives arm C the switch off: no skills' section, no read_skill, and no gate to refuse its changes", async () => {
+    const c = armSetup("C", {} as never);
+    expect(c.skills).toBe(false);
+    expect(c.messages[0].content).toBe(systemPrompt({ tools: true, skills: false }));
+    // The rest of the opening is B's.
+    expect(c.messages.slice(1)).toEqual(armSetup("B", {} as never).messages.slice(1));
+    const opening = JSON.stringify(c.messages);
+    for (const s of allSkills()) expect(opening).not.toContain(s.name);
+    expect(opening).not.toMatch(/skill/i);
+    const offered = toolsWithSkills(CHAT_TOOLS, c.skills);
+    expect(offered.map((t) => t.name)).toEqual(CHAT_TOOLS.map((t) => t.name).filter((n) => n !== "read_skill"));
+    // No skill to read, and no gate: C may change what B may, with nothing read.
+    usePipelineStore.setState({ punchMinSig: "4" });
+    const changed = await runToolCall(change, offered, { dataset: ds, datasets: [ds], skills: c.skills, skillsRead: c.skillsRead });
+    expect(changed.ok, changed.text).toBe(true);
+    expect(c.skillsRead.size).toBe(0);
+    expect(unreadSkillRefusal("update_settings", { changes: { punchMinSig: 6 } }, c.skillsRead)).not.toBeNull(); // the gate's rule, which C never meets
   });
 });
 

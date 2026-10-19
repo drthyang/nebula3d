@@ -135,6 +135,9 @@ const judged = (faults: Reason[], also: Reason[] = []): Judged =>
 interface StageRule {
   criterion: string; // the report's and the tools' statement of the rule (WORDS.criterion)
   goal: string; // the stage's goal (WORDS.goal): in assess_stage's single-stage result and the tuning prompts
+  // The goal with the skills off (the switch, skills.ts; WORDS.goalWithoutSkills):
+  // without the step of a skill it restates. Left out: the goal restates none.
+  goalWithoutSkills?: string;
   ownCriterion?: string; // the stage's own evaluation's, where it judges less than the report
   judge: (m: StageNumbers) => Judged;
 }
@@ -203,9 +206,16 @@ const backfill: StageRule = {
  */
 export const FLATTEN_FLOOR_SIGMA_NOTE = "reported, not judged";
 
+// The flatten's goal, but for what to change about a pedestal left: that is
+// reduction-qc's step 6 (a floor rising with |Q| wants the b·Q² term and a fit
+// range reaching the coverage), which the goal restates with the skills on.
+const FLATTEN_GOAL =
+  "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself. A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ";
+
 const flatten: StageRule = {
   criterion: "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (the 1σ limit dropped at the user's choice, 2026-10-17; provisional).",
-  goal: "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself. A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ: a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations.",
+  goal: `${FLATTEN_GOAL}: a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations.`,
+  goalWithoutSkills: `${FLATTEN_GOAL}.`,
   judge: (m) => {
     // A trend near 1 with a span near 1 is a pedestal left. The floor in σ is
     // reported, not judged (FLATTEN_FLOOR_SIGMA_NOTE).
@@ -520,11 +530,15 @@ const CHECK_RULES: { [C in Exclude<CheckId, Stage>]: CheckRule<Measurements[C]> 
 
 // ---------------------------------------------------------------- the interface's words
 
+const withoutSkills = (rule: StageRule): string => rule.goalWithoutSkills ?? rule.goal;
+
 /** The text the checks' results carry: the verdicts' labels, the rules as criteria, and the stages' goals. */
 export const WORDS: {
   label: Record<Kind, string>;
   criterion: Record<string, string>;
   goal: Record<TuneStage, string>;
+  // The goals with the skills off (the switch, skills.ts: the validation's arm C).
+  goalWithoutSkills: Record<TuneStage, string>;
 } = {
   label: LABEL,
   criterion: {
@@ -536,6 +550,13 @@ export const WORDS: {
     pdf: pdf.criterion,
   },
   goal: { rings: rings.goal, punch: punch.goal, backfill: backfill.goal, flatten: flatten.goal, pdf: pdf.goal },
+  goalWithoutSkills: {
+    rings: withoutSkills(rings),
+    punch: withoutSkills(punch),
+    backfill: withoutSkills(backfill),
+    flatten: withoutSkills(flatten),
+    pdf: withoutSkills(pdf),
+  },
 };
 
 const isStage = (check: CheckId): check is Stage => check in STAGE_RULES;

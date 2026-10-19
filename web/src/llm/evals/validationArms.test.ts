@@ -1,15 +1,17 @@
-// The Pilot's arms are the Pilot as it ships, and arm C is arm B without its
-// skills and nothing else. Run through the real agent loop against a scripted
-// model server (no model): what goes over the wire, request by request, must
-// differ between B and C only by the read_skill tool and the skills' listing in the
-// system prompt, whatever tools the shipped code offers a model.
+// The Pilot's arms are the Pilot as it ships, and arm C is arm B with the
+// skills' switch off (skills.ts) and nothing else. Run through the real agent
+// loop against a scripted model server (no model): what goes over the wire,
+// request by request, must differ between B and C only by what the switch
+// changes: read_skill is not offered, the system prompt has no skills' section,
+// and a tool whose description restates a skill has its text without the skill
+// (descriptionWithoutSkills), whatever tools the shipped code offers a model.
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { runAgent } from "../agent";
 import { toolsFor } from "../localTools";
-import { buildChatMessages } from "../prompts/templates";
+import { systemPrompt } from "../prompts/templates";
 import { allSkills, skillsPrompt } from "../skills";
 import { CHAT_TOOLS, type AgentTool } from "../tools";
 import { OfferRecorder, offerChanges, toolNamesIn } from "./offers";
@@ -25,7 +27,8 @@ const dataset: Dataset = { id: "v000000-B1", temperature: null, raw_name: "v0000
 // Every tool answers with a stub: the agent loop is real, the backend is not.
 const STUBBED: AgentTool[] = CHAT_TOOLS.map((t) => ({ ...t, run: async () => ({ result: { stub: t.name }, summary: `${t.name} stub` }) }));
 
-type Body = { model: string; messages: { role: string; content?: unknown; tool_calls?: unknown }[]; tools?: { function: { name: string } }[] } & Record<string, unknown>;
+type Spec = { type: string; function: { name: string; description: string; parameters: unknown } };
+type Body = { model: string; messages: { role: string; content?: unknown; tool_calls?: unknown }[]; tools?: Spec[] } & Record<string, unknown>;
 
 const sse = (...chunks: unknown[]): Response =>
   new Response(chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "Content-Type": "text/event-stream" } });
@@ -55,11 +58,11 @@ async function runArm(arm: Arm, baseUrl: string) {
   const recorder = new OfferRecorder();
   const stop = recorder.install();
   try {
-    const setup = armSetup(arm, STUBBED, buildChatMessages({} as never, [], TASK, null, { tools: true }));
+    const setup = armSetup(arm, {} as never);
     const result = await runAgent({
       messages: setup.messages,
-      tools: setup.tools,
-      ctx: { dataset, datasets: [dataset], skillsRead: setup.skillsRead },
+      tools: STUBBED,
+      ctx: { dataset, datasets: [dataset], skills: setup.skills, skillsRead: setup.skillsRead },
       settings: { baseUrl, model: "m", apiKey: "", temperature: 0.2, attachImages: false, useTools: true, followViews: false },
       signal: new AbortController().signal,
       usage: true,
@@ -112,7 +115,7 @@ describe.each([
   ["a local model (LM Studio)", "http://localhost:1234/v1"],
   ["a cloud model", "https://api.example.com/v1"],
 ])("arms B and C on %s", (_label, baseUrl) => {
-  it("differ only by read_skill and the skills' listing, on every request", async () => {
+  it("differ only by what the switch changes, on every request", async () => {
     const b = await runArm("B", baseUrl);
     const c = await runArm("C", baseUrl);
     expect(b.offers.length).toBeGreaterThanOrEqual(3);
@@ -124,16 +127,29 @@ describe.each([
       expect(c.offers[i].tools).toEqual(offer.tools.filter((n) => n !== "read_skill"));
     });
 
-    // The rest of each request: the model, the settings and every message are the same,
-    // but for the skills' listing in the system prompt.
+    // The system prompt: B's is C's with the skills' section after it, and C's
+    // is built without that section, never cut out of B's.
     const listing = skillsPrompt();
     expect(listing).toContain(allSkills()[0].name);
+    // The tools' definitions: B's, but read_skill, each with its text with the skills off where it has one.
+    const withoutSkills = (specs: Spec[] = []): Spec[] =>
+      specs
+        .filter((s) => s.function.name !== "read_skill")
+        .map((s) => {
+          const text = STUBBED.find((t) => t.name === s.function.name)?.descriptionWithoutSkills;
+          return text === undefined ? s : { ...s, function: { ...s.function, description: text } };
+        });
+    const rewritten = STUBBED.filter((t) => t.descriptionWithoutSkills !== undefined).map((t) => t.name);
+    expect(rewritten).toContain("dpdf_peaks");
     b.sent.forEach((body, i) => {
       const other = c.sent[i];
       const system = (x: Body) => String(x.messages[0].content);
-      expect(system(body)).toContain(listing);
-      expect(system(other)).not.toContain(allSkills()[0].name);
-      expect(system(body).replace(listing, "")).toBe(system(other));
+      expect(system(body)).toBe(systemPrompt({ tools: true }));
+      expect(system(other)).toBe(systemPrompt({ tools: true, skills: false }));
+      expect(system(body)).toBe(`${system(other)}\n${listing}`);
+      for (const s of allSkills()) expect(system(other)).not.toContain(s.name);
+      expect(other.tools).toEqual(withoutSkills(body.tools));
+      // The rest of each request: the model, the settings and every other message are the same.
       const rest = (x: Body) => ({ ...x, messages: x.messages.slice(1), tools: undefined });
       expect(rest(other)).toEqual(rest(body));
     });

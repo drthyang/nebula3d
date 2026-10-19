@@ -106,6 +106,10 @@ export interface ToolIO {
 export interface AgentTool {
   name: string;
   description: string;
+  // The description with the skills off (the switch, skills.ts): without what
+  // names a skill or restates a skill's step. Left out: the description names
+  // none, and serves either way.
+  descriptionWithoutSkills?: string;
   parameters: Record<string, unknown>; // JSON Schema of the arguments
   run: (args: Record<string, unknown>, ctx: ToolContext, io: ToolIO) => Promise<ToolOutcome>;
   maxResultChars?: number; // above MAX_RESULT_CHARS, for a result that must arrive whole (a skill)
@@ -760,7 +764,10 @@ const assessStage: ChatTool = {
       stage: { type: "string", enum: ASSESS_CHOICES, description: "The stage to judge, or all (default)" },
     },
   },
-  run: async (args, { dataset }) => {
+  run: async (args, ctx) => {
+    const { dataset } = ctx;
+    // A stage's goal as the skills' switch has it (skills.ts): off, without a skill's step.
+    const goals = skillsOn(ctx) ? WORDS.goal : WORDS.goalWithoutSkills;
     const pick = oneOf(args, "stage", ASSESS_CHOICES, "all");
     const stages: TuneStage[] = pick === "all" ? [...TUNE_STAGES] : [pick];
     const result: Record<string, unknown> = {};
@@ -795,7 +802,7 @@ const assessStage: ChatTool = {
         criterion: outcome.criterion,
         headline: headline(stage, evaluation),
         ...evaluation,
-        ...(pick === "all" ? {} : { goal: WORDS.goal[stage] }),
+        ...(pick === "all" ? {} : { goal: goals[stage] }),
       };
       lines.push(`${TUNE_STAGE_LABELS[stage]}: ${verdict} · ${headline(stage, evaluation)}`);
     }
@@ -1130,11 +1137,20 @@ const dpdfContrast: ChatTool = {
 // How many of a group's vectors the model reads (the group's n says how many there are).
 const PEAK_VECTORS = 4;
 
+// What dpdf_peaks reads and returns, either way the skills' switch is set.
+const DPDF_PEAKS_READS =
+  "The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors): copies of one correlation under the crystal's symmetry, most likely, though the grouping does not use the symmetry and two correlations can share a length.";
+
 const dpdfPeaks: ChatTool = {
   name: "dpdf_peaks",
   facts: { label: "Listed the ΔPDF's strongest features", acts: null, offeredFor: ["pdf"], settles: ["features"] },
   description:
-    "The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors): copies of one correlation under the crystal's symmetry, most likely, though the grouping does not use the symmetry and two correlations can share a length. Use it for the strongest pair correlations with their vectors and signs, after the trust checks (qmax_coverage, symmetry_check on symmetrised data, assess_stage pdf). What size is worth interpreting, and what a feature means, is the user's call (delta-pdf-interpretation). Quote the vectors, signs and sizes it returns.",
+    `${DPDF_PEAKS_READS} Use it for the strongest pair correlations with their vectors and signs, after the trust checks (qmax_coverage, symmetry_check on symmetrised data, assess_stage pdf). ` +
+    "What size is worth interpreting, and what a feature means, is the user's call (delta-pdf-interpretation). Quote the vectors, signs and sizes it returns.",
+  // With the skills off: neither the skill's name nor its order (the trust checks before the features).
+  descriptionWithoutSkills:
+    `${DPDF_PEAKS_READS} Use it for the strongest pair correlations with their vectors and signs. ` +
+    "What size is worth interpreting, and what a feature means, is the user's call. Quote the vectors, signs and sizes it returns.",
   parameters: {
     type: "object",
     properties: {
@@ -1753,7 +1769,8 @@ const tunePipeline: ChatTool = {
     io.signal?.addEventListener("abort", stopTuning);
     const t0 = performance.now();
     try {
-      await startTuning({ dataset: ctx.dataset, stages, trialsPerStage: trials, llm: loadSettings() });
+      // The tuning prompts read the skills' switch too: off, a stage's goal and settings without a skill's step.
+      await startTuning({ dataset: ctx.dataset, stages, trialsPerStage: trials, llm: loadSettings(), skills: skillsOn(ctx) });
     } finally {
       unsubscribe();
       io.signal?.removeEventListener("abort", stopTuning);
@@ -1898,13 +1915,16 @@ export function unreadSkillRefusal(name: string, args: Args, read: ReadonlySet<s
  * The tools as a conversation with the skills on or off offers them (the
  * switch, skills.ts): on, the tools as they are (the same list); off (the
  * validation's arm C), without the tools that work only with the skills (their
- * facts' `needsSkills`: read_skill). The agent loop offers, runs and checks
- * answers against this list alone, so a call to a tool it left out is refused
- * as one the registry does not hold.
+ * facts' `needsSkills`: read_skill), and each with its description without
+ * what names a skill or restates a skill's step (descriptionWithoutSkills).
+ * The agent loop offers, runs and checks answers against this list alone, so a
+ * call to a tool it left out is refused as one the registry does not hold.
  */
 export function toolsWithSkills(tools: AgentTool[], skills: boolean): AgentTool[] {
   if (skills) return tools;
-  return tools.filter((t) => !factsOf(t.name).needsSkills);
+  return tools
+    .filter((t) => !factsOf(t.name).needsSkills)
+    .map((t) => (t.descriptionWithoutSkills === undefined ? t : { ...t, description: t.descriptionWithoutSkills }));
 }
 
 // Only name, description and parameters: the facts never reach the model.

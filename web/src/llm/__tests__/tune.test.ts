@@ -8,7 +8,7 @@ import type { Dataset } from "../../api/types";
 import { usePipelineStore, type RunOptions } from "../../state/pipelineStore";
 import { DEFAULT_SETTINGS } from "../settings";
 import { currentStageSettings, proposalToPatch, ProposalError, toFormValue } from "../tune/catalog";
-import { parseJsonReply } from "../tune/prompts";
+import { parseJsonReply, STAGE_GOALS, STAGE_GOALS_WITHOUT_SKILLS } from "../tune/prompts";
 import { startTuning, useTuneStore } from "../tune/tuner";
 
 const llm = vi.hoisted(() => ({ completeChat: vi.fn() }));
@@ -214,6 +214,35 @@ describe("startTuning", () => {
     await startTuning({ dataset, stages: ["punch"], trialsPerStage: 2, llm: DEFAULT_SETTINGS });
     expect(runs.map((r) => r.trial)).toEqual(["punch-1", "punch-2", "backfill-1"]);
     expect(useTuneStore.getState().finishedNote).toMatch(/processed files are unchanged/);
+  });
+
+  it("asks with the flatten's goal and settings without the skill's step when the skills are off (the switch)", async () => {
+    usePipelineStore.setState({ punchEnabled: false, backfillEnabled: false, flatten: true });
+    evaluate.evaluateStage.mockImplementation(async () => ({ max_floor_trend: usePipelineStore.getState().flattenQ2 ? 0.2 : 0.97 }));
+    const asked = (): string[] => llm.completeChat.mock.calls.map(([args]) => (args as { messages: { content: string }[] }).messages[1].content);
+    const reply = () =>
+      llm.completeChat
+        .mockResolvedValueOnce('{"candidates": [{"changes": {"flattenQ2": true}}]}')
+        .mockResolvedValueOnce('{"best": 2, "why": "the trend fell"}');
+
+    reply();
+    await startTuning({ dataset, stages: ["flatten"], trialsPerStage: 2, llm: DEFAULT_SETTINGS, skills: false });
+    const [propose, judge] = asked();
+    expect(propose).toContain(`Goal: ${STAGE_GOALS_WITHOUT_SKILLS.flatten}`);
+    expect(judge).toContain(`Goal: ${STAGE_GOALS_WITHOUT_SKILLS.flatten}`);
+    for (const text of [propose, judge]) {
+      expect(text).not.toMatch(/a rising one wants flattenQ2|Use it when the shell floors climb|Raise it toward the data's coverage/);
+    }
+
+    // On (the default): the goal and the settings' help as written.
+    llm.completeChat.mockReset();
+    usePipelineStore.setState({ flattenQ2: false });
+    reply();
+    await startTuning({ dataset, stages: ["flatten"], trialsPerStage: 2, llm: DEFAULT_SETTINGS });
+    const [on] = asked();
+    expect(on).toContain(`Goal: ${STAGE_GOALS.flatten}`);
+    expect(on).toMatch(/Use it when the shell floors climb with \|Q\| after the flatten/);
+    expect(STAGE_GOALS.flatten.startsWith(STAGE_GOALS_WITHOUT_SKILLS.flatten.replace(/\.$/, ""))).toBe(true);
   });
 
   it("stops with an error when the user's settings fail to run", async () => {

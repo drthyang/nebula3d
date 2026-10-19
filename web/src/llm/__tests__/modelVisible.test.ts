@@ -19,6 +19,10 @@
 //   pages, read as written).
 // - run_pipeline, tune_pipeline: the runs are stubs; what is sampled is the
 //   tool's own account of a fake run (the stages it ran, the trials it kept).
+//
+// Arm C (the validation's arm with the skills' switch off, skills.ts) has
+// files of its own, *-arm-c.md: what it is offered, and where its text differs
+// from arm B's (the tools, a sample of results and goals, the tuning prompt).
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -31,14 +35,14 @@ import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
 import { toolsFor } from "../localTools";
-import { buildChatMessages, buildStageReviewMessages, type ReviewStage } from "../prompts/templates";
+import { buildChatMessages, buildStageReviewMessages, systemPrompt, type ReviewStage } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolCall } from "../provider/client";
 import { NAMED_REFERENCES } from "../references";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, skillsPrompt } from "../skills";
-import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolSpecs, type AgentTool, type ToolContext } from "../tools";
+import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolSpecs, toolsWithSkills, type AgentTool, type ToolContext } from "../tools";
 import { currentStageSettings } from "../tune/catalog";
-import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS, TUNE_SYSTEM } from "../tune/prompts";
+import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS, STAGE_GOALS_WITHOUT_SKILLS, TUNE_SYSTEM } from "../tune/prompts";
 import { useTuneStore } from "../tune/tuner";
 import { judge, WORDS } from "../verdicts";
 
@@ -158,27 +162,30 @@ describe("1. the system prompt and the first user message, as the app builds the
   const tools = (ts: AgentTool[]) => `Tools offered (${ts.length}): ${ts.map((t) => t.name).join(", ")}.`;
 
   it("arm B: tools on, skills on (the Pilot as shipped)", async () => {
-    const b = armSetup("B", CHAT_TOOLS, buildChatMessages(context, [], TASK, null, { tools: true }));
+    const b = armSetup("B", context);
+    expect(b.messages).toEqual(buildChatMessages(context, [], TASK, null, { tools: true }));
     await expect(
       doc(
         "Opening messages: tools on, skills on (validation arm B)",
         "`buildChatMessages(context, [], TASK, null, { tools: true })` over the synthetic context, as `armSetup(\"B\")` passes it on; TASK is the validation task (evals/validation.ts). A chat question takes TASK's place in the last message.\n\n" +
-          tools(b.tools),
+          tools(toolsWithSkills(CHAT_TOOLS, b.skills)),
         renderMessages(b.messages),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/1-chat-arm-b.md`);
   });
 
-  it("arm C: tools on, skills off (read_skill and the skill listing taken away)", async () => {
-    const messages = buildChatMessages(context, [], TASK, null, { tools: true });
-    const c = armSetup("C", CHAT_TOOLS, messages);
-    // Arm C differs from B by the listing only.
-    expect(c.messages[0].content).toBe((messages[0].content as string).replace(skillsPrompt(), ""));
+  it("arm C: tools on, skills off (the skills' switch off)", async () => {
+    const b = armSetup("B", context);
+    const c = armSetup("C", context);
+    // Built with the switch off: the system prompt without its skills' section, never cut from B's; the rest is B's.
+    expect(c.messages[0].content).toBe(systemPrompt({ tools: true, skills: false }));
+    expect(b.messages[0].content).toBe(`${c.messages[0].content}\n${skillsPrompt()}`);
+    expect(c.messages.slice(1)).toEqual(b.messages.slice(1));
     await expect(
       doc(
         "Opening messages: tools on, skills off (validation arm C)",
-        "The same messages as arm B with the skills' listing cut from the system prompt, as `armSetup(\"C\")` builds them (evals/validation.ts).\n\n" +
-          tools(c.tools),
+        "`buildChatMessages(context, [], TASK, null, { tools: true, skills: false })`, as `armSetup(\"C\")` builds them (evals/validation.ts): the skills' switch off (skills.ts), so the system prompt is built without its skills' section and read_skill is not offered. The rest is arm B's.\n\n" +
+          tools(toolsWithSkills(CHAT_TOOLS, c.skills)),
         renderMessages(c.messages),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/1-chat-arm-c.md`);
@@ -215,6 +222,29 @@ describe("2. the tools, as sent to the model", () => {
         body,
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/2-tools.md`);
+  });
+
+  it("arm C: the tools with the skills off", async () => {
+    const b = toolSpecs(CHAT_TOOLS);
+    const c = toolSpecs(toolsWithSkills(CHAT_TOOLS, false));
+    const of = (name: string) => b.find((s) => s.function.name === name)!;
+    // Every tool C is offered is B's, read_skill aside, with B's name and parameters.
+    expect(c.map((s) => s.function.name)).toEqual(b.map((s) => s.function.name).filter((n) => n !== "read_skill"));
+    for (const s of c) expect(s.function.parameters, s.function.name).toEqual(of(s.function.name).function.parameters);
+    const same = c.filter((s) => s.function.description === of(s.function.name).function.description);
+    const own = c.filter((s) => !same.includes(s));
+    const body = [
+      "## Not offered\n\nread_skill: it works only with the skills on (its facts' `needsSkills`).",
+      `## As in arm B (2-tools.md)\n\n${same.length} tools, their definitions as 2-tools.md has them: ${same.map((s) => s.function.name).join(", ")}.`,
+      ...own.map((s) => `## ${s.function.name}: its description with the skills off\n\n${fence(s.function.description)}\n\nIts parameters are as in 2-tools.md.`),
+    ].join("\n\n");
+    await expect(
+      doc(
+        "Tool definitions with the skills off (validation arm C)",
+        `\`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))\`: what arm C's model is offered with every request (${c.length} tools, ${JSON.stringify(c).length} characters as JSON). A tool whose description names a skill or restates a skill's step has its text with the skills off (\`descriptionWithoutSkills\`), shown in full; every other definition is arm B's.`,
+        body,
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/2-tools-arm-c.md`);
   });
 
   it("the tools a local model is offered, by question", async () => {
@@ -487,6 +517,90 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
           compacted.join("\n\n"),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/4-tool-results.md`);
+  });
+
+  it("arm C: a sample of results and goals with the skills off", async () => {
+    const tools = toolsWithSkills(CHAT_TOOLS, false);
+    const runC = async (s: Sample) => {
+      freshConsole();
+      s.before?.();
+      const call: ToolCall = { id: "call_1", type: "function", function: { name: s.name, arguments: JSON.stringify(s.args) } };
+      return runToolCall(call, tools, { dataset: DATASET, datasets: DATASETS, skills: false, skillsRead: new Set(), ...s.ctx });
+    };
+    const shown = async (s: Sample, why: string) => {
+      const run = await runC(s);
+      return { run, text: `## ${sampleTitle(s)}\n\n${why}\n\n${showResult(run.text)}` };
+    };
+
+    // Every sampled call but read_skill reads the same in arm C as in arm B, but
+    // the one whose result carries a goal a skill's step is cut from.
+    const differs: string[] = [];
+    for (const s of SAMPLES.filter((x) => x.name !== "read_skill")) {
+      const b = await runSample(s);
+      const c = await runC(s);
+      expect(c.ok, `${sampleTitle(s)}: ${c.text}`).toBe(true);
+      if (c.text !== b.text) differs.push(`${s.name} ${JSON.stringify(s.args)}`);
+    }
+    expect(differs).toEqual(['assess_stage {"stage":"flatten"}']);
+
+    // The stages' goals: arm C's, shown in full where they differ from arm B's.
+    const stages = Object.keys(STAGE_GOALS) as (keyof typeof STAGE_GOALS)[];
+    const differ = stages.filter((st) => STAGE_GOALS_WITHOUT_SKILLS[st] !== STAGE_GOALS[st]);
+    expect(differ).toEqual(["flatten"]);
+    const goals = stages.map((st) =>
+      differ.includes(st) ? `### ${st}\n\n${fence(STAGE_GOALS_WITHOUT_SKILLS[st])}` : `### ${st}\n\nAs in arm B (3-goals-and-verdicts.md).`,
+    );
+
+    // A stage's result carries the goal as arm C reads it.
+    const flatten = await shown({ name: "assess_stage", args: { stage: "flatten" } }, "The flatten's result, its goal with the skills off.");
+    expect(flatten.run.ok).toBe(true);
+    expect((JSON.parse(flatten.run.text) as { flatten: { goal: string } }).flatten.goal).toBe(STAGE_GOALS_WITHOUT_SKILLS.flatten);
+
+    // The calls arm B's skill gate refuses until a skill is read: arm C has no gate, so they run.
+    const change = await shown(
+      { name: "update_settings", args: { changes: { flattenQ2: true } } },
+      "No skill read: arm B's gate refuses it until reduction-qc is read (4-tool-results.md); arm C has none.",
+    );
+    expect(change.run.ok, change.run.text).toBe(true);
+    tuner.startTuning.mockClear();
+    const tuning = SAMPLES.find((s) => s.name === "tune_pipeline")!;
+    const tune = await shown(
+      { ...tuning, ctx: {}, note: "a stubbed tuning run of 5.2 min, no skill read" },
+      "No skill read: it runs, and passes the switch on to the tuning prompts.",
+    );
+    expect(tune.run.ok, tune.run.text).toBe(true);
+    expect(tuner.startTuning).toHaveBeenCalledWith(expect.objectContaining({ skills: false }));
+
+    // read_skill, called by name all the same: no tool of this conversation.
+    const read = await runC({ name: "read_skill", args: { name: "reduction-qc" } });
+    expect(read.ok).toBe(false);
+
+    // The tuning prompt for the flatten, as arm C's tune_pipeline asks it.
+    const config = usePipelineStore.getInitialState();
+    const propose = buildProposeMessages({
+      stage: "flatten",
+      current: currentStageSettings("flatten", config),
+      earlier: {},
+      trials: [{ trial: 1, settings: currentStageSettings("flatten", config), metrics: { max_floor_trend: 0.97, max_floor_span_fraction: 1.2, pedestal_left: true } }],
+      count: 2,
+      skills: false,
+    });
+    expect(propose[1].content).toContain(STAGE_GOALS_WITHOUT_SKILLS.flatten);
+
+    await expect(
+      doc(
+        "Tool results and goals with the skills off (validation arm C)",
+        "Arm C's text where it differs from arm B's: the stages' goals, a stage's result that carries one, the calls arm B's skill gate refuses, read_skill called by name, and the tuning prompt for the flatten. Each tool is called through `runToolCall` with the skills' switch off (`skills: false` in its context) and the tools `toolsWithSkills(CHAT_TOOLS, false)` gives; every other tool's result is as in 4-tool-results.md, since no other result carries a skill's text.",
+        [
+          `## The stages' goals with the skills off\n\n\`STAGE_GOALS_WITHOUT_SKILLS\` (tune/prompts.ts; \`WORDS.goalWithoutSkills\`, verdicts/rules.ts): in assess_stage's single-stage result and the tuning prompts.\n\n${goals.join("\n\n")}`,
+          flatten.text,
+          change.text,
+          tune.text,
+          `## read_skill {"name":"reduction-qc"} (called by name: it is not offered)\n\n${fence(read.text)}`,
+          `## The tuning prompt for the flatten, what to try\n\n\`buildProposeMessages({ stage: "flatten", …, skills: false })\` with a synthetic trial: the goal and the settings' help with the skills off. The system message is TUNE_SYSTEM (3-tuning-prompts.md).\n\n${fence(contentText(propose[1]))}`,
+        ].join("\n\n"),
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/4-tool-results-arm-c.md`);
   });
 });
 

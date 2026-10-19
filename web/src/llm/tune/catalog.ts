@@ -94,6 +94,9 @@ export interface TuneParam {
   max?: number;
   defaultValue: ParamValue; // what a blank field means
   help: string;
+  // The help with the skills off (the switch, skills.ts): without when to use
+  // the setting, where that restates a skill's step. Left out: the help restates none.
+  helpWithoutSkills?: string;
   appliesWhen?: (s: PipelineConfig) => boolean;
 }
 
@@ -256,12 +259,16 @@ export const TUNE_PARAMS: TuneParam[] = [
     help: "How punched holes are filled. laplace (default): smooth harmonic fill from the hole rim. local: the local surrounding diffuse. q_shell: the |Q|-shell background.",
   },
   // — flatten —
+  // When to turn on the b·Q² term and widen the fit range is reduction-qc's
+  // step 6 (a floor rising with |Q|): with the skills off, their help says
+  // what each does and not when to use it.
   {
     key: "flattenQ2",
     stage: "flatten",
     kind: "boolean",
     defaultValue: false,
     help: "model only: also fit b·Q², the smooth rise of an inelastic background (thermal diffuse; with X-rays also Compton). Use it when the shell floors climb with |Q| after the flatten (floor_trend near 1); it varies too slowly to follow pair correlations.",
+    helpWithoutSkills: "model only: also fit b·Q², the smooth rise of an inelastic background (thermal diffuse; with X-rays also Compton); it varies too slowly to follow pair correlations.",
     appliesWhen: (s) => s.flattenEstimator === "" || s.flattenEstimator === "model",
   },
   {
@@ -272,6 +279,7 @@ export const TUNE_PARAMS: TuneParam[] = [
     max: 25,
     defaultValue: 10,
     help: "model only: end (Å⁻¹) of the |Q| range the model is fitted to (from 0.8). Raise it toward the data's coverage when the background keeps changing past 10 Å⁻¹.",
+    helpWithoutSkills: "model only: end (Å⁻¹) of the |Q| range the model is fitted to (from 0.8).",
     appliesWhen: (s) => s.flattenEstimator === "" || s.flattenEstimator === "model",
   },
   {
@@ -381,10 +389,11 @@ export function proposalToPatch(stage: TuneStage, changes: Record<string, unknow
   return patch as Partial<PipelineConfig>;
 }
 
-/** A catalog description of the stage's settings for the model. */
-export function describeStageParams(stage: TuneStage): string {
+/** A catalog description of the stage's settings for the model; with the skills off (the switch, skills.ts), each setting's help without a skill's step. */
+export function describeStageParams(stage: TuneStage, { skills = true }: { skills?: boolean } = {}): string {
   return stageParams(stage)
     .map((p) => {
+      const help = skills ? p.help : (p.helpWithoutSkills ?? p.help);
       const allowed =
         p.kind === "enum"
           ? `one of ${p.options!.map((o) => o.name).join(" | ")}`
@@ -393,7 +402,7 @@ export function describeStageParams(stage: TuneStage): string {
             : p.kind === "fractions"
               ? 'H fractions like "1/3, 2/3", or none'
               : `${p.kind} in [${p.min}, ${p.max}]`;
-      return `- ${p.key} (${allowed}; default ${p.defaultValue}): ${p.help}`;
+      return `- ${p.key} (${allowed}; default ${p.defaultValue}): ${help}`;
     })
     .join("\n");
 }

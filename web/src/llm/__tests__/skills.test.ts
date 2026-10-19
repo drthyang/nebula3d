@@ -147,11 +147,24 @@ describe("the switch", () => {
     expect(buildChatMessages({} as never, [], "q", null, { tools: true })[0].content).toBe(systemPrompt({ tools: true }));
   });
 
-  it("offers no read_skill with the skills off, and every other tool as it is", () => {
+  it("offers no read_skill with the skills off, and no description that names a skill or restates its step", () => {
     expect(toolsWhere((f) => f.needsSkills)).toEqual(["read_skill"]);
     expect(toolsWithSkills(CHAT_TOOLS, true)).toBe(CHAT_TOOLS);
     const off = toolsWithSkills(CHAT_TOOLS, false);
     expect(off.map((t) => t.name)).toEqual(CHAT_TOOLS.map((t) => t.name).filter((n) => n !== "read_skill"));
+    for (const t of off) {
+      for (const s of allSkills()) expect(t.description, t.name).not.toContain(s.name);
+      expect(t.description, t.name).not.toMatch(/\bskills?\b/i);
+      // Only the description changes, and only where the tool has one without the skills.
+      const own = CHAT_TOOLS.find((x) => x.name === t.name)!;
+      expect(t.description).toBe(own.descriptionWithoutSkills ?? own.description);
+      expect(t.parameters).toBe(own.parameters);
+    }
+    // dpdf_peaks: with the skills on, the skill's name and its order; off, neither.
+    const peaks = (tools: readonly { name: string; description: string }[]) => tools.find((t) => t.name === "dpdf_peaks")!.description;
+    expect(peaks(CHAT_TOOLS)).toMatch(/after the trust checks \(qmax_coverage, .*\(delta-pdf-interpretation\)/);
+    expect(peaks(off)).not.toMatch(/trust checks/);
+    expect(toolsWithSkills(off, false)).toEqual(off); // the same either way it is applied
   });
 
   it("leaves no gate with the skills off: a change goes through with no skill read, and read_skill is no tool of the conversation", async () => {

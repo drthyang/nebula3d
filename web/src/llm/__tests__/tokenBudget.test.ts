@@ -58,6 +58,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { KEEP_FULL, runAgent, SOFT_BUDGET } from "../agent";
 import { isCompacted } from "../compact";
 import { loadPipelineContext } from "../context/loadContext";
+import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
 import { toolsFor } from "../localTools";
 import { buildChatMessages } from "../prompts/templates";
@@ -167,12 +168,14 @@ const ORDERS: Record<"skillsFirst" | "method" | "skillsLast", Call[]> = {
   skillsLast: [...CHECKS, FEATURES, ...SKILL_READS],
 };
 
+let context: PipelineContext;
 let opening: ChatMessage[];
 
 beforeAll(async () => {
   installBackend(api);
   freshConsole();
-  opening = buildChatMessages((await loadPipelineContext(DATASET)).context, [], TASK, null, { tools: true });
+  context = (await loadPipelineContext(DATASET)).context;
+  opening = buildChatMessages(context, [], TASK, null, { tools: true });
   // Ollama, asked what the model supports and what it runs with: 128k, and
   // nothing loaded, so the window plan sizes num_ctx to each request.
   vi.stubGlobal("fetch", async (url: string | URL) => {
@@ -207,12 +210,13 @@ async function drive(baseUrl: string, calls: Call[], softBudget?: number) {
       for (const d of reply) yield d;
     })();
   });
-  const b = armSetup("B", CHAT_TOOLS, opening);
+  const b = armSetup("B", context);
+  expect(b.messages).toEqual(opening);
   const settings: LlmSettings = { ...DEFAULT_SETTINGS, baseUrl, model: "scripted", followViews: false };
   const result = await runAgent({
     messages: b.messages,
-    tools: b.tools,
-    ctx: { dataset: DATASET, datasets: DATASETS, skillsRead: b.skillsRead, earlierResults: [] },
+    tools: CHAT_TOOLS,
+    ctx: { dataset: DATASET, datasets: DATASETS, skills: b.skills, skillsRead: b.skillsRead, earlierResults: [] },
     settings,
     signal: new AbortController().signal,
     // The answer is the reply's, not the prompt's. An answer its checks send

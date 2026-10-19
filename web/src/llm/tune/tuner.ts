@@ -179,6 +179,7 @@ async function tuneStage(
   trialsPerStage: number,
   earlier: Record<string, Record<string, ParamValue>>,
   llm: LlmSettings,
+  skills: boolean,
   signal: AbortSignal,
 ): Promise<void> {
   const base = snapshot(stage);
@@ -204,6 +205,7 @@ async function tuneStage(
       earlier,
       trials: records(getStage(stage)),
       count: trialsPerStage - 1,
+      skills,
     });
     const accepted: { patch: Partial<PipelineConfig>; changes: Record<string, ParamValue>; settings: Record<string, ParamValue>; why?: string }[] = [];
     for (let attempt = 0; attempt < 2 && !accepted.length; attempt++) {
@@ -276,7 +278,7 @@ async function tuneStage(
     if (eligible.length > 1) {
       setStage(stage, { status: "judging" });
       const trials = records(getStage(stage)).filter((r) => !barred.has(r.trial));
-      const reply = await ask(buildJudgeMessages({ stage, trials }), llm, signal);
+      const reply = await ask(buildJudgeMessages({ stage, trials, skills }), llm, signal);
       checkStop(signal);
       const pick = Number(reply?.best);
       if (eligible.some((t) => t.n === pick)) {
@@ -309,9 +311,12 @@ export interface TuneOptions {
   stages: TuneStage[];
   trialsPerStage: number; // including the user's settings
   llm: LlmSettings;
+  // The skills' switch of the conversation that asked (skills.ts): on unless
+  // false. Off, the prompts give each stage's goal and settings without a skill's step.
+  skills?: boolean;
 }
 
-export async function startTuning({ dataset, stages, trialsPerStage, llm }: TuneOptions): Promise<void> {
+export async function startTuning({ dataset, stages, trialsPerStage, llm, skills = true }: TuneOptions): Promise<void> {
   if (useTuneStore.getState().active || pipeline().running) return;
   const abort = new AbortController();
   controller = abort;
@@ -354,7 +359,7 @@ export async function startTuning({ dataset, stages, trialsPerStage, llm }: Tune
         continue;
       }
       if (stages.includes(stage)) {
-        await tuneStage(stage, dataset, run, trialsPerStage, earlier, llm, abort.signal);
+        await tuneStage(stage, dataset, run, trialsPerStage, earlier, llm, skills, abort.signal);
         const kept = useTuneStore.getState().stages.find((r) => r.stage === stage)?.best ?? 1;
         if (kept !== 1) changed = true;
       } else {
