@@ -28,17 +28,26 @@ __all__ = ["run_arm_d", "run_case_d"]
 
 
 def run_case_d(
-    case: Case, root: Path, *, n: int = 161, built: Built | None = None
+    case: Case,
+    root: Path,
+    *,
+    n: int = 161,
+    built: Built | None = None,
+    stem: str | None = None,
 ) -> dict[str, Any]:
+    """Arm D on *case*: its files go in *root* as ``<stem>--D_flattened.h5`` and
+    ``<stem>--D_delta_pdf.h5``. The stem is the case's id unless *stem* names another, as a
+    test of a held-out case does, so that no file name on disk carries its id."""
     built = built or build(case, n)
     root.mkdir(parents=True, exist_ok=True)
     vol = replace(
         built.truth, data=built.truth.data, mask=np.asarray(built.raw.mask, dtype=bool).copy()
     )
-    src = root / f"{case.id}--D_flattened.h5"
+    stem = case.id if stem is None else stem
+    src = root / f"{stem}--D_flattened.h5"
     save(vol, src)
     params = DeltaPdfParams()
-    out = root / f"{case.id}--D_delta_pdf.h5"
+    out = root / f"{stem}--D_delta_pdf.h5"
     write_delta_pdf_h5(delta_pdf(vol, params), vol, params, src.name, out)
     scored = score_outputs(built, out, src)
     return {

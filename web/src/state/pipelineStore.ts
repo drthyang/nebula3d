@@ -153,6 +153,10 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   ringModel: "pooled",
   ringRadialMode: "rolling",
   ringNPatches: "",
+  // The patched/parametric models' texture order (the pooled default has
+  // none). The package's RingParams.n_fourier, which scripts and the
+  // Python API run, is 6; the page keeps 8 on purpose (AGENT_PLAN
+  // 4.12), and tests/test_defaults_agreed.py pins both.
   ringNFourier: "8",
   ringSliceAxis: "H",
   ringWidth: "",
