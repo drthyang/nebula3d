@@ -292,7 +292,7 @@ describe("judge: the checks on the result", () => {
     ["a recording's angle_deg is the turn, to every reader (D4)", { angle_deg: 0.4 }, "attention", ["UB turned"], ["the UB is turned by 0.4°"]],
     ["the origin shifted", { fit: "both", symmetrised: false, orientation_change_deg: 0.001, origin_shift_rlu: [0.0305, 0.0195, 0] }, "pass", [], ["the HKL origin is shifted by (0.0305, 0.0195, 0) r.l.u."]],
     ["turned, and the origin shifted", { fit: "both", orientation_change_deg: 0.2, origin_shift_rlu: [0.03, 0, 0] }, "attention", ["UB turned"], ["the UB is turned by 0.2°", "the HKL origin is shifted by (0.03, 0, 0) r.l.u."]],
-    ["no angle, not symmetrised: right (D16)", {}, "pass", [], []],
+    ["no angle, not symmetrised: not judged (D16)", {}, "info", ["nothing to judge"], []],
   ];
   for (const [why, m, kind, reasons, dataProblems] of UB) {
     it(`ub: ${why}`, () => {
@@ -323,9 +323,9 @@ describe("judge is total", () => {
         const o = judge(check, m as never);
         expect(["pass", "attention", "info"]).toContain(o.kind);
         if (o.kind === "attention") expect(o.reasons.length).toBeGreaterThan(0);
-        // The ΔPDF's rule no longer passes on nothing (D15); D16 is the rule
-        // that does; the symmetry's rule holds an empty list of operations kept.
-        if (["rings", "punch", "backfill", "flatten", "pdf", "texture", "grain"].includes(check)) {
+        // No rule passes on nothing (D15, D16); the symmetry's rule holds an
+        // empty list of operations kept, and the coverage's reads its counts.
+        if (["rings", "punch", "backfill", "flatten", "pdf", "texture", "grain", "ub"].includes(check)) {
           expect(o, `${check} ${JSON.stringify(m)}`).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
         }
       }

@@ -302,11 +302,12 @@ describe("the disagreements found beyond D1–D10, kept and named", () => {
     expect(reply(pointer("qmax_coverage"))).toEqual({ achieved: null, checks: {} });
   });
 
-  it("D16: a ub_check result without an angle reads as a right UB", () => {
-    expect(D16_UB_UNMEASURED_READS_RIGHT).toBe(true);
+  it("D16, unified (2.4b.5): a ub_check result without an angle is not judged, no right UB", () => {
+    expect(D16_UB_UNMEASURED_READS_RIGHT).toBe(false);
     const r = reply(step("ub_check", { fit: "both", symmetrised: false }));
-    expect(r.checks.ub).toBe("pass");
+    expect(r.checks.ub).toBe("info");
     expect(r.achieved?.dataProblems).toEqual([]);
+    expect(judge("ub", {})).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
   });
 });
 

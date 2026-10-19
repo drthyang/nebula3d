@@ -492,12 +492,13 @@ const ORIGIN_PROBLEM = "the HKL origin is shifted by ";
 export const isOriginProblem = (p: string): boolean => p.startsWith(ORIGIN_PROBLEM);
 
 /**
- * D16: a ub_check result without an angle, on a volume not symmetrised, reads
- * as a right UB, as the answer checks read it (ub_check always writes its
- * angle; recordings may not), where the other rules say "nothing to judge".
- * Unify: set this to false; such a result is then not judged.
+ * D16, unified (plan 2.4b.5, batch 2, approved by the manager on the user's
+ * delegation, 2026-10-19): a ub_check result without an angle, on a volume not
+ * symmetrised, is not judged, "nothing to judge", as every other rule says of
+ * no evidence (ub_check always writes its angle; recordings may not). true: it
+ * read as a right UB, before 2.4b.5.
  */
-export const D16_UB_UNMEASURED_READS_RIGHT = true;
+export const D16_UB_UNMEASURED_READS_RIGHT = false;
 
 const ub: CheckRule<Readonly<Record<string, unknown>>> = {
   // ub_check writes no verdict: what the fit found, and the data's problems it shows.
