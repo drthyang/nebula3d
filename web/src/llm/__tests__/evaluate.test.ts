@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
+import { loadPipelineContext } from "../context/loadContext";
 import { evaluateStage, headline } from "../tune/evaluate";
 import { judge } from "../verdicts";
 import { makeSlice } from "./helpers";
@@ -61,6 +62,34 @@ describe("evaluateStage", () => {
     expect(e.leftover_on_protected_planes).toBe(0);
     expect(headline("punch", e)).toBe("0 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.04");
     expect(e).not.toHaveProperty("sigma_note");
+  });
+
+  it("counts every sharp leftover on the protected planes, on its own line, and leaves them out of the verdict (D5, 2.4.5)", async () => {
+    // Synthetic punched cuts, 1/15 r.l.u. a voxel. On h0l (K = 0), twelve sharp peaks
+    // on the default protected H planes (1/3 and 2/3 mod 1), more than the eight the
+    // chat's context lists; on 0kl (H = 0, no protected plane), none, or one stray.
+    const noise = (ix: number, iy: number) => ((ix * 7919 + iy * 104729) % 1000) / 500 - 1;
+    const bump = (cx: number, cy: number) => (ix: number, iy: number) => 2 * Math.exp(-((ix - cx) ** 2 + (iy - cy) ** 2) / 2);
+    const onThirds = [11, 26, 41, 56]; // H = −5/3, −2/3, 1/3, 4/3
+    const onTwoThirds = [16, 31, 46, 61]; // H = −4/3, −1/3, 2/3, 5/3
+    const satellites = [...onThirds.map((ix) => bump(ix, 21)), ...onThirds.map((ix) => bump(ix, 36)), ...onTwoThirds.map((ix) => bump(ix, 51))]; // L = −1, 0, 1
+    const stray = bump(43, 36); // K = 7/15, L = 0 on 0kl
+    const punched = (peaks: { h0l: typeof satellites; "0kl": typeof satellites }) =>
+      api.fetchSlice.mockImplementation(async (id: string, plane: "h0l" | "0kl") =>
+        makeSlice(73, 73, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + (id.endsWith("braggpunched") ? peaks[plane].reduce((s, f) => s + f(ix, iy), 0) : 0), { half: 2.4 }),
+      );
+    punched({ h0l: satellites, "0kl": [] });
+    const e = await evaluateStage("punch", dataset);
+    expect([e.leftover_at_nodes, e.leftover_off_lattice_sharp, e.leftover_on_protected_planes, e.leftover_on_protected_planes_sharp]).toEqual([0, 12, 12, 12]);
+    expect(judge("punch", e)).toMatchObject({ kind: "pass", reasons: [] });
+    // The chat's context still lists the strongest eight; the counts hold all twelve.
+    const { context } = await loadPipelineContext(dataset, { recip: { plane: "h0l", value: 0 }, dpdf: null, records: false });
+    expect([context.bragg_punch?.leftover.suspicious_peaks.length, context.bragg_punch?.leftover.n_on_protected]).toEqual([8, 12]);
+    // A sharp peak off the protected planes: one the search left.
+    punched({ h0l: satellites, "0kl": [stray] });
+    const left = await evaluateStage("punch", dataset);
+    expect([left.leftover_off_lattice_sharp, left.leftover_on_protected_planes_sharp]).toEqual([13, 12]);
+    expect(judge("punch", left)).toMatchObject({ kind: "attention", reasons: ["sharp off-lattice"] });
   });
 
   it("passes on the raw volume's note when its σ is √|I| of normalized data", async () => {

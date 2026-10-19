@@ -126,8 +126,12 @@ describe("D1–D10, kept and named", () => {
     expect([right.checks.ub, right.achieved?.dataProblems]).toEqual(["pass", []]);
   });
 
-  it("D5: sharp peaks on protected planes need attention in the punch's verdict, while its goal says they stay by design", () => {
-    expect(D5_PROTECTED_SHARP_PEAKS_COUNT).toBe(true);
+  it("D5, unified (2.4.5): the sharp peaks on protected planes stay out of the punch's verdict, as its goal says they stay by design", () => {
+    expect(D5_PROTECTED_SHARP_PEAKS_COUNT).toBe(false);
+    expect(judge("punch", { leftover_at_nodes: 0, leftover_off_lattice_sharp: 3, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3 })).toMatchObject({ kind: "pass", reasons: [] });
+    // One sharp peak more, off the protected planes: one the search left.
+    expect(judge("punch", { leftover_at_nodes: 0, leftover_off_lattice_sharp: 4, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3 })).toMatchObject({ kind: "attention", reasons: ["sharp off-lattice"] });
+    // An evaluation recorded without their own count (before 2.4.5) counts every sharp one, as it did.
     expect(judge("punch", { leftover_at_nodes: 0, leftover_off_lattice_sharp: 3, leftover_on_protected_planes: 3 })).toMatchObject({ kind: "attention", reasons: ["sharp off-lattice"] });
     expect(WORDS.goal.punch).toMatch(/leftover_on_protected_planes of them sit on protected planes and stay by design/);
   });

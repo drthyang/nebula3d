@@ -36,7 +36,7 @@ export const STAGE_VARIANTS: Record<GridStage, Variant[]> = {
   punch: [
     v("clean", { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0, leftover_off_lattice_broad: 4, mean_punched_fraction: 0.03 }, "pass"),
     v("at nodes", { leftover_at_nodes: 2, leftover_off_lattice_sharp: 0, mean_punched_fraction: 0.03 }, "attention"),
-    // Sharp peaks on protected planes count (D5).
+    // Sharp peaks on protected planes, recorded without their own count (before D5's 2.4.5): counted.
     v("protected sharp", { leftover_at_nodes: 0, leftover_off_lattice_sharp: 3, leftover_on_protected_planes: 3, leftover_off_lattice_broad: 0 }, "attention"),
     v("no sharp count", { leftover_at_nodes: 0, mean_punched_fraction: 0.02 }, "pass"),
     v("no node count", { leftover_off_lattice_sharp: 3 }, "info"),

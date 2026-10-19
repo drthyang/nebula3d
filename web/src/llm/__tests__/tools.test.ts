@@ -445,6 +445,13 @@ describe("assess_stage", () => {
     expect(r.text).not.toMatch(/"(outcomes|reasons|dataProblems)"/);
   });
 
+  it("shows the sharp leftovers on protected planes on their own line, out of the punch's verdict (D5, 2.4.5)", async () => {
+    evaluate.evaluateStage.mockResolvedValue({ leftover_at_nodes: 0, leftover_off_lattice: 3, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3, leftover_off_lattice_broad: 0, leftover_off_lattice_sharp: 3, mean_punched_fraction: 0.03, per_plane: {} });
+    const out = JSON.parse((await runOn(full, "assess_stage", { stage: "punch" })).text);
+    expect(out.punch).toMatchObject({ verdict: "meets its goal", leftover_off_lattice_sharp: 3, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3 });
+    expect(out.punch.goal).toMatch(/sit on protected planes and stay by design/);
+  });
+
   it("keeps the per-plane detail for one stage", async () => {
     evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, per_plane: { hk0: { after_floor_max_sigma: 0.8 } } });
     const out = JSON.parse((await run("assess_stage", { stage: "flatten" })).text);

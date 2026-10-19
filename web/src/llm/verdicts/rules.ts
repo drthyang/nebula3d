@@ -154,15 +154,15 @@ const rings: StageRule = {
 };
 
 /**
- * D5: the punch's verdict counts the sharp off-lattice peaks on protected
- * planes (punch.ts counts them among the off-lattice leftovers, evaluate.ts
- * among leftover_off_lattice_sharp), while its goal, beside it, says they stay
- * by design. Unify (2.4.5): set this to false. The rule then leaves out
- * leftover_on_protected_planes_sharp, the count the punch's evaluation must
- * then show on its own line (no evaluation holds it yet: today's
- * leftover_on_protected_planes counts the broad ones too).
+ * D5, unified (plan 2.4.5, the user's decision of 2026-10-19): the sharp
+ * off-lattice peaks on protected planes stay by design, as the punch's goal
+ * says, so its verdict leaves them out. The punch's evaluation shows them on
+ * their own line, leftover_on_protected_planes_sharp (tune/evaluate.ts, from
+ * each leftover's marks); an evaluation recorded without it counts every sharp
+ * one, as before. true: the verdict counted them among
+ * leftover_off_lattice_sharp, before 2.4.5.
  */
-export const D5_PROTECTED_SHARP_PEAKS_COUNT = true;
+export const D5_PROTECTED_SHARP_PEAKS_COUNT = false;
 
 const punch: StageRule = {
   criterion: "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice. Broad maxima are diffuse scattering, and stay.",
