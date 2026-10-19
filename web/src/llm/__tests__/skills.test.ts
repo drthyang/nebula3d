@@ -38,6 +38,17 @@ describe("the skills", () => {
     }
   });
 
+  it("says when the flatten's Q² term goes on: when assess_stage reports a pedestal left (docs/pilot-review.md finding 5)", () => {
+    const qc = allSkills().find((s) => s.name === "reduction-qc")!.body;
+    const step = qc.slice(qc.indexOf("6. **The flatten floor.**"), qc.indexOf("7. **Symmetry kept.**"));
+    expect(step).toMatch(/When to turn the Q² term on:\*\* when `assess_stage` for the flatten\s+reports `pedestal_left`, set `flattenQ2` on, rerun/);
+    expect(step).toMatch(/Leave it off otherwise/);
+    // It names the fields assess_stage gives, not the per-plane ones.
+    expect(step).toContain("`max_floor_trend`");
+    expect(step).toContain("`max_floor_span_fraction`");
+    expect(step).not.toMatch(/\(`floor_trend`\)/);
+  });
+
   it("is the method of every stage", () => {
     const names = new Set(allSkills().map((s) => s.name));
     for (const skill of Object.values(STAGE_SKILL)) expect(names.has(skill)).toBe(true);
