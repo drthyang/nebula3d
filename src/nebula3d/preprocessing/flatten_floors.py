@@ -50,17 +50,19 @@ shell) by a radix select on sort keys that order as the values do:
 2. a later pass histograms the next ten bits of the voxels in those bins only
    (a thousandth of a bin), or, once a bin holds few enough voxels (or a
    single key), collects them;
-3. the collected voxels (16 384 a bin at most, and half a million a pass in
+3. the collected voxels (32 768 a bin at most, and half a million a pass in
    low-memory mode) are sorted and give the ranks exactly.
 
 A bin whose voxels all hold one value is resolved without narrowing further.
-Three passes are typical.  What stays resident is the histograms (a few MB),
-the voxels collected (capped per pass) and one slab's temporaries.  On a
-401×401×301 float32 volume and its flatten input, a third of it measured, the
-traced peak is 28 MiB in low-memory mode (:func:`~nebula3d.core.low_memory`,
-the browser: slabs of a quarter of a million voxels), 0.15 of one volume,
-and 68 MiB natively; the flatten's own sort holds several volumes.  Both
-modes give the same numbers.
+A pass finds each value's bin by table lookups along those digits.  Three
+passes are typical.  What stays resident is the histograms and tables (a few
+MB), the voxels collected (capped per pass) and one slab's temporaries.  On
+a 401×401×301 float32 volume and its flatten input, a third of it measured,
+the traced peak is 29 MiB in low-memory mode
+(:func:`~nebula3d.core.low_memory`, the browser: slabs of a quarter of a
+million voxels), 0.16 of one volume, and 74 MiB natively, in 3 s; measured
+throughout, 41 and 88 MiB in 6 s.  The flatten's own sort holds several
+volumes.  Both modes give the same numbers.
 """
 
 from __future__ import annotations
@@ -105,7 +107,7 @@ _NATIVE = _Budget(slab_voxels=1 << 20, collect=1 << 21, first_bins=1 << 21, rows
                   batch=1 << 20)
 
 #: A bin with at most this many voxels is collected rather than narrowed.
-_COLLECT_BIN = 1 << 14
+_COLLECT_BIN = 1 << 15
 
 #: Bits of the 32-bit key each narrowing reads.
 _NEXT_BITS = 10
@@ -549,59 +551,108 @@ def _plan(frontier: list[_Bin], exact_keys: bool, budget: _Budget,
     return narrow[:budget.rows], collect, later
 
 
+def _digit_widths(first: int) -> list[int]:
+    """The bits of the key each level of the select reads: *first*, then
+    ``_NEXT_BITS`` at a time (the last level what is left)."""
+    widths = [first]
+    while sum(widths) < _KEY_BITS:
+        widths.append(min(_NEXT_BITS, _KEY_BITS - sum(widths)))
+    return widths
+
+
+class _Lookup:
+    """Which of a pass's bins each value falls in, read off its key's digits.
+
+    One table per level of the select, indexed by the node above and the
+    next digit (by the group and the first digit at the top): the index of a
+    bin of the pass (0 or more), a node narrowed by an earlier pass whose
+    bins lie further down (−2 − its index at that level), or nothing (−1).
+    A value costs one gather per level it goes down, where a search among
+    a thousand bins cost ten comparisons.
+    """
+
+    def __init__(self, bins: list[_Bin], n_groups: int, first: int) -> None:
+        widths = _digit_widths(first)
+        read = [int(x) for x in np.cumsum(widths)]   # bits read after each level
+        self.first, self.widths = first, widths
+        self.shifts = [np.uint32(_KEY_BITS - r) for r in read]
+        nodes: list[dict[int, int]] = [{} for _ in widths]
+        paths: list[list[int]] = []
+        for b in bins:
+            depth = read.index(_KEY_BITS - b.bits) + 1
+            pos = (b.group << first) | (b.start >> (_KEY_BITS - first))
+            path = [pos]
+            for k in range(1, depth):
+                node = nodes[k - 1].setdefault(pos, len(nodes[k - 1]))
+                digit = (b.start >> (_KEY_BITS - read[k])) & ((1 << widths[k]) - 1)
+                pos = (node << widths[k]) | digit
+                path.append(pos)
+            paths.append(path)
+        depth = max((len(p) for p in paths), default=1)
+        self.tables = [np.full(n_groups << first, -1, dtype=np.int32)]
+        self.tables += [np.full(len(nodes[k - 1]) << widths[k], -1, dtype=np.int32)
+                        for k in range(1, depth)]
+        for i, path in enumerate(paths):
+            for k, pos in enumerate(path[:-1]):
+                self.tables[k][pos] = -2 - nodes[k][pos]
+            self.tables[len(path) - 1][path[-1]] = i
+
+    def __call__(self, group: NDArray[np.integer], keys: NDArray[np.uint32]) -> NDArray[np.int32]:
+        """Each value's bin (its index in the pass's list), −1 for none."""
+        t = self.tables[0][(group.astype(np.int64) << self.first)
+                           | (keys >> self.shifts[0]).astype(np.int64)]
+        out = np.maximum(t, -1)
+        walk = np.flatnonzero(t <= -2)
+        t = t[walk]
+        for k in range(1, len(self.tables)):
+            if walk.size == 0:
+                break
+            digit = (keys[walk] >> self.shifts[k]) & np.uint32((1 << self.widths[k]) - 1)
+            t = self.tables[k][((-2 - t).astype(np.int64) << self.widths[k])
+                               | digit.astype(np.int64)]
+            hit = t >= 0
+            out[walk[hit]] = t[hit]
+            walk, t = walk[t <= -2], t[t <= -2]
+        return out
+
+
 def _pass(stream: Stream, n_groups: int, first: int, narrow: list[_Bin],
           collect: list[_Bin], values: dict[tuple[int, int], float],
           batch: int) -> list[_Bin]:
     """One pass: histogram the next bits of the keys in *narrow*'s bins and
     gather the values in *collect*'s; resolve what that settles and return
     the bins one level down."""
-    bins = sorted(narrow + collect, key=lambda b: (b.group, b.start))
-    starts = np.array([(b.group << _KEY_BITS) | b.start for b in bins], dtype=np.uint64)
-    ends = starts + np.array([1 << b.bits for b in bins], dtype=np.uint64)
+    bins = narrow + collect           # a bin's index: a histogram row, then a slot
+    n_narrow = len(narrow)
+    lookup = _Lookup(bins, n_groups, first)
     first_key = np.array([b.start for b in bins], dtype=np.uint32)
-    narrow_ids = {id(b): i for i, b in enumerate(narrow)}
-    collect_ids = {id(b): i for i, b in enumerate(collect)}
-    row = np.array([narrow_ids.get(id(b), -1) for b in bins], dtype=np.intp)
-    slot = np.array([collect_ids.get(id(b), -1) for b in bins], dtype=np.int32)
     digits = [min(_NEXT_BITS, b.bits) for b in narrow]
     down = np.array([b.bits - min(_NEXT_BITS, b.bits) for b in bins], dtype=np.uint32)
-    # The first pass's bins that hold one of them: a cheap test that leaves
-    # the search below to the few voxels it concerns.
-    shift = np.uint32(_KEY_BITS - first)
-    near = np.zeros(n_groups << first, dtype=bool)
-    near[[(b.group << first) | (b.start >> (_KEY_BITS - first)) for b in bins]] = True
 
     width = 1 << _NEXT_BITS
-    hist = _Bincount(len(narrow) * width, batch=batch)
-    lo = np.full(len(narrow), np.inf)
-    hi = np.full(len(narrow), -np.inf)
+    hist = _Bincount(n_narrow * width, batch=batch)
+    lo = np.full(n_narrow, np.inf)
+    hi = np.full(n_narrow, -np.inf)
     got_values: list[NDArray[np.floating]] = []
     got_slots: list[NDArray[np.int32]] = []
     for g, v in stream():
         if g.size == 0:
             continue
         keys = _sort_keys(v)
-        pick = near[(g.astype(np.int64) << first) | (keys >> shift)]
-        if not pick.any():
-            continue
-        g, v, keys = g[pick], v[pick], keys[pick]
-        code = (g.astype(np.uint64) << np.uint64(_KEY_BITS)) | keys.astype(np.uint64)
-        j = np.maximum(np.searchsorted(starts, code, side="right") - 1, 0)
-        inside = (code >= starts[j]) & (code < ends[j])
+        j = lookup(g, keys)
+        inside = j >= 0
         if not inside.any():
             continue
         j, v, keys = j[inside], v[inside], keys[inside]
-        r = row[j]
-        m = r >= 0
+        m = j < n_narrow
         if m.any():
-            rm, jm = r[m], j[m]
-            hist.add(rm * width + ((keys[m] - first_key[jm]) >> down[jm]).astype(np.int64))
-            _extremes(lo, hi, rm, v[m])
-        s = slot[j]
-        m = s >= 0
+            jm = j[m].astype(np.intp)
+            hist.add(jm * width + ((keys[m] - first_key[jm]) >> down[jm]).astype(np.int64))
+            _extremes(lo, hi, jm, v[m])
+        m = ~m
         if m.any():
             got_values.append(v[m])
-            got_slots.append(s[m])
+            got_slots.append(j[m] - np.int32(n_narrow))
 
     later: list[_Bin] = []
     if narrow:

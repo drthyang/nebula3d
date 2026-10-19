@@ -243,8 +243,9 @@ The measurement reads the volumes one slab of H planes at a time and finds
 each percentile by a radix select on the values' sort keys, narrowing a
 histogram pass by pass, three passes in all, where the flatten sorts every
 measured voxel at once. On a 401×401×301 float32 volume and its input, a third
-of it measured, it holds 28 MiB at its peak in low-memory mode (the browser)
-and 68 MiB natively, and takes 3–5 s; both modes give the same numbers.
+of it measured, it holds 29 MiB at its peak in low-memory mode (the browser)
+and 74 MiB natively, and takes 3 s (41 and 88 MiB, 6 s, with every voxel
+measured); both modes give the same numbers.
 
 ### 5. Compute The 3D-ΔPDF
 
