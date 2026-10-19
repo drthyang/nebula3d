@@ -4,7 +4,7 @@
 // cleaner number bought by destroying diffuse signal is not mistaken for a win.
 
 import type { ChatMessage } from "../provider/client";
-import { WORDS } from "../verdicts";
+import { WORDS } from "../verdicts/rules";
 import { describeStageParams, TUNE_STAGE_LABELS, type ParamValue, type TuneStage } from "./catalog";
 import type { StageEvaluation } from "./evaluate";
 

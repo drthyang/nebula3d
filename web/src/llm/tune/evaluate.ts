@@ -10,7 +10,7 @@ import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
 import { sectionSymmetry, type SectionSymmetry } from "../metrics/symmetry";
-import { judge, UNROUNDED, type Unrounded } from "../verdicts";
+import { judge, UNROUNDED, type Unrounded } from "../verdicts/rules";
 import type { TuneStage } from "./catalog";
 
 const RECIP_CUTS: Cut[] = [

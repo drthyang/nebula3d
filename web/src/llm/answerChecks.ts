@@ -16,8 +16,10 @@
 //   guidance, within its written precision.
 // - **Verdicts from the checks.** A stage the tools judged to need attention
 //   is never called clean, and the run is not called trustworthy unless the
-//   verdict computed from the checks says it met its goal (verdict.ts): the
-//   tools compute verdicts, the model quotes and explains them.
+//   verdict computed from the checks says it met its goal: the check-verdict
+//   module (verdicts/) reads both from the tools' results, the answer checks
+//   as one of its readers. The tools compute verdicts, the model quotes and
+//   explains them.
 //
 // A failed check sends the answer back once, with what to fix; what still
 // fails is noted under the reply.  The text checks are heuristic by design:
@@ -26,11 +28,9 @@
 import type { AgentStep } from "./agent";
 import { current, recomputedAt, type PipelineStage } from "./evidence";
 import { fillReferences } from "./references";
-import { stageCheck } from "./report/report";
 import { factsOf } from "./tools";
 import type { VerdictTopic } from "./tools/facts";
-import { computedVerdict, type ComputedVerdict } from "./verdict";
-import { WORDS } from "./verdicts";
+import { verdicts, type CheckId, type ComputedVerdict } from "./verdicts";
 
 // The tools that settle a topic declare it (their facts' `settles`, in the
 // registry); `evidence` names one of them, as the model is told.
@@ -222,58 +222,8 @@ const SUCCESS = /\b(clean(ly)?|pass(es|ed)?|meets? (its|the) goal|successful(ly)
 const SUCCESS_BY_NEGATION = /\b(no\s+(\w+\s+){0,3}|nothing\s+(is\s+|was\s+)?|none\s+(is\s+|are\s+|was\s+|were\s+)?)(left|leftovers?|missed|remain\w*|residu\w*)\b/i;
 const claimsSuccess = (s: string): boolean => (SUCCESS.test(s) && !NEGATION.test(s)) || SUCCESS_BY_NEGATION.test(s);
 
-type ToolSays = "ok" | "not ok" | null;
-
-const resultsOf = (steps: readonly AgentStep[], name: string): Record<string, unknown>[] =>
-  steps.flatMap((s) => {
-    if (s.name !== name || s.status !== "done" || !s.result) return [];
-    try {
-      const r: unknown = JSON.parse(s.result);
-      return r && typeof r === "object" && !Array.isArray(r) ? [r as Record<string, unknown>] : [];
-    } catch {
-      return [];
-    }
-  });
-
-/** A stage's verdict from assess_stage: its computed verdict, or computed here from its numbers by the same rule. */
-function stageSays(steps: readonly AgentStep[], stage: "rings" | "punch" | "backfill" | "flatten" | "pdf"): ToolSays {
-  let says: ToolSays = null;
-  for (const r of resultsOf(steps, "assess_stage")) {
-    const m = r[stage];
-    if (!m || typeof m !== "object") continue;
-    const field = (m as Record<string, unknown>).verdict;
-    const check = typeof field === "string" ? null : stageCheck(stage, m as Record<string, unknown>);
-    const label = typeof field === "string" ? field : check ? WORDS.label[check.verdict] : null;
-    if (label === WORDS.label.attention) says = "not ok";
-    else if (label === WORDS.label.pass) says = "ok";
-  }
-  return says;
-}
-
-/** A tool's own verdict line: does it start the way a passing or a failing one does? */
-function verdictSays(steps: readonly AgentStep[], tool: string, ok: RegExp, notOk: RegExp): ToolSays {
-  let says: ToolSays = null;
-  for (const r of resultsOf(steps, tool)) {
-    const v = typeof r.verdict === "string" ? r.verdict : "";
-    if (notOk.test(v)) says = "not ok";
-    else if (ok.test(v)) says = "ok";
-  }
-  return says;
-}
-
-/** The UB from ub_check: off when the fit turned it or the volume is symmetrised (its orientation cannot be judged). */
-function ubSays(steps: readonly AgentStep[]): ToolSays {
-  let says: ToolSays = null;
-  for (const r of resultsOf(steps, "ub_check")) {
-    const angle = typeof r.orientation_change_deg === "number" ? r.orientation_change_deg : typeof r.angle_deg === "number" ? r.angle_deg : null;
-    says = r.symmetrised === true || (angle != null && angle >= 0.05) ? "not ok" : "ok";
-  }
-  return says;
-}
-
 interface VerdictRule {
-  topic: string;
-  says: (steps: readonly AgentStep[]) => ToolSays;
+  topic: CheckId; // the check whose verdict the claim is held to, as the answer checks read it (verdicts/readers.ts)
   claimsOk: (s: string) => boolean; // a non-hedged claim that it is fine
   claimsNotOk?: (s: string) => boolean; // checked against a passing verdict, where calling it wrong is as bad
 }
@@ -281,30 +231,20 @@ interface VerdictRule {
 const asserted = (re: RegExp) => (s: string): boolean => re.test(s) && !NEGATION.test(s) && !/\b(unlikely|doubt\w*)\b/i.test(s);
 
 const RULES: readonly VerdictRule[] = [
-  { topic: "rings", says: (st) => stageSays(st, "rings"), claimsOk: claimsSuccess },
-  { topic: "punch", says: (st) => stageSays(st, "punch"), claimsOk: claimsSuccess },
-  { topic: "backfill", says: (st) => stageSays(st, "backfill"), claimsOk: claimsSuccess },
-  { topic: "flatten", says: (st) => stageSays(st, "flatten"), claimsOk: claimsSuccess },
-  { topic: "pdf", says: (st) => stageSays(st, "pdf"), claimsOk: claimsSuccess },
-  {
-    topic: "coverage",
-    says: (st) => verdictSays(st, "qmax_coverage", /^clean/i, /^(too far|past|unmeasured|not)/i),
-    claimsOk: asserted(/\b(inside|within|stays|clean)\b/i),
-  },
-  {
-    topic: "symmetry",
-    says: (st) => verdictSays(st, "symmetry_check", /^kept/i, /^not kept/i),
-    claimsOk: asserted(/\b(kept|keeps|holds?|preserved|intact)\b/i),
-  },
+  { topic: "rings", claimsOk: claimsSuccess },
+  { topic: "punch", claimsOk: claimsSuccess },
+  { topic: "backfill", claimsOk: claimsSuccess },
+  { topic: "flatten", claimsOk: claimsSuccess },
+  { topic: "pdf", claimsOk: claimsSuccess },
+  { topic: "coverage", claimsOk: asserted(/\b(inside|within|stays|clean)\b/i) },
+  { topic: "symmetry", claimsOk: asserted(/\b(kept|keeps|holds?|preserved|intact)\b/i) },
   {
     topic: "grain",
-    says: (st) => verdictSays(st, "grain_check", /^no second grain/i, /^a second grain/i),
     claimsOk: (s) => /\bno second grain\b|\bone grain\b|\bsingle grain\b/i.test(s),
     claimsNotOk: asserted(/\b(a|the) second grain\b|\btwin(ned|s)?\b|\bsecond grain (is|was) (present|there|found)\b/i),
   },
   {
     topic: "ub",
-    says: ubSays,
     claimsOk: asserted(/\b(right|correct|fine|accurate|good|on (their|its) nodes)\b/i),
     // When the fit finds the UB right (no turn, or offsets no UB explains),
     // blaming the UB sends the user to the wrong fix.
@@ -315,13 +255,12 @@ const RULES: readonly VerdictRule[] = [
 /** Topics where the answer contradicts the tools' computed verdicts in this reply (on the outputs as they now are). */
 export function contradictions(text: string, steps: readonly AgentStep[]): Topic[] {
   const claimed = verdictsIn(text);
-  const at = recomputedAt(steps);
+  // Each check's verdict as the answer checks read it: the newest current result that decides.
+  const { checks } = verdicts({ reply: steps });
   return RULES.flatMap((rule) => {
-    const stage = TOPICS.find((t) => t.id === rule.topic)?.stage ?? null;
-    const says = rule.says(steps.filter((_s, i) => current(at, stage, i)));
+    const kind = checks[rule.topic];
     const lines = claimed.get(rule.topic) ?? [];
-    const wrong =
-      (says === "not ok" && lines.some(rule.claimsOk)) || (says === "ok" && rule.claimsNotOk !== undefined && lines.some(rule.claimsNotOk));
+    const wrong = (kind === "attention" && lines.some(rule.claimsOk)) || (kind === "pass" && rule.claimsNotOk !== undefined && lines.some(rule.claimsNotOk));
     const topic = TOPICS.find((t) => t.id === rule.topic);
     return wrong && topic ? [topic] : [];
   });
@@ -477,7 +416,7 @@ export function answerIssues(text: string, steps: readonly AgentStep[], sources:
     untraced: untracedNumbers(filled.replace(/\{\{[^}]*\}\}/g, ""), sources),
     contradicted: contradictions(filled, steps),
     unknownReferences: unknown,
-    overall: overallContradiction(filled, computedVerdict(steps)),
+    overall: overallContradiction(filled, verdicts({ reply: steps }).achieved),
   };
   return issues.missing.length || issues.stale.length || issues.untraced.length || issues.contradicted.length || issues.unknownReferences.length || issues.overall
     ? issues

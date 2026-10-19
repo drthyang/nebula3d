@@ -18,6 +18,7 @@ import type { TuneStage } from "../tune/catalog";
 export type Kind = "pass" | "attention" | "info";
 
 export type Stage = TuneStage;
+export const STAGES: readonly Stage[] = ["rings", "punch", "backfill", "flatten", "pdf"];
 
 /** The checks: the five stages, and the checks on the result. */
 export type CheckId = Stage | "coverage" | "symmetry" | "texture" | "grain" | "ub";
@@ -44,7 +45,12 @@ export type Reason =
   | "UB off"
   | "peaks beside nodes"
   | "UB turned"
-  | "symmetrised";
+  | "symmetrised"
+  // What a recorded result says of itself (recorded.ts).
+  | "no output"
+  | "recorded verdict"
+  | "words not a label"
+  | "legacy coverage words";
 
 export interface Outcome {
   check: CheckId;
