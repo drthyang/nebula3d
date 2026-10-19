@@ -204,6 +204,83 @@ Output:
 data/processed/*_braggpunched.h5
 ```
 
+#### Which nodes are Bragg peaks, and the grid that takes
+
+The punch's node test (`integer_detect="significance"`, the default) takes
+the brightest voxel of each integer node's window and asks whether its
+integrated excess stands `min_significance` standard errors (corrected for
+the window search) above the node's own background: the median of the
+measured voxels in a shell between 1× and 2× the resolution ellipsoid R
+(`punch_spherical_radii`, rρ, rθ, rφ = 0.097, 0.072, 0.115 Å⁻¹). The shell
+tells a Bragg peak from a broad diffuse maximum at the node, which stands no
+higher than its own surroundings. A median needs 8 voxels
+(`_SHELL_MIN_VOXELS` in `nebula3d.analysis.bragg`, the floor of every
+shell median the punch takes), and that sets the grid:
+
+- **The limit.** The shell's Q-volume is 2³ − 1 = 7 times R's,
+  (28π/3)·rρ·rθ·rφ, so 8 voxels need a voxel Q-volume of (7π/6)·rρ·rθ·rφ
+  or less: a cubic voxel of 0.143 Å⁻¹ or less at the default R, about
+  2·r_min. A voxel's size is the edge of a cube of its Q-volume,
+  ∛(|det UB|·ΔH·ΔK·ΔL), the step itself on a cubic grid
+  (`BraggRemover.voxel_edge_q`; the limit, from R and the floor,
+  `BraggRemover.node_test_limit`).
+- **Node by node.** The count is checked at each node, around the voxel
+  judged: R turns with Q̂ and the grid does not, so the count varies with the
+  direction (at the limit about one direction in twelve falls short, at 0.94
+  of it none), and with the mask and the box's faces, which cut the shells of
+  nodes at the edge of the measured volume.
+
+A node whose shell holds fewer than 8 measured voxels is not judged. Before
+this guard the test fell back on the window's median, which on a coarse grid
+passes the diffuse at a node: a saddle's corner stands many σ above its
+window's median. With `mode="both"` (the default) such a node is left to the
+search pass, which punches it only if it stands out of its |Q| shell by the
+search floors. A weak Bragg peak below those floors may remain, the lesser
+error, and so may one in a |Q| shell too thin for the search's statistics
+(under 20 voxels, at the box's far corners). With `mode="integer"` there is
+no search pass to leave it to: the node is judged against its window's median
+as before, provisionally. On a grid coarser than the limit the punch says so
+out loud. Its done line ends on a notice, marked ⚠, such as
+
+```text
+grid too coarse for the Bragg punch's node test: a voxel is 0.161 Å⁻¹; its background shell needs ≤ 0.143 Å⁻¹. 703 of 728 nodes were not judged and were left to the search pass; weaker Bragg peaks may remain. Use a finer grid.
+```
+
+with `mode="integer"`: "… 703 of 728 nodes were judged provisionally,
+against their window's median; diffuse maxima at nodes may be punched. Use a
+finer grid." Its line on the integer nodes counts them on any grid ("8
+peaks; 703 of 728 nodes not judged (fewer than 8 measured voxels in the
+background shell), left to the search pass"): on a grid finer than the limit
+only the nodes at the edge of the measured volume or on the box's faces can
+fall short, and the line counts them without the ⚠ notice. The nodes are the
+ones the test examined, those with a measured window. The punch's record, its
+profile beside the punched volume (`*_braggpunched_profile.json`), keeps
+them as `node_test`: `examined`, `under_floor`, `min_voxels`, `voxel_q`,
+`needs_q` (Å⁻¹), `left_to_search` and the `notice` (none on a grid finer
+than the limit); `GET /api/bragg/{id}/profile` and the browser build serve
+it. The Execution page shows the done line, and the stage's summary, as a
+warning, and NEBULA Pilot's `run_log` gives the lines as written.
+
+On the validation's dev crystal (a = 3.9 Å, ±4 r.l.u.), 81 points (0.161 Å⁻¹
+a voxel) leave 2 to 6 voxels in the shell at 96 % of the nodes (703 of 728
+on the control). Without the guard the test punched 29 to 106 forbidden
+nodes of the crystal's FCC lattice on each case without rings (118 and 125
+with them), a quarter to a half of the punched voxels, and the ⟨3/2 0 0⟩
+correlation of three cases fell to 0.77–0.79 of its amplitude. With it no
+forbidden node is punched (on the ring cases, where the ring removal confirms
+no ring at this grid, the four and two the test judges with a full shell on
+the 4.05 Å⁻¹ ring aside), the three keep 0.89–0.93, and broad maxima planted
+at the (1,1,0) nodes under the search floors go unpunched, where the test
+as it was punched all twelve. The search pass punches the Bragg peaks
+instead, with smaller holes: from 8 integer peaks the punch learns no Bragg
+profile (it needs 20), so a peak whose own width it cannot measure (within
+5 voxels of the box's faces) gets the resolution ellipsoid, where the
+profile's footprint reached further. On five of the eight cases it misses
+all eight Bragg peaks at the box's corners (±4, ±4, ±4), on a sixth two:
+their |Q| shell holds 8 voxels, under the 20 its statistics need. 161
+points (0.081 Å⁻¹) leave 9 voxels or more in every node's shell, the box's
+corners included: every node is judged, and the punch is as it was.
+
 ### 3. Backfill Bragg Holes
 
 ```bash
