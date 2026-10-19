@@ -62,9 +62,10 @@ SYMMETRISED = 1e-4
 WINDOW_VOXELS = 1.5
 
 #: A turn of the UB under this (degrees) is within the fit's own noise: the UB
-#: check's rule, which the app applies as ``UB_TURN`` (web/src/llm/verdict.ts
-#: reports a UB turned by this much or more, under any fit but the symmetric
-#: one).  Regridding onto a turn below it would only resample the data.
+#: check's rule, which the app applies as ``UB_TURN`` (``UB_TURNED`` in
+#: web/src/llm/verdicts/rules.ts reports a UB turned by this much or more,
+#: under any fit but the symmetric one, on a volume not symmetrised).
+#: Regridding onto a turn below it would only resample the data.
 UB_TURN = 0.05
 
 #: Distances from the nodes below this (Å⁻¹) are never rejected as outliers.
