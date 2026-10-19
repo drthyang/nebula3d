@@ -188,12 +188,16 @@ describe("D1–D10, kept and named", () => {
     expect(reply(seamOk).checks.backfill).toBe("info");
   });
 
-  it("D9: without a ΔPDF evaluation the report judges its ΔPDF card from the coverage and the symmetry; {{achieved}} says not measured", () => {
-    expect(D9_REPORT_PDF_CARD_WITHOUT_EVALUATION).toBe(true);
+  it("D9, unified (2.4.9): without a ΔPDF evaluation the report's ΔPDF card is not judged, as {{achieved}} says not measured; a check on it that needs attention still counts", () => {
+    expect(D9_REPORT_PDF_CARD_WITHOUT_EVALUATION).toBe(false);
     const measured: Measured = { ...PASSING, pdf: null };
-    expect(verdicts({ report: measured }).checks.pdf).toBe("pass");
-    expect(verdicts({ report: measured }).achieved?.achieved).toBe(true);
+    expect(verdicts({ report: measured }).checks.pdf).toBe("info");
+    expect(verdicts({ report: measured }).achieved).toMatchObject({ achieved: null, text: "not judged: not measured: 3D-ΔPDF" });
     expect(chatOf(measured)).toMatchObject({ achieved: null, notMeasured: ["the 3D-ΔPDF"] });
+    // The coverage too far, without an evaluation: attention on the card, as the chat's goal is not met.
+    const far: Measured = { ...PASSING, pdf: null, coverage: COVERAGE[1].m };
+    expect(verdicts({ report: far }).checks.pdf).toBe("attention");
+    expect([verdicts({ report: far }).achieved?.achieved, chatOf(far)?.achieved]).toEqual([false, false]);
   });
 
   it("D10: a recording's coverage words no producer wrote are not ok to the answer checks and no attention to {{achieved}}", () => {
@@ -316,7 +320,7 @@ function replyOf(m: Measured): AgentStep[] {
 
 const chatOf = (m: Measured) => verdicts({ reply: replyOf(m) }).achieved;
 
-type Rule = "D9" | "D13" | "D14";
+type Rule = "D13" | "D14";
 
 /** The grid's measurements, one change from passing at a time, tagged with the rule that makes the two goals differ there. */
 function cases(): { id: string; m: Measured; differs?: Rule }[] {
@@ -324,7 +328,7 @@ function cases(): { id: string; m: Measured; differs?: Rule }[] {
   const d13 = new Set(["symmetry broken", "asymmetry, not read"]);
   for (const s of GRID_STAGES as GridStage[]) {
     for (const x of STAGE_VARIANTS[s]) out.push({ id: `${s} ${x.id}`, m: { ...PASSING, [s]: x.m }, differs: s === "pdf" && d13.has(x.id) ? "D13" : undefined });
-    out.push({ id: `no ${s}`, m: { ...PASSING, [s]: null }, differs: s === "pdf" ? "D9" : undefined });
+    out.push({ id: `no ${s}`, m: { ...PASSING, [s]: null } });
   }
   for (const x of COVERAGE) out.push({ id: `coverage ${x.id}`, m: { ...PASSING, coverage: x.m } });
   for (const x of SYMMETRY) out.push({ id: `symmetry ${x.id}`, m: { ...PASSING, symmetry: x.m } });

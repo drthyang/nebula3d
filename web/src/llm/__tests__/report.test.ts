@@ -230,6 +230,20 @@ describe("a card states only what it judges", () => {
     expect(old.details.map(([k]) => k)).not.toContain("Sharp leftovers on protected planes (kept by design)");
   });
 
+  it("leaves the 3D-ΔPDF's card not judged without a ΔPDF evaluation, unless the coverage or the symmetry needs attention (D9, 2.4.9)", () => {
+    // Synthetic measurements: every other stage passes; no ΔPDF evaluation was run.
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 }, pdf: null };
+    const r = buildReport(input({ measured: sound }));
+    expect(r.checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("info");
+    expect(r.achieved).toEqual({ met: null, text: "not judged: not measured: 3D-ΔPDF" });
+    expect(reportMarkdown(r)).toContain("| 3D-ΔPDF | not judged |");
+    // The coverage too far (a separable window putting 0.04 of its weight on unmeasured space): the card needs attention.
+    const far = judge("coverage", { window_weight: 0.04, window: "the ΔPDF's separable window", unit_cell: true, full_coverage_q: null, reach: null, reach_from: "", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } });
+    const r2 = buildReport(input({ measured: { ...sound, coverage: { verdict: far.words, window_weight_on_unmeasured: 0.04 } } }));
+    expect(r2.checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("attention");
+    expect(r2.achieved).toEqual({ met: false, text: "not met: needs attention: 3D-ΔPDF" });
+  });
+
   it("reports the flatten's floor in σ without judging it, by the pedestal rule", () => {
     // The validation's dev volumes (docs/pilot-review.md finding 6): floors of
     // 1.5 to 1.8σ on all eight, whatever the flatten did.

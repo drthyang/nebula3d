@@ -150,11 +150,13 @@ export const D12_ANSWER_SKIPS_WORDS_THAT_ARE_NO_LABEL = true;
 export const D2_REPORT_COVERAGE_BY_WEIGHT_ONLY = false;
 
 /**
- * D9: without a ΔPDF evaluation, the report judges its 3D-ΔPDF card from the
- * coverage and the symmetry alone, where {{achieved}} says the ΔPDF was not
- * measured. Unify (2.4.9): set this to false; the card is then not judged.
+ * D9, unified (plan 2.4.9, the user's decision of 2026-10-19): without a ΔPDF
+ * evaluation, the report's 3D-ΔPDF card is not judged, as {{achieved}} says the
+ * ΔPDF was not measured. The coverage and the symmetry it also reads still
+ * count where they need attention, as {{achieved}} names them. true: the card
+ * passed on the coverage and the symmetry alone, before 2.4.9.
  */
-export const D9_REPORT_PDF_CARD_WITHOUT_EVALUATION = true;
+export const D9_REPORT_PDF_CARD_WITHOUT_EVALUATION = false;
 
 /**
  * D13: the report's 3D-ΔPDF card reads the symmetry from symmetry_check alone,
@@ -371,13 +373,14 @@ const windowOf = (o: Outcome | undefined): "past" | "within" | null =>
 /** The 3D-ΔPDF card: the round trip by the ΔPDF's rule, its window (D2), the symmetry (D13), and without an evaluation (D9). */
 function pdfCard(pdf: Outcome | undefined, coverage: Outcome | undefined, symmetry: Outcome | undefined): Kind | undefined {
   if (!pdf && !coverage && !symmetry) return undefined;
-  if (!pdf && !D9_REPORT_PDF_CARD_WITHOUT_EVALUATION) return "info";
   const back = pdf?.reasons.includes("back-FFT") ?? false;
   // The evaluation's weight, else the coverage's; and the coverage's verdict, as {{achieved}} reads it (D2).
   const window = windowOf(pdf) ?? windowOf(coverage);
   const far = !D2_REPORT_COVERAGE_BY_WEIGHT_ONLY && coverage !== undefined && MATRIX.coverage.achieved(coverage) === "attention";
   const broken = symmetry?.kind === "attention" || (!D13_REPORT_SYMMETRY_FROM_SYMMETRY_CHECK_ONLY && (pdf?.reasons.includes("symmetry broken") ?? false));
-  return back || window === "past" || far || broken ? "attention" : "pass";
+  if (back || window === "past" || far || broken) return "attention";
+  // Nothing judged the ΔPDF itself without its evaluation: not judged (D9).
+  return pdf || D9_REPORT_PDF_CARD_WITHOUT_EVALUATION ? "pass" : "info";
 }
 
 /** A report's verdicts: each card's, and the goal, met when every stage's card passes (a second grain is the sample's, reported apart). */
