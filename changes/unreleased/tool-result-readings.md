@@ -11,4 +11,7 @@
   model's copy, in a long reply. The new fields are optional, so the schema
   stays `nebula3d-validation-run/1`. A number's source (`numbers[].source`) is
   searched in the whole result, so a number a `{{reference}}` filled from a
-  field the model's copy left out has one.
+  field the model's copy left out has one. Of the candidate findings, a missed
+  fault whose number only the whole result holds is now a `bug` (the tool
+  found it, but the text the model read left it out) rather than a
+  `missing-tool`.

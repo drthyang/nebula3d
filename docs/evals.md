@@ -484,8 +484,11 @@ regression `tests` that pin it; `note` says what is provisional or left open, an
 and a physical criterion is their call, so `skill-gap` and `science-error` need
 the user by default; the rest do not unless the fix moves a criterion.
 `candidateFindings` lists what a run's scores and transcript point at, as
-validation findings with the evidence, and tells a fault no tool showed (a
-missing tool) from one a tool showed and the answer missed. Only validation
+validation findings with the evidence. Of a fault the conclusion missed, it
+tells one no tool showed (a missing tool) from one a tool showed in the text
+the model read, which the answer missed (orchestration), and from one a tool
+found but the text the model read left out, its number only in the step's
+whole result (a bug: keep that field in the fitted text). Only validation
 findings enter per-case logic: a run's transcript lists none from the review, and
 the record's test checks the case of the validation ones alone (each a dev case).
 The record holds the eight from validation batch 1 and the eleven the

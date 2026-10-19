@@ -12,8 +12,9 @@
 // file:line on the commit `at` names. Only validation findings enter per-case
 // logic (the transcript, a case's checks).
 
+import { seen, type Readable } from "../readings";
 import { offerChanges } from "./offers";
-import { findIn, type RunRecord, type ValidationCase } from "./validation";
+import { findIn, numbersIn, stepOf, type Decision, type RunRecord, type ValidationCase } from "./validation";
 
 export const FINDING_KINDS = ["bug", "missing-tool", "skill-gap", "orchestration", "science-error"] as const;
 export type FindingKind = (typeof FINDING_KINDS)[number];
@@ -160,18 +161,18 @@ function truthNumbers(c: ValidationCase): [string, number, number][] {
   return out;
 }
 
-const parse = (result: string): unknown => {
-  try {
-    return JSON.parse(result);
-  } catch {
-    return result;
-  }
-};
+/** A decision as the model read it: its readings without the whole result (readings/). */
+const asRead = (d: Decision): Readable => ({ status: d.status, result: seen(stepOf(d)) });
 
-/** The first step whose result holds *value* within *tol*: did the run's tools show it at all. */
-function surfaced(rec: RunRecord, value: number, tol: number): { step: number; tool: string } | null {
+/**
+ * The first step whose result holds *value* within *tol*, in one reading of
+ * each step (*reading*): what the model read (asRead), or what the tool found
+ * (stepOf, the whole result).
+ */
+function surfaced(rec: RunRecord, value: number, tol: number, reading: (d: Decision) => Readable): { step: number; tool: string } | null {
   for (const d of rec.decisions) {
-    if (d.status === "done" && d.result && findIn(parse(d.result), value, tol, "")) return { step: d.step, tool: d.tool };
+    const step = reading(d);
+    if (step.status === "done" && seen(step) && findIn(numbersIn(step), value, tol, "")) return { step: d.step, tool: d.tool };
   }
   return null;
 }
@@ -216,12 +217,26 @@ export function candidateFindings(rec: RunRecord, c: ValidationCase): Validation
     add({ step: null, kind: "orchestration", evidence: `${unsourced.length} number(s) in the conclusion come from no tool result: ${unsourced.slice(0, 5).map((n) => n.text).join(", ")}`, proposed_fix: "the answer checks should have sent it back: find why they did not" });
   }
   if (rec.grades.detected === false) {
+    // Where the case's numbers show: in the text the model read, else only in
+    // the whole result a tool found (a field the model's copy left out).
     const truths = truthNumbers(c);
-    const hits = truths.map(([, v, tol]) => surfaced(rec, v, tol));
-    if (truths.length && hits.every((h) => h === null)) {
+    const read = truths.map(([, v, tol]) => surfaced(rec, v, tol, asRead));
+    const foundOnly = truths.flatMap(([what, v, tol]) => {
+      const hit = surfaced(rec, v, tol, stepOf);
+      return hit ? [{ what, ...hit }] : [];
+    });
+    if (truths.length && read.every((h) => h === null) && foundOnly.length) {
+      const first = foundOnly[0];
+      add({
+        step: first.step,
+        kind: "bug",
+        evidence: `the conclusion missed the fault: ${first.tool} (step ${first.step}) found ${foundOnly.map((x) => x.what).join(", ")}, but the text the model read left it out`,
+        proposed_fix: "keep that field in the text the model reads: a long result is fitted to the limit by dropping its bulkiest parts (readings/fit.ts), and the field the fault shows in must stay",
+      });
+    } else if (truths.length && read.every((h) => h === null)) {
       add({ step: null, kind: "missing-tool", evidence: `the conclusion missed the fault, and no tool result in the run holds ${truths.map(([what]) => what).join(", ")}`, proposed_fix: "a tool that measures it, the argument the model needed to ask for it, or a skill step that asks" });
     } else {
-      const first = hits.find((h) => h !== null) ?? null;
+      const first = read.find((h) => h !== null) ?? null;
       add({ step: first?.step ?? null, kind: "orchestration", evidence: `the conclusion missed the fault${first ? ` though ${first.tool} (step ${first.step}) showed it` : ""}`, proposed_fix: "make the verdict explicit in the tool's result, or have the answer checks ask for it" });
     }
   }
