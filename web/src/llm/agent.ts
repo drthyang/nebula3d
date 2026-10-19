@@ -18,12 +18,12 @@ import {
 } from "./provider/client";
 import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
 import { fillReferences } from "./references";
-import { compactResult, isCompacted } from "./compact";
 import { lastQuestion, toolsFor } from "./localTools";
 import { isLocalUrl } from "./provider/presets";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
 import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
 import { planWindow } from "./provider/window";
+import { shorten } from "./readings";
 import type { LlmSettings } from "./settings";
 import { skillsOn } from "./skills";
 import { factsOf, runToolCall, toolSpecs, toolsWithSkills, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
@@ -37,7 +37,14 @@ export interface AgentStep {
   status: "running" | "done" | "error";
   summary?: string;
   progress?: string; // a running tool's live line (run_pipeline: stage, %, log)
-  result?: string; // the JSON the model read
+  // The result's two readings (readings/): what the model read when the call
+  // returned, byte for byte as it was sent (`seen`), and, only where the model
+  // read it fitted, the whole result the tool found (`whole`, `found`).
+  result?: string;
+  full?: string;
+  // The loop later shortened the model's copy, in the conversation, to save
+  // room (compaction): `result` stays what was sent.
+  shortened?: true;
   view?: ViewTarget;
   // The checks' outcomes the tool judged (verdicts/), kept beside the result
   // and never in it: the model reads the result alone.
@@ -102,10 +109,10 @@ export const LOOP_NOTE = "The model repeated calls that brought nothing new, so 
 const ANSWER_NOW = "The tool calls are bringing nothing new. Answer now from the results above, without calling more tools.";
 
 // A local model's request past this many tokens has its older tool results
-// shortened to their readings and numbers (compact.ts), the newest KEEP_FULL
-// left whole: it keeps the request inside a 32k window with room to reply, and
-// fast. A request no window can hold is shortened down to the newest result
-// before it is refused.
+// shortened to their verdicts, headlines and numbers (shorten, readings/), the
+// newest KEEP_FULL left whole: it keeps the request inside a 32k window with
+// room to reply, and fast. A request no window can hold is shortened down to
+// the newest result before it is refused.
 export const SOFT_BUDGET = 24_000;
 export const KEEP_FULL = 3;
 
@@ -252,8 +259,8 @@ export async function runAgent({
     let changed = false;
     for (const r of results.slice(0, Math.max(0, results.length - keep))) {
       const m = convo[r.index];
-      if (typeof m.content !== "string" || isCompacted(m.content)) continue;
-      const short = compactResult(m.content);
+      if (typeof m.content !== "string") continue;
+      const short = shorten(m.content);
       if (short === m.content) continue;
       convo[r.index] = { ...m, content: short };
       called.delete(r.key);

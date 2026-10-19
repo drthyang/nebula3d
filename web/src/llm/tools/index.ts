@@ -58,6 +58,7 @@ import type { ToolCall, ToolSpec } from "../provider/client";
 import { ALL_STAGES, keysOf, RECIP, resolveFacts, stageKey, type Facts, type ToolFacts } from "./facts";
 import { openView, type ViewTarget } from "./openView";
 import { built, connective, evidence, inference, joined, reading, withoutInference, written, type Tagged } from "../inference";
+import { fit } from "../readings";
 import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS, skillsOn } from "../skills";
 import { judge, WORDS, type Outcome } from "../verdicts";
 
@@ -1977,62 +1978,11 @@ export const MAX_RESULT_CHARS = 5000;
 export interface ToolRun {
   ok: boolean;
   args: Args;
-  text: string; // what the model reads
-  full?: string; // the whole result, when the model reads it trimmed (answerChecks.ts reads this)
+  text: string; // what the model reads (the step's `result`)
+  full?: string; // the whole result, where the model reads it fitted (the step's `full`: readings/)
   summary: string;
   view?: ViewTarget;
   outcomes?: Outcome[]; // the tool's outcomes (ToolOutcome), carried to the step
-}
-
-/**
- * A result as JSON of at most *max* characters: the whole of it, or, when
- * longer, still valid JSON. The bulkiest parts go first: the last items of the
- * longest lists, then the longest texts, each named under `left_out`, so the
- * small fields a verdict lives in stay. Cutting the text mid-way left JSON
- * that nothing could parse: the answer checks then saw no verdict at all.
- */
-export function fitResult(value: unknown, max: number): string {
-  const whole = JSON.stringify(value) ?? "null";
-  if (whole.length <= max) return whole;
-  if (!value || typeof value !== "object") return `${whole.slice(0, max)}… [truncated]`;
-  const copy = JSON.parse(whole) as Record<string, unknown> | unknown[];
-  const leftOut: string[] = [];
-  const size = (v: unknown): number => JSON.stringify(v)?.length ?? 0;
-  const render = (): string =>
-    Array.isArray(copy) ? JSON.stringify(copy) : JSON.stringify(leftOut.length ? { ...copy, left_out: leftOut } : copy);
-  let text = render();
-  for (let guard = 0; text.length > max && guard < 100_000; guard++) {
-    // Follow the bulkiest member down: a list loses its last item, an object
-    // its bulkiest leaf.
-    let node: Record<string, unknown> | unknown[] = copy;
-    let path = "";
-    let trimmed = false;
-    for (;;) {
-      if (Array.isArray(node)) {
-        if (!node.length) break;
-        node.pop();
-        const note = `${path || "the list"}: its last items`;
-        if (!leftOut.includes(note)) leftOut.push(note);
-        trimmed = true;
-        break;
-      }
-      const entries = Object.entries(node);
-      if (!entries.length) break;
-      const [key, child] = entries.reduce((a, b) => (size(b[1]) > size(a[1]) ? b : a));
-      if (child !== null && typeof child === "object" && Object.keys(child).length > 0) {
-        path = path ? `${path}.${key}` : key;
-        node = child as Record<string, unknown> | unknown[];
-        continue;
-      }
-      delete node[key];
-      leftOut.push(path ? `${path}.${key}` : key);
-      trimmed = true;
-      break;
-    }
-    if (!trimmed) break;
-    text = render();
-  }
-  return text.length <= max ? text : `${text.slice(0, max)}… [truncated]`;
 }
 
 // Run one call the model made.  Never throws: a bad call becomes an error
@@ -2067,13 +2017,10 @@ export async function runToolCall(
     // With the skills off its prose written once is its definitions only
     // (inference.ts); a tool renders what it builds for each call by the switch itself.
     const result = skillsOn(ctx) ? out.result : withoutInference(out.result);
-    // A text result (a skill) goes as written; anything else as JSON, trimmed
-    // to valid JSON when it is long (fitResult).
-    const max = tool.maxResultChars ?? MAX_RESULT_CHARS;
-    const full = typeof result === "string" ? result : (JSON.stringify(result) ?? "null");
-    const text =
-      full.length <= max ? full : typeof result === "string" ? `${full.slice(0, max)}… [truncated]` : fitResult(result, max);
-    return { ok: true, args, text, ...(text !== full ? { full } : {}), summary: out.summary, view: out.view, ...(out.outcomes ? { outcomes: out.outcomes } : {}) };
+    // A text result (a skill) goes as written; anything else as JSON, fitted
+    // to valid JSON when it is long, with the whole result beside it (fit).
+    const { text, full } = fit(result, tool.maxResultChars ?? MAX_RESULT_CHARS);
+    return { ok: true, args, text, ...(full !== undefined ? { full } : {}), summary: out.summary, view: out.view, ...(out.outcomes ? { outcomes: out.outcomes } : {}) };
   } catch (e) {
     const msg = (e as Error).message;
     const text = e instanceof ToolArgError ? `Error: invalid arguments — ${msg}` : `Error: ${msg}`;

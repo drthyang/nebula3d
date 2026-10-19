@@ -8,7 +8,7 @@ import type { Dataset } from "../../api/types";
 import { useDpdfStore, type ManualLimit } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
-import { isCompacted } from "../compact";
+import { isCompacted } from "../readings/compact";
 import { resetTokenState } from "../provider/tokens";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";

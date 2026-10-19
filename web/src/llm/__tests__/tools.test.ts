@@ -10,7 +10,7 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore, type StageRun } from "../tune/tuner";
-import { CHAT_TOOLS, fitResult, MAX_RESULT_CHARS, runToolCall, toolsWithSkills, type AgentTool, type ToolContext } from "../tools";
+import { CHAT_TOOLS, runToolCall, toolsWithSkills, type AgentTool, type ToolContext } from "../tools";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -944,22 +944,6 @@ describe("a long result, trimmed to valid JSON", () => {
       goal: "g".repeat(1500),
     },
   };
-
-  it("leaves a result that fits as it is", () => {
-    expect(fitResult({ a: 1 }, 100)).toBe('{"a":1}');
-  });
-
-  it("drops the bulkiest parts first, keeps the verdict, and names what it left out", () => {
-    expect(JSON.stringify(long).length).toBeGreaterThan(MAX_RESULT_CHARS);
-    const text = fitResult(long, MAX_RESULT_CHARS);
-    expect(text.length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
-    const read = JSON.parse(text) as { rings: Record<string, unknown>; left_out: string[] };
-    expect(read.rings.verdict).toBe("needs attention");
-    expect(read.rings.headline).toBe(long.rings.headline);
-    expect(read.rings.max_ring_left).toBe(0.4);
-    expect(read.left_out.length).toBeGreaterThan(0);
-    expect(read.left_out.every((x) => x.startsWith("rings."))).toBe(true);
-  });
 
   it("hands the whole result back beside the trimmed one", async () => {
     const big: AgentTool = { name: "big", description: "", parameters: { type: "object", properties: {} }, run: async () => ({ result: long, summary: "big" }) };

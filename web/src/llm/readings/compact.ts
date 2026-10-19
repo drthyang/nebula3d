@@ -1,7 +1,9 @@
 // A tool result shortened to save room in a long reply: its verdict, headline
 // and the numbers its measures stand on stay; per-plane lists and long texts
-// go. The model can call the tool again for the whole result, and the answer
-// checks always judge against the whole one (agent.ts keeps it).
+// go. Implementation behind readings/index.ts (`shorten`): it shortens the
+// model's copy of a result, in the conversation, and never the step's
+// readings. The model can call the tool again for the whole result, and the
+// answer checks always judge against the whole one (`found`).
 
 export const COMPACTED = "shortened to save room; call the tool again for the whole result";
 
@@ -53,3 +55,6 @@ export function compactResult(text: string): string {
 
 /** Whether a tool message's text was already shortened. */
 export const isCompacted = (text: string): boolean => text.includes(COMPACTED);
+
+/** A tool message's text, shortened once: a text already shortened is left as it is. */
+export const shorten = (text: string): string => (isCompacted(text) ? text : compactResult(text));
