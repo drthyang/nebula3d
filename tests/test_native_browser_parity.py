@@ -170,14 +170,33 @@ def test_the_ring_decision_is_the_same(runs):
     assert runs["native"]["api"]["rings"]["status"] == runs["browser"]["api"]["rings"]["status"]
 
 
+#: The digits ShellIsotropy.as_dict keeps of each measurement.
+ISOTROPY_DIGITS = {"q_center": 4, "fwhm": 4, "median_height": 6, "relative_height": 4,
+                   "isotropy": 3, "snr": 1, "beyond_curve": 2}
+
+
+def _same_measurements(a: dict, b: dict) -> bool:
+    """Two shells' ring-test records, equal to the digits they keep."""
+    for key, value in a.items():
+        other = b[key]
+        if key in ISOTROPY_DIGITS and value is not None and other is not None:
+            if abs(value - other) > 1.01 * 10.0 ** -ISOTROPY_DIGITS[key]:
+                return False
+        elif value != other:
+            return False
+    return True
+
+
 def test_the_ring_test_samples_more_thinly_in_low_memory_mode(runs, tmp_path, monkeypatch):
-    """Allowed to differ: the direction measurements behind the decision.
+    """Allowed to differ: the measurements per direction behind the decision.
     The low-memory mode reads at most an eighth of the volume's voxels for the
-    shells (ring_isotropy.shell_isotropy), so the medians it takes per direction
-    differ: on the confirmed rings the isotropy by up to 0.048 here (0.14 on
-    the demo), on an empty shell, where the median height is about 0 and the
-    ratio has no scale, by 36. float32 has no part in it: the native engine in
-    low-memory mode measures what the browser does."""
+    shells (ring_isotropy.shell_isotropy), so its medians per direction are
+    noisier: on the confirmed rings here the isotropy moved by up to 0.048 and
+    the signal-to-noise from 32.9 to 23.1 (on the 161³ demo by up to 0.27, and
+    up to 2.6 times lower); on an empty shell, where the median height is
+    about 0 and the ratio has no scale, the isotropy by 36. float32 has no
+    part in it: the native engine in low-memory mode measures what the
+    browser does."""
     native, browser = _both(
         runs, lambda r: json.loads(r["paths"].ring_diagnostics_json.read_text()))
     for a, b in zip(native["shells"], browser["shells"]):  # the confirmed rings
@@ -187,7 +206,9 @@ def test_the_ring_test_samples_more_thinly_in_low_memory_mode(runs, tmp_path, mo
     run_pipeline(runs["raw"], build_params(PipelineRunRequest(dataset_id=SLUG)),
                  proc_dir=proc, stages=("rings",), force=True)
     lean = json.loads(pipeline_paths(runs["raw"], proc_dir=proc).ring_diagnostics_json.read_text())
-    assert [s["isotropy"] for s in _shells(lean)] == [s["isotropy"] for s in _shells(browser)]
+    assert len(_shells(lean)) == len(_shells(browser))
+    for a, b in zip(_shells(lean), _shells(browser)):
+        assert _same_measurements(a["isotropy"], b["isotropy"]), (a["isotropy"], b["isotropy"])
 
 
 def test_the_punch_is_the_same(runs):
