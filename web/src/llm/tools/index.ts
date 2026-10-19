@@ -42,7 +42,6 @@ import {
   type TuneStage,
 } from "../tune/catalog";
 import { evaluateStage, headline, type StageEvaluation } from "../tune/evaluate";
-import { STAGE_GOALS } from "../tune/prompts";
 import { startTuning, stopTuning, useTuneStore, type StageRun } from "../tune/tuner";
 import { AXIS_INDEX, AXIS_TO_PLANE, useViewerStore, type FixedAxis } from "../../state/viewerStore";
 import {
@@ -59,7 +58,8 @@ import type { ToolCall, ToolSpec } from "../provider/client";
 import { ALL_STAGES, keysOf, RECIP, resolveFacts, stageKey, type Facts, type ToolFacts } from "./facts";
 import { openView, type ViewTarget } from "./openView";
 import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS } from "../skills";
-import { NOT_DECLARED, stageCheck, VERDICT_LABEL } from "../report/report";
+import { NOT_DECLARED } from "../report/report";
+import { judge, WORDS } from "../verdicts";
 
 export type { ViewTarget } from "./openView";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
@@ -774,19 +774,19 @@ const assessStage: ChatTool = {
         if (plane) view = cleanupView(plane, 0);
         else if (stage === "pdf") view = { view: "consistency", label: "the back-FFT check" };
       }
-      // The verdict is computed from the numbers, by the report's rule, never
-      // left to the model (answerChecks.ts holds the model to it).
-      const check = stageCheck(stage, evaluation);
-      const verdict = check ? VERDICT_LABEL[check.verdict] : VERDICT_LABEL.info;
+      // The verdict is computed from the numbers, by the stage's rule
+      // (verdicts/), never left to the model (answerChecks.ts holds the model to it).
+      const outcome = judge(stage, evaluation);
+      const verdict = outcome.words;
       // All five stages' per-plane detail, or their goals, would overflow the
       // result (MAX_RESULT_CHARS): one stage at a time gives both.
       if (pick === "all") delete evaluation.per_plane;
       result[stage] = {
         verdict,
-        criterion: check?.criterion,
+        criterion: outcome.criterion,
         headline: headline(stage, evaluation),
         ...evaluation,
-        ...(pick === "all" ? {} : { goal: STAGE_GOALS[stage] }),
+        ...(pick === "all" ? {} : { goal: WORDS.goal[stage] }),
       };
       lines.push(`${TUNE_STAGE_LABELS[stage]}: ${verdict} · ${headline(stage, evaluation)}`);
     }

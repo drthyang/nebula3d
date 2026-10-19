@@ -13,7 +13,8 @@
 
 import type { AgentStep } from "./agent";
 import { current, PIPELINE_STAGES, recomputedAt, resultsNewestFirst, type PipelineStage } from "./evidence";
-import { stageCheck, VERDICT_LABEL, type Verdict } from "./report/report";
+import { stageCheck, type Verdict } from "./report/report";
+import { WORDS } from "./verdicts";
 
 export interface ComputedVerdict {
   achieved: boolean | null; // null: not judged
@@ -41,7 +42,7 @@ type Obj = Record<string, unknown>;
 function stageVerdict(stage: PipelineStage, m: Obj): Verdict | null {
   if ("missing" in m) return null;
   if (typeof m.verdict === "string") {
-    const hit = (Object.keys(VERDICT_LABEL) as Verdict[]).find((v) => VERDICT_LABEL[v] === m.verdict);
+    const hit = (Object.keys(WORDS.label) as Verdict[]).find((v) => WORDS.label[v] === m.verdict);
     if (hit) return hit;
   }
   return stageCheck(stage, m)?.verdict ?? null;

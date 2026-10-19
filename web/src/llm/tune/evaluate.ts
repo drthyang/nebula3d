@@ -10,6 +10,7 @@ import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
 import { sectionSymmetry, type SectionSymmetry } from "../metrics/symmetry";
+import { judge, UNROUNDED, type Unrounded } from "../verdicts";
 import type { TuneStage } from "./catalog";
 
 const RECIP_CUTS: Cut[] = [
@@ -23,7 +24,10 @@ const DPDF_CUTS: Cut[] = [
   { plane: "yz", value: 0 },
 ];
 
-export type StageEvaluation = Record<string, unknown>;
+// A stage's numbers, as the tools and the tuning show them; the ΔPDF's keeps
+// its window's raw weight beside the shown one (UNROUNDED, which JSON never
+// writes), for the ΔPDF's rule.
+export type StageEvaluation = Record<string, unknown> & { [UNROUNDED]?: Unrounded };
 
 // Bumps within this |Q| (Å⁻¹) on the planes are one shell, judged once.
 const RING_MATCH_Q = 0.1;
@@ -119,6 +123,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       // included), not a stage's break; null when the volume was not read.
       symmetry_declared: rawMeta ? Boolean(rawMeta.symmetry) : null,
       per_plane: perPlane,
+      [UNROUNDED]: { window_weight_on_unmeasured: typeof open === "number" ? open : null },
     };
   }
 
@@ -343,10 +348,11 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
 const tiny = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(x));
 
 /** Why a trial's output breaks a hard limit of its stage, or null.  The tuning
- * run does not choose such a trial while the user's settings keep the limit. */
+ * run does not choose such a trial while the user's settings keep the limit:
+ * the ΔPDF's window past the limit, by the ΔPDF's rule (verdicts/rules.ts, D6). */
 export function outOfBounds(stage: TuneStage, e: StageEvaluation | undefined): string | null {
   const open = e?.window_weight_on_unmeasured;
-  if (stage === "pdf" && typeof open === "number" && open > OPEN_WEIGHT_OK) {
+  if (stage === "pdf" && typeof open === "number" && judge("pdf", e ?? {}).reasons.includes("window past limit")) {
     return `its window puts ${tiny(open)} of its weight on unmeasured reciprocal space, past the ${OPEN_WEIGHT_OK} the backend's own window allows`;
   }
   return null;

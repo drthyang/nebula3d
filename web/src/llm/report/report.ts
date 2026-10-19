@@ -4,11 +4,13 @@
 // text; the model's own answer goes in as a clearly labelled narrative.  This
 // module only assembles: it is pure, so the report can be tested end to end.
 
-import { pedestalLeft } from "../metrics/flatten";
+import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { SYMMETRY_HOLDS } from "../metrics/symmetry";
 import type { ParamValue } from "../tune/catalog";
+import { judge, WORDS, type Kind } from "../verdicts";
 
-export type Verdict = "pass" | "attention" | "info";
+/** A check's verdict: its outcome's kind (verdicts/). */
+export type Verdict = Kind;
 
 export interface ReportCheck {
   title: string;
@@ -158,18 +160,8 @@ const rangeText = (v: unknown): string => (Array.isArray(v) && v.length === 2 ? 
 
 // ---------------------------------------------------------------- checks
 
-// What each check's verdict is judged by: the rules in the builders below, in words.
-export const CRITERIA: Record<string, string> = {
-  rings:
-    "No powder ring left above, or dented below, three times its plane's noise. A bump is a powder ring only if it rises in nearly every direction over the sphere (at least 0.15 of its median height in 90 % of directions): the crystal's own scattering at that |Q| rises in some directions only.",
-  punch: "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice. Broad maxima are diffuse scattering, and stay.",
-  grains:
-    "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.",
-  backfill: "The fills meet their surroundings: a median seam of 1σ or less, and no cut whose fill is biased one way.",
-  flatten:
-    "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (the 1σ limit dropped at the user's choice, 2026-10-17; provisional).",
-  pdf: "The back-FFT reproduces what the transform keeps, the data's even part under Q → −Q, to an r of 0.999 or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.",
-};
+// What each check's verdict is judged by: its rule (verdicts/rules.ts), in words.
+const CRITERIA = WORDS.criterion;
 
 function ringsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
   if (!m) return null;
@@ -180,11 +172,9 @@ function ringsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck 
   const notRings = Array.isArray(m.shells_judged)
     ? (m.shells_judged as Obj[]).filter((x) => x?.ring === false)
     : Array.isArray(m.single_plane_bumps) ? m.single_plane_bumps : [];
-  // A leftover or dent above 0 is beyond 3 × its plane's noise: real, by the tool's definition.
-  const clean = left === 0 && dent === 0;
   return {
     title: "Ring removal",
-    verdict: left == null || dent == null ? "info" : clean ? "pass" : "attention",
+    verdict: judge("rings", m).kind,
     headline: `ring ratio ${fmt(m.mean_ring_energy_ratio)} · over-sub ≤ ${fmt(m.max_over_subtraction_fraction)} · dent ≤ ${fmt(dent)}${where(m.worst_ring_dent)} · left ≤ ${fmt(left)}${where(m.worst_ring_left)}`,
     criterion,
     details: [
@@ -203,7 +193,7 @@ function punchCheck(m: Obj | null | undefined, criterion?: string): ReportCheck 
   const sharp = num(m.leftover_off_lattice_sharp);
   return {
     title: "Bragg punch",
-    verdict: atNodes == null ? "info" : atNodes === 0 && (sharp ?? 0) === 0 ? "pass" : "attention",
+    verdict: judge("punch", m).kind,
     headline: `${fmt(atNodes)} missed at nodes · ${fmt(sharp)} sharp off-lattice · ${fmt(m.leftover_off_lattice_broad)} broad maxima kept · punched ${fmt(m.mean_punched_fraction)}`,
     criterion,
     details: [
@@ -253,6 +243,7 @@ function grainsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck
 function backfillCheck(m: Obj | null | undefined, texture: Obj | null | undefined, criterion?: string): ReportCheck | null {
   if (!m) return null;
   const seam = num(m.mean_median_seam_sigma);
+  const own = judge("backfill", m).kind;
   const cuts = Array.isArray(texture?.per_cut) ? (texture!.per_cut as Obj[]) : [];
   const biased = cuts.filter((c) => c.systematic_fill_bias === true).length;
   const details: [string, string][] = [
@@ -262,38 +253,23 @@ function backfillCheck(m: Obj | null | undefined, texture: Obj | null | undefine
   if (texture) details.push(["Cuts with a systematic fill bias", `${biased} of ${cuts.length}`]);
   return {
     title: "Backfill",
-    verdict: seam == null ? "info" : seam <= 1 && biased === 0 ? "pass" : "attention",
+    // The seam's verdict, and any cut whose fill is biased one way.
+    verdict: own === "info" ? "info" : own === "attention" || biased > 0 ? "attention" : "pass",
     headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${texture ? ` · fill bias on ${biased} of ${cuts.length} cuts` : ""}`,
     criterion,
     details,
   };
 }
 
-/**
- * Why the flatten's verdict no longer holds the floors to 1σ: the user chose to
- * drop that limit (2026-10-17), of keeping, widening or dropping it; provisional,
- * as the pedestal rule's 0.8 limits are. The σ is the flattened cut's
- * own robust spread, which the diffuse structure and the counting noise set, and
- * the floors after a flatten that fits a constant follow the diffuse level: on
- * all eight dev volumes of the validation they read 1.5 to 1.8σ, the clean
- * control (1.72σ) and the planted case after its Q² term (1.52σ) included, so
- * the limit could not be met whatever the flatten did, while the pedestal rule
- * alone separates the planted background from the rest (docs/pilot-review.md,
- * finding 6). The largest floor in σ is still measured and reported.
- */
-export const FLATTEN_FLOOR_SIGMA_NOTE = "reported, not judged";
-
 function flattenCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
   if (!m) return null;
   const floor = num(m.max_after_floor_sigma);
   const trend = num(m.max_floor_trend);
   const span = num(m.max_floor_span_fraction);
-  // A trend near 1 with a span near 1 is a pedestal left. The floor in σ is
-  // reported, not judged (FLATTEN_FLOOR_SIGMA_NOTE): docs/pilot-review.md, finding 6.
-  const pedestal = pedestalLeft(trend, span);
   return {
     title: "Flatten",
-    verdict: pedestal == null ? "info" : pedestal ? "attention" : "pass",
+    // The pedestal rule; the floor in σ is reported, not judged (verdicts/rules.ts, FLATTEN_FLOOR_SIGMA_NOTE).
+    verdict: judge("flatten", m).kind,
     headline: `floor ≤ ${fmt(floor)}σ · trend ≤ ${fmt(trend)} · span ≤ ${fmt(span)}`,
     criterion,
     details: [
@@ -304,28 +280,6 @@ function flattenCheck(m: Obj | null | undefined, criterion?: string): ReportChec
   };
 }
 
-/** The back-FFT round trip's limit on r (CRITERIA.pdf). */
-export const BACK_FFT_R_OK = 0.999;
-
-/**
- * Whether the back-FFT round trip passes, or null when it does not judge. The
- * transform keeps the real part of the Fourier transform, the data's even part
- * under Q → −Q, so a sound transform reproduces that part to r = 1, and r
- * against the data is limited by the odd part: on unsymmetrised data, counting
- * noise (r 0.979 to 0.996 on every dev case of the validation, which a sound
- * transform failed at 0.999; docs/pilot-review.md, finding 3). A check recorded
- * before the even part was compared judges r against the data only where the
- * file declares the data symmetrised (or the volume was not read), where the
- * two are the same.
- */
-export function backFftOk(m: Obj | null | undefined): boolean | null {
-  const even = num(m?.back_fft_pearson_r_even);
-  if (even != null) return even >= BACK_FFT_R_OK;
-  const r = num(m?.back_fft_pearson_r);
-  if (r == null || m?.symmetry_declared === false) return null;
-  return r >= BACK_FFT_R_OK;
-}
-
 function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: Obj | null | undefined, criterion?: string): ReportCheck | null {
   if (!m && !cov && !sym) return null;
   const r = num(m?.back_fft_pearson_r);
@@ -333,7 +287,11 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
   const open = num(m?.window_weight_on_unmeasured) ?? num(cov?.window_weight_on_unmeasured);
   const symVerdict = typeof sym?.verdict === "string" ? (sym.verdict as string) : null;
   const covVerdict = typeof cov?.verdict === "string" ? (cov.verdict as string) : null;
-  const ok = backFftOk(m) !== false && (open == null || open <= 1e-3) && !(symVerdict && symVerdict.startsWith("not kept"));
+  // The ΔPDF's round trip by its rule; its window and its symmetry as the
+  // report reads them: the evaluation's weight, else the coverage's, and
+  // symmetry_check's verdict.
+  const backFft = m ? !judge("pdf", m).reasons.includes("back-FFT") : true;
+  const ok = backFft && (open == null || open <= OPEN_WEIGHT_OK) && !(symVerdict && symVerdict.startsWith("not kept"));
   const details: [string, string][] = [
     ["Back-FFT Pearson r", fmt(r)],
     ["Back-FFT r against the data's even part (what the transform keeps)", fmt(rEven)],
@@ -375,9 +333,6 @@ const kindOf = (steps: ReportStep[]): string => {
   return "Analysis";
 };
 
-/** How a verdict reads, in the report, the chat and the tools' results. */
-export const VERDICT_LABEL: Record<Verdict, string> = { pass: "meets its goal", attention: "needs attention", info: "not judged" };
-
 /**
  * One stage's check from its evaluation (what assess_stage measures), by the
  * report's own rules: the verdict the tools compute and the model quotes.
@@ -391,7 +346,7 @@ export function stageCheck(stage: "rings" | "punch" | "backfill" | "flatten" | "
     case "backfill":
       // A stage's evaluation measures no fill bias (texture_check does): its
       // criterion says only what it judges.
-      return backfillCheck(m, null, BACKFILL_SEAM_CRITERION);
+      return backfillCheck(m, null, judge("backfill", m).criterion);
     case "flatten":
       return flattenCheck(m, CRITERIA.flatten);
     case "pdf":
@@ -400,9 +355,6 @@ export function stageCheck(stage: "rings" | "punch" | "backfill" | "flatten" | "
       return pdfCheck(m, null, symmetryOf(m), CRITERIA.pdf);
   }
 }
-
-const BACKFILL_SEAM_CRITERION =
-  "The fills meet their surroundings: a median seam of 1σ or less. Whether a cut's fill is biased one way is texture_check's to say.";
 
 /** What the verdict says of a volume that declares no symmetry (symmetry_check says the same). */
 export const NOT_DECLARED = (asymmetry: unknown): string =>

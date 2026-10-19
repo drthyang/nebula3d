@@ -26,10 +26,11 @@
 import type { AgentStep } from "./agent";
 import { current, recomputedAt, type PipelineStage } from "./evidence";
 import { fillReferences } from "./references";
-import { stageCheck, VERDICT_LABEL } from "./report/report";
+import { stageCheck } from "./report/report";
 import { factsOf } from "./tools";
 import type { VerdictTopic } from "./tools/facts";
 import { computedVerdict, type ComputedVerdict } from "./verdict";
+import { WORDS } from "./verdicts";
 
 // The tools that settle a topic declare it (their facts' `settles`, in the
 // registry); `evidence` names one of them, as the model is told.
@@ -242,9 +243,9 @@ function stageSays(steps: readonly AgentStep[], stage: "rings" | "punch" | "back
     if (!m || typeof m !== "object") continue;
     const field = (m as Record<string, unknown>).verdict;
     const check = typeof field === "string" ? null : stageCheck(stage, m as Record<string, unknown>);
-    const label = typeof field === "string" ? field : check ? VERDICT_LABEL[check.verdict] : null;
-    if (label === VERDICT_LABEL.attention) says = "not ok";
-    else if (label === VERDICT_LABEL.pass) says = "ok";
+    const label = typeof field === "string" ? field : check ? WORDS.label[check.verdict] : null;
+    if (label === WORDS.label.attention) says = "not ok";
+    else if (label === WORDS.label.pass) says = "ok";
   }
   return says;
 }
