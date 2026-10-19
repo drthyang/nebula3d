@@ -1,6 +1,6 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 89 spans in 28 texts or sets: reading 25, evidence 51, remedy 13.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 94 spans in 29 texts or sets: reading 29, evidence 50, remedy 15.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -16,7 +16,7 @@ peaks the search punched off the Bragg nodes⟦reading: ; grain_check says wheth
 
 ## prompts/system.ts: the system prompt, the metrics
 
-20 spans: reading 3, evidence 17.
+19 spans: reading 3, evidence 16.
 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
 
@@ -75,14 +75,14 @@ artefact (a 'strange pattern')⟧.
 - flatten: the per-|Q|-shell low floor (25th percentile) of the backfilled (floor_before)
 and flattened (floor_after) slice, averaged over the inner / middle / outer third of |Q|.
 ⟦reading: After a good flatten floor_after is near 0 in all three thirds; ⟧after_floor_max_sigma (the
-largest |shell floor| in robust σ) ≲ 1 is flat⟦evidence: , several σ means a leftover |Q| trend or
-an over-subtraction⟧. removed_fraction is the pedestal removed as a share of the level.
+largest |shell floor| in robust σ) is reported, not judged, in the flatten's verdict: σ is the cut's own spread, and the floors follow the diffuse level. removed_fraction is the pedestal removed as a share of the level.
 The model is fitted to each shell's 25th-percentile floor, so about a quarter of the
 voxels sit below 0 after a good flatten by construction (after_negative_fraction ≈ 0.25).
-floor_trend (rank correlation of the floors with |Q|, over the whole coverage) and
-floor_span_fraction (their range as a share of the diffuse level) catch a pedestal the σ
-test hides beside strong diffuse⟦evidence: : a trend near ±1 with a span near 1 is a leftover
+floor_trend (rank correlation of the floors with |Q|) and floor_span_fraction (their range as a
+share of the diffuse level), over the outer half of the |Q| shells the counts reach (floor_judged_q gives their |Q| range),
+catch a pedestal the floor in σ hides beside strong diffuse⟦evidence: : a trend near ±1 with a span near 1 is a leftover
 background (a rising one is inelastic: thermal diffuse, and Compton with X-rays; the model's b·Q² term)⟧.
+The flatten's verdict judges these two alone: a trend (in magnitude) and a span both 0.8 or more are a pedestal left.
 
 - delta_pdf: feature_snr is the strongest feature amplitude in background-σ units (the
 origin self-correlation peak is excluded)⟦evidence: ; ≳ 5 means clear structured signal above noise⟧.
@@ -94,9 +94,12 @@ the slice plane. radial_trend is mean |ΔPDF| in inner/mid/outer shells⟦eviden
 means short-range correlations, a flat trend means they persist to large r⟧.
 consistency_pearson_r and consistency_normalized_rms come from a round trip: the ΔPDF
 transformed back (apodization undone) and compared with the data it was built from.
-Without a |Q| band or crop the round trip is the identity, so r ≈ 1 to rounding only says
-the transform ran correctly; it is no evidence that the ΔPDF is physically right.⟦evidence:  r clearly
-below 1 flags a transform, crop or band problem.⟧
+The transform keeps the data's even part under Q → −Q, so r against the data is lower by the odd part, counting
+noise on unsymmetrised data; the ΔPDF's verdict judges the round trip against the even part
+instead, back_fft_pearson_r_even, to an r of 0.999 or more. Without a |Q| band or crop
+that round trip is the identity, so r ≈ 1 to rounding only says the transform ran correctly; it
+is no evidence that the ΔPDF is physically right.⟦evidence:  back_fft_pearson_r_even below 0.999
+flags a transform, crop or band problem.⟧
 
 Ground rules: base every statement on numbers in the context and quote them. When an image
 is attached, describe what you actually see and reconcile it with the metrics. All metrics
@@ -107,13 +110,13 @@ scientifically cautious; do not overstate certainty from summary statistics.
 
 ## prompts/system.ts: the system prompt, the tools' guidance
 
-20 spans: reading 14, evidence 4, remedy 2.
+24 spans: reading 18, evidence 4, remedy 2.
 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
 
 ```text
 
-You can call tools that read this dataset, and you should: the context above comes from
+You can call tools that read this dataset, and you should: the diagnostic context in the first user message comes from
 one H–K plane at L=0 and one ΔPDF section at z=0, measured when this request started. Once
 you change settings or run the pipeline it describes the outputs before that run: measure
 again, and compare new numbers with your own earlier tool results, not with the context.
@@ -139,15 +142,20 @@ measure the same cuts before and after, and if it made things worse, change it b
 rerun. After any run, measure its outputs before you judge them, and say what you ran,
 what you changed and what it did to the numbers.
 
-⟦reading: To judge a run, settle these four checks, each with numbers, and say which pass:
-⟧⟨connective: “” → “A run is judged on four properties: ”⟩⟦reading: (1) ⟧⟨connective: “Ring” → “ring”⟩ removal is clean⟦reading: : assess_stage rings (ring-energy ratio and over-subtraction on
-every plane)⟧⟦evidence: ; radial_profile shows any ring left as a bump, or diffuse dented as a dip⟧⟨connective: “.
-” → “; ”⟩⟦reading: (2) ⟧Bragg peaks are removed cleanly⟦reading: : assess_stage punch (leftover peaks on every plane,
+⟦reading: To judge a run, settle these checks, each with numbers, and say which pass:
+⟧⟨connective: “” → “A run is judged on these properties: ”⟩⟦reading: (1) ⟧⟨connective: “The ring removal” → “the ring removal”⟩ is clean⟦reading: : assess_stage rings (max_ring_left and max_ring_dent: a ring left
+over, or diffuse dented, at the rings confirmed in 3D)⟧⟦evidence: ; radial_profile shows any ring left as a bump, or diffuse dented as a dip⟧⟨connective: “.
+” → “; ”⟩⟦reading: (2) ⟧⟨connective: “The Bragg punch” → “the Bragg punch”⟩ removes the Bragg peaks cleanly⟦reading: : assess_stage punch (leftover peaks on every plane,
 and how much was punched to get there); check an off-zero cut too⟧⟨connective: “.
-” → “; ”⟩⟦reading: (3) ⟧⟨connective: “The” → “the”⟩ punch and backfill add no texture to reciprocal space⟦reading: : texture_check (no cut whose
-fills sit systematically outside the range their rims allow, azimuthal ratio near 1)⟧⟨connective: “.
-” → “; ”⟩⟦reading: (4) ⟧Qmax is not past the data coverage⟦reading: : qmax_coverage says how far the forward transform's
-window reaches in |Q| and whether that stays inside the fully measured shells⟧.
+” → “; ”⟩⟦reading: (3) ⟧⟨connective: “The backfill” → “the backfill”⟩ meets its surroundings, and the punch and backfill add no texture to reciprocal space⟦reading: :
+assess_stage backfill (the seam) and texture_check (no cut whose fills sit systematically outside the range their
+rims allow, azimuthal ratio near 1)⟧⟨connective: “.
+” → “; ”⟩⟦reading: (4) ⟧⟨connective: “The flatten” → “the flatten”⟩ leaves no pedestal⟦reading: : assess_stage flatten (the floors' trend and span)⟧⟨connective: “.
+” → “; ”⟩⟦reading: (5) ⟧⟨connective: “The 3D-ΔPDF” → “the 3D-ΔPDF”⟩'s back-FFT reproduces the data's even part under Q → −Q, its declared symmetry is kept, and Qmax is not past the data coverage⟦reading: :
+assess_stage pdf and symmetry_check; qmax_coverage says how far the forward transform's window reaches in |Q| and
+whether that stays inside the fully measured shells⟧⟨connective: “.
+” → “; ”⟩⟦reading: (6) ⟧⟨connective: “A” → “a”⟩ UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes⟦reading: :
+ub_check and grain_check for the UB, ub_check for the origin, qmax_coverage for the counts⟧.
 On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
 symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features
@@ -411,6 +419,15 @@ The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 ```text
 Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice)⟦evidence:  are satellites or spurious peaks⟧ the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis⟦evidence: : diffuse maxima such as short-range order, which are the signal, not peaks to punch⟧). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.
 ```
+
+## verdicts/rules.ts: the ring removal's notice
+
+2 spans: remedy 2.
+
+Spans of a text built for each call (its numbers vary), each as written:
+
+- remedy: “ Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.”
+- remedy: “ Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract it, even if it is the crystal's own shell.”
 
 ## verdicts/rules.ts: the rings criterion
 

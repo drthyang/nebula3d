@@ -308,7 +308,10 @@ describe("the review's findings", () => {
   it("are all findings, in the schema, each naming its source, and name what they need from the user", async () => {
     const found = await load();
     expect(found.length).toBeGreaterThanOrEqual(19);
-    for (const f of found) {
+    for (const [i, f] of found.entries()) {
+      // The test split was not read. Checked first, and by the finding's number: a
+      // finding on a test case would name it and quote it, and no failure may show either.
+      if (isValidationFinding(f)) expect(caseNamed(f.case)?.split === "dev", `finding ${i + 1} is not on a dev case`).toBe(true);
       expect(findingProblems(f), f.evidence.slice(0, 40)).toEqual([]);
       expect(f.source, f.evidence.slice(0, 40)).toBeDefined(); // the file says it, though a finding without one reads as validation
       if (f.kind === "skill-gap" || f.kind === "science-error") expect(f.needs_user_approval).toBe(true);
@@ -320,9 +323,10 @@ describe("the review's findings", () => {
     const found = await load();
     const runs = found.filter(isValidationFinding);
     expect(runs.length).toBeGreaterThanOrEqual(8);
-    for (const f of runs) {
-      expect(caseNamed(f.case), f.case).toBeDefined();
-      expect(caseNamed(f.case)!.split).toBe("dev"); // the test split was not read
+    // By number, not by name: a test case's name is held out, and caseNamed
+    // knows the test split only under the opt-in.
+    for (const [i, f] of runs.entries()) {
+      expect(caseNamed(f.case)?.split === "dev", `validation finding ${i + 1} is not on a dev case`).toBe(true); // the test split was not read
     }
     expect(new Set(runs.map((f) => f.kind))).toEqual(new Set(["missing-tool", "science-error", "skill-gap", "orchestration"]));
     // Validation batch 1: the user approved all eight, and each is implemented
@@ -392,6 +396,22 @@ describe("the review's findings", () => {
       decision: { by: "the manager, on the user's delegation", on: "2026-10-19", option: "yes" },
     });
     for (const t of d3a!.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
+  });
+
+  it("from the coarse grid's guard is G1, the manager's on the user's delegation, on the commit that made the removal subtract no unconfirmed ring, implemented with tests that exist", async () => {
+    const { exists } = await import("./backend");
+    const g1 = (await load()).filter(isReviewFinding).find((f) => f.ref === "G1");
+    expect(g1).toMatchObject({
+      at: "054a753",
+      kind: "science-error",
+      needs_user_approval: true,
+      status: "implemented",
+      note: "Approved by the manager on the user's delegation, 2026-10-19.",
+      decision: { by: "the manager, on the user's delegation", on: "2026-10-19", option: "accept: no unconfirmed ring is subtracted; the notice is loud" },
+    });
+    expect(g1!.evidence).toMatch(/ring_isotropy\.py:\d+/);
+    expect(g1!.evidence).toMatch(/pipeline\.py:\d+/);
+    for (const t of g1!.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
   });
 
   it("says what became of a finding: an implemented one names its commit and its tests", () => {

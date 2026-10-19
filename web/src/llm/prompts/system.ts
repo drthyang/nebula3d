@@ -7,8 +7,17 @@
 // ${evidence(…)}, ${reading(…)} and ${remedy(…)} are inference, which the
 // model does not read with the skills off (the validation's arm C); the rest
 // it reads either way. Written whole, the text is byte for byte as before.
+//
+// Where a sentence states what a check's verdict judges, its words are the
+// verdict module's (verdicts/rules.ts, metrics/flatten.ts): the rule's own
+// limits and words, so the prompt cannot drift from the verdict (plan 1.6).
 
 import { connective, evidence, reading, remedy, written } from "../inference";
+import { PEDESTAL_LIMIT } from "../metrics/flatten";
+import { BACK_FFT_R_OK, EVEN_PART, FLATTEN_FLOOR_SIGMA_NOTE, FLOOR_SIGMA_WHY, PEDESTAL_SHELLS, STAGE_NAMES, type Stage } from "../verdicts/rules";
+
+/** A stage as {{achieved}} names it, opening a sentence. */
+const opening = (stage: Stage): string => STAGE_NAMES[stage].charAt(0).toUpperCase() + STAGE_NAMES[stage].slice(1);
 
 export const SYSTEM = written("prompts/system.ts: the system prompt, the metrics")`You are NEBULA Pilot, the assistant embedded in nebula3d, a tool that cleans 3D reciprocal-space
 neutron diffuse-scattering volumes and Fourier-transforms them into a real-space
@@ -64,14 +73,14 @@ artefact (a 'strange pattern')`)}.
 - flatten: the per-|Q|-shell low floor (25th percentile) of the backfilled (floor_before)
 and flattened (floor_after) slice, averaged over the inner / middle / outer third of |Q|.
 ${reading("After a good flatten floor_after is near 0 in all three thirds; ")}after_floor_max_sigma (the
-largest |shell floor| in robust σ) ≲ 1 is flat${evidence(`, several σ means a leftover |Q| trend or
-an over-subtraction`)}. removed_fraction is the pedestal removed as a share of the level.
+largest |shell floor| in robust σ) is ${FLATTEN_FLOOR_SIGMA_NOTE}, in the flatten's verdict: ${FLOOR_SIGMA_WHY}. removed_fraction is the pedestal removed as a share of the level.
 The model is fitted to each shell's 25th-percentile floor, so about a quarter of the
 voxels sit below 0 after a good flatten by construction (after_negative_fraction ≈ 0.25).
-floor_trend (rank correlation of the floors with |Q|, over the whole coverage) and
-floor_span_fraction (their range as a share of the diffuse level) catch a pedestal the σ
-test hides beside strong diffuse${evidence(`: a trend near ±1 with a span near 1 is a leftover
+floor_trend (rank correlation of the floors with |Q|) and floor_span_fraction (their range as a
+share of the diffuse level), over ${PEDESTAL_SHELLS} (floor_judged_q gives their |Q| range),
+catch a pedestal the floor in σ hides beside strong diffuse${evidence(`: a trend near ±1 with a span near 1 is a leftover
 background (a rising one is inelastic: thermal diffuse, and Compton with X-rays; the model's b·Q² term)`)}.
+The flatten's verdict judges these two alone: a trend (in magnitude) and a span both ${PEDESTAL_LIMIT} or more are a pedestal left.
 
 - delta_pdf: feature_snr is the strongest feature amplitude in background-σ units (the
 origin self-correlation peak is excluded)${evidence("; ≳ 5 means clear structured signal above noise")}.
@@ -83,9 +92,12 @@ the slice plane. radial_trend is mean |ΔPDF| in inner/mid/outer shells${evidenc
 means short-range correlations, a flat trend means they persist to large r`)}.
 consistency_pearson_r and consistency_normalized_rms come from a round trip: the ΔPDF
 transformed back (apodization undone) and compared with the data it was built from.
-Without a |Q| band or crop the round trip is the identity, so r ≈ 1 to rounding only says
-the transform ran correctly; it is no evidence that the ΔPDF is physically right.${evidence(` r clearly
-below 1 flags a transform, crop or band problem.`)}
+The transform keeps ${EVEN_PART}, so r against the data is lower by the odd part, counting
+noise on unsymmetrised data; the ΔPDF's verdict judges the round trip against the even part
+instead, back_fft_pearson_r_even, to an r of ${BACK_FFT_R_OK} or more. Without a |Q| band or crop
+that round trip is the identity, so r ≈ 1 to rounding only says the transform ran correctly; it
+is no evidence that the ΔPDF is physically right.${evidence(` back_fft_pearson_r_even below ${BACK_FFT_R_OK}
+flags a transform, crop or band problem.`)}
 
 Ground rules: base every statement on numbers in the context and quote them. When an image
 is attached, describe what you actually see and reconcile it with the metrics. All metrics
@@ -97,11 +109,13 @@ export const SYSTEM_PROMPT = SYSTEM.whole;
 
 // Appended to the system prompt when the model can call tools.  The point of
 // the tools is to stop judging the whole volume from one 2D cut.  With the
-// skills off the four properties a run is judged by are named as what exists,
+// skills off the properties a run is judged by are named as what exists,
 // unordered; the checklist's order and imperative, the readings each is
-// settled with, and the routing of a question to a tool are inference.
+// settled with, and the routing of a question to a tool are inference. The
+// properties are the five stages, as {{achieved}} names them, with the checks
+// on their result, and the data's own problems: what {{achieved}} reads.
 export const TOOLS = written("prompts/system.ts: the system prompt, the tools' guidance")`
-You can call tools that read this dataset, and you should: the context above comes from
+You can call tools that read this dataset, and you should: the diagnostic context in the first user message comes from
 one H–K plane at L=0 and one ΔPDF section at z=0, measured when this request started. Once
 you change settings or run the pipeline it describes the outputs before that run: measure
 again, and compare new numbers with your own earlier tool results, not with the context.
@@ -127,12 +141,15 @@ measure the same cuts before and after, and if it made things worse, change it b
 rerun. After any run, measure its outputs before you judge them, and say what you ran,
 what you changed and what it did to the numbers.
 
-${reading(`To judge a run, settle these four checks, each with numbers, and say which pass:
-`)}${connective("", "A run is judged on four properties: ")}${reading("(1) ")}${connective("Ring", "ring")} removal is clean${reading(`: assess_stage rings (ring-energy ratio and over-subtraction on
-every plane)`)}${evidence("; radial_profile shows any ring left as a bump, or diffuse dented as a dip")}${connective(".\n", "; ")}${reading("(2) ")}Bragg peaks are removed cleanly${reading(`: assess_stage punch (leftover peaks on every plane,
-and how much was punched to get there); check an off-zero cut too`)}${connective(".\n", "; ")}${reading("(3) ")}${connective("The", "the")} punch and backfill add no texture to reciprocal space${reading(`: texture_check (no cut whose
-fills sit systematically outside the range their rims allow, azimuthal ratio near 1)`)}${connective(".\n", "; ")}${reading("(4) ")}Qmax is not past the data coverage${reading(`: qmax_coverage says how far the forward transform's
-window reaches in |Q| and whether that stays inside the fully measured shells`)}.
+${reading(`To judge a run, settle these checks, each with numbers, and say which pass:
+`)}${connective("", "A run is judged on these properties: ")}${reading("(1) ")}${connective(opening("rings"), STAGE_NAMES.rings)} is clean${reading(`: assess_stage rings (max_ring_left and max_ring_dent: a ring left
+over, or diffuse dented, at the rings confirmed in 3D)`)}${evidence("; radial_profile shows any ring left as a bump, or diffuse dented as a dip")}${connective(".\n", "; ")}${reading("(2) ")}${connective(opening("punch"), STAGE_NAMES.punch)} removes the Bragg peaks cleanly${reading(`: assess_stage punch (leftover peaks on every plane,
+and how much was punched to get there); check an off-zero cut too`)}${connective(".\n", "; ")}${reading("(3) ")}${connective(opening("backfill"), STAGE_NAMES.backfill)} meets its surroundings, and the punch and backfill add no texture to reciprocal space${reading(`:
+assess_stage backfill (the seam) and texture_check (no cut whose fills sit systematically outside the range their
+rims allow, azimuthal ratio near 1)`)}${connective(".\n", "; ")}${reading("(4) ")}${connective(opening("flatten"), STAGE_NAMES.flatten)} leaves no pedestal${reading(": assess_stage flatten (the floors' trend and span)")}${connective(".\n", "; ")}${reading("(5) ")}${connective(opening("pdf"), STAGE_NAMES.pdf)}'s back-FFT reproduces ${EVEN_PART}, its declared symmetry is kept, and Qmax is not past the data coverage${reading(`:
+assess_stage pdf and symmetry_check; qmax_coverage says how far the forward transform's window reaches in |Q| and
+whether that stays inside the fully measured shells`)}${connective(".\n", "; ")}${reading("(6) ")}${connective("A", "a")} UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes${reading(`:
+ub_check and grain_check for the UB, ub_check for the origin, qmax_coverage for the counts`)}.
 On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
 symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features

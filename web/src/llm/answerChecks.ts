@@ -295,11 +295,13 @@ function successClaims(text: string, verdict: ComputedVerdict | null): string[] 
  * Where the answer calls the run a success that the computed verdict does not
  * give: the reason, as the model is told it, or null. A claim with the verdict
  * not met contradicts it; one with it not judged rests on checks that did not
- * all run on the outputs as they now are.
+ * all run on the outputs as they now are, or that ran on a grid too coarse for
+ * them, which the verdict says.
  */
 export function overallContradiction(text: string, verdict: ComputedVerdict | null): string | null {
   if (!successClaims(text, verdict).length) return null;
-  return verdict?.achieved === false
+  // Not judged for a grid too coarse for a check, the checks ran: the verdict says why (G1).
+  return verdict?.achieved === false || verdict?.notJudged?.length
     ? `It calls the run a success, but the verdict computed from the checks is "${verdict.text}"`
     : `It calls the run a success, but the checks it rests on did not all run on the outputs as they now are (${verdict ? verdict.text : "nothing measured"})`;
 }

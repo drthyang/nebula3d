@@ -89,6 +89,9 @@ export function judgedShells(
   return reached.filter((i) => shells.centres[i] >= 0.5 * outer);
 }
 
+/** The limit both the floors' trend (in magnitude) and their span reach for a pedestal left (pedestalLeft). */
+export const PEDESTAL_LIMIT = 0.8;
+
 /**
  * Whether the flatten left a pedestal: the floors still follow |Q| (a rank
  * correlation of 0.8 or more in magnitude) over a span of 0.8 or more of the
@@ -97,7 +100,7 @@ export function judgedShells(
  * point at when it asks whether to turn the Q² term on.
  */
 export const pedestalLeft = (trend: number | null | undefined, span: number | null | undefined): boolean | null =>
-  trend == null || span == null ? null : Math.abs(trend) >= 0.8 && span >= 0.8;
+  trend == null || span == null ? null : Math.abs(trend) >= PEDESTAL_LIMIT && span >= PEDESTAL_LIMIT;
 
 // Spearman rank correlation of y with its index (the shells' |Q| order).
 const rankTrend = (y: number[]): number | null => {

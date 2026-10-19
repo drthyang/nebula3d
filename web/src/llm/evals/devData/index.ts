@@ -2,7 +2,8 @@
 // replay tests (*.replay.test.ts) use.
 //
 // devCase(id) is a handle on one dev case of the validation (synthetic, with a
-// planted fault and its truth; nebula3d.validation). Its first use builds the
+// planted fault and its truth; nebula3d.validation), on the run's grid
+// (NEBULA_DEV_N) or the one it asks for. Its first use builds the
 // case's volume in Python and gives it a fresh workspace: the case's default
 // run (the Run button's settings, through usePipelineStore.runStages), with the
 // stores and the query cache reset. Then
@@ -52,7 +53,7 @@ import { useTuneStore } from "../../tune/tuner";
 import type { Outcome } from "../../verdicts";
 import { scriptedModel, SCRIPTED_URL, type ScriptTurn } from "../scripted";
 import { casesIn, type ValidationCase } from "../validation";
-import { bridgeConfig, currentBridge, RING_WORKERS_KEY } from "./bridgeWorker";
+import { bridgeConfig, currentBridge, DEV_GRIDS, RING_WORKERS_KEY } from "./bridgeWorker";
 
 /** The validation's dev cases: the only ones a replay builds (the manifest's dev entries; devData.replay.test.ts pins the two equal). */
 export const DEV_CASE_IDS = [
@@ -85,6 +86,7 @@ export interface ReplayResult extends AgentResult {
 
 export interface DevCase {
   readonly id: DevCaseId;
+  readonly n: number; // grid points per axis it is built on
   readonly truth: ValidationCase["truth"]; // from the manifest's dev entry
   readonly fault: ValidationCase["fault"];
   dataset(): Promise<Dataset>;
@@ -106,11 +108,16 @@ const SETTINGS: LlmSettings = {
   followViews: false,
 };
 
-/** The case's handle; it builds nothing until it is used. Only the dev split's ids are taken. */
-export function devCase(id: DevCaseId): DevCase {
+/**
+ * The case's handle; it builds nothing until it is used. Only the dev split's
+ * ids are taken. On the run's grid (NEBULA_DEV_N), or on `n`, one of
+ * DEV_GRIDS: a test whose checks must judge every stage asks for the
+ * validation's own, where no check is too coarse for the grid.
+ */
+export function devCase(id: DevCaseId, { n }: { n?: (typeof DEV_GRIDS)[number] } = {}): DevCase {
   const entry = casesIn("dev").find((c) => c.id === id);
   if (!entry) throw new Error(`${JSON.stringify(id)} is not a dev case of the validation: devCase builds the dev split only`);
-  return new Handle(id, entry);
+  return new Handle(id, entry, n);
 }
 
 // ---------------------------------------------------------------- implementation
@@ -146,9 +153,8 @@ function resetApp(): void {
 const lastError = (events: readonly JobEvent[]): string =>
   [...events].reverse().find((e) => e.status === "error")?.message ?? "no error logged";
 
-async function activate(id: DevCaseId): Promise<ToolContext> {
+async function activate(id: DevCaseId, n: number): Promise<ToolContext> {
   if (!PYODIDE_MODE) throw new Error("devCase runs in the replay project, where VITE_DATA_MODE is pyodide: npx vitest --project replay");
-  const { n } = bridgeConfig();
   resetApp();
   await ensureBooted();
   const bridge = currentBridge();
@@ -188,7 +194,13 @@ class Handle implements DevCase {
   constructor(
     readonly id: DevCaseId,
     private readonly entry: ValidationCase,
+    private readonly grid: number | undefined,
   ) {}
+
+  /** The grid it is built on: its own, else the run's (read when asked, as the bridge is installed by then). */
+  get n(): number {
+    return this.grid ?? bridgeConfig().n;
+  }
 
   get truth(): ValidationCase["truth"] {
     return this.entry.truth;
@@ -204,7 +216,7 @@ class Handle implements DevCase {
     }
     if (!this.ready) {
       Handle.takeOver(this);
-      this.ready = activate(this.id);
+      this.ready = activate(this.id, this.n);
     }
     return this.ready;
   }

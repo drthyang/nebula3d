@@ -38,7 +38,45 @@ import {
   WhyTracker,
   type Decision,
   type RunRecord,
+  type ValidationCase,
 } from "./validation";
+
+// No failure here shows a held-out case: a check that meets the test split names a
+// test case by its masked name (as pytest does, tests/conftest.py), states what is
+// wrong by its kind, and expects a boolean or a count, so vitest prints no value.
+
+/** How a failure names a case: a dev case by its id, a test case by its masked name. */
+const shownAs = (c: ValidationCase, tests: ValidationCase[] = casesIn("test")): string =>
+  c.split === "dev" ? c.id : `test-split-case-${tests.indexOf(c)}`;
+
+/** A value with its objects' keys sorted, to compare two faults whatever their key order. */
+const canonical = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(canonical)
+    : v && typeof v === "object"
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, canonical(x)]))
+      : v;
+
+/** What a test case shares with its family's dev case that it must not: by kind, never a value. */
+const sharedWithDev = (dev: ValidationCase, test: ValidationCase): string[] => {
+  const vectors = (c: ValidationCase) => c.planted.map((p) => p.vector.join(","));
+  const shared: string[] = [];
+  if (test.cell_a === dev.cell_a) shared.push("the cell");
+  if (vectors(test).some((v) => vectors(dev).includes(v))) shared.push("a planted vector");
+  if (Object.keys(dev.fault).length && JSON.stringify(canonical(test.fault)) === JSON.stringify(canonical(dev.fault))) {
+    shared.push("the fault");
+  }
+  return shared;
+};
+
+/** Whether two lists hold the same cases, in order (compared by id: a failure shows none). */
+const sameCases = (a: ValidationCase[], b: ValidationCase[]): boolean => a.length === b.length && a.every((c, i) => c.id === b[i].id);
+
+/** A model sees a dataset's stem: it must be opaque and name no case, family or split. */
+const expectOpaqueStem = (c: ValidationCase, arm: string, stem: string, words: string[], tests?: ValidationCase[]) => {
+  expect(/^v[0-9a-f]{6}_[BC]1$/.test(stem), `${shownAs(c, tests)} ${arm}: the stem is not opaque`).toBe(true);
+  expect(words.filter((w) => stem.includes(w)).length, `${shownAs(c, tests)} ${arm}: the stem names a case, family or split`).toBe(0);
+};
 
 const step = (name: string, args: Record<string, unknown> = {}, result: unknown = {}, status: AgentStep["status"] = "done"): AgentStep => ({
   id: `${name}-${Math.random()}`,
@@ -72,24 +110,67 @@ describe("the split", () => {
     for (const family of Object.keys(FAMILIES)) {
       const dev = CASES.find((c) => c.family === family && c.split === "dev")!;
       const test = CASES.find((c) => c.family === family && c.split === "test")!;
-      expect(test.cell_a).not.toBe(dev.cell_a);
-      const vectors = (c: typeof dev) => c.planted.map((p) => p.vector.join(","));
-      expect(vectors(test).filter((v) => vectors(dev).includes(v))).toEqual([]);
-      if (Object.keys(dev.fault).length) expect(test.fault).not.toEqual(dev.fault);
+      // A family is public (one dev and one test case each); what is shared, by its kind.
+      expect(sharedWithDev(dev, test), family).toEqual([]);
     }
   });
 
   it("runs the test split only to be reported", () => {
     expect(() => casesToRun("test")).toThrow(/held out/);
     expect(() => casesToRun("test", { report: false })).toThrow(/held out/);
-    expect(casesToRun("test", { report: true })).toEqual(casesIn("test"));
+    expect(sameCases(casesToRun("test", { report: true }), casesIn("test")), "the reported run is not the test split").toBe(true);
     expect(casesToRun("dev")).toEqual(casesIn("dev"));
   });
 
   it("gives the model a task that names no case, fault or size", () => {
-    for (const c of CASES) expect(TASK).not.toContain(c.id);
+    for (const c of CASES) expect(TASK.includes(c.id), `the task names ${shownAs(c)}`).toBe(false);
     expect(TASK).not.toMatch(/\d+(\.\d+)?\s*(°|Å|%|r\.l\.u)/);
     expect(ARMS).toEqual(["B", "C"]);
+  });
+});
+
+describe("a failure that meets the test split", () => {
+  // A made-up held-out case, never a real one: each check above made to fail on it.
+  const fake: ValidationCase = {
+    id: "test-fake-ub",
+    label: "vfa4e00",
+    family: "ub",
+    split: "test",
+    cell_a: 5.25,
+    planted: [{ vector: [0.25, 1.75, 0.5], sign: "+", distance_A: 9.632 }],
+    fault: { angle_deg: 1.37, axis: [0, 0, 1] },
+    truth: { angle_deg: 1.37 },
+  } as ValidationCase;
+  const twin = { ...fake, id: "dev-fake-ub", split: "dev" } as ValidationCase;
+  /** All a failure prints: its message, and the values vitest diffs. */
+  const failure = (check: () => void): string => {
+    try {
+      check();
+    } catch (e) {
+      const err = e as Error & { actual?: unknown; expected?: unknown; diff?: string };
+      return [err.message, JSON.stringify(err.actual), JSON.stringify(err.expected), err.diff ?? ""].join("\n");
+    }
+    throw new Error("the check did not fail");
+  };
+  const showsNothingOf = (text: string) => {
+    for (const v of [fake.id, fake.label, "5.25", "1.75", "1.37", "9.632", "0.25,1.75,0.5"]) expect(text.includes(v), v).toBe(false);
+  };
+
+  it("names it by its masked name and what is wrong by its kind, never a value", () => {
+    let text = failure(() => expect(sharedWithDev(twin, fake), fake.family).toEqual([]));
+    for (const kind of ["the cell", "a planted vector", "the fault"]) expect(text).toContain(kind);
+    showsNothingOf(text);
+    text = failure(() => expect(`Look at ${fake.id}.`.includes(fake.id), `the task names ${shownAs(fake, [fake])}`).toBe(false));
+    expect(text).toContain("the task names test-split-case-0");
+    showsNothingOf(text);
+    text = failure(() => expectOpaqueStem(fake, "B", `${fake.id}_B1`, [fake.id], [fake]));
+    expect(text).toContain("test-split-case-0 B: the stem is not opaque");
+    showsNothingOf(text);
+    text = failure(() => expectOpaqueStem(fake, "B", `${fake.label}_B1`, [fake.label], [fake]));
+    expect(text).toContain("test-split-case-0 B: the stem names a case");
+    showsNothingOf(text);
+    expect(sameCases([fake], [twin])).toBe(false);
+    expect(sameCases([fake], [fake])).toBe(true);
   });
 });
 
@@ -147,11 +228,7 @@ describe("the datasets", () => {
     const words = [...CASES.map((c) => c.id), ...Object.keys(FAMILIES), "dev", "test"];
     expect(new Set(CASES.map((c) => c.label)).size).toBe(CASES.length);
     for (const c of CASES) {
-      for (const arm of ARMS) {
-        const stem = datasetStem(c.id, arm, 1);
-        expect(stem).toMatch(/^v[0-9a-f]{6}_[BC]1$/);
-        for (const w of words) expect(stem).not.toContain(w);
-      }
+      for (const arm of ARMS) expectOpaqueStem(c, arm, datasetStem(c.id, arm, 1), words);
     }
   });
 

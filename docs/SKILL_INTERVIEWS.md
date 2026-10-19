@@ -773,11 +773,12 @@ model of the disorder before you claim a correlation?
 taper (Gaussian, Hann, none), and why? Which would you have as the default?
 
 - **Where:** termination ripple (`SKILL.md:75-78`); the pipeline's default,
-  Gaussian with σ 0.4 (`src/nebula3d/pipeline.py:602-603`), against
-  `compute_delta_pdf`'s, Hann (`src/nebula3d/analysis/delta_pdf.py:387-388`);
-  `window_shape` "auto" (`pipeline.py:618`).
-- **Today:** The two defaults differ (agent plan, section C; 4.12, approved by
-  the manager, picks one). The ΔPDF's goal says to prefer the default unless
+  Gaussian with σ 0.4 (`src/nebula3d/pipeline.py:621-622`), which
+  `compute_delta_pdf` now shares (`src/nebula3d/analysis/delta_pdf.py:387-388`);
+  `window_shape` "auto" (`pipeline.py:637`).
+- **Today:** The function's default was Hann until the manager's decision of
+  2026-10-19 (agent plan 4.12) gave it the pipeline's, so there is one default.
+  The ΔPDF's goal says to prefer the default unless
   another is clearly better on feature SNR with the reach inside the coverage
   (`rules.ts:268`). A separable window breaks a hexagonal cell's symmetry
   (`SKILL.md:52-57`).

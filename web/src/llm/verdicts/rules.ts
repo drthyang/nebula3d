@@ -5,12 +5,15 @@
 //
 // A rule is pure and total: it never throws, and with nothing to judge its
 // outcome is "info" with the reason "nothing to judge" (the named exceptions:
-// D15, the ΔPDF's rule, and D16, the UB's). An "attention" outcome always
-// carries a reason.
+// D15, the ΔPDF's rule, and D16, the UB's); on a grid too coarse for the
+// check's measurement, "info" with the reason "grid too coarse", which the
+// measurement states in its result. An "attention" outcome always carries a
+// reason.
 
-import { built, evidence, inference, inferred, joined, reading, remedy, written, type Span, type Tagged } from "../inference";
+import { built, evidence, inference, inferred, joined, quotedInference, reading, remedy, written, type Span, type Tagged } from "../inference";
+import { isTooCoarse } from "../metrics/coarse";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
-import { pedestalLeft } from "../metrics/flatten";
+import { PEDESTAL_LIMIT, pedestalLeft } from "../metrics/flatten";
 import { r2, SECOND_GRAIN_DEG, type GrainFacts } from "../metrics/grains";
 import { roundSig } from "../metrics/sliceStats";
 import { SYMMETRY_HOLDS } from "../metrics/symmetry";
@@ -21,6 +24,15 @@ export type Kind = "pass" | "attention" | "info";
 
 export type Stage = TuneStage;
 export const STAGES: readonly Stage[] = ["rings", "punch", "backfill", "flatten", "pdf"];
+
+/** How {{achieved}} names a stage (readers.ts), and the system prompt's checks after it (prompts/system.ts). */
+export const STAGE_NAMES: Record<Stage, string> = {
+  rings: "the ring removal",
+  punch: "the Bragg punch",
+  backfill: "the backfill",
+  flatten: "the flatten",
+  pdf: "the 3D-ΔPDF",
+};
 
 /** The checks: the five stages, and the checks on the result. */
 export type CheckId = Stage | "coverage" | "symmetry" | "texture" | "grain" | "ub";
@@ -48,6 +60,8 @@ export type Reason =
   | "peaks beside nodes"
   | "UB turned"
   | "symmetrised"
+  // The grid is too coarse for the check's measurement (metrics/coarse.ts): not judged.
+  | "grid too coarse"
   // What a recorded result says of itself (recorded.ts).
   | "no output"
   | "recorded verdict"
@@ -129,6 +143,12 @@ interface Judged {
 
 /** Nothing to judge: a fresh outcome each time, so no two outcomes share their reasons. */
 const nothing = (): Judged => ({ kind: "info", reasons: ["nothing to judge"] });
+/**
+ * The grid too coarse for the check's measurement to judge anything (metrics/coarse.ts):
+ * not judged, as nothing to judge is, for its own reason. No evidence never
+ * passes, applied to resolution.
+ */
+const tooCoarse = (): Judged => ({ kind: "info", reasons: ["grid too coarse"] });
 /** Attention for the reasons found, else a pass (with any reason that is no fault). */
 const judged = (faults: Reason[], also: Reason[] = []): Judged =>
   faults.length ? { kind: "attention", reasons: [...faults, ...also] } : { kind: "pass", reasons: also };
@@ -150,6 +170,31 @@ const goalOf = (stage: string) => written(`verdicts/rules.ts: the ${stage} goal`
 
 // ---------------------------------------------------------------- the stages
 
+/**
+ * The ring removal's notice (nebula3d.pipeline.unconfirmed_rings_notice): on a
+ * grid too coarse to confirm a ring, the removal subtracts no shell it could
+ * not confirm, and says how many ring candidates it detected (which may be
+ * powder rings or the crystal's own scattering), what the grid needs and the
+ * two ways out, in its run log line and its diagnostics, whose notice the
+ * rings' evaluation carries (notice, tune/evaluate.ts). Its first sentence is a
+ * definition; its last, the remedy with what it would subtract, is tagged here
+ * as the backend writes it, for more than one candidate and for one
+ * (RING_GRID_REMEDY and RING_GRID_REMEDY_ONE there), so arm C reads the notice
+ * without it, wherever it stands (the review's G1, accepted by the manager on
+ * the user's delegation, 2026-10-19).
+ */
+const RING_NOTICE = "verdicts/rules.ts: the ring removal's notice";
+export const RING_NOTICE_REMEDY = quotedInference(
+  RING_NOTICE,
+  "remedy",
+  " Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.",
+);
+export const RING_NOTICE_REMEDY_ONE = quotedInference(
+  RING_NOTICE,
+  "remedy",
+  " Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract it, even if it is the crystal's own shell.",
+);
+
 const rings: StageRule = {
   criterion: criterionOf("rings")`No powder ring left above, or dented below, three times its plane's noise. A bump is a powder ring only if it rises in nearly every direction over the sphere (at least 0.15 of its median height in 90 % of directions)${evidence(
     ": the crystal's own scattering at that |Q| rises in some directions only",
@@ -160,7 +205,8 @@ const rings: StageRule = {
   judge: (m) => {
     const left = num(m.max_ring_left);
     const dent = num(m.max_ring_dent);
-    if (left == null || dent == null) return nothing();
+    // Not judged where the 3D test could not run, or the grid is too coarse for it (ring_rule says so).
+    if (left == null || dent == null) return isTooCoarse(m.ring_rule) ? tooCoarse() : nothing();
     // A leftover or dent above 0 is beyond 3 × its plane's noise: real, by the tool's definition.
     return judged([...(left !== 0 ? (["ring left"] as const) : []), ...(dent !== 0 ? (["ring dent"] as const) : [])]);
   },
@@ -224,11 +270,17 @@ const backfill: StageRule = {
  */
 export const FLATTEN_FLOOR_SIGMA_NOTE = "reported, not judged";
 
+/** Why the largest floor in σ is FLATTEN_FLOOR_SIGMA_NOTE, in the flatten's criterion and the system prompt (prompts/system.ts). */
+export const FLOOR_SIGMA_WHY = "σ is the cut's own spread, and the floors follow the diffuse level";
+
+/** The shells the flatten's rule judges a pedestal on (judgedShells, metrics/flatten.ts), in its criterion and the system prompt. */
+export const PEDESTAL_SHELLS = "the outer half of the |Q| shells the counts reach";
+
 // The flatten's goal: what to change about a pedestal left is reduction-qc's
 // step 6 (a floor rising with |Q| wants the b·Q² term and a fit range reaching
 // the coverage), and what a trend and a span near 1 are evidence of goes with it.
 const flatten: StageRule = {
-  criterion: criterionOf("flatten")`No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (the 1σ limit dropped at the user's choice, 2026-10-17; provisional).`,
+  criterion: criterionOf("flatten")`No pedestal: a floor trend and a span both ${PEDESTAL_LIMIT} or more over ${PEDESTAL_SHELLS}. The largest floor in σ is ${FLATTEN_FLOOR_SIGMA_NOTE}: ${FLOOR_SIGMA_WHY}.`,
   goal: goalOf("flatten")`Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.${evidence(
     " A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ",
   )}${remedy(": a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations.")}`,
@@ -243,6 +295,9 @@ const flatten: StageRule = {
 
 /** The back-FFT round trip's limit on r (the ΔPDF's criterion). */
 export const BACK_FFT_R_OK = 0.999;
+
+/** What the forward transform keeps, which the round trip is judged against (backFftOk): in the ΔPDF's criterion and the prompts (prompts/). */
+export const EVEN_PART = "the data's even part under Q → −Q";
 
 /**
  * Whether the back-FFT round trip passes, or null when it does not judge. The
@@ -291,7 +346,7 @@ function windowWeight(m: StageNumbers): number | null {
 export const D15_PDF_PASSES_UNMEASURED = false;
 
 const pdf: StageRule = {
-  criterion: criterionOf("pdf")`The back-FFT reproduces what the transform keeps, the data's even part under Q → −Q, to an r of 0.999 or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.`,
+  criterion: criterionOf("pdf")`The back-FFT reproduces what the transform keeps, ${EVEN_PART}, to an r of ${BACK_FFT_R_OK} or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.`,
   goal: goalOf("pdf")`The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate).${evidence(
     " A window that reaches further raises feature_snr with the backfill's guesses and the box's empty corners, which is worse, not better.",
   )} max_symmetry_break is the x–y section's largest RMS difference from its image under the cell's in-plane operations (worst_symmetry_op names it)${evidence(
@@ -426,9 +481,13 @@ const symmetry: CheckRule<SymmetryMeasurements> = {
 
 const texture: CheckRule<Readonly<Record<string, unknown>>> = {
   // texture_check writes no verdict: each cut says whether its fill is biased.
+  // A cut whose grid is too coarse to judge its fills (not_judged, texture.ts's
+  // roomForRims) is no evidence either way: the fills pass only when every cut
+  // was judged, and a judged cut's bias still needs attention.
   judge: (m) => {
     const cuts = (Array.isArray(m.per_cut) ? (m.per_cut as unknown[]) : []).filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
     if (cuts.some((x) => x.systematic_fill_bias === true)) return { kind: "attention", reasons: ["fill bias"], words: null };
+    if (cuts.some((x) => isTooCoarse(x.not_judged))) return { ...tooCoarse(), words: null };
     return cuts.length ? { kind: "pass", reasons: [], words: null } : { ...nothing(), words: null };
   },
 };

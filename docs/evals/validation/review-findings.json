@@ -633,5 +633,80 @@
    "on": "2026-10-19",
    "option": "yes"
   }
+ },
+ {
+  "source": "review",
+  "ref": "G1",
+  "at": "054a753",
+  "kind": "science-error",
+  "evidence": "On a grid too coarse for the powder-ring test, under one voxel across the widest FWHM it judges, fwhm_cap 0.16 Å⁻¹ (src/nebula3d/preprocessing/ring_isotropy.py:220, :231), the test judges no shell (ring_isotropy.py:280-283). The pooled ring removal confirms its rings with the same test (pooled_confirm_rings, on by default: src/nebula3d/pipeline.py:1079) and subtracts only the shells it confirms (src/nebula3d/preprocessing/pooled_rings.py:575-579), so on such a grid it subtracts none of the rings it detects, real powder rings included, and its log only counted them (\"and N not judged (…; kept)\", pipeline.py:1091-1098). Without the guard, the test judged a bump of the crystal's own at 1.75 Å⁻¹ a powder ring on the validation's dev crystal at n=81 (0.99 voxels across 0.16 Å⁻¹), which the removal would subtract. With it, on dev-rings at n=81 the removal detects three shells (2.18, 3.23 and 4.04 Å⁻¹, the planted rings at 2.2 and 4.05 Å⁻¹ among them), confirms none and subtracts none; at n=161 it confirms two and keeps one as the crystal's own.",
+  "proposed_fix": "Accept that on a grid too coarse to confirm a ring the ring removal subtracts no unconfirmed ring, and say so out loud wherever the ring stage reports: its run log line and its diagnostics (GET /api/rings/{id}/diagnostics), the Execution page, the report's ring card and caveats, and the Pilot's ring check (assess_stage rings, notice; run_log): \"N ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ <the limit, from the rule's constants>); not subtracted. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.\" (for one: \"1 ring candidate (a shell that may be a powder ring or the crystal's own scattering) … to subtract it, even if it is the crystal's own shell.\"), its second sentence a remedy arm C reads without. No console setting for it. {{achieved}} says why the ring removal is not judged (\"not judged: the ring removal (grid too coarse for the ring check)\"), not that it was not measured.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "ea43a5f",
+  "tests": [
+   "tests/test_ring_isotropy.py::test_on_the_dev_grid_the_ring_removal_says_how_many_rings_it_left_and_the_ways_out",
+   "tests/test_ring_isotropy.py::test_the_ring_removal_subtracts_no_ring_on_a_grid_too_coarse_to_confirm_it",
+   "tests/test_ring_isotropy.py::test_what_the_grid_needs_is_the_rules_own",
+   "tests/test_server.py::test_ring_diagnostics_give_the_rings_left_unconfirmed_on_the_grid",
+   "tests/test_webbridge.py::test_ring_diagnostics_json_is_the_servers_response",
+   "web/src/llm/evals/devData/knownAnswers.replay.test.ts (dev-rings and dev-rings-shell: the ring removal says how many rings it left unconfirmed at n=81, the planted ones among them, in its log, its record and the ring check, and leaves none at n=161; dev-control: the verdict on the run is met, or says why the ring removal is not judged)",
+   "web/src/llm/__tests__/tools.test.ts (assess_stage and run_log: the notice whole with the skills on, without its remedy with them off (G1))",
+   "web/src/llm/__tests__/verdicts.test.ts (judges the rings alike with the ring removal's notice, which arm C reads without the remedy the backend writes (G1))",
+   "web/src/llm/__tests__/report.test.ts (the notice on the ring card and among the caveats; the goal says why it is not judged (G1))",
+   "web/src/llm/__tests__/references.test.ts (says why a stage measured on a grid too coarse for its check is not judged, not that it was not measured (G1))",
+   "web/src/pages/__tests__/executionLog.test.ts (reads the ring removal's done line that ends on its notice as a warning, not a success (G1))"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "accept: no unconfirmed ring is subtracted; the notice is loud"
+  }
+ },
+ {
+  "source": "review",
+  "ref": "P4.12",
+  "at": "d8be858",
+  "kind": "bug",
+  "evidence": "compute_delta_pdf defaulted to apodization \"hann\" and gaussian_sigma 0.5 (src/nebula3d/analysis/delta_pdf.py:387-388, and _prepare_forward at :560-561), while the pipeline's ΔPDF stage runs DeltaPdfParams' \"gaussian\" and 0.4 (src/nebula3d/pipeline.py:621-622), so a call with no window transformed differently from the stage. The ring texture order is 8 on the page (web/src/state/pipelineStore.ts:156, web/src/llm/tune/catalog.ts:149-157) and 6 in the package (src/nebula3d/_ringplane.py:63), with nothing saying why.",
+  "proposed_fix": "compute_delta_pdf and _prepare_forward default to the pipeline's window, gaussian 0.4, as a behaviour change of the Python API; a test pins every keyword they share with DeltaPdfParams. The ring texture order stays 8 on the page and 6 in the package, each with a comment, and a test pins both: it applies only to the patched and parametric ring models, not the default pooled one, and changing either would change runs on that path.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "5233fda",
+  "tests": [
+   "tests/test_defaults_agreed.py::test_compute_delta_pdf_defaults_are_the_pipelines",
+   "tests/test_defaults_agreed.py::test_a_call_with_no_window_transforms_as_the_pipelines_stage",
+   "tests/test_defaults_agreed.py::test_ring_texture_order_is_8_on_the_page_and_6_in_the_package"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 4.12, the defaults). Every caller in the package passes its own window, so the pipeline, the server, the browser and arm A are unchanged: arm A on dev re-run, 32 of 32 entries identical, 5 of 8 cases pass, as recorded. The dpdf_features known-answer tests, which call compute_delta_pdf with its defaults, pass under the new window. The rest of 4.12 (the consistency view on the run's settings, the native–browser parity test) is still to come.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "the function takes the pipeline's window; the ring order stays 8 on the page and 6 in the package, with a comment"
+  }
+ },
+ {
+  "source": "review",
+  "ref": "P1.6",
+  "at": "d8be858",
+  "kind": "orchestration",
+  "evidence": "The model-visible prompts stated criteria the verdicts no longer use. The system prompt said after_floor_max_sigma \"≲ 1 is flat\" (web/src/llm/prompts/system.ts:67), finding 6's 1σ clause, dropped on 2026-10-17: the flatten's verdict judges the pedestal alone (web/src/llm/verdicts/rules.ts:275; web/src/llm/metrics/flatten.ts:100), over the outer half of the |Q| shells the counts reach (flatten.ts:74), where the prompt took floor_trend \"over the whole coverage\" (system.ts:71). It said a back-FFT r \"clearly below 1 flags a transform, crop or band problem\" (system.ts:87-88), and the ΔPDF review asks whether the ΔPDF is \"trustworthy (consistency_pearson_r)\" (web/src/llm/prompts/templates.ts:86), while the verdict judges the round trip against the data's even part, back_fft_pearson_r_even, to 0.999 (rules.ts:295-297), and on unsymmetrised data r against the data is legitimately below 1; the flatten review asks for after_floor_max_sigma (templates.ts:85). The four checks (system.ts:130-135) covered the rings, the Bragg punch, the texture and Qmax, while {{achieved}} judges all five stages and the checks on their result and names the data's own problems (web/src/llm/verdicts/readers.ts:343, :353-390), so a reply that settled the four left it not judged. The ring check named the ring-energy ratio and the over-subtraction (system.ts:131-132), where the verdict reads max_ring_left and max_ring_dent at the confirmed rings; CRITERIA.flatten carried an internal note (rules.ts:268); \"the context above\" (system.ts:104) named context that arrives after the system prompt; and update_settings gives punchSearchMaxWidth as \"number 1–6\" with its default, 0 (off), outside it (web/src/llm/tools/index.ts:1556-1563; web/src/llm/tune/catalog.ts:233-238).",
+  "proposed_fix": "Each sentence states what the verdict judges, in the verdict module's own words and limits (FLATTEN_FLOOR_SIGMA_NOTE, FLOOR_SIGMA_WHY, PEDESTAL_SHELLS, PEDESTAL_LIMIT, EVEN_PART, BACK_FFT_R_OK; the criteria built from the same constants), tagged by class: a criterion stated as what the verdict judges is a definition, read in both arms, and what a value is evidence of stays evidence. The four checks become six, the five stages as {{achieved}} names them (STAGE_NAMES), with the checks on their result, and the data's own problems (the UB, the HKL origin, the counts' edge); arm C reads the same properties as a plain, unordered list. The criterion's note goes, and the context is \"in the first user message\". punchSearchMaxWidth's range is written in a tool file and checked by the catalog's validator, which refuses 0: left for after the tools' refactor (#4).",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "5f14231",
+  "tests": [
+   "web/src/llm/__tests__/prompts.test.ts (each sentence in the verdict module's words, in both arms: the flatten, the ΔPDF, the ring check, the criteria and the context; the checks name every stage and the data's own problems, and settling them judges {{achieved}}, where the four of before left it not judged)",
+   "web/src/llm/__tests__/modelVisible.test.ts (1-chat-arm-b.md, 1-chat-arm-c.md, 1-chat-tools-off.md, 3-goals-and-verdicts.md, 3-stage-reviews.md, 4-tool-results.md, 4-tool-results-arm-c.md, 6-inference.md)",
+   "web/src/llm/__tests__/armC.test.ts (arm C's text holds no inference span, no skill's name and no skill's sentence)",
+   "web/src/llm/__tests__/verdictGoldens.test.ts (the verdicts unchanged, the goldens untouched)"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 1.6). Implemented in e45a95e (the criteria's words: the flatten, the ΔPDF, the ring check, the stage reviews, the criterion's note, the context) and 5f14231 (the checks). The verdicts are unchanged and arm A is unaffected (TypeScript prompts only). The system prompt grows from 3,879 to 4,209 estimated tokens; every token-budget value stays within 5 % of its pin. Left: punchSearchMaxWidth's range (tools/index.ts), after #4.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "the prompts state what the checks judge; the four checks name all five stages and the UB"
+  }
  }
 ]

@@ -2570,6 +2570,7 @@ input[type="range"]::-moz-range-track {
 .exec-stage-status.pending { color: #56627a; }
 .exec-stage-meta { margin-top: 5px; font: 400 11.5px/1.4 system-ui; color: #6c7686; }
 .exec-stage-meta.dim { color: #56627a; }
+.exec-stage-meta.warn { color: #e8b454; }
 .exec-stage-bar {
   margin-top: 9px;
   position: relative;

@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { built, connective, evidence, inference, joined, reading, remedy, Tagged, withoutInference, writtenInferences, written } from "../inference";
+import { built, connective, evidence, inference, joined, quotedInference, reading, remedy, Tagged, withoutInference, writtenInferences, written } from "../inference";
 
 describe("a text tagged by class", () => {
   const t = written("inference.test.ts: a sample")`ring_energy_ratio = after/before${evidence("; lower is cleaner")}. Its
@@ -65,5 +65,19 @@ Next line.`;
     const result = { reading: t.whole, other: "as is", list: [t.whole, 3], nested: { deep: t.whole }, n: 2, none: null };
     expect(withoutInference(result)).toEqual({ reading: t.definitions, other: "as is", list: [t.definitions, 3], nested: { deep: t.definitions }, n: 2, none: null });
     expect(withoutInference(`${t.whole} and more`)).toBe(`${t.whole} and more`); // only a whole text, never a part
+  });
+
+  it("leaves a span the backend quotes out of any string that holds it, wherever it stands, and lists it (quotedInference)", () => {
+    const span = quotedInference("inference.test.ts: a quoted span", "remedy", " Try a finer grid.");
+    const line = "3 shells not confirmed; not subtracted. Try a finer grid.";
+    expect(withoutInference({ lines: [{ message: line }], n: 3, other: "no span here" })).toEqual({
+      lines: [{ message: "3 shells not confirmed; not subtracted." }],
+      n: 3,
+      other: "no span here",
+    });
+    expect(withoutInference(`${line} ${line}`)).toBe("3 shells not confirmed; not subtracted. 3 shells not confirmed; not subtracted.");
+    // Whole with the skills on: nothing renders it but the switch.
+    expect(span.text).toBe(" Try a finer grid.");
+    expect(writtenInferences().filter((e) => e.source === "inference.test.ts: a quoted span")).toEqual([{ source: "inference.test.ts: a quoted span", span }]);
   });
 });

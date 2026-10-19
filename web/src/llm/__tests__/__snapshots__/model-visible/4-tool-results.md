@@ -288,7 +288,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {}
 
-3330 characters sent.
+3261 characters sent.
 
 ```json
 {
@@ -369,7 +369,7 @@ References of this skill (read one with read_skill and `reference`):
   },
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (the 1σ limit dropped at the user's choice, 2026-10-17; provisional).",
+    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
     "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
     "max_after_floor_sigma": 2.78,
     "max_floor_trend": 0.333,
@@ -400,13 +400,13 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {"stage":"flatten"}
 
-2090 characters sent.
+2021 characters sent.
 
 ```json
 {
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (the 1σ limit dropped at the user's choice, 2026-10-17; provisional).",
+    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
     "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
     "max_after_floor_sigma": 2.78,
     "max_floor_trend": 0.333,

@@ -23,16 +23,25 @@
 //   also a sizeable share of the local diffuse level (FILL_BIAS_FLOOR): σ
 //   shrinks as the counts grow, so a bias in σ alone flags any small one on
 //   good statistics.
+//   A cut is judged only where its grid leaves the holes room for their rims
+//   (roomForRims): the rim's trend is the diffuse falling away from the
+//   hole's own node, which holds on its side of the midpoint to the next node
+//   only. On a grid too coarse for that the cut says why (not_judged), and
+//   gives no verdict.
 // - Azimuthal texture.  Per |Q| shell, how much the sector means vary around
 //   the shell: before the punch over the unpunched voxels only (the diffuse
 //   without its peaks), after the backfill over every voxel.  Fills that follow
 //   the diffuse leave that variation unchanged (ratio ≈ 1); fills off the
 //   diffuse add variation around the shell.
 
+import { GRID_TOO_COARSE } from "./coarse";
 import { median, planarRadius, roundSig, type GridSlice, type RadiusFn } from "./sliceStats";
 
 export interface TextureMetrics {
   n_holes: number;
+  // Why the cut's grid is too coarse to judge its fills (roomForRims): then
+  // the fill bias is not measured (null) and systematic_fill_bias is null.
+  not_judged?: string;
   // Median over holes of the fill's distance outside the range the rim allows
   // (0 inside it), signed, in the rim's robust σ about its trend.
   median_fill_bias_sigma: number | null;
@@ -41,8 +50,8 @@ export interface TextureMetrics {
   // Shares of the holes filled above, and below, the range their rim allows.
   above_fraction: number | null;
   below_fraction: number | null;
-  // The fills are systematically off their surroundings, in one direction.
-  systematic_fill_bias: boolean;
+  // The fills are systematically off their surroundings, in one direction (null: not judged).
+  systematic_fill_bias: boolean | null;
   // Median over |Q| shells of the sector means' coefficient of variation.
   azimuthal_variation_before: number | null;
   azimuthal_variation_after: number | null;
@@ -53,7 +62,7 @@ export interface TextureMetrics {
 // fill left as they were.  The backfill also writes a band just outside the
 // punch (docs/algorithms/bragg_cleanup.md, "The gap band is filled too"):
 // those voxels are fill, not rim.  Four voxels give the trend two rings at least.
-const RIM = 4;
+export const RIM = 4;
 const SECTORS = 24;
 const SHELLS = 24;
 
@@ -106,6 +115,60 @@ function findHoles(punched: GridSlice, filled: GridSlice): { holes: number[][]; 
     holes.push(hole);
   }
   return { holes, mask };
+}
+
+/** How far a hole reaches from its centre, in voxels: chessboard, its bounding box's farthest edge. */
+export function holeReach(hole: readonly number[], nx: number): number {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, sx = 0, sy = 0;
+  for (const i of hole) {
+    const x = i % nx;
+    const y = (i - x) / nx;
+    [x0, x1, y0, y1] = [Math.min(x0, x), Math.max(x1, x), Math.min(y0, y), Math.max(y1, y)];
+    sx += x;
+    sy += y;
+  }
+  const [cx, cy] = [sx / hole.length, sy / hole.length];
+  return Math.max(x1 - cx, cx - x0, y1 - cy, cy - y0);
+}
+
+/**
+ * The voxels between neighbouring nodes of a cut's grid: one r.l.u. along its
+ * axis with the coarsest step (infinite with no step), to six figures, so the
+ * axes' rounding (0.1 r.l.u. a voxel reads 9.999999999999991) moves no limit.
+ */
+export function nodeSpacing(cut: GridSlice): number {
+  const steps = [cut.header.x_axis, cut.header.y_axis]
+    .filter((a) => a.length > 1)
+    .map((a) => Math.abs(a[1] - a[0]))
+    .filter((step) => step > 0);
+  return steps.length ? roundSig(1 / Math.max(...steps), 6) : Infinity;
+}
+
+/**
+ * Whether the cut's grid leaves its holes room for their rims, or why not
+ * ("grid too coarse: …"). The rim's trend is the diffuse falling away from
+ * the hole's own node, which holds on that node's side of the midpoint to the
+ * next node only: past it the diffuse turns toward the next one. A hole that
+ * reaches r voxels from its centre (holeReach), its rim RIM more, keeps its
+ * rim on its side when the nodes are 2·(r + RIM) voxels apart or more. The
+ * nodes are the grid's (nodeSpacing): those of integer h, k and l (a
+ * supercell's parent nodes lie further apart, so this errs toward not
+ * judging). The rule reads the median hole, so the cut is judged only where
+ * the median hole has that room. The backfill's gap band is the rim's first
+ * ring or two, inside RIM: it adds nothing to the reach, and the trend keeps
+ * two rings or more while the band is two voxels deep or less (holeBias asks
+ * for two). nebula3d.analysis.bragg_fill_texture applies the same rule in 3-D.
+ */
+export function roomForRims(cut: GridSlice, reaches: readonly number[]): string | null {
+  if (!reaches.length) return null;
+  const spacing = nodeSpacing(cut);
+  const need = 2 * (median([...reaches]) + RIM);
+  if (!(need > spacing)) return null;
+  const reach = roundSig(need / 2 - RIM, 2);
+  return (
+    `${GRID_TOO_COARSE}: the nodes are ${roundSig(spacing, 3)} voxels apart, under ${roundSig(need, 3)}: ` +
+    `a hole reaches ${reach} voxel${reach === 1 ? "" : "s"} and its rim ${RIM} more`
+  );
 }
 
 // Each hole's signed bias outside the range its rim allows, with the rim's
@@ -226,7 +289,8 @@ export const textureMetrics = (
 ): TextureMetrics | null => {
   if (!punched || !filled || punched.data.length !== filled.data.length) return null;
   const { holes, mask } = findHoles(punched, filled);
-  const judged = holes.map((h) => holeBias(h, mask, punched, filled)).filter((b) => b !== null);
+  const coarse = roomForRims(punched, holes.map((h) => holeReach(h, punched.header.nx)));
+  const judged = coarse ? [] : holes.map((h) => holeBias(h, mask, punched, filled)).filter((b) => b !== null);
   const inSigma = judged.map((h) => h.bias / h.sigma);
   const inLevel = judged.filter((h) => Math.abs(h.level) > 0).map((h) => h.bias / Math.abs(h.level));
   const bias = inSigma.length ? median(inSigma) : null;
@@ -241,17 +305,19 @@ export const textureMetrics = (
   const varAfter = azimuthalVariation(filled, radius, () => true);
   return {
     n_holes: holes.length,
+    ...(coarse ? { not_judged: coarse } : {}),
     median_fill_bias_sigma: bias === null ? null : roundSig(bias),
     median_fill_bias_level: biasLevel === null ? null : roundSig(biasLevel),
     above_fraction: above === null ? null : roundSig(above),
     below_fraction: below === null ? null : roundSig(below),
-    systematic_fill_bias:
-      judged.length >= 5 &&
-      bias !== null &&
-      Math.abs(bias) >= 0.5 &&
-      biasLevel !== null &&
-      Math.abs(biasLevel) >= FILL_BIAS_FLOOR &&
-      oneWay,
+    systematic_fill_bias: coarse
+      ? null
+      : judged.length >= 5 &&
+        bias !== null &&
+        Math.abs(bias) >= 0.5 &&
+        biasLevel !== null &&
+        Math.abs(biasLevel) >= FILL_BIAS_FLOOR &&
+        oneWay,
     azimuthal_variation_before: varBefore === null ? null : roundSig(varBefore),
     azimuthal_variation_after: varAfter === null ? null : roundSig(varAfter),
     azimuthal_ratio: varBefore && varAfter !== null ? roundSig(varAfter / varBefore) : null,

@@ -15,12 +15,22 @@
 // The numbers an answer quotes are read from the tools' results, as the
 // references fill them; where they are a planted fault's, they are held to
 // the case's truth.
+//
+// A rule shown on the clean control's verdict, met, needs every stage judged:
+// those replays build the control on the validation's own grid, whatever the
+// run's. On the replays' default grid the ring check is not judged, the grid
+// too coarse for its 3D test (nebula3d.preprocessing.ring_isotropy), so the
+// control's run is not judged there either.
 
 import { describe, expect, it } from "vitest";
 
 import type { AgentResult } from "../agent";
 import { devCase } from "./devData";
+import { DEV_GRIDS } from "./devData/bridgeWorker";
 import type { ScriptTurn } from "./scripted";
+
+/** The validation's own grid, on which every check judges the dev cases. */
+const EVERY_CHECK_JUDGES = { n: DEV_GRIDS[1] } as const;
 
 /** A value as a filled reference shows it (references.ts): a number as written, a list in brackets. */
 const shown = (v: unknown): string => (Array.isArray(v) ? `(${v.join(", ")})` : String(v));
@@ -36,7 +46,7 @@ function expectPlantedShift(found: unknown, planted: number[]): void {
 
 describe("THY-18: no verdict without its evidence", () => {
   it("sends back a ring verdict given without assess_stage, and takes the one that ran it", async () => {
-    const r = await devCase("dev-control").replay("Is the powder-ring removal clean?", [
+    const r = await devCase("dev-control", EVERY_CHECK_JUDGES).replay("Is the powder-ring removal clean?", [
       { text: "Yes, the powder-ring removal is clean." },
       { calls: [{ name: "assess_stage", args: { stage: "rings" } }] },
       { text: "The ring removal {{assess_stage.rings.verdict}}: no ring is left above its plane's noise (left ≤ {{assess_stage.rings.max_ring_left}})." },
@@ -161,7 +171,7 @@ describe("THY-18: computed verdicts", () => {
   });
 
   it("lets the clean control's run through on its first answer, its verdict met", async () => {
-    const r = await devCase("dev-control").replay("Can I trust this 3D-ΔPDF?", [
+    const r = await devCase("dev-control", EVERY_CHECK_JUDGES).replay("Can I trust this 3D-ΔPDF?", [
       everyStage,
       { text: "Yes: {{achieved}}, so the 3D-ΔPDF can be trusted for analysis." },
     ]);
@@ -171,7 +181,7 @@ describe("THY-18: computed verdicts", () => {
   });
 
   it("asks for the checks a success rests on when they did not all run", async () => {
-    const r = await devCase("dev-control").replay("Can I trust this 3D-ΔPDF?", [
+    const r = await devCase("dev-control", EVERY_CHECK_JUDGES).replay("Can I trust this 3D-ΔPDF?", [
       { calls: [{ name: "assess_stage", args: { stage: "pdf" } }] },
       { text: "The 3D-ΔPDF is ready for analysis." },
       { calls: ["rings", "punch", "backfill", "flatten"].map((stage) => ({ name: "assess_stage", args: { stage } })) },

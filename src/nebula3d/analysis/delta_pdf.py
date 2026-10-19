@@ -384,8 +384,8 @@ def _finish_forward(
 
 def compute_delta_pdf(
     vol: HKLVolume,
-    apodization: Window = "hann",
-    gaussian_sigma: float = 0.5,
+    apodization: Window = "gaussian",
+    gaussian_sigma: float = 0.4,
     zero_pad: bool = True,
     subtract_mean: bool = True,
     real_space_angstrom: bool = True,
@@ -408,10 +408,15 @@ def compute_delta_pdf(
     apodization:
         Window function applied in Q-space before FFT to suppress
         termination ripples:
-        - ``"hann"``: cosine-squared taper (recommended for most cases)
-        - ``"gaussian"``: Gaussian with σ = *gaussian_sigma* × the box
-          half-width, shifted to reach zero at the box edge
+        - ``"gaussian"`` (default): Gaussian with σ = *gaussian_sigma* × the
+          box half-width, shifted to reach zero at the box edge
+        - ``"hann"``: cosine-squared taper
         - ``"none"``: no window (hard truncation)
+
+        The defaults, ``"gaussian"`` with *gaussian_sigma* 0.4, are the
+        pipeline's (:class:`nebula3d.pipeline.DeltaPdfParams`), so a call
+        with no window transforms as the pipeline's ΔPDF stage does.  Before
+        2026-10 they were ``"hann"`` and 0.5.
     gaussian_sigma:
         Width parameter for Gaussian window (fraction of Q_max).
     zero_pad:
@@ -557,8 +562,8 @@ def check_fft_origin(h_axis: NDArray[np.floating], k_axis: NDArray[np.floating],
 def _prepare_forward(
     vol: HKLVolume,
     *,
-    apodization: Window = "hann",
-    gaussian_sigma: float = 0.5,
+    apodization: Window = "gaussian",
+    gaussian_sigma: float = 0.4,
     zero_pad: bool = True,
     subtract_mean: bool = True,
     real_space_angstrom: bool = True,

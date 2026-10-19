@@ -64,6 +64,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),

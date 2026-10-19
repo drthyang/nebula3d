@@ -19,6 +19,10 @@ fault size, so what is learned on dev cannot fit test by its numbers.
 hold the split apart.
 
 Nothing here reads measured data.
+
+The test split's definitions are not here: they are held out in
+:mod:`.holdout.heldout_cases`, which no one opens and :func:`cases` alone loads,
+with the opt-in (``NEBULA_HOLDOUT_TESTS=1``, or the CLI's ``--report``).
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import math
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -39,18 +44,22 @@ from ..core import HKLVolume
 from ..demo import DemoModel, demo_volume
 
 __all__ = [
+    "all_cases",
+    "build",
     "Built",
     "Case",
-    "CASES",
-    "Crystal",
-    "FAMILIES",
-    "Planted",
-    "SPLITS",
-    "build",
     "case_named",
     "cases",
+    "Crystal",
+    "DEV_CASES",
+    "FAMILIES",
+    "HeldOutError",
+    "HOLDOUT_ENV",
+    "holdout_opted_in",
     "label_of",
     "orbit",
+    "Planted",
+    "SPLITS",
 ]
 
 SPLITS = ("dev", "test")
@@ -131,55 +140,76 @@ DEV_CRYSTAL = Crystal(
     seed=11,
     planted=(Planted((0.5, 1.0, 1.0), -0.004), Planted((1.5, 0.0, 0.0), 0.010)),
 )
-TEST_CRYSTAL = Crystal(
-    a=4.1,
-    sro_amp=0.07,
-    seed=23,
-    planted=(Planted((0.5, 1.0, 0.0), 0.004), Planted((1.5, 1.0, 0.0), -0.003)),
-)
 
 
-def _pair(family: str, dev: Mapping[str, Any], test: Mapping[str, Any]) -> tuple[Case, Case]:
-    return (
-        Case(f"dev-{family}", family, "dev", DEV_CRYSTAL, dev),
-        Case(f"test-{family}", family, "test", TEST_CRYSTAL, test),
-    )
+def _dev(family: str, dev: Mapping[str, Any]) -> Case:
+    """The family's dev case, with its fault (its test case is held out: :func:`cases`)."""
+    return Case(f"dev-{family}", family, "dev", DEV_CRYSTAL, dev)
 
 
 _SHELL_DEV = {"q": 2.9, "amplitude": 0.25, "width": 0.03, "lobes": "100", "power": 3}
-_SHELL_TEST = {"q": 3.35, "amplitude": 0.2, "width": 0.035, "lobes": "111", "power": 3}
 _RINGS_DEV = {"q": (2.2, 4.05), "amplitude": 0.5, "width": 0.025}
-_RINGS_TEST = {"aluminium": 0.6}  # the sample can's textured Al lines (nebula3d.demo)
 
-#: Every case, dev then test per family.
-CASES: tuple[Case, ...] = tuple(
-    itertools.chain.from_iterable(
-        (
-            _pair("control", {}, {}),
-            _pair(
-                "ub",
-                {"angle_deg": 0.6, "axis": (1.0, 1.0, 0.0)},
-                {"angle_deg": 0.45, "axis": (1.0, 0.0, 2.0)},
-            ),
-            _pair("origin", {"offset": (0.03, 0.02, 0.0)}, {"offset": (0.0, 0.035, 0.02)}),
-            _pair("coverage", {"fraction": 0.7}, {"fraction": 0.62}),
-            _pair("rings", _RINGS_DEV, _RINGS_TEST),
-            _pair("shell", _SHELL_DEV, _SHELL_TEST),
-            _pair("flatten", {"q2": 0.006}, {"q2": 0.0045}),
-            _pair(
-                "rings-shell",
-                {**_RINGS_DEV, "shell": _SHELL_DEV},
-                {**_RINGS_TEST, "shell": _SHELL_TEST},
-            ),
-        )
-    )
+#: The dev cases, one per family, each family's in the manifest's order. Their test-split
+#: counterparts (another crystal, another fault size) are held out in their own module,
+#: loaded only with the opt-in: :func:`cases` ``("test")``.
+DEV_CASES: tuple[Case, ...] = (
+    _dev("control", {}),
+    _dev("ub", {"angle_deg": 0.6, "axis": (1.0, 1.0, 0.0)}),
+    _dev("origin", {"offset": (0.03, 0.02, 0.0)}),
+    _dev("coverage", {"fraction": 0.7}),
+    _dev("rings", _RINGS_DEV),
+    _dev("shell", _SHELL_DEV),
+    _dev("flatten", {"q2": 0.006}),
+    _dev("rings-shell", {**_RINGS_DEV, "shell": _SHELL_DEV}),
 )
 
 
-def cases(split: str) -> tuple[Case, ...]:
+#: The opt-in that lets the held-out test split load: "1" is on (pytest's conftest.py reads
+#: it too, and CI sets it). The CLI's ``--report`` is the other opt-in, for its own run.
+HOLDOUT_ENV = "NEBULA_HOLDOUT_TESTS"
+
+
+class HeldOutError(RuntimeError):
+    """The held-out test split was asked for without the opt-in."""
+
+
+def holdout_opted_in() -> bool:
+    """Whether the environment opts in to the held-out test split (``NEBULA_HOLDOUT_TESTS=1``)."""
+    return os.environ.get(HOLDOUT_ENV, "") == "1"
+
+
+def _load_test_split(*, report: bool = False) -> tuple[Case, ...]:
+    """The held-out test split, from its own module (``holdout/heldout_cases.py``), which this
+    is the one importer of: tests/test_validation.py checks every import in src/ and tests/.
+
+    It loads with the opt-in alone: ``NEBULA_HOLDOUT_TESTS=1`` (tests, CI), or *report*, which
+    the CLI passes for ``--report`` (reported numbers only). Without it, it raises: it never
+    returns nothing, which a run meant to cover the test split would take for a pass."""
+    if not (report or holdout_opted_in()):
+        raise HeldOutError(
+            f"the test split is held out: set {HOLDOUT_ENV}=1 (tests, CI), or pass --report "
+            "to `python -m nebula3d.validation` (reported numbers only), to load it"
+        )
+    from .holdout import heldout_cases
+
+    return heldout_cases.TEST_CASES
+
+
+def cases(split: str, *, report: bool = False) -> tuple[Case, ...]:
+    """The split's cases. The test split is held out: it needs the opt-in
+    (``NEBULA_HOLDOUT_TESTS=1`` or *report*, :func:`_load_test_split`), and raises
+    :class:`HeldOutError` without it."""
     if split not in SPLITS:
-        raise ValueError(f"split must be one of {SPLITS}")
-    return tuple(c for c in CASES if c.split == split)
+        raise ValueError(f"no split {split!r}: one of {', '.join(SPLITS)}")
+    return DEV_CASES if split == "dev" else _load_test_split(report=report)
+
+
+def all_cases(*, report: bool = False) -> tuple[Case, ...]:
+    """Every case, each family's dev case and then its test case (the manifest's order). It
+    holds the test split, so it needs the opt-in as :func:`cases` ``("test")`` does."""
+    test = _load_test_split(report=report)
+    return tuple(itertools.chain.from_iterable(zip(DEV_CASES, test, strict=True)))
 
 
 def label_of(case: Case | str) -> str:
@@ -190,11 +220,18 @@ def label_of(case: Case | str) -> str:
     return "v" + hashlib.sha256(f"nebula3d-validation:{case_id}".encode()).hexdigest()[:6]
 
 
-def case_named(case_id: str) -> Case:
-    for c in CASES:
+def case_named(case_id: str, *, report: bool = False) -> Case:
+    """The case with this id. A dev case always; a test case with the opt-in alone
+    (``NEBULA_HOLDOUT_TESTS=1`` or *report*, :func:`_load_test_split`)."""
+    for c in DEV_CASES:
         if c.id == case_id:
             return c
-    raise KeyError(f"no validation case {case_id!r}")
+    if not (report or holdout_opted_in()):
+        raise KeyError(f"no dev case {case_id!r} (a test case needs {HOLDOUT_ENV}=1, or --report)")
+    for c in _load_test_split(report=report):
+        if c.id == case_id:
+            return c
+    raise KeyError(f"no case {case_id!r}")
 
 
 def orbit(vector: Sequence[float]) -> list[tuple[float, float, float]]:

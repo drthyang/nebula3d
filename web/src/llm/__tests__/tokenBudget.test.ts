@@ -84,6 +84,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
@@ -130,9 +131,9 @@ interface Call {
 }
 
 // One result of each tool the system prompt's method asks for (TOOLS_PROMPT,
-// prompts/system.ts): every stage's verdict, texture_check and qmax_coverage
-// (its four checks), symmetry_check, ub_check, grain_check, radial_profile
-// for the rings, and dpdf_peaks for the correlations the TASK asks for.
+// prompts/system.ts): every stage's verdict, texture_check, qmax_coverage,
+// symmetry_check, ub_check and grain_check (its checks), radial_profile for
+// the rings, and dpdf_peaks for the correlations the TASK asks for.
 const CHECKS: Call[] = [
   { name: "assess_stage", args: { stage: "all" } },
   { name: "qmax_coverage", args: {} },

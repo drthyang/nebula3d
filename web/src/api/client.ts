@@ -11,6 +11,7 @@ import type {
   DpdfFeatures,
   JobOut,
   PipelineRunRequest,
+  RingDiagnostics,
   RingIsotropy,
   Slice,
   SliceHeader,
@@ -230,6 +231,11 @@ export function fetchConsistencyCheck(datasetId: string): Promise<ConsistencyChe
 export function fetchBraggProfile(datasetId: string): Promise<BraggProfile> {
   if (PYODIDE_MODE) return engine.braggProfile(datasetId);
   return getJSON<BraggProfile>(`/api/bragg/${encodeURIComponent(datasetId)}/profile`);
+}
+
+export function fetchRingDiagnostics(datasetId: string): Promise<RingDiagnostics> {
+  if (PYODIDE_MODE) return engine.ringDiagnostics(datasetId);
+  return getJSON<RingDiagnostics>(`/api/rings/${encodeURIComponent(datasetId)}/diagnostics`);
 }
 
 export async function saveConsistencyDpdf(
