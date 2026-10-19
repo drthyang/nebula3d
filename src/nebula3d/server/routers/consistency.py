@@ -12,9 +12,9 @@ from nebula3d.server.consistency import (
     PANELS,
     consistency_meta,
     consistency_slice_envelope,
-    pdf_input_path,
     save_reconstruction,
     saved_check,
+    view_input,
 )
 from nebula3d.server.deps import get_config
 from nebula3d.server.volumes import PLANES
@@ -42,12 +42,12 @@ def meta(
     r_max: float | None = Query(None),
     cfg: ServerConfig = Depends(get_config),
 ) -> dict:
-    path = pdf_input_path(cfg, dataset_id)
-    if path is None:
+    view = view_input(cfg, dataset_id)
+    if view is None:
         raise HTTPException(
             404, f"no flattened/backfilled volume for {dataset_id!r}; "
                  "run the pipeline first")
-    return consistency_meta(path, _band(q_min, q_max), _band(r_min, r_max))
+    return consistency_meta(view, _band(q_min, q_max), _band(r_min, r_max))
 
 
 @router.get("/{dataset_id}/check")
@@ -77,11 +77,11 @@ def slice_(
     # We bypass the PLANES check for dpdf.
     if panel != "dpdf" and plane not in PLANES:
         raise HTTPException(400, f"unknown plane {plane!r}; choose one of {PLANES}")
-    path = pdf_input_path(cfg, dataset_id)
-    if path is None:
+    view = view_input(cfg, dataset_id)
+    if view is None:
         raise HTTPException(404, f"no flattened/backfilled volume for {dataset_id!r}")
     body = consistency_slice_envelope(
-        path, _band(q_min, q_max), _band(r_min, r_max), panel, plane, value)
+        view, _band(q_min, q_max), _band(r_min, r_max), panel, plane, value)
     return Response(content=body, media_type="application/octet-stream")
 
 
@@ -95,11 +95,11 @@ def save(
     cfg: ServerConfig = Depends(get_config),
 ) -> dict:
     """Save the current band-limited 3D-ΔPDF (final processed file) to disk."""
-    path = pdf_input_path(cfg, dataset_id)
-    if path is None:
+    view = view_input(cfg, dataset_id)
+    if view is None:
         raise HTTPException(
             404, f"no flattened/backfilled volume for {dataset_id!r}; "
                  "run the pipeline first")
     out = save_reconstruction(
-        path, _band(q_min, q_max), _band(r_min, r_max), cfg.processed_dir)
+        view, _band(q_min, q_max), _band(r_min, r_max), cfg.processed_dir)
     return {"saved": True, "path": str(out), "filename": out.name}
