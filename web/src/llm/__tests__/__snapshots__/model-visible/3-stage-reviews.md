@@ -65,13 +65,13 @@ Judge the backfill quality from the backfill metrics. Is the fill seamless (medi
 Tools on:
 
 ```text
-Judge the radial flatten from the flatten metrics. Is the shell floor near zero and level across |Q| after the flatten (floor_after, after_floor_max_sigma), or is there a leftover trend or an over-subtraction? How much pedestal was removed (removed_fraction)? Give a verdict and a suggestion if warranted. Before your verdict, look beyond this cut with assess_stage flatten and radial_profile, and show the most telling cut in the viewer.
+Judge the radial flatten from the flatten metrics. Is the shell floor near zero and level across |Q| after the flatten (floor_after, floor_trend, floor_span_fraction), or is there a leftover trend or an over-subtraction? How much pedestal was removed (removed_fraction)? Give a verdict and a suggestion if warranted. Before your verdict, look beyond this cut with assess_stage flatten and radial_profile, and show the most telling cut in the viewer.
 ```
 
 Tools off:
 
 ```text
-Judge the radial flatten from the flatten metrics. Is the shell floor near zero and level across |Q| after the flatten (floor_after, after_floor_max_sigma), or is there a leftover trend or an over-subtraction? How much pedestal was removed (removed_fraction)? Give a verdict and a suggestion if warranted.
+Judge the radial flatten from the flatten metrics. Is the shell floor near zero and level across |Q| after the flatten (floor_after, floor_trend, floor_span_fraction), or is there a leftover trend or an over-subtraction? How much pedestal was removed (removed_fraction)? Give a verdict and a suggestion if warranted.
 ```
 
 ## dpdf
@@ -79,11 +79,11 @@ Judge the radial flatten from the flatten metrics. Is the shell floor near zero 
 Tools on:
 
 ```text
-Analyse the 3D-ΔPDF features from delta_pdf. Are there features clearly stronger than the background noise (feature_snr, strong_feature_fraction)? Are the correlations anisotropic, and along what direction (anisotropy_ratio, anisotropy_angle_deg)? What is the trend with distance (radial_trend), and is the ΔPDF trustworthy (consistency_pearson_r)? If an image is attached, describe the pattern you see. Summarise the correlation picture in a few sentences. Before your verdict, look beyond this cut with assess_stage pdf and qmax_coverage, and show the most telling cut in the viewer.
+Analyse the 3D-ΔPDF features from delta_pdf. Are there features clearly stronger than the background noise (feature_snr, strong_feature_fraction)? Are the correlations anisotropic, and along what direction (anisotropy_ratio, anisotropy_angle_deg)? What is the trend with distance (radial_trend), and what does the back-FFT round trip say (the ΔPDF's verdict judges it against the data's even part under Q → −Q, to an r of 0.999 or more; consistency_pearson_r is against the data)? If an image is attached, describe the pattern you see. Summarise the correlation picture in a few sentences. Before your verdict, look beyond this cut with assess_stage pdf and qmax_coverage, and show the most telling cut in the viewer.
 ```
 
 Tools off:
 
 ```text
-Analyse the 3D-ΔPDF features from delta_pdf. Are there features clearly stronger than the background noise (feature_snr, strong_feature_fraction)? Are the correlations anisotropic, and along what direction (anisotropy_ratio, anisotropy_angle_deg)? What is the trend with distance (radial_trend), and is the ΔPDF trustworthy (consistency_pearson_r)? If an image is attached, describe the pattern you see. Summarise the correlation picture in a few sentences.
+Analyse the 3D-ΔPDF features from delta_pdf. Are there features clearly stronger than the background noise (feature_snr, strong_feature_fraction)? Are the correlations anisotropic, and along what direction (anisotropy_ratio, anisotropy_angle_deg)? What is the trend with distance (radial_trend), and what does the back-FFT round trip say (the ΔPDF's verdict judges it against the data's even part under Q → −Q, to an r of 0.999 or more; consistency_pearson_r is against the data)? If an image is attached, describe the pattern you see. Summarise the correlation picture in a few sentences.
 ```
