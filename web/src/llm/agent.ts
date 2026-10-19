@@ -106,8 +106,10 @@ export const SOFT_BUDGET = 24_000;
 export const KEEP_FULL = 3;
 
 // Calls after which the same reading may differ: they change the settings, the
-// files on disk, or what the console shows.
-const CHANGES_STATE = new Set(["update_settings", "run_pipeline", "tune_pipeline", "show_in_viewer"]);
+// files on disk, or what the console shows (dpdf_contrast sets the ΔPDF
+// viewer's colour limit). One of these runs every time it is called, an
+// identical call included: what it set is what the console now shows.
+const CHANGES_STATE = new Set(["update_settings", "run_pipeline", "tune_pipeline", "show_in_viewer", "dpdf_contrast"]);
 
 const canonical = (v: unknown): unknown =>
   Array.isArray(v)
