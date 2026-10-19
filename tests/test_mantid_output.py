@@ -393,6 +393,15 @@ def test_punch_record_new_location_and_legacy(tmp_path):
     nebula3d.save(vol, bare)
     assert pipeline._read_punched(bare) is None
 
+    # The public reader (the fill texture's holes): the same record, a bool
+    # volume, and None for a file without one or no file.
+    for where in (path, str(legacy)):
+        record = pipeline.read_punch_record(where)
+        assert record is not None and record.dtype == bool
+        np.testing.assert_array_equal(record, punched)
+    assert pipeline.read_punch_record(bare) is None
+    assert pipeline.read_punch_record(tmp_path / "missing.h5") is None
+
 
 # ---------------------------------------------------------------------------
 # 3D-ΔPDF files

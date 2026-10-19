@@ -148,6 +148,96 @@ Output:
 data/processed/*_braggpunched_backfilled.h5
 ```
 
+#### The fills' texture
+
+Every punch sits on a reciprocal-lattice node, so fills that are
+systematically brighter (or darker) than the diffuse around their holes print a
+lattice of spots (or dimples) onto the diffuse: a texture with the lattice's
+period, which the 3D-ΔPDF turns into features at the lattice vectors, where the
+real pair correlations are. NEBULA Pilot asks whether the fills have such a
+sign by one rule (`texture_check`, `web/src/llm/metrics/texture.ts`,
+provisional):
+
+1. **The holes** are the voxels unmeasured in the punched stage that the fill
+   wrote (NaN in the punched cut, finite in the backfilled one), in connected
+   components.
+2. **The rim** of a hole is the measured voxels 1 to 4 voxels from it
+   (chessboard distance) that the fill left as they were. The Laplace fill also
+   rewrites a band `laplace_gap` voxels deep outside the punch; that band is
+   fill, not rim.
+3. **The range the rim allows.** The rim's trend `I = a + b·s` by least
+   squares, `s` being a rim voxel's distance from the hole (1 to 4) and a hole
+   voxel's 1 − its depth (0 on the hole's outer layer). The range runs from
+   `a + b`, the diffuse at the hole's edge carried in, to `a + b·s̄`, the rim's
+   rise continued linearly to the hole (`s̄` the hole's mean `s`). The diffuse
+   peaks at the nodes, so a sound fill can sit anywhere between the two.
+4. **The bias** is the signed distance of the hole's mean fill outside that
+   range (0 inside it), in the rim's robust σ (1.4826 × the MAD about the
+   trend) and in units of the local diffuse level (the rim's median). A rim of
+   fewer than 8 voxels, of one ring, or with σ = 0 is not judged.
+5. **A systematic fill bias** needs at least 5 judged holes, a median bias of
+   0.5σ and a fifth of the level or more, and three quarters of the holes or
+   more leaning the median's way.
+
+The Pilot reads holes on cuts, the three principal planes through the origin:
+a hole there is a 4-connected component of the cut, and its rim the ring
+around it in the plane. A cut through a hole's edge sees a small section of it,
+whose rim in the plane lies off the node, where the diffuse is rounded, so the
+range the rim allows depends on where the cut crosses the hole; peaks off those
+planes (satellites) are crossed at their edges only, or not at all.
+`nebula3d.analysis.fill_texture` applies the same rule to every hole of the
+volume in 3-D (server: `GET /api/volumes/{id}/texture` on a backfilled stage;
+browser: `webbridge.volume_texture_json`, the same fields). A hole is a
+6-connected component of the punch's record, which the punch stage writes into
+its output (`nebula3d.pipeline.read_punch_record`); a punched file without the
+record falls back on the cut's test, unmeasured in the punched stage and
+measured in the backfilled one. Its rim is the voxels 1 to 4 from it in 3-D,
+about 2400 around a hole three voxels in radius where a cut through its centre
+holds about 160. The limits are parameters, at the Pilot's values. On a volume
+one plane thick it is the Pilot's rule, hole for hole.
+
+| Field | What it is |
+| --- | --- |
+| `n_holes`, `n_judged`, `judged` | The holes, those judged, and whether enough were (`min_holes`) to apply the rule |
+| `median_fill_bias_sigma`, `median_fill_bias_level` | The median bias in the rim's σ and in units of the level (the Pilot's fields) |
+| `above_fraction`, `below_fraction` | The shares of the judged holes filled above, and below, the range their rim allows (the Pilot's) |
+| `above_floor_fraction`, `below_floor_fraction` | The shares filled above, and below, it by `floor` of their level or more |
+| `systematic_fill_bias` | The rule's verdict (the Pilot's) |
+| `min_sigma`, `one_way`, `min_holes`, `floor` | The rule's limits: those asked for, else 0.5, 0.75, 5 and 0.2 |
+| `holes_from`, `rim`, `min_rim` | Where the holes came from (`punch_record`, or `masks` for a punched file without the record), and the rim's depth and fewest voxels |
+| `holes` | The `limit` holes (20 by default) farthest outside their range in units of their level, each with its `index`, `centre_hkl`, `voxels`, `rim_voxels`, `fill`, `level`, `sigma`, `slope`, `edge`, `peaked`, `bias`, `bias_sigma`, `bias_level`, and why it was `not_judged` |
+
+Known answers on synthetic lattices, holes three voxels in radius on the nodes
+of a smooth diffuse that peaks at them:
+
+- a fill equal to the truth reads no bias at any hole;
+- half the local level too high in 80 % of the holes is a systematic bias,
+  0.800 of the holes above their range and beyond the floor, the median 0.51
+  of the level; in 60 % of the holes it is none (0.600 above), with medians as
+  large;
+- a tenth of the level in every hole reads 9σ with every hole above, and is
+  none: it is under the floor;
+- four holes are not judged;
+- the backfill's Laplace fill reads no bias, and its `q_shell` fill, on a
+  diffuse sharply peaked at the nodes, a systematic bias below (−0.42 of the
+  level): the node-periodic bias that makes it a fill for comparison only.
+
+With satellites at (½, ½, 0.15) beside the nodes, all filled 12 % too high on
+that sharply peaked diffuse, the volume reads nodes and satellites alike, at
+0.29 of the level: a systematic fill bias. (A perfect fill there reads 0.12:
+the diffuse rises faster than linearly toward the node, the rule's own caveat,
+under the floor.) On the cut l = 0 the Pilot's rule reads the nodes, crossed
+at their centres, at 0.28, and the satellites, crossed only at their poles, at
+0.10 to 0.12, under the floor. On the cut through the nodes' poles every hole
+reads under the floor (median 0.09), and that cut reads no systematic bias.
+
+The measurement labels the holes one slab of H planes at a time, joined across
+the slabs' faces, and measures each hole inside its own box. On a 401×401×301
+float32 pair with 6000 holes it holds 7.4 MiB at its peak in low-memory mode
+(the browser) and 23 MiB natively, and takes 1.4 s; both modes give the same
+numbers. It is a measurement only: the Pilot's `texture_check` does not read
+it yet.
+
 ### 4. Flatten The Radial Background (Background Removal)
 
 ```bash

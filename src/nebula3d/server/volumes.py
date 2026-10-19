@@ -36,6 +36,7 @@ from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import _ALIASES, _PLANE, SliceData
 
 if TYPE_CHECKING:
+    from nebula3d.analysis.bragg_fill_texture import HoleTexture
     from nebula3d.analysis.ub_refine import MeanOffset
 
 #: Plane keys accepted by the slice endpoint (principal pairs + Mantid aliases).
@@ -85,6 +86,7 @@ def load_volume(path: Path) -> HKLVolume:
 
 _ring_cache: dict[tuple, dict] = {}
 _floors_cache: dict[tuple, dict] = {}
+_texture_cache: dict[tuple, HoleTexture] = {}
 
 
 def clear_cache() -> None:
@@ -92,6 +94,7 @@ def clear_cache() -> None:
         _cache.clear()
         _ring_cache.clear()
         _floors_cache.clear()
+        _texture_cache.clear()
 
 
 _CELL_KEYS = ("a", "b", "c", "alpha", "beta", "gamma")
@@ -442,6 +445,87 @@ def volume_shell_floors(path: Path, before: Path | None = None, *, q_step: float
         _floors_cache.clear()  # one volume's floors at a time
         _floors_cache[key] = out
     return out
+
+
+#: The most holes a texture request lists.
+TEXTURE_MAX_LIMIT = 100_000
+
+
+def volume_texture(filled: Path, punched: Path, *, limit: int = 20,
+                   min_sigma: float | None = None, one_way: float | None = None,
+                   min_holes: int | None = None, floor: float | None = None) -> dict:
+    """The Pilot's fill-bias check on every punch hole of a backfilled stage
+    *filled*, with the hole's 3-D rim, against the punched stage *punched*
+    (:func:`~nebula3d.analysis.bragg_fill_texture.fill_texture`).  The holes
+    are the punch's record in *punched* (:func:`~nebula3d.pipeline.
+    read_punch_record`) when it has one, else texture.ts's test.
+
+    Each hole's facts are cached by both files' ``(path, mtime)``; the rule's
+    limits (texture.ts's where unset) are applied per call.  ``holes`` lists
+    the *limit* holes (0 – :data:`TEXTURE_MAX_LIMIT`) farthest outside their
+    range in units of their level, then in σ, the holes not judged last.
+    Values are exact, ``None`` where not finite; ``centre_hkl`` is rounded to
+    1e-6 r.l.u.  Raises ``ValueError`` for limits out of range or two stages
+    on different grids.
+    """
+    from nebula3d.analysis.bragg_fill_texture import (
+        FILL_BIAS_FLOOR,
+        MIN_HOLES,
+        MIN_SIGMA,
+        ONE_WAY,
+        hole_texture,
+        judge_fill_bias,
+    )
+    from nebula3d.pipeline import read_punch_record
+
+    if not 0 <= int(limit) <= TEXTURE_MAX_LIMIT:
+        raise ValueError(f"limit must lie in 0–{TEXTURE_MAX_LIMIT}, not {limit!r}")
+    key = (str(filled), filled.stat().st_mtime, str(punched), punched.stat().st_mtime)
+    with _lock:
+        holes = _texture_cache.get(key)
+    if holes is None:
+        record = read_punch_record(punched)
+        holes = hole_texture(load_volume(punched), load_volume(filled), punch_record=record)
+        del record
+        with _lock:
+            _texture_cache.clear()  # one volume's holes at a time
+            _texture_cache[key] = holes
+    t = judge_fill_bias(
+        holes,
+        min_sigma=MIN_SIGMA if min_sigma is None else float(min_sigma),
+        one_way=ONE_WAY if one_way is None else float(one_way),
+        min_holes=MIN_HOLES if min_holes is None else int(min_holes),
+        floor=FILL_BIAS_FLOOR if floor is None else float(floor))
+
+    def num(x: float) -> float | None:
+        return float(x) if np.isfinite(x) else None
+
+    in_sigma, in_level = holes.bias_sigma, holes.bias_level
+    size_level = np.where(np.isfinite(in_level), np.abs(in_level), -1.0)
+    size_sigma = np.where(np.isfinite(in_sigma), np.abs(in_sigma), -1.0)
+    listed = np.lexsort((np.arange(holes.n), -size_sigma, -size_level))[:int(limit)]
+    rows = [{
+        "index": int(i),
+        "centre_hkl": [round(float(v), 6) for v in holes.centre_hkl[i]],
+        "voxels": int(holes.voxels[i]), "rim_voxels": int(holes.rim_voxels[i]),
+        "fill": num(holes.fill[i]), "level": num(holes.level[i]),
+        "sigma": num(holes.sigma[i]), "slope": num(holes.slope[i]),
+        "edge": num(holes.edge[i]), "peaked": num(holes.peaked[i]),
+        "bias": num(holes.bias[i]), "bias_sigma": num(in_sigma[i]),
+        "bias_level": num(in_level[i]), "not_judged": holes.not_judged[i],
+    } for i in listed.tolist()]
+    return {
+        "holes_from": holes.holes_from, "rim": holes.rim, "min_rim": holes.min_rim,
+        "min_sigma": t.min_sigma, "one_way": t.one_way, "min_holes": t.min_holes,
+        "floor": t.floor, "n_holes": t.n_holes, "n_judged": t.n_judged, "judged": t.judged,
+        "median_fill_bias_sigma": num(t.median_fill_bias_sigma),
+        "median_fill_bias_level": num(t.median_fill_bias_level),
+        "above_fraction": num(t.above_fraction), "below_fraction": num(t.below_fraction),
+        "above_floor_fraction": num(t.above_floor_fraction),
+        "below_floor_fraction": num(t.below_floor_fraction),
+        "systematic_fill_bias": t.systematic_fill_bias,
+        "holes": rows,
+    }
 
 
 def slice_envelope(path: Path, plane: str, value: float, interp: bool) -> bytes:
