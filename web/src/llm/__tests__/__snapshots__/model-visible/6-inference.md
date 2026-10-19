@@ -266,7 +266,7 @@ The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell, when the file declares that its data were symmetrised⟦evidence:  (with none declared the asymmetry is the data's own and is not judged)⟧: an x–y section (default z = 0) compared with its image under each in-plane operation (hexagonal: six-, three-, two-fold and the a ↔ b mirror; orthogonal: the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b), as the RMS of the difference over the section's RMS. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it⟦evidence: ; a larger share means a stage broke it, or the sample lacks that operation⟧. Which operations the sample has is the user's to say.
+Check that the 3D-ΔPDF keeps the symmetry its data were declared symmetrised with⟦evidence:  (with none declared the asymmetry is the data's own and is not judged)⟧: the ΔPDF against its image under each operation of the declared point group (none declared: the cell's in-plane ones), those that move c included (moves_c), on the sections the operation maps onto sections (the x–y sections at z and −z, default z = 0, and the x–z and y–z sections through the origin), else on the voxels it maps from one onto another (tested_on says which; not_tested, any it cannot test), as the RMS of the difference over the RMS, the worst section's. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it⟦evidence: ; a larger share means a stage broke it, or the sample lacks that operation⟧. Which operations the sample has is the user's to say.
 ```
 
 ## tools/index.ts: texture_check's description
@@ -357,7 +357,7 @@ Spans of a text built for each call (its numbers vary), each as written:
 
 Spans of a text built for each call (its numbers vary), each as written:
 
-- evidence: “, so the section's asymmetry (”
+- evidence: “, so the sections' asymmetry (”
 - evidence: “) is the data's own, counting noise included, not a break by a stage”
 
 ## verdicts/rules.ts: the backfill goal

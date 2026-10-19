@@ -678,37 +678,66 @@ References of this skill (read one with read_skill and `reference`):
 
 ## symmetry_check {}
 
-452 characters sent.
+953 characters sent.
 
 ```json
 {
-  "section": "ΔPDF x–y section at z = 0 Å",
-  "cell": "orthogonal",
+  "sections": "xy at z = 0 Å, xz at y = 0, yz at x = 0",
+  "operations": "declared (mmm): 7 besides the identity",
   "ops": [
+    {
+      "op": "two-fold ∥ c",
+      "rms_difference": 0,
+      "pairs": 7104,
+      "tested_on": "xy; xz; yz",
+      "moves_c": false
+    },
     {
       "op": "mirror ⊥ a",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 4704,
+      "tested_on": "xy; xz",
+      "moves_c": false
     },
     {
       "op": "mirror ⊥ b",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 4704,
+      "tested_on": "xy; yz",
+      "moves_c": false
     },
     {
-      "op": "two-fold (180°)",
+      "op": "two-fold ∥ a",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 7104,
+      "tested_on": "xy; xz; yz",
+      "moves_c": true
     },
     {
-      "op": "four-fold (90°)",
+      "op": "two-fold ∥ b",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 7104,
+      "tested_on": "xy; xz; yz",
+      "moves_c": true
+    },
+    {
+      "op": "mirror ⊥ c",
+      "rms_difference": 0,
+      "pairs": 4704,
+      "tested_on": "xz; yz",
+      "moves_c": true
+    },
+    {
+      "op": "inversion",
+      "rms_difference": 0,
+      "pairs": 7200,
+      "tested_on": "xy; xz; yz",
+      "moves_c": true
     }
   ],
-  "holds": ["mirror ⊥ a", "mirror ⊥ b", "two-fold (180°)", "four-fold (90°)"],
+  "holds": ["two-fold ∥ c", "mirror ⊥ a", "mirror ⊥ b", "two-fold ∥ a", "two-fold ∥ b", "mirror ⊥ c", "inversion"],
   "symmetry_declared": true,
-  "verdict": "kept: every in-plane operation holds to 0.001 or better"
+  "verdict": "kept: every operation tested holds to 0.001 or better"
 }
 ```
 

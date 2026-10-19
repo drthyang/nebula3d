@@ -219,13 +219,18 @@ describe("judge: the checks on the result", () => {
     });
   }
 
-  const ops = (rms: number) => [{ op: "six-fold (60°)", rms_difference: rms }, { op: "two-fold (180°)", rms_difference: 0 }];
+  const ops = (rms: number) => [{ op: "six-fold ∥ c (60°)", rms_difference: rms }, { op: "two-fold ∥ c", rms_difference: 0 }];
+  // An operation that moves c is judged as one that keeps it: the same limit (P4.3).
+  const offPlane = (rms: number) => [...ops(0), { op: "mirror ⊥ c", rms_difference: rms }];
   const SYMMETRY: [string, Obj, Kind, Reason[], string | null][] = [
-    ["every operation held to 1e-3", { ops: ops(0.001), declared: "6/mmm" }, "pass", [], "kept: every in-plane operation holds to 0.001 or better"],
-    ["one past it", { ops: ops(0.0011), declared: "6/mmm" }, "attention", ["symmetry broken"], "not kept: six-fold (60°) (0.0011); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
-    ["a file read, no symmetry declared", { ops: ops(0.02), declared: null }, "info", ["not declared"], "not judged: the file declares no symmetry, so the section's asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
-    ["an empty declaration", { ops: ops(0.02), declared: "" }, "info", ["not declared"], "not judged: the file declares no symmetry, so the section's asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
-    ["the file not read: judged", { ops: ops(0.02), declared: undefined }, "attention", ["symmetry broken"], "not kept: six-fold (60°) (0.02); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
+    ["every operation held to 1e-3", { ops: ops(0.001), declared: "6/mmm" }, "pass", [], "kept: every operation tested holds to 0.001 or better"],
+    ["one past it", { ops: ops(0.0011), declared: "6/mmm" }, "attention", ["symmetry broken"], "not kept: six-fold ∥ c (60°) (0.0011); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
+    ["the mirror ⊥ c held to 1e-3", { ops: offPlane(0.001), declared: "6/mmm" }, "pass", [], "kept: every operation tested holds to 0.001 or better"],
+    ["the mirror ⊥ c past it, the in-plane ones held", { ops: offPlane(0.0011), declared: "6/mmm" }, "attention", ["symmetry broken"], "not kept: mirror ⊥ c (0.0011); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
+    ["every operation tested held, two not tested", { ops: ops(0), declared: "m-3m", untested: 2 }, "pass", [], "kept: every operation tested holds to 0.001 or better; 2 could not be tested (not_tested says why)"],
+    ["a file read, no symmetry declared", { ops: ops(0.02), declared: null }, "info", ["not declared"], "not judged: the file declares no symmetry, so the sections' asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
+    ["an empty declaration", { ops: ops(0.02), declared: "" }, "info", ["not declared"], "not judged: the file declares no symmetry, so the sections' asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
+    ["the file not read: judged", { ops: ops(0.02), declared: undefined }, "attention", ["symmetry broken"], "not kept: six-fold ∥ c (60°) (0.02); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
     ["no operation to test", { ops: null, declared: "6/mmm" }, "info", ["nothing to judge"], null],
   ];
   for (const [why, m, kind, reasons, words] of SYMMETRY) {
@@ -234,7 +239,7 @@ describe("judge: the checks on the result", () => {
     });
     it(`symmetry: ${why}, the same verdicts as a sidecar and as words`, () => {
       const o = judge("symmetry", m as never);
-      roundTrip("symmetry_check", m.ops === null ? { note: "no in-plane symmetry to test" } : { ops: m.ops, symmetry_declared: m.declared === undefined ? null : Boolean(m.declared), verdict: o.words }, [o]);
+      roundTrip("symmetry_check", m.ops === null ? { note: "nothing to test: the sections are not centred on the origin" } : { ops: m.ops, symmetry_declared: m.declared === undefined ? null : Boolean(m.declared), verdict: o.words }, [o]);
     });
   }
 

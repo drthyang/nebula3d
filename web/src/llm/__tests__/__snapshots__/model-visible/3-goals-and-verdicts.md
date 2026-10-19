@@ -107,5 +107,5 @@ the computed verdict on the whole run: met, not met (and what needs attention) o
 ### NOT_DECLARED(0.02)
 
 ```text
-not judged: the file declares no symmetry, so the section's asymmetry (0.02) is the data's own, counting noise included, not a break by a stage
+not judged: the file declares no symmetry, so the sections' asymmetry (0.02) is the data's own, counting noise included, not a break by a stage
 ```

@@ -111,10 +111,11 @@ export interface CoverageMeasurements {
   };
 }
 
-/** What symmetry_check measured: each in-plane operation's share (null: nothing to test), and the symmetry the file declares. */
+/** What symmetry_check measured: each operation's share (null: nothing to test), the symmetry the file declares, and how many operations the sections could not test. */
 export interface SymmetryMeasurements {
   ops: readonly { op: string; rms_difference: number }[] | null;
   declared: string | null | undefined; // null or "": none declared; undefined: the file was not read
+  untested?: number;
 }
 
 /** What each check's rule judges. */
@@ -389,7 +390,7 @@ const COVERAGE_WORDS = "verdicts/rules.ts: qmax_coverage's verdict";
 const TAPER_OR_BAND = inference(COVERAGE_WORDS, "remedy", "; taper it to the coverage (pdfWindowSupport) or set a |Q| band");
 const BAND_OR_TAPER = inference(COVERAGE_WORDS, "remedy", "; set a |Q| band at or below it, or taper the window to the coverage");
 const SYMMETRY_WORDS = "verdicts/rules.ts: symmetry_check's verdict";
-const ASYMMETRY_IS = inference(SYMMETRY_WORDS, "evidence", ", so the section's asymmetry (");
+const ASYMMETRY_IS = inference(SYMMETRY_WORDS, "evidence", ", so the sections' asymmetry (");
 const THE_DATA_OWN = inference(SYMMETRY_WORDS, "evidence", ") is the data's own, counting noise included, not a break by a stage");
 const GRAIN_WORDS = "verdicts/rules.ts: grain_check's verdict";
 const REFINE_UB = inference(GRAIN_WORDS, "remedy", "; refine the UB");
@@ -469,13 +470,15 @@ const NOT_DECLARED = (asymmetry: unknown): Tagged =>
 const symmetry: CheckRule<SymmetryMeasurements> = {
   judge: (m) => {
     if (!m.ops) return { ...nothing(), words: null };
-    // A file that declares no symmetry was not symmetrised: the section's
+    // A file that declares no symmetry was not symmetrised: the sections'
     // asymmetry is the data's own, and no stage broke anything.
     if (m.declared === null || m.declared === "") return { kind: "info", reasons: ["not declared"], words: NOT_DECLARED(Math.max(...m.ops.map((o) => o.rms_difference))) };
+    // Every operation tested is judged alike, whether it keeps c or moves it.
     const broken = m.ops.filter((o) => o.rms_difference > SYMMETRY_HOLDS).map((o) => `${o.op} (${o.rms_difference})`);
+    const untested = m.untested ? `; ${m.untested} could not be tested (not_tested says why)` : "";
     return broken.length
       ? { kind: "attention", reasons: ["symmetry broken"], words: `not kept: ${broken.join(", ")}; a symmetry the data were symmetrised with should hold to ~${SYMMETRY_HOLDS} or better` }
-      : { kind: "pass", reasons: [], words: `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better` };
+      : { kind: "pass", reasons: [], words: `kept: every operation tested holds to ${SYMMETRY_HOLDS} or better${untested}` };
   },
 };
 
