@@ -98,18 +98,13 @@ class ViewInput:
 
 
 def _input_volume(ds: Dataset) -> Path | None:
+    """The volume the ΔPDF was built from: flattened if present, else backfilled."""
     by_name = {s.name: s for s in ds.stages}
     for name in ("flattened", "backfilled"):
         stage = by_name.get(name)
         if stage is not None and stage.exists:
             return stage.path
     return None
-
-
-def pdf_input_path(cfg: ServerConfig, dataset_id: str) -> Path | None:
-    """The volume the ΔPDF was built from: flattened if present, else backfilled."""
-    ds = find_dataset(cfg, dataset_id)
-    return None if ds is None else _input_volume(ds)
 
 
 def _finite(obj: object) -> object:
