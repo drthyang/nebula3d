@@ -4,8 +4,9 @@
 // verdicts/index.ts; the readers (readers.ts) read the outcomes it gives.
 //
 // A rule is pure and total: it never throws, and with nothing to judge its
-// outcome is "info" with the reason "nothing to judge" (the ΔPDF's rule is the
-// named exception, D15). An "attention" outcome always carries a reason.
+// outcome is "info" with the reason "nothing to judge" (the named exceptions:
+// D15, the ΔPDF's rule, and D16, the UB's). An "attention" outcome always
+// carries a reason.
 
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
@@ -125,7 +126,8 @@ interface Judged {
   reasons: Reason[];
 }
 
-const NOTHING: Judged = { kind: "info", reasons: ["nothing to judge"] };
+/** Nothing to judge: a fresh outcome each time, so no two outcomes share their reasons. */
+const nothing = (): Judged => ({ kind: "info", reasons: ["nothing to judge"] });
 /** Attention for the reasons found, else a pass (with any reason that is no fault). */
 const judged = (faults: Reason[], also: Reason[] = []): Judged =>
   faults.length ? { kind: "attention", reasons: [...faults, ...also] } : { kind: "pass", reasons: also };
@@ -145,7 +147,7 @@ const rings: StageRule = {
   judge: (m) => {
     const left = num(m.max_ring_left);
     const dent = num(m.max_ring_dent);
-    if (left == null || dent == null) return NOTHING;
+    if (left == null || dent == null) return nothing();
     // A leftover or dent above 0 is beyond 3 × its plane's noise: real, by the tool's definition.
     return judged([...(left !== 0 ? (["ring left"] as const) : []), ...(dent !== 0 ? (["ring dent"] as const) : [])]);
   },
@@ -167,7 +169,7 @@ const punch: StageRule = {
   goal: "Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) are satellites or spurious peaks the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis: diffuse maxima such as short-range order, which are the signal, not peaks to punch). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.",
   judge: (m) => {
     const atNodes = num(m.leftover_at_nodes);
-    if (atNodes == null) return NOTHING;
+    if (atNodes == null) return nothing();
     const sharp = num(m.leftover_off_lattice_sharp) ?? 0;
     const counted = D5_PROTECTED_SHARP_PEAKS_COUNT ? sharp : sharp - (num(m.leftover_on_protected_planes_sharp) ?? 0);
     return judged([...(atNodes !== 0 ? (["missed at nodes"] as const) : []), ...(counted !== 0 ? (["sharp off-lattice"] as const) : [])]);
@@ -182,7 +184,7 @@ const backfill: StageRule = {
   ownCriterion: "The fills meet their surroundings: a median seam of 1σ or less. Whether a cut's fill is biased one way is texture_check's to say.",
   judge: (m) => {
     const seam = num(m.mean_median_seam_sigma);
-    if (seam == null) return NOTHING;
+    if (seam == null) return nothing();
     return judged(seam <= 1 ? [] : ["seam"]);
   },
 };
@@ -208,7 +210,7 @@ const flatten: StageRule = {
     // A trend near 1 with a span near 1 is a pedestal left. The floor in σ is
     // reported, not judged (FLATTEN_FLOOR_SIGMA_NOTE).
     const pedestal = pedestalLeft(num(m.max_floor_trend), num(m.max_floor_span_fraction));
-    if (pedestal == null) return NOTHING;
+    if (pedestal == null) return nothing();
     return judged(pedestal ? ["pedestal"] : []);
   },
 };
@@ -267,7 +269,7 @@ const pdf: StageRule = {
     const back = backFftOk(m);
     const open = windowWeight(m);
     const worst = num(m.max_symmetry_break);
-    if (!D15_PDF_PASSES_UNMEASURED && back == null && open == null && worst == null) return NOTHING;
+    if (!D15_PDF_PASSES_UNMEASURED && back == null && open == null && worst == null) return nothing();
     // The worst in-plane symmetry break, judged as symmetry_check judges each
     // operation; a file that declares no symmetry was not symmetrised, so its
     // section's asymmetry is the data's own and no stage broke anything.
@@ -316,11 +318,11 @@ const coverage: CheckRule<CoverageMeasurements> = {
               `too far: ${m.window} puts ${share(w)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`,
             ]
         : !m.unit_cell
-          ? [NOTHING, "no unit cell: |Q| is unknown, so the reach cannot be compared"]
+          ? [nothing(), "no unit cell: |Q| is unknown, so the reach cannot be compared"]
           : full == null
-            ? [NOTHING, "no |Q| shell is fully measured on these planes"]
+            ? [nothing(), "no |Q| shell is fully measured on these planes"]
             : m.reach == null
-              ? [NOTHING, "no ΔPDF yet to read the box corner from"]
+              ? [nothing(), "no ΔPDF yet to read the box corner from"]
               : m.reach <= full + m.shell
                 ? [{ kind: "pass", reasons: ["reach inside coverage"] }, `the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), inside full coverage at ${full} Å⁻¹`]
                 : [
@@ -351,7 +353,7 @@ const NOT_DECLARED = (asymmetry: unknown): string =>
 
 const symmetry: CheckRule<SymmetryMeasurements> = {
   judge: (m) => {
-    if (!m.ops) return { ...NOTHING, words: null };
+    if (!m.ops) return { ...nothing(), words: null };
     // A file that declares no symmetry was not symmetrised: the section's
     // asymmetry is the data's own, and no stage broke anything.
     if (m.declared === null || m.declared === "") return { kind: "info", reasons: ["not declared"], words: NOT_DECLARED(Math.max(...m.ops.map((o) => o.rms_difference))) };
@@ -367,7 +369,7 @@ const texture: CheckRule<Readonly<Record<string, unknown>>> = {
   judge: (m) => {
     const cuts = (Array.isArray(m.per_cut) ? (m.per_cut as unknown[]) : []).filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
     if (cuts.some((x) => x.systematic_fill_bias === true)) return { kind: "attention", reasons: ["fill bias"], words: null };
-    return cuts.length ? { kind: "pass", reasons: [], words: null } : { ...NOTHING, words: null };
+    return cuts.length ? { kind: "pass", reasons: [], words: null } : { ...nothing(), words: null };
   },
 };
 
@@ -375,7 +377,7 @@ const grain: CheckRule<GrainFacts> = {
   criterion: "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.",
   judge: (g) => {
     const n = g.judged;
-    if (typeof n !== "number") return { ...NOTHING, words: null };
+    if (typeof n !== "number") return { ...nothing(), words: null };
     const indexed = g.rotated_copy?.indexed ?? 0;
     const turn = g.rotated_copy?.misorientation_deg ?? null;
     const control = g.random_control;
@@ -463,7 +465,7 @@ const ub: CheckRule<Readonly<Record<string, unknown>>> = {
       const reasons: Reason[] = [...(u.symmetrised === true ? (["symmetrised"] as const) : []), ...(angle != null && angle >= UB_TURN ? (["UB turned"] as const) : [])];
       return { kind: "attention", reasons, words: null, dataProblems };
     }
-    if (!D16_UB_UNMEASURED_READS_RIGHT && angle == null) return { ...NOTHING, words: null, dataProblems };
+    if (!D16_UB_UNMEASURED_READS_RIGHT && angle == null) return { ...nothing(), words: null, dataProblems };
     return { kind: "pass", reasons: [], words: null, dataProblems };
   },
 };

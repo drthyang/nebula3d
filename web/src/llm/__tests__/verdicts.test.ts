@@ -1,6 +1,6 @@
 // The check-verdict module at its interface: measurements in, an outcome out
 // (its kind, reasons, words and the data's problems), for every check's rule
-// at its boundaries.
+// at its limits, and the seam's round trip.
 
 import { describe, expect, it } from "vitest";
 

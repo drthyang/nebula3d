@@ -87,8 +87,8 @@ The Pages workflow deploys `main` to GitHub Pages after CI passes on it.
 `web/src/llm/__tests__/verdictGoldens.test.ts` holds what the verdicts were
 when the check-verdict module (`web/src/llm/verdicts/`) took them over: the
 verdict on a reply's run (`{{achieved}}`), the claims the answer checks send
-back, and the report's cards and goal, over a synthetic grid of every rule's
-boundaries (`verdictGrid.ts`) and the dev and eval replay fixtures (the
+back, and the report's cards and goal, over a synthetic grid of each rule on
+both sides of its limits (`verdictGrid.ts`) and the dev and eval replay fixtures (the
 measured set's as a digest only). `verdictPins.test.ts` pins each named
 disagreement between the readers, D1 to D18, with both readings. A change
 that moves a verdict shows in the goldens; one that unifies a disagreement

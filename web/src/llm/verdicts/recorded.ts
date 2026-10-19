@@ -5,8 +5,8 @@
 // verdict, and judges its numbers by the check's rule where it writes none.
 
 import type { AgentStep } from "../agent";
-import type { Measured } from "../report/report";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
+import type { Measured } from "../report/report";
 import { countsProblems, judge, STAGES, WORDS, type Kind, type Outcome, type Reason, type Stage } from "./rules";
 
 type Obj = Record<string, unknown>;
@@ -169,7 +169,7 @@ export function outcomesOf(step: AgentStep): Outcome[] {
  */
 export const D18_REPORT_JUDGES_STAGE_NUMBERS = true;
 
-/** The outcomes a report's measurements hold, where the measurement pass kept none: each tool's result read as a recorded step's is. */
+/** The outcomes a report's measurements hold, each tool's result read as a recorded step's is: for the checks whose outcomes the measurement pass did not keep. */
 export function outcomesOfMeasured(m: Measured): Outcome[] {
   const obj = (v: unknown): Obj | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null);
   const out: Outcome[] = [];

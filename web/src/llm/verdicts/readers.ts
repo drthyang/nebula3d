@@ -242,13 +242,13 @@ const STAGE_LABEL: Record<Stage, string> = {
   pdf: "the 3D-ΔPDF",
 };
 
-/** How {{achieved}} names the checks on the result that can need attention. */
-const ON_RESULT: [CheckId, string][] = [
+/** The checks on the result, in the order {{achieved}} names them: how it names one that needs attention (null: it adds the data's problems only). */
+const ON_RESULT: [CheckId, string | null][] = [
   ["coverage", "the ΔPDF window against the coverage"],
   ["symmetry", "the ΔPDF's symmetry"],
   ["texture", "the backfill's texture"],
-  ["ub", ""],
-  ["grain", ""],
+  ["ub", null],
+  ["grain", null],
 ];
 
 /** {{achieved}}: met when every stage, measured as it now is, meets its goal and no check on the result needs attention; not judged with a stage not measured since it was computed; null when the reply measured nothing it rests on. */
@@ -329,9 +329,13 @@ function pdfCard(pdf: Outcome | undefined, coverage: Outcome | undefined, symmet
 
 /** A report's verdicts: each card's, and the goal, met when every stage's card passes (a second grain is the sample's, reported apart). */
 function reportOf(m: Measured): Verdicts {
-  // The producers' outcomes the measurement pass kept (collect.ts), else judged from the measurements.
-  const found = m.outcomes ?? outcomesOfMeasured(m);
-  const of = (check: CheckId): Outcome | undefined => [...found].reverse().find((o) => o.check === check && !o.reasons.includes("no output"));
+  // Each check's outcome as its producer judged it in the measurement pass
+  // (collect.ts keeps them), else read from its measurements.
+  const newest = (outcomes: readonly Outcome[], check: CheckId): Outcome | undefined =>
+    [...outcomes].reverse().find((o) => o.check === check && !o.reasons.includes("no output"));
+  const kept = m.outcomes ?? [];
+  const measured = outcomesOfMeasured(m);
+  const of = (check: CheckId): Outcome | undefined => newest(kept, check) ?? newest(measured, check);
   const grain = of("grain");
   const cards: Partial<Record<CheckId, Kind | undefined>> = {
     rings: of("rings")?.kind,

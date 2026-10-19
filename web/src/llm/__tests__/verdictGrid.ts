@@ -1,5 +1,5 @@
-// A synthetic grid of check results for the verdict tests: every rule's
-// boundary, the words each tool writes or once wrote, and replies and reports
+// A synthetic grid of check results for the verdict tests: each rule on both
+// sides of its limits, the words each tool writes or once wrote, and replies and reports
 // built from them. Made-up numbers only; no measured data.
 //
 // The characterisation goldens (verdictGoldens.test.ts) were taken over this
