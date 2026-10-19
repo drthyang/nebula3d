@@ -185,7 +185,7 @@
   "commit": "0ca1d71",
   "tests": [
    "web/src/llm/__tests__/verdictPins.test.ts (D2, unified (2.4.2): the report's ΔPDF card counts the coverage's \"too far\", as {{achieved}} does)",
-   "web/src/llm/__tests__/verdictPins.test.ts (the chat's achieved and the report's, on the same measurements: agree, but where a named rule of the report's makes them differ)",
+   "web/src/llm/__tests__/verdictPins.test.ts (the chat's achieved and the report's, on the same measurements: agree on every measurement)",
    "web/src/llm/__tests__/report.test.ts (counts qmax_coverage's \"too far\" on the 3D-ΔPDF's card, though the evaluation's weight is within the limit (D2, 2.4.2))"
   ],
   "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.2, after the check-verdict module (2.3). Implemented by plan row 2.4.2.",
@@ -341,7 +341,7 @@
   "commit": "20576a5",
   "tests": [
    "web/src/llm/__tests__/verdictPins.test.ts (D9, unified (2.4.9): without a ΔPDF evaluation the report's ΔPDF card is not judged, as {{achieved}} says not measured; a check on it that needs attention still counts)",
-   "web/src/llm/__tests__/verdictPins.test.ts (the chat's achieved and the report's, on the same measurements: agree, but where a named rule of the report's makes them differ)",
+   "web/src/llm/__tests__/verdictPins.test.ts (the chat's achieved and the report's, on the same measurements: agree on every measurement)",
    "web/src/llm/__tests__/report.test.ts (leaves the 3D-ΔPDF's card not judged without a ΔPDF evaluation, unless the coverage or the symmetry needs attention (D9, 2.4.9))"
   ],
   "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.9, after the check-verdict module (2.3). Implemented by plan row 2.4.9. The coverage and the symmetry the card reads still make it need attention, so the report's goal stays the chat's.",
@@ -536,6 +536,50 @@
   "tests": [
    "web/src/llm/__tests__/verdictPins.test.ts (D18, unified (2.4b.3): a reply judges a stage from its numbers, as the report does, and takes no recorded label)",
    "web/src/llm/__tests__/answerChecks.test.ts (judges a stage from its numbers, whatever label a recording gives it (D18, 2.4b.3))"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "yes"
+  }
+ },
+ {
+  "source": "review",
+  "ref": "D13",
+  "at": "76a691c",
+  "kind": "bug",
+  "evidence": "The report's 3D-ΔPDF card reads the symmetry from symmetry_check alone (web/src/llm/verdicts/readers.ts:152, :326), never from the ΔPDF evaluation's own worst break, which the ΔPDF stage's rule counts (web/src/llm/verdicts/rules.ts:276) and so the chat's ΔPDF stage: with the evaluation broken and symmetry_check kept or not run, the chat needs attention and the report passes.",
+  "proposed_fix": "The report's 3D-ΔPDF card counts the evaluation's symmetry break too.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "2577c4d",
+  "tests": [
+   "web/src/llm/__tests__/verdictPins.test.ts (D13, unified (2.4b.4): the report's ΔPDF card counts the evaluation's own symmetry break, as the chat's ΔPDF stage does)",
+   "web/src/llm/__tests__/verdictPins.test.ts (the chat's achieved and the report's, on the same measurements: agree on every measurement)",
+   "web/src/llm/__tests__/report.test.ts (counts the ΔPDF evaluation's own symmetry break on its card, symmetry_check kept or not run (D13, 2.4b.4))"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "yes"
+  }
+ },
+ {
+  "source": "review",
+  "ref": "D14",
+  "at": "76a691c",
+  "kind": "bug",
+  "evidence": "The report counts texture_check's fill bias only on a Backfill card whose seam it judged (web/src/llm/verdicts/readers.ts:161, :309, :310): with the backfill not measured, or its seam not judged, a cut filled one way needs no attention in the report, where {{achieved}} names the backfill's texture (readers.ts:249).",
+  "proposed_fix": "The report counts a fill bias on the Backfill card whether or not it judged the seam, the card made for it when the backfill was not measured.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "3bc158f",
+  "tests": [
+   "web/src/llm/__tests__/verdictPins.test.ts (D14, unified (2.4b.4): the report counts the fill bias whether or not it judged the seam, as {{achieved}} names the backfill's texture)",
+   "web/src/llm/__tests__/verdictPins.test.ts (the chat's achieved and the report's, on the same measurements: agree on every measurement)",
+   "web/src/llm/__tests__/report.test.ts (counts a fill bias on the Backfill card whether or not it judged the seam, made for it when the backfill was not measured (D14, 2.4b.4))"
   ],
   "note": "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
   "decision": {

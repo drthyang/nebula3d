@@ -260,6 +260,32 @@ describe("a card states only what it judges", () => {
     expect(buildReport(input({ measured: { ...sound, ub: { fit: "symmetric", symmetrised: true, orientation_change_deg: 0.3 } } })).achieved.text).toBe("met: every stage meets its goal");
   });
 
+  it("counts the ΔPDF evaluation's own symmetry break on its card, symmetry_check kept or not run (D13, 2.4b.4)", () => {
+    // Synthetic: a sound round trip, the window inside, and an x–y section off its six-fold by 0.05 on data declared symmetrised.
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 } };
+    const pdf = { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 1e-4, max_symmetry_break: 0.05, worst_symmetry_op: "six-fold (60°)", symmetry_declared: true };
+    for (const symmetry of [input().measured.symmetry, null]) {
+      const r = buildReport(input({ measured: { ...sound, pdf, symmetry } }));
+      expect(r.checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("attention");
+      expect(r.achieved.text).toBe("not met: needs attention: 3D-ΔPDF");
+    }
+    // Held to 1e-3: a pass.
+    expect(buildReport(input({ measured: { ...sound, pdf: { ...pdf, max_symmetry_break: 0.001 } } })).checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("pass");
+  });
+
+  it("counts a fill bias on the Backfill card whether or not it judged the seam, made for it when the backfill was not measured (D14, 2.4b.4)", () => {
+    // Synthetic: one of two cuts filled systematically one way; the seam not measured, or the backfill not measured at all.
+    const texture = { per_cut: [{ systematic_fill_bias: true }, { systematic_fill_bias: false }] };
+    const sound = { ...input().measured, rings: { max_ring_left: 0, max_ring_dent: 0 }, punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 }, texture };
+    for (const backfill of [{ max_bright_fill_fraction: 0 }, null]) {
+      const r = buildReport(input({ measured: { ...sound, backfill } }));
+      const card = r.checks.find((c) => c.title === "Backfill")!;
+      expect(card.verdict).toBe("attention");
+      expect(card.headline).toMatch(/ · fill bias on 1 of 2 cuts$/);
+      expect(r.achieved.text).toBe("not met: needs attention: Backfill");
+    }
+  });
+
   it("reports the flatten's floor in σ without judging it, by the pedestal rule", () => {
     // The validation's dev volumes (docs/pilot-review.md finding 6): floors of
     // 1.5 to 1.8σ on all eight, whatever the flatten did.

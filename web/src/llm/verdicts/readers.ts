@@ -164,22 +164,24 @@ export const D2_REPORT_COVERAGE_BY_WEIGHT_ONLY = false;
 export const D9_REPORT_PDF_CARD_WITHOUT_EVALUATION = false;
 
 /**
- * D13: the report's 3D-ΔPDF card reads the symmetry from symmetry_check alone,
- * never from the ΔPDF evaluation's own worst break, which the chat's ΔPDF stage
- * counts (the evaluation broken, symmetry_check kept or not run: attention in
- * the chat, none in the report). Unify: set this to false; the card then also
- * counts the evaluation's break.
+ * D13, unified (plan 2.4b.4, batch 2, approved by the manager on the user's
+ * delegation, 2026-10-19): the report's 3D-ΔPDF card counts the ΔPDF
+ * evaluation's own worst symmetry break, as the chat's ΔPDF stage does,
+ * besides symmetry_check's verdict. true: the card read the symmetry from
+ * symmetry_check alone (the evaluation broken, symmetry_check kept or not
+ * run: attention in the chat, none in the report), before 2.4b.4.
  */
-export const D13_REPORT_SYMMETRY_FROM_SYMMETRY_CHECK_ONLY = true;
+export const D13_REPORT_SYMMETRY_FROM_SYMMETRY_CHECK_ONLY = false;
 
 /**
- * D14: the report counts texture_check's fill bias only on a Backfill card
- * whose seam it judged: with no backfill measured, or its seam not judged, a
- * fill bias needs no attention there, where {{achieved}} names the backfill's
- * texture. Unify: set this to false; the bias then needs attention on the
- * card (made for it when nothing else is measured).
+ * D14, unified (plan 2.4b.4, batch 2, approved by the manager on the user's
+ * delegation, 2026-10-19): the report counts texture_check's fill bias on the
+ * Backfill card whether or not it judged the seam, as {{achieved}} names the
+ * backfill's texture: the bias needs attention there, the card made for it
+ * when the backfill was not measured. true: it counted the bias only on a card
+ * that judged its seam, before 2.4b.4.
  */
-export const D14_REPORT_FILL_BIAS_ON_A_JUDGED_SEAM_ONLY = true;
+export const D14_REPORT_FILL_BIAS_ON_A_JUDGED_SEAM_ONLY = false;
 
 // ---------------------------------------------------------------- the matrix
 
