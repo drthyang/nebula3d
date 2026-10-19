@@ -1,8 +1,9 @@
 // THY-18 replayed: a scripted model through the real agent loop, its answer
-// checks and its tools, the tools answering from what they read on the
-// validation's dev cases (fixtures/validation-dev.json, synthetic, from the
-// dev sweep). Three rules, each shown sending an answer back and then letting
-// the fixed one through:
+// checks and its tools, the tools running on the validation's dev cases built
+// where the tests run (devData: the pipeline in Python through the CPython
+// bridge; nothing recorded, so the flatten's rerun is a real one). Three
+// rules, each shown sending an answer back and then letting the fixed one
+// through:
 //
 // - no verdict without its evidence, measured this reply after the last run
 //   that recomputed its stage;
@@ -10,110 +11,46 @@
 //   that names nothing sent back;
 // - computed verdicts: "achieved" comes from the checks; an answer that calls
 //   the run a success they do not give is sent back to quote {{achieved}}.
+//
+// The numbers an answer quotes are read from the tools' results, as the
+// references fill them; where they are a planted fault's, they are held to
+// the case's truth.
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import type { Dataset } from "../../api/types";
-import { configOf } from "../../state/configMemory";
-import { usePipelineStore } from "../../state/pipelineStore";
-import { runAgent, type AgentResult } from "../agent";
-import type { ChatMessage } from "../provider/client";
-import { CHAT_TOOLS, type AgentTool } from "../tools";
-import fixture from "./fixtures/validation-dev.json";
-import { RUN_AS_THEY_ARE, scriptedModel, SCRIPTED_URL, type ScriptTurn } from "./scripted";
+import type { AgentResult } from "../agent";
+import { devCase } from "./devData";
+import type { ScriptTurn } from "./scripted";
 
-const results = fixture.results as Record<string, string[]>;
-const DATASETS = fixture.datasets as Record<"control" | "flatten" | "origin", string>;
-
-// A rerun from the flatten: the stages it computed and those it reused.
-const RERUN_FROM_FLATTEN = {
-  ended: "done",
-  seconds: 12.3,
-  stages: { rings: "reused", punch: "reused", backfill: "reused", flatten: "computed", pdf: "computed", pdf_check: "computed" },
-  outputs: ["raw", "ringremoved", "braggpunched", "backfilled", "flattened", "delta_pdf"],
-  log_tail: [],
-};
-
-/** The app's tools, answering from the recordings in order (a repeated call gets the next one); the local ones run as they are. */
-function replayed(dataset: string): AgentTool[] {
-  const served = new Map<string, number>();
-  return CHAT_TOOLS.map((tool) =>
-    RUN_AS_THEY_ARE.includes(tool.name)
-      ? tool
-      : {
-          ...tool,
-          run: async (args) => {
-            if (tool.name === "run_pipeline") return { result: RERUN_FROM_FLATTEN, summary: "replayed run" };
-            const key = `${dataset}|${tool.name}|${JSON.stringify(args)}`;
-            const list = results[key];
-            if (!list) throw new Error(`no recording of ${key}`);
-            const n = served.get(key) ?? 0;
-            served.set(key, n + 1);
-            return { result: JSON.parse(list[Math.min(n, list.length - 1)]) as unknown, summary: "replayed" };
-          },
-        },
-  );
-}
-
-const datasetOf = (id: string): Dataset => ({
-  id,
-  temperature: null,
-  raw_name: `${id}.nxs`,
-  stem: id,
-  stages: [
-    ...["raw", "ringremoved", "braggpunched", "backfilled", "flattened"].map((name) => ({ name, exists: true, kind: "hkl" as const, volume_id: `${id}.${name}` })),
-    { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: `${id}.delta_pdf` },
-  ],
-});
-
-let uninstall: (() => void) | null = null;
-afterEach(() => {
-  uninstall?.();
-  uninstall = null;
-  usePipelineStore.getState().patch(configOf(usePipelineStore.getInitialState()));
-});
-
-async function replay(
-  which: keyof typeof DATASETS,
-  question: string,
-  script: ScriptTurn[],
-): Promise<AgentResult & { requests: number; overrun: number; sent: string[] }> {
-  const model = scriptedModel(script);
-  uninstall = model.install();
-  const dataset = datasetOf(DATASETS[which]);
-  const messages: ChatMessage[] = [
-    { role: "system", content: "You are NEBULA Pilot." },
-    { role: "user", content: question },
-  ];
-  const result = await runAgent({
-    messages,
-    tools: replayed(dataset.id),
-    // The skills counted as read: the gate on a stage's settings is not under test here.
-    ctx: { dataset, datasets: [dataset], skillsRead: new Set(["reduction-qc", "bragg-node-audit", "delta-pdf-interpretation"]) },
-    settings: { baseUrl: SCRIPTED_URL, model: "scripted", apiKey: "", temperature: 0, attachImages: false, useTools: true, followViews: false },
-    signal: new AbortController().signal,
-  });
-  return { ...result, requests: model.requests(), overrun: model.overrun(), sent: model.sent() };
-}
+/** A value as a filled reference shows it (references.ts): a number as written, a list in brackets. */
+const shown = (v: unknown): string => (Array.isArray(v) ? `(${v.join(", ")})` : String(v));
 
 const called = (r: AgentResult) => r.steps.map((s) => `${s.name}${s.args.stage ? `:${String(s.args.stage)}` : ""}`);
 
+/** The origin shift ub_check found, held to the planted one: each component within half the smallest planted. */
+function expectPlantedShift(found: unknown, planted: number[]): void {
+  const tol = Math.min(...planted.filter((x) => x !== 0).map(Math.abs)) / 2;
+  expect(Array.isArray(found) && found.length === planted.length, `found ${JSON.stringify(found)}`).toBe(true);
+  (found as number[]).forEach((x, i) => expect(Math.abs(x - planted[i]), `found ${JSON.stringify(found)}, planted ${JSON.stringify(planted)}`).toBeLessThanOrEqual(tol));
+}
+
 describe("THY-18: no verdict without its evidence", () => {
   it("sends back a ring verdict given without assess_stage, and takes the one that ran it", async () => {
-    const r = await replay("control", "Is the powder-ring removal clean?", [
+    const r = await devCase("dev-control").replay("Is the powder-ring removal clean?", [
       { text: "Yes, the powder-ring removal is clean." },
       { calls: [{ name: "assess_stage", args: { stage: "rings" } }] },
       { text: "The ring removal {{assess_stage.rings.verdict}}: no ring is left above its plane's noise (left ≤ {{assess_stage.rings.max_ring_left}})." },
     ]);
     expect(called(r)).toEqual(["assess_stage:rings"]);
     expect(r.sent[1]).toMatch(/gives a verdict on the ring removal without its evidence in this reply: call assess_stage with stage rings/);
-    expect(r.content).toBe("The ring removal meets its goal: no ring is left above its plane's noise (left ≤ 0).");
+    const rings = r.results("assess_stage")[0].rings as Record<string, unknown>;
+    expect(r.content).toBe(`The ring removal ${rings.verdict}: no ring is left above its plane's noise (left ≤ ${shown(rings.max_ring_left)}).`);
     expect(r.note).toBeUndefined();
     expect([r.requests, r.overrun]).toEqual([3, 0]);
   });
 
   it("sends back a verdict on the flatten measured before the rerun that recomputed it", async () => {
-    const r = await replay("flatten", "Does the flatten leave a pedestal? Fix it if so.", [
+    const r = await devCase("dev-flatten").replay("Does the flatten leave a pedestal? Fix it if so.", [
       { calls: [{ name: "assess_stage", args: { stage: "flatten" } }] },
       { calls: [{ name: "update_settings", args: { changes: { flattenQ2: true } } }] },
       { calls: [{ name: "run_pipeline", args: { from_stage: "flatten" } }] },
@@ -128,16 +65,19 @@ describe("THY-18: no verdict without its evidence", () => {
     ]);
     expect(called(r)).toEqual(["assess_stage:flatten", "update_settings", "run_pipeline", "assess_stage:flatten"]);
     expect(r.sent[4]).toMatch(/gives a verdict on the flatten from a measurement taken before the last run recomputed it: call assess_stage with stage flatten again/);
-    // The first assessment found the planted background; the second, after the rerun, none.
-    expect(JSON.parse(r.steps[0].result!).flatten.pedestal_left).toBe(true);
+    // The first assessment found the planted background; the rerun with the Q² term recomputed the flatten, and the second found none.
+    const [before, after] = r.results("assess_stage").map((x) => x.flatten as Record<string, unknown>);
+    expect([before.pedestal_left, after.pedestal_left]).toEqual([true, false]);
+    expect(r.results("run_pipeline")[0].stages).toMatchObject({ flatten: "computed" });
     expect(r.content).toBe(
-      "There was a pedestal: the floors rose with |Q|. With the Q² term on and the flatten rerun, the flatten meets its goal: trend ≤ 0.025, span ≤ 0.333.",
+      `There was a pedestal: the floors rose with |Q|. With the Q² term on and the flatten rerun, the flatten ${after.verdict}: ` +
+        `trend ≤ ${shown(after.max_floor_trend)}, span ≤ ${shown(after.max_floor_span_fraction)}.`,
     );
     expect(r.note).toBeUndefined();
   });
 
   it("sends back the ΔPDF's correlations named without a measurement of them", async () => {
-    const r = await replay("control", "What are the strongest pair correlations in the 3D-ΔPDF?", [
+    const r = await devCase("dev-control").replay("What are the strongest pair correlations in the 3D-ΔPDF?", [
       { text: "The strongest pair correlation is negative, at ⟨½ ½ 0⟩." },
       { calls: [{ name: "dpdf_peaks" }] },
       {
@@ -148,14 +88,19 @@ describe("THY-18: no verdict without its evidence", () => {
     ]);
     expect(called(r)).toEqual(["dpdf_peaks"]);
     expect(r.sent[1]).toMatch(/gives a verdict on the 3D-ΔPDF's pair correlations without its evidence in this reply: call dpdf_peaks/);
-    expect(r.content).toBe("The strongest pair correlation is − at (0.497, 0.497, 0) r.l.u. (2.74 Å, 1520σ), in 6 directions.");
+    const top = (r.results("dpdf_peaks")[0].features as Record<string, unknown>[])[0];
+    expect(r.content).toBe(
+      `The strongest pair correlation is ${top.sign} at ${shown((top.vectors_rlu as unknown[])[0])} r.l.u. ` +
+        `(${shown(top.length_A)} Å, ${shown(top.size_sigma)}σ), in ${shown(top.n_vectors)} directions.`,
+    );
     expect(r.note).toBeUndefined();
   });
 });
 
 describe("THY-18: numbers by reference", () => {
   it("fills each reference from the tool's own result", async () => {
-    const r = await replay("origin", "Is the UB right?", [
+    const c = devCase("dev-origin");
+    const r = await c.replay("Is the UB right?", [
       { calls: [{ name: "ub_check" }] },
       {
         text:
@@ -163,22 +108,25 @@ describe("THY-18: numbers by reference", () => {
           "Every peak sits {{ub_check.origin_shift_rlu}} r.l.u. off its node: the HKL origin is shifted.",
       },
     ]);
+    const ub = r.results("ub_check")[0];
     expect(r.content).toBe(
-      "The UB is not what is wrong: the fit turned it by 0°, and the peaks' offset stayed at 0.0583 Å⁻¹. Every peak sits (0.0305, 0.0195, 0) r.l.u. off its node: the HKL origin is shifted.",
+      `The UB is not what is wrong: the fit turned it by ${shown(ub.orientation_change_deg)}°, and the peaks' offset stayed at ${shown(ub.rms)} Å⁻¹. ` +
+        `Every peak sits ${shown(ub.origin_shift_rlu)} r.l.u. off its node: the HKL origin is shifted.`,
     );
+    expectPlantedShift(ub.origin_shift_rlu, c.truth.offset_rlu!);
     expect([r.note, r.requests]).toEqual([undefined, 2]);
   });
 
   it("sends back a reference that names nothing, and keeps one still unfilled as written, with a note", async () => {
-    const fixed = await replay("control", "How far did the UB fit turn the orientation?", [
+    const fixed = await devCase("dev-control").replay("How far did the UB fit turn the orientation?", [
       { calls: [{ name: "ub_check" }] },
       { text: "The fit turned the orientation by {{ub_check.angle}}°." },
       { text: "The fit turned the orientation by {{ub_check.orientation_change_deg}}°." },
     ]);
-    expect(fixed.content).toBe("The fit turned the orientation by 0°.");
+    expect(fixed.content).toBe(`The fit turned the orientation by ${shown(fixed.results("ub_check")[0].orientation_change_deg)}°.`);
     expect(fixed.sent[2]).toMatch(/These references name no value in this reply's tool results: \{\{ub_check\.angle\}\}/);
     expect([fixed.note, fixed.requests]).toEqual([undefined, 3]);
-    const stuck = await replay("control", "How far did the UB fit turn the orientation?", [
+    const stuck = await devCase("dev-control").replay("How far did the UB fit turn the orientation?", [
       { calls: [{ name: "ub_check" }] },
       { text: "The fit turned the orientation by {{ub_check.angle}}°." },
       { text: "The fit turned the orientation by {{ub_check.angle}}°." },
@@ -192,7 +140,7 @@ describe("THY-18: computed verdicts", () => {
   const everyStage: ScriptTurn = { calls: ["rings", "punch", "backfill", "flatten", "pdf"].map((stage) => ({ name: "assess_stage", args: { stage } })) };
 
   it("sends back a run called trustworthy that the checks do not give, and the verdict is theirs", async () => {
-    const r = await replay("flatten", "Can I trust this 3D-ΔPDF?", [
+    const r = await devCase("dev-flatten").replay("Can I trust this 3D-ΔPDF?", [
       everyStage,
       { text: "Every stage meets its goal, so the 3D-ΔPDF can be trusted." },
       {
@@ -201,16 +149,19 @@ describe("THY-18: computed verdicts", () => {
           "the reduction-qc skill turns the Q² term on for that.",
       },
     ]);
+    // The planted pedestal is the one thing the checks find.
     expect(r.verdict).toMatchObject({ achieved: false, attention: ["the flatten"], text: "not met: needs attention: the flatten" });
     expect(r.sent[2]).toMatch(/It calls the run a success, but the verdict computed from the checks is "not met: needs attention: the flatten".*quote it as \{\{achieved\}\}/);
+    const flatten = r.results("assess_stage").find((x) => x.flatten)!.flatten as Record<string, unknown>;
     expect(r.content).toBe(
-      "The run's goal is not met: needs attention: the flatten. The flatten left a pedestal: its floors follow |Q| (trend ≤ 0.975, span ≤ 0.971); the reduction-qc skill turns the Q² term on for that.",
+      `The run's goal is not met: needs attention: the flatten. The flatten left a pedestal: its floors follow |Q| (trend ≤ ${shown(flatten.max_floor_trend)}, span ≤ ${shown(flatten.max_floor_span_fraction)}); ` +
+        "the reduction-qc skill turns the Q² term on for that.",
     );
     expect([r.note, r.requests]).toEqual([undefined, 3]);
   });
 
   it("lets the clean control's run through on its first answer, its verdict met", async () => {
-    const r = await replay("control", "Can I trust this 3D-ΔPDF?", [
+    const r = await devCase("dev-control").replay("Can I trust this 3D-ΔPDF?", [
       everyStage,
       { text: "Yes: {{achieved}}, so the 3D-ΔPDF can be trusted for analysis." },
     ]);
@@ -220,7 +171,7 @@ describe("THY-18: computed verdicts", () => {
   });
 
   it("asks for the checks a success rests on when they did not all run", async () => {
-    const r = await replay("control", "Can I trust this 3D-ΔPDF?", [
+    const r = await devCase("dev-control").replay("Can I trust this 3D-ΔPDF?", [
       { calls: [{ name: "assess_stage", args: { stage: "pdf" } }] },
       { text: "The 3D-ΔPDF is ready for analysis." },
       { calls: ["rings", "punch", "backfill", "flatten"].map((stage) => ({ name: "assess_stage", args: { stage } })) },
@@ -233,8 +184,11 @@ describe("THY-18: computed verdicts", () => {
   });
 
   it("states the data's problems that no setting fixes with the verdict", async () => {
-    const r = await replay("origin", "Is the UB right?", [{ calls: [{ name: "ub_check" }] }, { text: "{{achieved}}" }]);
-    expect(r.verdict?.dataProblems).toEqual(["the HKL origin is shifted by (0.0305, 0.0195, 0) r.l.u."]);
+    const c = devCase("dev-origin");
+    const r = await c.replay("Is the UB right?", [{ calls: [{ name: "ub_check" }] }, { text: "{{achieved}}" }]);
+    const shift = r.results("ub_check")[0].origin_shift_rlu;
+    expectPlantedShift(shift, c.truth.offset_rlu!);
+    expect(r.verdict?.dataProblems).toEqual([`the HKL origin is shifted by ${shown(shift)} r.l.u.`]);
     expect(r.verdict?.achieved).toBeNull(); // no stage was assessed
   });
 });
