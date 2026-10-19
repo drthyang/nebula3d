@@ -196,7 +196,7 @@ describe("judge: the checks on the result", () => {
     ["the reach one shell past it", { reach: 6.6 }, "pass", ["reach inside coverage"], "the transform reaches 6.6 Å⁻¹ (the window is tapered to the measured coverage), inside full coverage at 6.5 Å⁻¹"],
     ["the reach past it", { reach: 6.61 }, "attention", ["reach past coverage"], "too far: the transform reaches 6.61 Å⁻¹ (the window is tapered to the measured coverage), past full coverage at 6.5 Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage"],
     ["no unit cell", { unit_cell: false }, "info", ["nothing to judge"], "no unit cell: |Q| is unknown, so the reach cannot be compared"],
-    ["no shell fully measured", { full_coverage_q: null }, "info", ["nothing to judge"], "no |Q| shell is fully measured on these planes"],
+    ["no shell fully measured", { full_coverage_q: null }, "info", ["nothing to judge"], "no |Q| shell is fully measured"],
     ["no ΔPDF to read the corner from", { reach: null }, "info", ["nothing to judge"], "no ΔPDF yet to read the box corner from"],
     [
       "the counts ending inside the box, no band set",
@@ -207,6 +207,16 @@ describe("judge: the checks on the result", () => {
       ["the counts end at 4.507 Å⁻¹, inside the box"],
     ],
     ["the counts ending inside, a band set: a data problem, no note", { window_weight: 0.00098, counts, band_set: true }, "pass", ["window within limit"], "clean: the ΔPDF's ellipsoid window puts 9.8e-4 of its weight on unmeasured reciprocal space", ["the counts end at 4.507 Å⁻¹, inside the box"]],
+    // Zeros stored past the counts, marked measured: the window's support takes
+    // them as data, so the band is the remedy and no taper keeps the transform on the counts.
+    [
+      "the reach past it, zeros stored past the counts",
+      { full_coverage_q: 4.45, reach: 6.444, reach_from: "the window tapers to zero at the box faces", zeros_stored: true, counts },
+      "attention",
+      ["reach past coverage"],
+      "too far: the transform reaches 6.444 Å⁻¹ (the window tapers to zero at the box faces), past full coverage at 4.45 Å⁻¹; set a |Q| band at or below it; the raw counts end at 4.507 Å⁻¹, inside the box (its nearest face at 6.444 Å⁻¹), and no |Q| band is set: the band they allow is 0–4.5 Å⁻¹ (suggested_band), the user's to set",
+      ["the counts end at 4.507 Å⁻¹, inside the box"],
+    ],
   ];
   for (const [why, over, kind, reasons, words, dataProblems = []] of COVERAGE) {
     it(`coverage: ${why}`, () => {
@@ -341,6 +351,8 @@ describe("judge: the checks on the result", () => {
   const OFF: Record<string, string> = {
     "the raw weight past the limit (D6)": "too far: the ΔPDF's ellipsoid window puts 0.00104 of its weight on unmeasured reciprocal space",
     "the reach past it": "too far: the transform reaches 6.61 Å⁻¹ (the window is tapered to the measured coverage), past full coverage at 6.5 Å⁻¹",
+    "the reach past it, zeros stored past the counts":
+      "too far: the transform reaches 6.444 Å⁻¹ (the window tapers to zero at the box faces), past full coverage at 4.45 Å⁻¹; the raw counts end at 4.507 Å⁻¹, inside the box (its nearest face at 6.444 Å⁻¹), and no |Q| band is set: the band they allow is 0–4.5 Å⁻¹ (suggested_band), the user's to set",
     "a file read, no symmetry declared": "not judged: the file declares no symmetry",
     "an empty declaration": "not judged: the file declares no symmetry",
     "a rotation under 2°, judged unrounded: the UB, though it reads 2°":

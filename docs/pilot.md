@@ -353,16 +353,21 @@ miss is a note.
     whether the fills sit systematically above or below their rims (a
     lattice-periodic pattern; flagged at a median ≥ 0.5σ with ≥ 75 % of holes
     one way) and whether the punch and backfill add variation around each |Q|
-    shell; `qmax_coverage` (`metrics/coverage.ts`) gives the share of the
+    shell; `qmax_coverage` gives the share of the
     ΔPDF window's weight on unmeasured space, read from the ΔPDF's provenance
     (≲ 10⁻³ is clean), with the window's shape and scale. On a file without it,
     it compares how far the forward transform's window reaches in |Q| (the |Q|
     band if set, else the box faces, the coverage edge when tapered to it, or
     the box corners for a flat separable window) with the |Q| where shells
-    stop being 95 % measured. From the raw volume (`analysis/coverage.py`,
-    `GET /api/volumes/{id}/coverage`) it also gives where the counts begin
-    and end in |Q|, where a shell's voxels stop being mostly measured,
-    finite and non-zero, with the box's nearest face. It suggests the |Q| band
+    stop being 95 % measured. The coverage is measured once, in Python, on the
+    raw volume's |Q| shells in 3D (`analysis/coverage.py`, served by both
+    adapters: `GET /api/volumes/{id}/coverage` and the webbridge's
+    `volume_coverage_json`); the principal planes only show where. It gives
+    where the counts begin and end in |Q|, where a shell's voxels stop being
+    mostly measured, finite and non-zero, with the box's nearest face. A
+    volume that stores zeros for unmeasured space marks them measured: the
+    window's support, the measured voxels, then runs past the counts, and no
+    taper to the coverage follows them. It suggests the |Q| band
     they allow, and checks a band that is set. The Configure page shows the
     same edges under its |Q| band, with a *From raw data* button that sets
     the band to them. `symmetry_check` (`metrics/symmetry.ts`)
