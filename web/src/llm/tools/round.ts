@@ -1,11 +1,16 @@
-// The agent loop's round of calls: the tool calls of one model turn, run one
-// at a time and in order, over the reply's history. The history is all the
-// next round depends on: the tools the reply offers, its tool context, its
-// steps so far, the calls that ran since the state last changed, and how many
-// rounds in a row brought nothing new. runRound is pure over it: the calls run
-// on a copy of the history's tool context, which becomes the next history's,
-// and the round hands back a new history, never changing the one it was given
-// (frozen in dev and test). The loop (agent.ts) keeps what is its own: the
+// The executor's round: the tool calls of one model turn, run one at a time
+// and in order, over the reply's history. The history is all the next round
+// depends on: the tools the reply offers, its tool context, its steps so far,
+// the calls that ran since the state last changed, and how many rounds in a
+// row brought nothing new. runRound is pure over it: the calls run on a copy
+// of the history's tool context, which becomes the next history's, and the
+// round hands back a new history, never changing the one it was given (frozen
+// in dev and test).
+//
+// A deep module behind a small interface: startReply, runRound and forget. The
+// history is the seam between it and the agent loop (agent.ts): the loop hands
+// one in and takes the next back, and a test drives a round from a history
+// alone, with no model and no loop. The loop keeps what is its own: the
 // requests, the window, compaction (which forgets calls through forget), the
 // local offer, the figures it follows (onStep), the answer checks.
 //

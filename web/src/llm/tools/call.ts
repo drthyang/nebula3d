@@ -1,11 +1,13 @@
 // One call, run: the executor's single step. A call the model made runs
 // through runToolCall, against the tools the reply offers and its tool
-// context; callTool runs one by the tool's name, for the app's own callers
-// and the tests. Either runs against the context it is given, which the tool
-// may change (run_pipeline's fresh dataset, read_skill's skills read), and
-// never throws: a bad call comes back as an error the model reads and can
-// correct. What the model reads is the result fitted to the room it has
-// (readings/), with the step's other fields beside it (ToolRun).
+// context; callTool runs one by the tool's name, the seam the app's own
+// callers and the tests run a tool through. Either runs against the context
+// it is given, which the tool may change (run_pipeline's fresh dataset,
+// read_skill's skills read), and never throws: a bad call comes back as an
+// error the model reads and can correct. What the model reads is the result
+// fitted to the room it has (readings/), with the step's other fields beside
+// it (ToolRun). The round (round.ts) parses each call's arguments once and
+// runs it through runParsed, this module's implementation of both.
 
 import { withoutInference } from "../inference";
 import type { ToolCall } from "../provider/client";

@@ -5,9 +5,10 @@
 // skill (unreadSkillRefusal).
 //
 // Each tool is a module of its own, defs/<tool_name>.ts, imported here under
-// the name the model calls it by. The order below is the order the model
-// reads the tools in, with every request: registry.test.ts holds it, and the
-// files to the registry one to one.
+// the name the model calls it by: its facts, its description and its run sit
+// together there (locality), and nothing but the registry imports one. The
+// order below is the order the model reads the tools in, with every request:
+// registry.test.ts holds it, and the files to the registry one to one.
 
 import type { ToolSpec } from "../provider/client";
 import { refusalFor } from "../skills";
