@@ -5,7 +5,8 @@
 // Every model is described the same way: where it is served, the context the
 // run needs it loaded with, the splits it may run, and the runs per case.
 
-import { casesToRun, datasetStem, type Arm, type Split, type ValidationCase } from "./validation";
+import { isOllamaUrl, loadedContext, ollamaModel } from "../provider/client";
+import { casesToRun, datasetStem, type Arm, type RunContextWindow, type Split, type ValidationCase } from "./validation";
 
 export interface Price {
   input: number; // US dollars per million tokens; `input` counts the cached tokens too
@@ -21,7 +22,8 @@ export interface ValidationModel {
   baseUrl: string;
   model: string; // the id the server knows it by
   local: boolean;
-  contextTokens: number; // what the Pilot's tools need loaded (the first request alone is about 8k)
+  contextTokens: number; // the context to load it with
+  minContextTokens: number | null; // the least the run accepts (RUN_POLICY); null: a cloud model, not checked
   splits: readonly Split[]; // the splits it may run
   runsPerCase: number;
   temperature: number | null; // null: the model takes no sampling parameters
@@ -33,26 +35,48 @@ export interface ValidationModel {
 
 const LM_STUDIO = "http://localhost:1234/v1";
 const OLLAMA = "http://localhost:11434/v1";
-const NEEDS_CONTEXT = "Tools need 32k tokens of context.";
+
+/**
+ * The run policy: settings that hold for every run of the validation, whatever
+ * the model.
+ *
+ * minLocalContextTokens: the least context window a local live run may have,
+ * 48k. The Pilot's worst turn on a local model (arm B on the validation TASK,
+ * two skills read whole) is about 45.6k tokens with the reply reserve before
+ * the loop's compaction, and 37k to 42k after it (tokenBudget.test.ts). A 32k
+ * window holds it only by shortening the skills just read to stubs, so a run
+ * at 32k would grade arm B on stubs of the skills it read. The runner refuses a
+ * window under it before the first run, and reads it again before each run
+ * (runContext). The sibling app RMC holds its local live runs to the same rule.
+ */
+export const RUN_POLICY = {
+  minLocalContextTokens: 49_152,
+} as const;
+
+const MIN_CONTEXT = RUN_POLICY.minLocalContextTokens;
+const LOAD_IN_LM_STUDIO =
+  `Load it in LM Studio with a Context Length of ${MIN_CONTEXT} or more, and make that the model's default ` +
+  `(LM Studio reloads an idle model with its defaults); the run checks the loaded context and refuses less.`;
 
 export const SPEND_CAP_USD = 12;
 
 export const MODELS: readonly ValidationModel[] = [
   {
     key: "lmstudio-qwen3.8-27b",
-    label: "qwen/qwen3.8-27b (LM Studio, 32k)",
+    label: "qwen/qwen3.8-27b (LM Studio, 48k)",
     provider: "LM Studio",
     baseUrl: LM_STUDIO,
     model: "qwen/qwen3.8-27b",
     local: true,
-    contextTokens: 32768,
+    contextTokens: MIN_CONTEXT,
+    minContextTokens: MIN_CONTEXT,
     splits: ["dev", "test"],
     runsPerCase: 3,
     temperature: 0.2,
     apiKeyEnv: null,
     price: null,
     spendCapUsd: null,
-    how: `Load it in LM Studio with a 32768-token Context Length (the run checks it). ${NEEDS_CONTEXT}`,
+    how: LOAD_IN_LM_STUDIO,
   },
   {
     key: "ollama-gemma4-26b",
@@ -61,14 +85,18 @@ export const MODELS: readonly ValidationModel[] = [
     baseUrl: OLLAMA,
     model: "gemma4:26b",
     local: true,
-    contextTokens: 32768,
+    contextTokens: MIN_CONTEXT,
+    minContextTokens: MIN_CONTEXT,
     splits: ["dev", "test"],
     runsPerCase: 3,
     temperature: 0.2,
     apiKeyEnv: null,
     price: null,
     spendCapUsd: null,
-    how: `Start Ollama with OLLAMA_CONTEXT_LENGTH=32768 (the OpenAI-style endpoint cannot set it, and the run cannot read it). ${NEEDS_CONTEXT}`,
+    how:
+      `Pull it (ollama pull gemma4:26b). The run sizes num_ctx for each request through Ollama's own chat API, ` +
+      `up to the longest context the model supports, which must be ${MIN_CONTEXT} or more (the run reads it ` +
+      `from /api/show and refuses less); the machine needs the memory for a window that long.`,
   },
   {
     key: "lmstudio-muse-glimmer",
@@ -77,14 +105,15 @@ export const MODELS: readonly ValidationModel[] = [
     baseUrl: LM_STUDIO,
     model: "meta/muse-glimmer",
     local: true,
-    contextTokens: 32768,
+    contextTokens: MIN_CONTEXT,
+    minContextTokens: MIN_CONTEXT,
     splits: ["dev", "test"],
     runsPerCase: 3,
     temperature: 0.2,
     apiKeyEnv: null,
     price: null,
     spendCapUsd: null,
-    how: `Load it in LM Studio with a 32768-token Context Length (the run checks it). ${NEEDS_CONTEXT}`,
+    how: LOAD_IN_LM_STUDIO,
   },
   {
     key: "claude-sonnet-5-5",
@@ -94,6 +123,7 @@ export const MODELS: readonly ValidationModel[] = [
     model: "claude-sonnet-5-5",
     local: false,
     contextTokens: 32768,
+    minContextTokens: null,
     splits: ["test"],
     runsPerCase: 3,
     temperature: null,
@@ -110,6 +140,81 @@ export const modelNamed = (key: string): ValidationModel => {
   if (!m) throw new Error(`no validation model ${JSON.stringify(key)}; the models are ${MODELS.map((x) => x.key).join(", ")}`);
   return m;
 };
+
+export interface RunContext extends RunContextWindow {
+  refusal: string | null; // why the run must not start, or null
+}
+
+const tokens = (x: number): string => x.toLocaleString("en-US");
+
+/**
+ * The context window a run on *model* at *baseUrl* will get, against the run
+ * policy's minimum (RUN_POLICY), read without loading anything:
+ * - LM Studio: the context the model is loaded with (`/api/v0/models`). A
+ *   model it has not loaded would be loaded with its defaults, which cannot be
+ *   read, so it is refused too.
+ * - Ollama: the longest context the model supports (`/api/show`). The window
+ *   plan (provider/window.ts) sizes num_ctx for each request up to it, so it is
+ *   the most a run's window can grow to.
+ * A window that cannot be read is refused: the minimum would go unchecked. A
+ * cloud model has no minimum and is not asked.
+ */
+export async function runContext(model: ValidationModel, baseUrl: string, signal?: AbortSignal): Promise<RunContext> {
+  const min = model.minContextTokens;
+  if (min == null) return { tokens: null, min_tokens: null, read_from: null, refusal: null };
+  const policy = `the run policy's minimum of ${tokens(min)} for a local live run (RUN_POLICY in validationModels.ts: the Pilot's worst turn needs about 45.6k tokens, tokenBudget.test.ts)`;
+  if (isOllamaUrl(baseUrl)) {
+    const { maxContext } = await ollamaModel(baseUrl, model.model, signal);
+    const seen = { tokens: maxContext, min_tokens: min, read_from: "ollama-supported" as const };
+    if (maxContext == null) {
+      return {
+        ...seen,
+        refusal:
+          `Ollama at ${baseUrl} did not say how long a context ${model.model} supports (POST /api/show), so the window ` +
+          `cannot be held to ${policy}. Start Ollama and pull the model (ollama pull ${model.model}), then run again.`,
+      };
+    }
+    if (maxContext < min) {
+      return {
+        ...seen,
+        refusal:
+          `${model.model} supports a context of at most ${tokens(maxContext)} tokens (Ollama's /api/show), under ${policy}. ` +
+          `The run sizes num_ctx itself, up to what the model supports, so no setting gives it more: pick a model that supports ${tokens(min)} or more.`,
+      };
+    }
+    return { ...seen, refusal: null };
+  }
+  const context = await loadedContext(baseUrl, model.model, { signal });
+  const seen = { tokens: context?.loaded ?? null, min_tokens: min, read_from: "lmstudio-loaded" as const };
+  const load =
+    `In LM Studio, load ${model.model} with a Context Length of ${tokens(min)} or more (its load settings, or ` +
+    `lms load ${model.model} --context-length ${min} once it is unloaded), and make that the model's default Context Length: ` +
+    "LM Studio reloads an idle model with its defaults.";
+  const supports = context?.max != null && context.max < min ? ` It supports at most ${tokens(context.max)}: pick a model that supports more.` : "";
+  if (!context) {
+    return {
+      ...seen,
+      refusal:
+        `Could not read the context ${model.model} is loaded with from LM Studio at ${baseUrl} (GET /api/v0/models), so the ` +
+        `window cannot be held to ${policy}. Start LM Studio's server and load the model. ${load}`,
+    };
+  }
+  if (context.loaded == null) {
+    return {
+      ...seen,
+      refusal:
+        `${model.model} is not loaded: LM Studio would load it with its default Context Length, which the run cannot read ` +
+        `or hold to ${policy}. ${load}${supports}`,
+    };
+  }
+  if (context.loaded < min) {
+    return {
+      ...seen,
+      refusal: `${model.model} is loaded with a ${tokens(context.loaded)}-token context, under ${policy}. ${load}${supports}`,
+    };
+  }
+  return { ...seen, refusal: null };
+}
 
 /** What a run cost, from its token counts: null when the server did not say, or the model has no price. */
 export function costOf(

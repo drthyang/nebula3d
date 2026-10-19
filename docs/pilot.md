@@ -97,6 +97,20 @@ Each is described under [How it works](#how-it-works).
   chat API takes the length per request; the OpenAI-style one cannot), and a
   request no window of the model can hold, or longer than the window LM Studio
   loaded the model with, is not sent: the reply says how to fix it.
+- **A local model wants a 48k window.** With Tools on, a full assessment that
+  reads two skills whole is about 45.6k tokens with room for the reply
+  (measured through the agent loop: `web/src/llm/__tests__/tokenBudget.test.ts`).
+  A 32k window still runs, but the guard then shortens the skills the model
+  just read to stubs, and refuses a request that still does not fit; 48k
+  (49,152 tokens) or more avoids that on long two-skill turns. In LM Studio,
+  set the model's default Context Length to 49152 in its load settings (it
+  reloads an idle model with its defaults), or load it with
+  `lms load <model> --context-length 49152`. Ollama at its usual port gets
+  its window from the app per request (`num_ctx`, up to the longest the model
+  supports, which `ollama show <model>` lists), so the model must support 48k
+  and the machine needs the memory for it; elsewhere, start Ollama with
+  `OLLAMA_CONTEXT_LENGTH=49152`. The validation holds its local live runs to
+  the same 48k ([evals.md](evals.md#the-models)).
 
 ## Evals
 
@@ -265,10 +279,12 @@ miss is a note.
   picked): system messages become the system prompt, a round's tool results go
   back in one user message, and a turn that called tools is replayed exactly as
   Claude returned it, thinking included. With Tools on, the first request alone
-  is about 8k tokens and a full assessment reaches about 18k, so on LM Studio
+  is about 8k tokens and a full assessment that reads two skills about 45.6k
+  with room for the reply (`__tests__/tokenBudget.test.ts`), so on LM Studio
   the chat reads the context length the model was loaded with
-  (`/api/v0/models`) and, below 32k, says how far to raise it (`loadedContext`,
-  `contextWarning`). Before each request `provider/window.ts` estimates its
+  (`/api/v0/models`) and, below 48k (`TOOLS_CONTEXT`, 49,152), says how far to
+  raise it (`loadedContext`, `contextWarning`). The 48k is guidance: the
+  window guard below goes by the window the model has. Before each request `provider/window.ts` estimates its
   tokens (`tokens.ts`): prose at 3.5 characters a token and data at 1.4 (tool
   results, call arguments and the fenced context JSON: a tokenizer may give
   every digit its own token), scaled by the largest ratio of the server's own

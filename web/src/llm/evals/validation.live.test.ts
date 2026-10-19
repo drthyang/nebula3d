@@ -29,7 +29,6 @@ import { usePipelineStore } from "../../state/pipelineStore";
 import { MAX_TOOL_ROUNDS, runAgent, type AgentProgress } from "../agent";
 import { loadPipelineContext } from "../context/loadContext";
 import { buildChatMessages } from "../prompts/templates";
-import { contextWarning, loadedContext } from "../provider/client";
 import { CHAT_TOOLS } from "../tools";
 import { backendUrl, env, exists, makeDir, readText, useBackend, writeText } from "./backend";
 import { installEventSource } from "./eventSource";
@@ -49,7 +48,7 @@ import {
   type RunRecord,
   type Split,
 } from "./validation";
-import { costOf, modelNamed, paidRunGate, plan, SpendTracker } from "./validationModels";
+import { costOf, modelNamed, paidRunGate, plan, runContext, SpendTracker } from "./validationModels";
 
 const live = env("NEBULA_VALIDATION") === "1";
 const renderFrom = env("NEBULA_VALIDATION_RENDER");
@@ -80,12 +79,11 @@ describe.skipIf(!live)("validation, live", () => {
 
     useBackend();
     installEventSource();
-    // LM Studio reports the context a model is loaded with; a model loaded with less
-    // than the tools need would be cut off and graded for it.
-    const context = await loadedContext(baseUrl, model.model);
-    if (context && (context.loaded ?? 0) < model.contextTokens) {
-      throw new Error(contextWarning(context, model.model) ?? `${model.model} is not loaded with ${model.contextTokens} tokens of context`);
-    }
+    // The run policy's minimum context for a local live run (RUN_POLICY): a model
+    // whose window is under it would have the skills it read cut to stubs and be
+    // graded for it, so the plan does not start.
+    const context = await runContext(model, baseUrl);
+    if (context.refusal) throw new Error(context.refusal);
     const datasets = validationDatasets(await fetchDatasets());
     // Before an hour of runs: every dataset the plan needs is there.
     const missing = jobs.filter((j) => !datasets.some((d) => d.stem === j.stem)).map((j) => j.stem);
@@ -109,7 +107,15 @@ describe.skipIf(!live)("validation, live", () => {
     const save = async (complete: boolean) => {
       const record = {
         schema: "nebula3d-validation/1",
-        model: { key: model.key, label: model.label, provider: model.provider, model: model.model, local: model.local, context_tokens: model.contextTokens },
+        model: {
+          key: model.key,
+          label: model.label,
+          provider: model.provider,
+          model: model.model,
+          local: model.local,
+          context_tokens: model.contextTokens,
+          min_context_tokens: model.minContextTokens,
+        },
         split,
         arms,
         runs_per_case: runs,
@@ -129,6 +135,13 @@ describe.skipIf(!live)("validation, live", () => {
       if (refusal) {
         console.log(`stopped before ${job.stem}: ${refusal}`);
         break;
+      }
+      // Read again before each run, which records it: LM Studio may have unloaded
+      // the model and loaded it again with its defaults.
+      const runWindow = await runContext(model, baseUrl);
+      if (runWindow.refusal) {
+        await save(false);
+        throw new Error(`stopped before ${job.stem}: ${runWindow.refusal}`);
       }
       const dataset = datasets.find((d) => d.stem === job.stem)!;
 
@@ -203,6 +216,7 @@ describe.skipIf(!live)("validation, live", () => {
         costUsd,
         elsewhere,
         offers: recorder.offers,
+        context: { tokens: runWindow.tokens, min_tokens: runWindow.min_tokens, read_from: runWindow.read_from },
       });
       records.push(record);
       await writeText(new URL(transcriptName(record), transcripts), renderTranscript(record, candidateFindings(record, job.case)));

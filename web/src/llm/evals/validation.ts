@@ -398,6 +398,19 @@ export interface ModelInfo {
   local: boolean;
 }
 
+/**
+ * The context window a run had, and the run policy's minimum it was held to
+ * (validationModels.ts: RUN_POLICY, runContext). Read before the run.
+ */
+export interface RunContextWindow {
+  // LM Studio: the context the model was loaded with. Ollama: the longest the
+  // model supports, up to which the window plan sizes num_ctx for each request.
+  // Null where it was not read (a cloud model).
+  tokens: number | null;
+  min_tokens: number | null; // the run policy's minimum; null where none applies (a cloud model)
+  read_from: "lmstudio-loaded" | "ollama-supported" | null;
+}
+
 export interface RunRecord {
   schema: "nebula3d-validation-run/1";
   case: string;
@@ -410,6 +423,8 @@ export interface RunRecord {
   model: ModelInfo;
   task: string;
   max_rounds: number;
+  // The window the run had and the minimum it was held to; absent from records made before 2026-10-19.
+  context_window?: RunContextWindow | null;
   started: string;
   latency_ms: number;
   usage: EvalRun["usage"];
@@ -441,6 +456,7 @@ export function buildRecord(p: {
   costUsd: number | null;
   elsewhere?: readonly string[];
   offers?: readonly ToolOffer[];
+  context?: RunContextWindow | null;
 }): RunRecord {
   const r = p.evalRun;
   return {
@@ -455,6 +471,7 @@ export function buildRecord(p: {
     model: p.model,
     task: TASK,
     max_rounds: p.maxRounds,
+    context_window: p.context ?? null,
     started: p.started,
     latency_ms: Math.round(r.latencyMs),
     usage: r.usage,
