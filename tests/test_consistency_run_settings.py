@@ -160,6 +160,11 @@ def test_a_run_made_with_hann_05_is_viewed_with_hann_05(tmp_path):
     for key in ("pearson_r", "normalized_rms", "pearson_r_even", "n_voxels"):
         assert meta["metrics"][key] == pytest.approx(hann[key], rel=1e-12, abs=0.0), key
     assert gaussian["normalized_rms"] != pytest.approx(hann["normalized_rms"], rel=1e-4)
+    # So, over the full range, it reproduces the run's own saved check.
+    check = _client(tmp_path).get(f"/api/consistency/{SLUG}/check").json()["metrics"]
+    assert check["apodization"] == "hann"
+    for key in ("pearson_r", "normalized_rms", "pearson_r_even", "n_voxels"):
+        assert meta["metrics"][key] == pytest.approx(check[key], abs=1e-9), key
     # The browser build reads the same record.
     webbridge.setup(workdir=str(tmp_path))
     bridged = json.loads(webbridge.consistency_meta_json(SLUG))
