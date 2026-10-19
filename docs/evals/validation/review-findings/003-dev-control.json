@@ -1,0 +1,19 @@
+{
+ "source": "validation",
+ "case": "dev-control",
+ "run": 1,
+ "step": null,
+ "kind": "science-error",
+ "evidence": "assess_stage fails the ΔPDF below a back-FFT r of 0.999. On the clean control r is 0.989 (0.989 to 0.996 on all eight dev cases) and the normalised RMS 0.125. The transform keeps the real part, the part of the data even under Q → −Q, so on unsymmetrised noisy data r measures the noise in the odd part: the same volume averaged with its inversion gives r = 1.0, RMS 0.",
+ "proposed_fix": "Compare the round trip with the data's Q → −Q even part, or judge r only on volumes declared symmetrised.",
+ "needs_user_approval": true,
+ "arm": "sweep",
+ "status": "implemented",
+ "commit": "f4bf303",
+ "tests": [
+  "tests/test_consistency_even.py",
+  "web/src/llm/__tests__/evaluate.test.ts (judges the round trip against the data's even part)",
+  "web/src/llm/__tests__/tools.test.ts (consistency_details)"
+ ],
+ "note": "Both options of the fix: r is judged against the data's Q → −Q even part (pearson_r_even, 1 on all eight dev cases), and a check recorded before that comparison judges r against the data only on data the file declares symmetrised."
+}
