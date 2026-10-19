@@ -10,7 +10,7 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore, type StageRun } from "../tune/tuner";
-import { CHAT_TOOLS, runToolCall, toolsWithSkills, type ToolContext } from "../tools";
+import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type ToolContext } from "../tools";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -64,8 +64,7 @@ const META: VolumeMeta = {
   planes: ["hk0", "h0l", "0kl"],
 };
 
-const run = (name: string, args: object) =>
-  runToolCall({ id: "c", type: "function", function: { name, arguments: JSON.stringify(args) } }, CHAT_TOOLS, ctx);
+const run = (name: string, args: Args) => callTool(ctx, name, args);
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -82,13 +81,22 @@ beforeEach(() => {
   });
 });
 
-describe("runToolCall", () => {
+describe("callTool", () => {
   it("reports unparseable arguments and unknown tools to the model", async () => {
-    const bad = await runToolCall({ id: "c", type: "function", function: { name: "describe_dataset", arguments: "{oops" } }, CHAT_TOOLS, ctx);
+    const bad = await callTool(ctx, "describe_dataset", "{oops");
     expect(bad.ok).toBe(false);
     expect(bad.text).toMatch(/not a JSON object/);
     const unknown = await run("delete_everything", {});
     expect(unknown.text).toMatch(/no tool named delete_everything/);
+  });
+
+  it("runs the registry's tools unless it is given others, against the context it is given", async () => {
+    const own: ToolContext = { dataset, datasets: [dataset], skillsRead: new Set() };
+    const read = await callTool(own, "read_skill", { name: "reduction-qc" });
+    expect(read.ok).toBe(true);
+    expect(own.skillsRead?.has("reduction-qc")).toBe(true); // the context itself, not a copy of it
+    const off = await callTool(own, "read_skill", { name: "reduction-qc" }, { tools: toolsWithSkills(CHAT_TOOLS, false) });
+    expect(off.text).toMatch(/^Error: no tool named read_skill\. Available: describe_dataset, /);
   });
 
   it("rejects an out-of-range cut with the valid range", async () => {
@@ -251,7 +259,6 @@ describe("run_pipeline", () => {
       usePipelineStore.setState({ running: false, terminal: ending });
       return ending;
     });
-  const call = (args: object) => ({ id: "c", type: "function" as const, function: { name: "run_pipeline", arguments: JSON.stringify(args) } });
 
   beforeEach(() => {
     usePipelineStore.setState({ running: false, force: false, flatten: true, pdfEnabled: true, events: [] });
@@ -265,7 +272,7 @@ describe("run_pipeline", () => {
     api.fetchDataset.mockResolvedValue(fresh);
     const own = { ...ctx };
     const lines: string[] = [];
-    const r = await runToolCall(call({}), CHAT_TOOLS, own, { progress: (t) => lines.push(t) });
+    const r = await callTool(own, "run_pipeline", {}, { progress: (t) => lines.push(t) });
     expect(r.ok).toBe(true);
     expect(runStages).toHaveBeenCalledWith(["rings", "punch", "backfill", "flatten", "pdf", "pdf_check"], { datasetId: "demo", force: false });
     expect(useNavStore.getState().tab).toBe("execution");
@@ -281,7 +288,7 @@ describe("run_pipeline", () => {
     const runStages = fakeRun("done");
     usePipelineStore.setState({ runStages, flatten: false });
     api.fetchDataset.mockResolvedValue(dataset);
-    await runToolCall(call({ from_stage: "punch" }), CHAT_TOOLS, { ...ctx });
+    await callTool({ ...ctx }, "run_pipeline", { from_stage: "punch" });
     expect(runStages).toHaveBeenCalledWith(["punch", "backfill", "pdf", "pdf_check"], { datasetId: "demo", force: true });
   });
 
@@ -289,7 +296,7 @@ describe("run_pipeline", () => {
     usePipelineStore.setState({
       runStages: fakeRun("error", [{ type: "progress", stage: "backfill", status: "error", message: "out of memory" }]),
     });
-    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx });
+    const r = await callTool({ ...ctx }, "run_pipeline", {});
     expect(r.ok).toBe(false);
     expect(r.text).toBe("Error: the run failed: Backfill · out of memory");
   });
@@ -297,7 +304,7 @@ describe("run_pipeline", () => {
   it("will not start while another run is going", async () => {
     const runStages = vi.fn();
     usePipelineStore.setState({ running: true, runStages });
-    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx });
+    const r = await callTool({ ...ctx }, "run_pipeline", {});
     expect(r.text).toMatch(/a pipeline run is in progress/);
     expect(runStages).not.toHaveBeenCalled();
   });
@@ -312,7 +319,7 @@ describe("run_pipeline", () => {
         return "cancelled";
       }),
     });
-    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx }, { signal: abort.signal });
+    const r = await callTool({ ...ctx }, "run_pipeline", {}, { signal: abort.signal });
     expect(cancel).toHaveBeenCalled();
     expect(r.text).toMatch(/the run was cancelled/);
   });
@@ -320,7 +327,6 @@ describe("run_pipeline", () => {
 
 describe("tune_pipeline", () => {
   const stage = (s: Partial<StageRun> & Pick<StageRun, "stage">): StageRun => ({ tuned: true, status: "waiting", trials: [], ...s });
-  const call = (args: object) => ({ id: "c", type: "function" as const, function: { name: "tune_pipeline", arguments: JSON.stringify(args) } });
 
   beforeEach(() => {
     usePipelineStore.setState({ running: false });
@@ -346,7 +352,7 @@ describe("tune_pipeline", () => {
       });
     });
     const lines: string[] = [];
-    const r = await runToolCall(call({ stages: ["backfill", "punch"], trials_per_stage: 2 }), CHAT_TOOLS, { ...ctx }, { progress: (t) => lines.push(t) });
+    const r = await callTool({ ...ctx }, "tune_pipeline", { stages: ["backfill", "punch"], trials_per_stage: 2 }, { progress: (t) => lines.push(t) });
     expect(r.ok).toBe(true);
     expect(tuner.startTuning).toHaveBeenCalledWith(expect.objectContaining({ dataset, stages: ["backfill", "punch"], trialsPerStage: 2 }));
     expect(lines).toEqual(["1/2 Bragg punch · trial 2/2 running"]);
@@ -378,7 +384,7 @@ describe("tune_pipeline", () => {
         ],
       });
     });
-    const out = JSON.parse((await runToolCall(call({ stages: ["punch"] }), CHAT_TOOLS, { ...ctx })).text);
+    const out = JSON.parse((await callTool({ ...ctx }, "tune_pipeline", { stages: ["punch"] })).text);
     const trials = out.stages[0].trials;
     expect(trials.map((t: { n: number }) => t.n)).toEqual([1, 2, 3]);
     expect(trials[1]).toMatchObject({ changes: { punchMinSig: 3 }, no_effect: true });
@@ -389,12 +395,12 @@ describe("tune_pipeline", () => {
 
   it("reports a tuning run that stopped on an error", async () => {
     tuner.startTuning.mockImplementation(async () => useTuneStore.setState({ error: "the run with your settings failed" }));
-    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx });
+    const r = await callTool({ ...ctx }, "tune_pipeline", {});
     expect(r.text).toBe("Error: tuning stopped: the run with your settings failed");
   });
 
   it("checks its arguments before starting", async () => {
-    const r = await runToolCall(call({ trials_per_stage: 9 }), CHAT_TOOLS, { ...ctx });
+    const r = await callTool({ ...ctx }, "tune_pipeline", { trials_per_stage: 9 });
     expect(r.text).toMatch(/trials_per_stage must be within \[2, 5\]/);
     expect(tuner.startTuning).not.toHaveBeenCalled();
   });
@@ -409,8 +415,7 @@ const full: Dataset = {
     { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" },
   ],
 };
-const runOn = (ds: Dataset, name: string, args: object) =>
-  runToolCall({ id: "c", type: "function", function: { name, arguments: JSON.stringify(args) } }, CHAT_TOOLS, { dataset: ds, datasets: [ds] });
+const runOn = (ds: Dataset, name: string, args: Args) => callTool({ dataset: ds, datasets: [ds] }, name, args);
 
 describe("assess_stage", () => {
   it("judges each stage that exists by its criterion, headline numbers only for all", async () => {
@@ -470,7 +475,7 @@ describe("assess_stage", () => {
     });
     const b = JSON.parse((await runOn(full, "assess_stage", { stage: "rings" })).text);
     expect(b.rings).toMatchObject({ verdict: "not judged", notice: NOTICE });
-    const armC = await runToolCall(call("assess_stage", { stage: "rings" }), CHAT_TOOLS, { dataset: full, datasets: [full], skills: false });
+    const armC = await callTool({ dataset: full, datasets: [full], skills: false }, "assess_stage", { stage: "rings" });
     const c = JSON.parse(armC.text);
     expect(c.rings).toMatchObject({ verdict: "not judged", notice: NOTICE_DEFINITION });
     expect(armC.text).not.toContain("pooled_confirm_rings");
@@ -481,7 +486,6 @@ describe("assess_stage", () => {
 const NOTICE_DEFINITION =
   "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
 const NOTICE = `${NOTICE_DEFINITION} Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.`;
-const call = (name: string, args: object) => ({ id: "c", type: "function" as const, function: { name, arguments: JSON.stringify(args) } });
 
 describe("run_log", () => {
   it("returns the last run's lines, for one stage on request", async () => {
@@ -518,7 +522,7 @@ describe("run_log", () => {
     });
     const b = JSON.parse((await run("run_log", { stage: "rings" })).text);
     expect(b.lines).toEqual([{ stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` }]);
-    const c = JSON.parse((await runToolCall(call("run_log", {}), CHAT_TOOLS, { ...ctx, skills: false })).text);
+    const c = JSON.parse((await callTool({ ...ctx, skills: false }, "run_log", {})).text);
     expect(c.lines.map((l: { message: string }) => l.message)).toEqual([`${summary}. ⚠ ${NOTICE_DEFINITION}`, "188 peaks punched"]);
   });
 });
@@ -809,7 +813,7 @@ describe("ub_check", () => {
 
   it("reads the fit whole with the skills on, and without its inference with them off (inference.ts)", async () => {
     const off = () =>
-      runToolCall({ id: "c", type: "function", function: { name: "ub_check", arguments: "{}" } }, toolsWithSkills(CHAT_TOOLS, false), { ...ctx, skills: false });
+      callTool({ ...ctx, skills: false }, "ub_check", {}, { tools: toolsWithSkills(CHAT_TOOLS, false) });
     const reading = async (r: Promise<{ text: string }>) => JSON.parse((await r).text).reading as string;
     // An origin shift: B names it and what to report; C, what the fit found.
     api.fetchUbCheck.mockResolvedValue(shifted);

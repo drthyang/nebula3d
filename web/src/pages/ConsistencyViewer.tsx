@@ -13,7 +13,7 @@ import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { fetchConsistencyMeta, fetchConsistencySlice, saveConsistencyDpdf } from "../api/client";
 import { PYODIDE_MODE } from "../api/pyodideEngine";
 import { useDatasets } from "../api/hooks";
-import type { Slice } from "../api/types";
+import type { ConsistencySettings, Slice } from "../api/types";
 import { COLORMAPS, SEQUENTIAL_NAMES, DIVERGING_NAMES, DIVERGING_NAME } from "../colormaps/luts";
 import { fmtLevel } from "../components/colorScale";
 import {
@@ -59,6 +59,23 @@ const Q_PLANE_AXES: Record<FixedAxis, [FixedAxis, FixedAxis]> = { H: ["K", "L"],
 const R_PLANE_AXES: Record<RealAxis, [string, string]> = { X: ["y", "z"], Y: ["z", "x"], Z: ["x", "y"] };
 
 type Band = { min: number; max: number };
+
+// The round trip's window and volume and where they came from (the response's
+// settings): the run's ΔPDF record, or a fallback the note explains.
+const windowName = (s: ConsistencySettings) =>
+  s.apodization === "gaussian" ? `gaussian σ ${s.gaussian_sigma}` : s.apodization;
+const settingsLabel = (s: ConsistencySettings) =>
+  s.source === "run"
+    ? `the run's window: ${windowName(s)}${s.note ? ` (${s.note})` : ""}`
+    : `the default window, ${windowName(s)}: ${s.note ?? "no ΔPDF record"}`;
+const settingsDetail = (s: ConsistencySettings) =>
+  [
+    `The round trip of ${s.input}`,
+    s.source === "run" ? `with the settings ${s.delta_pdf} records` : "with the package defaults",
+    s.defaulted.length && s.source === "run" ? `the defaults for ${s.defaulted.join(", ")}, which it lacks` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
 
 export function ConsistencyViewer() {
   const checkLit = useGlow("check");
@@ -460,7 +477,10 @@ export function ConsistencyViewer() {
           <span className="qr-rt-arrow">→</span>
           <span className="qr-rt qr-rt--qp">Q′</span>
         </div>
-        <span className="qr-desc">Band-limited round-trip · reconstruction compared to the input</span>
+        <span className="qr-desc" title={meta?.settings && settingsDetail(meta.settings)}>
+          Band-limited round-trip · reconstruction compared to the input
+          {meta?.settings && ` · ${settingsLabel(meta.settings)}`}
+        </span>
         <div className="qr-header-actions">
           {m && (
             <span className="qr-metric-row">
