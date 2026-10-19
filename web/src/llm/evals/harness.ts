@@ -91,6 +91,30 @@ export function grade(scenario: Scenario, run: EvalRun): ScenarioResult {
   return { scenario: scenario.id, passed: !run.error && grades.every((g) => g.pass), grades, run };
 }
 
+/** A run as a scenario record keeps it (live.test.ts writes it into docs/evals/results/). */
+export interface RecordedRun {
+  scenario: string;
+  latency_ms: number;
+  usage: EvalRun["usage"];
+  steps: Omit<AgentStep, "id">[];
+  answer: string;
+  note: string | null;
+  error: string | null;
+  failure?: EvalRun["failure"];
+}
+
+/** A recorded run as the run it records, to grade it again (NEBULA_EVAL_REGRADE) or read its answer. */
+export const runOfRecord = (r: RecordedRun): EvalRun => ({
+  scenario: r.scenario,
+  steps: r.steps.map((s, i) => ({ id: String(i), ...s })),
+  content: r.answer,
+  note: r.note ?? undefined,
+  error: r.error ?? undefined,
+  failure: r.failure ?? null,
+  latencyMs: r.latency_ms,
+  usage: r.usage,
+});
+
 export async function runScenario(
   scenario: Scenario,
   {
