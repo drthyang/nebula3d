@@ -73,6 +73,9 @@ python3 -m mypy src/nebula3d --ignore-missing-imports --python-version 3.12
 npm --prefix web test
 ```
 
+`npm --prefix web test` runs the console's replay tests too, which need Python
+([below](#the-replay-tests-the-dev-cases-through-the-pages-path)).
+
 By default pytest leaves out the validation's held-out test split
 ([evals.md](evals.md#the-cases-and-the-split)): nothing that is tuned may see it,
 and pytest prints every test's name, so a builder tuning against the suite would
@@ -96,9 +99,54 @@ with `NEBULA_HOLDOUT_TESTS=1`:
   `.github/constraints/typecheck.txt` (mypy's verdict depends on them);
 - the tests again under the numpy, scipy, h5py and matplotlib that Pyodide
   0.27.7 ships, the stack the browser build runs on;
-- the console's lint, tests and both builds (native and Pages).
+- the console's lint, tests and both builds (native and Pages); its replay
+  tests run on that same stack, on Python 3.12, the CPython Pyodide 0.27.7
+  ships, and a step checks both against `.github/constraints/pyodide-0.27.7.txt`
+  first.
 
 The Pages workflow deploys `main` to GitHub Pages after CI passes on it.
+
+### The replay tests: the dev cases through the Pages path
+
+The console's tests are two vitest projects (`web/vitest.config.ts`):
+
+- `unit`: every `*.test.ts` but the replays. No Python is needed; it is the
+  fast loop, about three seconds:
+
+  ```bash
+  cd web && npx vitest --project unit
+  ```
+
+- `replay`: the `*.replay.test.ts` files. They run the in-browser (Pages)
+  build's own path, the client, `pyodideEngine.ts`, the stores and NEBULA
+  Pilot's tools, with `VITE_DATA_MODE=pyodide`, on the validation's dev cases
+  ([evals.md](evals.md#the-cases-and-the-split)) built where the tests run.
+  Only the transport under the engine's Worker messages differs: a CPython
+  bridge (`web/src/llm/evals/devData/bridge.py`) answers them from
+  `nebula3d.webbridge` over stdio instead of Pyodide. Nothing is recorded, so
+  the Python and the TypeScript of the checkout always run together.
+  `devCase(id)` (`web/src/llm/evals/devData/index.ts`) is their interface: a
+  handle on one dev case, from its default run, for running a tool on it or
+  replaying a scripted model through the agent loop. Only the dev split is
+  built; the held-out test split never is.
+
+`npm run test` runs both. The replay project needs a Python 3.10 or newer with
+the package installed (`pip install -e .` from the repository root). It takes
+`NEBULA_PYTHON` when set, else `.venv/bin/python` at the repository root, else
+`python3`, and puts the checkout's `src/` first on its `PYTHONPATH`. Without
+one that imports this checkout's `nebula3d` with numpy, scipy and h5py, the
+project fails at its start, saying how to fix it; it never skips. From `web/`:
+
+```bash
+NEBULA_PYTHON=/path/to/python npx vitest --project replay
+```
+
+The dev cases are built on an 81³ grid (every Bragg node on a voxel; each
+case's default run takes about a second). `NEBULA_DEV_N=161` builds them on
+the validation's own 161³ grid, for a nightly run (about five minutes). The
+known-answer tests (`knownAnswers.replay.test.ts`) hold each case's planted
+fault to its truth; a fault the tools miss on a grid stays listed in its
+`MISSES`, an expected failure with the reason, until the tools find it.
 
 ### The verdicts, before and after a change
 
