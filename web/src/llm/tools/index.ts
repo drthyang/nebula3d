@@ -60,7 +60,7 @@ import { openView, type ViewTarget } from "./openView";
 import { built, connective, evidence, inference, joined, reading, withoutInference, written, type Tagged } from "../inference";
 import { fit } from "../readings";
 import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS, skillsOn } from "../skills";
-import { judge, WORDS, type Outcome } from "../verdicts";
+import { judge, WORDS, type Outcome } from "../verdicts/rules";
 
 export type { ViewTarget } from "./openView";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";

@@ -7,10 +7,11 @@
 // readers.ts (the reader matrix and which result each reader reads) and
 // recorded.ts (the word-reading adapter, for results without outcomes).
 //
-// One exception: the tuning's modules (tune/evaluate.ts, tune/prompts.ts) read
-// the rules from rules.ts. The tools' registry imports them, and through this
-// file they would import the readers, whose freshness (evidence.ts) imports
-// the registry back: a cycle that the tests' module mocks cannot resolve.
+// One exception: the tools and the tuning's modules (tune/evaluate.ts,
+// tune/prompts.ts), which the tools import, read the rules from rules.ts.
+// Through this file they would import the readers, whose freshness
+// (evidence.ts) imports the tools' registry back: a cycle that the tests'
+// module mocks cannot resolve (imports.test.ts holds the modules to none).
 
 export { judge, UNROUNDED, WORDS } from "./rules";
 export type {
