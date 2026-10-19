@@ -12,7 +12,9 @@
 //   part of its clauses;
 // - a clause ends at "; ", at a spaced dash, and at ": " after a label of
 //   more than three words;
-// - a curly apostrophe reads as a straight one ("isn’t").
+// - a curly apostrophe reads as a straight one ("isn’t");
+// - a span that ends with a question mark asks; one that a condition or a
+//   plan opens ("If …", "I will …") is tentative.
 
 /** A span of the answer, as the witness reads it (graderReading.ts: GradedSpan). */
 export interface WitnessSpan {
@@ -83,10 +85,20 @@ export function witnessNumbers(text: string): number[] {
     .filter(Number.isFinite);
 }
 
-/** A span: whether it negates (*words*: the span without a leading answer word), and its numbers. */
+/** Words that put what follows them as a condition or a plan, when they come first. */
+const LEADING_CONDITION_OR_PLAN = /^[^a-z0-9]*(if|whether|unless|let me|i will|i'll|i'd|i'm going to)\b/i;
+
+/** A span: whether it negates, is tentative (*words*: the span without a leading answer word) or asks, and its numbers. */
 function span(text: string, words: string): WitnessSpan {
   const written = witnessNumbers(text);
-  return { text, negated: negates(words), tentative: false, question: false, numbers: written, angles: written };
+  return {
+    text,
+    negated: negates(words),
+    tentative: LEADING_CONDITION_OR_PLAN.test(words.replace(/’/g, "'")),
+    question: text.endsWith("?"),
+    numbers: written,
+    angles: written,
+  };
 }
 
 /** An answer, as the witness reads it. */

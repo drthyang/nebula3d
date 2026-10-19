@@ -32,10 +32,21 @@ export interface GradedAnswer {
 
 export type GraderReader = (answer: string) => GradedAnswer;
 
-/** A span as the graders read it: a negation or an absence negates (W2). */
+/**
+ * A span as the graders read it: a negation or an absence negates (W2); a
+ * condition or a plan that opens it makes it tentative (a hedge later in it
+ * does not, W4); a question mark ends a question.
+ */
 function graded(s: Span): GradedSpan {
   const numbers = witnessNumbers(s.text);
-  return { text: s.text, negated: s.cues.has("negation") || s.cues.has("absence"), tentative: false, question: false, numbers, angles: numbers };
+  return {
+    text: s.text,
+    negated: s.cues.has("negation") || s.cues.has("absence"),
+    tentative: s.opens === "conditional" || s.opens === "plan",
+    question: s.question,
+    numbers,
+    angles: numbers,
+  };
 }
 
 /**

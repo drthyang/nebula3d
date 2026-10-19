@@ -286,6 +286,23 @@ describe("grading what a run reported", () => {
     expect(pass(detectionChecks(ub), run("The UB is not turned; the data are fine at 0.6 Å⁻¹."))).toBe(false);
   });
 
+  it("takes a question for no claim, of a fault or against one", () => {
+    const control = caseNamed("dev-control")!;
+    expect(pass(falseAlarmChecks(control), run("Is the UB turned by 0.6°?"))).toBe(true);
+    expect(pass(falseAlarmChecks(control), run("The UB is turned by 0.6°."))).toBe(false);
+    const saysUb = detectionChecks(ub).find((k) => k.name === "says the fault (ub)")!;
+    expect(saysUb.grade(run("Is the UB turned by 0.6°?")).pass).toBe(false);
+  });
+
+  it("does not credit a fault that a plan or a condition opens", () => {
+    const saysUb = detectionChecks(ub).find((k) => k.name === "says the fault (ub)")!;
+    expect(saysUb.grade(run("I will check whether the UB is turned.")).pass).toBe(false);
+    expect(saysUb.grade(run("If the UB is turned, re-index the sample."))).toMatchObject({ pass: false });
+    expect(saysUb.grade(run("The UB is turned by 0.6°, if the fit is right.")).pass).toBe(true); // a hedge later in it does not (W4)
+    // No hedge excuses an alarm (W5).
+    expect(pass(falseAlarmChecks(caseNamed("dev-control")!), run("If the UB is wrong by 0.4°, re-index the sample."))).toBe(false);
+  });
+
   it("reads a claim after a long label's colon apart from the label, as the answer checks do (the dev-origin colon case)", () => {
     const origin = caseNamed("dev-origin")!;
     // The label's negation is its own: the origin's shift is claimed after it.

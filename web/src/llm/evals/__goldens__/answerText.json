@@ -1395,7 +1395,7 @@
  "ollama-gemma4-26b run 04 (punch-missed) | answer": "8b6f5369a28cbb62",
  "ollama-gemma4-26b run 04 (punch-missed) | gate": "4d52d55d63b9a464",
  "ollama-gemma4-26b run 04 (punch-missed) | dev-control": "D 1 F 01111",
- "ollama-gemma4-26b run 04 (punch-missed) | dev-ub": "D 110 F 1111",
+ "ollama-gemma4-26b run 04 (punch-missed) | dev-ub": "D 100 F 1111",
  "ollama-gemma4-26b run 04 (punch-missed) | dev-origin": "D 10 F 0111",
  "ollama-gemma4-26b run 04 (punch-missed) | dev-coverage": "D 100 F 0111",
  "ollama-gemma4-26b run 04 (punch-missed) | dev-rings": "D 1000 F 0111",

@@ -76,26 +76,29 @@ export function didNotRun(name: string, args?: (a: Record<string, unknown>) => b
   };
 }
 
-/** A sentence that matches *re* and does not negate it (a leading "No," answers, it does not negate). */
-const claims = (s: GradedSpan, re: RegExp): boolean => re.test(s.text) && !s.negated;
+/**
+ * A sentence that matches *re* and does not negate it (a leading "No,"
+ * answers, it does not negate), and does not ask it: a question is no claim.
+ */
+const claims = (s: GradedSpan, re: RegExp): boolean => re.test(s.text) && !s.negated && !s.question;
 
-/** Some sentence of the answer matches *re* without negating it. */
+/** Some sentence of the answer matches *re* without negating it, and not as a condition or a plan that opens it. */
 export function asserts(re: RegExp, what: string): Check {
   return readCheck(`says ${what}`, (answer) => {
-    const hit = answer.sentences.find((s) => claims(s, re));
+    const hit = answer.sentences.find((s) => claims(s, re) && !s.tentative);
     return hit ? ok(`“${hit.text.slice(0, 160)}”`) : fail(`no sentence says ${what}`);
   });
 }
 
-/** Some sentence matches *re*, negated or not (for answers whose claim is a negation). */
+/** Some sentence matches *re*, negated or not (for answers whose claim is a negation); a question says nothing. */
 export function mentions(re: RegExp, what: string): Check {
   return readCheck(`says ${what}`, (answer) => {
-    const hit = answer.sentences.find((s) => re.test(s.text));
+    const hit = answer.sentences.find((s) => re.test(s.text) && !s.question);
     return hit ? ok(`“${hit.text.slice(0, 160)}”`) : fail(`no sentence says ${what}`);
   });
 }
 
-/** No sentence asserts *re* (one that negates it is fine). */
+/** No sentence asserts *re* (one that negates it is fine; no hedge excuses one that does not, W5). */
 export function neverAsserts(re: RegExp, what: string): Check {
   return readCheck(`never claims ${what}`, (answer) => {
     const hit = answer.sentences.find((s) => claims(s, re));

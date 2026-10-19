@@ -77,6 +77,16 @@ describe("the witness's reading", () => {
     expect(witness("The UB isn’t turned.").clauses[0].negated).toBe(true);
   });
 
+  it("knows a question by its question mark", () => {
+    expect(witness("Is the UB turned? It is; is it right?").clauses.map((c) => c.question)).toEqual([true, false, true]);
+  });
+
+  it("knows a span a condition or a plan opens, and not one a hedge comes later in", () => {
+    const tentative = (t: string) => witness(t).clauses[0].tentative;
+    expect(["If the UB is turned, re-index.", "- Whether it is turned is open.", "I will check the UB.", "I’ll check the UB.", "Let me check.", "No, if it were turned we would see it."].map(tentative)).toEqual([true, true, true, true, true, true]);
+    expect(["The UB is turned if the fit is right.", "Next, the UB.", "Ifs remain."].map(tentative)).toEqual([false, false, false]);
+  });
+
   it("reads numbers however a model writes them", () => {
     expect(witness("0.41, 3.2e-6, 3.2 × 10⁻⁶, 3.2 x 10^-6, $3.2 \\times 10^{-6}$, 12 %").numbers).toEqual([0.41, 3.2e-6, 3.2e-6, 3.2e-6, 3.2e-6, 12]);
   });
