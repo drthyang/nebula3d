@@ -8,6 +8,7 @@ import type { Slice } from "../../api/types";
 import { rasterize } from "../report/figures";
 import { reportHtml, reportMarkdown } from "../report/render";
 import { buildReport, fmt, type ReportInput } from "../report/report";
+import { judge, type Outcome } from "../verdicts";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
 
@@ -189,6 +190,25 @@ describe("a card states only what it judges", () => {
     const pdf = r.checks.find((c) => c.title === "3D-ΔPDF")!;
     expect(pdf.verdict).toBe("attention");
     expect(pdf.headline).toMatch(/ · symmetry broken$/);
+  });
+
+  it("counts qmax_coverage's \"too far\" on the 3D-ΔPDF's card, though the evaluation's weight is within the limit (D2, 2.4.2)", () => {
+    // Synthetic measurements: the window reaches 9.1 Å⁻¹ (to zero at the box faces), past full coverage at 6.5 Å⁻¹; then 6.283 Å⁻¹, inside it.
+    const reach = { window_weight: null, window: "the ΔPDF's ellipsoid window", unit_cell: true, full_coverage_q: 6.5, shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } };
+    const past = judge("coverage", { ...reach, reach: 9.1, reach_from: "the window tapers to zero at the box faces" });
+    const inside = judge("coverage", { ...reach, reach: 6.283, reach_from: "the window is tapered to the measured coverage" });
+    const card = (coverage: Outcome, kept: boolean) => {
+      const measured = { ...input().measured, coverage: { verdict: coverage.words, window_weight_on_unmeasured: null }, ...(kept ? { outcomes: [coverage] } : {}) };
+      return buildReport(input({ measured }));
+    };
+    // As the measurement pass keeps the tool's outcome, and as its words read.
+    for (const kept of [true, false]) {
+      const r = card(past, kept);
+      expect(r.checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("attention");
+      expect(r.achieved.text).toBe("not met: needs attention: Ring removal, Bragg punch, 3D-ΔPDF");
+      expect(card(inside, kept).checks.find((c) => c.title === "3D-ΔPDF")!.verdict).toBe("pass");
+    }
+    expect(card(past, true).checks.find((c) => c.title === "3D-ΔPDF")!.details).toContainEqual(["Coverage", past.words]);
   });
 
   it("reports the flatten's floor in σ without judging it, by the pedestal rule", () => {

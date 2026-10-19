@@ -128,13 +128,14 @@ export const D11_ANSWER_JUDGES_MISSING_OUTPUT = true;
 export const D12_ANSWER_SKIPS_WORDS_THAT_ARE_NO_LABEL = true;
 
 /**
- * D2: the report's 3D-ΔPDF card reads qmax_coverage's weight on unmeasured
- * space, where the ΔPDF's evaluation records none, and never its verdict: a
- * reach past full coverage ("too far: the transform reaches …") needs
- * attention in {{achieved}} and none in the report. Unify (2.4.2): set this to
- * false; the card then also counts the coverage's "too far".
+ * D2, unified (plan 2.4.2, the user's decision of 2026-10-19): the report's
+ * 3D-ΔPDF card counts qmax_coverage's "too far" (its window's weight past the
+ * limit, or the transform's reach past full coverage), read as {{achieved}}
+ * reads it, besides the weight on unmeasured space. true: the card read the
+ * coverage's weight only, where the ΔPDF's evaluation records none, and never
+ * its verdict, the report's reading before 2.4.2.
  */
-export const D2_REPORT_COVERAGE_BY_WEIGHT_ONLY = true;
+export const D2_REPORT_COVERAGE_BY_WEIGHT_ONLY = false;
 
 /**
  * D9: without a ΔPDF evaluation, the report judges its 3D-ΔPDF card from the
@@ -321,9 +322,9 @@ function pdfCard(pdf: Outcome | undefined, coverage: Outcome | undefined, symmet
   if (!pdf && !coverage && !symmetry) return undefined;
   if (!pdf && !D9_REPORT_PDF_CARD_WITHOUT_EVALUATION) return "info";
   const back = pdf?.reasons.includes("back-FFT") ?? false;
-  // The evaluation's weight, else the coverage's; the coverage's verdict only once D2 is unified.
+  // The evaluation's weight, else the coverage's; and the coverage's verdict, as {{achieved}} reads it (D2).
   const window = windowOf(pdf) ?? windowOf(coverage);
-  const far = !D2_REPORT_COVERAGE_BY_WEIGHT_ONLY && coverage?.kind === "attention";
+  const far = !D2_REPORT_COVERAGE_BY_WEIGHT_ONLY && coverage !== undefined && MATRIX.coverage.achieved(coverage) === "attention";
   const broken = symmetry?.kind === "attention" || (!D13_REPORT_SYMMETRY_FROM_SYMMETRY_CHECK_ONLY && (pdf?.reasons.includes("symmetry broken") ?? false));
   return back || window === "past" || far || broken ? "attention" : "pass";
 }
