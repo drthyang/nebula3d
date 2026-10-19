@@ -2032,6 +2032,15 @@ def _write_consistency_figure(rows: list, out_png: Path) -> None:
     plt.close(fig)
 
 
+def _flatten_off_notice(p: PipelineParams, pdf_input: Path) -> str | None:
+    """The ΔPDF stage's log line naming the volume it transforms when the
+    flatten is off (None with it on), so the log says which one it took."""
+    if p.flatten_enabled:
+        return None
+    return (f"flatten disabled: the ΔPDF transforms {Path(pdf_input).name}, "
+            "with no background removed")
+
+
 def _pdf_is_current(pdf_path: Path, expected_src: str, expected_config: str) -> bool:
     """Whether *pdf_path* was made from *expected_src* with *expected_config*
     (its provenance only — the ΔPDF array is not read; either file layout)."""
@@ -2191,20 +2200,29 @@ def run_pipeline(
     }
     _cleanup_chain = ("rings", "punch", "backfill", "flatten")
 
+    def _switched_off(stage: str) -> bool:
+        # A stage the run's settings turn off (the flatten, flatten_enabled):
+        # it passes its input through, unlike a stage merely left out of
+        # `stages`, whose output on disk a partial re-run reads.
+        return stage == "flatten" and not p.flatten_enabled
+
     def _produces(stage: str) -> bool:
-        if stage == "flatten":
-            return "flatten" in selected and p.flatten_enabled
-        return stage in selected
+        return stage in selected and not _switched_off(stage)
 
     def stage_input(stage: str) -> Path:
         # Walk back from the immediate predecessor: take the most recent stage
         # that is enabled this run (its output is produced), or — for a partial
         # re-run where an upstream output already exists on disk — that file
         # (from `inputs` when given); otherwise keep passing through, falling
-        # back to the raw input.
+        # back to the raw input.  A stage switched off is passed through
+        # without looking: an output an earlier run left on disk is not this
+        # run's (with the flatten off, the ΔPDF takes the backfilled volume,
+        # never a flattened one left from before).
         upto = (_cleanup_chain.index(stage)
                 if stage in _cleanup_chain else len(_cleanup_chain))
         for prev in reversed(_cleanup_chain[:upto]):
+            if _switched_off(prev):
+                continue
             if _produces(prev):
                 return _stage_output[prev]
             out = _stage_output[prev] if inputs is None else inputs.get(prev)
@@ -2359,6 +2377,9 @@ def run_pipeline(
             if paths.delta_pdf.exists() and not is_current:
                 _emit(progress, "pdf", "progress", None,
                       f"{paths.delta_pdf.name} stale — recomputing")
+            notice = _flatten_off_notice(p, pdf_input)
+            if notice is not None:
+                _emit(progress, "pdf", "progress", None, notice)
             pdf_vol = stage_load(pdf_input, "pdf")
             dpdf_obj = delta_pdf(pdf_vol, p.delta_pdf, progress=progress)
             write_delta_pdf_h5(dpdf_obj, pdf_vol, p.delta_pdf,

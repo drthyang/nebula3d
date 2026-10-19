@@ -358,6 +358,37 @@ def test_flatten_disabled_routes_backfilled_into_pdf(tmp_path, stubbed):
     assert logs["source_file"] == paths.backfilled.name
 
 
+def _flatten_off_notice(paths):
+    return (f"flatten disabled: the ΔPDF transforms {paths.backfilled.name}, "
+            "with no background removed")
+
+
+@pytest.mark.parametrize("via_inputs", [False, True], ids=["proc_dir", "inputs"])
+def test_flatten_disabled_never_reads_a_flattened_volume_left_on_disk(
+        tmp_path, stubbed, via_inputs):
+    """With the flatten off, the ΔPDF takes the run's backfilled volume, as
+    PipelinePaths.pdf_input says: never a flattened one an earlier run left,
+    in the processed folder or among a tuning trial's inputs. A stage merely
+    left out of `stages` still hands its output on (a partial re-run)."""
+    inp = _seed_input(tmp_path)
+    paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path, flatten_enabled=False)
+    nebula3d.save(stubbed.vol, paths.flattened)  # left by a run with the flatten on
+    kw: dict = {}
+    if via_inputs:
+        nebula3d.save(stubbed.vol, paths.backfilled)
+        kw = dict(stages=("pdf",),
+                  inputs={"backfill": paths.backfilled, "flatten": paths.flattened})
+    events = []
+    pipeline.run_pipeline(inp, pipeline.PipelineParams(flatten_enabled=False),
+                          proc_dir=tmp_path, progress=lambda *a: events.append(a), **kw)
+
+    assert paths.pdf_input == paths.backfilled
+    logs = load_delta_pdf(paths.delta_pdf, read_data=False).logs
+    assert logs["source_file"] == paths.backfilled.name
+    assert ("pdf", "progress", None, _flatten_off_notice(paths)) in events
+    assert "flatten" not in stubbed.calls
+
+
 def test_invalid_force_from_raises(tmp_path):
     with pytest.raises(ValueError, match="force_from"):
         pipeline.run_pipeline(tmp_path / "x.nxs", proc_dir=tmp_path,
@@ -503,3 +534,63 @@ def test_real_pdf_check_roundtrip_metrics(tmp_path):
     metrics = json.loads(paths.pdf_check_json.read_text())
     assert metrics["pearson_r"] > 0.999        # gaussian window → near-exact
     assert metrics["normalized_rms"] < 1e-2
+
+
+# ---------------------------------------------------------------------------
+# the flatten off after a run with it on: the ΔPDF's input (known answers)
+# ---------------------------------------------------------------------------
+def _demo_input(tmp_path):
+    from nebula3d.demo import demo_volume
+
+    inp = tmp_path / "raw" / "synthetic_demo.nxs"
+    inp.parent.mkdir()
+    nebula3d.save(demo_volume(25), inp)
+    return inp
+
+
+def _transforms(paths, source):
+    """The run's ΔPDF records *source* as its input and is, bit for bit, the
+    pipeline's transform of that volume; its saved check is that volume's."""
+    pdf = load_delta_pdf(paths.delta_pdf)
+    assert pdf.logs["source_file"] == source.name
+    direct = pipeline.delta_pdf(nebula3d.load(source), pipeline.DeltaPdfParams())
+    np.testing.assert_array_equal(pdf.data, direct.data)
+    check = json.loads(paths.pdf_check_json.read_text())
+    want = pipeline.pdf_consistency_check(nebula3d.load(source), direct,
+                                          pipeline.DeltaPdfParams())
+    for key in ("pearson_r", "normalized_rms", "n_voxels"):
+        assert check[key] == pytest.approx(want[key], rel=1e-12), key
+
+
+@pytest.mark.parametrize("earlier", [None, "resume", "force"])
+def test_the_flatten_off_transforms_the_runs_backfilled_volume(tmp_path, earlier):
+    """With the flatten off the ΔPDF is the backfilled volume's: from scratch
+    (as before the fix), and after a run with the flatten on, which leaves its
+    flattened volume on disk (resumed or forced: before the fix the second run
+    transformed that file, or kept the first run's ΔPDF as current)."""
+    inp = _demo_input(tmp_path)
+    proc = tmp_path / "processed"
+    if earlier is not None:
+        pipeline.run_pipeline(inp, proc_dir=proc)  # the flatten on
+    paths = pipeline.pipeline_paths(inp, proc_dir=proc, flatten_enabled=False)
+    left = paths.flattened.stat().st_mtime_ns if earlier is not None else None
+    events = []
+    pipeline.run_pipeline(inp, pipeline.PipelineParams(flatten_enabled=False),
+                          proc_dir=proc, force=earlier == "force",
+                          progress=lambda *a: events.append(a))
+
+    _transforms(paths, paths.backfilled)
+    assert ("pdf", "progress", None, _flatten_off_notice(paths)) in events
+    if earlier is None:
+        assert not paths.flattened.exists()
+    else:  # the earlier run's flattened volume is left as it was
+        assert paths.flattened.stat().st_mtime_ns == left
+
+
+def test_the_flatten_on_transforms_its_flattened_volume_as_before(tmp_path):
+    inp = _demo_input(tmp_path)
+    events = []
+    paths = pipeline.run_pipeline(inp, proc_dir=tmp_path / "processed",
+                                  progress=lambda *a: events.append(a))
+    _transforms(paths, paths.flattened)
+    assert not any("flatten disabled" in e[3] for e in events)
