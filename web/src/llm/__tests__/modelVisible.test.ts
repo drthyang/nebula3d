@@ -162,7 +162,7 @@ const QUESTION = "How clean is this reduction?";
 // ---------------------------------------------------------------- 1. the opening messages
 
 describe("1. the system prompt and the first user message, as the app builds them", () => {
-  const tools = (ts: AgentTool[]) => `Tools offered (${ts.length}): ${ts.map((t) => t.name).join(", ")}.`;
+  const tools = (ts: readonly AgentTool[]) => `Tools offered (${ts.length}): ${ts.map((t) => t.name).join(", ")}.`;
 
   it("arm B: tools on, skills on (the Pilot as shipped)", async () => {
     const b = armSetup("B", context);

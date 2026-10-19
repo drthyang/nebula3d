@@ -45,6 +45,16 @@ export function callTool(
   return runToolCall({ id: name, type: "function", function: { name, arguments: text } }, tools, ctx, io);
 }
 
+/** A call's arguments as the model wrote them, parsed: the JSON object they are, or null when they are none (cut off mid-way, a list). */
+export function parseArguments(text: string): Args | null {
+  try {
+    const parsed: unknown = JSON.parse(text || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Args) : null;
+  } catch {
+    return null;
+  }
+}
+
 // Run one call the model made.  Never throws: a bad call becomes an error
 // message the model reads and can correct.
 export async function runToolCall(
@@ -53,15 +63,22 @@ export async function runToolCall(
   ctx: ToolContext,
   io: ToolIO = {},
 ): Promise<ToolRun> {
-  let args: Args = {};
-  try {
-    const parsed = JSON.parse(call.function.arguments || "{}");
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed as Args;
-    else throw new Error("not an object");
-  } catch {
+  return runParsed(call, parseArguments(call.function.arguments), tools, ctx, io);
+}
+
+/** runToolCall with the call's arguments parsed already (parseArguments; null: none): the round parses each call's once. */
+export async function runParsed(
+  call: ToolCall,
+  parsed: Args | null,
+  tools: readonly AgentTool[],
+  ctx: ToolContext,
+  io: ToolIO = {},
+): Promise<ToolRun> {
+  if (!parsed) {
     const text = `Error: the arguments were not a JSON object: ${call.function.arguments.slice(0, 200)}`;
-    return { ok: false, args, text, summary: "invalid arguments" };
+    return { ok: false, args: {}, text, summary: "invalid arguments" };
   }
+  const args = parsed;
   const tool = tools.find((t) => t.name === call.function.name);
   if (!tool) {
     const text = `Error: no tool named ${call.function.name}. Available: ${tools.map((t) => t.name).join(", ")}`;

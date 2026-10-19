@@ -11,7 +11,9 @@
 // - registry.ts: CHAT_TOOLS in the model's order, and their facts, offer and
 //   skill gate;
 // - call.ts: the executor's one call, as the model wrote it (runToolCall)
-//   or by the tool's name (callTool).
+//   or by the tool's name (callTool);
+// - round.ts: the executor's round, a model turn's calls over the reply's
+//   history (startReply, runRound, forget), with the repeat guard.
 //
 // facts.ts and openView.ts are leaf modules, imported directly.
 
@@ -20,3 +22,4 @@ export { ToolArgError } from "./types";
 export type { ViewTarget } from "./openView";
 export { CHAT_TOOLS, factsOf, toolSpecs, toolsWhere, toolsWithSkills, unreadSkillRefusal } from "./registry";
 export { callTool, MAX_RESULT_CHARS, runToolCall, type ToolRun } from "./call";
+export { BARREN_ROUNDS, callKey, forget, runRound, startReply, type CallKey, type History, type Round } from "./round";

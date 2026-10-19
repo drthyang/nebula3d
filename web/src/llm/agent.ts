@@ -143,7 +143,7 @@ export const REVISING_NOTE = "Checking the answer against its evidence…";
 // earlier turns, and the tools' own guidance. No assistant text: an earlier
 // answer's number from nowhere would otherwise vouch for the next answer, and
 // this reply's drafts, and the notes sent back about them, for themselves.
-function numberSources(convo: ChatMessage[], arrived: number, results: readonly string[], tools: AgentTool[], earlier: readonly string[]): string {
+function numberSources(convo: ChatMessage[], arrived: number, results: readonly string[], tools: readonly AgentTool[], earlier: readonly string[]): string {
   const text = (m: ChatMessage): string =>
     typeof m.content === "string"
       ? m.content

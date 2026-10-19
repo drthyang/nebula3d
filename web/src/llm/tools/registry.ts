@@ -102,7 +102,7 @@ export function unreadSkillRefusal(name: string, args: Args, read: ReadonlySet<s
  * The agent loop offers, runs and checks answers against this list alone, so a
  * call to a tool it left out is refused as one the registry does not hold.
  */
-export function toolsWithSkills(tools: AgentTool[], skills: boolean): AgentTool[] {
+export function toolsWithSkills(tools: readonly AgentTool[], skills: boolean): readonly AgentTool[] {
   if (skills) return tools;
   return tools
     .filter((t) => !factsOf(t.name).needsSkills)
@@ -110,7 +110,7 @@ export function toolsWithSkills(tools: AgentTool[], skills: boolean): AgentTool[
 }
 
 // Only name, description and parameters: the facts never reach the model.
-export const toolSpecs = (tools: AgentTool[]): ToolSpec[] =>
+export const toolSpecs = (tools: readonly AgentTool[]): ToolSpec[] =>
   tools.map((t) => ({
     type: "function",
     function: { name: t.name, description: t.description, parameters: t.parameters },
