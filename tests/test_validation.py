@@ -3,8 +3,20 @@
 """The validation cases, their truth and their scoring (nebula3d.validation):
 the planted truth is where the cases say, the scorer passes the truth and fails
 a reduction that lost it, arm A runs and is reproducible, and the held-out
-test split stays out of everything that is tuned."""
+test split stays out of everything that is tuned.
 
+The test split's definitions live in a module of their own, which the opt-in
+alone loads (``NEBULA_HOLDOUT_TESTS=1``, as CI sets): without it, the tests that
+need the test split skip, and the others check the dev cases. No failure here
+shows a held-out case: a test that loops over cases names a test case by its
+masked name (conftest.py's ``test-split-case-<i>``), asserts on a bool or a
+count with a message of its own, and compares the test split by digest."""
+
+import ast
+import contextlib
+import dataclasses
+import hashlib
+import io
 import json
 import os
 import re
@@ -14,13 +26,26 @@ import sys
 from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pytest
 
 from nebula3d.io.hkl_reader import save
 from nebula3d.pipeline import DeltaPdfParams, delta_pdf, write_delta_pdf_h5
-from nebula3d.validation import CASES, FAMILIES, TOLERANCES, Case, build, case_named, cases
+from nebula3d.validation import (
+    FAMILIES,
+    HOLDOUT_ENV,
+    TOLERANCES,
+    Case,
+    HeldOutError,
+    all_cases,
+    build,
+    case_named,
+    cases,
+    holdout_opted_in,
+)
 from nebula3d.validation.__main__ import main, manifest
 from nebula3d.validation.arm_a import run_case_a
 from nebula3d.validation.arm_d import run_case_d
@@ -38,34 +63,104 @@ from nebula3d.validation.score import resolved_features, score_outputs
 REPO = Path(__file__).resolve().parents[1]
 N = 81  # a coarse grid keeps the tests quick; every integer node stays on a voxel
 
+#: The tests that need the test split: it loads with the opt-in alone.
+needs_holdout = pytest.mark.skipif(
+    not holdout_opted_in(), reason=f"the held-out test split needs {HOLDOUT_ENV}=1"
+)
+
+
+def _named_cases() -> list[tuple[str, Case]]:
+    """The cases a test loops over, each with the name its failure may print: a dev case's
+    id, or conftest.py's masked ``test-split-case-<i>`` for the test split's, which are
+    here with the opt-in alone."""
+    named = [(c.id, c) for c in cases("dev")]
+    if holdout_opted_in():
+        named += [(f"test-split-case-{i}", c) for i, c in enumerate(cases("test"))]
+    return named
+
+
+def _dev_and_test() -> tuple[Sequence[Case], Sequence[Case]]:
+    return cases("dev"), cases("test")
+
+
+def _canonical_sha256(obj: Any) -> str:
+    """The sha256 of *obj* as canonical JSON (keys sorted, no spaces)."""
+    text = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(text.encode()).hexdigest()
+
 
 def test_every_family_has_one_dev_and_one_test_case():
+    # Splits and counts only; the test split's with the opt-in.
+    split_of = [c.split for _, c in _named_cases()]
+    families = [c.family for _, c in _named_cases()]
+    expected = ["dev", "test"] if holdout_opted_in() else ["dev"]
     for fam in FAMILIES:
-        splits = sorted(c.split for c in CASES if c.family == fam)
-        assert splits == ["dev", "test"], fam
-    assert len(cases("dev")) == len(cases("test")) >= 8
+        splits = sorted(s for s, f in zip(split_of, families) if f == fam)
+        assert splits == expected, fam
+    n_dev = len(cases("dev"))
+    assert n_dev >= 8
+    if holdout_opted_in():
+        n_test = len(cases("test"))
+        assert n_test == n_dev
 
 
-def test_dev_and_test_differ_in_crystal_and_fault():
-    dev, test = cases("dev"), cases("test")
-    assert dev[0].crystal != test[0].crystal
-    assert {p.vector for p in dev[0].crystal.planted}.isdisjoint(
-        {p.vector for p in test[0].crystal.planted}
-    )
-    assert dev[0].crystal.seed != test[0].crystal.seed
+def _shared_by_dev_and_test(dev: Sequence[Case], test: Sequence[Case]) -> list[str]:
+    """What the test split shares with dev that it must not: each by its kind, and by its
+    family (a family is public, one dev and one test case each), never by its value."""
+    shared = []
+    if dev[0].crystal == test[0].crystal:
+        shared.append("the crystal")
+    if {p.vector for p in dev[0].crystal.planted} & {p.vector for p in test[0].crystal.planted}:
+        shared.append("a planted vector")
+    if dev[0].crystal.seed == test[0].crystal.seed:
+        shared.append("the seed")
+    if len(dev) != len(test):
+        shared.append(f"{len(dev)} dev cases for {len(test)} test cases")
     for d, t in zip(dev, test):
-        assert d.family == t.family
-        if d.fault:
-            assert d.fault != t.fault, d.family
+        if d.family != t.family:
+            shared.append(f"no test case beside dev's {d.family}")
+        elif d.fault and d.fault == t.fault:
+            shared.append(f"the {d.family} fault")
+    return shared
+
+
+@needs_holdout
+def test_dev_and_test_differ_in_crystal_and_fault():
+    shared = _shared_by_dev_and_test(*_dev_and_test())
+    ok = not shared
+    assert ok, "the test split shares with dev: " + "; ".join(shared)
+
+
+def _on_fcc_vectors(named: Sequence[tuple[str, Case]]) -> list[str]:
+    """The names of the cases with a planted vector at an FCC lattice vector (doubled
+    fractions summing to an even number)."""
+    return [
+        name
+        for name, c in named
+        if any(sum(round(2 * x) for x in p.vector) % 2 == 0 for p in c.crystal.planted)
+    ]
 
 
 def test_planted_vectors_are_not_fcc_lattice_vectors():
     # The crystal's own order sits at FCC vectors (doubled fractions summing to
     # an even number); a planted correlation there could not be told from it.
-    for c in CASES:
-        for p in c.crystal.planted:
-            doubled = [round(2 * x) for x in p.vector]
-            assert sum(doubled) % 2 == 1, (c.id, p.vector)
+    # A failure names the case, a test case by its masked name, and not the vector.
+    bad = _on_fcc_vectors(_named_cases())
+    ok = not bad
+    assert ok, "a planted vector at an FCC lattice vector, in: " + ", ".join(bad)
+
+
+def _labels_shared(named: Sequence[tuple[str, Case]]) -> int:
+    labels = [label_of(c) for _, c in named]
+    return len(labels) - len(set(labels))
+
+
+def test_every_case_has_a_label_of_its_own():
+    # A model sees the label (test_what_a_model_can_see_names_no_case_fault_or_split): two
+    # cases with one label would be one dataset. A failure gives a count, no label.
+    shared = _labels_shared(_named_cases())
+    ok = shared == 0
+    assert ok, f"{shared} cases share their label with another"
 
 
 def test_orbit_holds_one_of_each_pair():
@@ -177,13 +272,15 @@ HOLDOUT_SCANNED = (
     "scripts",
     "docs",
     ".claude/skills",
+    "changes",  # the changelog's entries before they join CHANGELOG.md
     "*.md",
 )
-#: Where a test case may be named: where the cases are defined, the validation's
-#: records and tables, and the manifest the web harness grades answers against
-#: (validation.ts reads every case from it, by design).
+#: Where a test case may be named: the module that defines the test split (the rest
+#: of the validation package, the dev cases' module included, may not), the
+#: validation's records and tables, and the manifest the web harness grades answers
+#: against (validation.ts reads every case from it, by design).
 HOLDOUT_ALLOWED = re.compile(
-    r"^src/nebula3d/validation/"
+    r"^src/nebula3d/validation/holdout/"
     r"|^docs/evals/validation/"
     r"|^web/src/llm/evals/fixtures/validation-cases\.json$"
 )
@@ -330,6 +427,7 @@ def holdout_scan(root: Path, needles: list[tuple[str, list[re.Pattern[str]]]]) -
     return sorted(hits)
 
 
+@needs_holdout
 def test_nothing_tuned_names_a_test_case():
     """No file the scan reads (HOLDOUT_SCANNED, less HOLDOUT_ALLOWED and the
     HOLDOUT_SECTIONS) names a held-out case. A file names one when it holds, for
@@ -353,10 +451,12 @@ def test_nothing_tuned_names_a_test_case():
     never inside a longer one, and a bare number never: a fault's size is a small
     number that appears everywhere without its unit. Not matched at all, for that
     reason: the cell, the UB's axis, the amplitudes, and the shell's width, lobes
-    and power. The failure names the file and the kind, never the value.
+    and power. The failure names the file and the kind, never the value (nor the
+    text of a doc whose section heading is missing: that section holds test results).
     """
     for doc, heading in HOLDOUT_SECTIONS.items():
-        assert re.search(rf"^{re.escape(heading)}", (REPO / doc).read_text(), re.M), doc
+        found = re.search(rf"^{re.escape(heading)}", (REPO / doc).read_text(), re.M) is not None
+        assert found, f"{doc} has no {heading!r} section"
     hits = holdout_scan(REPO, holdout_needles(cases("test")))
     assert hits == [], "names a held-out test case (file: kind):\n" + "\n".join(hits)
 
@@ -405,9 +505,10 @@ def test_the_holdout_scan_finds_a_planted_test_case(tmp_path):
             "case's Q² background",
         ),
         "web/src/__snapshots__/run.snap": ("exports[`run`] = `test-fake-shell`;", "case's id"),
+        "src/nebula3d/validation/cases.py": ("# test-fake-ub is held out", "case's id"),
     }
     not_named = {
-        "src/nebula3d/validation/cases.py": "test-fake-ub",
+        "src/nebula3d/validation/holdout/heldout_cases.py": "test-fake-ub",
         "docs/evals/validation/table.md": "test-fake-ub",
         "web/src/llm/evals/fixtures/validation-cases.json": "test-fake-ub",
         "data/notes.md": "test-fake-ub",
@@ -426,14 +527,15 @@ def test_the_holdout_scan_finds_a_planted_test_case(tmp_path):
     assert holdout_scan(tmp_path, needles) == expected
 
 
+@needs_holdout
 def test_the_holdout_scan_finds_the_test_cases_out_of_place(tmp_path):
-    # The real test cases as the validation writes them, in the cases' module and
+    # The real test cases as the validation writes them, in their own module and
     # in the web harness's manifest, copied where the scan reads: every kind is
     # found (the seed in the module; the manifest has none). The needles are never
     # held in a local, so a failure shows kinds, not values.
     for src, dst in [
         ("web/src/llm/evals/fixtures/validation-cases.json", "docs/manifest.json"),
-        ("src/nebula3d/validation/cases.py", "examples/cases.py"),
+        ("src/nebula3d/validation/holdout/heldout_cases.py", "examples/cases.py"),
     ]:
         (tmp_path / dst).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / src, tmp_path / dst)
@@ -444,22 +546,91 @@ def test_the_holdout_scan_finds_the_test_cases_out_of_place(tmp_path):
     assert "examples/cases.py: a test crystal's seed" in hits
 
 
+MANIFEST = REPO / "web/src/llm/evals/fixtures/validation-cases.json"
+
+
+def _committed_manifest() -> dict[str, Any]:
+    return json.loads(MANIFEST.read_text())
+
+
+def _current_manifest() -> dict[str, Any]:
+    """The manifest as the code writes it: every case with the opt-in, else the dev cases."""
+    chosen = all_cases() if holdout_opted_in() else cases("dev")
+    return json.loads(json.dumps(manifest(chosen)))
+
+
+def _manifest_mismatches(
+    committed: dict[str, Any], current: dict[str, Any], *, with_test: bool
+) -> list[str]:
+    """Where the committed manifest is not the current one, by kind: its keys, the
+    families, each dev case by its id, the dev cases' order and the number of test
+    entries; with *with_test*, the test split's entries as one digest and the order of
+    every entry. Never a held-out value."""
+
+    def entries(m: dict[str, Any], split: str) -> list[dict[str, Any]]:
+        return [e for e in m.get("cases", []) if isinstance(e, dict) and e.get("split") == split]
+
+    wrong = []
+    if set(committed) != set(current):
+        wrong.append("the top-level keys")
+    if committed.get("families") != current.get("families"):
+        wrong.append("the families")
+    dev_now = {e["id"]: e for e in entries(current, "dev")}
+    dev_then = entries(committed, "dev")
+    by_id = {e.get("id"): e for e in dev_then}
+    wrong += [f"the dev case {i}" for i, e in dev_now.items() if by_id.get(i) != e]
+    if len(dev_then) != len(dev_now):
+        wrong.append(f"{len(dev_then)} dev entries for {len(dev_now)} dev cases")
+    elif [e.get("id") for e in dev_then] != list(dev_now):
+        wrong.append("the dev entries' order")
+    n_test = len(entries(committed, "test"))
+    if n_test != len(FAMILIES):
+        wrong.append(f"{n_test} test entries for {len(FAMILIES)} families")
+    n_other = len(committed.get("cases", [])) - len(dev_then) - n_test
+    if n_other:
+        wrong.append(f"{n_other} entries of no split")
+    if with_test:
+        if _canonical_sha256(entries(committed, "test")) != _canonical_sha256(
+            entries(current, "test")
+        ):
+            wrong.append("the test split's entries (their sha256 differs)")
+        splits = [e.get("split") for e in committed.get("cases", []) if isinstance(e, dict)]
+        if splits != [e["split"] for e in current["cases"]]:
+            wrong.append("the order of the dev and test entries")
+    return wrong
+
+
 def test_the_web_harness_reads_the_current_cases():
-    committed = json.loads((REPO / "web/src/llm/evals/fixtures/validation-cases.json").read_text())
-    assert committed == json.loads(json.dumps(manifest()))
+    # By kind: the dev entries one by one; the test split's, with the opt-in, as one
+    # digest. A failure says what differs, never a held-out value. The file is written
+    # by `python -m nebula3d.validation manifest --report`.
+    wrong = _manifest_mismatches(
+        _committed_manifest(), _current_manifest(), with_test=holdout_opted_in()
+    )
+    ok = not wrong
+    assert ok, f"{MANIFEST.relative_to(REPO)} is not current: " + "; ".join(wrong)
 
 
-def test_arm_d_passes_every_criterion_on_every_case(validation_case, tmp_path):
+def test_arm_d_passes_every_criterion_on_every_case(validation_case, tmp_path, request):
     # The planted truth is the reference: the scorer must pass it, whatever the fault.
     # The dev cases always; the test split's only with NEBULA_HOLDOUT_TESTS=1 (conftest.py).
-    r = run_case_d(validation_case, tmp_path, n=N)
-    passed = bool(r["pass"])
     if validation_case.split == "dev":
-        assert passed, r["summary"]
-    else:
-        # A held-out case's summary names the case and its vectors: say only what failed.
-        failed = sorted(name for name, ok in r["summary"]["criteria"].items() if not ok)
-        assert passed, f"failed criteria: {failed}"
+        r = run_case_d(validation_case, tmp_path, n=N)
+        assert r["pass"], r["summary"]
+        return
+    # A held-out case: its files are named by its masked name, not its id; an error or a
+    # failure says its kind or the failed criteria, never what the case holds.
+    masked = request.node.callspec.id
+    raised = None
+    try:
+        r = run_case_d(validation_case, tmp_path, n=N, stem=masked)
+    except Exception as err:  # noqa: BLE001 - its message may quote the case
+        raised = type(err).__name__
+    if raised is not None:  # outside the except: no chained traceback quotes the error
+        pytest.fail(f"arm D raised {raised} on {masked}", pytrace=False)
+    passed = bool(r["pass"])
+    failed = sorted(name for name, ok in r["summary"]["criteria"].items() if not ok)
+    assert passed, f"failed criteria: {failed}"
 
 
 # ------------------------------------------------- the test split in pytest's output
@@ -493,9 +664,13 @@ def _collect_arm_d(holdout: str | None) -> tuple[list[str], list[str], int, int]
     assert code == 0, f"collecting the arm D test failed (exit {code})"
     names = re.findall(rf"::{ARM_D}\[(.*)\]$", proc.stdout, re.M)
     dev_ids = {c.id for c in cases("dev")}
-    held_out = {c.id for c in cases("test")} | {label_of(c) for c in cases("test")}
     dev = [n for n in names if n in dev_ids]
     masked = [n for n in names if re.fullmatch(r"test-split-case-\d+", n)]
+    # A held-out id or label among the names is counted where this process may load the
+    # test split; without the opt-in, any name neither dev nor masked counts as other.
+    held_out = set()
+    if holdout_opted_in():
+        held_out = {c.id for c in cases("test")} | {label_of(c) for c in cases("test")}
     named = sum(any(w in n for w in held_out) for n in names)
     return dev, masked, named, len(names) - len(dev) - len(masked)
 
@@ -508,9 +683,10 @@ def test_the_default_run_leaves_the_test_split_out():
 
 
 def test_the_opt_in_runs_the_test_split_under_masked_names_only():
+    # One test case per family (test_every_family_has_one_dev_and_one_test_case).
     dev, masked, named, other = _collect_arm_d("1")
     assert dev == [c.id for c in cases("dev")]
-    assert masked == [f"test-split-case-{i}" for i in range(len(cases("test")))]
+    assert masked == [f"test-split-case-{i}" for i in range(len(FAMILIES))]
     assert (named, other) == (0, 0)
 
 
@@ -579,11 +755,9 @@ def test_a_case_with_fewer_runs_than_the_others_does_not_pass():
 
 def test_what_a_model_can_see_names_no_case_fault_or_split(tmp_path):
     # The tools show a model its dataset's id and stem, and the other datasets the server lists.
+    # (Every case's label is its own: test_every_case_has_a_label_of_its_own.)
     from nebula3d.validation.__main__ import dataset_stem
-    from nebula3d.validation.cases import label_of
 
-    labels = [label_of(c) for c in CASES]
-    assert len(set(labels)) == len(CASES)
     assert dataset_stem("dev-rings-shell", "B", 2) == f"{label_of('dev-rings-shell')}_B2"
     main(
         [
@@ -602,8 +776,300 @@ def test_what_a_model_can_see_names_no_case_fault_or_split(tmp_path):
     )
     served = sorted(p.name for p in (tmp_path / "raw").iterdir())
     assert len(served) == len(cases("dev")) * 2 * 2  # only the links are datasets
-    words = {c.id for c in CASES} | set(FAMILIES) | {"dev", "test"}
-    for name in served + sorted(p.name for p in (tmp_path / "volumes").iterdir()):
-        assert not any(w in name for w in words), name
-        assert re.fullmatch(r"v[0-9a-f]{6}(_[BC][12])?\.nxs", name), name
+    named = _named_cases()
+    words = {c.id for _, c in named} | set(FAMILIES) | {"dev", "test"}
+    names = served + sorted(p.name for p in (tmp_path / "volumes").iterdir())
+    bad = [n for n in names if any(w in n for w in words)]
+    bad += [n for n in names if not re.fullmatch(r"v[0-9a-f]{6}(_[BC][12])?\.nxs", n)]
+    ok = not bad
+    assert ok, "names a case, family or split, or is not opaque: " + ", ".join(
+        _shown_names(bad, [c for _, c in named if c.split != "dev"])
+    )
     assert all((tmp_path / "raw" / n).resolve().exists() for n in served)
+
+
+def _shown_names(names: Sequence[str], held_out: Sequence[Case]) -> list[str]:
+    """*names* as a failure may print them: one that carries a held-out case's id or
+    label as that, and no more."""
+    words = {c.id for c in held_out} | {label_of(c) for c in held_out}
+    return [
+        "(a name that carries a held-out case)" if any(w in n for w in words) else n for n in names
+    ]
+
+
+# ------------------------------------------------------------ the held-out module
+#
+# The test split's definitions live in their own module, which no one opens and
+# one loader imports, with the opt-in alone: NEBULA_HOLDOUT_TESTS=1 (tests, CI) or
+# the CLI's --report. Opting in gives the cases they were before the move.
+
+HELD_OUT_MODULE = "nebula3d.validation.holdout.heldout_cases"
+#: Where it may be imported, as (file, function): the opt-in loader alone.
+HELD_OUT_IMPORTERS = [("src/nebula3d/validation/cases.py", "_load_test_split")]
+#: What the import scan reads.
+IMPORTS_SCANNED = ("src", "tests", "scripts", "examples")
+#: sha256 of the test split's canonical JSON (each case's dataclasses.asdict, keys sorted),
+#: pinned when its definitions moved to their own module. A digest is not a value; a change
+#: to a test case changes it, and is a change to the held-out split, made on purpose.
+TEST_SPLIT_SHA256 = "ea16568b560ff0dcf258d762c34d55bc9f85810d3cc63be4b1ebe5f7c727c14f"
+
+
+def _module_name(rel: Path) -> tuple[str, str]:
+    """The dotted name of the module at *rel* (from the repo root, ``src/`` dropped), and
+    the package its relative imports start from."""
+    parts = list(rel.with_suffix("").parts)
+    if parts[0] == "src":
+        parts = parts[1:]
+    if parts[-1] == "__init__":
+        return ".".join(parts[:-1]), ".".join(parts[:-1])
+    return ".".join(parts), ".".join(parts[:-1])
+
+
+def _imported_names(stmt: ast.AST, package: str) -> list[str]:
+    """The modules an import statement or an import call names, resolved."""
+    if isinstance(stmt, ast.Import):
+        return [a.name for a in stmt.names]
+    if isinstance(stmt, ast.ImportFrom):
+        base = package.split(".")[: len(package.split(".")) - stmt.level + 1] if stmt.level else []
+        mod = ".".join([*base, *([stmt.module] if stmt.module else [])])
+        return [mod, *(f"{mod}.{a.name}" for a in stmt.names)]
+    if isinstance(stmt, ast.Call):
+        f = stmt.func
+        name = f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else ""
+        if name in ("import_module", "__import__") and stmt.args:
+            arg = stmt.args[0]
+            # A name not written out could be any module: counted as the held-out one.
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                return [arg.value]
+            return [HELD_OUT_MODULE]
+    return []
+
+
+def _importers(root: Path, module: str) -> list[tuple[str, str]]:
+    """Each place under *root* (IMPORTS_SCANNED) that imports *module*, as (file, the
+    function it is in, or "<module>"): an import, a from-import (relative ones resolved)
+    or an import_module / __import__ call."""
+    found = []
+
+    def visit(node: ast.AST, where: str, rel: str, package: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            names = _imported_names(child, package)
+            if any(n == module or n.startswith(module + ".") for n in names):
+                found.append((rel, where))
+            is_def = isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+            visit(child, child.name if is_def else where, rel, package)
+
+    for top in IMPORTS_SCANNED:
+        for path in sorted((root / top).rglob("*.py")):
+            rel = path.relative_to(root)
+            if any(p in HOLDOUT_SKIP_DIRS or p.endswith(".egg-info") for p in rel.parts):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), str(rel))
+            visit(tree, "<module>", rel.as_posix(), _module_name(rel)[1])
+    return found
+
+
+def test_only_the_loader_imports_the_held_out_module():
+    assert _importers(REPO, HELD_OUT_MODULE) == HELD_OUT_IMPORTERS
+
+
+def test_the_import_scan_finds_every_kind_of_import(tmp_path):
+    # A made-up tree: each way to import the module is found, in the function it is in.
+    planted = {
+        "src/nebula3d/validation/a.py": "from .holdout import heldout_cases\n",
+        "src/nebula3d/validation/b.py": "def f():\n    from .holdout.heldout_cases import X\n",
+        "src/nebula3d/validation/holdout/__init__.py": "from . import heldout_cases\n",
+        "src/nebula3d/c.py": "def g():\n    from .validation.holdout import heldout_cases\n",
+        "tests/test_d.py": "import nebula3d.validation.holdout.heldout_cases as h\n",
+        "scripts/e.py": "import importlib\nm = importlib.import_module(NAME)\n",
+        "examples/f.py": "__import__('nebula3d.validation.holdout.heldout_cases')\n",
+    }
+    not_planted = {
+        "src/nebula3d/validation/g.py": "from . import cases\nfrom .holdout import other\n",
+        "tests/test_h.py": "PATH = 'src/nebula3d/validation/holdout/heldout_cases.py'\n",
+        "web/src/i.py": "from nebula3d.validation.holdout import heldout_cases\n",  # not read
+    }
+    for rel, text in {**planted, **not_planted}.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    assert sorted(_importers(tmp_path, HELD_OUT_MODULE)) == [
+        ("examples/f.py", "<module>"),
+        ("scripts/e.py", "<module>"),
+        ("src/nebula3d/c.py", "g"),
+        ("src/nebula3d/validation/a.py", "<module>"),
+        ("src/nebula3d/validation/b.py", "f"),
+        ("src/nebula3d/validation/holdout/__init__.py", "<module>"),
+        ("tests/test_d.py", "<module>"),
+    ]
+
+
+def test_the_test_split_is_unreachable_without_the_opt_in(monkeypatch):
+    # Not an empty split, which a run meant to cover it would take for a pass: an error
+    # that says how to opt in. Nothing of the test split is printed or returned.
+    for value in (None, "", "0", "true"):
+        if value is None:
+            monkeypatch.delenv(HOLDOUT_ENV, raising=False)
+        else:
+            monkeypatch.setenv(HOLDOUT_ENV, value)
+        assert not holdout_opted_in(), value
+        with pytest.raises(HeldOutError, match=f"{HOLDOUT_ENV}=1"):
+            cases("test")
+        with pytest.raises(HeldOutError, match=f"{HOLDOUT_ENV}=1"):
+            all_cases()
+        with pytest.raises(HeldOutError, match=f"{HOLDOUT_ENV}=1"):
+            manifest()
+        with pytest.raises(KeyError, match=f"{HOLDOUT_ENV}=1"):
+            case_named("no-such-case")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), pytest.raises(SystemExit, match="--report"):
+            main(["manifest"])
+        printed = len(out.getvalue())
+        assert printed == 0, "the manifest printed without the opt-in"
+        assert case_named("dev-control").split == "dev"
+    # A fresh interpreter that imports the whole package and reads the dev cases never
+    # loads the held-out module.
+    env = {k: v for k, v in os.environ.items() if k != HOLDOUT_ENV}
+    probe = (
+        "import sys, nebula3d.validation as v, nebula3d.validation.__main__, "
+        "nebula3d.validation.arm_a, nebula3d.validation.arm_d, nebula3d.validation.report, "
+        "nebula3d.validation.score\n"
+        "v.cases('dev'); v.case_named('dev-control')\n"
+        "try:\n    v.cases('test')\nexcept v.HeldOutError:\n    print('refused')\n"
+        f"print({HELD_OUT_MODULE!r} in sys.modules)\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", probe], cwd=REPO, env=env, capture_output=True, text=True
+    )
+    said = proc.stdout.split()
+    assert said == ["refused", "False"], f"exit {proc.returncode}"
+
+
+@needs_holdout
+def test_the_opt_in_gives_the_test_split_as_it_was():
+    digest = _canonical_sha256([dataclasses.asdict(c) for c in cases("test")])
+    same = digest == TEST_SPLIT_SHA256
+    assert same, "the test split's cases are not those pinned (their sha256 differs)"
+    # Every case, in the manifest's order, and each test case by its id: compared by
+    # identity, so a failure shows no case.
+    interleaved = [c for pair in zip(cases("dev"), cases("test")) for c in pair]
+    in_order = len(all_cases()) == len(interleaved) and all(
+        a is b for a, b in zip(all_cases(), interleaved)
+    )
+    assert in_order, "all_cases() is not each family's dev case, then its test case"
+    n_test = len(cases("test"))
+    found = sum(case_named(c.id) is c for c in cases("test"))
+    assert found == n_test, f"case_named finds {found} of the {n_test} test cases"
+
+
+# ------------------------------------------------- the failure paths, on a fake case
+#
+# Each assertion above that could meet a held-out case, made to fail on a made-up
+# test case: its failure (the message and pytest's introspection) shows nothing of it.
+
+
+def _fake_test_case() -> Case:
+    """A made-up held-out case, never a real one: everything it holds a failure must not
+    show. Its first planted vector is an FCC lattice vector, which no case may plant."""
+    crystal = Crystal(
+        a=5.25,
+        sro_amp=0.1,
+        seed=4321,
+        planted=(Planted((1.0, 1.0, 0.0), 0.1), Planted((0.25, 1.75, 0.5), -0.1)),
+    )
+    return Case("test-fake-ub", "ub", "test", crystal, {"angle_deg": 1.37, "axis": (0.0, 0.0, 1.0)})
+
+
+def _fake_shown(text: str, c: Case) -> list[str]:
+    """What of the fake case *c* the text shows."""
+    shown = [c.id, label_of(c), str(c.crystal.seed), str(c.crystal.a), "1.75", "1.37"]
+    for p in c.crystal.planted:
+        shown += [str(p.vector), str(list(p.vector)), ", ".join(map(str, p.vector))]
+    shown += [repr(c), repr(c.crystal), repr(c.fault)]
+    return [s for s in shown if s in text]
+
+
+def _failure(test: Any, *args: Any) -> str:
+    """The text of *test*'s failure: its message with pytest's introspection."""
+    with pytest.raises(AssertionError) as info:
+        test(*args)
+    return str(info.value)
+
+
+def test_a_failure_shows_nothing_of_a_held_out_case(monkeypatch, tmp_path):
+    this = sys.modules[__name__]
+    fake = _fake_test_case()
+    dev_twin = replace(fake, id="dev-fake-ub", split="dev")
+    monkeypatch.setattr(this, "_named_cases", lambda: [("test-split-case-0", fake)] * 2)
+
+    # The FCC check and the label check: the masked name, or a count.
+    text = _failure(test_planted_vectors_are_not_fcc_lattice_vectors)
+    assert "test-split-case-0" in text and _fake_shown(text, fake) == []
+    text = _failure(test_every_case_has_a_label_of_its_own)
+    assert "1 cases share" in text and _fake_shown(text, fake) == []
+
+    # Dev and test the same in every way: each kind named, no value.
+    monkeypatch.setattr(this, "_dev_and_test", lambda: ([dev_twin], [fake]))
+    text = _failure(test_dev_and_test_differ_in_crystal_and_fault)
+    for kind in ("the crystal", "a planted vector", "the seed", "the ub fault"):
+        assert kind in text
+    assert _fake_shown(text, fake) == []
+
+    # The web harness's manifest: a test entry changed, and a dev entry.
+    current = json.loads(json.dumps(manifest([dev_twin, fake])))
+    committed = json.loads(json.dumps(current))
+    committed["cases"][1]["fault"]["angle_deg"] = 1.38
+    committed["cases"][0]["cell_a"] = 5.5
+    monkeypatch.setattr(this, "_committed_manifest", lambda: committed)
+    monkeypatch.setattr(this, "_current_manifest", lambda: current)
+    monkeypatch.setattr(this, "holdout_opted_in", lambda: True)
+    text = _failure(test_the_web_harness_reads_the_current_cases)
+    assert "the dev case dev-fake-ub" in text and "test split's entries" in text
+    assert _fake_shown(text, fake) == [] and "1.38" not in text
+
+    # A doc whose results section has lost its heading: the heading, not the doc's text.
+    monkeypatch.setattr(this, "HOLDOUT_SECTIONS", {"docs/evals.md": "### No such section"})
+    text = _failure(test_nothing_tuned_names_a_test_case)
+    assert "has no '### No such section' section" in text and "Arm A" not in text
+
+    # Arm D on a held-out case: its files named by the masked name, a failure by its
+    # criteria, an error by its kind.
+    stems = []
+
+    def failing_arm_d(case: Case, root: Path, *, n: int, stem: str) -> dict[str, Any]:
+        stems.append(stem)
+        summary = {"criteria": {"features": False, "window": True}, "case": repr(case)}
+        return {"case": case.id, "pass": False, "summary": summary}
+
+    def raising_arm_d(case: Case, root: Path, *, n: int, stem: str) -> dict[str, Any]:
+        raise ValueError(f"{case.id}: {case.crystal.planted[1].vector}, {case.crystal.seed}")
+
+    node = SimpleNamespace(callspec=SimpleNamespace(id="test-split-case-0"))
+    request = SimpleNamespace(node=node)
+    arm_d_test = test_arm_d_passes_every_criterion_on_every_case
+    monkeypatch.setattr(this, "run_case_d", failing_arm_d)
+    text = _failure(arm_d_test, fake, tmp_path, request)
+    assert "failed criteria: ['features']" in text and _fake_shown(text, fake) == []
+    assert stems == ["test-split-case-0"]
+    monkeypatch.setattr(this, "run_case_d", raising_arm_d)
+    with pytest.raises(pytest.fail.Exception) as info:
+        arm_d_test(fake, tmp_path, request)
+    text = str(info.getrepr(style="long", chain=True))
+    assert "arm D raised ValueError on test-split-case-0" in text
+    assert _fake_shown(text, fake) == []
+
+    # The served names: one that carries a held-out case is shown as that.
+    names = [f"{label_of(fake)}_B1.nxs", "v000000_B1.nxs"]
+    assert _shown_names(names, [fake]) == ["(a name that carries a held-out case)", names[1]]
+
+
+def test_arm_d_names_its_files_by_the_stem_it_is_given(tmp_path, control):
+    run_case_d(control.case, tmp_path / "id", n=N, built=control)
+    run_case_d(control.case, tmp_path / "masked", n=N, built=control, stem="test-split-case-0")
+    assert sorted(p.name for p in (tmp_path / "id").iterdir()) == [
+        "dev-control--D_delta_pdf.h5",
+        "dev-control--D_flattened.h5",
+    ]
+    assert sorted(p.name for p in (tmp_path / "masked").iterdir()) == [
+        "test-split-case-0--D_delta_pdf.h5",
+        "test-split-case-0--D_flattened.h5",
+    ]
