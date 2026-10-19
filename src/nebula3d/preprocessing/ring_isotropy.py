@@ -42,6 +42,47 @@ up to 0.9, with a 0.29 Å⁻¹ core 0.21), so both stay small. Above the curve,
 rings keep 0.35 of their height or more (the wandering ring the least), an
 empty shell on a broad hump 0.15 or less: ``curve_share`` is 0.25 (to confirm
 with the user).
+
+Resolution
+----------
+A grid too coarse for the test cannot tell a ring from the crystal's own
+scattering: the test then says why ("grid too coarse: …") and judges nothing.
+Two limits, each from the rule's own constants.
+
+- **Across a ring.**  The profile's |Q| bins are ``q_step``, never finer than
+  half a voxel: finer bins share the voxels' spread in |Q| over the
+  directions, and starve. The narrowest FWHM the test measures is
+  :data:`SAMPLES_PER_FWHM` (two) bins: two samples across a peak, the Nyquist
+  rate, below which a ring falls between the samples and is not told from
+  its flanks. The widest is ``fwhm_cap``: a broader core sums the crystal's
+  maxima at neighbouring |Q| in different directions into what reads as a
+  ring. So the grid lets the rule judge a ring only when 2 × ``q_step`` ≤
+  ``fwhm_cap``: one voxel or more across the widest ring the rule judges
+  (:func:`grid_too_coarse`). A third sample, the usual count to measure a
+  peak's height, is not needed: the test takes no peak's height but the
+  core's mean excess, an integral over ±0.75 FWHM, which the ring's place on
+  the bins moves by about a fifth at two samples (a Gaussian's: 0.51 to 0.65
+  of its peak) and a sixth at three, far inside the 0.15 of the median height
+  the rule asks of 90 % of the directions. Powder rings are narrower than a
+  voxel on such grids anyway (aluminium's lines from the sample can, a few
+  hundredths of an Å⁻¹): they are measured at the two-bin floor, whatever
+  the grid.
+- **Over the directions.**  A cell's profile counts only where every |Q| bin
+  holds ``min_voxels`` voxels, a median's floor. The rule speaks for
+  ``direction_share`` of the directions, so the grid must give at least that
+  share of the cells the shell reaches ``min_voxels`` voxels in every bin of
+  its profile; else the cells it measures are those the lattice happens to
+  fill, along its own directions, where the crystal's scattering gathers
+  too. The grid's voxels are counted, the mask aside (unmeasured space is
+  coverage, not resolution), and scaled by the share low-memory mode reads;
+  of a shell inside the box's inscribed sphere (:func:`inscribed_q`) only,
+  as past it a face cuts cells short, while a cell's bins hold more voxels
+  the further out the shell lies.
+
+On the validation's dev crystal (a = 3.9 Å, ±4 r.l.u.), the 81-point grid
+puts 0.99 voxels across 0.16 Å⁻¹, under one; at 1.75 Å⁻¹ it fills 16 of the 128
+cells. The 161-point grid puts 1.99 voxels across it and fills 90 % of the
+cells or more from 1.2 Å⁻¹ out.
 """
 
 from __future__ import annotations
@@ -53,6 +94,11 @@ import numpy as np
 from numpy.typing import NDArray
 
 from nebula3d.core import HKLVolume, low_memory
+
+#: The |Q| bins across a ring's FWHM the test needs: two samples across a
+#: peak, the Nyquist rate (the module docstring, *Resolution*). The narrowest
+#: FWHM it measures, and with ``fwhm_cap`` the grid's limit.
+SAMPLES_PER_FWHM = 2
 
 
 @dataclass(frozen=True)
@@ -73,7 +119,10 @@ class IsotropyConfig:
     ``curve_share`` of the height must stay above a quadratic through the
     flanks, where each side has two bins or more.
     A cell counts where every bin of its profile has ``min_voxels``, and a
-    shell is judged on ``min_cells`` cells or more. Past ``max_voxels`` in the
+    shell is judged on ``min_cells`` cells or more, where the grid gives
+    ``direction_share`` of the cells it reaches that many voxels a bin, and
+    only on a grid with :data:`SAMPLES_PER_FWHM` bins across ``fwhm_cap``
+    (the module docstring, *Resolution*). Past ``max_voxels`` in the
     shells' windows (an eighth of the volume's voxels in low-memory mode, the
     browser), a fixed random subset of that many is read: a median per cell
     and bin needs no more. Each shell still keeps about ``sample_per_bin``
@@ -144,6 +193,47 @@ def voxel_q_step(vol: HKLVolume) -> float:
     return float(min(np.linalg.norm(ub[:, i]) * steps[i] for i in range(3)))
 
 
+def profile_step(vol: HKLVolume, config: IsotropyConfig | None = None) -> float:
+    """The |Q| bin of the shells' profiles (Å⁻¹): ``q_step``, never finer than
+    half a voxel (:func:`voxel_q_step`)."""
+    cfg = config or IsotropyConfig()
+    return max(cfg.q_step, 0.5 * voxel_q_step(vol))
+
+
+def inscribed_q(vol: HKLVolume) -> float:
+    """The largest |Q| (Å⁻¹) whose whole sphere lies in the grid's box: the
+    distance from the origin to the nearest of its faces (0 with the origin
+    outside the box). Within it every direction cell of a shell holds its
+    full share of the grid's voxels, so a cell the grid leaves short is the
+    grid's doing, not the box's."""
+    ub_inv = np.linalg.inv(np.asarray(vol.ub_matrix, dtype=np.float64))
+    out = np.inf
+    for i, axis in enumerate((vol.h_axis, vol.k_axis, vol.l_axis)):
+        lo, hi = float(np.min(axis)), float(np.max(axis))
+        if not lo <= 0.0 <= hi:
+            return 0.0
+        # The face h_i = c is the plane r_i · Q = c, r_i the i-th row of UB⁻¹.
+        out = min(out, min(-lo, hi) / float(np.linalg.norm(ub_inv[i])))
+    return float(out)
+
+
+def grid_too_coarse(vol: HKLVolume, config: IsotropyConfig | None = None) -> str:
+    """Why the grid of *vol* is too coarse to judge any ring, or ``""``.
+
+    The narrowest FWHM the test measures, :data:`SAMPLES_PER_FWHM` of its |Q|
+    bins (:func:`profile_step`), must not pass the widest the rule takes,
+    ``fwhm_cap``: one voxel or more across it (the module docstring,
+    *Resolution*). The reason gives both in voxels.
+    """
+    cfg = config or IsotropyConfig()
+    voxel = voxel_q_step(vol)
+    floor = SAMPLES_PER_FWHM * profile_step(vol, cfg)
+    if not np.isfinite(voxel) or floor <= cfg.fwhm_cap:
+        return ""
+    return (f"grid too coarse: {cfg.fwhm_cap / voxel:.2g} voxels across a ring's width "
+            f"(at most {cfg.fwhm_cap:g} Å⁻¹), under {floor / voxel:.2g}")
+
+
 def shell_isotropy(
     vol: HKLVolume,
     shells: Sequence[tuple[float, float]],
@@ -160,6 +250,11 @@ def shell_isotropy(
     ``keep_apart`` is False. One pass over the volume in slabs of ``slab`` H
     planes, reading only the voxels inside a shell's window; masked and
     non-finite voxels are left out. :func:`judge_shells` is the usual entry.
+
+    On a grid too coarse for the test (:func:`grid_too_coarse`) no shell is
+    judged, and a shell is not judged where the grid fills too few of its
+    direction cells (the module docstring, *Resolution*): ``not_judged`` says
+    why, starting "grid too coarse".
     """
     cfg = config or IsotropyConfig()
     if not shells:
@@ -169,18 +264,23 @@ def shell_isotropy(
     # Each slab's float64 |Q| arrays stay a small share of the volume.
     slab = slab or (1 if lean else max(1, min(16, n_h // 32)))
     max_voxels = min(cfg.max_voxels, vol.data.size // 8) if lean else cfg.max_voxels
-    q_step = max(cfg.q_step, 0.5 * voxel_q_step(vol))
+    q_step = profile_step(vol, cfg)
     n_cells = cfg.n_cos * cfg.n_phi
 
     def reach(fwhm: float) -> tuple[float, float, float, float]:
-        fwhm = max(min(float(fwhm), cfg.fwhm_cap), 2.0 * q_step)
+        fwhm = max(min(float(fwhm), cfg.fwhm_cap), SAMPLES_PER_FWHM * q_step)
         return (fwhm, max(cfg.core_scale * fwhm, q_step), cfg.gap_scale * fwhm,
                 max(cfg.flank_scale * fwhm, 2.0 * q_step))
 
     def extent(fwhm: float) -> float:
         """How far a candidate reaches either side, by its own width (not capped)."""
-        fwhm = max(float(fwhm), 2.0 * q_step)
+        fwhm = max(float(fwhm), SAMPLES_PER_FWHM * q_step)
         return max(cfg.core_scale * fwhm, q_step) + cfg.gap_scale * fwhm
+
+    coarse = grid_too_coarse(vol, cfg)
+    if coarse:
+        return [ShellIsotropy(float(q0), reach(f)[0], 0, np.nan, np.nan, np.nan, False, coarse)
+                for q0, f in shells]
 
     # Every candidate's core and gap, kept out of the other shells' flanks.
     apart = [*shells, *others] if keep_apart else list(others)
@@ -230,34 +330,50 @@ def shell_isotropy(
     l_ = np.asarray(vol.l_axis, dtype=np.float64)[None, None, :]
     keys: list[NDArray[np.int32]] = []
     vals: list[NDArray[np.float32]] = []
+    # The grid's own voxels in each cell and bin, measured or not: what the
+    # grid can give a cell, apart from what the coverage leaves (Resolution).
+    grid = np.zeros(n_cells * total_bins, dtype=np.int64)
     for i0 in range(0, h.size, slab):
         hh = h[i0:i0 + slab][:, None, None]
         qx = ub[0, 0] * hh + ub[0, 1] * k + ub[0, 2] * l_
         qy = ub[1, 0] * hh + ub[1, 1] * k + ub[1, 2] * l_
         qz = ub[2, 0] * hh + ub[2, 1] * k + ub[2, 2] * l_
         q = np.sqrt(qx * qx + qy * qy + qz * qz)
-        data = vol.data[i0:i0 + slab]
-        ok = vol.mask[i0:i0 + slab] & np.isfinite(data) & (q >= q_lo) & (q < q_hi)
-        if not ok.any():
+        window = (q >= q_lo) & (q < q_hi)
+        if not window.any():
             continue
-        draw = (np.random.default_rng(i0).random(ok.shape)[ok]
-                if min(keeps) < 1.0 else None)
-        q_ok, qz_ok = q[ok], qz[ok]
-        cos = np.clip(qz_ok / q_ok, -1.0, 1.0)
+        data = vol.data[i0:i0 + slab]
+        ok = vol.mask[i0:i0 + slab] & np.isfinite(data) & window
+        q_w, qz_w = q[window], qz[window]
+        cos = np.clip(np.divide(qz_w, q_w, out=np.zeros_like(q_w), where=q_w > 0), -1.0, 1.0)
         band = np.minimum(((cos + 1.0) * 0.5 * cfg.n_cos).astype(np.int64), cfg.n_cos - 1)
-        phi = np.arctan2(qy[ok], qx[ok])
+        phi = np.arctan2(qy[window], qx[window])
         sector = np.minimum(((phi + np.pi) / (2.0 * np.pi) * cfg.n_phi).astype(np.int64),
                             cfg.n_phi - 1)
-        cell = (band * cfg.n_phi + sector).astype(np.int32)
+        cell_w = (band * cfg.n_phi + sector).astype(np.int32)
+        measured = ok[window]
+        read = bool(measured.any())
+        draw = (np.random.default_rng(i0).random(ok.shape)[ok]
+                if read and min(keeps) < 1.0 else None)
+        cell = cell_w[measured]
         v = data[ok].astype(np.float32)
+        grid_keys = []
         for s, (_q0, _f, lo, n_bins, _c, _r) in enumerate(layouts):
-            b = np.floor((q_ok - lo) / q_step).astype(np.int32)
+            b = np.floor((q_w - lo) / q_step).astype(np.int32)
+            inside = (b >= 0) & (b < n_bins)
+            grid_keys.append(cell_w[inside] * np.int32(total_bins) + np.int32(offsets[s])
+                             + b[inside])
+            if not read:
+                continue
+            b = b[measured]
             inside = (b >= 0) & (b < n_bins)
             if draw is not None and keeps[s] < 1.0:
                 inside &= draw < keeps[s]
             if inside.any():
                 keys.append(cell[inside] * np.int32(total_bins) + np.int32(offsets[s]) + b[inside])
                 vals.append(v[inside])
+        grid += np.bincount(np.concatenate(grid_keys), minlength=grid.size)
+    grid_cells = grid.reshape(n_cells, total_bins)
     if not keys:
         return [ShellIsotropy(lay[0], lay[1], 0, np.nan, np.nan, np.nan, False,
                               "no measured voxels") for lay in layouts]
@@ -275,8 +391,9 @@ def shell_isotropy(
                              + sorted_vals[starts[nz] + count[nz] // 2])
     median = median_flat.reshape(n_cells, total_bins)
 
+    q_box = inscribed_q(vol)
     out: list[ShellIsotropy] = []
-    for s, (q0, fwhm, _lo, n_bins, centres, role) in enumerate(layouts):
+    for s, (q0, fwhm, lo, n_bins, centres, role) in enumerate(layouts):
         prof = median[:, offsets[s]:offsets[s] + n_bins]
         flank = role == 0
         x_flank = centres[flank] - q0
@@ -287,6 +404,23 @@ def shell_isotropy(
         if not ((x_flank < 0).any() and (x_flank > 0).any()):
             out.append(ShellIsotropy(q0, fwhm, 0, np.nan, np.nan, np.nan, False,
                                      "no clean flank on one side"))
+            continue
+        # The cells the grid fills: of those the shell's window reaches in
+        # every bin of its profile, the ones it gives min_voxels in each (as
+        # low-memory mode reads them). The rule speaks for direction_share of
+        # the directions; fewer, and the cells left are those the lattice
+        # happens to fill, along its own directions (Resolution). Asked of a
+        # window inside the box's inscribed sphere only, where no face cuts a
+        # cell short: further out a cell has more voxels a bin, not fewer.
+        voxels = grid_cells[:, offsets[s]:offsets[s] + n_bins][:, role >= 0]
+        reached = int(np.count_nonzero((voxels > 0).all(axis=1)))
+        filled = int(np.count_nonzero((voxels * keeps[s] >= cfg.min_voxels).all(axis=1)))
+        inside_box = lo + n_bins * q_step <= q_box
+        if inside_box and reached and filled < cfg.direction_share * reached:
+            out.append(ShellIsotropy(
+                q0, fwhm, int(np.count_nonzero(good)), np.nan, np.nan, np.nan, False,
+                f"grid too coarse: {filled} of the {reached} direction cells get "
+                f"{cfg.min_voxels} voxels in each |Q| bin, under {100 * cfg.direction_share:g} %"))
             continue
         # A line through the flanks gives each cell's height, which a ring whose
         # |Q| wanders with direction keeps. A quadratic through the same flanks
@@ -363,4 +497,5 @@ def _verdict(q0: float, fwhm: float, heights: NDArray[np.float64], levels: NDArr
                          snr=snr, beyond_curve=curve)
 
 
-__all__ = ["IsotropyConfig", "ShellIsotropy", "judge_shells", "shell_isotropy", "voxel_q_step"]
+__all__ = ["SAMPLES_PER_FWHM", "IsotropyConfig", "ShellIsotropy", "grid_too_coarse", "inscribed_q",
+           "judge_shells", "profile_step", "shell_isotropy", "voxel_q_step"]

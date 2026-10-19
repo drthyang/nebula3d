@@ -1084,10 +1084,18 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
     # Attached transiently (as global_v2 does) so run_pipeline writes the sidecar.
     setattr(out, "_ring_diagnostics", result.diagnostics)
     d = result.diagnostics
-    rejected = len(d.get("rejected_shells") or [])  # type: ignore[arg-type]
+    listed = d.get("rejected_shells")
+    rejected_shells: list[Any] = listed if isinstance(listed, list) else []
+    # The shells the test could not judge (a grid too coarse, no clean flank)
+    # are kept too, but they are not shown to be the crystal's own.
+    unjudged = [str(s["isotropy"]["not_judged"]) for s in rejected_shells
+                if (s.get("isotropy") or {}).get("not_judged")]
+    rejected = len(rejected_shells) - len(unjudged)
+    why = "; ".join(dict.fromkeys(unjudged))  # each reason once, in the shells' order
     _emit(progress, "rings", "done", 1.0,
           f"pooled ring removal {d['status']}: {len(d['shells'])} shells "  # type: ignore[arg-type]
           + (f"confirmed as rings, {rejected} not (the crystal's own scattering, kept) "
+             + (f"and {len(unjudged)} not judged ({why}; kept) " if unjudged else "")
              if p.pooled_confirm_rings else "")
           + f"(of {d['n_planes_fitted']}/{d['n_planes']} planes fitted), removed "
           f"{100.0 * float(d['removed_fraction']):.3g}% of |I|")  # type: ignore[arg-type]

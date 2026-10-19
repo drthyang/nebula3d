@@ -322,6 +322,11 @@ def test_volume_ring_isotropy(tmp_path):
     assert body["rule"] == {"direction_share": 0.9, "height_share": 0.15}
     assert [s["is_ring"] for s in body["shells"]] == [True, False]
     assert body["shells"][0]["isotropy"] > 0.9
+    assert body["not_judged"] is None  # 0.1 Å⁻¹ a voxel: 1.6 voxels across 0.16 Å⁻¹
+    # No shell: the grid's own limit alone.
+    alone = client.get(f"/api/volumes/{SLUG}.raw/rings", params={"q": "", "fwhm": ""})
+    assert alone.status_code == 200, alone.text
+    assert (alone.json()["shells"], alone.json()["not_judged"]) == ([], None)
     bad_params = ({"q": "2.0", "fwhm": "0.1,0.1"}, {"q": "x", "fwhm": "0.1"},
                   {"q": "-1", "fwhm": "0.1"}, {"q": "nan", "fwhm": "0.1"},
                   {"q": "2.0", "fwhm": "inf"}, {"q": "inf,2.0", "fwhm": "0.1,0.1"})
@@ -329,11 +334,35 @@ def test_volume_ring_isotropy(tmp_path):
         assert client.get(f"/api/volumes/{SLUG}.raw/rings", params=bad).status_code == 400
 
 
+def test_volume_ring_isotropy_on_a_grid_too_coarse(tmp_path):
+    """/rings on a grid too coarse to judge any ring (0.3 Å⁻¹ a voxel, under one
+    voxel across 0.16 Å⁻¹): not judged, the grid's reason given for the volume
+    and every shell, with shells or none."""
+    from nebula3d.preprocessing.ring_isotropy import grid_too_coarse
+
+    q = np.linalg.norm(np.stack(np.meshgrid(*[np.linspace(-3, 3, 21)] * 3, indexing="ij")), axis=0)
+    vol = HKLVolume.from_arrays(1.0 + np.exp(-0.5 * ((q - 2.0) / 0.06) ** 2), (-3, 3), (-3, 3),
+                                (-3, 3), ub_matrix=np.eye(3))
+    reason = grid_too_coarse(vol)
+    assert reason.startswith("grid too coarse: ")
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    nebula3d.save(vol, tmp_path / "raw" / f"{STEM}.nxs")
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    for q_, fwhm in (("2.0", "0.14"), ("", "")):
+        body = client.get(f"/api/volumes/{SLUG}.raw/rings", params={"q": q_, "fwhm": fwhm}).json()
+        assert body["not_judged"] == reason
+        assert all(s["not_judged"] == reason and not s["is_ring"] for s in body["shells"])
+        assert len(body["shells"]) == len([x for x in q_.split(",") if x])
+
+
 def test_ring_shells_must_be_finite_and_positive():
     # The browser bridge parses /rings requests with the same function.
     assert vol_mod.parse_ring_shells("2.45, 3.66", "0.08,0.08") == [(2.45, 0.08), (3.66, 0.08)]
+    assert vol_mod.parse_ring_shells("", "") == []  # the grid's own limit alone
     many = ",".join(["1"] * 65)
-    for q, fwhm in [("nan", "0.1"), ("2", "inf"), ("-inf", "0.1"), ("2", "0"), ("", ""),
+    for q, fwhm in [("nan", "0.1"), ("2", "inf"), ("-inf", "0.1"), ("2", "0"), ("2", ""),
                     ("2,3", "0.1"), (many, many)]:
         with pytest.raises(ValueError):
             vol_mod.parse_ring_shells(q, fwhm)

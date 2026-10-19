@@ -335,8 +335,9 @@ def _mean_offset_out(m: MeanOffset) -> dict:
 
 def parse_ring_shells(q: str, fwhm: str) -> list[tuple[float, float]]:
     """``"2.45,3.66"``, ``"0.08,0.08"`` → [(2.45, 0.08), (3.66, 0.08)]: finite,
-    positive |Q| centres and widths (Å⁻¹), as many of each, at most 64.
-    Raises ``ValueError`` otherwise (NaN and infinity included)."""
+    positive |Q| centres and widths (Å⁻¹), as many of each, at most 64; none
+    (``""``, ``""``) asks for the grid's own limit alone.  Raises
+    ``ValueError`` otherwise (NaN and infinity included)."""
     import math
 
     try:
@@ -344,7 +345,7 @@ def parse_ring_shells(q: str, fwhm: str) -> list[tuple[float, float]]:
         ws = [float(x) for x in str(fwhm).split(",") if x.strip()]
     except ValueError as exc:
         raise ValueError(f"q and fwhm must be numbers, not {q!r}, {fwhm!r}") from exc
-    if (not qs or len(qs) != len(ws) or len(qs) > 64
+    if (len(qs) != len(ws) or len(qs) > 64
             or not all(math.isfinite(v) and v > 0 for v in qs + ws)):
         raise ValueError("q and fwhm must list as many finite, positive numbers, at most 64")
     return list(zip(qs, ws))
@@ -354,8 +355,12 @@ def volume_ring_isotropy(path: Path, shells: list[tuple[float, float]]) -> dict:
     """Whether each ``(q_center, fwhm)`` shell of the volume (Å⁻¹) is a powder
     ring: it rises in nearly every direction over the sphere
     (:func:`~nebula3d.preprocessing.ring_isotropy.judge_shells`), cached by
-    ``(path, mtime, shells)``. The ring removal subtracts only such shells."""
-    from nebula3d.preprocessing.ring_isotropy import IsotropyConfig, judge_shells
+    ``(path, mtime, shells)``. The ring removal subtracts only such shells.
+    ``not_judged`` is why the grid is too coarse to judge any ring
+    (:func:`~nebula3d.preprocessing.ring_isotropy.grid_too_coarse`), or None:
+    given with no shell too, for the planes' bumps on such a grid are no
+    evidence either."""
+    from nebula3d.preprocessing.ring_isotropy import IsotropyConfig, grid_too_coarse, judge_shells
 
     shells = [(round(float(q), 4), round(float(f), 4)) for q, f in shells]
     key = (str(path), path.stat().st_mtime, tuple(shells))
@@ -364,9 +369,11 @@ def volume_ring_isotropy(path: Path, shells: list[tuple[float, float]]) -> dict:
     if hit is not None:
         return hit
     cfg = IsotropyConfig()
+    vol = load_volume(path)
     out = {
         "rule": {"direction_share": cfg.direction_share, "height_share": cfg.height_share},
-        "shells": [r.as_dict() for r in judge_shells(load_volume(path), shells, cfg)],
+        "shells": [r.as_dict() for r in judge_shells(vol, shells, cfg)],
+        "not_judged": grid_too_coarse(vol, cfg) or None,
     }
     with _lock:
         _ring_cache.clear()  # one volume's shells at a time
@@ -518,6 +525,8 @@ def volume_texture(filled: Path, punched: Path, *, limit: int = 20,
         "holes_from": holes.holes_from, "rim": holes.rim, "min_rim": holes.min_rim,
         "min_sigma": t.min_sigma, "one_way": t.one_way, "min_holes": t.min_holes,
         "floor": t.floor, "n_holes": t.n_holes, "n_judged": t.n_judged, "judged": t.judged,
+        "node_spacing": num(holes.node_spacing), "room_needed": num(holes.room_needed),
+        "not_judged": t.not_judged,
         "median_fill_bias_sigma": num(t.median_fill_bias_sigma),
         "median_fill_bias_level": num(t.median_fill_bias_level),
         "above_fraction": num(t.above_fraction), "below_fraction": num(t.below_fraction),
