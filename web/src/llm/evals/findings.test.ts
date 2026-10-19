@@ -394,6 +394,22 @@ describe("the review's findings", () => {
     for (const t of d3a!.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
   });
 
+  it("from the coarse grid's guard is G1, the manager's on the user's delegation, on the commit that made the removal subtract no unconfirmed ring, implemented with tests that exist", async () => {
+    const { exists } = await import("./backend");
+    const g1 = (await load()).filter(isReviewFinding).find((f) => f.ref === "G1");
+    expect(g1).toMatchObject({
+      at: "054a753",
+      kind: "science-error",
+      needs_user_approval: true,
+      status: "implemented",
+      note: "Approved by the manager on the user's delegation, 2026-10-19.",
+      decision: { by: "the manager, on the user's delegation", on: "2026-10-19", option: "accept: no unconfirmed ring is subtracted; the notice is loud" },
+    });
+    expect(g1!.evidence).toMatch(/ring_isotropy\.py:\d+/);
+    expect(g1!.evidence).toMatch(/pipeline\.py:\d+/);
+    for (const t of g1!.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
+  });
+
   it("says what became of a finding: an implemented one names its commit and its tests", () => {
     const base = { case: "dev-control", run: 1, step: null, kind: "bug", evidence: "e", proposed_fix: "p", needs_user_approval: false };
     expect(findingProblems({ ...base, status: "implemented", commit: "47c3537", tests: ["tests/test_faults.py"] })).toEqual([]);

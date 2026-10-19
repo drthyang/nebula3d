@@ -146,7 +146,17 @@ case's default run takes a second or two). `NEBULA_DEV_N=161` builds them on
 the validation's own 161³ grid, for a nightly run (about five times as long).
 The known-answer tests (`knownAnswers.replay.test.ts`) hold each case's
 planted fault to its truth; a fault the tools miss on a grid stays listed in
-its `MISSES`, an expected failure with the reason, until the tools find it.
+its `MISSES`, an expected failure with the reason, until the tools find it. A
+check the grid is too coarse for gives no verdict, and is held there to "not
+judged", with the grid's reason (`TOO_COARSE`): on 81³ the ring check and the
+texture check ([pipeline.md](pipeline.md#which-shells-are-rings-and-the-grid-that-takes)).
+There the ring removal's notice is held to its count, the planted rings among
+the shells it left unconfirmed, in its log, its record and the ring check, and
+the verdict on the clean control's run to why it is not judged; on 161³ to the
+notice's absence, and the verdict met.
+The replays that need every check to judge (THY-18's verdict met on the
+clean control) build their case on 161³ whatever the run's grid
+(`devCase(id, { n })`).
 
 ### The verdicts, before and after a change
 

@@ -3,6 +3,7 @@
 // before acting on it.  Each stage's goal names its trade-off explicitly, so a
 // cleaner number bought by destroying diffuse signal is not mistaken for a win.
 
+import { withoutInference } from "../inference";
 import type { ChatMessage } from "../provider/client";
 import { WORDS } from "../verdicts/rules";
 import { describeStageParams, TUNE_STAGE_LABELS, type ParamValue, type TuneStage } from "./catalog";
@@ -36,6 +37,9 @@ export interface TrialRecord {
 }
 
 const json = (v: unknown) => JSON.stringify(v);
+// The trials' metrics as the switch has them: with the skills off, without the
+// inference the backend's words quote (the ring removal's notice, inference.ts).
+const shown = (trials: TrialRecord[], skills: boolean): unknown => (skills ? trials : withoutInference(trials));
 
 export const buildProposeMessages = ({
   stage,
@@ -64,7 +68,7 @@ export const buildProposeMessages = ({
       "",
       `Current settings: ${json(current)}`,
       `Settings already chosen for earlier stages: ${json(earlier)}`,
-      `Trials so far (trial 1 = the current settings): ${json(trials)}`,
+      `Trials so far (trial 1 = the current settings): ${json(shown(trials, skills))}`,
       "",
       `Propose up to ${count} new settings to try, each different from every trial so far and`,
       "each changing as few settings as possible, with a one-sentence reason tied to the metrics.",
@@ -90,7 +94,7 @@ export const buildJudgeMessages = ({
       `Stage: ${TUNE_STAGE_LABELS[stage]}.`,
       `Goal: ${goalOf(stage, skills)}`,
       "",
-      `Trials (trial 1 = the user's settings): ${json(trials)}`,
+      `Trials (trial 1 = the user's settings): ${json(shown(trials, skills))}`,
       "",
       "Pick the trial that best meets the goal. Keep trial 1 unless another is clearly better;",
       "a small gain in one number is not worth a change. Quote the numbers behind your choice.",

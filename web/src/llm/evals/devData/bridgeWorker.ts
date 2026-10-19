@@ -39,6 +39,13 @@ declare module "vitest" {
 }
 
 /**
+ * The grids the dev cases are built on, in points per axis over ±4 r.l.u.:
+ * the replays' default (NEBULA_DEV_N unset), then the validation's own, for a
+ * nightly run (every node on a voxel at either).
+ */
+export const DEV_GRIDS = [81, 161] as const;
+
+/**
  * The ring-worker pool's setting (api/ringPool.ts): "0" keeps it off, so the
  * engine creates the pipeline worker alone and the ring stage runs serially in
  * it. setup.ts sets it, and devCase keeps it set.

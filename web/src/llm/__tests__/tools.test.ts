@@ -458,7 +458,30 @@ describe("assess_stage", () => {
     expect(out.flatten.per_plane.hk0).toEqual({ after_floor_max_sigma: 0.8 });
     expect(out.flatten.goal).toMatch(/floor/);
   });
+
+  it("says the rings the removal left unconfirmed on its grid, the remedy with the skills on only (G1)", async () => {
+    evaluate.evaluateStage.mockResolvedValue({
+      notice: NOTICE,
+      mean_ring_energy_ratio: 1,
+      max_ring_dent: null,
+      max_ring_left: null,
+      ring_rule: "not judged: grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1",
+      per_plane: {},
+    });
+    const b = JSON.parse((await runOn(full, "assess_stage", { stage: "rings" })).text);
+    expect(b.rings).toMatchObject({ verdict: "not judged", notice: NOTICE });
+    const armC = await runToolCall(call("assess_stage", { stage: "rings" }), CHAT_TOOLS, { dataset: full, datasets: [full], skills: false });
+    const c = JSON.parse(armC.text);
+    expect(c.rings).toMatchObject({ verdict: "not judged", notice: NOTICE_DEFINITION });
+    expect(armC.text).not.toContain("pooled_confirm_rings");
+  });
 });
+
+// The ring removal's notice as the pipeline writes it (nebula3d.pipeline.unconfirmed_rings_notice), and its definition: arm C's.
+const NOTICE_DEFINITION =
+  "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
+const NOTICE = `${NOTICE_DEFINITION} Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.`;
+const call = (name: string, args: object) => ({ id: "c", type: "function" as const, function: { name, arguments: JSON.stringify(args) } });
 
 describe("run_log", () => {
   it("returns the last run's lines, for one stage on request", async () => {
@@ -481,6 +504,22 @@ describe("run_log", () => {
   it("says when there is no run yet", async () => {
     usePipelineStore.setState({ events: [] });
     expect((await run("run_log", {})).text).toMatch(/no pipeline run in this session yet/);
+  });
+
+  it("gives the ring removal's notice whole with the skills on, without its remedy with them off (G1)", async () => {
+    const summary = "pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 0 not (the crystal's own scattering, kept) (of 81/81 planes fitted), removed 0% of |I|";
+    usePipelineStore.setState({
+      running: false,
+      terminal: "done",
+      events: [
+        { type: "progress", stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` },
+        { type: "progress", stage: "punch", status: "done", message: "188 peaks punched" },
+      ],
+    });
+    const b = JSON.parse((await run("run_log", { stage: "rings" })).text);
+    expect(b.lines).toEqual([{ stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` }]);
+    const c = JSON.parse((await runToolCall(call("run_log", {}), CHAT_TOOLS, { ...ctx, skills: false })).text);
+    expect(c.lines.map((l: { message: string }) => l.message)).toEqual([`${summary}. ⚠ ${NOTICE_DEFINITION}`, "188 peaks punched"]);
   });
 });
 
@@ -852,23 +891,39 @@ describe("consistency_details", () => {
 });
 
 describe("texture_check", () => {
-  // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs.
+  // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs,
+  // the nodes 10 voxels apart (±1.5 r.l.u., 0.1 r.l.u. a voxel).
   const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;
-  const hole = (ix: number, iy: number) => ix > 2 && iy > 2 && ix < 18 && iy < 18 && [4, 0, 1].includes(ix % 5) && [4, 0, 1].includes(iy % 5);
-  const slices: Record<string, ReturnType<typeof makeSlice>> = {
-    "demo.ringremoved": makeSlice(21, 21, (_x, _y, ix, iy) => 100 + 4 * noise(ix, iy)),
-    "demo.braggpunched": makeSlice(21, 21, (_x, _y, ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy))),
-    "demo.backfilled": makeSlice(21, 21, (_x, _y, ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? 30 : 0)),
-  };
+  const hole = (ix: number, iy: number) => [4, 5, 6].includes(ix % 10) && [4, 5, 6].includes(iy % 10);
+  const cut = (f: (ix: number, iy: number) => number, half = 1.5) => makeSlice(31, 31, (_x, _y, ix, iy) => f(ix, iy), { half });
+  const stages = (half?: number): Record<string, ReturnType<typeof makeSlice>> => ({
+    "demo.ringremoved": cut((ix, iy) => 100 + 4 * noise(ix, iy), half),
+    "demo.braggpunched": cut((ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy)), half),
+    "demo.backfilled": cut((ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? 30 : 0), half),
+  });
 
   it("flags fills that sit above their rims on every plane", async () => {
+    const slices = stages();
     api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
     const r = await runOn(full, "texture_check", {});
     const out = JSON.parse(r.text);
     expect(out.per_cut).toHaveLength(3);
     expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, above_fraction: 1 });
+    expect(out.per_cut[0].not_judged).toBeUndefined();
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
     expect(r.summary).toMatch(/^systematic fill bias on 3 of 3 cut\(s\)/);
     expect(r.view?.label).toBe("H–K plane at L = 0");
+  });
+
+  it("does not judge cuts whose grid leaves the holes no room for their rims, and says why", async () => {
+    // The same cuts at 0.2 r.l.u. a voxel: the nodes 5 voxels apart, under the 10 a hole reaching one voxel and its rim need.
+    const slices = stages(3);
+    api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
+    const r = await runOn(full, "texture_check", {});
+    const out = JSON.parse(r.text);
+    expect(out.per_cut[0]).toMatchObject({ n_holes: 9, not_judged: expect.stringMatching(/^grid too coarse: the nodes are 5 voxels apart, under 10/), systematic_fill_bias: null });
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+    expect(r.summary).toMatch(/^fill bias not judged · 3 of 3 cut\(s\) not judged: grid too coarse/);
   });
 
   it("needs the punched and backfilled outputs", async () => {

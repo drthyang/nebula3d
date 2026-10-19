@@ -10,9 +10,9 @@
 // sets the dev cases' grid: 81 points per axis by default, 161 for a nightly
 // run (every node on a voxel at either).
 
-import { nodeModules, type DevBridgeConfig } from "./bridgeWorker";
+import { DEV_GRIDS, nodeModules, type DevBridgeConfig } from "./bridgeWorker";
 
-const GRIDS = [81, 161];
+const GRIDS: readonly number[] = DEV_GRIDS;
 
 interface CheckReport {
   python: string;

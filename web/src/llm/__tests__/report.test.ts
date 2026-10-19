@@ -49,6 +49,18 @@ const input = (over: Partial<ReportInput> = {}): ReportInput => ({
   ...over,
 });
 
+// A run on a grid too coarse for the ring check (made-up numbers): the ring removal
+// left four ring candidates unconfirmed, and says so; every other stage meets its goal.
+const NOTICE_DEFINITION =
+  "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
+const NOTICE = `${NOTICE_DEFINITION} Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.`;
+const COARSE = "grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1";
+const COARSE_RUN = {
+  ...input().measured,
+  rings: { notice: NOTICE, mean_ring_energy_ratio: 1, max_over_subtraction_fraction: 0, max_ring_dent: null, max_ring_left: null, ring_rule: `not judged: ${COARSE}` },
+  punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0 },
+};
+
 describe("buildReport", () => {
   it("judges each stage by its stated criterion, from the measured numbers", () => {
     const r = buildReport(input());
@@ -296,6 +308,33 @@ describe("a card states only what it judges", () => {
     expect(r.achieved).toEqual({ met: null, text: "not judged: not measured: 3D-ΔPDF" }); // met before 2.4b.5
     // As a reply's {{achieved}} reads it.
     expect(verdicts({ reply: [{ id: "a", name: "assess_stage", args: { stage: "pdf" }, status: "done", result: JSON.stringify({ pdf: nothing }) }] }).achieved?.stages.pdf).toBe("info");
+  });
+
+  it("says the ring candidates the removal left unconfirmed on its grid on its card and among the caveats (G1)", () => {
+    const r = buildReport(input({ measured: COARSE_RUN }));
+    const card = r.checks.find((c) => c.title === "Ring removal")!;
+    expect(card.verdict).toBe("info");
+    expect(card.details[0]).toEqual(["Not subtracted", NOTICE]);
+    expect(card.details).toContainEqual(["Not judged", COARSE]);
+    expect(r.caveats[0]).toBe(`Ring removal: ${NOTICE}`);
+    expect(reportMarkdown(r)).toContain(NOTICE);
+    expect(reportHtml(r)).toContain(NOTICE.replace(/'/g, "&#39;"));
+    // Without a notice, neither the line nor the caveat.
+    const plain = buildReport(input());
+    expect(plain.checks[0].details.map(([k]) => k)).not.toContain("Not subtracted");
+    expect(plain.caveats.filter((c) => c.startsWith("Ring removal: ") && c.includes("not confirmed at this grid"))).toEqual([]);
+  });
+
+  it("says why its goal is not judged on a grid too coarse for the ring check, as {{achieved}} does, not that the stage was not measured (G1)", () => {
+    const r = buildReport(input({ measured: COARSE_RUN }));
+    expect(r.achieved).toEqual({ met: null, text: "not judged: Ring removal (grid too coarse for the ring check)" });
+    expect(verdicts({ report: COARSE_RUN }).achieved).toMatchObject({ notMeasured: [], notJudged: ["Ring removal (grid too coarse for the ring check)"] });
+    // Beside a stage not measured: each with its own words.
+    const noFlatten = buildReport(input({ measured: { ...COARSE_RUN, flatten: null } }));
+    expect(noFlatten.achieved.text).toBe("not judged: Ring removal (grid too coarse for the ring check); not measured: Flatten");
+    // A ring check that judged nothing for another reason reads as before.
+    const rings = { max_ring_dent: null, max_ring_left: null, ring_rule: "not judged: the test of each bump in 3D could not run" };
+    expect(buildReport(input({ measured: { ...COARSE_RUN, rings } })).achieved.text).toBe("not judged: not measured: Ring removal");
   });
 
   it("reports the flatten's floor in σ without judging it, by the pedestal rule", () => {

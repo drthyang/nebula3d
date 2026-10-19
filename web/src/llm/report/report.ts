@@ -6,6 +6,7 @@
 // module's (verdicts/, the report's reader), and this one writes the headlines
 // and details around them. It is pure, so the report can be tested end to end.
 
+import { isTooCoarse } from "../metrics/coarse";
 import type { ParamValue } from "../tune/catalog";
 import { verdicts, WORDS, type Kind, type Outcome } from "../verdicts";
 
@@ -150,6 +151,13 @@ const CRITERIA = WORDS.criterion;
 // Each card's verdict is the report's reading of its check (verdicts/readers.ts):
 // no verdict, no card.
 
+/**
+ * What the ring removal said of the ring candidates it detected and could not confirm on
+ * its grid, which it did not subtract (the evaluation's notice, from the stage's
+ * diagnostics), or null: on the ring card, and among the caveats.
+ */
+const ringNotice = (m: Obj | null | undefined): string | null => (typeof m?.notice === "string" && m.notice ? m.notice : null);
+
 function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
   if (verdict === undefined) return null;
   const m = measured ?? {};
@@ -160,17 +168,22 @@ function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefin
   const notRings = Array.isArray(m.shells_judged)
     ? (m.shells_judged as Obj[]).filter((x) => x?.ring === false)
     : Array.isArray(m.single_plane_bumps) ? m.single_plane_bumps : [];
+  const notice = ringNotice(m);
   return {
     title: "Ring removal",
     verdict,
     headline: `ring ratio ${fmt(m.mean_ring_energy_ratio)} · over-sub ≤ ${fmt(m.max_over_subtraction_fraction)} · dent ≤ ${fmt(dent)}${where(m.worst_ring_dent)} · left ≤ ${fmt(left)}${where(m.worst_ring_left)}`,
     criterion,
     details: [
+      // The ring candidates the removal detected and could not confirm on its grid, and left: said first (ringNotice).
+      ...(notice ? ([["Not subtracted", notice]] as [string, string][]) : []),
       ["Mean ring-energy ratio", fmt(m.mean_ring_energy_ratio)],
       ["Largest over-subtraction fraction", fmt(m.max_over_subtraction_fraction)],
       ["Deepest ring dent", `${fmt(dent)}${where(m.worst_ring_dent)}`],
       ["Largest ring left", `${fmt(left)}${where(m.worst_ring_left)}`],
       ["Bumps that are not rings (the crystal's own scattering, kept)", String(notRings.length)],
+      // A grid too coarse for the 3D test: the rings are not judged, and why.
+      ...(isTooCoarse(m.ring_rule) ? ([["Not judged", String(m.ring_rule).replace(/^not judged: /, "")]] as [string, string][]) : []),
     ],
   };
 }
@@ -245,15 +258,18 @@ function backfillCheck(measured: Obj | null | undefined, texture: Obj | null | u
   const seam = num(m.mean_median_seam_sigma);
   const cuts = Array.isArray(texture?.per_cut) ? (texture!.per_cut as Obj[]) : [];
   const biased = cuts.filter((c) => c.systematic_fill_bias === true).length;
+  // Cuts whose grid is too coarse to judge their fills (texture.ts, roomForRims).
+  const coarse = cuts.filter((c) => isTooCoarse(c.not_judged)).length;
+  const notJudged = coarse ? `, ${coarse} not judged (grid too coarse)` : "";
   const details: [string, string][] = [
     ["Mean median seam", `${fmt(seam)} σ`],
     ["Largest bright-fill fraction", fmt(m.max_bright_fill_fraction)],
   ];
-  if (texture) details.push(["Cuts with a systematic fill bias", `${biased} of ${cuts.length}`]);
+  if (texture) details.push(["Cuts with a systematic fill bias", `${biased} of ${cuts.length}${notJudged}`]);
   return {
     title: "Backfill",
     verdict,
-    headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${texture ? ` · fill bias on ${biased} of ${cuts.length} cuts` : ""}`,
+    headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${texture ? ` · fill bias on ${biased} of ${cuts.length} cuts${notJudged}` : ""}`,
     criterion,
     details,
   };
@@ -344,6 +360,9 @@ export function buildReport(input: ReportInput): Report {
   ].filter((c): c is ReportCheck => c != null);
 
   const caveats: string[] = [];
+  // Out loud: the ring candidates the removal left, unconfirmed on its grid, whatever the card's verdict.
+  const left = ringNotice(m.rings);
+  if (left) caveats.push(`Ring removal: ${left}`);
   for (const c of checks) if (c.verdict === "attention") caveats.push(`${c.title}: ${c.headline}.`);
   const missing = ["rings", "punch", "backfill", "flatten", "pdf"].filter((k) => !m[k as keyof Measured]);
   if (missing.length) caveats.push(`Not measured (no output, or the measurement failed): ${missing.map((k) => SETTING_STAGE_LABELS[k]).join(", ")}.`);

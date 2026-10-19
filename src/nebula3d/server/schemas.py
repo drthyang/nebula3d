@@ -143,6 +143,25 @@ class RingIsotropyOut(BaseModel):
     id: str
     rule: dict[str, float]
     shells: list[RingShellOut]
+    not_judged: str | None = None   # why the grid is too coarse to judge any ring
+
+
+class UnconfirmedRingsOut(BaseModel):
+    """The shells the ring removal detected and could not confirm as powder
+    rings on its grid, which it did not subtract (pipeline.unconfirmed_rings_notice)."""
+    count: int
+    needs: str                      # what the grid needs (ring_isotropy.grid_needs)
+    notice: str                     # what the run log says of them
+    q_centers: list[float] = []     # their |Q| (Å⁻¹)
+
+
+class RingDiagnosticsOut(BaseModel):
+    """The ring removal's record, from its diagnostics (see server.rings)."""
+    dataset_id: str
+    diagnostics_path: str
+    has_diagnostics: bool
+    status: str | None = None
+    unconfirmed_at_grid: UnconfirmedRingsOut | None = None
 
 
 class ShellFloorsOut(BaseModel):
@@ -207,7 +226,10 @@ class TextureOut(BaseModel):
     floor: float                    # ... and the median bias in units of the level
     n_holes: int
     n_judged: int
-    judged: bool                    # n_judged ≥ min_holes: else the fills are not judged
+    judged: bool                    # room for the rims, n_judged ≥ min_holes: else not judged
+    node_spacing: float | None = None  # voxels between neighbouring nodes of the grid's cell
+    room_needed: float | None = None   # ... that the median hole's rim needs, 2·(reach + rim)
+    not_judged: str | None = None   # why the grid is too coarse for the rule
     median_fill_bias_sigma: float | None
     median_fill_bias_level: float | None
     above_fraction: float | None

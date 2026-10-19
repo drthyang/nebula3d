@@ -118,6 +118,75 @@ Output:
 data/processed/*_ringremoved.h5
 ```
 
+#### Which shells are rings, and the grid that takes
+
+The ring removal subtracts only the shells it confirms as powder rings: a ring
+rises at its |Q| in nearly every direction over the sphere, the crystal's own
+scattering there in some directions only
+(`nebula3d.preprocessing.ring_isotropy`). NEBULA Pilot's ring check
+(`assess_stage` with stage rings) asks the same of every bump its three planes
+show. A grid too coarse for that test cannot tell a ring from the crystal's own
+scattering, so the test says so ("grid too coarse: …") and judges nothing: the
+removal subtracts no shell it cannot confirm, and the Pilot's ring check is not
+judged, giving the reason in `ring_rule`, never a verdict. The removal says so
+out loud. Its log line ends on a notice, marked ⚠, such as
+
+```text
+4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.
+```
+
+with the count, and what the grid needs from the limit it failed (below); of
+one candidate it says "1 ring candidate (a shell that may be a powder ring or
+the crystal's own scattering)", and the setting subtracts it "even if it is
+the crystal's own shell". Its
+diagnostics record it (`unconfirmed_at_grid`: the count, the need, the notice
+and the shells' |Q|; `GET /api/rings/{id}/diagnostics`), so the console says it
+too: the Execution page shows the stage's line as a warning, the Pilot's ring
+check gives it first (`notice`, which the validation's arm C reads without the
+remedy), and the report puts it on its ring card and among its caveats. The
+verdict on the run says why the ring removal is not judged: "not judged: the
+ring removal (grid too coarse for the ring check)". `pooled_confirm_rings` is a
+`RingParams` setting of the Python API: the console does not offer it. Two
+limits, each from the rule's own constants:
+
+- **Across a ring.** The test reads each direction's radial profile in |Q|
+  bins of 0.02 Å⁻¹, never finer than half a voxel (finer bins share the
+  voxels' spread in |Q| over the directions, and starve). The narrowest FWHM it
+  measures is two bins: two samples across a peak, the Nyquist rate, below
+  which a ring falls between the samples and is not told from its flanks. The
+  widest it takes is 0.16 Å⁻¹ (`fwhm_cap`): a broader core sums the crystal's
+  maxima at neighbouring |Q| in different directions into what reads as a
+  ring. So a grid lets the rule judge a ring only with one voxel or more
+  across 0.16 Å⁻¹. A third sample, the usual count to measure a peak's height,
+  is not asked for: the test takes the core's mean excess, an integral over
+  ±0.75 FWHM, which the ring's place on the bins moves by about a fifth at two
+  samples per FWHM (0.51 to 0.65 of a Gaussian's peak) and a sixth at three,
+  far inside the 0.15 of the median height the rule asks of 90 % of the
+  directions. Powder rings are narrower than a voxel on such grids anyway
+  (aluminium's lines from the sample can, a few hundredths of an Å⁻¹), and are
+  measured at the two-bin floor whatever the grid.
+- **Over the directions.** A direction cell's profile counts only where each
+  of its |Q| bins holds 5 voxels (`min_voxels`, a median's floor). The rule
+  speaks for 90 % of the directions (`direction_share`), so the grid must give
+  at least that share of the cells a shell reaches 5 voxels in every bin of its
+  profile; else the cells it measures are those the lattice happens to fill,
+  along its own directions, where the crystal's own scattering gathers too.
+  The grid's voxels are counted, the mask aside (unmeasured space is
+  coverage, not resolution), and scaled by the share low-memory mode reads,
+  for a shell inside the box's inscribed sphere (past it a face cuts cells
+  short, while the cells' bins hold more voxels the further out a shell
+  lies). A fine grid falls short near |Q| = 0: at 0.081 Å⁻¹ a voxel, shells
+  under 1.1 to 1.2 Å⁻¹ are not judged (the wider the shell, the more bins its
+  profile must fill).
+
+It is the voxel's size in Å⁻¹ that counts, not the number of points. On the
+validation's dev crystal (a = 3.9 Å), 81 points over ±4 r.l.u. (0.161 Å⁻¹ a
+voxel) put 0.99 voxels across 0.16 Å⁻¹, under one, so no ring is judged, the
+planted ones included; at 1.75 Å⁻¹ that grid fills 16 of the 128 cells, where
+the test had judged a bump of the crystal's own a powder ring. 161 points
+(0.081 Å⁻¹) put 1.99 voxels across it and fill 90 % of the cells or more from
+1.2 Å⁻¹ out, and so would 81 points over ±2 r.l.u.
+
 ### 2. Punch Bragg And Satellite Peaks
 
 ```bash
@@ -178,6 +247,26 @@ provisional):
 5. **A systematic fill bias** needs at least 5 judged holes, a median bias of
    0.5σ and a fifth of the level or more, and three quarters of the holes or
    more leaning the median's way.
+6. **Room for the rim.** The rim's trend is the diffuse falling away from the
+   hole's own node, which holds on that node's side of the midpoint to the
+   next node only: past it the diffuse turns toward the next one. A hole that
+   reaches r voxels from its centre (chessboard: its box's farthest face), its
+   rim 4 more, keeps the rim on its own side when the nodes are 2·(r + 4)
+   voxels apart or more. The nodes are the grid's: integer h, k and l, one
+   r.l.u. apart along the coarsest axis (a supercell's parent nodes lie
+   further apart, so this errs toward not judging). The rule reads the median
+   hole, so a cut is judged only where its median hole has that room; else it
+   says why (`not_judged`: "grid too coarse: …"), measures no bias and gives no
+   verdict (`systematic_fill_bias` null). The check passes only when every cut
+   it reads was judged; a judged cut's bias still needs attention. The fill's
+   gap band is the rim's first ring or two, inside its four, so it adds
+   nothing to the reach; it leaves the trend two rings or more while it is two
+   voxels deep or less (step 4's rim of one ring). On the validation's dev
+   crystal, 81 points over ±4 r.l.u. put the nodes 10 voxels apart, and the
+   punch's holes reach 2 voxels from their centres on the cuts (3 in 3-D):
+   their rims need 12 (14), and the cuts are not judged but where the median
+   hole reaches one voxel. 161 points put the nodes 20 apart, for holes of the
+   same reach.
 
 The Pilot reads holes on cuts, the three principal planes through the origin:
 a hole there is a 4-connected component of the cut, and its rim the ring
@@ -198,7 +287,8 @@ one plane thick it is the Pilot's rule, hole for hole.
 
 | Field | What it is |
 | --- | --- |
-| `n_holes`, `n_judged`, `judged` | The holes, those judged, and whether enough were (`min_holes`) to apply the rule |
+| `n_holes`, `n_judged`, `judged` | The holes, those judged, and whether the rule applies: room for the rims (step 6) and enough holes judged (`min_holes`) |
+| `node_spacing`, `room_needed`, `not_judged` | The voxels between the grid's nodes, those the median hole's rim needs (2·(reach + rim)), and why the grid is too coarse for the rule, if it is |
 | `median_fill_bias_sigma`, `median_fill_bias_level` | The median bias in the rim's σ and in units of the level (the Pilot's fields) |
 | `above_fraction`, `below_fraction` | The shares of the judged holes filled above, and below, the range their rim allows (the Pilot's) |
 | `above_floor_fraction`, `below_floor_fraction` | The shares filled above, and below, it by `floor` of their level or more |

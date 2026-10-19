@@ -5,10 +5,13 @@
 //
 // A rule is pure and total: it never throws, and with nothing to judge its
 // outcome is "info" with the reason "nothing to judge" (the named exceptions:
-// D15, the ΔPDF's rule, and D16, the UB's). An "attention" outcome always
-// carries a reason.
+// D15, the ΔPDF's rule, and D16, the UB's); on a grid too coarse for the
+// check's measurement, "info" with the reason "grid too coarse", which the
+// measurement states in its result. An "attention" outcome always carries a
+// reason.
 
-import { built, evidence, inference, inferred, joined, reading, remedy, written, type Span, type Tagged } from "../inference";
+import { built, evidence, inference, inferred, joined, quotedInference, reading, remedy, written, type Span, type Tagged } from "../inference";
+import { isTooCoarse } from "../metrics/coarse";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
 import { r2, SECOND_GRAIN_DEG, type GrainFacts } from "../metrics/grains";
@@ -48,6 +51,8 @@ export type Reason =
   | "peaks beside nodes"
   | "UB turned"
   | "symmetrised"
+  // The grid is too coarse for the check's measurement (metrics/coarse.ts): not judged.
+  | "grid too coarse"
   // What a recorded result says of itself (recorded.ts).
   | "no output"
   | "recorded verdict"
@@ -129,6 +134,12 @@ interface Judged {
 
 /** Nothing to judge: a fresh outcome each time, so no two outcomes share their reasons. */
 const nothing = (): Judged => ({ kind: "info", reasons: ["nothing to judge"] });
+/**
+ * The grid too coarse for the check's measurement to judge anything (metrics/coarse.ts):
+ * not judged, as nothing to judge is, for its own reason. No evidence never
+ * passes, applied to resolution.
+ */
+const tooCoarse = (): Judged => ({ kind: "info", reasons: ["grid too coarse"] });
 /** Attention for the reasons found, else a pass (with any reason that is no fault). */
 const judged = (faults: Reason[], also: Reason[] = []): Judged =>
   faults.length ? { kind: "attention", reasons: [...faults, ...also] } : { kind: "pass", reasons: also };
@@ -150,6 +161,31 @@ const goalOf = (stage: string) => written(`verdicts/rules.ts: the ${stage} goal`
 
 // ---------------------------------------------------------------- the stages
 
+/**
+ * The ring removal's notice (nebula3d.pipeline.unconfirmed_rings_notice): on a
+ * grid too coarse to confirm a ring, the removal subtracts no shell it could
+ * not confirm, and says how many ring candidates it detected (which may be
+ * powder rings or the crystal's own scattering), what the grid needs and the
+ * two ways out, in its run log line and its diagnostics, whose notice the
+ * rings' evaluation carries (notice, tune/evaluate.ts). Its first sentence is a
+ * definition; its last, the remedy with what it would subtract, is tagged here
+ * as the backend writes it, for more than one candidate and for one
+ * (RING_GRID_REMEDY and RING_GRID_REMEDY_ONE there), so arm C reads the notice
+ * without it, wherever it stands (the review's G1, accepted by the manager on
+ * the user's delegation, 2026-10-19).
+ */
+const RING_NOTICE = "verdicts/rules.ts: the ring removal's notice";
+export const RING_NOTICE_REMEDY = quotedInference(
+  RING_NOTICE,
+  "remedy",
+  " Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.",
+);
+export const RING_NOTICE_REMEDY_ONE = quotedInference(
+  RING_NOTICE,
+  "remedy",
+  " Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract it, even if it is the crystal's own shell.",
+);
+
 const rings: StageRule = {
   criterion: criterionOf("rings")`No powder ring left above, or dented below, three times its plane's noise. A bump is a powder ring only if it rises in nearly every direction over the sphere (at least 0.15 of its median height in 90 % of directions)${evidence(
     ": the crystal's own scattering at that |Q| rises in some directions only",
@@ -160,7 +196,8 @@ const rings: StageRule = {
   judge: (m) => {
     const left = num(m.max_ring_left);
     const dent = num(m.max_ring_dent);
-    if (left == null || dent == null) return nothing();
+    // Not judged where the 3D test could not run, or the grid is too coarse for it (ring_rule says so).
+    if (left == null || dent == null) return isTooCoarse(m.ring_rule) ? tooCoarse() : nothing();
     // A leftover or dent above 0 is beyond 3 × its plane's noise: real, by the tool's definition.
     return judged([...(left !== 0 ? (["ring left"] as const) : []), ...(dent !== 0 ? (["ring dent"] as const) : [])]);
   },
@@ -426,9 +463,13 @@ const symmetry: CheckRule<SymmetryMeasurements> = {
 
 const texture: CheckRule<Readonly<Record<string, unknown>>> = {
   // texture_check writes no verdict: each cut says whether its fill is biased.
+  // A cut whose grid is too coarse to judge its fills (not_judged, texture.ts's
+  // roomForRims) is no evidence either way: the fills pass only when every cut
+  // was judged, and a judged cut's bias still needs attention.
   judge: (m) => {
     const cuts = (Array.isArray(m.per_cut) ? (m.per_cut as unknown[]) : []).filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
     if (cuts.some((x) => x.systematic_fill_bias === true)) return { kind: "attention", reasons: ["fill bias"], words: null };
+    if (cuts.some((x) => isTooCoarse(x.not_judged))) return { ...tooCoarse(), words: null };
     return cuts.length ? { kind: "pass", reasons: [], words: null } : { ...nothing(), words: null };
   },
 };

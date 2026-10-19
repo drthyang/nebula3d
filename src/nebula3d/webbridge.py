@@ -65,6 +65,7 @@ from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
 from nebula3d.server import deltapdf as _dpdf
 from nebula3d.server import regrid as _regrid
+from nebula3d.server import rings as _rings
 from nebula3d.server import tuning as _tune
 from nebula3d.server import volumes as _vol
 from nebula3d.server.config import ServerConfig
@@ -97,6 +98,7 @@ __all__ = [
     "consistency_check_json",
     "consistency_slice",
     "bragg_profile_json",
+    "ring_diagnostics_json",
     "save_dpdf",
 ]
 
@@ -1093,6 +1095,18 @@ def bragg_profile_json(dataset_id: str) -> str:
         "punch_frame": data.get("punch_frame"),
         "peaks": list(data.get("peaks", [])),
     })
+
+
+def ring_diagnostics_json(dataset_id: str) -> str:
+    """The ring removal's record (mirrors GET /api/rings/{id}/diagnostics): the
+    ring candidates it detected and could not confirm on its grid, which it did
+    not subtract.  The ring stage writes ``*_diagnostics.json`` next to its output
+    volume (here the Pyodide virtual FS), so this only re-reads a small JSON
+    file, through the same helper as the server (:mod:`nebula3d.server.rings`)."""
+    out = _rings.saved_ring_diagnostics(_require_cfg(), dataset_id)
+    if out is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    return _json(out)
 
 
 def _resolve(volume_id: str, kind: str) -> _ds.StageStatus:

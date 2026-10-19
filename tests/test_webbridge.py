@@ -329,6 +329,46 @@ def test_bragg_profile_json_unknown_dataset(ran_pipeline):
         webbridge.bragg_profile_json("nope")
 
 
+def test_ring_diagnostics_json_is_the_servers_response(tmp_path):
+    """The ring removal's record in the browser build is the native server's,
+    field for field. The demo on 41 points over ±4 r.l.u. (0.3 Å⁻¹ a voxel):
+    the rings the pooled model detected and could not confirm on that grid,
+    with the notice its run log line ends on (G1)."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+    from nebula3d.server.schemas import RingDiagnosticsOut
+
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    dataset_id = webbridge.make_demo_input(n=41)
+    events: list[tuple] = []
+    webbridge.run("rings", "{}", flatten_enabled=True, force=True,
+                  progress=lambda *ev: events.append(ev))
+    bridged = json.loads(webbridge.ring_diagnostics_json(dataset_id))
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path / "work")))
+    served = client.get(f"/api/rings/{dataset_id}/diagnostics")
+    assert served.status_code == 200, served.text
+    assert bridged == served.json()
+    assert set(bridged) == set(RingDiagnosticsOut.model_fields)
+    left = bridged["unconfirmed_at_grid"]
+    assert bridged["has_diagnostics"] is True and left["count"] > 0
+    (done,) = [m for stage, status, _f, m in events if stage == "rings" and status == "done"]
+    assert done.endswith(f". ⚠ {left['notice']}")
+    with pytest.raises(KeyError):
+        webbridge.ring_diagnostics_json("nope")
+
+
+def test_ring_diagnostics_json_without_a_ring_left(ran_pipeline):
+    """On the run's 25 points (0.5 Å⁻¹ a voxel) the pooled model detects no
+    shell: its record has none left unconfirmed, and its log no notice."""
+    dataset_id, _datasets, events = ran_pipeline
+    record = json.loads(webbridge.ring_diagnostics_json(dataset_id))
+    assert record["has_diagnostics"] is True and record["unconfirmed_at_grid"] is None
+    (done,) = [m for stage, status, _f, m in events if stage == "rings" and status == "done"]
+    assert "⚠" not in done
+
+
 def test_volume_ub_check_json(tmp_path):
     """The UB check through the bridge, on the demo crystal (a = 4.2 Å, its UB
     right): no symmetry declared, so the rotation and a triclinic cell are fitted."""
