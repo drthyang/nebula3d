@@ -734,5 +734,32 @@
    "on": "2026-10-19",
    "option": "the run's own fit range and floor percentile, read from what made the file on disk"
   }
+ },
+ {
+  "source": "review",
+  "ref": "P4.1",
+  "at": "fd2a96a",
+  "kind": "science-error",
+  "evidence": "The flatten's verdict read the shell floors of the three planes through the origin (web/src/llm/tune/evaluate.ts:16-19, :316-321; 30 shells of each plane, web/src/llm/metrics/flatten.ts:169) and judged their largest trend and span (web/src/llm/verdicts/rules.ts:290). Three planes see a background only along their own directions: a pedestal off them is missed, and the crystal's own diffuse in them reads as a trend (on the dev controls the planes' trends reach 0.93). The whole volume's floors, on the flatten's own shells and with the flatten input's level, are served since #37 (src/nebula3d/server/routers/slices.py:128, src/nebula3d/webbridge.py:1215) and read by nothing.",
+  "proposed_fix": "Judge the pedestal on the whole volume's shell floors, by the same rule over the outer half of the shells the counts reach, from the run's fit range: the trend and the span of the judged floors, the span over the flatten input's level. Report the planes' numbers beside them; keep the 0.8 limits as they were set on the planes, and report every dev case that moves.",
+  "needs_user_approval": true,
+  "status": "implemented",
+  "commit": "6b00221",
+  "tests": [
+   "web/src/llm/__tests__/evaluate.test.ts (the flatten's pedestal, over the whole volume (4.1): a flat floor, an isotropic pedestal at the span and trend it was built with, a pedestal the three planes miss, the run's fit range, the floors unread)",
+   "web/src/llm/__tests__/verdicts.test.ts (flatten: the volume's trend and span, and an evaluation recorded before by the planes')",
+   "web/src/llm/__tests__/report.test.ts (shows the whole volume's pedestal on the Flatten card, and an evaluation recorded before it as then (4.1))",
+   "web/src/llm/__tests__/metrics.test.ts (separates them over the whole volume too)",
+   "web/src/llm/__tests__/verdictGoldens.test.ts (28 entries added over the volume's fields, none moved)",
+   "web/src/llm/evals/devData/knownAnswers.replay.test.ts (dev-flatten: the verdict's numbers are the endpoint's floors'; a pedestal, then none with the Q² term on)",
+   "web/src/llm/__tests__/skillLint.test.ts (reduction-qc's floor_trend is the flatten assessment's own field)",
+   "web/src/llm/__tests__/modelVisible.test.ts (3-goals-and-verdicts.md, 4-tool-results.md, 1-chat-arm-b.md)"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 4.1, the TS half; #37 the Python half). Implemented in e766b59 (the client reads the floors; the rule's numbers over a plane or the volume) and 6b00221 (the verdict reads the volume's). No verdict moves on the dev split at 81³ or 161³: at 161³ the planted background reads trend 0.996 and span 1.30 (the planes 0.975, 0.971), with the Q² term on 0.756 and 0.455, the cut case 0.158 and 0.192 (the planes 0.929, 0.487), the other controls |trend| 0.101 or less and span 0.645 or less (the planes up to 0.427 and 0.626). The goldens gain 28 entries, none moved. Recommendation on the 0.8 limits (the manager decides), from the clean controls and constructed pedestals only: keep both at 0.8, no re-derivation now. The trend: the seven clean controls read 0.24 or less at 81³ and 0.16 or less at 161³ over the volume (up to 0.89 and 0.93 on the planes), and every constructed pedestal (isotropic b·Q, b·Q² and b·Q⁴ of any size, and one off the three planes) reads 1: 0.8 sits in a wide gap. The span: the volume's is a share of the level weighted as the voxels are, so 0.8 keeps its meaning, and how it compares with the planes' turns on the coverage, not on one factor. On constructed b·Q² pedestals whose counts end inside the box's faces the volume reads 1 to 7 % under the planes (0.97 times at the planes' 0.8: it needs a pedestal about 13 % larger); where the counts fill the box to its corners, 1.2 to 1.36 times over (1.3 times at the planes' 0.8: a pedestal about 35 % smaller suffices), its judged shells running into the corners, which only the corners' voxels fill. The controls read 0.73 or less at 81³ and 0.65 or less at 161³ over the volume, their largest spans from those corner shells (0.19 to 0.39 inside the faces at 161³). A span limit re-derived now would encode a coverage geometry; what would make one derivable is first settling whether the shells the box truncates count among the shells the counts reach, the same question for the planes (interview R10, R11).",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "the whole volume's floors over the same outer half of the shells the counts reach; the 0.8 limits not re-fitted"
+  }
  }
 ]
