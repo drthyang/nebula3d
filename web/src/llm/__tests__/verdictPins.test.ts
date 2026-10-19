@@ -172,11 +172,20 @@ describe("D1–D10, kept and named", () => {
     expect([after.checks.ub, after.achieved?.dataProblems]).toEqual(["attention", [problem]]);
   });
 
-  it("D8: the answer checks' backfill topic ignores the fill bias that {{achieved}} counts", () => {
-    expect(D8_ANSWER_BACKFILL_IGNORES_TEXTURE).toBe(true);
-    const r = reply(assess("backfill", { verdict: "meets its goal", mean_median_seam_sigma: 0.5 }), step("texture_check", { per_cut: [{ systematic_fill_bias: true }] }));
+  it("D8, unified (2.4.8): the answer checks' backfill topic counts the fill bias {{achieved}} counts: attention if either check needs it, a pass only when both pass", () => {
+    expect(D8_ANSWER_BACKFILL_IGNORES_TEXTURE).toBe(false);
+    const seamOk = assess("backfill", { verdict: "meets its goal", mean_median_seam_sigma: 0.5 });
+    const seamFails = assess("backfill", { verdict: "needs attention", mean_median_seam_sigma: 1.5 });
+    const bias = step("texture_check", { per_cut: [{ systematic_fill_bias: true }] });
+    const noBias = step("texture_check", { per_cut: [{ systematic_fill_bias: false }] });
+    const r = reply(seamOk, bias);
     expect(r.achieved?.attention).toEqual(["the backfill's texture"]);
-    expect(r.checks.backfill).toBe("pass");
+    expect(r.checks.backfill).toBe("attention");
+    // One check's newer pass never hides the other's attention.
+    expect([reply(seamFails, noBias), reply(bias, seamOk), reply(noBias, seamFails)].map((x) => x.checks.backfill)).toEqual(["attention", "attention", "attention"]);
+    expect(reply(seamOk, noBias).checks.backfill).toBe("pass");
+    // The seam alone passes only half of it: not judged.
+    expect(reply(seamOk).checks.backfill).toBe("info");
   });
 
   it("D9: without a ΔPDF evaluation the report judges its ΔPDF card from the coverage and the symmetry; {{achieved}} says not measured", () => {

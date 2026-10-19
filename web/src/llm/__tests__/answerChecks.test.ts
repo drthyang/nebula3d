@@ -358,6 +358,31 @@ describe("the newest current result, as {{achieved}} reads it (D7, 2.4.7)", () =
   });
 });
 
+describe("the backfill topic counts the fill bias (D8, 2.4.8)", () => {
+  // Synthetic: a seam of 1.5σ (past 1σ) or 0.5σ; one cut whose fill is biased one way, or none.
+  const seamFails = step("assess_stage", { stage: "backfill" }, { backfill: { mean_median_seam_sigma: 1.5 } });
+  const seamOk = step("assess_stage", { stage: "backfill" }, { backfill: { mean_median_seam_sigma: 0.5 } });
+  const bias = step("texture_check", {}, { per_cut: [{ cut: "H–K plane at L = 0", systematic_fill_bias: true }] });
+  const noBias = step("texture_check", {}, { per_cut: [{ cut: "H–K plane at L = 0", systematic_fill_bias: false }] });
+  const clean = "The backfill is clean.";
+
+  it("sends a clean backfill back when either the seam or the fill needs attention, in either order", () => {
+    // The two sequences a reading of the newest of either let through.
+    expect(contradictions(clean, [seamFails, noBias]).map((t) => t.id)).toEqual(["backfill"]);
+    expect(contradictions(clean, [bias, seamOk]).map((t) => t.id)).toEqual(["backfill"]);
+    expect(contradictions(clean, [noBias, seamFails]).map((t) => t.id)).toEqual(["backfill"]);
+    expect(contradictions(clean, [seamOk, bias]).map((t) => t.id)).toEqual(["backfill"]);
+    // As {{achieved}} names them.
+    expect(verdicts({ reply: [seamFails, noBias] }).achieved?.attention).toEqual(["the backfill"]);
+    expect(verdicts({ reply: [bias, seamOk] }).achieved?.attention).toEqual(["the backfill's texture"]);
+  });
+
+  it("lets it stand when both pass", () => {
+    expect(contradictions(clean, [seamOk, noBias])).toEqual([]);
+    expect(verdicts({ reply: [seamOk, noBias] }).checks.backfill).toBe("pass");
+  });
+});
+
 describe("a repeated call's pointer reads as the result it points to (D17, 2.4b.1)", () => {
   // qmax_coverage finding the window too far, its outcome judged by the coverage's rule, as its tool writes it.
   const tooFar = judge("coverage", { window_weight: 0.04, window: "the ΔPDF's separable window", unit_cell: true, full_coverage_q: null, reach: null, reach_from: "", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } });

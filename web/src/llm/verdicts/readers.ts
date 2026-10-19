@@ -105,11 +105,15 @@ export const D3_ANSWER_UB_FROM_UB_CHECK_ONLY = false;
 export const D7_SELECTION: Record<Reader, "newest" | "newest that decides"> = { achieved: "newest", answer: "newest" };
 
 /**
- * D8: the answer checks' backfill topic reads assess_stage only, where
- * {{achieved}} and the report count texture_check's fill bias. Unify (2.4.8):
- * set this to false.
+ * D8, unified (plan 2.4.8, the user's decision of 2026-10-19): the answer
+ * checks' backfill topic counts texture_check's fill bias, as {{achieved}} and
+ * the report do. It reads the newest assess_stage backfill verdict and the
+ * newest texture_check, each on its own, and combines them: it needs attention
+ * if either needs attention, and passes only when both pass (one check's newer
+ * pass never hides the other's attention). true: it read assess_stage only,
+ * before 2.4.8.
  */
-export const D8_ANSWER_BACKFILL_IGNORES_TEXTURE = true;
+export const D8_ANSWER_BACKFILL_IGNORES_TEXTURE = false;
 
 /**
  * D10: words no producer wrote ("past", "unmeasured", "not" opening a coverage
@@ -189,9 +193,15 @@ const stageForAnswer: Cell = (o) => {
 /** grain_check's outcome as the answer checks' UB topic reads it (D3): the UB off needs attention; anything else says nothing of the UB. */
 const grainAsUb: Cell = (o) => (o.reasons.includes("UB off") ? "attention" : undefined);
 
+/** The outcomes a reader reads for one reading, and how it reads each. */
+type Sources = [CheckId, Cell][];
+
 interface Row {
   achieved: Cell;
-  answer: [CheckId, Cell][]; // the outcomes the answer checks read for this check's topic
+  // The answer checks' reading of this check's topic: the newest current result
+  // across these sources; or (every) each group's newest, combined: it needs
+  // attention if one does, and passes only when all pass (D8).
+  answer: Sources | { every: Sources[] };
 }
 
 const stage = (check: Stage): Row => ({ achieved: stageForAchieved, answer: [[check, stageForAnswer]] });
@@ -199,7 +209,9 @@ const stage = (check: Stage): Row => ({ achieved: stageForAchieved, answer: [[ch
 const MATRIX: Record<CheckId, Row> = {
   rings: stage("rings"),
   punch: stage("punch"),
-  backfill: D8_ANSWER_BACKFILL_IGNORES_TEXTURE ? stage("backfill") : { achieved: stageForAchieved, answer: [["backfill", stageForAnswer], ["texture", asIs]] },
+  backfill: D8_ANSWER_BACKFILL_IGNORES_TEXTURE
+    ? stage("backfill")
+    : { achieved: stageForAchieved, answer: { every: [[["backfill", stageForAnswer]], [["texture", asIs]]] } },
   flatten: stage("flatten"),
   pdf: stage("pdf"),
   coverage: {
@@ -243,7 +255,7 @@ interface Found {
 const decides = (k: Kind): boolean => k === "pass" || k === "attention";
 
 /** The result a reader reads among a check's current outcomes, newest first, by its selection (D7), with the kind it reads. */
-function pick(found: readonly Found[], at: Record<PipelineStage, number>, reader: Reader, sources: [CheckId, Cell][]): { o: Outcome; kind: Kind } | null {
+function pick(found: readonly Found[], at: Record<PipelineStage, number>, reader: Reader, sources: Sources): { o: Outcome; kind: Kind } | null {
   for (let i = found.length - 1; i >= 0; i--) {
     const { index, o } = found[i];
     const source = sources.find(([check]) => check === o.check);
@@ -319,10 +331,18 @@ function achievedOf(found: readonly Found[], at: Record<PipelineStage, number>):
 function answerOf(found: readonly Found[], at: Record<PipelineStage, number>): Partial<Record<CheckId, Kind>> {
   const checks: Partial<Record<CheckId, Kind>> = {};
   for (const check of Object.keys(MATRIX) as CheckId[]) {
-    const p = pick(found, at, "answer", MATRIX[check].answer);
-    if (p) checks[check] = p.kind;
+    const answer = MATRIX[check].answer;
+    const kind = Array.isArray(answer) ? pick(found, at, "answer", answer)?.kind : combined(answer.every.map((sources) => pick(found, at, "answer", sources)?.kind));
+    if (kind) checks[check] = kind;
   }
   return checks;
+}
+
+/** Each group's kind, combined (D8): needs attention if one does, a pass only when every one passes, else not judged; undefined when none was read. */
+function combined(kinds: readonly (Kind | undefined)[]): Kind | undefined {
+  if (kinds.includes("attention")) return "attention";
+  if (kinds.every((k) => k === "pass")) return "pass";
+  return kinds.some((k) => k !== undefined) ? "info" : undefined;
 }
 
 // ---------------------------------------------------------------- a report
