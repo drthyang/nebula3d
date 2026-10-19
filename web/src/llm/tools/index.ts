@@ -10,7 +10,6 @@
 
 import {
   fetchBraggProfile,
-  fetchConsistencyCheck,
   fetchDataset,
   fetchDpdfFeatures,
   fetchDpdfMeta,
@@ -43,9 +42,7 @@ import {
 } from "../tune/catalog";
 import { evaluateStage, headline, type StageEvaluation } from "../tune/evaluate";
 import { startTuning, stopTuning, useTuneStore, type StageRun } from "../tune/tuner";
-import { AXIS_INDEX, AXIS_TO_PLANE, useViewerStore } from "../../state/viewerStore";
 import {
-  datasetLabel,
   dpdfVolumeId,
   hklVolumeId,
   RECIP_STAGES,
@@ -55,7 +52,7 @@ import {
 import { qRadius } from "../context/pipelineContext";
 import type { ToolCall, ToolSpec } from "../provider/client";
 import { ALL_STAGES, keysOf, RECIP, resolveFacts, stageKey, type Facts } from "./facts";
-import { openView, type ViewTarget } from "./openView";
+import type { ViewTarget } from "./openView";
 import { built, connective, evidence, inference, joined, reading, withoutInference, written } from "../inference";
 import { fit } from "../readings";
 import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS, skillsOn } from "../skills";
@@ -64,29 +61,27 @@ import { num, oneOf } from "./shared/args";
 import {
   checkInRange,
   cleanupView,
-  DPDF_FIXED,
-  DPDF_PLANES,
   dpdfMeta,
-  dpdfRange,
   dpdfView,
   HKL,
-  measureDpdf,
-  measureRecip,
   planeLabel,
   RECIP_FIXED,
   RECIP_PLANES,
   recipMeta,
   recipRange,
-  XYZ,
 } from "./shared/cuts";
 import { described, description } from "./shared/describe";
-import { r4, r6 } from "./shared/figures";
 import { checkIdle, unique } from "./shared/pipeline";
 import { measure_reciprocal_cut } from "./defs/measure_reciprocal_cut";
 import { measure_dpdf_cut } from "./defs/measure_dpdf_cut";
 import { describe_dataset } from "./defs/describe_dataset";
 import { line_profile } from "./defs/line_profile";
 import { bragg_peaks } from "./defs/bragg_peaks";
+import { consistency_details } from "./defs/consistency_details";
+import { compare_datasets } from "./defs/compare_datasets";
+import { current_view } from "./defs/current_view";
+import { configure_settings } from "./defs/configure_settings";
+import { show_in_viewer } from "./defs/show_in_viewer";
 import { ToolArgError, type AgentTool, type Args, type ChatTool, type ToolContext, type ToolIO } from "./types";
 
 export type { AgentTool, Args, ChatTool, ToolContext, ToolIO, ToolOutcome } from "./types";
@@ -98,188 +93,6 @@ import { grainCheck, shownGrains } from "../metrics/grains";
 import { sectionSymmetry, SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { median, radialProfile, roundSig } from "../metrics/sliceStats";
 import { textureMetrics } from "../metrics/texture";
-
-// ---------------------------------------------------------------- lookups
-
-const consistencyDetails: ChatTool = {
-  name: "consistency_details",
-  facts: { label: "Read the back-FFT check", acts: null, offeredFor: ["pdf"], highlights: ["check"] },
-  ...described(
-    description("consistency_details")`The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. The transform keeps the real part, which is the data's even part under Q → −Q: pearson_r_even compares the round trip with that part and is 1 when the transform is sound, while r against the data is limited by the odd part (odd_share: counting noise on unsymmetrised data)${evidence(", so r below 1 on unsymmetrised data is no fault")}. Neither says a feature is real.`,
-  ),
-  parameters: { type: "object", properties: {} },
-  run: async (_args, { dataset }) => {
-    const check = await safe(fetchConsistencyCheck(dataset.id));
-    if (!check?.has_check || !check.metrics) {
-      return { result: { has_check: false }, summary: "no back-FFT check saved for this ΔPDF" };
-    }
-    const m = check.metrics;
-    const result = {
-      ...m,
-      pearson_r: r4(m.pearson_r),
-      normalized_rms: r4(m.normalized_rms),
-      per_plane_r: Object.fromEntries(Object.entries(m.per_plane_r ?? {}).map(([k, v]) => [k, r4(v)])),
-      ...(m.pearson_r_even !== undefined
-        ? {
-            pearson_r_even: r6(m.pearson_r_even),
-            normalized_rms_even: r4(m.normalized_rms_even),
-            odd_share: r4(m.odd_share),
-          }
-        : {}),
-    };
-    return {
-      result,
-      summary:
-        `r = ${result.pearson_r}, normalised RMS = ${result.normalized_rms}` +
-        (result.pearson_r_even != null ? `; against the even part r = ${result.pearson_r_even} (odd share ${result.odd_share})` : ""),
-      view: { view: "consistency", label: "the back-FFT check" },
-    };
-  },
-};
-
-const compareDatasets: ChatTool = {
-  name: "compare_datasets",
-  facts: { label: "Compared datasets", acts: null, offeredFor: ["compare"] },
-  description:
-    "The same cut measured on several datasets (e.g. temperatures), to see what changes between them. kind=reciprocal compares the stage metrics; kind=dpdf compares the ΔPDF feature metrics and back-FFT r. Up to 6 datasets; default all.",
-  parameters: {
-    type: "object",
-    properties: {
-      kind: { type: "string", enum: ["reciprocal", "dpdf"] },
-      plane: { type: "string", description: "hk0/h0l/0kl for reciprocal; xy/xz/yz for dpdf" },
-      value: { type: "number", description: "Cut position (r.l.u. or Å)" },
-      dataset_ids: { type: "array", items: { type: "string" }, description: "From describe_dataset; default all" },
-    },
-    required: ["kind", "plane", "value"],
-  },
-  run: async (args, { datasets }) => {
-    const kind = oneOf(args, "kind", ["reciprocal", "dpdf"] as const);
-    const plane = kind === "reciprocal" ? oneOf(args, "plane", RECIP_PLANES) : oneOf(args, "plane", DPDF_PLANES);
-    const value = num(args, "value");
-    const ids = Array.isArray(args.dataset_ids) ? args.dataset_ids.map(String) : null;
-    const picked = (ids ? datasets.filter((d) => ids.includes(d.id)) : datasets).slice(0, 6);
-    if (!picked.length) throw new ToolArgError(`no matching datasets; choose from ${datasets.map((d) => d.id).join(", ")}`);
-    const rows = await Promise.all(
-      picked.map(async (d) => {
-        try {
-          if (kind === "reciprocal") {
-            const m = await measureRecip(d, plane, value);
-            return {
-              dataset: datasetLabel(d, datasets),
-              ring_energy_ratio: m.ring_removal?.ring_energy_ratio ?? null,
-              over_subtraction_fraction: m.ring_removal?.over_subtraction_fraction ?? null,
-              leftover_peaks: m.bragg_punch_leftover?.n_suspicious ?? null,
-              backfill_median_seam_sigma: m.backfill?.median_seam_sigma ?? null,
-              flatten_floor_after: m.flatten?.floor_after ?? null,
-              flatten_floor_max_sigma: m.flatten?.after_floor_max_sigma ?? null,
-            };
-          }
-          const [m, check] = await Promise.all([measureDpdf(d, plane, value), safe(fetchConsistencyCheck(d.id))]);
-          const p = m.delta_pdf;
-          return {
-            dataset: datasetLabel(d, datasets),
-            feature_snr: p.feature_snr,
-            strong_feature_fraction: p.strong_feature_fraction,
-            positive_fraction: p.positive_fraction,
-            anisotropy_ratio: p.anisotropy_ratio,
-            anisotropy_angle_deg: p.anisotropy_angle_deg,
-            radial_trend: p.radial_trend,
-            back_fft_r: check?.metrics ? r4(check.metrics.pearson_r) : null,
-          };
-        } catch (e) {
-          return { dataset: datasetLabel(d, datasets), error: (e as Error).message };
-        }
-      }),
-    );
-    return { result: { cut: planeLabel(plane, value), rows }, summary: `${planeLabel(plane, value)} on ${rows.length} datasets` };
-  },
-};
-
-const currentView: ChatTool = {
-  name: "current_view",
-  facts: { label: "Checked your view", acts: null },
-  description:
-    "What the user is looking at: the console page and the cuts open in the reciprocal-space and ΔPDF viewers. Use it when the user says 'this', 'here' or 'what I'm looking at'.",
-  parameters: { type: "object", properties: {} },
-  run: async (_args, { dataset }) => {
-    const { tab } = useNavStore.getState();
-    const { fixedAxis, cutIndex } = useViewerStore.getState();
-    const dp = useDpdfStore.getState();
-    const [meta, dmeta] = await Promise.all([
-      hklVolumeId(dataset) ? safe(recipMeta(dataset)) : null,
-      dpdfVolumeId(dataset) ? safe(dpdfMeta(dataset)) : null,
-    ]);
-    const at = (r: [number, number], n: number, i: number) =>
-      roundSig(n > 1 ? r[0] + Math.min(i, n - 1) * ((r[1] - r[0]) / (n - 1)) : r[0], 4);
-    const ax = AXIS_INDEX[fixedAxis];
-    const recipCut = meta ? at(recipRange(meta, ax), meta.shape[ax], cutIndex) : null;
-    const dpdfCuts = dmeta
-      ? { x: at(dmeta.x_range, dmeta.shape[0], dp.cutX), y: at(dmeta.y_range, dmeta.shape[1], dp.cutY), z: at(dmeta.z_range, dmeta.shape[2], dp.cutZ) }
-      : null;
-    const result = {
-      page: tab,
-      dataset: datasetLabel(dataset),
-      reciprocal_cut: recipCut != null ? { plane: AXIS_TO_PLANE[fixedAxis], value: recipCut, label: planeLabel(AXIS_TO_PLANE[fixedAxis], recipCut) } : null,
-      dpdf_cuts_A: dpdfCuts,
-    };
-    return { result, summary: `on ${tab}${result.reciprocal_cut ? `, ${result.reciprocal_cut.label}` : ""}` };
-  },
-};
-
-// Settings that only steer the Configure page's previews, not the run.
-const UI_ONLY = /^punch(Slice|Cut)/;
-
-const configureSettings: ChatTool = {
-  name: "configure_settings",
-  facts: { label: "Read the run settings", acts: null, reachesBackend: false },
-  description:
-    "The Configure page's current settings — what the next run would use (blank = the backend default). They may differ from the settings that produced the files on disk. Name settings exactly as returned here when you suggest a change.",
-  parameters: { type: "object", properties: {} },
-  run: async () => {
-    const s = usePipelineStore.getState() as unknown as Record<string, unknown>;
-    const settings: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(s)) {
-      if (typeof v === "function" || UI_ONLY.test(k)) continue;
-      if (["jobId", "running", "events", "times", "terminal"].includes(k)) continue;
-      settings[k] = v === "" ? "(default)" : v;
-    }
-    return { result: { settings }, summary: `${Object.keys(settings).length} settings` };
-  },
-};
-
-const showInViewer: ChatTool = {
-  name: "show_in_viewer",
-  facts: { label: "Opened the viewer", acts: "view", invalidates: ["view"] },
-  description:
-    "Open a cut in the console's viewer so the user can see what you are describing: view=cleanup opens the reciprocal-space cleanup page (all stages side by side) at a reciprocal plane; view=dpdf opens the 3D-ΔPDF page at a real-space section. Use it for the one cut that best shows your point.",
-  parameters: {
-    type: "object",
-    properties: {
-      view: { type: "string", enum: ["cleanup", "dpdf"] },
-      plane: { type: "string", description: "hk0/h0l/0kl for cleanup; xy/xz/yz for dpdf" },
-      value: { type: "number", description: "Cut position: r.l.u. for cleanup, Å for dpdf" },
-    },
-    required: ["view", "plane", "value"],
-  },
-  run: async (args, { dataset }) => {
-    const view = oneOf(args, "view", ["cleanup", "dpdf"] as const);
-    const value = num(args, "value");
-    let target: ViewTarget;
-    if (view === "cleanup") {
-      const plane = oneOf(args, "plane", RECIP_PLANES);
-      const meta = await recipMeta(dataset);
-      checkInRange(HKL[RECIP_FIXED[plane]], value, recipRange(meta, RECIP_FIXED[plane]));
-      target = cleanupView(plane, value);
-    } else {
-      const plane = oneOf(args, "plane", DPDF_PLANES);
-      const meta = await dpdfMeta(dataset);
-      checkInRange(XYZ[DPDF_FIXED[plane]], value, dpdfRange(meta, DPDF_FIXED[plane]));
-      target = dpdfView(meta, plane, value);
-    }
-    openView(target);
-    return { result: { opened: target.label }, summary: `Opened ${target.label}`, view: target };
-  },
-};
 
 // ---------------------------------------------------------------- assessing
 
@@ -1450,7 +1263,7 @@ const readSkillTool: ChatTool = {
 export const CHAT_TOOLS: ChatTool[] = [
   readSkillTool,
   describe_dataset,
-  currentView,
+  current_view,
   measure_reciprocal_cut,
   measure_dpdf_cut,
   assessStage,
@@ -1464,14 +1277,14 @@ export const CHAT_TOOLS: ChatTool[] = [
   radialProfileTool,
   line_profile,
   bragg_peaks,
-  consistencyDetails,
+  consistency_details,
   runLog,
-  compareDatasets,
-  configureSettings,
+  compare_datasets,
+  configure_settings,
   updateSettings,
   runPipeline,
   tunePipeline,
-  showInViewer,
+  show_in_viewer,
 ];
 
 // The facts by tool name, indexed on the first lookup.
