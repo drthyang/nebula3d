@@ -8,6 +8,7 @@ import type { Dataset } from "../../api/types";
 import { useDpdfStore, type ManualLimit } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
+import * as readings from "../readings";
 import { isCompacted } from "../readings/compact";
 import { resetTokenState } from "../provider/tokens";
 import type { ChatMessage, StreamDelta } from "../provider/client";
@@ -422,6 +423,35 @@ describe("runAgent", () => {
       await runAgent({ messages: [{ role: "user", content: "How does the flatten look?" }], tools, ctx, settings, signal: new AbortController().signal });
       expect(specNames(seen[0].tools)).toEqual(["assess_stage"]);
       expect(specNames(seen[1].tools)).toEqual(["assess_stage", "texture_check"]); // the backfill's evidence
+    });
+  });
+
+  describe("a result the model reads fitted (readings/)", () => {
+    // 600 readings: past the result limit, so the model reads the first ones
+    // and left_out names the rest; the step keeps the whole beside them.
+    const whole = { verdict: "meets its goal", items: Array.from({ length: 600 }, (_, i) => ({ at: Number((1 + i / 1000).toFixed(3)), w: 0.5 })) };
+    const longTool: AgentTool = {
+      name: "long",
+      description: "a long reading",
+      parameters: { type: "object", properties: {} },
+      run: async () => ({ result: whole, summary: "600 items" }),
+    };
+
+    it("fills a reference to a field the model's copy left out, from the whole result the step carries", async () => {
+      const seen = script([[{ toolCalls: [call("c1", "long", {})] }], [{ content: "The last item is at {{long.items.599.at}}." }]]);
+      const r = await runAgent({ messages: base, tools: [longTool], ctx, settings, signal: new AbortController().signal });
+      const step = r.steps[0];
+      expect(step.full).toBe(JSON.stringify(whole));
+      // What the model read: the tool message as it was sent, which holds the first items only.
+      const sent = seen[1].messages.find((m) => m.role === "tool")?.content;
+      expect(readings.seen(step)).toBe(sent);
+      const read = JSON.parse(readings.seen(step)) as { items: unknown[]; left_out: string[] };
+      expect(read.items.length).toBeLessThan(600);
+      expect(read.left_out).toEqual(["items: its last items"]);
+      expect(readings.found(step)).toEqual(whole);
+      // The reference is filled from the whole result, and its number traced there.
+      expect(r.content).toBe("The last item is at 1.599.");
+      expect(r.note).toBeUndefined();
     });
   });
 

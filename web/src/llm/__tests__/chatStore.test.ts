@@ -23,14 +23,24 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("chat transcript across reloads", () => {
-  it("keeps a step's result and drops the outcomes beside it, which served the reply's own checks", async () => {
+  it("keeps a step's result as the model read it, and drops the outcomes and the whole result beside it, which served the reply", async () => {
     const store = await load();
     const outcome = { check: "coverage" as const, kind: "pass" as const, reasons: [], dataProblems: [], words: "clean" };
-    const step = { id: "1", name: "qmax_coverage", args: {}, status: "done" as const, result: '{"verdict":"clean"}', outcomes: [outcome] };
+    const whole = JSON.stringify({ verdict: "clean", per_cut: "x".repeat(9000) });
+    const step = { id: "1", name: "qmax_coverage", args: {}, status: "done" as const, result: '{"verdict":"clean","left_out":["per_cut"]}', full: whole, outcomes: [outcome] };
     store.useChatStore.getState().addTurn({ role: "assistant", content: "Clean.", steps: [step] });
     const kept = store.useChatStore.getState().turns[0].steps![0];
-    expect(kept).toEqual({ id: "1", name: "qmax_coverage", args: {}, status: "done", result: '{"verdict":"clean"}' });
-    expect(storage.get("nebula3d.chat.turns.v1")).not.toMatch(/outcomes/);
+    expect(kept).toEqual({ id: "1", name: "qmax_coverage", args: {}, status: "done", result: '{"verdict":"clean","left_out":["per_cut"]}' });
+    expect(storage.get("nebula3d.chat.turns.v1")).not.toMatch(/outcomes|"full"|xxxx/);
+  });
+
+  it("loads a transcript saved before the steps carried their whole results, as it was", async () => {
+    const saved = [
+      { id: 1, role: "user", content: "Is the UB right?" },
+      { id: 2, role: "assistant", content: "Yes.", steps: [{ id: "0:c1", name: "ub_check", args: {}, status: "done", summary: "ok", result: '{"angle_deg":0.01}' }] },
+    ];
+    storage.set("nebula3d.chat.turns.v1", JSON.stringify(saved));
+    expect((await load()).useChatStore.getState().turns).toEqual(saved);
   });
 
   it("brings back the turns and the draft, and keeps numbering after them", async () => {

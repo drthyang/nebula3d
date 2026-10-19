@@ -23,7 +23,7 @@ import { isLocalUrl } from "./provider/presets";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
 import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
 import { planWindow } from "./provider/window";
-import { shorten } from "./readings";
+import { shorten, whole } from "./readings";
 import type { LlmSettings } from "./settings";
 import { skillsOn } from "./skills";
 import { factsOf, runToolCall, toolSpecs, toolsWithSkills, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
@@ -139,7 +139,7 @@ export const REVISING_NOTE = "Checking the answer against its evidence…";
 
 // What an answer's numbers may come from: the conversation as it arrived (the
 // system prompt, the context, the user's words), the tool results of this reply
-// (whole, though the model may read them shortened) and of earlier turns, and
+// (whole, though the model may read them fitted or shortened) and of earlier turns, and
 // the tools' own guidance. No assistant text: an earlier answer's number from
 // nowhere would otherwise vouch for the next answer, and this reply's drafts,
 // and the notes sent back about them, for themselves.
@@ -234,10 +234,10 @@ export async function runAgent({
   let useTools = tools.length > 0 && ctx !== null && !toolsKnownUnsupported(settings);
   let content = "";
   let reasoning = "";
+  // Each step carries its result's two readings (readings/): the answer
+  // checks, the references and the verdict read what the tools found, not
+  // what fit.
   let steps: AgentStep[] = [];
-  // Each step's whole result, where the model read it trimmed: the answer
-  // checks judge against what the tools found, not against what fit.
-  const fullResults = new Map<string, string>();
   let note: string | undefined = tools.length && !useTools && ctx ? TOOLS_UNSUPPORTED_NOTE : undefined;
   const emit = (roundText = "") => onProgress?.({ content: joinText(content, roundText), reasoning, steps });
   const setStep = (id: string, patch: Partial<AgentStep>) => {
@@ -397,9 +397,8 @@ export async function runAgent({
       // The final answer: held to its evidence before the user reads it. A
       // revision that wrote nothing leaves the answer it revised.
       const answer = roundText.trim() ? roundText : rejected;
-      const checked = steps.map((st) => (fullResults.has(st.id) ? { ...st, result: fullResults.get(st.id) } : st));
-      const sources = numberSources(convo, arrived, checked.map((st) => st.result ?? ""), tools, ctx?.earlierResults ?? []);
-      const issues = useTools && checkAnswers ? answerIssues(answer, checked, sources) : null;
+      const sources = numberSources(convo, arrived, steps.map(whole), tools, ctx?.earlierResults ?? []);
+      const issues = useTools && checkAnswers ? answerIssues(answer, steps, sources) : null;
       if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
         revisions += 1;
         rejected = roundText;
@@ -446,16 +445,17 @@ export async function runAgent({
         signal,
         progress: (progress) => setStep(id, { progress }),
       });
+      // The whole result arrives with the status, where the model reads it fitted.
       setStep(id, {
         progress: undefined,
         args: run.args,
         status: run.ok ? "done" : "error",
         summary: run.summary,
         result: run.text,
+        ...(run.full !== undefined ? { full: run.full } : {}),
         view: run.view,
         outcomes: run.outcomes,
       });
-      if (run.full) fullResults.set(id, run.full);
       if (run.ok) {
         offer(call.function.name);
         fresh += 1;
@@ -478,11 +478,11 @@ export async function runAgent({
   // A server that reported some requests' counts but not all leaves the total unknown.
   const usage = wantUsage ? (tokens.requests > 0 && tokens.requests === requests ? tokens : null) : undefined;
   // Numbers by reference: the words the user reads have each {{tool.field}}
-  // filled in from the result (whole, as the tools found it); and the verdict
-  // on the run is computed from the checks, never taken from the words.
-  const measured = steps.map((st) => (fullResults.has(st.id) ? { ...st, result: fullResults.get(st.id) } : st));
-  content = fillReferences(content, measured).text;
-  const verdict = useTools ? verdicts({ reply: measured }).achieved : null;
+  // filled in from what the tools found (whole, however much the model read);
+  // and the verdict on the run is computed from the checks, never taken from
+  // the words.
+  content = fillReferences(content, steps).text;
+  const verdict = useTools ? verdicts({ reply: steps }).achieved : null;
   return {
     content,
     reasoning,
