@@ -427,32 +427,39 @@ const grain: CheckRule<GrainFacts> = {
   },
 };
 
-/** A UB turned by this much (degrees) or more is reported. */
+/**
+ * A UB turned by this much (degrees) or more is reported: the fit's own noise
+ * lies below it. The validation's grader keeps its own 0.1° (evals/validation.ts)
+ * until the shared answer reader (plan 3.2): a separate rule, docs/evals.md.
+ */
 const UB_TURN = 0.05;
 
-/**
- * D4, the first of two "UB turned" rules: {{achieved}} names a turned UB as a
- * data problem when the fit turned it by UB_TURN or more and the fit was not
- * the symmetric one (verdict.ts:99 before this module). Its pair is
- * UB_OFF_FOR_ANSWER. Unify (2.4.4): make UB_OFF_FOR_ANSWER read
- * `(u) => u.symmetrised === true || UB_TURNED_FOR_ACHIEVED(u)`, one line: one
- * rule, from an unsymmetrised fit, and a symmetrised volume's UB still not
- * judged right.
- */
-export const UB_TURNED_FOR_ACHIEVED = (u: Readonly<Record<string, unknown>>): boolean => {
-  const angle = num(u.orientation_change_deg);
-  return angle != null && angle >= UB_TURN && u.fit !== "symmetric";
-};
+/** The turn a ub_check result reports, in degrees: orientation_change_deg, else the angle_deg of a recording made before that field. */
+const ubTurn = (u: Readonly<Record<string, unknown>>): number | null => num(u.orientation_change_deg) ?? num(u.angle_deg);
 
 /**
- * D4, the second: the answer checks hold a claim that the UB is right to a UB
- * that is symmetrised (its orientation cannot be judged), or turned by UB_TURN
- * or more, counting the angle_deg of recordings made before
- * orientation_change_deg (answerChecks.ts:278 before this module).
+ * D4: a symmetrised volume's UB cannot be judged. It takes the symmetric fit
+ * (ub_check writes symmetrised true exactly when it does), which sees only the
+ * changes that commute with the volume's operations; a misorientation needs
+ * the unsymmetrised data. Its turn is no data problem, and the UB is not right
+ * either: a claim that it is right is still sent back. The answer checks send
+ * a claim back only against an outcome that needs attention (one not judged
+ * decides no claim: contradictions, answerChecks.ts), so its outcome needs
+ * attention, for the reason "symmetrised".
  */
-export const UB_OFF_FOR_ANSWER = (u: Readonly<Record<string, unknown>>): boolean => {
-  const angle = typeof u.orientation_change_deg === "number" ? u.orientation_change_deg : typeof u.angle_deg === "number" ? u.angle_deg : null;
-  return u.symmetrised === true || (angle != null && angle >= UB_TURN);
+export const UB_NOT_JUDGED = (u: Readonly<Record<string, unknown>>): boolean => u.symmetrised === true || u.fit === "symmetric";
+
+/**
+ * D4, unified (plan 2.4.4, the user's decision of 2026-10-19): one "UB
+ * turned", a turn of UB_TURN or more from an unsymmetrised fit (a UB that can
+ * be judged), its angle as ub_check reports it. {{achieved}} names it a data
+ * problem, and the answer checks hold a claim that the UB is right to it.
+ * Before 2.4.4 they read two rules: {{achieved}} took orientation_change_deg
+ * alone, and the answer checks a symmetric fit's turn too.
+ */
+export const UB_TURNED = (u: Readonly<Record<string, unknown>>): boolean => {
+  const angle = ubTurn(u);
+  return angle != null && angle >= UB_TURN && !UB_NOT_JUDGED(u);
 };
 
 /**
@@ -467,15 +474,14 @@ const ub: CheckRule<Readonly<Record<string, unknown>>> = {
   // ub_check writes no verdict: what the fit found, and the data's problems it shows.
   judge: (u) => {
     const dataProblems: string[] = [];
-    if (UB_TURNED_FOR_ACHIEVED(u)) dataProblems.push(`the UB is turned by ${num(u.orientation_change_deg)}°`);
+    const turned = UB_TURNED(u);
+    if (turned) dataProblems.push(`the UB is turned by ${ubTurn(u)}°`);
     const shift = Array.isArray(u.origin_shift_rlu) ? (u.origin_shift_rlu as unknown[]) : null;
     if (shift) dataProblems.push(`the HKL origin is shifted by (${shift.join(", ")}) r.l.u.`);
-    const angle = typeof u.orientation_change_deg === "number" ? u.orientation_change_deg : typeof u.angle_deg === "number" ? u.angle_deg : null;
-    if (UB_OFF_FOR_ANSWER(u)) {
-      const reasons: Reason[] = [...(u.symmetrised === true ? (["symmetrised"] as const) : []), ...(angle != null && angle >= UB_TURN ? (["UB turned"] as const) : [])];
-      return { kind: "attention", reasons, words: null, dataProblems };
-    }
-    if (!D16_UB_UNMEASURED_READS_RIGHT && angle == null) return { ...nothing(), words: null, dataProblems };
+    // Not judged, or turned: either holds a claim that the UB is right to account.
+    if (UB_NOT_JUDGED(u)) return { kind: "attention", reasons: ["symmetrised"], words: null, dataProblems };
+    if (turned) return { kind: "attention", reasons: ["UB turned"], words: null, dataProblems };
+    if (!D16_UB_UNMEASURED_READS_RIGHT && ubTurn(u) == null) return { ...nothing(), words: null, dataProblems };
     return { kind: "pass", reasons: [], words: null, dataProblems };
   },
 };

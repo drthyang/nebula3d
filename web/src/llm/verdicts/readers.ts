@@ -212,7 +212,7 @@ const MATRIX: Record<CheckId, Row> = {
       ],
     ],
   },
-  // ub_check writes the UB's data problems (UB_TURNED_FOR_ACHIEVED) and its kind for the answer checks (UB_OFF_FOR_ANSWER): D4, in rules.ts.
+  // ub_check writes the UB's data problems and its kind for the answer checks by one rule (D4, in rules.ts: UB_TURNED, UB_NOT_JUDGED).
   ub: { achieved: () => "info", answer: D3_ANSWER_UB_FROM_UB_CHECK_ONLY ? [["ub", asIs]] : [["ub", asIs], ["grain", grainAsUb]] },
 };
 
