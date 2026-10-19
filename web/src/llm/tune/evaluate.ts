@@ -1,7 +1,8 @@
 // Measures one stage's output for the tuning run: that stage's metrics on the
 // three principal planes through the origin (plus the volume-wide records the
-// stage writes), so a trial is judged on more than one cut.  The numbers are
-// the same pure metrics the chat context uses.
+// stage writes, and for the flatten its shell floors over the whole volume,
+// which its pedestal is judged on), so a trial is judged on more than one cut.
+// The numbers are the same pure metrics the chat context uses.
 
 import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy, fetchShellFloors } from "../../api/client";
 import type { Dataset } from "../../api/types";
