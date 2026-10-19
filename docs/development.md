@@ -81,3 +81,26 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
 - the console's lint, tests and both builds (native and Pages).
 
 The Pages workflow deploys `main` to GitHub Pages after CI passes on it.
+
+### What the Pilot's model sees
+
+`web/src/llm/__tests__/modelVisible.test.ts` writes everything NEBULA Pilot's
+model reads to Markdown snapshots in
+`web/src/llm/__tests__/__snapshots__/model-visible/`: the system prompt and the
+opening messages (tools on with and without the skills, as validation arms B
+and C get them, and tools off), every tool's definition and the tools a local
+model is offered, the stage goals, the verdicts' criteria, the skills' listing,
+the stage-review and tuning prompts, a result from each tool as the executor
+hands it over, and what the answer checks and the agent loop send back. It runs
+on a synthetic crystal behind a mocked API: no model, no backend, no measured
+data. A diff in these files is a change to what the model sees, and is reviewed
+as one: a reworded prompt, a renamed result field or a new tool shows up there.
+After an intended change, update them from `web/` and read the diff before
+committing it:
+
+```bash
+npx vitest run src/llm/__tests__/modelVisible.test.ts -u
+```
+
+Put `-u` after the file: before it, vitest takes the path as `-u`'s value and
+updates every snapshot in the suite.
