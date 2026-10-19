@@ -39,8 +39,9 @@ export type PunchPlane = "hk" | "hl" | "kl";
 // All editable configuration form values.  Strings mirror the raw <input>
 // values (empty = "use the backend default"); the run action converts them.
 export interface PipelineConfig {
-  // per-stage enable toggles; a disabled stage is skipped and its input passes
-  // straight through to the next enabled stage (stage 4 = `flatten`).
+  // Per-stage "Enable stage" switches (stage 4's is `flatten`). The run sends
+  // them as the stages' switches (formToParams, and flatten_enabled): a stage
+  // switched off is not run, and the next stage reads what came before it.
   ringsEnabled: boolean;
   punchEnabled: boolean;
   backfillEnabled: boolean;
@@ -317,9 +318,12 @@ async function start(
   }
 }
 
-// The subset of STAGES to run, from the per-stage enable toggles.  A disabled
-// stage is omitted; the backend passes its input straight through to the next
-// enabled stage.  The consistency check rides along with the ΔPDF transform.
+// The subset of STAGES to run: the stages switched on.  The consistency check
+// rides along with the ΔPDF transform.  Leaving a stage out of `stages` does
+// not by itself switch it off: the backend reads a stage left out as a partial
+// re-run and hands its output on disk to the next stage.  The switches
+// (formToParams, and flatten_enabled) are what make a switched-off stage pass
+// its input through, so the next stage reads what came before it.
 export function enabledStages(s: PipelineConfig): string[] {
   return [
     s.ringsEnabled && "rings",
@@ -332,9 +336,15 @@ export function enabledStages(s: PipelineConfig): string[] {
 }
 
 // Convert the editable form values into the curated StageParamsIn the pipeline
-// accepts (empty fields stay unset → the backend/bridge default is used).
-function formToParams(s: PipelineConfig): StageParamsIn {
-  const params: StageParamsIn = {};
+// accepts (empty fields stay unset → the backend/bridge default is used).  The
+// cleanup stages' switches are always sent (the flatten's is the request's
+// flatten_enabled).
+export function formToParams(s: PipelineConfig): StageParamsIn {
+  const params: StageParamsIn = {
+    rings_enabled: s.ringsEnabled,
+    punch_enabled: s.punchEnabled,
+    backfill_enabled: s.backfillEnabled,
+  };
   if (s.ringModel) params.rings_model = s.ringModel;
   if (s.ringNPatches) params.rings_n_patches = Number(s.ringNPatches);
   if (s.ringNFourier) params.rings_n_fourier = Number(s.ringNFourier);
