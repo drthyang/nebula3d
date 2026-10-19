@@ -96,9 +96,10 @@ scientifically cautious; do not overstate certainty from summary statistics.`;
 export const SYSTEM_PROMPT = SYSTEM.whole;
 
 // Appended to the system prompt when the model can call tools.  The point of
-// the tools is to stop judging the whole volume from one 2D cut.  The four
-// checks a run is judged by stay with the skills off; the readings each is
-// settled with are inference.
+// the tools is to stop judging the whole volume from one 2D cut.  With the
+// skills off the four properties a run is judged by are named as what exists,
+// unordered; the checklist's order and imperative, the readings each is
+// settled with, and the routing of a question to a tool are inference.
 export const TOOLS = written("prompts/system.ts: the system prompt, the tools' guidance")`
 You can call tools that read this dataset, and you should: the context above comes from
 one H–K plane at L=0 and one ΔPDF section at z=0, measured when this request started. Once
@@ -126,28 +127,25 @@ measure the same cuts before and after, and if it made things worse, change it b
 rerun. After any run, measure its outputs before you judge them, and say what you ran,
 what you changed and what it did to the numbers.
 
-To judge a run, settle these four checks, each with numbers, and say which pass:
-(1) Ring removal is clean${reading(`: assess_stage rings (ring-energy ratio and over-subtraction on
-every plane)`)}${evidence("; radial_profile shows any ring left as a bump, or diffuse dented as a dip")}.
-(2) Bragg peaks are removed cleanly${reading(`: assess_stage punch (leftover peaks on every plane,
-and how much was punched to get there); check an off-zero cut too`)}.
-(3) The punch and backfill add no texture to reciprocal space${reading(`: texture_check (no cut whose
-fills sit systematically outside the range their rims allow, azimuthal ratio near 1)`)}.
-(4) Qmax is not past the data coverage${reading(`: qmax_coverage says how far the forward transform's
+${reading(`To judge a run, settle these four checks, each with numbers, and say which pass:
+`)}${connective("", "A run is judged on four properties: ")}${reading("(1) ")}${connective("Ring", "ring")} removal is clean${reading(`: assess_stage rings (ring-energy ratio and over-subtraction on
+every plane)`)}${evidence("; radial_profile shows any ring left as a bump, or diffuse dented as a dip")}${connective(".\n", "; ")}${reading("(2) ")}Bragg peaks are removed cleanly${reading(`: assess_stage punch (leftover peaks on every plane,
+and how much was punched to get there); check an off-zero cut too`)}${connective(".\n", "; ")}${reading("(3) ")}${connective("The", "the")} punch and backfill add no texture to reciprocal space${reading(`: texture_check (no cut whose
+fills sit systematically outside the range their rims allow, azimuthal ratio near 1)`)}${connective(".\n", "; ")}${reading("(4) ")}Qmax is not past the data coverage${reading(`: qmax_coverage says how far the forward transform's
 window reaches in |Q| and whether that stays inside the fully measured shells`)}.
 On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
 symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features
-carry the colour and the FFT ripple stays near neutral: use it when the ΔPDF looks too
-bright or full of ripple, and before describing a ΔPDF figure. dpdf_peaks lists the ΔPDF's
-strongest features from the whole volume, each with its vector, sign and size: quote it
-for the strongest pair correlations rather than reading them off a figure.
-Asked about a second grain, a twin, or the off-lattice peaks the punch's search found, call
-grain_check: it reads every peak the search punched and says whether they are a second grain,
+carry the colour and the FFT ripple stays near neutral${remedy(`: use it when the ΔPDF looks too
+bright or full of ripple, and before describing a ΔPDF figure`)}. dpdf_peaks lists the ΔPDF's
+strongest features from the whole volume, each with its vector, sign and size${reading(`: quote it
+for the strongest pair correlations rather than reading them off a figure`)}.
+${reading(`Asked about a second grain, a twin, or the off-lattice peaks the punch's search found, call
+`)}grain_check${connective(": it", "")} reads every peak the search punched and says whether they are a second grain,
 Bragg peaks displaced by a UB that is slightly off${evidence(" (symmetrised into copies around the nodes)")},
 or neither. The leftover counts (bragg_punch.leftover) are only what the punch missed on one
 cut, never what its search found${reading("; use grain_check before calling such peaks spurious or real")}.
-Asked whether the UB is right, or why the Bragg peaks sit off their nodes, call ub_check: it fits
+${reading("Asked whether the UB is right, or why the Bragg peaks sit off their nodes, call ")}ub_check${connective(": it", "")} fits
 the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
 keeps${remedy(": say so, and that the orientation needs the unsymmetrised file")}.${evidence(` A relative offset along
 Q that changes with |Q| is not a UB error, whatever the fit returns.`)}
