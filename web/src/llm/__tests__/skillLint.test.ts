@@ -38,7 +38,7 @@ import { SECOND_GRAIN_DEG } from "../metrics/grains";
 import { SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { FILL_BIAS_FLOOR } from "../metrics/texture";
 import { allSkills, joinPath } from "../skills";
-import { CHAT_TOOLS, runToolCall, type ToolContext } from "../tools";
+import { callTool, CHAT_TOOLS, type ToolContext } from "../tools";
 import { TUNE_STAGES } from "../tune/catalog";
 import { outOfBounds } from "../tune/evaluate";
 import { useTuneStore } from "../tune/tuner";
@@ -670,7 +670,7 @@ beforeAll(async () => {
     freshConsole();
     s.before?.();
     const ctx: ToolContext = { dataset: DATASET, datasets: DATASETS, skillsRead: new Set<string>(SKILL_NAMES) };
-    const run = await runToolCall({ id: "lint", type: "function", function: { name: s.name, arguments: JSON.stringify(s.args) } }, CHAT_TOOLS, ctx);
+    const run = await callTool(ctx, s.name, s.args);
     if (!run.ok) throw new Error(`${s.name} ${JSON.stringify(s.args)}: ${run.text}`);
     const text = run.full ?? run.text;
     const shape = SHAPES.get(s.name) ?? { fields: new Set<string>(), paths: new Set<string>() };

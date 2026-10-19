@@ -10,7 +10,8 @@
 //   shared/ holds what more than one of them uses;
 // - registry.ts: CHAT_TOOLS in the model's order, and their facts, offer and
 //   skill gate;
-// - call.ts: the executor's one call.
+// - call.ts: the executor's one call, as the model wrote it (runToolCall)
+//   or by the tool's name (callTool).
 //
 // facts.ts and openView.ts are leaf modules, imported directly.
 
@@ -18,4 +19,4 @@ export type { AgentTool, Args, ChatTool, ToolContext, ToolIO, ToolOutcome } from
 export { ToolArgError } from "./types";
 export type { ViewTarget } from "./openView";
 export { CHAT_TOOLS, factsOf, toolSpecs, toolsWhere, toolsWithSkills, unreadSkillRefusal } from "./registry";
-export { MAX_RESULT_CHARS, runToolCall, type ToolRun } from "./call";
+export { callTool, MAX_RESULT_CHARS, runToolCall, type ToolRun } from "./call";
