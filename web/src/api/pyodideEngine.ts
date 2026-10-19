@@ -29,6 +29,7 @@ import type {
   Dataset,
   DeltaPdfMeta,
   DpdfFeatures,
+  RingDiagnostics,
   RingIsotropy,
   Slice,
   SliceHeader,
@@ -457,6 +458,9 @@ export const engine = {
   },
   braggProfile(datasetId: string): Promise<BraggProfile> {
     return jsonCall<BraggProfile>("bragg_profile_json", [datasetId]);
+  },
+  ringDiagnostics(datasetId: string): Promise<RingDiagnostics> {
+    return jsonCall<RingDiagnostics>("ring_diagnostics_json", [datasetId]);
   },
   // Compute the band-limited ΔPDF .h5 in the Worker and return its bytes +
   // filename, decoded from the same [uint32 hdr_len][JSON hdr][payload]

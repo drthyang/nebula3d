@@ -2,13 +2,16 @@
 // Every number in it comes from the same deterministic measurements the agent's
 // tools run (collect.ts runs them again for the report), never from the model's
 // text; the model's own answer goes in as a clearly labelled narrative.  This
-// module only assembles: it is pure, so the report can be tested end to end.
+// module only assembles: each card's verdict and the goal are the check-verdict
+// module's (verdicts/, the report's reader), and this one writes the headlines
+// and details around them. It is pure, so the report can be tested end to end.
 
-import { pedestalLeft } from "../metrics/flatten";
-import { SYMMETRY_HOLDS } from "../metrics/symmetry";
+import { isTooCoarse } from "../metrics/coarse";
 import type { ParamValue } from "../tune/catalog";
+import { verdicts, WORDS, type Kind, type Outcome } from "../verdicts";
 
-export type Verdict = "pass" | "attention" | "info";
+/** A check's verdict: its outcome's kind (verdicts/). */
+export type Verdict = Kind;
 
 export interface ReportCheck {
   title: string;
@@ -66,6 +69,9 @@ export interface Report {
   steps: ReportStep[];
   tuning: ReportTuningStage[] | null;
   checks: ReportCheck[];
+  // Whether the reduction met its goal, computed from the checks above (every
+  // stage meets its goal), never from the model's words (verdicts/readers.ts).
+  achieved: { met: boolean | null; text: string };
   figures: ReportFigure[];
   narrative: string;
   caveats: string[];
@@ -87,6 +93,10 @@ export interface Measured {
   coverage?: Record<string, unknown> | null;
   symmetry?: Record<string, unknown> | null;
   grains?: Record<string, unknown> | null;
+  ub?: Record<string, unknown> | null; // ub_check's result (Q11): the UB's data problems in the goal
+  // The checks' outcomes the tools judged in the measurement pass (collect.ts):
+  // the report's verdicts read them, else judge the results above.
+  outcomes?: Outcome[];
 }
 
 export interface ReportInput {
@@ -135,21 +145,22 @@ const rangeText = (v: unknown): string => (Array.isArray(v) && v.length === 2 ? 
 
 // ---------------------------------------------------------------- checks
 
-// What each check's verdict is judged by: the rules in the builders below, in words.
-export const CRITERIA: Record<string, string> = {
-  rings:
-    "No powder ring left above, or dented below, three times its plane's noise. A bump is a powder ring only if it rises in nearly every direction over the sphere (at least 0.15 of its median height in 90 % of directions): the crystal's own scattering at that |Q| rises in some directions only.",
-  punch: "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice. Broad maxima are diffuse scattering, and stay.",
-  grains:
-    "One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattice peaks better than random directions do, and fewer than half of the strongest sit beside Bragg nodes, where a UB that is off puts the crystal's own peaks.",
-  backfill: "The fills meet their surroundings: a median seam of 1σ or less, and no cut whose fill is biased one way.",
-  flatten:
-    "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level (the 1σ limit dropped at the user's choice, 2026-10-17; provisional).",
-  pdf: "The back-FFT reproduces what the transform keeps, the data's even part under Q → −Q, to an r of 0.999 or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.",
-};
+// What each check's verdict is judged by: its rule (verdicts/rules.ts), in words.
+const CRITERIA = WORDS.criterion;
 
-function ringsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m) return null;
+// Each card's verdict is the report's reading of its check (verdicts/readers.ts):
+// no verdict, no card.
+
+/**
+ * What the ring removal said of the ring candidates it detected and could not confirm on
+ * its grid, which it did not subtract (the evaluation's notice, from the stage's
+ * diagnostics), or null: on the ring card, and among the caveats.
+ */
+const ringNotice = (m: Obj | null | undefined): string | null => (typeof m?.notice === "string" && m.notice ? m.notice : null);
+
+function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
+  const m = measured ?? {};
   const left = num(m.max_ring_left);
   const dent = num(m.max_ring_dent);
   // The shells judged not to be rings; runs recorded before the 3D test
@@ -157,35 +168,49 @@ function ringsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck 
   const notRings = Array.isArray(m.shells_judged)
     ? (m.shells_judged as Obj[]).filter((x) => x?.ring === false)
     : Array.isArray(m.single_plane_bumps) ? m.single_plane_bumps : [];
-  // A leftover or dent above 0 is beyond 3 × its plane's noise: real, by the tool's definition.
-  const clean = left === 0 && dent === 0;
+  const notice = ringNotice(m);
   return {
     title: "Ring removal",
-    verdict: left == null || dent == null ? "info" : clean ? "pass" : "attention",
+    verdict,
     headline: `ring ratio ${fmt(m.mean_ring_energy_ratio)} · over-sub ≤ ${fmt(m.max_over_subtraction_fraction)} · dent ≤ ${fmt(dent)}${where(m.worst_ring_dent)} · left ≤ ${fmt(left)}${where(m.worst_ring_left)}`,
     criterion,
     details: [
+      // The ring candidates the removal detected and could not confirm on its grid, and left: said first (ringNotice).
+      ...(notice ? ([["Not subtracted", notice]] as [string, string][]) : []),
       ["Mean ring-energy ratio", fmt(m.mean_ring_energy_ratio)],
       ["Largest over-subtraction fraction", fmt(m.max_over_subtraction_fraction)],
       ["Deepest ring dent", `${fmt(dent)}${where(m.worst_ring_dent)}`],
       ["Largest ring left", `${fmt(left)}${where(m.worst_ring_left)}`],
       ["Bumps that are not rings (the crystal's own scattering, kept)", String(notRings.length)],
+      // A grid too coarse for the 3D test: the rings are not judged, and why.
+      ...(isTooCoarse(m.ring_rule) ? ([["Not judged", String(m.ring_rule).replace(/^not judged: /, "")]] as [string, string][]) : []),
     ],
   };
 }
 
-function punchCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m) return null;
+function punchCheck(measured: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
+  const m = measured ?? {};
   const atNodes = num(m.leftover_at_nodes);
   const sharp = num(m.leftover_off_lattice_sharp);
+  // The sharp ones on the protected planes stay by design, out of the verdict
+  // (verdicts/rules.ts, D5): the count leaves them out, and they get their own
+  // line. An evaluation without them split out counts every sharp one.
+  const protectedSharp = num(m.leftover_on_protected_planes_sharp);
+  const counted = sharp != null && protectedSharp != null ? sharp - protectedSharp : sharp;
   return {
     title: "Bragg punch",
-    verdict: atNodes == null ? "info" : atNodes === 0 && (sharp ?? 0) === 0 ? "pass" : "attention",
-    headline: `${fmt(atNodes)} missed at nodes · ${fmt(sharp)} sharp off-lattice · ${fmt(m.leftover_off_lattice_broad)} broad maxima kept · punched ${fmt(m.mean_punched_fraction)}`,
+    verdict,
+    headline: `${fmt(atNodes)} missed at nodes · ${fmt(counted)} sharp off-lattice${protectedSharp ? ` (${fmt(protectedSharp)} more on protected planes, kept)` : ""} · ${fmt(m.leftover_off_lattice_broad)} broad maxima kept · punched ${fmt(m.mean_punched_fraction)}`,
     criterion,
     details: [
       ["Missed lattice peaks (at nodes)", fmt(atNodes)],
-      ["Sharp off-lattice leftovers", fmt(sharp)],
+      ...(protectedSharp != null
+        ? ([
+            ["Sharp off-lattice leftovers (outside the protected planes)", fmt(counted)],
+            ["Sharp leftovers on protected planes (kept by design)", fmt(protectedSharp)],
+          ] as [string, string][])
+        : ([["Sharp off-lattice leftovers", fmt(sharp)]] as [string, string][])),
       ["Broad maxima kept (diffuse, by width)", fmt(m.leftover_off_lattice_broad)],
       ["On protected planes (kept by design)", fmt(m.leftover_on_protected_planes)],
       ["Mean punched fraction", fmt(m.mean_punched_fraction)],
@@ -195,8 +220,8 @@ function punchCheck(m: Obj | null | undefined, criterion?: string): ReportCheck 
 }
 
 // The second-grain test on the punch's off-lattice peaks (grain_check's result).
-function grainsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m || typeof m.verdict !== "string") return null;
+function grainsCheck(m: Obj | null | undefined, kind: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (kind === undefined || !m || typeof m.verdict !== "string") return null;
   const verdict = m.verdict as string;
   const judged = num(m.judged) ?? 0;
   const near = num(m.near_bragg_nodes) ?? 0;
@@ -218,7 +243,7 @@ function grainsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck
   details.push(["Verdict", verdict]);
   return {
     title: "Second grain",
-    verdict: grain || ubOff ? "attention" : "pass",
+    verdict: kind,
     headline: judged
       ? `${state} · ${fmt(near)} of ${fmt(judged)} orbits beside Bragg nodes${angle ? ` (≥ ${fmt(angle.median)}°)` : ""} · one rotation indexes ${fmt(copy?.indexed ?? 0)}, random ${fmt(m.random_control)}`
       : state,
@@ -227,50 +252,39 @@ function grainsCheck(m: Obj | null | undefined, criterion?: string): ReportCheck
   };
 }
 
-function backfillCheck(m: Obj | null | undefined, texture: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m) return null;
+function backfillCheck(measured: Obj | null | undefined, texture: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
+  const m = measured ?? {};
   const seam = num(m.mean_median_seam_sigma);
   const cuts = Array.isArray(texture?.per_cut) ? (texture!.per_cut as Obj[]) : [];
   const biased = cuts.filter((c) => c.systematic_fill_bias === true).length;
+  // Cuts whose grid is too coarse to judge their fills (texture.ts, roomForRims).
+  const coarse = cuts.filter((c) => isTooCoarse(c.not_judged)).length;
+  const notJudged = coarse ? `, ${coarse} not judged (grid too coarse)` : "";
   const details: [string, string][] = [
     ["Mean median seam", `${fmt(seam)} σ`],
     ["Largest bright-fill fraction", fmt(m.max_bright_fill_fraction)],
   ];
-  if (texture) details.push(["Cuts with a systematic fill bias", `${biased} of ${cuts.length}`]);
+  if (texture) details.push(["Cuts with a systematic fill bias", `${biased} of ${cuts.length}${notJudged}`]);
   return {
     title: "Backfill",
-    verdict: seam == null ? "info" : seam <= 1 && biased === 0 ? "pass" : "attention",
-    headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${texture ? ` · fill bias on ${biased} of ${cuts.length} cuts` : ""}`,
+    verdict,
+    headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${texture ? ` · fill bias on ${biased} of ${cuts.length} cuts${notJudged}` : ""}`,
     criterion,
     details,
   };
 }
 
-/**
- * Why the flatten's verdict no longer holds the floors to 1σ: the user chose to
- * drop that limit (2026-10-17), of keeping, widening or dropping it; provisional,
- * as the pedestal rule's 0.8 limits are. The σ is the flattened cut's
- * own robust spread, which the diffuse structure and the counting noise set, and
- * the floors after a flatten that fits a constant follow the diffuse level: on
- * all eight dev volumes of the validation they read 1.5 to 1.8σ, the clean
- * control (1.72σ) and the planted case after its Q² term (1.52σ) included, so
- * the limit could not be met whatever the flatten did, while the pedestal rule
- * alone separates the planted background from the rest (docs/pilot-review.md,
- * finding 6). The largest floor in σ is still measured and reported.
- */
-export const FLATTEN_FLOOR_SIGMA_NOTE = "reported, not judged";
-
-function flattenCheck(m: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m) return null;
+function flattenCheck(measured: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
+  const m = measured ?? {};
   const floor = num(m.max_after_floor_sigma);
   const trend = num(m.max_floor_trend);
   const span = num(m.max_floor_span_fraction);
-  // A trend near 1 with a span near 1 is a pedestal left. The floor in σ is
-  // reported, not judged (FLATTEN_FLOOR_SIGMA_NOTE): docs/pilot-review.md, finding 6.
-  const pedestal = pedestalLeft(trend, span);
   return {
     title: "Flatten",
-    verdict: pedestal == null ? "info" : pedestal ? "attention" : "pass",
+    // The pedestal rule; the floor in σ is reported, not judged (verdicts/rules.ts, FLATTEN_FLOOR_SIGMA_NOTE).
+    verdict,
     headline: `floor ≤ ${fmt(floor)}σ · trend ≤ ${fmt(trend)} · span ≤ ${fmt(span)}`,
     criterion,
     details: [
@@ -281,36 +295,13 @@ function flattenCheck(m: Obj | null | undefined, criterion?: string): ReportChec
   };
 }
 
-/** The back-FFT round trip's limit on r (CRITERIA.pdf). */
-export const BACK_FFT_R_OK = 0.999;
-
-/**
- * Whether the back-FFT round trip passes, or null when it does not judge. The
- * transform keeps the real part of the Fourier transform, the data's even part
- * under Q → −Q, so a sound transform reproduces that part to r = 1, and r
- * against the data is limited by the odd part: on unsymmetrised data, counting
- * noise (r 0.979 to 0.996 on every dev case of the validation, which a sound
- * transform failed at 0.999; docs/pilot-review.md, finding 3). A check recorded
- * before the even part was compared judges r against the data only where the
- * file declares the data symmetrised (or the volume was not read), where the
- * two are the same.
- */
-export function backFftOk(m: Obj | null | undefined): boolean | null {
-  const even = num(m?.back_fft_pearson_r_even);
-  if (even != null) return even >= BACK_FFT_R_OK;
-  const r = num(m?.back_fft_pearson_r);
-  if (r == null || m?.symmetry_declared === false) return null;
-  return r >= BACK_FFT_R_OK;
-}
-
-function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: Obj | null | undefined, criterion?: string): ReportCheck | null {
-  if (!m && !cov && !sym) return null;
+function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
   const r = num(m?.back_fft_pearson_r);
   const rEven = num(m?.back_fft_pearson_r_even);
   const open = num(m?.window_weight_on_unmeasured) ?? num(cov?.window_weight_on_unmeasured);
   const symVerdict = typeof sym?.verdict === "string" ? (sym.verdict as string) : null;
   const covVerdict = typeof cov?.verdict === "string" ? (cov.verdict as string) : null;
-  const ok = backFftOk(m) !== false && (open == null || open <= 1e-3) && !(symVerdict && symVerdict.startsWith("not kept"));
   const details: [string, string][] = [
     ["Back-FFT Pearson r", fmt(r)],
     ["Back-FFT r against the data's even part (what the transform keeps)", fmt(rEven)],
@@ -327,7 +318,7 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
   if (symVerdict) details.push(["Symmetry", symVerdict]);
   return {
     title: "3D-ΔPDF",
-    verdict: m || cov || sym ? (ok ? "pass" : "attention") : "info",
+    verdict,
     headline: `r ${fmt(r)}${rEven != null ? ` (even part ${fmt(rEven)})` : ""} · SNR ${fmt(m?.mean_feature_snr)} · unmeasured ${fmt(open)}${symVerdict ? ` · symmetry ${symVerdict.startsWith("kept") ? "kept" : symVerdict.startsWith("not judged") ? "not judged" : "broken"}` : ""}`,
     criterion,
     details,
@@ -352,69 +343,26 @@ const kindOf = (steps: ReportStep[]): string => {
   return "Analysis";
 };
 
-/** How a verdict reads, in the report, the chat and the tools' results. */
-export const VERDICT_LABEL: Record<Verdict, string> = { pass: "meets its goal", attention: "needs attention", info: "not judged" };
-
-/**
- * One stage's check from its evaluation (what assess_stage measures), by the
- * report's own rules: the verdict the tools compute and the model quotes.
- */
-export function stageCheck(stage: "rings" | "punch" | "backfill" | "flatten" | "pdf", m: Obj): ReportCheck | null {
-  switch (stage) {
-    case "rings":
-      return ringsCheck(m, CRITERIA.rings);
-    case "punch":
-      return punchCheck(m, CRITERIA.punch);
-    case "backfill":
-      // A stage's evaluation measures no fill bias (texture_check does): its
-      // criterion says only what it judges.
-      return backfillCheck(m, null, BACKFILL_SEAM_CRITERION);
-    case "flatten":
-      return flattenCheck(m, CRITERIA.flatten);
-    case "pdf":
-      // The evaluation's worst in-plane symmetry break, judged as symmetry_check
-      // judges each operation.
-      return pdfCheck(m, null, symmetryOf(m), CRITERIA.pdf);
-  }
-}
-
-const BACKFILL_SEAM_CRITERION =
-  "The fills meet their surroundings: a median seam of 1σ or less. Whether a cut's fill is biased one way is texture_check's to say.";
-
-/** What the verdict says of a volume that declares no symmetry (symmetry_check says the same). */
-export const NOT_DECLARED = (asymmetry: unknown): string =>
-  `not judged: the file declares no symmetry, so the section's asymmetry (${String(asymmetry)}) is the data's own, counting noise included, not a break by a stage`;
-
-/** symmetry_check's verdict, from a ΔPDF evaluation's worst in-plane break (null without one). */
-function symmetryOf(m: Obj): Obj | null {
-  const worst = num(m.max_symmetry_break);
-  if (worst == null) return null;
-  // A file that declares no symmetry was not symmetrised: the section's
-  // asymmetry is the data's own, and no stage broke anything (docs/pilot-review.md).
-  if (m.symmetry_declared === false) return { verdict: NOT_DECLARED(worst) };
-  return {
-    verdict:
-      worst <= SYMMETRY_HOLDS
-        ? `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better`
-        : `not kept: ${String(m.worst_symmetry_op ?? "an in-plane operation")} (${worst})`,
-  };
-}
-
 export function buildReport(input: ReportInput): Report {
   const m = input.measured;
   const d = m.describe ?? null;
   const recip = obj(d?.reciprocal);
   const dpdf = obj(d?.delta_pdf);
+  // The verdicts, as the report reads its measurements (verdicts/readers.ts).
+  const v = verdicts({ report: m });
   const checks = [
-    ringsCheck(m.rings, CRITERIA.rings),
-    punchCheck(m.punch, CRITERIA.punch),
-    grainsCheck(m.grains, CRITERIA.grains),
-    backfillCheck(m.backfill, m.texture, CRITERIA.backfill),
-    flattenCheck(m.flatten, CRITERIA.flatten),
-    pdfCheck(m.pdf, m.coverage, m.symmetry, CRITERIA.pdf),
+    ringsCheck(m.rings, v.checks.rings, CRITERIA.rings),
+    punchCheck(m.punch, v.checks.punch, CRITERIA.punch),
+    grainsCheck(m.grains, v.checks.grain, CRITERIA.grains),
+    backfillCheck(m.backfill, m.texture, v.checks.backfill, CRITERIA.backfill),
+    flattenCheck(m.flatten, v.checks.flatten, CRITERIA.flatten),
+    pdfCheck(m.pdf, m.coverage, m.symmetry, v.checks.pdf, CRITERIA.pdf),
   ].filter((c): c is ReportCheck => c != null);
 
   const caveats: string[] = [];
+  // Out loud: the ring candidates the removal left, unconfirmed on its grid, whatever the card's verdict.
+  const left = ringNotice(m.rings);
+  if (left) caveats.push(`Ring removal: ${left}`);
   for (const c of checks) if (c.verdict === "attention") caveats.push(`${c.title}: ${c.headline}.`);
   const missing = ["rings", "punch", "backfill", "flatten", "pdf"].filter((k) => !m[k as keyof Measured]);
   if (missing.length) caveats.push(`Not measured (no output, or the measurement failed): ${missing.map((k) => SETTING_STAGE_LABELS[k]).join(", ")}.`);
@@ -450,6 +398,8 @@ export function buildReport(input: ReportInput): Report {
     steps: input.steps,
     tuning: input.tuning,
     checks,
+    // A report's goal is always judged, met or not (verdicts/readers.ts).
+    achieved: { met: v.achieved!.achieved, text: v.achieved!.text },
     figures: input.figures,
     narrative: input.answer.trim(),
     caveats,

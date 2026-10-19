@@ -34,7 +34,9 @@ they would read the averaging itself as a distortion.
 
 :func:`regrid` resamples a volume onto a refined UB's HKL grid, which puts
 the peaks on their nodes; symmetrising afterwards stacks the copies instead
-of spreading them into rings.
+of spreading them into rings.  :func:`check_ub` refines a volume the way the
+app's UB check does, and :mod:`nebula3d.analysis.ub_regrid` regrids a dataset
+onto its result as a new file.
 """
 
 from __future__ import annotations
@@ -58,6 +60,13 @@ SYMMETRISED = 1e-4
 #: centre; one and a half voxels keeps the error of a peak 0.6 voxel wide (σ)
 #: under 0.01 voxel.
 WINDOW_VOXELS = 1.5
+
+#: A turn of the UB under this (degrees) is within the fit's own noise: the UB
+#: check's rule, which the app applies as ``UB_TURN`` (``UB_TURNED`` in
+#: web/src/llm/verdicts/rules.ts reports a UB turned by this much or more,
+#: under any fit but the symmetric one, on a volume not symmetrised).
+#: Regridding onto a turn below it would only resample the data.
+UB_TURN = 0.05
 
 #: Distances from the nodes below this (Å⁻¹) are never rejected as outliers.
 _RESIDUAL_FLOOR = 1e-4
@@ -140,6 +149,18 @@ class Refinement:
     centres: Centres
     passes: tuple[RefinePass, ...]
     symmetry_break: float | None  # None without operations
+
+
+@dataclass(frozen=True)
+class UBCheck:
+    """:func:`check_ub`'s result: the fit it chose, the volume's
+    :func:`symmetry_break` before the edge trim, the voxels the trim took, and
+    the refinement."""
+
+    fit: str
+    symmetry_break: float | None  # None without operations, or where they miss the grid
+    trimmed: int
+    refinement: Refinement
 
 
 def cell_parameters(ub: NDArray[np.floating]) -> Cell:
@@ -542,6 +563,64 @@ def refine_ub(
                       symmetry_break=broken)
 
 
+def check_ub(vol: HKLVolume, ops: Ops | None, *, cell: tuple[int, int, int] = (1, 1, 1),
+             q_max: float | None = None, edge_trim: int = 1) -> UBCheck:
+    """Refine *vol*'s UB the way the app's UB check does.
+
+    The fit is :func:`auto_fit`'s: only the changes that commute with *ops* on
+    a volume symmetrised under them, else the rotation and the cell together
+    (the cell constrained by *ops*, triclinic without them).  The coverage
+    edge is trimmed first, *edge_trim* voxel layers (the pipeline's
+    ``edge_trim`` default is one), **in place**, shared across the orbits on a
+    symmetrised volume: its voxels can sit orders of magnitude above the
+    interior and pass for peaks (see
+    :func:`nebula3d.preprocessing.sampling.trim_coverage_edge`).  *cell* and
+    *q_max* are :func:`refine_ub`'s, which raises ``ValueError`` when too few
+    peaks are found to fit.
+    """
+    from nebula3d.preprocessing.sampling import trim_coverage_edge
+
+    fit, broken = auto_fit(vol, ops)
+    sym = GridSymmetry.for_volume(vol, ops) if ops is not None and fit == "symmetric" else None
+    trimmed = trim_coverage_edge(vol, edge_trim, symmetry=sym)
+    r = refine_ub(vol, fit=fit, ops=ops, cell=cell, q_max=q_max)
+    return UBCheck(fit=fit, symmetry_break=broken, trimmed=trimmed, refinement=r)
+
+
+def _index_map(vol: HKLVolume, ub: NDArray[np.floating]
+               ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """The affine map from a voxel index of *vol* regridded onto *ub* to the
+    (fractional) index of *vol* it samples: i ↦ matrix·i + offset."""
+    axes = [np.asarray(a, dtype=np.float64) for a in (vol.h_axis, vol.k_axis, vol.l_axis)]
+    start = np.array([a[0] for a in axes])
+    step = np.array([(a[-1] - a[0]) / (a.size - 1) if a.size > 1 else 1.0 for a in axes])
+    t = np.linalg.inv(np.asarray(vol.ub_matrix, dtype=np.float64)) @ np.asarray(ub, np.float64)
+    matrix = t * step[None, :] / step[:, None]  # S⁻¹·T·S: output index → input index
+    offset = ((t - np.eye(3)) @ start) / step  # S⁻¹·(T − I)·a₀
+    return matrix, offset
+
+
+def outside_grid(vol: HKLVolume, ub: NDArray[np.floating], *,
+                 chunk: int = 8) -> NDArray[np.bool_]:
+    """The voxels of *vol* regridded onto *ub* (:func:`regrid`) that sample
+    beyond *vol*'s grid: their Q lies outside the old box, so nothing was
+    measured there and :func:`regrid` leaves them unmeasured.  A turn of the
+    UB moves the grid's far corners the most, by the angle times their |Q|.
+    Worked through *chunk* H planes at a time."""
+    matrix, offset = _index_map(vol, ub)
+    shape = vol.shape
+    k = np.arange(shape[1], dtype=np.float64)[None, :, None]
+    m = np.arange(shape[2], dtype=np.float64)[None, None, :]
+    out = np.zeros(shape, dtype=bool)
+    for j0 in range(0, int(shape[0]), max(1, chunk)):
+        j1 = min(int(shape[0]), j0 + max(1, chunk))
+        j = np.arange(j0, j1, dtype=np.float64)[:, None, None]
+        for d in range(3):
+            src = matrix[d, 0] * j + matrix[d, 1] * k + matrix[d, 2] * m + offset[d]
+            out[j0:j1] |= (src < 0.0) | (src > shape[d] - 1)
+    return out
+
+
 def regrid(vol: HKLVolume, ub: NDArray[np.floating], *, chunk: int = 8) -> HKLVolume:
     """*vol* resampled onto the HKL grid of *ub*.
 
@@ -565,12 +644,8 @@ def regrid(vol: HKLVolume, ub: NDArray[np.floating], *, chunk: int = 8) -> HKLVo
 
     ub_new = np.asarray(ub, dtype=np.float64)
     axes = [np.asarray(a, dtype=np.float64) for a in (vol.h_axis, vol.k_axis, vol.l_axis)]
-    start = np.array([a[0] for a in axes])
-    step = np.array([(a[-1] - a[0]) / (a.size - 1) if a.size > 1 else 1.0 for a in axes])
     shape = np.array(vol.shape)
-    t = np.linalg.inv(np.asarray(vol.ub_matrix, dtype=np.float64)) @ ub_new
-    matrix = t * step[None, :] / step[:, None]  # S⁻¹·T·S: output index → input index
-    offset = ((t - np.eye(3)) @ start) / step  # S⁻¹·(T − I)·a₀
+    matrix, offset = _index_map(vol, ub_new)
 
     dtype = vol.data.dtype
     data = np.zeros(vol.shape, dtype=dtype)

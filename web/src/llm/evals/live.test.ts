@@ -14,6 +14,12 @@
 // NEBULA_EVAL_TIMEOUT   minutes per run before it is stopped (default 20)
 // NEBULA_EVAL_PROVIDER  a label for the results (default: from the base URL)
 // ANTHROPIC_API_KEY / OPENAI_API_KEY  read for an Anthropic / other cloud base URL; never written out
+//
+// A model on a local server is held to the run policy's minimum context, 48k
+// (RUN_POLICY, runContext in validationModels.ts), as the validation's runner
+// holds it: LM Studio must have it loaded with a Context Length of 49152 or
+// more, and Ollama must say it supports that much. A window under it, or one
+// that cannot be read, is refused before the first run and before each run.
 
 import { describe, expect, it } from "vitest";
 
@@ -26,6 +32,8 @@ import { grade, runScenario, transcript, type EvalRun, type ScenarioResult } fro
 import { HELDOUT_SCENARIOS } from "./heldout";
 import { SCENARIOS } from "./scenarios";
 import { sampleScrubber } from "./scrub";
+import type { RunContextWindow } from "./validation";
+import { modelAt, runContext } from "./validationModels";
 
 const live = env("NEBULA_EVAL") === "1";
 const SET = env("NEBULA_EVAL_SET") === "heldout" ? HELDOUT_SCENARIOS : SCENARIOS;
@@ -41,12 +49,21 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
     const minutes = Number(env("NEBULA_EVAL_TIMEOUT") ?? 20);
     const provider = env("NEBULA_EVAL_PROVIDER") ?? providerForUrl(baseUrl)?.label ?? (isLocalUrl(baseUrl) ? "local" : "cloud");
 
+    // The run policy's minimum context for a local live run (RUN_POLICY), as the
+    // validation's runner holds it: a local model whose window is under it would
+    // have the skills it read cut to stubs and be graded for it, so no scenario
+    // runs. A cloud model is not asked.
+    const policyModel = modelAt(baseUrl, model);
+    const context = await runContext(policyModel, baseUrl);
+    if (context.refusal) throw new Error(context.refusal);
+
     useBackend();
     const datasets = await fetchDatasets();
     // The record is committed: it names no sample (scrub.ts).
     const scrub = sampleScrubber(datasets);
     const scenarios = SET.filter((s) => !only.size || only.has(s.id));
     const results: ScenarioResult[] = [];
+    const windows: RunContextWindow[] = []; // the window each run had, by results' index
     const out = env("NEBULA_EVAL_OUT");
     // The record is rewritten after every run, so progress shows and a run cut
     // short keeps what it measured.
@@ -78,12 +95,16 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
         // that reached the round cap.
         loops: results.filter((r) => r.run.note?.includes(LOOP_NOTE)).length,
         turn_cap: results.filter((r) => /^Stopped after \d+ rounds/.test(r.run.note ?? "")).length,
-        runs: results.map((r) => ({
+        runs: results.map((r, i) => ({
           scenario: r.scenario,
           passed: r.passed,
           grades: r.grades,
           latency_ms: Math.round(r.run.latencyMs),
           usage: r.run.usage,
+          // The window the run had and the run policy's minimum it was held to,
+          // as the validation's records keep it (validation.ts, RunContextWindow;
+          // all null for a cloud model); absent from records made before 2026-10-19.
+          context_window: windows[i] ?? null,
           steps: r.run.steps.map((s) => ({ name: s.name, args: s.args, status: s.status, summary: s.summary, result: s.result })),
           answer: r.run.content,
           note: r.run.note ?? null,
@@ -95,6 +116,13 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
     };
     for (const scenario of scenarios) {
       for (let i = 0; i < repeat; i++) {
+        // Read again before each run, which records it: LM Studio may have
+        // unloaded the model and loaded it again with its defaults.
+        const runWindow = await runContext(policyModel, baseUrl);
+        if (runWindow.refusal) {
+          await save(false);
+          throw new Error(`stopped before ${scenario.id}: ${runWindow.refusal}`);
+        }
         const abort = new AbortController();
         const timer = setTimeout(() => abort.abort(), minutes * 60_000);
         const started = performance.now();
@@ -115,6 +143,7 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
         clearTimeout(giveUp);
         if (abort.signal.aborted && !r.run.error) r.run.error = `timed out after ${minutes} min`;
         results.push(r);
+        windows.push({ tokens: runWindow.tokens, min_tokens: runWindow.min_tokens, read_from: runWindow.read_from });
         await save(false);
         const u = r.run.usage;
         console.log(

@@ -350,18 +350,23 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 | --- | --- | --- |
 | GET | `/api/datasets` | discovered datasets with per-stage output status (tuning runs' chains included) |
 | GET | `/api/datasets/{id}` | one dataset, or a tuning view: `<id>~tune~<run>` (the run's chain) or `<id>~tune~<run>~<stage>-<n>` (one trial) |
+| POST | `/api/datasets/{id}/regrid` | `{cell, q_max, symmetrise}` → the dataset's raw volume regridded onto the UB the UB check refines, written as a new dataset beside it (`<stem>_regridded.nxs`) and never over a file: `{written, dataset_id, file, ub_start, ub, turn_deg, symmetrised, voxels_outside, voxels_outside_share, …}`. A refusal (the file exists, a turn under 0.05°, a symmetrised volume without its source) is a 200 with `written: false` and `refusal: {code, reason}`. The bridge's `dataset_regrid_json` returns the same fields. See [regrid.md](regrid.md) |
 | GET | `/api/volumes/{id}/meta` | HKLVolume shape, axis ranges, lattice, UB, and the symmetry the file declares (`symmetry`, `symmetry_ops`) |
 | GET | `/api/volumes/{id}/slice?plane=&value=&interp=` | binary 2D slice |
 | GET | `/api/volumes/{id}/coverage` | where the counts begin and end in \|Q\|: the share of each shell's voxels holding counts, the edges where it crosses ½, and the box's nearest face |
 | GET | `/api/volumes/{id}/ub?cell=&q_max=` | whether the UB puts the Bragg peaks on their nodes, and the refined UB |
 | GET | `/api/volumes/{id}/rings?q=&fwhm=` | which shells are powder rings: each rises in nearly every direction |
+| GET | `/api/volumes/{id}/shell-floors?q_step=&percentile=&min_count=` | the flatten's floor of every \|Q\| shell over the whole volume (`centres`, `floors`, `counts`, `totals`, `medians`); for the flattened stage also of its input, the backfilled stage (`floors_before`, …), and the diffuse `level` the pedestal's span is a share of. Unset settings are those the flatten recorded in the file (returned as `flatten`, its fit range included), else its 0.05 Å⁻¹ shells, 25th percentile and 20 voxels. The bridge's `volume_shell_floors_json` returns the same fields. See [the floors and the pedestal](pipeline.md#the-floors-and-the-pedestal) |
+| GET | `/api/volumes/{id}/texture?limit=&min_sigma=&one_way=&min_holes=&floor=` | for a backfilled stage, whether the fills sit systematically off the diffuse around their holes: the Pilot's `texture_check` rule on every punch hole of the dataset's punched stage (`punched_id`; the holes from the punch's record), each with its 3-D rim (`systematic_fill_bias`, `median_fill_bias_sigma`, `median_fill_bias_level`, `above_fraction`, `below_fraction`, the shares beyond the floor, and the `limit` holes farthest outside their range). Unset limits are the Pilot's: 0.5σ, three quarters of the holes, 5 holes, a fifth of the level. 400 for another stage, 404 without the punched stage. The bridge's `volume_texture_json` returns the same fields. See [the fills' texture](pipeline.md#the-fills-texture) |
 | GET | `/api/deltapdf/{id}/meta` | ΔPDF shape, ranges, lattice, \|Q\|max |
 | GET | `/api/deltapdf/{id}/slice?plane=xy\|xz\|yz&value=` | binary ΔPDF orthoslice |
+| GET | `/api/deltapdf/{id}/features?min_sigma=&limit=` | the strongest extrema outside the origin's disk, grouped by the point group the raw file declares, else by sign, length and size (`grouped_by`) |
 | GET | `/api/consistency/{dataset_id}/meta?q_min=&q_max=&r_min=&r_max=` | back-FFT metadata and metrics |
 | GET | `/api/consistency/{dataset_id}/check` | the pipeline's saved back-FFT check metrics (no FFT) |
 | GET | `/api/consistency/{dataset_id}/slice?panel=data\|recon\|residual\|dpdf&...` | binary consistency slice |
 | POST | `/api/consistency/{dataset_id}/save` | save the band-limited back-FFT result |
 | GET | `/api/bragg/{dataset_id}/profile` | the fitted Bragg profile the punch recorded |
+| GET | `/api/rings/{dataset_id}/diagnostics` | what the ring stage recorded in its diagnostics: their `status`, and `unconfirmed_at_grid`, the ring candidates (powder rings or the crystal's own scattering) the pooled model detected and could not confirm on its grid, which it did not subtract (`count`, `needs`, the `notice` its run log ends on, `q_centers`), else null. Diagnostics older than the ring-removed volume give none (`has_diagnostics` false). The bridge's `ring_diagnostics_json` returns the same fields. See [which shells are rings](pipeline.md#which-shells-are-rings-and-the-grid-that-takes) |
 | GET, PUT | `/api/data-root` | the data root the server reads, and changing it |
 | POST | `/api/data-root/browse` | pick the data root in a native folder dialog |
 | GET | `/api/health` | liveness |

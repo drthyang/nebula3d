@@ -3,13 +3,14 @@
 // stage writes), so a trial is judged on more than one cut.  The numbers are
 // the same pure metrics the chat context uses.
 
-import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingIsotropy } from "../../api/client";
+import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy } from "../../api/client";
 import type { Dataset } from "../../api/types";
 import { dpdfVolumeId, loadPipelineContext, safe, hklVolumeId, type Cut } from "../context/loadContext";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
 import { sectionSymmetry, type SectionSymmetry } from "../metrics/symmetry";
+import { judge, shownWeight, UNROUNDED, WEIGHT_FIGURES, type Unrounded } from "../verdicts/rules";
 import type { TuneStage } from "./catalog";
 
 const RECIP_CUTS: Cut[] = [
@@ -23,7 +24,10 @@ const DPDF_CUTS: Cut[] = [
   { plane: "yz", value: 0 },
 ];
 
-export type StageEvaluation = Record<string, unknown>;
+// A stage's numbers, as the tools and the tuning show them; the ΔPDF's keeps
+// its window's raw weight beside the shown one (UNROUNDED, which JSON never
+// writes), for the ΔPDF's rule.
+export type StageEvaluation = Record<string, unknown> & { [UNROUNDED]?: Unrounded };
 
 // Bumps within this |Q| (Å⁻¹) on the planes are one shell, judged once.
 const RING_MATCH_Q = 0.1;
@@ -109,8 +113,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       back_fft_per_plane_r: m?.per_plane_r ?? null,
       mean_feature_snr: mean(Object.values(perPlane).map((p) => p?.feature_snr)),
       // The share of the window's weight on unmeasured reciprocal space
-      // (qmax_coverage's verdict), and the window's shape.
-      window_weight_on_unmeasured: typeof open === "number" ? roundSig(open, 2) : null,
+      // (qmax_coverage's verdict), shown to three figures, and the window's shape.
+      window_weight_on_unmeasured: typeof open === "number" ? roundSig(open, WEIGHT_FIGURES) : null,
       window_shape: dmeta?.window_shape ?? null,
       max_symmetry_break: worstOp ? worstOp.rms_difference : null,
       worst_symmetry_op: worstOp?.op ?? null,
@@ -119,6 +123,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       // included), not a stage's break; null when the volume was not read.
       symmetry_declared: rawMeta ? Boolean(rawMeta.symmetry) : null,
       per_plane: perPlane,
+      [UNROUNDED]: { window_weight_on_unmeasured: typeof open === "number" ? open : null },
     };
   }
 
@@ -131,7 +136,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     const r = ranges?.[fixed[c.plane]];
     return !r || (c.value >= r[0] && c.value <= r[1]);
   });
-  const contexts = await Promise.all(cuts.map((recip) => loadPipelineContext(dataset, { recip, dpdf: null, records: false })));
+  // Every leftover peak, marked, not only the strongest few the chat's context lists: the punch counts them by their marks.
+  const contexts = await Promise.all(cuts.map((recip) => loadPipelineContext(dataset, { recip, dpdf: null, records: false, allLeftovers: true })));
   const per = (f: (i: number) => unknown) => Object.fromEntries(cuts.map((c, i) => [c.plane, f(i)]));
 
   if (stage === "rings") {
@@ -145,12 +151,24 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     // cell; h0l and 0kl on a hexagonal or tetragonal one), so every bump is
     // judged in 3D on the raw volume, and only confirmed rings count.
     const shells = shellsOf(all);
-    const judged = metaId && shells.length ? await safe(fetchRingIsotropy(metaId, shells)) : null;
+    // The 3D test of each bump, and the grid's own limit, asked with no bump
+    // too: on a grid too coarse for the test (too few voxels across a ring's
+    // width, nebula3d.preprocessing.ring_isotropy), the planes' bumps, or
+    // their absence, are no evidence either, and the rings are not judged.
+    // And what the ring removal recorded of the ring candidates it detected and could not
+    // confirm on its grid, which it did not subtract: its notice, said first.
+    const [tested, record] = await Promise.all([
+      metaId ? safe(fetchRingIsotropy(metaId, shells)) : Promise.resolve(null),
+      safe(fetchRingDiagnostics(dataset.id)),
+    ]);
+    const notice = record?.unconfirmed_at_grid?.notice ?? null;
+    const tooCoarse = typeof tested?.not_judged === "string" ? tested.not_judged : null;
+    const judged = shells.length && !tooCoarse ? (tested ?? null) : null;
     const shellOf = new Map<number, number>();
     shells.forEach((sh, k) => sh.members.forEach((i) => shellOf.set(i, k)));
     const verdictOf = (i: number) => judged?.shells[shellOf.get(i) ?? -1] ?? null;
     const isRing = (i: number) => verdictOf(i)?.is_ring === true;
-    const unjudged = shells.length > 0 && !judged;
+    const unjudged = (shells.length > 0 && !judged) || tooCoarse !== null;
     const rings = all.map((x, i) => ({ x, i })).filter(({ x, i }) => x.significant && isRing(i)).map(({ x }) => x);
     const worstOf = <T extends { at: number; residual_fraction: number }>(xs: T[], sign: 1 | -1) =>
       xs.reduce<T | null>(
@@ -187,10 +205,14 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       worstOf((xs ?? []).filter((x) => x.significant && "ring" in x && x.ring), sign);
     const rule = judged?.rule;
     return {
+      // The ring candidates the removal left unsubtracted, unconfirmed on its grid, said out
+      // loud (verdicts/rules.ts, RING_NOTICE_REMEDY: arm C reads it without its remedy).
+      ...(notice ? { notice } : {}),
       mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),
       max_over_subtraction_fraction: max(r.map((x) => x?.over_subtraction_fraction)),
       // The deepest dent and largest leftover at the confirmed rings, over the
-      // planes; not judged when the 3D test could not run.
+      // planes; not judged when the 3D test could not run, or the grid is too
+      // coarse for it.
       max_ring_dent: planesMeasured && !unjudged ? roundSig(dent ? -dent.residual_fraction : 0) : null,
       max_ring_left: planesMeasured && !unjudged ? roundSig(left ? left.residual_fraction : 0) : null,
       worst_ring_dent: dent,
@@ -200,7 +222,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       // (isotropy: the height there over the median); the others are the
       // crystal's own scattering, which the removal must leave.
       ...(unjudged
-        ? { ring_rule: "not judged: the test of each bump in 3D could not run" }
+        ? { ring_rule: `not judged: ${tooCoarse ?? "the test of each bump in 3D could not run"}` }
         : {
             ring_rule: { direction_share: rule?.direction_share ?? null, height_share: rule?.height_share ?? null },
             // The rings, and the bumps significant on some plane (the rest are noise).
@@ -241,6 +263,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     );
     const total = (key: "n_suspicious" | "n_at_nodes" | "n_off_nodes" | "n_on_protected" | "n_broad_off_nodes" | "n_skipped_noisy") =>
       leftovers.reduce((s, l) => s + (l?.[key] ?? 0), 0);
+    // The sharp off-lattice leftovers on the protected H planes, from each peak's marks: they stay by design.
+    const sharpOnProtected = leftovers.reduce((s, l) => s + (l?.suspicious_peaks ?? []).filter((p) => p.on_protected_plane === true && !p.broad).length, 0);
     // The strongest leftover over the planes, with its plane.
     const strongest = cuts.reduce<Record<string, unknown> | null>((best, c, i) => {
       const p = leftovers[i]?.suspicious_peaks[0];
@@ -255,6 +279,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       // Of those, on the H planes the search leaves alone (protected satellites),
       // and broad enough to be diffuse maxima rather than reflections.
       leftover_on_protected_planes: total("n_on_protected"),
+      // The sharp ones of those, on their own line: by design, as the punch's goal says, and out of its verdict (verdicts/rules.ts, D5).
+      leftover_on_protected_planes_sharp: sharpOnProtected,
       leftover_off_lattice_broad: total("n_broad_off_nodes"),
       leftover_off_lattice_sharp: total("n_off_nodes") - total("n_broad_off_nodes"),
       strongest_leftover: strongest,
@@ -312,8 +338,15 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
   switch (stage) {
     case "rings":
       return `ring ratio ${v("mean_ring_energy_ratio")} · over-sub ≤ ${v("max_over_subtraction_fraction")} · ring dent ≤ ${v("max_ring_dent")}${where("worst_ring_dent")} · left ≤ ${v("max_ring_left")}${where("worst_ring_left")}`;
-    case "punch":
-      return `${v("leftover_at_nodes")} missed at nodes · ${v("leftover_off_lattice_sharp")} sharp off-lattice · ${v("leftover_off_lattice_broad")} broad maxima kept · punched ${v("mean_punched_fraction")}`;
+    case "punch": {
+      // The sharp ones on the protected planes stay by design (D5), so the
+      // headline counts them apart, and names them whenever there are any.
+      const sharp = e.leftover_off_lattice_sharp;
+      const kept = e.leftover_on_protected_planes_sharp;
+      const off = typeof sharp === "number" && typeof kept === "number" ? sharp - kept : v("leftover_off_lattice_sharp");
+      const onProtected = typeof kept === "number" && kept > 0 ? ` (${kept} more on protected planes, kept)` : "";
+      return `${v("leftover_at_nodes")} missed at nodes · ${off} sharp off-lattice${onProtected} · ${v("leftover_off_lattice_broad")} broad maxima kept · punched ${v("mean_punched_fraction")}`;
+    }
     case "backfill":
       return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;
     case "flatten":
@@ -328,7 +361,7 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
         `r ${v("back_fft_pearson_r")}` +
         (typeof e.back_fft_pearson_r_even === "number" ? ` (even part ${v("back_fft_pearson_r_even")})` : "") +
         ` · RMS ${v("back_fft_normalized_rms")} · SNR ${v("mean_feature_snr")}` +
-        (typeof open === "number" ? ` · unmeasured ${tiny(open)}` : "") +
+        (typeof open === "number" ? ` · unmeasured ${shownWeight(open)}` : "") +
         (typeof broken === "number"
           ? e.symmetry_declared === false
             ? ` · no symmetry declared (asymmetry ${tiny(broken)})`
@@ -343,11 +376,14 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
 const tiny = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(x));
 
 /** Why a trial's output breaks a hard limit of its stage, or null.  The tuning
- * run does not choose such a trial while the user's settings keep the limit. */
+ * run does not choose such a trial while the user's settings keep the limit:
+ * the ΔPDF's window past the limit, by the ΔPDF's rule (verdicts/rules.ts, D6),
+ * which reads the raw weight; the reason gives that weight, not the rounded one. */
 export function outOfBounds(stage: TuneStage, e: StageEvaluation | undefined): string | null {
-  const open = e?.window_weight_on_unmeasured;
-  if (stage === "pdf" && typeof open === "number" && open > OPEN_WEIGHT_OK) {
-    return `its window puts ${tiny(open)} of its weight on unmeasured reciprocal space, past the ${OPEN_WEIGHT_OK} the backend's own window allows`;
+  const shown = e?.window_weight_on_unmeasured;
+  if (stage === "pdf" && typeof shown === "number" && judge("pdf", e ?? {}).reasons.includes("window past limit")) {
+    const raw = e?.[UNROUNDED]?.window_weight_on_unmeasured;
+    return `its window puts ${shownWeight(typeof raw === "number" ? raw : shown)} of its weight on unmeasured reciprocal space, past the ${OPEN_WEIGHT_OK} the backend's own window allows`;
   }
   return null;
 }

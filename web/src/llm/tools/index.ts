@@ -1,10 +1,12 @@
 // The assistant's tools: functions the model may call mid-answer to measure,
 // look up or show something, instead of reasoning only from the one default
 // cut it was handed.  Each validates its arguments (a model can send anything),
-// reads through the same API the viewers use, and returns compact JSON.  Two
-// act instead of reading: update_settings edits the Configure page and
-// run_pipeline runs it, as the Run button does; show_in_viewer only moves the
-// console's view.
+// reads through the same API the viewers use, and returns compact JSON.  Each
+// also declares its facts (tools/facts.ts): whether it only reads or acts, and
+// on what, the verdicts it settles, the questions a local model is offered it
+// for, its label in the transcript.  The modules around the agent loop read
+// them through factsOf and toolsWhere, at the end of this file; the model never
+// sees them.
 
 import {
   fetchBraggProfile,
@@ -40,7 +42,6 @@ import {
   type TuneStage,
 } from "../tune/catalog";
 import { evaluateStage, headline, type StageEvaluation } from "../tune/evaluate";
-import { STAGE_GOALS } from "../tune/prompts";
 import { startTuning, stopTuning, useTuneStore, type StageRun } from "../tune/tuner";
 import { AXIS_INDEX, AXIS_TO_PLANE, useViewerStore, type FixedAxis } from "../../state/viewerStore";
 import {
@@ -54,14 +55,17 @@ import {
 } from "../context/loadContext";
 import { qRadius } from "../context/pipelineContext";
 import type { ToolCall, ToolSpec } from "../provider/client";
+import { ALL_STAGES, keysOf, RECIP, resolveFacts, stageKey, type Facts, type ToolFacts } from "./facts";
 import { openView, type ViewTarget } from "./openView";
-import { allSkills, readSkill, REFERENCE_MAX_CHARS, unreadSkillRefusal } from "../skills";
-import { NOT_DECLARED, stageCheck, VERDICT_LABEL } from "../report/report";
+import { built, connective, evidence, inference, joined, reading, withoutInference, written, type Tagged } from "../inference";
+import { fit } from "../readings";
+import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS, skillsOn } from "../skills";
+import { judge, WORDS, type Outcome } from "../verdicts";
 
 export type { ViewTarget } from "./openView";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
-import { COVERAGE_SHELLS, coverageMetrics, OPEN_WEIGHT_OK } from "../metrics/coverage";
-import { grainCheck } from "../metrics/grains";
+import { COVERAGE_SHELLS, coverageMetrics } from "../metrics/coverage";
+import { grainCheck, shownGrains } from "../metrics/grains";
 import { sectionSymmetry, SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { median, radialProfile, roundSig } from "../metrics/sliceStats";
 import { textureMetrics } from "../metrics/texture";
@@ -71,6 +75,10 @@ import { textureMetrics } from "../metrics/texture";
 export interface ToolContext {
   dataset: Dataset;
   datasets: Dataset[];
+  // The skills' switch (skills.ts): on unless false. Off (the validation's arm
+  // C), the conversation has no skills: read_skill is not offered (toolsWithSkills)
+  // and no stage waits for one to be read (runToolCall).
+  skills?: boolean;
   // The skills read in this conversation (read_skill adds to it). Set on every
   // call the model makes, which gates a stage's changes on its skill; left
   // unset by the app's own calls (the report), which change nothing.
@@ -85,6 +93,9 @@ export interface ToolOutcome {
   result: unknown;
   summary: string; // one line for the transcript
   view?: ViewTarget;
+  // The checks' outcomes the tool judged (verdicts/): beside the result, never
+  // in it, so the model reads no more than the result.
+  outcomes?: Outcome[];
 }
 
 // What a long tool gets besides its arguments: the reply's abort signal, and a
@@ -97,10 +108,28 @@ export interface ToolIO {
 export interface AgentTool {
   name: string;
   description: string;
+  // The description with the skills off (the switch, skills.ts): without what
+  // names a skill or restates a skill's step. Left out: the description names
+  // none, and serves either way.
+  descriptionWithoutSkills?: string;
   parameters: Record<string, unknown>; // JSON Schema of the arguments
   run: (args: Record<string, unknown>, ctx: ToolContext, io: ToolIO) => Promise<ToolOutcome>;
   maxResultChars?: number; // above MAX_RESULT_CHARS, for a result that must arrive whole (a skill)
 }
+
+/** A tool of the registry: what the model reads and runs, and the facts the modules around it read. */
+export type ChatTool = AgentTool & { facts: ToolFacts };
+
+/**
+ * A tool's description from its text tagged by class (inference.ts): whole as
+ * written, and, where it holds inference, its definitions for the skills off.
+ * Both come from the one text, so each class is decided once.
+ */
+const described = (text: Tagged): Pick<AgentTool, "description" | "descriptionWithoutSkills"> =>
+  text.hasInference ? { description: text.whole, descriptionWithoutSkills: text.definitions } : { description: text.whole };
+
+/** A tool's description, tagged: registered under the tool's name. */
+const description = (tool: string) => written(`tools/index.ts: ${tool}'s description`);
 
 /** Bad arguments: the message goes back to the model so it can correct itself. */
 export class ToolArgError extends Error {}
@@ -236,10 +265,12 @@ async function measureDpdf(dataset: Dataset, plane: string, value: number) {
   return { cut: planeLabel(plane, value), delta_pdf: dpdf };
 }
 
-const measureReciprocalCut: AgentTool = {
+const measureReciprocalCut: ChatTool = {
   name: "measure_reciprocal_cut",
-  description:
-    "Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane. Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).",
+  facts: { label: "Measured a reciprocal cut", acts: null, highlights: RECIP },
+  ...described(
+    description("measure_reciprocal_cut")`Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane.${reading(" Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).")}`,
+  ),
   parameters: {
     type: "object",
     properties: {
@@ -256,8 +287,9 @@ const measureReciprocalCut: AgentTool = {
   },
 };
 
-const measureDpdfCut: AgentTool = {
+const measureDpdfCut: ChatTool = {
   name: "measure_dpdf_cut",
+  facts: { label: "Measured a ΔPDF section", acts: null, offeredFor: ["pdf"], settles: ["features"], highlights: ["pdf"] },
   description:
     "Compute the 3D-ΔPDF feature metrics (feature SNR, strong-feature fraction, sign balance, anisotropy and its direction, radial trend) on any real-space section. The opening context used only z=0.",
   parameters: {
@@ -283,8 +315,9 @@ const measureDpdfCut: AgentTool = {
 
 // ---------------------------------------------------------------- lookups
 
-const describeDataset: AgentTool = {
+const describeDataset: ChatTool = {
   name: "describe_dataset",
+  facts: { label: "Read the dataset", acts: null },
   description:
     "The selected dataset: which stage outputs exist, the reciprocal grid and its H/K/L ranges, the unit cell, the ΔPDF grid and x/y/z ranges, and the other datasets (e.g. other temperatures) available for compare_datasets.",
   parameters: { type: "object", properties: {} },
@@ -329,10 +362,18 @@ const describeDataset: AgentTool = {
 const LINE_STAGES = [...RECIP_STAGES, "delta_pdf"] as const;
 const ALL_AXES = ["H", "K", "L", "x", "y", "z"] as const;
 
-const lineProfile: AgentTool = {
+const lineProfile: ChatTool = {
   name: "line_profile",
-  description:
-    "Intensity along a straight line parallel to one axis through any stage volume — e.g. along H through (H, 1/3, 0) to see a satellite row, or across a residual ring. Reciprocal stages take H/K/L (r.l.u.); delta_pdf takes x/y/z (Å). Returns sampled points plus the exact maximum, minimum and median.",
+  facts: {
+    label: "Took a line profile",
+    acts: null,
+    // A line through the ΔPDF measures its correlations.
+    settles: (args) => (args.stage === "delta_pdf" ? ["features"] : []),
+    highlights: (args) => keysOf([args.stage]),
+  },
+  ...described(
+    description("line_profile")`Intensity along a straight line parallel to one axis through any stage volume${reading(" — e.g. along H through (H, 1/3, 0) to see a satellite row, or across a residual ring")}. Reciprocal stages take H/K/L (r.l.u.); delta_pdf takes x/y/z (Å). Returns sampled points plus the exact maximum, minimum and median.`,
+  ),
   parameters: {
     type: "object",
     properties: {
@@ -435,8 +476,9 @@ const lineProfile: AgentTool = {
   },
 };
 
-const braggPeaks: AgentTool = {
+const braggPeaks: ChatTool = {
   name: "bragg_peaks",
+  facts: { label: "Looked up Bragg peaks", acts: null, offeredFor: ["punch", "lattice", "general"], highlights: ["bragg"] },
   description:
     "Peaks from the punch stage's fitted Bragg profile: position (HKL and |Q|), intensity, local background, significance, measured width per axis (Å⁻¹), whether each axis is resolution-limited, and anisotropy (largest/smallest principal width). Sort by a property or by distance to an HKL point.",
   parameters: {
@@ -499,10 +541,12 @@ const braggPeaks: AgentTool = {
   },
 };
 
-const consistencyDetails: AgentTool = {
+const consistencyDetails: ChatTool = {
   name: "consistency_details",
-  description:
-    "The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. The transform keeps the real part, which is the data's even part under Q → −Q: pearson_r_even compares the round trip with that part and is 1 when the transform is sound, while r against the data is limited by the odd part (odd_share: counting noise on unsymmetrised data), so r below 1 on unsymmetrised data is no fault. Neither says a feature is real.",
+  facts: { label: "Read the back-FFT check", acts: null, offeredFor: ["pdf"], highlights: ["check"] },
+  ...described(
+    description("consistency_details")`The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. The transform keeps the real part, which is the data's even part under Q → −Q: pearson_r_even compares the round trip with that part and is 1 when the transform is sound, while r against the data is limited by the odd part (odd_share: counting noise on unsymmetrised data)${evidence(", so r below 1 on unsymmetrised data is no fault")}. Neither says a feature is real.`,
+  ),
   parameters: { type: "object", properties: {} },
   run: async (_args, { dataset }) => {
     const check = await safe(fetchConsistencyCheck(dataset.id));
@@ -533,8 +577,9 @@ const consistencyDetails: AgentTool = {
   },
 };
 
-const compareDatasets: AgentTool = {
+const compareDatasets: ChatTool = {
   name: "compare_datasets",
+  facts: { label: "Compared datasets", acts: null, offeredFor: ["compare"] },
   description:
     "The same cut measured on several datasets (e.g. temperatures), to see what changes between them. kind=reciprocal compares the stage metrics; kind=dpdf compares the ΔPDF feature metrics and back-FFT r. Up to 6 datasets; default all.",
   parameters: {
@@ -590,8 +635,9 @@ const compareDatasets: AgentTool = {
   },
 };
 
-const currentView: AgentTool = {
+const currentView: ChatTool = {
   name: "current_view",
+  facts: { label: "Checked your view", acts: null },
   description:
     "What the user is looking at: the console page and the cuts open in the reciprocal-space and ΔPDF viewers. Use it when the user says 'this', 'here' or 'what I'm looking at'.",
   parameters: { type: "object", properties: {} },
@@ -623,8 +669,9 @@ const currentView: AgentTool = {
 // Settings that only steer the Configure page's previews, not the run.
 const UI_ONLY = /^punch(Slice|Cut)/;
 
-const configureSettings: AgentTool = {
+const configureSettings: ChatTool = {
   name: "configure_settings",
+  facts: { label: "Read the run settings", acts: null, reachesBackend: false },
   description:
     "The Configure page's current settings — what the next run would use (blank = the backend default). They may differ from the settings that produced the files on disk. Name settings exactly as returned here when you suggest a change.",
   parameters: { type: "object", properties: {} },
@@ -640,8 +687,9 @@ const configureSettings: AgentTool = {
   },
 };
 
-const showInViewer: AgentTool = {
+const showInViewer: ChatTool = {
   name: "show_in_viewer",
+  facts: { label: "Opened the viewer", acts: "view", invalidates: ["view"] },
   description:
     "Open a cut in the console's viewer so the user can see what you are describing: view=cleanup opens the reciprocal-space cleanup page (all stages side by side) at a reciprocal plane; view=dpdf opens the 3D-ΔPDF page at a real-space section. Use it for the one cut that best shows your point.",
   parameters: {
@@ -709,8 +757,21 @@ function worstPlane(stage: TuneStage, evaluation: Record<string, unknown>): stri
   return worst ?? Object.keys(per)[0] ?? null;
 }
 
-const assessStage: AgentTool = {
+const assessStage: ChatTool = {
   name: "assess_stage",
+  facts: {
+    label: "Assessed a stage",
+    acts: null,
+    // A stage's verdict; with no stage, or "all", every stage's.
+    settles: (args) => TUNE_STAGES.filter((st) => args.stage === undefined || ["all", st].includes(String(args.stage))),
+    reportable: true,
+    highlights: (args) => {
+      const s = typeof args.stage === "string" ? args.stage : "all";
+      if (s === "all") return ALL_STAGES;
+      const k = stageKey(s);
+      return k === "pdf" ? ["pdf", "check"] : k ? [k] : [];
+    },
+  },
   description:
     "Judge a stage's output against its goal, on the three principal planes through the origin plus the records the stage writes — the evaluation the tuning run judges trials by. rings: ring-energy ratio and over-subtraction per plane; punch: leftover peaks, punched fraction, fitted peaks; backfill: seam σ and bright fills; flatten: shell floors in σ; pdf: back-FFT r and RMS, feature SNR per section. Returns the stage's goal with the numbers. stage=all gives each stage's headline numbers; one stage adds the per-plane detail. Use it for a verdict on a stage, after a run, and before and after a change.",
   parameters: {
@@ -719,16 +780,21 @@ const assessStage: AgentTool = {
       stage: { type: "string", enum: ASSESS_CHOICES, description: "The stage to judge, or all (default)" },
     },
   },
-  run: async (args, { dataset }) => {
+  run: async (args, ctx) => {
+    const { dataset } = ctx;
+    // A stage's goal as the skills' switch has it (skills.ts): off, without a skill's step.
+    const goals = skillsOn(ctx) ? WORDS.goal : WORDS.goalWithoutSkills;
     const pick = oneOf(args, "stage", ASSESS_CHOICES, "all");
     const stages: TuneStage[] = pick === "all" ? [...TUNE_STAGES] : [pick];
     const result: Record<string, unknown> = {};
+    const outcomes: Outcome[] = [];
     const lines: string[] = [];
     let view: ViewTarget | undefined;
     let measuredOn: string[] | undefined;
     for (const stage of stages) {
       if (!stageVolumeId(dataset, STAGE_OUTPUT[stage])) {
         result[stage] = { missing: `no ${STAGE_OUTPUT[stage]} output yet; run_pipeline computes it` };
+        outcomes.push(judge(stage, result[stage] as Record<string, unknown>));
         continue;
       }
       const evaluation = await evaluateStage(stage, dataset);
@@ -739,31 +805,41 @@ const assessStage: AgentTool = {
         if (plane) view = cleanupView(plane, 0);
         else if (stage === "pdf") view = { view: "consistency", label: "the back-FFT check" };
       }
-      // The verdict is computed from the numbers, by the report's rule, never
-      // left to the model (answerChecks.ts holds the model to it).
-      const check = stageCheck(stage, evaluation);
-      const verdict = check ? VERDICT_LABEL[check.verdict] : VERDICT_LABEL.info;
+      // The verdict is computed from the numbers, by the stage's rule
+      // (verdicts/), never left to the model (answerChecks.ts holds the model to it).
+      const outcome = judge(stage, evaluation, { skills: skillsOn(ctx) });
+      outcomes.push(outcome);
+      const verdict = outcome.words;
       // All five stages' per-plane detail, or their goals, would overflow the
       // result (MAX_RESULT_CHARS): one stage at a time gives both.
       if (pick === "all") delete evaluation.per_plane;
       result[stage] = {
         verdict,
-        criterion: check?.criterion,
+        criterion: outcome.criterion,
         headline: headline(stage, evaluation),
         ...evaluation,
-        ...(pick === "all" ? {} : { goal: STAGE_GOALS[stage] }),
+        ...(pick === "all" ? {} : { goal: goals[stage] }),
       };
       lines.push(`${TUNE_STAGE_LABELS[stage]}: ${verdict} · ${headline(stage, evaluation)}`);
     }
     if (measuredOn) result.measured_on = measuredOn;
-    return { result, summary: lines.join(" · ") || "no stage outputs yet", view };
+    return { result, summary: lines.join(" · ") || "no stage outputs yet", view, outcomes };
   },
 };
 
-const radialProfileTool: AgentTool = {
+const radialProfileTool: ChatTool = {
   name: "radial_profile",
-  description:
-    "The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings, which are bumps in raw that ring removal should take out without denting the diffuse; after flatten the floor should sit near 0 at every |Q|. Use it to see where in |Q| a stage left or removed signal.",
+  facts: {
+    label: "Took a radial profile",
+    acts: null,
+    offeredFor: ["rings", "backfill", "flatten", "general"],
+    // No verdict: a ring is judged in 3D (assess_stage); a radial profile
+    // shows a bump on one plane only.
+    highlights: (args) => (args.stages === undefined ? ["raw", ...RECIP] : keysOf(args.stages)),
+  },
+  ...described(
+    description("radial_profile")`The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings${evidence(", which are bumps in raw that ring removal should take out without denting the diffuse")}${reading("; after flatten the floor should sit near 0 at every |Q|")}.${reading(" Use it to see where in |Q| a stage left or removed signal.")}`,
+  ),
   parameters: {
     type: "object",
     properties: {
@@ -819,8 +895,9 @@ const radialProfileTool: AgentTool = {
   },
 };
 
-const runLog: AgentTool = {
+const runLog: ChatTool = {
   name: "run_log",
+  facts: { label: "Read the run log", acts: null, reachesBackend: false, highlights: ["log"] },
   description:
     "The log of the last pipeline run in this session: each stage's start, skip, result and error lines (how many ring shells were fitted, peaks punched, voxels left unmeasured, the back-FFT r, …) and how the run ended. Use it to explain a result or a failure.",
   parameters: {
@@ -849,10 +926,20 @@ const runLog: AgentTool = {
   },
 };
 
-const textureCheck: AgentTool = {
+const textureCheck: ChatTool = {
   name: "texture_check",
-  description:
-    "Check whether the punch and backfill printed a pattern of their own into reciprocal space, on a cut (default: the three principal planes through the origin). Fill bias: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median); the part outside that range, signed, in the rim's σ and in units of the local diffuse level. Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture that the ΔPDF turns into features at lattice vectors. Azimuthal texture: per |Q| shell, how much the sector means vary around the shell before the punch (unpunched voxels) and after the backfill; a ratio near 1 adds none.",
+  facts: {
+    label: "Checked for texture",
+    acts: null,
+    // A generic question too: the system prompt's method checks the fill (the user's decision, Q10, 2026-10-19).
+    offeredFor: ["rings", "backfill", "general"],
+    settles: ["backfill"],
+    reportable: true,
+    highlights: ["punch", "backfill"],
+  },
+  ...described(
+    description("texture_check")`Check whether the punch and backfill printed a pattern of their own into reciprocal space, on a cut (default: the three principal planes through the origin). Fill bias: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly${evidence(" (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median)")}; the part outside that range, signed, in the rim's σ and in units of the local diffuse level. Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture${evidence(" that the ΔPDF turns into features at lattice vectors")}. Azimuthal texture: per |Q| shell, how much the sector means vary around the shell before the punch (unpunched voxels) and after the backfill${evidence("; a ratio near 1 adds none")}.`,
+  ),
   parameters: {
     type: "object",
     properties: {
@@ -881,21 +968,23 @@ const textureCheck: AgentTool = {
       }),
     );
     const biased = rows.filter((r) => r.systematic_fill_bias).length;
+    // Cuts whose grid is too coarse to judge their fills (texture.ts, roomForRims).
+    const coarse = rows.filter((r) => r.not_judged).length;
     const bias = (i: number) => Math.abs(rows[i].median_fill_bias_sigma ?? 0);
     const strongest = rows.reduce((best, _r, i) => (bias(i) > bias(best) ? i : best), 0);
     const ratios = rows.map((r) => r.azimuthal_ratio).filter((x): x is number => x != null);
+    const result = { per_cut: rows };
     return {
-      result: { per_cut: rows },
+      result,
+      outcomes: [judge("texture", result)],
       summary:
-        `${biased ? `systematic fill bias on ${biased} of ${rows.length} cut(s)` : "no systematic fill bias"}` +
+        `${biased ? `systematic fill bias on ${biased} of ${rows.length} cut(s)` : coarse < rows.length ? "no systematic fill bias" : "fill bias not judged"}` +
+        (coarse ? ` · ${coarse} of ${rows.length} cut(s) not judged: grid too coarse` : "") +
         (ratios.length ? ` · azimuthal ratio ${Math.min(...ratios)}–${Math.max(...ratios)}` : ""),
       view: cleanupView(cuts[strongest].plane, cuts[strongest].value),
     };
   },
 };
-
-// A share, in exponent form when it is tiny (1.5e-6, not 0.0000015).
-const share = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponential(1) : String(roundSig(x, 2)));
 
 // How far the forward transform reaches in |Q|, from the Configure page: an
 // explicit |Q| band; else the box corners for a flat separable window (no
@@ -920,15 +1009,24 @@ function windowReach(
 const sameNumbers = (a: StageEvaluation | undefined, b: StageEvaluation | undefined): boolean =>
   !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
 
-const symmetryCheck: AgentTool = {
+const symmetryCheck: ChatTool = {
   name: "symmetry_check",
-  description:
-    "Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell, when the file declares that its data were symmetrised (with none declared the asymmetry is the data's own and is not judged): an x–y section (default z = 0) compared with its image under each in-plane operation (hexagonal: six-, three-, two-fold and the a ↔ b mirror; orthogonal: the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b), as the RMS of the difference over the section's RMS. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it; a larger share means a stage broke it, or the sample lacks that operation. Which operations the sample has is the user's to say.",
+  facts: {
+    label: "Checked the ΔPDF's symmetry",
+    acts: null,
+    offeredFor: ["pdf", "symmetry", "general"],
+    settles: ["symmetry"],
+    reportable: true,
+  },
+  ...described(
+    description("symmetry_check")`Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell, when the file declares that its data were symmetrised${evidence(" (with none declared the asymmetry is the data's own and is not judged)")}: an x–y section (default z = 0) compared with its image under each in-plane operation (hexagonal: six-, three-, two-fold and the a ↔ b mirror; orthogonal: the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b), as the RMS of the difference over the section's RMS. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it${evidence("; a larger share means a stage broke it, or the sample lacks that operation")}. Which operations the sample has is the user's to say.`,
+  ),
   parameters: {
     type: "object",
     properties: { z: { type: "number", description: "Height of the x–y section along c, in Å (default 0)" } },
   },
-  run: async (args, { dataset }) => {
+  run: async (args, ctx) => {
+    const { dataset } = ctx;
     const z = args.z === undefined ? 0 : num(args, "z");
     const meta = await dpdfMeta(dataset);
     const slice = await fetchDpdfSlice(dpdfVolumeId(dataset)!, "xy", z);
@@ -938,10 +1036,12 @@ const symmetryCheck: AgentTool = {
     const declared = rawMeta ? rawMeta.symmetry ?? null : undefined;
     const { a, b } = meta.lattice ?? {};
     const sym = a && b ? sectionSymmetry(slice, { a, b }) : null;
+    const outcome = judge("symmetry", { ops: sym?.ops ?? null, declared }, { skills: skillsOn(ctx) });
     if (!sym) {
       return {
         result: { note: "no in-plane symmetry to test: the cell is neither hexagonal nor orthogonal, or the section is not centred on the origin" },
         summary: "nothing to test",
+        outcomes: [outcome],
       };
     }
     const holds = sym.ops.filter((o) => o.rms_difference <= SYMMETRY_HOLDS).map((o) => o.op);
@@ -953,13 +1053,10 @@ const symmetryCheck: AgentTool = {
         ops: sym.ops,
         holds,
         symmetry_declared: declared === undefined ? null : Boolean(declared),
-        verdict:
-          declared === null || declared === ""
-            ? NOT_DECLARED(Math.max(...sym.ops.map((o) => o.rms_difference)))
-            : broken.length
-              ? `not kept: ${broken.join(", ")}; a symmetry the data were symmetrised with should hold to ~${SYMMETRY_HOLDS} or better`
-              : `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better`,
+        // Judged by the symmetry's rule (verdicts/): not judged where the file declares none.
+        verdict: outcome.words,
       },
+      outcomes: [outcome],
       summary:
         declared === null || declared === ""
           ? "no symmetry declared: not judged"
@@ -975,8 +1072,15 @@ const symmetryCheck: AgentTool = {
 const quantileOf = (sorted: number[], q: number): number =>
   sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(q * sorted.length)))];
 
-const dpdfContrast: AgentTool = {
+const dpdfContrast: ChatTool = {
   name: "dpdf_contrast",
+  facts: {
+    label: "Set the ΔPDF's contrast",
+    // It sets the ΔPDF viewer's colour limit: what the console shows.
+    acts: "view",
+    invalidates: ["view"],
+    offeredFor: ["pdf"],
+  },
   description:
     "Optimise the 3D-ΔPDF viewer's colour range, so the pair-correlation features carry the colour and the FFT ripple around them stays dim. Call it once, without arguments: it measures the three centre sections (xy, xz, yz through the origin; the origin's self-correlation disk left out), sets the limit at the 99.9th percentile of |ΔPDF|, the page's Auto, and lists what the 99.5th and 99.97th percentiles would give without applying them. Pass percentile (99–99.99) or limit_sigma only for a range the user asks for: a limit of a few σ colours the ripple, as the old Auto (the 97th percentile) did. reset returns the viewer to Auto. Quote the applied limit it returns.",
   parameters: {
@@ -1056,10 +1160,19 @@ const dpdfContrast: AgentTool = {
 // How many of a group's vectors the model reads (the group's n says how many there are).
 const PEAK_VECTORS = 4;
 
-const dpdfPeaks: AgentTool = {
+// How dpdf_peaks' entries read; which of them are no pair correlations is inference (inference.ts).
+const PEAKS_READING = written("tools/index.ts: dpdf_peaks' reading")`Each entry: the sign, |r|, the largest size in σ, how many vectors (one per ± pair) share them, and up to ${PEAK_VECTORS} of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk${evidence(
+  "; features nearer the origin than the shortest interatomic distance are not pair correlations",
+)}.`;
+
+// The skill's order (the trust checks before the features) and its name are
+// inference here: with the skills off the description has neither.
+const dpdfPeaks: ChatTool = {
   name: "dpdf_peaks",
-  description:
-    "The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors): copies of one correlation under the crystal's symmetry, most likely, though the grouping does not use the symmetry and two correlations can share a length. Use it for the strongest pair correlations with their vectors and signs, after the trust checks (qmax_coverage, symmetry_check on symmetrised data, assess_stage pdf). What size is worth interpreting, and what a feature means, is the user's call (delta-pdf-interpretation). Quote the vectors, signs and sizes it returns.",
+  facts: { label: "Listed the ΔPDF's strongest features", acts: null, offeredFor: ["pdf"], settles: ["features"] },
+  ...described(
+    description("dpdf_peaks")`The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors)${evidence(": copies of one correlation under the crystal's symmetry, most likely")}, though the grouping does not use the symmetry and two correlations can share a length.${reading(" Use it for the strongest pair correlations with their vectors and signs, after the trust checks (qmax_coverage, symmetry_check on symmetrised data, assess_stage pdf).")} What size is worth interpreting, and what a feature means, is the user's call${reading(" (delta-pdf-interpretation)")}. Quote the vectors, signs and sizes it returns.`,
+  ),
   parameters: {
     type: "object",
     properties: {
@@ -1067,7 +1180,8 @@ const dpdfPeaks: AgentTool = {
       limit: { type: "integer", minimum: 1, maximum: 30, description: "How many entries, strongest first (default 12)" },
     },
   },
-  run: async (args, { dataset }) => {
+  run: async (args, ctx) => {
+    const { dataset } = ctx;
     const minSigma = num(args, "min_sigma", 5);
     if (!(minSigma >= 3 && minSigma <= 1000)) throw new ToolArgError("min_sigma must be within [3, 1000]");
     const limit = Math.round(num(args, "limit", 12));
@@ -1090,10 +1204,7 @@ const dpdfPeaks: AgentTool = {
       threshold_sigma: f.min_sigma,
       origin_disk_A: roundSig(f.origin_radius, 3),
       extrema_above_threshold: f.n_extrema,
-      reading:
-        "Each entry: the sign, |r|, the largest size in σ, how many vectors (one per ± pair) share them, and up to " +
-        `${PEAK_VECTORS} of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. ` +
-        "The size is against the volume's robust σ outside the origin's disk; features nearer the origin than the shortest interatomic distance are not pair correlations.",
+      reading: PEAKS_READING.text(skillsOn(ctx)),
     };
     const top = f.groups[0];
     const where = top ? `(${vec(top.vectors_rlu[0] ?? top.vectors[0], 3)!.join(", ")})${top.vectors_rlu[0] ? " r.l.u." : " Å"}` : "";
@@ -1107,15 +1218,25 @@ const dpdfPeaks: AgentTool = {
   },
 };
 
-const grainCheckTool: AgentTool = {
+const grainCheckTool: ChatTool = {
   name: "grain_check",
-  description:
-    "Is there a second grain, and what are the sharp off-lattice peaks the punch's search found? It takes the punch's peak record, groups the off-lattice peaks into symmetry orbits (the declared point group), and tests the strongest two ways. Against the Bragg nodes: an orbit within a quarter of the node spacing of one is that peak displaced, and its offset over |Q| is a rotation angle (symmetrising data whose UB is slightly off makes such copies; the angle is a lower bound). As a rotated copy of the Bragg lattice: a second grain is one rotation that indexes most strong orbits, judged against the same search at random directions; a rotation under 2° is the UB, not a grain. Run the punch first. Quote its verdict and numbers.",
+  facts: {
+    label: "Checked for a second grain",
+    acts: null,
+    offeredFor: ["punch", "lattice"],
+    // It measures the Bragg peaks' offset from their nodes too: evidence on the UB.
+    settles: ["grain", "ub"],
+    reportable: true,
+  },
+  ...described(
+    description("grain_check")`Is there a second grain, and what are the sharp off-lattice peaks the punch's search found? It takes the punch's peak record, groups the off-lattice peaks into symmetry orbits (the declared point group), and tests the strongest two ways. Against the Bragg nodes: an orbit within a quarter of the node spacing of one is that peak displaced, and its offset over |Q| is a rotation angle (${evidence("symmetrising data whose UB is slightly off makes such copies; ")}the angle is a lower bound). As a rotated copy of the Bragg lattice: a second grain is one rotation that indexes most strong orbits, judged against the same search at random directions; a rotation under 2° is the UB, not a grain. Run the punch first. Quote its verdict and numbers.`,
+  ),
   parameters: {
     type: "object",
     properties: { top: { type: "number", description: "How many of the strongest orbits to test, 8–120 (default 40)" } },
   },
-  run: async (args, { dataset }) => {
+  run: async (args, ctx) => {
+    const { dataset } = ctx;
     const top = Math.round(num(args, "top", 40));
     if (!(top >= 8 && top <= 120)) throw new ToolArgError("top must be within [8, 120]");
     const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset);
@@ -1129,10 +1250,14 @@ const grainCheckTool: AgentTool = {
     const ops = (meta.symmetry_ops?.length ? meta.symmetry_ops : [identity]) as Parameters<typeof grainCheck>[0]["ops"];
     const s = usePipelineStore.getState();
     const cell = [s.punchSupercellH, s.punchSupercellK, s.punchSupercellL].map((v) => Number(v) || 1) as [number, number, number];
-    const g = grainCheck({ peaks, ub: meta.ub_matrix as Parameters<typeof grainCheck>[0]["ub"], ops, cell, top });
+    const facts = grainCheck({ peaks, ub: meta.ub_matrix as Parameters<typeof grainCheck>[0]["ub"], ops, cell, top });
+    // The grain's rule (verdicts/) judges the unrounded facts and writes the verdict.
+    const outcome = judge("grain", facts, { skills: skillsOn(ctx) });
+    const g = shownGrains(facts, outcome.words!);
     return {
       result: { ...g, off_lattice_peaks: peaks.length, declared_symmetry: meta.symmetry ?? null, punch_cell: cell },
       summary: g.verdict.length > 160 ? `${g.verdict.slice(0, 157)}…` : g.verdict,
+      outcomes: [outcome],
     };
   },
 };
@@ -1163,15 +1288,29 @@ export function originShift(u: Pick<UbCheck, "rms_start" | "rms" | "voxel_q" | "
 
 const rlu = (v: (number | null)[]): string => `(${v.map((x) => (x == null ? "–" : x.toFixed(4))).join(", ")})`;
 
-const ubCheckTool: AgentTool = {
+// What ub_check's reading infers from an offset no UB explains: the result
+// built for each call takes them from here (inference.ts).
+const UB_ORIGIN_SHIFTED = inference("tools/index.ts: ub_check's reading", "evidence", ", the HKL origin shifted by about that much, which no UB can make");
+const UB_REPORT_ORIGIN = inference("tools/index.ts: ub_check's reading", "remedy", " Report the origin, not the UB.");
+const UB_LOOK_ELSEWHERE = inference("tools/index.ts: ub_check's reading", "remedy", " Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.");
+
+// How to read radial (a UB error gives the same relative offset at every |Q|
+// along a direction) is reduction-qc's step 2, word for word; it and what a
+// UB error and an origin shift do to mean_offset_rlu are inference.
+const ubCheckTool: ChatTool = {
   name: "ub_check",
-  description:
-    "Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit: a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it. mean_offset_rlu is the peaks' mean offset from their nodes in r.l.u., before and after the fit: a UB error averages out over the nodes and the fit removes it, while a shifted HKL origin moves every peak by one vector that stays after the fit (origin_shift_rlu, when that vector makes most of the offset the fit leaves). About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, what radial shows, and an origin shift when it gives one.",
+  // Offered for a generic question too: the system prompt's method checks the UB (the user's decision, Q10, 2026-10-19).
+  // Reportable, as the other checks on the result are: the report runs it, and names what it finds (Q11).
+  facts: { label: "Checked the UB", acts: null, offeredFor: ["punch", "lattice", "general"], settles: ["ub", "origin"], reportable: true },
+  ...described(
+    description("ub_check")`Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit${evidence(": a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it")}. mean_offset_rlu is the peaks' mean offset from their nodes in r.l.u., before and after the fit${evidence(": a UB error averages out over the nodes and the fit removes it, while a shifted HKL origin moves every peak by one vector that stays after the fit")} (origin_shift_rlu, when ${connective("that vector", "its value after the fit")} makes most of the offset the fit leaves). About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, what radial shows, and an origin shift when it gives one.`,
+  ),
   parameters: {
     type: "object",
     properties: { q_max: { type: "number", description: "The nodes' |Q| limit in Å⁻¹ (default: everything the box holds)" } },
   },
-  run: async (args, { dataset }) => {
+  run: async (args, ctx) => {
+    const { dataset } = ctx;
     const qMax = args.q_max == null ? null : num(args, "q_max", 0);
     if (qMax != null && !(qMax > 0)) throw new ToolArgError("q_max must be positive");
     const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset);
@@ -1209,36 +1348,54 @@ const ubCheckTool: AgentTool = {
           }
         : null,
       origin_shift_rlu: shift ? shift.map((x) => Number(x.toFixed(4))) : null,
-      reading: [
-        u.fit === "symmetric"
-          ? "The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data."
-          : u.operations_from
-            ? `The rotation and the cell were fitted together, the cell constrained by the operations ${u.operations_from} declares.` +
-              (u.symmetry_break == null ? " They do not map this volume's grid, so whether it is symmetrised was not judged." : "")
-            : "The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).",
-        unexplainedOffset(u)
-          ? `The fit removed little of the peaks' offset (RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹, against a voxel of ${u.voxel_q!.toFixed(4)} Å⁻¹): no UB change explains it.` +
-            (shift
-              ? ` Every peak sits a mean ${rlu(shift)} r.l.u. off its node, after the fit as before it: one vector moves them all, the HKL origin shifted by about that much, which no UB can make. Report the origin, not the UB.`
-              : " Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.")
-          : "",
-      ].filter(Boolean).join(" "),
+      // What was fitted, and what the fit left, as the skills' switch has it (inference.ts).
+      reading: joined(
+        [
+          u.fit === "symmetric"
+            ? "The volume is symmetrised: only the UB changes that commute with its operations were fitted; a misorientation needs the unsymmetrised data."
+            : u.operations_from
+              ? `The rotation and the cell were fitted together, the cell constrained by the operations ${u.operations_from} declares.` +
+                (u.symmetry_break == null ? " They do not map this volume's grid, so whether it is symmetrised was not judged." : "")
+              : "The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).",
+          ...(unexplainedOffset(u)
+            ? [
+                built`The fit removed little of the peaks' offset (RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹, against a voxel of ${u.voxel_q!.toFixed(4)} Å⁻¹): no UB change explains it.${
+                  shift
+                    ? built` Every peak sits a mean ${rlu(shift)} r.l.u. off its node, after the fit as before it: one vector moves them all${UB_ORIGIN_SHIFTED}.${UB_REPORT_ORIGIN}`
+                    : UB_LOOK_ELSEWHERE
+                }`,
+              ]
+            : []),
+        ],
+        " ",
+      ).text(skillsOn(ctx)),
     };
     return {
       result,
       summary:
         `${u.fit}: RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹ over ${u.n_used} peaks; a ${u.cell_start[0].toFixed(3)} → ${u.cell[0].toFixed(3)} Å, c ${u.cell_start[2].toFixed(3)} → ${u.cell[2].toFixed(3)} Å; turned ${u.angle_deg.toFixed(3)}°` +
         (shift ? `; origin shifted ${rlu(shift)} r.l.u.` : ""),
+      // No verdict in the result: the UB's rule (verdicts/) judges what the fit found.
+      outcomes: [judge("ub", result)],
     };
   },
 };
 
-const qmaxCoverage: AgentTool = {
+const qmaxCoverage: ChatTool = {
   name: "qmax_coverage",
+  facts: {
+    label: "Checked Qmax against coverage",
+    acts: null,
+    offeredFor: ["pdf", "coverage", "general"],
+    settles: ["coverage"],
+    reportable: true,
+    highlights: ["raw", "pdf"],
+  },
   description:
     "Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. From the raw volume, raw_counts gives where its counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts. When the counts end inside the box and no band is set, the verdict says so, with the edge and the band they allow (counts_end_inside_box).",
   parameters: { type: "object", properties: {} },
-  run: async (_args, { dataset }) => {
+  run: async (_args, ctx) => {
+    const { dataset } = ctx;
     const meta = await recipMeta(dataset);
     const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset)!;
     const rawCounts = safe(fetchVolumeCoverage(rawId));
@@ -1284,26 +1441,21 @@ const qmaxCoverage: AgentTool = {
       : "the ΔPDF's window";
     const counts = await rawCounts;
     const band = rawBand(counts, s.pdfQMin, s.pdfQMax);
-    // The counts end inside the box and no band is set: only the window's taper
-    // keeps the transform on the counts. Said in the verdict, which a model
-    // quotes, and not only in raw_counts and suggested_band, which it may not.
-    const cutNote =
-      band.counts_end_inside_box && !s.pdfQMax
-        ? `; the raw counts end at ${band.raw_counts.q_max_edge} Å⁻¹, inside the box (its nearest face at ${band.raw_counts.box_face_q} Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is ${band.suggested_band![0]}–${band.suggested_band![1]} Å⁻¹ (suggested_band), the user's to set`
-        : "";
-    const verdict = (openWeight != null
-      ? openWeight <= OPEN_WEIGHT_OK
-        ? `clean: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space`
-        : `too far: ${windowNote} puts ${share(openWeight)} of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band`
-      : !qRadius("hk0", 0, meta)
-      ? "no unit cell: |Q| is unknown, so the reach cannot be compared"
-      : fullQ == null
-        ? "no |Q| shell is fully measured on these planes"
-        : reach == null
-          ? "no ΔPDF yet to read the box corner from"
-          : reach <= fullQ + shell
-            ? `the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), inside full coverage at ${fullQ} Å⁻¹`
-            : `too far: the transform reaches ${roundSig(reach, 4)} Å⁻¹ (${how}), past full coverage at ${fullQ} Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage`) + cutNote;
+    // The verdict, by the coverage's rule (verdicts/): the recorded weight
+    // when there is one, else the reach against full coverage, and where the
+    // raw counts end when no band is set.
+    const outcome = judge("coverage", {
+      window_weight: openWeight,
+      window: windowNote,
+      unit_cell: Boolean(qRadius("hk0", 0, meta)),
+      full_coverage_q: fullQ,
+      reach,
+      reach_from: how,
+      shell,
+      band_set: Boolean(s.pdfQMax),
+      counts: band,
+    }, { skills: skillsOn(ctx) });
+    const verdict = outcome.words!;
     return {
       result: {
         verdict,
@@ -1339,6 +1491,7 @@ const qmaxCoverage: AgentTool = {
       },
       summary: verdict,
       view: shortest ? cleanupView(shortest, 0) : undefined,
+      outcomes: [outcome],
     };
   },
 };
@@ -1396,6 +1549,10 @@ const checkIdle = () => {
 const SETTABLE = [...TUNE_PARAMS, ...SAMPLE_PARAMS];
 const findParam = (key: string): TuneParam | undefined => SETTABLE.find((p) => p.key === key);
 
+// The stage of each setting, for the skill gate (skills.ts).
+const SETTING_STAGE = new Map([...TUNE_PARAMS, ...SAMPLE_PARAMS].map((p) => [p.key as string, p.stage]));
+const unique = <T>(xs: T[]): T[] => [...new Set(xs)];
+
 const allowedValues = (p: TuneParam): string =>
   p.kind === "enum"
     ? p.options!.map((o) => o.name).join("|")
@@ -1405,8 +1562,28 @@ const allowedValues = (p: TuneParam): string =>
         ? 'H fractions like "1/3, 2/3", or none'
         : `${p.kind} ${p.min}–${p.max}`;
 
-const updateSettings: AgentTool = {
+const updateSettings: ChatTool = {
   name: "update_settings",
+  facts: {
+    label: "Changed settings",
+    acts: "settings",
+    reachesBackend: false,
+    invalidates: ["settings"],
+    // The stages of the method choices and thresholds it changes.
+    highlights: (args) => {
+      const changes = args.changes && typeof args.changes === "object" ? Object.keys(args.changes) : [];
+      return keysOf(changes.map((key) => TUNE_PARAMS.find((p) => p.key === key)?.stage));
+    },
+    // The stages of the settings it changes, the sample's facts included.
+    gate: {
+      doing: "change",
+      stages: (args) => {
+        const changes = args.changes;
+        if (!changes || typeof changes !== "object" || Array.isArray(changes)) return [];
+        return unique(Object.keys(changes).flatMap((k) => (SETTING_STAGE.has(k) ? [SETTING_STAGE.get(k)!] : [])));
+      },
+    },
+  },
   description:
     "Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. " +
     `These method choices and thresholds can be changed: ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
@@ -1474,8 +1651,17 @@ const eventLine = (ev: JobEvent): string =>
     .filter(Boolean)
     .join(" · ");
 
-const runPipeline: AgentTool = {
+const runPipeline: ChatTool = {
   name: "run_pipeline",
+  facts: {
+    label: "Ran the pipeline",
+    runningLabel: "Running the pipeline",
+    acts: "run",
+    // It writes the stage outputs, and moves the console to the Execution page.
+    invalidates: ["outputs", "view"],
+    reportable: true,
+    highlights: (args) => (args.from_stage === undefined ? ALL_STAGES : keysOf([args.from_stage])),
+  },
   description:
     "Run the reduction pipeline on the selected dataset with the Configure page's settings, as the Run button does: " +
     "it writes the dataset's stage outputs, and the console shows the run on its Execution page while it goes. " +
@@ -1561,8 +1747,26 @@ const tuneLine = (stages: StageRun[]): string => {
   return `${i + 1}/${stages.length} ${TUNE_STAGE_LABELS[r.stage]} · ${what}`;
 };
 
-const tunePipeline: AgentTool = {
+const tunePipeline: ChatTool = {
   name: "tune_pipeline",
+  facts: {
+    label: "Tuned the pipeline",
+    runningLabel: "Tuning the pipeline",
+    acts: "tune",
+    // Its trials run in a tuning folder: the chosen settings end up on the
+    // Configure page, the dataset's outputs stay as they were. It moves the
+    // console to the Execution page.
+    invalidates: ["settings", "view"],
+    reportable: true,
+    highlights: (args) => (args.stages === undefined ? ALL_STAGES : keysOf(args.stages)),
+    gate: {
+      doing: "tuning",
+      stages: (args) => {
+        const stages = Array.isArray(args.stages) && args.stages.length ? args.stages : TUNE_STAGES;
+        return unique(stages.filter((s): s is TuneStage => (TUNE_STAGES as readonly unknown[]).includes(s)));
+      },
+    },
+  },
   description:
     "Search for the best settings, one stage at a time: for each stage it runs the current settings, has you " +
     "propose alternatives, runs each, judges which best meets the stage's goal, keeps it and moves on, so later " +
@@ -1606,7 +1810,8 @@ const tunePipeline: AgentTool = {
     io.signal?.addEventListener("abort", stopTuning);
     const t0 = performance.now();
     try {
-      await startTuning({ dataset: ctx.dataset, stages, trialsPerStage: trials, llm: loadSettings() });
+      // The tuning prompts read the skills' switch too: off, a stage's goal and settings without a skill's step.
+      await startTuning({ dataset: ctx.dataset, stages, trialsPerStage: trials, llm: loadSettings(), skills: skillsOn(ctx) });
     } finally {
       unsubscribe();
       io.signal?.removeEventListener("abort", stopTuning);
@@ -1658,8 +1863,9 @@ const tunePipeline: AgentTool = {
 
 // The user's methods (skills.ts): the system prompt lists their names, and
 // this reads one, or a document it cites, when the task calls for it.
-const readSkillTool: AgentTool = {
+const readSkillTool: ChatTool = {
   name: "read_skill",
+  facts: { label: "Read a skill", acts: null, reachesBackend: false, needsSkills: true },
   description:
     "Read one of the user's skills: their method for a topic, with the steps, the checks and what to report. " +
     "Name it from the list in the system prompt. With reference, read one of the documents the skill cites (a long " +
@@ -1691,7 +1897,7 @@ const readSkillTool: AgentTool = {
   },
 };
 
-export const CHAT_TOOLS: AgentTool[] = [
+export const CHAT_TOOLS: ChatTool[] = [
   readSkillTool,
   describeDataset,
   currentView,
@@ -1718,6 +1924,51 @@ export const CHAT_TOOLS: AgentTool[] = [
   showInViewer,
 ];
 
+// The facts by tool name, indexed on the first lookup.
+let factsByName: Map<string, Facts> | null = null;
+
+/**
+ * A tool's facts, by its name. Never throws: a name the registry does not hold
+ * (a tool a test made up, one the model invented) gets the fallbacks
+ * (resolveFacts): it only reads, needs the server, is offered for every
+ * question and settles nothing.
+ */
+export function factsOf(name: string): Facts {
+  if (!factsByName) factsByName = new Map(CHAT_TOOLS.map((t) => [t.name, resolveFacts(t.name, t.facts)]));
+  return factsByName.get(name) ?? resolveFacts(name);
+}
+
+/** The names of the registry's tools whose facts pass `pred`, in the registry's order. */
+export const toolsWhere = (pred: (facts: Facts) => boolean): string[] =>
+  CHAT_TOOLS.filter((t) => pred(factsOf(t.name))).map((t) => t.name);
+
+/**
+ * Why a call must wait, or null: a call to a tool with a skill gate (its
+ * facts' `gate`) waits until the skills of the stages it changes or tunes
+ * have been read in the conversation (skills.ts words it).
+ */
+export function unreadSkillRefusal(name: string, args: Args, read: ReadonlySet<string>): string | null {
+  const gate = factsOf(name).gate;
+  return gate ? refusalFor(gate.stages(args), gate.doing, read) : null;
+}
+
+/**
+ * The tools as a conversation with the skills on or off offers them (the
+ * switch, skills.ts): on, the tools as they are (the same list); off (the
+ * validation's arm C), without the tools that work only with the skills (their
+ * facts' `needsSkills`: read_skill), and each with its description without
+ * what names a skill or restates a skill's step (descriptionWithoutSkills).
+ * The agent loop offers, runs and checks answers against this list alone, so a
+ * call to a tool it left out is refused as one the registry does not hold.
+ */
+export function toolsWithSkills(tools: AgentTool[], skills: boolean): AgentTool[] {
+  if (skills) return tools;
+  return tools
+    .filter((t) => !factsOf(t.name).needsSkills)
+    .map((t) => (t.descriptionWithoutSkills === undefined ? t : { ...t, description: t.descriptionWithoutSkills }));
+}
+
+// Only name, description and parameters: the facts never reach the model.
 export const toolSpecs = (tools: AgentTool[]): ToolSpec[] =>
   tools.map((t) => ({
     type: "function",
@@ -1730,61 +1981,11 @@ export const MAX_RESULT_CHARS = 5000;
 export interface ToolRun {
   ok: boolean;
   args: Args;
-  text: string; // what the model reads
-  full?: string; // the whole result, when the model reads it trimmed (answerChecks.ts reads this)
+  text: string; // what the model reads (the step's `result`)
+  full?: string; // the whole result, where the model reads it fitted (the step's `full`: readings/)
   summary: string;
   view?: ViewTarget;
-}
-
-/**
- * A result as JSON of at most *max* characters: the whole of it, or, when
- * longer, still valid JSON. The bulkiest parts go first: the last items of the
- * longest lists, then the longest texts, each named under `left_out`, so the
- * small fields a verdict lives in stay. Cutting the text mid-way left JSON
- * that nothing could parse: the answer checks then saw no verdict at all.
- */
-export function fitResult(value: unknown, max: number): string {
-  const whole = JSON.stringify(value) ?? "null";
-  if (whole.length <= max) return whole;
-  if (!value || typeof value !== "object") return `${whole.slice(0, max)}… [truncated]`;
-  const copy = JSON.parse(whole) as Record<string, unknown> | unknown[];
-  const leftOut: string[] = [];
-  const size = (v: unknown): number => JSON.stringify(v)?.length ?? 0;
-  const render = (): string =>
-    Array.isArray(copy) ? JSON.stringify(copy) : JSON.stringify(leftOut.length ? { ...copy, left_out: leftOut } : copy);
-  let text = render();
-  for (let guard = 0; text.length > max && guard < 100_000; guard++) {
-    // Follow the bulkiest member down: a list loses its last item, an object
-    // its bulkiest leaf.
-    let node: Record<string, unknown> | unknown[] = copy;
-    let path = "";
-    let trimmed = false;
-    for (;;) {
-      if (Array.isArray(node)) {
-        if (!node.length) break;
-        node.pop();
-        const note = `${path || "the list"}: its last items`;
-        if (!leftOut.includes(note)) leftOut.push(note);
-        trimmed = true;
-        break;
-      }
-      const entries = Object.entries(node);
-      if (!entries.length) break;
-      const [key, child] = entries.reduce((a, b) => (size(b[1]) > size(a[1]) ? b : a));
-      if (child !== null && typeof child === "object" && Object.keys(child).length > 0) {
-        path = path ? `${path}.${key}` : key;
-        node = child as Record<string, unknown> | unknown[];
-        continue;
-      }
-      delete node[key];
-      leftOut.push(path ? `${path}.${key}` : key);
-      trimmed = true;
-      break;
-    }
-    if (!trimmed) break;
-    text = render();
-  }
-  return text.length <= max ? text : `${text.slice(0, max)}… [truncated]`;
+  outcomes?: Outcome[]; // the tool's outcomes (ToolOutcome), carried to the step
 }
 
 // Run one call the model made.  Never throws: a bad call becomes an error
@@ -1810,18 +2011,19 @@ export async function runToolCall(
     return { ok: false, args, text, summary: `unknown tool ${call.function.name}` };
   }
   // A firm rule: a stage's settings change, and the stage is tuned, only after
-  // its skill has been read in the conversation (skills.ts).
-  const refusal = ctx.skillsRead ? unreadSkillRefusal(tool.name, args, ctx.skillsRead) : null;
+  // its skill has been read in the conversation (skills.ts). With the skills
+  // off (the switch) there is no skill to read, so there is no gate.
+  const refusal = skillsOn(ctx) && ctx.skillsRead ? unreadSkillRefusal(tool.name, args, ctx.skillsRead) : null;
   if (refusal) return { ok: false, args, text: `Error: ${refusal}`, summary: "refused until its skill is read" };
   try {
     const out = await tool.run(args, ctx, io);
-    // A text result (a skill) goes as written; anything else as JSON, trimmed
-    // to valid JSON when it is long (fitResult).
-    const max = tool.maxResultChars ?? MAX_RESULT_CHARS;
-    const full = typeof out.result === "string" ? out.result : (JSON.stringify(out.result) ?? "null");
-    const text =
-      full.length <= max ? full : typeof out.result === "string" ? `${full.slice(0, max)}… [truncated]` : fitResult(out.result, max);
-    return { ok: true, args, text, ...(text !== full ? { full } : {}), summary: out.summary, view: out.view };
+    // With the skills off its prose written once is its definitions only
+    // (inference.ts); a tool renders what it builds for each call by the switch itself.
+    const result = skillsOn(ctx) ? out.result : withoutInference(out.result);
+    // A text result (a skill) goes as written; anything else as JSON, fitted
+    // to valid JSON when it is long, with the whole result beside it (fit).
+    const { text, full } = fit(result, tool.maxResultChars ?? MAX_RESULT_CHARS);
+    return { ok: true, args, text, ...(full !== undefined ? { full } : {}), summary: out.summary, view: out.view, ...(out.outcomes ? { outcomes: out.outcomes } : {}) };
   } catch (e) {
     const msg = (e as Error).message;
     const text = e instanceof ToolArgError ? `Error: invalid arguments — ${msg}` : `Error: ${msg}`;

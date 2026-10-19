@@ -2570,6 +2570,7 @@ input[type="range"]::-moz-range-track {
 .exec-stage-status.pending { color: #56627a; }
 .exec-stage-meta { margin-top: 5px; font: 400 11.5px/1.4 system-ui; color: #6c7686; }
 .exec-stage-meta.dim { color: #56627a; }
+.exec-stage-meta.warn { color: #e8b454; }
 .exec-stage-bar {
   margin-top: 9px;
   position: relative;
@@ -4158,6 +4159,21 @@ body.ai-resizing iframe {
   line-height: 1.5;
   color: var(--text-3);
   font-style: italic;
+}
+
+/* The verdict computed from the checks (verdicts/), under the reply (verdict.ts). */
+.ai-verdict {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+  border-left: 2px solid var(--text-3);
+  padding-left: 8px;
+}
+.ai-verdict-met {
+  border-left-color: var(--green);
+}
+.ai-verdict-not-met {
+  border-left-color: var(--amber);
 }
 
 /* — dock: review chips + composer, pinned under the transcript — */

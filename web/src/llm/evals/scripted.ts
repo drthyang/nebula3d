@@ -5,7 +5,7 @@
 // reason, a usage chunk when asked for).  And the app's tools answering from
 // recorded results, so the replay needs no backend.
 
-import type { AgentTool } from "../tools";
+import { toolsWhere, type AgentTool } from "../tools";
 
 export interface ScriptTurn {
   text?: string;
@@ -18,16 +18,25 @@ export interface ScriptedModel {
   install: () => () => void; // returns the uninstall
   requests: () => number;
   overrun: () => number; // requests after the script ran out
+  sent: () => string[]; // each request's last user message: what the app said to the model
 }
 
 export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
   let next = 0;
   let requests = 0;
   let overrun = 0;
+  const sent: string[] = [];
   const encoder = new TextEncoder();
 
   const respond = (body: string): Response => {
     requests += 1;
+    try {
+      const msgs = (JSON.parse(body) as { messages?: { role: string; content: unknown }[] }).messages ?? [];
+      const last = [...msgs].reverse().find((m) => m.role === "user");
+      sent.push(typeof last?.content === "string" ? last.content : JSON.stringify(last?.content ?? ""));
+    } catch {
+      sent.push("");
+    }
     const turn = turns[next++];
     if (!turn) overrun += 1;
     // Past the script the model has nothing more to say: an empty reply (the
@@ -78,17 +87,28 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
     },
     requests: () => requests,
     overrun: () => overrun,
+    sent: () => [...sent],
   };
 }
+
+// run_log never touches the backend, but it reads the session's last pipeline
+// run, and a replay has none: it answers from the recording, as the tools that
+// read the backend do.
+export const REPLAYED_THOUGH_LOCAL: readonly string[] = ["run_log"];
+
+/**
+ * The tools a replay runs as they are: those that never touch the backend (their
+ * facts' `reachesBackend`): the skills, and the Configure page's settings (the
+ * harness resets them per scenario); save REPLAYED_THOUGH_LOCAL.
+ */
+export const RUN_AS_THEY_ARE: readonly string[] = toolsWhere((f) => !f.reachesBackend).filter((name) => !REPLAYED_THOUGH_LOCAL.includes(name));
 
 /** The app's tools, answering from results recorded as "<dataset>|<tool>|<args JSON>". */
 export function replayTools(
   results: Record<string, string>,
   dataset: string,
   tools: AgentTool[],
-  // Tools that never touch the backend run as they are: the skills, and the
-  // Configure page's settings (the harness resets them per scenario).
-  local: readonly string[] = ["read_skill", "update_settings", "configure_settings"],
+  local: readonly string[] = RUN_AS_THEY_ARE,
 ): AgentTool[] {
   return tools.map((tool) => local.includes(tool.name) ? tool : ({
     ...tool,

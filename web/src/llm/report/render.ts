@@ -4,7 +4,8 @@
 // as images.
 
 import { parseBlocks, type Block, type Inline } from "../markdown";
-import { VERDICT_LABEL, type Report, type ReportCheck, type Verdict } from "./report";
+import { WORDS } from "../verdicts";
+import type { Report, ReportCheck, Verdict } from "./report";
 
 const esc = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -36,9 +37,10 @@ export function reportMarkdown(r: Report): string {
   if (r.question) out.push(`> ${r.question.replace(/\n/g, " ")}`, "");
 
   out.push("## Quality checks", "");
-  out.push(mdTable(["Check", "Verdict", "Numbers"], r.checks.map((c) => [c.title, VERDICT_LABEL[c.verdict], c.headline])), "");
+  out.push(`**Goal: ${r.achieved.text}.** *Computed from the checks below, not from the model's words.*`, "");
+  out.push(mdTable(["Check", "Verdict", "Numbers"], r.checks.map((c) => [c.title, WORDS.label[c.verdict], c.headline])), "");
   for (const c of r.checks) {
-    out.push(`### ${c.title} — ${VERDICT_LABEL[c.verdict]}`, "");
+    out.push(`### ${c.title} — ${WORDS.label[c.verdict]}`, "");
     if (c.criterion) out.push(`*Judged by:* ${c.criterion}`, "");
     out.push(mdTable(["Measure", "Value"], c.details), "");
   }
@@ -139,7 +141,7 @@ const table = (rows: [string, string][], head?: [string, string]): string =>
     .map(([k, v]) => `<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`)
     .join("")}</tbody></table>`;
 
-const chip = (v: Verdict): string => `<span class="chip ${v}">${esc(VERDICT_LABEL[v])}</span>`;
+const chip = (v: Verdict): string => `<span class="chip ${v}">${esc(WORDS.label[v])}</span>`;
 
 const checkCard = (c: ReportCheck): string =>
   `<div class="card check"><div class="card-head"><h3>${esc(c.title)}</h3>${chip(c.verdict)}</div><p class="headline">${esc(c.headline)}</p></div>`;
@@ -212,7 +214,9 @@ export function reportHtml(r: Report): string {
   );
   if (r.question) parts.push(`<div class="request">${esc(r.question)}</div>`);
 
-  parts.push(`<h2>Quality checks</h2><div class="grid">${r.checks.map(checkCard).join("")}</div>`);
+  parts.push(
+    `<h2>Quality checks</h2><p class="achieved"><b>Goal: ${esc(r.achieved.text)}.</b> <span class="note">Computed from the checks below, not from the model's words.</span></p><div class="grid">${r.checks.map(checkCard).join("")}</div>`,
+  );
 
   if (figures.length) {
     parts.push(

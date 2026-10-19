@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useChatStore } from "../chatStore";
-import { agentKeys, LINGER_MS, mentionKeys, stepKeys } from "../highlight";
+import { agentKeys, LINGER_MS, mentionKeys } from "../highlight";
 import { useTuneStore } from "../tune/tuner";
 
 const live = (steps: { name: string; args?: Record<string, unknown>; status: "running" | "done" }[], content = "") => ({
@@ -18,20 +18,6 @@ beforeEach(() => {
   useChatStore.setState({ turns: [], busy: false, live: null });
   usePipelineStore.setState({ running: false, events: [] });
   useTuneStore.setState({ active: false, stages: [] });
-});
-
-describe("stepKeys", () => {
-  it("names what each step works on", () => {
-    expect(stepKeys({ name: "assess_stage", args: { stage: "rings" } })).toEqual(["rings"]);
-    expect(stepKeys({ name: "assess_stage", args: { stage: "pdf" } })).toEqual(["pdf", "check"]);
-    expect(stepKeys({ name: "assess_stage", args: {} })).toEqual(["rings", "punch", "backfill", "flatten", "pdf"]);
-    expect(stepKeys({ name: "line_profile", args: { stage: "braggpunched" } })).toEqual(["punch"]);
-    expect(stepKeys({ name: "texture_check", args: {} })).toEqual(["punch", "backfill"]);
-    expect(stepKeys({ name: "qmax_coverage", args: {} })).toEqual(["raw", "pdf"]);
-    expect(stepKeys({ name: "bragg_peaks", args: {} })).toEqual(["bragg"]);
-    expect(stepKeys({ name: "update_settings", args: { changes: { punchMinSig: 6, backfillMethod: "laplace" } } })).toEqual(["punch", "backfill"]);
-    expect(stepKeys({ name: "describe_dataset", args: {} })).toEqual([]);
-  });
 });
 
 describe("mentionKeys", () => {

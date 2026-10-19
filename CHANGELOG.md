@@ -2,16 +2,29 @@
 
 ## Unreleased
 
-- **The reduction-qc skill says when to turn the flatten's Q² term on.**
-  Step 6 said a rising floor wants the term but not when: now, when
-  `assess_stage` for the flatten reports `pedestal_left`, turn it on, rerun
-  from the flatten and read it again; leave it off otherwise, since on a
-  volume without such a background the term fits part of the crystal's own
-  floor. It names the stage-level fields `assess_stage` gives. The skill is
-  still a draft awaiting the user's interview (validation review, finding 5).
-  The skill lines findings 1, 3 and 4 touch come with it: delta-pdf-interpretation
-  names `dpdf_peaks` and judges the round trip against the even part, and
-  bragg-node-audit reads the fill against the range its rim allows.
+- **The ΔPDF's features are grouped by the declared symmetry.** When the raw
+  file declares the point group its data were symmetrised with
+  (`symmetry_ops`), the extrema that are images of one another under it are
+  one entry, to within one voxel. The operations act on the ΔPDF's fractional
+  coordinates as their transposes, in the cell the file records; on a
+  hexagonal cell that differs from the operations themselves. An entry lists
+  its strongest vector first and gives the orbit's `multiplicity`, the
+  extrema found (`n`) and their mean and largest size; `grouped_by` says how
+  the list was grouped. Positive and negative extrema never merge, and the
+  limit counts entries. With no symmetry declared, or none that fits the
+  recorded cell, the list is as before (`GET /api/deltapdf/{id}/features`,
+  `webbridge.dpdf_features_json`, `nebula3d.analysis.dpdf_features`).
+
+- **NEBULA Pilot: no verdict without its evidence, numbers by reference, and
+  verdicts computed from the checks (THY-18).** A verdict on a stage needs its
+  tool after the last run that recomputed that stage, not before it; a ring
+  verdict needs `assess_stage`, the ΔPDF's correlations `dpdf_peaks`, the
+  origin `ub_check`. The model writes a tool's number as `{{tool.field}}`,
+  which the app fills in from the result. Whether the run met its goal,
+  `{{achieved}}`, is computed from the checks the reply ran, shown under the
+  reply and at the head of the report, and an answer that calls the run a
+  success it does not give is sent back. Replay tests on the validation's dev
+  cases cover each rule.
 
 - **The flatten's verdict no longer holds its floors to 1σ (the user's choice; provisional).**
   The σ is the flattened cut's own spread and the floors follow the diffuse

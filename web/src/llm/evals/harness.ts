@@ -15,7 +15,8 @@ import type { PipelineContext } from "../context/pipelineContext";
 import { buildChatMessages } from "../prompts/templates";
 import type { Failure } from "../recovery";
 import type { LlmSettings } from "../settings";
-import { CHAT_TOOLS, type AgentTool } from "../tools";
+import type { ComputedVerdict } from "../verdicts";
+import { CHAT_TOOLS, toolsWhere, type AgentTool } from "../tools";
 
 export interface EvalRun {
   scenario: string;
@@ -28,6 +29,7 @@ export interface EvalRun {
   failure?: Failure | null;
   latencyMs: number;
   usage: { input: number; output: number; cacheRead?: number; cacheWrite?: number; requests: number } | null; // null: the server did not say
+  verdict?: ComputedVerdict | null; // computed from the reply's checks (verdicts/)
 }
 
 export interface Grade {
@@ -58,8 +60,8 @@ export interface ScenarioResult {
   run: EvalRun;
 }
 
-/** Tools that start pipeline runs on the backend: an eval never runs them. */
-export const ACTIONS = new Set(["run_pipeline", "tune_pipeline"]);
+/** Tools that start pipeline runs on the backend (their facts' `startsRuns`): an eval never runs them. */
+export const ACTIONS = new Set(toolsWhere((f) => f.startsRuns));
 
 /**
  * *tools* with the actions stubbed: a call is recorded (and graded) but fails
@@ -131,6 +133,7 @@ export async function runScenario(
       failure: result.failure ?? null,
       latencyMs: performance.now() - started,
       usage: result.usage ?? null,
+      verdict: result.verdict ?? null,
     };
   } catch (e) {
     run = {

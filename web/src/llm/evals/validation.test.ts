@@ -6,9 +6,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { Dataset } from "../../api/types";
+import { usePipelineStore } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
-import { allSkills, unreadSkillRefusal } from "../skills";
-import { CHAT_TOOLS } from "../tools";
+import { buildChatMessages, systemPrompt } from "../prompts/templates";
+import * as readings from "../readings";
+import { fit, found, seen } from "../readings";
+import { allSkills } from "../skills";
+import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolsWithSkills, unreadSkillRefusal } from "../tools";
 import type { EvalRun } from "./harness";
 import {
   ARMS,
@@ -27,10 +31,13 @@ import {
   falseAlarmChecks,
   gradeRun,
   numberSources,
+  stepOf,
   TASK,
   unsafeActions,
   validationDatasets,
   WhyTracker,
+  type Decision,
+  type RunRecord,
 } from "./validation";
 
 const step = (name: string, args: Record<string, unknown> = {}, result: unknown = {}, status: AgentStep["status"] = "done"): AgentStep => ({
@@ -87,27 +94,39 @@ describe("the split", () => {
 });
 
 describe("the arms", () => {
-  it("gives arm B the Pilot as shipped: its skills listed, read_skill offered, nothing read yet", async () => {
-    const { buildChatMessages } = await import("../prompts/templates");
-    const real = buildChatMessages({} as never, [], TASK, null, { tools: true });
-    const b = armSetup("B", CHAT_TOOLS, real);
-    expect(b.tools).toBe(CHAT_TOOLS);
+  const change = { id: "c1", type: "function" as const, function: { name: "update_settings", arguments: JSON.stringify({ changes: { punchMinSig: 6 } }) } };
+  const ds = dataset("v000000-B1");
+
+  it("gives arm B the Pilot as shipped: the skills on, their section in the system prompt, nothing read yet", async () => {
+    const b = armSetup("B", {} as never);
+    expect(b.skills).toBe(true);
     expect(b.skillsRead.size).toBe(0);
+    expect(b.messages).toEqual(buildChatMessages({} as never, [], TASK, null, { tools: true }));
+    expect(b.messages[0].content).toBe(systemPrompt({ tools: true }));
     expect(JSON.stringify(b.messages)).toContain("read_skill");
+    expect(toolsWithSkills(CHAT_TOOLS, b.skills)).toBe(CHAT_TOOLS);
+    // B's change waits for the punch's skill.
+    const refused = await runToolCall(change, CHAT_TOOLS, { dataset: ds, datasets: [ds], skills: b.skills, skillsRead: b.skillsRead });
+    expect(refused.text).toMatch(/^Error: read the method first/);
   });
 
-  it("takes arm C's skills away without leaving the gate to refuse its changes", async () => {
-    const { buildChatMessages } = await import("../prompts/templates");
-    const real = buildChatMessages({} as never, [], TASK, null, { tools: true });
-    const c = armSetup("C", CHAT_TOOLS, real);
-    expect(c.tools.some((t) => t.name === "read_skill")).toBe(false);
-    expect(c.tools.length).toBe(CHAT_TOOLS.length - 1);
-    const system = JSON.stringify(c.messages[0]);
-    for (const s of allSkills()) expect(system).not.toContain(s.name);
-    expect(JSON.stringify(real[0])).toContain(allSkills()[0].name); // B's prompt does list them
-    const change = { changes: { punchMinSig: 6 } };
-    expect(unreadSkillRefusal("update_settings", change, armSetup("B", CHAT_TOOLS, real).skillsRead)).not.toBeNull();
-    expect(unreadSkillRefusal("update_settings", change, c.skillsRead)).toBeNull();
+  it("gives arm C the switch off: no skills' section, no read_skill, and no gate to refuse its changes", async () => {
+    const c = armSetup("C", {} as never);
+    expect(c.skills).toBe(false);
+    expect(c.messages[0].content).toBe(systemPrompt({ tools: true, skills: false }));
+    // The rest of the opening is B's.
+    expect(c.messages.slice(1)).toEqual(armSetup("B", {} as never).messages.slice(1));
+    const opening = JSON.stringify(c.messages);
+    for (const s of allSkills()) expect(opening).not.toContain(s.name);
+    expect(opening).not.toMatch(/skill/i);
+    const offered = toolsWithSkills(CHAT_TOOLS, c.skills);
+    expect(offered.map((t) => t.name)).toEqual(CHAT_TOOLS.map((t) => t.name).filter((n) => n !== "read_skill"));
+    // No skill to read, and no gate: C may change what B may, with nothing read.
+    usePipelineStore.setState({ punchMinSig: "4" });
+    const changed = await runToolCall(change, offered, { dataset: ds, datasets: [ds], skills: c.skills, skillsRead: c.skillsRead });
+    expect(changed.ok, changed.text).toBe(true);
+    expect(c.skillsRead.size).toBe(0);
+    expect(unreadSkillRefusal("update_settings", { changes: { punchMinSig: 6 } }, c.skillsRead)).not.toBeNull(); // the gate's rule, which C never meets
   });
 });
 
@@ -278,6 +297,63 @@ describe("the record", () => {
     expect(byText["7777"]).toBeNull(); // from nowhere
   });
 
+  describe("a result the model read fitted (readings/)", () => {
+    // ub_check's whole result: 400 nodes, past the limit, so the model reads
+    // the first nodes only; the last node's offset, 0.777, is left out.
+    const whole = { angle_deg: 0.612, nodes: Array.from({ length: 400 }, (_, i) => ({ hkl: [i, 0, 0], offset: i === 399 ? 0.777 : 0.001 })) };
+    const { text, full } = fit(whole, MAX_RESULT_CHARS);
+    const fitted: AgentStep = { ...step("ub_check"), result: text, ...(full !== undefined ? { full } : {}), shortened: true };
+
+    it("keeps what the model read as the result, and the whole beside it where they differ", () => {
+      expect(full).toBe(JSON.stringify(whole));
+      const d = decisions([steps[0], fitted], []);
+      expect(d[0]).not.toHaveProperty("full");
+      expect(d[0]).not.toHaveProperty("shortened");
+      expect(d[1]).toMatchObject({ result: text, full, shortened: true });
+      // A step whose `full` is no different keeps none.
+      expect(decisions([{ ...steps[0], full: steps[0].result }], [])[0]).not.toHaveProperty("full");
+    });
+
+    it("maps a decision back to the step's readings, through JSON as a record keeps it", () => {
+      const [d] = JSON.parse(JSON.stringify(decisions([fitted], []))) as Decision[];
+      expect(stepOf(d)).toEqual({ status: "done", result: text, full });
+      expect([seen(stepOf(d)), readings.whole(stepOf(d))]).toEqual([seen(fitted), readings.whole(fitted)]);
+      expect(found(stepOf(d))).toEqual(whole);
+      // A decision from a record made before `full`: its result is all there is.
+      const [old] = decisions([steps[1]], []);
+      expect(stepOf(old)).toEqual({ status: "done", result: steps[1].result });
+    });
+
+    it("traces a number only the whole result holds to it", () => {
+      expect(text).not.toContain("0.777");
+      const n = numberSources("The last node is offset by 0.777.", [steps[0], fitted]);
+      expect(n[0].source).toEqual({ step: 2, tool: "ub_check", path: "nodes[399].offset", value: 0.777 });
+    });
+
+    it("keeps the schema: the record's new fields are optional", () => {
+      const rec = buildRecord({
+        case: caseNamed("dev-ub")!,
+        arm: "B",
+        run: 1,
+        dataset: dataset("v000001-B1", "v000001_B1"),
+        model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+        evalRun: run("The UB is turned by {{ub_check.angle_deg}}°; the last node is offset by 0.777.", [fitted]),
+        why: [""],
+        maxRounds: 12,
+        started: "2026-10-19T00:00:00Z",
+        costUsd: null,
+      });
+      const back = JSON.parse(JSON.stringify(rec)) as RunRecord;
+      expect(back.schema).toBe("nebula3d-validation-run/1");
+      expect(back.decisions[0]).toMatchObject({ result: text, full, shortened: true });
+      expect(back.numbers.find((x) => x.text === "0.777")?.source).toMatchObject({ step: 1, path: "nodes[399].offset" });
+      const old: Decision = { ...back.decisions[0] };
+      delete old.full;
+      delete old.shortened;
+      expect(stepOf(old)).toEqual({ status: "done", result: text });
+    });
+  });
+
   it("holds everything a reviewer reads, as JSON", () => {
     const c = caseNamed("dev-ub")!;
     const answer = "The UB is turned by 0.61° (ub_check). No setting fixes it.";
@@ -302,5 +378,32 @@ describe("the record", () => {
     expect(back.failure).toBeNull();
     expect(back.tool_offers).toEqual([]);
     expect(rec.task).toBe(TASK);
+    // No window given: recorded as unknown, not left out.
+    expect(back.context_window).toBeNull();
+  });
+
+  it("keeps the context window the run had and the minimum it was held to", () => {
+    const context = { tokens: 65_536, min_tokens: 49_152, read_from: "lmstudio-loaded" as const };
+    const rec = buildRecord({
+      case: caseNamed("dev-ub")!,
+      arm: "C",
+      run: 2,
+      dataset: dataset("v000001-C2", "v000001_C2"),
+      model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+      evalRun: run("No fault found.", []),
+      why: [],
+      maxRounds: 12,
+      started: "2026-10-19T00:00:00Z",
+      costUsd: null,
+      context,
+    });
+    const back = JSON.parse(JSON.stringify(rec));
+    expect(back.context_window).toEqual(context);
+    // The schema is unchanged: the field is optional (`delete` compiles only on an
+    // optional field), so records made before it stay valid.
+    expect(back.schema).toBe("nebula3d-validation-run/1");
+    const old: RunRecord = { ...rec };
+    delete old.context_window;
+    expect(old.context_window).toBeUndefined();
   });
 });

@@ -52,6 +52,7 @@ viewers, and reproducible command recipes in more detail.
 | [algorithms/delta_pdf.md](algorithms/delta_pdf.md) | Understand the FFT, centring, apodization, background subtraction, and round-trip consistency check. |
 | [algorithms/inpainting.md](algorithms/inpainting.md) | Compare general inpainting fallbacks such as symmetry and TV. |
 | [algorithms/ub_refinement.md](algorithms/ub_refinement.md) | Refine the UB from the Bragg peaks' centres, or regrid a volume onto a refined UB. |
+| [regrid.md](regrid.md) | Regrid a dataset onto its refined UB, as a new dataset written beside it and never over a file: the action, its refusals and what the new file records. |
 | [interactive.md](interactive.md) | Use the cleanup and ΔPDF viewers or the plotting API. |
 | [development.md](development.md) | Install from source, run the checks, read the package layout and CI. |
 | [SKILL_INTERVIEWS.md](SKILL_INTERVIEWS.md) | Read the questions for the user's skill interviews. |
@@ -99,7 +100,8 @@ sits in the standard place:
     sample/oriented_lattice           UB/2π (crystallographic) and the unit cell
   nebula3d/                           what Mantid does not know: exact bin centres
                                       and UB, in-memory dtype, instrument text,
-                                      the punch record (punched, int8, 1 = punched)
+                                      the punch record (punched, int8, 1 = punched),
+                                      the flatten's settings (flatten_settings, JSON)
 ```
 
 A volume `(nh, nk, nl)` has D2 = `[H,0,0]`, D1 = `[0,K,0]`, D0 = `[0,0,L]`

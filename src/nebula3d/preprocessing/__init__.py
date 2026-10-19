@@ -19,6 +19,7 @@ components remain public for comparison and specialized workflows.
 """
 
 from nebula3d.preprocessing.empty_subtraction import EmptySubtractor
+from nebula3d.preprocessing.flatten_floors import ShellFloors, shell_floors
 from nebula3d.preprocessing.global_rings import (
     AluminumLine,
     GlobalRingConfig,
@@ -59,8 +60,11 @@ from nebula3d.preprocessing.radial_flatten import (
     flatten_radial_background,
 )
 from nebula3d.preprocessing.ring_isotropy import (
+    GRID_TOO_COARSE,
     IsotropyConfig,
     ShellIsotropy,
+    grid_needs,
+    grid_too_coarse,
     judge_shells,
     shell_isotropy,
 )
@@ -81,8 +85,11 @@ __all__ = [
     "PooledRingConfig",
     "PooledRingResult",
     "fit_pooled_rings",
+    "GRID_TOO_COARSE",
     "IsotropyConfig",
     "ShellIsotropy",
+    "grid_needs",
+    "grid_too_coarse",
     "judge_shells",
     "shell_isotropy",
     "PatchedRingModel",
@@ -96,6 +103,8 @@ __all__ = [
     "confirm_ring_shells_across_h",
     "flatten_radial_background",
     "RadialFlattenResult",
+    "shell_floors",
+    "ShellFloors",
     "azimuthal_sampling_mask",
     "trim_coverage_edge",
     # Utilities / diagnostics

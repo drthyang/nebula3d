@@ -1,5 +1,6 @@
 // Which cards the assistant is on: while a tool step runs, the cards for what
-// that step works on (its stage, the fitted peaks, the run log, …); while it
+// that step works on, as its tool's facts say (its stage, the fitted peaks,
+// the run log, …: `highlights`, tools/facts.ts); while it
 // writes, the cards for what its answer mentions — kept a few seconds after
 // the reply ends.  Pages read the keys and give those cards a breathing edge
 // (.ai-glow), so the user can see where the agent is looking.
@@ -9,85 +10,10 @@ import { create } from "zustand";
 
 import { useNavStore } from "../state/navStore";
 import { usePipelineStore } from "../state/pipelineStore";
-import type { AgentStep } from "./agent";
 import { useChatStore } from "./chatStore";
-import { TUNE_PARAMS } from "./tune/catalog";
+import { factsOf } from "./tools";
+import { stageKey, type HighlightKey } from "./tools/facts";
 import { useTuneStore } from "./tune/tuner";
-
-export type HighlightKey =
-  | "raw" // the measured volume and its coverage
-  | "rings"
-  | "punch"
-  | "backfill"
-  | "flatten"
-  | "pdf" // the 3D-ΔPDF transform
-  | "check" // the back-FFT consistency check
-  | "bragg" // the fitted Bragg peaks
-  | "log"; // the run log
-
-const RECIP: HighlightKey[] = ["rings", "punch", "backfill", "flatten"];
-const ALL_STAGES: HighlightKey[] = [...RECIP, "pdf"];
-
-// Pipeline stage names and stage-output names, as highlight keys.
-const STAGE_KEY: Record<string, HighlightKey> = {
-  raw: "raw",
-  rings: "rings",
-  ringremoved: "rings",
-  punch: "punch",
-  braggpunched: "punch",
-  backfill: "backfill",
-  backfilled: "backfill",
-  flatten: "flatten",
-  flattened: "flatten",
-  pdf: "pdf",
-  delta_pdf: "pdf",
-  pdf_check: "check",
-};
-export const stageKey = (name: string): HighlightKey | undefined => STAGE_KEY[name];
-
-const keysOf = (names: unknown): HighlightKey[] =>
-  Array.isArray(names) ? names.map((n) => stageKey(String(n))).filter((k): k is HighlightKey => Boolean(k)) : [];
-
-/** What a tool step works on, from its name and arguments. */
-export function stepKeys(step: Pick<AgentStep, "name" | "args">): HighlightKey[] {
-  const a = step.args ?? {};
-  switch (step.name) {
-    case "assess_stage": {
-      const s = typeof a.stage === "string" ? a.stage : "all";
-      if (s === "all") return ALL_STAGES;
-      const k = stageKey(s);
-      return k === "pdf" ? ["pdf", "check"] : k ? [k] : [];
-    }
-    case "measure_reciprocal_cut":
-      return RECIP;
-    case "measure_dpdf_cut":
-      return ["pdf"];
-    case "line_profile":
-      return keysOf([a.stage]);
-    case "radial_profile":
-      return a.stages === undefined ? ["raw", ...RECIP] : keysOf(a.stages);
-    case "texture_check":
-      return ["punch", "backfill"];
-    case "qmax_coverage":
-      return ["raw", "pdf"];
-    case "bragg_peaks":
-      return ["bragg"];
-    case "consistency_details":
-      return ["check"];
-    case "run_log":
-      return ["log"];
-    case "update_settings": {
-      const changes = a.changes && typeof a.changes === "object" ? Object.keys(a.changes) : [];
-      return keysOf(changes.map((key) => TUNE_PARAMS.find((p) => p.key === key)?.stage));
-    }
-    case "run_pipeline":
-      return a.from_stage === undefined ? ALL_STAGES : keysOf([a.from_stage]);
-    case "tune_pipeline":
-      return a.stages === undefined ? ALL_STAGES : keysOf(a.stages);
-    default:
-      return [];
-  }
-}
 
 // Words in an answer that point at a card.
 const MENTIONS: [HighlightKey, RegExp][] = [
@@ -134,8 +60,9 @@ export function agentKeys(now = Date.now(), lingerUntil = 0): HighlightKey[] {
   if (chat.busy && chat.live) {
     const step = chat.live.steps.find((s) => s.status === "running");
     if (step) {
-      const live = step.name === "run_pipeline" || step.name === "tune_pipeline" ? runningStage() : [];
-      for (const k of live.length ? live : stepKeys(step)) keys.add(k);
+      const facts = factsOf(step.name);
+      const live = facts.startsRuns ? runningStage() : [];
+      for (const k of live.length ? live : facts.highlights(step.args ?? {})) keys.add(k);
     }
     for (const k of mentionKeys(chat.live.content)) keys.add(k);
   } else if (now < lingerUntil) {

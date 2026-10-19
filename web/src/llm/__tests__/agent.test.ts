@@ -2,21 +2,32 @@
 // the model; a server that refuses tools gets the plain request; the loop
 // stops at its round budget.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
+import { useDpdfStore, type ManualLimit } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
-import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
-import { isCompacted } from "../compact";
+import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, toolResultsIn, TOOLS_UNSUPPORTED_NOTE } from "../agent";
 import { resetTokenState } from "../provider/tokens";
 import type { ChatMessage, StreamDelta } from "../provider/client";
+import * as readings from "../readings";
+import { isCompacted } from "../readings/compact";
 import { DEFAULT_SETTINGS } from "../settings";
-import type { AgentTool } from "../tools";
+import { CHAT_TOOLS, type AgentTool } from "../tools";
+import { makeSlice } from "./helpers";
 
 const client = vi.hoisted(() => ({ streamChat: vi.fn() }));
 vi.mock("../provider/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../provider/client")>()),
   streamChat: client.streamChat,
+}));
+
+// The ΔPDF reads dpdf_contrast makes, for the loop guard's tests of it.
+const api = vi.hoisted(() => ({ fetchDpdfMeta: vi.fn(), fetchDpdfSlice: vi.fn() }));
+vi.mock("../../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/client")>()),
+  fetchDpdfMeta: api.fetchDpdfMeta,
+  fetchDpdfSlice: api.fetchDpdfSlice,
 }));
 
 type Reply = StreamDelta[] | Error;
@@ -294,6 +305,85 @@ describe("runAgent", () => {
       expect(r.content).toBe("Measuring.");
       expect(r.steps).toHaveLength(3); // the call after the request to answer did not run
     });
+
+    // dpdf_contrast acts: it sets the 3D-ΔPDF viewer's ± colour limit, so the
+    // limit the viewer shows is the one the last call set. A call pointed at an
+    // earlier result instead of run would leave the model quoting a limit the
+    // viewer no longer shows.
+    describe("dpdf_contrast, which sets the ΔPDF viewer's colour limit", () => {
+      const contrast = CHAT_TOOLS.find((t) => t.name === "dpdf_contrast")!;
+      const dpdfCtx = {
+        dataset: { id: "d", stages: [{ name: "delta_pdf", exists: true, kind: "delta_pdf", volume_id: "d.delta_pdf" }] } as Dataset,
+        datasets: [],
+      };
+      // Ripple of amplitude 1, a huge origin peak and four compact features of
+      // 100 (synthetic): the optimised limit lands on the features, at 100.
+      const section = makeSlice(81, 81, (u, v) => {
+        if (Math.hypot(u, v) < 1) return 1e6;
+        const feature = [[20, 0], [-20, 0], [0, 20], [0, -20]].some(([a, b]) => Math.hypot(u - a, v - b) < 1.5);
+        return feature ? 100 : Math.sin(3 * u) * Math.cos(3 * v);
+      });
+      const optimised: ManualLimit = { value: 100, dataset: "d" };
+      // The viewer's limit, each time it changed.
+      let shown: (ManualLimit | null)[] = [];
+      let unsubscribe = () => {};
+      beforeEach(() => {
+        api.fetchDpdfMeta.mockReset();
+        api.fetchDpdfSlice.mockReset();
+        api.fetchDpdfMeta.mockResolvedValue({
+          id: "d.delta_pdf",
+          shape: [81, 81, 81],
+          x_range: [-40, 40],
+          y_range: [-40, 40],
+          z_range: [-40, 40],
+          lattice: { a: 4, b: 4, c: 4, alpha: 90, beta: 90, gamma: 90 },
+          q_max: 6,
+          planes: ["xy", "xz", "yz"],
+        });
+        api.fetchDpdfSlice.mockResolvedValue(section);
+        useDpdfStore.setState({ limit: null });
+        shown = [];
+        unsubscribe = useDpdfStore.subscribe((s, prev) => {
+          if (s.limit !== prev.limit) shown.push(s.limit);
+        });
+      });
+      afterEach(() => unsubscribe());
+
+      it("runs a call again after another call changed the limit in between", async () => {
+        const seen = script([
+          [{ toolCalls: [call("c1", "dpdf_contrast", {})] }],
+          [{ toolCalls: [call("c2", "dpdf_contrast", { reset: true })] }],
+          [{ toolCalls: [call("c3", "dpdf_contrast", {})] }],
+          [{ content: "Done." }],
+        ]);
+        const r = await runAgent({ messages: base, tools: [contrast], ctx: dpdfCtx, settings, signal: new AbortController().signal });
+        expect(r.steps.map((st) => st.status)).toEqual(["done", "done", "done"]);
+        expect(r.steps.map((st) => st.summary)).toEqual([expect.stringMatching(/^± 100 /), "back on Auto", expect.stringMatching(/^± 100 /)]);
+        // The viewer followed each call: optimised, Auto, optimised again.
+        expect(shown).toEqual([optimised, null, optimised]);
+        expect(useDpdfStore.getState().limit).toEqual(optimised);
+        expect(api.fetchDpdfSlice).toHaveBeenCalledTimes(6); // three sections for each optimised call
+        // The model was told what the third call applied, not pointed at the first.
+        const sent = seen[3].messages.filter((m) => m.role === "tool").map((m) => m.content as string);
+        expect(sent[2]).not.toMatch(/already_called/);
+        expect(JSON.parse(sent[2]).applied).toMatchObject({ limit: 100, from: expect.stringMatching(/^optimised/) });
+      });
+
+      it("runs an identical call again, with nothing in between, as the other calls that act do", async () => {
+        const seen = script([
+          [{ toolCalls: [call("c1", "dpdf_contrast", {})] }],
+          [{ toolCalls: [call("c2", "dpdf_contrast", {})] }],
+          [{ content: "Done." }],
+        ]);
+        const r = await runAgent({ messages: base, tools: [contrast], ctx: dpdfCtx, settings, signal: new AbortController().signal });
+        expect(r.steps.map((st) => st.summary)).toEqual([expect.stringMatching(/^± 100 /), expect.stringMatching(/^± 100 /)]);
+        expect(api.fetchDpdfSlice).toHaveBeenCalledTimes(6);
+        // Set twice to the same value: the viewer shows it.
+        expect(shown).toEqual([optimised, optimised]);
+        const sent = seen[2].messages.filter((m) => m.role === "tool").map((m) => m.content as string);
+        expect(sent[1]).not.toMatch(/already_called/);
+      });
+    });
   });
 
   describe("the tools a local model is offered", () => {
@@ -329,9 +419,45 @@ describe("runAgent", () => {
 
     it("offers the tool a revision asks for", async () => {
       const seen = script([[{ content: "The backfill is clean." }], [{ content: "Checked." }]]);
-      await runAgent({ messages: [{ role: "user", content: "How does it look?" }], tools, ctx, settings, signal: new AbortController().signal });
+      // A question about the flatten: a generic one is offered texture_check from the start (Q10).
+      await runAgent({ messages: [{ role: "user", content: "How does the flatten look?" }], tools, ctx, settings, signal: new AbortController().signal });
       expect(specNames(seen[0].tools)).toEqual(["assess_stage"]);
       expect(specNames(seen[1].tools)).toEqual(["assess_stage", "texture_check"]); // the backfill's evidence
+    });
+  });
+
+  describe("a result the model reads fitted (readings/)", () => {
+    // 600 readings: past the result limit, so the model reads the first ones
+    // and left_out names the rest; the step keeps the whole beside them.
+    const whole = { verdict: "meets its goal", items: Array.from({ length: 600 }, (_, i) => ({ at: Number((1 + i / 1000).toFixed(3)), w: 0.5 })) };
+    const longTool: AgentTool = {
+      name: "long",
+      description: "a long reading",
+      parameters: { type: "object", properties: {} },
+      run: async () => ({ result: whole, summary: "600 items" }),
+    };
+
+    it("fills a reference to a field the model's copy left out, from the whole result the step carries", async () => {
+      const seen = script([[{ toolCalls: [call("c1", "long", {})] }], [{ content: "The last item is at {{long.items.599.at}}." }]]);
+      const r = await runAgent({ messages: base, tools: [longTool], ctx, settings, signal: new AbortController().signal });
+      const step = r.steps[0];
+      expect(step.full).toBe(JSON.stringify(whole));
+      // What the model read: the tool message as it was sent, which holds the first items only.
+      const sent = seen[1].messages.find((m) => m.role === "tool")?.content;
+      expect(readings.seen(step)).toBe(sent);
+      const read = JSON.parse(readings.seen(step)) as { items: unknown[]; left_out: string[] };
+      expect(read.items.length).toBeLessThan(600);
+      expect(read.left_out).toEqual(["items: its last items"]);
+      expect(readings.found(step)).toEqual(whole);
+      // The reference is filled from the whole result, and its number traced there.
+      expect(r.content).toBe("The last item is at 1.599.");
+      expect(r.note).toBeUndefined();
+    });
+
+    it("gives the next reply an earlier turn's results as the model read them", () => {
+      const step = { id: "0:c1", name: "long", args: {}, status: "done" as const, result: '{"items":[1],"left_out":["items: its last items"]}', full: '{"items":[1,2,3]}' };
+      const turns = [{ steps: [step] }, { steps: [{ ...step, id: "1:c1", status: "error" as const }] }, {}];
+      expect(toolResultsIn(turns)).toEqual(['{"items":[1],"left_out":["items: its last items"]}']);
     });
   });
 
@@ -364,6 +490,12 @@ describe("runAgent", () => {
       // 1.199 is only in the whole first series: the checks read it there.
       expect(r.content).toBe("The first series reaches 1.199.");
       expect(r.note).toBeUndefined();
+      // The model's copy was shortened; what the model read when the call
+      // returned was not: `seen` stays the text sent then, and the step says so.
+      expect(r.steps.map((s) => s.shortened)).toEqual([true, undefined, undefined, undefined]);
+      expect(readings.seen(r.steps[0])).toBe(toolTexts(seen[1].messages)[0]);
+      expect(readings.seen(r.steps[0])).not.toBe(sent[0]);
+      expect(readings.found(r.steps[0])).toMatchObject({ peak: 1, series: expect.arrayContaining([1.199]) });
     });
 
     it("lets a shortened call run again, for the whole result", async () => {
@@ -406,6 +538,8 @@ describe("runAgent", () => {
       });
       expect(seen).toHaveLength(3);
       expect(toolTexts(seen[2].messages).map(isCompacted)).toEqual([true, false]);
+      expect(r.steps.map((s) => s.shortened)).toEqual([true, undefined]);
+      expect(readings.seen(r.steps[0])).toBe(toolTexts(seen[1].messages)[0]);
       expect(r.content).toBe("Done.");
     });
   });

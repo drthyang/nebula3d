@@ -64,6 +64,7 @@ from nebula3d.core import low_memory as _low_memory
 from nebula3d.io.delta_pdf_file import load_delta_pdf, save_delta_pdf
 from nebula3d.io.mantid_nxs import NEBULA3D_GROUP
 from nebula3d.preprocessing import (
+    GRID_TOO_COARSE,
     GlobalRingConfig,
     IsotropyConfig,
     PooledRingConfig,
@@ -71,6 +72,7 @@ from nebula3d.preprocessing import (
     fit_global_rings,
     fit_pooled_rings,
     flatten_radial_background,
+    grid_needs,
     trim_coverage_edge,
     write_global_ring_diagnostics,
 )
@@ -103,6 +105,11 @@ __all__ = [
     "pdf_consistency_check",
     "consistency_reconstruction",
     "write_bragg_profile_json",
+    "read_flatten_settings",
+    "read_punch_record",
+    "RING_GRID_REMEDY",
+    "RING_GRID_REMEDY_ONE",
+    "unconfirmed_rings_notice",
     "pipeline_paths",
     "run_pipeline",
 ]
@@ -362,6 +369,45 @@ def _write_punched(path: Path, punched: np.ndarray) -> None:
             ds[i] = punched[i].astype(np.int8)
 
 
+#: The flatten's settings in its output: a JSON text attribute of the file's
+#: NEBULA3D group (``FlattenParams`` as a dict), so a measurement of the floors
+#: after it takes the run's own shells, percentile and fit range.
+_FLATTEN_SETTINGS_GROUP = f"/MDHistoWorkspace/{NEBULA3D_GROUP}"
+_FLATTEN_SETTINGS_ATTR = "flatten_settings"
+
+
+def _write_flatten_settings(path: Path, params: FlattenParams) -> None:
+    import h5py
+
+    text = json.dumps(dataclasses.asdict(params), sort_keys=True)  # ASCII
+    with h5py.File(path, "a") as fh:
+        grp = fh.get(_FLATTEN_SETTINGS_GROUP)
+        if isinstance(grp, h5py.Group):
+            grp.attrs.create(_FLATTEN_SETTINGS_ATTR, text.encode("ascii"),
+                             dtype=h5py.string_dtype("ascii"))
+
+
+def read_flatten_settings(path: str | Path) -> dict[str, Any] | None:
+    """The settings the flatten that wrote *path* ran with (the fields of
+    :class:`FlattenParams`, ranges as lists), or None when the file records
+    none: one the flatten did not write, or wrote before it recorded them."""
+    import h5py
+
+    try:
+        with h5py.File(path, "r") as fh:
+            grp = fh.get(_FLATTEN_SETTINGS_GROUP)
+            raw = grp.attrs.get(_FLATTEN_SETTINGS_ATTR) if isinstance(grp, h5py.Group) else None
+    except OSError:
+        return None
+    if raw is None:
+        return None
+    try:
+        settings = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else str(raw))
+    except ValueError:
+        return None
+    return settings if isinstance(settings, dict) else None
+
+
 def _read_punched(path: Path) -> np.ndarray | None:
     """The punch record stored in *path* (either layout); None if it has none."""
     import h5py
@@ -375,6 +421,19 @@ def _read_punched(path: Path) -> np.ndarray | None:
                     out[i] = ds[i] != 0
                 return out
     return None
+
+
+def read_punch_record(path: str | Path) -> np.ndarray | None:
+    """The voxels the Bragg punch removed, as the punch stage records them in
+    its output *path* (a bool volume, True = punched; read plane by plane, so
+    no int8 copy of the volume), or None when the file records none (one the
+    punch did not write, or wrote before it recorded its holes) or cannot be
+    read.  The punched stage's mask is cleared on these voxels and on the
+    never-measured ones alike; the record tells the two apart."""
+    try:
+        return _read_punched(Path(path))
+    except OSError:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -998,6 +1057,36 @@ async def remove_rings_async(
     return out_vol
 
 
+#: The two ways to have the ring candidates the pooled ring removal could not
+#: confirm on its grid subtracted, as its notice ends
+#: (:func:`unconfirmed_rings_notice`): for more than one candidate, and for one
+#: (``RING_GRID_REMEDY_ONE``). The console tags both as a remedy
+#: (web/src/llm/verdicts/rules.ts, written the same, which a test holds), so
+#: the validation's arm C reads the notice without it.
+RING_GRID_REMEDY = ("Use a finer grid, or, from the Python API, set pooled_confirm_rings=False "
+                    "to subtract every candidate, the crystal's own shells included.")
+RING_GRID_REMEDY_ONE = ("Use a finer grid, or, from the Python API, set pooled_confirm_rings=False "
+                        "to subtract it, even if it is the crystal's own shell.")
+
+
+def unconfirmed_rings_notice(count: int, needs: str) -> str:
+    """What the pooled ring removal says of the *count* shells it detected and
+    could not confirm as powder rings on its grid, which it does not subtract:
+    ring candidates, which may be powder rings or the crystal's own scattering;
+    the grid's need (*needs*, from :func:`~nebula3d.preprocessing.ring_isotropy.
+    grid_needs`); then :data:`RING_GRID_REMEDY`, or :data:`RING_GRID_REMEDY_ONE`
+    for one. Out loud, in the run log and the stage's diagnostics (the
+    manager's condition, on the user's delegation, 2026-10-19, for subtracting
+    no unconfirmed ring)."""
+    found, remedy = (
+        ("1 ring candidate (a shell that may be a powder ring or the crystal's own scattering)",
+         RING_GRID_REMEDY_ONE) if count == 1 else
+        (f"{count} ring candidates (shells that may be powder rings or the crystal's own "
+         f"scattering)", RING_GRID_REMEDY))
+    return (f"{found} detected but not confirmed at this grid (needs ≥ {needs}); "
+            f"not subtracted. {remedy}")
+
+
 def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
                          progress: ProgressFn | None) -> HKLVolume:
     """The ``ring_model="pooled"`` stage: whole-volume, two passes over the stack."""
@@ -1010,6 +1099,8 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
     def _progress(fraction: float, message: str) -> None:
         _emit(progress, "rings", "progress", fraction, message)
 
+    isotropy = IsotropyConfig(direction_share=p.pooled_ring_direction_share,
+                              height_share=p.pooled_ring_height_share)
     result = fit_pooled_rings(vol, PooledRingConfig(
         plane=cfg.plane,
         q_min=p.q_min,
@@ -1023,20 +1114,40 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
         envelope_scale=p.pooled_envelope_scale,
         amp_cap=p.pooled_amp_cap,
         confirm_rings=p.pooled_confirm_rings,
-        isotropy=IsotropyConfig(direction_share=p.pooled_ring_direction_share,
-                                height_share=p.pooled_ring_height_share),
+        isotropy=isotropy,
     ), progress=_progress)
     out = result.cleaned
     # Attached transiently (as global_v2 does) so run_pipeline writes the sidecar.
     setattr(out, "_ring_diagnostics", result.diagnostics)
     d = result.diagnostics
-    rejected = len(d.get("rejected_shells") or [])  # type: ignore[arg-type]
+    listed = d.get("rejected_shells")
+    rejected_shells: list[Any] = listed if isinstance(listed, list) else []
+    # The shells the test could not judge (a grid too coarse, no clean flank)
+    # are kept too, but they are not shown to be the crystal's own.
+    unjudged = [s for s in rejected_shells if (s.get("isotropy") or {}).get("not_judged")]
+    reason = [str(s["isotropy"]["not_judged"]) for s in unjudged]
+    # Those the grid left unjudged are rings it detected and could not confirm:
+    # not subtracted, which the log says out loud, with what the grid needs and
+    # the two ways out, and the diagnostics record (G1).
+    at_grid = [s for s, w in zip(unjudged, reason) if w.startswith(GRID_TOO_COARSE)]
+    other = [w for w in reason if not w.startswith(GRID_TOO_COARSE)]
+    rejected = len(rejected_shells) - len(unjudged)
+    why = "; ".join(dict.fromkeys(other))  # each reason once, in the shells' order
+    notice = ""
+    if at_grid:
+        needs = grid_needs(vol, isotropy)
+        notice = unconfirmed_rings_notice(len(at_grid), needs)
+        d["unconfirmed_at_grid"] = {
+            "count": len(at_grid), "needs": needs, "notice": notice,
+            "q_centers": [round(float(s["q_center"]), 4) for s in at_grid]}
     _emit(progress, "rings", "done", 1.0,
           f"pooled ring removal {d['status']}: {len(d['shells'])} shells "  # type: ignore[arg-type]
           + (f"confirmed as rings, {rejected} not (the crystal's own scattering, kept) "
+             + (f"and {len(other)} not judged ({why}; kept) " if other else "")
              if p.pooled_confirm_rings else "")
           + f"(of {d['n_planes_fitted']}/{d['n_planes']} planes fitted), removed "
-          f"{100.0 * float(d['removed_fraction']):.3g}% of |I|")  # type: ignore[arg-type]
+          f"{100.0 * float(d['removed_fraction']):.3g}% of |I|"  # type: ignore[arg-type]
+          + (f". ⚠ {notice}" if notice else ""))
     return out
 
 
@@ -2227,6 +2338,7 @@ def run_pipeline(
                       f"flatten averaged over {symmetry.order} symmetry operations "
                       f"({n:,} voxels)")
             nebula3d.save(out, paths.flattened)
+            _write_flatten_settings(paths.flattened, p.flatten)
             carry, carry_path = out, paths.flattened
             del vol, out  # free the input; `carry` hands the output onward
     elif want("flatten"):

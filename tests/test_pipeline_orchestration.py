@@ -415,6 +415,28 @@ def test_real_backfill_flatten_pdf_writes_viewer_schema(tmp_path):
         assert (stage, "done") in pairs
 
 
+def test_flatten_records_its_settings_in_its_output(tmp_path):
+    """The flattened file says which flatten made it, so the floors after it
+    can be measured on the run's own shells, percentile and fit range; the
+    volume is the flatten's, and a file the flatten did not write reads None."""
+    import dataclasses
+
+    inp = tmp_path / "s.nxs"
+    paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path)
+    nebula3d.save(_punched_vol(), paths.backfilled)
+    flat = pipeline.FlattenParams(floor_percentile=20.0, q2_term=True, fit_q_range=(1.0, 4.0))
+    pipeline.run_pipeline(inp, pipeline.PipelineParams(flatten=flat), proc_dir=tmp_path,
+                          stages=("flatten",))
+
+    recorded = pipeline.read_flatten_settings(paths.flattened)
+    assert recorded == json.loads(json.dumps(dataclasses.asdict(flat)))
+    assert recorded["fit_q_range"] == [1.0, 4.0] and recorded["q2_term"] is True
+    direct = pipeline.flatten(nebula3d.load(paths.backfilled), flat)
+    assert np.array_equal(nebula3d.load(paths.flattened).data, direct.data)
+    assert pipeline.read_flatten_settings(paths.backfilled) is None
+    assert pipeline.read_flatten_settings(tmp_path / "missing.h5") is None
+
+
 def test_real_pdf_stale_guard_skips_on_rerun(tmp_path):
     inp = tmp_path / "s.nxs"
     paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path)

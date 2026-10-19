@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+# The validation's held-out test split runs only on this opt-in, under masked
+# names (tests/conftest.py): a local run leaves it out of the output that whoever
+# tunes reads, and CI covers it in every job, the Pyodide-pinned one included.
+# test_ci_runs_the_test_split pins this block.
+env:
+  NEBULA_HOLDOUT_TESTS: "1"
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -89,6 +96,27 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      # The replay tests (vitest's replay project) run the Pages build's own
+      # path, the engine's Worker messages answered by nebula3d.webbridge, with
+      # a CPython bridge in place of Pyodide (web/src/llm/evals/devData/). So
+      # this Python is the browser's: Pyodide 0.27.7 ships CPython 3.12
+      # (3.12.7) and the numeric stack its constraints file pins. The check
+      # below fails when the minor version or any pin differs, and
+      # devData/pins.test.ts ties this job to the Pyodide the Pages build loads.
+      - name: Set up Python (Pyodide 0.27.7's CPython 3.12)
+        id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install the package (Pyodide 0.27.7 numeric stack)
+        working-directory: .
+        run: pip install -e . -c .github/constraints/pyodide-0.27.7.txt
+
+      - name: Check the Python against the browser's pins
+        run: '"${{ steps.python.outputs.python-path }}" src/llm/evals/devData/bridge.py check --pins ../.github/constraints/pyodide-0.27.7.txt'
+
       - name: Install dependencies
         run: npm ci
 
@@ -97,6 +125,8 @@ jobs:
 
       - name: Test
         run: npm run test
+        env:
+          NEBULA_PYTHON: ${{ steps.python.outputs.python-path }}
 
       # Both bundles: the native SPA baked into the wheel and the Pages /
       # Pyodide build (different base path, publicDir and env).

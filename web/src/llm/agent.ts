@@ -17,15 +17,18 @@ import {
   type ToolCall,
 } from "./provider/client";
 import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
-import { compactResult, isCompacted } from "./compact";
+import { fillReferences } from "./references";
 import { lastQuestion, toolsFor } from "./localTools";
 import { isLocalUrl } from "./provider/presets";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
 import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
 import { planWindow } from "./provider/window";
+import { seen, shorten, whole } from "./readings";
 import type { LlmSettings } from "./settings";
-import { runToolCall, toolSpecs, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
+import { skillsOn } from "./skills";
+import { factsOf, runToolCall, toolSpecs, toolsWithSkills, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
 import { openView } from "./tools/openView";
+import { verdicts, type ComputedVerdict, type Outcome } from "./verdicts";
 
 export interface AgentStep {
   id: string;
@@ -34,8 +37,18 @@ export interface AgentStep {
   status: "running" | "done" | "error";
   summary?: string;
   progress?: string; // a running tool's live line (run_pipeline: stage, %, log)
-  result?: string; // the JSON the model read
+  // The result's two readings (readings/): what the model read when the call
+  // returned, byte for byte as it was sent (`seen`), and, only where the model
+  // read it fitted, the whole result the tool found (`whole`, `found`).
+  result?: string;
+  full?: string;
+  // The loop later shortened the model's copy, in the conversation, to save
+  // room (compaction): `result` stays what was sent.
+  shortened?: true;
   view?: ViewTarget;
+  // The checks' outcomes the tool judged (verdicts/), kept beside the result
+  // and never in it: the model reads the result alone.
+  outcomes?: Outcome[];
 }
 
 export interface AgentProgress {
@@ -52,6 +65,10 @@ export interface AgentResult extends AgentProgress {
   // With `usage`: the reply's token counts over all its requests, when the
   // server reported them (null when it did not).
   usage?: (TokenUsage & { requests: number }) | null;
+  // The verdict on the run computed from the checks this reply ran
+  // (verdicts/): what "achieved" is, which the answer explains. Null when the
+  // reply measured nothing it rests on.
+  verdict?: ComputedVerdict | null;
 }
 
 // Rounds of tool calls before the model is asked to answer with what it has;
@@ -69,7 +86,7 @@ export const TOOLS_UNSUPPORTED_NOTE =
   "This model cannot call tools, so it answered from the fixed-cut metrics only. Pick a tool-capable model (Ollama and LM Studio mark them) to let it measure other cuts.";
 
 export const CUT_OFF_NOTE =
-  "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (32k: with Tools on, the first request alone is about 8k tokens, and a full assessment reaches about 18k), or turn Tools off; Clear starts a shorter conversation.";
+  "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (48k or more: with Tools on, the first request alone is about 10k tokens, and a full assessment that reads two skills reaches about 46k), or turn Tools off; Clear starts a shorter conversation.";
 
 // A reply its server could not parse ran none of its tools, so the same request
 // is sent again, at most this many times in one reply.
@@ -92,16 +109,19 @@ export const LOOP_NOTE = "The model repeated calls that brought nothing new, so 
 const ANSWER_NOW = "The tool calls are bringing nothing new. Answer now from the results above, without calling more tools.";
 
 // A local model's request past this many tokens has its older tool results
-// shortened to their readings and numbers (compact.ts), the newest KEEP_FULL
-// left whole: it keeps the request inside a 32k window with room to reply, and
-// fast. A request no window can hold is shortened down to the newest result
-// before it is refused.
+// shortened to their verdicts, headlines and numbers (shorten, readings/), the
+// newest KEEP_FULL left whole: it keeps the request inside a 32k window with
+// room to reply, and fast. A request no window can hold is shortened down to
+// the newest result before it is refused.
 export const SOFT_BUDGET = 24_000;
 export const KEEP_FULL = 3;
 
-// Calls after which the same reading may differ: they change the settings, the
-// files on disk, or what the console shows.
-const CHANGES_STATE = new Set(["update_settings", "run_pipeline", "tune_pipeline", "show_in_viewer"]);
+// Calls after which the same reading may differ: those of a tool that acts (its
+// facts' `acts`, tools/facts.ts), which change the settings, the files on disk,
+// or what the console shows (dpdf_contrast sets the ΔPDF viewer's colour
+// limit). One of these runs every time it is called, an identical call
+// included: what it set is what the console now shows.
+const changesState = (name: string): boolean => factsOf(name).acts !== null;
 
 const canonical = (v: unknown): unknown =>
   Array.isArray(v)
@@ -118,11 +138,11 @@ export const ANSWER_REVISIONS = 1;
 export const REVISING_NOTE = "Checking the answer against its evidence…";
 
 // What an answer's numbers may come from: the conversation as it arrived (the
-// system prompt, the context, the user's words), the tool results of this reply
-// (whole, though the model may read them shortened) and of earlier turns, and
-// the tools' own guidance. No assistant text: an earlier answer's number from
-// nowhere would otherwise vouch for the next answer, and this reply's drafts,
-// and the notes sent back about them, for themselves.
+// system prompt, the context, the user's words), the tool results of this
+// reply (whole, though the model may read them fitted or shortened) and of
+// earlier turns, and the tools' own guidance. No assistant text: an earlier
+// answer's number from nowhere would otherwise vouch for the next answer, and
+// this reply's drafts, and the notes sent back about them, for themselves.
 function numberSources(convo: ChatMessage[], arrived: number, results: readonly string[], tools: AgentTool[], earlier: readonly string[]): string {
   const text = (m: ChatMessage): string =>
     typeof m.content === "string"
@@ -138,9 +158,9 @@ function numberSources(convo: ChatMessage[], arrived: number, results: readonly 
   ].join("\n");
 }
 
-/** The tool results of a conversation's turns, as the model read them: number sources for the next reply. */
+/** The tool results of a conversation's turns, as the model read them (`seen`): number sources for the next reply. */
 export const toolResultsIn = (turns: readonly { steps?: readonly AgentStep[] }[]): string[] =>
-  turns.flatMap((t) => (t.steps ?? []).flatMap((s) => (s.status === "done" && s.result ? [s.result] : [])));
+  turns.flatMap((t) => (t.steps ?? []).flatMap((s) => (s.status === "done" && seen(s) ? [seen(s)] : [])));
 
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
@@ -174,7 +194,7 @@ const callKey = (call: ToolCall): string => `${call.function.name}|${JSON.string
 
 export async function runAgent({
   messages,
-  tools,
+  tools: given,
   ctx,
   settings,
   signal,
@@ -199,6 +219,10 @@ export async function runAgent({
   retryDelaysMs?: number[]; // the pauses before each retry
   softBudget?: number; // a local request's tokens past which older results are shortened
 }): Promise<AgentResult> {
+  // The skills' switch (skills.ts), as the conversation's context carries it:
+  // the tools the reply offers, runs and checks answers against are the given
+  // ones under it (with the skills off, no read_skill).
+  const tools = toolsWithSkills(given, skillsOn(ctx));
   const convo = [...messages];
   const arrived = convo.length;
   let revisions = 0;
@@ -210,10 +234,10 @@ export async function runAgent({
   let useTools = tools.length > 0 && ctx !== null && !toolsKnownUnsupported(settings);
   let content = "";
   let reasoning = "";
+  // Each step carries its result's two readings (readings/): the answer
+  // checks, the references and the verdict read what the tools found, not
+  // what fit.
   let steps: AgentStep[] = [];
-  // Each step's whole result, where the model read it trimmed: the answer
-  // checks judge against what the tools found, not against what fit.
-  const fullResults = new Map<string, string>();
   let note: string | undefined = tools.length && !useTools && ctx ? TOOLS_UNSUPPORTED_NOTE : undefined;
   const emit = (roundText = "") => onProgress?.({ content: joinText(content, roundText), reasoning, steps });
   const setStep = (id: string, patch: Partial<AgentStep>) => {
@@ -228,21 +252,24 @@ export async function runAgent({
   // The calls that ran since the state last changed, by key → their step number.
   const called = new Map<string, number>();
   // This reply's tool results in the conversation, oldest first: where each
-  // sits and which call made it.
-  const results: { index: number; key: string }[] = [];
-  // Shorten all but the newest `keep` results; a shortened call may run again.
+  // sits, which call made it, and its step.
+  const results: { index: number; key: string; id: string }[] = [];
+  // Shorten all but the newest `keep` results in the conversation, the model's
+  // copies: each step keeps its result as it was sent (`seen`), and is marked
+  // `shortened`. A shortened call may run again.
   const compactOlder = (keep: number): boolean => {
-    let changed = false;
+    const shortened = new Set<string>();
     for (const r of results.slice(0, Math.max(0, results.length - keep))) {
       const m = convo[r.index];
-      if (typeof m.content !== "string" || isCompacted(m.content)) continue;
-      const short = compactResult(m.content);
+      if (typeof m.content !== "string") continue;
+      const short = shorten(m.content);
       if (short === m.content) continue;
       convo[r.index] = { ...m, content: short };
       called.delete(r.key);
-      changed = true;
+      shortened.add(r.id);
     }
-    return changed;
+    if (shortened.size) steps = steps.map((s) => (shortened.has(s.id) ? { ...s, shortened: true } : s));
+    return shortened.size > 0;
   };
   const windowKey = `${settings.baseUrl}|${settings.model}`;
   // A local model is offered the reading tools and those its question is
@@ -373,17 +400,18 @@ export async function runAgent({
       // The final answer: held to its evidence before the user reads it. A
       // revision that wrote nothing leaves the answer it revised.
       const answer = roundText.trim() ? roundText : rejected;
-      const checked = steps.map((st) => (fullResults.has(st.id) ? { ...st, result: fullResults.get(st.id) } : st));
-      const sources = numberSources(convo, arrived, checked.map((st) => st.result ?? ""), tools, ctx?.earlierResults ?? []);
-      const issues = useTools && checkAnswers ? answerIssues(answer, checked, sources) : null;
+      const sources = numberSources(convo, arrived, steps.map(whole), tools, ctx?.earlierResults ?? []);
+      const issues = useTools && checkAnswers ? answerIssues(answer, steps, sources) : null;
       if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
         revisions += 1;
         rejected = roundText;
         content = before;
         convo.push({ role: "assistant", content: roundText });
-        // The tools the fix asks for are offered.
-        for (const t of issues.missing) tools.forEach((tool) => t.evidence.includes(tool.name) && offer(tool.name));
-        convo.push({ role: "user", content: issuesPrompt(issues) });
+        // The tools the fix asks for are offered. With the skills off the
+        // send-back names none of them (issuesPrompt reads the switch), and
+        // the guardrail still keeps them within reach.
+        for (const t of [...issues.missing, ...issues.stale]) tools.forEach((tool) => t.evidence.includes(tool.name) && offer(tool.name));
+        convo.push({ role: "user", content: issuesPrompt(issues, { skills: skillsOn(ctx) }) });
         emit(`_${REVISING_NOTE}_`);
         continue;
       }
@@ -420,24 +448,26 @@ export async function runAgent({
         signal,
         progress: (progress) => setStep(id, { progress }),
       });
+      // The whole result arrives with the status, where the model reads it fitted.
       setStep(id, {
         progress: undefined,
         args: run.args,
         status: run.ok ? "done" : "error",
         summary: run.summary,
         result: run.text,
+        ...(run.full !== undefined ? { full: run.full } : {}),
         view: run.view,
+        outcomes: run.outcomes,
       });
-      if (run.full) fullResults.set(id, run.full);
       if (run.ok) {
         offer(call.function.name);
         fresh += 1;
-        if (CHANGES_STATE.has(call.function.name)) called.clear();
+        if (changesState(call.function.name)) called.clear();
         else called.set(key, steps.length);
       }
       // The console follows what the model looked at, step by step.
       if (run.ok && run.view && settings.followViews) openView(run.view);
-      results.push({ index: convo.length, key });
+      results.push({ index: convo.length, key, id });
       convo.push({ role: "tool", tool_call_id: call.id, content: run.text });
     }
     barren = fresh ? 0 : barren + 1;
@@ -450,5 +480,19 @@ export async function runAgent({
 
   // A server that reported some requests' counts but not all leaves the total unknown.
   const usage = wantUsage ? (tokens.requests > 0 && tokens.requests === requests ? tokens : null) : undefined;
-  return { content, reasoning, steps, note, ...(failure ? { failure } : {}), ...(wantUsage ? { usage } : {}) };
+  // Numbers by reference: the words the user reads have each {{tool.field}}
+  // filled in from what the tools found (whole, however much the model read);
+  // and the verdict on the run is computed from the checks, never taken from
+  // the words.
+  content = fillReferences(content, steps).text;
+  const verdict = useTools ? verdicts({ reply: steps }).achieved : null;
+  return {
+    content,
+    reasoning,
+    steps,
+    note,
+    ...(failure ? { failure } : {}),
+    ...(wantUsage ? { usage } : {}),
+    ...(verdict ? { verdict } : {}),
+  };
 }

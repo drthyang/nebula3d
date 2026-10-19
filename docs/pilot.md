@@ -30,11 +30,35 @@ Each is described under [How it works](#how-it-works).
 
 - **Answers stand on their evidence.** Before you read an answer, the agent
   checks that each verdict on a stage has the tool that measures it in the
-  reply, that every number comes from a tool result or the context, and that
-  no claim contradicts a verdict a tool computed. A failing answer goes back to
-  the model once; what still fails is noted under the reply.
+  reply, measured after the last run that recomputed that stage (a run that
+  reused a stage leaves its measurement standing), that every number comes
+  from a tool result or the context, and that no claim contradicts a verdict a
+  tool computed. A ring or punch verdict needs `assess_stage`, the ΔPDF's
+  correlations `dpdf_peaks` (or a measured section), the origin `ub_check`.
+  The check runs in code after the answer, not as a forced tool call, which the
+  paid models do not take. A failing answer goes back to the model once; what
+  still fails is noted under the reply (`answerChecks.ts`, `evidence.ts`).
+- **Numbers by reference.** The model writes a tool's number as
+  `{{tool.field}}`, the field's path in that tool's result
+  (`{{ub_check.orientation_change_deg}}`, `{{assess_stage.flatten.max_floor_trend}}`),
+  and the app fills it in from the result before you read it: the number is
+  the tool's, as the tool rounded it. A reference that names nothing goes back
+  to the model, and one still unfilled stays as written, with a note
+  (`references.ts`).
 - **Verdicts are computed, not self-graded.** `assess_stage` returns each
-  stage's verdict with the rule behind it, by the report's own criteria.
+  stage's verdict with the rule behind it, by the check's rule in the
+  check-verdict module (`verdicts/`), which the report reads too. The
+  verdict on the whole run, `{{achieved}}`, is computed from the checks the
+  reply ran: met when every stage, measured as it now is, meets its goal and
+  no check on the result needs attention; not met, naming what needs it; or
+  not judged, naming the stages not measured, and those measured on a grid
+  too coarse for their check with that reason ("not judged: the ring removal
+  (grid too coarse for the ring check)"). The data's problems that no
+  setting fixes (a turned UB, a shifted origin, counts that end inside the
+  box) are listed with it. It shows under a reply that judged the run (or
+  found such a problem) and the report heads its own, and
+  an answer that calls the run a success it does not give goes back to the
+  model to quote it (`verdicts/`, `verdict.ts`).
 - **Skills come first.** A stage's settings change, and the stage is tuned,
   only after its skill has been read in the conversation.
 - **Tuning cannot touch your results.** Each trial runs in its own folder,
@@ -46,8 +70,9 @@ Each is described under [How it works](#how-it-works).
   going, and *Stop* cancels the one the model started.
 - **No loops.** A call repeated with the same arguments, with nothing
   changed in between, is not run again: the model is pointed at the result it
-  has. After two rounds in a row that brought nothing new, the model is asked
-  to answer with what it has, and the reply says so.
+  has. A call to a tool that acts (its `acts` fact) always runs, and the
+  readings after it run again. After two rounds in a row that brought nothing
+  new, the model is asked to answer with what it has, and the reply says so.
 - **A failing server is asked again, then explained.** A crash, a model
   unloaded, a dropped connection or a server gone quiet gets the same
   request again after a pause; what still fails ends the reply with what to
@@ -55,9 +80,12 @@ Each is described under [How it works](#how-it-works).
 - **A local model gets the tools its question needs.** All the tools'
   definitions come to about 5k tokens on every request, so a local model is
   offered the reading tools, the ones its question is about (the rings, the
-  punch, the lattice, the 3D-ΔPDF …), and the acting ones only when the
-  message asks for an action (`localTools.ts`). A tool it calls by name all
-  the same still runs and stays offered, as does one an answer check asks for.
+  punch, the lattice, the 3D-ΔPDF …), and the ones that change the settings or
+  start a run only when the message asks for an action (`localTools.ts`
+  reads the question; each tool declares the questions it is for, its
+  `offeredFor` fact, and one that declares none is offered for every
+  question). A tool it calls by name all the same still runs and stays
+  offered, as does one an answer check asks for.
   Cloud models get them all.
 - **A long reply keeps its numbers.** Once a local model's request passes
   about 24k tokens, the reply's older tool results go back to it shortened to
@@ -71,6 +99,20 @@ Each is described under [How it works](#how-it-works).
   chat API takes the length per request; the OpenAI-style one cannot), and a
   request no window of the model can hold, or longer than the window LM Studio
   loaded the model with, is not sent: the reply says how to fix it.
+- **A local model wants a 48k window.** With Tools on, a full assessment that
+  reads two skills whole is about 45.6k tokens with room for the reply
+  (measured through the agent loop: `web/src/llm/__tests__/tokenBudget.test.ts`).
+  A 32k window still runs, but the guard then shortens the skills the model
+  just read to stubs, and refuses a request that still does not fit; 48k
+  (49,152 tokens) or more avoids that on long two-skill turns. In LM Studio,
+  set the model's default Context Length to 49152 in its load settings (it
+  reloads an idle model with its defaults), or load it with
+  `lms load <model> --context-length 49152`. Ollama at its usual port gets
+  its window from the app per request (`num_ctx`, up to the longest the model
+  supports, which `ollama show <model>` lists), so the model must support 48k
+  and the machine needs the memory for it; elsewhere, start Ollama with
+  `OLLAMA_CONTEXT_LENGTH=49152`. The validation holds its local live runs to
+  the same 48k ([evals.md](evals.md#the-models)).
 
 ## Evals
 
@@ -164,7 +206,7 @@ reads a final answer, the agent loop checks it three ways:
   precision. A number found nowhere is listed.
 - **Verdicts computed, not self-graded.** `assess_stage` returns each stage's
   verdict (*meets its goal*, *needs attention*) with the rule behind it, by the
-  report's own criteria. An answer that contradicts a tool's verdict is caught:
+  check-verdict module's rules. An answer that contradicts a tool's verdict is caught:
   a stage called clean that needs attention, a second grain that `grain_check`
   rules out, or a UB called right that `ub_check` turned or could not judge on a
   symmetrised volume.
@@ -213,6 +255,28 @@ miss is a note.
     pedestal the σ test hides beside strong diffuse structure.
   - `dpdf.ts` — feature SNR vs background, strong-feature anisotropy (covariance
     ratio + orientation), radial trend, and back-FFT consistency pass-through.
+- **`verdicts/`** — the check-verdict module: what each check's measurements
+  mean. Each check (the five stages, the window against the coverage, the
+  symmetry, the fill's texture, a second grain, the UB) has one entry in
+  `rules.ts` with its rule, the words its tool writes, the criterion the rule
+  is stated as and a stage's goal. The tools that judge call `judge`, which
+  gives an outcome: met, needs attention or not judged, with its reasons and
+  the data's problems no setting fixes. A check the grid is too coarse for
+  (the ring check's 3D test, the fills' texture: pipeline.md) is not judged
+  for that reason, "grid too coarse", its measurement saying why in the
+  result the model reads (`ring_rule`, a cut's `not_judged`). On such a grid
+  the ring removal subtracts no ring it could not confirm, and the rings'
+  evaluation says so first (`notice`, from the stage's diagnostics: how many,
+  what the grid needs, and the two ways out, a remedy arm C reads without).
+  The outcome
+  travels beside the tool's result, never in the text the model reads. `verdicts` reads a run's
+  outcomes: a reply's for `{{achieved}}` and the answer checks, a report's for
+  its cards and its goal. A result recorded without its outcomes (a replay, a
+  validation record) is read from its words and numbers (`recorded.ts`).
+  Where two readers read the same check differently, the reader matrix
+  (`readers.ts`, and `rules.ts` for the rules' own) names the rule, D1 to D18,
+  and its comment says the one line that would make them agree; a test pins
+  each, and the user decides them one by one.
 - **`context/`** — `loadContext.ts` fetches one cut through every stage (H–K at
   L=0 and the ΔPDF z=0 section by default, any cut on request) plus the run's
   records; `pipelineContext.ts` folds the metrics into the budgeted JSON
@@ -224,10 +288,12 @@ miss is a note.
   picked): system messages become the system prompt, a round's tool results go
   back in one user message, and a turn that called tools is replayed exactly as
   Claude returned it, thinking included. With Tools on, the first request alone
-  is about 8k tokens and a full assessment reaches about 18k, so on LM Studio
+  is about 8k tokens and a full assessment that reads two skills about 45.6k
+  with room for the reply (`__tests__/tokenBudget.test.ts`), so on LM Studio
   the chat reads the context length the model was loaded with
-  (`/api/v0/models`) and, below 32k, says how far to raise it (`loadedContext`,
-  `contextWarning`). Before each request `provider/window.ts` estimates its
+  (`/api/v0/models`) and, below 48k (`TOOLS_CONTEXT`, 49,152), says how far to
+  raise it (`loadedContext`, `contextWarning`). The 48k is guidance: the
+  window guard below goes by the window the model has. Before each request `provider/window.ts` estimates its
   tokens (`tokens.ts`): prose at 3.5 characters a token and data at 1.4 (tool
   results, call arguments and the fenced context JSON: a tokenizer may give
   every digit its own token), scaled by the largest ratio of the server's own
@@ -265,7 +331,14 @@ miss is a note.
   tuning run is on), then those its answer mentions, for 8 s after the reply.
   The cleanup, 3D-ΔPDF and Q–R views, the Bragg profile panels, the Execution
   stages and log, and the Configure stage boxes all take it. A model or server
-  that refuses tools gets the plain request and a note saying so.
+  that refuses tools gets the plain request and a note saying so. Each tool
+  declares its facts beside its definition (`tools/facts.ts`): whether it only
+  reads or acts, and on what; the verdicts it settles for the answer checks;
+  the questions a local model is offered it for; its line in the transcript;
+  the cards it lights; whether a reply that ran it gets a report; the skill it
+  waits for. The agent loop, the answer checks, the report, the transcript,
+  the highlights and the evals read them there instead of keeping their own
+  lists of tool names; the model never sees them.
   - *Reading*: `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
     `measure_dpdf_cut`, `line_profile`, `bragg_peaks`, `consistency_details`,
     `compare_datasets`, `configure_settings`, `run_log` (the last run's log).
@@ -325,29 +398,33 @@ miss is a note.
     3D-ΔPDF's strongest extrema from the whole volume: local extrema above a
     few robust σ (default 5) outside the origin's disk, one per ± pair, each
     with its vector in Å and in lattice units (to a fraction of a voxel), its
-    sign and its size in σ, those of one sign, length and size grouped as the
-    copies of one correlation.
+    sign and its size in σ. The copies of one correlation are one entry: the
+    extrema that are images of one another under the point group the raw
+    file declares, else those of one sign, length and size (see
+    [the ΔPDF's features](algorithms/delta_pdf.md#the-strongest-features-grouped-by-the-declared-symmetry-2026-10-19)).
   - *Display*: `dpdf_contrast` optimises the 3D-ΔPDF viewer's colour range in
     one call (the page's Auto rule, measured on the centre sections), reports the
     robust σ, the strongest feature and what the 99.5th and 99.97th percentiles
     would give, and warns when a range the user asks for is brighter than the
-    optimum, where the FFT ripple shows.
+    optimum, where the FFT ripple shows. It acts: it sets the viewer's limit.
   - *Acting*: `update_settings` (the method choices and thresholds in
     `tune/catalog.ts`, and, when the user names them, the sample facts the
     tuner never proposes: the search's protected planes and the punch cell),
     `run_pipeline` (as the Run button: the console moves to the Execution page;
     without `from_stage` it computes what is missing, with it it recomputes from
-    that stage on), `tune_pipeline` (below), and `show_in_viewer`. Neither run
-    starts while another is going, and *Stop* cancels the one the model
-    started.
+    that stage on), `tune_pipeline` (below), and `show_in_viewer` (it acts on
+    the view, as `dpdf_contrast` does). Neither run starts while another is
+    going, and *Stop* cancels the one the model started.
 - **Report** (`report/`, `components/ReportView.tsx`) — a reply that assessed,
   tuned or ran the pipeline gets a *Report* button. The report is measured
   afresh when opened (`report/collect.ts` runs the agent's own tools:
   `describe_dataset`, `assess_stage` for every stage, `texture_check`,
   `qmax_coverage`, `symmetry_check`, and `grain_check` once the punch has run),
   so its numbers never depend on which tools
-  the model called or on its wording. `report/report.ts` judges each stage by
-  its stated goal (`tune/prompts.ts`) and lists every miss as a caveat.
+  the model called or on its wording. The check-verdict module judges each
+  card from the outcomes those tools return (`verdicts/`, the report's reader),
+  and `report/report.ts` assembles the cards' headlines and details around
+  them and lists every miss as a caveat.
   `report/figures.ts` draws the cleanup stages on one shared scale and the
   ΔPDF sections with the page's Auto, axes at their real angle.
   `report/render.ts` writes it as a self-contained HTML page (inline styles

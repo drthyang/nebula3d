@@ -11,6 +11,10 @@
 // - as a rotated copy of the Bragg lattice: a second grain is one rotation
 //   under which most strong orbits sit on lattice nodes.  The same search on
 //   the same |Q| at random directions is the control.
+//
+// grainCheck returns what it measured, unrounded; the grain's rule in the
+// check-verdict module (verdicts/rules.ts) judges it and writes the verdict,
+// and shownGrains rounds it as grain_check's result shows it.
 
 type V3 = [number, number, number];
 type M3 = [V3, V3, V3]; // rows
@@ -52,21 +56,28 @@ export const SECOND_GRAIN_DEG = 2;
 
 const quantile = (sorted: number[], q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
-const r2 = (x: number) => Math.round(x * 100) / 100;
+/** Two decimals: how grain_check shows an angle (and its rule writes one). */
+export const r2 = (x: number) => Math.round(x * 100) / 100;
 
 export interface OffLatticePeak {
   hkl: V3;
   intensity: number; // above its local background
 }
 
-export interface GrainCheck {
+/** What the second-grain test measured, unrounded. */
+export interface GrainFacts {
   off_lattice_orbits: number;
   judged: number; // the strongest orbits tested
   near_bragg_nodes: number; // of those, within a quarter of the node spacing of a Bragg node
   near_offset_angle_deg: { median: number; quartiles: [number, number] } | null;
-  far: { hkl: V3; q: number; offset_q: number }[]; // the strongest of the rest
+  far: { hkl: V3; q: number; offset_q: number }[]; // the strongest of the rest (at most 8)
   rotated_copy: { indexed: number; misorientation_deg: number | null } | null;
   random_control: number; // orbits the same search indexes at random directions
+  symmetrised: boolean; // the declared point group holds more than the identity
+}
+
+/** grain_check's result: the facts as it shows them, rounded, and its verdict. */
+export interface GrainCheck extends Omit<GrainFacts, "symmetrised"> {
   verdict: string;
 }
 
@@ -104,7 +115,7 @@ export function grainCheck({
   ops: M3[]; // the declared point group in hkl (identity first), or [identity]
   cell?: V3; // the Bragg lattice's node spacing in r.l.u. (the punch cell)
   top?: number;
-}): GrainCheck {
+}): GrainFacts {
   const group = ops.length ? ops : ([[[1, 0, 0], [0, 1, 0], [0, 0, 1]]] as M3[]);
   const reps = orbits(peaks, group);
   const judged = reps.slice(0, top);
@@ -114,14 +125,14 @@ export function grainCheck({
 
   // Against the Bragg nodes.
   const angles: number[] = [];
-  const far: GrainCheck["far"] = [];
+  const far: GrainFacts["far"] = [];
   for (const p of judged) {
     const node: V3 = [0, 1, 2].map((i) => cell[i] * Math.round(p.hkl[i] / cell[i])) as V3;
     const q = mv(ub, p.hkl);
     const qn = mv(ub, node);
     const offset = norm(sub(q, qn));
     if (offset <= reach && norm(qn) > 0) angles.push((offset / norm(qn)) * (180 / Math.PI));
-    else if (far.length < 8) far.push({ hkl: p.hkl.map(r2) as V3, q: r3(norm(q)), offset_q: r3(offset) });
+    else if (far.length < 8) far.push({ hkl: p.hkl, q: norm(q), offset_q: offset });
   }
   angles.sort((a, b) => a - b);
 
@@ -138,42 +149,36 @@ export function grainCheck({
   });
   const control = rotationSearch(randomOrbit.map((o) => o[0]), randomOrbit, B);
 
-  const n = judged.length;
-  const indexed = best?.indexed ?? 0;
-  const fits = n >= 4 && indexed >= Math.max(n / 2, 3 * control.indexed + 3);
-  // A rotated copy within a couple of degrees of the main lattice is the main
-  // crystal with its UB off, not another grain.
-  const grain = fits && (best?.misorientation == null || best.misorientation >= SECOND_GRAIN_DEG);
   const near = angles.length;
-  const median = near ? quantile(angles, 0.5) : null;
-  let verdict: string;
-  if (!n) verdict = "no off-lattice peaks were recorded by the punch's search";
-  else if (fits && !grain) {
-    verdict = `the off-lattice peaks are the crystal's own Bragg peaks with the UB off: one rotation of ${r2(best!.misorientation!)}° puts ${indexed} of the ${n} strongest orbits back on the Bragg lattice (random directions: ${control.indexed}); refine the UB`;
-  } else if (grain) {
-    verdict = `a second grain: one rotation of the Bragg lattice indexes ${indexed} of the ${n} strongest off-lattice orbits (random directions: ${control.indexed})${best?.misorientation != null ? `, misoriented by ${r2(best.misorientation)}° from the main grain` : ""}`;
-  } else {
-    verdict = `no second grain of this phase: a rotated copy of the Bragg lattice indexes only ${indexed} of the ${n} strongest off-lattice orbits (random directions: ${control.indexed})`;
-    if (near >= n / 2 && median != null) {
-      verdict +=
-        `. ${near} of them sit within a quarter of the node spacing of a Bragg node, offset by a median ${r2(median)}° of rotation (a lower bound: a node at an angle to the rotation axis moves less)` +
-        (group.length > 1
-          ? ": copies of the crystal's own Bragg peaks, displaced by symmetrising data whose UB is off by about that angle; a UB refined on the unsymmetrised data would put them back on the nodes"
-          : ": the Bragg peaks themselves, off their nodes by about that angle (refine the UB)");
-    }
-    if (far.length) verdict += `. ${n - near} lie farther from any node; their origin is open (another phase, multiple scattering, or an artefact)`;
-  }
   return {
     off_lattice_orbits: reps.length,
-    judged: n,
+    judged: judged.length,
     near_bragg_nodes: near,
-    near_offset_angle_deg: median != null ? { median: r2(median), quartiles: [r2(quantile(angles, 0.25)), r2(quantile(angles, 0.75))] } : null,
+    near_offset_angle_deg: near ? { median: quantile(angles, 0.5), quartiles: [quantile(angles, 0.25), quantile(angles, 0.75)] } : null,
     far,
-    rotated_copy: best ? { indexed, misorientation_deg: best.misorientation != null ? r2(best.misorientation) : null } : null,
+    rotated_copy: best ? { indexed: best.indexed, misorientation_deg: best.misorientation } : null,
     random_control: control.indexed,
-    verdict,
+    symmetrised: group.length > 1,
   };
 }
+
+/** The facts as grain_check shows them: angles to two decimals, |Q| to three, in the result's order, with its verdict. */
+export const shownGrains = (g: GrainFacts, verdict: string): GrainCheck => ({
+  off_lattice_orbits: g.off_lattice_orbits,
+  judged: g.judged,
+  near_bragg_nodes: g.near_bragg_nodes,
+  near_offset_angle_deg: g.near_offset_angle_deg && {
+    median: r2(g.near_offset_angle_deg.median),
+    quartiles: [r2(g.near_offset_angle_deg.quartiles[0]), r2(g.near_offset_angle_deg.quartiles[1])],
+  },
+  far: g.far.map((f) => ({ hkl: f.hkl.map(r2) as V3, q: r3(f.q), offset_q: r3(f.offset_q) })),
+  rotated_copy: g.rotated_copy && {
+    indexed: g.rotated_copy.indexed,
+    misorientation_deg: g.rotated_copy.misorientation_deg != null ? r2(g.rotated_copy.misorientation_deg) : null,
+  },
+  random_control: g.random_control,
+  verdict,
+});
 
 // The rotation of the lattice B that indexes most orbits: from pairs of the
 // strongest orbits matched to pairs of lattice vectors of the same lengths and
