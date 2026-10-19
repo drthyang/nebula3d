@@ -708,5 +708,28 @@
    "on": "2026-10-19",
    "option": "the prompts state what the checks judge; the four checks name all five stages and the UB"
   }
+ },
+ {
+  "source": "review",
+  "ref": "P3.5",
+  "at": "fd2a96a",
+  "kind": "bug",
+  "evidence": "No test held a tool's result to a shape: a tool returns `result: unknown` (web/src/llm/tools/types.ts:35), so a renamed or retyped field reached the model unnoticed unless a synthetic sample's snapshot changed, and a tool's other paths had no sample at all: assess_stage's missing stage (web/src/llm/tools/defs/assess_stage.ts:85), bragg_peaks' and consistency_details' has_profile and has_check false (bragg_peaks.ts:31, consistency_details.ts:20), dpdf_contrast's reset (dpdf_contrast.ts:42), symmetry_check's note (symmetry_check.ts:45), qmax_coverage without the raw coverage (qmax_coverage.ts:160), texture_check's unread cut (texture_check.ts:53), compare_datasets' error row (compare_datasets.ts:61) and the ring rule's two types (web/src/llm/tune/evaluate.ts:225-227). And the limits both languages hold were kept equal by comments alone: OPEN_WEIGHT_OK (web/src/llm/metrics/coverage.ts:34) and compute_delta_pdf's support_tol (src/nebula3d/analysis/delta_pdf.py:397, :575); FILL_BIAS_FLOOR and RIM (web/src/llm/metrics/texture.ts:65, :82) and the rule's literals (texture.ts:214, :300, :315-317) against src/nebula3d/analysis/bragg_fill_texture.py:147-157; GRID_TOO_COARSE (web/src/llm/metrics/coarse.ts:8; src/nebula3d/preprocessing/ring_isotropy.py:106); the ring rule's shares as the rings' criterion states them (web/src/llm/verdicts/rules.ts:199; ring_isotropy.py:141-142); UB_TURN (rules.ts:568; src/nebula3d/analysis/ub_refine.py:69); the flatten's fit range (web/src/llm/metrics/flatten.ts:19; src/nebula3d/pipeline.py:606); the coverage's shares (coverage.ts:27-28; src/nebula3d/analysis/coverage.py:33); ORIGIN_EXCLUDED (web/src/components/dpdfLevels.ts:18; src/nebula3d/analysis/dpdf_features.py:73); and every default the tuning catalog states against PipelineParams (web/src/llm/tune/catalog.ts:25-69, :113-343).",
+  "proposed_fix": "A shape contract per tool whose result is an object, in a small typed schema module with no dependency (web/src/llm/tools/contracts.ts): its fields, their types, which may be left out, and a union for a tool's other paths. Tests hold to them the synthetic samples (modelVisible.test.ts, arms B and C), the paths the samples do not reach (contracts.test.ts, each run by the tool on the synthetic crystal) and the live results on the dev control (contracts.replay.test.ts); a disagreement is fixed in the contract, never the tool, and a tool that is inconsistent is a finding. A test pins every limit both languages hold, reading the Python by importing the package (sharedLimits.replay.test.ts); the copies kept apart on purpose are listed in its INDEPENDENT table, with the reason. Test-only.",
+  "needs_user_approval": false,
+  "status": "implemented",
+  "commit": "87a3eae",
+  "tests": [
+   "web/src/llm/__tests__/contracts.test.ts (every tool has a contract or returns text; the check names a disagreement by its path; each path the samples do not reach keeps its contract)",
+   "web/src/llm/__tests__/modelVisible.test.ts (each sampled result keeps its tool's contract, in arm B and in arm C)",
+   "web/src/llm/__tests__/contracts.replay.test.ts (every tool with a contract live on the dev control; the ring and texture checks again on 161³, where they judge)",
+   "web/src/llm/__tests__/sharedLimits.replay.test.ts (18 shared limits pinned; INDEPENDENT and ONE_SIDED, each with its reason)"
+  ],
+  "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 3.5). Implemented in 87a3eae (the contracts) and 2f47e1d (the limits). Test-only: no tool, verdict, prompt, skill or Python behaviour changes; the snapshots, goldens and token budget are unchanged. No result disagreed with its contract, written from each tool's code paths: 49 synthetic samples (arms B and C), 21 calls on the synthetic crystal's other paths, 43 calls live on the dev control and 3 on 161³. Every pinned limit is equal on both sides. Findings, each a tool's result with a field present on one path and missing or of another type on another, written into the contracts as they are: qmax_coverage leaves out raw_counts, suggested_band and band_check when the raw coverage cannot be read, and then says counts_end_inside_box false; the rings' ring_rule is an object of the two shares when the 3D test judged and a \"not judged\" string when it did not, shells_judged with the first only; dpdf_contrast's applied is text on reset and figures otherwise; symmetry_check is a note alone, without symmetry_declared or verdict, on a cell with no in-plane symmetry to test; bragg_peaks and consistency_details say has_profile and has_check only when false; a texture_check cut whose slices could not be read is its label alone, with no reason.",
+  "decision": {
+   "by": "the manager, on the user's delegation",
+   "on": "2026-10-19",
+   "option": "a shape contract per tool, held on the samples and live on the dev control; the shared limits pinned, the deliberate differences listed"
+  }
  }
 ]

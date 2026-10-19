@@ -156,7 +156,9 @@ The console's tests are two vitest projects (`web/vitest.config.ts`):
   `devCase(id)` (`web/src/llm/evals/devData/index.ts`) is their interface: a
   handle on one dev case, from its default run, for running a tool on it or
   replaying a scripted model through the agent loop. Only the dev split is
-  built; the held-out test split never is.
+  built; the held-out test split never is. The tests that read the package's
+  own values (`sharedLimits.replay.test.ts`, below) run here too, for its
+  Python.
 
 `npm run test` runs both. The replay project needs a Python 3.10 or newer with
 the package installed (`pip install -e .` from the repository root). It takes
@@ -246,6 +248,7 @@ web/src/llm/tools/
 ├── call.ts              one call: runToolCall (as the model wrote it), callTool (by name)
 ├── round.ts             the executor's round: a model turn's calls over the reply's history
 ├── facts.ts             what a tool declares beside what the model reads
+├── contracts.ts         the shape of each tool's result, which the tests hold it to
 └── openView.ts          moves the console to the figure a step looked at
 ```
 
@@ -278,6 +281,8 @@ To add a tool:
    in `armC.test.ts`'s session if arm C is offered it, then update the
    model-visible snapshots (above) and read the diff. `tokenBudget.test.ts`
    shows what its definition adds to every request.
+4. Write its result's contract (below) and call it in
+   `contracts.replay.test.ts`.
 
 `registry.test.ts` holds the files under `defs/` to `CHAT_TOOLS` one to one,
 each exporting its tool under its file's name, and `imports.test.ts` holds the
@@ -295,6 +300,34 @@ nowhere else. `web/src/llm/__tests__/facts.test.ts` holds what every
 declaration keeps: a tool that acts says what it changes, one that changes a
 stage's settings or tunes it waits for the stage's skill, and every verdict
 topic and every kind of question has a tool.
+
+### A Pilot tool's result contract
+
+`web/src/llm/tools/contracts.ts` writes the shape of every tool's result as
+the model reads it (JSON): its fields, their types, which may be left out,
+and, as a union, the other shapes a tool returns on its other paths (a note
+alone, a stage whose output is missing). read_skill returns text and has
+none. Three tests hold the results to them: `modelVisible.test.ts` (every
+sampled result, arms B and C), `contracts.test.ts` (the paths the samples do
+not reach, each run by the tool on the synthetic crystal) and
+`contracts.replay.test.ts` (every tool live on the dev control, and the ring
+and texture checks again on 161³). A failure names the call and the field.
+
+When a tool's result changes on purpose (a field added, renamed, retyped, or
+left out on a new path), change its contract in the same commit: the
+contract follows the tool. When the result changed by accident, fix the tool.
+
+### The limits both languages hold
+
+`web/src/llm/__tests__/sharedLimits.replay.test.ts` pins each limit or
+constant the Python and the TypeScript both hold (the window's 1e-3, the fill
+texture's limits, the ring rule's shares, the UB turn, a blank setting's
+default, ...), reading the Python by importing this checkout's package with
+the replay project's interpreter. When a pin fails, change the other side
+with it; when the two are meant to differ, move the pin to its `INDEPENDENT`
+table with the reason. The scorer's tolerances
+(`src/nebula3d/validation/score.py`) and the grader's own UB rule are listed
+there, never pinned.
 
 ### The skills against the code
 
