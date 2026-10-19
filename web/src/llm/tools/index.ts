@@ -1,10 +1,11 @@
 // The assistant's tools: functions the model may call mid-answer to measure,
 // look up or show something, instead of reasoning only from the one default
 // cut it was handed.  Each validates its arguments (a model can send anything),
-// reads through the same API the viewers use, and returns compact JSON.  Two
-// act instead of reading: update_settings edits the Configure page and
-// run_pipeline runs it, as the Run button does; show_in_viewer only moves the
-// console's view.
+// reads through the same API the viewers use, and returns compact JSON.  Some
+// act instead of reading: update_settings edits the Configure page,
+// run_pipeline runs it, as the Run button does, and tune_pipeline searches
+// for its best settings; dpdf_contrast sets the ΔPDF viewer's colour limit and
+// show_in_viewer only moves the console's view.
 
 import {
   fetchBraggProfile,

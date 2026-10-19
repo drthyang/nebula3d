@@ -2,21 +2,31 @@
 // the model; a server that refuses tools gets the plain request; the loop
 // stops at its round budget.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
+import { useDpdfStore, type ManualLimit } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
 import { isCompacted } from "../compact";
 import { resetTokenState } from "../provider/tokens";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";
-import type { AgentTool } from "../tools";
+import { CHAT_TOOLS, type AgentTool } from "../tools";
+import { makeSlice } from "./helpers";
 
 const client = vi.hoisted(() => ({ streamChat: vi.fn() }));
 vi.mock("../provider/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../provider/client")>()),
   streamChat: client.streamChat,
+}));
+
+// The ΔPDF reads dpdf_contrast makes, for the loop guard's tests of it.
+const api = vi.hoisted(() => ({ fetchDpdfMeta: vi.fn(), fetchDpdfSlice: vi.fn() }));
+vi.mock("../../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/client")>()),
+  fetchDpdfMeta: api.fetchDpdfMeta,
+  fetchDpdfSlice: api.fetchDpdfSlice,
 }));
 
 type Reply = StreamDelta[] | Error;
@@ -293,6 +303,85 @@ describe("runAgent", () => {
       const r = await runAgent({ messages: base, tools: [tool], ctx, settings, signal: new AbortController().signal });
       expect(r.content).toBe("Measuring.");
       expect(r.steps).toHaveLength(3); // the call after the request to answer did not run
+    });
+
+    // dpdf_contrast acts: it sets the 3D-ΔPDF viewer's ± colour limit, so the
+    // limit the viewer shows is the one the last call set. A call pointed at an
+    // earlier result instead of run would leave the model quoting a limit the
+    // viewer no longer shows.
+    describe("dpdf_contrast, which sets the ΔPDF viewer's colour limit", () => {
+      const contrast = CHAT_TOOLS.find((t) => t.name === "dpdf_contrast")!;
+      const dpdfCtx = {
+        dataset: { id: "d", stages: [{ name: "delta_pdf", exists: true, kind: "delta_pdf", volume_id: "d.delta_pdf" }] } as Dataset,
+        datasets: [],
+      };
+      // Ripple of amplitude 1, a huge origin peak and four compact features of
+      // 100 (synthetic): the optimised limit lands on the features, at 100.
+      const section = makeSlice(81, 81, (u, v) => {
+        if (Math.hypot(u, v) < 1) return 1e6;
+        const feature = [[20, 0], [-20, 0], [0, 20], [0, -20]].some(([a, b]) => Math.hypot(u - a, v - b) < 1.5);
+        return feature ? 100 : Math.sin(3 * u) * Math.cos(3 * v);
+      });
+      const optimised: ManualLimit = { value: 100, dataset: "d" };
+      // The viewer's limit, each time it changed.
+      let shown: (ManualLimit | null)[] = [];
+      let unsubscribe = () => {};
+      beforeEach(() => {
+        api.fetchDpdfMeta.mockReset();
+        api.fetchDpdfSlice.mockReset();
+        api.fetchDpdfMeta.mockResolvedValue({
+          id: "d.delta_pdf",
+          shape: [81, 81, 81],
+          x_range: [-40, 40],
+          y_range: [-40, 40],
+          z_range: [-40, 40],
+          lattice: { a: 4, b: 4, c: 4, alpha: 90, beta: 90, gamma: 90 },
+          q_max: 6,
+          planes: ["xy", "xz", "yz"],
+        });
+        api.fetchDpdfSlice.mockResolvedValue(section);
+        useDpdfStore.setState({ limit: null });
+        shown = [];
+        unsubscribe = useDpdfStore.subscribe((s, prev) => {
+          if (s.limit !== prev.limit) shown.push(s.limit);
+        });
+      });
+      afterEach(() => unsubscribe());
+
+      it("runs a call again after another call changed the limit in between", async () => {
+        const seen = script([
+          [{ toolCalls: [call("c1", "dpdf_contrast", {})] }],
+          [{ toolCalls: [call("c2", "dpdf_contrast", { reset: true })] }],
+          [{ toolCalls: [call("c3", "dpdf_contrast", {})] }],
+          [{ content: "Done." }],
+        ]);
+        const r = await runAgent({ messages: base, tools: [contrast], ctx: dpdfCtx, settings, signal: new AbortController().signal });
+        expect(r.steps.map((st) => st.status)).toEqual(["done", "done", "done"]);
+        expect(r.steps.map((st) => st.summary)).toEqual([expect.stringMatching(/^± 100 /), "back on Auto", expect.stringMatching(/^± 100 /)]);
+        // The viewer followed each call: optimised, Auto, optimised again.
+        expect(shown).toEqual([optimised, null, optimised]);
+        expect(useDpdfStore.getState().limit).toEqual(optimised);
+        expect(api.fetchDpdfSlice).toHaveBeenCalledTimes(6); // three sections for each optimised call
+        // The model was told what the third call applied, not pointed at the first.
+        const sent = seen[3].messages.filter((m) => m.role === "tool").map((m) => m.content as string);
+        expect(sent[2]).not.toMatch(/already_called/);
+        expect(JSON.parse(sent[2]).applied).toMatchObject({ limit: 100, from: expect.stringMatching(/^optimised/) });
+      });
+
+      it("runs an identical call again, with nothing in between, as the other calls that act do", async () => {
+        const seen = script([
+          [{ toolCalls: [call("c1", "dpdf_contrast", {})] }],
+          [{ toolCalls: [call("c2", "dpdf_contrast", {})] }],
+          [{ content: "Done." }],
+        ]);
+        const r = await runAgent({ messages: base, tools: [contrast], ctx: dpdfCtx, settings, signal: new AbortController().signal });
+        expect(r.steps.map((st) => st.summary)).toEqual([expect.stringMatching(/^± 100 /), expect.stringMatching(/^± 100 /)]);
+        expect(api.fetchDpdfSlice).toHaveBeenCalledTimes(6);
+        // Set twice to the same value: the viewer shows it.
+        expect(shown).toEqual([optimised, optimised]);
+        const sent = seen[2].messages.filter((m) => m.role === "tool").map((m) => m.content as string);
+        expect(sent[1]).not.toMatch(/already_called/);
+      });
     });
   });
 
