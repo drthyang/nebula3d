@@ -556,6 +556,10 @@ class Bunching:
     ``period`` (or of an equivalent coordinate's), where chance would put each
     with probability ``p0``: the binomial tail of ``hits`` is ``p_value``,
     under ``alpha`` over the ``tests`` (coordinates × denominators) run.
+    ``mean_distance`` is how far (r.l.u.) the hits lie from the fractions on
+    average; ``others`` the other fractions that passed the test too, which
+    the grid fits about as well (a band of one grid step holds fractions of
+    other denominators: on a 0.05 grid 3/8 lies within it of 2/5).
     """
 
     coordinate: str
@@ -571,6 +575,8 @@ class Bunching:
     tests: int
     half_width: float
     centres: tuple[tuple[float, float, float], ...]  # the hits, up to 12
+    mean_distance: float = 0.0
+    others: tuple[str, ...] = ()
 
     @property
     def expected(self) -> float:
@@ -598,17 +604,20 @@ class Bunching:
             "tests": self.tests,
             "half_width": round(self.half_width, 6),
             "centres": [list(c) for c in self.centres],
+            "mean_distance": round(self.mean_distance, 6),
+            "others": list(self.others),
             "where": self.where(),
         }
 
     def describe(self) -> str:
         """The run log's line."""
         also = f" (and the equivalent {', '.join(self.equivalents)})" if self.equivalents else ""
+        fits = f"; the grid also fits {', '.join(self.others)}" if self.others else ""
         return (f"sharp peaks off the lattice bunch at {self.where()}{also}: {self.hits} of "
                 f"{self.peaks} lie within {self.half_width:g} r.l.u. of it, where chance puts "
                 f"{self.expected:.2g} (binomial tail {self.p_value:.2g}, under {self.alpha:g} "
-                f"over {self.tests} tests); no modulation is declared there, so the search "
-                f"punched them")
+                f"over {self.tests} tests){fits}; no modulation is declared there, so the "
+                f"search punched them")
 
 
 def detect_commensurate(
@@ -635,8 +644,10 @@ def detect_commensurate(
     ``1/q > 2w/P``), the hits X are the peaks within w of a fraction p/q of the
     coordinate's period P (p prime to q), and under no bunching each peak hits
     with the probability p₀, the share of the voxels it could lie in that are
-    within w of one. It fires on the smallest binomial tail P(X ≥ hits) at or
+    within w of one. A test fires when the binomial tail P(X ≥ hits) is at or
     under *alpha* over the number of tests run, with at least *min_hits* hits.
+    Of the tests that fire, the one whose hits lie nearest their fractions on
+    average (then the smaller denominator) is reported, the others with it.
     """
     from scipy.special import betainc
 
@@ -683,11 +694,12 @@ def detect_commensurate(
 
     grid_x: dict[tuple[int, int, int], Any] = {}
     peak_x: dict[tuple[int, int, int], Any] = {}
-    best: tuple[float, int, Bunching] | None = None
-    for c, axis, forms, counts, q in plans:
+    fired: list[tuple[float, int, int, Bunching]] = []
+    for order, (c, axis, forms, counts, q) in enumerate(plans):
         width = steps[c]
         covered: Any = np.zeros((1, 1, 1), dtype=bool)
         hit = np.zeros(n, dtype=bool)
+        near = np.full(n, np.inf)
         values = []
         for p in range(1, q):
             if math.gcd(p, q) != 1:
@@ -701,6 +713,7 @@ def detect_commensurate(
                 centre = float(Fraction(p, q) * period)
                 covered = covered | _band(grid_x[f], centre, width, float(period))
                 here |= _band(peak_x[f], centre, width, float(period))
+                near = np.minimum(near, _offset(peak_x[f], centre, float(period)))
             hit |= here
             if here.any():
                 values.append((_text(Fraction(p, q) * cells[c]), int(here.sum())))
@@ -713,18 +726,22 @@ def detect_commensurate(
         if hits < min_hits or not 0.0 < p0 < 1.0:
             continue
         tail = float(betainc(hits, n - hits + 1, p0))
-        if tail > alpha / tests or (best is not None and (tail, q) >= best[:2]):
+        if tail > alpha / tests:
             continue
         own = _name(axis)
         names = (_name(_primitive(f)) for f in forms)
         equivalents = tuple(dict.fromkeys(x for x in names if x != own))
         centres = tuple((round(float(x), 4), round(float(y), 4), round(float(z), 4))
                         for x, y, z in pts[hit][:12])
-        best = (tail, q, Bunching(
+        spread = float(near[hit].mean())
+        fired.append((spread, q, order, Bunching(
             coordinate=own, equivalents=equivalents, period=cells[c], denominator=q,
             values=tuple(values), hits=hits, peaks=n, p0=p0, p_value=tail, alpha=alpha,
-            tests=tests, half_width=width, centres=centres))
-    return None if best is None else best[2]
+            tests=tests, half_width=width, centres=centres, mean_distance=spread)))
+    if not fired:
+        return None
+    fired.sort(key=lambda f: (round(f[0], 9), f[1], f[2]))
+    return replace(fired[0][3], others=tuple(b.where() for *_rest, b in fired[1:]))
 
 
 def _orbit_representatives(peaks_hkl: Sequence[Sequence[float]], axes: tuple[Any, ...],
