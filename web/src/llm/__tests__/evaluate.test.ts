@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { loadPipelineContext } from "../context/loadContext";
-import { evaluateStage, headline } from "../tune/evaluate";
+import { evaluateStage, headline, outOfBounds } from "../tune/evaluate";
 import { judge } from "../verdicts";
 import { makeSlice } from "./helpers";
 
@@ -177,6 +177,30 @@ describe("evaluateStage", () => {
     expect(e.symmetry_declared).toBe(true);
     expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.044 · symmetry off ≤ \d/);
     expect(judge("pdf", e).reasons).toContain("symmetry broken");
+  });
+
+  it("judges the ΔPDF's window by its raw weight, as qmax_coverage does: 1.04e-3 is past 1e-3, though shown 0.001 (D6, 2.4.6)", async () => {
+    const withPdf: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" }],
+    };
+    // A sound round trip on synthetic sections; the window's weight on unmeasured space is the only fault.
+    api.fetchConsistencyCheck.mockResolvedValue({ has_check: true, metrics: { pearson_r: 0.99, normalized_rms: 0.1, pearson_r_even: 1, normalized_rms_even: 0, odd_share: 0.01 } });
+    api.fetchDpdfSlice.mockImplementation(async () => makeSlice(21, 21, (x, y) => Math.cos(x) * Math.cos(y)));
+    const evaluate = async (weight: number) => {
+      api.fetchDpdfMeta.mockResolvedValue({ lattice: { a: 3.9, b: 3.9, c: 3.9 }, window_open_weight: weight, window_shape: "ellipsoid" });
+      return evaluateStage("pdf", withPdf);
+    };
+    const past = await evaluate(0.00104);
+    expect(past.window_weight_on_unmeasured).toBe(0.001); // shown at two figures
+    expect(judge("pdf", past)).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
+    expect(outOfBounds("pdf", past)).toMatch(/^its window puts 0\.00104 of its weight/);
+    // qmax_coverage reads the same raw weight the same way.
+    const coverage = { window: "the ΔPDF's ellipsoid window", unit_cell: true, full_coverage_q: null, reach: null, reach_from: "", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } };
+    expect(judge("coverage", { ...coverage, window_weight: 0.00104 }).kind).toBe("attention");
+    // At 1e-3, within the limit, to both.
+    const at = await evaluate(0.001);
+    expect([judge("pdf", at).kind, outOfBounds("pdf", at), judge("coverage", { ...coverage, window_weight: 0.001 }).kind]).toEqual(["pass", null, "pass"]);
   });
 
   it("does not judge a symmetry the file never declared: unsymmetrised data differ from their images by their own noise", async () => {

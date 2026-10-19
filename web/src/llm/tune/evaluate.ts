@@ -354,11 +354,13 @@ const tiny = (x: number): string => (x !== 0 && Math.abs(x) < 1e-3 ? x.toExponen
 
 /** Why a trial's output breaks a hard limit of its stage, or null.  The tuning
  * run does not choose such a trial while the user's settings keep the limit:
- * the ΔPDF's window past the limit, by the ΔPDF's rule (verdicts/rules.ts, D6). */
+ * the ΔPDF's window past the limit, by the ΔPDF's rule (verdicts/rules.ts, D6),
+ * which reads the raw weight; the reason gives that weight, not the rounded one. */
 export function outOfBounds(stage: TuneStage, e: StageEvaluation | undefined): string | null {
-  const open = e?.window_weight_on_unmeasured;
-  if (stage === "pdf" && typeof open === "number" && judge("pdf", e ?? {}).reasons.includes("window past limit")) {
-    return `its window puts ${tiny(open)} of its weight on unmeasured reciprocal space, past the ${OPEN_WEIGHT_OK} the backend's own window allows`;
+  const shown = e?.window_weight_on_unmeasured;
+  if (stage === "pdf" && typeof shown === "number" && judge("pdf", e ?? {}).reasons.includes("window past limit")) {
+    const raw = e?.[UNROUNDED]?.window_weight_on_unmeasured;
+    return `its window puts ${tiny(typeof raw === "number" ? raw : shown)} of its weight on unmeasured reciprocal space, past the ${OPEN_WEIGHT_OK} the backend's own window allows`;
   }
   return null;
 }

@@ -271,8 +271,14 @@
   "evidence": "The ΔPDF stage compares a 2-significant-figure window weight (tune/evaluate.ts:113, report.ts:336); qmax_coverage compares the raw one (tools/index.ts:1295).",
   "proposed_fix": "Every check compares the raw weight against 1e-3.",
   "needs_user_approval": true,
-  "status": "open",
-  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.6, after the check-verdict module (2.3).",
+  "status": "implemented",
+  "commit": "c2a78bf",
+  "tests": [
+   "web/src/llm/__tests__/verdictPins.test.ts (D6, unified (2.4.6): every check compares the raw window weight; at 1.04e-3 the coverage, the ΔPDF and the tuning all read it past 1e-3)",
+   "web/src/llm/__tests__/evaluate.test.ts (judges the ΔPDF's window by its raw weight, as qmax_coverage does: 1.04e-3 is past 1e-3, though shown 0.001 (D6, 2.4.6))",
+   "web/src/llm/__tests__/verdicts.test.ts (compares the ΔPDF's raw window weight, kept beside the one its evaluation shows (D6))"
+  ],
+  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.6, after the check-verdict module (2.3). Implemented by plan row 2.4.6.",
   "decision": {
    "by": "the user",
    "on": "2026-10-19",

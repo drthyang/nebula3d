@@ -136,14 +136,18 @@ describe("D1–D10, kept and named", () => {
     expect(WORDS.goal.punch).toMatch(/leftover_on_protected_planes of them sit on protected planes and stay by design/);
   });
 
-  it("D6: at 1.04e-3 the coverage is too far, while the ΔPDF, shown 0.001, passes, and the tuning keeps the trial", () => {
-    expect(D6_PDF_READS_ROUNDED_WEIGHT).toBe(true);
+  it("D6, unified (2.4.6): every check compares the raw window weight; at 1.04e-3 the coverage, the ΔPDF and the tuning all read it past 1e-3", () => {
+    expect(D6_PDF_READS_ROUNDED_WEIGHT).toBe(false);
     const coverage = judge("coverage", { window_weight: 0.00104, window: "the ΔPDF's ellipsoid window", unit_cell: true, full_coverage_q: null, reach: null, reach_from: "", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } });
     expect(coverage).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
     // The evaluation as tune/evaluate.ts writes it: two figures shown, the raw weight kept beside.
     const evaluation = { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.001, [UNROUNDED]: { window_weight_on_unmeasured: 0.00104 } };
-    expect(judge("pdf", evaluation)).toMatchObject({ kind: "pass", reasons: ["window within limit"] });
-    expect(outOfBounds("pdf", evaluation)).toBeNull();
+    expect(judge("pdf", evaluation)).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
+    expect(outOfBounds("pdf", evaluation)).toBe("its window puts 0.00104 of its weight on unmeasured reciprocal space, past the 0.001 the backend's own window allows");
+    // At the limit, raw: within, to each.
+    expect(judge("pdf", { ...evaluation, [UNROUNDED]: { window_weight_on_unmeasured: 0.001 } }).kind).toBe("pass");
+    // Read back from its JSON, an evaluation has its shown weight only.
+    expect(judge("pdf", JSON.parse(JSON.stringify(evaluation)))).toMatchObject({ kind: "pass", reasons: ["window within limit"] });
   });
 
   it("D7: {{achieved}} reads a stage's newest result, even one not judged; the answer checks the newest that decides", () => {
