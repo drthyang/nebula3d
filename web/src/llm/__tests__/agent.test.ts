@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../api/types";
 import { useDpdfStore, type ManualLimit } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
-import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, TOOLS_UNSUPPORTED_NOTE } from "../agent";
+import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, toolResultsIn, TOOLS_UNSUPPORTED_NOTE } from "../agent";
 import * as readings from "../readings";
 import { isCompacted } from "../readings/compact";
 import { resetTokenState } from "../provider/tokens";
@@ -452,6 +452,12 @@ describe("runAgent", () => {
       // The reference is filled from the whole result, and its number traced there.
       expect(r.content).toBe("The last item is at 1.599.");
       expect(r.note).toBeUndefined();
+    });
+
+    it("gives the next reply an earlier turn's results as the model read them", () => {
+      const step = { id: "0:c1", name: "long", args: {}, status: "done" as const, result: '{"items":[1],"left_out":["items: its last items"]}', full: '{"items":[1,2,3]}' };
+      const turns = [{ steps: [step] }, { steps: [{ ...step, id: "1:c1", status: "error" as const }] }, {}];
+      expect(toolResultsIn(turns)).toEqual(['{"items":[1],"left_out":["items: its last items"]}']);
     });
   });
 

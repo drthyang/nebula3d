@@ -23,7 +23,7 @@ import { isLocalUrl } from "./provider/presets";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
 import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
 import { planWindow } from "./provider/window";
-import { shorten, whole } from "./readings";
+import { seen, shorten, whole } from "./readings";
 import type { LlmSettings } from "./settings";
 import { skillsOn } from "./skills";
 import { factsOf, runToolCall, toolSpecs, toolsWithSkills, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
@@ -158,9 +158,9 @@ function numberSources(convo: ChatMessage[], arrived: number, results: readonly 
   ].join("\n");
 }
 
-/** The tool results of a conversation's turns, as the model read them: number sources for the next reply. */
+/** The tool results of a conversation's turns, as the model read them (`seen`): number sources for the next reply. */
 export const toolResultsIn = (turns: readonly { steps?: readonly AgentStep[] }[]): string[] =>
-  turns.flatMap((t) => (t.steps ?? []).flatMap((s) => (s.status === "done" && s.result ? [s.result] : [])));
+  turns.flatMap((t) => (t.steps ?? []).flatMap((s) => (s.status === "done" && seen(s) ? [seen(s)] : [])));
 
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
