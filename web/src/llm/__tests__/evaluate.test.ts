@@ -292,3 +292,14 @@ describe("evaluateStage", () => {
     expect(headline("rings", e)).toBe("ring ratio 0.24 · over-sub ≤ 0.03 · ring dent ≤ 0.187 (h0l, 6.35 Å⁻¹) · left ≤ 0");
   });
 });
+
+describe("the punch's headline (D5)", () => {
+  it("counts the sharp leftovers on protected planes apart, and names them whenever there are any", () => {
+    const e = { leftover_at_nodes: 0, leftover_off_lattice_sharp: 5, leftover_on_protected_planes_sharp: 3, leftover_off_lattice_broad: 7, mean_punched_fraction: 0.03 };
+    expect(headline("punch", e)).toBe("0 missed at nodes · 2 sharp off-lattice (3 more on protected planes, kept) · 7 broad maxima kept · punched 0.03");
+    expect(headline("punch", { ...e, leftover_on_protected_planes_sharp: 0 })).toBe("0 missed at nodes · 5 sharp off-lattice · 7 broad maxima kept · punched 0.03");
+    // An evaluation recorded before the count was split out counts every sharp one, as before.
+    const old = { leftover_at_nodes: 0, leftover_off_lattice_sharp: 5, leftover_off_lattice_broad: 7, mean_punched_fraction: 0.03 };
+    expect(headline("punch", old)).toBe("0 missed at nodes · 5 sharp off-lattice · 7 broad maxima kept · punched 0.03");
+  });
+});

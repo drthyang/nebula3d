@@ -104,6 +104,7 @@ __all__ = [
     "consistency_reconstruction",
     "write_bragg_profile_json",
     "read_flatten_settings",
+    "read_punch_record",
     "pipeline_paths",
     "run_pipeline",
 ]
@@ -415,6 +416,19 @@ def _read_punched(path: Path) -> np.ndarray | None:
                     out[i] = ds[i] != 0
                 return out
     return None
+
+
+def read_punch_record(path: str | Path) -> np.ndarray | None:
+    """The voxels the Bragg punch removed, as the punch stage records them in
+    its output *path* (a bool volume, True = punched; read plane by plane, so
+    no int8 copy of the volume), or None when the file records none (one the
+    punch did not write, or wrote before it recorded its holes) or cannot be
+    read.  The punched stage's mask is cleared on these voxels and on the
+    never-measured ones alike; the record tells the two apart."""
+    try:
+        return _read_punched(Path(path))
+    except OSError:
+        return None
 
 
 # ---------------------------------------------------------------------------

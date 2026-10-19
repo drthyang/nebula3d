@@ -11,11 +11,14 @@ import itself is part of the contract under test.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -224,6 +227,48 @@ def test_volume_shell_floors_json_is_the_servers_response(tmp_path, monkeypatch)
         webbridge.volume_shell_floors_json(f"{SLUG}.flattened", percentile=101.0)
     with pytest.raises(KeyError):
         webbridge.volume_shell_floors_json("nope.flattened")
+
+
+def test_volume_texture_json_is_the_servers_response(tmp_path, monkeypatch):
+    """The browser build's fill texture over every punch hole is the native
+    server's, field for field: computed natively by the server and in
+    low-memory mode by the bridge, as in the browser."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d.pipeline import pipeline_paths
+    from nebula3d.server import volumes as vol_mod
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+    from nebula3d.server.schemas import TextureOut
+    from tests.test_server import SLUG, STEM, write_texture_stages
+
+    write_texture_stages(tmp_path, n=61, bias=0.5, share=0.8)
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    vid = f"{SLUG}.backfilled"
+    for params in ({}, {"limit": 5, "floor": 0.6, "one_way": 0.5},
+                   {"limit": 0, "min_holes": 30, "min_sigma": 2.0}):
+        monkeypatch.setenv("NEBULA3D_LOW_MEMORY", "0")  # native; restored after the test
+        vol_mod.clear_cache()
+        served = client.get(f"/api/volumes/{vid}/texture", params=params)
+        assert served.status_code == 200, served.text
+        vol_mod.clear_cache()  # the bridge computes its own
+        webbridge.setup(workdir=str(tmp_path))  # low-memory mode, as in the browser
+        bridged = json.loads(webbridge.volume_texture_json(vid, **params))
+        assert bridged == served.json()
+        assert set(bridged) == set(TextureOut.model_fields)
+    assert bridged["holes"] == [] and not bridged["judged"]  # 27 holes, 30 asked for
+    with pytest.raises(ValueError):
+        webbridge.volume_texture_json(vid, one_way=1.5)
+    with pytest.raises(ValueError):
+        webbridge.volume_texture_json(vid, limit=-1)
+    with pytest.raises(ValueError, match="backfilled"):
+        webbridge.volume_texture_json(f"{SLUG}.braggpunched")
+    with pytest.raises(KeyError):
+        webbridge.volume_texture_json("nope.backfilled")
+    pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
+                   proc_dir=tmp_path / "processed").braggpunched.unlink()
+    with pytest.raises(FileNotFoundError):
+        webbridge.volume_texture_json(vid)
 
 
 def test_consistency_meta_and_slice(ran_pipeline):
@@ -509,3 +554,193 @@ def test_browser_run_is_matplotlib_free(tmp_path):
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True,
                           text=True, env={**os.environ, "MPLCONFIGDIR": str(tmp_path)})
     assert proc.returncode == 0, proc.stderr
+
+
+# ---------------------------------------------------------------------------
+# The CPython adapter at the Worker seam (web/src/llm/evals/devData/bridge.py)
+# ---------------------------------------------------------------------------
+# The replay tests (web/src/llm/evals/devData/) run the engine, the stores and
+# the Pilot's tools over the pipeline worker's messages, answered by this
+# bridge from the same webbridge over stdio. The TS side's type test pins its
+# Worker to every WorkerRequest type; these pin the bridge to the same union,
+# read from pyodideWorker.ts, and the frames both ends share.
+_REPO = Path(__file__).resolve().parents[1]
+_BRIDGE = _REPO / "web" / "src" / "llm" / "evals" / "devData" / "bridge.py"
+_FRAME = struct.Struct("<II")
+
+
+def _bridge_module():
+    spec = importlib.util.spec_from_file_location("devdata_bridge", _BRIDGE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _worker_request_types() -> list[str]:
+    """The `type`s of pyodideWorker.ts's WorkerRequest union, in order."""
+    text = (_REPO / "web" / "src" / "workers" / "pyodideWorker.ts").read_text()
+    union = re.search(r"type WorkerRequest =(.*?);\n\n", text, re.S)
+    assert union, "pyodideWorker.ts no longer declares the WorkerRequest union"
+    return re.findall(r'type: "(\w+)"', union.group(1))
+
+
+def _bridge_env() -> dict[str, str]:
+    path = os.pathsep.join(p for p in (str(_REPO / "src"), os.environ.get("PYTHONPATH")) if p)
+    return {**os.environ, "PYTHONPATH": path}
+
+
+class _StdioBridge:
+    """A client of the bridge's frames: [u32 LE header len][u32 LE body len][JSON][bytes]."""
+
+    def __init__(self, root):
+        self.proc = subprocess.Popen(
+            [sys.executable, str(_BRIDGE), "serve", "--root", str(root)],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=_bridge_env())
+
+    def send(self, header: dict, body: bytes = b"") -> None:
+        data = json.dumps(header).encode()
+        self.proc.stdin.write(_FRAME.pack(len(data), len(body)) + data + body)
+        self.proc.stdin.flush()
+
+    def recv(self) -> tuple[dict, bytes]:
+        lengths = self.proc.stdout.read(_FRAME.size)
+        if len(lengths) != _FRAME.size:
+            self.proc.kill()
+            pytest.fail(f"the bridge ended: {self.proc.stderr.read().decode()[-2000:]}")
+        n_header, n_body = _FRAME.unpack(lengths)
+        header = json.loads(self.proc.stdout.read(n_header))
+        return header, self.proc.stdout.read(n_body) if n_body else b""
+
+    def call(self, header: dict, body: bytes = b"") -> tuple[dict, bytes, list[dict]]:
+        """Send one message; the reply to it, and the events before it."""
+        self.send(header, body)
+        events = []
+        while True:
+            reply, data = self.recv()
+            if reply["id"] is None:
+                events.append(reply)
+                continue
+            assert reply["id"] == header["id"], reply
+            return reply, data, events
+
+
+def test_the_bridge_handles_every_worker_message_type():
+    types = _worker_request_types()
+    assert types == ["boot", "load_file", "load_demo", "run_pipeline", "json_call", "slice_call"]
+    assert set(_bridge_module().WORKER_TYPES) == set(types)
+
+
+def test_the_stdio_bridge_answers_every_message_type(tmp_path):
+    from nebula3d.demo import demo_volume
+
+    bridge = _StdioBridge(tmp_path / "root")
+    answered = set()
+    try:
+        reply, _, events = bridge.call(
+            {"id": 1, "type": "boot", "wheelBase": "https://example.invalid/", "mobile": False})
+        assert reply["type"] == "result" and reply["payload"].startswith("native:nebula3d-")
+        assert [e["type"] for e in events] == ["boot_status"] and events[0]["ready"] is True
+        gpu, _ = bridge.recv()  # no WebGPU: the CPU FFT, as in a browser without it
+        assert gpu == {"id": None, "type": "gpu_status", "available": False, "adapter": "",
+                       "maxBufferMB": 0}
+        answered.add("boot")
+
+        small = tmp_path / "small.nxs"
+        nebula3d.save(demo_volume(9, dtype=np.float32), small)
+        reply, _, _ = bridge.call({"id": 2, "type": "load_file", "name": "small.nxs"},
+                                  small.read_bytes())
+        assert reply == {"id": 2, "type": "result", "payload": "small"}
+        answered.add("load_file")
+
+        # n: a coarse demo for the test (the worker always loads 161³).
+        reply, _, _ = bridge.call({"id": 3, "type": "load_demo", "n": 25})
+        assert reply["payload"] == "synthetic-rocksalt"
+        answered.add("load_demo")
+
+        reply, _, events = bridge.call({
+            "id": 4, "type": "run_pipeline", "paramsJson": "{}", "flattenEnabled": True,
+            "force": True, "forceFrom": None, "stages": None, "tuningRun": None,
+            "tuningTrial": None})
+        assert reply["type"] == "result", reply
+        assert {e["stage"] for e in events if e["type"] == "progress"} >= set(webbridge.STAGES)
+        assert {d["id"] for d in json.loads(reply["payload"])} == {"small", "synthetic-rocksalt"}
+        answered.add("run_pipeline")
+
+        reply, _, _ = bridge.call({"id": 5, "type": "json_call", "method": "dataset_json",
+                                   "args": ["synthetic-rocksalt"]})
+        assert json.loads(reply["payload"])["id"] == "synthetic-rocksalt"
+        answered.add("json_call")
+
+        reply, data, _ = bridge.call({"id": 6, "type": "slice_call", "method": "volume_slice",
+                                      "args": ["synthetic-rocksalt.flattened", "hk0", 0, False]})
+        assert reply == {"id": 6, "type": "result_binary"}
+        header, values = _decode_envelope(data)
+        assert values.size == header["nx"] * header["ny"] > 0
+        answered.add("slice_call")
+
+        # A Python exception is the error reply, as Pyodide words it: the traceback.
+        for n, method in enumerate(("no_such_method", "_S", "volume_slice"), start=7):
+            reply, _, _ = bridge.call({"id": n, "type": "json_call", "method": method,
+                                       "args": ["nope"]})
+            assert reply["type"] == "error" and reply["message"].startswith("Traceback"), reply
+
+        # A dev case: built, run, kept, then given again from the snapshot.
+        reply, _, _ = bridge.call({"id": "ctl-1", "type": "dev_case", "case": "dev-control",
+                                   "n": 81, "arm": "B", "run": 1})
+        assert reply["type"] == "result" and reply["payload"]["restored"] is False, reply
+        dev_id = reply["payload"]["dataset_id"]
+        assert dev_id.endswith("-B1") and "control" not in dev_id  # the label stays opaque
+        reply, _, _ = bridge.call({"id": 20, "type": "run_pipeline", "paramsJson": "{}",
+                                   "flattenEnabled": True, "force": False, "forceFrom": None,
+                                   "stages": None, "tuningRun": None, "tuningTrial": None})
+        (ran,) = json.loads(reply["payload"])  # the fresh workspace holds the case alone
+        assert ran["id"] == dev_id and all(s["exists"] for s in ran["stages"])
+        reply, _, _ = bridge.call({"id": "ctl-2", "type": "dev_snapshot", "case": "dev-control",
+                                   "n": 81, "arm": "B", "run": 1})
+        assert reply["payload"] is True
+        reply, _, _ = bridge.call({"id": "ctl-3", "type": "dev_case", "case": "dev-control",
+                                   "n": 81, "arm": "B", "run": 1})
+        assert reply["payload"] == {"dataset_id": dev_id, "restored": True}
+        reply, _, _ = bridge.call({"id": 21, "type": "json_call", "method": "datasets_json",
+                                   "args": []})
+        (restored,) = json.loads(reply["payload"])
+        assert restored["stages"] == ran["stages"]
+        # Only the dev split is built.
+        reply, _, _ = bridge.call({"id": "ctl-4", "type": "dev_case", "case": "not-a-dev-case",
+                                   "n": 81})
+        assert reply["type"] == "error" and "is not a dev case" in reply["message"]
+        reply, _, _ = bridge.call({"id": 22, "type": "no_such_type"})
+        assert reply["type"] == "error" and "no message 'no_such_type'" in reply["message"]
+
+        reply, _, _ = bridge.call({"id": "ctl-5", "type": "terminate"})
+        assert reply["payload"] is True
+        assert bridge.proc.wait(timeout=30) == 0
+    finally:
+        if bridge.proc.poll() is None:
+            bridge.proc.kill()
+    assert answered == set(_worker_request_types())
+
+
+def test_the_bridge_check_reads_the_browser_pins(tmp_path):
+    bridge = _bridge_module()
+    pins, python = bridge.read_pins(_REPO / ".github" / "constraints" / "pyodide-0.27.7.txt")
+    assert python == "3.12" and set(pins) == {"numpy", "scipy", "h5py", "matplotlib"}
+
+    here = ".".join(map(str, sys.version_info[:2]))
+    same = tmp_path / "same.txt"
+    same.write_text(f"# CPython {here}\nnumpy=={np.__version__}\n")
+    other = tmp_path / "other.txt"
+    other.write_text(f"# CPython {here}\nnumpy==0.0.1\n")
+
+    def check(path):
+        proc = subprocess.run([sys.executable, str(_BRIDGE), "check", "--pins", str(path)],
+                              capture_output=True, text=True, env=_bridge_env())
+        return proc.returncode, json.loads(proc.stdout)
+
+    code, report = check(same)
+    assert code == 0 and report["pins"]["differ"] == {}, report
+    assert Path(report["nebula3d"]) == _REPO / "src" / "nebula3d" / "__init__.py"
+    code, report = check(other)
+    assert code == 1
+    assert report["pins"]["differ"] == {"numpy": {"pinned": "0.0.1", "installed": np.__version__}}

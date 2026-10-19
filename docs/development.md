@@ -73,6 +73,9 @@ python3 -m mypy src/nebula3d --ignore-missing-imports --python-version 3.12
 npm --prefix web test
 ```
 
+`npm --prefix web test` runs the console's replay tests too, which need Python
+([below](#the-replay-tests-the-dev-cases-through-the-pages-path)).
+
 By default pytest leaves out the validation's held-out test split
 ([evals.md](evals.md#the-cases-and-the-split)): nothing that is tuned may see it,
 and pytest prints every test's name, so a builder tuning against the suite would
@@ -96,9 +99,54 @@ with `NEBULA_HOLDOUT_TESTS=1`:
   `.github/constraints/typecheck.txt` (mypy's verdict depends on them);
 - the tests again under the numpy, scipy, h5py and matplotlib that Pyodide
   0.27.7 ships, the stack the browser build runs on;
-- the console's lint, tests and both builds (native and Pages).
+- the console's lint, tests and both builds (native and Pages); its replay
+  tests run on that same stack, on Python 3.12, the CPython Pyodide 0.27.7
+  ships, and a step checks both against `.github/constraints/pyodide-0.27.7.txt`
+  first.
 
 The Pages workflow deploys `main` to GitHub Pages after CI passes on it.
+
+### The replay tests: the dev cases through the Pages path
+
+The console's tests are two vitest projects (`web/vitest.config.ts`):
+
+- `unit`: every `*.test.ts` but the replays. No Python is needed; it is the
+  fast loop, about three seconds:
+
+  ```bash
+  cd web && npx vitest --project unit
+  ```
+
+- `replay`: the `*.replay.test.ts` files. They run the in-browser (Pages)
+  build's own path, the client, `pyodideEngine.ts`, the stores and NEBULA
+  Pilot's tools, with `VITE_DATA_MODE=pyodide`, on the validation's dev cases
+  ([evals.md](evals.md#the-cases-and-the-split)) built where the tests run.
+  Only the transport under the engine's Worker messages differs: a CPython
+  bridge (`web/src/llm/evals/devData/bridge.py`) answers them from
+  `nebula3d.webbridge` over stdio instead of Pyodide. Nothing is recorded, so
+  the Python and the TypeScript of the checkout always run together.
+  `devCase(id)` (`web/src/llm/evals/devData/index.ts`) is their interface: a
+  handle on one dev case, from its default run, for running a tool on it or
+  replaying a scripted model through the agent loop. Only the dev split is
+  built; the held-out test split never is.
+
+`npm run test` runs both. The replay project needs a Python 3.10 or newer with
+the package installed (`pip install -e .` from the repository root). It takes
+`NEBULA_PYTHON` when set, else `.venv/bin/python` at the repository root, else
+`python3`, and puts the checkout's `src/` first on its `PYTHONPATH`. Without
+one that imports this checkout's `nebula3d` with numpy, scipy and h5py, the
+project fails at its start, saying how to fix it; it never skips. From `web/`:
+
+```bash
+NEBULA_PYTHON=/path/to/python npx vitest --project replay
+```
+
+The dev cases are built on an 81³ grid (every Bragg node on a voxel; each
+case's default run takes a second or two). `NEBULA_DEV_N=161` builds them on
+the validation's own 161³ grid, for a nightly run (about five times as long).
+The known-answer tests (`knownAnswers.replay.test.ts`) hold each case's
+planted fault to its truth; a fault the tools miss on a grid stays listed in
+its `MISSES`, an expected failure with the reason, until the tools find it.
 
 ### The verdicts, before and after a change
 
@@ -152,3 +200,25 @@ nowhere else. `web/src/llm/__tests__/facts.test.ts` holds what every
 declaration keeps: a tool that acts says what it changes, one that changes a
 stage's settings or tunes it waits for the stage's skill, and every verdict
 topic and every kind of question has a tool.
+
+### The skills against the code
+
+`web/src/llm/__tests__/skillLint.test.ts` reads each skill
+(`.claude/skills/<name>/SKILL.md`) against the code it describes, and changes
+no skill. It checks that every tool a skill names is in the registry; that
+every field or parameter a step names in backticks is in the result of the
+tools that step names, as each tool returns it on the synthetic crystal
+(`CLAIMS` adds the quantities a step says its tools give, such as "the symmetry
+the file declares"); that every setting it names exists; and that every number
+it writes is either a gate, bound to the constant in the code it must equal
+(`GATES`), or listed as no gate (`NOT_GATES`). `UNSTATED` lists the limits a
+step's tool judges by, which the step should state among its gates. A failure
+names the skill, its step, and what disagrees: a field the tool does not give
+(and where it is instead), a gate whose number differs from its constant, a
+limit the step leaves out. A failure of the tables themselves (a phrase the
+skill no longer holds, a number nobody classified) means the skill's words
+changed: update the table with them. Today's disagreements are on the
+allow-list, `ALLOWED`, each with why. It is the user's skill-review queue
+(agent plan 5.2), not a list to fix here: the lint fails on a disagreement
+that is not on it, and on an entry that no longer fails, so the list shrinks
+as the skills are corrected.

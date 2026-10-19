@@ -322,8 +322,15 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
   switch (stage) {
     case "rings":
       return `ring ratio ${v("mean_ring_energy_ratio")} · over-sub ≤ ${v("max_over_subtraction_fraction")} · ring dent ≤ ${v("max_ring_dent")}${where("worst_ring_dent")} · left ≤ ${v("max_ring_left")}${where("worst_ring_left")}`;
-    case "punch":
-      return `${v("leftover_at_nodes")} missed at nodes · ${v("leftover_off_lattice_sharp")} sharp off-lattice · ${v("leftover_off_lattice_broad")} broad maxima kept · punched ${v("mean_punched_fraction")}`;
+    case "punch": {
+      // The sharp ones on the protected planes stay by design (D5), so the
+      // headline counts them apart, and names them whenever there are any.
+      const sharp = e.leftover_off_lattice_sharp;
+      const kept = e.leftover_on_protected_planes_sharp;
+      const off = typeof sharp === "number" && typeof kept === "number" ? sharp - kept : v("leftover_off_lattice_sharp");
+      const onProtected = typeof kept === "number" && kept > 0 ? ` (${kept} more on protected planes, kept)` : "";
+      return `${v("leftover_at_nodes")} missed at nodes · ${off} sharp off-lattice${onProtected} · ${v("leftover_off_lattice_broad")} broad maxima kept · punched ${v("mean_punched_fraction")}`;
+    }
     case "backfill":
       return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;
     case "flatten":

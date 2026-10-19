@@ -188,7 +188,7 @@ function punchCheck(measured: Obj | null | undefined, verdict: Verdict | undefin
   return {
     title: "Bragg punch",
     verdict,
-    headline: `${fmt(atNodes)} missed at nodes · ${fmt(counted)} sharp off-lattice · ${fmt(m.leftover_off_lattice_broad)} broad maxima kept · punched ${fmt(m.mean_punched_fraction)}`,
+    headline: `${fmt(atNodes)} missed at nodes · ${fmt(counted)} sharp off-lattice${protectedSharp ? ` (${fmt(protectedSharp)} more on protected planes, kept)` : ""} · ${fmt(m.leftover_off_lattice_broad)} broad maxima kept · punched ${fmt(m.mean_punched_fraction)}`,
     criterion,
     details: [
       ["Missed lattice peaks (at nodes)", fmt(atNodes)],

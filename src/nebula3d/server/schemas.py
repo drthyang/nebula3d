@@ -171,6 +171,53 @@ class ShellFloorsOut(BaseModel):
     flatten: dict[str, Any] | None = None
 
 
+class TextureHoleOut(BaseModel):
+    """One punch hole's fill against the range its 3-D rim allows (see
+    analysis.bragg_fill_texture); the values are ``None`` where it was not
+    judged."""
+    index: int                      # its place among the holes, C order of first voxels
+    centre_hkl: list[float]         # the mean position of its voxels, r.l.u.
+    voxels: int
+    rim_voxels: int                 # measured, in no hole, left as they were by the fill
+    fill: float | None              # the mean backfilled value over the hole
+    level: float | None             # the rim's median: the local diffuse level
+    sigma: float | None             # the rim's robust σ about its trend
+    slope: float | None             # the trend's change per voxel outward
+    edge: float | None              # the range the rim allows: its trend at the hole's edge ...
+    peaked: float | None            # ... and continued linearly to the hole
+    bias: float | None              # the fill's signed distance outside that range (0 inside)
+    bias_sigma: float | None        # ... in the rim's σ
+    bias_level: float | None        # ... in units of the local level
+    not_judged: str | None = None   # "thin rim", "flat rim", "too large" or "no outside"
+
+
+class TextureOut(BaseModel):
+    """The Pilot's fill-bias check (texture.ts) on every punch hole of a
+    backfilled stage, with its 3-D rim, against the dataset's punched stage
+    (see analysis.bragg_fill_texture).  The summary's fields are texture.ts's
+    ``TextureMetrics`` fill-bias fields, with the same meanings."""
+    id: str
+    punched_id: str                 # the punched stage the holes were read from
+    holes_from: str                 # "punch_record" or "masks" (texture.ts's own test)
+    rim: int                        # the rim's depth, voxels (texture.ts's RIM)
+    min_rim: int                    # the fewest rim voxels a hole is judged with
+    min_sigma: float                # the rule's limits: the median bias in rim σ, ...
+    one_way: float                  # ... the share of the judged holes one way, ...
+    min_holes: int                  # ... the fewest judged holes ...
+    floor: float                    # ... and the median bias in units of the level
+    n_holes: int
+    n_judged: int
+    judged: bool                    # n_judged ≥ min_holes: else the fills are not judged
+    median_fill_bias_sigma: float | None
+    median_fill_bias_level: float | None
+    above_fraction: float | None
+    below_fraction: float | None
+    above_floor_fraction: float | None  # filled above their range by floor × level or more
+    below_floor_fraction: float | None
+    systematic_fill_bias: bool
+    holes: list[TextureHoleOut]     # the `limit` holes farthest outside their range
+
+
 class UbPassOut(BaseModel):
     q_max: float
     n_found: int

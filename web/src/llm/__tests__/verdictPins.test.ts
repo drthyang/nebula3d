@@ -184,6 +184,21 @@ describe("D1–D10, kept and named", () => {
     expect([after.checks.ub, after.achieved?.dataProblems]).toEqual(["attention", [problem]]);
   });
 
+  it("D7, the UB (2.4.7b): a ub_check that cannot judge the UB is not read for the UB topic, in either reader; alone, it still sends a right UB back", () => {
+    const symmetrised = step("ub_check", { fit: "symmetric", symmetrised: true, orientation_change_deg: 0 });
+    const problem = "the UB is off by 0.9° (one rotation puts the off-lattice peaks back on the Bragg lattice)";
+    // After the grain's UB off, the UB off stands, to both readers.
+    const after = reply(UB_OFF, symmetrised);
+    expect([after.checks.ub, after.achieved?.dataProblems]).toEqual(["attention", [problem]]);
+    // After a ub_check that judged the UB, that one stands.
+    expect(reply(step("ub_check", { fit: "both", symmetrised: false, orientation_change_deg: 0.01 }), symmetrised).checks.ub).toBe("pass");
+    const turned = reply(step("ub_check", { fit: "both", symmetrised: false, orientation_change_deg: 0.6 }), symmetrised);
+    expect([turned.checks.ub, turned.achieved?.dataProblems]).toEqual(["attention", ["the UB is turned by 0.6°"]]);
+    // Alone: as before, it needs attention for the reason "symmetrised" (D4), and names no problem.
+    const alone = reply(symmetrised);
+    expect([alone.checks.ub, alone.achieved?.dataProblems]).toEqual(["attention", []]);
+  });
+
   it("D8, unified (2.4.8): the answer checks' backfill topic counts the fill bias {{achieved}} counts: attention if either check needs it, a pass only when both pass", () => {
     expect(D8_ANSWER_BACKFILL_IGNORES_TEXTURE).toBe(false);
     const seamOk = assess("backfill", { verdict: "meets its goal", mean_median_seam_sigma: 0.5 });
