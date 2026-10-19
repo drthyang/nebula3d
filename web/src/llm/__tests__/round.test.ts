@@ -155,6 +155,24 @@ describe("runRound", () => {
     expect([history.steps, history.ran, history.barren, history.ctx.skillsRead]).toEqual([0, [], 0, new Set()]);
   });
 
+  it("hands every round's tools the user's latest message the reply started with, unchanged", async () => {
+    const heard: (string | undefined)[] = [];
+    const listen = tool("listen", async (_args, own) => {
+      heard.push(own.userMessage);
+      return { result: {}, summary: "heard" };
+    });
+    const said = "Set the punch cell to 2 along H.";
+    const history = startReply({ ...ctx, userMessage: said }, [listen]);
+    expect(Object.isFrozen(history.ctx)).toBe(true);
+    const first = await runRound([call("c1", "listen", { a: 1 })], history);
+    const second = await runRound([call("c2", "listen", { a: 2 })], first.history);
+    expect(heard).toEqual([said, said]);
+    expect(second.history.ctx.userMessage).toBe(said);
+    // A context without one: the tools hear none.
+    await runRound([call("c3", "listen", {})], startReply(ctx, [listen]));
+    expect(heard[2]).toBeUndefined();
+  });
+
   it("offers no read_skill with the skills off: a call to it is to a tool the reply does not hold", async () => {
     const off = startReply({ ...ctx, skills: false }, CHAT_TOOLS);
     expect(off.tools.map((t) => t.name)).not.toContain("read_skill");

@@ -51,7 +51,7 @@ export const callKey = (name: string, args: Readonly<Args>): CallKey => `${name}
 export interface History {
   /** The tools the reply offers and runs: the given ones under the skills' switch (toolsWithSkills; off, no read_skill). */
   readonly tools: readonly AgentTool[];
-  /** The tool context the next round runs on a copy of: a run's fresh dataset, the skills read so far. */
+  /** The tool context the next round runs on a copy of: a run's fresh dataset, the skills read so far, the user's latest message. */
   readonly ctx: Readonly<ToolContext>;
   /** The reply's steps so far: the next step's number is steps + 1. */
   readonly steps: number;
@@ -76,7 +76,8 @@ function sealed(history: History): History {
  * A reply's first history. The skills' switch, as the conversation's context
  * carries it, decides the tools (toolsWithSkills); the context is copied, and
  * its skills read with it, so this reply's reads (read_skill) and a run's
- * fresh dataset (run_pipeline) stay this reply's.
+ * fresh dataset (run_pipeline) stay this reply's. The user's latest message
+ * it carries (the loop sets it) stays the same for every round of the reply.
  */
 export function startReply(ctx: ToolContext, given: readonly AgentTool[]): History {
   return sealed({
