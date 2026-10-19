@@ -86,9 +86,10 @@ export const D3_ANSWER_GRAIN_SECOND_GRAIN_ONLY = true;
 /**
  * D3, for the answer checks' UB topic, unified (plan 2.4.3, the user's
  * decision of 2026-10-19): grain_check, which settles the UB topic too (its
- * facts, tools/index.ts), decides it where it finds the UB off, which then
- * holds a claim that the UB is right to account; its other findings say
- * nothing of the UB. true: only ub_check decided it, before 2.4.3.
+ * facts, tools/defs/grain_check.ts), decides it where it finds the UB off,
+ * which then holds a claim that the UB is right to account; its other
+ * findings say nothing of the UB. true: only ub_check decided it, before
+ * 2.4.3.
  */
 export const D3_ANSWER_UB_FROM_UB_CHECK_ONLY = false;
 
