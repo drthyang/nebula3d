@@ -28,6 +28,7 @@ import { planWindow } from "./provider/window";
 import type { LlmSettings } from "./settings";
 import { factsOf, runToolCall, toolSpecs, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
 import { openView } from "./tools/openView";
+import type { Outcome } from "./verdicts";
 
 export interface AgentStep {
   id: string;
@@ -38,6 +39,9 @@ export interface AgentStep {
   progress?: string; // a running tool's live line (run_pipeline: stage, %, log)
   result?: string; // the JSON the model read
   view?: ViewTarget;
+  // The checks' outcomes the tool judged (verdicts/), kept beside the result
+  // and never in it: the model reads the result alone.
+  outcomes?: Outcome[];
 }
 
 export interface AgentProgress {
@@ -436,6 +440,7 @@ export async function runAgent({
         summary: run.summary,
         result: run.text,
         view: run.view,
+        outcomes: run.outcomes,
       });
       if (run.full) fullResults.set(id, run.full);
       if (run.ok) {

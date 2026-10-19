@@ -431,6 +431,20 @@ describe("assess_stage", () => {
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
   });
 
+  it("keeps each stage's outcome beside its result, never in it", async () => {
+    evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, max_floor_trend: 0.9, max_floor_span_fraction: 0.9, per_plane: {} });
+    const r = await run("assess_stage", {});
+    // The rings' and the punch's outputs are missing on this dataset: no verdict for them.
+    expect(r.outcomes?.map((o) => [o.check, o.kind, o.reasons[0] ?? null])).toEqual([
+      ["rings", "info", "no output"],
+      ["punch", "info", "no output"],
+      ["backfill", "info", "no output"],
+      ["flatten", "attention", "pedestal"],
+      ["pdf", "pass", null],
+    ]);
+    expect(r.text).not.toMatch(/"(outcomes|reasons|dataProblems)"/);
+  });
+
   it("keeps the per-plane detail for one stage", async () => {
     evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, per_plane: { hk0: { after_floor_max_sigma: 0.8 } } });
     const out = JSON.parse((await run("assess_stage", { stage: "flatten" })).text);

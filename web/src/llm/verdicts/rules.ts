@@ -492,9 +492,15 @@ export const WORDS: {
 
 const isStage = (check: CheckId): check is Stage => check in STAGE_RULES;
 
-/** A check's outcome from its measurements, by its rule: what its tool writes, and what the readers read. */
+/**
+ * A check's outcome from its measurements, by its rule: what its tool writes,
+ * and what the readers read. A stage whose evaluation says its output is
+ * "missing" (assess_stage, before the run computed it) has no output to judge:
+ * its tool writes no verdict for it.
+ */
 export function judge<C extends CheckId>(check: C, m: Measurements[C]): Outcome {
   if (isStage(check)) {
+    if (m && typeof m === "object" && "missing" in m) return { check, kind: "info", reasons: ["no output"], dataProblems: [], words: null };
     const rule = STAGE_RULES[check];
     const { kind, reasons } = rule.judge((m ?? {}) as StageNumbers);
     return { check, kind, reasons, dataProblems: [], words: LABEL[kind], criterion: rule.ownCriterion ?? rule.criterion };

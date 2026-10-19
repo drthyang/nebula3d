@@ -237,6 +237,17 @@ describe("the checks judge what the tools found, and nothing the assistant said"
     expect(r.note).toMatch(/Contradicts the tools' verdict on the ring removal/);
   });
 
+  it("carries a tool's outcomes to its step, beside the result the model reads, and holds the answer to them", async () => {
+    // The producer's outcome says attention where its words (a stale label) say nothing: the outcome decides.
+    const outcome = { check: "rings" as const, kind: "attention" as const, reasons: ["ring left" as const], dataProblems: [], words: "needs attention" };
+    const judged: AgentTool = { ...assess, run: async () => ({ result: { rings: { verdict: "pass" } }, summary: "rings judged", outcomes: [outcome] }) };
+    const seen = script([[{ toolCalls: [call] }], [{ content: "The ring removal is clean." }], [{ content: "" }]]);
+    const r = await runAgent({ messages: question, tools: [judged], ctx, settings, signal: new AbortController().signal });
+    expect(r.steps[0].outcomes).toEqual([outcome]);
+    expect(seen[1].find((m) => m.role === "tool")?.content).toBe('{"rings":{"verdict":"pass"}}');
+    expect(r.note).toMatch(/Contradicts the tools' verdict on the ring removal/);
+  });
+
   it("does not take an earlier answer's number as a source, but an earlier tool result's", async () => {
     const earlier: ChatMessage[] = [
       { role: "user", content: "Where is the leftover ring?" },

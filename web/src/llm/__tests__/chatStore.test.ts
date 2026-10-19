@@ -23,6 +23,16 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("chat transcript across reloads", () => {
+  it("keeps a step's result and drops the outcomes beside it, which served the reply's own checks", async () => {
+    const store = await load();
+    const outcome = { check: "coverage" as const, kind: "pass" as const, reasons: [], dataProblems: [], words: "clean" };
+    const step = { id: "1", name: "qmax_coverage", args: {}, status: "done" as const, result: '{"verdict":"clean"}', outcomes: [outcome] };
+    store.useChatStore.getState().addTurn({ role: "assistant", content: "Clean.", steps: [step] });
+    const kept = store.useChatStore.getState().turns[0].steps![0];
+    expect(kept).toEqual({ id: "1", name: "qmax_coverage", args: {}, status: "done", result: '{"verdict":"clean"}' });
+    expect(storage.get("nebula3d.chat.turns.v1")).not.toMatch(/outcomes/);
+  });
+
   it("brings back the turns and the draft, and keeps numbering after them", async () => {
     const first = await load();
     first.useChatStore.getState().addTurn({ role: "user", content: "Assess the run" });

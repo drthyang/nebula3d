@@ -44,8 +44,8 @@ const LABELLED = new Map((Object.keys(WORDS.label) as Kind[]).map((k) => [WORDS.
  * no words, by the rule.
  */
 function stageOutcome(stage: Stage, m: Obj): Outcome {
-  if ("missing" in m) return outcome(stage, "info", ["no output"], null);
   const judged = judge(stage, m);
+  if (judged.reasons.includes("no output")) return judged;
   const said = words(m);
   if (said === null) return judged;
   const kind = LABELLED.get(said);
@@ -114,10 +114,28 @@ function grainOutcome(r: Obj): Outcome {
   return outcome("grain", off ? "attention" : "pass", reasons, said);
 }
 
-/** The outcomes a step holds, read from its recorded result: none for an error, a step still running or a result that does not parse. */
+/**
+ * D17: the pointer the agent loop writes for a repeated call (already_called,
+ * agent.ts) reads as a result of its tool that holds nothing: {{achieved}}
+ * reads it as the newest result, so it hides the verdict it points to (a
+ * qmax_coverage "too far" no longer needs attention); the answer checks, which
+ * read the newest result that decides, keep the earlier one. Unify: set this
+ * to false; a pointer then holds no outcome, and both read the result it
+ * points to.
+ */
+export const D17_REPEAT_POINTER_READS_AS_A_RESULT = true;
+
+/**
+ * The outcomes a step holds: the producer's, kept beside its result (the
+ * sidecar), else read from its recorded words, else judged from its recorded
+ * numbers. None for an error, a step still running or a result that does not
+ * parse.
+ */
 export function outcomesOf(step: AgentStep): Outcome[] {
+  if (step.status !== "done") return [];
+  if (step.outcomes) return step.outcomes;
   const r = resultOf(step);
-  if (!r) return [];
+  if (!r || (!D17_REPEAT_POINTER_READS_AS_A_RESULT && "already_called" in r)) return [];
   switch (step.name) {
     case "assess_stage":
       return STAGES.flatMap((stage) => {

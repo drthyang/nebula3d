@@ -4,9 +4,46 @@
 
 import { describe, expect, it } from "vitest";
 
-import { judge, UNROUNDED, WORDS, type CheckId, type Kind, type Reason } from "../verdicts";
+import type { AgentStep } from "../agent";
+import { shownGrains, type GrainFacts } from "../metrics/grains";
+import { judge, UNROUNDED, verdicts, WORDS, type CheckId, type Kind, type Outcome, type Reason } from "../verdicts";
 
 type Obj = Record<string, unknown>;
+
+// ---------------------------------------------------------------- the seam
+
+const PASSING_RUN: AgentStep = {
+  id: "all",
+  name: "assess_stage",
+  args: { stage: "all" },
+  status: "done",
+  result: JSON.stringify({
+    rings: { verdict: "meets its goal", max_ring_left: 0, max_ring_dent: 0 },
+    punch: { verdict: "meets its goal", leftover_at_nodes: 0 },
+    backfill: { verdict: "meets its goal", mean_median_seam_sigma: 0.5 },
+    flatten: { verdict: "meets its goal", max_floor_trend: 0.3, max_floor_span_fraction: 0.6 },
+    pdf: { verdict: "meets its goal", back_fft_pearson_r_even: 1 },
+  }),
+};
+
+/**
+ * The seam's round trip: a tool's result with the outcomes its producer
+ * judged beside it, and the same result with its words and numbers only (a
+ * recording), give the same verdicts, alone and after a passing run.
+ */
+function roundTrip(name: string, result: unknown, outcomes: Outcome[]): void {
+  const words: AgentStep = { id: "words", name, args: {}, status: "done", result: JSON.stringify(result) };
+  const sidecar: AgentStep = { ...words, id: "sidecar", outcomes };
+  for (const before of [[], [PASSING_RUN]]) {
+    expect(verdicts({ reply: [...before, sidecar] }), JSON.stringify(result).slice(0, 200)).toEqual(verdicts({ reply: [...before, words] }));
+  }
+}
+
+/** A stage's result as assess_stage writes it, and its outcome. */
+function roundTripStage(stage: CheckId, m: Obj): void {
+  const o = judge(stage, m as never);
+  roundTrip("assess_stage", { [stage]: o.words === null ? m : { verdict: o.words, criterion: o.criterion, headline: "–", ...m } }, [o]);
+}
 
 interface Case {
   m: Obj;
@@ -65,6 +102,7 @@ const STAGE_CASES: Record<"rings" | "punch" | "backfill" | "flatten" | "pdf", Ca
 describe("judge: a stage's evaluation", () => {
   for (const [stage, cases] of Object.entries(STAGE_CASES) as [keyof typeof STAGE_CASES, Case[]][]) {
     for (const x of cases) {
+      it(`${stage}: ${x.why}, the same verdicts as a sidecar and as words`, () => roundTripStage(stage, x.m));
       it(`${stage}: ${x.why}`, () => {
         const o = judge(stage, x.m);
         expect(o).toEqual({
@@ -84,6 +122,11 @@ describe("judge: a stage's evaluation", () => {
     const shown = { back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.001, [UNROUNDED]: { window_weight_on_unmeasured: 0.00104 } };
     expect(judge("pdf", shown)).toMatchObject({ kind: "pass", reasons: ["window within limit"] });
     expect(JSON.stringify(shown)).toBe('{"back_fft_pearson_r_even":1,"window_weight_on_unmeasured":0.001}');
+  });
+
+  it("gives a stage with no output yet no verdict, as its tool writes none, the same by either reading", () => {
+    expect(judge("pdf", { missing: "no delta_pdf output yet; run_pipeline computes it" })).toEqual({ check: "pdf", kind: "info", reasons: ["no output"], dataProblems: [], words: null });
+    for (const stage of ["rings", "punch", "backfill", "flatten", "pdf"] as const) roundTripStage(stage, { missing: `no ${stage} output yet` });
   });
 
   it("states the backfill's own criterion without the fill bias it does not measure", () => {
@@ -129,6 +172,11 @@ describe("judge: the checks on the result", () => {
     it(`coverage: ${why}`, () => {
       expect(judge("coverage", { ...reach, ...over } as never)).toEqual({ check: "coverage", kind, reasons, dataProblems, words });
     });
+    it(`coverage: ${why}, the same verdicts as a sidecar and as words`, () => {
+      const m = { ...reach, ...over } as typeof reach & { counts: Obj };
+      const o = judge("coverage", m as never);
+      roundTrip("qmax_coverage", { verdict: o.words, window_weight_on_unmeasured: m.window_weight, ...m.counts }, [o]);
+    });
   }
 
   const ops = (rms: number) => [{ op: "six-fold (60°)", rms_difference: rms }, { op: "two-fold (180°)", rms_difference: 0 }];
@@ -144,6 +192,10 @@ describe("judge: the checks on the result", () => {
     it(`symmetry: ${why}`, () => {
       expect(judge("symmetry", m as never)).toEqual({ check: "symmetry", kind, reasons, dataProblems: [], words });
     });
+    it(`symmetry: ${why}, the same verdicts as a sidecar and as words`, () => {
+      const o = judge("symmetry", m as never);
+      roundTrip("symmetry_check", m.ops === null ? { note: "no in-plane symmetry to test" } : { ops: m.ops, symmetry_declared: m.declared === undefined ? null : Boolean(m.declared), verdict: o.words }, [o]);
+    });
   }
 
   it("texture: a cut whose fill is biased one way needs attention; no cut, nothing to judge", () => {
@@ -152,6 +204,7 @@ describe("judge: the checks on the result", () => {
     expect(judge("texture", { per_cut: [cut(false)] })).toMatchObject({ kind: "pass", reasons: [], words: null });
     expect(judge("texture", { per_cut: [] })).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
     expect(judge("texture", {})).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    for (const m of [{ per_cut: [cut(false), cut(true)] }, { per_cut: [cut(false)] }, { per_cut: [] }, {}]) roundTrip("texture_check", m, [judge("texture", m)]);
   });
 
   const facts = (over: Obj) => ({
@@ -214,6 +267,11 @@ describe("judge: the checks on the result", () => {
     it(`grain: ${why}`, () => {
       expect(judge("grain", facts(over) as never)).toEqual({ check: "grain", kind, reasons, dataProblems: [], words, criterion: WORDS.criterion.grains });
     });
+    it(`grain: ${why}, the same verdicts as a sidecar and as words`, () => {
+      const g = facts(over) as unknown as GrainFacts;
+      const o = judge("grain", g);
+      roundTrip("grain_check", { ...shownGrains(g, o.words!), off_lattice_peaks: 900 }, [o]);
+    });
   }
 
   const UB: [string, Obj, Kind, Reason[], string[]][] = [
@@ -230,7 +288,20 @@ describe("judge: the checks on the result", () => {
     it(`ub: ${why}`, () => {
       expect(judge("ub", m)).toEqual({ check: "ub", kind, reasons, dataProblems, words: null });
     });
+    it(`ub: ${why}, the same verdicts as a sidecar and as words`, () => roundTrip("ub_check", m, [judge("ub", m)]));
   }
+});
+
+describe("the seam: the producer's outcomes first", () => {
+  it("reads a step's sidecar before its words", () => {
+    const clean = { verdict: "clean: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space", window_weight_on_unmeasured: 0.00024 };
+    const said: Outcome = { check: "coverage", kind: "attention", reasons: ["window past limit"], dataProblems: [], words: "too far" };
+    const step: AgentStep = { id: "c", name: "qmax_coverage", args: {}, status: "done", result: JSON.stringify(clean), outcomes: [said] };
+    expect(verdicts({ reply: [step] }).checks.coverage).toBe("attention");
+    expect(verdicts({ reply: [{ ...step, outcomes: undefined }] }).checks.coverage).toBe("pass");
+    // A step that failed holds none, whatever it carries.
+    expect(verdicts({ reply: [{ ...step, status: "error" }] }).checks.coverage).toBeUndefined();
+  });
 });
 
 describe("judge is total", () => {

@@ -21,6 +21,7 @@ import {
   D8_ANSWER_BACKFILL_IGNORES_TEXTURE,
   READS,
 } from "../verdicts/readers";
+import { D17_REPEAT_POINTER_READS_AS_A_RESULT } from "../verdicts/recorded";
 import { D15_PDF_PASSES_UNMEASURED, D16_UB_UNMEASURED_READS_RIGHT, D5_PROTECTED_SHARP_PEAKS_COUNT, D6_PDF_READS_ROUNDED_WEIGHT } from "../verdicts/rules";
 
 let n = 0;
@@ -146,6 +147,15 @@ describe("the disagreements found beyond D1–D10, kept and named", () => {
     expect(D15_PDF_PASSES_UNMEASURED).toBe(true);
     expect(judge("pdf", {})).toMatchObject({ kind: "pass", reasons: [] });
     expect(judge("rings", {})).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+  });
+
+  it("D17: a repeated call's pointer reads as a result that holds nothing: {{achieved}} loses the verdict it points to, the answer checks keep it", () => {
+    expect(D17_REPEAT_POINTER_READS_AS_A_RESULT).toBe(true);
+    const pointer = step("qmax_coverage", { already_called: "Called with these arguments earlier in this reply (step 1); its result is above. Use it, or call with other arguments." });
+    expect(reply(TOO_FAR).achieved?.attention).toEqual(["the ΔPDF window against the coverage"]);
+    const r = reply(TOO_FAR, pointer);
+    expect(r.achieved?.attention).toEqual([]);
+    expect(r.checks.coverage).toBe("attention");
   });
 
   it("D16: a ub_check result without an angle reads as a right UB", () => {
