@@ -380,6 +380,15 @@ class BraggProfileOut(BaseModel):
 class StageParamsIn(BaseModel):
     """Curated, optional per-stage overrides (None = use the validated default)."""
 
+    # The cleanup stages' switches (the page's "Enable stage"; the flatten's is
+    # the request's flatten_enabled).  False switches the stage off: it is not
+    # run and its input passes through to the next stage, never an output an
+    # earlier run left.  A stage merely left out of the request's `stages` is a
+    # partial re-run instead, whose output on disk the next stage reads.
+    # None: on.
+    rings_enabled: bool | None = None
+    punch_enabled: bool | None = None
+    backfill_enabled: bool | None = None
     # Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
     edge_trim: int | None = None
     rings_n_patches: int | None = None
@@ -486,7 +495,10 @@ class PipelineRunRequest(BaseModel):
     flatten_enabled: bool = True
     force: bool = False
     force_from: str | None = None
-    stages: list[str] | None = None  # enabled-stage subset; None → all stages
+    # The stages to run in this call; None → all.  One left out is a partial
+    # re-run (the stages after it read its output on disk); a stage switched
+    # off is not run either way (flatten_enabled, params.*_enabled).
+    stages: list[str] | None = None
     params: StageParamsIn = StageParamsIn()
     # A tuning trial: the stage runs into tuning/<run>/trials/<trial>/ and
     # reads its inputs from the run, never writing to processed/.

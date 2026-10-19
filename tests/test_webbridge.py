@@ -568,6 +568,128 @@ def test_run_async_pool_skipped_when_rings_current(tmp_path, monkeypatch):
     assert any(status == "skip" for st, status, _f, _m in events if st == "rings")
 
 
+# ---------------------------------------------------------------------------
+# the stages' switches, which the page sends in params_json
+# ---------------------------------------------------------------------------
+def _numbers(path: Path) -> dict:
+    import h5py
+
+    out: dict = {}
+    with h5py.File(path, "r") as f:
+        f.visititems(lambda name, obj: out.__setitem__(name, obj[()])
+                     if isinstance(obj, h5py.Dataset) and obj.dtype.kind in "biuf" else None)
+    return out
+
+
+def _same_numbers(a: Path, b: Path) -> bool:
+    na, nb = _numbers(a), _numbers(b)
+    return na.keys() == nb.keys() and all(
+        np.array_equal(na[k], nb[k], equal_nan=True) for k in na)
+
+
+def _demo_after_a_full_run(workdir: Path) -> Path:
+    """A workspace with the demo input and every output of a full run."""
+    webbridge.setup(workdir=str(workdir))
+    webbridge.make_demo_input(n=25)
+    webbridge.run("", "{}", flatten_enabled=True, force=True)
+    return workdir / "processed"
+
+
+_PUNCH_OFF = json.dumps({"rings_enabled": True, "punch_enabled": False,
+                         "backfill_enabled": True})
+
+
+def test_run_with_a_stage_switched_off_passes_its_input_through(tmp_path):
+    """The bridge takes the page's switches in params_json: after a full run,
+    a run with the punch off has the backfill read the ring-removed volume,
+    never the punched one the full run left (which stays as it was), and
+    gives a fresh punch-off run's backfilled volume."""
+    from nebula3d.pipeline import pipeline_paths
+
+    webbridge.setup(workdir=str(tmp_path / "fresh"))
+    webbridge.make_demo_input(n=25)
+    webbridge.run("rings,backfill", _PUNCH_OFF, flatten_enabled=True)
+    fresh = next((tmp_path / "fresh" / "processed").glob("*_backfilled.h5"))
+
+    proc = _demo_after_a_full_run(tmp_path / "work")
+    paths = pipeline_paths(tmp_path / "work" / "raw" / "synthetic_rocksalt.nxs", proc_dir=proc)
+    left = paths.braggpunched.read_bytes()
+    assert not _same_numbers(paths.backfilled, fresh)  # the switch matters
+    events: list[tuple] = []
+    webbridge.run("rings,backfill,flatten,pdf,pdf_check", _PUNCH_OFF, flatten_enabled=True,
+                  force=True, progress=lambda *a: events.append(a))
+
+    assert ("backfill", "progress", None,
+            f"Bragg punch disabled: the backfill reads {paths.ringremoved.name}") in events
+    assert _same_numbers(paths.backfilled, fresh)
+    assert paths.braggpunched.read_bytes() == left
+
+
+def test_run_async_never_fans_out_a_switched_off_ring_stage(tmp_path, monkeypatch):
+    """With the ring removal off, the ring pool is not engaged even when
+    forced (ring_stage_pending is the shared gate), and the punch reads the
+    raw input."""
+    import asyncio
+
+    _demo_after_a_full_run(tmp_path / "work")
+
+    def _boom(pool, progress=None):  # noqa: ANN001
+        raise AssertionError("the pool must not run a switched-off ring stage")
+
+    monkeypatch.setattr(webbridge, "_ring_pool_js", lambda: object())
+    monkeypatch.setattr(webbridge, "_JsPlaneExecutor", _boom)
+    events: list[tuple] = []
+    params = json.dumps({"rings_model": "patched", "rings_enabled": False})
+    asyncio.run(webbridge.run_async("", params, flatten_enabled=True, force=True,
+                                    progress=lambda *a: events.append(a)))
+    assert ("rings", "skip", None, "ring removal disabled (no powder rings removed)") in events
+    assert ("punch", "progress", None,
+            "ring removal disabled: the Bragg punch reads synthetic_rocksalt.nxs") in events
+
+
+def test_the_webgpu_dpdf_takes_the_volume_run_pipeline_takes(tmp_path, monkeypatch):
+    """The browser's WebGPU ΔPDF path resolves its input as run_pipeline's
+    ΔPDF stage does: with the backfill and the flatten off, the punched
+    volume, never the backfilled or flattened one a full run left, in
+    processed/ or among a tuning trial's inputs; with every cleanup stage
+    off, the raw input, which it leaves to the CPU path (its edge trim)."""
+    import asyncio
+
+    from nebula3d.pipeline import STAGES, pipeline_paths
+    from nebula3d.server.params import build_params
+
+    proc = _demo_after_a_full_run(tmp_path / "work")
+    paths = pipeline_paths(tmp_path / "work" / "raw" / "synthetic_rocksalt.nxs", proc_dir=proc)
+
+    async def no_gpu(gpu, plan):  # the GPU refuses: the CPU path takes over
+        return None
+
+    monkeypatch.setattr(webbridge, "_gpu_forward", no_gpu)
+
+    def gpu_pdf(off: dict, stages=STAGES, inputs=None):
+        params = build_params(webbridge._make_request(
+            json.dumps(off), off.get("flatten_enabled", True)))
+        events: list[tuple] = []
+        done = asyncio.run(webbridge._run_pdf_stages_gpu(
+            params, tuple(stages), True, None, lambda *a: events.append(a), object(),
+            proc_dir=proc, inputs=inputs))
+        return done, events
+
+    notice = ("pdf", "progress", None,
+              f"backfill and flatten disabled: the ΔPDF transforms {paths.braggpunched.name}, "
+              "with no background removed")
+    off = {"backfill_enabled": False, "flatten_enabled": False}
+    done, events = gpu_pdf(off)
+    assert done is False and notice in events
+    inputs = {"rings": paths.ringremoved, "punch": paths.braggpunched,
+              "backfill": paths.backfilled, "flatten": paths.flattened}
+    done, events = gpu_pdf(off, stages=("pdf", "pdf_check"), inputs=inputs)
+    assert done is False and notice in events
+    done, events = gpu_pdf({"rings_enabled": False, "punch_enabled": False,
+                            "backfill_enabled": False, "flatten_enabled": False})
+    assert done is False and events == []
+
+
 def test_browser_run_is_matplotlib_free(tmp_path):
     """The Pyodide boot no longer loads matplotlib (~9 MB of wheels), so a full
     browser-style run — import the bridge, make the demo input, run every

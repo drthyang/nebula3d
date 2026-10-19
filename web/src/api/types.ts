@@ -324,6 +324,14 @@ export interface Slice {
 }
 
 export interface StageParamsIn {
+  // The cleanup stages' switches (the page's "Enable stage"; the flatten's is
+  // the request's flatten_enabled). false: the stage is not run and its input
+  // passes through to the next stage, never an output an earlier run left. A
+  // stage merely left out of the request's `stages` is a partial re-run, whose
+  // output on disk the next stage reads. Omitted: on.
+  rings_enabled?: boolean;
+  punch_enabled?: boolean;
+  backfill_enabled?: boolean;
   // Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
   edge_trim?: number;
   rings_n_patches?: number;
@@ -419,7 +427,10 @@ export interface PipelineRunRequest {
   flatten_enabled: boolean;
   force: boolean;
   force_from?: string | null;
-  stages?: string[]; // enabled-stage subset; omitted → all stages run
+  // The stages to run in this call; omitted → all. One left out is a partial
+  // re-run (the stages after it read its output on disk); a stage switched off
+  // (flatten_enabled, params.*_enabled) is not run either way.
+  stages?: string[];
   params: StageParamsIn;
   tuning?: TuningTrial; // a tuning trial: never writes to processed/
 }
