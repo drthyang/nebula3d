@@ -1,0 +1,18 @@
+{
+ "source": "validation",
+ "case": "dev-control",
+ "run": 1,
+ "step": null,
+ "kind": "science-error",
+ "evidence": "texture_check flags a systematic fill bias on all three cuts of the clean control: median fill 0.65, 0.57 and 1.34 rim σ, 88 to 96 % of the holes above their rim. The bias is in rim σ, which shrinks with the counts, with no floor in units of the diffuse level, and the demo's diffuse peaks at every node (TDS), so a fill above its rim is expected.",
+ "proposed_fix": "Give the bias a floor in units of the local diffuse level, and compare the fill with what an interpolation of a node-peaked diffuse gives, not with the rim's median.",
+ "needs_user_approval": true,
+ "arm": "sweep",
+ "status": "implemented",
+ "commit": "ebe69ce",
+ "tests": [
+  "web/src/llm/__tests__/texture.test.ts",
+  "web/src/llm/__tests__/tools.test.ts (texture_check)"
+ ],
+ "note": "The reference is the range from the measured rim's flat to its linear (node-peaked) continuation; the floor is a fifth of the local diffuse level (FILL_BIAS_FLOOR), provisional. No dev cut is flagged."
+}

@@ -481,7 +481,15 @@ Q → −Q (`pearson_r_even`), the part the real transform keeps; against
 unsymmetrised data `r` is lower by their odd part, mostly counting noise
 (`odd_share`; see [the ΔPDF algorithm](algorithms/delta_pdf.md)). The
 web UI exposes the same check interactively, including adjustable `|Q|` and
-real-space `r` bands.
+real-space `r` bands. It transforms what the run transformed, as the run did:
+the volume the ΔPDF was made from, with the window, its σ, shape and support,
+the padding and the subtractions, over the full `|Q|` range. The ΔPDF stage
+records both in the ΔPDF (`source_file`, and `transform_config`, read back by
+`nebula3d.pipeline.delta_pdf_settings_from_config`). Without that record it
+takes the package defaults, and the flattened volume, else the backfilled one,
+and says so (the response's `settings`). After a run with no crop and no `|Q|`
+band (the defaults), the view with no band applied reproduces the run's own
+saved check.
 
 ## Visual QA
 

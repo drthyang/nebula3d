@@ -1,0 +1,22 @@
+{
+ "source": "review",
+ "ref": "D15",
+ "at": "76a691c",
+ "kind": "science-error",
+ "evidence": "Every stage's rule says \"nothing to judge\" of an evaluation that measured nothing, but the ΔPDF's passes one with no round trip, no window weight and no section symmetry (web/src/llm/verdicts/rules.ts:263, :272), so the report's 3D-ΔPDF card passes it too (web/src/llm/verdicts/readers.ts:327).",
+ "proposed_fix": "A ΔPDF evaluation that measured nothing is not judged, and so is the report's 3D-ΔPDF card on it.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "e958faf",
+ "tests": [
+  "web/src/llm/__tests__/verdictPins.test.ts (D15, unified (2.4b.5): a ΔPDF evaluation that measured nothing is not judged, as every other stage's rule says of nothing)",
+  "web/src/llm/__tests__/report.test.ts (leaves the 3D-ΔPDF's card not judged when its evaluation measured nothing (D15, 2.4b.5))",
+  "web/src/llm/__tests__/verdicts.test.ts (pdf: nothing measured: not judged (D15))"
+ ],
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (batch 2).",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-19",
+  "option": "yes"
+ }
+}
