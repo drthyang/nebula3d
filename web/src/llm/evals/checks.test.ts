@@ -122,4 +122,20 @@ describe("numbers checked against the run's own tool results", () => {
     expect(r.pass).toBe(false);
     expect(r.detail).toMatch(/no the ring's \|Q\| in the tool results/);
   });
+
+  it("credits only what the model read: a field only the whole result (`full`) holds is not credited", () => {
+    // The model read ub_check's result fitted, without the turn; the step keeps the whole beside it.
+    const fitted: AgentStep = {
+      ...step("ub_check", {}, { fit: "both", left_out: ["orientation_change_deg"] }),
+      full: JSON.stringify({ fit: "both", orientation_change_deg: 0.61 }),
+    };
+    const turn = measured("ub_check", "orientation_change_deg");
+    expect(turn(run("", [fitted]))).toBeNull();
+    const check = quotes("the UB's turn", turn, 0.05);
+    const r = check.grade(run("The UB is turned by 0.61°.", [fitted]));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/no the UB's turn in the tool results/);
+    // The same field in the text the model read is credited.
+    expect(passes(check, run("The UB is turned by 0.61°.", [{ ...fitted, result: fitted.full }]))).toBe(true);
+  });
 });
