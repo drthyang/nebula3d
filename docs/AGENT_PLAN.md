@@ -480,7 +480,17 @@ Each PR:
 | 2.6 | **A tool result carries both readings** (candidate 3; was 1.8). A step holds the whole result and the text the model read, parsed once. The record's decisions, number provenance and candidate findings read the whole result, as its field says (`evals/validation.ts:301`). It changes the record, not what the model sees. | M |
 
 The answers (batch 1, decided by the user on 2026-10-19, every recommendation
-accepted):
+accepted). They are filed in the findings record
+(`docs/evals/validation/review-findings.json`) as review entries. The record
+gains a `source` field (the manager's decision of 2026-10-19, after MATERIA's
+1.7):
+- `validation` entries name a dev case and a run, as before;
+- `review` entries name no case or run, give their evidence as file:line on a
+  named commit, and carry the decision `{by, on, option}`, with their commit and
+  tests filled in as each PR lands.
+
+The test enforces each shape by its source.
+
 
 | PR | Answer | What changes |
 | --- | --- | --- |
