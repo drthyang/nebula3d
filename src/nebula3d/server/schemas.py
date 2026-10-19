@@ -109,6 +109,10 @@ class VolumeMetaOut(BaseModel):
     # when that leaves a significance in σ meaningless (normalized values).
     sigma: str = "measured"
     sigma_note: str | None = None
+    # The settings the flatten that wrote this file ran with (FlattenParams:
+    # fit_q_range, floor_percentile, q_step, …; pipeline.read_flatten_settings),
+    # or None: a stage the flatten did not write, or wrote before it recorded them.
+    flatten_settings: dict[str, Any] | None = None
 
 
 class CoverageOut(BaseModel):

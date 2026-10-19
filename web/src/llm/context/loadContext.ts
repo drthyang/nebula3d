@@ -12,7 +12,7 @@ import {
   fetchMeta,
   fetchSlice,
 } from "../../api/client";
-import type { Dataset } from "../../api/types";
+import type { Dataset, FlattenSettings } from "../../api/types";
 import { parseFractions, usePipelineStore } from "../../state/pipelineStore";
 import { buildPipelineContext, type PipelineContext, type StageSlices } from "./pipelineContext";
 import { datasetName } from "../../api/datasetName";
@@ -74,6 +74,11 @@ export interface AssistantContext {
   lattice: { a: number | null; b: number | null; c: number | null } | null;
 }
 
+/** What the flatten recorded in its output, as a caller read it: `settings` null when the file records none, undefined when unknown. */
+export interface FlattenRecord {
+  settings: FlattenSettings | null | undefined;
+}
+
 export interface LoadOptions {
   recip?: Cut | null; // null skips the reciprocal stages
   dpdf?: Cut | null; // null skips the ΔPDF section
@@ -81,16 +86,33 @@ export interface LoadOptions {
   // Every leftover peak the punch's scan finds, not only the strongest few the
   // model reads: the punch's evaluation counts them by their marks (tune/evaluate.ts).
   allLeftovers?: boolean;
+  // What the flatten recorded, when the caller read it once for several cuts
+  // (tune/evaluate.ts); without it, read here from the flattened stage's meta.
+  flattenRecord?: FlattenRecord;
+}
+
+/**
+ * What the flatten recorded in the flattened stage's file (VolumeMeta.flatten_settings),
+ * the run's own fit range and floor percentile among them: null when it records
+ * none, undefined when there is no flattened stage or its meta does not say.
+ */
+export async function readFlattenRecord(dataset: Dataset): Promise<FlattenRecord> {
+  const id = stageVolumeId(dataset, "flattened");
+  const meta = id ? await safe(fetchMeta(id)) : null;
+  return { settings: meta?.flatten_settings };
 }
 
 export async function loadPipelineContext(
   dataset: Dataset,
-  { recip = DEFAULT_RECIP_CUT, dpdf = DEFAULT_DPDF_CUT, records = true, allLeftovers = false }: LoadOptions = {},
+  { recip = DEFAULT_RECIP_CUT, dpdf = DEFAULT_DPDF_CUT, records = true, allLeftovers = false, flattenRecord }: LoadOptions = {},
 ): Promise<AssistantContext> {
   const hklVolId = hklVolumeId(dataset);
   const dpdfVolId = dpdfVolumeId(dataset);
 
   const hklMeta = hklVolId ? await safe(fetchMeta(hklVolId)) : null;
+  // The flatten's record, for its floors over the run's own range (plan 4.11):
+  // only where the cut reaches the flattened stage.
+  const flatten = flattenRecord ?? (recip && stageVolumeId(dataset, "flattened") ? await readFlattenRecord(dataset) : { settings: undefined });
   const dpdfMeta = dpdfVolId ? await safe(fetchDpdfMeta(dpdfVolId)) : null;
 
   const getRecip = (name: RecipStage) => {
@@ -126,6 +148,7 @@ export async function loadPipelineContext(
     supercell: punchSupercell(),
     protectedH: punchProtectedH(),
     ...(allLeftovers ? { leftoverTopK: Infinity } : {}),
+    flattenSettings: flatten.settings,
   });
 
   return { context, slices, lattice: hklMeta?.lattice ?? dpdfMeta?.lattice ?? null };

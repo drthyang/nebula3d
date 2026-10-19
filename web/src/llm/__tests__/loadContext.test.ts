@@ -4,8 +4,10 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ConsistencyCheck, Dataset } from "../../api/types";
+import type { ConsistencyCheck, Dataset, VolumeMeta } from "../../api/types";
 import { loadPipelineContext } from "../context/loadContext";
+import { qRadius } from "../context/pipelineContext";
+import { flattenMetrics } from "../metrics/flatten";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -85,5 +87,25 @@ describe("loadPipelineContext", () => {
     const { context } = await loadPipelineContext(noDpdf);
     expect(api.fetchConsistencyCheck).not.toHaveBeenCalled();
     expect(context.delta_pdf).toBeUndefined();
+  });
+
+  it("judges the flatten with what its run recorded in the flattened file (4.11)", async () => {
+    const flat: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, ...["backfilled", "flattened"].map((name) => ({ name, exists: true, kind: "hkl" as const, volume_id: `demo.${name}` }))],
+    };
+    const cell = { lattice: { a: 4, b: 4, c: 4 }, shape: [41, 41, 41] };
+    api.fetchMeta.mockImplementation(async (id: string) => (id === "demo.flattened" ? { ...cell, flatten_settings: { fit_q_range: [6, 20], floor_percentile: 10 } } : cell));
+    const before = makeSlice(41, 41, (x, y) => 4 + 0.01 * (x * x + y * y) + Math.sin(2 * x) * Math.cos(3 * y));
+    const after = makeSlice(41, 41, (x, y) => 0.01 * (x * x + y * y) + Math.sin(2 * x) * Math.cos(3 * y));
+    api.fetchSlice.mockImplementation(async (id: string) => (id === "demo.backfilled" ? before : id === "demo.flattened" ? after : Promise.reject(new Error("404"))));
+    const { context } = await loadPipelineContext(flat);
+    const radius = qRadius("hk0", 0, cell as unknown as VolumeMeta);
+    expect(context.flatten).toEqual(flattenMetrics(before, after, radius, [6, 20], 10));
+    expect(api.fetchMeta).toHaveBeenCalledWith("demo.flattened");
+    // No reciprocal cut, no flatten to judge: the record is not read.
+    api.fetchMeta.mockClear();
+    await loadPipelineContext(flat, { recip: null });
+    expect(api.fetchMeta).not.toHaveBeenCalledWith("demo.flattened");
   });
 });

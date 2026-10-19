@@ -13,7 +13,7 @@
 // limits and words, so the prompt cannot drift from the verdict (plan 1.6).
 
 import { connective, evidence, reading, remedy, written } from "../inference";
-import { PEDESTAL_LIMIT } from "../metrics/flatten";
+import { FLATTEN_FLOOR_PERCENTILE, PEDESTAL_LIMIT } from "../metrics/flatten";
 import { BACK_FFT_R_OK, EVEN_PART, FLATTEN_FLOOR_SIGMA_NOTE, FLOOR_SIGMA_WHY, PEDESTAL_SHELLS, STAGE_NAMES, type Stage } from "../verdicts/rules";
 
 /** A stage as {{achieved}} names it, opening a sentence. */
@@ -70,7 +70,7 @@ bright_fill_fraction flags fills left implausibly bright${evidence(" (a peak not
 checkerboard_fraction ≈ 0.5 is random${evidence(`; approaching 1 signals a periodic interpolation
 artefact (a 'strange pattern')`)}.
 
-- flatten: the per-|Q|-shell low floor (25th percentile) of the backfilled (floor_before)
+- flatten: the per-|Q|-shell low floor (the run's own floor percentile, the ${FLATTEN_FLOOR_PERCENTILE}th by default) of the backfilled (floor_before)
 and flattened (floor_after) slice, averaged over the inner / middle / outer third of |Q|.
 ${reading("After a good flatten floor_after is near 0 in all three thirds; ")}after_floor_max_sigma (the
 largest |shell floor| in robust σ) is ${FLATTEN_FLOOR_SIGMA_NOTE}, in the flatten's verdict: ${FLOOR_SIGMA_WHY}. removed_fraction is the pedestal removed as a share of the level.
