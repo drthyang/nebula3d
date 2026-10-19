@@ -16,8 +16,7 @@ import { REPLAYED_THOUGH_LOCAL, RUN_AS_THEY_ARE } from "../evals/scripted";
 import { TASK } from "../evals/validation";
 import { CORE_TOOLS as DERIVED_CORE_TOOLS, toolsFor } from "../localTools";
 import { REPORT_TOOLS as DERIVED_REPORT_TOOLS } from "../report/collect";
-import { unreadSkillRefusal } from "../skills";
-import { CHAT_TOOLS, factsOf, toolsWhere, type AgentTool } from "../tools";
+import { CHAT_TOOLS, factsOf, toolsWhere, unreadSkillRefusal, type AgentTool } from "../tools";
 import type { HighlightKey } from "../tools/facts";
 import { SAMPLE_PARAMS, TUNE_PARAMS, TUNE_STAGES, type TuneStage } from "../tune/catalog";
 

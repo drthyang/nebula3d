@@ -11,6 +11,7 @@ import { HELDOUT_SCENARIOS } from "../evals/heldout";
 import { SCENARIOS } from "../evals/scenarios";
 import { toolsFor } from "../localTools";
 import collectSource from "../report/collect.ts?raw";
+import skillsSource from "../skills.ts?raw";
 import { CHAT_TOOLS, factsOf, toolSpecs, toolsWhere, type AgentTool } from "../tools";
 import { ASKED_ABOUT, VERDICT_TOPICS, type HighlightKey } from "../tools/facts";
 import { TUNE_STAGES } from "../tune/catalog";
@@ -105,6 +106,14 @@ describe("the declared facts", () => {
         expect((f.gate?.stages(args) ?? []).every((s) => TUNE_STAGES.includes(s)), what).toBe(true);
       }
     }
+  });
+});
+
+describe("the skill gate", () => {
+  it("is worded in skills.ts, which never imports the registry: the registry imports it, and the cycle would read SKILL_TREE before it is set", () => {
+    const imports = [...skillsSource.matchAll(/^import (?!type )[^;]*?from "([^"]+)"/gms)].map((m) => m[1]);
+    expect(imports.length).toBeGreaterThan(0);
+    for (const from of imports) expect(from, from).not.toMatch(/^\.\/tools(\/index)?$/);
   });
 });
 

@@ -58,7 +58,7 @@ import { qRadius } from "../context/pipelineContext";
 import type { ToolCall, ToolSpec } from "../provider/client";
 import { ALL_STAGES, keysOf, RECIP, resolveFacts, stageKey, type Facts, type ToolFacts } from "./facts";
 import { openView, type ViewTarget } from "./openView";
-import { allSkills, readSkill, REFERENCE_MAX_CHARS, unreadSkillRefusal } from "../skills";
+import { allSkills, readSkill, refusalFor, REFERENCE_MAX_CHARS } from "../skills";
 import { NOT_DECLARED, stageCheck, VERDICT_LABEL } from "../report/report";
 
 export type { ViewTarget } from "./openView";
@@ -1871,6 +1871,16 @@ export function factsOf(name: string): Facts {
 /** The names of the registry's tools whose facts pass `pred`, in the registry's order. */
 export const toolsWhere = (pred: (facts: Facts) => boolean): string[] =>
   CHAT_TOOLS.filter((t) => pred(factsOf(t.name))).map((t) => t.name);
+
+/**
+ * Why a call must wait, or null: a call to a tool with a skill gate (its
+ * facts' `gate`) waits until the skills of the stages it changes or tunes
+ * have been read in the conversation (skills.ts words it).
+ */
+export function unreadSkillRefusal(name: string, args: Args, read: ReadonlySet<string>): string | null {
+  const gate = factsOf(name).gate;
+  return gate ? refusalFor(gate.stages(args), gate.doing, read) : null;
+}
 
 // Only name, description and parameters: the facts never reach the model.
 export const toolSpecs = (tools: AgentTool[]): ToolSpec[] =>
