@@ -1,6 +1,6 @@
 // THY-18's parts one by one: which results are still evidence after a rerun
 // (evidence.ts), numbers by reference (references.ts) and the verdict on the
-// run computed from the checks (verdict.ts).
+// run computed from the checks (verdicts/, and the line under a reply, verdict.ts).
 
 import { describe, expect, it } from "vitest";
 
@@ -8,8 +8,10 @@ import type { AgentStep } from "../agent";
 import { overallContradiction, evidenceGaps } from "../answerChecks";
 import { recomputedAt } from "../evidence";
 import { fillReferences, resolveReference } from "../references";
-import { achievedFrom, type ReportCheck } from "../report/report";
-import { computedVerdict, verdictLine } from "../verdict";
+import { verdictLine } from "../verdict";
+import { verdicts } from "../verdicts";
+
+const computedVerdict = (steps: readonly AgentStep[]) => verdicts({ reply: steps }).achieved;
 
 let n = 0;
 const step = (name: string, result: unknown, args: Record<string, unknown> = {}, status: AgentStep["status"] = "done"): AgentStep => ({
@@ -108,7 +110,7 @@ describe("the verdict computed from the checks", () => {
     const stale = computedVerdict([all(), rerun({ rings: "reused", punch: "reused", backfill: "reused", flatten: "computed", pdf: "computed" })])!;
     expect(stale).toMatchObject({ achieved: null, notMeasured: ["the flatten", "the 3D-ΔPDF"] });
     expect(stale.text).toBe("not judged: not measured since it was last computed: the flatten, the 3D-ΔPDF");
-    // A result without its verdict label: judged by the report's rule from its numbers.
+    // A result without its verdict label: judged by the stage's rule from its numbers.
     const numbers = step("assess_stage", { flatten: { max_after_floor_sigma: 1.8, max_floor_trend: 0.975, max_floor_span_fraction: 0.971 } }, { stage: "flatten" });
     expect(computedVerdict([numbers])!.stages.flatten).toBe("attention");
     expect(computedVerdict([step("describe_dataset", {})])).toBeNull(); // nothing it rests on
@@ -150,17 +152,5 @@ describe("the line under a reply", () => {
       "From the checks: data problems no setting fixes: the HKL origin is shifted by (0.0305, 0.0195, 0) r.l.u.",
     );
     expect(verdictLine(null)).toBeNull();
-  });
-});
-
-describe("the report's goal", () => {
-  const check = (title: string, verdict: ReportCheck["verdict"]): ReportCheck => ({ title, verdict, headline: "", details: [] });
-  const stages = ["Ring removal", "Bragg punch", "Backfill", "Flatten", "3D-ΔPDF"];
-
-  it("is met only when every stage's check passes, and a second grain is the sample's, not the stages'", () => {
-    expect(achievedFrom(stages.map((t) => check(t, "pass")))).toEqual({ met: true, text: "met: every stage meets its goal" });
-    expect(achievedFrom([...stages.map((t) => check(t, "pass")), check("Second grain", "attention")]).met).toBe(true);
-    expect(achievedFrom(stages.map((t) => check(t, t === "Flatten" ? "attention" : "pass")))).toEqual({ met: false, text: "not met: needs attention: Flatten" });
-    expect(achievedFrom(stages.slice(0, 4).map((t) => check(t, "pass")))).toEqual({ met: null, text: "not judged: not measured: 3D-ΔPDF" });
   });
 });

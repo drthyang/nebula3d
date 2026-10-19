@@ -484,19 +484,21 @@ describe("qmax_coverage", () => {
     usePipelineStore.setState({ pdfQMax: "", pdfApod: "", pdfWindowShape: "", pdfWindowSupport: true });
   });
   const check = async () => JSON.parse((await run("qmax_coverage", {})).text);
+  const judged = async () => (await run("qmax_coverage", {})).outcomes?.[0];
 
   it("passes a window tapered to the measured coverage", async () => {
     const out = await check();
     expect(out.full_coverage_q).toBeLessThan(out.box_face_q);
     expect(out.reach_from).toBe("the window is tapered to the measured coverage");
-    expect(out.verdict).toMatch(/^the transform reaches .* inside full coverage/);
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["reach inside coverage"] });
   });
 
   it("flags a window that tapers only at the box faces past the coverage", async () => {
     usePipelineStore.setState({ pdfWindowSupport: false });
     const out = await check();
     expect(out.transform_reach_q).toBe(out.box_face_q);
-    expect(out.verdict).toMatch(/^too far: .* tapers to zero at the box faces/);
+    expect(out.reach_from).toBe("the window tapers to zero at the box faces");
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
   });
 
   it("gives where the raw counts begin and end, the band they allow, and checks a band that is set", async () => {
@@ -519,11 +521,12 @@ describe("qmax_coverage", () => {
 
   it("judges an explicit |Q| band, and a flat window by the box corners", async () => {
     usePipelineStore.setState({ pdfQMax: "0.1" });
-    expect((await check()).verdict).toMatch(/inside full coverage/);
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["reach inside coverage"] });
     usePipelineStore.setState({ pdfQMax: "", pdfApod: "none" });
     const flat = await check();
     expect(flat.transform_reach_q).toBe(6); // the ΔPDF's recorded q_max, the box corner
-    expect(flat.verdict).toMatch(/^too far: .* out to the box corners/);
+    expect(flat.reach_from).toMatch(/out to the box corners$/);
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
   });
 
   it("judges by the window's recorded weight on unmeasured space when the ΔPDF has it", async () => {
@@ -531,9 +534,11 @@ describe("qmax_coverage", () => {
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 1, window_open_weight: 4.1e-6 });
     const clean = await check();
     expect(clean.window_weight_on_unmeasured).toBe(4.1e-6);
-    expect(clean.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window puts 4.1e-6 of its weight/);
+    expect(clean.window_shape).toBe("ellipsoid");
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 1, window_open_weight: 4.1e-6 });
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["window within limit"] });
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 0.04 });
-    expect((await check()).verdict).toMatch(/^too far: the ΔPDF's separable window puts 0.04/);
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
   });
 
   // The dev coverage case (docs/pilot-review.md finding 7): counts cut at
@@ -548,10 +553,13 @@ describe("qmax_coverage", () => {
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
     api.fetchVolumeCoverage.mockResolvedValue(cut);
     await shrunk();
-    const out = await check();
+    const r = await run("qmax_coverage", {});
+    const out = JSON.parse(r.text);
     expect(out.counts_end_inside_box).toBe(true);
-    expect(out.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window \(shrunk to 0\.695 × to fit the coverage\) puts 9\.8e-4/);
-    expect(out.verdict).toMatch(/the raw counts end at 4\.507 Å⁻¹, inside the box \(its nearest face at 6\.444 Å⁻¹\), and no \|Q\| band is set.*the band they allow is 0–4\.5 Å⁻¹/);
+    expect(out.window_scale).toBe(0.695);
+    // The data's problem, and the verdict's note that only the taper keeps the transform on the counts.
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "pass", dataProblems: ["the counts end at 4.507 Å⁻¹, inside the box"] });
+    expect(out.verdict).toMatch(/raw counts end/);
     expect(out.band_check).toMatch(/the counts end at 4\.507 Å⁻¹, inside the box \(face 6\.444 Å⁻¹\): the band they allow is 0–4\.5 Å⁻¹$/);
     // With a band set inside the counts, the band does the work: nothing to add.
     usePipelineStore.setState({ pdfQMin: "0", pdfQMax: "4.5" });
@@ -592,7 +600,7 @@ describe("symmetry_check", () => {
     expect(out.cell).toBe("hexagonal");
     expect(out.symmetry_declared).toBe(true);
     expect(out.holds).toEqual(["two-fold (180°)"]);
-    expect(out.verdict).toMatch(/^not kept: six-fold/);
+    expect(r.outcomes).toMatchObject([{ check: "symmetry", kind: "attention", reasons: ["symmetry broken"], words: out.verdict }]);
     expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xy", 0);
   });
 
@@ -602,7 +610,7 @@ describe("symmetry_check", () => {
     const r = await runOn(full, "symmetry_check", {});
     const out = JSON.parse(r.text);
     expect(out.symmetry_declared).toBe(false);
-    expect(out.verdict).toMatch(/^not judged: the file declares no symmetry/);
+    expect(r.outcomes).toMatchObject([{ check: "symmetry", kind: "info", reasons: ["not declared"], words: out.verdict }]);
     expect(out.ops.length).toBeGreaterThan(0); // the numbers are still there
     expect(r.summary).toBe("no symmetry declared: not judged");
   });
@@ -662,7 +670,8 @@ describe("grain_check", () => {
     expect(out.off_lattice_peaks).toBe(8);
     expect(out.declared_symmetry).toBe("mmm");
     expect(out.near_bragg_nodes).toBe(8);
-    expect(out.verdict).not.toMatch(/^a second grain/);
+    expect(r.outcomes?.[0]).toMatchObject({ check: "grain", words: out.verdict });
+    expect(r.outcomes?.[0].reasons).not.toContain("second grain");
     expect((await run("grain_check", { top: 3 })).text).toMatch(/top must be within \[8, 120\]/);
   });
 

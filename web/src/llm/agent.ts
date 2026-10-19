@@ -18,7 +18,6 @@ import {
 } from "./provider/client";
 import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
 import { fillReferences } from "./references";
-import { computedVerdict, type ComputedVerdict } from "./verdict";
 import { compactResult, isCompacted } from "./compact";
 import { lastQuestion, toolsFor } from "./localTools";
 import { isLocalUrl } from "./provider/presets";
@@ -28,7 +27,7 @@ import { planWindow } from "./provider/window";
 import type { LlmSettings } from "./settings";
 import { factsOf, runToolCall, toolSpecs, type AgentTool, type ToolContext, type ViewTarget } from "./tools";
 import { openView } from "./tools/openView";
-import type { Outcome } from "./verdicts";
+import { verdicts, type ComputedVerdict, type Outcome } from "./verdicts";
 
 export interface AgentStep {
   id: string;
@@ -59,7 +58,7 @@ export interface AgentResult extends AgentProgress {
   // server reported them (null when it did not).
   usage?: (TokenUsage & { requests: number }) | null;
   // The verdict on the run computed from the checks this reply ran
-  // (verdict.ts): what "achieved" is, which the answer explains. Null when the
+  // (verdicts/): what "achieved" is, which the answer explains. Null when the
   // reply measured nothing it rests on.
   verdict?: ComputedVerdict | null;
 }
@@ -469,7 +468,7 @@ export async function runAgent({
   // on the run is computed from the checks, never taken from the words.
   const measured = steps.map((st) => (fullResults.has(st.id) ? { ...st, result: fullResults.get(st.id) } : st));
   content = fillReferences(content, measured).text;
-  const verdict = useTools ? computedVerdict(measured) : null;
+  const verdict = useTools ? verdicts({ reply: measured }).achieved : null;
   return {
     content,
     reasoning,

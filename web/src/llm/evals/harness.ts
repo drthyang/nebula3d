@@ -15,7 +15,7 @@ import type { PipelineContext } from "../context/pipelineContext";
 import { buildChatMessages } from "../prompts/templates";
 import type { Failure } from "../recovery";
 import type { LlmSettings } from "../settings";
-import type { ComputedVerdict } from "../verdict";
+import type { ComputedVerdict } from "../verdicts";
 import { CHAT_TOOLS, toolsWhere, type AgentTool } from "../tools";
 
 export interface EvalRun {
@@ -29,7 +29,7 @@ export interface EvalRun {
   failure?: Failure | null;
   latencyMs: number;
   usage: { input: number; output: number; cacheRead?: number; cacheWrite?: number; requests: number } | null; // null: the server did not say
-  verdict?: ComputedVerdict | null; // computed from the reply's checks (verdict.ts)
+  verdict?: ComputedVerdict | null; // computed from the reply's checks (verdicts/)
 }
 
 export interface Grade {

@@ -1,23 +1,10 @@
-// The verdict on a whole reply's run, computed from the deterministic checks:
-// is the reduction one the 3D-ΔPDF can be trusted from, and what problems do
-// the data have that no setting fixes? The model explains it; it never decides
-// it (THY-18). The answer quotes it as {{achieved}} (references.ts), the answer
-// checks hold a claim of success to it (answerChecks.ts), and the console shows
-// it under the reply.
-//
-// The check-verdict module computes it (verdicts/, the achieved reader): met
-// when every stage of the run, measured after it was last computed, meets its
-// goal, and none of the checks on the result that ran (the window against the
-// coverage, the symmetry, the fill's texture) needs attention. With a stage
-// not measured since it was computed, it is not judged.
+// The line under a reply: the verdict on its run, as the check-verdict module
+// computed it from the checks the reply ran (verdicts/, the achieved reader),
+// is the answer's {{achieved}} (references.ts), what the answer checks hold a
+// claim of success to (answerChecks.ts), and what the console shows under the
+// reply, here.
 
-import type { AgentStep } from "./agent";
-import { verdicts, type ComputedVerdict } from "./verdicts";
-
-export type { ComputedVerdict } from "./verdicts";
-
-/** The verdict on the run so far, or null when the reply measured nothing it rests on. */
-export const computedVerdict = (steps: readonly AgentStep[]): ComputedVerdict | null => verdicts({ reply: steps }).achieved;
+import type { ComputedVerdict } from "./verdicts";
 
 /**
  * The line under a reply: the verdict when the reply judged the run (met, or

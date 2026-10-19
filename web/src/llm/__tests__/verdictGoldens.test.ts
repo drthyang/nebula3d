@@ -23,7 +23,7 @@ import heldout from "../evals/fixtures/heldout.json";
 import hex90k from "../evals/fixtures/hex90k.json";
 import dev from "../evals/fixtures/validation-dev.json";
 import { buildReport, type Measured } from "../report/report";
-import { computedVerdict } from "../verdict";
+import { verdicts } from "../verdicts";
 import { CLAIMS, rerun, replyCases, reportCases, step, SUCCESS } from "./verdictGrid";
 
 const GOLDEN = "./__goldens__/verdicts.json";
@@ -32,7 +32,7 @@ type Obj = Record<string, unknown>;
 
 /** What a reply's verdicts are: the run's verdict, the claims the answer checks contradict, and a claimed success. */
 function replyOutputs(steps: readonly AgentStep[]): Obj {
-  const verdict = computedVerdict(steps);
+  const verdict = verdicts({ reply: steps }).achieved;
   const success = overallContradiction(SUCCESS, verdict);
   return {
     verdict,

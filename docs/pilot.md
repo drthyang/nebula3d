@@ -46,16 +46,17 @@ Each is described under [How it works](#how-it-works).
   to the model, and one still unfilled stays as written, with a note
   (`references.ts`).
 - **Verdicts are computed, not self-graded.** `assess_stage` returns each
-  stage's verdict with the rule behind it, by the report's own criteria. The
+  stage's verdict with the rule behind it, by the check's rule in the
+  check-verdict module (`verdicts/`), which the report reads too. The
   verdict on the whole run, `{{achieved}}`, is computed from the checks the
   reply ran: met when every stage, measured as it now is, meets its goal and
   no check on the result needs attention; not met, naming what needs it; or
   not judged, naming the stages not measured. The data's problems that no
   setting fixes (a turned UB, a shifted origin, counts that end inside the
   box) are listed with it. It shows under a reply that judged the run (or
-  found such a problem) and heads the report, and
+  found such a problem) and the report heads its own, and
   an answer that calls the run a success it does not give goes back to the
-  model to quote it (`verdict.ts`).
+  model to quote it (`verdicts/`, `verdict.ts`).
 - **Skills come first.** A stage's settings change, and the stage is tuned,
   only after its skill has been read in the conversation.
 - **Tuning cannot touch your results.** Each trial runs in its own folder,
@@ -189,7 +190,7 @@ reads a final answer, the agent loop checks it three ways:
   precision. A number found nowhere is listed.
 - **Verdicts computed, not self-graded.** `assess_stage` returns each stage's
   verdict (*meets its goal*, *needs attention*) with the rule behind it, by the
-  report's own criteria. An answer that contradicts a tool's verdict is caught:
+  check-verdict module's rules. An answer that contradicts a tool's verdict is caught:
   a stage called clean that needs attention, a second grain that `grain_check`
   rules out, or a UB called right that `ub_check` turned or could not judge on a
   symmetrised volume.
@@ -238,6 +239,21 @@ miss is a note.
     pedestal the σ test hides beside strong diffuse structure.
   - `dpdf.ts` — feature SNR vs background, strong-feature anisotropy (covariance
     ratio + orientation), radial trend, and back-FFT consistency pass-through.
+- **`verdicts/`** — the check-verdict module: what each check's measurements
+  mean. Each check (the five stages, the window against the coverage, the
+  symmetry, the fill's texture, a second grain, the UB) has one entry in
+  `rules.ts` with its rule, the words its tool writes, the criterion the rule
+  is stated as and a stage's goal. The tools that judge call `judge`, which
+  gives an outcome: met, needs attention or not judged, with its reasons and
+  the data's problems no setting fixes. The outcome travels beside the tool's
+  result, never in the text the model reads. `verdicts` reads a run's
+  outcomes: a reply's for `{{achieved}}` and the answer checks, a report's for
+  its cards and its goal. A result recorded without its outcomes (a replay, a
+  validation record) is read from its words and numbers (`recorded.ts`).
+  Where two readers read the same check differently, the reader matrix
+  (`readers.ts`, and `rules.ts` for the rules' own) names the rule, D1 to D18,
+  and its comment says the one line that would make them agree; a test pins
+  each, and the user decides them one by one.
 - **`context/`** — `loadContext.ts` fetches one cut through every stage (H–K at
   L=0 and the ΔPDF z=0 section by default, any cut on request) plus the run's
   records; `pipelineContext.ts` folds the metrics into the budgeted JSON
@@ -378,8 +394,10 @@ miss is a note.
   `describe_dataset`, `assess_stage` for every stage, `texture_check`,
   `qmax_coverage`, `symmetry_check`, and `grain_check` once the punch has run),
   so its numbers never depend on which tools
-  the model called or on its wording. `report/report.ts` judges each stage by
-  its stated goal (`tune/prompts.ts`) and lists every miss as a caveat.
+  the model called or on its wording. The check-verdict module judges each
+  card from the outcomes those tools return (`verdicts/`, the report's reader),
+  and `report/report.ts` assembles the cards' headlines and details around
+  them and lists every miss as a caveat.
   `report/figures.ts` draws the cleanup stages on one shared scale and the
   ΔPDF sections with the page's Auto, axes at their real angle.
   `report/render.ts` writes it as a self-contained HTML page (inline styles

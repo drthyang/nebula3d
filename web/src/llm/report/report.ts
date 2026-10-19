@@ -2,10 +2,12 @@
 // Every number in it comes from the same deterministic measurements the agent's
 // tools run (collect.ts runs them again for the report), never from the model's
 // text; the model's own answer goes in as a clearly labelled narrative.  This
-// module only assembles: it is pure, so the report can be tested end to end.
+// module only assembles: each card's verdict and the goal are the check-verdict
+// module's (verdicts/, the report's reader), and this one writes the headlines
+// and details around them. It is pure, so the report can be tested end to end.
 
 import type { ParamValue } from "../tune/catalog";
-import { judge, verdicts, WORDS, type Kind, type Outcome } from "../verdicts";
+import { verdicts, WORDS, type Kind, type Outcome } from "../verdicts";
 
 /** A check's verdict: its outcome's kind (verdicts/). */
 export type Verdict = Kind;
@@ -67,31 +69,11 @@ export interface Report {
   tuning: ReportTuningStage[] | null;
   checks: ReportCheck[];
   // Whether the reduction met its goal, computed from the checks above (every
-  // stage meets its goal), never from the model's words.
+  // stage meets its goal), never from the model's words (verdicts/readers.ts).
   achieved: { met: boolean | null; text: string };
   figures: ReportFigure[];
   narrative: string;
   caveats: string[];
-}
-
-/** The stage checks "achieved" rests on, by title. */
-const STAGE_TITLES = ["Ring removal", "Bragg punch", "Backfill", "Flatten", "3D-ΔPDF"];
-
-/**
- * Whether the reduction met its goal, from the report's checks: met when every
- * stage's check passes, not met when one needs attention (named), not judged
- * when a stage was not measured. The report's counterpart of the verdict the
- * chat computes from the reply's checks (verdict.ts).
- */
-export function achievedFrom(checks: readonly ReportCheck[]): { met: boolean | null; text: string } {
-  const of = (title: string) => checks.find((c) => c.title === title);
-  // The stages' checks (the 3D-ΔPDF's holds its window and symmetry, the
-  // backfill's its texture); a second grain is the sample's, reported apart.
-  const attention = checks.filter((c) => STAGE_TITLES.includes(c.title) && c.verdict === "attention").map((c) => c.title);
-  const notJudged = STAGE_TITLES.filter((t) => !of(t) || of(t)!.verdict === "info");
-  if (attention.length) return { met: false, text: `not met: needs attention: ${attention.join(", ")}` };
-  if (notJudged.length) return { met: null, text: `not judged: not measured: ${notJudged.join(", ")}` };
-  return { met: true, text: "met: every stage meets its goal" };
 }
 
 // ---------------------------------------------------------------- inputs
@@ -333,39 +315,6 @@ const kindOf = (steps: ReportStep[]): string => {
   if (names.has("assess_stage")) return "Assessment";
   return "Analysis";
 };
-
-/**
- * One stage's check from its evaluation (what assess_stage measures), by the
- * report's own rules: the verdict the tools compute and the model quotes.
- */
-export function stageCheck(stage: "rings" | "punch" | "backfill" | "flatten" | "pdf", m: Obj): ReportCheck | null {
-  switch (stage) {
-    case "rings":
-      return ringsCheck(m, judge("rings", m).kind, CRITERIA.rings);
-    case "punch":
-      return punchCheck(m, judge("punch", m).kind, CRITERIA.punch);
-    case "backfill":
-      // A stage's evaluation measures no fill bias (texture_check does): its
-      // criterion says only what it judges.
-      return backfillCheck(m, null, judge("backfill", m).kind, judge("backfill", m).criterion);
-    case "flatten":
-      return flattenCheck(m, judge("flatten", m).kind, CRITERIA.flatten);
-    case "pdf":
-      // The evaluation's worst in-plane symmetry break, judged as symmetry_check
-      // judges each operation.
-      return pdfCheck(m, null, symmetryOf(m), judge("pdf", m).kind, CRITERIA.pdf);
-  }
-}
-
-/** symmetry_check's verdict, by its rule, from a ΔPDF evaluation's worst in-plane break (null without one). */
-function symmetryOf(m: Obj): Obj | null {
-  const worst = num(m.max_symmetry_break);
-  if (worst == null) return null;
-  // A file that declares no symmetry was not symmetrised: the section's
-  // asymmetry is the data's own, and no stage broke anything (docs/pilot-review.md).
-  const ops = [{ op: String(m.worst_symmetry_op ?? "an in-plane operation"), rms_difference: worst }];
-  return { verdict: judge("symmetry", { ops, declared: m.symmetry_declared === false ? null : undefined }).words };
-}
 
 export function buildReport(input: ReportInput): Report {
   const m = input.measured;
