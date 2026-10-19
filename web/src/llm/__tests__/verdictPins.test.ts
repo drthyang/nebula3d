@@ -64,14 +64,22 @@ describe("D1–D10, kept and named", () => {
     expect(after.achieved?.attention).toEqual([]);
   });
 
-  it("D2: the report's ΔPDF card reads the coverage's weight, never its verdict; {{achieved}} reads the verdict", () => {
-    expect(D2_REPORT_COVERAGE_BY_WEIGHT_ONLY).toBe(true);
+  it("D2, unified (2.4.2): the report's ΔPDF card counts the coverage's \"too far\", as {{achieved}} does", () => {
+    expect(D2_REPORT_COVERAGE_BY_WEIGHT_ONLY).toBe(false);
     const reach = { verdict: "too far: the transform reaches 9.1 Å⁻¹ (the window tapers to zero at the box faces), past full coverage at 6.5 Å⁻¹", window_weight_on_unmeasured: null };
     const measured: Measured = { ...PASSING, coverage: reach };
-    expect(verdicts({ report: measured }).checks.pdf).toBe("pass");
+    expect(verdicts({ report: measured }).checks.pdf).toBe("attention");
     expect(chatOf(measured)?.attention).toEqual(["the ΔPDF window against the coverage"]);
-    // Its weight, where the evaluation records none, it does read.
+    // A weight past the limit, though the evaluation's own is within it.
+    const tooFar = { ...PASSING, coverage: { verdict: "too far: the ΔPDF's separable window puts 0.04 of its weight on unmeasured reciprocal space", window_weight_on_unmeasured: 0.04 } };
+    expect(verdicts({ report: tooFar }).checks.pdf).toBe("attention");
+    expect(chatOf(tooFar)?.attention).toEqual(["the ΔPDF window against the coverage"]);
+    // Its weight, where the evaluation records none, it reads as before.
     expect(verdicts({ report: { ...PASSING, pdf: { back_fft_pearson_r_even: 1 }, coverage: { verdict: "too far: …", window_weight_on_unmeasured: 0.04 } } }).checks.pdf).toBe("attention");
+    // Words no producer wrote are no "too far" to either reader (D10 keeps them apart for the answer checks).
+    const legacy: Measured = { ...PASSING, coverage: { verdict: "past full coverage: the window reaches the box corners" } };
+    expect(verdicts({ report: legacy }).checks.pdf).toBe("pass");
+    expect(chatOf(legacy)?.attention).toEqual([]);
   });
 
   it("D3: grain_check counts for nothing in {{achieved}}, decides the grain topic by a second grain only, and never the UB", () => {
@@ -255,7 +263,7 @@ function replyOf(m: Measured): AgentStep[] {
 
 const chatOf = (m: Measured) => verdicts({ reply: replyOf(m) }).achieved;
 
-type Rule = "D2" | "D9" | "D13" | "D14";
+type Rule = "D9" | "D13" | "D14";
 
 /** The grid's measurements, one change from passing at a time, tagged with the rule that makes the two goals differ there. */
 function cases(): { id: string; m: Measured; differs?: Rule }[] {
@@ -265,8 +273,7 @@ function cases(): { id: string; m: Measured; differs?: Rule }[] {
     for (const x of STAGE_VARIANTS[s]) out.push({ id: `${s} ${x.id}`, m: { ...PASSING, [s]: x.m }, differs: s === "pdf" && d13.has(x.id) ? "D13" : undefined });
     out.push({ id: `no ${s}`, m: { ...PASSING, [s]: null }, differs: s === "pdf" ? "D9" : undefined });
   }
-  const d2 = new Set(["too far by weight", "too far at 1.04e-3", "reach past", "upper case"]);
-  for (const x of COVERAGE) out.push({ id: `coverage ${x.id}`, m: { ...PASSING, coverage: x.m }, differs: d2.has(x.id) ? "D2" : undefined });
+  for (const x of COVERAGE) out.push({ id: `coverage ${x.id}`, m: { ...PASSING, coverage: x.m } });
   for (const x of SYMMETRY) out.push({ id: `symmetry ${x.id}`, m: { ...PASSING, symmetry: x.m } });
   for (const x of TEXTURE) out.push({ id: `texture ${x.id}`, m: { ...PASSING, texture: x.m } });
   for (const x of GRAIN) out.push({ id: `grain ${x.id}`, m: { ...PASSING, grains: x.m } });
