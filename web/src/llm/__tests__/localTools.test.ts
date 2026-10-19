@@ -45,6 +45,14 @@ describe("toolsFor", () => {
     expect(size(toolsFor("Is the powder-ring removal clean on this run?", CHAT_TOOLS))).toBeLessThan(0.6 * size(CHAT_TOOLS));
   });
 
+  it("offers a generic question ub_check and texture_check, which the method's checks need (Q10, 2.4.10)", () => {
+    const generic = offered("How clean is this reduction?");
+    expect(generic).toEqual(expect.arrayContaining(["assess_stage", "qmax_coverage", "symmetry_check", "texture_check", "ub_check"]));
+    // A question about something else does without them, as before.
+    expect(offered("What are the strongest pair correlations in the 3D-ΔPDF?")).not.toEqual(expect.arrayContaining(["ub_check"]));
+    expect(offered("What are the strongest pair correlations in the 3D-ΔPDF?")).not.toContain("texture_check");
+  });
+
   it("offers the ΔPDF's feature list to a question about its pair correlations", () => {
     expect(offered("What are the strongest pair correlations in the 3D-ΔPDF, with their vectors and signs?")).toContain("dpdf_peaks");
     expect(offered("Which correlations does the data show?")).toContain("dpdf_peaks");

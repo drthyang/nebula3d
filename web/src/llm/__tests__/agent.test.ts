@@ -418,7 +418,8 @@ describe("runAgent", () => {
 
     it("offers the tool a revision asks for", async () => {
       const seen = script([[{ content: "The backfill is clean." }], [{ content: "Checked." }]]);
-      await runAgent({ messages: [{ role: "user", content: "How does it look?" }], tools, ctx, settings, signal: new AbortController().signal });
+      // A question about the flatten: a generic one is offered texture_check from the start (Q10).
+      await runAgent({ messages: [{ role: "user", content: "How does the flatten look?" }], tools, ctx, settings, signal: new AbortController().signal });
       expect(specNames(seen[0].tools)).toEqual(["assess_stage"]);
       expect(specNames(seen[1].tools)).toEqual(["assess_stage", "texture_check"]); // the backfill's evidence
     });
