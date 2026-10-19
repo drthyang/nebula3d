@@ -216,16 +216,27 @@ def dpdf_slice_envelope(path: Path, plane: str, value: float) -> bytes:
     return struct.pack("<I", len(hb)) + hb + data2d.tobytes()
 
 
-def dpdf_features(path: Path, min_sigma: float = 5.0, limit: int = 12) -> dict:
+def dpdf_features(path: Path, min_sigma: float = 5.0, limit: int = 12, *,
+                  declared_by: Path | None = None) -> dict:
     """The ΔPDF's strongest extrema, grouped
     (:func:`nebula3d.analysis.dpdf_features.strongest_features`), with each
-    vector in Å along a, b, c and in lattice units."""
+    vector in Å along a, b, c and in lattice units.
+
+    *declared_by* is the file that declares the point group the data were
+    symmetrised with: the dataset's raw input
+    (:func:`nebula3d.server.datasets.raw_input_of`), whose ``symmetry`` and
+    ``symmetry_ops`` the volume meta reports too. With operations declared
+    there, the extrema are grouped by them, in the cell this ΔPDF records;
+    without, by sign, length and size. ``grouped_by`` says which."""
     from nebula3d.analysis.dpdf_features import strongest_features
+    from nebula3d.server.volumes import declared_symmetry
 
     d = load_dpdf(path)
-    f = strongest_features(d.data, d.x_axis, d.y_axis, d.z_axis, d.cell_angles,
-                           min_sigma=min_sigma, limit=limit)
     cell = (d.lat_a, d.lat_b, d.lat_c)
+    label, ops = declared_symmetry(declared_by) if declared_by is not None else (None, None)
+    f = strongest_features(d.data, d.x_axis, d.y_axis, d.z_axis, d.cell_angles,
+                           min_sigma=min_sigma, limit=limit, symmetry_ops=ops,
+                           symmetry_label=label, cell_lengths=cell)
 
     def clean(x: float, digits: int) -> float:
         return round(float(x), digits) + 0.0  # no −0.0
@@ -240,13 +251,16 @@ def dpdf_features(path: Path, min_sigma: float = 5.0, limit: int = 12) -> dict:
         "min_sigma": float(f.min_sigma),
         "origin_radius": float(f.origin_radius),
         "n_extrema": f.n_extrema,
+        "grouped_by": f.grouped_by,
         "groups": [
             {
                 "sign": g.sign,
                 "length": clean(g.length, 4),
                 "size_sigma": clean(g.size_sigma, 4),
+                "mean_size_sigma": clean(g.mean_size_sigma, 4),
                 "value": float(g.value),
                 "n": g.n,
+                "multiplicity": g.multiplicity,
                 "vectors": [[clean(x, 4) for x in v] for v in g.vectors],
                 "vectors_rlu": [lattice_units(v) for v in g.vectors],
                 "sizes_sigma": [clean(x, 4) for x in g.sizes_sigma],

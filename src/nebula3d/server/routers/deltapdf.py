@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from nebula3d.server.config import ServerConfig
-from nebula3d.server.datasets import StageStatus, resolve_volume
+from nebula3d.server.datasets import StageStatus, raw_input_of, resolve_volume
 from nebula3d.server.deltapdf import DPDF_PLANES, dpdf_features, dpdf_meta, dpdf_slice_envelope
 from nebula3d.server.deps import get_config
 from nebula3d.server.schemas import DeltaPdfMetaOut, DpdfFeaturesOut, LatticeOut
@@ -60,7 +60,9 @@ def features(
     limit: int = Query(12, ge=1, le=60),
     cfg: ServerConfig = Depends(get_config),
 ) -> DpdfFeaturesOut:
-    """The ΔPDF's strongest extrema outside the origin's disk, grouped by sign,
-    length and size (see analysis.dpdf_features)."""
+    """The ΔPDF's strongest extrema outside the origin's disk, grouped by the
+    point group the dataset's raw file declares, else by sign, length and size
+    (see analysis.dpdf_features)."""
     stage = _resolve_dpdf(cfg, volume_id)
-    return DpdfFeaturesOut(id=volume_id, **dpdf_features(stage.path, min_sigma, limit))
+    return DpdfFeaturesOut(id=volume_id, **dpdf_features(
+        stage.path, min_sigma, limit, declared_by=raw_input_of(cfg, volume_id)))

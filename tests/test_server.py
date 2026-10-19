@@ -647,9 +647,47 @@ def test_dpdf_features_lists_extrema_in_angstrom_and_lattice_units(dpdf_env):
             # lattice units to 4 decimals: within 0.5e-4 of a cell edge (24.7 Å)
             assert [u[0] * 5.8, u[1] * 10.4, u[2] * 24.7] == pytest.approx(v, abs=2e-3)
             assert g["length"] >= f["origin_radius"]
+    # No raw file, so no symmetry declared: grouped by sign, length and size.
+    assert f["grouped_by"] == "sign, length and size (no symmetry declared)"
+    assert all(g["multiplicity"] is None and 1 <= g["mean_size_sigma"] <= g["size_sigma"]
+               for g in f["groups"])
     url = f"/api/deltapdf/{SLUG}.delta_pdf/features"
     assert client.get(url, params={"min_sigma": 0}).status_code == 422
     assert client.get(url, params={"limit": 0}).status_code == 422
+
+
+@pytest.mark.parametrize("declared", [True, False])
+def test_dpdf_features_are_grouped_by_the_symmetry_the_raw_file_declares(tmp_path, declared):
+    """The raw file declares m-3m (a NeXus Viewer export's symmetry and
+    symmetry_ops): the ΔPDF's peaks on two m-3m orbits, their copies unequal,
+    are two entries, each of its multiplicity. Declaring nothing, they are
+    grouped by sign, length and size, which splits the unequal copies."""
+    from tests.test_dpdf_features import M3M, write_declared_dataset
+
+    write_declared_dataset(tmp_path, STEM, ("m-3m", M3M) if declared else None)
+    dpdf_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    r = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/features", params={"min_sigma": 8, "limit": 30})
+    assert r.status_code == 200, r.text
+    f = r.json()
+    assert f["n_extrema"] == 27  # 24 + 3, one per ± pair
+    if not declared:
+        assert f["grouped_by"] == "sign, length and size (no symmetry declared)"
+        assert len(f["groups"]) > 2 and sum(g["n"] for g in f["groups"]) == 27
+        return
+    assert f["grouped_by"] == "declared symmetry (m-3m: 48 operations, r ≡ −r)"
+    assert [(g["sign"], g["n"], g["multiplicity"]) for g in f["groups"]] == [(1, 24, 24),
+                                                                             (-1, 3, 3)]
+    general, axial = f["groups"]
+    assert general["size_sigma"] == max(general["sizes_sigma"]) > general["mean_size_sigma"]
+    # The representative first, in Å and in lattice units; ⟨1 0 0⟩ at a = 4 Å.
+    assert general["vectors_rlu"][0] == pytest.approx([x / 4.0 for x in general["vectors"][0]],
+                                                      abs=1e-4)
+    for u in general["vectors_rlu"]:
+        assert sorted(abs(x) for x in u) == pytest.approx([0.25, 0.5, 0.75], abs=0.03)
+    for u in axial["vectors_rlu"]:
+        assert sorted(abs(x) for x in u) == pytest.approx([0.0, 0.0, 1.0], abs=0.03)
+    assert axial["length"] == pytest.approx(4.0, abs=0.05)
 
 
 def test_dpdf_bad_plane_400(dpdf_env):
