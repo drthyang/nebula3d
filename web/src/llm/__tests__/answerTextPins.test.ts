@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentStep } from "../agent";
 import { clauses, contradictions, W1_GATE_SPLITS_AT_DASHES, W2_GATE_NEGATES_ABSENCE, W9_GATE_READS_CURLY_APOSTROPHE } from "../answerChecks";
 import { readAnswer } from "../answerText";
+import { sharedReader } from "../evals/graderReading";
 
 let n = 0;
 const step = (name: string, result: unknown, args: Record<string, unknown> = {}): AgentStep => ({ id: `w${n++}`, name, args, status: "done", result: JSON.stringify(result) });
@@ -33,6 +34,7 @@ describe("the answer checks' reading, kept and named", () => {
     const text = "Five orbits are too few to show a second grain.";
     expect(contradicted(text, NO_GRAIN)).toEqual(["grain"]);
     expect([...graderCues(text)]).toEqual(["absence"]);
+    expect(sharedReader(text).sentences[0].negated).toBe(true);
   });
 
   it("the curly apostrophe: the answer checks read “isn’t” as no negation (their blind spot until after the validation); the graders as “isn't”", () => {
@@ -40,5 +42,6 @@ describe("the answer checks' reading, kept and named", () => {
     expect(contradicted("The UB isn’t off by 0.4°.", UB_RIGHT)).toEqual(["ub"]);
     expect(contradicted("The UB isn't off by 0.4°.", UB_RIGHT)).toEqual([]);
     expect(graderCues("The UB isn’t off by 0.4°.").has("negation")).toBe(true);
+    expect(sharedReader("The UB isn’t off by 0.4°.").clauses[0].negated).toBe(true);
   });
 });

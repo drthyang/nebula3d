@@ -57,6 +57,24 @@ describe("the witness's reading", () => {
     expect(witness("No ring is left.").sentences[0].negated).toBe(true);
     expect(witness("Too few orbits to show a second grain.").sentences[0].negated).toBe(true);
     expect(witness("No, a ring is left at 7.2 Å⁻¹.").sentences[0].negated).toBe(false);
+    expect(witness("No, a ring is left at 7.2 Å⁻¹.").clauses[0].negated).toBe(false);
+  });
+
+  it("takes a sentence's answer word off its clauses, and keeps it in the sentence", () => {
+    const read = witness("No: the window reaches past the coverage; it should not. Yes — it is fine.");
+    expect(texts(read.clauses)).toEqual(["the window reaches past the coverage", "it should not.", "it is fine."]);
+    expect(read.sentences[0].text).toBe("No: the window reaches past the coverage; it should not.");
+    // Only a sentence's own: after a semicolon, "no" negates.
+    expect(witness("The rings were checked; no, a ring is left.").clauses.map((c) => c.negated)).toEqual([false, true]);
+  });
+
+  it("cuts a clause at a colon after a label of more than three words, not after a shorter one", () => {
+    expect(texts(witness("The UB is not the problem: the HKL origin is shifted.").clauses)).toEqual(["The UB is not the problem", "the HKL origin is shifted."]);
+    expect(texts(witness("Ring removal: clean.").clauses)).toEqual(["Ring removal: clean."]);
+  });
+
+  it("reads a curly apostrophe as a straight one", () => {
+    expect(witness("The UB isn’t turned.").clauses[0].negated).toBe(true);
   });
 
   it("reads numbers however a model writes them", () => {

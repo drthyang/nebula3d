@@ -286,6 +286,14 @@ describe("grading what a run reported", () => {
     expect(pass(detectionChecks(ub), run("The UB is not turned; the data are fine at 0.6 Å⁻¹."))).toBe(false);
   });
 
+  it("reads a claim after a long label's colon apart from the label, as the answer checks do (the dev-origin colon case)", () => {
+    const origin = caseNamed("dev-origin")!;
+    // The label's negation is its own: the origin's shift is claimed after it.
+    expect(pass(detectionChecks(origin), run("The UB is not the problem: the HKL origin is shifted by (0.03, 0.02, 0) r.l.u."))).toBe(true);
+    // A short label stays with its clause.
+    expect(pass(detectionChecks(origin), run("Origin: not shifted."))).toBe(false);
+  });
+
   it("does not charge a run with a fault for reporting what a tool checked or what it changed", () => {
     const control = caseNamed("dev-control")!;
     for (const said of [

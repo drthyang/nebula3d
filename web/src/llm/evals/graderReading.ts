@@ -5,10 +5,15 @@
 // it asks, the numbers it writes and the angles among them, and every number
 // the answer writes.
 //
-// One adapter for now: the witness (witness.ts), the graders' own parse.
+// Two adapters:
+// - the shared reader, over the one reader of an answer's words
+//   (answerText/), which the answer checks read too: what the graders grade by;
+// - the witness (witness.ts), an independent minimal parse with the same
+//   rules written apart.
 
+import { readAnswer, type Span } from "../answerText";
 import type { Check, EvalRun } from "./harness";
-import { witness } from "./witness";
+import { witnessNumbers } from "./witness";
 
 export interface GradedSpan {
   text: string; // as written (a sentence's with its answer word)
@@ -27,8 +32,24 @@ export interface GradedAnswer {
 
 export type GraderReader = (answer: string) => GradedAnswer;
 
-/** The reader the graders read an answer by. */
-export const graderReader: GraderReader = witness;
+/** A span as the graders read it: a negation or an absence negates (W2). */
+function graded(s: Span): GradedSpan {
+  const numbers = witnessNumbers(s.text);
+  return { text: s.text, negated: s.cues.has("negation") || s.cues.has("absence"), tentative: false, question: false, numbers, angles: numbers };
+}
+
+/**
+ * The shared reader: the answer read by answerText/ with its own options (a
+ * clause ends at a spaced dash too, W1; a curly apostrophe reads as a
+ * straight one), the answer word apart as the answer checks read it.
+ */
+export const sharedReader: GraderReader = (answer) => {
+  const read = readAnswer(answer);
+  return { sentences: read.sentences.map(graded), clauses: read.clauses.map(graded), numbers: witnessNumbers(answer) };
+};
+
+/** The reader the graders grade by. */
+export const graderReader: GraderReader = sharedReader;
 
 /** What a check decides of an answer, read, in its run. */
 export type Decide = (answer: GradedAnswer, run: EvalRun) => { pass: boolean; detail: string };
