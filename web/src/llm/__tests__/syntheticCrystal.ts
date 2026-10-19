@@ -14,6 +14,7 @@ import type {
   Dataset,
   DeltaPdfMeta,
   DpdfFeatures,
+  RingDiagnostics,
   RingIsotropy,
   Slice,
   UbCheck,
@@ -35,6 +36,7 @@ export type BackendMocks = Record<
   | "fetchDpdfMeta"
   | "fetchDpdfSlice"
   | "fetchMeta"
+  | "fetchRingDiagnostics"
   | "fetchRingIsotropy"
   | "fetchSlice"
   | "fetchUbCheck"
@@ -370,6 +372,15 @@ const ringIsotropy = (id: string, shells: { q: number; fwhm: number }[]): RingIs
   }),
 });
 
+// What the ring removal recorded: the powder ring confirmed, none left unconfirmed.
+const ringDiagnostics = (id: string): RingDiagnostics => ({
+  dataset_id: id,
+  diagnostics_path: `processed/${id}_ringremoved_diagnostics.json`,
+  has_diagnostics: true,
+  status: "fitted",
+  unconfirmed_at_grid: null,
+});
+
 /** Answer every mocked API call from the crystal. */
 export function installBackend(api: BackendMocks): void {
   const stemOf = (id: string) => id.split(".")[0];
@@ -389,6 +400,8 @@ export function installBackend(api: BackendMocks): void {
   api.fetchUbCheck.mockImplementation(async (id: string) => ({ ...UB_CHECK, id }));
   api.fetchDpdfFeatures.mockImplementation(async (id: string) => ({ ...DPDF_FEATURES, id }));
   api.fetchRingIsotropy.mockImplementation(async (id: string, shells: { q: number; fwhm: number }[]) => ringIsotropy(id, shells));
+  // The grid is fine (0.0625 r.l.u., 0.098 Å⁻¹ a voxel): the ring removal left no ring unconfirmed.
+  api.fetchRingDiagnostics.mockImplementation(async (id: string) => ringDiagnostics(id));
   api.fetchDataset.mockImplementation(async (id: string) => DATASETS.find((d) => d.id === stemOf(id)));
 }
 

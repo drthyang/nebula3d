@@ -23,6 +23,8 @@
 
 import { describe, expect, it } from "vitest";
 
+import { fetchRingDiagnostics } from "../../../api/client";
+import { withoutInference } from "../../inference";
 import { bridgeConfig } from "./bridgeWorker";
 import { devCase, type DevCase, type DevCaseId, type ToolRunResult } from "./index";
 
@@ -190,6 +192,49 @@ for (const id of ["dev-rings", "dev-rings-shell"] as const) {
       const extra = shells.filter((s) => s.ring && !c.truth.ring_q!.some((q) => near(q)(s)));
       const msg = evidence(c, { shells_judged: shells, rings_not_planted: extra });
       expect(extra, msg).toEqual([]);
+    });
+  });
+}
+
+// The ring removal's notice (G1): on a grid too coarse to confirm a ring, the
+// removal subtracts none of the rings it detected and says so out loud, with
+// how many, what the grid needs and the two ways out, in its run log line, its
+// record (the diagnostics) and the ring check's result; arm C reads it without
+// the remedy. On a grid fine enough it leaves no ring unconfirmed, and says
+// nothing of the kind. The planted rings are among those it detected.
+const NOTICE =
+  /^(\d+) rings? detected but not confirmed at this grid \(needs ≥ 1 voxel across 0\.16 Å⁻¹\); not subtracted\. Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring\.$/;
+
+for (const id of ["dev-rings", "dev-rings-shell"] as const) {
+  describe(`${id}: the rings the removal could not confirm, said out loud`, () => {
+    const name = tooCoarse("rings")
+      ? `the ring removal says how many rings it left unconfirmed at n=${n}, the planted ones among them, in its log, its record and the ring check`
+      : `the ring removal leaves no ring unconfirmed at n=${n}, and says nothing of the kind`;
+    check(id, name, async () => {
+      const c = devCase(id);
+      const log = ran(await c.tool("run_log", { stage: "rings" }), "run_log");
+      const done = (log.result.lines as { status: string; message: string }[]).filter((l) => l.status === "done").pop()?.message ?? "";
+      const rings = ran(await c.tool("assess_stage", { stage: "rings" }), "assess_stage rings").result.rings as Record<string, unknown>;
+      const left = (await fetchRingDiagnostics((await c.dataset()).id)).unconfirmed_at_grid;
+      const msg = evidence(c, { ring_log: done, notice: rings.notice ?? null, unconfirmed_at_grid: left });
+      if (!tooCoarse("rings")) {
+        expect(done, msg).toMatch(/^pooled ring removal /);
+        expect(done, msg).not.toContain("⚠");
+        expect(rings, msg).not.toHaveProperty("notice");
+        expect(left, msg).toBeNull();
+        return;
+      }
+      const notice = done.split(". ⚠ ")[1] ?? "";
+      const said = NOTICE.exec(notice);
+      expect(said, msg).not.toBeNull();
+      expect(rings.notice, msg).toBe(notice);
+      expect(left, msg).toMatchObject({ count: Number(said![1]), needs: "1 voxel across 0.16 Å⁻¹", notice });
+      expect(left!.q_centers.length, msg).toBe(left!.count);
+      for (const q of c.truth.ring_q!) expect(left!.q_centers.some((x) => Math.abs(x - q) <= SAME_Q), `${msg} (no ${q} among them)`).toBe(true);
+      // Arm C reads the notice without its remedy, in the ring check's result and the run log.
+      const definition = notice.slice(0, notice.indexOf(" Use a finer grid"));
+      expect((withoutInference(rings) as Record<string, unknown>).notice, msg).toBe(definition);
+      expect(withoutInference(done), msg).toBe(done.replace(notice, definition));
     });
   });
 }

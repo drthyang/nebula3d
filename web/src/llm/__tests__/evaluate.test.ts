@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchSlice: vi.fn(),
 }));
@@ -178,6 +179,40 @@ describe("evaluateStage", () => {
     expect(api.fetchRingIsotropy).toHaveBeenCalledWith("demo.raw", []);
     expect(flat.ring_rule).toBe(`not judged: ${coarse}`);
     expect(judge("rings", flat)).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+  });
+
+  it("says first what the ring removal left unconfirmed on its grid, from its diagnostics, and nothing where it left none (G1)", async () => {
+    const coarse = "grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1";
+    const notice =
+      "4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.";
+    api.fetchRingIsotropy.mockImplementation(async (_id: string, shells: { q: number; fwhm: number }[]) => ({
+      id: "demo.raw",
+      rule: { direction_share: 0.9, height_share: 0.15 },
+      shells: shells.map((sh) => ({ q_center: sh.q, fwhm: sh.fwhm, n_cells: 0, median_height: null, relative_height: null, isotropy: null, is_ring: false, not_judged: coarse })),
+      not_judged: coarse,
+    }));
+    const record = {
+      dataset_id: "demo",
+      diagnostics_path: "processed/demo_ringremoved_diagnostics.json",
+      has_diagnostics: true,
+      status: "no_confirmed_rings",
+      unconfirmed_at_grid: { count: 4, needs: "1 voxel across 0.16 Å⁻¹", notice, q_centers: [2.668, 3.071, 4.36, 5.165] },
+    };
+    api.fetchRingDiagnostics.mockResolvedValue(record);
+    ringAndBump();
+    const e = await evaluateStage("rings", dataset);
+    expect(api.fetchRingDiagnostics).toHaveBeenCalledWith("demo");
+    expect(Object.keys(e)[0]).toBe("notice");
+    expect(e.notice).toBe(notice);
+    expect(e.ring_rule).toBe(`not judged: ${coarse}`);
+    expect(judge("rings", e)).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+    // A removal that left none, diagnostics that give none, or none to read: no notice.
+    for (const answer of [{ ...record, status: "fitted", unconfirmed_at_grid: null }, { ...record, has_diagnostics: false, status: null, unconfirmed_at_grid: null }]) {
+      api.fetchRingDiagnostics.mockResolvedValue(answer);
+      expect(await evaluateStage("rings", dataset)).not.toHaveProperty("notice");
+    }
+    api.fetchRingDiagnostics.mockRejectedValue(new Error("404 Not Found"));
+    expect(await evaluateStage("rings", dataset)).not.toHaveProperty("notice");
   });
 
   it("asks for the grid's limit with no bump on the planes, and passes an empty shell list as before where the grid is fine", async () => {

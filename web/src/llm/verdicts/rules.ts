@@ -10,7 +10,7 @@
 // measurement states in its result. An "attention" outcome always carries a
 // reason.
 
-import { built, evidence, inference, inferred, joined, reading, remedy, written, type Span, type Tagged } from "../inference";
+import { built, evidence, inference, inferred, joined, quotedInference, reading, remedy, written, type Span, type Tagged } from "../inference";
 import { isTooCoarse } from "../metrics/coarse";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
@@ -160,6 +160,23 @@ const criterionOf = (stage: string) => written(`verdicts/rules.ts: the ${stage} 
 const goalOf = (stage: string) => written(`verdicts/rules.ts: the ${stage} goal`);
 
 // ---------------------------------------------------------------- the stages
+
+/**
+ * The ring removal's notice (nebula3d.pipeline.unconfirmed_rings_notice): on a
+ * grid too coarse to confirm a ring, the removal subtracts no shell it could
+ * not confirm, and says how many it detected, what the grid needs and the two
+ * ways out, in its run log line and its diagnostics, whose notice the rings'
+ * evaluation carries (notice, tune/evaluate.ts). Its first sentence is a
+ * definition; its last, the remedy, is tagged here as the backend writes it
+ * (RING_GRID_REMEDY there), so arm C reads the notice without it, wherever it
+ * stands (the review's G1, accepted by the manager on the user's delegation,
+ * 2026-10-19).
+ */
+export const RING_NOTICE_REMEDY = quotedInference(
+  "verdicts/rules.ts: the ring removal's notice",
+  "remedy",
+  " Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.",
+);
 
 const rings: StageRule = {
   criterion: criterionOf("rings")`No powder ring left above, or dented below, three times its plane's noise. A bump is a powder ring only if it rises in nearly every direction over the sphere (at least 0.15 of its median height in 90 % of directions)${evidence(

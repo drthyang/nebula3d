@@ -71,6 +71,25 @@ export interface RingIsotropy {
   not_judged?: string | null;
 }
 
+/**
+ * What the ring stage recorded in its diagnostics (GET /api/rings/{id}/diagnostics):
+ * the rings the pooled model detected and could not confirm on its grid, which it
+ * did not subtract, or null where it left none. Diagnostics older than the
+ * ring-removed volume give none (has_diagnostics false).
+ */
+export interface RingDiagnostics {
+  dataset_id: string;
+  diagnostics_path: string;
+  has_diagnostics: boolean;
+  status: string | null;
+  unconfirmed_at_grid: {
+    count: number;
+    needs: string; // what the grid needs, from the ring test's constants
+    notice: string; // what the run log says of them, the remedy included
+    q_centers: number[]; // their |Q| (Å⁻¹)
+  } | null;
+}
+
 export interface UbCheck {
   id: string;
   fit: "orientation" | "lattice" | "both" | "symmetric";

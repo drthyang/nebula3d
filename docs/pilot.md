@@ -262,7 +262,11 @@ miss is a note.
   the data's problems no setting fixes. A check the grid is too coarse for
   (the ring check's 3D test, the fills' texture: pipeline.md) is not judged
   for that reason, "grid too coarse", its measurement saying why in the
-  result the model reads (`ring_rule`, a cut's `not_judged`). The outcome
+  result the model reads (`ring_rule`, a cut's `not_judged`). On such a grid
+  the ring removal subtracts no ring it could not confirm, and the rings'
+  evaluation says so first (`notice`, from the stage's diagnostics: how many,
+  what the grid needs, and the two ways out, a remedy arm C reads without).
+  The outcome
   travels beside the tool's result, never in the text the model reads. `verdicts` reads a run's
   outcomes: a reply's for `{{achieved}}` and the answer checks, a report's for
   its cards and its goal. A result recorded without its outcomes (a replay, a

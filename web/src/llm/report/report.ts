@@ -151,6 +151,13 @@ const CRITERIA = WORDS.criterion;
 // Each card's verdict is the report's reading of its check (verdicts/readers.ts):
 // no verdict, no card.
 
+/**
+ * What the ring removal said of the rings it detected and could not confirm on
+ * its grid, which it did not subtract (the evaluation's notice, from the stage's
+ * diagnostics), or null: on the ring card, and among the caveats.
+ */
+const ringNotice = (m: Obj | null | undefined): string | null => (typeof m?.notice === "string" && m.notice ? m.notice : null);
+
 function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
   if (verdict === undefined) return null;
   const m = measured ?? {};
@@ -161,12 +168,15 @@ function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefin
   const notRings = Array.isArray(m.shells_judged)
     ? (m.shells_judged as Obj[]).filter((x) => x?.ring === false)
     : Array.isArray(m.single_plane_bumps) ? m.single_plane_bumps : [];
+  const notice = ringNotice(m);
   return {
     title: "Ring removal",
     verdict,
     headline: `ring ratio ${fmt(m.mean_ring_energy_ratio)} · over-sub ≤ ${fmt(m.max_over_subtraction_fraction)} · dent ≤ ${fmt(dent)}${where(m.worst_ring_dent)} · left ≤ ${fmt(left)}${where(m.worst_ring_left)}`,
     criterion,
     details: [
+      // The rings the removal detected and could not confirm on its grid, and left: said first (ringNotice).
+      ...(notice ? ([["Not subtracted", notice]] as [string, string][]) : []),
       ["Mean ring-energy ratio", fmt(m.mean_ring_energy_ratio)],
       ["Largest over-subtraction fraction", fmt(m.max_over_subtraction_fraction)],
       ["Deepest ring dent", `${fmt(dent)}${where(m.worst_ring_dent)}`],
@@ -350,6 +360,9 @@ export function buildReport(input: ReportInput): Report {
   ].filter((c): c is ReportCheck => c != null);
 
   const caveats: string[] = [];
+  // Out loud: the rings the removal left, unconfirmed on its grid, whatever the card's verdict.
+  const left = ringNotice(m.rings);
+  if (left) caveats.push(`Ring removal: ${left}`);
   for (const c of checks) if (c.verdict === "attention") caveats.push(`${c.title}: ${c.headline}.`);
   const missing = ["rings", "punch", "backfill", "flatten", "pdf"].filter((k) => !m[k as keyof Measured]);
   if (missing.length) caveats.push(`Not measured (no output, or the measurement failed): ${missing.map((k) => SETTING_STAGE_LABELS[k]).join(", ")}.`);

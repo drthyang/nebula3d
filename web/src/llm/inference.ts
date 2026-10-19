@@ -22,7 +22,10 @@
 // registers its spans under where it is written (`writtenInferences`), so the
 // tests can list, and look for, every one; a text built for each call (a
 // verdict with its numbers) takes its spans from constants written with
-// `inference`, which register the same way.
+// `inference`, which register the same way. A text the backend writes (a run
+// log line, a stage's record) can quote a span written here with
+// `quotedInference`, as the backend writes it: arm C reads that text without
+// the span, wherever it stands.
 
 export type InferenceKind = "reading" | "evidence" | "remedy";
 
@@ -66,18 +69,25 @@ const WRITTEN: WrittenInference[] = [];
 // The texts written once that hold inference, by their whole text: what a
 // JSON value written from one is, with the skills off (withoutInference).
 const BY_WHOLE = new Map<string, Tagged>();
+// The spans the backend writes inside its own text (quotedInference).
+const QUOTED: Inferred[] = [];
 
 /** Every inference span written at load: in a text written once, or a constant a text built for each call uses. */
 export const writtenInferences = (): readonly WrittenInference[] => WRITTEN;
 
+/** A string without the spans the backend quotes (quotedInference), each left out where it stands; as it is when it holds none. */
+const withoutQuoted = (text: string): string => QUOTED.reduce((t, span) => (t.includes(span.text) ? t.split(span.text).join("") : t), text);
+
 /**
  * A JSON value (a tool's result, the opening context) as the model reads it
  * with the skills off: every string that is, whole, a text written once with
- * inference becomes that text's definitions. A text built for each call (a
- * verdict with its numbers) is rendered by the switch where it is built.
+ * inference becomes that text's definitions, and any other string holding a
+ * span the backend quotes (quotedInference) is read without it. A text built
+ * for each call (a verdict with its numbers) is rendered by the switch where
+ * it is built.
  */
 export function withoutInference(value: unknown): unknown {
-  if (typeof value === "string") return BY_WHOLE.get(value)?.definitions ?? value;
+  if (typeof value === "string") return BY_WHOLE.get(value)?.definitions ?? withoutQuoted(value);
   if (Array.isArray(value)) return value.map(withoutInference);
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, withoutInference(v)]));
   return value;
@@ -147,6 +157,19 @@ export const connective = (whole: string, definitions: string): Connective => ({
 export function inference(source: string, kind: InferenceKind, text: string): Inferred {
   const span = inferred(kind, text);
   WRITTEN.push({ source, span });
+  return span;
+}
+
+/**
+ * A span of inference the backend writes inside its own text (a run log line,
+ * a stage's record), written here as the backend writes it, with the space or
+ * mark before it: registered under `source` as `inference` registers one, and
+ * left out of any string that holds it with the skills off (withoutInference),
+ * so arm C reads the backend's text without it and arm B reads it whole.
+ */
+export function quotedInference(source: string, kind: InferenceKind, text: string): Inferred {
+  const span = inference(source, kind, text);
+  QUOTED.push(span);
   return span;
 }
 

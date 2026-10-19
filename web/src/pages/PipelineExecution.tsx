@@ -16,6 +16,7 @@ import type { JobEvent } from "../api/types";
 import { useDatasetStore } from "../state/datasetStore";
 import { STAGES, STAGE_LABELS, usePipelineStore } from "../state/pipelineStore";
 import { litStage, useHighlightKeys } from "../llm/highlight";
+import { logClass, warns } from "./executionLog";
 
 type Phase = "idle" | "running" | "done" | "cancelled" | "error";
 type NodeState = "done" | "active" | "failed" | "cancelled" | "pending";
@@ -43,17 +44,8 @@ function fmtLeft(ms: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Event log line colour from status / message prefix
+// Event log line text (its colour: executionLog.ts)
 // ---------------------------------------------------------------------------
-function logClass(ev: JobEvent): string {
-  const m = ev.message ?? "";
-  if (ev.status === "error" || m.startsWith("✗")) return "error";
-  if (ev.status === "done" || ev.status === "skip" || m.startsWith("✓")) return "success";
-  if (ev.status === "start") return "blue";
-  if (m.startsWith("⚠") || m.startsWith("■")) return "warn";
-  if (ev.type === "done" || ev.type === "cancelled") return "dim";
-  return "info";
-}
 function logText(ev: JobEvent): string {
   if (ev.message) return ev.message;
   if (ev.status === "progress" && ev.fraction != null)
@@ -308,7 +300,8 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
             </span>
             <span className={`exec-stage-status ${ns}`}>{statusLabel}</span>
           </div>
-          {meta && <div className={`exec-stage-meta${dim ? " dim" : ""}`}>{meta}</div>}
+          {/* A summary that holds a warning reads as one: the ring removal's rings left on a coarse grid. */}
+          {meta && <div className={`exec-stage-meta${dim ? " dim" : warns(meta) ? " warn" : ""}`}>{meta}</div>}
           {ns === "active" && info?.fraction != null && (
             <div className="exec-stage-bar">
               <i style={{ width: `${Math.round(info.fraction * 100)}%` }} />

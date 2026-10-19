@@ -150,6 +150,9 @@ its `MISSES`, an expected failure with the reason, until the tools find it. A
 check the grid is too coarse for gives no verdict, and is held there to "not
 judged", with the grid's reason (`TOO_COARSE`): on 81³ the ring check and the
 texture check ([pipeline.md](pipeline.md#which-shells-are-rings-and-the-grid-that-takes)).
+There the ring removal's notice is held to its count, the planted rings among
+the shells it left unconfirmed, in its log, its record and the ring check; on
+161³ to its absence.
 The replays that need every check to judge (THY-18's verdict met on the
 clean control) build their case on 161³ whatever the run's grid
 (`devCase(id, { n })`).

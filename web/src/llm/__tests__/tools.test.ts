@@ -458,7 +458,29 @@ describe("assess_stage", () => {
     expect(out.flatten.per_plane.hk0).toEqual({ after_floor_max_sigma: 0.8 });
     expect(out.flatten.goal).toMatch(/floor/);
   });
+
+  it("says the rings the removal left unconfirmed on its grid, the remedy with the skills on only (G1)", async () => {
+    evaluate.evaluateStage.mockResolvedValue({
+      notice: NOTICE,
+      mean_ring_energy_ratio: 1,
+      max_ring_dent: null,
+      max_ring_left: null,
+      ring_rule: "not judged: grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1",
+      per_plane: {},
+    });
+    const b = JSON.parse((await runOn(full, "assess_stage", { stage: "rings" })).text);
+    expect(b.rings).toMatchObject({ verdict: "not judged", notice: NOTICE });
+    const armC = await runToolCall(call("assess_stage", { stage: "rings" }), CHAT_TOOLS, { dataset: full, datasets: [full], skills: false });
+    const c = JSON.parse(armC.text);
+    expect(c.rings).toMatchObject({ verdict: "not judged", notice: NOTICE_DEFINITION });
+    expect(armC.text).not.toContain("pooled_confirm_rings");
+  });
 });
+
+// The ring removal's notice as the pipeline writes it (nebula3d.pipeline.unconfirmed_rings_notice), and its definition: arm C's.
+const NOTICE_DEFINITION = "4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
+const NOTICE = `${NOTICE_DEFINITION} Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.`;
+const call = (name: string, args: object) => ({ id: "c", type: "function" as const, function: { name, arguments: JSON.stringify(args) } });
 
 describe("run_log", () => {
   it("returns the last run's lines, for one stage on request", async () => {
@@ -481,6 +503,22 @@ describe("run_log", () => {
   it("says when there is no run yet", async () => {
     usePipelineStore.setState({ events: [] });
     expect((await run("run_log", {})).text).toMatch(/no pipeline run in this session yet/);
+  });
+
+  it("gives the ring removal's notice whole with the skills on, without its remedy with them off (G1)", async () => {
+    const summary = "pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 0 not (the crystal's own scattering, kept) (of 81/81 planes fitted), removed 0% of |I|";
+    usePipelineStore.setState({
+      running: false,
+      terminal: "done",
+      events: [
+        { type: "progress", stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` },
+        { type: "progress", stage: "punch", status: "done", message: "188 peaks punched" },
+      ],
+    });
+    const b = JSON.parse((await run("run_log", { stage: "rings" })).text);
+    expect(b.lines).toEqual([{ stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` }]);
+    const c = JSON.parse((await runToolCall(call("run_log", {}), CHAT_TOOLS, { ...ctx, skills: false })).text);
+    expect(c.lines.map((l: { message: string }) => l.message)).toEqual([`${summary}. ⚠ ${NOTICE_DEFINITION}`, "188 peaks punched"]);
   });
 });
 

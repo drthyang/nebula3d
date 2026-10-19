@@ -48,6 +48,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
@@ -365,6 +366,19 @@ describe("arm C's session, with the skills off", () => {
       expect(b, phrase).toContain(phrase);
       expect(c, phrase).not.toContain(phrase);
     }
+  });
+
+  it("gives the tuning model a trial's ring removal notice without its remedy, and arm B's whole (G1)", () => {
+    const definition = "4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
+    const remedy = "Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.";
+    const trials = [{ trial: 1, settings: {}, metrics: { notice: `${definition} ${remedy}`, max_ring_left: null } }];
+    const asked = (skills: boolean) =>
+      [...buildProposeMessages({ stage: "rings", current: {}, earlier: {}, trials, count: 2, skills }), ...buildJudgeMessages({ stage: "rings", trials, skills })]
+        .map((m) => String(m.content))
+        .join("\n");
+    expect(asked(false)).toContain(`"notice":"${definition}"`);
+    expect(asked(false)).not.toContain(remedy);
+    expect(asked(true)).toContain(`"notice":"${definition} ${remedy}"`);
   });
 
   it("asks the tuning model with no skill's name or sentence either, for every stage", () => {

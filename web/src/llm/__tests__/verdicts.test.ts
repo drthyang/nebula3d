@@ -5,10 +5,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentStep } from "../agent";
+import { withoutInference } from "../inference";
 import { shownGrains, type GrainFacts } from "../metrics/grains";
 import { judge, UNROUNDED, verdicts, WORDS, type CheckId, type Kind, type Outcome, type Reason } from "../verdicts";
+import { RING_NOTICE_REMEDY } from "../verdicts/rules";
 
 type Obj = Record<string, unknown>;
+
+// The pipeline's source, for the words the backend writes that the rules tag (the ring removal's notice).
+const PIPELINE = Object.values(import.meta.glob<string>("../../../../src/nebula3d/pipeline.py", { query: "?raw", import: "default", eager: true }))[0];
 
 // ---------------------------------------------------------------- the seam
 
@@ -137,6 +142,22 @@ describe("judge: a stage's evaluation", () => {
   it("states the backfill's own criterion without the fill bias it does not measure", () => {
     expect(judge("backfill", { mean_median_seam_sigma: 0.6 }).criterion).not.toMatch(/no cut whose fill is biased/);
     expect(WORDS.criterion.backfill).toMatch(/no cut whose fill is biased one way/);
+  });
+
+  it("judges the rings alike with the ring removal's notice, which arm C reads without the remedy the backend writes (G1)", () => {
+    // The pipeline's own words, read off its source: the remedy, and the notice's last sentence.
+    const written = /^RING_GRID_REMEDY = \(([^)]*)\)/m.exec(PIPELINE)?.[1];
+    const remedy = (written?.match(/"[^"]*"/g) ?? []).map((s) => s.slice(1, -1)).join("");
+    expect(remedy).toBe("Use a finer grid, or set pooled_confirm_rings=False to subtract every detected ring.");
+    expect(PIPELINE).toContain('f"not subtracted. {RING_GRID_REMEDY}")');
+    expect(RING_NOTICE_REMEDY).toEqual({ kind: "remedy", text: ` ${remedy}` });
+    const notice = `4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. ${remedy}`;
+    const coarse = { notice, max_ring_left: null, max_ring_dent: null, ring_rule: "not judged: grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1" };
+    const { notice: _said, ...numbers } = coarse;
+    void _said;
+    expect(judge("rings", coarse)).toEqual(judge("rings", numbers));
+    expect(judge("rings", coarse)).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+    expect(withoutInference(coarse)).toEqual({ ...coarse, notice: "4 rings detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted." });
   });
 });
 

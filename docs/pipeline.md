@@ -137,9 +137,12 @@ out loud. Its log line ends on a notice, marked ⚠, such as
 
 with the count, and what the grid needs from the limit it failed (below). Its
 diagnostics record it (`unconfirmed_at_grid`: the count, the need, the notice
-and the shells' |Q|; `GET /api/rings/{id}/diagnostics`).
-`pooled_confirm_rings` is a `RingParams` setting of the Python API: the
-console does not offer it. Two limits, each from the rule's own constants:
+and the shells' |Q|; `GET /api/rings/{id}/diagnostics`), so the console says it
+too: the Execution page shows the stage's line as a warning, the Pilot's ring
+check gives it first (`notice`, which the validation's arm C reads without the
+remedy), and the report puts it on its ring card and among its caveats.
+`pooled_confirm_rings` is a `RingParams` setting of the Python API: the console
+does not offer it. Two limits, each from the rule's own constants:
 
 - **Across a ring.** The test reads each direction's radial profile in |Q|
   bins of 0.02 Å⁻¹, never finer than half a voxel (finer bins share the

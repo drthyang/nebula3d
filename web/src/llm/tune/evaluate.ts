@@ -3,7 +3,7 @@
 // stage writes), so a trial is judged on more than one cut.  The numbers are
 // the same pure metrics the chat context uses.
 
-import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingIsotropy } from "../../api/client";
+import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy } from "../../api/client";
 import type { Dataset } from "../../api/types";
 import { dpdfVolumeId, loadPipelineContext, safe, hklVolumeId, type Cut } from "../context/loadContext";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
@@ -155,7 +155,13 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     // too: on a grid too coarse for the test (too few voxels across a ring's
     // width, nebula3d.preprocessing.ring_isotropy), the planes' bumps, or
     // their absence, are no evidence either, and the rings are not judged.
-    const tested = metaId ? await safe(fetchRingIsotropy(metaId, shells)) : null;
+    // And what the ring removal recorded of the rings it detected and could not
+    // confirm on its grid, which it did not subtract: its notice, said first.
+    const [tested, record] = await Promise.all([
+      metaId ? safe(fetchRingIsotropy(metaId, shells)) : Promise.resolve(null),
+      safe(fetchRingDiagnostics(dataset.id)),
+    ]);
+    const notice = record?.unconfirmed_at_grid?.notice ?? null;
     const tooCoarse = typeof tested?.not_judged === "string" ? tested.not_judged : null;
     const judged = shells.length && !tooCoarse ? (tested ?? null) : null;
     const shellOf = new Map<number, number>();
@@ -199,6 +205,9 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       worstOf((xs ?? []).filter((x) => x.significant && "ring" in x && x.ring), sign);
     const rule = judged?.rule;
     return {
+      // The rings the removal left unsubtracted, unconfirmed on its grid, said out
+      // loud (verdicts/rules.ts, RING_NOTICE_REMEDY: arm C reads it without its remedy).
+      ...(notice ? { notice } : {}),
       mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),
       max_over_subtraction_fraction: max(r.map((x) => x?.over_subtraction_fraction)),
       // The deepest dent and largest leftover at the confirmed rings, over the
