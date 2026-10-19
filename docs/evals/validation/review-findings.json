@@ -181,8 +181,14 @@
   "evidence": "report.ts's pdfCheck judges only the window weight and ignores qmax_coverage's verdict (web/src/llm/report/report.ts:333-336). verdict.ts:78 counts \"too far\".",
   "proposed_fix": "The report's ΔPDF card also counts qmax_coverage's \"too far\".",
   "needs_user_approval": true,
-  "status": "open",
-  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.2, after the check-verdict module (2.3).",
+  "status": "implemented",
+  "commit": "0ca1d71",
+  "tests": [
+   "web/src/llm/__tests__/verdictPins.test.ts (D2, unified (2.4.2): the report's ΔPDF card counts the coverage's \"too far\", as {{achieved}} does)",
+   "web/src/llm/__tests__/verdictPins.test.ts (the chat's achieved and the report's, on the same measurements: agree, but where a named rule of the report's makes them differ)",
+   "web/src/llm/__tests__/report.test.ts (counts qmax_coverage's \"too far\" on the 3D-ΔPDF's card, though the evaluation's weight is within the limit (D2, 2.4.2))"
+  ],
+  "note": "Decided by the user on 2026-10-19 (batch 1, every recommendation accepted); implemented by plan row 2.4.2, after the check-verdict module (2.3). Implemented by plan row 2.4.2.",
   "decision": {
    "by": "the user",
    "on": "2026-10-19",
