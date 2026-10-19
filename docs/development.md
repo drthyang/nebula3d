@@ -113,6 +113,12 @@ their questions out. `heldoutFixture.test.ts` checks that no other module in
 `web/src` imports the file, names it or globs its way to it. CI's frontend job
 runs them, under the workflow's opt-in.
 
+What the validation reports on the test split is held out too, in
+`docs/evals/validation/holdout/` (arm A's `arm-a-test.json` and its table): do
+not open, print or read anything in it. `arm-a --split test --report` writes only
+there and prints how many cases pass. The held-out scan allows test values in
+that folder and nowhere else in the docs, `docs/evals.md` included.
+
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request,
 with `NEBULA_HOLDOUT_TESTS=1`:
 
