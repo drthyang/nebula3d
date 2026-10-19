@@ -163,9 +163,10 @@ describe("dev-control: nothing flagged", () => {
 // reads "not judged", the file declaring no symmetry. dev-control symmetrised
 // over m-3m and declared so (devCase's symmetrise, as the NeXus Viewer's export
 // is) is one it judges: through the default run, each of m-3m's 47 operations
-// holds, those that move c included, on the sections through the origin and
-// on the x–y sections off it, and the ΔPDF evaluation's own break with them
-// (plan 4.3).
+// holds (24 entries: each rotation with its product with the inversion, and
+// the inversion), those that move c included, on the sections through the
+// origin and on the x–y sections off it, and the ΔPDF evaluation's own break
+// with them (plan 4.3).
 describe("dev-control symmetrised over m-3m: every declared operation holds", () => {
   check("dev-control", "symmetry_check reads each of m-3m's 47 operations as held, at z = 0 and at z = 1 Å", async () => {
     const c = devCase("dev-control", { symmetrise: "m-3m" });
@@ -176,8 +177,8 @@ describe("dev-control symmetrised over m-3m: every declared operation holds", ()
       const [outcome] = outcomeOf(r);
       const msg = evidence(c, { z, operations: r.result.operations, sections: r.result.sections, worst, not_tested: r.result.not_tested ?? [], outcome });
       expect(r.result.operations, msg).toBe("declared (m-3m): 47 besides the identity");
-      expect(ops, msg).toHaveLength(47);
-      expect(ops.filter((o) => o.moves_c), msg).toHaveLength(40);
+      expect(ops, msg).toHaveLength(24);
+      expect(ops.every((o) => o.moves_c), msg).toBe(true);
       expect(r.result.not_tested, msg).toBeUndefined();
       expect(worst.rms_difference, msg).toBeLessThanOrEqual(SYMMETRY_HOLDS);
       expect(outcome, msg).toMatchObject({ kind: "pass", reasons: [] });

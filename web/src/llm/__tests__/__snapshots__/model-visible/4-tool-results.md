@@ -678,7 +678,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## symmetry_check {}
 
-953 characters sent.
+713 characters sent.
 
 ```json
 {
@@ -686,45 +686,24 @@ References of this skill (read one with read_skill and `reference`):
   "operations": "declared (mmm): 7 besides the identity",
   "ops": [
     {
-      "op": "two-fold ∥ c",
+      "op": "two-fold ∥ c / mirror ⊥ c",
       "rms_difference": 0,
-      "pairs": 7104,
-      "tested_on": "xy; xz; yz",
-      "moves_c": false
-    },
-    {
-      "op": "mirror ⊥ a",
-      "rms_difference": 0,
-      "pairs": 4704,
-      "tested_on": "xy; xz",
-      "moves_c": false
-    },
-    {
-      "op": "mirror ⊥ b",
-      "rms_difference": 0,
-      "pairs": 4704,
-      "tested_on": "xy; yz",
-      "moves_c": false
-    },
-    {
-      "op": "two-fold ∥ a",
-      "rms_difference": 0,
-      "pairs": 7104,
-      "tested_on": "xy; xz; yz",
-      "moves_c": true
-    },
-    {
-      "op": "two-fold ∥ b",
-      "rms_difference": 0,
-      "pairs": 7104,
-      "tested_on": "xy; xz; yz",
-      "moves_c": true
-    },
-    {
-      "op": "mirror ⊥ c",
-      "rms_difference": 0,
-      "pairs": 4704,
+      "pairs": 4608,
       "tested_on": "xz; yz",
+      "moves_c": true
+    },
+    {
+      "op": "two-fold ∥ a / mirror ⊥ a",
+      "rms_difference": 0,
+      "pairs": 4608,
+      "tested_on": "xy; xz",
+      "moves_c": true
+    },
+    {
+      "op": "two-fold ∥ b / mirror ⊥ b",
+      "rms_difference": 0,
+      "pairs": 4608,
+      "tested_on": "xy; yz",
       "moves_c": true
     },
     {
@@ -735,7 +714,7 @@ References of this skill (read one with read_skill and `reference`):
       "moves_c": true
     }
   ],
-  "holds": ["two-fold ∥ c", "mirror ⊥ a", "mirror ⊥ b", "two-fold ∥ a", "two-fold ∥ b", "mirror ⊥ c", "inversion"],
+  "holds": ["two-fold ∥ c / mirror ⊥ c", "two-fold ∥ a / mirror ⊥ a", "two-fold ∥ b / mirror ⊥ b", "inversion"],
   "symmetry_declared": true,
   "verdict": "kept: every operation tested holds to 0.001 or better"
 }

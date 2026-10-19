@@ -101,23 +101,25 @@ export const sectionSymmetry = (
 // (h, k, l)) has ΔI(M·h) = ΔI(h), so its ΔPDF has P(Mᵀ·u) = P(u) on the
 // fractional coordinates u = (x/a, y/b, z/c): the ΔPDF keeps each operation,
 // acting on real space as its transpose. The transform keeps the data's even
-// part as well, so P(−u) = P(u) whatever was declared, and an operation and
-// its product with the inversion test the same thing: the mirror ⊥ c and the
-// two-fold ∥ c break together, by as much, and on the x–y section through
-// the origin the two-fold holds by the inversion alone (which is why the
-// in-plane check passed a ΔPDF whose mirror ⊥ c was broken).
+// part as well, so P(−u) = P(u) whatever was declared, and an operation g and
+// its product with the inversion, −g, test the same thing: P(g·u) = P(−g·u).
+// Where the group holds both they are one entry ("two-fold ∥ c / mirror ⊥ c"),
+// tested once. A voxel g leaves where it is, or sends to its own inverse,
+// tests nothing (the second holds by the transform) and is left out, so the
+// two members' numbers are the same. That is why the in-plane check passed a
+// ΔPDF whose mirror ⊥ c was broken: on the x–y section through the origin the
+// two-fold ∥ c sends every voxel to its inverse. The inversion, whose partner
+// is the identity, is tested alone: its test is the transform's P(−u) = P(u).
 //
 // An operation is tested on the sections it maps onto sections: of the x–y
 // sections at ±z (an operation that keeps z maps each onto itself, one that
 // sends z to −z maps the one at z onto the one at −z) and the x–z and y–z
-// sections through the origin, those whose image is one of them. A voxel the
-// operation leaves where it is tests nothing and is left out: on the x–y
-// section at z = 0 a mirror ⊥ c leaves every one. An operation that maps none
-// of the sections onto one is tested on points: the voxels of each section it
-// maps onto another, where its image of the one crosses the other. It maps
-// voxels onto voxels only where the grid's steps, in the cell's fractional
-// units, are equal along the axes it mixes; elsewhere it is not tested, and
-// why is said.
+// sections through the origin, those whose image is one of them. An operation
+// that maps none of the sections onto one is tested on points: the voxels of
+// each section it maps onto another, where its image of the one crosses the
+// other. It maps voxels onto voxels only where the grid's steps, in the cell's
+// fractional units, are equal along the axes it mixes; elsewhere it is not
+// tested, and why is said.
 
 /** An integer 3×3 matrix, rows first, acting on column vectors. */
 export type Mat3 = readonly (readonly number[])[];
@@ -321,9 +323,10 @@ const voxelKey = (d0: number, d1: number, d2: number): number => ((d0 + 32768) *
 /**
  * Compare each voxel of `from` with its image under m wherever one of
  * `targets` holds the image. A voxel m leaves where it is tests nothing and is
- * skipped, as is one already in `seen`.
+ * skipped, as is, with `skipInverse`, one m sends to its own inverse (where
+ * P(−r) = P(r) holds by the transform), and one already in `seen`.
  */
-function compare(m: Mat3, from: Prepared, targets: readonly Prepared[], tally: Tally, seen: Set<number> | null): void {
+function compare(m: Mat3, from: Prepared, targets: readonly Prepared[], tally: Tally, seen: Set<number> | null, skipInverse: boolean): void {
   const { data } = from.section.slice;
   const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = m;
   const d = [0, 0, 0];
@@ -339,6 +342,7 @@ function compare(m: Mat3, from: Prepared, targets: readonly Prepared[], tally: T
       e[1] = m10 * d[0] + m11 * d[1] + m12 * d[2];
       e[2] = m20 * d[0] + m21 * d[1] + m22 * d[2];
       if (e[0] === d[0] && e[1] === d[1] && e[2] === d[2]) continue;
+      if (skipInverse && e[0] === -d[0] && e[1] === -d[1] && e[2] === -d[2]) continue;
       let w: number | undefined;
       for (const t of targets) {
         w = valueAt(t, e);
@@ -402,14 +406,16 @@ export function operationSymmetry(
   }
   const tested: { result: OperationSymmetry; order: number }[] = [];
   const notTested: NotTested[] = [];
-  for (const m of ops) {
-    if (keyOf(m) === keyOf(IDENTITY)) continue;
-    const op = operationName(m);
+  for (const entry of entriesOf(ops)) {
+    const { test: m, op } = entry;
     const mismatch = gridMismatch(m, steps, half);
     if (mismatch.shift > GRID_MATCH) {
       notTested.push({ op, why: `the grid's steps along ${CELL_AXES[mismatch.along]} and ${CELL_AXES[mismatch.from]} differ: it does not map voxels onto voxels` });
       continue;
     }
+    // A voxel sent to its own inverse tests the transform, not the operation:
+    // left out, but for the inversion, whose test that is.
+    const skipInverse = keyOf(m) !== INVERSION_KEY;
     // Whole sections first: each section, or pair of sections, it maps onto one another.
     const units: Tally[] = [];
     for (let i = 0; i < prepared.length; i++) {
@@ -420,8 +426,8 @@ export function operationSymmetry(
         if (!forth && !back) continue;
         const tally: Tally = { label: i === j ? s.section.label : `${s.section.label}↔${t.section.label}`, diff2: 0, val2: 0, pairs: 0 };
         const seen = forth && back ? new Set<number>() : null;
-        if (forth) compare(m, s, [t], tally, seen);
-        if (back) compare(m, t, [s], tally, seen);
+        if (forth) compare(m, s, [t], tally, seen, skipInverse);
+        if (back) compare(m, t, [s], tally, seen, skipInverse);
         if (tally.pairs && tally.val2 > 0) units.push(tally);
       }
     }
@@ -429,7 +435,7 @@ export function operationSymmetry(
     if (!units.length) {
       const tally: Tally = { label: `points on ${prepared.map((s) => s.section.label).join(", ")}`, diff2: 0, val2: 0, pairs: 0 };
       const seen = new Set<number>();
-      for (const s of prepared) compare(m, s, prepared, tally, seen);
+      for (const s of prepared) compare(m, s, prepared, tally, seen, skipInverse);
       if (tally.pairs && tally.val2 > 0) units.push(tally);
     }
     if (!units.length) {
@@ -442,15 +448,47 @@ export function operationSymmetry(
         rms_difference: roundSig(Math.max(...units.map((u) => Math.sqrt(u.diff2 / u.val2))), 2),
         pairs: units.reduce((s, u) => s + u.pairs, 0),
         tested_on: units.map((u) => u.label).join("; "),
-        moves_c: movesC(m),
+        moves_c: entry.movesC,
       },
-      order: displayOrder(m, op),
+      order: entry.order,
     });
   }
-  // The operations that keep c first, then by kind, then by axis, a positive angle before a negative one.
+  // By the rotation's kind (the ones about c first), then by axis, a positive angle before a negative one.
   const byName = (name: string) => name.replace("(-", "(~");
   tested.sort((x, y) => x.order - y.order || (byName(x.result.op) < byName(y.result.op) ? -1 : byName(x.result.op) > byName(y.result.op) ? 1 : 0));
   return { ops: tested.map((t) => t.result), not_tested: notTested };
+}
+
+const IDENTITY_KEY = keyOf(IDENTITY);
+const INVERSION_KEY = keyOf(IDENTITY.map((row) => row.map((x) => -x)));
+
+/**
+ * The entries to test: each operation with its product with the inversion,
+ * where the set holds both, as one ("two-fold ∥ c / mirror ⊥ c": the rotation
+ * first, tested for both; moves_c when either moves c); an operation whose
+ * product is not in the set alone; and the inversion alone, its partner the
+ * identity, which is not tested.
+ */
+function entriesOf(ops: readonly Mat3[]): { test: Mat3; op: string; movesC: boolean; order: number }[] {
+  const keys = new Set(ops.map(keyOf));
+  const done = new Set<string>([IDENTITY_KEY]);
+  const out: { test: Mat3; op: string; movesC: boolean; order: number }[] = [];
+  for (const m of ops) {
+    const key = keyOf(m);
+    if (done.has(key)) continue;
+    done.add(key);
+    const partner = m.map((row) => row.map((x) => -x + 0));
+    if (key !== INVERSION_KEY && keys.has(keyOf(partner))) {
+      done.add(keyOf(partner));
+      const [rotation, other] = det3(m) > 0 ? [m, partner] : [partner, m];
+      const name = operationName(rotation);
+      out.push({ test: rotation, op: `${name} / ${operationName(other)}`, movesC: movesC(rotation) || movesC(other), order: displayOrder(rotation, name) });
+    } else {
+      const name = operationName(m);
+      out.push({ test: m, op: name, movesC: movesC(m), order: displayOrder(m, name) });
+    }
+  }
+  return out;
 }
 
 const KINDS = ["six-fold", "four-fold", "three-fold", "two-fold", "mirror", "inversion", "-6", "-4", "-3"];

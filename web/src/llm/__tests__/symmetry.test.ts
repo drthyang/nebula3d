@@ -96,6 +96,43 @@ async function check(args: Record<string, unknown> = {}) {
 const byName = (ops: OperationSymmetry[]) => Object.fromEntries(ops.map((o) => [o.op, o]));
 const held = (o: OperationSymmetry) => o.rms_difference <= SYMMETRY_HOLDS;
 
+// An operation's product with the inversion, and the entry the two make: the rotation first.
+const inverted = (m: Mat3): Mat3 => m.map((row) => row.map((x) => -x + 0));
+const pairOf = (rotation: Mat3): string => `${operationName(rotation)} / ${operationName(inverted(rotation))}`;
+const MIRROR_C = "two-fold ∥ c / mirror ⊥ c";
+/** A group's entries, as symmetry_check reports them: each rotation with its product with the inversion, and the inversion. */
+const entriesOf = (generators: Mat3[]): string[] => [
+  ...directGroup(generators)
+    .slice(1)
+    .filter((m) => det(m) > 0)
+    .map(pairOf),
+  "inversion",
+];
+const det = (m: Mat3): number =>
+  m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+
+/**
+ * Each pair of the group's entries tested a member at a time: the rotation
+ * alone and its product with the inversion alone give the pair's number (to
+ * rounding), on the ΔPDF's sections as the tool reads them.
+ */
+function expectMembersAgree(sections: Section[], generators: Mat3[]): void {
+  const group = directGroup(generators);
+  const pairs = byName(operationSymmetry(sections, group, [1, 1, 1])!.ops);
+  for (const rotation of group.slice(1).filter((m) => det(m) > 0)) {
+    const [alone, other] = [rotation, inverted(rotation)].map((m) => operationSymmetry(sections, [m], [1, 1, 1])!.ops[0]?.rms_difference ?? null);
+    const pair = pairs[pairOf(rotation)]?.rms_difference ?? null;
+    const msg = `${pairOf(rotation)}: ${alone}, ${other}, the pair ${pair}`;
+    expect(alone === null, msg).toBe(other === null);
+    expect(pair === null, msg).toBe(alone === null);
+    if (alone === null || other === null || pair === null) continue;
+    // Equal to rounding: both at rounding's level, or within the last of their two figures.
+    const agree = (x: number, y: number) => Math.max(x, y) < 1e-6 || Math.abs(x - y) <= 0.02 * Math.max(x, y);
+    expect(agree(alone, other), msg).toBe(true);
+    expect(agree(alone, pair), msg).toBe(true);
+  }
+}
+
 /** The check as it was: the x–y section through the origin against the cell's in-plane operations. */
 const oldCheck = (cell: Cell, features: Feature[]) => sectionSymmetry(cut(cell, features, "xy", 0), { a: cell.a, b: cell.a })!;
 
@@ -157,26 +194,34 @@ describe("the declared group's operations", () => {
 });
 
 describe("known answers", () => {
-  it("a ΔPDF symmetric under m-3m: every one of its 47 operations holds, on the sections each maps onto sections", async () => {
+  it("a ΔPDF symmetric under m-3m: each of its 23 rotations with its product with the inversion, and the inversion, holds", async () => {
     serve(CUBIC, cubicBase(), { symmetry: "m-3m", ops: DECLARED["m-3m"] });
-    const { out, outcome } = await check();
+    const { out, fitted, outcome } = await check();
     expect(out.operations).toBe("declared (m-3m): 47 besides the identity");
     expect(out.sections).toBe("xy at z = 0 Å, xz at y = 0, yz at x = 0");
-    expect(out.ops).toHaveLength(47);
+    expect(out.ops.map((o) => o.op).sort()).toEqual(entriesOf(DECLARED["m-3m"]).sort());
+    expect(out.ops).toHaveLength(24);
     expect(out.not_tested).toBeUndefined();
     for (const o of out.ops) {
       expect(o.rms_difference, o.op).toBeLessThan(1e-6);
       expect(o.pairs, o.op).toBeGreaterThan(1000);
       expect(o.tested_on, o.op).not.toMatch(/^points/);
     }
-    expect(out.ops.filter((o) => o.moves_c)).toHaveLength(40);
+    // Each pair holds a member that moves c: the inversion's product of an operation that keeps c sends c to −c.
+    expect(out.ops.every((o) => o.moves_c)).toBe(true);
     const by = byName(out.ops);
-    // Each operation on the sections it maps onto one another.
-    expect(by["mirror ⊥ c"].tested_on).toBe("xz; yz");
-    expect(by["three-fold ∥ [111] (120°)"].tested_on).toBe("xy↔xz; xy↔yz; xz↔yz");
-    expect(by["four-fold ∥ c (90°)"].tested_on).toBe("xy; xz↔yz");
+    // Each entry on the sections it maps onto one another. On the x–y section
+    // through the origin the two-fold ∥ c sends every voxel to its inverse: it is tested off it.
+    expect(by[MIRROR_C].tested_on).toBe("xz; yz");
+    expect(by["three-fold ∥ [111] (120°) / -3 ∥ [111] (120°)"].tested_on).toBe("xy↔xz; xy↔yz; xz↔yz");
+    expect(by["four-fold ∥ c (90°) / -4 ∥ c (90°)"].tested_on).toBe("xy; xz↔yz");
+    // The two-fold ∥ a sends every voxel of the y–z section to its inverse.
+    expect(by["two-fold ∥ a / mirror ⊥ a"].tested_on).toBe("xy; xz");
     expect(outcome).toMatchObject({ check: "symmetry", kind: "pass", reasons: [] });
     expect(out.verdict).toBe("kept: every operation tested holds to 0.001 or better");
+    // The model reads the whole of it.
+    expect(fitted).toBe(false);
+    expectMembersAgree(sectionsOf(CUBIC, cubicBase()), DECLARED["m-3m"]);
   });
 
   it("the same with its mirror ⊥ c broken: the mirror fails, where the check as it was passed every in-plane operation", async () => {
@@ -189,52 +234,56 @@ describe("known answers", () => {
     serve(CUBIC, features, { symmetry: "m-3m", ops: DECLARED["m-3m"] });
     const { out, outcome } = await check();
     const by = byName(out.ops);
-    expect(by["mirror ⊥ c"]).toMatchObject({ moves_c: true, tested_on: "xz; yz" });
-    expect(by["mirror ⊥ c"].rms_difference).toBeGreaterThan(0.05);
+    expect(by[MIRROR_C]).toMatchObject({ moves_c: true, tested_on: "xz; yz" });
+    expect(by[MIRROR_C].rms_difference).toBeGreaterThan(0.05);
     // The ΔPDF is centrosymmetric, so the mirror ⊥ c is the two-fold ∥ c times
-    // the inversion: off the x–y plane the two break together, by as much. On
-    // the x–y section through the origin, where the check looked, the two-fold
-    // holds by the inversion alone, and every operation that keeps c holds.
-    expect(by["two-fold ∥ c"].rms_difference).toBe(by["mirror ⊥ c"].rms_difference);
+    // the inversion: the two break together, by as much (each member alone
+    // gives the pair's number). On the x–y section through the origin, where
+    // the check looked, every operation that keeps c holds.
+    expectMembersAgree(sectionsOf(CUBIC, features), DECLARED["m-3m"]);
     const [xy] = sectionsOf(CUBIC, features);
     const inPlane = directGroup(DECLARED["m-3m"]).filter((m) => !movesC(m));
     for (const o of operationSymmetry([xy], inPlane, [1, 1, 1])!.ops) expect(o.rms_difference, o.op).toBeLessThan(1e-5);
     expect(outcome).toMatchObject({ kind: "attention", reasons: ["symmetry broken"] });
-    expect(out.verdict).toMatch(/^not kept: .*mirror ⊥ c \(/);
+    expect(out.verdict).toMatch(/^not kept: .*two-fold ∥ c \/ mirror ⊥ c \(/);
   });
 
-  it("a hexagonal 6/mmm ΔPDF: every operation holds with the mirror ⊥ c intact; broken, the mirror fails where the check as it was passed", async () => {
+  it("a hexagonal 6/mmm ΔPDF: every entry holds with the mirror ⊥ c intact; broken, the mirror fails where the check as it was passed", async () => {
     serve(HEXAGONAL, hexagonalBase(), { symmetry: "6/mmm", ops: DECLARED["6/mmm"] });
     const intact = await check();
     expect(intact.out.operations).toBe("declared (6/mmm): 23 besides the identity");
-    expect(intact.out.ops).toHaveLength(23);
+    expect(intact.out.ops.map((o) => o.op).sort()).toEqual(entriesOf(DECLARED["6/mmm"]).sort());
+    expect(intact.out.ops).toHaveLength(12);
     for (const o of intact.out.ops) expect(o.rms_difference, o.op).toBeLessThan(1e-6);
-    expect(byName(intact.out.ops)["mirror ⊥ c"]).toMatchObject({ moves_c: true, tested_on: "xz; yz" });
+    expect(byName(intact.out.ops)[MIRROR_C]).toMatchObject({ moves_c: true, tested_on: "xz; yz" });
     expect(intact.outcome).toMatchObject({ kind: "pass" });
+    expectMembersAgree(sectionsOf(HEXAGONAL, hexagonalBase()), DECLARED["6/mmm"]);
 
     const features = [...hexagonalBase(), offPlane([0.4, 0, 0.35])];
     for (const o of oldCheck(HEXAGONAL, features).ops) expect(o.rms_difference, o.op).toBeLessThan(1e-5);
     serve(HEXAGONAL, features, { symmetry: "6/mmm", ops: DECLARED["6/mmm"] });
     const broken = await check();
     const by = byName(broken.out.ops);
-    expect(by["mirror ⊥ c"].rms_difference).toBeGreaterThan(0.05);
-    expect(by["six-fold ∥ c (60°)"].tested_on).toBe("xy; xz↔yz");
+    expect(by[MIRROR_C].rms_difference).toBeGreaterThan(0.05);
+    expect(by["six-fold ∥ c (60°) / -6 ∥ c (60°)"].tested_on).toBe("xy; xz↔yz");
     expect(broken.outcome).toMatchObject({ kind: "attention", reasons: ["symmetry broken"] });
+    expectMembersAgree(sectionsOf(HEXAGONAL, features), DECLARED["6/mmm"]);
   });
 
   it("a cubic three-fold broken while every in-plane operation holds: the three-folds fail", async () => {
-    // 4/mmm's orbit of a correlation at (½, 0, ¼): it keeps every operation that keeps c, and the mirror ⊥ c, but no three-fold.
+    // 4/mmm's orbit of a correlation at (½, 0, ¼): it keeps every operation of 4/mmm, those that keep c and the mirror ⊥ c among them, but no three-fold.
     const features = [...cubicBase(), ...orbit([{ at: [0.5, 0, 0.25], amp: 0.7, width: 0.3 }], directGroup(DECLARED["4/mmm"]))];
     for (const o of oldCheck(CUBIC, features).ops) expect(o.rms_difference, o.op).toBeLessThan(1e-6);
     serve(CUBIC, features, { symmetry: "m-3m", ops: DECLARED["m-3m"] });
     const { out, outcome } = await check();
-    for (const o of out.ops.filter((x) => !x.moves_c)) expect(held(o), `${o.op}: ${o.rms_difference}`).toBe(true);
-    const by = byName(out.ops);
-    expect(held(by["mirror ⊥ c"])).toBe(true);
+    // 4/mmm's entries hold, and only they.
+    expect(out.ops.filter(held).map((o) => o.op).sort()).toEqual(entriesOf(DECLARED["4/mmm"]).sort());
+    expect(held(byName(out.ops)[MIRROR_C])).toBe(true);
     const threeFolds = out.ops.filter((o) => o.op.startsWith("three-fold"));
-    expect(threeFolds).toHaveLength(8);
+    expect(threeFolds).toHaveLength(4 * 2);
     for (const o of threeFolds) expect(o.rms_difference, o.op).toBeGreaterThan(0.05);
     expect(outcome).toMatchObject({ kind: "attention", reasons: ["symmetry broken"] });
+    expectMembersAgree(sectionsOf(CUBIC, features), DECLARED["m-3m"]);
   });
 });
 
@@ -247,10 +296,15 @@ describe("where an operation is tested", () => {
     expect(api.fetchDpdfSlice).toHaveBeenCalledWith("kat.delta_pdf", "xy", expect.closeTo(-1.6, 9));
     expect(out.sections).toBe("xy at z = 1.6 and -1.6 Å, xz at y = 0, yz at x = 0");
     const by = byName(out.ops);
-    expect(by["mirror ⊥ c"].tested_on).toBe("xy z=1.6↔xy z=-1.6; xz; yz");
-    // The correlation at (0.3, 0.2, 0.4) lies on the section at z = 1.6 Å only: there the mirror ⊥ c fails.
-    expect(by["mirror ⊥ c"].rms_difference).toBeGreaterThan(0.05);
-    expect(by["four-fold ∥ c (90°)"].tested_on).toBe("xy z=1.6; xy z=-1.6; xz↔yz");
+    // Tested as the two-fold ∥ c, which keeps each x–y section; the mirror ⊥ c
+    // alone compares the one at z with the one at −z, and gives the same number.
+    expect(by[MIRROR_C].tested_on).toBe("xy z=1.6; xy z=-1.6; xz; yz");
+    // The correlation at (0.3, 0.2, 0.4) lies on the section at z = 1.6 Å only: there the pair fails.
+    expect(by[MIRROR_C].rms_difference).toBeGreaterThan(0.05);
+    expect(by["four-fold ∥ c (90°) / -4 ∥ c (90°)"].tested_on).toBe("xy z=1.6; xy z=-1.6; xz↔yz");
+    const mirror = operationSymmetry(sectionsAt(CUBIC, features, [["xy", 8], ["xy", -8], ["xz", 0], ["yz", 0]]), [transpose(HKL.mirrorC)], [1, 1, 1])!;
+    expect(mirror.ops[0]).toMatchObject({ op: "mirror ⊥ c", tested_on: "xy z=1.6↔xy z=-1.6; xz; yz" });
+    expectMembersAgree(sectionsAt(CUBIC, features, [["xy", 8], ["xy", -8], ["xz", 0], ["yz", 0]]), DECLARED["m-3m"]);
   });
 
   it("an operation that maps none of the sections onto one is tested on the voxels it maps from one onto another", () => {
@@ -276,10 +330,13 @@ describe("where an operation is tested", () => {
     serve(CUBIC, cubicBase(), { symmetry: "m-3m", ops: DECLARED["m-3m"] }, grid);
     const { out, outcome } = await check();
     const mixesC = (m: Mat3) => m[2][0] !== 0 || m[2][1] !== 0 || m[0][2] !== 0 || m[1][2] !== 0;
-    const ops = directGroup(DECLARED["m-3m"]).slice(1);
-    expect(out.not_tested!.map((o) => o.op).sort()).toEqual(ops.filter(mixesC).map(operationName).sort());
+    const rotations = directGroup(DECLARED["m-3m"])
+      .slice(1)
+      .filter((m) => det(m) > 0);
+    expect(out.not_tested!.map((o) => o.op).sort()).toEqual(rotations.filter(mixesC).map(pairOf).sort());
+    expect(out.not_tested).toHaveLength(16);
     expect(out.not_tested![0].why).toMatch(/^the grid's steps along [abc] and [abc] differ: it does not map voxels onto voxels$/);
-    expect(out.ops.map((o) => o.op).sort()).toEqual(ops.filter((m) => !mixesC(m)).map(operationName).sort());
+    expect(out.ops.map((o) => o.op).sort()).toEqual([...rotations.filter((m) => !mixesC(m)).map(pairOf), "inversion"].sort());
     for (const o of out.ops) expect(o.rms_difference, o.op).toBeLessThan(1e-6);
     expect(outcome).toMatchObject({ kind: "pass" });
     expect(out.verdict).toBe(`kept: every operation tested holds to 0.001 or better; ${out.not_tested!.length} could not be tested (not_tested says why)`);
@@ -290,10 +347,11 @@ describe("where an operation is tested", () => {
     serve(HEXAGONAL, hexagonalBase(), { symmetry: "6/mmm" });
     const named = await check();
     expect(named.out.operations).toBe("the cell's in-plane ones (hexagonal): no operations declared");
+    // None has its product with the inversion among them: each is its own entry.
     expect(named.out.ops.map((o) => [o.op, o.tested_on])).toEqual([
       ["six-fold ∥ c (60°)", "xy; xz↔yz"],
       ["three-fold ∥ c (120°)", "xy; xz↔yz"],
-      ["two-fold ∥ c", "xy; xz; yz"],
+      ["two-fold ∥ c", "xz; yz"],
       ["mirror ⊥ [1-10]", "xy; xz↔yz"],
     ]);
     expect(named.outcome).toMatchObject({ kind: "pass" });

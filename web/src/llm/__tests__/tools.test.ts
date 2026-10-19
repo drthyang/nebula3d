@@ -664,9 +664,11 @@ describe("symmetry_check", () => {
     api.fetchMeta.mockResolvedValue({ ...META, symmetry: "6/mmm", symmetry_ops: DECLARED["6/mmm"] });
     const out = JSON.parse((await runOn(full, "symmetry_check", {})).text);
     expect(out.operations).toBe("declared (6/mmm): 23 besides the identity");
-    expect(out.ops).toHaveLength(23);
-    // 6mm keeps c (11 besides the identity); the other twelve move it.
-    expect(out.ops.filter((o: { moves_c: boolean }) => o.moves_c)).toHaveLength(12);
+    // Each of the eleven rotations with its product with the inversion, and the inversion.
+    expect(out.ops).toHaveLength(12);
+    expect(out.ops.map((o: { op: string }) => o.op)).toContain("two-fold ∥ c / mirror ⊥ c");
+    // Each holds a member that moves c.
+    expect(out.ops.every((o: { moves_c: boolean }) => o.moves_c)).toBe(true);
   });
 
   it("does not call an asymmetry a break when the file declares no symmetry: the data were not symmetrised", async () => {
