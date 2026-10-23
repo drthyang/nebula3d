@@ -307,6 +307,18 @@ export const isToolsUnsupported = (error: unknown): boolean => {
   return status !== undefined && status >= 400 && status < 500 && /tool|function/i.test(message ?? "");
 };
 
+// A server that does not take stream_options (asked for the token counts)
+// refuses the request with a client error naming it.
+export const isUsageUnsupported = (error: unknown): boolean => {
+  const { status, message } = (error ?? {}) as HttpError;
+  return status !== undefined && status >= 400 && status < 500 && /stream_options|include_usage/i.test(message ?? "");
+};
+
+// Servers known (this session) to refuse stream_options: asked without it.
+const noUsage = new Set<string>();
+export const usageRefused = (baseUrl: string): boolean => noUsage.has(trimBase(baseUrl));
+export const refuseUsage = (baseUrl: string): void => void noUsage.add(trimBase(baseUrl));
+
 // Ollama at its usual port goes through its own chat API (/api/chat), not /v1:
 // only there does a request set the model's context length. Otherwise Ollama
 // picks one by the machine's memory (4k on a small machine, far more on a large
@@ -716,7 +728,7 @@ async function completeWatched(
   let text = "";
   let usage: TokenUsage | null = null;
   try {
-    for await (const delta of streamChat({ ...args, signal: request.signal, includeUsage: true })) {
+    for await (const delta of streamChat({ ...args, signal: request.signal, includeUsage: !usageRefused(args.baseUrl) })) {
       heard = true;
       watch(stallMs.idle);
       if (delta.content) text += delta.content;
@@ -724,6 +736,13 @@ async function completeWatched(
     }
   } catch (e) {
     if (stalled && !args.signal?.aborted) throw new StallError(Math.round((heard ? stallMs.idle : stallMs.first) / 1000));
+    if (!heard && isUsageUnsupported(e) && !usageRefused(args.baseUrl)) {
+      // Asked again without the counts, which this server will not give.
+      refuseUsage(args.baseUrl);
+      clearTimeout(watchdog);
+      args.signal?.removeEventListener("abort", stop);
+      return completeWatched(args, stallMs, onUsage);
+    }
     throw e;
   } finally {
     clearTimeout(watchdog);

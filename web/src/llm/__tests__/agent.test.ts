@@ -95,6 +95,22 @@ describe("each request's tokens (usage.ts)", () => {
     expect(asked).toEqual([true]);
   });
 
+  it("asks a server that refuses stream_options again without it, and estimates its counts", async () => {
+    const asked: boolean[] = [];
+    client.streamChat.mockImplementation((args: { includeUsage?: boolean }) => {
+      asked.push(Boolean(args.includeUsage));
+      return (async function* () {
+        if (args.includeUsage) throw Object.assign(new Error("HTTP 400: Unrecognized request argument supplied: stream_options"), { status: 400 });
+        yield { content: "Hello." };
+      })();
+    });
+    const counted: Usage[] = [];
+    const r = await runAgent({ messages: base, tools: [], ctx: null, settings: { ...settings, baseUrl: "http://10.0.0.9:8080/v1" }, signal: new AbortController().signal, onUsage: (u) => counted.push(u) });
+    expect(r.content).toBe("Hello.");
+    expect(asked).toEqual([true, false]);
+    expect(counted).toMatchObject([{ requests: 1, estimated: 1 }]);
+  });
+
   it("counts no request that failed", async () => {
     script([new Error("400 bad request")]);
     const counted: Usage[] = [];

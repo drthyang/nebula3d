@@ -13,7 +13,10 @@
 import {
   isMalformedOutput,
   isToolsUnsupported,
+  isUsageUnsupported,
+  refuseUsage,
   streamChat,
+  usageRefused,
   type ChatMessage,
   type TokenUsage,
   type ToolCall,
@@ -298,7 +301,7 @@ export async function runAgent({
         toolChoice: useTools && (last || answerNow) ? "none" : undefined,
         // Every server is asked for the request's counts: they are shown with
         // the reply (usage.ts), and a local server's calibrate the token estimate.
-        includeUsage: true,
+        includeUsage: !usageRefused(settings.baseUrl),
         numCtx: plan.numCtx,
       })) {
         heard = true;
@@ -340,6 +343,13 @@ export async function runAgent({
         useTools = false;
         note = TOOLS_UNSUPPORTED_NOTE;
         round = -1; // the same request again, without tools
+        continue;
+      }
+      // A server that will not give token counts is asked again without them.
+      if (!roundText && isUsageUnsupported(e) && !usageRefused(settings.baseUrl)) {
+        refuseUsage(settings.baseUrl);
+        reasoning = reasoningBefore;
+        round -= 1; // the same request again
         continue;
       }
       if (isMalformedOutput(e) && retries < MALFORMED_RETRIES) {

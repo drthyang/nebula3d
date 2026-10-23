@@ -256,6 +256,27 @@ describe("completeChat with a stall watchdog (the tuner's requests)", () => {
     expect(seen).toEqual([{ input: 812, output: 9, cacheRead: 640 }, null]);
   });
 
+  it("asks a server that refuses stream_options again without it", async () => {
+    const bodies: { stream_options?: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as { stream_options?: unknown };
+        bodies.push(body);
+        if (body.stream_options) return new Response(JSON.stringify({ error: { message: "Unrecognized request argument supplied: stream_options" } }), { status: 400 });
+        return slowBody([line({ content: "{}" }), "data: [DONE]\n"], 5, init.signal ?? undefined, true);
+      }),
+    );
+    const seen: unknown[] = [];
+    const strict = { ...args, baseUrl: "http://127.0.0.1:1299/v1" };
+    await expect(completeChat({ ...strict, stallMs: { first: 1000, idle: 1000 }, onUsage: (u) => seen.push(u) })).resolves.toBe("{}");
+    expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, false]);
+    expect(seen).toEqual([null]); // no counts from it: the caller estimates
+    // Remembered: the next request goes without it at once.
+    await completeChat({ ...strict, stallMs: { first: 1000, idle: 1000 } });
+    expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, false, false]);
+  });
+
   it("leaves the user's Stop an AbortError, not a stall", async () => {
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([], 10, init.signal ?? undefined, false)));
     const stop = new AbortController();
