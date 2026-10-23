@@ -130,6 +130,23 @@ export function cifNumber(v: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * A fractional coordinate as a person types it: a decimal ("0.25", ".5",
+ * "-0.125") or a fraction ("1/3", "-1/4"), the notation the symmetry
+ * operations take too. Null for anything else.
+ */
+export function parseCoordinate(text: string): number | null {
+  const t = text.trim();
+  const m = /^([+-]?)(\d+)\s*\/\s*(\d+)$/.exec(t);
+  if (m) {
+    const den = Number(m[3]);
+    return den > 0 ? (m[1] === "-" ? -1 : 1) * (Number(m[2]) / den) : null;
+  }
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t)) return null;
+  const v = Number(t);
+  return Number.isFinite(v) ? v : null;
+}
+
 /** The element in a type symbol or label: "Cu2+" → "Cu", "O2-" → "O", "Sn1a" → "Sn". */
 export function elementOf(symbol: string): string {
   const m = /^([A-Z][a-z]?)/.exec(symbol.trim());

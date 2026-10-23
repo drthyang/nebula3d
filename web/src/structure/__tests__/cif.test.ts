@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cifNumber, elementOf, parseCif, tokenize } from "../cif";
+import { cifNumber, elementOf, parseCif, parseCoordinate, tokenize } from "../cif";
 
 // Rock salt, written the way structure databases write CIFs: uncertainties,
 // quoted operations, a text field and an anisotropic loop to skip.
@@ -125,5 +125,21 @@ describe("helpers", () => {
     expect(elementOf("Cu2+")).toBe("Cu");
     expect(elementOf("O2-")).toBe("O");
     expect(elementOf("Sn1a")).toBe("Sn");
+  });
+});
+
+describe("parseCoordinate (a site's coordinate as typed)", () => {
+  it("reads decimals and signed fractions, the notation the symmetry operations take", () => {
+    expect(parseCoordinate("0.25")).toBe(0.25);
+    expect(parseCoordinate(" .5 ")).toBe(0.5);
+    expect(parseCoordinate("-0.125")).toBe(-0.125);
+    expect(parseCoordinate("1/3")).toBeCloseTo(1 / 3, 15);
+    expect(parseCoordinate("-1/4")).toBe(-0.25);
+    expect(parseCoordinate("+2 / 3")).toBeCloseTo(2 / 3, 15);
+    expect(parseCoordinate("1e-3")).toBe(0.001);
+  });
+
+  it("refuses what it cannot read, never giving NaN", () => {
+    for (const t of ["", "0,5", "1/0", "x", "1/3/4", "0.5.1", "1/", "/2", "0x10"]) expect(parseCoordinate(t)).toBeNull();
   });
 });

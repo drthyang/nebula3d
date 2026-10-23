@@ -5758,6 +5758,10 @@ h6.md-h {
 .struct-table input.struct-cell.num {
   text-align: right;
 }
+.struct-table input.struct-cell.invalid {
+  border-color: var(--red);
+  box-shadow: 0 0 0 1px var(--red-soft);
+}
 .struct-x {
   padding: 0 4px;
   font-size: 15px;

@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { Lattice } from "../api/types";
 import { useStructureStore, type StructureDef } from "../state/structureStore";
-import { parseCif, type Site } from "../structure/cif";
+import { parseCif, parseCoordinate, type Site } from "../structure/cif";
 import { bestPermutation, CELL_TOLERANCE, cellMatches, permLabel, PERMUTATIONS } from "../structure/pairs";
 import { CENTERINGS, type Centering } from "../structure/symops";
 import { activeOrigin, latticeCell, type StructureModel } from "../structure/useStructure";
@@ -16,7 +16,11 @@ import { GlyphIcon } from "./StructureOverlay";
 
 const fmt = (v: number) => Number(v.toFixed(5)).toString();
 
-/** A table cell that edits as text and commits on Enter / blur. */
+/**
+ * A table cell that edits as text and commits on Enter / blur. A numeric cell
+ * takes a decimal or a fraction (1/3); text it cannot read stays in the cell,
+ * outlined, until it is corrected or Esc brings back the value.
+ */
 function CellInput({
   value,
   onCommit,
@@ -31,22 +35,41 @@ function CellInput({
   label: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState(false);
   const commit = () => {
     if (draft === null) return;
-    if (!numeric || (draft.trim() !== "" && Number.isFinite(Number(draft)))) onCommit(draft.trim());
+    if (numeric) {
+      const v = parseCoordinate(draft);
+      if (v === null) {
+        setInvalid(true);
+        return;
+      }
+      onCommit(String(v));
+    } else {
+      onCommit(draft.trim());
+    }
     setDraft(null);
+    setInvalid(false);
   };
   return (
     <input
       type="text"
       aria-label={label}
-      className={`struct-cell${numeric ? " num" : ""}`}
+      aria-invalid={invalid || undefined}
+      title={invalid ? `Cannot read "${draft}": type a decimal (0.5) or a fraction (1/2); Esc brings back the value` : undefined}
+      className={`struct-cell${numeric ? " num" : ""}${invalid ? " invalid" : ""}`}
       style={{ width }}
       value={draft ?? value}
-      onChange={(e) => setDraft(e.target.value)}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        setInvalid(false);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") commit();
-        else if (e.key === "Escape") setDraft(null);
+        else if (e.key === "Escape") {
+          setDraft(null);
+          setInvalid(false);
+        }
       }}
       onBlur={commit}
     />
