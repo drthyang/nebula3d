@@ -112,9 +112,22 @@ export interface PipelineConfig {
   pdfQMax: string;
 }
 
+// What the last run was asked to do, kept beside its log: which dataset, which
+// stages, the settings it ran with (as the pipeline took them) and whether it
+// recomputed existing outputs. A saved session carries it (state/session.ts).
+export interface RunRecord {
+  datasetId: string;
+  stages: string[];
+  force: boolean;
+  flattenEnabled: boolean;
+  params: StageParamsIn;
+  tuning?: TuningTrial;
+}
+
 interface PipelineState extends PipelineConfig {
   // job execution
   jobId: string | null;
+  lastRun: RunRecord | null;
   running: boolean;
   events: JobEvent[];
   // Client arrival time of each event, index-aligned with `events`. Lives in the
@@ -210,6 +223,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   pdfQMax: "",
 
   jobId: null,
+  lastRun: null,
   running: false,
   events: [],
   times: [],
@@ -271,9 +285,15 @@ async function start(
   const s = get();
   const datasetId = opts.datasetId ?? useDatasetStore.getState().datasetId ?? "";
   closeStream();
-  set({ events: [], times: [], terminal: null, running: true, jobId: null });
-
   const params = formToParams(s);
+  set({
+    events: [],
+    times: [],
+    terminal: null,
+    running: true,
+    jobId: null,
+    lastRun: { datasetId, stages, force, flattenEnabled: s.flatten, params, ...(opts.tuning ? { tuning: opts.tuning } : {}) },
+  });
 
   if (PYODIDE_MODE) {
     await runInBrowser(datasetId, params, s.flatten, force, stages, set, get, opts.tuning);

@@ -2128,6 +2128,30 @@ input[type="range"]::-moz-range-track {
   color: var(--red);
 }
 
+/* A saved session restored (or refused): what came back, and what is missing. */
+.session-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 2px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+  background: var(--green-soft);
+}
+.session-note > span {
+  flex: 1;
+}
+.session-note.warn {
+  background: var(--amber-soft);
+}
+.session-note.error {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
 /* Boot progress panel (shown during the one-time Pyodide WASM download) */
 .boot-panel {
   display: flex;

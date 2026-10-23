@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
 
-import { browseDataRoot, fetchMeta, fetchSlice, fetchVolumeCoverage, setDataRoot } from "../api/client";
+import { browseDataRoot, fetchDatasets, fetchMeta, fetchSlice, fetchVolumeCoverage, setDataRoot } from "../api/client";
 import {
   bootPercent,
   engine,
@@ -28,6 +28,8 @@ import {
 } from "../state/pipelineStore";
 import { useHighlightKeys } from "../llm/highlight";
 import { datasetName } from "../api/datasetName";
+import { useChatStore } from "../llm/chatStore";
+import { captureSession, parseSession, restoreSession, sessionFileName, useSessionNote } from "../state/session";
 
 const DATASET_STAGE_BADGES = [
   { key: "raw", label: "Raw", group: "Input" },
@@ -1111,6 +1113,18 @@ function BootProgressPanel({ status }: { status: BootStatus }) {
 
 // ---------------------------------------------------------------------------
 
+// Hand a text file to the browser's downloads.
+function downloadText(name: string, type: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
   const lit = useHighlightKeys();
   const datasetsQ = useDatasets();
@@ -1327,6 +1341,60 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     await run();
   };
 
+  // Save the analysis to a file, and bring one back (state/session.ts): the
+  // settings, the last run, the Pilot conversation; outputs that are not
+  // here any more are recomputed on request.
+  const sessionInputRef = useRef<HTMLInputElement>(null);
+  const chatBusy = useChatStore((st) => st.busy);
+  const sessionNote = useSessionNote((st) => st.note);
+  const setSessionNote = useSessionNote((st) => st.setNote);
+  const onSaveSession = async () => {
+    // The outputs as they are now, not as last fetched.
+    let now = datasets;
+    try {
+      now = await queryClient.fetchQuery({ queryKey: ["datasets"], queryFn: fetchDatasets, staleTime: 0 });
+    } catch {
+      // the server is unreachable: save what the page knows
+    }
+    const session = captureSession(now.find((d) => d.id === datasetId));
+    downloadText(sessionFileName(session), "application/json", JSON.stringify(session, null, 1));
+    setSessionNote({ kind: "ok", text: `Saved ${sessionFileName(session)}: the settings, the last run, the NEBULA Pilot conversation and the outputs present (${session.outputs.length}). The outputs themselves stay here; restoring recomputes any that are gone.` });
+  };
+  const onRestoreSession = async (file: File) => {
+    try {
+      const session = parseSession(await file.text());
+      // The outputs as they are now, not as last fetched.
+      const now = await queryClient.fetchQuery({ queryKey: ["datasets"], queryFn: fetchDatasets, staleTime: 0 });
+      const result = restoreSession(session, now);
+      const when = session.saved ? new Date(session.saved).toLocaleString() : "earlier";
+      if (!result.datasetFound) {
+        setSessionNote({
+          kind: "warn",
+          text: PYODIDE_MODE
+            ? `This session's input, ${session.dataset?.rawName || session.dataset?.id}, is not loaded. Load it (Load volume…), then restore the session again.`
+            : `This session's input, ${session.dataset?.rawName || session.dataset?.id}, is not in this data folder. Point the data folder at the one that holds it, then restore the session again.`,
+        });
+        return;
+      }
+      const label = (o: string) => DATASET_STAGE_BADGES.find((b) => b.key === o)?.label ?? o;
+      const missing = result.missing.length
+        ? ` ${result.missing.length} of the outputs it had are not here: ${result.missing.map(label).join(", ")}.`
+        : "";
+      setSessionNote({
+        kind: result.missing.length ? "warn" : "ok",
+        text: `Restored ${result.restored.join(", ")} from the session saved ${when}.${missing}`,
+        ...(result.recompute.length && session.dataset ? { recompute: { datasetId: session.dataset.id, stages: result.recompute } } : {}),
+      });
+    } catch (e) {
+      setSessionNote({ kind: "error", text: `${file.name}: ${(e as Error).message}` });
+    }
+  };
+  const onRecompute = async (datasetId: string, stages: string[]) => {
+    setSessionNote(null);
+    onStarted();
+    await usePipelineStore.getState().runStages(stages, { datasetId, force: true });
+  };
+
   const applyDataRoot = async () => {
     const nextRoot = rootDraft.trim();
     if (!nextRoot) return;
@@ -1447,8 +1515,54 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             >
               View execution →
             </button>
+            <input
+              ref={sessionInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="visually-hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void onRestoreSession(f);
+                if (sessionInputRef.current) sessionInputRef.current.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => void onSaveSession()}
+              title="Save the settings, the last run's log, the outputs present and the NEBULA Pilot conversation to a file"
+            >
+              Save session
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => sessionInputRef.current?.click()}
+              disabled={s.running || chatBusy}
+              title={s.running || chatBusy ? "Wait for the run or the reply to finish" : "Bring back a saved session: its settings, last run and conversation"}
+            >
+              Restore session…
+            </button>
           </div>
         </div>
+        {sessionNote && (
+          <div className={`session-note ${sessionNote.kind}`} role="status">
+            <span>{sessionNote.text}</span>
+            {sessionNote.recompute && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={s.running}
+                onClick={() => void onRecompute(sessionNote.recompute!.datasetId, sessionNote.recompute!.stages)}
+              >
+                Recompute them
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSessionNote(null)} aria-label="Dismiss">
+              ×
+            </button>
+          </div>
+        )}
 
         <div className="data-card-grid">
           {PYODIDE_MODE ? (

@@ -33,6 +33,9 @@ interface ChatState {
   addTurn: (turn: Omit<ChatTurn, "id">) => void;
   setDraft: (draft: string) => void;
   clear: () => void;
+  // Replace the conversation with a saved one (state/session.ts): only its
+  // well-formed turns, in their order, numbered on after them.
+  restoreTurns: (turns: unknown[]) => void;
 }
 
 const TRANSCRIPT_KEY = "nebula3d.chat.turns.v1";
@@ -111,6 +114,11 @@ export const useChatStore = create<ChatState>((set) => ({
   addTurn: (turn) => set((s) => ({ turns: [...s.turns, { ...turn, ...(turn.steps ? { steps: asRead(turn.steps) } : {}), id: nextId++ }] })),
   setDraft: (draft) => set({ draft }),
   clear: () => set({ turns: [], draft: "", error: null }),
+  restoreTurns: (saved) => {
+    const turns = saved.filter(isTurn);
+    nextId = Math.max(nextId, turns.reduce((m, t) => Math.max(m, t.id), 0) + 1);
+    set({ turns, error: null });
+  },
 }));
 
 useChatStore.subscribe((s, prev) => {
