@@ -12,6 +12,7 @@
 import { create } from "zustand";
 
 import type { AgentProgress, AgentStep } from "./agent";
+import type { Usage } from "./usage";
 import type { ComputedVerdict } from "./verdicts";
 
 export interface ChatTurn {
@@ -22,6 +23,7 @@ export interface ChatTurn {
   steps?: AgentStep[];
   note?: string;
   verdict?: ComputedVerdict | null; // computed from the checks the reply ran (verdicts/)
+  tokens?: Usage; // the reply's model requests, measured or estimated (usage.ts)
 }
 
 interface ChatState {
@@ -30,6 +32,8 @@ interface ChatState {
   busy: boolean;
   live: AgentProgress | null; // the reply being written
   error: string | null;
+  usage: Usage | null; // the conversation's model requests so far (usage.ts); null before the first
+  addUsage: (u: Usage) => void;
   addTurn: (turn: Omit<ChatTurn, "id">) => void;
   setDraft: (draft: string) => void;
   clear: () => void;
@@ -40,6 +44,7 @@ interface ChatState {
 
 const TRANSCRIPT_KEY = "nebula3d.chat.turns.v1";
 const DRAFT_KEY = "nebula3d.chat.draft.v1";
+const USAGE_KEY = "nebula3d.chat.usage.v1";
 export const TRANSCRIPT_BYTES = 1_000_000;
 
 const isTurn = (t: unknown): t is ChatTurn =>
@@ -98,6 +103,17 @@ export const fitTranscript = (turns: ChatTurn[], budget = TRANSCRIPT_BYTES): str
   return `[${parts.slice(from).join(",")}]`;
 };
 
+// The conversation's token total, kept with its transcript.
+const restoreUsage = (): Usage | null => {
+  try {
+    const u: unknown = JSON.parse(sessionStorage.getItem(USAGE_KEY) ?? "null");
+    const fields = ["input", "output", "cacheRead", "cacheWrite", "requests", "estimated"] as const;
+    return u && typeof u === "object" && fields.every((f) => typeof (u as Record<string, unknown>)[f] === "number") ? (u as Usage) : null;
+  } catch {
+    return null;
+  }
+};
+
 const restored = restore();
 let nextId = restored.turns.reduce((m, t) => Math.max(m, t.id), 0) + 1;
 
@@ -118,13 +134,42 @@ export const useChatStore = create<ChatState>((set) => ({
   busy: false,
   live: null,
   error: null,
+  usage: restoreUsage(),
+  addUsage: (u) =>
+    set((s) => {
+      const t = s.usage;
+      return {
+        usage: t
+          ? {
+              input: t.input + u.input,
+              output: t.output + u.output,
+              cacheRead: t.cacheRead + u.cacheRead,
+              cacheWrite: t.cacheWrite + u.cacheWrite,
+              requests: t.requests + u.requests,
+              estimated: t.estimated + u.estimated,
+            }
+          : { ...u },
+      };
+    }),
   addTurn: (turn) => set((s) => ({ turns: [...s.turns, { ...turn, ...(turn.steps ? { steps: asRead(turn.steps) } : {}), id: nextId++ }] })),
   setDraft: (draft) => set({ draft }),
-  clear: () => set({ turns: [], draft: "", error: null }),
+  clear: () => set({ turns: [], draft: "", error: null, usage: null }),
   restoreTurns: (saved) => {
     const turns = saved.filter(isTurn).map(settled);
     nextId = Math.max(nextId, turns.reduce((m, t) => Math.max(m, t.id), 0) + 1);
-    set({ turns, error: null });
+    // The conversation's total is its replies' counts.
+    const counted = turns.flatMap((t) => (t.tokens?.requests ? [t.tokens] : []));
+    const usage = counted.length
+      ? counted.reduce((a, u) => ({
+          input: a.input + u.input,
+          output: a.output + u.output,
+          cacheRead: a.cacheRead + u.cacheRead,
+          cacheWrite: a.cacheWrite + u.cacheWrite,
+          requests: a.requests + u.requests,
+          estimated: a.estimated + u.estimated,
+        }))
+      : null;
+    set({ turns, error: null, usage });
   },
 }));
 
@@ -132,6 +177,7 @@ useChatStore.subscribe((s, prev) => {
   try {
     if (s.turns !== prev.turns) sessionStorage.setItem(TRANSCRIPT_KEY, fitTranscript(s.turns));
     if (s.draft !== prev.draft) sessionStorage.setItem(DRAFT_KEY, s.draft);
+    if (s.usage !== prev.usage) sessionStorage.setItem(USAGE_KEY, JSON.stringify(s.usage));
   } catch {
     // Full or blocked: the transcript just does not survive a reload.
   }

@@ -23,9 +23,10 @@ import { fillReferences } from "./references";
 import { lastQuestion, toolsFor } from "./localTools";
 import { isLocalUrl } from "./provider/presets";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, STALL_MS, StallError, type Failure } from "./recovery";
-import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
+import { baseTokens, DATA_CHARS_PER_TOKEN, estimateTokens, observeTokens, PROSE_CHARS_PER_TOKEN } from "./provider/tokens";
 import { planWindow } from "./provider/window";
 import { seen, shorten, whole } from "./readings";
+import { estimated, measured, type Usage } from "./usage";
 import type { LlmSettings } from "./settings";
 import { skillsOn } from "./skills";
 import {
@@ -173,6 +174,7 @@ export async function runAgent({
   stallMs = STALL_MS,
   retryDelaysMs = RETRY_DELAYS_MS,
   softBudget = SOFT_BUDGET,
+  onUsage,
 }: {
   messages: ChatMessage[];
   tools: AgentTool[];
@@ -186,6 +188,7 @@ export async function runAgent({
   stallMs?: { first: number; idle: number }; // the watchdog's limits (tests shorten them)
   retryDelaysMs?: number[]; // the pauses before each retry
   softBudget?: number; // a local request's tokens past which older results are shortened
+  onUsage?: (u: Usage) => void; // each completed request's tokens, measured or estimated (usage.ts)
 }): Promise<AgentResult> {
   // The reply's history, which the executor runs each round of calls over
   // (tools/round.ts): the tools the reply offers, runs and checks answers
@@ -255,6 +258,7 @@ export async function runAgent({
     let native: unknown;
     let cutOff = false;
     const reasoningBefore = reasoning;
+    let reported: TokenUsage | undefined; // the request's counts, as its server gave them
     const specs = useTools ? toolSpecs(offered) : undefined;
     if (isLocalUrl(settings.baseUrl) && estimateTokens(baseTokens(convo, specs), windowKey) > softBudget) compactOlder(KEEP_FULL);
     // The request's own controller: the reply's Stop ends it, and so does the
@@ -292,8 +296,9 @@ export async function runAgent({
         signal: request.signal,
         tools: specs,
         toolChoice: useTools && (last || answerNow) ? "none" : undefined,
-        // A local server's counts calibrate the token estimate.
-        includeUsage: wantUsage || isLocalUrl(settings.baseUrl),
+        // Every server is asked for the request's counts: they are shown with
+        // the reply (usage.ts), and a local server's calibrate the token estimate.
+        includeUsage: true,
         numCtx: plan.numCtx,
       })) {
         heard = true;
@@ -305,6 +310,7 @@ export async function runAgent({
           tokens.cacheRead += delta.usage.cacheRead ?? 0;
           tokens.cacheWrite += delta.usage.cacheWrite ?? 0;
           tokens.requests += 1;
+          reported = delta.usage;
         }
         if (delta.content) roundText += delta.content;
         if (delta.reasoning) reasoning += delta.reasoning;
@@ -315,6 +321,18 @@ export async function runAgent({
       }
       requests += 1;
       attempts = 0;
+      // The request's tokens: as its server counted them, else by the estimate
+      // (the prompt as the window planning measures it; the reply's text,
+      // thinking and calls at the same rates), marked as one.
+      onUsage?.(
+        reported
+          ? measured(reported)
+          : estimated(
+              estimateTokens(baseTokens(convo, specs), windowKey),
+              (roundText.length + reasoning.length - reasoningBefore.length) / PROSE_CHARS_PER_TOKEN +
+                calls.reduce((n, c) => n + c.function.name.length + c.function.arguments.length, 0) / DATA_CHARS_PER_TOKEN,
+            ),
+      );
     } catch (e) {
       if (signal.aborted) throw e; // the reply was stopped
       if (useTools && round === 0 && !roundText && isToolsUnsupported(e)) {

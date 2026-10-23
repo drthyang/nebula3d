@@ -17,6 +17,7 @@ import * as readings from "../readings";
 import { isCompacted } from "../readings/compact";
 import { DEFAULT_SETTINGS } from "../settings";
 import { MAX_RESULT_CHARS, type AgentTool } from "../tools";
+import type { Usage } from "../usage";
 import type { Outcome } from "../verdicts";
 
 const client = vi.hoisted(() => ({ streamChat: vi.fn() }));
@@ -63,6 +64,43 @@ beforeEach(() => {
   // The window plan asks the model server about the model: none answers here.
   vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
   resetTokenState();
+});
+
+describe("each request's tokens (usage.ts)", () => {
+  it("counts every completed request: the server's numbers when it gave them, else marked as estimated", async () => {
+    script([
+      // Reported, with a cached part (an Anthropic- or OpenAI-style count).
+      [{ toolCalls: [call("c1", "echo", { x: 1 })] }, { usage: { input: 1200, output: 30, cacheRead: 1000 } }],
+      // Not reported: estimated from the request and the reply.
+      [{ content: "x is 1." }],
+    ]);
+    const counted: Usage[] = [];
+    await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal, checkAnswers: false, onUsage: (u) => counted.push(u) });
+    expect(counted).toHaveLength(2);
+    expect(counted[0]).toEqual({ input: 1200, output: 30, cacheRead: 1000, cacheWrite: 0, requests: 1, estimated: 0 });
+    expect(counted[1]).toMatchObject({ requests: 1, estimated: 1, cacheRead: 0 });
+    expect(counted[1].input).toBeGreaterThan(0);
+    expect(counted[1].output).toBe(Math.round("x is 1.".length / 3.5));
+  });
+
+  it("asks every server for its counts, the cloud ones included", async () => {
+    const asked: boolean[] = [];
+    client.streamChat.mockImplementation((args: { includeUsage?: boolean }) => {
+      asked.push(Boolean(args.includeUsage));
+      return (async function* () {
+        yield { content: "Hello." };
+      })();
+    });
+    await runAgent({ messages: base, tools: [], ctx: null, settings: { ...settings, baseUrl: "https://api.openai.com/v1" }, signal: new AbortController().signal });
+    expect(asked).toEqual([true]);
+  });
+
+  it("counts no request that failed", async () => {
+    script([new Error("400 bad request")]);
+    const counted: Usage[] = [];
+    await runAgent({ messages: base, tools: [], ctx: null, settings, signal: new AbortController().signal, onUsage: (u) => counted.push(u), retryDelaysMs: [0] });
+    expect(counted).toEqual([]);
+  });
 });
 
 describe("runAgent", () => {

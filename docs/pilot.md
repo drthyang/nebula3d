@@ -180,6 +180,16 @@ The conversation and any reply still streaming live in module-scoped stores
 (`chatStore.ts`, `session.ts`), so collapsing the panel or changing pages does
 not stop them.
 
+**Token usage** (`llm/usage.ts`). Under each reply, its model requests' tokens
+in and out (and the part read from or written to a prompt cache, when the
+server says); in the chat's footer, the conversation's total, a tuning run's
+requests included. The counts are the server's own: OpenAI-compatible servers
+(OpenAI, Gemini, LM Studio) report them when asked, which every request does;
+Ollama's are the prompt tokens it evaluated and the reply's; Claude's include
+the cache reads and writes. A request whose server reports none is counted by
+the console's own estimate and marked ≈ ("estimated"); requests that failed or
+were stopped are not counted.
+
 **Skills.** The user's methods, one per topic, live in
 `.claude/skills/<name>/SKILL.md`, where Claude Code reads them too:
 `reduction-qc`, `bragg-node-audit` and `delta-pdf-interpretation`. All three

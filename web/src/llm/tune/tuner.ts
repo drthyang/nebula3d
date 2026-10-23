@@ -17,8 +17,10 @@ import { fetchDataset, promoteTrial, startTuningRun } from "../../api/client";
 import { queryClient } from "../../api/queryClient";
 import type { Dataset, TuningRun } from "../../api/types";
 import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
-import { completeChat, type ChatMessage } from "../provider/client";
+import { completeChat, type ChatMessage, type TokenUsage } from "../provider/client";
+import { baseTokens, estimateTokens, PROSE_CHARS_PER_TOKEN } from "../provider/tokens";
 import { STALL_MS } from "../recovery";
+import { estimated, measured, recordUsage } from "../usage";
 import type { LlmSettings } from "../settings";
 import {
   currentStageSettings,
@@ -115,8 +117,10 @@ const snapshot = (stage: TuneStage): Partial<PipelineConfig> => {
 
 // The model's reply as JSON. A server that goes quiet ends the request (and
 // the tuning run, with the reason) instead of holding it open, by the chat's
-// stall limits (recovery.ts).
+// stall limits (recovery.ts). Its tokens count into the reply that runs the
+// tuning and the conversation (usage.ts): as the server gave them, else estimated.
 async function ask(messages: ChatMessage[], llm: LlmSettings, signal: AbortSignal): Promise<Record<string, unknown> | null> {
+  let reported: TokenUsage | null = null;
   const text = await completeChat({
     baseUrl: llm.baseUrl,
     model: llm.model,
@@ -125,7 +129,13 @@ async function ask(messages: ChatMessage[], llm: LlmSettings, signal: AbortSigna
     apiKey: llm.apiKey || undefined,
     signal,
     stallMs: STALL_MS,
+    onUsage: (u) => (reported = u),
   });
+  recordUsage(
+    reported
+      ? measured(reported)
+      : estimated(estimateTokens(baseTokens(messages), `${llm.baseUrl}|${llm.model}`), text.length / PROSE_CHARS_PER_TOKEN),
+  );
   return parseJsonReply(text);
 }
 

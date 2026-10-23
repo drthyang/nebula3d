@@ -31,6 +31,7 @@ import { reportable } from "../report/collect";
 import { Markdown } from "./Markdown";
 import { ReportView } from "./ReportView";
 import { TuneProgress } from "./TuneProgress";
+import { usageText } from "../usage";
 import { verdictLine } from "../verdict";
 
 // One-click requests that have the model act: assess the run on the four
@@ -67,6 +68,10 @@ function stageImage(stage: ReviewStage, ac: AssistantContext): string | null {
   const vmax = p.vmax && p.vmax > 0 ? p.vmax : p.slice.header.robust_max || 1;
   return renderSliceToDataUrl(p.slice, { lut, vmax, diverging: p.diverging });
 }
+
+// A token count in a few characters: 950, 12.3k, 1.2M.
+const compactTokens = (n: number): string =>
+  n < 1000 ? String(n) : n < 1e6 ? `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}k` : `${(n / 1e6).toFixed(1)}M`;
 
 // A collapsible "thinking" panel for a reasoning-model chain-of-thought. While
 // live, the body auto-scrolls to the newest reasoning as it streams in.
@@ -203,6 +208,7 @@ const PastTurn = memo(function PastTurn({
           </div>
         )}
         {t.note && <div className="ai-note">{t.note}</div>}
+        {usageText(t.tokens) && <div className="ai-usage">{usageText(t.tokens)}</div>}
         {canReport && (
           <button
             type="button"
@@ -241,6 +247,7 @@ export function ChatView({
   const error = useChatStore((s) => s.error);
   const setDraft = useChatStore((s) => s.setDraft);
   const clearChat = useChatStore((s) => s.clear);
+  const usage = useChatStore((s) => s.usage);
   const scrollRef = useRef<HTMLDivElement>(null);
   // The reply whose analysis report is open (its turn id).
   const [reportFor, setReportFor] = useState<number | null>(null);
@@ -476,6 +483,12 @@ export function ChatView({
             </svg>
             Vision
           </button>
+          {usage && usage.requests > 0 && (
+            <span className="ai-usage-total" title={`This conversation's model requests: ${usageText(usage)}`}>
+              {usage.estimated ? "≈ " : ""}
+              {compactTokens(usage.input + usage.output)} tokens
+            </span>
+          )}
           {turns.length > 0 && (
             <button
               type="button"

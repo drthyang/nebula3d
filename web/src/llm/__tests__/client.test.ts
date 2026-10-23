@@ -245,6 +245,17 @@ describe("completeChat with a stall watchdog (the tuner's requests)", () => {
     await expect(completeChat({ ...args, stallMs: { first: 150, idle: 150 } })).resolves.toBe('{"candidates": []}');
   });
 
+  it("tells the caller the request's token counts, or that the server gave none", async () => {
+    const done = "data: [DONE]\n";
+    const usage = `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 812, completion_tokens: 9, prompt_tokens_details: { cached_tokens: 640 } } })}\n`;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([line({ content: "{}" }), usage, done], 5, init.signal ?? undefined, true)));
+    const seen: unknown[] = [];
+    await completeChat({ ...args, stallMs: { first: 1000, idle: 1000 }, onUsage: (u) => seen.push(u) });
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([line({ content: "{}" }), done], 5, init.signal ?? undefined, true)));
+    await completeChat({ ...args, stallMs: { first: 1000, idle: 1000 }, onUsage: (u) => seen.push(u) });
+    expect(seen).toEqual([{ input: 812, output: 9, cacheRead: 640 }, null]);
+  });
+
   it("leaves the user's Stop an AbortError, not a stall", async () => {
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([], 10, init.signal ?? undefined, false)));
     const stop = new AbortController();

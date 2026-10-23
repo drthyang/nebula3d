@@ -659,9 +659,15 @@ export async function* streamChat({
         }
         // A failure after the 200 (Ollama, OpenRouter, LM Studio) arrives as an error chunk.
         if (parsed.error) throw streamedError(parsed.error);
-        // The token counts come in the last chunk (with no choices) when asked for.
+        // The token counts come in the last chunk (with no choices) when asked for;
+        // OpenAI also says how much of the prompt it read from its cache.
         if (parsed.usage && typeof parsed.usage.prompt_tokens === "number") {
-          usage = { input: parsed.usage.prompt_tokens, output: parsed.usage.completion_tokens ?? 0 };
+          const cached = parsed.usage.prompt_tokens_details?.cached_tokens;
+          usage = {
+            input: parsed.usage.prompt_tokens,
+            output: parsed.usage.completion_tokens ?? 0,
+            ...(typeof cached === "number" && cached > 0 ? { cacheRead: cached } : {}),
+          };
         }
         const reason = parsed.choices?.[0]?.finish_reason;
         if (reason) finish = reason;
@@ -687,7 +693,11 @@ export async function* streamChat({
 // for `idle` ms between pieces, is taken as stuck and the request ends with a
 // StallError. A non-streamed request has no pieces to watch: its first byte is
 // the whole reply, so only a stream tells a slow model from a stuck server.
-async function completeWatched(args: Omit<PostChatArgs, "stream">, stallMs: { first: number; idle: number }): Promise<string> {
+async function completeWatched(
+  args: Omit<PostChatArgs, "stream">,
+  stallMs: { first: number; idle: number },
+  onUsage?: (u: TokenUsage | null) => void,
+): Promise<string> {
   const request = new AbortController();
   const stop = () => request.abort();
   if (args.signal?.aborted) request.abort();
@@ -704,11 +714,13 @@ async function completeWatched(args: Omit<PostChatArgs, "stream">, stallMs: { fi
   };
   watch(stallMs.first);
   let text = "";
+  let usage: TokenUsage | null = null;
   try {
-    for await (const delta of streamChat({ ...args, signal: request.signal })) {
+    for await (const delta of streamChat({ ...args, signal: request.signal, includeUsage: true })) {
       heard = true;
       watch(stallMs.idle);
       if (delta.content) text += delta.content;
+      if (delta.usage) usage = delta.usage;
     }
   } catch (e) {
     if (stalled && !args.signal?.aborted) throw new StallError(Math.round((heard ? stallMs.idle : stallMs.first) / 1000));
@@ -717,6 +729,7 @@ async function completeWatched(args: Omit<PostChatArgs, "stream">, stallMs: { fi
     clearTimeout(watchdog);
     args.signal?.removeEventListener("abort", stop);
   }
+  onUsage?.(usage);
   if (!text) throw new Error("The model returned no message content");
   return text;
 }
@@ -724,7 +737,8 @@ async function completeWatched(args: Omit<PostChatArgs, "stream">, stallMs: { fi
 // Completion read whole, used where the reply is parsed at once. Claude goes
 // through its SDK, which times a request out itself. Elsewhere, with `stallMs`
 // the reply is streamed under a stall watchdog (completeWatched); without, it
-// is one non-streamed request that only `signal` ends.
+// is one non-streamed request that only `signal` ends. `onUsage` is told the
+// request's token counts as the server gave them, or null when it gave none.
 export const completeChat = async ({
   baseUrl,
   model,
@@ -734,19 +748,26 @@ export const completeChat = async ({
   apiKey,
   numCtx,
   stallMs,
-}: Omit<PostChatArgs, "stream"> & { stallMs?: { first: number; idle: number } }): Promise<string> => {
-  if (isAnthropicUrl(baseUrl)) return completeAnthropic({ baseUrl, model, messages, apiKey, signal });
-  if (stallMs) return completeWatched({ baseUrl, model, messages, temperature, signal, apiKey, numCtx }, stallMs);
+  onUsage,
+}: Omit<PostChatArgs, "stream"> & {
+  stallMs?: { first: number; idle: number };
+  onUsage?: (u: TokenUsage | null) => void;
+}): Promise<string> => {
+  if (isAnthropicUrl(baseUrl)) return completeAnthropic({ baseUrl, model, messages, apiKey, signal, onUsage });
+  if (stallMs) return completeWatched({ baseUrl, model, messages, temperature, signal, apiKey, numCtx }, stallMs, onUsage);
   if (isOllamaUrl(baseUrl)) {
     const response = await postOllama({ baseUrl, model, messages, temperature, signal, numCtx }, false);
     const payload = (await response.json()) as OllamaChunk;
     if (payload.error) throw streamedError(payload.error);
     if (typeof payload.message?.content !== "string") throw new Error("The model returned no message content");
+    onUsage?.(typeof payload.prompt_eval_count === "number" ? { input: payload.prompt_eval_count, output: payload.eval_count ?? 0 } : null);
     return payload.message.content;
   }
   const response = await postChat({ baseUrl, model, messages, temperature, stream: false, signal, apiKey });
   const payload = await response.json();
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content !== "string") throw new Error("The model returned no message content");
+  const u = payload.usage;
+  onUsage?.(u && typeof u.prompt_tokens === "number" ? { input: u.prompt_tokens, output: u.completion_tokens ?? 0 } : null);
   return content;
 };

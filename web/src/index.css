@@ -4155,6 +4155,19 @@ body.ai-resizing iframe {
 .ai-step-stopped .ai-step-dot {
   background: var(--text-3);
 }
+/* A reply's token count, and the conversation's (llm/usage.ts). */
+.ai-usage {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.ai-usage-total {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  cursor: help;
+}
 .ai-step-name {
   flex: none;
   font-weight: 600;
@@ -4261,6 +4274,9 @@ body.ai-resizing iframe {
 }
 .ai-toggles .ai-clear {
   margin-left: auto;
+}
+.ai-toggles .ai-usage-total + .ai-clear {
+  margin-left: 8px;
 }
 .ai-vision-chip {
   display: inline-flex;

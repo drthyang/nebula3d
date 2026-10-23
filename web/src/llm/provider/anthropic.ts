@@ -151,7 +151,8 @@ interface TurnArgs {
   signal?: AbortSignal;
   tools?: ToolSpec[];
   toolChoice?: "auto" | "none";
-  includeUsage?: boolean; // report the turn's token counts (the evals)
+  includeUsage?: boolean; // report the turn's token counts
+  onUsage?: (u: { input: number; output: number; cacheRead?: number; cacheWrite?: number } | null) => void; // completeAnthropic: the request's counts
 }
 
 // The request body: no sampling parameters (current Claude models reject
@@ -298,6 +299,12 @@ export async function completeAnthropic(args: TurnArgs): Promise<string> {
   } catch (e) {
     throw await asHttpError(e);
   }
+  const u = message.usage;
+  if (u) {
+    const cacheRead = u.cache_read_input_tokens ?? 0;
+    const cacheWrite = u.cache_creation_input_tokens ?? 0;
+    args.onUsage?.({ input: u.input_tokens + cacheRead + cacheWrite, output: u.output_tokens, cacheRead, cacheWrite });
+  } else args.onUsage?.(null);
   if (message.stop_reason === "refusal") throw new Error(refusalNote(message).trim());
   const text = message.content
     .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
