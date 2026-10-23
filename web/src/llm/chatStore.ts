@@ -62,15 +62,30 @@ const restore = (): { turns: ChatTurn[]; draft: string } => {
   }
 };
 
-// The newest turns whose JSON fits the budget.
-export const fitTranscript = (turns: ChatTurn[], budget = TRANSCRIPT_BYTES): string => {
-  let from = 0;
-  let json = JSON.stringify(turns);
-  while (json.length > budget && from < turns.length) {
-    from += 1;
-    json = JSON.stringify(turns.slice(from));
+// Each turn's JSON, written once: a turn never changes after it is added, and
+// the transcript is saved again on every new turn.
+const turnJson = new WeakMap<ChatTurn, string>();
+const jsonOf = (turn: ChatTurn): string => {
+  let json = turnJson.get(turn);
+  if (json === undefined) {
+    json = JSON.stringify(turn);
+    turnJson.set(turn, json);
   }
   return json;
+};
+
+// The newest turns whose JSON fits the budget: the JSON of the array, `[a,b,…]`,
+// counted from its turns' own, so a long conversation is not written out again
+// once per turn it drops (that froze the page for seconds on every reply).
+export const fitTranscript = (turns: ChatTurn[], budget = TRANSCRIPT_BYTES): string => {
+  const parts = turns.map(jsonOf);
+  let length = 2 + parts.reduce((n, p) => n + p.length, 0) + Math.max(0, parts.length - 1);
+  let from = 0;
+  while (length > budget && from < parts.length) {
+    length -= parts[from].length + (from < parts.length - 1 ? 1 : 0); // the turn, and its comma
+    from += 1;
+  }
+  return `[${parts.slice(from).join(",")}]`;
 };
 
 const restored = restore();

@@ -22,7 +22,7 @@ import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
 import { fillReferences } from "./references";
 import { lastQuestion, toolsFor } from "./localTools";
 import { isLocalUrl } from "./provider/presets";
-import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
+import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, STALL_MS, StallError, type Failure } from "./recovery";
 import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
 import { planWindow } from "./provider/window";
 import { seen, shorten, whole } from "./readings";
@@ -104,10 +104,8 @@ export const CUT_OFF_NOTE =
 // is sent again, at most this many times in one reply.
 export const MALFORMED_RETRIES = 2;
 
-// A server that sends nothing for this long is taken as stuck: before the first
-// piece of a reply (loading the model and reading a long prompt on a busy
-// machine can take minutes), and between pieces.
-export const STALL_MS = { first: 300_000, idle: 120_000 };
+// A server that sends nothing for this long is taken as stuck (recovery.ts).
+export { STALL_MS };
 
 // Retries for failures a moment may cure, over the whole reply.
 export const MAX_RECOVERIES = 4;

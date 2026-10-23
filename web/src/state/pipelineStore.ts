@@ -295,6 +295,14 @@ async function start(
     es.onmessage = (e) => {
       const ev = JSON.parse(e.data) as JobEvent;
       if (["done", "error", "cancelled"].includes(ev.type)) {
+        // A failure's reason (the worker's exception, or how its process
+        // ended) goes in the log, where the page's banner reads it.
+        if (ev.type === "error" && ev.message) {
+          set({
+            events: [...get().events, { type: "progress", status: "error", message: ev.message }],
+            times: [...get().times, Date.now()],
+          });
+        }
         set({ terminal: ev.type, running: false });
         closeStream();
       } else {

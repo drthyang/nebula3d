@@ -23,6 +23,12 @@ export interface Failure {
   attempts: number; // requests made, the first included
 }
 
+// A server that sends nothing for this long is taken as stuck: before the first
+// piece of a reply (loading the model and reading a long prompt on a busy
+// machine can take minutes), and between pieces. The agent loop and the
+// tuner's requests (provider/client.ts, completeChat) both watch for it.
+export const STALL_MS = { first: 300_000, idle: 120_000 };
+
 /** The server sent nothing for too long: raised by the agent's watchdog. */
 export class StallError extends Error {
   constructor(seconds: number) {

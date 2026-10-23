@@ -18,6 +18,7 @@ import { queryClient } from "../../api/queryClient";
 import type { Dataset, TuningRun } from "../../api/types";
 import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { completeChat, type ChatMessage } from "../provider/client";
+import { STALL_MS } from "../recovery";
 import type { LlmSettings } from "../settings";
 import {
   currentStageSettings,
@@ -111,6 +112,9 @@ const snapshot = (stage: TuneStage): Partial<PipelineConfig> => {
   return Object.fromEntries(stageParams(stage).map((p) => [p.key, s[p.key]])) as Partial<PipelineConfig>;
 };
 
+// The model's reply as JSON. A server that goes quiet ends the request (and
+// the tuning run, with the reason) instead of holding it open, by the chat's
+// stall limits (recovery.ts).
 async function ask(messages: ChatMessage[], llm: LlmSettings, signal: AbortSignal): Promise<Record<string, unknown> | null> {
   const text = await completeChat({
     baseUrl: llm.baseUrl,
@@ -119,6 +123,7 @@ async function ask(messages: ChatMessage[], llm: LlmSettings, signal: AbortSigna
     temperature: llm.temperature,
     apiKey: llm.apiKey || undefined,
     signal,
+    stallMs: STALL_MS,
   });
   return parseJsonReply(text);
 }

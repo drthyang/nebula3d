@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { usePipelineStore, type RunOptions } from "../../state/pipelineStore";
+import { STALL_MS, StallError } from "../recovery";
 import { DEFAULT_SETTINGS } from "../settings";
 import { currentStageSettings, proposalToPatch, ProposalError, toFormValue } from "../tune/catalog";
 import { parseJsonReply, STAGE_GOALS, STAGE_GOALS_WITHOUT_SKILLS } from "../tune/prompts";
@@ -254,5 +255,18 @@ describe("startTuning", () => {
     expect(stages[0].status).toBe("failed");
     expect(llm.completeChat).not.toHaveBeenCalled();
     expect(api.promoteTrial).not.toHaveBeenCalled();
+  });
+
+  it("asks under the chat's stall limits, and ends with the reason when the model server goes quiet", async () => {
+    llm.completeChat.mockRejectedValueOnce(new StallError(300));
+    await startTuning({ dataset, stages: ["punch"], trialsPerStage: 3, llm: DEFAULT_SETTINGS });
+    expect(llm.completeChat).toHaveBeenCalledWith(expect.objectContaining({ stallMs: STALL_MS }));
+    const { stages, error, active } = useTuneStore.getState();
+    expect(active).toBe(false);
+    expect(error).toMatch(/the model server sent nothing for 300 s/);
+    // The run with the user's settings stays, measured.
+    expect(stages[0].trials).toHaveLength(1);
+    expect(stages[0].trials[0].status).toBe("done");
+    expect(runs.map((r) => r.trial)).toEqual(["punch-1"]);
   });
 });

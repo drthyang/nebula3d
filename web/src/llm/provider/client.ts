@@ -16,6 +16,7 @@ import {
   listAnthropicModels,
   streamAnthropic,
 } from "./anthropic";
+import { StallError } from "../recovery";
 import { isLocalUrl, providerForUrl } from "./presets";
 import { baseTokens, estimateTokens, keepWindow, MIN_REPLY, ollamaWindow, REPLY_RESERVE } from "./tokens";
 
@@ -681,7 +682,49 @@ export async function* streamChat({
   if (usage) yield { usage };
 }
 
-// Non-streaming completion, used where the whole reply is parsed at once.
+// A reply streamed and read whole, under the watchdog the agent loop keeps: a
+// server that sends nothing for `first` ms before the reply's first piece, or
+// for `idle` ms between pieces, is taken as stuck and the request ends with a
+// StallError. A non-streamed request has no pieces to watch: its first byte is
+// the whole reply, so only a stream tells a slow model from a stuck server.
+async function completeWatched(args: Omit<PostChatArgs, "stream">, stallMs: { first: number; idle: number }): Promise<string> {
+  const request = new AbortController();
+  const stop = () => request.abort();
+  if (args.signal?.aborted) request.abort();
+  args.signal?.addEventListener("abort", stop, { once: true });
+  let stalled = false;
+  let heard = false;
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+  const watch = (ms: number) => {
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => {
+      stalled = true;
+      request.abort();
+    }, ms);
+  };
+  watch(stallMs.first);
+  let text = "";
+  try {
+    for await (const delta of streamChat({ ...args, signal: request.signal })) {
+      heard = true;
+      watch(stallMs.idle);
+      if (delta.content) text += delta.content;
+    }
+  } catch (e) {
+    if (stalled && !args.signal?.aborted) throw new StallError(Math.round((heard ? stallMs.idle : stallMs.first) / 1000));
+    throw e;
+  } finally {
+    clearTimeout(watchdog);
+    args.signal?.removeEventListener("abort", stop);
+  }
+  if (!text) throw new Error("The model returned no message content");
+  return text;
+}
+
+// Completion read whole, used where the reply is parsed at once. Claude goes
+// through its SDK, which times a request out itself. Elsewhere, with `stallMs`
+// the reply is streamed under a stall watchdog (completeWatched); without, it
+// is one non-streamed request that only `signal` ends.
 export const completeChat = async ({
   baseUrl,
   model,
@@ -690,8 +733,10 @@ export const completeChat = async ({
   signal,
   apiKey,
   numCtx,
-}: Omit<PostChatArgs, "stream">): Promise<string> => {
+  stallMs,
+}: Omit<PostChatArgs, "stream"> & { stallMs?: { first: number; idle: number } }): Promise<string> => {
   if (isAnthropicUrl(baseUrl)) return completeAnthropic({ baseUrl, model, messages, apiKey, signal });
+  if (stallMs) return completeWatched({ baseUrl, model, messages, temperature, signal, apiKey, numCtx }, stallMs);
   if (isOllamaUrl(baseUrl)) {
     const response = await postOllama({ baseUrl, model, messages, temperature, signal, numCtx }, false);
     const payload = (await response.json()) as OllamaChunk;

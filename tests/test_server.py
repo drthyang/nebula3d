@@ -1182,6 +1182,79 @@ def test_job_manager_runs_pipeline_in_process(tmp_path):
     assert {"backfill", "flatten", "pdf"} <= stages_done
 
 
+class _EndedWorker:
+    """A worker process that has already exited, as the drain sees it."""
+
+    def __init__(self, exitcode):
+        self.exitcode = exitcode
+
+    def is_alive(self):
+        return False
+
+
+def _drained(monkeypatch, process, queued=(), status="running"):
+    import queue
+
+    from nebula3d.server import jobs as jobs_mod
+
+    monkeypatch.setattr(jobs_mod, "_POLL_S", 0.01)
+    q: queue.Queue = queue.Queue()
+    for ev in queued:
+        q.put(ev)
+    job = jobs_mod.Job(id="j", input_name="s.nxs", status=status, _process=process)
+    jobs_mod.JobManager()._drain(job, q)
+    return job
+
+
+def test_job_fails_when_its_worker_dies_without_a_word(monkeypatch):
+    # A worker the OS kills (the OOM killer) puts neither done nor error: the
+    # job must end, or its page and the Pilot's run wait on it forever.
+    job = _drained(monkeypatch, _EndedWorker(-9),
+                   queued=[{"type": "progress", "stage": "rings", "status": "start"}])
+    assert job.status == "error"
+    assert "killed (signal 9)" in job.error and "memory" in job.error
+    assert len(job.events) == 1  # what it ran stays in the log
+
+    crashed = _drained(monkeypatch, _EndedWorker(1))
+    assert crashed.status == "error" and "exited with code 1" in crashed.error
+
+
+def test_job_keeps_the_last_word_its_worker_put_before_exiting(monkeypatch):
+    # A worker that ended normally: its done (or error) is still read, never
+    # mistaken for a silent death.
+    done = _drained(monkeypatch, _EndedWorker(0), queued=[{"type": "done"}])
+    assert (done.status, done.error) == ("done", None)
+    failed = _drained(monkeypatch, _EndedWorker(0),
+                      queued=[{"type": "error", "message": "ValueError: bad"}])
+    assert (failed.status, failed.error) == ("error", "ValueError: bad")
+    # A cancelled job's terminated worker leaves it cancelled.
+    cancelled = _drained(monkeypatch, _EndedWorker(-15), status="cancelled")
+    assert (cancelled.status, cancelled.error) == ("cancelled", None)
+
+
+def test_job_manager_reports_a_killed_worker(tmp_path):
+    import os
+    import signal
+    import time
+
+    from nebula3d.pipeline import PipelineParams
+    from nebula3d.server.jobs import JobManager
+
+    if not hasattr(signal, "SIGKILL"):
+        pytest.skip("no SIGKILL on this platform")
+    inp = tmp_path / "s.nxs"
+    vol = HKLVolume.from_arrays(np.ones((9, 9, 9)), (-1, 1), (-1, 1), (-1, 1), ub_matrix=UB)
+    nebula3d.save(vol, inp)
+    job = JobManager().start(inp, PipelineParams(), proc_dir=tmp_path / "processed")
+    os.kill(job._process.pid, signal.SIGKILL)  # what the OOM killer does
+
+    deadline = time.time() + 20
+    while job.status == "running" and time.time() < deadline:
+        time.sleep(0.1)
+    assert job.status == "error", job.snapshot()
+    assert "killed (signal 9)" in job.error
+
+
 def write_flatten_stages(root, settings=None):
     """A dataset under *root* whose backfilled and flattened stages exist:
     a uniform diffuse on a constant and a Q² pedestal, flattened as the

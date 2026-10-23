@@ -4,7 +4,8 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { contextWarning, isMalformedOutput, isToolsUnsupported, loadedContext, streamChat, ToolCallAssembler, type HttpError, type StreamDelta, withContextHint } from "../provider/client";
+import { completeChat, contextWarning, isMalformedOutput, isToolsUnsupported, loadedContext, streamChat, ToolCallAssembler, type HttpError, type StreamDelta, withContextHint } from "../provider/client";
+import { StallError } from "../recovery";
 
 const sse = (chunks: string[]): Response => {
   const enc = new TextEncoder();
@@ -196,6 +197,60 @@ describe("streamChat", () => {
     };
     await expect(run()).rejects.toThrow("model crashed");
     expect(got).toEqual(["Che"]);
+  });
+});
+
+// A body that sends `chunks` one every `everyMs`, and never ends unless they
+// run out (`close`) or the request is aborted.
+const slowBody = (chunks: string[], everyMs: number, signal: AbortSignal | undefined, close: boolean): Response => {
+  const enc = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let i = 0;
+      const timer = setInterval(() => {
+        if (i < chunks.length) controller.enqueue(enc.encode(chunks[i++]));
+        else if (close) {
+          clearInterval(timer);
+          controller.close();
+        }
+      }, everyMs);
+      signal?.addEventListener("abort", () => {
+        clearInterval(timer);
+        controller.error(new DOMException("The operation was aborted.", "AbortError"));
+      });
+    },
+  });
+  return new Response(body, { status: 200 });
+};
+
+describe("completeChat with a stall watchdog (the tuner's requests)", () => {
+  const args = { baseUrl: "http://127.0.0.1:1234/v1", model: "m", temperature: 0, messages: [{ role: "user" as const, content: "propose" }] };
+
+  it("ends a request the server never answers with a StallError", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([], 10, init.signal ?? undefined, false)));
+    const t0 = Date.now();
+    await expect(completeChat({ ...args, stallMs: { first: 150, idle: 100 } })).rejects.toBeInstanceOf(StallError);
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+
+  it("ends a reply that goes quiet part-way, after its idle limit", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([line({ content: "{" })], 10, init.signal ?? undefined, false)));
+    await expect(completeChat({ ...args, stallMs: { first: 150, idle: 100 } })).rejects.toBeInstanceOf(StallError);
+  });
+
+  it("reads a slow reply whole while its pieces keep coming, past the first-piece limit", async () => {
+    const pieces = ['{"candidates"', ": ", "[]", "}"].map((c) => line({ content: c }));
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([...pieces, "data: [DONE]\n"], 60, init.signal ?? undefined, true)));
+    // 5 pieces 60 ms apart: longer in all than `first`, never quiet for `idle`.
+    await expect(completeChat({ ...args, stallMs: { first: 150, idle: 150 } })).resolves.toBe('{"candidates": []}');
+  });
+
+  it("leaves the user's Stop an AbortError, not a stall", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([], 10, init.signal ?? undefined, false)));
+    const stop = new AbortController();
+    const pending = completeChat({ ...args, signal: stop.signal, stallMs: { first: 5000, idle: 5000 } });
+    setTimeout(() => stop.abort(), 50);
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
 });
 

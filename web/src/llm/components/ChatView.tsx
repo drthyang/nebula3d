@@ -5,14 +5,14 @@
 // optionally attach the rendered slice image when the vision opt-in is on.
 // The reply itself is driven by session.ts, so it outlives this component.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { COLORMAPS } from "../../colormaps/luts";
 import type { Slice } from "../../api/types";
 import { BrandGlyph } from "../../components/ui";
 import { useNavStore } from "../../state/navStore";
 import { toolResultsIn, toolsKnownUnsupported, type AgentStep } from "../agent";
-import { useChatStore } from "../chatStore";
+import { useChatStore, type ChatTurn } from "../chatStore";
 import {
   buildChatMessages,
   buildStageReviewMessages,
@@ -97,6 +97,29 @@ const stepLabel = (s: AgentStep): string => {
   return s.status === "running" ? facts.runningLabel : facts.label;
 };
 
+// One step's row, opening to its arguments and the result the model read. The
+// result (often kilobytes of JSON) is put on the page only while it is open: a
+// long conversation would otherwise carry megabytes of hidden text that every
+// layout of the transcript walks.
+function StepDetail({ step: s }: { step: AgentStep }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>
+        <span className="ai-step-dot" aria-hidden="true" />
+        <span className="ai-step-name">{stepLabel(s)}</span>
+        {(s.progress ?? s.summary) && <span className="ai-step-summary">{s.progress ?? s.summary}</span>}
+      </summary>
+      {open && (
+        <pre className="ai-step-detail">
+          {JSON.stringify(s.args)}
+          {seen(s) ? `\n→ ${seen(s)}` : ""}
+        </pre>
+      )}
+    </details>
+  );
+}
+
 // The tool calls of one reply: a compact list, each row opening to the
 // arguments and the JSON the model read.  A viewer step can be reopened; a
 // run or a tuning run opens the Execution page, live while it goes.
@@ -111,17 +134,7 @@ function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
       <ol className="ai-step-list">
         {steps.map((s) => (
           <li key={s.id} className={`ai-step ai-step-${s.status}`}>
-            <details>
-              <summary>
-                <span className="ai-step-dot" aria-hidden="true" />
-                <span className="ai-step-name">{stepLabel(s)}</span>
-                {(s.progress ?? s.summary) && <span className="ai-step-summary">{s.progress ?? s.summary}</span>}
-              </summary>
-              <pre className="ai-step-detail">
-                {JSON.stringify(s.args)}
-                {seen(s) ? `\n→ ${seen(s)}` : ""}
-              </pre>
-            </details>
+            <StepDetail step={s} />
             {s.view && (
               <button type="button" className="ai-step-open" onClick={() => openView(s.view!)}>
                 Show
@@ -143,6 +156,66 @@ function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
     </details>
   );
 }
+
+// One finished turn of the transcript. A turn never changes once added, so it
+// renders once: without this, every streamed piece of a reply re-rendered (and
+// re-parsed the markdown of) every earlier turn, and a long conversation froze
+// the page while the model wrote.
+const PastTurn = memo(function PastTurn({
+  turn: t,
+  tuning,
+  canReport,
+  onReport,
+}: {
+  turn: ChatTurn;
+  tuning: boolean; // the tuning run's card goes under this turn
+  canReport: boolean;
+  onReport: (id: number) => void;
+}) {
+  if (t.role === "user") {
+    return (
+      <div className="ai-msg ai-msg-user">
+        <div className="ai-user-bubble">{t.content}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="ai-msg ai-msg-assistant">
+      <span className="ai-avatar" aria-hidden="true">
+        <BrandGlyph size={22} />
+      </span>
+      <div className="ai-msg-main">
+        {t.reasoning ? <Thinking text={t.reasoning} /> : null}
+        {t.steps?.length ? <Steps steps={t.steps} /> : null}
+        {tuning && <TuneProgress />}
+        {t.content && (
+          <div className="ai-answer">
+            <Markdown text={t.content} />
+          </div>
+        )}
+        {verdictLine(t.verdict) && (
+          <div
+            className={`ai-verdict ai-verdict-${t.verdict!.achieved === true ? "met" : t.verdict!.achieved === false ? "not-met" : "open"}`}
+            title="Computed from the checks this reply ran, by the report's rules; the model's words explain it"
+          >
+            {verdictLine(t.verdict)}
+          </div>
+        )}
+        {t.note && <div className="ai-note">{t.note}</div>}
+        {canReport && (
+          <button
+            type="button"
+            className="ai-report-btn"
+            onClick={() => onReport(t.id)}
+            title="Measure the reduction again and open a report you can read and export (HTML, Markdown, PDF)"
+          >
+            Report
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
 
 export function ChatView({
   assistant,
@@ -274,48 +347,15 @@ export function ChatView({
             </span>
           </div>
         )}
-        {turns.map((t) =>
-          t.role === "user" ? (
-            <div key={t.id} className="ai-msg ai-msg-user">
-              <div className="ai-user-bubble">{t.content}</div>
-            </div>
-          ) : (
-            <div key={t.id} className="ai-msg ai-msg-assistant">
-              <span className="ai-avatar" aria-hidden="true">
-                <BrandGlyph size={22} />
-              </span>
-              <div className="ai-msg-main">
-                {t.reasoning ? <Thinking text={t.reasoning} /> : null}
-                {t.steps?.length ? <Steps steps={t.steps} /> : null}
-                {t.id === tuneTurn && <TuneProgress />}
-                {t.content && (
-                  <div className="ai-answer">
-                    <Markdown text={t.content} />
-                  </div>
-                )}
-                {verdictLine(t.verdict) && (
-                  <div
-                    className={`ai-verdict ai-verdict-${t.verdict!.achieved === true ? "met" : t.verdict!.achieved === false ? "not-met" : "open"}`}
-                    title="Computed from the checks this reply ran, by the report's rules; the model's words explain it"
-                  >
-                    {verdictLine(t.verdict)}
-                  </div>
-                )}
-                {t.note && <div className="ai-note">{t.note}</div>}
-                {reportable(t) && toolContext && !busy && (
-                  <button
-                    type="button"
-                    className="ai-report-btn"
-                    onClick={() => setReportFor(t.id)}
-                    title="Measure the reduction again and open a report you can read and export (HTML, Markdown, PDF)"
-                  >
-                    Report
-                  </button>
-                )}
-              </div>
-            </div>
-          ),
-        )}
+        {turns.map((t) => (
+          <PastTurn
+            key={t.id}
+            turn={t}
+            tuning={t.id === tuneTurn}
+            canReport={reportable(t) && Boolean(toolContext) && !busy}
+            onReport={setReportFor}
+          />
+        ))}
         {busy && live && (
           <div className="ai-msg ai-msg-assistant">
             <span className="ai-avatar ai-avatar-spin" aria-hidden="true">
