@@ -79,6 +79,19 @@ export function displayToPixel(v: Viewport, X: number, Y: number, w: number, h =
   return [w / 2 + (X - v.cx) * s, h / 2 - (Y - v.cy) * s];
 }
 
+/**
+ * The zoom factor of one wheel event (< 1 zooms in): its vertical delta read
+ * in pixels whatever the device reports (a line as 40 px, the usual reading,
+ * e.g. normalize-wheel's; a page as the view's height), e^(Δ/100 px), at most
+ * 2× either way. One mouse notch (100 px in Chrome, 3 lines in Firefox) is
+ * then one map level, a factor 2, and a trackpad's or a pinch's small steps
+ * zoom smoothly, as they did.
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode: number, viewHeight: number): number {
+  const px = deltaMode === 1 ? deltaY * 40 : deltaMode === 2 ? deltaY * viewHeight : deltaY;
+  return Math.min(2, Math.max(0.5, Math.exp(px * 0.01)));
+}
+
 /** Zoom by `k` (< 1 zooms in) keeping the display point (X, Y) fixed. */
 export function zoomAbout(v: Viewport, X: number, Y: number, k: number, limit: (h: number) => number): Viewport {
   const half = limit(v.half * k);

@@ -272,9 +272,13 @@ two apps work the same way.
 - **Click modes** (left of the header, remembered): *Navigate* — hover reads
   values, and on 3D-ΔPDF a click moves the other two cuts through the point;
   *Zoom* — a click zooms in 2× (Alt-click zooms out), a drag zooms into the box;
-  *Move* — a drag pans. In every mode a double-click returns to the full view
-  and a trackpad or two-finger pinch zooms; a plain scroll wheel still scrolls
-  the page. Views fill their cell: the field of view (the chip in each view's
+  *Move* — a drag pans. In every mode, as on a map: the scroll wheel, a
+  two-finger scroll or a pinch zooms about the pointer (one wheel notch is a
+  factor 2, in any browser; a trackpad zooms smoothly), a middle-button drag or
+  a Shift+drag pans, and a double-click (or the header's *Reset zoom*) returns
+  to the full view. Zooming out stops a little past the whole slice, or at the
+  view a page opens with if that is wider. A sideways scroll is left to the
+  page. Views fill their cell: the field of view (the chip in each view's
   corner, ± Å⁻¹ or ± Å) spans the shorter side, and a wide view shows more.
 - **Display bar**: colormap, then the colour range — vmin, the colour bar with
   the reference data's histogram behind it and a handle at each limit, vmax —

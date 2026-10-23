@@ -3,6 +3,8 @@
 //   navigate — read values; on the 3D-ΔPDF page, move the other two cuts
 //   zoom     — click zooms in 2× (Alt-click out), drag zooms into a box
 //   move     — drag pans
+// In every mode the wheel or a pinch zooms about the pointer, and a
+// middle-button or Shift drag pans (components/ViewFrame.tsx).
 
 import { create } from "zustand";
 

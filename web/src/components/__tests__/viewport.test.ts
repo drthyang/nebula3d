@@ -15,6 +15,7 @@ import {
   sampleIndex,
   sliceToDisplay,
   viewExtent,
+  wheelZoomFactor,
   zoomAbout,
 } from "../viewport";
 
@@ -63,6 +64,28 @@ describe("zoom and pan", () => {
     const after = displayToPixel(z, 4, -2, 200);
     expect(after[0]).toBeCloseTo(before[0]);
     expect(after[1]).toBeCloseTo(before[1]);
+  });
+
+  it("keeps the pixel under the pointer on its point in a wide view, at any limit", () => {
+    const [w, h] = [640, 300];
+    const px: [number, number] = [520, 70];
+    const at = pixelToDisplay(v, px[0], px[1], w, h);
+    for (const k of [0.5, 0.8, 1.6]) {
+      const z = zoomAbout(v, at[0], at[1], k, (half) => Math.min(12, half)); // the out-zoom clamped
+      const back = displayToPixel(z, at[0], at[1], w, h);
+      expect(back[0]).toBeCloseTo(px[0], 9);
+      expect(back[1]).toBeCloseTo(px[1], 9);
+    }
+  });
+
+  it("zooms one wheel notch by 2×, whatever unit the device reports it in, and a pinch step smoothly", () => {
+    expect(wheelZoomFactor(-100, 0, 400)).toBe(0.5); // a mouse notch in pixels (Chrome, Safari)
+    expect(wheelZoomFactor(-3, 1, 400)).toBe(0.5); // the same notch in lines (Firefox)
+    expect(wheelZoomFactor(100, 0, 400)).toBe(2);
+    expect(wheelZoomFactor(1, 2, 400)).toBe(2); // a page
+    // A trackpad's or a pinch's small steps zoom as they did: e^(Δ/100).
+    expect(wheelZoomFactor(-4, 0, 400)).toBeCloseTo(Math.exp(-0.04), 12);
+    expect(wheelZoomFactor(12, 0, 400)).toBeCloseTo(Math.exp(0.12), 12);
   });
 
   it("zooms a dragged box to a square around it", () => {

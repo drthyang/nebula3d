@@ -3,8 +3,9 @@
 //   zoom     — a click zooms in 2× about the point (Alt-click zooms out); a
 //              drag zooms into the box
 //   move     — a drag pans
-// In every mode a double-click returns to `fit`, a trackpad pinch (ctrl+wheel)
-// or a two-finger pinch zooms, and a plain wheel still scrolls the page.  The
+// In every mode, as on a map: the wheel, a two-finger scroll or a pinch zooms
+// about the pointer, a middle-button or Shift drag pans, and a double-click
+// returns to `fit`.  The
 // frame fills its view: the viewport's `half` spans the shorter side and a wide
 // or tall view shows more of the slice.  The overlay draws axis ticks in the
 // slice's units, the crosshair shared by linked views, the zoom box and a
@@ -22,6 +23,7 @@ import {
   panBy,
   pixelToDisplay,
   viewExtent,
+  wheelZoomFactor,
   zoomAbout,
   type Viewport,
 } from "./viewport";
@@ -48,7 +50,7 @@ interface Props {
   children: ReactNode;
 }
 
-type Drag = { x0: number; y0: number; v0: Viewport; moved: boolean };
+type Drag = { x0: number; y0: number; v0: Viewport; moved: boolean; pan: boolean };
 type Pinch = { d0: number; mid0: [number, number]; v0: Viewport };
 
 export function ViewFrame({
@@ -97,14 +99,15 @@ export function ViewFrame({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     measure();
-    // A trackpad pinch arrives as ctrl+wheel; a plain wheel scrolls the page.
+    // The wheel, a two-finger scroll and a pinch (ctrl+wheel) zoom about the
+    // pointer; a sideways scroll is left to the page.
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.deltaY === 0) return;
       e.preventDefault();
       const b = el.getBoundingClientRect();
       const { viewport: v, limit: lim } = live.current;
       const [X, Y] = pixelToDisplay(v, e.clientX - b.left, e.clientY - b.top, b.width, b.height);
-      live.current.onViewport(zoomAbout(v, X, Y, Math.exp(e.deltaY * 0.01), lim));
+      live.current.onViewport(zoomAbout(v, X, Y, wheelZoomFactor(e.deltaY, e.deltaMode, b.height), lim));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => {
@@ -123,7 +126,9 @@ export function ViewFrame({
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    // The left button acts by the mode; the middle one (or Shift) pans.
+    if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
+    if (e.button === 1) e.preventDefault(); // no autoscroll
     const p = local(e);
     pointers.current.set(e.pointerId, p);
     ref.current!.setPointerCapture(e.pointerId);
@@ -134,7 +139,7 @@ export function ViewFrame({
       drag.current = null;
       setBox(null);
     } else {
-      drag.current = { x0: p[0], y0: p[1], v0: viewport, moved: false };
+      drag.current = { x0: p[0], y0: p[1], v0: viewport, moved: false, pan: mode === "move" || e.button === 1 || e.shiftKey };
     }
   };
 
@@ -158,7 +163,7 @@ export function ViewFrame({
     if (!dr) return;
     dr.moved ||= Math.hypot(p[0] - dr.x0, p[1] - dr.y0) > 4;
     if (!dr.moved) return;
-    if (mode === "move") emit(panBy(dr.v0, p[0] - dr.x0, p[1] - dr.y0, w, h));
+    if (dr.pan) emit(panBy(dr.v0, p[0] - dr.x0, p[1] - dr.y0, w, h));
     else if (mode === "zoom") setBox([dr.x0, dr.y0, p[0], p[1]]);
     else if (mode === "navigate") onNavigate?.(pt[0], pt[1]);
   };
@@ -176,7 +181,9 @@ export function ViewFrame({
     const p = local(e);
     const { w, h } = rect();
     const pt = pixelToDisplay(viewport, p[0], p[1], w, h);
-    if (mode === "zoom") {
+    if (dr.pan) {
+      // panned (or a click with the pan button): nothing more
+    } else if (mode === "zoom") {
       if (dr.moved && box) {
         const a = pixelToDisplay(dr.v0, dr.x0, dr.y0, w, h);
         onViewport(boxViewport(a, pt, limit, w, h));
