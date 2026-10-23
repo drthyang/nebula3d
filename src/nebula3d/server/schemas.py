@@ -15,6 +15,7 @@ class StageStatusOut(BaseModel):
     exists: bool
     kind: str            # "hkl" | "delta_pdf"
     volume_id: str       # "<dataset_id>.<stage>"
+    mtime: float | None = None  # when the output was last written (POSIX s); None = no output
 
 
 class DatasetOut(BaseModel):

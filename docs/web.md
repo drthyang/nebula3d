@@ -371,7 +371,7 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/datasets` | discovered datasets with per-stage output status (tuning runs' chains included) |
+| GET | `/api/datasets` | discovered datasets with per-stage output status (tuning runs' chains included) and when each output was written (`mtime`, POSIX seconds; none for the raw input): Configure marks an output older than one upstream of it **stale** |
 | GET | `/api/datasets/{id}` | one dataset, or a tuning view: `<id>~tune~<run>` (the run's chain) or `<id>~tune~<run>~<stage>-<n>` (one trial) |
 | POST | `/api/datasets/{id}/regrid` | `{cell, q_max, symmetrise}` → the dataset's raw volume regridded onto the UB the UB check refines, written as a new dataset beside it (`<stem>_regridded.nxs`) and never over a file: `{written, dataset_id, file, ub_start, ub, turn_deg, symmetrised, voxels_outside, voxels_outside_share, …}`. A refusal (the file exists, a turn under 0.05°, a symmetrised volume without its source) is a 200 with `written: false` and `refusal: {code, reason}`. The bridge's `dataset_regrid_json` returns the same fields. See [regrid.md](regrid.md) |
 | GET | `/api/volumes/{id}/meta` | HKLVolume shape, axis ranges, lattice, UB, and the symmetry the file declares (`symmetry`, `symmetry_ops`) |

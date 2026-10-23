@@ -49,6 +49,19 @@ class StageStatus:
     kind: str  # "hkl" | "delta_pdf"
 
 
+def output_mtime(stage: StageStatus) -> float | None:
+    """When a stage's output was last written (POSIX seconds), or None when it
+    does not exist, and for the raw input, which no stage writes (copying a
+    data folder re-dates it): an output older than one upstream of it
+    predates that stage's last run."""
+    if stage.name == "raw":
+        return None
+    try:
+        return stage.path.stat().st_mtime if stage.exists else None
+    except OSError:
+        return None
+
+
 @dataclass(frozen=True)
 class Dataset:
     id: str

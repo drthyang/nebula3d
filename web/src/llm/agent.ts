@@ -46,7 +46,9 @@ export interface AgentStep {
   id: string;
   name: string;
   args: Record<string, unknown>;
-  status: "running" | "done" | "error";
+  // "stopped": it was running when the reply ended (Stop, or an error), so
+  // it never finished; set by session.ts, never while the reply runs.
+  status: "running" | "done" | "error" | "stopped";
   summary?: string;
   progress?: string; // a running tool's live line (run_pipeline: stage, %, log)
   // The result's two readings (readings/): what the model read when the call

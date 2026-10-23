@@ -54,6 +54,31 @@ describe("askAssistant", () => {
     expect(busy).toBe(false);
   });
 
+  it("keeps a step that was running when the user stopped the reply as stopped, not running", async () => {
+    const done = { id: "0:a", name: "assess_stage", args: {}, status: "done" as const, summary: "clean" };
+    const running = { id: "1:b", name: "run_pipeline", args: {}, status: "running" as const, progress: "2/6 Bragg punch" };
+    agent.runAgent.mockImplementation(async ({ onProgress }) => {
+      onProgress({ content: "", reasoning: "", steps: [done, running] });
+      throw new DOMException("The operation was aborted.", "AbortError");
+    });
+    await ask();
+    const steps = useChatStore.getState().turns[1].steps!;
+    expect(steps.map((st) => st.status)).toEqual(["done", "stopped"]);
+    expect(steps[1]).toMatchObject({ summary: "you stopped the reply" });
+    expect(steps[1].progress).toBeUndefined();
+    expect(useChatStore.getState().turns[1].note).toBe("Stopped.");
+  });
+
+  it("keeps a step that was running when an error ended the reply as stopped", async () => {
+    const running = { id: "0:a", name: "tune_pipeline", args: {}, status: "running" as const };
+    agent.runAgent.mockImplementation(async ({ onProgress }) => {
+      onProgress({ content: "", reasoning: "", steps: [running] });
+      throw new Error("socket hang up");
+    });
+    await ask();
+    expect(useChatStore.getState().turns[1].steps![0]).toMatchObject({ status: "stopped", summary: "the reply ended with an error" });
+  });
+
   it("shows an error that came before anything was written as the chat's error", async () => {
     agent.runAgent.mockRejectedValue(new Error("HTTP 500"));
     await ask();

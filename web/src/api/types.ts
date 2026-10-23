@@ -7,6 +7,10 @@ export interface StageStatus {
   exists: boolean;
   kind: VolumeKind;
   volume_id: string;
+  // When the output was last written (POSIX seconds); null or absent when it
+  // does not exist, for the raw input, or from a server that does not say
+  // (api/stale.ts).
+  mtime?: number | null;
 }
 
 export interface Dataset {

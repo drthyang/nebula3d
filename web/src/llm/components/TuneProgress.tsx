@@ -52,9 +52,13 @@ function StageCard({ run }: { run: StageRun }) {
                   ? "queued"
                   : t.status === "running"
                     ? "running…"
-                    : t.status === "error"
-                      ? t.error
-                      : headline(run.stage, t.evaluation)}
+                    : t.status === "stopped"
+                      ? "stopped before it finished"
+                      : t.status === "skipped"
+                        ? "not run"
+                        : t.status === "error"
+                          ? t.error
+                          : headline(run.stage, t.evaluation)}
                 {t.seconds != null && <span className="tune-secs"> · {t.seconds}s</span>}
               </div>
               {t.why && <div className="tune-why">{t.why}</div>}

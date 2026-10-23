@@ -94,6 +94,7 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
 // tense: they are long enough to be watched).
 const stepLabel = (s: AgentStep): string => {
   const facts = factsOf(s.name);
+  if (s.status === "stopped") return `${facts.runningLabel} (stopped)`;
   return s.status === "running" ? facts.runningLabel : facts.label;
 };
 

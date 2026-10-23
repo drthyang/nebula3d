@@ -28,6 +28,7 @@ import {
 } from "../state/pipelineStore";
 import { useHighlightKeys } from "../llm/highlight";
 import { datasetName } from "../api/datasetName";
+import { staleOutputs } from "../api/stale";
 import { useChatStore } from "../llm/chatStore";
 import { captureSession, parseSession, restoreSession, sessionFileName, useSessionNote } from "../state/session";
 
@@ -1457,10 +1458,13 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     if (folderInputRef.current) folderInputRef.current.value = "";
   };
 
+  const stale = staleOutputs(selectedDataset?.stages ?? []);
   const stageStatus = DATASET_STAGE_BADGES.map((stage) => ({
     ...stage,
     exists: selectedDataset?.stages.some((s) => s.name === stage.key && s.exists) ?? false,
+    staleAfter: stale.get(stage.key),
   }));
+  const badgeLabel = (key: string) => DATASET_STAGE_BADGES.find((b) => b.key === key)?.label ?? key;
   const rootStatus = rootError
     ? rootError
     : rootNote ??
@@ -1481,13 +1485,17 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             {stageStatus.map((stage) => (
               <div
                 key={stage.key}
-                className={`dataset-stage-item ${stage.exists ? "ok" : "missing"}`}
-                title={`${stage.group} · ${stage.label}: ${stage.exists ? "available" : "missing"}`}
+                className={`dataset-stage-item ${stage.staleAfter ? "stale" : stage.exists ? "ok" : "missing"}`}
+                title={
+                  stage.staleAfter
+                    ? `${stage.group} · ${stage.label}: stale. It is older than ${badgeLabel(stage.staleAfter)}, so it was made before that stage last ran; run the pipeline from here with Force to update it.`
+                    : `${stage.group} · ${stage.label}: ${stage.exists ? "available" : "missing"}`
+                }
               >
                 <span className="dataset-stage-dot" />
                 <span className="dataset-stage-label">{stage.label}</span>
                 <span className="dataset-stage-state">
-                  {stage.exists ? "available" : "missing"}
+                  {stage.staleAfter ? "stale" : stage.exists ? "available" : "missing"}
                 </span>
               </div>
             ))}

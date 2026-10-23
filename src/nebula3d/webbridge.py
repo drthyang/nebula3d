@@ -1020,7 +1020,7 @@ def _json(obj: object) -> str:
 def _dataset_dict(ds: _ds.Dataset) -> dict[str, object]:
     stages = [
         {"name": s.name, "exists": s.exists, "kind": s.kind,
-         "volume_id": f"{ds.id}.{s.name}"}
+         "volume_id": f"{ds.id}.{s.name}", "mtime": _ds.output_mtime(s)}
         for s in ds.stages
     ]
     return {

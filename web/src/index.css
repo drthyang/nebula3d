@@ -2109,6 +2109,17 @@ input[type="range"]::-moz-range-track {
 .dataset-stage-item.missing .dataset-stage-state {
   color: var(--amber);
 }
+/* An output older than one upstream of it: made before that stage last ran. */
+.dataset-stage-item.stale {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  background: var(--red-soft);
+}
+.dataset-stage-item.stale .dataset-stage-dot {
+  background: var(--red);
+}
+.dataset-stage-item.stale .dataset-stage-state {
+  color: var(--red);
+}
 .data-root-row {
   display: flex;
   align-items: center;
@@ -2578,6 +2589,8 @@ input[type="range"]::-moz-range-track {
 .exec-node.failed { background: rgba(232, 100, 92, 0.16); border: 1px solid rgba(232, 100, 92, 0.5); color: #e8645a; font: 700 10px system-ui; }
 .exec-node.cancelled { background: #1b2027; border: 1px solid #3a424e; color: #8b94a3; font: 700 13px/1 system-ui; }
 .exec-node.pending { background: #11151b; border: 1px solid #333d4a; color: #56627a; font: 700 9px ui-monospace, monospace; }
+.exec-node.notrun { background: #11151b; border: 1px dashed #333d4a; color: #56627a; font: 700 9px ui-monospace, monospace; }
+.exec-node.stale { background: rgba(232, 180, 84, 0.12); border: 1px solid rgba(232, 180, 84, 0.45); color: #e8b454; font: 700 9px ui-monospace, monospace; }
 .exec-connector { width: 2px; flex: 1; min-height: 30px; border-radius: 1px; margin: 4px 0 2px; background: #232a33; }
 .exec-connector.done { background: rgba(52, 201, 142, 0.35); }
 .exec-stage-main { flex: 1; min-width: 0; padding-bottom: 18px; }
@@ -2592,6 +2605,8 @@ input[type="range"]::-moz-range-track {
 .exec-stage-status.failed { color: #e8645a; }
 .exec-stage-status.cancelled { color: #8b94a3; }
 .exec-stage-status.pending { color: #56627a; }
+.exec-stage-status.notrun { color: #56627a; }
+.exec-stage-status.stale { color: #e8b454; }
 .exec-stage-meta { margin-top: 5px; font: 400 11.5px/1.4 system-ui; color: #6c7686; }
 .exec-stage-meta.dim { color: #56627a; }
 .exec-stage-meta.warn { color: #e8b454; }
@@ -4136,6 +4151,9 @@ body.ai-resizing iframe {
 }
 .ai-step-error .ai-step-dot {
   background: var(--red);
+}
+.ai-step-stopped .ai-step-dot {
+  background: var(--text-3);
 }
 .ai-step-name {
   flex: none;

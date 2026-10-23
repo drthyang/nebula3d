@@ -8,10 +8,10 @@
 
 import { create } from "zustand";
 
-import { cancelJob, runPipeline } from "../api/client";
+import { cancelJob, fetchJob, runPipeline } from "../api/client";
 import { cancelPipeline, engine, PYODIDE_MODE } from "../api/pyodideEngine";
 import { queryClient } from "../api/queryClient";
-import type { JobEvent, StageParamsIn, TuningTrial } from "../api/types";
+import type { JobEvent, JobOut, StageParamsIn, TuningTrial } from "../api/types";
 import { useDatasetStore } from "./datasetStore";
 
 // Mirrors nebula3d.pipeline.STAGES (incl. the 6th back-FFT consistency check) so the
@@ -310,29 +310,7 @@ async function start(
       tuning: opts.tuning,
     });
     set({ jobId: job.id });
-
-    es = new EventSource(`/api/pipeline/jobs/${job.id}/events`);
-    es.onmessage = (e) => {
-      const ev = JSON.parse(e.data) as JobEvent;
-      if (["done", "error", "cancelled"].includes(ev.type)) {
-        // A failure's reason (the worker's exception, or how its process
-        // ended) goes in the log, where the page's banner reads it.
-        if (ev.type === "error" && ev.message) {
-          set({
-            events: [...get().events, { type: "progress", status: "error", message: ev.message }],
-            times: [...get().times, Date.now()],
-          });
-        }
-        set({ terminal: ev.type, running: false });
-        closeStream();
-      } else {
-        set({ events: [...get().events, ev], times: [...get().times, Date.now()] });
-      }
-    };
-    es.onerror = () => {
-      closeStream();
-      set({ running: false });
-    };
+    follow(job.id, set, get);
   } catch (e) {
     set({
       terminal: "error",
@@ -342,6 +320,67 @@ async function start(
       ],
       times: [Date.now()],
     });
+  }
+}
+
+// A native job's end: its reason in the log (a failure's, where the page's
+// banner reads it), the run over, and the outputs it left read afresh.
+function finish(set: Setter, get: Getter, terminal: string, message?: string): void {
+  closeStream();
+  if (terminal === "error" && message) {
+    set({
+      events: [...get().events, { type: "progress", status: "error", message }],
+      times: [...get().times, Date.now()],
+    });
+  }
+  set({ terminal, running: false });
+  void queryClient.invalidateQueries();
+}
+
+// Reconnections to a job whose stream dropped while it still runs.
+const RECONNECTS = 3;
+
+// Follow a native job's progress stream to its end. The server replays a
+// job's events from its first on every connection, so a reconnection skips
+// those already logged.
+function follow(jobId: string, set: Setter, get: Getter, reconnects = 0): void {
+  const logged = get().events.length;
+  let replayed = 0;
+  const source = new EventSource(`/api/pipeline/jobs/${jobId}/events`);
+  es = source;
+  source.onmessage = (e) => {
+    const ev = JSON.parse(e.data) as JobEvent;
+    if (["done", "error", "cancelled"].includes(ev.type)) {
+      finish(set, get, ev.type, ev.message);
+    } else if (++replayed > logged) {
+      set({ events: [...get().events, ev], times: [...get().times, Date.now()] });
+    }
+  };
+  // The stream dropped before the job's end (the network, or the server
+  // restarted): the job's own status says what became of it.
+  source.onerror = () => {
+    if (es !== source) return; // ended, or replaced
+    closeStream();
+    void afterDrop(jobId, set, get, reconnects);
+  };
+}
+
+async function afterDrop(jobId: string, set: Setter, get: Getter, reconnects: number): Promise<void> {
+  let job: JobOut | null | undefined;
+  try {
+    job = await fetchJob(jobId);
+  } catch {
+    job = undefined; // the server cannot be reached
+  }
+  if (get().jobId !== jobId || !get().running) return; // another run started, or this one was settled
+  if (job?.status === "running" && reconnects < RECONNECTS) {
+    follow(jobId, set, get, reconnects + 1);
+  } else if (job && job.status !== "running") {
+    finish(set, get, job.status, job.error ?? undefined);
+  } else if (job === null) {
+    finish(set, get, "error", "The server no longer knows this run (it restarted), so the run stopped. Stages that completed before it were saved; run again to compute the rest.");
+  } else {
+    finish(set, get, "error", "Lost the connection to the server during the run, so its progress can no longer be followed. When the server is back, reload: the outputs it saved are listed on the Configure page.");
   }
 }
 
@@ -485,6 +524,9 @@ async function runInBrowser(
     await queryClient.invalidateQueries();
     set({ terminal: "done", running: false });
   } catch (e) {
+    // Cancel ended it (cancel() already said so): the engine's rejection is
+    // that, not a failure.
+    if (get().terminal === "cancelled") return;
     log({ type: "progress", status: "error", message: (e as Error).message });
     set({ terminal: "error", running: false });
   }

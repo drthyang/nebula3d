@@ -83,6 +83,22 @@ def test_list_datasets_reflects_disk(env):
     assert vid["ringremoved"] == f"{SLUG}.ringremoved"
 
 
+def test_list_datasets_dates_each_output(env, tmp_path):
+    # When each output was written, so the console can tell an output older
+    # than one upstream of it (made before that stage last ran); none when it
+    # does not exist.
+    import os
+
+    client, _ = env
+    ds = client.get("/api/datasets").json()[0]
+    mtime = {s["name"]: s["mtime"] for s in ds["stages"]}
+    assert mtime["braggpunched"] is None and mtime["raw"] is None
+    ring = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
+                          proc_dir=tmp_path / "processed").ringremoved
+    assert mtime["ringremoved"] == os.stat(ring).st_mtime
+    assert isinstance(mtime["backfilled"], float)
+
+
 def test_data_root_can_be_switched(tmp_path):
     (tmp_path / "raw").mkdir()
     (tmp_path / "processed").mkdir()

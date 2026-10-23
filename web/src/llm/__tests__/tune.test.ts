@@ -10,7 +10,7 @@ import { STALL_MS, StallError } from "../recovery";
 import { DEFAULT_SETTINGS } from "../settings";
 import { currentStageSettings, proposalToPatch, ProposalError, toFormValue } from "../tune/catalog";
 import { parseJsonReply, STAGE_GOALS, STAGE_GOALS_WITHOUT_SKILLS } from "../tune/prompts";
-import { startTuning, useTuneStore } from "../tune/tuner";
+import { startTuning, stopTuning, useTuneStore } from "../tune/tuner";
 
 const llm = vi.hoisted(() => ({ completeChat: vi.fn() }));
 vi.mock("../provider/client", async (importOriginal) => ({
@@ -255,6 +255,24 @@ describe("startTuning", () => {
     expect(stages[0].status).toBe("failed");
     expect(llm.completeChat).not.toHaveBeenCalled();
     expect(api.promoteTrial).not.toHaveBeenCalled();
+  });
+
+  it("leaves no trial running or queued when the user stops during a trial", async () => {
+    llm.completeChat.mockResolvedValueOnce('{"candidates": [{"changes": {"punchMinSig": 4}}, {"changes": {"punchMinSig": 6}}]}');
+    usePipelineStore.setState({
+      runStages: vi.fn(async (_stages: string[], opts?: RunOptions) => {
+        if (opts?.tuning?.trial === "punch-2") {
+          stopTuning(); // the user's Stop while trial 2 runs
+          return "cancelled";
+        }
+        return "done";
+      }),
+    });
+    await startTuning({ dataset, stages: ["punch"], trialsPerStage: 3, llm: DEFAULT_SETTINGS });
+    const { stages, active, finishedNote } = useTuneStore.getState();
+    expect(active).toBe(false);
+    expect(finishedNote).toMatch(/^Stopped/);
+    expect(stages[0].trials.map((t) => [t.n, t.status])).toEqual([[1, "done"], [2, "stopped"], [3, "skipped"]]);
   });
 
   it("asks under the chat's stall limits, and ends with the reason when the model server goes quiet", async () => {

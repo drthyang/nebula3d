@@ -46,10 +46,17 @@ const isTurn = (t: unknown): t is ChatTurn =>
   !!t && typeof t === "object" && ((t as ChatTurn).role === "user" || (t as ChatTurn).role === "assistant") &&
   typeof (t as ChatTurn).content === "string" && typeof (t as ChatTurn).id === "number";
 
+// A saved turn's steps can never be running: one that was (saved before a
+// reply's end marked it, by an older build) is stopped.
+const settled = (turn: ChatTurn): ChatTurn =>
+  turn.steps?.some((s) => s.status === "running")
+    ? { ...turn, steps: turn.steps.map((s) => (s.status === "running" ? { ...s, status: "stopped" as const, progress: undefined } : s)) }
+    : turn;
+
 const restore = (): { turns: ChatTurn[]; draft: string } => {
   try {
     const saved: unknown = JSON.parse(sessionStorage.getItem(TRANSCRIPT_KEY) ?? "[]");
-    const turns = Array.isArray(saved) ? saved.filter(isTurn) : [];
+    const turns = Array.isArray(saved) ? saved.filter(isTurn).map(settled) : [];
     // A last question without its reply: the reload cut the reply off.
     if (turns.length && turns[turns.length - 1].role === "user") {
       turns.push({
@@ -115,7 +122,7 @@ export const useChatStore = create<ChatState>((set) => ({
   setDraft: (draft) => set({ draft }),
   clear: () => set({ turns: [], draft: "", error: null }),
   restoreTurns: (saved) => {
-    const turns = saved.filter(isTurn);
+    const turns = saved.filter(isTurn).map(settled);
     nextId = Math.max(nextId, turns.reduce((m, t) => Math.max(m, t.id), 0) + 1);
     set({ turns, error: null });
   },

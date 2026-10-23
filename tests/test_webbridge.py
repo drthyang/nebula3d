@@ -123,6 +123,10 @@ def test_datasets_listing_has_all_stages(ran_pipeline):
     assert by_name["ringremoved"]["exists"]
     assert by_name["delta_pdf"]["exists"]
     assert by_name["delta_pdf"]["kind"] == "delta_pdf"
+    # Each output is dated, in the order the run wrote them; the raw input,
+    # which no stage writes, is not.
+    assert by_name["raw"]["mtime"] is None
+    assert by_name["ringremoved"]["mtime"] <= by_name["delta_pdf"]["mtime"]
 
 
 def test_hkl_meta_and_slice(ran_pipeline):

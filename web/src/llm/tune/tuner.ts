@@ -39,7 +39,8 @@ export interface Trial {
   changes: Record<string, ParamValue>; // vs trial 1, as the model named them
   settings: Record<string, ParamValue>; // the stage's full settings
   why?: string;
-  status: "pending" | "running" | "done" | "error";
+  // "stopped": running when the tuning run ended; "skipped": queued, never run.
+  status: "pending" | "running" | "done" | "error" | "stopped" | "skipped";
   evaluation?: StageEvaluation;
   error?: string;
   seconds?: number;
@@ -395,8 +396,15 @@ export async function startTuning({ dataset, stages, trialsPerStage, llm, skills
     } else {
       useTuneStore.setState({ error: (e as Error).message });
     }
+    // Nothing is left running or queued: a trial that was running stopped,
+    // one still queued never ran.
     useTuneStore.setState((s) => ({
-      stages: s.stages.map((r) => (["waiting", "done", "skipped", "failed"].includes(r.status) ? r : { ...r, status: "failed" })),
+      stages: s.stages.map((r) => ({
+        ...(["waiting", "done", "skipped", "failed"].includes(r.status) ? r : { ...r, status: "failed" as const }),
+        trials: r.trials.map((t) =>
+          t.status === "running" ? { ...t, status: "stopped" as const } : t.status === "pending" ? { ...t, status: "skipped" as const } : t,
+        ),
+      })),
     }));
   } finally {
     if (controller === abort) controller = null;

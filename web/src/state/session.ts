@@ -162,10 +162,14 @@ export function restoreSession(session: Session, datasets: readonly Dataset[]): 
   restored.push("the settings");
 
   if (session.run && !pipeline.running) {
+    // Saved while it ran: it never finished here, and its page says so.
+    const unfinished = session.run.terminal === null && session.run.events.length > 0;
     usePipelineStore.setState({
-      events: session.run.events,
-      times: session.run.times,
-      terminal: session.run.terminal,
+      events: unfinished
+        ? [...session.run.events, { type: "progress", status: "error", message: "The session was saved while this run was going, so it did not finish here." }]
+        : session.run.events,
+      times: unfinished ? [...session.run.times, session.run.times[session.run.times.length - 1] ?? Date.now()] : session.run.times,
+      terminal: unfinished ? "error" : session.run.terminal,
       lastRun: session.run.record,
       jobId: null,
     });

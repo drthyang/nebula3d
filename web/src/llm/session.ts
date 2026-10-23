@@ -3,7 +3,7 @@
 // or closes the panel.  One reply at a time; stopAssistant() aborts it and
 // keeps whatever was written so far.
 
-import { runAgent } from "./agent";
+import { runAgent, type AgentStep } from "./agent";
 import { useChatStore } from "./chatStore";
 import type { ChatMessage } from "./provider/client";
 import { loadSettings } from "./settings";
@@ -52,9 +52,13 @@ export async function askAssistant({
           : undefined),
     });
   } catch (e) {
-    const live = useChatStore.getState().live;
+    const stopped = (e as Error).name === "AbortError";
+    const ended = useChatStore.getState().live;
+    // A step still running when the reply ended never finished: it is kept
+    // as stopped, not as a step that runs on.
+    const live = ended && { ...ended, steps: endSteps(ended.steps, stopped ? "you stopped the reply" : "the reply ended with an error") };
     const kept = live && (live.content || live.reasoning || live.steps.length);
-    if ((e as Error).name === "AbortError") {
+    if (stopped) {
       if (kept) useChatStore.getState().addTurn({ role: "assistant", ...live, note: "Stopped." });
     } else if (kept) {
       // The steps already ran (a tuning run, a pipeline run): keep them, and
@@ -71,6 +75,11 @@ export async function askAssistant({
     if (controller === abort) controller = null;
     useChatStore.setState({ busy: false, live: null });
   }
+}
+
+/** The steps of a reply that ended, any still running marked stopped (with why). */
+export function endSteps(steps: AgentStep[], why: string): AgentStep[] {
+  return steps.map((s) => (s.status === "running" ? { ...s, status: "stopped", progress: undefined, summary: why } : s));
 }
 
 export function stopAssistant(): void {

@@ -156,7 +156,8 @@ def browse_data_root(
 def _dataset_out(ds: ds_mod.Dataset) -> DatasetOut:
     stages = [
         StageStatusOut(name=s.name, exists=s.exists, kind=s.kind,
-                       volume_id=f"{ds.id}.{s.name}")
+                       volume_id=f"{ds.id}.{s.name}",
+                       mtime=ds_mod.output_mtime(s))
         for s in ds.stages
     ]
     return DatasetOut(

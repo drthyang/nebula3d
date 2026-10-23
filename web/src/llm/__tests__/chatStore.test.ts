@@ -43,6 +43,16 @@ describe("chat transcript across reloads", () => {
     expect((await load()).useChatStore.getState().turns).toEqual(saved);
   });
 
+  it("loads a step a saved transcript left running as stopped (its reply is gone)", async () => {
+    storage.set("nebula3d.chat.turns.v1", JSON.stringify([
+      { id: 1, role: "user", content: "Run it" },
+      { id: 2, role: "assistant", content: "", steps: [{ id: "0:c1", name: "run_pipeline", args: {}, status: "running", progress: "1/6 Ring removal" }] },
+    ]));
+    const step = (await load()).useChatStore.getState().turns[1].steps![0];
+    expect(step.status).toBe("stopped");
+    expect(step.progress).toBeUndefined();
+  });
+
   it("brings back the turns and the draft, and keeps numbering after them", async () => {
     const first = await load();
     first.useChatStore.getState().addTurn({ role: "user", content: "Assess the run" });
