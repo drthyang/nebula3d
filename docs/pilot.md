@@ -439,8 +439,13 @@ miss is a note.
   `report/figures.ts` draws the cleanup stages on one shared scale and the
   ΔPDF sections with the page's Auto, axes at their real angle.
   `report/render.ts` writes it as a self-contained HTML page (inline styles
-  and PNGs; *Print / PDF* uses the browser's print) and as Markdown. The
-  model's answer is included as a labelled summary.
+  and PNGs; *Print / PDF* uses the browser's print) and as Markdown. Both open
+  on the goal, each check's verdict and numbers, the limitations that bear on
+  them, the model's answer (a labelled summary) and the figures; the
+  provenance — each check's criterion and measures, the dataset, the tuning
+  trials, the agent's steps, the settings and the standing notes — follows in
+  one *Details and provenance* section, collapsed on the page (*Print / PDF*
+  opens it) and in full in the Markdown.
 - **Tuning** (`tune/`, the `tune_pipeline` tool) — the chat starts it when asked
   for the best result, and shows each stage's trials under that reply
   (`components/TuneProgress.tsx`). It runs the pipeline one stage at a time (rings →

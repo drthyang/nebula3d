@@ -327,6 +327,12 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
 
 // ---------------------------------------------------------------- assemble
 
+/** The notes every report carries, the same in each (render.ts keeps them with the provenance). */
+export const STANDING_CAVEATS: readonly string[] = [
+  "Sample facts (the punch cell, protected planes, magnetic ion and |Q| band) are the user's: the agent changes them only when asked, and the tuning never does.",
+  "The tables and figures are measured by nebula3d's deterministic metrics; the summary is written by the model and may be wrong where it departs from them.",
+];
+
 const SETTING_STAGE_LABELS: Record<string, string> = {
   rings: "Ring removal",
   punch: "Bragg punch",
@@ -371,8 +377,7 @@ export function buildReport(input: ReportInput): Report {
     const chosen = t.trials.find((x) => x.chosen);
     if (chosen && chosen.n !== 1) caveats.push(`Tuning, ${SETTING_STAGE_LABELS[t.stage] ?? t.stage}: the model's proposal ${chosen.changes} replaced your settings; review it before relying on it.`);
   }
-  caveats.push("Sample facts (the punch cell, protected planes, magnetic ion and |Q| band) are the user's: the agent changes them only when asked, and the tuning never does.");
-  caveats.push("The tables and figures are measured by nebula3d's deterministic metrics; the summary is written by the model and may be wrong where it departs from them.");
+  caveats.push(...STANDING_CAVEATS);
 
   return {
     title: `NEBULA Pilot report — ${input.dataset.label}`,

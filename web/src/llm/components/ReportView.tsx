@@ -77,7 +77,16 @@ export function ReportView({
             <button type="button" className="btn btn-ghost" disabled={!report} onClick={() => report && download(`${name}.md`, "text/markdown", reportMarkdown(report))}>
               Download Markdown
             </button>
-            <button type="button" className="btn btn-ghost" disabled={!html} onClick={() => frame.current?.contentWindow?.print()}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={!html}
+              onClick={() => {
+                // The printed report is the whole report: the details and provenance opened.
+                frame.current?.contentDocument?.querySelectorAll("details").forEach((d) => (d.open = true));
+                frame.current?.contentWindow?.print();
+              }}
+            >
               Print / PDF
             </button>
             <button type="button" className="btn btn-primary" onClick={onClose}>

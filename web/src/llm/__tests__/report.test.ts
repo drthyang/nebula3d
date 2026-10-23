@@ -153,6 +153,48 @@ describe("rendering", () => {
     expect(html).toContain("needs attention");
   });
 
+  it("opens on the results and their limitations, and keeps the provenance, whole, in one collapsed section", () => {
+    const tuning = [{ stage: "punch", why: "fewer leftovers", trials: [{ n: 1, changes: "your settings", headline: "12 missed", chosen: false }, { n: 2, changes: "punchMinSig=4", headline: "0 missed", chosen: true }] }];
+    const steps = [{ tool: "assess_stage", summary: "assessed the five stages on three planes", ok: true }];
+    const r = buildReport(input({ tuning, steps }));
+    const html = reportHtml(r);
+    const at = html.indexOf('<details class="provenance">');
+    expect(at).toBeGreaterThan(0);
+    expect(html.indexOf("</details>")).toBeGreaterThan(at);
+    const [summary, details] = [html.slice(0, at), html.slice(at)];
+    const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    // Up front: the goal, each check's verdict and numbers, the limitations, the summary, the figures.
+    expect(summary).toContain(esc(r.achieved.text));
+    for (const c of r.checks) for (const t of [c.title, c.headline]) expect(summary).toContain(esc(t));
+    const limits = r.caveats.filter((c) => !/^Sample facts|^The tables and figures/.test(c));
+    expect(limits.length).toBeGreaterThan(1);
+    for (const c of limits) expect(summary).toContain(esc(c));
+    expect(summary).toContain("<strong>not clean</strong>");
+    expect(summary).toContain(`<img src="${PNG}"`);
+    expect(summary.indexOf("Limitations")).toBeLessThan(summary.indexOf("The model's summary"));
+    // Not up front: the criteria, the measure tables, the dataset, the trials, the steps, the settings, the notes.
+    for (const t of ["Judged by", "Measure", "Settings used", "What the agent did", "assessed the five stages", "pdfWindowShape", "fewer leftovers", "Sample facts (the punch cell"]) {
+      expect(summary).not.toContain(esc(t));
+    }
+    expect(summary).not.toContain("<th>Trial</th>");
+    // All of it in the section, as before.
+    for (const c of r.checks) {
+      if (c.criterion) expect(details).toContain(esc(c.criterion));
+      for (const [k, v] of c.details) expect(details).toContain(`<th scope="row">${esc(k)}</th><td>${esc(v)}</td>`);
+    }
+    for (const t of ["sample_150K.nxs", "assessed the five stages", "pdfWindowShape", "punchCell", "punchMinSig=4", "fewer leftovers", ...r.caveats.filter((c) => !limits.includes(c))]) {
+      expect(details).toContain(esc(t));
+    }
+    // The Markdown export keeps everything, in the same order.
+    const md = reportMarkdown(r);
+    for (const t of r.caveats) expect(md).toContain(`- ${t}`); // list items, as written
+    for (const t of [...r.checks.flatMap((c) => [c.headline, ...c.details.map(([k]) => k)]), "assessed the five stages", "pdfWindowShape", "punchMinSig=4"]) {
+      expect(md).toContain(t.replace(/\|/g, "\\|")); // table cells, their pipes escaped
+    }
+    expect(md.indexOf("## Limitations")).toBeLessThan(md.indexOf("## Details and provenance"));
+    expect(md.indexOf("## The model's summary")).toBeLessThan(md.indexOf("## Details and provenance"));
+  });
+
   it("writes the same report as Markdown", () => {
     const md = reportMarkdown(buildReport(input()));
     expect(md.split("\n")[0]).toBe("# NEBULA Pilot report — 150K");

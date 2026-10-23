@@ -130,7 +130,7 @@ async function figures(dataset: Dataset): Promise<ReportFigure[]> {
         if (url) {
           out.push({
             title: `3D-ΔPDF, ${DPDF_SECTIONS[i][1]}`,
-            caption: `±${levels.hi.toPrecision(3)} (the 99.9th percentile of |ΔPDF|, origin left out); ±${Math.min(DPDF_HALF, fullHalf(slice))} Å, axes at their real angle.`,
+            caption: `±${levels.hi.toPrecision(3)} (the 99.9th percentile of |ΔPDF|, origin left out); ±${Number(Math.min(DPDF_HALF, fullHalf(slice)).toPrecision(3))} Å, axes at their real angle.`,
             dataUrl: url,
           });
         }
