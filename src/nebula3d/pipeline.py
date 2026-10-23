@@ -1494,7 +1494,7 @@ def flatten(vol: HKLVolume, params: FlattenParams | None = None, *,
     model = (f", ion={p.ion}" + (", + b·Q²" if p.q2_term else "")
              if p.estimator == "model" else "")
     _emit(progress, "flatten", "start", None,
-          f"radial-background flatten (estimator={p.estimator}{model})")
+          f"background correction: radial (estimator={p.estimator}{model})")
     res = flatten_radial_background(
         vol, q_step=p.q_step, estimator=p.estimator,
         floor_percentile=p.floor_percentile, snip_width=p.snip_width,
@@ -1511,7 +1511,8 @@ def flatten(vol: HKLVolume, params: FlattenParams | None = None, *,
     else:
         detail = (f"bg max {float(np.nanmax(res.bg_curve)):.4g}"
                   if res.bg_curve.size else "no valid voxels")
-    _emit(progress, "flatten", "done", 1.0, f"flatten complete ({detail})")
+    _emit(progress, "flatten", "done", 1.0,
+          f"background correction complete ({detail})")
     return res.volume
 
 
@@ -2114,7 +2115,7 @@ def _flatten_off_notice(p: PipelineParams, pdf_input: Path) -> str | None:
     flatten is off (None with it on), so the log says which one it took."""
     if p.flatten_enabled:
         return None
-    return (f"flatten disabled: the ΔPDF transforms {Path(pdf_input).name}, "
+    return (f"background correction off: the ΔPDF transforms {Path(pdf_input).name}, "
             "with no background removed")
 
 
@@ -2430,7 +2431,7 @@ def run_pipeline(
                 # equivalent voxels lost slightly different amounts.
                 n = symmetry.orbit_mean(out.data, out.mask & np.isfinite(out.data))
                 _emit(progress, "flatten", "progress", None,
-                      f"flatten averaged over {symmetry.order} symmetry operations "
+                      f"background correction averaged over {symmetry.order} symmetry operations "
                       f"({n:,} voxels)")
             nebula3d.save(out, paths.flattened)
             _write_flatten_settings(paths.flattened, p.flatten)
@@ -2438,7 +2439,7 @@ def run_pipeline(
             del vol, out  # free the input; `carry` hands the output onward
     elif want("flatten"):
         _emit(progress, "flatten", "skip", None,
-              "flatten disabled (no background removed)")
+              "background correction off (no background removed)")
 
     # --- stage 5: ΔPDF (with stale-cache guard) -----------------------------
     dpdf_obj: DeltaPDF | None = None     # in-memory ΔPDF if (re)computed here

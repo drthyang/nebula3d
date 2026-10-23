@@ -72,7 +72,7 @@ export const TUNE_STAGE_LABELS: Record<TuneStage, string> = {
   rings: "Ring removal",
   punch: "Bragg punch",
   backfill: "Backfill",
-  flatten: "Flatten",
+  flatten: "Background correction",
   pdf: "3D-ΔPDF",
 };
 

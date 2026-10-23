@@ -560,13 +560,13 @@ export function ConsistencyViewer() {
       {!datasetsQ.isError && usable.length === 0 && (
         <EmptyState
           title="No invertible volumes yet"
-          hint="Run the pipeline first — the flattened/backfilled volume feeds this back-FFT check."
+          hint="Run the pipeline first — the background-corrected (or backfilled) volume feeds this back-FFT check."
         />
       )}
       {!datasetsQ.isError && usable.length > 0 && dataset && !selectedUsable && (
         <EmptyState
           title="No invertible volume for this dataset"
-          hint="Run this dataset through backfill or flatten first — the flattened/backfilled volume feeds this back-FFT check."
+          hint="Run this dataset through backfill or background correction first — the background-corrected (or backfilled) volume feeds this back-FFT check."
         />
       )}
       {metaQ.isError && (

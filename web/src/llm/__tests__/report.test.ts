@@ -65,7 +65,7 @@ describe("buildReport", () => {
   it("judges each stage by its stated criterion, from the measured numbers", () => {
     const r = buildReport(input());
     const verdict = Object.fromEntries(r.checks.map((c) => [c.title, c.verdict]));
-    expect(verdict).toEqual({ "Ring removal": "attention", "Bragg punch": "attention", Backfill: "pass", Flatten: "pass", "3D-ΔPDF": "pass" });
+    expect(verdict).toEqual({ "Ring removal": "attention", "Bragg punch": "attention", Backfill: "pass", "Background correction": "pass", "3D-ΔPDF": "pass" });
     // Whether the goal is met is computed from those checks, not taken from the model's words.
     expect(r.achieved).toEqual({ met: false, text: "not met: needs attention: Ring removal, Bragg punch" });
     expect(reportMarkdown(r)).toContain("**Goal: not met: needs attention: Ring removal, Bragg punch.** *Computed from the checks below, not from the model's words.*");
@@ -99,7 +99,7 @@ describe("buildReport", () => {
       }),
     );
     expect(r.kind).toBe("Tuning");
-    expect(r.caveats).toContain("Not measured (no output, or the measurement failed): Flatten.");
+    expect(r.caveats).toContain("Not measured (no output, or the measurement failed): Background correction.");
     expect(r.caveats.some((c) => /Tuning, 3D-ΔPDF: .*Trial 2 was not a candidate/.test(c))).toBe(true);
     expect(r.caveats.some((c) => /Tuning, Bragg punch: the model's proposal punchMinSig=3 replaced your settings/.test(c))).toBe(true);
   });
@@ -331,7 +331,7 @@ describe("a card states only what it judges", () => {
     expect(verdicts({ report: COARSE_RUN }).achieved).toMatchObject({ notMeasured: [], notJudged: ["Ring removal (grid too coarse for the ring check)"] });
     // Beside a stage not measured: each with its own words.
     const noFlatten = buildReport(input({ measured: { ...COARSE_RUN, flatten: null } }));
-    expect(noFlatten.achieved.text).toBe("not judged: Ring removal (grid too coarse for the ring check); not measured: Flatten");
+    expect(noFlatten.achieved.text).toBe("not judged: Ring removal (grid too coarse for the ring check); not measured: Background correction");
     // A ring check that judged nothing for another reason reads as before.
     const rings = { max_ring_dent: null, max_ring_left: null, ring_rule: "not judged: the test of each bump in 3D could not run" };
     expect(buildReport(input({ measured: { ...COARSE_RUN, rings } })).achieved.text).toBe("not judged: not measured: Ring removal");
@@ -341,7 +341,7 @@ describe("a card states only what it judges", () => {
     // The validation's dev volumes (docs/pilot-review.md finding 6): floors of
     // 1.5 to 1.8σ on all eight, whatever the flatten did.
     const flatten = { max_after_floor_sigma: 1.72, max_floor_trend: 0.314, max_floor_span_fraction: 0.601, pedestal_left: false };
-    const card = buildReport(input({ measured: { ...input().measured, flatten } })).checks.find((c) => c.title === "Flatten")!;
+    const card = buildReport(input({ measured: { ...input().measured, flatten } })).checks.find((c) => c.title === "Background correction")!;
     expect(card.verdict).toBe("pass"); // "needs attention" under the 1σ clause
     expect(card.details).toContainEqual(["Largest leftover floor (reported, not judged)", "1.72 σ"]);
     expect(card.criterion).toMatch(/^No pedestal: .* The largest floor in σ is reported, not judged/);

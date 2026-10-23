@@ -115,7 +115,7 @@ describe("the verdict computed from the checks", () => {
   });
 
   it("is not met when a stage, the window, the symmetry or the fill's texture needs attention", () => {
-    expect(computedVerdict([all({ flatten: stage("flatten", ATTENTION) })])!.text).toBe("not met: needs attention: the flatten");
+    expect(computedVerdict([all({ flatten: stage("flatten", ATTENTION) })])!.text).toBe("not met: needs attention: the background correction");
     const checks = [
       all(),
       step("qmax_coverage", { verdict: "too far: the ΔPDF's separable window puts 0.04 of its weight on unmeasured reciprocal space" }),
@@ -127,8 +127,8 @@ describe("the verdict computed from the checks", () => {
 
   it("is not judged on a stage not measured since it was last computed, and computes the stage from its numbers when needed", () => {
     const stale = computedVerdict([all(), rerun({ rings: "reused", punch: "reused", backfill: "reused", flatten: "computed", pdf: "computed" })])!;
-    expect(stale).toMatchObject({ achieved: null, notMeasured: ["the flatten", "the 3D-ΔPDF"] });
-    expect(stale.text).toBe("not judged: not measured since it was last computed: the flatten, the 3D-ΔPDF");
+    expect(stale).toMatchObject({ achieved: null, notMeasured: ["the background correction", "the 3D-ΔPDF"] });
+    expect(stale.text).toBe("not judged: not measured since it was last computed: the background correction, the 3D-ΔPDF");
     // A result without its verdict label: judged by the stage's rule from its numbers.
     const numbers = step("assess_stage", { flatten: { max_after_floor_sigma: 1.8, max_floor_trend: 0.975, max_floor_span_fraction: 0.971 } }, { stage: "flatten" });
     expect(computedVerdict([numbers])!.stages.flatten).toBe("attention");
@@ -143,10 +143,10 @@ describe("the verdict computed from the checks", () => {
     expect(resolveReference("achieved", [all({ rings: coarse })])).toBe(v.text);
     // Beside stages not measured since they were last computed, each with its own words.
     const stale = computedVerdict([all({ rings: coarse }), rerun({ rings: "reused", punch: "reused", backfill: "reused", flatten: "computed", pdf: "computed" })])!;
-    expect(stale).toMatchObject({ achieved: null, notMeasured: ["the flatten", "the 3D-ΔPDF"], notJudged: ["the ring removal (grid too coarse for the ring check)"] });
-    expect(stale.text).toBe("not judged: the ring removal (grid too coarse for the ring check); not measured since it was last computed: the flatten, the 3D-ΔPDF");
+    expect(stale).toMatchObject({ achieved: null, notMeasured: ["the background correction", "the 3D-ΔPDF"], notJudged: ["the ring removal (grid too coarse for the ring check)"] });
+    expect(stale.text).toBe("not judged: the ring removal (grid too coarse for the ring check); not measured since it was last computed: the background correction, the 3D-ΔPDF");
     // A need for attention elsewhere still decides: not met.
-    expect(computedVerdict([all({ rings: coarse, flatten: stage("flatten", ATTENTION) })])!.text).toBe("not met: needs attention: the flatten");
+    expect(computedVerdict([all({ rings: coarse, flatten: stage("flatten", ATTENTION) })])!.text).toBe("not met: needs attention: the background correction");
     // A ring check that judged nothing for another reason reads as before, with no notJudged.
     const nothing = computedVerdict([all({ rings: { verdict: "not judged", max_ring_left: null, max_ring_dent: null, ring_rule: "not judged: the test of each bump in 3D could not run" } })])!;
     expect(nothing.text).toBe("not judged: not measured since it was last computed: the ring removal");

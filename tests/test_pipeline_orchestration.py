@@ -359,7 +359,7 @@ def test_flatten_disabled_routes_backfilled_into_pdf(tmp_path, stubbed):
 
 
 def _flatten_off_notice(paths):
-    return (f"flatten disabled: the ΔPDF transforms {paths.backfilled.name}, "
+    return (f"background correction off: the ΔPDF transforms {paths.backfilled.name}, "
             "with no background removed")
 
 
@@ -593,4 +593,4 @@ def test_the_flatten_on_transforms_its_flattened_volume_as_before(tmp_path):
     paths = pipeline.run_pipeline(inp, proc_dir=tmp_path / "processed",
                                   progress=lambda *a: events.append(a))
     _transforms(paths, paths.flattened)
-    assert not any("flatten disabled" in e[3] for e in events)
+    assert not any("background correction off" in e[3] for e in events)

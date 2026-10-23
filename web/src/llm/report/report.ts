@@ -282,7 +282,7 @@ function flattenCheck(measured: Obj | null | undefined, verdict: Verdict | undef
   const trend = num(m.max_floor_trend);
   const span = num(m.max_floor_span_fraction);
   return {
-    title: "Flatten",
+    title: "Background correction",
     // The pedestal rule; the floor in σ is reported, not judged (verdicts/rules.ts, FLATTEN_FLOOR_SIGMA_NOTE).
     verdict,
     headline: `floor ≤ ${fmt(floor)}σ · trend ≤ ${fmt(trend)} · span ≤ ${fmt(span)}`,
@@ -331,7 +331,7 @@ const SETTING_STAGE_LABELS: Record<string, string> = {
   rings: "Ring removal",
   punch: "Bragg punch",
   backfill: "Backfill",
-  flatten: "Flatten",
+  flatten: "Background correction",
   pdf: "3D-ΔPDF",
 };
 

@@ -37,7 +37,7 @@ const DATASET_STAGE_BADGES = [
   { key: "ringremoved", label: "Ring removed", group: "Cleanup" },
   { key: "braggpunched", label: "Bragg punched", group: "Cleanup" },
   { key: "backfilled", label: "Backfilled", group: "Cleanup" },
-  { key: "flattened", label: "Background flattened", group: "Cleanup" },
+  { key: "flattened", label: "Background corrected", group: "Cleanup" },
   { key: "delta_pdf", label: "3D-ΔPDF", group: "Output" },
 ] as const;
 
@@ -2331,7 +2331,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 <div className={`cfg-stage${s.flatten ? "" : " cfg-stage--off"}${lit.includes("flatten") ? " ai-glow-within" : ""}`}>
                   <StageHead
                     no={STAGE_NO.flatten}
-                    title="Flatten"
+                    title="Background correction"
                     enabled={s.flatten}
                     onToggle={(v) => patch({ flatten: v })}
                   >

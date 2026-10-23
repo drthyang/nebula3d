@@ -123,6 +123,6 @@ export const STAGE_REVIEW_LABELS: Record<ReviewStage, string> = {
   rings: "Assess ring removal",
   punch: "Review Bragg punch",
   backfill: "Check backfill",
-  flatten: "Check flatten",
+  flatten: "Check background correction",
   dpdf: "Analyse ΔPDF features",
 };

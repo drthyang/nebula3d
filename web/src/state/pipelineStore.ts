@@ -24,7 +24,7 @@ export const STAGE_LABELS: Record<string, string> = {
   rings: "Ring removal",
   punch: "Bragg punch",
   backfill: "Backfill",
-  flatten: "Flatten",
+  flatten: "Background correction",
   pdf: "3D-ΔPDF",
   pdf_check: "Consistency check",
 };

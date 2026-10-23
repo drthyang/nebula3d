@@ -17,8 +17,9 @@ up.*
 ## What it does
 
 - **The reduction, stage by stage:** powder-ring removal, Bragg and satellite
-  punch, backfill, radial-background flatten, the 3D-ΔPDF transform and a
-  back-FFT consistency check ([the pipeline](docs/pipeline.md)).
+  punch, backfill, radial background correction (the `flatten` stage), the
+  3D-ΔPDF transform and a back-FFT consistency check
+  ([the pipeline](docs/pipeline.md)).
 - **Aware of the crystal:** the stages keep the symmetry the input declares,
   non-orthogonal cells are fine, and the UB can be checked and refined from
   where the Bragg peaks sit.

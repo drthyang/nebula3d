@@ -30,7 +30,7 @@ export const STAGE_NAMES: Record<Stage, string> = {
   rings: "the ring removal",
   punch: "the Bragg punch",
   backfill: "the backfill",
-  flatten: "the flatten",
+  flatten: "the background correction",
   pdf: "the 3D-ΔPDF",
 };
 

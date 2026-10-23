@@ -32,7 +32,7 @@ const STAGE_FIGURES = [
   ["ringremoved", "Ring-removed"],
   ["braggpunched", "Bragg-punched"],
   ["backfilled", "Backfilled"],
-  ["flattened", "Flattened"],
+  ["flattened", "Background-corrected"],
 ] as const;
 const DPDF_SECTIONS = [
   ["xy", "x–y section at z = 0"],

@@ -48,7 +48,7 @@ const STAGE_LABELS: Record<string, string> = {
   ringremoved: "Ring-removed",
   braggpunched: "Bragg-punched",
   backfilled: "Backfilled",
-  flattened: "Flattened",
+  flattened: "Background-corrected",
 };
 const AXES: FixedAxis[] = ["H", "K", "L"];
 // In-plane axes (x, y) for each fixed axis.
@@ -225,7 +225,7 @@ export function ReciprocalViewer() {
         <div className="qr-roundtrip">
           <span className="qr-rt qr-rt--q">raw</span>
           <span className="qr-rt-arrow">→</span>
-          <span className="qr-rt">flattened</span>
+          <span className="qr-rt">background-corrected</span>
         </div>
         <span className="qr-eyebrow">{stages.length || 5} stages</span>
         <span className="qr-desc">Each stage strips one artifact, leaving the diffuse signal</span>

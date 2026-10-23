@@ -1482,7 +1482,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## run_pipeline {"from_stage":"punch"} (a stubbed run of 42.3 s)
 
-460 characters sent.
+474 characters sent.
 
 ```json
 {
@@ -1497,7 +1497,7 @@ References of this skill (read one with read_skill and `reference`):
     "pdf_check": "computed"
   },
   "outputs": ["raw", "ringremoved", "braggpunched", "backfilled", "flattened", "delta_pdf"],
-  "log_tail": ["Bragg punch · 13 peaks punched, 1 below the significance gate", "Backfill · 13 holes filled", "Flatten · floor fitted on 32 shells", "3D-ΔPDF · 3D-ΔPDF written", "Consistency check · back-FFT r = 0.99714"]
+  "log_tail": ["Bragg punch · 13 peaks punched, 1 below the significance gate", "Backfill · 13 holes filled", "Background correction · floor fitted on 32 shells", "3D-ΔPDF · 3D-ΔPDF written", "Consistency check · back-FFT r = 0.99714"]
 }
 ```
 

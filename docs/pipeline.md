@@ -19,7 +19,7 @@ Symmetrised HKL volume (NeXus Viewer export or Mantid)
   1. powder-ring subtraction        examples/remove_rings_3d.py
   2. Bragg/satellite punch          examples/punch_bragg_3d.py
   3. Bragg-hole backfill            examples/backfill_bragg_3d.py
-  4. radial-background flatten      examples/flatten_background_3d.py
+  4. background correction (flatten) examples/flatten_background_3d.py
   5. 3D-ΔPDF transform              examples/delta_pdf.py
   6. back-FFT consistency check     examples/delta_pdf_consistency.py
   7. cleanup / ΔPDF viewers         examples/explore_slice.py, examples/explore_delta_pdf_ortho.py
@@ -83,7 +83,7 @@ python3 examples/run_pipeline.py
 `examples/run_pipeline.py` runs all compute stages, skips stages whose outputs
 already exist, writes the 3D-ΔPDF, runs the consistency check, then opens the
 cleanup and ΔPDF viewers. The stages are: (1) ring removal, (2) Bragg punch,
-(3) Bragg backfill, (4) **radial-background flatten** — the explicit
+(3) Bragg backfill, (4) **background correction** (the radial-background flatten) — the explicit
 background-removal step (default on; `FLATTEN=0` to skip), (5) 3D-ΔPDF FFT,
 (6) back-FFT consistency check. The background is removed at step 4, not by a
 hidden blur inside the FFT: the transform's own Gaussian `SUBTRACT_BG` is off by
@@ -332,7 +332,11 @@ float32 pair with 6000 holes it holds 7.4 MiB at its peak in low-memory mode
 numbers. It is a measurement only: the Pilot's `texture_check` does not read
 it yet.
 
-### 4. Flatten The Radial Background (Background Removal)
+### 4. Background Correction: Flatten The Radial Background
+
+The console calls this stage *Background correction* and its output
+*background-corrected*; the code, settings, files and the Pilot's tools keep the
+name `flatten` (`flatten_enabled`, `FlattenParams`, `*_flattened.h5`).
 
 ```bash
 PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl \
