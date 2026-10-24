@@ -20,6 +20,6 @@
   the remedy subtracts nothing; a strong ring is judged on two clean flank
   bins a side, with its curve check. A weak ring under the 6σ floor goes
   undetected, as with full coverage. The ring-removed volume of every dev case
-  at 81 and 161 points, and of the demo volume, is the same as before, bit
-  for bit (review finding B3; the manager's decision on the user's
-  delegation, 2026-10-19).
+  at 81 and 161 points, and of the console's demo volume (161 points over
+  ±4 r.l.u.), is the same as before, bit for bit (review finding B3; the
+  manager's decision on the user's delegation, 2026-10-19).
