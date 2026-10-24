@@ -71,13 +71,13 @@ inward. Check these first, in this order, and say what each check found.
    background): rings confirmed on data that should have none are an anomaly
    to report, not routine cleanup.
 6. **The flatten floor.** `assess_stage` for the flatten: the floors near zero,
-   no trend with |Q| (`max_floor_trend`), and a span small against the diffuse
-   level (`max_floor_span_fraction`), both judged on the outer half of the
-   shells the counts reach; `pedestal_left` says whether they make a pedestal
-   (a trend and a span both 0.8 or more). A floor that rises with |Q| is
-   inelastic background (thermal diffuse and multiphonon scattering; with
-   X-rays also Compton scattering, which neutrons lack). The `+ b·Q²` term
-   (`flattenQ2`) and *Fit to |Q|* (`flattenFitQMax`) address it.
+   no trend with |Q| (`floor_trend`), and a span small against the diffuse
+   level (`floor_span_fraction`), both judged over the whole volume, on the
+   outer half of the shells the counts reach; `pedestal_left` says whether
+   they make a pedestal (a trend and a span both 0.8 or more). A floor that
+   rises with |Q| is inelastic background (thermal diffuse and multiphonon
+   scattering; with X-rays also Compton scattering, which neutrons lack). The
+   `+ b·Q²` term (`flattenQ2`) and *Fit to |Q|* (`flattenFitQMax`) address it.
    - **When to turn the Q² term on:** when `assess_stage` for the flatten
      reports `pedestal_left`, set `flattenQ2` on, rerun from the flatten
      (`run_pipeline` with `from_stage` flatten), and read `assess_stage` for
