@@ -1021,12 +1021,21 @@ def test_summarize_names_the_runs_cut_at_the_output_limit_under_the_table(tmp_pa
     assert line == (
         "Cut at the output limit: 2 runs of the table, graded as they stand: "
         "`dev-ub` B run 2 (1 of the loop's requests), "
-        "`dev-origin` C run 1 (1 of the loop's requests and 2 of the tuning's requests)."
+        "`dev-origin` C run 1 (1 of the loop's requests and 2 of the tuning's requests). "
+        "Per arm: B 1 of 2, C 1 of 2."
     )
     assert truncated_runs({"runs": runs[:1]}) is None
     one = truncated_runs({"runs": runs[1:2]})
     assert one is not None
     assert one.startswith("Cut at the output limit: 1 run of the table, graded as it stands:")
+    # An arm cut more often than the arm cut least gets its footnote.
+    more_c = [_live_run("dev-origin", "C", run=3), _live_run("dev-ub", "C", run=1)]
+    uneven = truncated_runs({"runs": runs[:3] + more_c})
+    assert uneven is not None
+    assert uneven.endswith(
+        "Per arm: B 1 of 2†, C 1 of 3. "
+        "† More of this arm's runs were cut than of the arm cut least: read its pass rate with it."
+    )
     path = tmp_path / "record.json"
     path.write_text(json.dumps({"split": "dev", "runs": runs}))
     main(["summarize", "--record", str(path)])
