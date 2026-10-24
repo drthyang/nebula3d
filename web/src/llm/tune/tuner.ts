@@ -16,7 +16,7 @@ import { create } from "zustand";
 import { fetchDataset, promoteTrial, startTuningRun } from "../../api/client";
 import { queryClient } from "../../api/queryClient";
 import type { Dataset, TuningRun } from "../../api/types";
-import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
+import { pipelineBusy, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { completeChat, type ChatMessage, type TokenUsage } from "../provider/client";
 import { baseTokens, estimateTokens, PROSE_CHARS_PER_TOKEN } from "../provider/tokens";
 import { STALL_MS } from "../recovery";
@@ -333,7 +333,7 @@ export interface TuneOptions {
 }
 
 export async function startTuning({ dataset, stages, trialsPerStage, llm, skills = true }: TuneOptions): Promise<void> {
-  if (useTuneStore.getState().active || pipeline().running) return;
+  if (useTuneStore.getState().active || pipelineBusy(pipeline())) return;
   const abort = new AbortController();
   controller = abort;
   const cfg = pipeline();

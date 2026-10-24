@@ -1,13 +1,15 @@
 // A native run's progress stream: the page follows the job to its own end.
 // When the stream drops, the job's status says what became of it: still
-// running (follow it again, without logging its events twice), ended (take
-// that end), or unknown to the server or unreachable (the run is reported
-// lost, never left "running").
+// running (follow it again, without logging its events twice, however often it
+// drops), ended (take that end), or unknown to the server (it restarted: the
+// run stopped). A server that cannot be reached is asked again: the run stays
+// running, and after a while is shown as lost (its end unknown, never as a
+// failure), holding the pipeline until the server answers with the job's end.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { queryClient } from "../../api/queryClient";
-import { usePipelineStore } from "../pipelineStore";
+import { LOST_AFTER_MS, pipelineBusy, usePipelineStore } from "../pipelineStore";
 
 class FakeSource {
   static all: FakeSource[] = [];
@@ -49,7 +51,10 @@ beforeEach(() => {
   );
   usePipelineStore.setState(usePipelineStore.getInitialState(), true);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 const started = async () => {
   void usePipelineStore.getState().run();
@@ -98,13 +103,85 @@ describe("following a native run", () => {
     expect(last(s.events)?.message).toMatch(/no longer knows this run \(it restarted\)/);
   });
 
-  it("reports the run lost when the server cannot be reached", async () => {
+  it("keeps a run whose server cannot be reached for a moment running, and follows it again when it answers", async () => {
+    vi.useFakeTimers();
+    const first = await started();
+    first.send(progress("rings", "start"));
+    job = "unreachable";
+    first.drop();
+    await vi.advanceTimersByTimeAsync(10_000);
+    let s = usePipelineStore.getState();
+    expect([s.running, s.terminal, s.reconnecting]).toEqual([true, null, true]);
+    expect(s.events.some((e) => e.status === "error")).toBe(false);
+    expect(FakeSource.all).toHaveLength(1);
+    job = { status: 200, body: { id: "j1", input: "s.nxs", status: "running", error: null, n_events: 2 } };
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(FakeSource.all).toHaveLength(2);
+    const again = FakeSource.all[1];
+    again.send(progress("rings", "start"));
+    again.send(progress("rings", "done"));
+    expect(usePipelineStore.getState().reconnecting).toBe(false);
+    again.send({ type: "done" });
+    s = usePipelineStore.getState();
+    expect(s.events.map((e) => e.message)).toEqual(["rings start", "rings done"]);
+    expect([s.terminal, s.running]).toEqual(["done", false]);
+  });
+
+  it("shows a run lost, not failed, when the server stays out of reach; holds the pipeline; then takes the job's real end", async () => {
+    vi.useFakeTimers();
+    const first = await started();
+    first.send(progress("rings", "start"));
+    job = "unreachable";
+    first.drop();
+    await vi.advanceTimersByTimeAsync(LOST_AFTER_MS + 16_000);
+    let s = usePipelineStore.getState();
+    expect([s.running, s.terminal, s.reconnecting]).toEqual([false, "lost", false]);
+    expect(s.events.some((e) => e.status === "error")).toBe(false); // no stage marked failed
+    expect(pipelineBusy(s)).toBe(true);
+    // Another run does not start while this job may still be writing.
+    await usePipelineStore.getState().run();
+    const posts = vi.mocked(fetch).mock.calls.filter(([url]) => url === "/api/pipeline/run");
+    expect(posts).toHaveLength(1);
+    expect(usePipelineStore.getState().terminal).toBe("lost");
+    // The server answers: the job finished meanwhile.
+    job = { status: 200, body: { id: "j1", input: "s.nxs", status: "done", error: null, n_events: 9 } };
+    await vi.advanceTimersByTimeAsync(16_000);
+    s = usePipelineStore.getState();
+    expect([s.terminal, s.running, pipelineBusy(s)]).toEqual(["done", false, false]);
+  });
+
+  it("takes up a lost run again when the server answers that its job still runs", async () => {
+    vi.useFakeTimers();
     const first = await started();
     job = "unreachable";
     first.drop();
-    await vi.waitFor(() => expect(usePipelineStore.getState().running).toBe(false));
-    expect(usePipelineStore.getState().terminal).toBe("error");
-    expect(last(usePipelineStore.getState().events)?.message).toMatch(/Lost the connection to the server/);
+    await vi.advanceTimersByTimeAsync(LOST_AFTER_MS + 16_000);
+    expect(usePipelineStore.getState().terminal).toBe("lost");
+    job = { status: 200, body: { id: "j1", input: "s.nxs", status: "running", error: null, n_events: 0 } };
+    await vi.advanceTimersByTimeAsync(16_000);
+    const s = usePipelineStore.getState();
+    expect([s.running, s.terminal]).toEqual([true, null]);
+    expect(FakeSource.all).toHaveLength(2);
+  });
+
+  it("follows a long run through any number of drops while its stream brings events", async () => {
+    const first = await started();
+    const sent: string[] = [];
+    let source = first;
+    for (let i = 0; i < 6; i++) {
+      // The server replays what was sent, then the next event.
+      sent.forEach((m) => source.send({ type: "progress", stage: "rings", status: "progress", message: m }));
+      sent.push(`step ${i}`);
+      source.send({ type: "progress", stage: "rings", status: "progress", message: `step ${i}` });
+      source.drop();
+      await vi.waitFor(() => expect(FakeSource.all).toHaveLength(i + 2));
+      source = FakeSource.all[i + 1];
+      expect(usePipelineStore.getState().running).toBe(true);
+    }
+    source.send({ type: "done" });
+    const s = usePipelineStore.getState();
+    expect(s.events.map((e) => e.message)).toEqual(sent);
+    expect(s.terminal).toBe("done");
   });
 
   it("logs the reason a job failed, which its end event carries", async () => {

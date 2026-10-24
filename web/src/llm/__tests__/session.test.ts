@@ -3,8 +3,10 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AgentStep } from "../agent";
 import { useChatStore } from "../chatStore";
-import { askAssistant } from "../session";
+import { askAssistant, stopAssistant } from "../session";
+import { runRound, startReply, type AgentTool, type ToolContext } from "../tools";
 
 const agent = vi.hoisted(() => ({ runAgent: vi.fn() }));
 vi.mock("../agent", () => agent);
@@ -54,19 +56,50 @@ describe("askAssistant", () => {
     expect(busy).toBe(false);
   });
 
-  it("keeps a step that was running when the user stopped the reply as stopped, not running", async () => {
+  it("keeps the step the user stopped as stopped, not as an error, as the real round ends it", async () => {
+    // The real sequence: Stop aborts the reply; run_pipeline's run is cancelled
+    // and the call fails ("the run was cancelled"), which the round ends as the
+    // step's status; then the reply's next request rejects with an AbortError.
     const done = { id: "0:a", name: "assess_stage", args: {}, status: "done" as const, summary: "clean" };
-    const running = { id: "1:b", name: "run_pipeline", args: {}, status: "running" as const, progress: "2/6 Bragg punch" };
+    const runPipeline: AgentTool = {
+      name: "run_pipeline",
+      description: "",
+      parameters: { type: "object", properties: {} },
+      run: (_args, _ctx, io) =>
+        new Promise((_resolve, reject) => io.signal?.addEventListener("abort", () => reject(new Error("the run was cancelled")))),
+    };
+    agent.runAgent.mockImplementation(async ({ onProgress, signal }) => {
+      let steps: AgentStep[] = [done];
+      onProgress({ content: "", reasoning: "", steps });
+      await runRound([{ id: "b", type: "function", function: { name: "run_pipeline", arguments: "{}" } }], startReply({ dataset: null } as unknown as ToolContext, [runPipeline]), {
+        signal,
+        onStep: (step) => {
+          steps = [...steps.filter((s) => s.id !== step.id), step];
+          onProgress({ content: "", reasoning: "", steps });
+        },
+      });
+      throw new DOMException("The operation was aborted.", "AbortError"); // the next request
+    });
+    const asked = ask();
+    await vi.waitFor(() => expect(useChatStore.getState().live?.steps.map((s) => s.status)).toEqual(["done", "running"]));
+    stopAssistant();
+    await asked;
+    const steps = useChatStore.getState().turns[1].steps!;
+    expect(steps.map((st) => st.status)).toEqual(["done", "stopped"]);
+    expect(steps[1]).toMatchObject({ name: "run_pipeline", summary: "the run was cancelled" });
+    expect(useChatStore.getState().turns[1].note).toBe("Stopped.");
+  });
+
+  it("keeps a step still marked running when the reply was stopped as stopped", async () => {
+    const running = { id: "1:b", name: "assess_stage", args: {}, status: "running" as const, progress: "reading" };
     agent.runAgent.mockImplementation(async ({ onProgress }) => {
-      onProgress({ content: "", reasoning: "", steps: [done, running] });
+      onProgress({ content: "", reasoning: "", steps: [running] });
       throw new DOMException("The operation was aborted.", "AbortError");
     });
     await ask();
     const steps = useChatStore.getState().turns[1].steps!;
-    expect(steps.map((st) => st.status)).toEqual(["done", "stopped"]);
-    expect(steps[1]).toMatchObject({ summary: "you stopped the reply" });
-    expect(steps[1].progress).toBeUndefined();
-    expect(useChatStore.getState().turns[1].note).toBe("Stopped.");
+    expect(steps[0]).toMatchObject({ status: "stopped", summary: "you stopped the reply" });
+    expect(steps[0].progress).toBeUndefined();
   });
 
   it("keeps a step that was running when an error ended the reply as stopped", async () => {

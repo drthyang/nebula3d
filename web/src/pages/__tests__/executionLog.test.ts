@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { logClass, runPhase, stageInfo, stageStates, warns, type Phase } from "../executionLog";
+import { logClass, runOutputs, runPhase, stageInfo, stageStates, warns, type Phase } from "../executionLog";
 
 const NOTICE =
   "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.";
@@ -81,5 +81,64 @@ describe("the run's phase and each stage's state", () => {
 
   it("counts every shown stage as the run's when it is not known what the run was asked for", () => {
     expect(states([ev("rings", "done")], "done", null).inRun).toEqual(all);
+  });
+
+  it("calls a stage that reused a stale output stale, not done or current, and does not count it done", () => {
+    // Run A rewrote the cleanup outputs with the ΔPDF off; run B (no Force) reused them all.
+    const events = all.map((s) => ev(s, "skip", `${s} exists`));
+    const r = stageStates({
+      visible: all,
+      info: stageInfo(events, events.map((_e, i) => i)),
+      phase: "done",
+      runStages: all,
+      hasOutput: () => true,
+      isStale: (s) => s === "pdf" || s === "pdf_check",
+    });
+    expect(all.map((s) => r.states[s])).toEqual(["done", "done", "done", "done", "stale", "stale"]);
+    expect(r.doneCount).toBe(4);
+    expect(r.staleAfter.pdf).toBeUndefined(); // it was in the run: its own reuse, not a stage left out
+    // A stage the run computed is done while the listing is the one from before the run (it dates the output the stage replaced)...
+    const computed = (listingAfterRun: boolean, phase: Phase = "done") =>
+      stageStates({ visible: all, info: stageInfo([ev("backfill", "done")], [0]), phase, runStages: ["backfill"], hasOutput: () => true, isStale: (s) => s === "backfill", listingAfterRun }).states.backfill;
+    expect(computed(false)).toBe("done");
+    // ...and stale, when the listing read after the run says it was made from a stale input.
+    expect(computed(true)).toBe("stale");
+    expect(computed(true, "running")).toBe("done");
+  });
+
+  it("shows a run whose connection was lost as lost: the stages that ended as they ended, the others unknown, none failed", () => {
+    expect(runPhase(false, "lost", 3)).toBe("lost");
+    const r = states([ev("rings", "done"), ev("punch", "progress")], "lost", all);
+    expect(all.map((s) => r.states[s])).toEqual(["done", "unknown", "unknown", "unknown", "unknown", "unknown"]);
+    expect([r.doneCount, r.activeStage]).toEqual([1, null]);
+  });
+});
+
+describe("the outputs a run's stages are read against", () => {
+  const all = ["rings", "punch", "backfill", "flatten", "pdf", "pdf_check"];
+  const ev = (stage: string, status: string) => ({ type: "progress", stage, status });
+  const out = (name: string, mtime: number) => ({ name, exists: true, kind: "hkl" as const, volume_id: `x.${name}`, mtime });
+  const datasets = [
+    { id: "a", temperature: null, raw_name: "a.nxs", stem: "a", stages: [out("ringremoved", 1), out("backfilled", 2)] },
+    { id: "b", temperature: null, raw_name: "b.nxs", stem: "b", stages: [out("ringremoved", 5)] },
+  ];
+
+  it("are the run's dataset's, not the sidebar's selection", () => {
+    expect(runOutputs({ datasetId: "a" }, datasets, "b")?.map((s) => s.name)).toEqual(["ringremoved", "backfilled"]);
+    expect(runOutputs(null, datasets, "b")?.map((s) => s.name)).toEqual(["ringremoved"]);
+  });
+
+  it("are none for a tuning trial, which writes into its own folder: the stages it left out read not in this run, never stale", () => {
+    const trial = { datasetId: "a", tuning: { run_id: "r1", trial: "punch-1" } };
+    expect(runOutputs(trial, datasets, "a")).toBeNull();
+    const outputs = runOutputs(trial, datasets, "a");
+    const r = stageStates({
+      visible: all,
+      info: stageInfo([ev("punch", "done")], [0]),
+      phase: "done",
+      runStages: ["punch"],
+      hasOutput: (st) => Boolean(outputs?.some((o) => o.name === st)),
+    });
+    expect(["backfill", "flatten", "pdf", "pdf_check"].map((st) => r.states[st])).toEqual(["notrun", "notrun", "notrun", "notrun"]);
   });
 });

@@ -11,6 +11,9 @@ export interface StageStatus {
   // does not exist, for the raw input, or from a server that does not say
   // (api/stale.ts).
   mtime?: number | null;
+  // The ΔPDF only: the output it was made from ("flattened", "backfilled", …,
+  // "raw"), as its file records it; null or absent when not known (api/stale.ts).
+  source?: string | null;
 }
 
 export interface Dataset {
