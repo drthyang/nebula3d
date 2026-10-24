@@ -33,10 +33,12 @@ def _apply_modulation(p: PipelineParams, sp: StageParamsIn) -> None:
 
     A request names one or the other. Without a ``modulation`` the legacy
     fields say what the search leaves alone, as before:
-    ``punch_search_protect_h`` replaces the declared default by those H
-    fractions ([] protects none), and ``punch_search_protect_half_width`` sets
-    the half width of whichever protects (0 protects none). So a request from
-    a console that knows only them runs as it did.
+    ``punch_search_protect_h`` protects those H fractions in place of the
+    declared default ([] protects none), and ``punch_search_protect_half_width``
+    sets the half width of whichever protects (0 protects none). The default
+    declares none (:func:`nebula3d.pipeline.default_modulation`), so a half
+    width alone protects nothing, and a request that names neither protects
+    nothing.
     """
     legacy_h, legacy_w = sp.punch_search_protect_h, sp.punch_search_protect_half_width
     if sp.modulation is not None:

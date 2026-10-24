@@ -34,7 +34,6 @@ import os
 import sys
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, get_args
 
@@ -691,16 +690,17 @@ class DeltaPdfParams:
 
 
 def default_modulation() -> Modulation | None:
-    """The modulation a run declares when the user declares none.
+    """The modulation a run declares when the user declares none: none.
 
-    For now the planes the punch's search protected before modulations were
-    declared, H = n ± 1/3 ± 0.08 r.l.u., declared as ``k = (1/3, 0, 0)`` in
-    plane form, which protects them bit for bit (:mod:`nebula3d.modulation`).
-    Plan 4.15 makes it ``None``, nothing protected, once the console asks the
-    user when the punch's sharp peaks off the lattice bunch at a fraction.
+    Whether a sample has a modulation, and where, is the user's to declare
+    (plan 4.15, P3): with none declared the punch's search leaves no position
+    alone, and when its sharp peaks off the lattice bunch at one commensurate
+    fraction the punch records it and the console asks the user. The planes
+    the search protected before declarations, H = n ± 1/3 ± 0.08 r.l.u., are
+    ``k = (1/3, 0, 0)`` declared in plane form, bit for bit
+    (:mod:`nebula3d.modulation`).
     """
-    return Modulation(k=((Fraction(1, 3), Fraction(0), Fraction(0)),), form="planes",
-                      half_width=0.08)
+    return None
 
 
 @dataclass
@@ -759,9 +759,9 @@ class PipelineParams:
     # G ± m·k, or the planes through them), which the punch's search leaves
     # alone, at every position equivalent under the symmetry and on the parent
     # lattice of the punch's cell (nebula3d.modulation.Modulation; a string or
-    # a mapping is read by Modulation.parse).  None declares none.  The
-    # default, for now, is default_modulation(): the planes the search
-    # protected before declarations, bit for bit.
+    # a mapping is read by Modulation.parse).  None declares none, the default
+    # (default_modulation()): the search then leaves no position alone, and
+    # the punch records whether its sharp peaks off the lattice bunch.
     modulation: Modulation | None = field(default_factory=default_modulation)
 
     def __post_init__(self) -> None:

@@ -70,8 +70,8 @@ def check_payload(modulation: object, *, cell: Sequence[int] | None = None,
     """What a declaration means, before a run.
 
     *modulation* is what a request's ``modulation`` holds: absent (None), the
-    pipeline's default (:func:`nebula3d.pipeline.default_modulation`,
-    ``default`` true); ``"none"``, nothing declared; else a declaration
+    pipeline's default (:func:`nebula3d.pipeline.default_modulation`, which
+    declares none; ``default`` true); ``"none"``, nothing declared; else a declaration
     :meth:`Modulation.parse` reads. *cell* is the punch's indexing cell, whose
     parent lattice the satellites repeat on, and *symmetry_ops* the point group
     the data were symmetrised with. ``ok`` false gives the ``error`` that

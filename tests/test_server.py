@@ -1072,8 +1072,8 @@ def test_build_params_punch_overrides():
 
 def test_build_params_punch_search_floor_and_protected_planes():
     """The search floor and the legacy protected H planes reach the run; []
-    turns the protection off, and bad values are refused. The protection a
-    request leaves unset is the sample's default declaration (plan 4.15)."""
+    turns the protection off, and bad values are refused. A request that
+    leaves the protection unset declares nothing, the default (plan 4.15, P3)."""
     from nebula3d.pipeline import PunchParams, default_modulation
     from nebula3d.server.routers.pipeline import build_params
     from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
@@ -1093,9 +1093,10 @@ def test_build_params_punch_search_floor_and_protected_planes():
     assert p.search_exclude_h_fractions is None
     assert p.search_exclude_h_half_width == 0.05
     assert punch(punch_search_protect_h=[0.5]).search_exclude_h_fractions == (0.5,)
-    # unset fields keep the defaults, the declared thirds among them
+    # unset fields keep the defaults: nothing declared, no legacy planes
     q = run()
-    assert q.punch.search_exclude_h_fractions is None and q.modulation == default_modulation()
+    assert q.punch.search_exclude_h_fractions is None and q.modulation is None
+    assert default_modulation() is None
     assert q.punch.search_min_intensity == base.search_min_intensity
     assert punch(punch_search_max_width_ratio=2.5).search_max_width_ratio == 2.5
     assert punch(punch_search_max_width_ratio=0).search_max_width_ratio is None  # 0 = off
@@ -1135,10 +1136,12 @@ def test_build_params_reads_the_samples_modulation():
     {"punch_search_protect_h": [], "punch_search_protect_half_width": 0.05},
     {"punch_search_protect_h": [0.3333, 0.6667], "punch_search_protect_half_width": 0.08},
 ], ids=lambda kw: ",".join(f"{k[21:]}={v}" for k, v in kw.items()) or "none")
-def test_a_request_with_the_legacy_planes_protects_what_it_did(legacy):
-    """A console that knows only the legacy fields runs as before: the voxels
-    the search leaves alone are those the old fields named over the old
-    default, (0.3333, 0.6667) ± 0.08, voxel for voxel, on 6/m data too."""
+def test_a_request_with_the_legacy_planes_protects_what_they_name(legacy):
+    """A console that knows only the legacy fields: the voxels the search
+    leaves alone are the H fractions it names, ± its half width (0.08 when it
+    names none), voxel for voxel, on 6/m data too. Over the default, which
+    declares nothing since P3: a request that names no fractions, a half width
+    alone among them, protects nothing."""
     from nebula3d.analysis.bragg import BraggRemover
     from nebula3d.pipeline import bragg_remover
     from nebula3d.server.routers.pipeline import build_params
@@ -1148,7 +1151,7 @@ def test_a_request_with_the_legacy_planes_protects_what_it_did(legacy):
 
     vol = _hex_volume()
     gs = GridSymmetry.for_volume(vol, parse_symmetry_ops(SIX_M))
-    fractions = legacy.get("punch_search_protect_h", (0.3333, 0.6667))
+    fractions = legacy.get("punch_search_protect_h", ())
     half = legacy.get("punch_search_protect_half_width", 0.08)
     old = BraggRemover(search_exclude_h_fractions=tuple(fractions) or None,
                        search_exclude_h_half_width=half, symmetry_ops=gs.ops)
@@ -1181,9 +1184,9 @@ def test_modulation_labels_follow_the_runs_record(tmp_path):
     """A slice's labels are the positions the run's search left alone, read
     from the punch's record (its declaration, cell and symmetry), voxel for
     voxel as the punch's own mask; the legend names them."""
-    from nebula3d.pipeline import default_modulation
+    from nebula3d.modulation import Modulation
 
-    declared = default_modulation()
+    declared = Modulation.parse({"k": "1/3, 0, 0", "form": "planes"})
     record = {"declared": declared.to_json(), "cell": [1, 1, 1], "symmetry_ops": None,
               "legacy": None, "bunching": None}
     client, vol = _labels_dataset(tmp_path / "declared", record)
@@ -1222,7 +1225,8 @@ def test_modulation_labels_need_a_punch_record(env):
 
 def test_modulation_check_says_what_a_declaration_protects(env):
     """Before a run: what a declaration protects, or what is wrong with it.
-    Absent, it is the pipeline's default; "none", nothing."""
+    Absent, it is the pipeline's default, which declares nothing since P3; and
+    "none", nothing."""
     client, _ = env
 
     def check(**body):
@@ -1231,8 +1235,12 @@ def test_modulation_check_says_what_a_declaration_protects(env):
         return r.json()
 
     default = check()
-    assert default["ok"] and default["default"] and default["declared"]["form"] == "planes"
-    assert default["description"].startswith("k = (1/3, 0, 0), m = 1, as planes")
+    assert default["ok"] and default["default"] and default["declared"] is None
+    assert default["positions"] == [] and default["description"] == (
+        "no modulation declared: the punch's search leaves no position alone")
+    thirds = check(modulation={"k": "1/3, 0, 0", "form": "planes"})
+    assert thirds["ok"] and not thirds["default"] and thirds["declared"]["form"] == "planes"
+    assert thirds["description"].startswith("k = (1/3, 0, 0), m = 1, as planes")
     none = check(modulation="none")
     assert none["ok"] and none["declared"] is None and none["positions"] == []
     points = check(modulation={"k": "0.2, 0, 1/2", "order": 2}, symmetry_ops="h+k,-h,l; h,k,-l")
