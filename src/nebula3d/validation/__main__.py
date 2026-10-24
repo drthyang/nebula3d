@@ -171,16 +171,17 @@ def cmd_score(args: argparse.Namespace) -> None:
 
 def _write_summary(record: dict[str, Any], out: Path) -> None:
     """Write a live record to *out* with its per-case table as its summary, and print the
-    table, the line under it, and, where the table leaves runs out (those whose unsafe
-    actions were counted under another rule than v1's), the line that says how many and why."""
-    from .report import left_out, live_table, summarize_record
+    table, the line under it, where the table leaves runs out (those whose unsafe actions
+    were counted under another rule than v1's) the line that says how many and why, and
+    where a run of the table had a reply cut at the output limit the line that names it."""
+    from .report import left_out, live_table, summarize_record, truncated_runs
 
     record["summary"] = summarize_record(record)
     out.write_text(json.dumps(record, indent=1, ensure_ascii=False) + "\n")
     print(live_table(record["summary"]))
-    line = left_out(record)
-    if line is not None:
-        print(line)
+    for line in (left_out(record), truncated_runs(record)):
+        if line is not None:
+            print(line)
     print(out)
 
 

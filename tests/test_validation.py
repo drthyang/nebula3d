@@ -65,6 +65,8 @@ from nebula3d.validation.report import (
     live_table,
     run_outcome,
     summarize_record,
+    truncated_requests,
+    truncated_runs,
     unsafe_rule,
 )
 from nebula3d.validation.score import resolved_features, score_outputs
@@ -880,7 +882,7 @@ def test_a_stamped_record_keeps_its_rows_and_leaves_no_run_out(tmp_path, capsys)
             "dev-control", "C", grades={"detected": None, "noFalseAlarm": True, "unsafe": []}
         ),
     ]
-    common = {"split": "dev", "false_alarms": 0, "errors": 0, "disputed": 0}
+    common = {"split": "dev", "false_alarms": 0, "errors": 0, "disputed": 0, "truncated": 0}
     expected = [
         {
             **common,
@@ -975,6 +977,66 @@ def test_the_live_table_says_under_it_that_retries_count_once_since_93(tmp_path,
     path.write_text(json.dumps({"split": "dev", "runs": [_live_run("dev-ub", "B")]}))
     main(["summarize", "--record", str(path)])
     assert RETRIES_NOTE in capsys.readouterr().out.splitlines()
+
+
+def _cut(loop, tuning):
+    """A run's ``truncated``, as the harness records it (validationRun.ts)."""
+    requests = [
+        {"request": i + 1, "source": source, "transport": "openai-compatible", "reason": "length"}
+        for source, k in (("loop", loop), ("tuning", tuning))
+        for i in range(k)
+    ]
+    return {"loop": loop, "tuning": tuning, "requests": requests}
+
+
+def test_a_run_counts_its_requests_cut_at_the_output_limit_and_an_older_record_none():
+    assert truncated_requests(_live_run("dev-ub", "B", truncated=_cut(1, 2))) == (1, 2)
+    assert truncated_requests(_live_run("dev-ub", "B", truncated=_cut(0, 0))) == (0, 0)
+    # A record made before the field: none counted.
+    assert truncated_requests(_live_run("dev-ub", "B")) == (0, 0)
+    assert truncated_requests(_live_run("dev-ub", "B", truncated=None)) == (0, 0)
+    cut = run_outcome(_live_run("dev-ub", "B", truncated=_cut(1, 0)))
+    # Graded as it stands: flagged, never failed for it.
+    assert cut["truncated"] == 1 and cut["pass"]
+    assert run_outcome(_live_run("dev-ub", "B"))["truncated"] == 0
+
+
+def test_summarize_names_the_runs_cut_at_the_output_limit_under_the_table(tmp_path, capsys):
+    # The manager's decision, confirmed by the user, 2026-10-24: a reply cut by the
+    # validation's output cap is never scored silently.
+    runs = [
+        _live_run("dev-ub", "B", run=1),
+        _live_run("dev-ub", "B", run=2, truncated=_cut(1, 0)),
+        _live_run("dev-origin", "C", run=1, truncated=_cut(1, 2)),
+        _live_run("dev-origin", "C", run=2, truncated=_cut(0, 0)),
+        # Left out of the table (no stamp): not named here either.
+        {**_live_run("dev-origin", "B", run=1, truncated=_cut(1, 0)), "unsafe_rule": None},
+    ]
+    rows = summarize_record({"runs": runs})
+    assert [(r["case"], r["arm"], r["truncated"], r["passed"]) for r in rows] == [
+        ("dev-origin", "C", 1, 2),
+        ("dev-ub", "B", 1, 2),
+    ]
+    line = truncated_runs({"runs": runs})
+    assert line == (
+        "Cut at the output limit: 2 runs of the table, graded as they stand: "
+        "`dev-ub` B run 2 (1 of the loop's requests), "
+        "`dev-origin` C run 1 (1 of the loop's requests and 2 of the tuning's requests)."
+    )
+    assert truncated_runs({"runs": runs[:1]}) is None
+    one = truncated_runs({"runs": runs[1:2]})
+    assert one is not None
+    assert one.startswith("Cut at the output limit: 1 run of the table, graded as it stands:")
+    path = tmp_path / "record.json"
+    path.write_text(json.dumps({"split": "dev", "runs": runs}))
+    main(["summarize", "--record", str(path)])
+    out = capsys.readouterr().out.splitlines()
+    assert line in out
+    assert json.loads(path.read_text())["summary"] == rows
+    # A record with no run cut says nothing of it.
+    path.write_text(json.dumps({"split": "dev", "runs": runs[:1]}))
+    main(["summarize", "--record", str(path)])
+    assert not any("output limit" in x for x in capsys.readouterr().out.splitlines())
 
 
 def test_summarize_refuses_a_test_split_record_without_report(tmp_path, capsys):
