@@ -502,6 +502,33 @@ def test_the_grid_decides_the_denominators():
     assert detect_commensurate(peaks, (coarse, coarse, coarse)) is None
 
 
+def test_the_fraction_named_is_the_one_the_hits_sit_on():
+    """On a 0.05 grid, satellites at ±2/5 sit on voxels, which also lie
+    within one grid step of ±3/8 and ±1/3. Fractions on the grid hold three
+    voxels of a band, others two, so the smallest tail would name 3/8: the
+    fraction named is the one the hits sit nearest, the others recorded."""
+    rng = np.random.default_rng(6)
+    found = detect_commensurate(_family(rng, 25, (2 / 5, 0, 0)), (AX, AX, AX))
+    assert found is not None and found.where() == "H ≡ ±2/5 (mod 1)"
+    assert found.mean_distance == pytest.approx(0.0, abs=1e-9)
+    assert "H ≡ ±3/8 (mod 1)" in found.others
+    assert found.to_json()["others"] == list(found.others)
+    assert "; the grid also fits H ≡ ±" in found.describe()
+
+
+def test_the_flank_of_a_declared_satellite_is_no_evidence():
+    """With a satellite's own voxels protected, the search can find the voxel
+    beside it: peaks within one grid step of a declared position are left
+    out with the position itself."""
+    rng = np.random.default_rng(9)
+    fifth = Modulation.parse({"k": "1/5, 0, 0", "form": "planes"})
+    flanks = _family(rng, 25, (0.3, 0, 0))  # H ≡ ±0.3: 0.1 from ±1/5, beyond its ±0.08
+    assert detect_commensurate(flanks, (AX, AX, AX)) is not None
+    assert detect_commensurate(flanks, (AX, AX, AX), declared=fifth) is None
+    farther = _family(rng, 25, (0.35, 0, 0))  # two steps out: not a flank
+    assert detect_commensurate(farther, (AX, AX, AX), declared=fifth) is not None
+
+
 def test_the_log_line_says_none_of_the_words_arm_a_reads():
     """Arm A reads the run log for what it says of the faults it planted
     (validation/arm_a.py's _SAYS); the bunching line must not trip them."""
@@ -521,5 +548,7 @@ def test_the_log_line_says_none_of_the_words_arm_a_reads():
         assert not says.search(line), family
     for denominator, values in ((2, (("1/2", 5),)), (7, (("2/7", 3), ("5/7", 2)))):
         other = dataclasses.replace(found, denominator=denominator, values=values,
-                                    coordinate="L", equivalents=(), period=2)
+                                    coordinate="L", equivalents=(), period=2,
+                                    others=("L ≡ ±1/4 (mod 2)", "L ≡ ±2/9 (mod 2)"))
+        assert "; the grid also fits L ≡ ±1/4 (mod 2), L ≡ ±2/9 (mod 2);" in other.describe()
         assert not any(says.search(other.describe()) for says in _SAYS.values())
