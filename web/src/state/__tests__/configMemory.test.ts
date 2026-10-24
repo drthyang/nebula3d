@@ -109,8 +109,9 @@ describe("the protected H planes a form remembered, migrated to the sample's mod
       decimals: { ...BLANK, modulationK: "0.3333, 0, 0", modulationForm: "planes" },
       none: { ...BLANK, modulationK: "none" },
       zeroWidth: { ...BLANK, modulationK: "none" },
-      // The planes the old default protected, at the width the user set.
-      widthAlone: { ...BLANK, modulationK: "1/3, 0, 0", modulationForm: "planes", modulationHalfWidth: "0.05" },
+      // A width alone set the old default's thirds, which were one sample's:
+      // since plan 4.15's P3 none is declared, and the width is kept.
+      widthAlone: { ...BLANK, modulationK: "none", modulationHalfWidth: "0.05" },
       // Blank, or what the old page could not read and never sent: the backend's default stands.
       blank: {},
       unreadable: {},
