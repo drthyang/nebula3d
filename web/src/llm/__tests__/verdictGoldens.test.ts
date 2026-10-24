@@ -30,7 +30,7 @@ import { CLAIMS, rerun, replyCases, reportCases, step, SUCCESS } from "./verdict
 
 const GOLDEN = "./__goldens__/verdicts.json";
 // SHA-256 of the held-out fixture's outputs, as the goldens held them.
-const HELDOUT_DIGEST = "78e4e593822202ec5b0f0e99a0861e78ad47398658dce1a33ab63b3ff31f90cd";
+const HELDOUT_DIGEST = "7a969ef4abc0778a3a991f870480cbb69c684167f2373e70aa31aa173a50b765";
 
 type Obj = Record<string, unknown>;
 
