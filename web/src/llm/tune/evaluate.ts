@@ -1,16 +1,18 @@
 // Measures one stage's output for the tuning run: that stage's metrics on the
 // three principal planes through the origin (plus the volume-wide records the
-// stage writes), so a trial is judged on more than one cut.  The numbers are
-// the same pure metrics the chat context uses.
+// stage writes, and for the flatten its shell floors over the whole volume,
+// which its pedestal is judged on), so a trial is judged on more than one cut.
+// The numbers are the same pure metrics the chat context uses.
 
-import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy } from "../../api/client";
+import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy, fetchShellFloors } from "../../api/client";
 import type { Dataset } from "../../api/types";
-import { dpdfVolumeId, loadPipelineContext, safe, hklVolumeId, type Cut } from "../context/loadContext";
+import { dpdfVolumeId, loadPipelineContext, readFlattenRecord, safe, hklVolumeId, stageVolumeId, type Cut } from "../context/loadContext";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
-import { pedestalLeft } from "../metrics/flatten";
+import { FLATTEN_UNRECORDED_NOTE, flattenJudging, pedestalLeft, volumePedestal } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
-import { sectionSymmetry, type SectionSymmetry } from "../metrics/symmetry";
-import { judge, shownWeight, UNROUNDED, WEIGHT_FIGURES, type Unrounded } from "../verdicts/rules";
+import type { GridSlice } from "../metrics/sliceStats";
+import { operationSymmetry, pointGroup, sectionSymmetry, transpose } from "../metrics/symmetry";
+import { judge, pedestalOfVolume, shownWeight, UNROUNDED, WEIGHT_FIGURES, type Unrounded } from "../verdicts/rules";
 import type { TuneStage } from "./catalog";
 
 const RECIP_CUTS: Cut[] = [
@@ -70,6 +72,34 @@ const max = (xs: (number | null | undefined)[]): number | null => {
   return v.length ? roundSig(Math.max(...v)) : null;
 };
 
+/**
+ * The worst of the x–y section through the origin's agreements with its
+ * images: under each operation of the declared group (symmetry_ops, as
+ * symmetry_check closes and pairs them) that maps the section onto itself;
+ * with no operations declared, under the cell's in-plane ones (sectionSymmetry,
+ * as before). Null when there is nothing to test.
+ */
+function worstSymmetryOp(
+  slice: GridSlice | null,
+  cell: { a: number | null; b: number | null } | null,
+  declaredOps: number[][][] | null,
+): { op: string; rms_difference: number } | null {
+  if (!slice) return null;
+  const group = declaredOps?.length ? pointGroup(declaredOps) : null;
+  let ops: readonly { op: string; rms_difference: number }[] = [];
+  if (group) {
+    // Those whose image of the plane z = 0 is that plane: the third row (0, 0, ±1).
+    const onto = group.map(transpose).filter((m) => m[2][0] === 0 && m[2][1] === 0 && Math.abs(m[2][2]) === 1);
+    const { x_axis, y_axis } = slice.header;
+    const step = (axis: number[], length: number | null) => Math.abs(axis.length > 1 ? (axis[axis.length - 1] - axis[0]) / (axis.length - 1) : 1) / (length || 1);
+    const steps: [number, number, number] = [step(x_axis, cell?.a ?? null), step(y_axis, cell?.b ?? null), 1];
+    ops = operationSymmetry([{ plane: "xy", at: 0, label: "xy", slice }], onto, steps)?.ops ?? [];
+  } else if (cell?.a && cell?.b) {
+    ops = sectionSymmetry(slice, { a: cell.a, b: cell.b })?.ops ?? [];
+  }
+  return ops.reduce<{ op: string; rms_difference: number } | null>((w, o) => (!w || o.rms_difference > w.rms_difference ? o : w), null);
+}
+
 export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise<StageEvaluation> {
   if (stage === "pdf") {
     const dId = dpdfVolumeId(dataset);
@@ -80,12 +110,13 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       rawId ? safe(fetchMeta(rawId)) : Promise.resolve(null),
       ...DPDF_CUTS.map((dpdf) => loadPipelineContext(dataset, { recip: null, dpdf, records: false })),
     ]);
-    // The x–y section through the origin against its images under the cell's
-    // in-plane operations (symmetry_check's numbers): the worst one.
+    // The x–y section through the origin against its images under the
+    // operations of the group symmetry_check judges that map it onto itself
+    // (each with its product with the inversion, one entry, as there); with
+    // no operations declared, under the cell's in-plane ones, as before. The
+    // worst one.
     const xy = sections[0];
-    const cell = xy?.lattice;
-    const sym = xy?.slices.dpdf && cell?.a && cell?.b ? sectionSymmetry(xy.slices.dpdf, { a: cell.a, b: cell.b }) : null;
-    const worstOp = (sym?.ops ?? []).reduce<SectionSymmetry | null>((w, o) => (!w || o.rms_difference > w.rms_difference ? o : w), null);
+    const worstOp = worstSymmetryOp(xy?.slices.dpdf ?? null, xy?.lattice ?? null, rawMeta?.symmetry_ops ?? null);
     const perPlane = Object.fromEntries(
       sections.map((s, i) => {
         const d = s.context.delta_pdf;
@@ -118,10 +149,11 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       window_shape: dmeta?.window_shape ?? null,
       max_symmetry_break: worstOp ? worstOp.rms_difference : null,
       worst_symmetry_op: worstOp?.op ?? null,
-      // Whether the file declares a symmetry its data were symmetrised with.
-      // Without one the section's asymmetry is the data's own (counting noise
-      // included), not a stage's break; null when the volume was not read.
-      symmetry_declared: rawMeta ? Boolean(rawMeta.symmetry) : null,
+      // Whether the file declares a symmetry its data were symmetrised with, a
+      // name or operations, as symmetry_check reads it. Without one the
+      // section's asymmetry is the data's own (counting noise included), not a
+      // stage's break; null when the volume was not read.
+      symmetry_declared: rawMeta ? Boolean(rawMeta.symmetry) || Boolean(rawMeta.symmetry_ops?.length) : null,
       per_plane: perPlane,
       [UNROUNDED]: { window_weight_on_unmeasured: typeof open === "number" ? open : null },
     };
@@ -136,8 +168,16 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     const r = ranges?.[fixed[c.plane]];
     return !r || (c.value >= r[0] && c.value <= r[1]);
   });
+  // The flatten's pedestal is judged on the whole volume's shell floors (plan
+  // 4.1), measured on the run's own shells and at its percentile, with what the
+  // flatten recorded (plan 4.11), which the three cuts read too: once for all of
+  // them. Without the floors, the record from the volume's meta. The other
+  // stages do not read the flatten's numbers.
+  const flatId = stage === "flatten" ? stageVolumeId(dataset, "flattened") : undefined;
+  const shellFloors = flatId ? await safe(fetchShellFloors(flatId)) : null;
+  const flattenRecord = stage !== "flatten" ? { settings: undefined } : shellFloors ? { settings: shellFloors.flatten } : await readFlattenRecord(dataset);
   // Every leftover peak, marked, not only the strongest few the chat's context lists: the punch counts them by their marks.
-  const contexts = await Promise.all(cuts.map((recip) => loadPipelineContext(dataset, { recip, dpdf: null, records: false, allLeftovers: true })));
+  const contexts = await Promise.all(cuts.map((recip) => loadPipelineContext(dataset, { recip, dpdf: null, records: false, allLeftovers: true, flattenRecord })));
   const per = (f: (i: number) => unknown) => Object.fromEntries(cuts.map((c, i) => [c.plane, f(i)]));
 
   if (stage === "rings") {
@@ -308,20 +348,24 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
   }
   // flatten
   const f = contexts.map((c) => c.context.flatten);
+  // The pedestal over the whole volume's shells (metrics/flatten.ts,
+  // volumePedestal): the floors' rank trend with |Q| and their span over the
+  // diffuse level, on the outer half of the shells the counts reach, from the
+  // run's fit range. Not measured when the floors could not be read.
+  const volume = shellFloors ? volumePedestal(shellFloors, flattenJudging(flattenRecord.settings).fitQ) : { floor_trend: null, floor_span_fraction: null, floor_judged_q: null };
   return {
+    // A file from before the flatten recorded its settings: judged with the defaults, said so.
+    ...(flattenRecord.settings === null ? { settings_note: FLATTEN_UNRECORDED_NOTE } : {}),
+    // The largest floor in σ over the planes: reported, not judged.
     max_after_floor_sigma: max(f.map((x) => x?.after_floor_max_sigma)),
-    // The strongest leftover |Q| trend of the floors (by |rank correlation|),
-    // and the widest floor span, over the planes: each on the outer half of the
-    // shells the counts reach on its plane (metrics/flatten.ts, judgedShells).
-    max_floor_trend: max(f.map((x) => (x?.floor_trend != null ? Math.abs(x.floor_trend) : null))),
-    max_floor_span_fraction: max(f.map((x) => x?.floor_span_fraction)),
+    floor_trend: volume.floor_trend,
+    floor_span_fraction: volume.floor_span_fraction,
+    floor_judged_q: volume.floor_judged_q,
     // Whether that trend and span make a pedestal left (metrics/flatten.ts):
     // the flatten's Q² term is for a pedestal, so this is the answer to
     // "does it want flattenQ2", stated, not left to the model to read off two numbers.
-    pedestal_left: pedestalLeft(
-      max(f.map((x) => (x?.floor_trend != null ? Math.abs(x.floor_trend) : null))),
-      max(f.map((x) => x?.floor_span_fraction)),
-    ),
+    pedestal_left: pedestalLeft(volume.floor_trend, volume.floor_span_fraction),
+    // Each plane's own numbers, the pedestal's among them, as the chat's context gives its cut's.
     per_plane: per((i) => f[i] ?? null),
   };
 }
@@ -350,8 +394,11 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
     case "backfill":
       return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;
     case "flatten":
+      // The whole volume's trend and span (plan 4.1), or the planes' largest in an evaluation from before it.
       return (
-        `floor ≤ ${v("max_after_floor_sigma")}σ · trend ≤ ${v("max_floor_trend")} · span ≤ ${v("max_floor_span_fraction")}` +
+        (pedestalOfVolume(e)
+          ? `floor ≤ ${v("max_after_floor_sigma")}σ · trend ${v("floor_trend")} · span ${v("floor_span_fraction")}`
+          : `floor ≤ ${v("max_after_floor_sigma")}σ · trend ≤ ${v("max_floor_trend")} · span ≤ ${v("max_floor_span_fraction")}`) +
         (typeof e.pedestal_left === "boolean" ? (e.pedestal_left ? " · pedestal left" : " · no pedestal") : "")
       );
     case "pdf": {

@@ -11,8 +11,8 @@ import { fetchDatasets } from "../../../api/client";
 import { cancelPipeline } from "../../../api/pyodideEngine";
 import { usePipelineStore } from "../../../state/pipelineStore";
 import type { WorkerRequest } from "../../../workers/pyodideWorker";
-import { loadSettings, saveSettings } from "../../settings";
 import { toolsWhere } from "../../tools";
+import { contentTuner } from "../scripted";
 import { casesIn } from "../validation";
 import { bridgeConfig, bridgesStarted, clearRelayedErrors, currentBridge, relayedErrors, WORKER_MESSAGES } from "./bridgeWorker";
 import { DEV_CASE_IDS, devCase } from "./index";
@@ -97,25 +97,6 @@ const BACKEND_CALLS: Record<string, Record<string, unknown>> = {
   run_pipeline: { from_stage: "pdf" },
   tune_pipeline: { stages: ["pdf"], trials_per_stage: 2 },
 };
-
-// The tuning run asks its model for alternatives, not through the agent loop:
-// a model content with the current settings proposes none.
-const TUNER_URL = "http://tuner.invalid/v1";
-function contentTuner(): () => void {
-  const real = globalThis.fetch;
-  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (!url.startsWith(TUNER_URL)) return real(input, init);
-    const reply = { choices: [{ message: { content: JSON.stringify({ candidates: [], best: 1, why: "the current settings" }) } }] };
-    return Promise.resolve(new Response(JSON.stringify(reply), { status: 200, headers: { "Content-Type": "application/json" } }));
-  }) as typeof fetch;
-  const settings = loadSettings();
-  saveSettings({ baseUrl: TUNER_URL, model: "content" });
-  return () => {
-    globalThis.fetch = real;
-    saveSettings(settings);
-  };
-}
 
 describe("the tools, through the bridge", () => {
   it("runs every tool that reaches the backend on dev-control, and no bridge call fails", async () => {

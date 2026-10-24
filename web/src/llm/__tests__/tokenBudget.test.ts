@@ -1,20 +1,23 @@
 // How long NEBULA Pilot's worst realistic turn grows, in the tokens the context
 // guard counts, against a 32k local context window.
 //
-// VERDICT (measured 2026-10-19, re-pinned with the skill fact sync, on top of
-// #17's skill text and the prompts of 1.6): OVER 32k in both configurations.
+// VERDICT (measured 2026-10-19; re-pinned 2026-10-24 with the skill fact sync
+// on #17's skill text and the prompts of 1.6, dpdf_peaks' orbits of 4.4, and
+// main's tools through #73 and #90): OVER 32k in both configurations.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 41.4k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 41.2k + 6,144
-//   = 47.3k before the loop's compaction, and 38.7k to 43.3k after it, by the
-//   order the skills are read (38.7k in the method's order).
+//   about 42.7k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 42.5k + 6,144
+//   = 48.7k before the loop's compaction, and 39.3k to 43.4k after it, by the
+//   order the skills are read (39.6k in the method's order).
 // - A model LM Studio loaded with 32k gets the turn in only because the window
 //   guard then shortens the results down to the newest: the two skills just
 //   read reach the model as stubs of a few hundred characters.
-// A local live run needs a context of 48k (49,152) or more: it holds the
-// whole turn before compaction, with room to reply. The estimate is
-// conservative (every tool result, the skills' prose included, counts at the
-// data rate), but at the prose rate for the skills the turn is still over 32k.
+// A local live run needs a context of 56k (57,344) or more, the run policy's
+// minimum (RUN_POLICY): it holds the whole turn before compaction, with room
+// to reply, and leaves free the 3k a model-visible addition must leave (8.7k
+// now). The estimate is conservative (every tool result, the skills' prose
+// included, counts at the data rate), but at the prose rate for the skills
+// the turn is still over 32k.
 //
 // The turn is driven through the real agent loop (runAgent, agent.ts) with a
 // scripted model, and every request it sends is counted by the guard's own
@@ -28,7 +31,12 @@
 //   reference page either of them cites (read_skill cuts a page at 12,000
 //   characters, REFERENCE_MAX_CHARS);
 // - one result of each tool the system prompt's method asks for, as the
-//   executor hands it over (runToolCall);
+//   executor hands it over (runToolCall): the synthetic crystal's, but for
+//   dpdf_peaks, whose list a real ΔPDF fills to the tool's default limit
+//   where the crystal has a handful of features: the validation's dev
+//   control's list at the tool's defaults, on its own grid, recorded from the
+//   dev-data bridge (__fixtures__/dpdf-peaks-dev-control.json, written by
+//   evals/devData/budgetFixture.replay.test.ts);
 // - the reply reserve: the 64,000 tokens anthropic.ts asks of Claude
 //   (STREAM_MAX_TOKENS, pinned by anthropic.test.ts), and REPLY_RESERVE for a
 //   local run. The local transports send no output cap (no max_tokens, no
@@ -52,14 +60,17 @@
 // --reporter=default).
 //
 // Hermetic and synthetic: no model is loaded, no backend or API is called, and
-// no measured data is used.
+// no measured data is used (the dev control is a synthetic case, its list
+// recorded beforehand).
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import type { DpdfFeatures } from "../../api/types";
 import { KEEP_FULL, runAgent, SOFT_BUDGET } from "../agent";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
+import { RUN_POLICY } from "../evals/validationModels";
 import { toolsFor } from "../localTools";
 import { buildChatMessages } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolSpec } from "../provider/client";
@@ -75,8 +86,13 @@ import {
 import { isCompacted, SKILL_STUB_MAX } from "../readings/compact";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, readSkill, REFERENCE_MAX_CHARS } from "../skills";
-import { CHAT_TOOLS } from "../tools";
+import { callTool, CHAT_TOOLS } from "../tools";
+import devControlPeaks from "./__fixtures__/dpdf-peaks-dev-control.json";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
+
+// The dev control's dpdf_peaks list at the tool's defaults, on its own grid,
+// recorded from the dev-data bridge (evals/devData/budgetFixture.replay.test.ts).
+const DEV_CONTROL_PEAKS = devControlPeaks as unknown as { case: string; n: number; min_sigma: number; limit: number; response: DpdfFeatures };
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -88,6 +104,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
@@ -114,12 +131,12 @@ const BAND = 0.05;
 // The current sizes (estimated prompt tokens, and with the reply reserve).
 // Update deliberately, with the verdict in the header, when the turn changes.
 const PINNED = {
-  console: { prompt: 41_368, total: 105_368 },
-  localBefore: { prompt: 41_166, total: 47_310 },
-  localSkillsFirst: { prompt: 32_980, total: 39_124 },
-  localMethod: { prompt: 32_568, total: 38_712 },
-  localSkillsLast: { prompt: 37_158, total: 43_302 },
-  lmStudio32k: { prompt: 26_978, total: 33_122 },
+  console: { prompt: 42_736, total: 106_736 },
+  localBefore: { prompt: 42_533, total: 48_677 },
+  localSkillsFirst: { prompt: 33_137, total: 39_281 },
+  localMethod: { prompt: 33_417, total: 39_561 },
+  localSkillsLast: { prompt: 37_210, total: 43_354 },
+  lmStudio32k: { prompt: 28_646, total: 34_790 },
 };
 
 // ---------------------------------------------------------------- the turn
@@ -177,6 +194,9 @@ let opening: ChatMessage[];
 
 beforeAll(async () => {
   installBackend(api);
+  // The ΔPDF's strongest features: the dev control's list, as long as the
+  // tool's default makes it, where the synthetic crystal has a handful.
+  api.fetchDpdfFeatures.mockImplementation(async (id: string) => ({ ...DEV_CONTROL_PEAKS.response, id }));
   freshConsole();
   context = (await loadPipelineContext(DATASET)).context;
   opening = buildChatMessages(context, [], TASK, null, { tools: true });
@@ -220,7 +240,7 @@ async function drive(baseUrl: string, calls: Call[], softBudget?: number) {
   const result = await runAgent({
     messages: b.messages,
     tools: CHAT_TOOLS,
-    ctx: { dataset: DATASET, datasets: DATASETS, skills: b.skills, skillsRead: b.skillsRead, earlierResults: [] },
+    ctx: { dataset: DATASET, datasets: DATASETS, skills: b.skills, skillsRead: b.skillsRead, earlierSteps: [] },
     settings,
     signal: new AbortController().signal,
     // The answer is the reply's, not the prompt's. An answer its checks send
@@ -341,6 +361,25 @@ afterAll(() => {
 // default 5 s on a slow CI runner. A runner's speed is not what this test pins.
 const TURN_TIMEOUT = 30_000;
 
+// What a model-visible addition must leave free under the run policy's minimum
+// context for a local live run: 3k.
+const HEADROOM = 3 * 1024;
+
+describe("the turn's dpdf_peaks result", () => {
+  it("is the dev control's list at the tool's default call", async () => {
+    const r = await callTool({ dataset: DATASET, datasets: DATASETS }, "dpdf_peaks", {});
+    expect(r.ok, r.text).toBe(true);
+    // Recorded for the call the tool makes with its defaults: a new default
+    // needs it recorded again (evals/devData/budgetFixture.replay.test.ts).
+    expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith(expect.any(String), DEV_CONTROL_PEAKS.min_sigma, DEV_CONTROL_PEAKS.limit);
+    expect([DEV_CONTROL_PEAKS.case, DEV_CONTROL_PEAKS.n]).toEqual(["dev-control", 161]);
+    const out = JSON.parse(r.text) as { grouped_by: string; features: unknown[] };
+    expect(out.grouped_by).toBe(DEV_CONTROL_PEAKS.response.grouped_by);
+    expect(out.features).toHaveLength(DEV_CONTROL_PEAKS.limit);
+    notes.push(`dpdf_peaks' result: the ${DEV_CONTROL_PEAKS.case}'s list at n=${DEV_CONTROL_PEAKS.n}, ${out.features.length} entries, ${n(r.text.length)} characters sent.`);
+  });
+});
+
 describe("NEBULA Pilot's worst turn against a 32k window", () => {
   it("the console: every tool, nothing shortened (Claude)", async () => {
     const run = await drive(CLAUDE, ORDERS.method);
@@ -370,6 +409,12 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     expectPinned("arm B local, before compaction: total", b.prompt + REPLY_RESERVE, PINNED.localBefore.total);
     // Past the soft budget, so the loop compacts.
     expect(b.prompt).toBeGreaterThan(SOFT_BUDGET);
+    // The worst local turn, with the reply reserve, fits the run policy's
+    // minimum context for a local live run, and leaves the headroom there.
+    const worst = b.prompt + REPLY_RESERVE;
+    const min = RUN_POLICY.minLocalContextTokens;
+    expect(worst, `the worst local turn, ${n(worst)} tokens, does not fit the run policy's minimum of ${n(min)}`).toBeLessThanOrEqual(min);
+    expect(min - worst, `the worst local turn leaves ${n(min - worst)} of the ${n(HEADROOM)} tokens of headroom under ${n(min)}`).toBeGreaterThanOrEqual(HEADROOM);
 
     // After: the loop as it runs, the skills read in each order. The largest
     // request of the reply is what the window must hold.
@@ -409,6 +454,8 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
         `and the turn before compaction about ${n(b.prompt - b.skills + skillChars / PROSE_CHARS_PER_TOKEN + REPLY_RESERVE)} with the reserve.`,
       `Reply reserve: Claude ${n(CLAUDE_REPLY)} (anthropic.ts); a local run ${n(REPLY_RESERVE)} (REPLY_RESERVE: no cap is sent, the window plan keeps it free; ` +
         `a request is refused below MIN_REPLY ${n(MIN_REPLY)}).`,
+      `The run policy's minimum for a local live run (RUN_POLICY): ${n(min)}; the worst local turn ${n(worst)} leaves ${n(min - worst)} ` +
+        `(at least ${n(HEADROOM)} must stay free).`,
     );
   }, TURN_TIMEOUT);
 

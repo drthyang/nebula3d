@@ -114,8 +114,10 @@ const BACKEND_DEFAULT: Record<string, string> = {
   pdfWindowShape: "p.delta_pdf.window_shape",
   pdfWindowSupport: "p.delta_pdf.window_support",
   // The sample's facts: the H fractions to four places, as the package writes them.
-  punchProtectH: "[round(f, 4) for f in p.punch.search_exclude_h_fractions]",
-  punchProtectHalfWidth: "p.punch.search_exclude_h_half_width",
+  // The package's protection is the sample's declared modulation (plan 4.15): by
+  // default the planes of k = (1/3, 0, 0), whose centres on H it protects.
+  punchProtectH: "sorted({b.centre for q in p.modulation.positions() for r in q.regions for b in r if b.form == (1, 0, 0)})",
+  punchProtectHalfWidth: "p.modulation.half_width",
   punchSupercellH: "p.punch.supercell[0]",
   punchSupercellK: "p.punch.supercell[1]",
   punchSupercellL: "p.punch.supercell[2]",
@@ -155,6 +157,7 @@ print(json.dumps({
     "fill_constants": {"rim": ft.RIM, "min_rim": ft.MIN_RIM_VOXELS, "min_sigma": ft.MIN_SIGMA, "one_way": ft.ONE_WAY,
                        "min_holes": ft.MIN_HOLES, "floor": ft.FILL_BIAS_FLOOR},
     "room": [too_coarse(reach, n) for reach, n in args["room"]],
+    "node_test_reason": ft.NODE_TEST_TOO_COARSE,
     "grid_too_coarse": ring_isotropy.GRID_TOO_COARSE,
     "height_share": iso.height_share,
     "direction_share": iso.direction_share,
@@ -176,6 +179,7 @@ type Py = {
   fill: Record<"rim" | "min_rim" | "min_sigma" | "one_way" | "min_holes" | "floor", number>;
   fill_constants: Record<"rim" | "min_rim" | "min_sigma" | "one_way" | "min_holes" | "floor", number>;
   room: (string | null)[];
+  node_test_reason: string;
   grid_too_coarse: string;
   height_share: number;
   direction_share: number;
@@ -428,6 +432,13 @@ describe("the limits Python and TypeScript both hold", () => {
     const reason = `${py.grid_too_coarse}: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1`;
     expect([isTooCoarse(reason), isTooCoarse(`not judged: ${reason}`)]).toEqual([true, true]);
     expect(py.room.filter((r): r is string => r !== null).every(isTooCoarse)).toBe(true);
+  });
+
+  it("isTooCoarse reads the 3-D texture read's reason on a grid too coarse for the punch's node test (G3)", () => {
+    // nebula3d.analysis.bragg_fill_texture.NODE_TEST_TOO_COARSE: the fills are
+    // not judged where the punch's record carries its node test's notice.
+    expect(py.node_test_reason).toBe("grid too coarse (the punch's node test could not resolve the holes at this grid)");
+    expect([isTooCoarse(py.node_test_reason), isTooCoarse(`not judged: ${py.node_test_reason}`)]).toEqual([true, true]);
   });
 
   it("keeps a limit pinned or independent, never both, and every entry with its reason", () => {

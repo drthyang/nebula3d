@@ -133,6 +133,11 @@ def test_hkl_meta_and_slice(ran_pipeline):
     assert meta["kind"] == "hkl"
     assert meta["shape"] == [25, 25, 25]
     assert "hk" in meta["planes"]
+    # What made the file: the flatten records its settings, no other stage does.
+    assert meta["flatten_settings"] is None
+    flat = json.loads(webbridge.volume_meta_json(f"{dataset_id}.flattened"))
+    assert flat["flatten_settings"]["fit_q_range"] == [0.8, 10.0]
+    assert flat["flatten_settings"]["floor_percentile"] == 25.0
 
     env = webbridge.volume_slice(vid, "hk", 0.0, False)
     header, data = _decode_envelope(bytes(env))
@@ -379,6 +384,42 @@ def test_bragg_profile_json_is_the_servers_response(ran_pipeline, tmp_path):
     # Every node was left to the search: the peaks at nodes are its, as their records say.
     assert {p["found_by"] for p in bridged["peaks"]} == {"search"}
     assert any(p["source_node_hkl"] is not None for p in bridged["peaks"])
+
+
+def test_modulation_payloads_are_the_servers(ran_pipeline, tmp_path):
+    """The browser build's modulation payloads are the native server's, byte
+    for byte: the check of a declaration, a slice's labels from the punch's
+    record, and the record in the punch's profile (the run's default
+    declaration, the thirds as planes)."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d.pipeline import default_modulation
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+
+    dataset_id, _datasets, _events = ran_pipeline
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path / "work")))
+    for body in ({}, {"modulation": "none"}, {"modulation": "1/3, 0, 0"},
+                 {"modulation": {"k": "0.2, 0, 1/2", "order": 2}, "cell": [2, 1, 1],
+                  "symmetry_ops": "h+k,-h,l; -h,-k,-l"},
+                 {"modulation": {"k": "1/3, 0"}}):
+        served = client.post("/api/modulation/check", json=body)
+        assert served.status_code == 200, served.text
+        assert json.loads(webbridge.modulation_check_json(json.dumps(body))) == served.json()
+    for plane, value, interp in (("hk", 0.0, False), ("kl", 1.0 / 3.0, False),
+                                 ("h0l", 0.5, True)):
+        served = client.get(f"/api/modulation/{dataset_id}/labels",
+                            params={"plane": plane, "value": value, "interp": interp})
+        assert served.status_code == 200, served.text
+        bridged = webbridge.modulation_labels_slice(dataset_id, plane, value, interp)
+        assert bridged == served.content
+    header, labels = _decode_envelope(bridged)
+    assert header["recorded"] is True and header["declared"] == default_modulation().to_json()
+    assert labels.size == header["nx"] * header["ny"]
+    record = json.loads(webbridge.bragg_profile_json(dataset_id))["modulation"]
+    assert record["declared"] == default_modulation().to_json() and record["bunching"] is None
+    with pytest.raises(KeyError):
+        webbridge.modulation_labels_slice("nope", "hk", 0.0)
 
 
 def test_bragg_profile_json_missing_file(ran_pipeline):
@@ -940,6 +981,16 @@ def test_the_stdio_bridge_answers_every_message_type(tmp_path):
         reply, _, _ = bridge.call({"id": "ctl-4", "type": "dev_case", "case": "not-a-dev-case",
                                    "n": 81})
         assert reply["type"] == "error" and "is not a dev case" in reply["message"]
+        # Symmetrised and declared so: a case of its own, its snapshot apart.
+        from nebula3d.server.volumes import declared_symmetry
+
+        sym = {"label": "m-3m", "ops": "-k,h,l; l,h,k; -h,-k,-l"}
+        reply, _, _ = bridge.call({"id": "ctl-6", "type": "dev_case", "case": "dev-control",
+                                   "n": 81, "arm": "B", "run": 1, "symmetrise": sym})
+        assert reply["payload"] == {"dataset_id": dev_id, "restored": False}, reply
+        (raw,) = (tmp_path / "root" / "snapshots").glob("*-n81-m3m/raw/*.nxs")
+        label, ops = declared_symmetry(raw)
+        assert label == "m-3m" and len(ops) == 48
         reply, _, _ = bridge.call({"id": 22, "type": "no_such_type"})
         assert reply["type"] == "error" and "no message 'no_such_type'" in reply["message"]
 
@@ -950,6 +1001,34 @@ def test_the_stdio_bridge_answers_every_message_type(tmp_path):
         if bridge.proc.poll() is None:
             bridge.proc.kill()
     assert answered == set(_worker_request_types())
+
+
+def test_the_bridge_symmetrises_a_volume_and_declares_it_as_the_nexus_viewer_does(tmp_path):
+    """``dev_case``'s ``symmetrise``: the volume symmetrised over the group the
+    operations generate, a voxel unmeasured wherever an equivalent is, and the
+    file declaring the symmetry and every operation of its group."""
+    from nebula3d.demo import demo_volume
+    from nebula3d.server.volumes import declared_symmetry
+
+    bridge = _bridge_module()
+    vol = demo_volume(17)  # counting noise: no symmetry to rounding
+    vol.data[2, 3, 4] = np.nan
+    group = bridge.symmetrised(vol, "-k,h,l; l,h,k; -h,-k,-l")
+    assert group.order == 48
+    holes = ~np.isfinite(vol.data)
+    assert holes.sum() == 48  # the one unmeasured voxel's orbit (a general position)
+    for r, t in group.index_ops[1:]:
+        idx = np.indices(vol.data.shape).reshape(3, -1)
+        image = tuple((r @ idx) + t[:, None])
+        np.testing.assert_allclose(vol.data[image], vol.data.reshape(-1), rtol=1e-12,
+                                   equal_nan=True)
+
+    path = tmp_path / "sym.nxs"
+    nebula3d.save(vol, path)
+    bridge.declare(path, "m-3m", group)
+    label, ops = declared_symmetry(path)
+    assert label == "m-3m" and len(ops) == 48
+    assert {json.dumps(m) for m in ops} == {json.dumps(m.tolist()) for m in group.ops}
 
 
 def test_the_bridge_check_reads_the_browser_pins(tmp_path):

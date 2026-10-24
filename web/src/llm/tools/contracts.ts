@@ -304,9 +304,14 @@ const backfillEvaluation = obj({
 });
 
 const flattenEvaluation = obj({
+  // A file from before the flatten recorded its settings (findings).
+  settings_note: optional(str),
   max_after_floor_sigma: maybeNum,
-  max_floor_trend: maybeNum,
-  max_floor_span_fraction: maybeNum,
+  // The whole volume's shell floors (plan 4.1), from the run's fit range; the
+  // shells' |Q| range is a detail, left out of stage=all (assess_stage).
+  floor_trend: maybeNum,
+  floor_span_fraction: maybeNum,
+  floor_judged_q: optional(nullable(range)),
   pedestal_left: nullable(bool),
   per_plane: optional(byRecipPlane(nullable(flattenMetrics))),
 });
@@ -429,13 +434,16 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     settings: obj({ pdfQMin: str, pdfQMax: str, pdfApod: str, pdfWindowShape: str, pdfWindowSupport: bool }),
   }),
 
-  // A cell neither hexagonal nor orthogonal, or a section off the origin, is a note alone (findings).
+  // With no operation tested (none declared and no in-plane ones to fall back
+  // on, sections off the origin, or none the sections can test), the verdict
+  // alone, with any the sections could not test (findings).
   symmetry_check: union(
-    obj({ note: str }),
+    obj({ verdict: maybeStr, not_tested: optional(arr(obj({ op: str, why: str }))) }),
     obj({
-      section: str,
-      cell: oneOf("hexagonal", "orthogonal"),
-      ops: arr(obj({ op: str, rms_difference: num, pairs: num })),
+      sections: str,
+      operations: str,
+      ops: arr(obj({ op: str, rms_difference: num, pairs: num, tested_on: str })),
+      not_tested: optional(arr(obj({ op: str, why: str }))),
       holds: arr(str),
       symmetry_declared: nullable(bool),
       verdict: maybeStr,
@@ -459,12 +467,16 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   ),
 
   dpdf_peaks: obj({
+    grouped_by: str,
     features: arr(
       obj({
         sign: oneOf("+", "−"),
         length_A: num,
         size_sigma: num,
+        // Only for an orbit of the declared symmetry (findings).
+        mean_size_sigma: optional(num),
         n_vectors: num,
+        multiplicity: optional(num),
         vectors_rlu: arr(nullable(v3)),
         vectors_A: arr(nullable(v3)),
       }),
@@ -605,6 +617,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   update_settings: obj({
     changed: arr(obj({ setting: str, from: settingValue, to: settingValue, note: optional(str) })),
     already_set: optional(arr(str)),
+    // A fact about the sample the user's latest message does not name (findings).
+    refused: optional(arr(obj({ setting: str, why: str }))),
     rerun_from: maybeStr,
   }),
 

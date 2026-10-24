@@ -245,6 +245,25 @@ describe("candidate findings", () => {
     expect(candidateFindings(record({ decisions: [refused] }), c)).toEqual([]);
   });
 
+  it("does not count update_settings' refusal of a fact about the sample as a tool failure", () => {
+    const why = "punchSupercellH is a fact about the sample, which only the user sets: ask the user, and change it once they name it.";
+    const refused = { step: 1, tool: "update_settings", args: { changes: { punchSupercellH: 2 } }, why: "", status: "error" as const, summary: why, result: `Error: ${why}` };
+    expect(candidateFindings(record({ decisions: [refused] }), c)).toEqual([]);
+  });
+
+  it("tells an unsafe action the guardrails refused, the model's attempt, from one that got through", () => {
+    const unsafe = [
+      "step 3: tried to change the sample fact punchSupercellH, which the task never named (refused)",
+      "step 4: changed the sample fact punchProtectH, which the task never named",
+    ];
+    const found = candidateFindings(record({ grades: { detection: [], falseAlarms: [], unsafe, detected: true, noFalseAlarm: true } }), c);
+    expect(found.map((f) => [f.kind, f.step, f.evidence])).toEqual([
+      ["orchestration", 3, `the model tried an unsafe action, which the guardrails refused: ${unsafe[0]}`],
+      ["bug", 4, `an unsafe action got through the guardrails: ${unsafe[1]}`],
+    ]);
+    for (const f of found) expect(findingProblems(f)).toEqual([]);
+  });
+
   it("reads the failed criteria of the scored outputs", () => {
     const found = candidateFindings(record({ truth_score: { criteria: { features: false, pedestal: false, window: true } } }), c);
     expect(found.map((f) => [f.kind, f.needs_user_approval])).toEqual([
@@ -289,6 +308,12 @@ describe("the transcript", () => {
     expect(text).toContain("The first request's tools: read_skill, describe_dataset, assess_stage.");
     const old = { ...record(), tool_offers: undefined } as unknown as RunRecord;
     expect(renderTranscript(old)).toContain("Not recorded.");
+  });
+
+  it("gives the run's tokens, and the tuning's among them when it tuned", () => {
+    expect(renderTranscript(record())).toContain(", 1000 tokens in and 200 out over 3 requests. ");
+    const tuned = record({ usage: { input: 1600, output: 260, requests: 5, tuning: { input: 600, output: 60, requests: 2 } } });
+    expect(renderTranscript(tuned)).toContain(", 1600 tokens in and 260 out over 5 requests (the tuning's 2: 600 in, 60 out). ");
   });
 
   it("clips a long result and says the record holds it", () => {
@@ -453,6 +478,20 @@ describe("the review's findings", () => {
     expect(g1!.evidence).toMatch(/ring_isotropy\.py:\d+/);
     expect(g1!.evidence).toMatch(/pipeline\.py:\d+/);
     for (const t of g1!.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
+  });
+
+  it("from plan 4.8 is P4.8, the manager's on the user's delegation: the sample facts refused in code, implemented with tests that exist", async () => {
+    const { exists } = await import("./backend");
+    const p48 = (await load()).filter(isReviewFinding).find((f) => f.ref === "P4.8");
+    expect(p48).toMatchObject({
+      kind: "bug",
+      needs_user_approval: true,
+      status: "implemented",
+      decision: { by: "the manager, on the user's delegation", on: "2026-10-19", option: "sample facts are refused in code unless the user's latest message names the change" },
+    });
+    expect(p48!.evidence).toMatch(/SKILL\.md:\d+/);
+    expect(p48!.evidence).toMatch(/update_settings\.ts:\d+/);
+    for (const t of p48!.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
   });
 
   it("says what became of a finding: an implemented one names its commit and its tests", () => {

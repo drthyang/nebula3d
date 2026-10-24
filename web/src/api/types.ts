@@ -192,6 +192,58 @@ export interface VolumeMeta {
   // that leaves a significance in σ meaningless (normalized values).
   sigma?: "measured" | "estimated";
   sigma_note?: string | null;
+  // The settings the flatten that wrote this file ran with: null for a stage
+  // the flatten did not write, or wrote before it recorded them; absent from
+  // a backend that predates the field.
+  flatten_settings?: FlattenSettings | null;
+}
+
+/**
+ * What the flatten recorded in its output (nebula3d.pipeline.FlattenParams, as
+ * read_flatten_settings returns it: ranges as lists). Every field is optional:
+ * a file records the fields of the version that wrote it.
+ */
+export interface FlattenSettings {
+  estimator?: string;
+  ion?: string | null;
+  fit_q_range?: [number, number] | null; // Å⁻¹; null: every shell with a level was fitted
+  q2_term?: boolean;
+  floor_percentile?: number; // 0–100
+  q_step?: number; // Å⁻¹
+  smooth?: number;
+  snip_width?: number;
+  min_count?: number;
+  q_range?: [number, number] | null;
+}
+
+/**
+ * The floor of every |Q| shell over the whole volume, on the flatten's own
+ * shells (GET /api/volumes/{id}/shell-floors, the bridge's
+ * volume_shell_floors_json; nebula3d.preprocessing.shell_floors). One entry
+ * per shell in each list. For the flattened stage, the flatten's input (the
+ * backfilled stage, `before_id`) is measured on the same shells, and `level`
+ * is its median over the voxels measured in both: the diffuse level a
+ * pedestal's span is a share of. Without an input (`before_id` null) `level`
+ * is the volume's own median.
+ */
+export interface ShellFloors {
+  id: string;
+  before_id: string | null;
+  q_step: number; // Å⁻¹
+  percentile: number; // 0–100
+  min_count: number;
+  q_edges: number[]; // one more than the shells, Å⁻¹
+  centres: number[]; // Å⁻¹
+  totals: number[]; // the grid's voxels in the shell, measured or not
+  counts: number[]; // ... measured (mask and finite)
+  floors: (number | null)[]; // null under min_count
+  medians: (number | null)[];
+  counts_before?: number[] | null;
+  floors_before?: (number | null)[] | null;
+  medians_before?: (number | null)[] | null;
+  level: number | null;
+  level_count: number;
+  flatten?: FlattenSettings | null; // what the flatten recorded in the file, or null
 }
 
 export interface DeltaPdfMeta {
@@ -211,14 +263,19 @@ export interface DeltaPdfMeta {
   window_open_weight?: number | null;
 }
 
-// The ΔPDF's strongest extrema outside the origin's disk, grouped by sign,
-// length and size (nebula3d.analysis.dpdf_features): one per ± pair.
+// The ΔPDF's strongest extrema outside the origin's disk, grouped by the point
+// group the dataset's raw file declares, else by sign, length and size
+// (nebula3d.analysis.dpdf_features): one per ± pair.
 export interface DpdfFeatureGroup {
   sign: 1 | -1;
-  length: number; // |r|, Å
+  length: number; // |r| of the strongest, Å
   size_sigma: number; // the largest |ΔPDF| in the group, in robust σ
+  mean_size_sigma: number; // the mean |ΔPDF| of its n extrema, in robust σ
   value: number;
-  n: number; // extrema in the group
+  n: number; // extrema in the group, one per ± pair
+  // With a declared symmetry, the orbit's distinct vectors, one per ± pair (n is
+  // fewer when some are below the threshold or outside the volume); null without.
+  multiplicity: number | null;
   vectors: number[][]; // (x, y, z) along a, b, c, Å, strongest first
   vectors_rlu: (number[] | null)[]; // the same in lattice units
   sizes_sigma: number[];
@@ -230,6 +287,9 @@ export interface DpdfFeatures {
   min_sigma: number;
   origin_radius: number; // Å
   n_extrema: number;
+  // "declared symmetry (<label or operations>: <n> operations, r ≡ −r)", or
+  // "sign, length and size (<why: none declared, or why it was not applied>)"
+  grouped_by: string;
   groups: DpdfFeatureGroup[];
 }
 

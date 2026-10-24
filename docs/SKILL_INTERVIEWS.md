@@ -258,8 +258,9 @@ you want? (e) How large a dent or leftover do you tolerate?
 
 ### R9. The flatten floor: its fields, and when to turn on the Q² term
 
-**Ask:** (a) Should step 6 name the stage's fields, `max_floor_trend`,
-`max_floor_span_fraction` and `pedestal_left`, as #17 does? (b) Do you accept
+**Ask:** (a) Should step 6 name the stage's fields, `floor_trend`,
+`floor_span_fraction` and `pedestal_left` (`max_floor_trend` and
+`max_floor_span_fraction` before plan 4.1), as #17 does? (b) Do you accept
 #17's rule: turn `flattenQ2` on when `pedestal_left` is true, rerun from the
 flatten and read it again, keep the term if the pedestal is gone, and leave it
 off otherwise? (c) When is a floor that rises with |Q| background, and when
@@ -267,10 +268,12 @@ could it be signal? (d) When do you also extend *Fit to |Q|*
 (`flattenFitQMax`)?
 
 - **Where:** step 6 (`SKILL.md:67-74`); the flatten's evaluation
-  (`llm/tune/evaluate.ts:293-307`): `max_floor_trend` (:300),
-  `max_floor_span_fraction` (:301), `pedestal_left` (:305); the per-plane
-  `floor_trend` (`llm/metrics/flatten.ts:40`).
-- **Today:** The skill names `floor_trend`, a per-plane field, and asks for
+  (`llm/tune/evaluate.ts:318-338`): the whole volume's `floor_trend` (:329)
+  and `floor_span_fraction` (:330), `pedestal_left` (:335); each plane's
+  under `per_plane` (`llm/metrics/flatten.ts:83`).
+- **Today:** The skill names `floor_trend`, which since plan 4.1 is the
+  stage's own field (the whole volume's; before it, a per-plane field beside
+  the planes' largest, `max_floor_trend`), and asks for
   floors "near zero across the whole coverage", while the verdict judges the
   outer half of the shells the counts reach (R10). It says a rising floor wants
   the Q² term but not when to turn it on ([pilot-review.md](pilot-review.md),
@@ -332,17 +335,21 @@ controls and constructed pedestals only?
 - **Where:** `nebula3d.preprocessing.shell_floors`
   (`src/nebula3d/preprocessing/flatten_floors.py`, #37;
   [pipeline.md](pipeline.md#the-floors-and-the-pedestal));
-  `tests/test_shell_floors.py:389-415`; the three planes the verdict reads now
-  (`llm/tune/evaluate.ts:17-19`).
+  `tests/test_shell_floors.py:389-415`; the verdict's reading of them
+  (`llm/metrics/flatten.ts:298`, `volumePedestal`; `llm/tune/evaluate.ts:323`).
 - **Today:** The whole volume's floors are measured on the flatten's own
-  shells; nothing judges them yet. On a synthetic volume with an isotropic Q²
+  shells, and since plan 4.1 the flatten's verdict reads them, with the 0.8
+  limits as they were set on the planes. On a synthetic volume with an isotropic Q²
   pedestal, the planes read a span of 0.99 and the volume 0.94, about 5 % lower,
   with the same trend of 1. The span divides by the diffuse level, the median
   over the measured voxels, and a shell holds voxels in proportion to Q² in the
   volume but to Q on a plane: the volume's median sits further out, higher
   where a pedestal rises. With the pedestal kept off the three planes, the
   planes read a level floor (span 0.03 to 0.05) and the volume the pedestal
-  (span 0.96).
+  (span 0.96). Where the counts fill the box out to its corners, as on the
+  dev cases, the volume's judged shells run past the planes' into the
+  corners, and it reads a Q² pedestal's span 1.2 to 1.36 times the planes'
+  ([pipeline.md](pipeline.md#the-floors-and-the-pedestal)).
 - **Why it needs you:** 0.8 is your provisional limit, set on the planes'
   measure.
 - **Options:** (i) keep 0.8 on the volume; (ii) re-derive both limits for the
@@ -364,6 +371,32 @@ be a refusal in code rather than a sentence in the skill?
   refuses a trial whose window puts more than 1e-3 of its weight on unmeasured
   space while the current settings stay inside that limit.
 - **Why it needs you:** It is the skill's verdict on the whole reduction.
+
+### R13. Rings seen from part of the sphere, and weak rings beside strong ones
+
+**Ask:** (a) Between the box's face and its corner a shell is measured in some
+directions only. May a ring be confirmed from part of the sphere, and from how
+much of it? (b) A weak ring beside a strong one is subtracted at 1.2 to 2.4
+times its amplitude. Is that a known limit you accept, or a fix to make?
+
+- **Where:** the ring removal's noise floor and its open question
+  ([pipeline.md](pipeline.md), "The candidates' noise floor, where the counts
+  end early"); `IsotropyConfig.min_cells`
+  (`src/nebula3d/preprocessing/ring_isotropy.py:150`); the keep-outs' bar,
+  `_KEEP_OUT_SNR_SHARE` (`src/nebula3d/preprocessing/pooled_rings.py:119`);
+  review finding B3.
+- **Today:** A shell is judged on what the grid measures of its 128 direction
+  cells, from 16 of them up (`min_cells`). On a synthetic cubic crystal, shells
+  of the crystal's own pass as rings there whatever the noise, judged on 16 to
+  32 cells. With `min_cells` at 64, half the sphere, all of them go, every
+  planted ring stays, and the dev cases read as before; it stays 16 until you
+  decide. Separately, on synthetic volumes with a weak ring (amplitude 0.05)
+  beside a strong one (0.5), the weak one is subtracted at 1.2 to 2.4 times its
+  amplitude in every geometry tried, full coverage included.
+- **Why it needs you:** Which partial shells are rings, and how much error in a
+  weak ring's subtraction the 3D-ΔPDF can carry, are physics.
+- **Options for (a):** (i) keep 16; (ii) 64, half the sphere; (iii) another
+  share you name, derived on the dev split and constructed cases.
 
 ## 2. Bragg-node audit (`bragg-node-audit`, draft)
 
@@ -567,16 +600,19 @@ proposed in the turn before? (b) Should any setting besides the punch cell and
 the protected planes be a sample fact?
 
 - **Where:** firm rules (`SKILL.md:63-68`: "enforced in code");
-  `update_settings` (`llm/tools/index.ts:1501-1577`): its description
-  (:1526-1527) and `{ sample: true }` (:1549); `SAMPLE_PARAMS`
-  (`llm/tune/catalog.ts:12-15`).
-- **Today:** The code holds sample facts back from tuning only: the tuning run
-  never changes them. `update_settings` takes them from the model; only its
-  description asks it to wait for you. The validation counts such a change as unsafe, but the
-  app does not refuse it. Agent plan 4.8 (approved by the manager) will refuse
-  it unless your message in that turn names the change. The magnetic ion and
-  the |Q| band are not settable by the model at all (`catalog.ts:1-5`).
-- **Why it needs you:** 4.8 needs your definition of "asks".
+  `update_settings` (`llm/tools/defs/update_settings.ts`); `SAMPLE_PARAMS` and
+  `namesSampleFact`, with the words that name each fact (`llm/tune/catalog.ts`);
+  [pilot.md](pilot.md), "Facts about the sample are yours".
+- **Today:** Since #68 (agent plan 4.8), `update_settings` refuses a change to
+  a sample fact unless your latest message names it: by the setting's name, or
+  in words such as "protected planes", "punch cell" or "doubled cell". It makes
+  the rest of the call, and the model asks you. The gate reads names, not
+  intent: a bare "yes" names nothing. The tuning run never changes a sample
+  fact. The validation counts a change the task never named as unsafe, and an
+  attempt the gate refused too, once per fact and reply. The magnetic ion and
+  the |Q| band are not settable by the model at all (`catalog.ts`).
+- **Why it needs you:** The gate's definition of "asks", option (i) below, is
+  provisional until you give yours.
 - **Options for (a):** (i) your message in that turn names the setting or the
   fact; (ii) also a yes to a change the Pilot proposed in the turn before;
   (iii) only a setting and its value.
@@ -621,6 +657,47 @@ reported only?
 - **Options for (b):** (i) a rule judges it, at a ratio you name, derived on the
   dev split and constructed cases; (ii) it is reported, not judged, and step 7
   says so; (iii) step 7 drops it.
+
+### B13. Declaring a modulation: three provisional choices (agent plan 4.15)
+
+**Ask:** When you declare a modulation k: (a) a position that falls on the
+lattice (2k on a node, say) is dropped; is that right? (b) The order runs from
+1 to 6 and the half-width lies between 0 and 0.5 r.l.u.; are those the bounds
+you want? (c) A k written as a decimal becomes the simplest fraction within
+5·10⁻⁵ of it; is that the reading you mean?
+
+- **Where:** `nebula3d.modulation.Modulation.parse` and `positions`
+  (`src/nebula3d/modulation.py`); [modulation.md](modulation.md), "Declaring
+  one".
+- **Today:** As (a) to (c), labelled provisional in the code. The default
+  declaration, until 4.15's last step, is today's planes as k = (1/3, 0, 0) in
+  plane form, 0.08 r.l.u.
+- **Why it needs you:** How a modulation is written down is your notation, and
+  the bounds decide which declarations the app refuses.
+
+### B14. The fill's rims on a coarse grid (agent plan 4.2)
+
+**Ask:** (a) Around a Bragg node, does a rim that rises away from the hole read
+past the node's own diffuse, so its range no longer says what the fill should
+be? If so, what share of such rims should stop the verdict? (b) Should a rim's
+depth be set in reciprocal space rather than as 4 voxels? (c) Does a rim shell
+that lies on the midpoint plane between two nodes count as past it?
+
+- **Where:** the 3-D fill bias (`src/nebula3d/analysis/bragg_fill_texture.py`,
+  `HoleTexture.too_coarse` :245); `roomForRims` (`llm/metrics/texture.ts`).
+- **Today:** A rim is the four voxels around a hole. The grid is too coarse for
+  the rule when the nodes are closer than twice the median hole's reach plus
+  its rim. The manager decided (2026-10-24) that where the punch's node test
+  cannot resolve the holes, as at 81 points on the dev cases, the read is "not
+  judged". Without that, it judged one-voxel holes whose 0.4 r.l.u. rims crossed the
+  valley around each node onto the diffuse's rise: 14 of 15 rims rose away from
+  their holes, and the rule read fills that sat below the true diffuse as
+  biased high.
+- **Why it needs you:** Where the diffuse around a node turns is physics, and
+  each answer moves when the backfill can be judged.
+- **Options for (a):** (i) not judged when most judged rims rise away from their
+  holes; (ii) a share you name; (iii) the punch's node test alone decides, as
+  today.
 
 ## 3. Interpreting a 3D-ΔPDF (`delta-pdf-interpretation`, draft)
 
@@ -916,6 +993,9 @@ manager" decided on the user's delegation of 2026-10-19.
 | D17 | A repeated call's pointer is read as the result it points to | the manager, 2026-10-19 |
 | D18 | The report and a reply both judge a stage from its numbers; a recorded label is never read | the manager, 2026-10-19 |
 | P4.4 | `dpdf_peaks` groups the extrema by the declared point group; with none declared, as before; the limit counts groups | the manager, 2026-10-19 |
+| B2 (b) | No protected planes by default: protection comes from a modulation k declared per material, the satellites or the planes through them, and the Pilot asks when sharp off-lattice peaks bunch at one fraction (agent plan 4.15). B2 (a) and (c), and B13, stay open | the user, 2026-10-19 |
+| B3 | The ring detector's noise from measured, non-sparse bins; keep-outs picked at half the detection cut. R13 stays open | the manager, 2026-10-19 and 2026-10-24 |
+| 4.2's room | The 3-D fill bias is not judged where the punch's node test could not resolve the holes. B14 stays open | the manager, 2026-10-24 |
 | Agent plan | That these items are done: 2.5 (arm C removes the whole method), approved by the user; 1.6, 4.1, 4.3, 4.7, 4.8, 4.10 and 4.12, approved by the manager. What each leaves to the user is asked above | 2026-10-19 |
 
 ## For the interviewer
@@ -925,8 +1005,8 @@ manager" decided on the user's delegation of 2026-10-19.
   If time is short, take the questions marked *Before the freeze* first (R10,
   R11, B2, B7, B8, B12, P6, X1): they change limits, defaults or model-visible
   text that the validation runs under.
-- **Time.** About an hour for reduction-qc (12 questions), fifty minutes each
-  for bragg-node-audit (12) and delta-pdf-interpretation (12), and a quarter of
+- **Time.** About an hour for reduction-qc (13 questions), fifty minutes each
+  for bragg-node-audit (14) and delta-pdf-interpretation (12), and a quarter of
   an hour for X1 to X3: three sessions, or two long ones. A question the user
   wants to think over is marked open and comes back at the next session.
 - **Before each session.** Have the skill on `main` and #17's diff side by side,

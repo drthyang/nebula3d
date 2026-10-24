@@ -33,6 +33,7 @@ from nebula3d.pipeline import (  # noqa: E402
     FlattenParams,
     PunchParams,
     backfill,
+    default_modulation,
     delta_pdf,
     flatten,
     punch_bragg,
@@ -43,8 +44,11 @@ WINDOW_A = 25.0  # half-window (Å) shown per orthoslice
 
 
 def run_arm(vol: nebula3d.HKLVolume, punch_params: PunchParams):
-    """punch → backfill → flatten → ΔPDF, returning the DeltaPDF."""
-    v = punch_bragg(vol, punch_params)
+    """punch → backfill → flatten → ΔPDF, returning the DeltaPDF.
+
+    The punch's search leaves alone what a run declares by default
+    (default_modulation()), as run_pipeline does."""
+    v = punch_bragg(vol, punch_params, modulation=default_modulation())
     v = backfill(v, BackfillParams())
     v = flatten(v, FlattenParams())
     return delta_pdf(v, DeltaPdfParams())

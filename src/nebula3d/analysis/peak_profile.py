@@ -593,7 +593,7 @@ def _fraction_h_mask(h_axis: NDArray, fractions: tuple[float, ...], half_width: 
 def magnetic_satellite_centers(
     vol: HKLVolume,
     *,
-    fractions: tuple[float, ...] = (1.0 / 3.0, 2.0 / 3.0),
+    fractions: tuple[float, ...],
     h_half_width: float = 0.08,
     q_step: float = 0.05,
     n_mad: float = 8.0,
@@ -604,7 +604,10 @@ def magnetic_satellite_centers(
 
     Restricts the per-|Q|-shell outlier search of
     :class:`~nebula3d.analysis.bragg.BraggRemover` to the fractional-H planes, then
-    returns the local-maximum centres sorted by intensity.
+    returns the local-maximum centres sorted by intensity.  *fractions* are
+    the sample's: its satellites' H, mod 1 (``(1/3, 2/3)`` for k = (1/3, 0, 0)).
+    There is no default: which planes hold satellites is a fact about the
+    sample, the user's to give (see :mod:`nebula3d.modulation`).
     """
     from scipy import ndimage
 

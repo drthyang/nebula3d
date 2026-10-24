@@ -9,8 +9,10 @@ import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
+import { loadSettings, saveSettings } from "../settings";
 import { useTuneStore, type StageRun } from "../tune/tuner";
-import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type ToolContext } from "../tools";
+import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type RunModel, type ToolContext } from "../tools";
+import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -230,18 +232,75 @@ describe("update_settings", () => {
     expect(usePipelineStore.getState().punchMinSig).toBe("");
   });
 
-  it("sets a fact about the sample the user asks for: the search's protected planes", async () => {
-    usePipelineStore.setState({ punchProtectH: "none" });
-    const r = await run("update_settings", { changes: { punchProtectH: "1/3, 2/3" } });
-    expect(usePipelineStore.getState().punchProtectH).toBe(""); // the default
-    expect(JSON.parse(r.text).changed).toEqual([{ setting: "punchProtectH", from: "none", to: "1/3, 2/3" }]);
-    await run("update_settings", { changes: { punchProtectH: [0.5] } });
-    expect(usePipelineStore.getState().punchProtectH).toBe("0.5");
-    const bad = await run("update_settings", { changes: { punchProtectH: "thirds" } });
-    expect(bad.text).toMatch(/H fractions/);
-    // The punch cell, for a volume indexed on a doubled cell.
-    await run("update_settings", { changes: { punchSupercellH: 2, punchSupercellK: 2, punchSupercellL: 2 } });
-    expect(usePipelineStore.getState()).toMatchObject({ punchSupercellH: "2", punchSupercellK: "2", punchSupercellL: "2" });
+  // The facts about the sample (tune/catalog.ts, SAMPLE_PARAMS) change only
+  // when the user's latest message names them: the agent loop hands it to
+  // the tools as the context's userMessage.
+  describe("a fact about the sample, which only the user sets", () => {
+    const FACTS = { punchProtectH: "", punchProtectHalfWidth: "", punchSupercellH: "", punchSupercellK: "", punchSupercellL: "", flattenIon: "" };
+    const refusal = (key: string) => `${key} is a fact about the sample, which only the user sets: ask the user, and change it once they name it.`;
+    /** update_settings after the user's latest message `said`. */
+    const after = (said: string | undefined, changes: Args) => callTool({ ...ctx, userMessage: said }, "update_settings", { changes });
+    beforeEach(() => usePipelineStore.setState(FACTS));
+
+    it("refuses a change the user's latest message does not name, and leaves the store as it was", async () => {
+      for (const said of [undefined, "Is the punch clean? Take it to a 3D-ΔPDF you would trust."]) {
+        const r = await after(said, { punchSupercellH: 2 });
+        expect(r.ok).toBe(false);
+        expect(r.text).toBe(`Error: ${refusal("punchSupercellH")}`);
+        expect(usePipelineStore.getState()).toMatchObject(FACTS);
+      }
+      // Each fact the call changes is refused in the same words, whatever its value.
+      const both = await after("Rerun the punch.", { punchProtectH: "none", punchSupercellK: 99 });
+      expect(both.text).toBe(`Error: ${refusal("punchProtectH")} ${refusal("punchSupercellK")}`);
+      expect(usePipelineStore.getState()).toMatchObject(FACTS);
+    });
+
+    it("makes the change once the user's latest message names it", async () => {
+      const r = await after("The volume is indexed on a doubled cell along H: set the punch cell to 2 along H.", { punchSupercellH: 2 });
+      expect(r.ok, r.text).toBe(true);
+      expect(JSON.parse(r.text)).toEqual({ changed: [{ setting: "punchSupercellH", from: 1, to: 2 }], rerun_from: "punch" });
+      expect(usePipelineStore.getState().punchSupercellH).toBe("2");
+    });
+
+    it("refuses the fact the message does not name and makes the call's other changes, and says both", async () => {
+      const r = await after("Raise the punch significance to 6.", { punchMinSig: 6, punchSupercellH: 2 });
+      expect(r.ok, r.text).toBe(true);
+      expect(usePipelineStore.getState()).toMatchObject({ punchMinSig: "6", punchSupercellH: "" });
+      expect(JSON.parse(r.text)).toEqual({
+        changed: [{ setting: "punchMinSig", from: 5, to: 6 }],
+        refused: [{ setting: "punchSupercellH", why: refusal("punchSupercellH") }],
+        rerun_from: "punch",
+      });
+      expect(r.summary).toBe("punchMinSig 5 → 6; refused, a fact about the sample: punchSupercellH");
+      // A fact the message names beside one it does not: the named one changes.
+      const planes = await after("Protect the H = 0.5 planes.", { punchProtectH: "1/2", punchProtectHalfWidth: 0.2 });
+      expect(JSON.parse(planes.text)).toEqual({
+        changed: [{ setting: "punchProtectH", from: "1/3, 2/3", to: "1/2" }],
+        refused: [{ setting: "punchProtectHalfWidth", why: refusal("punchProtectHalfWidth") }],
+        rerun_from: "punch",
+      });
+      expect(usePipelineStore.getState()).toMatchObject({ punchProtectH: "1/2", punchProtectHalfWidth: "" });
+    });
+
+    it("sets the search's protected planes and the punch cell the user names", async () => {
+      usePipelineStore.setState({ punchProtectH: "none" });
+      const r = await after("Keep the 1/3 and 2/3 planes protected.", { punchProtectH: "1/3, 2/3" });
+      expect(usePipelineStore.getState().punchProtectH).toBe(""); // the default
+      expect(JSON.parse(r.text).changed).toEqual([{ setting: "punchProtectH", from: "none", to: "1/3, 2/3" }]);
+      await after("Set the H fractions to 0.5.", { punchProtectH: [0.5] });
+      expect(usePipelineStore.getState().punchProtectH).toBe("0.5");
+      const bad = await after("Set the H fractions to thirds.", { punchProtectH: "thirds" });
+      expect(bad.text).toMatch(/H fractions/);
+      // The punch cell, for a volume indexed on a doubled cell: the words name all three axes.
+      await after("Index the punch on a 2×2×2 supercell.", { punchSupercellH: 2, punchSupercellK: 2, punchSupercellL: 2 });
+      expect(usePipelineStore.getState()).toMatchObject({ punchSupercellH: "2", punchSupercellK: "2", punchSupercellL: "2" });
+    });
+
+    it("never sets the magnetic ion, which stays with the user, whatever the message says", async () => {
+      const r = await after("Use Tb3+ for the flatten.", { flattenIon: "Tb3+" });
+      expect(r.text).toMatch(/invalid arguments — flattenIon cannot be changed/);
+      expect(usePipelineStore.getState().flattenIon).toBe("");
+    });
   });
 });
 
@@ -404,6 +463,29 @@ describe("tune_pipeline", () => {
     const r = await callTool({ ...ctx }, "tune_pipeline", { trials_per_stage: 9 });
     expect(r.text).toMatch(/trials_per_stage must be within \[2, 5\]/);
     expect(tuner.startTuning).not.toHaveBeenCalled();
+  });
+
+  it("asks the model on the console's settings in the app, and a validation run's own model in a run", async () => {
+    tuner.startTuning.mockImplementation(async () => useTuneStore.setState({ finishedNote: "Done." }));
+    const before = loadSettings();
+    saveSettings({ baseUrl: "http://console.invalid/v1", model: "console", apiKey: "", temperature: 0.4 });
+    try {
+      // The app: the console's settings, as read when it starts, and nothing counts its tokens.
+      expect((await callTool({ ...ctx }, "tune_pipeline", { stages: ["pdf"] })).ok).toBe(true);
+      const app = tuner.startTuning.mock.calls[0][0];
+      expect(app.llm).toBe(loadSettings());
+      expect(app.llm).toMatchObject({ baseUrl: "http://console.invalid/v1", model: "console", temperature: 0.4 });
+      expect(app).not.toHaveProperty("onUsage");
+
+      // A validation run (ToolContext.model): the run's model, and its counts to the run.
+      const model: RunModel = { settings: { baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.2 }, usage: vi.fn() };
+      expect((await callTool({ ...ctx, model }, "tune_pipeline", { stages: ["pdf"] })).ok).toBe(true);
+      const run = tuner.startTuning.mock.calls[1][0];
+      expect(run.llm).toBe(model.settings);
+      expect(run.onUsage).toBe(model.usage);
+    } finally {
+      saveSettings(before);
+    }
   });
 });
 
@@ -770,24 +852,39 @@ describe("qmax_coverage", () => {
 });
 
 describe("symmetry_check", () => {
+  // A hexagonal ΔPDF (constructedDpdf.ts): 6/mmm's orbit of a correlation, and
+  // a pair ±(0.4, 0, 0) that keeps the two-fold ∥ c but not the six-fold.
   const hexagonal = async () => {
     const meta = await api.fetchDpdfMeta();
-    api.fetchDpdfMeta.mockResolvedValue({ ...meta, lattice: { a: 8, b: 8, c: 10, alpha: 90, beta: 90, gamma: 120 } });
-    const section = makeSlice(41, 41, (u, v) => Math.cos(0.7 * u) + Math.cos(0.7 * v) + Math.cos(0.7 * (u - v)) + 0.3 * Math.cos(0.5 * u));
-    section.header.axes_angle = 120;
-    api.fetchDpdfSlice.mockResolvedValue(section);
+    api.fetchDpdfMeta.mockResolvedValue({ ...meta, lattice: { a: HEXAGONAL.a, b: HEXAGONAL.a, c: HEXAGONAL.c, alpha: 90, beta: 90, gamma: 120 } });
+    const features = [...orbit([{ at: [0.3, 0.1, 0.25], amp: 1, width: 0.35 }], directGroup(DECLARED["6/mmm"])), { at: [0.4, 0, 0], amp: 0.5, width: 0.35 }];
+    api.fetchDpdfSlice.mockImplementation(async (_id: string, plane: "xy" | "xz" | "yz", value: number) => cut(HEXAGONAL, features, plane, value));
   };
 
-  it("reports each in-plane operation of a hexagonal ΔPDF section of data declared symmetrised", async () => {
+  it("reports each operation of a hexagonal ΔPDF of data declared symmetrised: with none declared, the cell's in-plane ones", async () => {
     await hexagonal();
     api.fetchMeta.mockResolvedValue({ ...META, symmetry: "6/mmm" });
     const r = await runOn(full, "symmetry_check", {});
     const out = JSON.parse(r.text);
-    expect(out.cell).toBe("hexagonal");
+    expect(out.operations).toBe("the cell's in-plane ones (hexagonal): no operations declared");
     expect(out.symmetry_declared).toBe(true);
-    expect(out.holds).toEqual(["two-fold (180°)"]);
+    expect(out.holds).toEqual(["two-fold ∥ c"]);
+    expect(out.ops.map((o: { op: string }) => o.op)).toEqual(["six-fold ∥ c (60°)", "three-fold ∥ c (120°)", "two-fold ∥ c", "mirror ⊥ [1-10]"]);
     expect(r.outcomes).toMatchObject([{ check: "symmetry", kind: "attention", reasons: ["symmetry broken"], words: out.verdict }]);
     expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xy", 0);
+    expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xz", 0);
+    expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "yz", 0);
+  });
+
+  it("tests the declared group's operations where the file declares them, those that move c included", async () => {
+    await hexagonal();
+    api.fetchMeta.mockResolvedValue({ ...META, symmetry: "6/mmm", symmetry_ops: DECLARED["6/mmm"] });
+    const out = JSON.parse((await runOn(full, "symmetry_check", {})).text);
+    expect(out.operations).toBe("declared (6/mmm): 23 besides the identity");
+    // Each of the eleven rotations with its product with the inversion, and the inversion.
+    expect(out.ops).toHaveLength(12);
+    // The mirror ⊥ c, with the two-fold ∥ c, on the sections it maps onto themselves, off the x–y plane.
+    expect(out.ops.find((o: { op: string }) => o.op === "two-fold ∥ c / mirror ⊥ c")).toMatchObject({ tested_on: "xz; yz" });
   });
 
   it("does not call an asymmetry a break when the file declares no symmetry: the data were not symmetrised", async () => {
@@ -968,18 +1065,64 @@ describe("ub_check", () => {
 
 describe("dpdf_peaks", () => {
   // What the server returns on the dev control (docs/pilot-review.md finding 1),
-  // shortened: the strongest correlation, and a planted one at ⟨3/2 0 0⟩.
+  // shortened: the strongest correlation, and a planted one at ⟨3/2 0 0⟩. Its
+  // raw file declares no symmetry: grouped by sign, length and size.
   const features = {
     id: "demo.delta_pdf", sigma: 6.174, min_sigma: 5, origin_radius: 1.95, n_extrema: 619,
+    grouped_by: "sign, length and size (no symmetry declared)",
     groups: [
-      { sign: -1, length: 2.7393, size_sigma: 1515.5, value: -9357, n: 6,
+      { sign: -1, length: 2.7393, size_sigma: 1515.5, mean_size_sigma: 1514.2, value: -9357, n: 6, multiplicity: null,
         vectors: [[1.9383, 1.9383, 0], [0, 1.9383, -1.9383], [0, 1.9383, 1.9383], [1.9383, 0, -1.9383], [1.9383, 0, 1.9383]],
         vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497], [0.497, 0, 0.497]],
         sizes_sigma: [1515.5, 1515.3, 1514.1, 1513.7, 1513.4] },
-      { sign: 1, length: 5.8383, size_sigma: 238.39, value: 1472, n: 3,
+      { sign: 1, length: 5.8383, size_sigma: 238.39, mean_size_sigma: 238.3, value: 1472, n: 3, multiplicity: null,
         vectors: [[5.8383, 0.0039, 0]], vectors_rlu: [[1.497, 0.001, 0]], sizes_sigma: [238.39] },
     ],
   };
+
+  // What the server returns on a constructed ΔPDF (cubic, a = 4 Å, built as
+  // tests/test_dpdf_features.py's write_declared_dataset builds it, with its
+  // ⟨1 0 0⟩ copy along c left out), shortened: peaks on the m-3m orbit of
+  // (¼, ½, ¾), their copies 0.9 to 1.1 of one size, and a negative ⟨1 0 0⟩
+  // along a and b. Its raw file declares m-3m: each orbit is one entry, the
+  // general one 24 of its 24 vectors (one per ± pair), ⟨1 0 0⟩ 2 of its 3.
+  const general = {
+    vectors: [[2.9913, -0.9994, 2.0022], [1.0049, 2.0006, -2.9958], [3.0014, 0.9954, 2.0027], [1.0029, -2.9916, 1.9997], [0.9964, -2.998, -1.9977]],
+    vectors_rlu: [[0.7478, -0.2498, 0.5005], [0.2512, 0.5002, -0.7489], [0.7503, 0.2489, 0.5007], [0.2507, -0.7479, 0.4999], [0.2491, -0.7495, -0.4994]],
+    sizes_sigma: [63.669, 62.9163, 61.9904, 61.9312, 61.7096],
+  };
+  const declared = {
+    id: "demo.delta_pdf", sigma: 1.0458, min_sigma: 8, origin_radius: 0.375, n_extrema: 26,
+    grouped_by: "declared symmetry (m-3m: 48 operations, r ≡ −r)",
+    groups: [
+      { sign: 1, length: 3.7357, size_sigma: 63.669, mean_size_sigma: 57.8497, value: 66.587, n: 24, multiplicity: 24, ...general },
+      { sign: -1, length: 3.9999, size_sigma: 38.8873, mean_size_sigma: 37.2247, value: -40.67, n: 2, multiplicity: 3,
+        vectors: [[3.9999, -0.0121, 0.0027], [0.0048, 3.9911, 0.0046]], vectors_rlu: [[1, -0.003, 0.0007], [0.0012, 0.9978, 0.0012]],
+        sizes_sigma: [38.8873, 35.562] },
+    ],
+  };
+  // The same ΔPDF with nothing declared: by sign, length and size the unequal
+  // copies of the general orbit split by size, and ⟨1 0 0⟩'s two by size too
+  // (shortened to one vector an entry).
+  const byShape = (sign: 1 | -1, length: number, size: number, mean: number, n: number, rlu: number[]) => ({
+    sign, length, size_sigma: size, mean_size_sigma: mean, value: sign * size * declared.sigma, n, multiplicity: null,
+    vectors: [rlu.map((x) => 4 * x)], vectors_rlu: [rlu], sizes_sigma: [size],
+  });
+  const plain = {
+    ...declared,
+    grouped_by: "sign, length and size (no symmetry declared)",
+    groups: [
+      byShape(1, 3.7357, 63.669, 62.1074, 7, [0.7478, -0.2498, 0.5005]),
+      byShape(1, 3.7458, 60.1438, 58.784, 7, [0.2513, 0.5018, 0.7497]),
+      byShape(1, 3.7473, 56.8872, 55.4586, 6, [0.5007, 0.2502, -0.7513]),
+      byShape(1, 3.7472, 53.8623, 53.0155, 3, [0.5007, -0.2517, -0.7507]),
+      byShape(1, 3.7501, 50.3539, 50.3539, 1, [0.2496, 0.7514, -0.502]),
+      byShape(-1, 3.9999, 38.8873, 38.8873, 1, [1, -0.003, 0.0007]),
+      byShape(-1, 3.9911, 35.562, 35.562, 1, [0.0012, 0.9978, 0.0012]),
+    ],
+  };
+  // An entry's fields when the extrema are grouped by sign, length and size: as they were before.
+  const PLAIN_ENTRY = ["sign", "length_A", "size_sigma", "n_vectors", "vectors_rlu", "vectors_A"];
 
   it("lists the strongest features with their vectors, signs and sizes", async () => {
     api.fetchDpdfFeatures.mockResolvedValue(features);
@@ -987,12 +1130,14 @@ describe("dpdf_peaks", () => {
     expect(r.ok).toBe(true);
     expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith("demo.delta_pdf", 5, 12);
     const out = JSON.parse(r.text);
+    expect(out.grouped_by).toBe("sign, length and size (no symmetry declared)");
     expect(out.features[0]).toEqual({
       sign: "−", length_A: 2.739, size_sigma: 1520, n_vectors: 6,
       vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497]],
       vectors_A: [[1.938, 1.938, 0], [0, 1.938, -1.938], [0, 1.938, 1.938], [1.938, 0, -1.938]],
     });
     expect(out.features[1]).toMatchObject({ sign: "+", length_A: 5.838, n_vectors: 3, vectors_rlu: [[1.5, 0.001, 0]] });
+    for (const e of out.features) expect(Object.keys(e)).toEqual(PLAIN_ENTRY);
     expect([out.robust_sigma, out.threshold_sigma, out.origin_disk_A, out.extrema_above_threshold]).toEqual([6.17, 5, 1.95, 619]);
     expect(r.summary).toBe("619 extrema above 5σ; strongest − at (0.497, 0.497, 0) r.l.u., 2.74 Å, 1520σ");
     expect(r.view).toMatchObject({ view: "dpdf", plane: "xy", value: 0 });
@@ -1005,6 +1150,46 @@ describe("dpdf_peaks", () => {
     const r = await run("dpdf_peaks", { min_sigma: 900, limit: 3 });
     expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith("demo.delta_pdf", 900, 3);
     expect(r.summary).toBe("no extremum above 5σ outside the origin's disk");
+  });
+
+  it("with a declared point group, names it, and gives each orbit its multiplicity and its copies' mean size", async () => {
+    api.fetchDpdfFeatures.mockResolvedValue(declared);
+    const r = await run("dpdf_peaks", { min_sigma: 8 });
+    expect(r.ok).toBe(true);
+    const out = JSON.parse(r.text);
+    expect(out.grouped_by).toBe("declared symmetry (m-3m: 48 operations, r ≡ −r)");
+    // Each orbit one entry: the vectors found (n_vectors) and the orbit's (multiplicity) apart.
+    expect(out.features.map((e: Record<string, unknown>) => [e.sign, e.n_vectors, e.multiplicity])).toEqual([["+", 24, 24], ["−", 2, 3]]);
+    expect(out.features[0]).toEqual({
+      sign: "+", length_A: 3.736, size_sigma: 63.7, mean_size_sigma: 57.8, n_vectors: 24, multiplicity: 24,
+      vectors_rlu: [[0.748, -0.25, 0.5], [0.251, 0.5, -0.749], [0.75, 0.249, 0.501], [0.251, -0.748, 0.5]],
+      vectors_A: [[2.991, -0.9994, 2.002], [1.005, 2.001, -2.996], [3.001, 0.9954, 2.003], [1.003, -2.992, 2]],
+    });
+    expect(out.features[1]).toEqual({
+      sign: "−", length_A: 4, size_sigma: 38.9, mean_size_sigma: 37.2, n_vectors: 2, multiplicity: 3,
+      vectors_rlu: [[1, -0.003, 0.0007], [0.0012, 0.998, 0.0012]],
+      vectors_A: [[4, -0.0121, 0.0027], [0.0048, 3.991, 0.0046]],
+    });
+    expect([out.robust_sigma, out.threshold_sigma, out.extrema_above_threshold]).toEqual([1.05, 8, 26]);
+    expect(r.summary).toBe("26 extrema above 8σ; strongest + at (0.748, -0.25, 0.5) r.l.u., 3.74 Å, 63.7σ");
+  });
+
+  it("without one, says so, and lists the entries as before: no multiplicity, no mean size", async () => {
+    api.fetchDpdfFeatures.mockResolvedValue(plain);
+    const out = JSON.parse((await run("dpdf_peaks", { min_sigma: 8 })).text);
+    expect(out.grouped_by).toBe("sign, length and size (no symmetry declared)");
+    // The orbits split by size: seven entries, the 26 extrema between them.
+    expect(out.features.map((e: Record<string, unknown>) => [e.sign, e.n_vectors])).toEqual([["+", 7], ["+", 7], ["+", 6], ["+", 3], ["+", 1], ["−", 1], ["−", 1]]);
+    expect(out.features.reduce((sum: number, e: { n_vectors: number }) => sum + e.n_vectors, 0)).toBe(26);
+    for (const e of out.features) expect(Object.keys(e)).toEqual(PLAIN_ENTRY);
+    expect(out.features[0]).toEqual({ sign: "+", length_A: 3.736, size_sigma: 63.7, n_vectors: 7, vectors_rlu: [[0.748, -0.25, 0.5]], vectors_A: [[2.991, -0.9992, 2.002]] });
+
+    // A symmetry declared that cannot be applied: grouped as without one, and grouped_by says why.
+    const why = "sign, length and size (the declared symmetry 6/mmm is not applied: the ΔPDF file records no cell)";
+    api.fetchDpdfFeatures.mockResolvedValue({ ...plain, grouped_by: why });
+    const notApplied = JSON.parse((await run("dpdf_peaks", { min_sigma: 8 })).text);
+    expect(notApplied.grouped_by).toBe(why);
+    expect(notApplied.features).toEqual(out.features);
   });
 });
 

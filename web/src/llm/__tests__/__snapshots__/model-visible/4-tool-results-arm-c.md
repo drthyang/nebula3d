@@ -29,13 +29,13 @@ Fill punched holes seamlessly: median_seam_sigma ≲ 1, bright_fill_fraction sma
 ### flatten
 
 ```text
-Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
+Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
 ```
 
 ### pdf
 
 ```text
-The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate). max_symmetry_break is the x–y section's largest RMS difference from its image under the cell's in-plane operations (worst_symmetry_op names it). back_fft_pearson_r_even, the round trip against the data's even part under Q → −Q (what the real transform keeps), must stay near 1; back_fft_pearson_r against the data is lower by the odd part (back_fft_odd_share, counting noise on unsymmetrised data). Without a band or crop the round trip is the identity, so neither can rank trials. Apodization trades real-space resolution against truncation ripples; prefer the default unless another is clearly better on feature_snr without the reach leaving the coverage.
+The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate). max_symmetry_break is the x–y section's largest RMS difference from its image under the declared group's operations that map it onto itself (none declared: the cell's in-plane operations; worst_symmetry_op names it). back_fft_pearson_r_even, the round trip against the data's even part under Q → −Q (what the real transform keeps), must stay near 1; back_fft_pearson_r against the data is lower by the odd part (back_fft_odd_share, counting noise on unsymmetrised data). Without a band or crop the round trip is the identity, so neither can rank trials. Apodization trades real-space resolution against truncation ripples; prefer the default unless another is clearly better on feature_snr without the reach leaving the coverage.
 ```
 
 # The results that read otherwise
@@ -121,11 +121,11 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
   },
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
     "pedestal_left": false
   },
   "pdf": {
@@ -143,7 +143,7 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
     "window_weight_on_unmeasured": 0.00024,
     "window_shape": "ellipsoid",
     "max_symmetry_break": 0,
-    "worst_symmetry_op": "mirror ⊥ a",
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
     "symmetry_declared": true
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
@@ -156,11 +156,12 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
 {
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
+    "floor_judged_q": [2.2, 4.35],
     "pedestal_left": false,
     "per_plane": {
       "hk0": {
@@ -194,7 +195,7 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
         "floor_judged_q": [2.11, 4.11]
       }
     },
-    "goal": "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself."
+    "goal": "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself."
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
 }
@@ -204,20 +205,47 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
 
 ```json
 {
+  "grouped_by": "declared symmetry (mmm: 8 operations, r ≡ −r)",
   "features": [
     {
       "sign": "−",
       "length_A": 4,
       "size_sigma": 35.2,
-      "n_vectors": 3,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
       "vectors_rlu": [
-        [1, 0, 0],
-        [0, 1, 0],
+        [1, 0, 0]
+      ],
+      "vectors_A": [
+        [4, 0, 0]
+      ]
+    },
+    {
+      "sign": "−",
+      "length_A": 4,
+      "size_sigma": 35.2,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
+      "vectors_rlu": [
+        [0, 1, 0]
+      ],
+      "vectors_A": [
+        [0, 4, 0]
+      ]
+    },
+    {
+      "sign": "−",
+      "length_A": 4,
+      "size_sigma": 35.2,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
+      "vectors_rlu": [
         [0, 0, 1]
       ],
       "vectors_A": [
-        [4, 0, 0],
-        [0, 4, 0],
         [0, 0, 4]
       ]
     },
@@ -225,18 +253,48 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
       "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "n_vectors": 6,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
       "vectors_rlu": [
         [1, 1, 0],
-        [1, -1, 0],
+        [1, -1, 0]
+      ],
+      "vectors_A": [
+        [4, 4, 0],
+        [4, -4, 0]
+      ]
+    },
+    {
+      "sign": "+",
+      "length_A": 5.657,
+      "size_sigma": 21.1,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
+      "vectors_rlu": [
         [1, 0, 1],
         [1, 0, -1]
       ],
       "vectors_A": [
-        [4, 4, 0],
-        [4, -4, 0],
         [4, 0, 4],
         [4, 0, -4]
+      ]
+    },
+    {
+      "sign": "+",
+      "length_A": 5.657,
+      "size_sigma": 21.1,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
+      "vectors_rlu": [
+        [0, 1, 1],
+        [0, 1, -1]
+      ],
+      "vectors_A": [
+        [0, 4, 4],
+        [0, 4, -4]
       ]
     }
   ],
@@ -379,7 +437,7 @@ Error: no tool named read_skill. Available: describe_dataset, current_view, meas
 
 ```text
 Stage: Flatten.
-Goal: Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
+Goal: Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
 
 Settings you may change (use these names exactly):
 - flattenQ2 (true | false; default false): model only: also fit b·Q², the smooth rise of an inelastic background (thermal diffuse; with X-rays also Compton); it varies too slowly to follow pair correlations.
@@ -388,7 +446,7 @@ Settings you may change (use these names exactly):
 
 Current settings: {"flattenQ2":false,"flattenFitQMax":10,"flattenEstimator":"model"}
 Settings already chosen for earlier stages: {}
-Trials so far (trial 1 = the current settings): [{"trial":1,"settings":{"flattenQ2":false,"flattenFitQMax":10,"flattenEstimator":"model"},"metrics":{"max_floor_trend":0.97,"max_floor_span_fraction":1.2,"pedestal_left":true}}]
+Trials so far (trial 1 = the current settings): [{"trial":1,"settings":{"flattenQ2":false,"flattenFitQMax":10,"flattenEstimator":"model"},"metrics":{"floor_trend":0.97,"floor_span_fraction":1.2,"pedestal_left":true}}]
 
 Propose up to 2 new settings to try, each different from every trial so far and
 each changing as few settings as possible, with a one-sentence reason tied to the metrics.

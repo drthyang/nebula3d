@@ -19,6 +19,15 @@ import type { ComputedVerdict } from "../verdicts";
 import { CHAT_TOOLS, toolsWhere, type AgentTool } from "../tools";
 import type { Dispute } from "./graderReading";
 
+/** Token counts over a run's requests (provider/client.ts: TokenUsage), and how many requests they cover. */
+export interface TokenCount {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  requests: number;
+}
+
 export interface EvalRun {
   scenario: string;
   steps: AgentStep[];
@@ -29,7 +38,11 @@ export interface EvalRun {
   // infrastructure failure, reported apart from a wrong answer.
   failure?: Failure | null;
   latencyMs: number;
-  usage: { input: number; output: number; cacheRead?: number; cacheWrite?: number; requests: number } | null; // null: the server did not say
+  // The tokens of every request the run made, null when the server did not
+  // say for one. A validation run's tuning (tune_pipeline) asks the run's
+  // model, and its requests are counted in the totals, and apart in `tuning`
+  // (validationRun.ts), which is there only when the run tuned.
+  usage: (TokenCount & { tuning?: TokenCount }) | null;
   verdict?: ComputedVerdict | null; // computed from the reply's checks (verdicts/)
 }
 

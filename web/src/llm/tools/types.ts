@@ -6,12 +6,26 @@
 // modules around the agent loop can import it without a cycle.
 
 import type { Dataset } from "../../api/types";
+import type { AgentStep } from "../agent";
+import type { UsageReport } from "../provider/client";
+import type { LlmSettings } from "../settings";
 import type { Outcome } from "../verdicts/rules";
 import type { ToolFacts } from "./facts";
 import type { ViewTarget } from "./openView";
 
 /** A call's arguments, as the model sent them: a JSON object. */
 export type Args = Record<string, unknown>;
+
+/**
+ * A validation run's model (evals/validationRun.ts), for the requests a tool
+ * makes of its own: tune_pipeline's proposals and judgements go to it, as the
+ * run's replies do, and each request's token counts go to `usage`, which the
+ * run adds to its own.
+ */
+export interface RunModel {
+  settings: Pick<LlmSettings, "baseUrl" | "model" | "apiKey" | "temperature">;
+  usage: UsageReport;
+}
 
 // The dataset the tools read.  run_pipeline replaces `dataset` with its fresh
 // listing after a run, so the tools called after it see the new outputs.
@@ -31,9 +45,22 @@ export interface ToolContext {
   // the chat sends an earlier turn as its text alone, so the skill's text is
   // not in this reply, and the refusal asks for it again (skills.ts).
   skillsReadEarlier?: ReadonlySet<string>;
-  // The tool results of the conversation's earlier turns: what an answer's
-  // numbers may come from besides this reply's own results (agent.ts).
-  earlierResults?: readonly string[];
+  // The tool calls of the conversation's earlier turns that ran, oldest first
+  // (toolStepsIn, agent.ts): what an answer's numbers may come from besides
+  // this reply's own results, while what each measured stands (earlierSources,
+  // answerChecks.ts).
+  earlierSteps?: readonly AgentStep[];
+  // The user's latest message, the one this reply answers: set by the agent
+  // loop from the conversation as it arrived, never from what the loop itself
+  // sends the model as the user (a send-back). update_settings changes a fact
+  // about the sample only when it names that fact (tune/catalog.ts). Unset
+  // (the app's own calls), it names none.
+  readonly userMessage?: string;
+  // The run's model (RunModel): set by a validation run alone, so a tool's own
+  // requests go to the model the run is graded on and count in its usage.
+  // Unset (the app), tune_pipeline asks the model on the console's settings
+  // (settings.ts), and nothing counts its tokens.
+  readonly model?: RunModel;
 }
 
 export interface ToolOutcome {

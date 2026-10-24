@@ -20,10 +20,44 @@ from __future__ import annotations
 import dataclasses
 from typing import TYPE_CHECKING
 
+from nebula3d.modulation import Modulation
 from nebula3d.pipeline import PipelineParams
 
 if TYPE_CHECKING:
-    from nebula3d.server.schemas import PipelineRunRequest
+    from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
+
+
+def _apply_modulation(p: PipelineParams, sp: StageParamsIn) -> None:
+    """The sample's modulation (``modulation``), or the legacy protected H
+    planes as they were read before declarations, in place on *p*.
+
+    A request names one or the other. Without a ``modulation`` the legacy
+    fields say what the search leaves alone, as before:
+    ``punch_search_protect_h`` replaces the declared default by those H
+    fractions ([] protects none), and ``punch_search_protect_half_width`` sets
+    the half width of whichever protects (0 protects none). So a request from
+    a console that knows only them runs as it did.
+    """
+    legacy_h, legacy_w = sp.punch_search_protect_h, sp.punch_search_protect_half_width
+    if sp.modulation is not None:
+        if legacy_h is not None or legacy_w is not None:
+            raise ValueError("declare the modulation, or give the legacy punch_search_protect_h "
+                             "and punch_search_protect_half_width, not both")
+        p.modulation = Modulation.parse(sp.modulation)
+        return
+    if legacy_w is not None:
+        if legacy_w < 0:
+            raise ValueError("punch_search_protect_half_width must not be negative")
+        p.punch = dataclasses.replace(p.punch, search_exclude_h_half_width=legacy_w)
+        if p.modulation is not None:
+            p.modulation = (None if legacy_w == 0
+                            else dataclasses.replace(p.modulation, half_width=legacy_w))
+    if legacy_h is not None:
+        fractions = tuple(float(f) for f in legacy_h)
+        if any(not 0.0 <= f < 1.0 for f in fractions):
+            raise ValueError("punch_search_protect_h takes fractions in [0, 1)")
+        p.punch = dataclasses.replace(p.punch, search_exclude_h_fractions=fractions or None)
+        p.modulation = None  # the fractions name the protected planes in full
 
 
 def build_params(req: PipelineRunRequest) -> PipelineParams:
@@ -94,17 +128,7 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
         p.punch = dataclasses.replace(
             p.punch, search_min_intensity=sp.punch_search_floor,
             search_min_prominence=sp.punch_search_floor)
-    if sp.punch_search_protect_h is not None:
-        fractions = tuple(float(f) for f in sp.punch_search_protect_h)
-        if any(not 0.0 <= f < 1.0 for f in fractions):
-            raise ValueError("punch_search_protect_h takes fractions in [0, 1)")
-        p.punch = dataclasses.replace(
-            p.punch, search_exclude_h_fractions=fractions or None)
-    if sp.punch_search_protect_half_width is not None:
-        if sp.punch_search_protect_half_width < 0:
-            raise ValueError("punch_search_protect_half_width must not be negative")
-        p.punch = dataclasses.replace(
-            p.punch, search_exclude_h_half_width=sp.punch_search_protect_half_width)
+    _apply_modulation(p, sp)
     if sp.punch_search_max_width_ratio is not None:
         # 0 switches the width test off; a ratio below 1 would leave even
         # Bragg-sharp candidates.

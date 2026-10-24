@@ -13,8 +13,8 @@
 // limits and words, so the prompt cannot drift from the verdict (plan 1.6).
 
 import { connective, evidence, reading, remedy, written } from "../inference";
-import { PEDESTAL_LIMIT } from "../metrics/flatten";
-import { BACK_FFT_R_OK, EVEN_PART, FLATTEN_FLOOR_SIGMA_NOTE, FLOOR_SIGMA_WHY, PEDESTAL_SHELLS, STAGE_NAMES, type Stage } from "../verdicts/rules";
+import { FLATTEN_FLOOR_PERCENTILE, PEDESTAL_LIMIT } from "../metrics/flatten";
+import { BACK_FFT_R_OK, EVEN_PART, FLATTEN_FLOOR_SIGMA_NOTE, FLOOR_SIGMA_WHY, PEDESTAL_SHELLS, PEDESTAL_WHERE, STAGE_NAMES, type Stage } from "../verdicts/rules";
 
 /** A stage as {{achieved}} names it, opening a sentence. */
 const opening = (stage: Stage): string => STAGE_NAMES[stage].charAt(0).toUpperCase() + STAGE_NAMES[stage].slice(1);
@@ -70,7 +70,7 @@ bright_fill_fraction flags fills left implausibly bright${evidence(" (a peak not
 checkerboard_fraction ≈ 0.5 is random${evidence(`; approaching 1 signals a periodic interpolation
 artefact (a 'strange pattern')`)}.
 
-- flatten: the per-|Q|-shell low floor (25th percentile) of the backfilled (floor_before)
+- flatten: the per-|Q|-shell low floor (the run's own floor percentile, the ${FLATTEN_FLOOR_PERCENTILE}th by default) of the backfilled (floor_before)
 and flattened (floor_after) slice, averaged over the inner / middle / outer third of |Q|.
 ${reading("After a good flatten floor_after is near 0 in all three thirds; ")}after_floor_max_sigma (the
 largest |shell floor| in robust σ) is ${FLATTEN_FLOOR_SIGMA_NOTE}, in the flatten's verdict: ${FLOOR_SIGMA_WHY}. removed_fraction is the pedestal removed as a share of the level.
@@ -80,7 +80,7 @@ floor_trend (rank correlation of the floors with |Q|) and floor_span_fraction (t
 share of the diffuse level), over ${PEDESTAL_SHELLS} (floor_judged_q gives their |Q| range),
 catch a pedestal the floor in σ hides beside strong diffuse${evidence(`: a trend near ±1 with a span near 1 is a leftover
 background (a rising one is inelastic: thermal diffuse, and Compton with X-rays; the model's b·Q² term)`)}.
-The flatten's verdict judges these two alone: a trend (in magnitude) and a span both ${PEDESTAL_LIMIT} or more are a pedestal left.
+The flatten's verdict judges these two alone, over ${PEDESTAL_WHERE} shells: a trend (in magnitude) and a span both ${PEDESTAL_LIMIT} or more are a pedestal left.
 
 - delta_pdf: feature_snr is the strongest feature amplitude in background-σ units (the
 origin self-correlation peak is excluded)${evidence("; ≳ 5 means clear structured signal above noise")}.
@@ -150,8 +150,8 @@ rims allow, azimuthal ratio near 1)`)}${connective(".\n", "; ")}${reading("(4) "
 assess_stage pdf and symmetry_check; qmax_coverage says how far the forward transform's window reaches in |Q| and
 whether that stays inside the fully measured shells`)}${connective(".\n", "; ")}${reading("(6) ")}${connective("A", "a")} UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes${reading(`:
 ub_check and grain_check for the UB, ub_check for the origin, qmax_coverage for the counts`)}.
-On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
-symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
+On symmetrised data, symmetry_check says whether the ΔPDF kept each operation of the
+declared symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features
 carry the colour and the FFT ripple stays near neutral${remedy(`: use it when the ΔPDF looks too
 bright or full of ripple, and before describing a ΔPDF figure`)}. dpdf_peaks lists the ΔPDF's
@@ -176,7 +176,7 @@ grade a stage yourself. Whether the run met its goal is {{achieved}}, which the 
 from the checks of this reply: quote it and explain it, never decide it. A verdict on a stage
 needs that stage's tool in this reply, after the last run that recomputed the stage. Write a
 tool's number as a reference, {{tool.field}}: the tool and the field's path in its result, as
-in {{ub_check.orientation_change_deg}} or {{assess_stage.flatten.max_floor_trend}}; the app
+in {{ub_check.orientation_change_deg}} or {{assess_stage.flatten.floor_trend}}; the app
 fills it in from the result. Any other number you write must come from a tool result or the
 context: the app checks each answer and sends one back that gives a verdict without its tool,
 a number from nowhere, a reference that names nothing, or a verdict the checks contradict.

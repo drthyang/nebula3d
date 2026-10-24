@@ -8,7 +8,7 @@
 
 import { isTooCoarse } from "../metrics/coarse";
 import type { ParamValue } from "../tune/catalog";
-import { verdicts, WORDS, type Kind, type Outcome } from "../verdicts";
+import { pedestalOfVolume, verdicts, WORDS, type Kind, type Outcome } from "../verdicts";
 
 /** A check's verdict: its outcome's kind (verdicts/). */
 export type Verdict = Kind;
@@ -306,19 +306,28 @@ function flattenCheck(measured: Obj | null | undefined, verdict: Verdict | undef
   if (verdict === undefined) return null;
   const m = measured ?? {};
   const floor = num(m.max_after_floor_sigma);
-  const trend = num(m.max_floor_trend);
-  const span = num(m.max_floor_span_fraction);
+  // The whole volume's pedestal (plan 4.1), or the planes' largest in an evaluation recorded before it.
+  const volume = pedestalOfVolume(m);
+  const trend = num(volume ? m.floor_trend : m.max_floor_trend);
+  const span = num(volume ? m.floor_span_fraction : m.max_floor_span_fraction);
   return {
     title: "Flatten",
     // The pedestal rule; the floor in σ is reported, not judged (verdicts/rules.ts, FLATTEN_FLOOR_SIGMA_NOTE).
     verdict,
-    headline: `floor ≤ ${fmt(floor)}σ · trend ≤ ${fmt(trend)} · span ≤ ${fmt(span)}`,
+    headline: volume ? `floor ≤ ${fmt(floor)}σ · trend ${fmt(trend)} · span ${fmt(span)}` : `floor ≤ ${fmt(floor)}σ · trend ≤ ${fmt(trend)} · span ≤ ${fmt(span)}`,
     criterion,
-    details: [
-      ["Largest leftover floor (reported, not judged)", `${fmt(floor)} σ`],
-      ["Largest floor trend with |Q|", fmt(trend)],
-      ["Largest floor span (share of the diffuse)", fmt(span)],
-    ],
+    details: volume
+      ? [
+          ["Largest leftover floor (reported, not judged)", `${fmt(floor)} σ`],
+          ["Floor trend with |Q| (the whole volume)", fmt(trend)],
+          ["Floor span (share of the diffuse, the whole volume)", fmt(span)],
+          ["|Q| judged (Å⁻¹)", Array.isArray(m.floor_judged_q) ? (m.floor_judged_q as unknown[]).map(fmt).join("–") : fmt(null)],
+        ]
+      : [
+          ["Largest leftover floor (reported, not judged)", `${fmt(floor)} σ`],
+          ["Largest floor trend with |Q|", fmt(trend)],
+          ["Largest floor span (share of the diffuse)", fmt(span)],
+        ],
   };
 }
 

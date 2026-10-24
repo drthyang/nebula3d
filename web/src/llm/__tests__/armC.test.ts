@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { JobEvent } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
-import { runAgent, type AgentResult } from "../agent";
+import { runAgent, toolStepsIn, type AgentResult, type AgentStep } from "../agent";
 import { answerIssues, issuesPrompt } from "../answerChecks";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
@@ -34,8 +34,8 @@ import type { ChatMessage, StreamDelta, ToolSpec } from "../provider/client";
 import { fillReferences } from "../references";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, readSkill } from "../skills";
-import { CHAT_TOOLS, toolSpecs, toolsWithSkills, unreadSkillRefusal } from "../tools";
-import { describeStageParams, TUNE_STAGES } from "../tune/catalog";
+import { callTool, CHAT_TOOLS, toolSpecs, toolsWithSkills, unreadSkillRefusal } from "../tools";
+import { describeStageParams, SAMPLE_PARAMS, sampleFactRefusal, TUNE_STAGES } from "../tune/catalog";
 import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS } from "../tune/prompts";
 import { namedInOwnWords, quotations, skillNamesIn, skillSentences, skillSentencesIn, type SkillSentence } from "./methodText";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
@@ -50,6 +50,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
@@ -180,7 +181,9 @@ const FIRST = [
 ].join(" ");
 const REVISED = "The grid is 97 × 97 × 97 voxels and the cell edge is {{describe_dataset.cell.a}} Å.";
 
-// The second turn: verdicts with no check in that reply, and the run called a success.
+// The second turn: verdicts with no check in that reply, and the run called a
+// success; with a number from the first turn's flatten measured before its
+// rerun (beforeAll adds it, from the result).
 const FOLLOW_UP = "Is there a second grain, and does the ΔPDF keep its symmetry?";
 const SECOND = "There is no second grain, and the ΔPDF keeps its six-fold symmetry. The run is ready for analysis.";
 const SECOND_REVISED = "Those need checks in this reply; I will run them next.";
@@ -193,7 +196,7 @@ const scripted = (calls: Call[], round: number): StreamDelta[] => [
 let context: PipelineContext;
 
 /** One reply through runAgent with the skills off, as arm C runs it, its model scripted: every request it sent, and what it returned. */
-async function reply(messages: ChatMessage[], script: StreamDelta[][], earlierResults: string[]): Promise<{ sent: Sent[]; result: AgentResult }> {
+async function reply(messages: ChatMessage[], script: StreamDelta[][], earlierSteps: AgentStep[]): Promise<{ sent: Sent[]; result: AgentResult }> {
   const sent: Sent[] = [];
   model.streamChat.mockImplementation((args: Sent) => {
     sent.push({ messages: [...args.messages], tools: args.tools, toolChoice: args.toolChoice });
@@ -208,7 +211,7 @@ async function reply(messages: ChatMessage[], script: StreamDelta[][], earlierRe
   const result = await runAgent({
     messages,
     tools: CHAT_TOOLS,
-    ctx: { dataset: DATASET, datasets: DATASETS, skills: setup.skills, skillsRead: setup.skillsRead, earlierResults },
+    ctx: { dataset: DATASET, datasets: DATASETS, skills: setup.skills, skillsRead: setup.skillsRead, earlierSteps },
     settings,
     signal: new AbortController().signal,
     maxRounds: ROUNDS.length + 2,
@@ -256,13 +259,17 @@ describe("arm C's session, with the skills off", () => {
       { role: "user" as const, content: TASK },
       { role: "assistant" as const, content: first.result.content },
     ];
-    const earlier = first.result.steps.flatMap((s) => (s.status === "done" && s.result ? [s.result] : []));
+    const earlier = toolStepsIn([first.result]);
+    // And a number from the first turn's flatten measured before its rerun: stale in this one.
+    const before = first.result.steps.find((s) => s.name === "assess_stage" && s.args.stage === "flatten")!;
+    const plane = (JSON.parse(before.result!) as { flatten: { per_plane: { h0l: { after_negative_fraction: number } } } }).flatten.per_plane.h0l;
+    const secondAnswer = `${SECOND} On h0l, ${plane.after_negative_fraction} of the voxels were negative.`;
     const followUp = buildChatMessages(context, history, FOLLOW_UP, null, { tools: true, skills: false });
-    second = await reply(followUp, [[{ content: SECOND }], [{ content: SECOND_REVISED }]], earlier);
+    second = await reply(followUp, [[{ content: secondAnswer }], [{ content: SECOND_REVISED }]], earlier);
 
     for (const [run, opened, answer] of [
       [first, opening.length, FIRST],
-      [second, followUp.length, SECOND],
+      [second, followUp.length, secondAnswer],
     ] as const) {
       for (const m of run.sent[run.sent.length - 1].messages.slice(opened)) {
         if (m.role === "user") sentBack.push({ text: String(m.content), answer, steps: run.result.steps });
@@ -290,6 +297,7 @@ describe("arm C's session, with the skills off", () => {
       /These references name no value/,
       /this contradicts the verdict a check computed/,
       /These numbers appear in no tool result/,
+      /These numbers were measured before the last run recomputed the outputs they describe/,
       /^The tool calls are bringing nothing new\. Answer now/m,
     ]) {
       expect(all).toMatch(line);
@@ -398,5 +406,49 @@ describe("arm C's session, with the skills off", () => {
         expect(skillSentencesIn(text, MIN_WORDS).map(label), stage).toEqual([]);
       }
     }
+  });
+});
+
+// update_settings refuses a change to a fact about the sample that the user's
+// latest message does not name (tune/catalog.ts). Its refusal is the tool's
+// own behaviour, the same in both arms: it says what the setting is and what
+// to do, and names no skill, no tool, no stage, and no inference.
+describe("arm C's refusal of a change to a fact about the sample", () => {
+  const offered = toolsWithSkills(CHAT_TOOLS, false);
+  const armC = { dataset: DATASET, datasets: DATASETS, skills: false, skillsRead: new Set<string>(), userMessage: TASK };
+  const spans = writtenInferences()
+    .map((e) => e.span.text.trim())
+    .filter((t) => t.split(/\s+/).length >= 3);
+  /** What of the method a text holds: a skill's name or sentence, the word skill, a tool's or a stage's name, an inference span. */
+  const method = (text: string): string[] => [
+    ...skillNamesIn(text),
+    ...skillSentencesIn(text, MIN_WORDS).map(label),
+    ...namedInOwnWords(text),
+    ...spans.filter((t) => text.includes(t)),
+  ];
+
+  it("names no skill, tool or stage, and holds no inference, for every fact, alone or beside another change", async () => {
+    usePipelineStore.setState({ running: false });
+    for (const p of SAMPLE_PARAMS) {
+      const value = p.kind === "fractions" ? "none" : p.min ?? 1;
+      const alone = await callTool(armC, "update_settings", { changes: { [p.key]: value } }, { tools: offered });
+      expect(alone.ok).toBe(false);
+      expect(alone.text).toBe(`Error: ${sampleFactRefusal(p.key)}`);
+      expect(method(alone.text), alone.text).toEqual([]);
+      // Beside a change it makes: the refusal is the same words, in its result.
+      const beside = await callTool(armC, "update_settings", { changes: { punchMinSig: 7, [p.key]: value } }, { tools: offered });
+      expect(beside.ok, beside.text).toBe(true);
+      const { refused } = JSON.parse(beside.text) as { refused: { setting: string; why: string }[] };
+      expect(refused).toEqual([{ setting: p.key, why: sampleFactRefusal(p.key) }]);
+      expect(method(refused[0].why), refused[0].why).toEqual([]);
+    }
+    expect(spans.length).toBeGreaterThan(60);
+  });
+
+  it("reads as arm B's: the refusal is the tool's own, not a skill's", async () => {
+    const changes = { changes: { punchSupercellH: 2 } };
+    const c = await callTool(armC, "update_settings", changes, { tools: offered });
+    const b = await callTool({ ...armC, skills: true, skillsRead: new Set(["bragg-node-audit"]) }, "update_settings", changes);
+    expect(b.text).toBe(c.text);
   });
 });

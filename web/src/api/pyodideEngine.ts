@@ -31,6 +31,7 @@ import type {
   DpdfFeatures,
   RingDiagnostics,
   RingIsotropy,
+  ShellFloors,
   Slice,
   SliceHeader,
   TuningPromote,
@@ -425,6 +426,9 @@ export const engine = {
   },
   ringIsotropy(volumeId: string, q: string, fwhm: string): Promise<RingIsotropy> {
     return jsonCall<RingIsotropy>("volume_ring_isotropy_json", [volumeId, q, fwhm]);
+  },
+  shellFloors(volumeId: string): Promise<ShellFloors> {
+    return jsonCall<ShellFloors>("volume_shell_floors_json", [volumeId]);
   },
   volumeSlice(volumeId: string, plane: string, value: number, interp: boolean): Promise<Slice> {
     return sliceCall("volume_slice", [volumeId, plane, value, interp]);

@@ -190,16 +190,19 @@ def test_edge_trim_is_symmetric_with_the_declared_symmetry():
 
 def test_punch_mask_is_symmetric_with_the_declared_symmetry():
     # Regression (6/m data, 2026-10-07): with the default PunchParams (its
-    # H-only guard and thirds exclusion included) the punch of exactly
-    # symmetric data was not symmetric; with the declared operations it is.
+    # H-only guard and, then the default, the thirds exclusion included) the
+    # punch of exactly symmetric data was not symmetric; with the declared
+    # operations it is.  The thirds are named here: they are no longer the
+    # punch's default (plan 4.15, the sample's declared modulation).
     vol = _hex_volume()
     gs = GridSymmetry.for_volume(vol, parse_symmetry_ops(SIX_M))
     measured = vol.mask & np.isfinite(vol.data)
+    thirds = PunchParams(search_exclude_h_fractions=(0.3333, 0.6667))
 
-    plain = measured & ~punch_bragg(vol, PunchParams()).mask
+    plain = measured & ~punch_bragg(vol, thirds).mask
     assert _asymmetric(plain, measured) > 0
 
-    out = punch_bragg(vol, PunchParams(), symmetry=gs)
+    out = punch_bragg(vol, thirds, symmetry=gs)
     punched = measured & ~out.mask
     assert punched.sum() > 1000
     assert _asymmetric(punched, measured) == 0

@@ -25,34 +25,20 @@
 //                           and NEBULA_VALIDATION_RENDER its transcripts.
 //
 // The record is rewritten after every run, so a run cut short keeps what it measured.
+// Each run is runCase's (validationRun.ts), and starts fresh: it reads nothing an
+// earlier run left in the app, and its record keeps the token calibration it
+// started from.
 
 import { describe, it } from "vitest";
 
 import { fetchDatasets } from "../../api/client";
-import { configOf } from "../../state/configMemory";
-import { usePipelineStore } from "../../state/pipelineStore";
-import { MAX_TOOL_ROUNDS, runAgent, type AgentProgress } from "../agent";
-import { loadPipelineContext } from "../context/loadContext";
-import { CHAT_TOOLS } from "../tools";
+import { MAX_TOOL_ROUNDS } from "../agent";
 import { backendUrl, env, exists, makeDir, readText, useBackend, writeText } from "./backend";
 import { installEventSource } from "./eventSource";
-import { OfferRecorder } from "./offers";
 import { candidateFindings, renderTranscript, type Finding } from "./findings";
-import type { EvalRun } from "./harness";
-import {
-  ARMS,
-  armSetup,
-  buildRecord,
-  caseNamed,
-  changedElsewhere,
-  regradeRecord,
-  validationDatasets,
-  WhyTracker,
-  type Arm,
-  type RunRecord,
-  type Split,
-} from "./validation";
-import { costOf, modelNamed, paidRunGate, plan, runContext, SpendTracker } from "./validationModels";
+import { ARMS, caseNamed, regradeRecord, validationDatasets, type Arm, type RunRecord, type Split } from "./validation";
+import { modelNamed, paidRunGate, plan, runContext, SpendTracker } from "./validationModels";
+import { runCase } from "./validationRun";
 
 const live = env("NEBULA_VALIDATION") === "1";
 const renderFrom = env("NEBULA_VALIDATION_RENDER");
@@ -149,80 +135,32 @@ describe.skipIf(!live)("validation, live", () => {
       }
       const dataset = datasets.find((d) => d.stem === job.stem)!;
 
-      // Every run starts from the defaults, and sees its own dataset alone: another
+      // The run starts fresh (validationRun.ts: nothing an earlier run left in the
+      // app is read), from the defaults, and sees its own dataset alone: another
       // run's volume (or the control's) in compare_datasets would answer for it.
-      usePipelineStore.getState().patch(configOf(usePipelineStore.getInitialState()));
-      const { context: pipelineContext } = await loadPipelineContext(dataset);
-      const setup = armSetup(job.arm, pipelineContext);
-      const before = await fetchDatasets();
-
-      const why = new WhyTracker();
-      let progress: AgentProgress = { content: "", reasoning: "", steps: [] };
-      const abort = new AbortController();
-      const timer = setTimeout(() => abort.abort(), minutes * 60_000);
-      let giveUp: ReturnType<typeof setTimeout> | undefined;
-      // The abort stops the model's stream; a tool waiting on the backend may not hear
-      // it, so the run is also given up a minute later, with the steps it had.
-      const stalled = new Promise<never>((_, reject) => {
-        giveUp = setTimeout(() => reject(new Error(`timed out after ${minutes} min`)), (minutes + 1) * 60_000);
-      });
-      // What goes over the wire to the model, request by request: the tools it was offered.
-      const recorder = new OfferRecorder();
-      const stopRecording = recorder.install();
-      const t0 = performance.now();
-      const startedAt = new Date().toISOString();
-      let evalRun: EvalRun;
+      let record: RunRecord;
       try {
-        const result = await Promise.race([
-          runAgent({
-            messages: setup.messages,
-            // Every tool the Pilot ships: the run's switch (ctx.skills) decides what arm C is offered.
-            tools: CHAT_TOOLS,
-            ctx: { dataset, datasets: [dataset], skills: setup.skills, skillsRead: setup.skillsRead },
-            settings: { baseUrl, model: model.model, apiKey, temperature: model.temperature ?? 0.2, attachImages: false, useTools: true, followViews: false },
-            signal: abort.signal,
-            usage: true,
-            maxRounds: rounds,
-            onProgress: (p) => {
-              progress = p;
-              why.update(p);
-            },
-          }),
-          stalled,
-        ]);
-        why.update(result);
-        evalRun = { scenario: job.case.id, steps: result.steps, content: result.content, note: result.note, failure: result.failure ?? null, latencyMs: performance.now() - t0, usage: result.usage ?? null, verdict: result.verdict ?? null };
+        record = await runCase({
+          job,
+          dataset,
+          model: { key: model.key, label: model.label, provider: model.provider, model: model.model, local: model.local },
+          settings: { baseUrl, model: model.model, apiKey, temperature: model.temperature ?? 0.2 },
+          rounds,
+          minutes,
+          price: model.price,
+          context: { tokens: runWindow.tokens, min_tokens: runWindow.min_tokens, read_from: runWindow.read_from },
+        });
       } catch (e) {
-        why.update(progress);
-        const error = abort.signal.aborted ? `timed out after ${minutes} min` : (e as Error).message;
-        evalRun = { scenario: job.case.id, steps: progress.steps, content: progress.content, error, latencyMs: performance.now() - t0, usage: null };
+        // It could not start (a pipeline or tuning run the run before left going
+        // did not end, or the backend failed): the record keeps the runs so far.
+        await save(false);
+        throw new Error(`stopped before ${job.stem}: ${(e as Error).message}`);
       }
-      clearTimeout(timer);
-      clearTimeout(giveUp);
-      abort.abort(); // lets go of anything still waiting on this run
-      stopRecording();
-
-      const elsewhere = changedElsewhere(before, await fetchDatasets(), dataset.id);
-      const costUsd = costOf(evalRun.usage, model.price);
       if (tracker) {
-        tracker.record({ case: job.case.id, arm: job.arm, run: job.run, usd: costUsd });
+        tracker.record({ case: job.case.id, arm: job.arm, run: job.run, usd: record.cost_usd });
         await writeText(ledgerUrl, `${JSON.stringify(tracker.toJSON(), null, 1)}\n`);
       }
-      const record = buildRecord({
-        case: job.case,
-        arm: job.arm,
-        run: job.run,
-        dataset,
-        model: { key: model.key, label: model.label, provider: model.provider, model: model.model, local: model.local },
-        evalRun,
-        why: why.why,
-        maxRounds: rounds,
-        started: startedAt,
-        costUsd,
-        elsewhere,
-        offers: recorder.offers,
-        context: { tokens: runWindow.tokens, min_tokens: runWindow.min_tokens, read_from: runWindow.read_from },
-      });
+      const costUsd = record.cost_usd;
       records.push(record);
       await writeText(new URL(transcriptName(record), transcripts), renderTranscript(record, candidateFindings(record, job.case)));
       await save(false);

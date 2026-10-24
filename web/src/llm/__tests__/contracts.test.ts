@@ -47,6 +47,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
@@ -199,10 +200,12 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
     expect(r.text).toContain("no coverage");
   });
 
-  it("symmetry_check: a cell with no in-plane symmetry to test is a note alone", async () => {
+  it("symmetry_check: with no operation declared and no in-plane ones to fall back on, the verdict alone", async () => {
+    const realMeta = api.fetchMeta.getMockImplementation()!;
+    api.fetchMeta.mockImplementation(async (id: string) => ({ ...(await realMeta(id)), symmetry: null, symmetry_ops: null }));
     const real = api.fetchDpdfMeta.getMockImplementation()!;
     api.fetchDpdfMeta.mockImplementation(async (id: string) => ({ ...(await real(id)), lattice: { a: null, b: null, c: null } }));
-    expect(Object.keys(await run("symmetry_check"))).toEqual(["note"]);
+    expect(Object.keys(await run("symmetry_check"))).toEqual(["verdict"]);
   });
 
   it("dpdf_contrast: reset reads what the viewer went back to; a brighter limit adds its note", async () => {

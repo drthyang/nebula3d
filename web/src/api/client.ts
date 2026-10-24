@@ -13,6 +13,7 @@ import type {
   PipelineRunRequest,
   RingDiagnostics,
   RingIsotropy,
+  ShellFloors,
   Slice,
   SliceHeader,
   TuningPromote,
@@ -183,6 +184,16 @@ export function fetchVolumeTexture(volumeId: string, limit = 20, limits: Texture
   return getJSON<VolumeTexture>(`/api/volumes/${encodeURIComponent(volumeId)}/texture?${q}`);
 }
 
+/**
+ * The floor of every |Q| shell over the whole volume, on the shells and at
+ * the percentile the flatten recorded in the file (its defaults without a
+ * record); for the flattened stage, its input's too, and the diffuse level.
+ */
+export function fetchShellFloors(volumeId: string): Promise<ShellFloors> {
+  if (PYODIDE_MODE) return engine.shellFloors(volumeId);
+  return getJSON<ShellFloors>(`/api/volumes/${encodeURIComponent(volumeId)}/shell-floors`);
+}
+
 /** Which shells (|Q| centre, FWHM in Å⁻¹) of a volume are powder rings: each rises in nearly every direction. */
 export function fetchRingIsotropy(volumeId: string, shells: { q: number; fwhm: number }[]): Promise<RingIsotropy> {
   const q = shells.map((s) => s.q.toFixed(4)).join(",");
@@ -213,7 +224,7 @@ export function fetchDpdfMeta(volumeId: string): Promise<DeltaPdfMeta> {
   return getJSON<DeltaPdfMeta>(`/api/deltapdf/${encodeURIComponent(volumeId)}/meta`);
 }
 
-/** The ΔPDF's strongest extrema above `minSigma` robust σ, grouped by sign, length and size. */
+/** The ΔPDF's strongest extrema above `minSigma` robust σ, grouped by the declared point group, else by sign, length and size. */
 export function fetchDpdfFeatures(volumeId: string, minSigma = 5, limit = 12): Promise<DpdfFeatures> {
   if (PYODIDE_MODE) return engine.dpdfFeatures(volumeId, minSigma, limit);
   const params = new URLSearchParams({ min_sigma: String(minSigma), limit: String(limit) });

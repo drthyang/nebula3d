@@ -53,7 +53,7 @@ units — ≲ 1 is a seamless blend, large means the fill sits above/below its s
 bright_fill_fraction flags fills left implausibly bright.
 checkerboard_fraction ≈ 0.5 is random.
 
-- flatten: the per-|Q|-shell low floor (25th percentile) of the backfilled (floor_before)
+- flatten: the per-|Q|-shell low floor (the run's own floor percentile, the 25th by default) of the backfilled (floor_before)
 and flattened (floor_after) slice, averaged over the inner / middle / outer third of |Q|.
 after_floor_max_sigma (the
 largest |shell floor| in robust σ) is reported, not judged, in the flatten's verdict: σ is the cut's own spread, and the floors follow the diffuse level. removed_fraction is the pedestal removed as a share of the level.
@@ -62,7 +62,7 @@ voxels sit below 0 after a good flatten by construction (after_negative_fraction
 floor_trend (rank correlation of the floors with |Q|) and floor_span_fraction (their range as a
 share of the diffuse level), over the outer half of the |Q| shells the counts reach (floor_judged_q gives their |Q| range),
 catch a pedestal the floor in σ hides beside strong diffuse.
-The flatten's verdict judges these two alone: a trend (in magnitude) and a span both 0.8 or more are a pedestal left.
+The flatten's verdict judges these two alone, over the volume's shells: a trend (in magnitude) and a span both 0.8 or more are a pedestal left.
 
 - delta_pdf: feature_snr is the strongest feature amplitude in background-σ units (the
 origin self-correlation peak is excluded).
@@ -110,8 +110,8 @@ rerun. After any run, measure its outputs before you judge them, and say what yo
 what you changed and what it did to the numbers.
 
 A run is judged on these properties: the ring removal is clean; the Bragg punch removes the Bragg peaks cleanly; the backfill meets its surroundings, and the punch and backfill add no texture to reciprocal space; the flatten leaves no pedestal; the 3D-ΔPDF's back-FFT reproduces the data's even part under Q → −Q, its declared symmetry is kept, and Qmax is not past the data coverage; a UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes.
-On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
-symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
+On symmetrised data, symmetry_check says whether the ΔPDF kept each operation of the
+declared symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features
 carry the colour and the FFT ripple stays near neutral. dpdf_peaks lists the ΔPDF's
 strongest features from the whole volume, each with its vector, sign and size.
@@ -130,7 +130,7 @@ grade a stage yourself. Whether the run met its goal is {{achieved}}, which the 
 from the checks of this reply: quote it and explain it, never decide it. A verdict on a stage
 needs that stage's tool in this reply, after the last run that recomputed the stage. Write a
 tool's number as a reference, {{tool.field}}: the tool and the field's path in its result, as
-in {{ub_check.orientation_change_deg}} or {{assess_stage.flatten.max_floor_trend}}; the app
+in {{ub_check.orientation_change_deg}} or {{assess_stage.flatten.floor_trend}}; the app
 fills it in from the result. Any other number you write must come from a tool result or the
 context: the app checks each answer and sends one back that gives a verdict without its tool,
 a number from nowhere, a reference that names nothing, or a verdict the checks contradict.
