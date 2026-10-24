@@ -51,6 +51,7 @@ const api = vi.hoisted(() => ({
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -180,14 +181,14 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
     expect([cut.bragg_punch_leftover, cut.backfill, cut.flatten]).toEqual([null, null, null]);
   });
 
-  it("texture_check: a cut whose slices could not be read is its label alone", async () => {
+  it("texture_check: a cut whose slices could not be read has no azimuthal ratio", async () => {
     const real = api.fetchSlice.getMockImplementation()!;
     api.fetchSlice.mockImplementation(async (id: string, ...rest: unknown[]) => {
       if (id.endsWith(".backfilled")) throw new Error("the slice could not be read");
       return real(id, ...rest);
     });
     const result = await run("texture_check", { plane: "hk0", value: 0 });
-    expect(result.per_cut).toEqual([{ cut: "H–K plane at L = 0" }]);
+    expect(result.per_cut).toEqual([{ cut: "H–K plane at L = 0", azimuthal_ratio: null }]);
   });
 
   // The coverage is measured once, in Python: without it there is no result

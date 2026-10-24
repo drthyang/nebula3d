@@ -21,6 +21,7 @@ import type {
   UbCheck,
   VolumeCoverage,
   VolumeMeta,
+  VolumeTexture,
 } from "./types";
 
 function bandParams(qMin?: number, qMax?: number, rMin?: number, rMax?: number): string {
@@ -158,6 +159,29 @@ export async function fetchUbCheck(volumeId: string, cell: [number, number, numb
     throw new Error(detail ?? `${r.status} ${r.statusText}: ${url}`);
   }
   return (await r.json()) as UbCheck;
+}
+
+/** The limits of the fill-bias rule a texture request judges by; one left out is the server's (texture.ts's). */
+export interface TextureLimits {
+  minSigma?: number; // the median bias in the rim's σ
+  oneWay?: number; // the share of the judged holes leaning the median's way
+  minHoles?: number; // the fewest judged holes
+  floor?: number; // the median bias in units of the local diffuse level
+}
+
+/**
+ * Whether a backfilled stage's fills sit systematically off the diffuse
+ * around their holes: the fill-bias rule on every punch hole, with its 3-D
+ * rim, and the `limit` holes farthest outside their range.
+ */
+export function fetchVolumeTexture(volumeId: string, limit = 20, limits: TextureLimits = {}): Promise<VolumeTexture> {
+  const { minSigma = null, oneWay = null, minHoles = null, floor = null } = limits;
+  if (PYODIDE_MODE) return engine.volumeTexture(volumeId, limit, minSigma, oneWay, minHoles, floor);
+  const q = new URLSearchParams({ limit: String(limit) });
+  for (const [key, value] of [["min_sigma", minSigma], ["one_way", oneWay], ["min_holes", minHoles], ["floor", floor]] as const) {
+    if (value != null) q.set(key, String(value));
+  }
+  return getJSON<VolumeTexture>(`/api/volumes/${encodeURIComponent(volumeId)}/texture?${q}`);
 }
 
 /**

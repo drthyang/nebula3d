@@ -14,7 +14,7 @@
   "web/src/llm/__tests__/tokenBudget.test.ts (on LM Studio at 32k, were both skills read gated at the cap, the largest request still leaves MIN_REPLY)",
   "web/src/llm/__tests__/modelVisible.test.ts (the snapshots unchanged)"
  ],
- "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 5.3), for the code only. Each skill's `## Gates` text waits for the user: no skill has the section yet, so every skill is shortened byte for byte as before, the model-visible snapshots are unchanged, and the token-budget breakdown is identical, value for value. Once both skills of the worst turn carry gates at the cap, its largest request on LM Studio at 32k grows by at most about 1.9k of the 3.7k tokens it has to spare past MIN_REPLY.",
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 5.3), for the code only. Each skill's `## Gates` text waits for the user: no skill has the section yet, so every skill is shortened byte for byte as before, the model-visible snapshots are unchanged, and the token-budget breakdown is identical, value for value. Once both skills of the worst turn carry gates at the cap, its largest request on LM Studio at 32k grows by at most about 1.9k of the 3.7k tokens it has to spare past MIN_REPLY. On 2026-10-24 the manager, on the user's delegation, lowered GATES_MAX to 1,000 characters (SKILL_STUB_MAX 1,600): with 4.2's texture_check over every hole (#79) the 32k guard was 24 tokens short at 1,200; at 1,000 it keeps about 260 tokens to spare. The cap binds each skill's `## Gates` text, which the user writes.",
  "decision": {
   "by": "the manager, on the user's delegation",
   "on": "2026-10-19",

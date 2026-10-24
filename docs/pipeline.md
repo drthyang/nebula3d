@@ -444,29 +444,27 @@ provisional):
    voxels apart or more. The nodes are the grid's: integer h, k and l, one
    r.l.u. apart along the coarsest axis (a supercell's parent nodes lie
    further apart, so this errs toward not judging). The rule reads the median
-   hole, so a cut is judged only where its median hole has that room; else it
-   says why (`not_judged`: "grid too coarse: …"), measures no bias and gives no
-   verdict (`systematic_fill_bias` null). The check passes only when every cut
-   it reads was judged; a judged cut's bias still needs attention. The fill's
-   gap band is the rim's first ring or two, inside its four, so it adds
-   nothing to the reach; it leaves the trend two rings or more while it is two
-   voxels deep or less (step 4's rim of one ring). On the validation's dev
-   crystal, 161 points over ±4 r.l.u. put the nodes 20 voxels apart, and the
-   median hole reaches 2 to 3.7 voxels from its centre on a cut (2 to 3.6 in
-   3-D): the rims need 12 to 15.5. 81 points put them 10 apart, a grid too
-   coarse for the punch's node test (below): its holes, the search's, reach 2
-   voxels on most cuts (1 to 2 in 3-D), so the rims need 12, and a cut whose
-   median hole reaches one voxel is judged.
+   hole, so the fills are judged only where the median hole has that room;
+   else the check says why (`not_judged`: "grid too coarse: …"), measures no
+   bias and gives no verdict (`systematic_fill_bias` null). The fill's gap
+   band is the rim's first ring or two, inside its four, so it adds nothing to
+   the reach; it leaves the trend two rings or more while it is two voxels
+   deep or less (step 4's rim of one ring). On the validation's dev crystal,
+   161 points over ±4 r.l.u. put the nodes 20 voxels apart, and the median
+   hole reaches 2 to 3.6 voxels from its centre in 3-D: the rims need 12 to
+   15. 81 points put them 10 apart, a grid too coarse for the punch's node
+   test (below), and the fills are not judged there.
 
-The Pilot reads holes on cuts, the three principal planes through the origin:
-a hole there is a 4-connected component of the cut, and its rim the ring
-around it in the plane. A cut through a hole's edge sees a small section of it,
-whose rim in the plane lies off the node, where the diffuse is rounded, so the
-range the rim allows depends on where the cut crosses the hole; peaks off those
-planes (satellites) are crossed at their edges only, or not at all.
+The Pilot first read holes on cuts, the three principal planes through the
+origin: a hole there is a 4-connected component of the cut, and its rim the
+ring around it in the plane. A cut through a hole's edge sees a small section
+of it, whose rim in the plane lies off the node, where the diffuse is rounded,
+so the range the rim allows depends on where the cut crosses the hole; peaks
+off those planes (satellites) are crossed at their edges only, or not at all.
 `nebula3d.analysis.fill_texture` applies the same rule to every hole of the
 volume in 3-D (server: `GET /api/volumes/{id}/texture` on a backfilled stage;
-browser: `webbridge.volume_texture_json`, the same fields). A hole is a
+browser: `webbridge.volume_texture_json`, the same fields), and since plan
+4.2 the Pilot's `texture_check` judges by it (below). A hole is a
 6-connected component of the punch's record, which the punch stage writes into
 its output (`nebula3d.pipeline.read_punch_record`); a punched file without the
 record falls back on the cut's test, unmeasured in the punched stage and
@@ -536,8 +534,30 @@ The measurement labels the holes one slab of H planes at a time, joined across
 the slabs' faces, and measures each hole inside its own box. On a 401×401×301
 float32 pair with 6000 holes it holds 7.4 MiB at its peak in low-memory mode
 (the browser) and 23 MiB natively, and takes 1.4 s; both modes give the same
-numbers. It is a measurement only: the Pilot's `texture_check` does not read
-it yet.
+numbers.
+
+Since plan 4.2 the Pilot's `texture_check` judges the fills by this 3-D read,
+asking for the rule's own limits (`FILL_BIAS_MIN_SIGMA`, `FILL_BIAS_ONE_WAY`,
+`FILL_BIAS_MIN_HOLES` and `FILL_BIAS_FLOOR` in `metrics/texture.ts`, the
+values above). It reports the summary over the holes (`n_holes`, `n_judged`,
+the two medians, the shares above and below the range and beyond the floor,
+and `systematic_fill_bias`); on a grid too coarse for the rims it measures no
+bias (those numbers null) and says why (`not_judged`), as a cut did, and with
+fewer than five holes judged it gives no verdict either. Its cuts give the
+azimuthal texture only (`per_cut`: each cut's `azimuthal_ratio`), which is no
+hole's measure. Its verdict needs attention for a systematic bias, passes
+without one, and is not judged otherwise; a result recorded by cut, before
+4.2, is judged as it was. Not judged, the fills keep the run's verdict from
+"met", as the ring removal does on a grid too coarse for its check: it is
+"not judged: the backfill's texture (grid too coarse)", or "(too few
+holes)", in `{{achieved}}` and in the report's goal (where the Backfill card
+still shows its seam's verdict). On the validation's eight dev cases the
+check's verdicts are as before: at 161 points none has a systematic bias
+(the medians within 0.07 of the level, where the cuts read up to 0.14), and
+at 81 points the grid is too coarse for the rims on all eight, in 3-D as on
+the cuts, so the fills are not judged, and the control's run is "not judged:
+the ring removal (grid too coarse for the ring check), the backfill's
+texture (grid too coarse)".
 
 ### 4. Flatten The Radial Background (Background Removal)
 
