@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
+import { useChatStore } from "../chatStore";
 import { DEFAULT_SETTINGS } from "../settings";
 import { startTuning, stopTuning, useTuneStore } from "../tune/tuner";
 
@@ -66,6 +67,7 @@ describe("the tuning run when the model server stalls", () => {
     vi.stubGlobal("fetch", vi.fn(standIn));
     requests = 0;
     onRequest = () => {};
+    useChatStore.setState({ usage: null });
     evaluate.evaluateStage.mockReset().mockResolvedValue({ total_leftover_peaks: 1, mean_punched_fraction: 0.02 });
     api.startTuningRun.mockReset().mockResolvedValue(RUN);
     api.promoteTrial.mockReset().mockResolvedValue({ ...RUN, trial: "", files: [] });
@@ -92,6 +94,8 @@ describe("the tuning run when the model server stalls", () => {
     expect(active).toBe(false);
     expect(stages[0].status).toBe("done");
     expect(finishedNote).toMatch(/^Done/);
+    // The stalled request is said apart from the one counted (usage.ts).
+    expect(useChatStore.getState().usage).toMatchObject({ requests: 1, estimated: 1, uncounted: 1 });
   });
 
   it("ends the run with the stall's reason when the request stalls again", async () => {

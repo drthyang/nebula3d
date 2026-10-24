@@ -147,6 +147,7 @@ export const useChatStore = create<ChatState>((set) => ({
               cacheWrite: t.cacheWrite + u.cacheWrite,
               requests: t.requests + u.requests,
               estimated: t.estimated + u.estimated,
+              ...(t.uncounted || u.uncounted ? { uncounted: (t.uncounted ?? 0) + (u.uncounted ?? 0) } : {}),
             }
           : { ...u },
       };
@@ -158,7 +159,7 @@ export const useChatStore = create<ChatState>((set) => ({
     const turns = saved.filter(isTurn).map(settled);
     nextId = Math.max(nextId, turns.reduce((m, t) => Math.max(m, t.id), 0) + 1);
     // The conversation's total is its replies' counts.
-    const counted = turns.flatMap((t) => (t.tokens?.requests ? [t.tokens] : []));
+    const counted = turns.flatMap((t) => (t.tokens?.requests || t.tokens?.uncounted ? [t.tokens] : []));
     const usage = counted.length
       ? counted.reduce((a, u) => ({
           input: a.input + u.input,
@@ -167,6 +168,7 @@ export const useChatStore = create<ChatState>((set) => ({
           cacheWrite: a.cacheWrite + u.cacheWrite,
           requests: a.requests + u.requests,
           estimated: a.estimated + u.estimated,
+          ...(a.uncounted || u.uncounted ? { uncounted: (a.uncounted ?? 0) + (u.uncounted ?? 0) } : {}),
         }))
       : null;
     set({ turns, error: null, usage });

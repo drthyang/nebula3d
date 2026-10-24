@@ -20,7 +20,7 @@ import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore
 import { completeChat, type ChatMessage, type TokenUsage } from "../provider/client";
 import { baseTokens, estimateTokens, PROSE_CHARS_PER_TOKEN } from "../provider/tokens";
 import { pause, RETRIES, RETRY_DELAYS_MS, STALL_MS, StallError } from "../recovery";
-import { estimated, measured, recordUsage } from "../usage";
+import { estimated, measured, notCounted, ranNothing, recordUsage } from "../usage";
 import type { LlmSettings } from "../settings";
 import {
   currentStageSettings,
@@ -137,6 +137,7 @@ async function ask(messages: ChatMessage[], llm: LlmSettings, signal: AbortSigna
         onUsage: (u) => (reported = u),
       });
     } catch (e) {
+      if (!ranNothing(e)) recordUsage(notCounted()); // sent, never completed: said apart
       if (e instanceof StallError && !signal.aborted && attempt < (RETRIES.stalled ?? 0)) {
         await pause(RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)] ?? 0, signal);
         continue;

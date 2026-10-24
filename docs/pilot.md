@@ -187,8 +187,12 @@ requests included. The counts are the server's own: OpenAI-compatible servers
 (OpenAI, Gemini, LM Studio) report them when asked, which every request does;
 Ollama's are the prompt tokens it evaluated and the reply's; Claude's include
 the cache reads and writes. A request whose server reports none is counted by
-the console's own estimate and marked ≈ ("estimated"); requests that failed or
-were stopped are not counted.
+the console's own estimate and marked ≈ ("estimated"). A request sent that did
+not complete (stopped, failed, or dropped and asked again: a stall, a crash, a
+reply its server could not parse) has no counts: none of its tokens are in the
+numbers, and it is said after them, "+1 request not counted", so a total never
+looks whole when it is not. A request its server refused outright (a client
+error) or never received ran nothing, and is not one.
 
 **Skills.** The user's methods, one per topic, live in
 `.claude/skills/<name>/SKILL.md`, where Claude Code reads them too:

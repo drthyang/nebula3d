@@ -145,7 +145,7 @@ describe("streamAnthropic", () => {
     await expect(collect(streamAnthropic({ ...base, model: "claude-opus-5-5", tools: [tool] }))).rejects.toThrow(/cut off at the output limit/);
   });
 
-  it("re-issues a turn whose tool input the SDK could not parse", async () => {
+  it("re-issues a turn whose tool input the SDK could not parse, saying the dropped one went uncounted", async () => {
     const broken = {
       async *[Symbol.asyncIterator]() {
         yield* [];
@@ -154,7 +154,7 @@ describe("streamAnthropic", () => {
       finalMessage: async () => ({}),
     };
     sdk.stream.mockReturnValueOnce(broken).mockReturnValueOnce(fakeStream([textDelta("ok")], { content: [{ type: "text", text: "ok" }], stop_reason: "end_turn" }));
-    expect(await collect(streamAnthropic({ ...base, model: "claude-opus-5-5" }))).toEqual([{ content: "ok" }]);
+    expect(await collect(streamAnthropic({ ...base, model: "claude-opus-5-5" }))).toEqual([{ discarded: true }, { content: "ok" }]);
     expect(sdk.stream).toHaveBeenCalledTimes(2);
   });
 

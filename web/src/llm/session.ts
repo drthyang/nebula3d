@@ -48,7 +48,7 @@ export async function askAssistant({
     useChatStore.getState().addTurn({
       role: "assistant",
       ...result,
-      ...(tokens.requests ? { tokens } : {}),
+      ...(tokens.requests || tokens.uncounted ? { tokens } : {}),
       note:
         result.note ??
         (empty
@@ -59,7 +59,7 @@ export async function askAssistant({
     });
   } catch (e) {
     const counted = endReply();
-    const tokens = counted.requests ? { tokens: counted } : {};
+    const tokens = counted.requests || counted.uncounted ? { tokens: counted } : {};
     const stopped = (e as Error).name === "AbortError";
     const ended = useChatStore.getState().live;
     // A step still running when the reply ended never finished: it is kept

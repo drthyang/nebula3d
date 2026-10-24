@@ -580,6 +580,9 @@ export interface StreamDelta {
   // Emitted once, after the stream ends, when the server reported the
   // request's token counts (includeUsage).
   usage?: TokenUsage;
+  // A request the provider's client dropped before its reply began and sent
+  // again itself (anthropic.ts): no counts for it.
+  discarded?: true;
 }
 
 export interface TokenUsage {

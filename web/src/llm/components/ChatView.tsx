@@ -31,7 +31,7 @@ import { reportable } from "../report/collect";
 import { Markdown } from "./Markdown";
 import { ReportView } from "./ReportView";
 import { TuneProgress } from "./TuneProgress";
-import { usageText } from "../usage";
+import { uncountedText, usageText } from "../usage";
 import { verdictLine } from "../verdict";
 
 // One-click requests that have the model act: assess the run on the four
@@ -483,10 +483,10 @@ export function ChatView({
             </svg>
             Vision
           </button>
-          {usage && usage.requests > 0 && (
+          {usage && (usage.requests > 0 || !!usage.uncounted) && (
             <span className="ai-usage-total" title={`This conversation's model requests: ${usageText(usage)}`}>
-              {usage.estimated ? "≈ " : ""}
-              {compactTokens(usage.input + usage.output)} tokens
+              {usage.requests > 0 && `${usage.estimated ? "≈ " : ""}${compactTokens(usage.input + usage.output)} tokens`}
+              {usage.requests > 0 ? (usage.uncounted ? ` ${uncountedText(usage)}` : "") : uncountedText(usage).slice(1)}
             </span>
           )}
           {turns.length > 0 && (

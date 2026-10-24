@@ -7,6 +7,8 @@
   refuses the first request asking for them, in whatever words, is asked again
   without them, and from then on is not asked. A request whose
   server reports none is counted by the console's estimate and marked ≈,
-  "estimated", never passed off as a count; failed or stopped requests are not
-  counted. The totals stay with the conversation (a reload, a saved session)
+  "estimated", never passed off as a count. A request that was sent but did not
+  complete (stopped, failed, or asked again after a stall, a crash or a reply
+  its server could not parse) has no counts, and is said apart: "+1 request
+  not counted", next to the reply's count and the conversation's total. The totals stay with the conversation (a reload, a saved session)
   and start again on Clear.
