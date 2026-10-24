@@ -212,6 +212,60 @@ the test had judged a bump of the crystal's own a powder ring. 161 points
 (0.081 Å⁻¹) put 1.99 voxels across it and fill 90 % of the cells or more from
 1.2 Å⁻¹ out, and so would 81 points over ±2 r.l.u.
 
+#### The candidates' noise floor, where the counts end early
+
+The removal finds its candidates in the radial profile pooled over the planes,
+in |Q| bins from 1.5 to 10.5 Å⁻¹ whatever the volume holds: a narrow peak over
+a SNIP baseline that rises 6 × the profile's noise (`pooled_min_snr`), the MAD
+of the residual's bin-to-bin differences, /√2. The noise is taken over pairs of
+adjacent bins that are both measured: some plane samples them, and not sparsely
+(by a tenth of the median number of planes or more). With no such pair it is
+infinite and nothing is a candidate; with every bin measured it is the estimate
+over all of them. The bins left out are those the detection fills, flat past
+the last measured one, which SNIP leaves as they are, so their differences are
+exactly 0. Counted in, as they were before (review finding B3), they pulled the
+noise of a volume whose counts end inside the range towards 0: on the
+validation's dev crystal at 161 points, to exactly 0 with the counts ending
+anywhere from 4 to 5.5 Å⁻¹, 0.04 of the measured noise at 6 to 6.5, 0.28 at 7,
+0.60 at 8 and 0.90 at 10. Every local maximum then became a candidate. On
+dev-coverage (counts cut at 4.51 Å⁻¹, no ring) there were 24 at 161 points, 18
+judged and rejected, and 10 at 81 points, which the coarse-grid notice listed
+and `pooled_confirm_rings=False` would have subtracted, 9.4 % of |I|; now there
+are none at either grid. Their keep-outs also crowded a real ring's flanks to
+two or three bins in all, so the isotropy test drew its line through those (a
+signal-to-noise of 1e14 to 1e16) and skipped its curve check, which needs four.
+On volumes cut short with rings planted, the candidates fall from 14–37 to 0–6,
+a strong ring is judged on two clean bins a side (signal-to-noise 37 to 64,
+curve 0.92 to 1.05), and a weak ring under the 6σ floor goes undetected, as
+with full coverage.
+
+The shells kept out of a judged shell's flanks are picked at half that cut,
+3σ: a keep-out only protects a flank and is never subtracted, so the lower bar
+is the cautious side, and a weak ring under 6σ beside a strong one (the Al 420
+line at 6.95 Å⁻¹ beside the 331 at 6.76 Å⁻¹ on the 97-point demo of
+`tests/test_demo.py`) no longer lifts the strong one's flank until it fails.
+The lower bar can keep the crystal's own bumps out of a fully measured ring's
+flanks too: on dev-rings at 161 points the 2.2 Å⁻¹ ring is judged without its
+curve check, still a ring, the volume unchanged.
+
+- **Not taken: judging a ring only on two flank bins a side or more**, else
+  not judged, with a retry that keeps out the confirmed rings alone. With the
+  noise from the measured bins it never fired on the volumes tried; it stays
+  an option should crowded flanks show again.
+- **A known limit, outside this fix.** A weak ring beside a strong one
+  (amplitude 0.05 against 0.5) is subtracted at 1.2 to 2.4 times its
+  amplitude in every geometry tried, full coverage included.
+- **Open, for the user: the face–corner zone.** Between the box's face and its
+  corner (6.44 and 11.16 Å⁻¹ on the dev crystal) a shell is measured in some
+  directions only, and the isotropy test judges it on what it has: 16 to 32 of
+  its 128 direction cells, where it needs 16 (`IsotropyConfig.min_cells`). On
+  a synthetic cubic crystal, shells of the crystal's own pass there as rings
+  whatever the noise (4.41 Å⁻¹ on a ±3 Å⁻¹ box; 5.01, 5.49, 7.29 and
+  9.01 Å⁻¹ on others). With this fix, `min_cells` = 64, half the sphere,
+  removes all of them, keeps every planted ring and leaves the dev cases as
+  they are. Whether a ring may be confirmed from part of the sphere, and from
+  how much of it, is the user's rule: `min_cells` stays 16 until they decide.
+
 ### 2. Punch Bragg And Satellite Peaks
 
 ```bash
