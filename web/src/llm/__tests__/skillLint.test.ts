@@ -281,9 +281,7 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "bragg-node-audit", phrase: "the cell, the symmetry the file declares", what: "the cell", fields: ["cell"] },
   { skill: "bragg-node-audit", phrase: "the cell, the symmetry the file declares", what: "the symmetry the file declares", fields: SYMMETRY_FIELDS },
   { skill: "bragg-node-audit", phrase: "the punch cell (", what: "the punch cell", fields: ["settings.punchSupercellH"] },
-  // What the search leaves alone is the sample's modulation since plan 4.15's P2 (configure_settings
-  // shows it as one setting); the skill's words for it come with P3, in the skill's own PR.
-  { skill: "bragg-node-audit", phrase: "the search's protected H planes", what: "the search's protected H planes", fields: ["settings.modulation"] },
+  { skill: "bragg-node-audit", phrase: "the sample's modulation (`modulation`", what: "the sample's modulation", fields: ["settings.modulation"] },
   { skill: "bragg-node-audit", phrase: "`assess_stage` for the punch", what: "the punch's assessment", fields: ["punch"] },
   { skill: "bragg-node-audit", phrase: "check an off-zero cut too", what: "the peaks left at nodes on an off-zero cut", fields: ["bragg_punch_leftover.n_at_nodes"] },
   { skill: "bragg-node-audit", phrase: "the peaks left at nodes", what: "the peaks left at nodes", fields: ["punch.leftover_at_nodes"] },
@@ -667,6 +665,8 @@ function checkName(name: string, u: Unit): Violation | null {
     const missing = names.filter((n) => !SETTINGS.has(n));
     return missing.length ? at("setting", `\`${name}\`: no setting ${missing.join(", ")} (configure_settings)`) : null;
   }
+  // A setting of one word: `modulation`, the sample's modulation (plan 4.15).
+  if (SETTINGS.has(name)) return null;
   if (other) return otherChecks(other);
   return at("name", `\`${name}\` is no tool, field, parameter or setting, and not in OTHER_NAMES`);
 }
