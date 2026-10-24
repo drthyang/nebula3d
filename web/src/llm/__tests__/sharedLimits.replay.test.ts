@@ -334,7 +334,7 @@ const PINS: Pin[] = [
   },
   {
     name: "the ΔPDF origin's disk, a share of the half-width",
-    ts: "ORIGIN_EXCLUDED, components/dpdfLevels.ts (dpdf_contrast)",
+    ts: "ORIGIN_EXCLUDED, components/dpdfLevels.ts (dpdf_contrast, and the section metrics of metrics/dpdf.ts)",
     py: "ORIGIN_EXCLUDED, nebula3d.analysis.dpdf_features (dpdf_peaks)",
     values: () => [ORIGIN_EXCLUDED, py.origin_excluded],
   },

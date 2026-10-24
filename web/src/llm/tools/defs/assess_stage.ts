@@ -2,6 +2,7 @@
 // (verdicts/), on the principal planes and the records the stage writes.
 
 import { stageVolumeId } from "../../context/loadContext";
+import { SIGMA_OF } from "../../metrics/dpdf";
 import { skillsOn } from "../../skills";
 import { TUNE_STAGE_LABELS, TUNE_STAGES, type TuneStage } from "../../tune/catalog";
 import { evaluateStage, headline } from "../../tune/evaluate";
@@ -117,6 +118,9 @@ export const assess_stage: ChatTool = {
         criterion: outcome.criterion,
         headline: headline(stage, evaluation),
         ...evaluation,
+        // Which σ the sections' feature_snr are in: with their per-plane
+        // detail, which stage=all leaves out.
+        ...(stage === "pdf" && pick !== "all" ? { sigma_of: SIGMA_OF.sections } : {}),
         ...(pick === "all" ? {} : { goal: goals[stage] }),
       };
       lines.push(`${TUNE_STAGE_LABELS[stage]}: ${verdict} · ${headline(stage, evaluation)}`);

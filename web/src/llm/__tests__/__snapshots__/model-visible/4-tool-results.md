@@ -277,7 +277,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## measure_dpdf_cut {"plane":"xz","value":0}
 
-262 characters sent.
+322 characters sent.
 
 ```json
 {
@@ -291,7 +291,8 @@ References of this skill (read one with read_skill and `reference`):
     "anisotropy_ratio": 1,
     "anisotropy_angle_deg": 0,
     "radial_trend": [8.68, 0.781, 0.302]
-  }
+  },
+  "sigma_of": "this section outside the origin's disk, robust"
 }
 ```
 
@@ -584,7 +585,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## dpdf_contrast {}
 
-652 characters sent.
+728 characters sent.
 
 ```json
 {
@@ -596,6 +597,7 @@ References of this skill (read one with read_skill and `reference`):
     "from": "optimised: the 99.9th percentile of |ΔPDF|"
   },
   "robust_sigma": 0.502,
+  "sigma_of": "the three sections together, outside the origin's disk, robust",
   "strongest_feature_sigma": 252,
   "not_applied": {
     "99.5th percentile": {
