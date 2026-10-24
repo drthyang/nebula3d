@@ -202,7 +202,11 @@ describe("rendering", () => {
       { tool: "grain_check", summary: "timed out", ok: false },
       { tool: "symmetry_check", summary: "", ok: false },
     ];
-    const { texture: _t, grains: _g, symmetry: _s, ...measured } = input().measured;
+    // The failed checks measured nothing.
+    const measured = { ...input().measured };
+    delete measured.texture;
+    delete measured.grains;
+    delete measured.symmetry;
     const r = buildReport(input({ steps, measured }));
     const failed = [
       "The agent's texture_check call failed: Error: the backfilled stage is not on disk.",
