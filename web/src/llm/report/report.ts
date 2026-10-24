@@ -158,6 +158,15 @@ const CRITERIA = WORDS.criterion;
  */
 const ringNotice = (m: Obj | null | undefined): string | null => (typeof m?.notice === "string" && m.notice ? m.notice : null);
 
+/**
+ * The question the punch's evaluation puts to the user when its sharp peaks
+ * off the lattice bunch at one commensurate fraction (off_lattice_bunching's
+ * ask_user, metrics/bunching.ts), or null: among the caveats.
+ */
+const bunchingQuestion = (m: Obj | null | undefined): string | null => {
+  const ask = obj(m?.off_lattice_bunching)?.ask_user;
+  return typeof ask === "string" && ask ? ask : null;
+};
 
 function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
   if (verdict === undefined) return null;
@@ -373,6 +382,10 @@ export function buildReport(input: ReportInput): Report {
   // Out loud: the ring candidates the removal left, unconfirmed on its grid, whatever the card's verdict.
   const left = ringNotice(m.rings);
   if (left) caveats.push(`Ring removal: ${left}`);
+  // Out loud too: the punch's sharp peaks off the lattice bunched at one
+  // fraction, and the question only the user can answer (metrics/bunching.ts).
+  const asked = bunchingQuestion(m.punch);
+  if (asked) caveats.push(`Bragg punch, a question for you: ${asked} None is declared, so the search punched them; only you can say whether the sample has it.`);
   for (const c of checks) if (c.verdict === "attention") caveats.push(`${c.title}: ${c.headline}.`);
   const missing = ["rings", "punch", "backfill", "flatten", "pdf"].filter((k) => !m[k as keyof Measured]);
   if (missing.length) caveats.push(`Not measured (no output, or the measurement failed): ${missing.map((k) => SETTING_STAGE_LABELS[k]).join(", ")}.`);

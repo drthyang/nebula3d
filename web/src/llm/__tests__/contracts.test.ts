@@ -14,7 +14,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { callTool, CHAT_TOOLS, type ToolRun } from "../tools";
+import { offLatticeBunching } from "../metrics/bunching";
 import { useTuneStore } from "../tune/tuner";
+import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
 import {
   arr,
@@ -244,6 +246,19 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
     expect(result.changed).toEqual([{ setting: "ringNFourier", from: 8, to: 6, note: "no effect with the current model" }]);
     const none = await run("update_settings", { changes: { ringNFourier: 6 } });
     expect([none.changed, none.rerun_from]).toEqual([[], null]);
+  });
+
+  it("assess_stage and run_pipeline: a run whose punch record says its sharp peaks off the lattice bunch (plan 4.15)", async () => {
+    const real = api.fetchBraggProfile.getMockImplementation()!;
+    api.fetchBraggProfile.mockImplementation(async (id: string) => {
+      const profile = await real(id);
+      return { ...profile, modulation: { ...profile.modulation, bunching: BUNCHED_AT_THIRDS } };
+    });
+    const punch = (await run("assess_stage", { stage: "punch" })).punch as Record<string, unknown>;
+    expect(punch.off_lattice_bunching).toEqual(offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })));
+    usePipelineStore.setState({ runStages: vi.fn(async () => "done") });
+    const ran = await run("run_pipeline", { from_stage: "punch" });
+    expect(ran.off_lattice_bunching).toEqual(punch.off_lattice_bunching);
   });
 
   it("configure_settings and update_settings: the sample's modulation, declared, as one setting", async () => {

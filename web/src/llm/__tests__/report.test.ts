@@ -5,10 +5,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { Slice } from "../../api/types";
+import { offLatticeBunching } from "../metrics/bunching";
 import { rasterize } from "../report/figures";
 import { reportHtml, reportMarkdown } from "../report/render";
 import { buildReport, fmt, type ReportInput } from "../report/report";
 import { judge, verdicts, type Outcome } from "../verdicts";
+import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
 
@@ -323,6 +325,16 @@ describe("a card states only what it judges", () => {
     const plain = buildReport(input());
     expect(plain.checks[0].details.map(([k]) => k)).not.toContain("Not subtracted");
     expect(plain.caveats.filter((c) => c.startsWith("Ring removal: ") && c.includes("not confirmed at this grid"))).toEqual([]);
+  });
+
+  it("puts the punch's question for the user among the caveats, its card and verdict as they were (plan 4.15)", () => {
+    const bunching = offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS }))!;
+    const plain = buildReport(input());
+    const asked = buildReport(input({ measured: { ...input().measured, punch: { ...input().measured.punch, off_lattice_bunching: bunching } } }));
+    expect(asked.caveats).toContain(`Bragg punch, a question for you: ${bunching.ask_user} None is declared, so the search punched them; only you can say whether the sample has it.`);
+    expect(asked.checks.find((c) => c.title === "Bragg punch")).toEqual(plain.checks.find((c) => c.title === "Bragg punch"));
+    expect(plain.caveats.filter((c) => c.includes("a question for you"))).toEqual([]);
+    expect(reportMarkdown(asked)).toContain(bunching.ask_user);
   });
 
   it("names the sample's modulation among the sample facts, the user's", () => {

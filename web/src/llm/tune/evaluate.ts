@@ -7,6 +7,7 @@
 import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy, fetchShellFloors } from "../../api/client";
 import type { Dataset } from "../../api/types";
 import { dpdfVolumeId, loadPipelineContext, readFlattenRecord, safe, hklVolumeId, stageVolumeId, type Cut } from "../context/loadContext";
+import { offLatticeBunching } from "../metrics/bunching";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_UNRECORDED_NOTE, flattenJudging, pedestalLeft, volumePedestal } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
@@ -276,6 +277,9 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     // alone, from each peak's marks (the run's record, read as labels on each
     // cut: context/loadContext.ts): they stay by design.
     const sharpOnProtected = leftovers.reduce((s, l) => s + (l?.suspicious_peaks ?? []).filter((p) => p.on_protected_plane === true && !p.broad).length, 0);
+    // The run's sharp peaks off the lattice bunched at one commensurate
+    // fraction, as its record says: the facts and the question for the user.
+    const bunching = offLatticeBunching(profile?.modulation);
     // The strongest leftover over the planes, with its plane.
     const strongest = cuts.reduce<Record<string, unknown> | null>((best, c, i) => {
       const p = leftovers[i]?.suspicious_peaks[0];
@@ -299,6 +303,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       noisy_spikes_skipped: total("n_skipped_noisy"),
       mean_punched_fraction: mean(fractions),
       fitted_peaks: profile?.has_profile ? profile.n_peaks : null,
+      // Only when the run's record says so (metrics/bunching.ts).
+      ...(bunching ? { off_lattice_bunching: bunching } : {}),
       per_plane: per((i) => ({
         leftover_peaks: leftovers[i]?.n_suspicious ?? null,
         at_nodes: leftovers[i]?.n_at_nodes ?? null,

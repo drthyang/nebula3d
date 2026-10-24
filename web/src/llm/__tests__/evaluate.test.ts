@@ -8,10 +8,11 @@ import type { Dataset, FlattenSettings } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { loadPipelineContext } from "../context/loadContext";
 import { UNRECORDED_PROTECTION_NOTE } from "../context/pipelineContext";
+import { offLatticeBunching } from "../metrics/bunching";
 import { FLATTEN_UNRECORDED_NOTE, pedestalLeft } from "../metrics/flatten";
 import { evaluateStage, headline, outOfBounds } from "../tune/evaluate";
 import { judge } from "../verdicts";
-import { labelsOn, makeSlice, onTheThirds } from "./helpers";
+import { BUNCHED_AT_THIRDS, labelsOn, makeSlice, onTheThirds, recordOf, THIRDS_AS_PLANES } from "./helpers";
 import { shellFloorsOf } from "./shellFloors";
 
 const api = vi.hoisted(() => ({
@@ -146,6 +147,18 @@ describe("evaluateStage", () => {
     const { context } = await loadPipelineContext(dataset, { recip: { plane: "h0l", value: 0 }, dpdf: null, records: false });
     expect(context.bragg_punch?.leftover).not.toHaveProperty("n_on_protected");
     expect(context.notes).toContain(`bragg punch: ${UNRECORDED_PROTECTION_NOTE}`);
+  });
+
+  it("puts the run's sharp peaks off the lattice bunched at one fraction to the user, beside the verdict it leaves as it was (plan 4.15)", async () => {
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 12, modulation: recordOf({ declared: THIRDS_AS_PLANES, bunching: BUNCHED_AT_THIRDS }) });
+    const e = await evaluateStage("punch", dataset);
+    expect(e.off_lattice_bunching).toEqual(offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })));
+    expect(judge("punch", e)).toEqual(judge("punch", { ...e, off_lattice_bunching: undefined }));
+    // No bunching in the record, or no record of it: no question.
+    for (const modulation of [recordOf({ declared: THIRDS_AS_PLANES }), null, undefined]) {
+      api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 12, modulation });
+      expect(await evaluateStage("punch", dataset)).not.toHaveProperty("off_lattice_bunching");
+    }
   });
 
   it("passes on the raw volume's note when its σ is √|I| of normalized data", async () => {

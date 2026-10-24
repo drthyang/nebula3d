@@ -67,6 +67,30 @@ export function labelsOn(
   return { header: { ...slice.header, robust_max: 1, recorded, declared: recorded ? declared : null, legend: [] }, data };
 }
 
+/** A record of a run whose sharp peaks off the lattice bunched at H ≡ ±1/3 (mod 1), as Bunching.to_json writes it. */
+export const BUNCHED_AT_THIRDS: Bunching = {
+  coordinate: "H",
+  equivalents: [],
+  period: 1,
+  denominator: 3,
+  values: [
+    { value: "1/3", hits: 8 },
+    { value: "2/3", hits: 6 },
+  ],
+  hits: 14,
+  peaks: 17,
+  expected: 1.9,
+  p0: 0.112,
+  p_value: 2.1e-11,
+  alpha: 0.00135,
+  tests: 24,
+  half_width: 0.05,
+  centres: [[0.3333, 0.5, 0]],
+  mean_distance: 0.004,
+  others: [],
+  where: "H ≡ ±1/3 (mod 1)",
+};
+
 /** A punch record: what the search left alone (by default, nothing declared) and what it found. */
 export const recordOf = ({ declared = null, bunching = null }: { declared?: ModulationDeclaration | null; bunching?: Bunching | null } = {}): ModulationRecord => ({
   declared,

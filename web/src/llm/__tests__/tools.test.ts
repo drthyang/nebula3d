@@ -11,7 +11,8 @@ import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore, type StageRun } from "../tune/tuner";
 import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type ToolContext } from "../tools";
-import { makeSlice } from "./helpers";
+import { offLatticeBunching } from "../metrics/bunching";
+import { BUNCHED_AT_THIRDS, makeSlice, recordOf } from "./helpers";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -374,6 +375,25 @@ describe("run_pipeline", () => {
     expect(out.outputs).toContain("braggpunched");
     expect(own.dataset).toBe(fresh);
     expect(r.summary).toMatch(/^done in .* s · 1 computed, 1 reused$/);
+    expect(out).not.toHaveProperty("off_lattice_bunching");
+  });
+
+  it("puts the question for the user in its result when the punch's record says its sharp peaks off the lattice bunch (plan 4.15)", async () => {
+    usePipelineStore.setState({ runStages: fakeRun("done") });
+    const fresh = { ...dataset, stages: [...dataset.stages, { name: "braggpunched", exists: true, kind: "hkl", volume_id: "demo.braggpunched" }] };
+    api.fetchDataset.mockResolvedValue(fresh);
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 0, peaks: [], modulation: recordOf({ bunching: BUNCHED_AT_THIRDS }) });
+    const out = JSON.parse((await callTool({ ...ctx }, "run_pipeline", {})).text);
+    expect(api.fetchBraggProfile).toHaveBeenCalledWith("demo");
+    expect(out.off_lattice_bunching).toEqual(offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })));
+    expect(out.off_lattice_bunching.ask_user).toBe(
+      "14 of the 17 sharp peaks off the lattice sit at H = n ± 1/3, where about 2 would by chance. Does the sample have a modulation with k = (1/3, 0, 0)?",
+    );
+    // A record whose peaks did not bunch, or a record from before the punch kept it: no question.
+    for (const modulation of [recordOf(), null, undefined]) {
+      api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 0, peaks: [], modulation });
+      expect(JSON.parse((await callTool({ ...ctx }, "run_pipeline", {})).text)).not.toHaveProperty("off_lattice_bunching");
+    }
   });
 
   it("recomputes from a stage on", async () => {
@@ -547,6 +567,18 @@ describe("assess_stage", () => {
     const out = JSON.parse((await runOn(full, "assess_stage", { stage: "punch" })).text);
     expect(out.punch).toMatchObject({ verdict: "meets its goal", leftover_off_lattice_sharp: 3, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3 });
     expect(out.punch.goal).toMatch(/sit on protected planes and stay by design/);
+  });
+
+  it("carries the question for the user beside the punch's verdict, which it leaves as it was (plan 4.15)", async () => {
+    const e = { leftover_at_nodes: 0, leftover_off_lattice: 0, leftover_on_protected_planes: 0, leftover_on_protected_planes_sharp: 0, leftover_off_lattice_broad: 0, leftover_off_lattice_sharp: 0, mean_punched_fraction: 0.03, per_plane: {} };
+    evaluate.evaluateStage.mockResolvedValue({ ...e, off_lattice_bunching: offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })) });
+    const out = JSON.parse((await runOn(full, "assess_stage", { stage: "punch" })).text);
+    expect(out.punch.verdict).toBe("meets its goal");
+    expect(out.punch.off_lattice_bunching.ask_user).toMatch(/Does the sample have a modulation with k = \(1\/3, 0, 0\)\?$/);
+    // With every stage too: it is no per-plane detail.
+    evaluate.evaluateStage.mockResolvedValue({ ...e, off_lattice_bunching: offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })) });
+    const all = JSON.parse((await runOn(full, "assess_stage", {})).text);
+    expect(all.punch.off_lattice_bunching).toEqual(out.punch.off_lattice_bunching);
   });
 
   it("keeps the per-plane detail for one stage", async () => {

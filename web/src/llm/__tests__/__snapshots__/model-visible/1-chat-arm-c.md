@@ -119,6 +119,9 @@ grain_check reads every peak the search punched and says whether they are a seco
 Bragg peaks displaced by a UB that is slightly off,
 or neither. The leftover counts (bragg_punch.leftover) are only what the punch missed on one
 cut, never what its search found.
+off_lattice_bunching, in a punch assessment or a run, says the sharp peaks the search punched off
+the lattice bunch at one commensurate fraction,
+and ask_user is a question for the user.
 ub_check fits
 the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
 keeps.

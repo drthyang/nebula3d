@@ -201,6 +201,85 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
 }
 ```
 
+## assess_stage {"stage":"punch"} (a run whose punch record says its sharp peaks off the lattice bunch at H ≡ ±1/3 (mod 1))
+
+```json
+{
+  "punch": {
+    "verdict": "needs attention",
+    "criterion": "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima stay.",
+    "headline": "1 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.03",
+    "total_leftover_peaks": 1,
+    "leftover_at_nodes": 1,
+    "leftover_off_lattice": 0,
+    "leftover_on_protected_planes": 0,
+    "leftover_on_protected_planes_sharp": 0,
+    "leftover_off_lattice_broad": 0,
+    "leftover_off_lattice_sharp": 0,
+    "strongest_leftover": {
+      "plane": "hk0",
+      "xy": [2, 1],
+      "intensity": 452,
+      "local_background": 21.3,
+      "contrast": 21.2,
+      "sigma": 374,
+      "fwhm_voxels": [1, 1],
+      "broad": false,
+      "hkl": [2, 1, 0],
+      "at_node": true
+    },
+    "noisy_spikes_skipped": 0,
+    "mean_punched_fraction": 0.03,
+    "fitted_peaks": 14,
+    "off_lattice_bunching": {
+      "facts": "14 of the 17 sharp peaks the search punched off the lattice (each symmetry orbit once) lie within 0.05 r.l.u. of H ≡ ±1/3 (mod 1), where chance puts 1.9 (binomial tail 2.1e-11, under 0.00135 over 24 tests). No modulation is declared there, so the search punched them.",
+      "ask_user": "14 of the 17 sharp peaks off the lattice sit at H = n ± 1/3, where about 2 would by chance. Does the sample have a modulation with k = (1/3, 0, 0)?"
+    },
+    "per_plane": {
+      "hk0": {
+        "leftover_peaks": 1,
+        "at_nodes": 1,
+        "off_lattice": 0,
+        "on_protected_planes": 0,
+        "off_lattice_broad": 0,
+        "strongest_leftover": {
+          "xy": [2, 1],
+          "intensity": 452,
+          "local_background": 21.3,
+          "contrast": 21.2,
+          "sigma": 374,
+          "fwhm_voxels": [1, 1],
+          "broad": false,
+          "hkl": [2, 1, 0],
+          "at_node": true
+        },
+        "punched_fraction": 0.0291
+      },
+      "h0l": {
+        "leftover_peaks": 0,
+        "at_nodes": 0,
+        "off_lattice": 0,
+        "on_protected_planes": 0,
+        "off_lattice_broad": 0,
+        "strongest_leftover": null,
+        "punched_fraction": 0.0305
+      },
+      "0kl": {
+        "leftover_peaks": 0,
+        "at_nodes": 0,
+        "off_lattice": 0,
+        "on_protected_planes": 0,
+        "off_lattice_broad": 0,
+        "strongest_leftover": null,
+        "punched_fraction": 0.0305
+      }
+    },
+    "goal": "Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks."
+  },
+  "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
+}
+```
+
 ## dpdf_peaks {}
 
 ```json
