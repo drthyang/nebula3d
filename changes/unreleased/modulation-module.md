@@ -38,7 +38,5 @@
   form. `peak_profile.magnetic_satellite_centers` no longer assumes the thirds:
   its `fractions` are the caller's to give.
 
-  The physics, the record and two known limits are in `docs/modulation.md`.
-  The first limit: the search still punches a protected peak wider than its
-  box from the voxel beside it. The second: the recorded peak widths cannot
-  tell a broad maximum from a sharp one.
+  The physics, the record and a known limit are in `docs/modulation.md`: the
+  recorded peak widths cannot tell a broad maximum from a sharp one.
