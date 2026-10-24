@@ -62,16 +62,35 @@ Each is described under [How it works](#how-it-works).
 - **Skills come first.** A stage's settings change, and the stage is tuned,
   only after its skill has been read in the same reply. A skill read in an
   earlier turn must be read again.
-- **Facts about the sample are yours.** The search's protected planes and the
-  punch cell change only when your latest message names them: by the
-  setting's name, or in words such as "protected planes", "H fractions",
-  "punch cell", "supercell" or "doubled cell" (the planes' half width needs a
-  width named as well). `update_settings` refuses any other change to them,
-  makes the rest of the call, and the model asks you. The gate reads names,
-  not intent: "satellites", a "plane" or a "cell" alone name nothing, nor does
-  a bare "yes" (say which), while a question that names a fact names it.
-  `tune/catalog.ts` lists the words. The magnetic ion and the |Q| band the
-  model cannot change at all.
+- **Facts about the sample are yours.** The sample's modulation (what the
+  punch's search leaves alone, [modulation.md](modulation.md)) and the punch
+  cell change only when your latest message names them: by the setting's
+  name, or in words such as "modulation", "wave vector", "propagation
+  vector", a k written out ("k = (1/3, 0, 0)"), "protected planes", "H
+  fractions", "punch cell", "supercell" or "doubled cell". `update_settings`
+  refuses any other change to them, makes the rest of the call, and the
+  model asks you. The gate reads names, not intent: "satellites", a "plane"
+  or a "cell" alone name nothing, nor does a bare "yes" (say which: "yes, it
+  has that modulation"), while a question that names a fact names it.
+  `tune/catalog.ts` lists the words; the modulation's are provisional, yours
+  to confirm. The magnetic ion and the |Q| band the model cannot change at
+  all.
+- **The questions only you can answer are asked, never answered for you.**
+  When a run's sharp peaks off the lattice bunch at one commensurate
+  fraction, as the satellites of a modulation nobody declared would, the
+  punch's assessment and the run carry the question for you
+  (`off_lattice_bunching`: the facts, and `ask_user`, such as "14 of the 17
+  sharp peaks off the lattice sit at H = n ± 1/3, where about 2 would by
+  chance. Does the sample have a modulation with k = (1/3, 0, 0)?"). Whether
+  the sample has one, and in which form, points or planes, is yours to say.
+  Two answer checks hold the model to it, each sending an answer back once
+  and then noting it: an answer must ask the question, a sentence ending in
+  "?" that names the fraction (1/3, its twin 2/3, a decimal of either) or
+  the modulation (`unasked`), and must not say outright that the sample has
+  the modulation or that its peaks are satellites (`assumed`; a hedged,
+  conditional or negated clause, a question, or one about asking or
+  declaring is none). With the skills off the send-back names no tool,
+  stage or skill (`answerChecks.ts`).
 - **Tuning cannot touch your results.** Each trial runs in its own folder,
   never in `processed/`; the model proposes settings only from a checked
   catalog, every trial is measured on three planes (a flatten's pedestal over
@@ -260,8 +279,10 @@ miss is a note.
     voxel. Spikes in noisy or sparse-count regions (the coverage edge: a
     neighbourhood a quarter exact zeros, or below a tenth of the slice's
     median level) are counted apart. With the cut known, each peak is classed
-    at a lattice node (honouring the punch cell) or off-lattice, on the
-    search's protected planes or not, and sharp or broad by its FWHM: a broad
+    at a lattice node (honouring the punch cell) or off-lattice, in a
+    position the run's search left alone or not (the run's own punch record,
+    read as labels on the cut, `GET /api/modulation/{id}/labels`, never the
+    form), and sharp or broad by its FWHM: a broad
     one (≥ 5 voxels along a slice axis) is a diffuse maximum kept, not a punch
     candidate. It also summarises the fitted `BraggProfile`
     (resolution-limited fraction, measured widths, anisotropy).
@@ -444,7 +465,9 @@ miss is a note.
     optimum, where the FFT ripple shows. It acts: it sets the viewer's limit.
   - *Acting*: `update_settings` (the method choices and thresholds in
     `tune/catalog.ts`, and the sample facts the tuner never proposes, the
-    search's protected planes and the punch cell, only when the user's latest
+    sample's modulation, one setting of the Configure page's four fields
+    (`{"k": "1/3, 0, 0", "form": "planes"}`, `"none"` or `"default"`), and
+    the punch cell, only when the user's latest
     message names them: the agent loop hands that message to the tools, and a
     change to a fact it does not name is refused, the call's other changes
     made; see [Guardrails](#guardrails)),
@@ -462,7 +485,8 @@ miss is a note.
   the model called or on its wording. The check-verdict module judges each
   card from the outcomes those tools return (`verdicts/`, the report's reader),
   and `report/report.ts` assembles the cards' headlines and details around
-  them and lists every miss as a caveat.
+  them and lists every miss as a caveat, and the punch's question for you
+  when its sharp peaks off the lattice bunch at one fraction.
   `report/figures.ts` draws the cleanup stages on one shared scale and the
   ΔPDF sections with the page's Auto, axes at their real angle.
   `report/render.ts` writes it as a self-contained HTML page (inline styles
@@ -478,7 +502,7 @@ miss is a note.
   goal and its trade-off, e.g. no leftover peaks *without* punching more
   diffuse). The chosen settings go to the Configure page. The model can only
   change the settings in `tune/catalog.ts` — method choices and thresholds, not
-  facts about the sample (supercell, protected planes, magnetic ion, |Q|
+  facts about the sample (supercell, the modulation, magnetic ion, |Q|
   band) — and every proposal is checked against it before anything runs.
   The tool's report holds every trial's changes and numbers, marking a trial
   whose numbers equal the current settings' as `no_effect`, so the model

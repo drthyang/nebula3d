@@ -72,8 +72,9 @@ voxels at the band's edge itself).
 
 The user decided that nothing is protected unless declared, and that when a
 run's sharp peaks off the lattice bunch at one commensurate fraction the
-console asks the user. Until the console asks (plan 4.15), a run that declares
-nothing declares `nebula3d.pipeline.default_modulation()`: k = (1/3, 0, 0) as
+console asks the user. The console asks now ([below](#the-console-and-nebula-pilot)).
+Until the default flips (plan 4.15's P3), a run that declares nothing
+declares `nebula3d.pipeline.default_modulation()`: k = (1/3, 0, 0) as
 planes, ± 0.08 r.l.u., which protects what the search protected before, bit
 for bit. A direct `punch_bragg` call protects only what it is given: its
 `modulation` and its `PunchParams`' legacy fields.
@@ -167,6 +168,75 @@ the user's to say.
 Planted families at ±1/3, ±2/5 and ±1/5 are named; their orbits count once on
 6/m data. On the validation's dev cases at 81 and 161 points it fires on none,
 and the punch's records, holes and log are as before.
+
+## The console and NEBULA Pilot
+
+The console declares the modulation, reads what a run's search left alone
+from the run's own record, and puts the bunching to the user. It computes no
+position itself: what a declaration protects is the backend's to say.
+
+**The Configure page.** The punch's box holds the declaration in four fields,
+kept as typed (`web/src/state/modulation.ts`):
+
+- *Modulation k* (r.l.u.): the k vectors, several separated by `;`. `none`
+  declares none, and a blank one leaves the run to the backend's default;
+- *Form*: points (the default) or planes;
+- *Order m* and *± width* (r.l.u.).
+
+Without k the other three are unused. The note under them is the backend's
+own description of what the fields declare, on the punch cell and under the
+symmetry the volume declares (`POST /api/modulation/check`; in the browser
+build, once its engine is up). A run's request carries `modulation`: nothing
+for a blank k, `"none"`, or k, order, form and half width as typed, which the
+backend reads with `Modulation.parse` and refuses, saying why, when malformed.
+The console never sends the legacy `punch_search_protect_h` and
+`punch_search_protect_half_width`, which the backend still reads from an older
+console.
+
+**The migration.** The browser remembers the form per dataset
+(`state/configMemory.ts`). A form it remembered before declarations has its
+protected H planes migrated once, when the console starts, and the old keys
+go:
+
+- an explicit value becomes k = (f, 0, 0) as planes, which protect H ≡ ±f
+  (mod 1): one vector per fraction, a fraction's twin 1 − f folded into it
+  ("1/3, 2/3" is k = (1/3, 0, 0)), a fraction on the lattice left out;
+- `none`, or a half width of 0, declares none;
+- a half width alone keeps the planes the old default protected, at that
+  width (k = (1/3, 0, 0) as planes);
+- a blank value, or one the old page could not read and never sent, stays
+  blank: the backend's default.
+
+**The marks follow the run.** NEBULA Pilot's leftover scan marks a leftover
+off the lattice `on_protected_plane` when its voxel lies in a position the
+run's search left alone. The labels are read from the run's punch record, on
+the cut's own grid (`GET /api/modulation/{id}/labels`, the bridge's
+`modulation_labels_slice`), never from the form, which may have changed since
+the run. They are counted in `n_on_protected`, and by the punch's assessment
+in `leftover_on_protected_planes` and `leftover_on_protected_planes_sharp`,
+which its verdict leaves out (D5). A record from before the punch kept its
+declaration marks none, and the context says so.
+
+**The question.** When the record's `bunching` fired, the punch's assessment
+(`assess_stage`) and `run_pipeline` carry `off_lattice_bunching`:
+
+- `facts`, the measurement;
+- `ask_user`, the question in definitions only, such as "14 of the 17 sharp
+  peaks off the lattice sit at H = n ± 1/3, where about 2 would by chance.
+  Does the sample have a modulation with k = (1/3, 0, 0)?".
+
+With the skills on, the facts end with whose the answer is, the user's. The
+answer checks hold the model to asking the question, and to not saying the
+sample has the modulation ([pilot.md](pilot.md#guardrails)). The report lists
+the question among its caveats.
+
+The model declares a modulation through `update_settings` only when the
+user's latest message names it. To the model it is one setting, `modulation`
+(`{"k": "1/3, 0, 0", "order": 1, "form": "planes", "half_width": 0.08}`,
+`"none"` or `"default"`), and `configure_settings` shows it as one line, such
+as `k = (1/3, 0, 0), order 1, planes, ± 0.08 r.l.u.`. In the validation,
+declaring a modulation the task never named is an unsafe action, as any other
+sample fact is.
 
 ## Known limits (plan 4.15, for P2 and P3)
 

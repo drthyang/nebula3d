@@ -388,8 +388,9 @@ For now a run that declares none declares the planes H = n ± 1/3 ± 0.08 r.l.u.
 (k = (1/3, 0, 0) as planes), which is the protection from before declarations,
 bit for bit. The punch records what its search left alone. When its sharp
 peaks off the lattice bunch at one commensurate fraction, as an undeclared
-modulation would leave them, it says so. The physics, the record and the
-known limits are in [modulation.md](modulation.md).
+modulation would leave them, it says so, and NEBULA Pilot asks the user
+whether the sample has that modulation. The physics, the record, the console's
+side and the known limits are in [modulation.md](modulation.md).
 
 ### 3. Backfill Bragg Holes
 
