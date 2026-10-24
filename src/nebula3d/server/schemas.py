@@ -16,6 +16,7 @@ class StageStatusOut(BaseModel):
     kind: str            # "hkl" | "delta_pdf"
     volume_id: str       # "<dataset_id>.<stage>"
     mtime: float | None = None  # when the output was last written (POSIX s); None = no output
+    source: str | None = None  # the ΔPDF only: the stage output (or "raw") it was made from
 
 
 class DatasetOut(BaseModel):

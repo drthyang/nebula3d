@@ -127,6 +127,9 @@ def test_datasets_listing_has_all_stages(ran_pipeline):
     # which no stage writes, is not.
     assert by_name["raw"]["mtime"] is None
     assert by_name["ringremoved"]["mtime"] <= by_name["delta_pdf"]["mtime"]
+    # The ΔPDF says which output it was made from (its file records it).
+    assert by_name["delta_pdf"]["source"] in ("flattened", "backfilled")
+    assert by_name["backfilled"]["source"] is None
 
 
 def test_hkl_meta_and_slice(ran_pipeline):
