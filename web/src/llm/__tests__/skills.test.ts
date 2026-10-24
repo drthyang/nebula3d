@@ -9,12 +9,15 @@ import type { Dataset } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { SYSTEM, SYSTEM_PROMPT, TOOLS, TOOLS_PROMPT } from "../prompts/system";
 import { buildChatMessages, buildStageReviewMessages, systemPrompt } from "../prompts/templates";
+import type { ChatMessage } from "../provider/client";
 import {
   allSkills,
   frontmatter,
   readSkill,
   REFERENCE_MAX_CHARS,
   sectionsOf,
+  skillNamed,
+  skillsCarriedIn,
   skillsOn,
   skillsPrompt,
   skillsReadIn,
@@ -84,7 +87,49 @@ describe("the firm rule", () => {
     expect(unreadSkillRefusal("assess_stage", { stage: "punch" }, none)).toBeNull();
   });
 
-  it("counts the skills read earlier in the conversation, not a reference or a failed read", () => {
+  it("asks again for a skill read in an earlier turn, and words the first refusal as it always has", () => {
+    const none = new Set<string>();
+    const flatten = { changes: { flattenQ2: true } };
+    const first =
+      'read the method first: call read_skill with name "reduction-qc". It is how the user works on the flatten stage, ' +
+      "and this change waits until it has been read in this conversation.";
+    expect(unreadSkillRefusal("update_settings", flatten, none)).toBe(first);
+    expect(unreadSkillRefusal("update_settings", flatten, none, none)).toBe(first);
+    expect(unreadSkillRefusal("update_settings", flatten, none, new Set(["bragg-node-audit"]))).toBe(first); // another skill read earlier
+    const earlier = new Set(["reduction-qc"]);
+    expect(unreadSkillRefusal("update_settings", flatten, none, earlier)).toBe(
+      'read the method again: call read_skill with name "reduction-qc". It was read earlier in the conversation, but its text ' +
+        "is not in this reply. It is how the user works on the flatten stage, and this change waits until it has been read in this reply.",
+    );
+    // Read again in this reply: the gate opens.
+    expect(unreadSkillRefusal("update_settings", flatten, earlier, earlier)).toBeNull();
+    // Two stages, one skill read earlier and one never: both asked for, the earlier one named.
+    const both = { stages: ["flatten", "punch"] };
+    expect(unreadSkillRefusal("tune_pipeline", both, none, earlier)).toBe(
+      'read the method first: call read_skill with name "reduction-qc" and "bragg-node-audit". "reduction-qc" was read earlier ' +
+        "in the conversation, but its text is not in this reply. It is how the user works on the flatten, Bragg punch stages, and this " +
+        "tuning waits until it has been read in this reply.",
+    );
+    expect(unreadSkillRefusal("tune_pipeline", both, none, new Set(["reduction-qc", "bragg-node-audit"]))).toBe(
+      'read the method again: call read_skill with name "reduction-qc" and "bragg-node-audit". They were read earlier in the ' +
+        "conversation, but their text is not in this reply. It is how the user works on the flatten, Bragg punch stages, and this " +
+        "tuning waits until it has been read in this reply.",
+    );
+  });
+
+  it("counts a skill whose text the messages carry whole, not one only named or quoted in part", () => {
+    const body = skillNamed("reduction-qc")!.body;
+    expect([...skillsCarriedIn([{ role: "tool", tool_call_id: "c1", content: readSkill("reduction-qc") }])]).toEqual(["reduction-qc"]);
+    const pasted: ChatMessage = { role: "user", content: [{ type: "text", text: `My method:\n${body}` }, { type: "image_url", image_url: { url: "data:," } }] };
+    expect([...skillsCarriedIn([pasted])]).toEqual(["reduction-qc"]);
+    expect(skillsCarriedIn([{ role: "assistant", content: "I read the reduction-qc skill and followed it." }]).size).toBe(0);
+    expect(skillsCarriedIn([{ role: "assistant", content: body.slice(0, body.length - 1) }]).size).toBe(0);
+    // The system prompt lists the skills by name and description: it carries none of them.
+    expect(skillsCarriedIn(buildChatMessages({} as never, [], "q", null, { tools: true })).size).toBe(0);
+    expect(skillsCarriedIn(buildStageReviewMessages({} as never, "flatten", null, { tools: true })).size).toBe(0);
+  });
+
+  it("lists the skills read in a conversation's turns, not a reference or a failed read", () => {
     const step = (args: Record<string, unknown>, status: "done" | "error" = "done") => ({ id: "s", name: "read_skill", args, status });
     const read = skillsReadIn([
       { steps: [step({ name: "reduction-qc" }), step({ name: "bragg-node-audit", reference: "bragg_cleanup" })] },
@@ -192,6 +237,12 @@ describe("the switch", () => {
     const changed = await callTool(ctx, "update_settings", { changes: { punchMinSig: 6 } }, { tools });
     expect(changed.ok, changed.text).toBe(true);
     expect(usePipelineStore.getState().punchMinSig).toBe("6");
+    // Nor a refusal that asks for a skill again: a skill read in an earlier turn changes nothing here.
+    const earlier = new Set(["bragg-node-audit"]);
+    expect(unreadSkillRefusal("update_settings", { changes: { punchMinSig: 7 } }, ctx.skillsRead!, earlier)).toMatch(/^read the method again/);
+    const later = await callTool({ ...ctx, skillsReadEarlier: earlier }, "update_settings", { changes: { punchMinSig: 7 } }, { tools });
+    expect(later.ok, later.text).toBe(true);
+    expect(usePipelineStore.getState().punchMinSig).toBe("7");
     const read = await callTool(ctx, "read_skill", { name: "reduction-qc" }, { tools });
     expect(read.ok).toBe(false);
     expect(read.text).toMatch(/^Error: no tool named read_skill\. Available: describe_dataset, /);
