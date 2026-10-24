@@ -68,26 +68,40 @@ modulations were declared, the H fractions 0.3333 and 0.6667 ± 0.08, bit for
 bit (`tests/test_modulation.py`: on a plain grid, a 6/m grid and a grid with
 voxels at the band's edge itself).
 
-## The default, for now
+## The default: nothing protected
 
-The user decided that nothing is protected unless declared, and that when a
-run's sharp peaks off the lattice bunch at one commensurate fraction the
-console asks the user. The console asks now ([below](#the-console-and-nebula-pilot)).
-Until the default flips (plan 4.15's P3), a run that declares nothing
-declares `nebula3d.pipeline.default_modulation()`: k = (1/3, 0, 0) as
-planes, ± 0.08 r.l.u., which protects what the search protected before, bit
-for bit. A direct `punch_bragg` call protects only what it is given: its
-`modulation` and its `PunchParams`' legacy fields.
+The user decided (2026-10-19) that nothing is protected unless declared, and
+that when a run's sharp peaks off the lattice bunch at one commensurate
+fraction the console asks the user ([below](#the-console-and-nebula-pilot)).
+Since plan 4.15's P3 that is the default: a run that declares nothing declares
+`nebula3d.pipeline.default_modulation()`, which is None. Its search leaves no
+position alone, its record says `declared: null`, and the bunching test reads
+every sharp peak the search found off the lattice. A direct `punch_bragg` call
+protects only what it is given: its `modulation` and its `PunchParams`'
+legacy fields.
+
+The planes the search protected by default before (H = n ± 1/3 ± 0.08
+r.l.u., the H fractions 0.3333 and 0.6667) are declared by name now:
+`{"k": "1/3, 0, 0", "form": "planes"}`, which protects them bit for bit
+(`tests/test_modulation_punch.py`).
+
+What a run that declares nothing punches that it did not before: the sharp
+peaks the search finds on those planes, satellites or spurious alike. On the
+validation's eight dev cases, at 81 and 161 points, the search finds none
+there: the punch's holes, peak records and log are as before, and only the
+record's `declared` changes, to null. Arm A on dev is as before.
 
 **The legacy fields.** `PunchParams.search_exclude_h_centers`,
-`search_exclude_h_fractions` (now None by default) and
+`search_exclude_h_fractions` (None by default) and
 `search_exclude_h_half_width` still protect the H planes they name, and their
 symmetry images, added to the declaration. A request's
 `punch_search_protect_h` and `punch_search_protect_half_width`, from a console
 that knows only them, keep their meaning:
 
-- the fractions replace the default declaration (`[]` protects none);
+- the fractions protect those H planes in place of the default declaration
+  (`[]` protects none);
 - the half width alone sets the declaration's half width (0 protects none).
+  The default declares none, so a half width alone protects nothing.
 
 A request with a `modulation` cannot give them as well.
 
@@ -212,8 +226,8 @@ planes behaved the same way. Measured before the fix and after it:
 The search is not blinded: undeclared satellites are punched as before. The
 change alters two things only: a search peak beside a brighter protected voxel
 is no longer one, and a search peak's punch no longer takes the protected
-voxels it reached. On the validation's dev cases, with today's default (the
-thirds as planes), the punch's holes, records and log at 81 and 161 points are
+voxels it reached. On the validation's dev cases, with the default of the time
+(the thirds as planes), the punch's holes, records and log at 81 and 161 points are
 as before, and so is arm A. The bunching test still leaves out peaks within one
 grid step of a declared position, for flanks that noise makes local maxima.
 
@@ -227,7 +241,8 @@ position itself: what a declaration protects is the backend's to say.
 kept as typed (`web/src/state/modulation.ts`):
 
 - *Modulation k* (r.l.u.): the k vectors, several separated by `;`. `none`
-  declares none, and a blank one leaves the run to the backend's default;
+  declares none, and a blank one leaves the run to the backend's default,
+  which declares none too;
 - *Form*: points (the default) or planes;
 - *Order m* and *± width* (r.l.u.).
 
@@ -253,7 +268,7 @@ go:
 - a half width alone keeps the planes the old default protected, at that
   width (k = (1/3, 0, 0) as planes);
 - a blank value, or one the old page could not read and never sent, stays
-  blank: the backend's default.
+  blank: the backend's default, which declares none since P3.
 
 **The marks follow the run.** NEBULA Pilot's leftover scan marks a leftover
 off the lattice `on_protected_plane` when its voxel lies in a position the
@@ -282,7 +297,8 @@ The model declares a modulation through `update_settings` only when the
 user's latest message names it. To the model it is one setting, `modulation`
 (`{"k": "1/3, 0, 0", "order": 1, "form": "planes", "half_width": 0.08}`,
 `"none"` or `"default"`), and `configure_settings` shows it as one line, such
-as `k = (1/3, 0, 0), order 1, planes, ± 0.08 r.l.u.`. In the validation,
+as `k = (1/3, 0, 0), order 1, planes, ± 0.08 r.l.u.` (`"default"`, the
+backend's own, declares none). In the validation,
 declaring a modulation the task never named is an unsafe action, as any other
 sample fact is.
 
