@@ -10,9 +10,14 @@ import type {
   DeltaPdfMeta,
   DpdfFeatures,
   JobOut,
+  ModulationCheck,
+  ModulationCheckIn,
   PipelineRunRequest,
+  ProtectedLabels,
+  RegridResult,
   RingDiagnostics,
   RingIsotropy,
+  ShellFloors,
   Slice,
   SliceHeader,
   TuningPromote,
@@ -20,6 +25,7 @@ import type {
   UbCheck,
   VolumeCoverage,
   VolumeMeta,
+  VolumeTexture,
 } from "./types";
 
 function bandParams(qMin?: number, qMax?: number, rMin?: number, rMax?: number): string {
@@ -159,6 +165,51 @@ export async function fetchUbCheck(volumeId: string, cell: [number, number, numb
   return (await r.json()) as UbCheck;
 }
 
+/**
+ * Regrid a dataset's raw volume onto its refined UB (the UB check's fit, Bragg
+ * nodes every `cell`), as a new dataset beside it; never over a file. A
+ * refusal (the target exists, the turn is within the fit's noise, a
+ * symmetrised volume without its source) comes back as data, `written` false;
+ * too few peaks to fit, or no raw volume, is an error (docs/regrid.md).
+ */
+export function regridDataset(datasetId: string, cell: [number, number, number], qMax: number | null = null): Promise<RegridResult> {
+  if (PYODIDE_MODE) return engine.datasetRegrid(datasetId, cell.join(","), qMax);
+  return postJSON<RegridResult>(`/api/datasets/${encodeURIComponent(datasetId)}/regrid`, { cell, q_max: qMax, symmetrise: false });
+}
+
+/** The limits of the fill-bias rule a texture request judges by; one left out is the server's (texture.ts's). */
+export interface TextureLimits {
+  minSigma?: number; // the median bias in the rim's σ
+  oneWay?: number; // the share of the judged holes leaning the median's way
+  minHoles?: number; // the fewest judged holes
+  floor?: number; // the median bias in units of the local diffuse level
+}
+
+/**
+ * Whether a backfilled stage's fills sit systematically off the diffuse
+ * around their holes: the fill-bias rule on every punch hole, with its 3-D
+ * rim, and the `limit` holes farthest outside their range.
+ */
+export function fetchVolumeTexture(volumeId: string, limit = 20, limits: TextureLimits = {}): Promise<VolumeTexture> {
+  const { minSigma = null, oneWay = null, minHoles = null, floor = null } = limits;
+  if (PYODIDE_MODE) return engine.volumeTexture(volumeId, limit, minSigma, oneWay, minHoles, floor);
+  const q = new URLSearchParams({ limit: String(limit) });
+  for (const [key, value] of [["min_sigma", minSigma], ["one_way", oneWay], ["min_holes", minHoles], ["floor", floor]] as const) {
+    if (value != null) q.set(key, String(value));
+  }
+  return getJSON<VolumeTexture>(`/api/volumes/${encodeURIComponent(volumeId)}/texture?${q}`);
+}
+
+/**
+ * The floor of every |Q| shell over the whole volume, on the shells and at
+ * the percentile the flatten recorded in the file (its defaults without a
+ * record); for the flattened stage, its input's too, and the diffuse level.
+ */
+export function fetchShellFloors(volumeId: string): Promise<ShellFloors> {
+  if (PYODIDE_MODE) return engine.shellFloors(volumeId);
+  return getJSON<ShellFloors>(`/api/volumes/${encodeURIComponent(volumeId)}/shell-floors`);
+}
+
 /** Which shells (|Q| centre, FWHM in Å⁻¹) of a volume are powder rings: each rises in nearly every direction. */
 export function fetchRingIsotropy(volumeId: string, shells: { q: number; fwhm: number }[]): Promise<RingIsotropy> {
   const q = shells.map((s) => s.q.toFixed(4)).join(",");
@@ -189,7 +240,7 @@ export function fetchDpdfMeta(volumeId: string): Promise<DeltaPdfMeta> {
   return getJSON<DeltaPdfMeta>(`/api/deltapdf/${encodeURIComponent(volumeId)}/meta`);
 }
 
-/** The ΔPDF's strongest extrema above `minSigma` robust σ, grouped by sign, length and size. */
+/** The ΔPDF's strongest extrema above `minSigma` robust σ, grouped by the declared point group, else by sign, length and size. */
 export function fetchDpdfFeatures(volumeId: string, minSigma = 5, limit = 12): Promise<DpdfFeatures> {
   if (PYODIDE_MODE) return engine.dpdfFeatures(volumeId, minSigma, limit);
   const params = new URLSearchParams({ min_sigma: String(minSigma), limit: String(limit) });
@@ -231,6 +282,29 @@ export function fetchConsistencyCheck(datasetId: string): Promise<ConsistencyChe
 export function fetchBraggProfile(datasetId: string): Promise<BraggProfile> {
   if (PYODIDE_MODE) return engine.braggProfile(datasetId);
   return getJSON<BraggProfile>(`/api/bragg/${encodeURIComponent(datasetId)}/profile`);
+}
+
+/**
+ * What a declared modulation means before a run (POST /api/modulation/check):
+ * its description and the positions it protects on the cell and under the
+ * symmetry given, or what is wrong with it (ok false). Without a
+ * `modulation`, the backend's default (which declares none).
+ */
+export function checkModulation(body: ModulationCheckIn): Promise<ModulationCheck> {
+  if (PYODIDE_MODE) return engine.modulationCheck(JSON.stringify(body));
+  return postJSON<ModulationCheck>("/api/modulation/check", body);
+}
+
+/**
+ * Which protected position each voxel of a slice of the dataset's punched
+ * stage lies in (GET /api/modulation/{id}/labels), on that stage's grid: what
+ * the run's search left alone, from its punch record, never from the form.
+ * The header's `recorded` is false for a record from before the punch kept it.
+ */
+export async function fetchProtectedLabels(datasetId: string, plane: string, value: number, interp = false): Promise<ProtectedLabels> {
+  if (PYODIDE_MODE) return (await engine.protectedLabels(datasetId, plane, value, interp)) as ProtectedLabels;
+  const params = new URLSearchParams({ plane, value: String(value), interp: String(interp) });
+  return (await fetchEnvelope(`/api/modulation/${encodeURIComponent(datasetId)}/labels?${params.toString()}`)) as ProtectedLabels;
 }
 
 export function fetchRingDiagnostics(datasetId: string): Promise<RingDiagnostics> {

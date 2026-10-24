@@ -4,11 +4,18 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Dataset } from "../../api/types";
+import type { Dataset, FlattenSettings } from "../../api/types";
+import { usePipelineStore } from "../../state/pipelineStore";
 import { loadPipelineContext } from "../context/loadContext";
+import { UNRECORDED_PROTECTION_NOTE } from "../context/pipelineContext";
+import { offLatticeBunching } from "../metrics/bunching";
+import { FLATTEN_UNRECORDED_NOTE, pedestalLeft } from "../metrics/flatten";
+import { operationName } from "../metrics/symmetry";
 import { evaluateStage, headline, outOfBounds } from "../tune/evaluate";
 import { judge } from "../verdicts";
-import { makeSlice } from "./helpers";
+import { cut, directGroup, HKL, orbit } from "./constructedDpdf";
+import { BUNCHED_AT_THIRDS, labelsOn, makeSlice, onTheThirds, recordOf, THIRDS_AS_PLANES } from "./helpers";
+import { shellFloorsOf } from "./shellFloors";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -16,8 +23,10 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
@@ -51,6 +60,14 @@ beforeEach(() => {
   );
 });
 
+/** A punched cut's grid in the punch's tests below: 73 voxels over ±2.4 r.l.u. */
+const CUT_GRID = makeSlice(73, 73, () => 0, { half: 2.4 });
+/** The run's labels of k = (1/3, 0, 0) declared as planes, the H planes 1/3 and 2/3 (± 0.08), on each cut: H is x on h0l, the cut itself on 0kl. */
+const protectThirds = () =>
+  api.fetchProtectedLabels.mockImplementation(async (_id: string, plane: string, value: number) =>
+    labelsOn(CUT_GRID, (x) => (onTheThirds(plane === "0kl" ? value : x) ? 1 : 0)),
+  );
+
 describe("evaluateStage", () => {
   it("measures the punch on the planes inside the grid", async () => {
     const e = await evaluateStage("punch", dataset);
@@ -67,7 +84,7 @@ describe("evaluateStage", () => {
 
   it("counts every sharp leftover on the protected planes, on its own line, and leaves them out of the verdict (D5, 2.4.5)", async () => {
     // Synthetic punched cuts, 1/15 r.l.u. a voxel. On h0l (K = 0), twelve sharp peaks
-    // on the default protected H planes (1/3 and 2/3 mod 1), more than the eight the
+    // on the declared protected H planes (1/3 and 2/3 mod 1), more than the eight the
     // chat's context lists; on 0kl (H = 0, no protected plane), none, or one stray.
     const noise = (ix: number, iy: number) => ((ix * 7919 + iy * 104729) % 1000) / 500 - 1;
     const bump = (cx: number, cy: number) => (ix: number, iy: number) => 2 * Math.exp(-((ix - cx) ** 2 + (iy - cy) ** 2) / 2);
@@ -79,6 +96,8 @@ describe("evaluateStage", () => {
       api.fetchSlice.mockImplementation(async (id: string, plane: "h0l" | "0kl") =>
         makeSlice(73, 73, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + (id.endsWith("braggpunched") ? peaks[plane].reduce((s, f) => s + f(ix, iy), 0) : 0), { half: 2.4 }),
       );
+    // What the run's search left alone, from its record: the declared H planes, on each cut's grid.
+    protectThirds();
     punched({ h0l: satellites, "0kl": [] });
     const e = await evaluateStage("punch", dataset);
     expect([e.leftover_at_nodes, e.leftover_off_lattice_sharp, e.leftover_on_protected_planes, e.leftover_on_protected_planes_sharp]).toEqual([0, 12, 12, 12]);
@@ -91,6 +110,57 @@ describe("evaluateStage", () => {
     const left = await evaluateStage("punch", dataset);
     expect([left.leftover_off_lattice_sharp, left.leftover_on_protected_planes_sharp]).toEqual([13, 12]);
     expect(judge("punch", left)).toMatchObject({ kind: "attention", reasons: ["sharp off-lattice"] });
+  });
+
+  // The same twelve satellites on h0l, and the run's labels of what its search left alone.
+  const satellitesOnTheThirds = () => {
+    const noise = (ix: number, iy: number) => ((ix * 7919 + iy * 104729) % 1000) / 500 - 1;
+    const bump = (cx: number, cy: number) => (ix: number, iy: number) => 2 * Math.exp(-((ix - cx) ** 2 + (iy - cy) ** 2) / 2);
+    const satellites = [...[11, 26, 41, 56].flatMap((ix) => [bump(ix, 21), bump(ix, 36)]), ...[16, 31, 46, 61].map((ix) => bump(ix, 51))];
+    api.fetchSlice.mockImplementation(async (id: string, plane: string) =>
+      makeSlice(73, 73, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + (id.endsWith("braggpunched") && plane === "h0l" ? satellites.reduce((s, f) => s + f(ix, iy), 0) : 0), { half: 2.4 }),
+    );
+  };
+
+  it("marks what the run's search left alone, from its record, never from the form (plan 4.15)", async () => {
+    satellitesOnTheThirds();
+    // The form declares other planes, or none: the run's labels mark the thirds all the same.
+    protectThirds();
+    for (const form of [{ modulationK: "1/2, 0, 0", modulationForm: "planes" }, { modulationK: "none", modulationForm: "" }]) {
+      usePipelineStore.setState(form);
+      const e = await evaluateStage("punch", dataset);
+      expect([e.leftover_off_lattice_sharp, e.leftover_on_protected_planes_sharp], JSON.stringify(form)).toEqual([12, 12]);
+    }
+    expect(api.fetchProtectedLabels).toHaveBeenCalledWith("demo", "h0l", 0);
+    // A run whose search left nothing alone marks none, whatever the form declares: every sharp one counts.
+    usePipelineStore.setState({ modulationK: "1/3, 0, 0", modulationForm: "planes" });
+    api.fetchProtectedLabels.mockImplementation(async () => labelsOn(CUT_GRID, () => 0, { declared: null }));
+    const none = await evaluateStage("punch", dataset);
+    expect([none.leftover_off_lattice_sharp, none.leftover_on_protected_planes_sharp]).toEqual([12, 0]);
+    expect(judge("punch", none)).toMatchObject({ kind: "attention", reasons: ["sharp off-lattice"] });
+    usePipelineStore.setState({ modulationK: "", modulationForm: "" });
+  });
+
+  it("marks none on a run whose record predates what its search left alone, and the context says why", async () => {
+    satellitesOnTheThirds();
+    api.fetchProtectedLabels.mockImplementation(async () => labelsOn(CUT_GRID, () => 1, { recorded: false }));
+    const e = await evaluateStage("punch", dataset);
+    expect([e.leftover_off_lattice_sharp, e.leftover_on_protected_planes, e.leftover_on_protected_planes_sharp]).toEqual([12, 0, 0]);
+    const { context } = await loadPipelineContext(dataset, { recip: { plane: "h0l", value: 0 }, dpdf: null, records: false });
+    expect(context.bragg_punch?.leftover).not.toHaveProperty("n_on_protected");
+    expect(context.notes).toContain(`bragg punch: ${UNRECORDED_PROTECTION_NOTE}`);
+  });
+
+  it("puts the run's sharp peaks off the lattice bunched at one fraction to the user, beside the verdict it leaves as it was (plan 4.15)", async () => {
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 12, modulation: recordOf({ declared: THIRDS_AS_PLANES, bunching: BUNCHED_AT_THIRDS }) });
+    const e = await evaluateStage("punch", dataset);
+    expect(e.off_lattice_bunching).toEqual(offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })));
+    expect(judge("punch", e)).toEqual(judge("punch", { ...e, off_lattice_bunching: undefined }));
+    // No bunching in the record, or no record of it: no question.
+    for (const modulation of [recordOf({ declared: THIRDS_AS_PLANES }), null, undefined]) {
+      api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 12, modulation });
+      expect(await evaluateStage("punch", dataset)).not.toHaveProperty("off_lattice_bunching");
+    }
   });
 
   it("passes on the raw volume's note when its σ is √|I| of normalized data", async () => {
@@ -247,6 +317,39 @@ describe("evaluateStage", () => {
     expect(judge("pdf", e).reasons).toContain("symmetry broken");
   });
 
+  it("tests the declared group's operations that map the x–y section onto itself, as symmetry_check judges them; with none declared, the cell's in-plane ones", async () => {
+    const withPdf: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" }],
+    };
+    // A tetragonal ΔPDF symmetrised over 4/m: it keeps the four-fold and the
+    // mirror ⊥ c, and not the mirrors ⊥ a and ⊥ b, which 4/m lacks.
+    const fourOverM = [HKL.fourC, HKL.mirrorC];
+    const cell = { a: 4, c: 6, gamma: 90 };
+    const features = orbit([0, 0.25].map((w) => ({ at: [0.3, 0.1, w], amp: 1, width: 0.35 })), directGroup(fourOverM));
+    const lattice = { a: cell.a, b: cell.a, c: cell.c, alpha: 90, beta: 90, gamma: 90 };
+    api.fetchConsistencyCheck.mockResolvedValue({ has_check: false });
+    api.fetchDpdfMeta.mockResolvedValue({ lattice, window_open_weight: 0, window_shape: "ellipsoid" });
+    api.fetchDpdfSlice.mockImplementation(async (_id: string, plane: "xy" | "xz" | "yz", value: number) => cut(cell, features, plane, value));
+    const raw = { shape: [41, 41, 41], h_range: [-4, 4], k_range: [-4, 4], l_range: [-4, 4], lattice };
+
+    api.fetchMeta.mockResolvedValue({ ...raw, symmetry: "4/m", symmetry_ops: fourOverM });
+    const declared = await evaluateStage("pdf", withPdf);
+    expect(declared.max_symmetry_break as number).toBeLessThan(1e-6);
+    // An entry of the group symmetry_check judges: a rotation with its product with the inversion.
+    const onSection = directGroup(fourOverM).filter((m) => m[2][0] === 0 && m[2][1] === 0);
+    const entries = [...onSection.slice(1).filter((m) => operationName(m).includes("fold")).map((m) => `${operationName(m)} / ${operationName(m.map((r) => r.map((x) => -x + 0)))}`), "inversion"];
+    expect(entries).toContain(declared.worst_symmetry_op);
+    expect(judge("pdf", declared).reasons).not.toContain("symmetry broken");
+
+    // No operations declared, only the name: the cell's in-plane ones, as before, the mirrors ⊥ a and ⊥ b among them.
+    api.fetchMeta.mockResolvedValue({ ...raw, symmetry: "4/m" });
+    const named = await evaluateStage("pdf", withPdf);
+    expect(["mirror ⊥ a", "mirror ⊥ b"]).toContain(named.worst_symmetry_op);
+    expect(named.max_symmetry_break as number).toBeGreaterThan(0.05);
+    expect(judge("pdf", named).reasons).toContain("symmetry broken");
+  });
+
   it("judges the ΔPDF's window by its raw weight, as qmax_coverage does: 1.04e-3 is past 1e-3 (D6, 2.4.6), and shows it so (2.4.6b)", async () => {
     const withPdf: Dataset = {
       ...dataset,
@@ -323,30 +426,6 @@ describe("evaluateStage", () => {
     expect(judge("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4, back_fft_pearson_r: 0.9995 }).kind).toBe("pass");
   });
 
-  it("says whether the flatten left a pedestal, so the Q² term's question has a stated answer", async () => {
-    const withFlat: Dataset = {
-      ...dataset,
-      stages: [...dataset.stages, ...["backfilled", "flattened"].map((name) => ({ name, exists: true, kind: "hkl" as const, volume_id: `demo.${name}` }))],
-    };
-    api.fetchMeta.mockResolvedValue({ shape: [81, 81, 81], h_range: [-10, 10], k_range: [-10, 10], l_range: [-10, 10], lattice: { a: 4, b: 4, c: 4 } });
-    const lumpy = (x: number, y: number) => 0.8 * Math.cos(1.3 * x) * Math.cos(1.1 * y);
-    // A |Q|² floor the flatten left, spanning more than the diffuse level over
-    // the outer half of the coverage, where the pedestal is judged.
-    const q2 = (x: number, y: number) => 0.25 * Math.hypot(x, y) ** 2 / 4;
-    const evaluate = async (after: (x: number, y: number) => number) => {
-      api.fetchSlice.mockImplementation(async (id: string) =>
-        makeSlice(81, 81, id.endsWith("backfilled") ? (x, y) => 4 + q2(x, y) + lumpy(x, y) : after, { half: 10 }),
-      );
-      return evaluateStage("flatten", withFlat);
-    };
-    const rising = await evaluate((x, y) => q2(x, y) + lumpy(x, y));
-    expect(rising.pedestal_left).toBe(true);
-    expect(headline("flatten", rising)).toMatch(/ · pedestal left$/);
-    const level = await evaluate(lumpy);
-    expect(level.pedestal_left).toBe(false);
-    expect(headline("flatten", level)).toMatch(/ · no pedestal$/);
-    expect(headline("flatten", { max_after_floor_sigma: 0.8 })).toBe("floor ≤ 0.8σ · trend ≤ – · span ≤ –"); // not measured: not said
-  });
 
   it("names the plane and |Q| of the worst ring residual in the headline", () => {
     const e = {
@@ -358,6 +437,139 @@ describe("evaluateStage", () => {
       worst_ring_left: null,
     };
     expect(headline("rings", e)).toBe("ring ratio 0.24 · over-sub ≤ 0.03 · ring dent ≤ 0.187 (h0l, 6.35 Å⁻¹) · left ≤ 0");
+  });
+});
+
+// Volumes built to a known answer, as tests/test_shell_floors.py's _ball: a
+// cubic cell of 4 Å on 81³ points over ±4 r.l.u., measured out to 6 Å⁻¹ (the
+// box's faces at 6.28 Å⁻¹, so every shell the counts reach is whole). The
+// flattened stage is a uniform diffuse, 0.2 of a deterministic u in [0, 1),
+// plus what the flatten left; its input is that plus the 0.25 it took out.
+// The planes are the volume's own cuts through the origin, and the whole
+// volume's floors are measured as the server measures them (shellFloorsOf).
+// Each shell's floor is the diffuse's 25th percentile, 0.05, plus the
+// pedestal at its |Q|.
+describe("the flatten's pedestal, over the whole volume (4.1)", () => {
+  const N = 81;
+  const HALF = 4;
+  const QU = (2 * Math.PI) / 4;
+  const AXIS = Array.from({ length: N }, (_v, i) => -HALF + (2 * HALF * i) / (N - 1));
+  const MID = (N - 1) / 2;
+  const u = (i: number, j: number, k: number) => {
+    const x = Math.sin(i * 12.9898 + j * 78.233 + k * 37.719) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  const qOf = (h: number, k: number, l: number) => QU * Math.hypot(h, k, l);
+  const withFlat: Dataset = {
+    ...dataset,
+    stages: [...dataset.stages, ...["backfilled", "flattened"].map((name) => ({ name, exists: true, kind: "hkl" as const, volume_id: `demo.${name}` }))],
+  };
+  const cell = { shape: [N, N, N], h_range: [-HALF, HALF], k_range: [-HALF, HALF], l_range: [-HALF, HALF], lattice: { a: 4, b: 4, c: 4 } };
+  const DEFAULT_RECORD = { fit_q_range: [0.8, 10] as [number, number], floor_percentile: 25, q_step: 0.05 };
+
+  /** Build the stages with `pedestal` left (h, k, l, |Q| → its height), mock the API with them, and evaluate the flatten. */
+  async function evaluateWith(pedestal: (h: number, k: number, l: number, q: number) => number, record: unknown = DEFAULT_RECORD) {
+    const after = (h: number, k: number, l: number, idx: [number, number, number]) => {
+      const q = qOf(h, k, l);
+      return q > 6 ? NaN : 0.2 * u(...idx) + pedestal(h, k, l, q);
+    };
+    const before = (h: number, k: number, l: number, idx: [number, number, number]) => after(h, k, l, idx) + 0.25;
+    const volume = (f: typeof after) => ({ axes: [AXIS, AXIS, AXIS] as [number[], number[], number[]], q: qOf, value: f });
+    const floors = shellFloorsOf(volume(after), volume(before), { id: "demo.flattened", flatten: record as FlattenSettings | null });
+    api.fetchMeta.mockResolvedValue(cell);
+    api.fetchShellFloors.mockResolvedValue(floors);
+    // A plane's point (x, y) as (h, k, l) and its voxel.
+    const at: Record<string, (x: number, y: number, ix: number, iy: number) => [number, number, number, [number, number, number]]> = {
+      hk0: (x, y, ix, iy) => [x, y, 0, [ix, iy, MID]],
+      h0l: (x, y, ix, iy) => [x, 0, y, [ix, MID, iy]],
+      "0kl": (x, y, ix, iy) => [0, x, y, [MID, ix, iy]],
+    };
+    api.fetchSlice.mockImplementation(async (id: string, plane: string) =>
+      makeSlice(N, N, (x, y, ix, iy) => (id.endsWith("backfilled") ? before : after)(...at[plane](x, y, ix, iy)), { half: HALF }),
+    );
+    const e = await evaluateStage("flatten", withFlat);
+    const planes = Object.values(e.per_plane as Record<string, { floor_trend: number; floor_span_fraction: number; floor_judged_q: [number, number] }>);
+    return { e, floors, planes };
+  }
+  // What the planes alone would have judged, the largest of their trends and spans (the rule before 4.1).
+  const byPlanes = (planes: { floor_trend: number; floor_span_fraction: number }[]) =>
+    pedestalLeft(Math.max(...planes.map((p) => Math.abs(p.floor_trend))), Math.max(...planes.map((p) => p.floor_span_fraction)));
+
+  it("reads a flat floor as no pedestal, on the planes and over the volume", async () => {
+    const { e, planes } = await evaluateWith(() => 0);
+    expect(e.floor_judged_q).toEqual([3.02, 5.97]); // the outer half of the 0–6 Å⁻¹ the counts reach (3.025–5.975, to three figures)
+    expect(e.floor_span_fraction as number).toBeLessThan(0.05);
+    expect(e.pedestal_left).toBe(false);
+    expect(judge("flatten", e)).toMatchObject({ kind: "pass", reasons: [] });
+    expect(byPlanes(planes)).toBe(false);
+    expect(headline("flatten", e)).toBe(`floor ≤ ${e.max_after_floor_sigma}σ · trend ${e.floor_trend} · span ${e.floor_span_fraction} · no pedestal`);
+  });
+
+  it("reads an isotropic pedestal at the span and trend it was built with, as the planes do", async () => {
+    const b = 0.06; // b·|Q|²: 9b at 3 Å⁻¹, 36b at 6 Å⁻¹
+    const { e, floors, planes } = await evaluateWith((_h, _k, _l, q) => b * q * q);
+    const [lo, hi] = e.floor_judged_q as [number, number];
+    expect([lo, hi]).toEqual([3.02, 5.97]);
+    expect(e.floor_trend).toBe(1);
+    // The span built in: b·(hi² − lo²) over the flatten input's level.
+    expect(e.floor_span_fraction as number).toBeCloseTo((b * (hi * hi - lo * lo)) / floors.level!, 1);
+    expect(Math.abs((e.floor_span_fraction as number) / ((b * (hi * hi - lo * lo)) / floors.level!) - 1)).toBeLessThan(0.02);
+    expect(e.pedestal_left).toBe(true);
+    expect(judge("flatten", e)).toMatchObject({ kind: "attention", reasons: ["pedestal"] });
+    // The planes read it too, with a span a little higher: a plane's median
+    // level weights the inner shells more than the volume's does (#37: 5 % on this pedestal).
+    for (const p of planes) expect([p.floor_trend, p.floor_span_fraction >= 0.8]).toEqual([1, true]);
+    const planeSpan = Math.min(...planes.map((p) => p.floor_span_fraction));
+    expect(e.floor_span_fraction as number).toBeLessThan(planeSpan);
+    expect(e.floor_span_fraction as number).toBeGreaterThan(0.85 * planeSpan);
+    expect(headline("flatten", e)).toMatch(/ · pedestal left$/);
+  });
+
+  it("sees a pedestal the three planes miss: one off the planes h = 0, k = 0 and l = 0", async () => {
+    const b = 0.06;
+    const off = (h: number, k: number, l: number, q: number) => (h === 0 || k === 0 || l === 0 ? 0 : b * q * q);
+    const { e, planes } = await evaluateWith(off);
+    for (const p of planes) expect(p.floor_span_fraction).toBeLessThan(0.2); // a level floor on every plane
+    expect(byPlanes(planes)).toBe(false); // the planes' rule passed it
+    expect(e.floor_trend as number).toBeGreaterThanOrEqual(0.99);
+    expect(e.floor_span_fraction as number).toBeGreaterThanOrEqual(0.8);
+    expect(judge("flatten", e)).toMatchObject({ kind: "attention", reasons: ["pedestal"] });
+  });
+
+  it("judges the volume's shells from the run's fit range, read with the floors (4.11), and says when the file records none", async () => {
+    // The run fitted 5–10 Å⁻¹ only: below 5 Å⁻¹ its model, extrapolated, sits
+    // too high, and the floors climb 1 per Å⁻¹ up to it; from 5 out they are level.
+    const climb = (_h: number, _k: number, _l: number, q: number) => (q < 5 ? q - 5 : 0);
+    const run = await evaluateWith(climb, { ...DEFAULT_RECORD, fit_q_range: [5, 10] });
+    expect((run.e.floor_judged_q as number[])[0]).toBeGreaterThanOrEqual(5);
+    for (const p of run.planes) expect(p.floor_judged_q[0]).toBeGreaterThanOrEqual(5);
+    expect(run.e.pedestal_left).toBe(false);
+    expect(run.e).not.toHaveProperty("settings_note");
+    expect(api.fetchMeta).not.toHaveBeenCalledWith("demo.flattened"); // the record came with the floors
+    // The same floors without the record: judged with the defaults, which read the climb, and said so.
+    const old = await evaluateWith(climb, null);
+    expect(old.e.floor_judged_q).toEqual([3.02, 5.97]);
+    expect(old.e.pedestal_left).toBe(true);
+    expect(old.e.settings_note).toBe(FLATTEN_UNRECORDED_NOTE);
+  });
+
+  it("does not judge the pedestal when the volume's floors cannot be read, or were read without the flatten's input", async () => {
+    const { e, floors } = await evaluateWith((_h, _k, _l, q) => 0.06 * q * q);
+    api.fetchShellFloors.mockRejectedValue(new Error("500"));
+    const unread = await evaluateStage("flatten", withFlat);
+    expect([unread.floor_trend, unread.floor_span_fraction, unread.pedestal_left]).toEqual([null, null, null]);
+    expect(judge("flatten", unread)).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    // Without the input there is no diffuse level: the volume's own median is no span's denominator.
+    api.fetchShellFloors.mockResolvedValue({ ...floors, before_id: null });
+    const alone = await evaluateStage("flatten", withFlat);
+    expect([alone.floor_trend, alone.floor_span_fraction, alone.pedestal_left]).toEqual([e.floor_trend, null, null]);
+  });
+
+  it("reads an evaluation recorded before 4.1 by the planes' largest trend and span, as then", () => {
+    const old = { max_after_floor_sigma: 1.8, max_floor_trend: 0.97, max_floor_span_fraction: 0.97, pedestal_left: true };
+    expect(judge("flatten", old)).toMatchObject({ kind: "attention", reasons: ["pedestal"] });
+    expect(headline("flatten", old)).toBe("floor ≤ 1.8σ · trend ≤ 0.97 · span ≤ 0.97 · pedestal left");
+    expect(headline("flatten", { max_after_floor_sigma: 0.8 })).toBe("floor ≤ 0.8σ · trend ≤ – · span ≤ –"); // not measured: not said
   });
 });
 

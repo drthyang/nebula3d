@@ -103,6 +103,24 @@ describe("runRound", () => {
     expect([round.history.barren, round.stuck]).toEqual([0, false]);
   });
 
+  it("hands each call the reply's steps before it, across rounds, repeats and errors included (replySteps)", async () => {
+    const before: string[][] = [];
+    const reads = tool("reads", async (_args, c) => {
+      before.push((c.replySteps ?? []).map((s) => `${s.id} ${s.name} ${s.status}`));
+      return { result: {}, summary: "read" };
+    });
+    const start = startReply({ ...ctx, replySteps: [{ id: "x", name: "stale", args: {}, status: "done" }] }, [reads, echo, fails]);
+    expect(start.ctx.replySteps).toEqual([]); // a reply starts with none
+    const first = await runRound([call("c1", "echo", {}), call("c2", "fails", {}), call("c3", "reads", {})], start);
+    const second = await runRound([call("c4", "echo", {}), call("c5", "reads", { a: 1 })], first.history);
+    expect(before).toEqual([
+      ["0:c1 echo done", "1:c2 fails error"],
+      ["0:c1 echo done", "1:c2 fails error", "2:c3 reads done", "3:c4 echo done"],
+    ]);
+    expect(second.history.ctx.replySteps).toEqual([...first.results, ...second.results].map((r) => r.step));
+    expect(first.history.ctx.replySteps).toHaveLength(3); // the round never changes the history it was given
+  });
+
   it("numbers each step in the reply, so call ids a server reuses across rounds stay apart", async () => {
     const first = await runRound([call("c1", "echo", { a: 1 }), call("c2", "echo", { a: 2 })], startReply(ctx, [echo]));
     const second = await runRound([call("c1", "echo", { a: 3 }), call("c1", "echo", { a: 1 })], first.history);
@@ -155,6 +173,24 @@ describe("runRound", () => {
     expect(a.history.ctx.skillsRead).toEqual(new Set(["reduction-qc"]));
     // The history it ran on is as it was: the read went to the round's copy of the context.
     expect([history.steps, history.ran, history.barren, history.ctx.skillsRead]).toEqual([0, [], 0, new Set()]);
+  });
+
+  it("hands every round's tools the user's latest message the reply started with, unchanged", async () => {
+    const heard: (string | undefined)[] = [];
+    const listen = tool("listen", async (_args, own) => {
+      heard.push(own.userMessage);
+      return { result: {}, summary: "heard" };
+    });
+    const said = "Set the punch cell to 2 along H.";
+    const history = startReply({ ...ctx, userMessage: said }, [listen]);
+    expect(Object.isFrozen(history.ctx)).toBe(true);
+    const first = await runRound([call("c1", "listen", { a: 1 })], history);
+    const second = await runRound([call("c2", "listen", { a: 2 })], first.history);
+    expect(heard).toEqual([said, said]);
+    expect(second.history.ctx.userMessage).toBe(said);
+    // A context without one: the tools hear none.
+    await runRound([call("c3", "listen", {})], startReply(ctx, [listen]));
+    expect(heard[2]).toBeUndefined();
   });
 
   it("offers no read_skill with the skills off: a call to it is to a tool the reply does not hold", async () => {

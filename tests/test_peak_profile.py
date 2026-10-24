@@ -1,6 +1,7 @@
 """Tests for Bragg/diffuse peak-shape decomposition (nebula3d.analysis.peak_profile)."""
 
 import numpy as np
+import pytest
 
 from nebula3d.analysis.peak_profile import (
     Resolution,
@@ -191,8 +192,11 @@ def test_magnetic_satellite_centers_finds_third_plane_only():
     data += 80.0 * np.exp(-0.5 * (((H - 1.0) / 0.04) ** 2 + (K / 0.04) ** 2 + (L / 0.04) ** 2))
     vol = HKLVolume.from_arrays(data, (h[0], h[-1]), (k[0], k[-1]), (l[0], l[-1]), ub_matrix=ub)
 
-    centers = magnetic_satellite_centers(vol, h_half_width=0.08, n_mad=6.0, min_intensity=2.0)
+    centers = magnetic_satellite_centers(vol, fractions=(1 / 3, 2 / 3), h_half_width=0.08,
+                                         n_mad=6.0, min_intensity=2.0)
     assert centers, "expected at least the H=1/3 satellite"
     hs = np.array([c[0] for c in centers])
     assert np.any(np.abs(hs - 1/3) < 0.05)          # found the 1/3 satellite
     assert not np.any(np.abs(hs - 1.0) < 0.05)      # ignored the integer node
+    with pytest.raises(TypeError, match="fractions"):  # the sample's planes: no default
+        magnetic_satellite_centers(vol, h_half_width=0.08)  # type: ignore[call-arg]

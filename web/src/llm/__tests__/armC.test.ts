@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { JobEvent } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
-import { runAgent, type AgentResult } from "../agent";
+import { runAgent, toolStepsIn, type AgentResult, type AgentStep } from "../agent";
 import { answerIssues, issuesPrompt } from "../answerChecks";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
@@ -34,9 +34,11 @@ import type { ChatMessage, StreamDelta, ToolSpec } from "../provider/client";
 import { fillReferences } from "../references";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, readSkill } from "../skills";
-import { CHAT_TOOLS, toolSpecs, toolsWithSkills, unreadSkillRefusal } from "../tools";
-import { describeStageParams, TUNE_STAGES } from "../tune/catalog";
+import { callTool, CHAT_TOOLS, toolSpecs, toolsWithSkills, unreadSkillRefusal } from "../tools";
+import { BUNCHING_REMEDY, offLatticeBunching } from "../metrics/bunching";
+import { describeStageParams, regridRefusal, SAMPLE_PARAMS, sampleFactRefusal, TUNE_STAGES } from "../tune/catalog";
 import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS } from "../tune/prompts";
+import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 import { namedInOwnWords, quotations, skillNamesIn, skillSentences, skillSentencesIn, type SkillSentence } from "./methodText";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
 
@@ -48,11 +50,14 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -158,9 +163,10 @@ const ROUNDS: Call[][] = [
     ["line_profile", { stage: "flattened", along: "H", at: { K: 0.5, L: 0 } }],
   ],
   [["texture_check", {}], ["qmax_coverage", {}], ["symmetry_check", {}], ["consistency_details", {}]],
-  [["grain_check", {}], ["ub_check", {}], ["bragg_peaks", {}]],
+  // The regrid the TASK does not ask for: refused, nothing written (its gate, the same in both arms).
+  [["grain_check", {}], ["ub_check", {}], ["regrid_refined_ub", {}], ["bragg_peaks", {}]],
   [["dpdf_contrast", {}], ["dpdf_peaks", {}]],
-  [["compare_datasets", { kind: "reciprocal", plane: "hk0", value: 0 }], ["run_log", {}]],
+  [["compare_datasets", { kind: "reciprocal", plane: "hk0", value: 0 }], ["run_log", {}], ["run_verdict", {}]],
   [["tune_pipeline", { stages: ["flatten"], trials_per_stage: 2 }]],
   [["show_in_viewer", { view: "dpdf", plane: "xy", value: 4 }]],
   [["describe_dataset", {}]],
@@ -179,7 +185,9 @@ const FIRST = [
 ].join(" ");
 const REVISED = "The grid is 97 × 97 × 97 voxels and the cell edge is {{describe_dataset.cell.a}} Å.";
 
-// The second turn: verdicts with no check in that reply, and the run called a success.
+// The second turn: verdicts with no check in that reply, and the run called a
+// success; with a number from the first turn's flatten measured before its
+// rerun (beforeAll adds it, from the result).
 const FOLLOW_UP = "Is there a second grain, and does the ΔPDF keep its symmetry?";
 const SECOND = "There is no second grain, and the ΔPDF keeps its six-fold symmetry. The run is ready for analysis.";
 const SECOND_REVISED = "Those need checks in this reply; I will run them next.";
@@ -192,7 +200,7 @@ const scripted = (calls: Call[], round: number): StreamDelta[] => [
 let context: PipelineContext;
 
 /** One reply through runAgent with the skills off, as arm C runs it, its model scripted: every request it sent, and what it returned. */
-async function reply(messages: ChatMessage[], script: StreamDelta[][], earlierResults: string[]): Promise<{ sent: Sent[]; result: AgentResult }> {
+async function reply(messages: ChatMessage[], script: StreamDelta[][], earlierSteps: AgentStep[]): Promise<{ sent: Sent[]; result: AgentResult }> {
   const sent: Sent[] = [];
   model.streamChat.mockImplementation((args: Sent) => {
     sent.push({ messages: [...args.messages], tools: args.tools, toolChoice: args.toolChoice });
@@ -207,7 +215,7 @@ async function reply(messages: ChatMessage[], script: StreamDelta[][], earlierRe
   const result = await runAgent({
     messages,
     tools: CHAT_TOOLS,
-    ctx: { dataset: DATASET, datasets: DATASETS, skills: setup.skills, skillsRead: setup.skillsRead, earlierResults },
+    ctx: { dataset: DATASET, datasets: DATASETS, skills: setup.skills, skillsRead: setup.skillsRead, earlierSteps },
     settings,
     signal: new AbortController().signal,
     maxRounds: ROUNDS.length + 2,
@@ -255,13 +263,17 @@ describe("arm C's session, with the skills off", () => {
       { role: "user" as const, content: TASK },
       { role: "assistant" as const, content: first.result.content },
     ];
-    const earlier = first.result.steps.flatMap((s) => (s.status === "done" && s.result ? [s.result] : []));
+    const earlier = toolStepsIn([first.result]);
+    // And a number from the first turn's flatten measured before its rerun: stale in this one.
+    const before = first.result.steps.find((s) => s.name === "assess_stage" && s.args.stage === "flatten")!;
+    const plane = (JSON.parse(before.result!) as { flatten: { per_plane: { h0l: { after_negative_fraction: number } } } }).flatten.per_plane.h0l;
+    const secondAnswer = `${SECOND} On h0l, ${plane.after_negative_fraction} of the voxels were negative.`;
     const followUp = buildChatMessages(context, history, FOLLOW_UP, null, { tools: true, skills: false });
-    second = await reply(followUp, [[{ content: SECOND }], [{ content: SECOND_REVISED }]], earlier);
+    second = await reply(followUp, [[{ content: secondAnswer }], [{ content: SECOND_REVISED }]], earlier);
 
     for (const [run, opened, answer] of [
       [first, opening.length, FIRST],
-      [second, followUp.length, SECOND],
+      [second, followUp.length, secondAnswer],
     ] as const) {
       for (const m of run.sent[run.sent.length - 1].messages.slice(opened)) {
         if (m.role === "user") sentBack.push({ text: String(m.content), answer, steps: run.result.steps });
@@ -269,10 +281,10 @@ describe("arm C's session, with the skills off", () => {
     }
   }, SESSION_TIMEOUT);
 
-  it("ran the session it was scripted to: every tool arm C has, none refused, every kind of send-back, and the note to answer", () => {
+  it("ran the session it was scripted to: every tool arm C has, none refused but the regrid the task does not ask for, every kind of send-back, and the note to answer", () => {
     const offered = toolsWithSkills(CHAT_TOOLS, false).map((t) => t.name);
     expect(new Set(first.result.steps.map((s) => s.name))).toEqual(new Set(offered));
-    expect(first.result.steps.filter((s) => s.status !== "done").map((s) => `${s.name}: ${s.result}`)).toEqual([]);
+    expect(first.result.steps.filter((s) => s.status !== "done").map((s) => `${s.name}: ${s.result}`)).toEqual([`regrid_refined_ub: Error: ${regridRefusal()}`]);
     expect(first.result.steps.filter((s) => s.result?.includes("already_called"))).toHaveLength(2);
     expect(first.result.content).toBe("The grid is 97 × 97 × 97 voxels and the cell edge is 4 Å.");
     expect(second.result.content).toBe(SECOND_REVISED);
@@ -289,6 +301,7 @@ describe("arm C's session, with the skills off", () => {
       /These references name no value/,
       /this contradicts the verdict a check computed/,
       /These numbers appear in no tool result/,
+      /These numbers were measured before the last run recomputed the outputs they describe/,
       /^The tool calls are bringing nothing new\. Answer now/m,
     ]) {
       expect(all).toMatch(line);
@@ -398,4 +411,128 @@ describe("arm C's session, with the skills off", () => {
       }
     }
   });
+});
+
+// update_settings refuses a change to a fact about the sample that the user's
+// latest message does not name (tune/catalog.ts). Its refusal is the tool's
+// own behaviour, the same in both arms: it says what the setting is and what
+// to do, and names no skill, no tool, no stage, and no inference.
+describe("arm C's refusal of a change to a fact about the sample", () => {
+  const offered = toolsWithSkills(CHAT_TOOLS, false);
+  const armC = { dataset: DATASET, datasets: DATASETS, skills: false, skillsRead: new Set<string>(), userMessage: TASK };
+  const spans = writtenInferences()
+    .map((e) => e.span.text.trim())
+    .filter((t) => t.split(/\s+/).length >= 3);
+  /** What of the method a text holds: a skill's name or sentence, the word skill, a tool's or a stage's name, an inference span. */
+  const method = (text: string): string[] => [
+    ...skillNamesIn(text),
+    ...skillSentencesIn(text, MIN_WORDS).map(label),
+    ...namedInOwnWords(text),
+    ...spans.filter((t) => text.includes(t)),
+  ];
+
+  it("names no skill, tool or stage, and holds no inference, for every fact, alone or beside another change", async () => {
+    usePipelineStore.setState({ running: false });
+    for (const p of SAMPLE_PARAMS) {
+      const value = p.key === "modulation" ? { k: "1/3, 0, 0", form: "planes" } : 1;
+      const alone = await callTool(armC, "update_settings", { changes: { [p.key]: value } }, { tools: offered });
+      expect(alone.ok).toBe(false);
+      expect(alone.text).toBe(`Error: ${sampleFactRefusal(p.key)}`);
+      expect(method(alone.text), alone.text).toEqual([]);
+      // Beside a change it makes: the refusal is the same words, in its result.
+      const beside = await callTool(armC, "update_settings", { changes: { punchMinSig: 7, [p.key]: value } }, { tools: offered });
+      expect(beside.ok, beside.text).toBe(true);
+      const { refused } = JSON.parse(beside.text) as { refused: { setting: string; why: string }[] };
+      expect(refused).toEqual([{ setting: p.key, why: sampleFactRefusal(p.key) }]);
+      expect(method(refused[0].why), refused[0].why).toEqual([]);
+    }
+    expect(spans.length).toBeGreaterThan(60);
+  });
+
+  it("reads as arm B's: the refusal is the tool's own, not a skill's", async () => {
+    const changes = { changes: { punchSupercellH: 2 } };
+    const c = await callTool(armC, "update_settings", changes, { tools: offered });
+    const b = await callTool({ ...armC, skills: true, skillsRead: new Set(["bragg-node-audit"]) }, "update_settings", changes);
+    expect(b.text).toBe(c.text);
+  });
+});
+
+// regrid_refined_ub writes a new dataset only when the user's latest message
+// asks for a regrid (tune/catalog.ts: namesRegrid). Its description is
+// definitions only, so arm C reads it as arm B does, and its refusal is the
+// tool's own: it names no skill, tool or stage, and holds no inference.
+describe("arm C's regrid", () => {
+  const offered = toolsWithSkills(CHAT_TOOLS, false);
+  const armC = { dataset: DATASET, datasets: DATASETS, skills: false, skillsRead: new Set<string>(), userMessage: TASK };
+  const spans = writtenInferences()
+    .map((e) => e.span.text.trim())
+    .filter((t) => t.split(/\s+/).length >= 3);
+
+  it("is described in definitions only: arm C reads arm B's description", () => {
+    const b = CHAT_TOOLS.find((t) => t.name === "regrid_refined_ub")!;
+    const c = offered.find((t) => t.name === "regrid_refined_ub")!;
+    expect(b.descriptionWithoutSkills).toBeUndefined();
+    expect(c.description).toBe(b.description);
+    expect(skillNamesIn(c.description)).toEqual([]);
+    expect(c.description).not.toMatch(/\bskills?\b/i);
+    expect(skillSentencesIn(c.description, MIN_WORDS).map(label)).toEqual([]);
+    expect(spans.filter((t) => c.description.includes(t))).toEqual([]);
+  });
+
+  it("is refused for the validation's task, in words that name no skill, tool or stage and hold no inference, as in arm B", async () => {
+    usePipelineStore.setState({ running: false });
+    const c = await callTool(armC, "regrid_refined_ub", {}, { tools: offered });
+    expect(c.ok).toBe(false);
+    expect(c.text).toBe(`Error: ${regridRefusal()}`);
+    expect([...skillNamesIn(c.text), ...namedInOwnWords(c.text), ...spans.filter((t) => c.text.includes(t))]).toEqual([]);
+    expect(c.text).not.toMatch(/\bskills?\b/i);
+    const b = await callTool({ ...armC, skills: true, skillsRead: new Set(allSkills().map((s) => s.name)) }, "regrid_refined_ub", {});
+    expect(b.text).toBe(c.text);
+  });
+});
+
+// The question for the user (plan 4.15): a run whose punch record says its
+// sharp peaks off the lattice bunch at one commensurate fraction. Arm C reads
+// the question as arm B does and its facts without their remedy; an answer
+// that neither asks it nor leaves it to the user goes back once, worded
+// without the method, and the revision that asks stands.
+describe("arm C's question for the user", () => {
+  it("reads the question whole and the facts without their remedy, and sends back an answer that assumes it, naming no tool, stage or skill", async () => {
+    freshConsole();
+    context ??= (await loadPipelineContext(DATASET)).context;
+    const real = api.fetchBraggProfile.getMockImplementation()!;
+    api.fetchBraggProfile.mockImplementation(async (id: string) => {
+      const profile = await real(id);
+      return { ...profile, modulation: { ...profile.modulation, bunching: BUNCHED_AT_THIRDS } };
+    });
+    try {
+      const whole = offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS }))!;
+      const assumed = "The sample has a modulation with k = (1/3, 0, 0).";
+      const asking = whole.ask_user;
+      const opening = armSetup("C", context).messages;
+      const { sent, result } = await reply(opening, [scripted([["assess_stage", { stage: "punch" }]], 0), [{ content: assumed }], [{ content: asking }]], []);
+      expect(result.content).toBe(asking);
+      expect(result.note).toBeUndefined();
+      // What arm C read: the question whole, the facts without their remedy.
+      const read = JSON.parse(result.steps[0].result!) as { punch: { off_lattice_bunching: { facts: string; ask_user: string } } };
+      expect(read.punch.off_lattice_bunching).toEqual({ facts: whole.facts.replace(BUNCHING_REMEDY.text, ""), ask_user: whole.ask_user });
+      expect(whole.facts).toContain(BUNCHING_REMEDY.text);
+      // No span of inference, no skill, in any request.
+      const spans = writtenInferences()
+        .map((e) => e.span.text.trim())
+        .filter((t) => t.split(/\s+/).length >= 3);
+      const texts = sent.flatMap(textsOf);
+      expect(spans.filter((t) => texts.some((x) => x.includes(t)))).toEqual([]);
+      for (const text of texts) expect(skillNamesIn(text), text.slice(0, 200)).toEqual([]);
+      // The send-back: what it lacks and what it says as fact, its own words naming no tool, stage or skill.
+      const back = sent[sent.length - 1].messages.slice(opening.length).filter((m) => m.role === "user").map((m) => String(m.content));
+      expect(back).toHaveLength(1);
+      expect(back[0]).toMatch(/has a question for the user that the answer does not ask/);
+      expect(back[0]).toMatch(/as fact what a result in this reply asks the user/);
+      expect(namedInOwnWords(back[0])).toEqual([]);
+      for (const q of quotations(back[0])) expect(assumed.includes(q), q).toBe(true);
+    } finally {
+      api.fetchBraggProfile.mockImplementation(real);
+    }
+  }, SESSION_TIMEOUT);
 });

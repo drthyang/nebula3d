@@ -75,6 +75,56 @@ export interface RingIsotropy {
   not_judged?: string | null;
 }
 
+/** One punch hole's fill against the range its 3-D rim allows (VolumeTexture's `holes`); the values are null where it was not judged. */
+export interface TextureHole {
+  index: number; // its place among the holes, C order of their first voxels
+  centre_hkl: number[]; // the mean position of its voxels, r.l.u.
+  voxels: number;
+  rim_voxels: number; // measured, in no hole, left as they were by the fill
+  fill: number | null; // the mean backfilled value over the hole
+  level: number | null; // the rim's median: the local diffuse level
+  sigma: number | null; // the rim's robust σ about its trend
+  slope: number | null; // the trend's change per voxel outward
+  edge: number | null; // the range the rim allows: its trend at the hole's edge ...
+  peaked: number | null; // ... and continued linearly to the hole
+  bias: number | null; // the fill's signed distance outside that range (0 inside)
+  bias_sigma: number | null; // ... in the rim's σ
+  bias_level: number | null; // ... in units of the local level
+  not_judged: string | null; // "thin rim", "flat rim", "too large" or "no outside"
+}
+
+/**
+ * The Pilot's fill-bias rule (metrics/texture.ts) on every punch hole of a
+ * backfilled stage, each with its 3-D rim, against the dataset's punched stage
+ * (GET /api/volumes/{id}/texture; nebula3d.analysis.fill_texture).
+ */
+export interface VolumeTexture {
+  id: string;
+  punched_id: string; // the punched stage the holes were read from
+  holes_from: "punch_record" | "masks"; // the punch's record, or texture.ts's own test
+  rim: number; // the rim's depth, voxels
+  min_rim: number; // the fewest rim voxels a hole is judged with
+  // The rule's limits, as asked for (else the server's, texture.ts's).
+  min_sigma: number;
+  one_way: number;
+  min_holes: number;
+  floor: number;
+  n_holes: number;
+  n_judged: number;
+  judged: boolean; // room for the rims, and n_judged ≥ min_holes: else not judged
+  node_spacing: number | null; // voxels between neighbouring nodes of the grid's cell
+  room_needed: number | null; // ... that the median hole's rim needs, 2·(reach + rim)
+  not_judged: string | null; // why the grid is too coarse for the rule ("grid too coarse: …")
+  median_fill_bias_sigma: number | null;
+  median_fill_bias_level: number | null;
+  above_fraction: number | null;
+  below_fraction: number | null;
+  above_floor_fraction: number | null; // filled above their range by floor × level or more
+  below_floor_fraction: number | null;
+  systematic_fill_bias: boolean; // false whenever not judged
+  holes: TextureHole[]; // the `limit` holes farthest outside their range
+}
+
 /**
  * What the ring stage recorded in its diagnostics (GET /api/rings/{id}/diagnostics):
  * the rings the pooled model detected and could not confirm on its grid, which it
@@ -124,6 +174,42 @@ export interface UbCheck {
   mean_offset_rlu?: { before: (number | null)[]; after: (number | null)[]; standard_error: (number | null)[]; n: number } | null;
 }
 
+/**
+ * A dataset's raw volume regridded onto its refined UB, as a new dataset beside
+ * it, or why nothing was written (POST /api/datasets/{id}/regrid, the bridge's
+ * dataset_regrid_json: nebula3d.server.regrid.regrid_out). The fit is the UB
+ * check's. Fields a refusal came before are null; docs/regrid.md.
+ */
+export interface RegridResult {
+  id: string; // the dataset asked for
+  written: boolean;
+  // Why nothing was written: target_exists | symmetrised_without_source | turn_below_noise | cannot_symmetrise.
+  refusal: { code: string; reason: string } | null;
+  dataset_id: string | null; // the new dataset, or the existing one a target_exists refusal names
+  file: string | null; // ... its file, beside the raw one
+  source_file: string; // the dataset's raw file
+  refined_on: string | null; // whose peaks were fitted and whose data regridded
+  fit: string | null;
+  operations: number | null;
+  operations_from: string | null;
+  source_symmetrised: boolean | null;
+  symmetrised: boolean; // the new file is symmetrised, and declares its operations
+  turn_deg: number | null; // the fit's turn of the UB
+  turn_threshold_deg: number; // the UB check's rule (UB_TURN): a smaller turn is within the fit's noise
+  axis_uvw: number[] | null;
+  ub_start: number[][] | null;
+  ub: number[][] | null;
+  cell_start: number[] | null; // a, b, c (Å), α, β, γ (°)
+  cell: number[] | null;
+  rms_start: number | null; // the peaks' RMS distance from their nodes, Å⁻¹, before and after
+  rms: number | null;
+  n_used: number | null;
+  measured_before: number | null; // measured voxels regridded (after the edge trim)
+  measured_after: number | null; // measured voxels in the new file
+  voxels_outside: number | null; // measured before, unmeasured now: their Q left the old grid
+  voxels_outside_share: number | null; // ... over measured_before
+}
+
 export interface VolumeMeta {
   id: string;
   stage: string;
@@ -142,6 +228,58 @@ export interface VolumeMeta {
   // that leaves a significance in σ meaningless (normalized values).
   sigma?: "measured" | "estimated";
   sigma_note?: string | null;
+  // The settings the flatten that wrote this file ran with: null for a stage
+  // the flatten did not write, or wrote before it recorded them; absent from
+  // a backend that predates the field.
+  flatten_settings?: FlattenSettings | null;
+}
+
+/**
+ * What the flatten recorded in its output (nebula3d.pipeline.FlattenParams, as
+ * read_flatten_settings returns it: ranges as lists). Every field is optional:
+ * a file records the fields of the version that wrote it.
+ */
+export interface FlattenSettings {
+  estimator?: string;
+  ion?: string | null;
+  fit_q_range?: [number, number] | null; // Å⁻¹; null: every shell with a level was fitted
+  q2_term?: boolean;
+  floor_percentile?: number; // 0–100
+  q_step?: number; // Å⁻¹
+  smooth?: number;
+  snip_width?: number;
+  min_count?: number;
+  q_range?: [number, number] | null;
+}
+
+/**
+ * The floor of every |Q| shell over the whole volume, on the flatten's own
+ * shells (GET /api/volumes/{id}/shell-floors, the bridge's
+ * volume_shell_floors_json; nebula3d.preprocessing.shell_floors). One entry
+ * per shell in each list. For the flattened stage, the flatten's input (the
+ * backfilled stage, `before_id`) is measured on the same shells, and `level`
+ * is its median over the voxels measured in both: the diffuse level a
+ * pedestal's span is a share of. Without an input (`before_id` null) `level`
+ * is the volume's own median.
+ */
+export interface ShellFloors {
+  id: string;
+  before_id: string | null;
+  q_step: number; // Å⁻¹
+  percentile: number; // 0–100
+  min_count: number;
+  q_edges: number[]; // one more than the shells, Å⁻¹
+  centres: number[]; // Å⁻¹
+  totals: number[]; // the grid's voxels in the shell, measured or not
+  counts: number[]; // ... measured (mask and finite)
+  floors: (number | null)[]; // null under min_count
+  medians: (number | null)[];
+  counts_before?: number[] | null;
+  floors_before?: (number | null)[] | null;
+  medians_before?: (number | null)[] | null;
+  level: number | null;
+  level_count: number;
+  flatten?: FlattenSettings | null; // what the flatten recorded in the file, or null
 }
 
 export interface DeltaPdfMeta {
@@ -161,14 +299,19 @@ export interface DeltaPdfMeta {
   window_open_weight?: number | null;
 }
 
-// The ΔPDF's strongest extrema outside the origin's disk, grouped by sign,
-// length and size (nebula3d.analysis.dpdf_features): one per ± pair.
+// The ΔPDF's strongest extrema outside the origin's disk, grouped by the point
+// group the dataset's raw file declares, else by sign, length and size
+// (nebula3d.analysis.dpdf_features): one per ± pair.
 export interface DpdfFeatureGroup {
   sign: 1 | -1;
-  length: number; // |r|, Å
+  length: number; // |r| of the strongest, Å
   size_sigma: number; // the largest |ΔPDF| in the group, in robust σ
+  mean_size_sigma: number; // the mean |ΔPDF| of its n extrema, in robust σ
   value: number;
-  n: number; // extrema in the group
+  n: number; // extrema in the group, one per ± pair
+  // With a declared symmetry, the orbit's distinct vectors, one per ± pair (n is
+  // fewer when some are below the threshold or outside the volume); null without.
+  multiplicity: number | null;
   vectors: number[][]; // (x, y, z) along a, b, c, Å, strongest first
   vectors_rlu: (number[] | null)[]; // the same in lattice units
   sizes_sigma: number[];
@@ -180,6 +323,9 @@ export interface DpdfFeatures {
   min_sigma: number;
   origin_radius: number; // Å
   n_extrema: number;
+  // "declared symmetry (<label or operations>: <n> operations, r ≡ −r)", or
+  // "sign, length and size (<why: none declared, or why it was not applied>)"
+  grouped_by: string;
   groups: DpdfFeatureGroup[];
 }
 
@@ -300,6 +446,96 @@ export interface BraggProfile {
   fit_covariance: boolean;
   punch_frame: string | null;
   peaks: BraggPeakWidth[];
+  // What the punch's search left alone, and the bunching it measured
+  // (nebula3d.server.modulation.record_out): null for a record written
+  // before the punch kept it; absent from an older server's.
+  modulation?: ModulationRecord | null;
+}
+
+// ---------------------------------------------------------------- the sample's modulation
+
+/** A declaration as the backend writes it (nebula3d.modulation.Modulation.to_json): k's fractions exact. */
+export interface ModulationDeclaration {
+  k: string[][];
+  order: number;
+  form: string; // "points" | "planes"
+  half_width: number;
+  normal: number[] | null;
+}
+
+/** One position a declaration protects (nebula3d.modulation.Position): a plane family or a satellite about each node. */
+export interface ModulationPosition {
+  label: string;
+  kind: string; // "plane" | "point"
+  half_width: number;
+  coordinate: number[] | null;
+  centre: string | null;
+  period: number | null;
+  vector: string[] | null;
+}
+
+/** POST /api/modulation/check's body: a declaration as a run's request holds it (absent: the backend's default, none), on a cell and a symmetry. */
+export interface ModulationCheckIn {
+  modulation?: StageParamsIn["modulation"] | null;
+  cell?: [number, number, number] | null;
+  // Operation triplets as text, or HKL matrices as a volume's meta lists them.
+  symmetry_ops?: number[][][] | string | null;
+}
+
+/** What a declaration means before a run (POST /api/modulation/check); ok false gives the error alone. */
+export interface ModulationCheck {
+  ok: boolean;
+  error: string | null;
+  default: boolean; // none named: the backend's default, which declares none
+  declared: ModulationDeclaration | null;
+  description: string | null;
+  positions: ModulationPosition[];
+}
+
+/** Sharp peaks off the lattice bunched at one commensurate fraction (nebula3d.modulation.Bunching.to_json). */
+export interface Bunching {
+  coordinate: string; // "H", "K", "L"
+  equivalents: string[];
+  period: number;
+  denominator: number;
+  values: { value: string; hits: number }[]; // each fraction of the period with hits
+  hits: number;
+  peaks: number; // the sharp peaks off the lattice tested, each symmetry orbit once
+  expected: number; // the hits chance would give
+  p0: number;
+  p_value: number;
+  alpha: number;
+  tests: number;
+  half_width: number; // r.l.u.: one grid step
+  centres: number[][];
+  mean_distance: number;
+  others: string[];
+  where: string; // "H ≡ ±1/3 (mod 1)"
+}
+
+/** The punch's record of what its search left alone and what it found (BraggProfile.modulation). */
+export interface ModulationRecord {
+  declared: ModulationDeclaration | null;
+  cell: number[] | null;
+  symmetry_ops: number[][][] | null;
+  legacy: { h_centers: number[] | null; h_fractions: number[] | null; half_width: number } | null;
+  bunching: Bunching | null;
+}
+
+/**
+ * Which protected position each voxel of a slice of the punched stage lies in
+ * (GET /api/modulation/{id}/labels): i for legend[i − 1], 0 for none, on the
+ * punched stage's grid, read from the run's punch record.
+ */
+export interface ProtectedLabelsHeader extends SliceHeader {
+  recorded: boolean; // false: the record predates what the search left alone, and nothing is labelled
+  declared: ModulationDeclaration | null;
+  legend: ModulationPosition[];
+}
+
+export interface ProtectedLabels {
+  header: ProtectedLabelsHeader;
+  data: Float32Array;
 }
 
 // Header decoded from the binary slice envelope.
@@ -373,9 +609,16 @@ export interface StageParamsIn {
   punch_supercell_l?: number;
   // Integer-punch H guard (r.l.u.); 0 turns it off.
   punch_h_guard?: number;
-  // Off-lattice search: floor (× diffuse scatter), protected H fractions ([]
-  // = none) and their half width (r.l.u.).
+  // Off-lattice search: floor (× diffuse scatter).
   punch_search_floor?: number;
+  // The sample's modulation, a fact about the sample, which the search leaves
+  // alone: its k vectors, order, form and half width as Modulation.parse reads
+  // them, as the Configure page holds them (state/modulation.ts); "none"
+  // declares none, and absent the backend's default (none too).
+  modulation?: string | Record<string, string>;
+  // Legacy: the protected H fractions ([] = none) and their half width
+  // (r.l.u.), as a console from before declarations sent them. The backend
+  // still reads them; this console sends `modulation`, never both.
   punch_search_protect_h?: number[];
   punch_search_protect_half_width?: number;
   punch_search_max_width_ratio?: number;

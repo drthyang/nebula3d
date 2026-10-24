@@ -6,7 +6,7 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 ## read_skill {"name":"bragg-node-audit"}
 
-5304 characters sent.
+5724 characters sent.
 
 ```text
 Skill bragg-node-audit
@@ -28,8 +28,13 @@ all three.
 1. **Settle the nodes.** `describe_dataset` and `configure_settings`: the cell,
    the symmetry the file declares, the punch cell (`punchSupercellH/K/L`:
    Bragg nodes every n along H, K and L, for a volume indexed on a supercell)
-   and the search's protected H planes. These are facts about the sample, set
-   only when the user asks. `describe_dataset` and `configure_settings` do not
+   and the sample's modulation (`modulation`: its satellites, or the planes
+   through them, which the punch's search leaves alone). These are facts about
+   the sample, set only when the user asks. None is declared by default: the
+   search then leaves no position alone, and when the sharp peaks it found off
+   the lattice bunch at one commensurate fraction, the punch's assessment and
+   the run carry a question for the user: whether the sample has that
+   modulation. `describe_dataset` and `configure_settings` do not
    give the declared symmetry: `grain_check` does (`declared_symmetry`). Which
    cell is the parent, and whether the supercell's other nodes hold Bragg peaks
    or diffuse scattering (to confirm with the user).
@@ -61,21 +66,22 @@ all three.
    search's width limit (`punchSearchMaxWidth`) leaves such maxima unpunched,
    but it is off by default: then the search punches every candidate, broad
    or sharp.
-7. **The backfill.** `texture_check`: no cut whose fills sit systematically
-   outside the range their rims allow, and an azimuthal ratio near 1. The
-   diffuse often peaks at the nodes (thermal diffuse scattering), so a sound
-   fill sits above its rim's median; the range runs from the diffuse at the
-   hole's edge to its rise continued to the node, and a bias counts only when
-   it is also a fifth of the local diffuse level or more. A lattice-periodic
-   fill pattern is texture that the 3D-ΔPDF will show.
+7. **The backfill.** `texture_check`: over every punch hole of the volume, no
+   fills sitting systematically outside the range their rims allow; on the
+   cuts, an azimuthal ratio near 1. The diffuse often peaks at the nodes
+   (thermal diffuse scattering), so a sound fill sits above its rim's median;
+   the range runs from the diffuse at the hole's edge to its rise continued to
+   the node, and a bias counts only when it is also a fifth of the local
+   diffuse level or more. A lattice-periodic fill pattern is texture that the
+   3D-ΔPDF will show.
 8. **Report** (below).
 
 ## Firm rules (enforced in code)
 
 - Changing a punch or backfill setting, or tuning those stages, is refused
   until this skill has been read in the conversation.
-- The protected H planes and the punch cell are facts about the sample: they
-  change only when the user asks, never to improve a number.
+- The sample's modulation and the punch cell are facts about the sample:
+  they change only when the user asks, never to improve a number.
 
 ## Acceptance checklist
 
@@ -96,14 +102,15 @@ all three.
 - Calling broad short-range-order maxima missed Bragg peaks, and widening the
   punch until they are gone.
 - Naming a second grain from displaced Bragg peaks without `grain_check`.
-- Changing the protected planes or the punch cell to make a number look better.
+- Changing the sample's modulation or the punch cell to make a number look
+  better.
 - Judging from the opening cut at L = 0 alone.
 
 ## What to report
 
 The audit in the order above. For each signal, the evidence and its likely
 cause, or that it was not tested; what to change and why; and what only the
-user can decide (the cell, the satellites, the protected planes).
+user can decide (the cell, the satellites, the sample's modulation).
 
 ## References
 
@@ -277,7 +284,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## measure_dpdf_cut {"plane":"xz","value":0}
 
-262 characters sent.
+322 characters sent.
 
 ```json
 {
@@ -291,13 +298,14 @@ References of this skill (read one with read_skill and `reference`):
     "anisotropy_ratio": 1,
     "anisotropy_angle_deg": 0,
     "radial_trend": [8.68, 0.781, 0.302]
-  }
+  },
+  "sigma_of": "this section outside the origin's disk, robust"
 }
 ```
 
 ## assess_stage {}
 
-3261 characters sent.
+3277 characters sent.
 
 ```json
 {
@@ -371,18 +379,18 @@ References of this skill (read one with read_skill and `reference`):
   },
   "backfill": {
     "verdict": "meets its goal",
-    "criterion": "The fills meet their surroundings: a median seam of 1σ or less. Whether a cut's fill is biased one way is texture_check's to say.",
+    "criterion": "The fills meet their surroundings: a median seam of 1σ or less. Whether the fills are biased one way is texture_check's to say.",
     "headline": "seam 0.218σ · bright ≤ 0",
     "mean_median_seam_sigma": 0.218,
     "max_bright_fill_fraction": 0
   },
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
     "pedestal_left": false
   },
   "pdf": {
@@ -400,7 +408,7 @@ References of this skill (read one with read_skill and `reference`):
     "window_weight_on_unmeasured": 0.00024,
     "window_shape": "ellipsoid",
     "max_symmetry_break": 0,
-    "worst_symmetry_op": "mirror ⊥ a",
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
     "symmetry_declared": true
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
@@ -409,17 +417,18 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {"stage":"flatten"}
 
-2021 characters sent.
+2044 characters sent.
 
 ```json
 {
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
+    "floor_judged_q": [2.2, 4.35],
     "pedestal_left": false,
     "per_plane": {
       "hk0": {
@@ -453,7 +462,88 @@ References of this skill (read one with read_skill and `reference`):
         "floor_judged_q": [2.11, 4.11]
       }
     },
-    "goal": "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself. A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ: a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations."
+    "goal": "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself. A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ: a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations."
+  },
+  "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
+}
+```
+
+## assess_stage {"stage":"punch"} (a run whose punch record says its sharp peaks off the lattice bunch at H ≡ ±1/3 (mod 1))
+
+3087 characters sent.
+
+```json
+{
+  "punch": {
+    "verdict": "needs attention",
+    "criterion": "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima are diffuse scattering, and stay.",
+    "headline": "1 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.03",
+    "total_leftover_peaks": 1,
+    "leftover_at_nodes": 1,
+    "leftover_off_lattice": 0,
+    "leftover_on_protected_planes": 0,
+    "leftover_on_protected_planes_sharp": 0,
+    "leftover_off_lattice_broad": 0,
+    "leftover_off_lattice_sharp": 0,
+    "strongest_leftover": {
+      "plane": "hk0",
+      "xy": [2, 1],
+      "intensity": 452,
+      "local_background": 21.3,
+      "contrast": 21.2,
+      "sigma": 374,
+      "fwhm_voxels": [1, 1],
+      "broad": false,
+      "hkl": [2, 1, 0],
+      "at_node": true
+    },
+    "noisy_spikes_skipped": 0,
+    "mean_punched_fraction": 0.03,
+    "fitted_peaks": 14,
+    "off_lattice_bunching": {
+      "facts": "14 of the 17 sharp peaks the search punched off the lattice (each symmetry orbit once) lie within 0.05 r.l.u. of H ≡ ±1/3 (mod 1), where chance puts 1.9 (binomial tail 2.1e-11, under 0.00135 over 24 tests). No modulation is declared there, so the search punched them. Whether the sample has that modulation, and in which form, is the user's to say: ask them (ask_user), and do not assume the answer either way.",
+      "ask_user": "14 of the 17 sharp peaks off the lattice sit at H = n ± 1/3, where about 2 would by chance. Does the sample have a modulation with k = (1/3, 0, 0)?"
+    },
+    "per_plane": {
+      "hk0": {
+        "leftover_peaks": 1,
+        "at_nodes": 1,
+        "off_lattice": 0,
+        "on_protected_planes": 0,
+        "off_lattice_broad": 0,
+        "strongest_leftover": {
+          "xy": [2, 1],
+          "intensity": 452,
+          "local_background": 21.3,
+          "contrast": 21.2,
+          "sigma": 374,
+          "fwhm_voxels": [1, 1],
+          "broad": false,
+          "hkl": [2, 1, 0],
+          "at_node": true
+        },
+        "punched_fraction": 0.0291
+      },
+      "h0l": {
+        "leftover_peaks": 0,
+        "at_nodes": 0,
+        "off_lattice": 0,
+        "on_protected_planes": 0,
+        "off_lattice_broad": 0,
+        "strongest_leftover": null,
+        "punched_fraction": 0.0305
+      },
+      "0kl": {
+        "leftover_peaks": 0,
+        "at_nodes": 0,
+        "off_lattice": 0,
+        "on_protected_planes": 0,
+        "off_lattice_broad": 0,
+        "strongest_leftover": null,
+        "punched_fraction": 0.0305
+      }
+    },
+    "goal": "Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) are satellites or spurious peaks the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis: diffuse maxima such as short-range order, which are the signal, not peaks to punch). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks."
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
 }
@@ -461,45 +551,30 @@ References of this skill (read one with read_skill and `reference`):
 
 ## texture_check {}
 
-802 characters sent.
+370 characters sent.
 
 ```json
 {
+  "n_holes": 79,
+  "n_judged": 79,
+  "median_fill_bias_sigma": 0,
+  "median_fill_bias_level": 0,
+  "above_fraction": 0.152,
+  "below_fraction": 0.0886,
+  "above_floor_fraction": 0,
+  "below_floor_fraction": 0,
+  "systematic_fill_bias": false,
   "per_cut": [
     {
       "cut": "H–K plane at L = 0",
-      "n_holes": 23,
-      "median_fill_bias_sigma": 0,
-      "median_fill_bias_level": 0,
-      "above_fraction": 0.478,
-      "below_fraction": 0.348,
-      "systematic_fill_bias": false,
-      "azimuthal_variation_before": 0.0691,
-      "azimuthal_variation_after": 0.0703,
       "azimuthal_ratio": 1.02
     },
     {
       "cut": "H–L plane at K = 0",
-      "n_holes": 24,
-      "median_fill_bias_sigma": 0,
-      "median_fill_bias_level": 0,
-      "above_fraction": 0.458,
-      "below_fraction": 0.417,
-      "systematic_fill_bias": false,
-      "azimuthal_variation_before": 0.0599,
-      "azimuthal_variation_after": 0.0599,
       "azimuthal_ratio": 1
     },
     {
       "cut": "K–L plane at H = 0",
-      "n_holes": 24,
-      "median_fill_bias_sigma": 0,
-      "median_fill_bias_level": 0,
-      "above_fraction": 0.417,
-      "below_fraction": 0.458,
-      "systematic_fill_bias": false,
-      "azimuthal_variation_before": 0.0587,
-      "azimuthal_variation_after": 0.0587,
       "azimuthal_ratio": 1
     }
   ]
@@ -543,43 +618,47 @@ References of this skill (read one with read_skill and `reference`):
 
 ## symmetry_check {}
 
-452 characters sent.
+653 characters sent.
 
 ```json
 {
-  "section": "ΔPDF x–y section at z = 0 Å",
-  "cell": "orthogonal",
+  "sections": "xy at z = 0 Å, xz at y = 0, yz at x = 0",
+  "operations": "declared (mmm): 7 besides the identity",
   "ops": [
     {
-      "op": "mirror ⊥ a",
+      "op": "two-fold ∥ c / mirror ⊥ c",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 4608,
+      "tested_on": "xz; yz"
     },
     {
-      "op": "mirror ⊥ b",
+      "op": "two-fold ∥ a / mirror ⊥ a",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 4608,
+      "tested_on": "xy; xz"
     },
     {
-      "op": "two-fold (180°)",
+      "op": "two-fold ∥ b / mirror ⊥ b",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 4608,
+      "tested_on": "xy; yz"
     },
     {
-      "op": "four-fold (90°)",
+      "op": "inversion",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 7200,
+      "tested_on": "xy; xz; yz"
     }
   ],
-  "holds": ["mirror ⊥ a", "mirror ⊥ b", "two-fold (180°)", "four-fold (90°)"],
+  "holds": ["two-fold ∥ c / mirror ⊥ c", "two-fold ∥ a / mirror ⊥ a", "two-fold ∥ b / mirror ⊥ b", "inversion"],
   "symmetry_declared": true,
-  "verdict": "kept: every in-plane operation holds to 0.001 or better"
+  "verdict": "kept: every operation tested holds to 0.001 or better"
 }
 ```
 
 ## dpdf_contrast {}
 
-652 characters sent.
+728 characters sent.
 
 ```json
 {
@@ -591,6 +670,7 @@ References of this skill (read one with read_skill and `reference`):
     "from": "optimised: the 99.9th percentile of |ΔPDF|"
   },
   "robust_sigma": 0.502,
+  "sigma_of": "the three sections together, outside the origin's disk, robust",
   "strongest_feature_sigma": 252,
   "not_applied": {
     "99.5th percentile": {
@@ -614,24 +694,51 @@ References of this skill (read one with read_skill and `reference`):
 
 ## dpdf_peaks {}
 
-755 characters sent.
+1450 characters sent.
 
 ```json
 {
+  "grouped_by": "declared symmetry (mmm: 8 operations, r ≡ −r)",
   "features": [
     {
       "sign": "−",
       "length_A": 4,
       "size_sigma": 35.2,
-      "n_vectors": 3,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
       "vectors_rlu": [
-        [1, 0, 0],
-        [0, 1, 0],
+        [1, 0, 0]
+      ],
+      "vectors_A": [
+        [4, 0, 0]
+      ]
+    },
+    {
+      "sign": "−",
+      "length_A": 4,
+      "size_sigma": 35.2,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
+      "vectors_rlu": [
+        [0, 1, 0]
+      ],
+      "vectors_A": [
+        [0, 4, 0]
+      ]
+    },
+    {
+      "sign": "−",
+      "length_A": 4,
+      "size_sigma": 35.2,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
+      "vectors_rlu": [
         [0, 0, 1]
       ],
       "vectors_A": [
-        [4, 0, 0],
-        [0, 4, 0],
         [0, 0, 4]
       ]
     },
@@ -639,18 +746,48 @@ References of this skill (read one with read_skill and `reference`):
       "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "n_vectors": 6,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
       "vectors_rlu": [
         [1, 1, 0],
-        [1, -1, 0],
+        [1, -1, 0]
+      ],
+      "vectors_A": [
+        [4, 4, 0],
+        [4, -4, 0]
+      ]
+    },
+    {
+      "sign": "+",
+      "length_A": 5.657,
+      "size_sigma": 21.1,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
+      "vectors_rlu": [
         [1, 0, 1],
         [1, 0, -1]
       ],
       "vectors_A": [
-        [4, 4, 0],
-        [4, -4, 0],
         [4, 0, 4],
         [4, 0, -4]
+      ]
+    },
+    {
+      "sign": "+",
+      "length_A": 5.657,
+      "size_sigma": 21.1,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
+      "vectors_rlu": [
+        [0, 1, 1],
+        [0, 1, -1]
+      ],
+      "vectors_A": [
+        [0, 4, 4],
+        [0, 4, -4]
       ]
     }
   ],
@@ -1262,9 +1399,25 @@ References of this skill (read one with read_skill and `reference`):
 }
 ```
 
+## run_verdict {} (before any check in this reply)
+
+205 characters sent.
+
+```json
+{
+  "verdict": null,
+  "achieved": "not judged",
+  "stages": {},
+  "needs_attention": [],
+  "not_judged": [],
+  "not_measured": ["the ring removal", "the Bragg punch", "the backfill", "the flatten", "the 3D-ΔPDF"],
+  "data_problems": []
+}
+```
+
 ## configure_settings {}
 
-1443 characters sent.
+1404 characters sent.
 
 ```json
 {
@@ -1297,8 +1450,7 @@ References of this skill (read one with read_skill and `reference`):
     "punchSupercellL": "(default)",
     "punchHGuard": "(default)",
     "punchSearchFloor": "(default)",
-    "punchProtectH": "(default)",
-    "punchProtectHalfWidth": "(default)",
+    "modulation": "(default)",
     "punchSearchMaxWidth": "(default)",
     "punchFrame": "spherical",
     "punchRho": "(default)",
@@ -1339,6 +1491,29 @@ References of this skill (read one with read_skill and `reference`):
       "setting": "punchMinSig",
       "from": 5,
       "to": 6
+    }
+  ],
+  "rerun_from": "punch"
+}
+```
+
+## update_settings {"changes":{"punchMinSig":6,"punchSupercellH":2}} (the punch's skill read; the user's latest message, “Raise the punch significance to 6.”, names no fact about the sample)
+
+243 characters sent.
+
+```json
+{
+  "changed": [
+    {
+      "setting": "punchMinSig",
+      "from": 5,
+      "to": 6
+    }
+  ],
+  "refused": [
+    {
+      "setting": "punchSupercellH",
+      "why": "punchSupercellH is a fact about the sample, which only the user sets: ask the user, and change it once they name it."
     }
   ],
   "rerun_from": "punch"
@@ -1409,6 +1584,69 @@ References of this skill (read one with read_skill and `reference`):
 }
 ```
 
+## regrid_refined_ub {} (the user's latest message, “Regrid the volume onto the refined UB.”, asks for it; the crystal's UB, turned 0.3° for this sample, is written as a new dataset)
+
+578 characters sent.
+
+```json
+{
+  "written": true,
+  "refusal": null,
+  "dataset_id": "synthetic_a_regridded",
+  "file": "synthetic_a_regridded.nxs",
+  "source_file": "synthetic_a.nxs",
+  "refined_on": "synthetic_a.nxs",
+  "fit": "both",
+  "bragg_nodes_every": [1, 1, 1],
+  "turn_deg": 0.3001,
+  "turn_threshold_deg": 0.05,
+  "axis_uvw": [0.12, -0.31, 0.94],
+  "rms_start": 0.0171,
+  "rms": 0.0002,
+  "cell_start": "4.0000, 4.0000, 4.0000 Å; 90.000°, 90.000°, 90.000°",
+  "cell": "4.0012, 4.0009, 3.9994 Å; 90.010°, 89.990°, 90.000°",
+  "peaks_used": 112,
+  "symmetrised": false,
+  "measured_before": 812400,
+  "measured_after": 808150,
+  "voxels_outside": 4120,
+  "voxels_outside_share": 0.0051
+}
+```
+
+## regrid_refined_ub {} (asked for as above; the crystal's own UB, turned 0.003°: refused by the backend, nothing written)
+
+767 characters sent.
+
+```json
+{
+  "written": false,
+  "refusal": {
+    "code": "turn_below_noise",
+    "reason": "The both fit turns the UB by 0.003°, under the UB check's 0.05° rule (UB_TURN): a turn that small is within the fit's own noise, and regridding onto it would only resample the data. Nothing was written."
+  },
+  "dataset_id": null,
+  "file": null,
+  "source_file": "synthetic_a.nxs",
+  "refined_on": "synthetic_a.nxs",
+  "fit": "both",
+  "bragg_nodes_every": [1, 1, 1],
+  "turn_deg": 0.003,
+  "turn_threshold_deg": 0.05,
+  "axis_uvw": [0.12, -0.31, 0.94],
+  "rms_start": 0.0123,
+  "rms": 0.0119,
+  "cell_start": "4.0000, 4.0000, 4.0000 Å; 90.000°, 90.000°, 90.000°",
+  "cell": "4.0012, 4.0009, 3.9994 Å; 90.010°, 89.990°, 90.000°",
+  "peaks_used": 112,
+  "symmetrised": false,
+  "measured_before": null,
+  "measured_after": null,
+  "voxels_outside": null,
+  "voxels_outside_share": null
+}
+```
+
 ## show_in_viewer {"view":"dpdf","plane":"xy","value":4}
 
 40 characters sent.
@@ -1424,7 +1662,7 @@ References of this skill (read one with read_skill and `reference`):
 ## delete_dataset {} (a tool that does not exist)
 
 ```text
-Error: no tool named delete_dataset. Available: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer
+Error: no tool named delete_dataset. Available: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer
 ```
 
 ## measure_reciprocal_cut {plane: hk0 (arguments that are not JSON)
@@ -1445,10 +1683,22 @@ Error: invalid arguments — L = 7 is outside the data range [-3, 3]
 Error: read the method first: call read_skill with name "bragg-node-audit". It is how the user works on the Bragg punch stage, and this change waits until it has been read in this conversation.
 ```
 
+## update_settings {"changes":{"punchSupercellH":2}} (a fact about the sample that the user's latest message, “Is the punch clean?”, does not name; the punch's skill read)
+
+```text
+Error: punchSupercellH is a fact about the sample, which only the user sets: ask the user, and change it once they name it.
+```
+
 ## tune_pipeline {"stages":["flatten"]} (tuning before its stage's skill was read)
 
 ```text
 Error: read the method first: call read_skill with name "reduction-qc". It is how the user works on the flatten stage, and this tuning waits until it has been read in this conversation.
+```
+
+## regrid_refined_ub {} (a regrid that the user's latest message, “Is the UB right?”, does not ask for)
+
+```text
+Error: A regrid writes a new dataset, which only the user asks for: nothing was written. Ask the user, and regrid once they ask for it.
 ```
 
 ## update_settings {"changes":{"flattenQ2":true}} (a change in a later turn, its stage's skill read in an earlier one and not in this reply)
@@ -1518,10 +1768,10 @@ A local model's request past its soft budget has its older results shortened (`c
   },
   "flatten": {
     "verdict": "meets its goal",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
     "pedestal_left": false
   },
   "pdf": {
@@ -1538,7 +1788,7 @@ A local model's request past its soft budget has its older results shortened (`c
     "window_weight_on_unmeasured": 0.00024,
     "window_shape": "ellipsoid",
     "max_symmetry_break": 0,
-    "worst_symmetry_op": "mirror ⊥ a",
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
     "symmetry_declared": true
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"],

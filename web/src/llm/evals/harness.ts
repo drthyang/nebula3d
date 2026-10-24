@@ -16,8 +16,17 @@ import { buildChatMessages } from "../prompts/templates";
 import type { Failure } from "../recovery";
 import type { LlmSettings } from "../settings";
 import type { ComputedVerdict } from "../verdicts";
-import { CHAT_TOOLS, toolsWhere, type AgentTool } from "../tools";
+import { CHAT_TOOLS, factsOf, toolsWhere, type AgentTool } from "../tools";
 import type { Dispute } from "./graderReading";
+
+/** Token counts over a run's requests (provider/client.ts: TokenUsage), and how many requests they cover. */
+export interface TokenCount {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  requests: number;
+}
 
 export interface EvalRun {
   scenario: string;
@@ -29,7 +38,11 @@ export interface EvalRun {
   // infrastructure failure, reported apart from a wrong answer.
   failure?: Failure | null;
   latencyMs: number;
-  usage: { input: number; output: number; cacheRead?: number; cacheWrite?: number; requests: number } | null; // null: the server did not say
+  // The tokens of every request the run made, null when the server did not
+  // say for one. A validation run's tuning (tune_pipeline) asks the run's
+  // model, and its requests are counted in the totals, and apart in `tuning`
+  // (validationRun.ts), which is there only when the run tuned.
+  usage: (TokenCount & { tuning?: TokenCount }) | null;
   verdict?: ComputedVerdict | null; // computed from the reply's checks (verdicts/)
 }
 
@@ -64,8 +77,8 @@ export interface ScenarioResult {
   run: EvalRun;
 }
 
-/** Tools that start pipeline runs on the backend (their facts' `startsRuns`): an eval never runs them. */
-export const ACTIONS = new Set(toolsWhere((f) => f.startsRuns));
+/** Tools that write files on the backend, a run's outputs or a new dataset (their facts' `writesFiles`): an eval never runs them. */
+export const ACTIONS = new Set(toolsWhere((f) => f.writesFiles));
 
 /**
  * *tools* with the actions stubbed: a call is recorded (and graded) but fails
@@ -78,7 +91,8 @@ export const readOnly = (tools: AgentTool[]): AgentTool[] =>
       ? {
           ...t,
           run: async () => {
-            throw new Error("not run: the evals never start a pipeline run (the call is recorded)");
+            const never = factsOf(t.name).startsRuns ? "start a pipeline run" : "write a new dataset";
+            throw new Error(`not run: the evals never ${never} (the call is recorded)`);
           },
         }
       : t,

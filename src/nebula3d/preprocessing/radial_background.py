@@ -1318,6 +1318,21 @@ def _fill_nan_1d(prof: NDArray) -> NDArray[np.float64]:
     return prof
 
 
+def _measured_noise(resid: NDArray, measured: NDArray[np.bool_]) -> float:
+    """The robust per-bin noise of a profile's residual over its measured bins.
+
+    The MAD of the bin-to-bin differences, /√2, taken over the pairs of
+    adjacent bins that are both ``measured``; ``inf`` when no two adjacent
+    bins are (nothing then rises above the noise).  With every bin measured it
+    is ``1.4826·median(|Δresid|)/√2`` over the whole profile.
+    """
+    pairs = measured[:-1] & measured[1:]
+    if not np.any(pairs):
+        return float("inf")
+    d = np.abs(np.diff(resid))[pairs]
+    return 1.4826 * float(np.median(d)) / np.sqrt(2.0)
+
+
 def _detect_rings(
     q_grid: NDArray,
     pooled: NDArray,
@@ -1339,18 +1354,27 @@ def _detect_rings(
     drops weak but real rings when one ring is very strong (weak high-order Al
     lines can sit below the cut yet well above the profile noise).  ``min_snr``
     adds a noise floor: the peak must also rise ``min_snr`` × the profile's
-    robust noise (the MAD of its bin-to-bin differences, /√2).
-    ``rel_prominence=0`` with ``min_snr`` leaves the noise cut alone.
+    robust noise (the MAD of its bin-to-bin differences, /√2), taken over the
+    measured bins only (:func:`_measured_noise`): a bin no plane samples (NaN
+    in ``pooled``) or one sampled too thinly (``counts`` under a tenth of the
+    median of the positive counts) is filled for the detection, and a filled
+    run's differences are zero, so on a volume whose counts end well inside
+    the |Q| range they would pull the estimate to zero and let every local
+    maximum through.  Where every bin is measured, it is the MAD of all the
+    differences, as before.  ``rel_prominence=0`` with ``min_snr`` leaves the
+    noise cut alone.
     """
     from scipy.signal import find_peaks, peak_widths
 
     empty = (np.array([]), np.array([]))
     g = _fill_nan_1d(pooled)
+    measured = np.isfinite(np.asarray(pooled, dtype=np.float64))
     # Drop sparsely-sampled |Q| bins (e.g. a thin shell that, on a coarse grid,
     # contains only Bragg voxels) before detection — interpolate across them so
     # they can't masquerade as a giant narrow "ring".
     if counts is not None and np.any(counts > 0):
         sparse = counts < 0.1 * np.median(counts[counts > 0])
+        measured &= ~sparse
         if np.any(sparse) and not np.all(sparse):
             idx = np.arange(g.size)
             g = g.copy()
@@ -1361,8 +1385,7 @@ def _detect_rings(
         return empty
     prom = rel_prominence * float(np.max(exc))
     if min_snr is not None:
-        noise = 1.4826 * float(np.median(np.abs(np.diff(g - rough)))) / np.sqrt(2.0)
-        prom = max(prom, float(min_snr) * noise)
+        prom = max(prom, float(min_snr) * _measured_noise(g - rough, measured))
     min_sep = max(1, int(round(0.05 / q_step)))
     peaks, _ = find_peaks(exc, prominence=max(prom, 1e-9), distance=min_sep)
     if peaks.size == 0:

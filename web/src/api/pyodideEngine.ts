@@ -29,8 +29,11 @@ import type {
   Dataset,
   DeltaPdfMeta,
   DpdfFeatures,
+  ModulationCheck,
+  RegridResult,
   RingDiagnostics,
   RingIsotropy,
+  ShellFloors,
   Slice,
   SliceHeader,
   TuningPromote,
@@ -39,6 +42,7 @@ import type {
   UbCheck,
   VolumeCoverage,
   VolumeMeta,
+  VolumeTexture,
 } from "./types";
 
 export { ringPoolStatus, subscribeRingPool } from "./ringPool";
@@ -412,8 +416,27 @@ export const engine = {
   ubCheck(volumeId: string, cell: string, qMax: number | null): Promise<UbCheck> {
     return jsonCall<UbCheck>("volume_ub_check_json", [volumeId, cell, qMax]);
   },
+  // The new file goes into the workspace's raw/ and is registered as an input
+  // there (webbridge.dataset_regrid_json): it lives in the worker's memory
+  // only, and a restarted worker loses it.
+  datasetRegrid(datasetId: string, cell: string, qMax: number | null): Promise<RegridResult> {
+    return jsonCall<RegridResult>("dataset_regrid_json", [datasetId, cell, qMax, false]);
+  },
+  volumeTexture(
+    volumeId: string,
+    limit: number,
+    minSigma: number | null,
+    oneWay: number | null,
+    minHoles: number | null,
+    floor: number | null,
+  ): Promise<VolumeTexture> {
+    return jsonCall<VolumeTexture>("volume_texture_json", [volumeId, limit, minSigma, oneWay, minHoles, floor]);
+  },
   ringIsotropy(volumeId: string, q: string, fwhm: string): Promise<RingIsotropy> {
     return jsonCall<RingIsotropy>("volume_ring_isotropy_json", [volumeId, q, fwhm]);
+  },
+  shellFloors(volumeId: string): Promise<ShellFloors> {
+    return jsonCall<ShellFloors>("volume_shell_floors_json", [volumeId]);
   },
   volumeSlice(volumeId: string, plane: string, value: number, interp: boolean): Promise<Slice> {
     return sliceCall("volume_slice", [volumeId, plane, value, interp]);
@@ -461,6 +484,14 @@ export const engine = {
   },
   ringDiagnostics(datasetId: string): Promise<RingDiagnostics> {
     return jsonCall<RingDiagnostics>("ring_diagnostics_json", [datasetId]);
+  },
+  // The sample's modulation: what a declaration means before a run, and the
+  // labels of what a run's search left alone, from its punch record.
+  modulationCheck(bodyJson: string): Promise<ModulationCheck> {
+    return jsonCall<ModulationCheck>("modulation_check_json", [bodyJson]);
+  },
+  protectedLabels(datasetId: string, plane: string, value: number, interp: boolean): Promise<Slice> {
+    return sliceCall("modulation_labels_slice", [datasetId, plane, value, interp]);
   },
   // Compute the band-limited ΔPDF .h5 in the Worker and return its bytes +
   // filename, decoded from the same [uint32 hdr_len][JSON hdr][payload]

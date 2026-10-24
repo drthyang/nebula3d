@@ -82,10 +82,33 @@ volume:
   False).  The fill's gap band is the rim's first ring or two, inside its
   ``rim``, so it adds nothing to the reach; it leaves the trend two rings or
   more while it is two voxels deep or less (a thinner rim is a hole's "thin
-  rim").  On the validation's dev crystal (a = 3.9 Å) the 81-point grid puts
-  the nodes 10 voxels apart, and its holes reach 3 voxels (cuts through them,
-  2): their rims need 14 (12).  The 161-point grid puts them 20 apart, with
-  holes of the same reach.
+  rim").  On the validation's dev crystal (a = 3.9 Å) the 161-point grid puts
+  the nodes 20 voxels apart, and the median hole reaches 2 to 3.6 voxels: its
+  rim needs 12 to 15.  The 81-point grid puts them 10 apart, a grid too coarse
+  for the punch's node test (below).
+- **The punch's node test.**  Where the punch's record carries its node
+  test's notice (``node_test.notice`` in the profile JSON beside the punched
+  stage, :func:`nebula3d.pipeline.read_node_test_notice`), the fills are not
+  judged, whatever room the holes leave: ``not_judged`` is
+  :data:`NODE_TEST_TOO_COARSE`, "grid too coarse (the punch's node test could
+  not resolve the holes at this grid)", and ``systematic_fill_bias`` is False.
+  The punch writes the notice where a voxel is too coarse for the background
+  shell its node test reads (8 measured voxels between 1× and 2× the
+  resolution ellipsoid; :meth:`nebula3d.analysis.bragg.BraggRemover.
+  node_test_limit`), and leaves those nodes to its search pass.  The limit is
+  the punch's, read from its record and not recomputed here.  The holes are
+  then the search's peaks, each punched to its own measured width, and the
+  room rule above no longer stands for the rim: on the dev crystal at 81
+  points the holes reach 1 voxel at the (111) nodes and 2 at the (200) ones
+  (3.3 at most), so where the counts end before the higher nodes (the
+  dev-coverage case, 4.511 Å⁻¹) the median hole leaves its rim room by that
+  count, 2·(1 + 4) = 10 voxels for nodes 10 apart, while the rim, 4 voxels
+  deep, spans 0.2 to 0.5 r.l.u. from the node, across the diffuse's minimum
+  and its rise toward the next nodes: the trend rises away from 82 to 99 % of
+  the holes instead of falling away from each hole's node, and a fill at its
+  rim's own level reads as a bias above it.  At 161 points those holes' rims
+  span 0.15 to 0.3 r.l.u., and the trend rises away from 0 to 2 % of the
+  holes.
 
 Beyond texture.ts, each hole's facts are returned, and the shares of the
 judged holes filled above (below) their range by ``floor`` of their level or
@@ -142,6 +165,7 @@ from numpy.typing import NDArray
 from scipy import ndimage
 
 from nebula3d.core import HKLVolume, low_memory
+from nebula3d.preprocessing.ring_isotropy import GRID_TOO_COARSE
 
 #: texture.ts's ``RIM``: the rim's depth (voxels, chessboard distance).
 RIM = 4
@@ -155,6 +179,14 @@ MIN_SIGMA = 0.5
 ONE_WAY = 0.75
 MIN_HOLES = 5
 FILL_BIAS_FLOOR = 0.2
+
+#: Why the fills are not judged where the punch's record carries its node
+#: test's notice (the module docstring, *The punch's node test*).  It opens
+#: with :data:`~nebula3d.preprocessing.ring_isotropy.GRID_TOO_COARSE`, as every
+#: reason the grid gives for judging nothing does: the Pilot reads it by those
+#: words (``isTooCoarse``, web/src/llm/metrics/coarse.ts).
+NODE_TEST_TOO_COARSE = (f"{GRID_TOO_COARSE} (the punch's node test could not resolve the holes "
+                        "at this grid)")
 
 #: The most voxels a hole's bounding box grown by the rim may hold to be
 #: judged (a 161³ box): one hole's arrays then stay under 70 MiB.
@@ -283,10 +315,10 @@ class FillTexture:
     ``n_holes``, ``n_judged``
         The holes, and those judged.
     ``judged``
-        The rule applies: the grid leaves the median hole room for its rim
-        (``not_judged`` is None) and enough holes were judged (``n_judged ≥
-        min_holes``); else the fills are not judged and
-        ``systematic_fill_bias`` is False.
+        The rule applies: the punch's node test resolved the holes and the
+        grid leaves the median hole room for its rim (``not_judged`` is None),
+        and enough holes were judged (``n_judged ≥ min_holes``); else the
+        fills are not judged and ``systematic_fill_bias`` is False.
     ``median_fill_bias_sigma``, ``median_fill_bias_level``
         The median bias in the rim's σ and in units of the local level (NaN
         with no hole judged, or none at a level other than 0).
@@ -300,9 +332,12 @@ class FillTexture:
         texture.ts's verdict: the fills are systematically off their
         surroundings, in one direction.
     ``not_judged``
-        Why the grid is too coarse for the rule (:attr:`HoleTexture.too_coarse`:
-        the median hole's rim reaches past the midpoint to the next node), or
-        None.  The holes' facts and the summary are still measured.
+        Why the grid is too coarse for the rule: :data:`NODE_TEST_TOO_COARSE`
+        where the punch's record carries its node test's notice (the module
+        docstring, *The punch's node test*), else
+        :attr:`HoleTexture.too_coarse` (the median hole's rim reaches past the
+        midpoint to the next node); or None.  The holes' facts and the summary
+        are still measured.
     """
 
     holes: HoleTexture
@@ -328,6 +363,7 @@ def fill_texture(
     filled: HKLVolume,
     *,
     punch_record: NDArray[np.bool_] | None = None,
+    node_test_notice: str | None = None,
     rim: int = RIM,
     min_rim: int = MIN_RIM_VOXELS,
     min_sigma: float = MIN_SIGMA,
@@ -349,6 +385,11 @@ def fill_texture(
         The voxels the punch removed (True), as the punch stage records them
         (:func:`nebula3d.pipeline.read_punch_record`).  Without it a hole is
         any voxel unmeasured in *punched* and measured in *filled*.
+    node_test_notice : str, optional
+        The notice the punch's record ends on where its node test could not
+        resolve the nodes (:func:`nebula3d.pipeline.read_node_test_notice`).
+        Given, the fills are not judged (:data:`NODE_TEST_TOO_COARSE`),
+        whatever room the holes leave; the holes are measured all the same.
     rim, min_rim
         The rim's depth in voxels (texture.ts's 4) and the fewest rim voxels
         a hole is judged with (8).
@@ -366,7 +407,8 @@ def fill_texture(
     holes = hole_texture(punched, filled, punch_record=punch_record, rim=rim,
                          min_rim=min_rim, slab=slab)
     return judge_fill_bias(holes, min_sigma=min_sigma, one_way=one_way,
-                           min_holes=min_holes, floor=floor)
+                           min_holes=min_holes, floor=floor,
+                           node_test_notice=node_test_notice)
 
 
 def judge_fill_bias(
@@ -376,8 +418,10 @@ def judge_fill_bias(
     one_way: float = ONE_WAY,
     min_holes: int = MIN_HOLES,
     floor: float = FILL_BIAS_FLOOR,
+    node_test_notice: str | None = None,
 ) -> FillTexture:
-    """texture.ts's summary and rule over the judged holes of *holes*."""
+    """texture.ts's summary and rule over the judged holes of *holes*; with
+    *node_test_notice* (the punch's, :func:`fill_texture`) not judged."""
     min_sigma, one_way, floor = float(min_sigma), float(one_way), float(floor)
     if not (math.isfinite(min_sigma) and min_sigma >= 0):
         raise ValueError(f"min_sigma must be a number ≥ 0, not {min_sigma!r}")
@@ -407,8 +451,10 @@ def judge_fill_bias(
     below_floor = float(down) / n_judged if n_judged else nan
     # texture.ts: the median's sign picks the side (0 counts as below).
     one_sided = n_judged > 0 and (above >= one_way if med_sigma > 0 else below >= one_way)
-    # The grid's room for the rims (the module docstring, Room for the rim).
-    coarse = holes.too_coarse
+    # A grid too coarse for the punch's node test, as its record says, then
+    # the grid's room for the rims (the module docstring, The punch's node
+    # test, and Room for the rim).
+    coarse = NODE_TEST_TOO_COARSE if node_test_notice else holes.too_coarse
     applies = coarse is None and n_judged >= min_holes
     systematic = (applies and abs(med_sigma) >= min_sigma
                   and math.isfinite(med_level) and abs(med_level) >= floor and one_sided)

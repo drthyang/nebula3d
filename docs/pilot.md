@@ -12,17 +12,20 @@ does not compute them. Getting it running is in
 ## Tools
 
 With *Tools* on, a reply is an agent loop of up to twelve rounds. The model
-calls 24 tools, which run in the browser against the same API the viewers use:
+calls 25 tools, which run in the browser against the same API the viewers use:
 
 - **Skills:** `read_skill` reads one of the user's methods (below).
 - **Reading:** `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
   `measure_dpdf_cut`, `line_profile`, `bragg_peaks`, `consistency_details`,
-  `compare_datasets`, `configure_settings`, `run_log`.
+  `compare_datasets`, `configure_settings`, `run_log`, and `run_verdict` (the
+  run's verdict as `{{achieved}}` would give it now, read before writing).
 - **Assessing:** `assess_stage`, `radial_profile`, `texture_check`,
   `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`.
 - **Display:** `dpdf_contrast`.
 - **Acting:** `update_settings`, `run_pipeline`, `tune_pipeline`,
-  `show_in_viewer`.
+  `show_in_viewer`, and `regrid_refined_ub`, which writes the raw volume
+  regridded onto its refined UB as a new dataset, only when the user's latest
+  message asks for a regrid ([Regridding](regrid.md)).
 
 Each is described under [How it works](#how-it-works).
 
@@ -33,14 +36,17 @@ Each is described under [How it works](#how-it-works).
   reply, measured after the last run that recomputed that stage (a run that
   reused a stage leaves its measurement standing), that every number comes
   from a tool result or the context, and that no claim contradicts a verdict a
-  tool computed. A ring or punch verdict needs `assess_stage`, the ΔPDF's
-  correlations `dpdf_peaks` (or a measured section), the origin `ub_check`.
+  tool computed. An earlier turn's result counts as a number's source only
+  until a run in the conversation recomputes the stage it measured; a number
+  only such a result holds goes back as measured before that run. A ring or
+  punch verdict needs `assess_stage`, the ΔPDF's correlations `dpdf_peaks`
+  (or a measured section), the origin `ub_check`.
   The check runs in code after the answer, not as a forced tool call, which the
   paid models do not take. A failing answer goes back to the model once; what
   still fails is noted under the reply (`answerChecks.ts`, `evidence.ts`).
 - **Numbers by reference.** The model writes a tool's number as
   `{{tool.field}}`, the field's path in that tool's result
-  (`{{ub_check.orientation_change_deg}}`, `{{assess_stage.flatten.max_floor_trend}}`),
+  (`{{ub_check.orientation_change_deg}}`, `{{assess_stage.flatten.floor_trend}}`),
   and the app fills it in from the result before you read it: the number is
   the tool's, as the tool rounded it. A reference that names nothing goes back
   to the model, and one still unfilled stays as written, with a note
@@ -53,7 +59,10 @@ Each is described under [How it works](#how-it-works).
   no check on the result needs attention; not met, naming what needs it; or
   not judged, naming the stages not measured, and those measured on a grid
   too coarse for their check with that reason ("not judged: the ring removal
-  (grid too coarse for the ring check)"). The data's problems that no
+  (grid too coarse for the ring check)"), and likewise a check on the result
+  that ran and could not judge: the fills' texture on a grid too coarse for
+  the holes' rims, or with too few holes ("the backfill's texture (grid too
+  coarse)", "(too few holes)"). The data's problems that no
   setting fixes (a turned UB, a shifted origin, counts that end inside the
   box) are listed with it. It shows under a reply that judged the run (or
   found such a problem) and the report heads its own, and
@@ -62,9 +71,39 @@ Each is described under [How it works](#how-it-works).
 - **Skills come first.** A stage's settings change, and the stage is tuned,
   only after its skill has been read in the same reply. A skill read in an
   earlier turn must be read again.
+- **Facts about the sample are yours.** The sample's modulation (what the
+  punch's search leaves alone, [modulation.md](modulation.md)) and the punch
+  cell change only when your latest message names them: by the setting's
+  name, or in words such as "modulation", "wave vector", "propagation
+  vector", a k written out ("k = (1/3, 0, 0)"), "protected planes", "H
+  fractions", "punch cell", "supercell" or "doubled cell". `update_settings`
+  refuses any other change to them, makes the rest of the call, and the
+  model asks you. The gate reads names, not intent: "satellites", a "plane"
+  or a "cell" alone name nothing, nor does a bare "yes" (say which: "yes, it
+  has that modulation"), while a question that names a fact names it.
+  `tune/catalog.ts` lists the words; the modulation's are provisional, yours
+  to confirm. The magnetic ion and the |Q| band the model cannot change at
+  all.
+- **The questions only you can answer are asked, never answered for you.**
+  When a run's sharp peaks off the lattice bunch at one commensurate
+  fraction, as the satellites of a modulation nobody declared would, the
+  punch's assessment and the run carry the question for you
+  (`off_lattice_bunching`: the facts, and `ask_user`, such as "14 of the 17
+  sharp peaks off the lattice sit at H = n ± 1/3, where about 2 would by
+  chance. Does the sample have a modulation with k = (1/3, 0, 0)?"). Whether
+  the sample has one, and in which form, points or planes, is yours to say.
+  Two answer checks hold the model to it, each sending an answer back once
+  and then noting it: an answer must ask the question, a sentence ending in
+  "?" that names the fraction (1/3, its twin 2/3, a decimal of either) or
+  the modulation (`unasked`), and must not say outright that the sample has
+  the modulation or that its peaks are satellites (`assumed`; a hedged,
+  conditional or negated clause, a question, or one about asking or
+  declaring is none). With the skills off the send-back names no tool,
+  stage or skill (`answerChecks.ts`).
 - **Tuning cannot touch your results.** Each trial runs in its own folder,
   never in `processed/`; the model proposes settings only from a checked
-  catalog, every trial is measured on three planes, and a trial past a hard
+  catalog, every trial is measured on three planes (a flatten's pedestal over
+  the whole volume), and a trial past a hard
   limit cannot win (a 3D-ΔPDF window with more than 10⁻³ of its weight on
   unmeasured space is one).
 - **One run at a time.** Neither a run nor a tuning run starts while another is
@@ -103,20 +142,21 @@ Each is described under [How it works](#how-it-works).
   chat API takes the length per request; the OpenAI-style one cannot), and a
   request no window of the model can hold, or longer than the window LM Studio
   loaded the model with, is not sent: the reply says how to fix it.
-- **A local model wants a 48k window.** With Tools on, a full assessment that
-  reads two skills whole is about 45.6k tokens with room for the reply
-  (measured through the agent loop: `web/src/llm/__tests__/tokenBudget.test.ts`).
-  A 32k window still runs, but the guard then shortens the skills the model
-  just read to stubs, and refuses a request that still does not fit; 48k
-  (49,152 tokens) or more avoids that on long two-skill turns. In LM Studio,
-  set the model's default Context Length to 49152 in its load settings (it
-  reloads an idle model with its defaults), or load it with
-  `lms load <model> --context-length 49152`. Ollama at its usual port gets
-  its window from the app per request (`num_ctx`, up to the longest the model
-  supports, which `ollama show <model>` lists), so the model must support 48k
-  and the machine needs the memory for it; elsewhere, start Ollama with
-  `OLLAMA_CONTEXT_LENGTH=49152`. The validation holds its local live runs to
-  the same 48k ([evals.md](evals.md#the-models)).
+- **A local model wants a 56k window.** With Tools on, a full assessment that
+  reads two skills whole, the 3D-ΔPDF's strongest features a full list, is
+  about 47.6k tokens with room for the reply (measured through the agent loop:
+  `web/src/llm/__tests__/tokenBudget.test.ts`), and a model-visible addition
+  must leave 3k of the window free. A 32k window still runs, but the guard
+  then shortens the skills the model just read to stubs, and refuses a
+  request that still does not fit; 56k (57,344 tokens) or more avoids that on
+  long two-skill turns. In LM Studio, set the model's default Context Length
+  to 57344 in its load settings (it reloads an idle model with its defaults),
+  or load it with `lms load <model> --context-length 57344`. Ollama at its
+  usual port gets its window from the app per request (`num_ctx`, up to the
+  longest the model supports, which `ollama show <model>` lists), so the model
+  must support 56k and the machine needs the memory for it; elsewhere, start
+  Ollama with `OLLAMA_CONTEXT_LENGTH=57344`. The validation holds its local
+  live runs to the same 56k ([evals.md](evals.md#the-models)).
 
 ## Evals
 
@@ -128,8 +168,24 @@ run it live, and a local tier holds a local model to an acceptance (at least
 80 % of runs passing, no loops, no exceptions). The scenarios, the commands
 and the results per model are in [evals.md](evals.md), which also holds the
 validation on synthetic cases with a planted truth (the Pilot against the
-default pipeline, with and without its skills).
+default pipeline, with and without its skills). A validation run counts
+every token its model spends, a tuning run's (`tune_pipeline` asks the run's
+own model, not the console's settings) included and kept apart in its
+record (`usage.tuning`), in its cost and against a paid model's spend cap.
 [pilot-review.md](pilot-review.md) reviews each tool and skill.
+
+**The run policy** (`web/src/llm/runPolicy.ts`) states what a reply runs
+under on each transport (Claude, an OpenAI-compatible server such as LM
+Studio, Ollama): its round limit, the tools a model is offered, when older
+results are shortened, the temperature (none for Claude), the output cap,
+whether the model's thinking is sent back, and how a request is held to the
+model's window. The agent loop reads it. A validation run runs under its
+transport's policy as the app ships it, with one output cap on every request,
+the loop's and the tuning's, in either arm (16,000 tokens,
+`VALIDATION_MAX_TOKENS`). Each run's record keeps the policy it ran under
+(`run_policy`) and every request whose reply was cut at the cap
+(`truncated`). The transcript prints both, and `python -m nebula3d.validation
+summarize` names the cut runs under its table.
 
 ## What its reviews found
 
@@ -249,19 +305,25 @@ miss is a note.
     voxel. Spikes in noisy or sparse-count regions (the coverage edge: a
     neighbourhood a quarter exact zeros, or below a tenth of the slice's
     median level) are counted apart. With the cut known, each peak is classed
-    at a lattice node (honouring the punch cell) or off-lattice, on the
-    search's protected planes or not, and sharp or broad by its FWHM: a broad
+    at a lattice node (honouring the punch cell) or off-lattice, in a
+    position the run's search left alone or not (the run's own punch record,
+    read as labels on the cut, `GET /api/modulation/{id}/labels`, never the
+    form), and sharp or broad by its FWHM: a broad
     one (≥ 5 voxels along a slice axis) is a diffuse maximum kept, not a punch
     candidate. It also summarises the fitted `BraggProfile`
     (resolution-limited fraction, measured widths, anisotropy).
   - `backfill.ts` — hole-rim seam magnitude (σ units), bright residual plugs, and
     a checkerboard-fraction that flags periodic interpolation artefacts.
-  - `flatten.ts` — the per-|Q|-shell floors (25th percentile) before and after
-    the flatten, in thirds of |Q|, the largest leftover floor in σ, and the
-    pedestal removed. Over every well-measured shell out to the coverage
-    edge, `floor_trend` (the floors' rank correlation with |Q|) and
-    `floor_span_fraction` (their range against the diffuse level) catch a
-    pedestal the σ test hides beside strong diffuse structure.
+  - `flatten.ts` — the per-|Q|-shell floors before and after the flatten, in
+    thirds of |Q|, the largest leftover floor in σ, and the pedestal removed,
+    over the run's own fit range and at its own floor percentile (the 25th by
+    default), as the flattened file records them (`flatten_settings`). Over
+    the outer half of the shells the counts reach, `floor_trend` (the
+    floors' rank correlation with |Q|) and `floor_span_fraction` (their range
+    against the diffuse level) catch a pedestal the σ test hides beside
+    strong diffuse structure: on a cut, and with `volumePedestal` over the
+    whole volume's shell floors (`GET /api/volumes/{id}/shell-floors`), which
+    the flatten's verdict reads (plan 4.1).
   - `dpdf.ts` — feature SNR vs background, strong-feature anisotropy (covariance
     ratio + orientation), radial trend, and back-FFT consistency pass-through.
 - **`verdicts/`** — the check-verdict module: what each check's measurements
@@ -297,11 +359,11 @@ miss is a note.
   picked): system messages become the system prompt, a round's tool results go
   back in one user message, and a turn that called tools is replayed exactly as
   Claude returned it, thinking included. With Tools on, the first request alone
-  is about 8k tokens and a full assessment that reads two skills about 45.6k
+  is about 8k tokens and a full assessment that reads two skills about 47.6k
   with room for the reply (`__tests__/tokenBudget.test.ts`), so on LM Studio
   the chat reads the context length the model was loaded with
-  (`/api/v0/models`) and, below 48k (`TOOLS_CONTEXT`, 49,152), says how far to
-  raise it (`loadedContext`, `contextWarning`). The 48k is guidance: the
+  (`/api/v0/models`) and, below 56k (`TOOLS_CONTEXT`, 57,344), says how far to
+  raise it (`loadedContext`, `contextWarning`). The 56k is guidance: the
   window guard below goes by the window the model has. Before each request `provider/window.ts` estimates its
   tokens (`tokens.ts`): prose at 3.5 characters a token and data at 1.4 (tool
   results, call arguments and the fenced context JSON: a tokenizer may give
@@ -331,10 +393,10 @@ miss is a note.
   result, and a long one shows a live line while it runs. As each measuring or
   assessing call finishes, the console moves to the figure it looked at
   (*Follow*, on by default; `tools/openView.ts`): the cleanup page at its cut (a
-  stage's worst plane for `assess_stage`, the strongest fill bias for
-  `texture_check`), the 3D-ΔPDF at its section, the Bragg profile with its peak
-  selected, the Q–R band transform for the back-FFT check, or the Execution
-  page for the run log. Each step's *Show* reopens its figure. While the panel
+  stage's worst plane for `assess_stage`, the H–K plane through the hole
+  farthest outside its range for `texture_check`), the 3D-ΔPDF at its
+  section, the Bragg profile with its peak selected, the Q–R band transform
+  for the back-FFT check, or the Execution page for the run log. Each step's *Show* reopens its figure. While the panel
   is open, the cards the agent is on breathe a blue edge (`llm/highlight.ts`,
   `.ai-glow`): those a running step works on (narrowed to the stage a run or a
   tuning run is on), then those its answer mentions, for 8 s after the reply.
@@ -359,10 +421,13 @@ miss is a note.
     planes (the tuning run's own evaluation, `tune/evaluate.ts`);
     `radial_profile` puts the stages' |Q|-shell medians side by side (rings
     left or diffuse dented); `texture_check` (`metrics/texture.ts`) asks
-    whether the fills sit systematically above or below their rims (a
-    lattice-periodic pattern; flagged at a median ≥ 0.5σ with ≥ 75 % of holes
-    one way) and whether the punch and backfill add variation around each |Q|
-    shell; `qmax_coverage` gives the share of the
+    whether the fills sit systematically above or below the range their rims
+    allow, over every punch hole of the volume, each with its 3-D rim (a
+    lattice-periodic pattern; flagged at a median ≥ 0.5σ and ≥ a fifth of the
+    level with ≥ 75 % of holes one way; not judged on a grid too coarse for the
+    rims; [the fills' texture](pipeline.md#the-fills-texture)), and whether the
+    punch and backfill add variation around each |Q| shell, on cuts;
+    `qmax_coverage` gives the share of the
     ΔPDF window's weight on unmeasured space, read from the ΔPDF's provenance
     (≲ 10⁻³ is clean), with the window's shape and scale. On a file without it,
     it compares how far the forward transform's window reaches in |Q| (the |Q|
@@ -427,9 +492,25 @@ miss is a note.
     robust σ, the strongest feature and what the 99.5th and 99.97th percentiles
     would give, and warns when a range the user asks for is brighter than the
     optimum, where the FFT ripple shows. It acts: it sets the viewer's limit.
+  - *The ΔPDF's σ*: every size the ΔPDF tools give in σ is in a robust σ
+    (1.4826 × the median absolute deviation) outside the origin's disk, but
+    each tool takes it over its own values, and its result says which
+    (`sigma_of`, from `SIGMA_OF` in `metrics/dpdf.ts`): `measure_dpdf_cut` the
+    section measured, `compare_datasets` that section on each dataset,
+    `assess_stage` pdf each centre section its own, `dpdf_contrast` the three
+    centre sections together, and `dpdf_peaks` the volume (its reading). On
+    the validation's dev cases the volume's σ is 0.58 to 0.96 of the x–y
+    section's through the origin, so a size in σ from one tool is no size in
+    σ from another (plan 4.10).
   - *Acting*: `update_settings` (the method choices and thresholds in
-    `tune/catalog.ts`, and, when the user names them, the sample facts the
-    tuner never proposes: the search's protected planes and the punch cell),
+    `tune/catalog.ts`, and the sample facts the tuner never proposes, the
+    sample's modulation, one setting of the Configure page's four fields
+    (`{"k": "1/3, 0, 0", "form": "planes"}`, `"none"` or `"default"`, the
+    backend's own, which declares none too), and
+    the punch cell, only when the user's latest
+    message names them: the agent loop hands that message to the tools, and a
+    change to a fact it does not name is refused, the call's other changes
+    made; see [Guardrails](#guardrails)),
     `run_pipeline` (as the Run button: the console moves to the Execution page;
     without `from_stage` it computes what is missing, with it it recomputes from
     that stage on), `tune_pipeline` (below), and `show_in_viewer` (it acts on
@@ -444,7 +525,8 @@ miss is a note.
   the model called or on its wording. The check-verdict module judges each
   card from the outcomes those tools return (`verdicts/`, the report's reader),
   and `report/report.ts` assembles the cards' headlines and details around
-  them and lists every miss as a caveat.
+  them and lists every miss as a caveat, and the punch's question for you
+  when its sharp peaks off the lattice bunch at one fraction.
   `report/figures.ts` draws the cleanup stages on one shared scale and the
   ΔPDF sections with the page's Auto, axes at their real angle.
   `report/render.ts` writes it as a self-contained HTML page (inline styles
@@ -460,7 +542,7 @@ miss is a note.
   goal and its trade-off, e.g. no leftover peaks *without* punching more
   diffuse). The chosen settings go to the Configure page. The model can only
   change the settings in `tune/catalog.ts` — method choices and thresholds, not
-  facts about the sample (supercell, protected planes, magnetic ion, |Q|
+  facts about the sample (supercell, the modulation, magnetic ion, |Q|
   band) — and every proposal is checked against it before anything runs.
   The tool's report holds every trial's changes and numbers, marking a trial
   whose numbers equal the current settings' as `no_effect`, so the model

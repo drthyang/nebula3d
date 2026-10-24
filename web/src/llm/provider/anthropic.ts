@@ -13,7 +13,7 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 
-import type { ChatMessage, ContentPart, ConnectionResult, HttpError, StreamDelta, ToolCall, ToolSpec } from "./client";
+import type { ChatMessage, ContentPart, ConnectionResult, HttpError, StreamDelta, TokenUsage, ToolCall, ToolSpec, UsageReport } from "./client";
 
 export const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 export const DEFAULT_CLAUDE_MODEL = "claude-opus-5-5";
@@ -28,8 +28,11 @@ export const isAnthropicUrl = (baseUrl: string): boolean => {
 
 // Room for a long answer after the model's thinking; streaming keeps a request
 // this large clear of HTTP timeouts.  The non-streamed tuner calls stay lower.
-const STREAM_MAX_TOKENS = 64000;
-const COMPLETE_MAX_TOKENS = 16000;
+// A caller may ask for another cap (TurnArgs.maxTokens: a validation run's,
+// evals/validationModels.ts); the app never does. The run policy reads both
+// (runPolicy.ts).
+export const STREAM_MAX_TOKENS = 64000;
+export const COMPLETE_MAX_TOKENS = 16000; // the validation's first-run reserve counts it (evals/validationModels.ts)
 
 // Models that take server-side fallback in its "default" form on the Claude
 // API: a request a safety classifier declines is re-run on another model in
@@ -152,6 +155,7 @@ interface TurnArgs {
   tools?: ToolSpec[];
   toolChoice?: "auto" | "none";
   includeUsage?: boolean; // report the turn's token counts (the evals)
+  maxTokens?: number; // the turn's output cap, where the caller sets one (a validation run); else the call's own
 }
 
 // The request body: no sampling parameters (current Claude models reject
@@ -185,6 +189,15 @@ function requestBody(
   }
   return body;
 }
+
+// A turn's token counts: the input with the cache's reads and writes, as the
+// other servers count a prompt, and those two besides.
+const turnUsage = (message: Anthropic.Beta.BetaMessage): TokenUsage => {
+  const u = message.usage;
+  const cacheRead = u.cache_read_input_tokens ?? 0;
+  const cacheWrite = u.cache_creation_input_tokens ?? 0;
+  return { input: u.input_tokens + cacheRead + cacheWrite, output: u.output_tokens, cacheRead, cacheWrite };
+};
 
 const refusalNote = (message: Anthropic.Beta.BetaMessage): string => {
   const category = message.stop_details?.category;
@@ -236,7 +249,7 @@ export async function checkAnthropicConnection(baseUrl: string, apiKey?: string)
 export async function* streamAnthropic(args: TurnArgs): AsyncGenerator<StreamDelta> {
   const { default: AnthropicClient } = await loadSdk();
   const api = await client(args.apiKey, args.baseUrl);
-  const body = requestBody(args, STREAM_MAX_TOKENS);
+  const body = requestBody(args, args.maxTokens ?? STREAM_MAX_TOKENS);
   // A tool input the SDK cannot parse at all fails the turn before any tool
   // call exists to answer, so the turn is re-issued, at most twice.
   for (let attempt = 0; ; attempt++) {
@@ -259,12 +272,11 @@ export async function* streamAnthropic(args: TurnArgs): AsyncGenerator<StreamDel
       if (!(e instanceof AnthropicClient.APIError) && !args.signal?.aborted && !streamed && attempt < 2) continue;
       throw await asHttpError(e);
     }
-    if (args.includeUsage) {
-      const u = message.usage;
-      const cacheRead = u.cache_read_input_tokens ?? 0;
-      const cacheWrite = u.cache_creation_input_tokens ?? 0;
-      yield { usage: { input: u.input_tokens + cacheRead + cacheWrite, output: u.output_tokens, cacheRead, cacheWrite } };
-    }
+    if (args.includeUsage) yield { usage: turnUsage(message) };
+    // A turn that stopped at its output cap says so, for the record (a
+    // validation run's, validationRun.ts); what the loop does with it stays
+    // as below: a cut tool call fails the turn, a cut answer stands.
+    if (message.stop_reason === "max_tokens") yield { stopReason: "max_tokens" };
 
     if (message.stop_reason === "refusal") {
       yield { content: refusalNote(message) };
@@ -287,17 +299,20 @@ export async function* streamAnthropic(args: TurnArgs): AsyncGenerator<StreamDel
   }
 }
 
-// One turn read whole (the tuner parses its JSON reply).
-export async function completeAnthropic(args: TurnArgs): Promise<string> {
+// One turn read whole (the tuner parses its JSON reply). Its token counts go
+// to `onUsage`, a refusal's and an empty reply's too: they were spent; and
+// with them its stop reason ("max_tokens": cut at its output cap).
+export async function completeAnthropic({ onUsage, ...args }: TurnArgs & { onUsage?: UsageReport }): Promise<string> {
   const api = await client(args.apiKey, args.baseUrl);
   let message: Anthropic.Beta.BetaMessage;
   try {
-    message = await api.beta.messages.create(requestBody({ ...args, tools: undefined }, COMPLETE_MAX_TOKENS), {
+    message = await api.beta.messages.create(requestBody({ ...args, tools: undefined }, args.maxTokens ?? COMPLETE_MAX_TOKENS), {
       signal: args.signal,
     });
   } catch (e) {
     throw await asHttpError(e);
   }
+  onUsage?.(turnUsage(message), message.stop_reason ?? null);
   if (message.stop_reason === "refusal") throw new Error(refusalNote(message).trim());
   const text = message.content
     .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")

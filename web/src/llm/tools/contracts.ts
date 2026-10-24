@@ -231,6 +231,9 @@ const dpdfSection = obj({
   radial_trend: tuple(maybeNum, maybeNum, maybeNum),
 });
 
+/** metrics/bunching.ts OffLatticeBunching: the run's sharp peaks off the lattice bunched at one fraction, and the question for the user. */
+const offLatticeBunching = obj({ facts: str, ask_user: str });
+
 // ---------------------------------------------------------------- assess_stage's stages
 
 // Every stage's result opens with its verdict, by the stage's rule; one stage
@@ -282,6 +285,8 @@ const punchEvaluation = obj({
   noisy_spikes_skipped: num,
   mean_punched_fraction: maybeNum,
   fitted_peaks: maybeNum,
+  // Only when the run's punch record says its sharp peaks off the lattice bunch (plan 4.15).
+  off_lattice_bunching: optional(offLatticeBunching),
   per_plane: optional(
     byRecipPlane(
       obj({
@@ -304,9 +309,14 @@ const backfillEvaluation = obj({
 });
 
 const flattenEvaluation = obj({
+  // A file from before the flatten recorded its settings (findings).
+  settings_note: optional(str),
   max_after_floor_sigma: maybeNum,
-  max_floor_trend: maybeNum,
-  max_floor_span_fraction: maybeNum,
+  // The whole volume's shell floors (plan 4.1), from the run's fit range; the
+  // shells' |Q| range is a detail, left out of stage=all (assess_stage).
+  floor_trend: maybeNum,
+  floor_span_fraction: maybeNum,
+  floor_judged_q: optional(nullable(range)),
   pedestal_left: nullable(bool),
   per_plane: optional(byRecipPlane(nullable(flattenMetrics))),
 });
@@ -326,6 +336,8 @@ const pdfEvaluation = obj({
   per_plane: optional(
     byDpdfPlane(nullable(obj({ feature_snr: maybeNum, strong_feature_fraction: maybeNum, positive_fraction: maybeNum, anisotropy_ratio: maybeNum }))),
   ),
+  // Which σ the sections' feature_snr are in (metrics/dpdf.ts SIGMA_OF): with the per-plane detail.
+  sigma_of: optional(str),
 });
 
 // ---------------------------------------------------------------- the rest
@@ -335,21 +347,6 @@ const contrastLimit = { limit: num, limit_sigma: maybeNum, share_of_strongest: n
 
 /** A setting's value as the Configure page and the tuning name it. */
 const settingValue = union(str, num, bool);
-
-/** texture_check's measures on one cut (metrics/texture.ts TextureMetrics). */
-const textureCut = obj({
-  cut: str,
-  n_holes: num,
-  not_judged: optional(str),
-  median_fill_bias_sigma: maybeNum,
-  median_fill_bias_level: maybeNum,
-  above_fraction: maybeNum,
-  below_fraction: maybeNum,
-  systematic_fill_bias: nullable(bool),
-  azimuthal_variation_before: maybeNum,
-  azimuthal_variation_after: maybeNum,
-  azimuthal_ratio: maybeNum,
-});
 
 /** The back-FFT check as the run saved it (consistency_details passes its fields through). */
 const consistencyMetrics = obj({
@@ -397,7 +394,7 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     notes: arr(str),
   }),
 
-  measure_dpdf_cut: obj({ cut: str, delta_pdf: dpdfSection }),
+  measure_dpdf_cut: obj({ cut: str, delta_pdf: dpdfSection, sigma_of: str }),
 
   assess_stage: obj({
     rings: optional(stage(ringsEvaluation)),
@@ -408,8 +405,22 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     measured_on: optional(arr(str)),
   }),
 
-  // A cut whose slices could not be read is its label alone (findings).
-  texture_check: obj({ per_cut: arr(union(textureCut, obj({ cut: str }))) }),
+  // The fills over every punch hole in 3-D (metrics/texture.ts VolumeFillBias:
+  // no n_judged on a grid too coarse), and each cut's azimuthal texture, null
+  // where its slices could not be read (findings).
+  texture_check: obj({
+    n_holes: num,
+    n_judged: optional(num),
+    not_judged: optional(str),
+    median_fill_bias_sigma: maybeNum,
+    median_fill_bias_level: maybeNum,
+    above_fraction: maybeNum,
+    below_fraction: maybeNum,
+    above_floor_fraction: maybeNum,
+    below_floor_fraction: maybeNum,
+    systematic_fill_bias: nullable(bool),
+    per_cut: arr(obj({ cut: str, azimuthal_ratio: maybeNum })),
+  }),
 
   qmax_coverage: obj({
     verdict: str,
@@ -421,26 +432,25 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     full_coverage_q: maybeNum,
     box_face_q: maybeNum,
     box_corner_q: maybeNum,
-    low_q_gap: maybeNum,
-    // These three only when the raw volume's coverage was read (findings).
-    raw_counts: optional(obj({ q_min_edge: maybeNum, q_max_edge: maybeNum, fully_measured: nullable(range), box_face_q: num })),
-    suggested_band: optional(nullable(range)),
+    // The coverage is measured once, in Python, so these are always given.
+    raw_counts: obj({ q_min_edge: maybeNum, q_max_edge: maybeNum, fully_measured: nullable(range), box_face_q: num }),
+    suggested_band: nullable(range),
     counts_end_inside_box: bool,
-    band_check: optional(str),
+    band_check: str,
     q_unit: str,
     settings: obj({ pdfQMin: str, pdfQMax: str, pdfApod: str, pdfWindowShape: str, pdfWindowSupport: bool }),
-    per_plane: byRecipPlane(
-      nullable(obj({ full_coverage_q: maybeNum, half_coverage_q: maybeNum, box_q: maybeNum, shells: arr(obj({ q: num, measured: num })) })),
-    ),
   }),
 
-  // A cell neither hexagonal nor orthogonal, or a section off the origin, is a note alone (findings).
+  // With no operation tested (none declared and no in-plane ones to fall back
+  // on, sections off the origin, or none the sections can test), the verdict
+  // alone, with any the sections could not test (findings).
   symmetry_check: union(
-    obj({ note: str }),
+    obj({ verdict: maybeStr, not_tested: optional(arr(obj({ op: str, why: str }))) }),
     obj({
-      section: str,
-      cell: oneOf("hexagonal", "orthogonal"),
-      ops: arr(obj({ op: str, rms_difference: num, pairs: num })),
+      sections: str,
+      operations: str,
+      ops: arr(obj({ op: str, rms_difference: num, pairs: num, tested_on: str })),
+      not_tested: optional(arr(obj({ op: str, why: str }))),
       holds: arr(str),
       symmetry_declared: nullable(bool),
       verdict: maybeStr,
@@ -454,6 +464,7 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
       applied: obj({ ...contrastLimit, from: str }),
       note: optional(str),
       robust_sigma: num,
+      sigma_of: str,
       strongest_feature_sigma: maybeNum,
       not_applied: obj({
         "99.5th percentile": obj({ ...contrastLimit, effect: str }),
@@ -464,12 +475,16 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   ),
 
   dpdf_peaks: obj({
+    grouped_by: str,
     features: arr(
       obj({
         sign: oneOf("+", "−"),
         length_A: num,
         size_sigma: num,
+        // Only for an orbit of the declared symmetry (findings).
+        mean_size_sigma: optional(num),
         n_vectors: num,
+        multiplicity: optional(num),
         vectors_rlu: arr(nullable(v3)),
         vectors_A: arr(nullable(v3)),
       }),
@@ -578,6 +593,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   // A dataset the cut could not be measured on is its label and the error (findings).
   compare_datasets: obj({
     cut: str,
+    // kind=dpdf: which σ each row's feature_snr is in.
+    sigma_of: optional(str),
     rows: arr(
       union(
         obj({
@@ -604,12 +621,26 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     ),
   }),
 
+  // The run's verdict as {{achieved}} gives it now (verdicts/, the achieved
+  // reader): its words, null before any check; each measured stage by its id.
+  run_verdict: obj({
+    verdict: maybeStr,
+    achieved: oneOf("met", "not met", "not judged"),
+    stages: rec(oneOf("meets its goal", "needs attention", "not judged")),
+    needs_attention: arr(str),
+    not_judged: arr(str),
+    not_measured: arr(str),
+    data_problems: arr(str),
+  }),
+
   // The Configure page's settings by name: a blank one reads "(default)".
   configure_settings: obj({ settings: rec(union(str, bool)) }),
 
   update_settings: obj({
     changed: arr(obj({ setting: str, from: settingValue, to: settingValue, note: optional(str) })),
     already_set: optional(arr(str)),
+    // A fact about the sample the user's latest message does not name (findings).
+    refused: optional(arr(obj({ setting: str, why: str }))),
     rerun_from: maybeStr,
   }),
 
@@ -619,6 +650,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     stages: rec(oneOf("computed", "reused")),
     outputs: arr(str),
     log_tail: arr(str),
+    // Only when the punch's record says its sharp peaks off the lattice bunch (plan 4.15).
+    off_lattice_bunching: optional(offLatticeBunching),
   }),
 
   tune_pipeline: obj({
@@ -650,6 +683,58 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     // When a stage's settings changed: the run that writes the dataset's outputs with them.
     write_outputs_with: optional(obj({ tool: lit("run_pipeline"), from_stage: str })),
   }),
+
+  // Written as a new dataset, or refused with nothing written (docs/regrid.md):
+  // the fields a refusal came before are null (a target_exists refusal comes
+  // before the fit, and names the dataset in the way).
+  regrid_refined_ub: union(
+    obj({
+      written: lit(true),
+      refusal: nul,
+      dataset_id: str,
+      file: str,
+      source_file: str,
+      refined_on: str,
+      fit: str,
+      bragg_nodes_every: v3,
+      turn_deg: num,
+      turn_threshold_deg: num,
+      axis_uvw: v3,
+      rms_start: num,
+      rms: num,
+      cell_start: str,
+      cell: str,
+      peaks_used: num,
+      symmetrised: bool,
+      measured_before: num,
+      measured_after: num,
+      voxels_outside: num,
+      voxels_outside_share: maybeNum,
+    }),
+    obj({
+      written: lit(false),
+      refusal: obj({ code: oneOf("target_exists", "symmetrised_without_source", "turn_below_noise", "cannot_symmetrise"), reason: str }),
+      dataset_id: maybeStr,
+      file: maybeStr,
+      source_file: str,
+      refined_on: maybeStr,
+      fit: maybeStr,
+      bragg_nodes_every: v3,
+      turn_deg: maybeNum,
+      turn_threshold_deg: num,
+      axis_uvw: nullable(v3),
+      rms_start: maybeNum,
+      rms: maybeNum,
+      cell_start: maybeStr,
+      cell: maybeStr,
+      peaks_used: maybeNum,
+      symmetrised: bool,
+      measured_before: nul,
+      measured_after: nul,
+      voxels_outside: nul,
+      voxels_outside_share: nul,
+    }),
+  ),
 
   show_in_viewer: obj({ opened: str }),
 };

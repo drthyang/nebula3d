@@ -7,8 +7,9 @@
 // outcome is "info" with the reason "nothing to judge" (the named exceptions:
 // D15, the ΔPDF's rule, and D16, the UB's); on a grid too coarse for the
 // check's measurement, "info" with the reason "grid too coarse", which the
-// measurement states in its result. An "attention" outcome always carries a
-// reason.
+// measurement states in its result; and for the fills' texture over fewer
+// holes than its rule needs, "info" with the reason "too few holes". An
+// "attention" outcome always carries a reason.
 
 import { built, evidence, inference, inferred, joined, quotedInference, reading, remedy, written, type Span, type Tagged } from "../inference";
 import { isTooCoarse } from "../metrics/coarse";
@@ -66,6 +67,8 @@ export type Reason =
   | "symmetrised"
   // The grid is too coarse for the check's measurement (metrics/coarse.ts): not judged.
   | "grid too coarse"
+  // Fewer holes judged than the fill-bias rule needs, or none (metrics/texture.ts, volumeFillBias): not judged.
+  | "too few holes"
   // What a recorded result says of itself (recorded.ts).
   | "no output"
   | "recorded verdict"
@@ -129,10 +132,12 @@ export interface CoverageMeasurements {
   };
 }
 
-/** What symmetry_check measured: each in-plane operation's share (null: nothing to test), and the symmetry the file declares. */
+/** What symmetry_check measured: each operation's share (null: nothing to test), the symmetry the file declares, and how many operations the sections could not test. */
 export interface SymmetryMeasurements {
   ops: readonly { op: string; rms_difference: number }[] | null;
   declared: string | null | undefined; // null or "": none declared; undefined: the file was not read
+  untested?: number;
+  why?: string; // with no operation tested, why none could be
 }
 
 /** What each check's rule judges. */
@@ -258,14 +263,14 @@ const punch: StageRule = {
 };
 
 const backfill: StageRule = {
-  criterion: criterionOf("backfill")`The fills meet their surroundings: a median seam of 1σ or less, and no cut whose fill is biased one way.`,
+  criterion: criterionOf("backfill")`The fills meet their surroundings: a median seam of 1σ or less, and the fills not biased one way.`,
   goal: goalOf("backfill")`Fill punched holes seamlessly: median_seam_sigma ≲ 1, bright_fill_fraction small${evidence(" (no bright plugs where peaks were)")}, checkerboard_fraction near 0.5${evidence(
     " (near 1 is a periodic interpolation artefact)",
   )}.`,
   // A stage's evaluation measures no fill bias (texture_check does): its
   // criterion says only what it judges.
   ownCriterion: written("verdicts/rules.ts: the backfill's own criterion")`The fills meet their surroundings: a median seam of 1σ or less.${reading(
-    " Whether a cut's fill is biased one way is texture_check's to say.",
+    " Whether the fills are biased one way is texture_check's to say.",
   )}`,
   judge: (m) => {
     const seam = num(m.mean_median_seam_sigma);
@@ -294,18 +299,38 @@ export const FLOOR_SIGMA_WHY = "σ is the cut's own spread, and the floors follo
 /** The shells the flatten's rule judges a pedestal on (judgedShells, metrics/flatten.ts), in its criterion and the system prompt. */
 export const PEDESTAL_SHELLS = "the outer half of the |Q| shells the counts reach";
 
+/**
+ * Where the flatten's verdict reads the pedestal (plan 4.1): over the whole
+ * volume's shells, not three planes', in its criterion and the system prompt.
+ * "The volume", as the system prompt calls the data a cut is taken from: in
+ * as few words as the criterion's own before it, so the results it is in grow
+ * no longer.
+ */
+export const PEDESTAL_WHERE = "the volume's";
+
+/**
+ * Whether a flatten evaluation measured the pedestal over the whole volume
+ * (plan 4.1: floor_trend and floor_span_fraction, of the volume's shell
+ * floors) or, recorded before that, over three planes (max_floor_trend and
+ * max_floor_span_fraction, the largest of the planes'). The rule reads the
+ * one the evaluation holds; the report too.
+ */
+export const pedestalOfVolume = (m: Readonly<Record<string, unknown>>): boolean => "floor_trend" in m || "floor_span_fraction" in m;
+
 // The flatten's goal: what to change about a pedestal left is reduction-qc's
 // step 6 (a floor rising with |Q| wants the b·Q² term and a fit range reaching
 // the coverage), and what a trend and a span near 1 are evidence of goes with it.
 const flatten: StageRule = {
-  criterion: criterionOf("flatten")`No pedestal: a floor trend and a span both ${PEDESTAL_LIMIT} or more over ${PEDESTAL_SHELLS}. The largest floor in σ is ${FLATTEN_FLOOR_SIGMA_NOTE}: ${FLOOR_SIGMA_WHY}.`,
-  goal: goalOf("flatten")`Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.${evidence(
+  criterion: criterionOf("flatten")`No pedestal: ${PEDESTAL_WHERE} floor trend and span both ${PEDESTAL_LIMIT} or more over ${PEDESTAL_SHELLS}. The largest floor in σ is ${FLATTEN_FLOOR_SIGMA_NOTE}: ${FLOOR_SIGMA_WHY}.`,
+  goal: goalOf("flatten")`Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.${evidence(
     " A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ",
   )}${remedy(": a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations.")}`,
   judge: (m) => {
-    // A trend near 1 with a span near 1 is a pedestal left. The floor in σ is
-    // reported, not judged (FLATTEN_FLOOR_SIGMA_NOTE).
-    const pedestal = pedestalLeft(num(m.max_floor_trend), num(m.max_floor_span_fraction));
+    // A trend near 1 with a span near 1 is a pedestal left: the whole volume's
+    // (plan 4.1), or the planes' largest in an evaluation recorded before it.
+    // The floor in σ is reported, not judged (FLATTEN_FLOOR_SIGMA_NOTE).
+    const volume = pedestalOfVolume(m);
+    const pedestal = pedestalLeft(num(volume ? m.floor_trend : m.max_floor_trend), num(volume ? m.floor_span_fraction : m.max_floor_span_fraction));
     if (pedestal == null) return nothing();
     return judged(pedestal ? ["pedestal"] : []);
   },
@@ -367,7 +392,7 @@ const pdf: StageRule = {
   criterion: criterionOf("pdf")`The back-FFT reproduces what the transform keeps, ${EVEN_PART}, to an r of ${BACK_FFT_R_OK} or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.`,
   goal: goalOf("pdf")`The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate).${evidence(
     " A window that reaches further raises feature_snr with the backfill's guesses and the box's empty corners, which is worse, not better.",
-  )} max_symmetry_break is the x–y section's largest RMS difference from its image under the cell's in-plane operations (worst_symmetry_op names it)${evidence(
+  )} max_symmetry_break is the x–y section's largest RMS difference from its image under the declared group's operations that map it onto itself (none declared: the cell's in-plane operations; worst_symmetry_op names it)${evidence(
     ": a trial that raises it far above your settings' value broke a symmetry your settings kept, as a separable window does on a hexagonal cell",
   )}. back_fft_pearson_r_even, the round trip against the data's even part under Q → −Q (what the real transform keeps), must stay near 1; back_fft_pearson_r against the data is lower by the odd part (back_fft_odd_share, counting noise on unsymmetrised data). Without a band or crop the round trip is the identity, so neither can rank trials${evidence(
     ": back_fft_pearson_r_even below ~0.999 only flags a transform problem",
@@ -411,7 +436,7 @@ const BAND_AT_OR_BELOW = inference(COVERAGE_WORDS, "remedy", "; set a |Q| band a
 // A band set past the counts, where the window is fitted to the coverage (plan 4.5).
 const BAND_THEY_ALLOW = inference(COVERAGE_WORDS, "remedy", "; the band the counts allow is suggested_band, the user's to set");
 const SYMMETRY_WORDS = "verdicts/rules.ts: symmetry_check's verdict";
-const ASYMMETRY_IS = inference(SYMMETRY_WORDS, "evidence", ", so the section's asymmetry (");
+const ASYMMETRY_IS = inference(SYMMETRY_WORDS, "evidence", ", so the sections' asymmetry (");
 const THE_DATA_OWN = inference(SYMMETRY_WORDS, "evidence", ") is the data's own, counting noise included, not a break by a stage");
 const GRAIN_WORDS = "verdicts/rules.ts: grain_check's verdict";
 const REFINE_UB = inference(GRAIN_WORDS, "remedy", "; refine the UB");
@@ -523,23 +548,41 @@ const NOT_DECLARED = (asymmetry: unknown): Tagged =>
 
 const symmetry: CheckRule<SymmetryMeasurements> = {
   judge: (m) => {
-    if (!m.ops) return { ...nothing(), words: null };
-    // A file that declares no symmetry was not symmetrised: the section's
+    // No operation tested is no evidence: not judged, and why, never a pass.
+    if (!m.ops?.length) return { ...nothing(), words: `not judged: ${m.why ?? "no operation could be tested on the sections"}` };
+    // A file that declares no symmetry was not symmetrised: the sections'
     // asymmetry is the data's own, and no stage broke anything.
     if (m.declared === null || m.declared === "") return { kind: "info", reasons: ["not declared"], words: NOT_DECLARED(Math.max(...m.ops.map((o) => o.rms_difference))) };
+    // Every operation tested is judged alike, whether it keeps c or moves it.
     const broken = m.ops.filter((o) => o.rms_difference > SYMMETRY_HOLDS).map((o) => `${o.op} (${o.rms_difference})`);
+    const untested = m.untested ? `; ${m.untested} could not be tested (not_tested says why)` : "";
     return broken.length
       ? { kind: "attention", reasons: ["symmetry broken"], words: `not kept: ${broken.join(", ")}; a symmetry the data were symmetrised with should hold to ~${SYMMETRY_HOLDS} or better` }
-      : { kind: "pass", reasons: [], words: `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better` };
+      : { kind: "pass", reasons: [], words: `kept: every operation tested holds to ${SYMMETRY_HOLDS} or better${untested}` };
   },
 };
 
 const texture: CheckRule<Readonly<Record<string, unknown>>> = {
-  // texture_check writes no verdict: each cut says whether its fill is biased.
+  // texture_check writes no verdict: its result says whether the fills are
+  // biased. Since plan 4.2 it reads every punch hole of the volume in 3-D
+  // (metrics/texture.ts, volumeFillBias): systematic_fill_bias true needs
+  // attention, false passes, and null is not judged, with why (not_judged):
+  // the grid too coarse for the holes' rims ("grid too coarse: …"), else too
+  // few holes judged, or none ("too few holes"). The run's verdict says either
+  // (readers.ts). A result recorded before 4.2 has none of that: each of its
+  // cuts says whether its fill is biased, and it reads as it did.
   // A cut whose grid is too coarse to judge its fills (not_judged, texture.ts's
   // roomForRims) is no evidence either way: the fills pass only when every cut
   // was judged, and a judged cut's bias still needs attention.
   judge: (m) => {
+    if ("systematic_fill_bias" in m) {
+      if (m.systematic_fill_bias === true) return { kind: "attention", reasons: ["fill bias"], words: null };
+      if (isTooCoarse(m.not_judged)) return { ...tooCoarse(), words: null };
+      if (m.systematic_fill_bias === false) return { kind: "pass", reasons: [], words: null };
+      return m.systematic_fill_bias === null && typeof m.not_judged === "string"
+        ? { kind: "info", reasons: ["too few holes"], words: null }
+        : { ...nothing(), words: null };
+    }
     const cuts = (Array.isArray(m.per_cut) ? (m.per_cut as unknown[]) : []).filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
     if (cuts.some((x) => x.systematic_fill_bias === true)) return { kind: "attention", reasons: ["fill bias"], words: null };
     if (cuts.some((x) => isTooCoarse(x.not_judged))) return { ...tooCoarse(), words: null };

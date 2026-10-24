@@ -4,14 +4,38 @@
 // directional (anisotropic), and how do they trend with distance?  A huge
 // self-correlation peak sits at the origin, so a small central disk is excluded
 // before every statistic — otherwise it would swamp both the SNR and the
-// anisotropy.  Positions are taken in true Cartesian Å: a section whose axes
-// meet at a non-right angle (hexagonal ab-plane, 120°) is first mapped through
-// its `axes_angle`, so radii and feature directions are physical.
+// anisotropy.  The disk is the share of the section's half-width that the ΔPDF
+// page and dpdf_peaks leave out (ORIGIN_EXCLUDED).  Positions are taken in true
+// Cartesian Å: a section whose axes meet at a non-right angle (hexagonal
+// ab-plane, 120°) is first mapped through its `axes_angle`, so radii and
+// feature directions are physical.
 
 import type { ConsistencyMetrics } from "../../api/types";
+import { ORIGIN_EXCLUDED } from "../../components/dpdfLevels";
 import { toDisplay } from "../../components/oblique";
 import type { GridSlice } from "./sliceStats";
 import { roundSig } from "./sliceStats";
+
+/**
+ * Which robust σ a ΔPDF tool's sizes are in, as its result names it
+ * (`sigma_of`; plan 4.10). Each is 1.4826 × the median absolute deviation of
+ * the ΔPDF outside the origin's disk, but each tool takes it over other
+ * values, so a size in σ from one tool is no size in σ from another: on the
+ * validation's dev cases the volume's σ is 0.58 to 0.96 of the x–y section's
+ * through the origin, and the three centre sections' own differ by up to a
+ * factor of 4. dpdf_peaks names its own, the volume's
+ * (nebula3d.analysis.dpdf_features), in its description and its reading.
+ */
+export const SIGMA_OF = {
+  // dpdfMetrics on the section measured (measure_dpdf_cut).
+  section: "this section outside the origin's disk, robust",
+  // The same on each dataset (compare_datasets).
+  datasets: "this section outside the origin's disk, each dataset's own, robust",
+  // The same on each centre section (assess_stage's pdf; its mean_feature_snr averages them).
+  sections: "each section outside the origin's disk, its own, robust",
+  // The three centre sections' values together (dpdf_contrast).
+  centre: "the three sections together, outside the origin's disk, robust",
+} as const;
 
 interface StrongPoint {
   x: number;
@@ -99,7 +123,7 @@ export const dpdfMetrics = (
     Math.abs(y_axis[0] ?? 0),
     Math.abs(y_axis[ny - 1] ?? 0),
   );
-  const excludeR = 0.05 * rMax;
+  const excludeR = ORIGIN_EXCLUDED * rMax;
 
   const { values, abs, coords } = collectFinite(grid, excludeR);
   const base: DpdfMetrics = {

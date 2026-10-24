@@ -14,7 +14,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { callTool, CHAT_TOOLS, type ToolRun } from "../tools";
+import { offLatticeBunching } from "../metrics/bunching";
 import { useTuneStore } from "../tune/tuner";
+import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
 import {
   arr,
@@ -45,11 +47,14 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -179,29 +184,31 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
     expect([cut.bragg_punch_leftover, cut.backfill, cut.flatten]).toEqual([null, null, null]);
   });
 
-  it("texture_check: a cut whose slices could not be read is its label alone", async () => {
+  it("texture_check: a cut whose slices could not be read has no azimuthal ratio", async () => {
     const real = api.fetchSlice.getMockImplementation()!;
     api.fetchSlice.mockImplementation(async (id: string, ...rest: unknown[]) => {
       if (id.endsWith(".backfilled")) throw new Error("the slice could not be read");
       return real(id, ...rest);
     });
     const result = await run("texture_check", { plane: "hk0", value: 0 });
-    expect(result.per_cut).toEqual([{ cut: "H–K plane at L = 0" }]);
+    expect(result.per_cut).toEqual([{ cut: "H–K plane at L = 0", azimuthal_ratio: null }]);
   });
 
-  it("qmax_coverage: without the raw volume's coverage, no raw_counts, suggested_band or band_check", async () => {
+  // The coverage is measured once, in Python: without it there is no result
+  // to hold to the contract, and the call says why.
+  it("qmax_coverage: without the raw volume's coverage, the call fails, naming why", async () => {
     api.fetchVolumeCoverage.mockRejectedValue(new Error("no coverage"));
-    const result = await run("qmax_coverage");
-    expect(result).not.toHaveProperty("raw_counts");
-    expect(result).not.toHaveProperty("suggested_band");
-    expect(result).not.toHaveProperty("band_check");
-    expect(result.counts_end_inside_box).toBe(false);
+    const r: ToolRun = await callTool({ dataset: DATASET, datasets: DATASETS }, "qmax_coverage", {});
+    expect(r.ok).toBe(false);
+    expect(r.text).toContain("no coverage");
   });
 
-  it("symmetry_check: a cell with no in-plane symmetry to test is a note alone", async () => {
+  it("symmetry_check: with no operation declared and no in-plane ones to fall back on, the verdict alone", async () => {
+    const realMeta = api.fetchMeta.getMockImplementation()!;
+    api.fetchMeta.mockImplementation(async (id: string) => ({ ...(await realMeta(id)), symmetry: null, symmetry_ops: null }));
     const real = api.fetchDpdfMeta.getMockImplementation()!;
     api.fetchDpdfMeta.mockImplementation(async (id: string) => ({ ...(await real(id)), lattice: { a: null, b: null, c: null } }));
-    expect(Object.keys(await run("symmetry_check"))).toEqual(["note"]);
+    expect(Object.keys(await run("symmetry_check"))).toEqual(["verdict"]);
   });
 
   it("dpdf_contrast: reset reads what the viewer went back to; a brighter limit adds its note", async () => {
@@ -242,6 +249,29 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
     expect(result.changed).toEqual([{ setting: "ringNFourier", from: 8, to: 6, note: "no effect with the current model" }]);
     const none = await run("update_settings", { changes: { ringNFourier: 6 } });
     expect([none.changed, none.rerun_from]).toEqual([[], null]);
+  });
+
+  it("assess_stage and run_pipeline: a run whose punch record says its sharp peaks off the lattice bunch (plan 4.15)", async () => {
+    const real = api.fetchBraggProfile.getMockImplementation()!;
+    api.fetchBraggProfile.mockImplementation(async (id: string) => {
+      const profile = await real(id);
+      return { ...profile, modulation: { ...profile.modulation, bunching: BUNCHED_AT_THIRDS } };
+    });
+    const punch = (await run("assess_stage", { stage: "punch" })).punch as Record<string, unknown>;
+    expect(punch.off_lattice_bunching).toEqual(offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })));
+    usePipelineStore.setState({ runStages: vi.fn(async () => "done") });
+    const ran = await run("run_pipeline", { from_stage: "punch" });
+    expect(ran.off_lattice_bunching).toEqual(punch.off_lattice_bunching);
+  });
+
+  it("configure_settings and update_settings: the sample's modulation, declared, as one setting", async () => {
+    usePipelineStore.setState({ modulationK: "1/3, 0, 0", modulationForm: "planes" });
+    const settings = (await run("configure_settings")).settings as Record<string, unknown>;
+    expect(settings.modulation).toBe("k = (1/3, 0, 0), order 1, planes, ± 0.08 r.l.u.");
+    const r: ToolRun = await callTool({ dataset: DATASET, datasets: DATASETS, userMessage: "Declare no modulation." }, "update_settings", { changes: { modulation: "none" } });
+    const result = JSON.parse(r.text) as Record<string, unknown>;
+    expect(contractDisagreements("update_settings", result)).toEqual([]);
+    expect(result.changed).toEqual([{ setting: "modulation", from: "k = (1/3, 0, 0), order 1, planes, ± 0.08 r.l.u.", to: "none" }]);
   });
 
   it("run_log: one stage's lines", async () => {

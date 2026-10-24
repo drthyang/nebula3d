@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../api/types";
 import { usePipelineStore, type RunOptions } from "../../state/pipelineStore";
 import { DEFAULT_SETTINGS } from "../settings";
-import { currentStageSettings, proposalToPatch, ProposalError, toFormValue } from "../tune/catalog";
+import { currentStageSettings, proposalToPatch, ProposalError, sampleParam, toFormValue } from "../tune/catalog";
 import { parseJsonReply, STAGE_GOALS, STAGE_GOALS_WITHOUT_SKILLS } from "../tune/prompts";
 import { startTuning, useTuneStore } from "../tune/tuner";
 
@@ -43,8 +43,10 @@ describe("catalog", () => {
     // Physical facts about the sample are not tunable.
     expect(() => proposalToPatch("flatten", { flattenIon: "Mn2+" })).toThrow(/not a flatten setting/);
     // Facts about the sample are never tuned, though the user may set them.
-    expect(() => proposalToPatch("punch", { punchProtectH: "none" })).toThrow(/not a punch setting/);
-    expect(toFormValue("punchProtectH", "none", "punch", { sample: true })).toBe("none");
+    expect(() => proposalToPatch("punch", { modulation: "none" })).toThrow(/not a punch setting/);
+    expect(() => toFormValue("modulation", "none", "punch")).toThrow(/not a punch setting/);
+    expect(sampleParam("modulation")!.write("none")).toEqual({ modulationK: "none", modulationOrder: "", modulationForm: "", modulationHalfWidth: "" });
+    expect(() => sampleParam("modulation")!.write({ k: "thirds" })).toThrow(ProposalError);
     expect(() => proposalToPatch("punch", { punchSupercellH: 3 })).toThrow(ProposalError);
   });
 
@@ -205,6 +207,27 @@ describe("startTuning", () => {
     expect(punch.status).toBe("skipped");
     expect(punch.message).toMatch(/kept your settings/);
     expect(finishedNote).toMatch(/nothing changed/);
+  });
+
+  it("asks the model it is given for the proposals and the pick, and hands each request's counts to onUsage", async () => {
+    llm.completeChat
+      .mockResolvedValueOnce('{"candidates": [{"changes": {"punchMinSig": 4}}]}')
+      .mockResolvedValueOnce('{"best": 2, "why": "0 leftover peaks"}');
+    const model = { baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.3 };
+    const onUsage = vi.fn();
+    await startTuning({ dataset, stages: ["punch"], trialsPerStage: 2, llm: model, onUsage, maxTokens: 16_000 });
+    expect(llm.completeChat).toHaveBeenCalledTimes(2);
+    for (const [args] of llm.completeChat.mock.calls) {
+      expect(args).toMatchObject({ baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.3, maxTokens: 16_000 });
+      expect(args.onUsage).toBe(onUsage);
+    }
+    // Without one (the app), nothing is handed the counts, and no cap is asked: each transport asks its own.
+    llm.completeChat.mockReset().mockResolvedValue('{"candidates": []}');
+    await startTuning({ dataset, stages: ["punch"], trialsPerStage: 2, llm: DEFAULT_SETTINGS });
+    const [app] = llm.completeChat.mock.calls[0];
+    expect(app).toMatchObject({ baseUrl: DEFAULT_SETTINGS.baseUrl, model: DEFAULT_SETTINGS.model });
+    expect(app.onUsage).toBeUndefined();
+    expect(app).not.toHaveProperty("maxTokens");
   });
 
   it("re-runs the later stages when a tuned stage changed its settings", async () => {

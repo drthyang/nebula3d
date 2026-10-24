@@ -2,6 +2,7 @@
 // (verdicts/), on the principal planes and the records the stage writes.
 
 import { stageVolumeId } from "../../context/loadContext";
+import { SIGMA_OF } from "../../metrics/dpdf";
 import { skillsOn } from "../../skills";
 import { TUNE_STAGE_LABELS, TUNE_STAGES, type TuneStage } from "../../tune/catalog";
 import { evaluateStage, headline } from "../../tune/evaluate";
@@ -22,6 +23,16 @@ const STAGE_OUTPUT: Record<TuneStage, string> = {
 };
 
 const ASSESS_CHOICES = [...TUNE_STAGES, "all"] as const;
+
+// The detail a stage's result leaves out with every stage's (stage=all): its
+// per-plane numbers, and the flatten's judged |Q| range.
+const DETAIL: Record<TuneStage, string[]> = {
+  rings: ["per_plane"],
+  punch: ["per_plane"],
+  backfill: ["per_plane"],
+  flatten: ["per_plane", "floor_judged_q"],
+  pdf: ["per_plane"],
+};
 
 // The per-plane number that is worse when larger, for each reciprocal stage.
 const WORSE_WHEN_LARGER: Partial<Record<TuneStage, string>> = {
@@ -99,14 +110,17 @@ export const assess_stage: ChatTool = {
       const outcome = judge(stage, evaluation, { skills: skillsOn(ctx) });
       outcomes.push(outcome);
       const verdict = outcome.words;
-      // All five stages' per-plane detail, or their goals, would overflow the
-      // result (MAX_RESULT_CHARS): one stage at a time gives both.
-      if (pick === "all") delete evaluation.per_plane;
+      // All five stages' detail, or their goals, would overflow the result
+      // (MAX_RESULT_CHARS): one stage at a time gives both.
+      if (pick === "all") for (const key of DETAIL[stage]) delete evaluation[key];
       result[stage] = {
         verdict,
         criterion: outcome.criterion,
         headline: headline(stage, evaluation),
         ...evaluation,
+        // Which σ the sections' feature_snr are in: with their per-plane
+        // detail, which stage=all leaves out.
+        ...(stage === "pdf" && pick !== "all" ? { sigma_of: SIGMA_OF.sections } : {}),
         ...(pick === "all" ? {} : { goal: goals[stage] }),
       };
       lines.push(`${TUNE_STAGE_LABELS[stage]}: ${verdict} · ${headline(stage, evaluation)}`);

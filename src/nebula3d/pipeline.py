@@ -58,6 +58,7 @@ from nebula3d.analysis import (
     compute_delta_pdf,
     invert_delta_pdf,
 )
+from nebula3d.analysis.bragg import _WIDTH_REFERENCE_MIN
 from nebula3d.analysis.delta_pdf import (
     Window,
     WindowShape,
@@ -68,6 +69,13 @@ from nebula3d.core import HKLVolume, sigma_note
 from nebula3d.core import low_memory as _low_memory
 from nebula3d.io.delta_pdf_file import load_delta_pdf, save_delta_pdf
 from nebula3d.io.mantid_nxs import NEBULA3D_GROUP
+from nebula3d.modulation import (
+    MIN_HITS,
+    SHARP_RATIO,
+    Bunching,
+    Modulation,
+    detect_commensurate,
+)
 from nebula3d.preprocessing import (
     GRID_TOO_COARSE,
     GlobalRingConfig,
@@ -101,6 +109,7 @@ __all__ = [
     "PipelineParams",
     "PipelinePaths",
     "STAGES",
+    "default_modulation",
     "remove_rings",
     "punch_bragg",
     "backfill",
@@ -113,6 +122,7 @@ __all__ = [
     "write_bragg_profile_json",
     "read_flatten_settings",
     "read_punch_record",
+    "read_node_test_notice",
     "RING_GRID_REMEDY",
     "RING_GRID_REMEDY_ONE",
     "unconfirmed_rings_notice",
@@ -449,6 +459,26 @@ def read_punch_record(path: str | Path) -> np.ndarray | None:
         return None
 
 
+def read_node_test_notice(path: str | Path) -> str | None:
+    """The notice the Bragg punch's record ends on where its node test could
+    not resolve the nodes (``node_test.notice``, :func:`node_test_notice`),
+    for the punch stage's output *path*: read from its record, the profile
+    JSON beside it (``<stem>_profile.json``, :func:`pipeline_paths`), as the
+    punch wrote it.  None where the record has none: no record (or one that
+    cannot be read), a punch written before it recorded its node test, a node
+    test that judged every node it examined, or one that left a few nodes to
+    the search on a grid fine enough for it (the notice None: nodes at the
+    edge of the measured volume)."""
+    p = Path(path)
+    try:
+        record = json.loads(p.with_name(f"{p.stem}_profile.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    node_test = record.get("node_test") if isinstance(record, dict) else None
+    notice = node_test.get("notice") if isinstance(node_test, dict) else None
+    return notice if isinstance(notice, str) and notice else None
+
+
 # ---------------------------------------------------------------------------
 # Stage parameters (defaults mirror the validated cc_on presets)
 # ---------------------------------------------------------------------------
@@ -541,9 +571,14 @@ class PunchParams:
     search_floor_unit: str = "scatter"
     search_min_intensity: float = 27.0
     search_min_prominence: float = 27.0
+    # Legacy: H planes the search leaves alone, as centres or as fractional
+    # parts of H (each ± search_exclude_h_half_width), e.g. (0.3333, 0.6667).
+    # What the search leaves alone is the sample's declared modulation,
+    # PipelineParams.modulation, a fact about the sample beside its symmetry;
+    # these still protect what they name, added to it.
     search_exclude_h_centers: tuple[float, ...] | None = None
     search_exclude_h_half_width: float = 0.08
-    search_exclude_h_fractions: tuple[float, ...] | None = (0.3333, 0.6667)
+    search_exclude_h_fractions: tuple[float, ...] | None = None
     # Search candidates broader than this × the Bragg width (any axis) are left
     # unpunched as short-range-order maxima; None punches them all.
     search_max_width_ratio: float | None = None
@@ -654,6 +689,20 @@ class DeltaPdfParams:
     window_support: bool = True
 
 
+def default_modulation() -> Modulation | None:
+    """The modulation a run declares when the user declares none: none.
+
+    Whether a sample has a modulation, and where, is the user's to declare
+    (plan 4.15, P3): with none declared the punch's search leaves no position
+    alone, and when its sharp peaks off the lattice bunch at one commensurate
+    fraction the punch records it and the console asks the user. The planes
+    the search protected before declarations, H = n ± 1/3 ± 0.08 r.l.u., are
+    ``k = (1/3, 0, 0)`` declared in plane form, bit for bit
+    (:mod:`nebula3d.modulation`).
+    """
+    return None
+
+
 @dataclass
 class PipelineParams:
     """All stage parameters plus the cleanup stages' on/off switches."""
@@ -705,6 +754,18 @@ class PipelineParams:
     # symmetry-equivalent voxels alike (see nebula3d.symmetry), so a
     # symmetrised input gives a symmetric ΔPDF.
     symmetry: str | None = "auto"
+    # The sample's modulation, a fact about the sample like its symmetry: the
+    # wave vector(s) k of its satellites, their order and form (the points
+    # G ± m·k, or the planes through them), which the punch's search leaves
+    # alone, at every position equivalent under the symmetry and on the parent
+    # lattice of the punch's cell (nebula3d.modulation.Modulation; a string or
+    # a mapping is read by Modulation.parse).  None declares none, the default
+    # (default_modulation()): the search then leaves no position alone, and
+    # the punch records whether its sharp peaks off the lattice bunch.
+    modulation: Modulation | None = field(default_factory=default_modulation)
+
+    def __post_init__(self) -> None:
+        self.modulation = Modulation.parse(self.modulation)
 
     def np_dtype(self) -> type:
         return np.float64 if self.precision == "float64" else np.float32
@@ -1431,13 +1492,85 @@ def bragg_remover(p: PunchParams) -> BraggRemover:
     )
 
 
+def _sharp_off_lattice(rows: Sequence[Mapping[str, Any]]) -> list[tuple[float, float, float]]:
+    """The centres of the search's peaks off the lattice that are as sharp as
+    Bragg peaks: no wider than ``SHARP_RATIO`` × the median width of the peaks
+    at the nodes on every axis (``measured_width_hkl`` of the punch's record).
+    A peak whose width was not measured is left out; with fewer than
+    ``_WIDTH_REFERENCE_MIN`` measured peaks at the nodes there is no Bragg
+    width to compare with, and none is."""
+    nodes = [r["measured_width_hkl"] for r in rows
+             if r.get("source_node_hkl") is not None and r.get("measured_width_hkl") is not None]
+    if len(nodes) < _WIDTH_REFERENCE_MIN:
+        return []
+    limit = SHARP_RATIO * np.median(np.asarray(nodes, dtype=np.float64), axis=0)
+    out = []
+    for r in rows:
+        width = r.get("measured_width_hkl")
+        if r.get("found_by") != "search" or r.get("source_node_hkl") is not None or width is None:
+            continue
+        if bool(np.all(np.asarray(width, dtype=np.float64) <= limit)):
+            x, y, z = (float(v) for v in r["center_hkl"])
+            out.append((x, y, z))
+    return out
+
+
+def _off_lattice_bunching(vol: HKLVolume, remover: BraggRemover,
+                          rows: Sequence[Mapping[str, Any]], symmetry: GridSymmetry | None,
+                          modulation: Modulation | None) -> Bunching | None:
+    """Whether the search's sharp peaks off the lattice bunch at one
+    commensurate fraction (:func:`nebula3d.modulation.detect_commensurate`):
+    on the measured voxels the legacy H planes leave to the search, each
+    orbit once, outside the declared modulation's positions."""
+    peaks = _sharp_off_lattice(rows)
+    if len(peaks) < MIN_HITS:
+        return None
+    eligible = (vol.mask & np.isfinite(vol.data)
+                & ~remover._search_excluded_h_mask(vol))  # noqa: SLF001
+    return detect_commensurate(peaks, (vol.h_axis, vol.k_axis, vol.l_axis), symmetry,
+                               modulation, cell=remover.supercell, eligible=eligible)
+
+
+def _modulation_record(p: PunchParams, modulation: Modulation | None,
+                       symmetry: GridSymmetry | None,
+                       bunching: Bunching | None) -> dict[str, Any]:
+    """The punch's record of what its search left alone and what it found:
+    the declared modulation, the cell and symmetry it was applied on, the
+    legacy H planes (``search_exclude_h_*``; None when they name none), and
+    the bunching the run measured (None when there was none)."""
+    half = max(float(p.search_exclude_h_half_width), 0.0)
+    named = p.search_exclude_h_centers or p.search_exclude_h_fractions
+    return {
+        "declared": None if modulation is None else modulation.to_json(),
+        "cell": [int(n) for n in p.supercell],
+        "symmetry_ops": (None if symmetry is None
+                         else [np.asarray(m, dtype=int).tolist() for m in symmetry.ops]),
+        "legacy": None if not named or half <= 0 else {
+            "h_centers": (None if not p.search_exclude_h_centers
+                          else [float(c) for c in p.search_exclude_h_centers]),
+            "h_fractions": (None if not p.search_exclude_h_fractions
+                            else [float(f) for f in p.search_exclude_h_fractions]),
+            "half_width": half,
+        },
+        "bunching": None if bunching is None else bunching.to_json(),
+    }
+
+
 def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
                 progress: ProgressFn | None = None,
-                symmetry: GridSymmetry | None = None) -> HKLVolume:
+                symmetry: GridSymmetry | None = None,
+                modulation: Modulation | None = None) -> HKLVolume:
     """Detect and punch Bragg/satellite peaks; return the masked volume.
 
     With the *symmetry* the data were symmetrised with, every punch decision
     is shared across the symmetry orbit (``BraggRemover.symmetry_ops``).
+    *modulation* is the sample's (``PipelineParams.modulation``): the search
+    leaves its satellites, or the planes through them, alone
+    (``BraggRemover.search_protect``). Without one the search leaves alone
+    only the legacy H planes *params* name. The punch records both, and
+    whether its sharp peaks off the lattice bunch at one commensurate
+    fraction, as a modulation it was not told of would make them
+    (``_bragg_profile["modulation"]``); a line in its log says so when they do.
     """
     p = params or PunchParams()
     _emit(progress, "punch", "start", None, f"Bragg punch (mode={p.mode})")
@@ -1448,6 +1581,8 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     remover = bragg_remover(p)
     if symmetry is not None:
         remover = dataclasses.replace(remover, symmetry_ops=symmetry.ops)
+    if modulation is not None:
+        remover = dataclasses.replace(remover, search_protect=modulation)
     peak_records, reference, footprint = remover._detect(vol)  # noqa: SLF001 - avoid refitting
     n_integer = sum(r.found_by == "integer" for r in peak_records)
     # The search's Bragg peaks at the nodes the node test left to it (G2).
@@ -1506,8 +1641,10 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
               + (f"shared Bragg profile (learned from {sum(footprint.n_peaks)} peaks"
                  f"{learned})" if footprint is not None and from_search else
                  "shared Bragg profile" if footprint is not None else "ellipsoid"))
+    # No search peak's footprint takes a voxel its search left alone.
     keep = remover._punch_centers(  # noqa: SLF001
-        vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference)
+        vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference,
+        protect=remover._search_protected(vol))  # noqa: SLF001
     keep = remover._punch_incident_beam(vol, keep)  # noqa: SLF001
     if symmetry is not None:
         before = int((vol.mask & ~keep).sum())
@@ -1517,6 +1654,13 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
               f"{int((vol.mask & ~keep).sum()) - before:,} more voxels punched "
               f"at positions equivalent to punched ones")
     profile = bragg_profile_from_records(vol, remover, peak_records, footprint)
+    # Sharp peaks off the lattice bunched at one commensurate fraction: what a
+    # modulation the sample did not declare would leave. Measured and
+    # recorded; whether the sample has one is the user's to say.
+    bunching = _off_lattice_bunching(vol, remover, profile["peaks"], symmetry, modulation)
+    profile["modulation"] = _modulation_record(p, modulation, symmetry, bunching)
+    if bunching is not None:
+        _emit(progress, "punch", "progress", None, bunching.describe())
     notice = None
     if node_test is not None:
         # The punch's record of it, for as long as the output it describes.
@@ -2551,8 +2695,15 @@ def run_pipeline(
             vol = stage_load(stage_source("punch"), "punch")
             symmetry = input_symmetry(vol, p, paths.input, progress=progress,
                                       stage="punch")
-            out = (punch_bragg(vol, p.punch, progress=progress) if symmetry is None
-                   else punch_bragg(vol, p.punch, progress=progress, symmetry=symmetry))
+            # The sample's facts, beside the stage's settings: its symmetry
+            # and its modulation (each only when there is one).
+            facts: dict[str, Any] = {}
+            if symmetry is not None:
+                facts["symmetry"] = symmetry
+            modulation = Modulation.parse(p.modulation)
+            if modulation is not None:
+                facts["modulation"] = modulation
+            out = punch_bragg(vol, p.punch, progress=progress, **facts)
             nebula3d.save(out, paths.braggpunched)
             punch_record = getattr(out, "_punched", None)
             if punch_record is not None:

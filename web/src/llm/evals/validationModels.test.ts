@@ -3,8 +3,30 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { MAX_TOOL_ROUNDS } from "../agent";
 import { TOOLS_CONTEXT } from "../provider/client";
-import { costOf, modelAt, MODELS, modelNamed, paidRunGate, plan, RUN_POLICY, runContext, SPEND_CAP_USD, SpendTracker } from "./validationModels";
+import { RUN_POLICIES, runPolicyOf, transportOf } from "../runPolicy";
+import { TUNE_STAGES } from "../tune/catalog";
+import {
+  costOf,
+  covers,
+  FIRST_RUN_WORST,
+  firstRunWorstUsd,
+  modelAt,
+  MODELS,
+  modelNamed,
+  paidRunGate,
+  plan,
+  RUN_POLICY,
+  runContext,
+  SPEND_CAP_USD,
+  SPEND_TOTAL_USD,
+  SpendTracker,
+  TUNE_REQUESTS_PER_STAGE,
+  tuningWorstUsd,
+  VALIDATION_MAX_TOKENS,
+  validationPolicy,
+} from "./validationModels";
 import { casesIn } from "./validation";
 
 // What LM Studio says a model is loaded with, and what Ollama says it supports;
@@ -39,6 +61,10 @@ describe("the models", () => {
     const claude = modelNamed("claude-sonnet-5-5");
     expect(claude.spendCapUsd).toBe(12);
     expect(SPEND_CAP_USD).toBe(12);
+    // NEBULA's share of the user's $40 across three apps' runs.
+    expect(SPEND_TOTAL_USD).toBe(40);
+    expect(3 * SPEND_CAP_USD).toBeLessThanOrEqual(SPEND_TOTAL_USD);
+    expect(claude.how).toContain("$12 for NEBULA, within the $40 total");
     expect(claude.splits).toEqual(["test"]);
   });
 
@@ -77,13 +103,13 @@ describe("the run policy's minimum context", () => {
     server.ollamaModel.mockReset();
   });
 
-  it("is 48k for every local model, none for the cloud, and the app suggests the same", () => {
-    expect(RUN_POLICY.minLocalContextTokens).toBe(49_152);
+  it("is 56k for every local model, none for the cloud, and the app suggests the same", () => {
+    expect(RUN_POLICY.minLocalContextTokens).toBe(57_344);
     for (const m of MODELS) {
       expect(m.minContextTokens).toBe(m.local ? RUN_POLICY.minLocalContextTokens : null);
       if (m.local) {
         expect(m.contextTokens).toBeGreaterThanOrEqual(RUN_POLICY.minLocalContextTokens);
-        expect(m.how).toMatch(/49152/);
+        expect(m.how).toMatch(/57344/);
       }
     }
     // The console's own guidance (contextWarning, the window's refusal) names the same window.
@@ -94,18 +120,21 @@ describe("the run policy's minimum context", () => {
     server.loadedContext.mockResolvedValue({ loaded: 32_768, max: 131_072 });
     const c = await runContext(qwen, qwen.baseUrl);
     expect(server.loadedContext).toHaveBeenCalledWith(qwen.baseUrl, "qwen/qwen3.8-27b", expect.anything());
-    expect(c).toMatchObject({ tokens: 32_768, min_tokens: 49_152, read_from: "lmstudio-loaded" });
-    expect(c.refusal).toMatch(/^qwen\/qwen3\.8-27b is loaded with a 32,768-token context, under the run policy's minimum of 49,152/);
-    expect(c.refusal).toMatch(/Context Length of 49,152 or more/);
-    expect(c.refusal).toMatch(/lms load qwen\/qwen3\.8-27b --context-length 49152/);
+    expect(c).toMatchObject({ tokens: 32_768, min_tokens: 57_344, read_from: "lmstudio-loaded" });
+    expect(c.refusal).toMatch(/^qwen\/qwen3\.8-27b is loaded with a 32,768-token context, under the run policy's minimum of 57,344/);
+    expect(c.refusal).toMatch(/Context Length of 57,344 or more/);
+    expect(c.refusal).toMatch(/lms load qwen\/qwen3\.8-27b --context-length 57344/);
     expect(c.refusal).toMatch(/default Context Length/);
     expect(c.refusal).not.toMatch(/supports at most/);
     expect(server.ollamaModel).not.toHaveBeenCalled();
   });
 
-  it("passes LM Studio loaded with 48k or more, and keeps the window", async () => {
+  it("passes LM Studio loaded with 56k or more, and keeps the window", async () => {
+    server.loadedContext.mockResolvedValue({ loaded: 57_344, max: 131_072 });
+    expect(await runContext(qwen, qwen.baseUrl)).toEqual({ tokens: 57_344, min_tokens: 57_344, read_from: "lmstudio-loaded", refusal: null });
+    // The minimum was 48k until the worst turn carried a full list of the ΔPDF's features: 48k is refused now.
     server.loadedContext.mockResolvedValue({ loaded: 49_152, max: 131_072 });
-    expect(await runContext(qwen, qwen.baseUrl)).toEqual({ tokens: 49_152, min_tokens: 49_152, read_from: "lmstudio-loaded", refusal: null });
+    expect((await runContext(qwen, qwen.baseUrl)).refusal).toMatch(/^qwen\/qwen3\.8-27b is loaded with a 49,152-token context, under the run policy's minimum of 57,344/);
     server.loadedContext.mockResolvedValue({ loaded: 65_536, max: null });
     expect((await runContext(modelNamed("lmstudio-muse-glimmer"), qwen.baseUrl)).refusal).toBeNull();
   });
@@ -114,13 +143,13 @@ describe("the run policy's minimum context", () => {
     // Not loaded: LM Studio would load it with its defaults, which the run cannot read.
     server.loadedContext.mockResolvedValue({ loaded: null, max: 262_144 });
     const idle = await runContext(qwen, qwen.baseUrl);
-    expect(idle).toMatchObject({ tokens: null, min_tokens: 49_152 });
-    expect(idle.refusal).toMatch(/^qwen\/qwen3\.8-27b is not loaded: .*minimum of 49,152.*--context-length 49152/);
+    expect(idle).toMatchObject({ tokens: null, min_tokens: 57_344 });
+    expect(idle.refusal).toMatch(/^qwen\/qwen3\.8-27b is not loaded: .*minimum of 57,344.*--context-length 57344/);
     server.loadedContext.mockResolvedValue(null);
     const unread = await runContext(qwen, qwen.baseUrl);
     expect(unread.tokens).toBeNull();
     expect(unread.refusal).toMatch(/^Could not read the context qwen\/qwen3\.8-27b is loaded with from LM Studio at http:\/\/localhost:1234\/v1/);
-    expect(unread.refusal).toMatch(/minimum of 49,152/);
+    expect(unread.refusal).toMatch(/minimum of 57,344/);
   });
 
   it("says when an LM Studio model cannot hold the minimum at all", async () => {
@@ -132,14 +161,14 @@ describe("the run policy's minimum context", () => {
     server.ollamaModel.mockResolvedValue({ maxContext: 262_144 });
     const ok = await runContext(gemma, gemma.baseUrl);
     expect(server.ollamaModel).toHaveBeenCalledWith(gemma.baseUrl, "gemma4:26b", undefined);
-    expect(ok).toEqual({ tokens: 262_144, min_tokens: 49_152, read_from: "ollama-supported", refusal: null });
+    expect(ok).toEqual({ tokens: 262_144, min_tokens: 57_344, read_from: "ollama-supported", refusal: null });
     expect(server.loadedContext).not.toHaveBeenCalled();
 
     server.ollamaModel.mockResolvedValue({ maxContext: 32_768 });
     const short = await runContext(gemma, gemma.baseUrl);
-    expect(short).toMatchObject({ tokens: 32_768, min_tokens: 49_152 });
-    expect(short.refusal).toMatch(/^gemma4:26b supports a context of at most 32,768 tokens .* under the run policy's minimum of 49,152/);
-    expect(short.refusal).toMatch(/pick a model that supports 49,152 or more/);
+    expect(short).toMatchObject({ tokens: 32_768, min_tokens: 57_344 });
+    expect(short.refusal).toMatch(/^gemma4:26b supports a context of at most 32,768 tokens .* under the run policy's minimum of 57,344/);
+    expect(short.refusal).toMatch(/pick a model that supports 57,344 or more/);
 
     server.ollamaModel.mockResolvedValue({ maxContext: null });
     expect((await runContext(gemma, gemma.baseUrl)).refusal).toMatch(/did not say how long a context gemma4:26b supports.*ollama pull gemma4:26b/);
@@ -185,18 +214,18 @@ describe("the scenario evals' context check", () => {
     server.loadedContext.mockResolvedValue({ loaded: 32_768, max: 131_072 });
     const c = await runContext(modelAt(LM_STUDIO, "qwen/qwen3.8-27b"), LM_STUDIO);
     expect(server.loadedContext).toHaveBeenCalledWith(LM_STUDIO, "qwen/qwen3.8-27b", expect.anything());
-    expect(c).toMatchObject({ tokens: 32_768, min_tokens: 49_152, read_from: "lmstudio-loaded" });
-    expect(c.refusal).toMatch(/^qwen\/qwen3\.8-27b is loaded with a 32,768-token context, under the run policy's minimum of 49,152/);
-    expect(c.refusal).toMatch(/lms load qwen\/qwen3\.8-27b --context-length 49152/);
+    expect(c).toMatchObject({ tokens: 32_768, min_tokens: 57_344, read_from: "lmstudio-loaded" });
+    expect(c.refusal).toMatch(/^qwen\/qwen3\.8-27b is loaded with a 32,768-token context, under the run policy's minimum of 57,344/);
+    expect(c.refusal).toMatch(/lms load qwen\/qwen3\.8-27b --context-length 57344/);
     // Word for word the validation runner's refusal for the same model and window.
     expect(c.refusal).toBe((await runContext(qwen, LM_STUDIO)).refusal);
   });
 
-  it("passes LM Studio loaded with 48k or more, with the window a run's record keeps", async () => {
-    server.loadedContext.mockResolvedValue({ loaded: 49_152, max: 131_072 });
+  it("passes LM Studio loaded with 56k or more, with the window a run's record keeps", async () => {
+    server.loadedContext.mockResolvedValue({ loaded: 57_344, max: 131_072 });
     expect(await runContext(modelAt(LM_STUDIO, "qwen/qwen3.8-27b"), LM_STUDIO)).toEqual({
-      tokens: 49_152,
-      min_tokens: 49_152,
+      tokens: 57_344,
+      min_tokens: 57_344,
       read_from: "lmstudio-loaded",
       refusal: null,
     });
@@ -207,20 +236,20 @@ describe("the scenario evals' context check", () => {
     expect((await runContext(modelAt(LM_STUDIO, "qwen/qwen3.8-27b"), LM_STUDIO)).refusal).toMatch(/^qwen\/qwen3\.8-27b is not loaded: /);
     server.loadedContext.mockResolvedValue(null);
     const other = await runContext(modelAt("http://localhost:8080/v1", "some-model"), "http://localhost:8080/v1");
-    expect(other).toMatchObject({ tokens: null, min_tokens: 49_152 });
-    expect(other.refusal).toMatch(/^Could not read the context some-model is loaded with .*minimum of 49,152/);
+    expect(other).toMatchObject({ tokens: null, min_tokens: 57_344 });
+    expect(other.refusal).toMatch(/^Could not read the context some-model is loaded with .*minimum of 57,344/);
   });
 
   it("holds Ollama to the longest context the model supports", async () => {
     server.ollamaModel.mockResolvedValue({ maxContext: 32_768 });
     const short = await runContext(modelAt(OLLAMA, "gemma4:26b"), OLLAMA);
     expect(server.ollamaModel).toHaveBeenCalledWith(OLLAMA, "gemma4:26b", undefined);
-    expect(short).toMatchObject({ tokens: 32_768, min_tokens: 49_152, read_from: "ollama-supported" });
-    expect(short.refusal).toMatch(/^gemma4:26b supports a context of at most 32,768 tokens .* under the run policy's minimum of 49,152/);
+    expect(short).toMatchObject({ tokens: 32_768, min_tokens: 57_344, read_from: "ollama-supported" });
+    expect(short.refusal).toMatch(/^gemma4:26b supports a context of at most 32,768 tokens .* under the run policy's minimum of 57,344/);
     server.ollamaModel.mockResolvedValue({ maxContext: 262_144 });
     expect(await runContext(modelAt(OLLAMA, "gemma4:26b"), OLLAMA)).toEqual({
       tokens: 262_144,
-      min_tokens: 49_152,
+      min_tokens: 57_344,
       read_from: "ollama-supported",
       refusal: null,
     });
@@ -240,7 +269,9 @@ describe("what a paid model needs", () => {
   const claude = modelNamed("claude-sonnet-5-5");
 
   it("is the user typing its cap", () => {
-    expect(paidRunGate(claude, undefined)).toMatch(/NEBULA_VALIDATION_ALLOW_SPEND=12/);
+    expect(paidRunGate(claude, undefined)).toBe(
+      "Claude Sonnet 5.5 (Anthropic) is paid: set NEBULA_VALIDATION_ALLOW_SPEND=12 to approve spending at most $12 on it ($12 for NEBULA, within the $40 total)",
+    );
     expect(paidRunGate(claude, "5")).not.toBeNull();
     expect(paidRunGate(claude, "1")).not.toBeNull();
     expect(paidRunGate(claude, "12")).toBeNull();
@@ -265,47 +296,149 @@ describe("cost", () => {
 });
 
 describe("the spend tracker", () => {
-  it("holds the first run to a ceiling and later ones to 1.5 times the dearest", () => {
-    const t = new SpendTracker(12);
-    expect(t.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
+  const sonnet = modelNamed("claude-sonnet-5-5").price!;
+  const run = (usd: number | null) => ({ case: "x", arm: "B", run: 1, usd });
+
+  it("holds the first run to its hard bound, $7.37: the arithmetic of FIRST_RUN_RESERVE_USD's comment, every count the code's", () => {
+    const { loop, tuning, margin } = FIRST_RUN_WORST;
+    // The loop: its rounds of tool calls and the answer, each request at the validation's output cap.
+    expect(loop.requests).toBe(MAX_TOOL_ROUNDS + 1);
+    expect(loop.requests).toBe(13);
+    expect(loop.outputPerRequest).toBe(VALIDATION_MAX_TOKENS);
+    // The tuning: five stages of a stage's most requests, each at the cap its run policy asks for.
+    expect(tuning.requests).toBe(TUNE_STAGES.length * TUNE_REQUESTS_PER_STAGE);
+    expect(tuning.requests).toBe(15);
+    const claude = modelNamed("claude-sonnet-5-5");
+    expect(tuning.outputPerRequest).toBe(validationPolicy({ baseUrl: claude.baseUrl, temperature: claude.temperature }, MAX_TOOL_ROUNDS).outputCap.tuning);
+    expect(VALIDATION_MAX_TOKENS).toBe(16_000);
+    expect(margin).toBe(0.25);
+    // Step by step, at Sonnet 5.5's price in MODELS.
+    expect([sonnet.input, sonnet.output]).toEqual([2, 10]);
+    expect((loop.requests * loop.inputPerRequest * sonnet.input) / 1e6).toBeCloseTo(1.04, 10);
+    expect((loop.requests * loop.outputPerRequest * sonnet.output) / 1e6).toBeCloseTo(2.08, 10);
+    expect((tuning.requests * tuning.inputPerRequest * sonnet.input) / 1e6).toBeCloseTo(0.375, 10);
+    expect((tuning.requests * tuning.outputPerRequest * sonnet.output) / 1e6).toBeCloseTo(2.4, 10);
+    expect(firstRunWorstUsd(sonnet)).toBeCloseTo(5.895 * 1.25, 10);
+    expect(firstRunWorstUsd(sonnet)).toBeCloseTo(7.36875, 10);
+    // Rounded up to the cent: $7.37, inside the $12 cap.
+    expect(SpendTracker.FIRST_RUN_RESERVE_USD).toBe(7.37);
+    expect(SpendTracker.FIRST_RUN_RESERVE_USD).toBeGreaterThanOrEqual(firstRunWorstUsd(sonnet));
+    expect(SpendTracker.FIRST_RUN_RESERVE_USD - firstRunWorstUsd(sonnet)).toBeLessThan(0.01);
+    const t = new SpendTracker(SPEND_CAP_USD);
+    expect(t.reserve()).toBe(7.37);
     expect(t.canStart()).toBe(true);
-    t.record({ case: "a", arm: "B", run: 1, usd: 0.2 });
-    t.record({ case: "b", arm: "B", run: 1, usd: 0.1 });
-    expect(t.reserve()).toBeCloseTo(0.3, 10);
+  });
+
+  it("prices a tuning past a run's first at its hard bound with the margin, $3.47", () => {
+    // The tuning's $0.375 in and $2.400 out, $2.775, × 1.25.
+    expect(tuningWorstUsd(sonnet)).toBeCloseTo(2.775 * 1.25, 10);
+    expect(tuningWorstUsd(sonnet)).toBeCloseTo(3.46875, 10);
+    expect(SpendTracker.EXTRA_TUNING_USD).toBe(3.47);
+    expect(SpendTracker.EXTRA_TUNING_USD).toBeGreaterThanOrEqual(tuningWorstUsd(sonnet));
+  });
+
+  it("covers every paid model at its own price", () => {
+    const paid = MODELS.filter((m) => m.spendCapUsd !== null);
+    expect(paid.map((m) => m.key)).toEqual(["claude-sonnet-5-5"]);
+    for (const m of paid) {
+      expect(firstRunWorstUsd(m.price!)).toBeLessThanOrEqual(SpendTracker.FIRST_RUN_RESERVE_USD);
+      expect(tuningWorstUsd(m.price!)).toBeLessThanOrEqual(SpendTracker.EXTRA_TUNING_USD);
+    }
+  });
+
+  it("holds a later run to the first run's reserve after cheap runs, and to 1.5 times the dearest after a dear one", () => {
+    const t = new SpendTracker(SPEND_CAP_USD);
+    t.record(run(0.2));
+    t.record(run(0.1));
+    // Not 1.5 × $0.20: never below the first run's.
+    expect(t.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
     expect(t.spent).toBeCloseTo(0.3, 10);
     expect(t.remaining).toBeCloseTo(11.7, 10);
+    // 1.5 × $4.91 = $7.365, under $7.37: still the first run's.
+    t.record(run(4.91));
+    expect(t.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
+    // A dear run: 1.5 × $5.00 = $7.50.
+    const dear = new SpendTracker(SPEND_CAP_USD);
+    dear.record(run(0.2));
+    dear.record(run(5));
+    dear.record(run(0.1));
+    expect(dear.reserve()).toBeCloseTo(7.5, 10);
   });
 
-  it("stops before a run that could pass the cap, and says why", () => {
-    const t = new SpendTracker(1);
-    t.record({ case: "a", arm: "B", run: 1, usd: 0.4 });
-    expect(t.canStart()).toBe(true); // 0.4 spent + 0.6 reserve = 1.0
-    t.record({ case: "b", arm: "B", run: 1, usd: 0.1 });
-    t.record({ case: "c", arm: "B", run: 1, usd: 0.3 });
-    expect(t.spent).toBeCloseTo(0.8, 10);
-    expect(t.canStart()).toBe(false); // 0.8 + 0.6 > 1
-    expect(t.refusal()).toMatch(/spend cap is reached: \$0\.80 spent of \$1\.00/);
-    expect(new SpendTracker(1).refusal()).toMatch(/cap is reached/); // 1.2 first-run ceiling over a $1 cap
-  });
-
-  it("never runs a $12 cap past $12 over a whole session of dear runs", () => {
+  it("stops at the $12 cap whatever the reserve says: no run starts while what is spent and its reserve pass it", () => {
     const t = new SpendTracker(SPEND_CAP_USD);
+    t.record(run(4.62));
+    expect(t.canStart()).toBe(true); // $4.62 + $7.37 = $11.99
+    expect(t.refusal()).toBeNull();
+    t.record(run(0.02));
+    expect(t.spent).toBeCloseTo(4.64, 10);
+    expect(t.canStart()).toBe(false); // $4.64 + $7.37 = $12.01
+    expect(t.refusal()).toBe("the spend cap is reached: $4.64 spent of $12.00, and the next run may cost up to $7.37");
+    // A dear run's 1.5 times, past what is left.
+    const dear = new SpendTracker(SPEND_CAP_USD);
+    dear.record(run(6));
+    expect(dear.reserve()).toBe(9);
+    expect(dear.canStart()).toBe(false);
+    expect(dear.refusal()).toBe("the spend cap is reached: $6.00 spent of $12.00, and the next run may cost up to $9.00");
+    // The first run's reserve over a smaller cap: no run starts at all.
+    expect(new SpendTracker(7).refusal()).toBe("the spend cap is reached: $0.00 spent of $7.00, and the next run may cost up to $7.37");
+  });
+
+  it("never runs a $12 cap past $12 over a whole session, whatever each run costs within its reserve", () => {
+    for (const cost of [0.05, 0.3, 1, 2.5, 5.895, 7.37]) {
+      const t = new SpendTracker(SPEND_CAP_USD);
+      let runs = 0;
+      while (t.canStart() && runs < 1000) {
+        // Each run costs `cost`, or the most its reserve allows when that is less.
+        t.record(run(Math.min(cost, t.reserve())));
+        runs += 1;
+      }
+      expect(t.spent, `runs of $${cost}`).toBeLessThanOrEqual(SPEND_CAP_USD);
+      expect(runs).toBeGreaterThan(0);
+    }
+    // Every run that starts after the first is held to $7.37: one starts only while
+    // the spend is at most $12 − $7.37 = $4.63, so the dearest so far is at most that,
+    // and 1.5 times it under $7.37.
+    const cheap = new SpendTracker(SPEND_CAP_USD);
     let runs = 0;
-    while (t.canStart() && runs < 1000) {
-      t.record({ case: "x", arm: "B", run: 1, usd: 0.5 }); // every run costs the most it may
+    while (cheap.canStart()) {
+      expect(cheap.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
+      cheap.record(run(0.3));
       runs += 1;
     }
-    expect(t.spent).toBeLessThanOrEqual(SPEND_CAP_USD);
-    expect(runs).toBeGreaterThan(10);
+    expect(runs).toBe(16); // $4.50 + $7.37 ≤ $12; $4.80 + $7.37 > $12
   });
 
   it("charges a run whose tokens were not reported at the reserve, so the total is never short", () => {
-    const t = new SpendTracker(12);
-    t.record({ case: "a", arm: "B", run: 1, usd: 0.2 });
-    const e = t.record({ case: "b", arm: "B", run: 1, usd: null });
+    const t = new SpendTracker(SPEND_CAP_USD);
+    t.record(run(0.2));
+    const e = t.record(run(null));
     expect(e.estimated).toBe(true);
-    expect(e.usd).toBeCloseTo(0.3, 10);
-    expect(t.reserve()).toBeCloseTo(0.3, 10); // an estimate does not raise the ceiling
+    expect(e.usd).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
+    expect(t.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD); // an estimate does not raise the ceiling
+    const dear = new SpendTracker(SPEND_CAP_USD);
+    dear.record(run(5));
+    expect(dear.record(run(null)).usd).toBeCloseTo(7.5, 10);
+  });
+
+  it("gives a run's tunings past its first what the cap leaves beyond the spend and the run's reserve", () => {
+    // The first run: $12 − $7.37 = $4.63, which covers one more tuning.
+    const first = new SpendTracker(SPEND_CAP_USD).tuningBudget();
+    expect(first.leftUsd).toBeCloseTo(4.63, 10);
+    expect(first.perTuningUsd).toBe(SpendTracker.EXTRA_TUNING_USD);
+    expect(covers(first.leftUsd, first.perTuningUsd)).toBe(true);
+    // After $2.00: $12 − $2 − $7.37 = $2.63, which does not.
+    const later = new SpendTracker(SPEND_CAP_USD);
+    later.record(run(2));
+    expect(later.tuningBudget().leftUsd).toBeCloseTo(2.63, 10);
+    expect(covers(later.tuningBudget().leftUsd, SpendTracker.EXTRA_TUNING_USD)).toBe(false);
+    // Past the cap, nothing.
+    const spent = new SpendTracker(SPEND_CAP_USD);
+    spent.record(run(5));
+    expect(spent.tuningBudget().leftUsd).toBe(0);
+    // To the micro-dollar.
+    expect(covers(3.47, 3.47)).toBe(true);
+    expect(covers(3.469999, 3.47)).toBe(false);
   });
 
   it("keeps its ledger between sessions", () => {
@@ -316,5 +449,36 @@ describe("the spend tracker", () => {
     expect(back.entries).toEqual(t.entries);
     expect(SpendTracker.fromJSON(null, 12).spent).toBe(0);
     expect(() => new SpendTracker(0)).toThrow();
+  });
+});
+
+describe("the validation's run policy", () => {
+  it("caps every request at 16,000 tokens, the loop's and the tuning's, on every model, and takes the run's round limit", () => {
+    expect(VALIDATION_MAX_TOKENS).toBe(16_000);
+    for (const m of MODELS) {
+      const policy = validationPolicy({ baseUrl: m.baseUrl, temperature: m.temperature }, 12);
+      expect(policy.outputCap).toEqual({ loop: VALIDATION_MAX_TOKENS, tuning: VALIDATION_MAX_TOKENS });
+      expect(policy.maxRounds).toBe(12);
+    }
+    expect(validationPolicy({ baseUrl: modelNamed("ollama-gemma4-26b").baseUrl, temperature: 0.2 }, 5).maxRounds).toBe(5);
+  });
+
+  it("is the transport's policy as the app ships it, the cap aside: arm B is the Pilot as it ships", () => {
+    for (const m of MODELS) {
+      const shipped = runPolicyOf({ baseUrl: m.baseUrl, temperature: m.temperature });
+      const run = validationPolicy({ baseUrl: m.baseUrl, temperature: m.temperature }, MAX_TOOL_ROUNDS);
+      expect({ ...run, outputCap: shipped.outputCap }).toEqual(shipped);
+    }
+    expect(runPolicyOf(modelNamed("claude-sonnet-5-5"))).toEqual(RUN_POLICIES.claude);
+    expect(runPolicyOf(modelNamed("lmstudio-qwen3.8-27b"))).toEqual(RUN_POLICIES.lmStudio);
+    expect(runPolicyOf(modelNamed("ollama-gemma4-26b"))).toEqual(RUN_POLICIES.ollama);
+  });
+
+  it("sends each model's temperature where its transport takes one, and none to Claude, which takes no sampling parameters", () => {
+    for (const m of MODELS) {
+      // What the model's entry says is what is sent and recorded: null exactly where the transport drops it.
+      expect(validationPolicy({ baseUrl: m.baseUrl, temperature: m.temperature }, 12).temperature).toBe(m.temperature);
+      expect(m.temperature === null).toBe(transportOf(m.baseUrl) === "anthropic");
+    }
   });
 });

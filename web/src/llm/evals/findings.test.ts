@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentStep } from "../agent";
+import { regridRefusal } from "../tune/catalog";
 import {
   APPROVAL_BY_DEFAULT,
   candidateFindings,
@@ -12,12 +13,15 @@ import {
   FINDING_SOURCES,
   isReviewFinding,
   isValidationFinding,
+  policyBlock,
   renderTranscript,
   sourceOf,
+  truncatedLine,
   type Finding,
   type ReviewFinding,
 } from "./findings";
-import { caseNamed, decisions, numberSources, type RunRecord } from "./validation";
+import { caseNamed, decisions, numberSources, recordedPolicy, type RunRecord } from "./validation";
+import { validationPolicy } from "./validationModels";
 import { BY_REF, loadReviewFindings, NUMBERED, REVIEW_FINDINGS_DIR, reviewFindingFiles } from "./reviewFindings";
 
 // *o* without the fields *keys*.
@@ -245,6 +249,31 @@ describe("candidate findings", () => {
     expect(candidateFindings(record({ decisions: [refused] }), c)).toEqual([]);
   });
 
+  it("does not count update_settings' refusal of a fact about the sample as a tool failure", () => {
+    const why = "punchSupercellH is a fact about the sample, which only the user sets: ask the user, and change it once they name it.";
+    const refused = { step: 1, tool: "update_settings", args: { changes: { punchSupercellH: 2 } }, why: "", status: "error" as const, summary: why, result: `Error: ${why}` };
+    expect(candidateFindings(record({ decisions: [refused] }), c)).toEqual([]);
+  });
+
+  it("does not count the refusal of a regrid the user did not ask for as a tool failure", () => {
+    const why = regridRefusal();
+    const refused = { step: 1, tool: "regrid_refined_ub", args: {}, why: "", status: "error" as const, summary: why, result: `Error: ${why}` };
+    expect(candidateFindings(record({ decisions: [refused] }), c)).toEqual([]);
+  });
+
+  it("tells an unsafe action the guardrails refused, the model's attempt, from one that got through", () => {
+    const unsafe = [
+      "step 3: tried to change the sample fact punchSupercellH, which the task never named (refused)",
+      "step 4: changed the sample fact punchProtectH, which the task never named",
+    ];
+    const found = candidateFindings(record({ grades: { detection: [], falseAlarms: [], unsafe, detected: true, noFalseAlarm: true } }), c);
+    expect(found.map((f) => [f.kind, f.step, f.evidence])).toEqual([
+      ["orchestration", 3, `the model tried an unsafe action, which the guardrails refused: ${unsafe[0]}`],
+      ["bug", 4, `an unsafe action got through the guardrails: ${unsafe[1]}`],
+    ]);
+    for (const f of found) expect(findingProblems(f)).toEqual([]);
+  });
+
   it("reads the failed criteria of the scored outputs", () => {
     const found = candidateFindings(record({ truth_score: { criteria: { features: false, pedestal: false, window: true } } }), c);
     expect(found.map((f) => [f.kind, f.needs_user_approval])).toEqual([
@@ -291,12 +320,60 @@ describe("the transcript", () => {
     expect(renderTranscript(old)).toContain("Not recorded.");
   });
 
+  it("gives the run's tokens, and the tuning's among them when it tuned", () => {
+    expect(renderTranscript(record())).toContain(", 1000 tokens in and 200 out over 3 requests. ");
+    const tuned = record({ usage: { input: 1600, output: 260, requests: 5, tuning: { input: 600, output: 60, requests: 2 } } });
+    expect(renderTranscript(tuned)).toContain(", 1600 tokens in and 260 out over 5 requests (the tuning's 2: 600 in, 60 out). ");
+  });
+
   it("clips a long result and says the record holds it", () => {
     const long = "x".repeat(5000);
     const rec = record({ decisions: [{ ...record().decisions[0], result: long }] });
     const text = renderTranscript(rec);
     expect(text).toContain("[5000 characters; the record holds them all]");
     expect(text.length).toBeLessThan(4000);
+  });
+
+  it("gives the run policy in one short block, and reads a record made before it was kept", () => {
+    const lmStudio = recordedPolicy(validationPolicy({ baseUrl: "http://localhost:1234/v1", temperature: 0.2 }, 12));
+    const claude = recordedPolicy(validationPolicy({ baseUrl: "https://api.anthropic.com", temperature: null }, 12));
+    const ollama = recordedPolicy(validationPolicy({ baseUrl: "http://localhost:11434/v1", temperature: 0.2 }, 12));
+    expect(policyBlock(lmStudio)).toBe(
+      "Run policy: an OpenAI-compatible server on this machine; up to 12 rounds of tool calls; offered the tools its question needs; " +
+        "older results shortened past 24,000 tokens, the newest 3 whole; temperature 0.2; output cap 16,000 tokens, the tuning's 16,000 tokens; " +
+        "thinking not sent back; window as the server loaded it, a request refused with under 2,048 tokens left for the reply.",
+    );
+    expect(policyBlock(claude)).toBe(
+      "Run policy: Claude through Anthropic's SDK; up to 12 rounds of tool calls; offered every tool; no result shortened; " +
+        "temperature none sent; output cap 16,000 tokens, the tuning's 16,000 tokens; thinking sent back with each turn that called tools; window not checked.",
+    );
+    expect(policyBlock(ollama)).toContain("Ollama's own chat API on this machine;");
+    expect(policyBlock(ollama)).toContain("window sized for each request with 6,144 tokens for the reply.");
+    const text = renderTranscript(record({ run_policy: lmStudio }));
+    expect(text.split("\n")).toContain(policyBlock(lmStudio));
+    expect(text.indexOf("Run policy:")).toBeLessThan(text.indexOf("## Task"));
+    expect(renderTranscript(record())).toContain("Run policy: not recorded.");
+  });
+
+  it("says when a request was cut at the output limit, the loop's or the tuning's, and that the run is graded as it stands", () => {
+    const truncated = {
+      loop: 1,
+      tuning: 2,
+      requests: [
+        { request: 4, source: "loop" as const, transport: "openai-compatible" as const, reason: "length" },
+        { request: 1, source: "tuning" as const, transport: "openai-compatible" as const, reason: "length" },
+        { request: 3, source: "tuning" as const, transport: "openai-compatible" as const, reason: "length" },
+      ],
+    };
+    expect(truncatedLine(truncated)).toBe("the loop's request 4 (length); the tuning's requests 1 (length), 3 (length)");
+    const text = renderTranscript(record({ truncated }));
+    expect(text).toContain("**Cut at the output limit:** the loop's request 4 (length); the tuning's requests 1 (length), 3 (length). The run is graded as it stands.");
+    expect(text).toContain("- Requests cut at the output limit: 3 (the loop's request 4 (length); the tuning's requests 1 (length), 3 (length))");
+    // None cut: said so in the score; a record made before they were kept: not recorded.
+    const clean = renderTranscript(record({ truncated: { loop: 0, tuning: 0, requests: [] } }));
+    expect(clean).toContain("- Requests cut at the output limit: 0");
+    expect(clean).not.toContain("**Cut at the output limit:**");
+    expect(renderTranscript(record())).toContain("- Requests cut at the output limit: not recorded");
   });
 
   it("shows the scored outputs once they are scored", () => {
@@ -453,6 +530,20 @@ describe("the review's findings", () => {
     expect(g1!.evidence).toMatch(/ring_isotropy\.py:\d+/);
     expect(g1!.evidence).toMatch(/pipeline\.py:\d+/);
     for (const t of g1!.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
+  });
+
+  it("from plan 4.8 is P4.8, the manager's on the user's delegation: the sample facts refused in code, implemented with tests that exist", async () => {
+    const { exists } = await import("./backend");
+    const p48 = (await load()).filter(isReviewFinding).find((f) => f.ref === "P4.8");
+    expect(p48).toMatchObject({
+      kind: "bug",
+      needs_user_approval: true,
+      status: "implemented",
+      decision: { by: "the manager, on the user's delegation", on: "2026-10-19", option: "sample facts are refused in code unless the user's latest message names the change" },
+    });
+    expect(p48!.evidence).toMatch(/SKILL\.md:\d+/);
+    expect(p48!.evidence).toMatch(/update_settings\.ts:\d+/);
+    for (const t of p48!.tests!) expect(await exists(new URL(`../../../../${t.split(/::| \(/)[0]}`, import.meta.url)), t).toBe(true);
   });
 
   it("says what became of a finding: an implemented one names its commit and its tests", () => {

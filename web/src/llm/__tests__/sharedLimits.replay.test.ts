@@ -20,15 +20,16 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { ORIGIN_EXCLUDED } from "../../components/dpdfLevels";
-import { parseFractions, STAGES } from "../../state/pipelineStore";
+import { FORMS, kVectors, MAX_ORDER, MODULATION_DEFAULTS } from "../../state/modulation";
+import { STAGES, usePipelineStore } from "../../state/pipelineStore";
 import { bridgeConfig, nodeModules } from "../evals/devData/bridgeWorker";
 import { GRID_TOO_COARSE, isTooCoarse } from "../metrics/coarse";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_FIT_Q, FULL_SHELL } from "../metrics/flatten";
 import { percentile, radialFloorShells, type GridSlice } from "../metrics/sliceStats";
-import { FILL_BIAS_FLOOR, RIM, roomForRims } from "../metrics/texture";
+import { FILL_BIAS_FLOOR, FILL_BIAS_MIN_HOLES, FILL_BIAS_MIN_SIGMA, FILL_BIAS_ONE_WAY, RIM, roomForRims } from "../metrics/texture";
 import { joinPath } from "../skills";
-import { SAMPLE_PARAMS, TUNE_PARAMS, TUNE_STAGES, type TuneParam } from "../tune/catalog";
+import { SAMPLE_PARAMS, TUNE_PARAMS, TUNE_STAGES, type SampleParam, type TuneParam } from "../tune/catalog";
 import { UB_TURNED, WORDS } from "../verdicts/rules";
 
 // ---------------------------------------------------------------- the TypeScript side
@@ -36,7 +37,7 @@ import { UB_TURNED, WORDS } from "../verdicts/rules";
 /** Modules whose own constants are read off their source. */
 const SOURCES: Record<string, string> = Object.fromEntries(
   Object.entries(
-    import.meta.glob<string>(["../metrics/texture.ts", "../metrics/coverage.ts", "../tools/defs/qmax_coverage.ts"], {
+    import.meta.glob<string>(["../metrics/texture.ts"], {
       query: "?raw",
       import: "default",
       eager: true,
@@ -52,8 +53,6 @@ function written(path: string, pattern: RegExp): number[] {
 }
 
 const TEXTURE = "web/src/llm/metrics/texture.ts";
-const COVERAGE = "web/src/llm/metrics/coverage.ts";
-const QMAX = "web/src/llm/tools/defs/qmax_coverage.ts";
 
 /** Where a rule's answer changes: false at lo, true at hi (skillLint.test.ts's). */
 function boundary(pred: (x: number) => boolean, lo: number, hi: number): number {
@@ -115,22 +114,21 @@ const BACKEND_DEFAULT: Record<string, string> = {
   pdfApod: "p.delta_pdf.apodization",
   pdfWindowShape: "p.delta_pdf.window_shape",
   pdfWindowSupport: "p.delta_pdf.window_support",
-  // The sample's facts: the H fractions to four places, as the package writes them.
-  punchProtectH: "[round(f, 4) for f in p.punch.search_exclude_h_fractions]",
-  punchProtectHalfWidth: "p.punch.search_exclude_h_half_width",
+  // The sample's facts. The modulation's blank declaration is the backend's own
+  // (state/modulation.ts names none of it): its fields' defaults are pinned below.
   punchSupercellH: "p.punch.supercell[0]",
   punchSupercellK: "p.punch.supercell[1]",
   punchSupercellL: "p.punch.supercell[2]",
 };
 
-/** A catalog default as the Python expression above reads it. */
-const pageDefault = (param: TuneParam): unknown =>
-  param.kind === "fractions" ? parseFractions(String(param.defaultValue))!.map((f) => Math.round(f * 1e4) / 1e4) : param.defaultValue;
+/** A catalog default as the Python expression above reads it: a setting's, or a fact's as a blank form shows it. */
+const pageDefault = (param: TuneParam | SampleParam): unknown =>
+  "defaultValue" in param ? param.defaultValue : param.read(usePipelineStore.getInitialState());
 
 const SCRIPT = String.raw`
 import dataclasses, inspect, json, sys
 import numpy as np
-from nebula3d import pipeline
+from nebula3d import modulation, pipeline
 from nebula3d.analysis import bragg_fill_texture as ft, coverage, dpdf_features, ub_refine
 from nebula3d.analysis.delta_pdf import _prepare_forward, compute_delta_pdf
 from nebula3d.preprocessing import ring_isotropy
@@ -142,6 +140,12 @@ iso = ring_isotropy.IsotropyConfig()
 
 def default(fn, name):
     return inspect.signature(fn).parameters[name].default
+
+def reads_k(text):
+    try:
+        return modulation.Modulation.parse({"k": text}) is not None
+    except ValueError:
+        return False
 
 def too_coarse(reach, n):
     axis = np.linspace(-1.0, 1.0, n)
@@ -157,6 +161,7 @@ print(json.dumps({
     "fill_constants": {"rim": ft.RIM, "min_rim": ft.MIN_RIM_VOXELS, "min_sigma": ft.MIN_SIGMA, "one_way": ft.ONE_WAY,
                        "min_holes": ft.MIN_HOLES, "floor": ft.FILL_BIAS_FLOOR},
     "room": [too_coarse(reach, n) for reach, n in args["room"]],
+    "node_test_reason": ft.NODE_TEST_TOO_COARSE,
     "grid_too_coarse": ring_isotropy.GRID_TOO_COARSE,
     "height_share": iso.height_share,
     "direction_share": iso.direction_share,
@@ -165,14 +170,39 @@ print(json.dumps({
     "floor_percentile": p.flatten.floor_percentile,
     "min_count": p.flatten.min_count,
     "coverage_full": coverage.FULL,
-    "coverage_half": coverage.HALF,
-    "coverage_q_step": default(coverage.q_coverage, "q_step"),
     "origin_excluded": dpdf_features.ORIGIN_EXCLUDED,
     "stages": list(pipeline.STAGES),
     "tune_stages": list(tuning.TUNE_STAGES),
     "defaults": {k: eval(expr, {"p": p}) for k, expr in args["defaults"].items()},
+    "modulation": {
+        "defaults": {f.name: f.default for f in dataclasses.fields(modulation.Modulation) if f.name in ("order", "form", "half_width")},
+        "half_width": modulation.HALF_WIDTH,
+        "max_order": modulation.MAX_ORDER,
+        "forms": list(modulation.FORMS),
+        "reads_k": [reads_k(t) for t in args["k_texts"]],
+    },
 }))
 `;
+
+/** k as people write it, read by both sides (Modulation.parse; state/modulation.ts kVectors). */
+const K_TEXTS = [
+  "1/3, 0, 0",
+  "(1/3,0,0)",
+  "[0.2, 0, 1/2]",
+  "1/3 0 0; ⟨0 1/3 0⟩",
+  "−1/3, 0, 0",
+  "1e-1, 0, 0",
+  "0.3333, 0, 0",
+  "1/3,,0,0",
+  "thirds",
+  "1/3, 0",
+  "1/3, 0, 0, 0",
+  "1/0, 0, 0",
+  "0, 0, 0",
+  "0/3, 0, 0",
+  "1/3, 0, 0; 0, 0, 0",
+  "1/3, x, 0",
+];
 
 type Py = {
   support_tol: number;
@@ -180,6 +210,7 @@ type Py = {
   fill: Record<"rim" | "min_rim" | "min_sigma" | "one_way" | "min_holes" | "floor", number>;
   fill_constants: Record<"rim" | "min_rim" | "min_sigma" | "one_way" | "min_holes" | "floor", number>;
   room: (string | null)[];
+  node_test_reason: string;
   grid_too_coarse: string;
   height_share: number;
   direction_share: number;
@@ -188,12 +219,11 @@ type Py = {
   floor_percentile: number;
   min_count: number;
   coverage_full: number;
-  coverage_half: number;
-  coverage_q_step: number;
   origin_excluded: number;
   stages: string[];
   tune_stages: string[];
   defaults: Record<string, unknown>;
+  modulation: { defaults: Record<"order" | "form" | "half_width", unknown>; half_width: number; max_order: number; forms: string[]; reads_k: boolean[] };
 };
 
 let py: Py;
@@ -202,7 +232,7 @@ beforeAll(async () => {
   const node = await nodeModules();
   const { python, src } = bridgeConfig();
   const env = { ...node.env, PYTHONPATH: [src, node.env.PYTHONPATH].filter(Boolean).join(node.delimiter), MPLBACKEND: "Agg" };
-  const run = node.spawnSync(python, ["-c", SCRIPT, JSON.stringify({ room: ROOM_CASES, defaults: BACKEND_DEFAULT })], { env, encoding: "utf8" });
+  const run = node.spawnSync(python, ["-c", SCRIPT, JSON.stringify({ room: ROOM_CASES, defaults: BACKEND_DEFAULT, k_texts: K_TEXTS })], { env, encoding: "utf8" });
   if (run.error || run.status !== 0) throw new Error(`${python} could not read the package's limits: ${run.error?.message ?? run.stderr}`);
   py = JSON.parse(run.stdout) as Py;
 });
@@ -245,29 +275,25 @@ const PINS: Pin[] = [
       return [[n, n], [py.fill_constants.min_rim, py.fill.min_rim]];
     },
   },
+  // The TypeScript names them since 4.2's TypeScript half (FILL_BIAS_LIMITS, the
+  // limits it sends the backend's 3-D texture and checks it was judged by).
   {
     name: "a systematic fill bias's median, in the rim's σ",
-    ts: "textureMetrics' `Math.abs(bias) >= 0.5`, metrics/texture.ts",
+    ts: "FILL_BIAS_MIN_SIGMA, metrics/texture.ts",
     py: "MIN_SIGMA and fill_texture(min_sigma=)",
-    values: () => {
-      const [x] = written(TEXTURE, /Math\.abs\(bias\) >= ([0-9.]+)/);
-      return [[x, x], [py.fill_constants.min_sigma, py.fill.min_sigma]];
-    },
+    values: () => [[FILL_BIAS_MIN_SIGMA, FILL_BIAS_MIN_SIGMA], [py.fill_constants.min_sigma, py.fill.min_sigma]],
   },
   {
     name: "a systematic fill bias's share of the holes one way",
-    ts: "textureMetrics' `above >= 0.75 : below >= 0.75`, metrics/texture.ts",
+    ts: "FILL_BIAS_ONE_WAY, metrics/texture.ts",
     py: "ONE_WAY and fill_texture(one_way=)",
-    values: () => [written(TEXTURE, /bias > 0 \? above >= ([0-9.]+) : below >= ([0-9.]+)/), [py.fill_constants.one_way, py.fill.one_way]],
+    values: () => [[FILL_BIAS_ONE_WAY, FILL_BIAS_ONE_WAY], [py.fill_constants.one_way, py.fill.one_way]],
   },
   {
     name: "the fewest judged holes a systematic fill bias needs",
-    ts: "textureMetrics' `judged.length >= 5`, metrics/texture.ts",
+    ts: "FILL_BIAS_MIN_HOLES, metrics/texture.ts",
     py: "MIN_HOLES and fill_texture(min_holes=)",
-    values: () => {
-      const [n] = written(TEXTURE, /judged\.length >= ([0-9]+)/);
-      return [[n, n], [py.fill_constants.min_holes, py.fill.min_holes]];
-    },
+    values: () => [[FILL_BIAS_MIN_HOLES, FILL_BIAS_MIN_HOLES], [py.fill_constants.min_holes, py.fill.min_holes]],
   },
   {
     name: "the fills' room for their rims, and what a grid too coarse for it says (#60)",
@@ -325,25 +351,18 @@ const PINS: Pin[] = [
       ];
     },
   },
+  // The coverage itself, its half-measured edges and their resolution (one
+  // shell), is measured in Python alone and read through the adapters: only
+  // the flatten's own "fully measured" share is held on both sides.
   {
-    name: "a fully measured shell, and a measured one",
-    ts: "FULL and HALF, metrics/coverage.ts; FULL_SHELL, metrics/flatten.ts",
-    py: "FULL and HALF, nebula3d.analysis.coverage",
-    values: () => {
-      const [full] = written(COVERAGE, /const FULL = ([0-9.]+);/);
-      const [half] = written(COVERAGE, /const HALF = ([0-9.]+);/);
-      return [[full, FULL_SHELL, half], [py.coverage_full, py.coverage_full, py.coverage_half]];
-    },
-  },
-  {
-    name: "the raw counts' edge resolution: one coverage shell, Å⁻¹",
-    ts: "COUNTS_EDGE_SHELL, tools/defs/qmax_coverage.ts",
-    py: "q_coverage(q_step=), nebula3d.analysis.coverage",
-    values: () => [written(QMAX, /const COUNTS_EDGE_SHELL = ([0-9.]+);/)[0], py.coverage_q_step],
+    name: "a fully measured shell",
+    ts: "FULL_SHELL, metrics/flatten.ts",
+    py: "FULL, nebula3d.analysis.coverage",
+    values: () => [FULL_SHELL, py.coverage_full],
   },
   {
     name: "the ΔPDF origin's disk, a share of the half-width",
-    ts: "ORIGIN_EXCLUDED, components/dpdfLevels.ts (dpdf_contrast)",
+    ts: "ORIGIN_EXCLUDED, components/dpdfLevels.ts (dpdf_contrast, and the section metrics of metrics/dpdf.ts)",
     py: "ORIGIN_EXCLUDED, nebula3d.analysis.dpdf_features (dpdf_peaks)",
     values: () => [ORIGIN_EXCLUDED, py.origin_excluded],
   },
@@ -352,6 +371,21 @@ const PINS: Pin[] = [
     ts: "STAGES, state/pipelineStore.ts; TUNE_STAGES, tune/catalog.ts",
     py: "STAGES, nebula3d.pipeline; TUNE_STAGES, nebula3d.server.tuning",
     values: () => [[[...STAGES], [...TUNE_STAGES]], [py.stages, py.tune_stages]],
+  },
+  {
+    name: "a declared modulation's blank fields, its highest order and its forms",
+    ts: "MODULATION_DEFAULTS, MAX_ORDER and FORMS, state/modulation.ts (what the Pilot and the report show for a blank order, form or half width)",
+    py: "Modulation's field defaults, HALF_WIDTH, MAX_ORDER and FORMS, nebula3d.modulation",
+    values: () => [
+      [{ order: MODULATION_DEFAULTS.order, form: MODULATION_DEFAULTS.form, half_width: MODULATION_DEFAULTS.halfWidth }, MODULATION_DEFAULTS.halfWidth, MAX_ORDER, [...FORMS]],
+      [py.modulation.defaults, py.modulation.half_width, py.modulation.max_order, py.modulation.forms],
+    ],
+  },
+  {
+    name: "which k a declaration takes: the page and the Pilot refuse before a run what the backend would refuse",
+    ts: "kVectors, state/modulation.ts (the Pilot's update_settings and the request's syntax)",
+    py: "Modulation.parse, nebula3d.modulation",
+    values: () => [Object.fromEntries(K_TEXTS.map((t) => [t, kVectors(t) !== null])), Object.fromEntries(K_TEXTS.map((t, i) => [t, py.modulation.reads_k[i]]))],
   },
   {
     name: "each setting's default: what a blank field means",
@@ -437,7 +471,9 @@ describe("the limits Python and TypeScript both hold", () => {
 
   it("every setting the catalog defaults is pinned or independent", () => {
     const keys = [...TUNE_PARAMS, ...SAMPLE_PARAMS].map((p) => p.key as string);
-    expect(keys.filter((k) => !(k in BACKEND_DEFAULT) && k !== "ringNFourier")).toEqual([]);
+    // ringNFourier is INDEPENDENT; the modulation's blank is the backend's own
+    // declaration, which the TypeScript never names (its fields' defaults are pinned above).
+    expect(keys.filter((k) => !(k in BACKEND_DEFAULT) && k !== "ringNFourier" && k !== "modulation")).toEqual([]);
     expect(Object.keys(BACKEND_DEFAULT).filter((k) => !keys.includes(k))).toEqual([]);
   });
 
@@ -445,6 +481,13 @@ describe("the limits Python and TypeScript both hold", () => {
     const reason = `${py.grid_too_coarse}: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1`;
     expect([isTooCoarse(reason), isTooCoarse(`not judged: ${reason}`)]).toEqual([true, true]);
     expect(py.room.filter((r): r is string => r !== null).every(isTooCoarse)).toBe(true);
+  });
+
+  it("isTooCoarse reads the 3-D texture read's reason on a grid too coarse for the punch's node test (G3)", () => {
+    // nebula3d.analysis.bragg_fill_texture.NODE_TEST_TOO_COARSE: the fills are
+    // not judged where the punch's record carries its node test's notice.
+    expect(py.node_test_reason).toBe("grid too coarse (the punch's node test could not resolve the holes at this grid)");
+    expect([isTooCoarse(py.node_test_reason), isTooCoarse(`not judged: ${py.node_test_reason}`)]).toEqual([true, true]);
   });
 
   it("keeps a limit pinned or independent, never both, and every entry with its reason", () => {

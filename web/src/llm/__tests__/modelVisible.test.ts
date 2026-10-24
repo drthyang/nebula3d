@@ -14,7 +14,7 @@
 // and a frozen clock. No model is loaded, no backend or API is called, and no
 // measured data is used.
 //
-// Tool results sampled: all 24 tools in CHAT_TOOLS. None skipped. Covered in part:
+// Tool results sampled: all 25 tools in CHAT_TOOLS. None skipped. Covered in part:
 // - read_skill: one skill's body; not a reference (those are docs/algorithms
 //   pages, read as written).
 // - run_pipeline, tune_pipeline: the runs are stubs; what is sampled is the
@@ -29,7 +29,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { JobEvent } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { runAgent, type AgentStep } from "../agent";
-import { answerIssues, issuesPrompt } from "../answerChecks";
+import { answerIssues, earlierSources, issuesPrompt } from "../answerChecks";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
@@ -54,8 +54,10 @@ const VERDICT_LABEL = WORDS.label;
 // What the symmetry's rule says of a volume that declares no symmetry.
 const NOT_DECLARED = (asymmetry: number): string => judge("symmetry", { ops: [{ op: "six-fold (60°)", rms_difference: asymmetry }], declared: null }).words ?? "";
 import { writtenInferences } from "../inference";
+import { BUNCHING_REMEDY, offLatticeBunching } from "../metrics/bunching";
+import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 import { namedInOwnWords, quotations } from "./methodText";
-import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
+import { DATASET, DATASETS, freshConsole, installBackend, regridAnswer } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -65,11 +67,15 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
+  regridDataset: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -266,6 +272,7 @@ describe("2. the tools, as sent to the model", () => {
       ["a ΔPDF question", "What are the strongest pair correlations in the 3D-ΔPDF?"],
       ["a flatten question", "Is there a background left after the flatten?"],
       ["an action request", "Raise the punch significance to 6 and rerun the pipeline."],
+      ["a regrid request", REGRID_ASKED],
     ];
     const body = questions
       .map(([what, q]) => {
@@ -395,6 +402,18 @@ const RUN_EVENTS: JobEvent[] = [
   { type: "progress", stage: "pdf_check", status: "done", fraction: 1, message: "back-FFT r = 0.99714" },
 ];
 
+// The user's latest message that asks for the regrid (its gate).
+const REGRID_ASKED = "Regrid the volume onto the refined UB.";
+/** The next punch record read says the run's sharp peaks off the lattice bunched at H ≡ ±1/3 (mod 1) (plan 4.15). */
+const bunchedOnce = (): void => {
+  const real = api.fetchBraggProfile.getMockImplementation()!;
+  api.fetchBraggProfile.mockImplementationOnce(async (id: string) => {
+    const profile = await real(id);
+    return { ...profile, modulation: { ...profile.modulation, bunching: BUNCHED_AT_THIRDS } };
+  });
+};
+const BUNCHED_NOTE = "a run whose punch record says its sharp peaks off the lattice bunch at H ≡ ±1/3 (mod 1)";
+
 const SAMPLES: Sample[] = [
   { name: "read_skill", args: { name: "bragg-node-audit" } },
   { name: "describe_dataset", args: {} },
@@ -403,6 +422,7 @@ const SAMPLES: Sample[] = [
   { name: "measure_dpdf_cut", args: { plane: "xz", value: 0 } },
   { name: "assess_stage", args: {} },
   { name: "assess_stage", args: { stage: "flatten" } },
+  { name: "assess_stage", args: { stage: "punch" }, note: BUNCHED_NOTE, before: bunchedOnce },
   { name: "texture_check", args: {} },
   { name: "qmax_coverage", args: {} },
   { name: "symmetry_check", args: {} },
@@ -420,12 +440,19 @@ const SAMPLES: Sample[] = [
     before: () => usePipelineStore.setState({ events: RUN_EVENTS, terminal: "done", running: false }),
   },
   { name: "compare_datasets", args: { kind: "reciprocal", plane: "hk0", value: 0 } },
+  { name: "run_verdict", args: {}, note: "before any check in this reply" },
   { name: "configure_settings", args: {} },
   {
     name: "update_settings",
     args: { changes: { punchMinSig: 6 } },
     note: "with the punch's skill (bragg-node-audit) read in the conversation",
     ctx: { skillsRead: new Set(["bragg-node-audit"]) },
+  },
+  {
+    name: "update_settings",
+    args: { changes: { punchMinSig: 6, punchSupercellH: 2 } },
+    note: "the punch's skill read; the user's latest message, “Raise the punch significance to 6.”, names no fact about the sample",
+    ctx: { skillsRead: new Set(["bragg-node-audit"]), userMessage: "Raise the punch significance to 6." },
   },
   {
     name: "run_pipeline",
@@ -470,6 +497,19 @@ const SAMPLES: Sample[] = [
         });
       }),
   },
+  {
+    name: "regrid_refined_ub",
+    args: {},
+    note: `the user's latest message, “${REGRID_ASKED}”, asks for it; the crystal's UB, turned 0.3° for this sample, is written as a new dataset`,
+    ctx: { userMessage: REGRID_ASKED },
+    before: () => api.regridDataset.mockImplementationOnce(async (id: string) => regridAnswer(id, { turned: true })),
+  },
+  {
+    name: "regrid_refined_ub",
+    args: {},
+    note: `asked for as above; the crystal's own UB, turned 0.003°: refused by the backend, nothing written`,
+    ctx: { userMessage: REGRID_ASKED },
+  },
   { name: "show_in_viewer", args: { view: "dpdf", plane: "xy", value: 4 } },
 ];
 
@@ -479,7 +519,19 @@ const ERRORS: Sample[] = [
   { name: "measure_reciprocal_cut", args: "{plane: hk0", note: "arguments that are not JSON" },
   { name: "measure_reciprocal_cut", args: { plane: "hk0", value: 7 }, note: "a cut outside the data" },
   { name: "update_settings", args: { changes: { punchMinSig: 6 } }, note: "a change before its stage's skill was read", ctx: { skillsRead: new Set() } },
+  {
+    name: "update_settings",
+    args: { changes: { punchSupercellH: 2 } },
+    note: "a fact about the sample that the user's latest message, “Is the punch clean?”, does not name; the punch's skill read",
+    ctx: { skillsRead: new Set(["bragg-node-audit"]), userMessage: "Is the punch clean?" },
+  },
   { name: "tune_pipeline", args: { stages: ["flatten"] }, note: "tuning before its stage's skill was read", ctx: { skillsRead: new Set() } },
+  {
+    name: "regrid_refined_ub",
+    args: {},
+    note: "a regrid that the user's latest message, “Is the UB right?”, does not ask for",
+    ctx: { userMessage: "Is the UB right?" },
+  },
   {
     name: "update_settings",
     args: { changes: { flattenQ2: true } },
@@ -564,9 +616,16 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
     expect(differ.map((d) => d.split("\n")[0])).toEqual([
       "## assess_stage {}",
       '## assess_stage {"stage":"flatten"}',
+      `## assess_stage {"stage":"punch"} (${BUNCHED_NOTE})`,
       "## dpdf_peaks {}",
       "## grain_check {}",
     ]);
+    // The question for the user reads the same in both arms; its facts lose their remedy in arm C.
+    const bunched = SAMPLES.find((s) => s.note === BUNCHED_NOTE)!;
+    const [bb, cc] = [JSON.parse((await runSample(bunched)).text), JSON.parse((await runC(bunched)).text)];
+    expect(cc.punch.off_lattice_bunching.ask_user).toBe(bb.punch.off_lattice_bunching.ask_user);
+    expect(bb.punch.off_lattice_bunching.facts).toContain(BUNCHING_REMEDY.text);
+    expect(cc.punch.off_lattice_bunching.facts).toBe(bb.punch.off_lattice_bunching.facts.replace(BUNCHING_REMEDY.text, ""));
 
     // The stages' goals: arm C's, each its definitions only.
     const stages = Object.keys(STAGE_GOALS) as (keyof typeof STAGE_GOALS)[];
@@ -603,7 +662,7 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
       stage: "flatten",
       current: currentStageSettings("flatten", config),
       earlier: {},
-      trials: [{ trial: 1, settings: currentStageSettings("flatten", config), metrics: { max_floor_trend: 0.97, max_floor_span_fraction: 1.2, pedestal_left: true } }],
+      trials: [{ trial: 1, settings: currentStageSettings("flatten", config), metrics: { floor_trend: 0.97, floor_span_fraction: 1.2, pedestal_left: true } }],
       count: 2,
       skills: false,
     });
@@ -624,7 +683,8 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
         ].join("\n\n"),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/4-tool-results-arm-c.md`);
-  });
+    // Runs every sampled tool in both arms: about 1 s locally, past 5 s on a loaded CI runner.
+  }, 20_000);
 
   it("each sampled result keeps its tool's contract (tools/contracts.ts), in arm B and in arm C", async () => {
     const toolsC = toolsWithSkills(CHAT_TOOLS, false);
@@ -711,9 +771,22 @@ const RINGS = step("assess_stage", { stage: "rings" }, {
   },
 });
 const RERUN = step("run_pipeline", { from_stage: "rings" }, { ended: "done", seconds: 42.3, stages: { rings: "computed", punch: "computed" } });
+// A punch that meets its goal, whose run's sharp peaks off the lattice bunched at H ≡ ±1/3 (mod 1): a question for the user.
+const BUNCHED = step("assess_stage", { stage: "punch" }, {
+  punch: {
+    verdict: VERDICT_LABEL.pass,
+    criterion: CRITERIA.punch,
+    headline: "0 missed at nodes · 0 sharp off-lattice · 2 broad maxima kept · punched 0.031",
+    leftover_at_nodes: 0,
+    leftover_off_lattice_sharp: 0,
+    leftover_off_lattice_broad: 2,
+    mean_punched_fraction: 0.031,
+    off_lattice_bunching: offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })),
+  },
+});
 const COVERED = step("qmax_coverage", {}, { verdict: "clean: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space", window_weight_on_unmeasured: 2.4e-4 });
 
-const REPLIES: { what: string; reply: string; steps: AgentStep[] }[] = [
+const REPLIES: { what: string; reply: string; steps: AgentStep[]; earlier?: AgentStep[] }[] = [
   {
     what: "an answer that stands on its evidence",
     reply: "The ring removal needs attention: a ring is left at 3.2 Å⁻¹, {{assess_stage.rings.max_ring_left}} of the diffuse there.",
@@ -744,7 +817,24 @@ const REPLIES: { what: string; reply: string; steps: AgentStep[] }[] = [
     reply: "The ring removal is clean, so the 3D-ΔPDF is ready for analysis.",
     steps: [RINGS],
   },
+  {
+    what: "numbers from an earlier turn's result, measured before a later run",
+    reply: "The worst ring sat at 3.2 Å⁻¹, at 0.12 of the diffuse.",
+    steps: [RERUN],
+    earlier: [RINGS],
+  },
+  {
+    what: "a question a result puts to the user, not asked, and its answer said as fact",
+    reply: "The punch meets its goal. The 14 sharp peaks at H = n ± 1/3 are satellites of a modulation with k = (1/3, 0, 0).",
+    steps: [BUNCHED],
+  },
 ];
+
+/** A canned reply's issues: its number sources are its tools' results, and an earlier turn's while what each measured stands. */
+function issuesOf({ reply, steps, earlier = [] }: (typeof REPLIES)[number]) {
+  const { standing, stale } = earlierSources(earlier, steps);
+  return answerIssues(reply, steps, [...steps.map((s) => s.result ?? ""), ...standing].join("\n"), stale);
+}
 
 // A success the checks did not all measure: shown for arm C, whose wording of it names no stage to measure.
 const UNMEASURED = { what: "a success the checks did not all measure", reply: "The reduction is ready for analysis.", steps: [COVERED] };
@@ -752,12 +842,12 @@ const UNMEASURED = { what: "a success the checks did not all measure", reply: "T
 /** Each canned reply, the send-back its checks give with the skills on or off, as a snapshot section. */
 function answerChecksBody(replies: typeof REPLIES, skills: boolean): string {
   return replies
-    .map(({ what, reply, steps }) => {
-      const sources = steps.map((s) => s.result ?? "").join("\n");
-      const issues = answerIssues(reply, steps, sources);
-      const tools = steps.map((s) => `${s.name} ${JSON.stringify(s.args)}`).join(", ");
+    .map((r) => {
+      const issues = issuesOf(r);
+      const named = (steps: AgentStep[]) => steps.map((s) => `${s.name} ${JSON.stringify(s.args)}`).join(", ");
+      const earlier = r.earlier?.length ? `Tools run in an earlier turn: ${named(r.earlier)}.\n\n` : "";
       const sent = issues ? fence(issuesPrompt(issues, { skills })) : "Nothing: the answer goes to the user, its references filled in.";
-      return `## ${what}\n\nTools run in the reply: ${tools}.\n\nThe answer:\n\n${fence(reply)}\n\nSent back to the model:\n\n${sent}`;
+      return `## ${r.what}\n\n${earlier}Tools run in the reply: ${named(r.steps)}.\n\nThe answer:\n\n${fence(r.reply)}\n\nSent back to the model:\n\n${sent}`;
     })
     .join("\n\n");
 }
@@ -794,7 +884,7 @@ async function loopReply({ skills, answer }: { skills: boolean; answer: string }
   const result = await runAgent({
     messages,
     tools: CHAT_TOOLS,
-    ctx: { dataset: DATASET, datasets: DATASETS, skills, skillsRead: new Set(), earlierResults: [] },
+    ctx: { dataset: DATASET, datasets: DATASETS, skills, skillsRead: new Set(), earlierSteps: [] },
     settings,
     signal: new AbortController().signal,
   });
@@ -813,7 +903,7 @@ describe("5. the text sent back to the model", () => {
     await expect(
       doc(
         "Answer checks",
-        "`answerIssues` and `issuesPrompt` (answerChecks.ts) on canned replies: what the agent loop sends back, once, before a failing answer reaches the user. Each reply's number sources here are its tools' results.",
+        "`answerIssues` and `issuesPrompt` (answerChecks.ts) on canned replies: what the agent loop sends back, once, before a failing answer reaches the user. Each reply's number sources here are its tools' results, and an earlier turn's while what each measured stands (`earlierSources`).",
         answerChecksBody(REPLIES, true),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/5-answer-checks.md`);
@@ -821,8 +911,9 @@ describe("5. the text sent back to the model", () => {
 
   it("arm C: the answer checks' prompt with the skills off", async () => {
     const replies = [...REPLIES, UNMEASURED];
-    for (const { what, reply, steps } of replies) {
-      const issues = answerIssues(reply, steps, steps.map((s) => s.result ?? "").join("\n"));
+    for (const r of replies) {
+      const { what, reply, steps } = r;
+      const issues = issuesOf(r);
       if (!issues) continue;
       const sent = issuesPrompt(issues, { skills: false });
       // Its own words name no tool, stage or skill; what it quotes is the answer's.
@@ -836,6 +927,9 @@ describe("5. the text sent back to the model", () => {
         [issues.unknownReferences.length > 0, /These references name no value/],
         [issues.contradicted.length > 0, /this contradicts the verdict a check computed/],
         [issues.untraced.length > 0, /These numbers appear in no tool result/],
+        [issues.staleNumbers.length > 0, /These numbers were measured before the last run recomputed the outputs they describe/],
+        [issues.unasked.length > 0, /has a question for the user that the answer does not ask/],
+        [issues.assumed.length > 0, /as fact what a result in this reply asks the user/],
       ];
       for (const [found, line] of kinds) expect(line.test(sent), `${what}: ${line}`).toBe(found);
     }

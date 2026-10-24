@@ -1,5 +1,7 @@
 // dpdf_peaks: the 3D-ΔPDF's strongest features over the whole volume, with
-// their vectors, signs and sizes.
+// their vectors, signs and sizes, grouped as the backend groups them: by the
+// point group the dataset's raw file declares, else by sign, length and size
+// (grouped_by says which, and why).
 
 import { fetchDpdfFeatures } from "../../../api/client";
 import { dpdfVolumeId } from "../../context/loadContext";
@@ -48,11 +50,18 @@ export const dpdf_peaks: ChatTool = {
       sign: sign(g.sign),
       length_A: roundSig(g.length, 4),
       size_sigma: roundSig(g.size_sigma, 3),
+      // An orbit of the declared symmetry (the backend gives its multiplicity):
+      // its copies' mean size, and how many distinct vectors it has. Grouped by
+      // sign, length and size there is no orbit, and every size is within 5 %
+      // of the largest: neither is given, and the entry is as it was.
+      ...(g.multiplicity != null ? { mean_size_sigma: roundSig(g.mean_size_sigma, 3) } : {}),
       n_vectors: g.n,
+      ...(g.multiplicity != null ? { multiplicity: g.multiplicity } : {}),
       vectors_rlu: g.vectors_rlu.slice(0, PEAK_VECTORS).map((v) => vec(v, 3)),
       vectors_A: g.vectors.slice(0, PEAK_VECTORS).map((v) => vec(v, 4)),
     }));
     const result = {
+      grouped_by: f.grouped_by,
       features,
       robust_sigma: f.sigma == null ? null : roundSig(f.sigma, 3),
       threshold_sigma: f.min_sigma,

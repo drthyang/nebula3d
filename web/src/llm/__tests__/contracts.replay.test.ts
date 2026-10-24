@@ -11,7 +11,7 @@ import { loadSettings, saveSettings } from "../settings";
 import { contractDisagreements, RESULT_CONTRACTS } from "../tools/contracts";
 import { devCase } from "../evals/devData";
 
-type Call = [tool: string, args: Record<string, unknown>];
+type Call = [tool: string, args: Record<string, unknown>, userMessage?: string];
 
 // Each call in turn, on one handle: the tools that change settings or outputs
 // come last, so the reads see the case's default run.
@@ -54,6 +54,8 @@ const CALLS: Call[] = [
   ["compare_datasets", { kind: "reciprocal", plane: "hk0", value: 0 }],
   // A cut outside the data: each dataset's row is its error.
   ["compare_datasets", { kind: "reciprocal", plane: "hk0", value: 99 }],
+  // No check on this handle: the verdict before any (its words null).
+  ["run_verdict", {}],
   ["configure_settings", {}],
   ["show_in_viewer", { view: "cleanup", plane: "hk0", value: 0 }],
   ["show_in_viewer", { view: "dpdf", plane: "xy", value: 0 }],
@@ -61,6 +63,9 @@ const CALLS: Call[] = [
   ["update_settings", { changes: { flattenQ2: true } }],
   ["run_pipeline", { from_stage: "pdf" }],
   ["tune_pipeline", { stages: ["pdf"], trials_per_stage: 2 }],
+  // Asked for by the user (its gate). The dev control's UB is right: refused, nothing written
+  // (its written shape is held on the turned UB, evals/devData/regrid.replay.test.ts).
+  ["regrid_refined_ub", {}, "Regrid the volume onto the refined UB."],
 ];
 
 // The tuning run asks its model for alternatives outside the agent loop: a
@@ -93,8 +98,8 @@ describe("the tools' live results against their contracts", () => {
     const restore = contentTuner();
     const problems: string[] = [];
     try {
-      for (const [tool, args] of CALLS) {
-        const r = await c.tool(tool, args);
+      for (const [tool, args, userMessage] of CALLS) {
+        const r = await c.tool(tool, args, { userMessage });
         const call = `${tool} ${JSON.stringify(args)}`;
         expect(r.ok, `${call}: ${r.summary}`).toBe(true);
         problems.push(...contractDisagreements(tool, r.result).map((d) => `${call}: ${d}`));
@@ -118,11 +123,11 @@ describe("the tools' live results against their contracts", () => {
       expect(r.ok, `${call}: ${r.summary}`).toBe(true);
       problems.push(...contractDisagreements(tool, r.result).map((d) => `${call}: ${d}`));
       if (tool === "assess_stage") shapes.push(typeof (r.result.rings as Record<string, unknown>).ring_rule);
-      if (tool === "texture_check") shapes.push(...(r.result.per_cut as Record<string, unknown>[]).map((cut) => typeof cut.systematic_fill_bias));
+      if (tool === "texture_check") shapes.push(typeof r.result.systematic_fill_bias);
     }
     expect(problems).toEqual([]);
-    // The judged shapes: the ring rule as its two shares, and each cut's fill bias judged.
-    expect(shapes).toEqual(["object", "object", "boolean", "boolean", "boolean"]);
+    // The judged shapes: the ring rule as its two shares, and the fill bias judged over every hole in 3-D.
+    expect(shapes).toEqual(["object", "object", "boolean"]);
   });
 });
 

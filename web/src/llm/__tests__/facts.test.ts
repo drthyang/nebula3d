@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import { TOPICS } from "../answerChecks";
+import { ACTIONS, readOnly } from "../evals/harness";
 import { HELDOUT_SCENARIOS } from "../evals/heldout";
 import { SCENARIOS } from "../evals/scenarios";
 import { toolsFor } from "../localTools";
@@ -33,11 +34,13 @@ describe("factsOf", () => {
       acts: null,
       actsOnPipeline: false,
       startsRuns: false,
+      writesFiles: false,
       reachesBackend: true,
       invalidates: [],
       offeredFor: "always",
       reportable: false,
       gate: null,
+      askedFor: null,
     });
     expect(f.settles({ stage: "rings" })).toEqual([]);
     expect(f.highlights({ stage: "rings" })).toEqual([]);
@@ -52,6 +55,27 @@ describe("factsOf", () => {
   it("lists the tools whose facts pass, in the registry's order", () => {
     expect(toolsWhere(() => true)).toEqual(NAMES);
     expect(toolsWhere((f) => f.startsRuns)).toEqual(["run_pipeline", "tune_pipeline"]);
+    expect(toolsWhere((f) => f.writesFiles)).toEqual(["run_pipeline", "tune_pipeline", "regrid_refined_ub"]);
+    expect(toolsWhere((f) => f.askedFor !== null)).toEqual(["regrid_refined_ub"]);
+  });
+});
+
+describe("the regrid's facts", () => {
+  it("say it writes a new dataset, runs nothing, and changes the listing only", () => {
+    const f = factsOf("regrid_refined_ub");
+    expect(f).toMatchObject({ acts: "dataset", actsOnPipeline: false, startsRuns: false, writesFiles: true, invalidates: ["datasets"], gate: null });
+    // It writes no stage output: the answer checks' evidence of a stage stands across it.
+    expect(f.invalidates).not.toContain("outputs");
+  });
+
+  it("is never run by an eval: its call is recorded and fails", async () => {
+    expect(ACTIONS.has("regrid_refined_ub")).toBe(true);
+    const [stub] = readOnly(CHAT_TOOLS.filter((t) => t.name === "regrid_refined_ub"));
+    await expect(stub.run({}, { dataset: {} as never, datasets: [], userMessage: "Regrid it." }, {})).rejects.toThrow(
+      "not run: the evals never write a new dataset (the call is recorded)",
+    );
+    const [run] = readOnly(CHAT_TOOLS.filter((t) => t.name === "run_pipeline"));
+    await expect(run.run({}, { dataset: {} as never, datasets: [] }, {})).rejects.toThrow("not run: the evals never start a pipeline run (the call is recorded)");
   });
 });
 

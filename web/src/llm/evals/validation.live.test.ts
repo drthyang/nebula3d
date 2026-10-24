@@ -16,43 +16,31 @@
 // NEBULA_VALIDATION_TIMEOUT minutes per run (default 40)
 // NEBULA_VALIDATION_OUT     where the record and the transcripts go (default ../docs/evals/validation)
 // NEBULA_VALIDATION_BASE_URL  the model server, where it is not the model's usual one
-// NEBULA_VALIDATION_ALLOW_SPEND  a paid model's cap in dollars, to approve spending up to it
+// NEBULA_VALIDATION_ALLOW_SPEND  a paid model's cap in dollars, to approve spending up to it (12: $12 for NEBULA, within the $40 total)
 // NEBULA_VALIDATION_RENDER  a scored record to write the transcripts and findings of again
 // NEBULA_VALIDATION_REGRADE a record to grade again with the current graders, in place: each
 //                           run's words from its conclusion and decisions, its unsafe actions
-//                           as counted; a test-split record needs NEBULA_VALIDATION_REPORT=1.
+//                           as counted, and a run that names no unsafe rule marked "counted
+//                           under the pre-#68 rule" (PRE_68_RULE), which the table leaves out;
+//                           a test-split record needs NEBULA_VALIDATION_REPORT=1.
 //                           Then `python -m nebula3d.validation summarize` rewrites its table,
 //                           and NEBULA_VALIDATION_RENDER its transcripts.
 //
 // The record is rewritten after every run, so a run cut short keeps what it measured.
+// Each run is runCase's (validationRun.ts), and starts fresh: it reads nothing an
+// earlier run left in the app, and its record keeps the token calibration it
+// started from.
 
 import { describe, it } from "vitest";
 
 import { fetchDatasets } from "../../api/client";
-import { configOf } from "../../state/configMemory";
-import { usePipelineStore } from "../../state/pipelineStore";
-import { MAX_TOOL_ROUNDS, runAgent, type AgentProgress } from "../agent";
-import { loadPipelineContext } from "../context/loadContext";
-import { CHAT_TOOLS } from "../tools";
+import { MAX_TOOL_ROUNDS } from "../agent";
 import { backendUrl, env, exists, makeDir, readText, useBackend, writeText } from "./backend";
 import { installEventSource } from "./eventSource";
-import { OfferRecorder } from "./offers";
 import { candidateFindings, renderTranscript, type Finding } from "./findings";
-import type { EvalRun } from "./harness";
-import {
-  ARMS,
-  armSetup,
-  buildRecord,
-  caseNamed,
-  changedElsewhere,
-  regradeRecord,
-  validationDatasets,
-  WhyTracker,
-  type Arm,
-  type RunRecord,
-  type Split,
-} from "./validation";
-import { costOf, modelNamed, paidRunGate, plan, runContext, SpendTracker } from "./validationModels";
+import { ARMS, caseNamed, PRE_68_RULE, regradeRecord, validationDatasets, type Arm, type RunRecord, type Split } from "./validation";
+import { modelNamed, paidRunGate, plan, runContext, SpendTracker } from "./validationModels";
+import { runCase } from "./validationRun";
 
 const live = env("NEBULA_VALIDATION") === "1";
 const renderFrom = env("NEBULA_VALIDATION_RENDER");
@@ -149,80 +137,37 @@ describe.skipIf(!live)("validation, live", () => {
       }
       const dataset = datasets.find((d) => d.stem === job.stem)!;
 
-      // Every run starts from the defaults, and sees its own dataset alone: another
+      // The run starts fresh (validationRun.ts: nothing an earlier run left in the
+      // app is read), from the defaults, and sees its own dataset alone: another
       // run's volume (or the control's) in compare_datasets would answer for it.
-      usePipelineStore.getState().patch(configOf(usePipelineStore.getInitialState()));
-      const { context: pipelineContext } = await loadPipelineContext(dataset);
-      const setup = armSetup(job.arm, pipelineContext);
-      const before = await fetchDatasets();
-
-      const why = new WhyTracker();
-      let progress: AgentProgress = { content: "", reasoning: "", steps: [] };
-      const abort = new AbortController();
-      const timer = setTimeout(() => abort.abort(), minutes * 60_000);
-      let giveUp: ReturnType<typeof setTimeout> | undefined;
-      // The abort stops the model's stream; a tool waiting on the backend may not hear
-      // it, so the run is also given up a minute later, with the steps it had.
-      const stalled = new Promise<never>((_, reject) => {
-        giveUp = setTimeout(() => reject(new Error(`timed out after ${minutes} min`)), (minutes + 1) * 60_000);
-      });
-      // What goes over the wire to the model, request by request: the tools it was offered.
-      const recorder = new OfferRecorder();
-      const stopRecording = recorder.install();
-      const t0 = performance.now();
-      const startedAt = new Date().toISOString();
-      let evalRun: EvalRun;
+      let record: RunRecord;
       try {
-        const result = await Promise.race([
-          runAgent({
-            messages: setup.messages,
-            // Every tool the Pilot ships: the run's switch (ctx.skills) decides what arm C is offered.
-            tools: CHAT_TOOLS,
-            ctx: { dataset, datasets: [dataset], skills: setup.skills, skillsRead: setup.skillsRead },
-            settings: { baseUrl, model: model.model, apiKey, temperature: model.temperature ?? 0.2, attachImages: false, useTools: true, followViews: false },
-            signal: abort.signal,
-            usage: true,
-            maxRounds: rounds,
-            onProgress: (p) => {
-              progress = p;
-              why.update(p);
-            },
-          }),
-          stalled,
-        ]);
-        why.update(result);
-        evalRun = { scenario: job.case.id, steps: result.steps, content: result.content, note: result.note, failure: result.failure ?? null, latencyMs: performance.now() - t0, usage: result.usage ?? null, verdict: result.verdict ?? null };
+        record = await runCase({
+          job,
+          dataset,
+          model: { key: model.key, label: model.label, provider: model.provider, model: model.model, local: model.local },
+          // The model's temperature, null where it takes none (Claude): none is sent,
+          // and the record's run_policy says so (validationPolicy).
+          settings: { baseUrl, model: model.model, apiKey, temperature: model.temperature },
+          rounds,
+          minutes,
+          price: model.price,
+          context: { tokens: runWindow.tokens, min_tokens: runWindow.min_tokens, read_from: runWindow.read_from },
+          // A paid run's reserve covers its loop and one tuning; another tuning
+          // starts only if the budget left beyond the reserve covers it.
+          tuningBudget: tracker ? tracker.tuningBudget() : null,
+        });
       } catch (e) {
-        why.update(progress);
-        const error = abort.signal.aborted ? `timed out after ${minutes} min` : (e as Error).message;
-        evalRun = { scenario: job.case.id, steps: progress.steps, content: progress.content, error, latencyMs: performance.now() - t0, usage: null };
+        // It could not start (a pipeline or tuning run the run before left going
+        // did not end, or the backend failed): the record keeps the runs so far.
+        await save(false);
+        throw new Error(`stopped before ${job.stem}: ${(e as Error).message}`);
       }
-      clearTimeout(timer);
-      clearTimeout(giveUp);
-      abort.abort(); // lets go of anything still waiting on this run
-      stopRecording();
-
-      const elsewhere = changedElsewhere(before, await fetchDatasets(), dataset.id);
-      const costUsd = costOf(evalRun.usage, model.price);
       if (tracker) {
-        tracker.record({ case: job.case.id, arm: job.arm, run: job.run, usd: costUsd });
+        tracker.record({ case: job.case.id, arm: job.arm, run: job.run, usd: record.cost_usd });
         await writeText(ledgerUrl, `${JSON.stringify(tracker.toJSON(), null, 1)}\n`);
       }
-      const record = buildRecord({
-        case: job.case,
-        arm: job.arm,
-        run: job.run,
-        dataset,
-        model: { key: model.key, label: model.label, provider: model.provider, model: model.model, local: model.local },
-        evalRun,
-        why: why.why,
-        maxRounds: rounds,
-        started: startedAt,
-        costUsd,
-        elsewhere,
-        offers: recorder.offers,
-        context: { tokens: runWindow.tokens, min_tokens: runWindow.min_tokens, read_from: runWindow.read_from },
-      });
+      const costUsd = record.cost_usd;
       records.push(record);
       await writeText(new URL(transcriptName(record), transcripts), renderTranscript(record, candidateFindings(record, job.case)));
       await save(false);
@@ -231,6 +176,8 @@ describe.skipIf(!live)("validation, live", () => {
         `${job.case.id} ${job.arm}${job.run}: ${(record.latency_ms / 1000).toFixed(0)} s, ${record.decisions.length} steps, ` +
           `reported ${g.detected === null ? "n/a" : g.detected ? "yes" : "no"}, false alarms ${g.noFalseAlarm ? 0 : "yes"}, unsafe ${g.unsafe.length}` +
           `${g.disputes?.length ? `, disputed ${g.disputes.length}` : ""}` +
+          `${record.truncated?.requests.length ? `, CUT at the output cap: ${record.truncated.loop} of the loop's requests, ${record.truncated.tuning} of the tuning's` : ""}` +
+          `${record.tuning_budget?.skipped.length ? `, ${record.tuning_budget.skipped.length} tuning(s) SKIPPED for the spend budget` : ""}` +
           `${costUsd != null ? `, $${costUsd.toFixed(3)}` : ""}${record.error ? `, ERROR ${record.error}` : ""}`,
       );
     }
@@ -270,6 +217,10 @@ describe.skipIf(!regradeFrom)("validation, re-graded", () => {
     const moved = regradeRecord(record, { report: env("NEBULA_VALIDATION_REPORT") === "1" });
     await writeText(url, `${JSON.stringify(record, null, 1)}\n`);
     const disputed = record.runs.reduce((n, r) => n + (r.grades.disputes?.length ?? 0), 0);
-    console.log(`${record.runs.length} runs graded again; the grades of ${moved} moved; ${disputed} check(s) disputed`);
+    const pre68 = record.runs.filter((r) => r.unsafe_rule === PRE_68_RULE).length;
+    console.log(
+      `${record.runs.length} runs graded again; the grades of ${moved} moved; ${disputed} check(s) disputed; ` +
+        `${pre68} run(s) ${PRE_68_RULE}, left out of the table`,
+    );
   });
 });

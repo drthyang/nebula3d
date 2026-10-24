@@ -17,7 +17,7 @@ import { fetchDataset, promoteTrial, startTuningRun } from "../../api/client";
 import { queryClient } from "../../api/queryClient";
 import type { Dataset, TuningRun } from "../../api/types";
 import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
-import { completeChat, type ChatMessage } from "../provider/client";
+import { completeChat, type ChatMessage, type UsageReport } from "../provider/client";
 import type { LlmSettings } from "../settings";
 import {
   currentStageSettings,
@@ -111,7 +111,10 @@ const snapshot = (stage: TuneStage): Partial<PipelineConfig> => {
   return Object.fromEntries(stageParams(stage).map((p) => [p.key, s[p.key]])) as Partial<PipelineConfig>;
 };
 
-async function ask(messages: ChatMessage[], llm: LlmSettings, signal: AbortSignal): Promise<Record<string, unknown> | null> {
+/** The model the tuning asks, the output cap it asks for, and where each request's token counts go (TuneOptions). */
+type TuneModel = Pick<TuneOptions, "llm" | "onUsage" | "maxTokens">;
+
+async function ask(messages: ChatMessage[], { llm, onUsage, maxTokens }: TuneModel, signal: AbortSignal): Promise<Record<string, unknown> | null> {
   const text = await completeChat({
     baseUrl: llm.baseUrl,
     model: llm.model,
@@ -119,6 +122,8 @@ async function ask(messages: ChatMessage[], llm: LlmSettings, signal: AbortSigna
     temperature: llm.temperature,
     apiKey: llm.apiKey || undefined,
     signal,
+    onUsage,
+    ...(maxTokens !== undefined ? { maxTokens } : {}),
   });
   return parseJsonReply(text);
 }
@@ -178,7 +183,7 @@ async function tuneStage(
   run: TuningRun,
   trialsPerStage: number,
   earlier: Record<string, Record<string, ParamValue>>,
-  llm: LlmSettings,
+  model: TuneModel,
   skills: boolean,
   signal: AbortSignal,
 ): Promise<void> {
@@ -209,7 +214,7 @@ async function tuneStage(
     });
     const accepted: { patch: Partial<PipelineConfig>; changes: Record<string, ParamValue>; settings: Record<string, ParamValue>; why?: string }[] = [];
     for (let attempt = 0; attempt < 2 && !accepted.length; attempt++) {
-      const reply = await ask(messages, llm, signal);
+      const reply = await ask(messages, model, signal);
       checkStop(signal);
       const candidates = Array.isArray(reply?.candidates) ? (reply!.candidates as unknown[]) : null;
       if (!candidates) {
@@ -278,7 +283,7 @@ async function tuneStage(
     if (eligible.length > 1) {
       setStage(stage, { status: "judging" });
       const trials = records(getStage(stage)).filter((r) => !barred.has(r.trial));
-      const reply = await ask(buildJudgeMessages({ stage, trials, skills }), llm, signal);
+      const reply = await ask(buildJudgeMessages({ stage, trials, skills }), model, signal);
       checkStop(signal);
       const pick = Number(reply?.best);
       if (eligible.some((t) => t.n === pick)) {
@@ -310,13 +315,23 @@ export interface TuneOptions {
   dataset: Dataset;
   stages: TuneStage[];
   trialsPerStage: number; // including the user's settings
-  llm: LlmSettings;
+  // The model the proposals and the judgements ask: in the app the console's
+  // settings (settings.ts); in a validation run the run's own model
+  // (tune_pipeline, ToolContext.model).
+  llm: Pick<LlmSettings, "baseUrl" | "model" | "apiKey" | "temperature">;
+  // Each request's token counts, once the server answered (null: it reported
+  // none): a validation run adds them to its own. Left out in the app.
+  onUsage?: UsageReport;
+  // The output cap each request asks for: a validation run's (its run
+  // policy's, RunModel.maxTokens). Left out in the app, where each transport
+  // asks its own (Claude's COMPLETE_MAX_TOKENS; the others none).
+  maxTokens?: number;
   // The skills' switch of the conversation that asked (skills.ts): on unless
   // false. Off, the prompts give each stage's goal and settings without a skill's step.
   skills?: boolean;
 }
 
-export async function startTuning({ dataset, stages, trialsPerStage, llm, skills = true }: TuneOptions): Promise<void> {
+export async function startTuning({ dataset, stages, trialsPerStage, llm, onUsage, maxTokens, skills = true }: TuneOptions): Promise<void> {
   if (useTuneStore.getState().active || pipeline().running) return;
   const abort = new AbortController();
   controller = abort;
@@ -359,7 +374,7 @@ export async function startTuning({ dataset, stages, trialsPerStage, llm, skills
         continue;
       }
       if (stages.includes(stage)) {
-        await tuneStage(stage, dataset, run, trialsPerStage, earlier, llm, skills, abort.signal);
+        await tuneStage(stage, dataset, run, trialsPerStage, earlier, { llm, onUsage, maxTokens }, skills, abort.signal);
         const kept = useTuneStore.getState().stages.find((r) => r.stage === stage)?.best ?? 1;
         if (kept !== 1) changed = true;
       } else {

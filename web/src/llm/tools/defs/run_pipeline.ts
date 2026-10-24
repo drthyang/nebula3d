@@ -1,11 +1,15 @@
 // run_pipeline: runs the reduction pipeline on the selected dataset, as the Run
-// button does, and reads the dataset's fresh listing into the context.
+// button does, and reads the dataset's fresh listing into the context. When
+// the punch's record says its sharp peaks off the lattice bunch at one
+// commensurate fraction, the result carries the question for the user
+// (metrics/bunching.ts).
 
-import { fetchDataset } from "../../../api/client";
+import { fetchBraggProfile, fetchDataset } from "../../../api/client";
 import type { JobEvent } from "../../../api/types";
 import { useNavStore } from "../../../state/navStore";
 import { enabledStages, STAGE_LABELS, STAGES, usePipelineStore } from "../../../state/pipelineStore";
-import { safe } from "../../context/loadContext";
+import { safe, stageVolumeId } from "../../context/loadContext";
+import { offLatticeBunching } from "../../metrics/bunching";
 import { TUNE_STAGES } from "../../tune/catalog";
 import { ALL_STAGES, keysOf } from "../facts";
 import { oneOf } from "../shared/args";
@@ -95,12 +99,17 @@ export const run_pipeline: ChatTool = {
     const fresh = await safe(fetchDataset(ctx.dataset.id));
     if (fresh) ctx.dataset = fresh;
     const computed = Object.values(outcome).filter((o) => o === "computed").length;
+    // The punch's record of the outputs as they now are: its sharp peaks off
+    // the lattice bunched at one commensurate fraction, put to the user.
+    const record = stageVolumeId(ctx.dataset, "braggpunched") ? await safe(fetchBraggProfile(ctx.dataset.id)) : null;
+    const bunching = offLatticeBunching(record?.modulation);
     const result = {
       ended,
       seconds,
       stages: outcome,
       outputs: ctx.dataset.stages.filter((s) => s.exists).map((s) => s.name),
       log_tail: events.filter((e) => e.message).slice(-5).map(eventLine),
+      ...(bunching ? { off_lattice_bunching: bunching } : {}),
     };
     return {
       result,

@@ -43,7 +43,7 @@ import { TUNE_STAGES } from "../tune/catalog";
 import { outOfBounds } from "../tune/evaluate";
 import { useTuneStore } from "../tune/tuner";
 import { BACK_FFT_R_OK, UB_TURNED } from "../verdicts/rules";
-import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
+import { DATASET, DATASETS, freshConsole, installBackend, regridAnswer } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -53,11 +53,15 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
+  regridDataset: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -270,14 +274,14 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "reduction-qc", phrase: "the share of the transform window's weight on unmeasured space", what: "the window's weight on unmeasured space", fields: ["window_weight_on_unmeasured"] },
   { skill: "reduction-qc", phrase: "`assess_stage` for the rings", what: "the rings' assessment", fields: ["rings"] },
   { skill: "reduction-qc", phrase: "`assess_stage` for the flatten", what: "the flatten's assessment", fields: ["flatten"] },
-  { skill: "reduction-qc", phrase: "a span small against the diffuse level", what: "the floors' span against the diffuse level", fields: ["flatten.max_floor_span_fraction"] },
+  { skill: "reduction-qc", phrase: "a span small against the diffuse level", what: "the floors' span against the diffuse level", fields: ["flatten.floor_span_fraction"] },
   { skill: "reduction-qc", phrase: "An operation the data were symmetrised with holds", what: "each operation's difference", fields: ["ops.rms_difference"] },
   { skill: "reduction-qc", phrase: "fits only the symmetric part of the UB on a symmetrised volume", what: "which part of the UB was fitted", fields: ["fit"] },
   // bragg-node-audit
   { skill: "bragg-node-audit", phrase: "the cell, the symmetry the file declares", what: "the cell", fields: ["cell"] },
   { skill: "bragg-node-audit", phrase: "the cell, the symmetry the file declares", what: "the symmetry the file declares", fields: SYMMETRY_FIELDS },
   { skill: "bragg-node-audit", phrase: "the punch cell (", what: "the punch cell", fields: ["settings.punchSupercellH"] },
-  { skill: "bragg-node-audit", phrase: "the search's protected H planes", what: "the search's protected H planes", fields: ["settings.punchProtectH"] },
+  { skill: "bragg-node-audit", phrase: "the sample's modulation (`modulation`", what: "the sample's modulation", fields: ["settings.modulation"] },
   { skill: "bragg-node-audit", phrase: "`assess_stage` for the punch", what: "the punch's assessment", fields: ["punch"] },
   { skill: "bragg-node-audit", phrase: "check an off-zero cut too", what: "the peaks left at nodes on an off-zero cut", fields: ["bragg_punch_leftover.n_at_nodes"] },
   { skill: "bragg-node-audit", phrase: "the peaks left at nodes", what: "the peaks left at nodes", fields: ["punch.leftover_at_nodes"] },
@@ -290,9 +294,9 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "bragg-node-audit", phrase: "the same search at random directions", what: "the random directions' control", fields: ["random_control"] },
   {
     skill: "bragg-node-audit",
-    phrase: "no cut whose fills sit systematically outside the range their rims allow",
-    what: "whether a cut's fills sit systematically outside their rims' range",
-    fields: ["per_cut.systematic_fill_bias"],
+    phrase: "no fills sitting systematically outside the range their rims allow",
+    what: "whether the fills sit systematically outside their rims' range",
+    fields: ["systematic_fill_bias"],
   },
   { skill: "bragg-node-audit", phrase: "an azimuthal ratio near 1", what: "the azimuthal ratio", fields: ["per_cut.azimuthal_ratio"] },
   // delta-pdf-interpretation
@@ -523,7 +527,7 @@ const RUN_EVENTS: JobEvent[] = [
 ];
 
 /** One or more calls of every tool, as modelVisible.test.ts samples them; assess_stage for each stage too. */
-const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => void }[] = [
+const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => void; userMessage?: string }[] = [
   { name: "read_skill", args: { name: "reduction-qc" } },
   { name: "describe_dataset", args: {} },
   { name: "current_view", args: {} },
@@ -544,6 +548,7 @@ const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => voi
   { name: "consistency_details", args: {} },
   { name: "run_log", args: {}, before: () => usePipelineStore.setState({ events: RUN_EVENTS, terminal: "done", running: false }) },
   { name: "compare_datasets", args: { kind: "reciprocal", plane: "hk0", value: 0 } },
+  { name: "run_verdict", args: {} },
   { name: "configure_settings", args: {} },
   { name: "update_settings", args: { changes: { punchMinSig: 6 } } },
   {
@@ -579,6 +584,13 @@ const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => voi
         });
       }),
   },
+  // The user asks for it (its gate); the crystal's UB turned 0.3°, so it writes the new dataset.
+  {
+    name: "regrid_refined_ub",
+    args: {},
+    userMessage: "Regrid the volume onto the refined UB.",
+    before: () => api.regridDataset.mockImplementationOnce(async (id: string) => regridAnswer(id, { turned: true })),
+  },
   { name: "show_in_viewer", args: { view: "dpdf", plane: "xy", value: 4 } },
 ];
 
@@ -587,7 +599,7 @@ beforeAll(async () => {
   for (const s of SAMPLES) {
     freshConsole();
     s.before?.();
-    const ctx: ToolContext = { dataset: DATASET, datasets: DATASETS, skillsRead: new Set<string>(SKILL_NAMES) };
+    const ctx: ToolContext = { dataset: DATASET, datasets: DATASETS, skillsRead: new Set<string>(SKILL_NAMES), userMessage: s.userMessage };
     const run = await callTool(ctx, s.name, s.args);
     if (!run.ok) throw new Error(`${s.name} ${JSON.stringify(s.args)}: ${run.text}`);
     const text = run.full ?? run.text;
@@ -653,6 +665,8 @@ function checkName(name: string, u: Unit): Violation | null {
     const missing = names.filter((n) => !SETTINGS.has(n));
     return missing.length ? at("setting", `\`${name}\`: no setting ${missing.join(", ")} (configure_settings)`) : null;
   }
+  // A setting of one word: `modulation`, the sample's modulation (plan 4.15).
+  if (SETTINGS.has(name)) return null;
   if (other) return otherChecks(other);
   return at("name", `\`${name}\` is no tool, field, parameter or setting, and not in OTHER_NAMES`);
 }

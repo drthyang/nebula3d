@@ -40,7 +40,9 @@ a single plane lacks:
    (:func:`~nebula3d.preprocessing.ring_isotropy.judge_shells`); the crystal's
    own scattering at one |Q| rises in some directions only.  Only confirmed
    shells are subtracted, and the Al lattice is fitted from confirmed rings
-   alone, so a crystal with no rings keeps all of its diffuse.
+   alone, so a crystal with no rings keeps all of its diffuse.  Each shell is
+   judged with every shell above half the noise cut kept out of its flanks,
+   which only protects the flanks and subtracts nothing.
 3. **Pooling (pass 2):** each plane's sector profile is replaced by the weighted
    median of the sector profiles in a small solid angle of the ring sphere
    around it: the planes whose direction at that |Q| lies within ±``pool_deg``
@@ -108,6 +110,13 @@ _MIN_VOXELS_PER_BIN = 8
 # Stack-pooling bands: the |Q| bins are split into this many groups, each read
 # with the plane window of its largest |Q| (the window grows with |Q|).
 _N_POOL_BANDS = 6
+# A keep-out's bar, as a share of ``min_snr``: the shells above half the
+# detection cut (3σ at the default 6) are kept out of the flanks of the shells
+# judged.  A keep-out only protects a flank and is never subtracted, so the
+# lower bar is the cautious side: a weak ring beside a strong one (an Al
+# doublet such as 331 and 420) left in the strong one's flank lifts it and can
+# fail a real ring.
+_KEEP_OUT_SNR_SHARE = 0.5
 
 ProgressFn = Callable[[float, str], None]
 
@@ -554,16 +563,24 @@ def _detect_shells(
     strong rings that match Al.  With ``confirm``, each candidate must also be
     confirmed a powder ring (it rises in nearly every direction), the Al
     lattice is fitted from the confirmed strong rings alone, and the others are
-    returned in ``rejected`` with their verdicts.
+    returned in ``rejected`` with their verdicts.  Every shell above half the
+    noise cut (:data:`_KEEP_OUT_SNR_SHARE`) is kept out of the flanks of the
+    shells judged, and is never subtracted for that.
     """
     rejected: list[dict[str, object]] = []
-    # Every shell above the noise cut, the weak ones too: kept out of the
-    # flanks of the shells judged, so a weak ring beside a strong one (a close
-    # doublet) does not lift the strong one's flank.
+    # Every shell above the noise cut, the weak ones too: the Al-line route
+    # below may add them.
     above_noise = _confirm_shells_from_plane_profiles(
         q_grid, shell_prof, shell_cnt, q_step, cfg.max_fwhm, _MIN_VOXELS_PER_BIN,
         min_snr=cfg.min_snr, rel_prominence=0.0)
-    found = list(zip(above_noise[0].tolist(), above_noise[1].tolist()))
+    # Every shell above half the noise cut: kept out of the flanks of the
+    # shells judged, so a weak ring beside a strong one (a close doublet) does
+    # not lift the strong one's flank.  The lower bar is the cautious side, a
+    # keep-out only protecting a flank (_KEEP_OUT_SNR_SHARE).
+    keep_out = _confirm_shells_from_plane_profiles(
+        q_grid, shell_prof, shell_cnt, q_step, cfg.max_fwhm, _MIN_VOXELS_PER_BIN,
+        min_snr=_KEEP_OUT_SNR_SHARE * cfg.min_snr, rel_prominence=0.0)
+    found = list(zip(keep_out[0].tolist(), keep_out[1].tolist()))
 
     def judged(c: NDArray[np.float64], f: NDArray[np.float64], a: NDArray[np.float64],
                route: str, rings: list[tuple[float, float]]

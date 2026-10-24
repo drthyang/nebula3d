@@ -91,6 +91,15 @@ const STAGE_CASES: Record<"rings" | "punch" | "backfill" | "flatten" | "pdf", Ca
     c("a trend under 0.8", { max_floor_trend: 0.79, max_floor_span_fraction: 0.9 }, "pass"),
     c("the floor in σ is reported, not judged", { max_after_floor_sigma: 3, max_floor_trend: 0.31, max_floor_span_fraction: 0.6 }, "pass"),
     c("no span", { max_floor_trend: 0.9 }, "info", ["nothing to judge"]),
+    // Over the whole volume's shells (plan 4.1): the volume's signed trend and its span.
+    c("the volume: a trend and a span of 0.8", { floor_trend: 0.8, floor_span_fraction: 0.8 }, "attention", ["pedestal"]),
+    c("the volume: a falling floor", { floor_trend: -0.85, floor_span_fraction: 0.9 }, "attention", ["pedestal"]),
+    c("the volume: a trend under 0.8", { floor_trend: 0.79, floor_span_fraction: 0.9 }, "pass"),
+    c("the volume: a span under 0.8", { floor_trend: 0.99, floor_span_fraction: 0.79 }, "pass"),
+    c("the volume not measured", { max_after_floor_sigma: 1.7, floor_trend: null, floor_span_fraction: null }, "info", ["nothing to judge"]),
+    // The volume's numbers are judged, the planes' largest beside them are not.
+    c("the volume level, the planes' a pedestal", { floor_trend: 0.3, floor_span_fraction: 0.6, max_floor_trend: 0.97, max_floor_span_fraction: 0.97 }, "pass"),
+    c("the volume a pedestal, the planes' level", { floor_trend: 0.99, floor_span_fraction: 0.96, max_floor_trend: 0.2, max_floor_span_fraction: 0.04 }, "attention", ["pedestal"]),
   ],
   pdf: [
     c("the even part reproduced", { back_fft_pearson_r: 0.989, back_fft_pearson_r_even: 0.999 }, "pass"),
@@ -140,8 +149,9 @@ describe("judge: a stage's evaluation", () => {
   });
 
   it("states the backfill's own criterion without the fill bias it does not measure", () => {
-    expect(judge("backfill", { mean_median_seam_sigma: 0.6 }).criterion).not.toMatch(/no cut whose fill is biased/);
-    expect(WORDS.criterion.backfill).toMatch(/no cut whose fill is biased one way/);
+    expect(judge("backfill", { mean_median_seam_sigma: 0.6 }).criterion).not.toMatch(/the fills not biased/);
+    expect(judge("backfill", { mean_median_seam_sigma: 0.6 }).criterion).toMatch(/ Whether the fills are biased one way is texture_check's to say\.$/);
+    expect(WORDS.criterion.backfill).toMatch(/, and the fills not biased one way\.$/);
   });
 
   it("judges the rings alike with the ring removal's notice, which arm C reads without the remedy the backend writes (G1)", () => {
@@ -281,14 +291,23 @@ describe("judge: the checks on the result", () => {
     });
   }
 
-  const ops = (rms: number) => [{ op: "six-fold (60°)", rms_difference: rms }, { op: "two-fold (180°)", rms_difference: 0 }];
+  const ops = (rms: number) => [{ op: "six-fold ∥ c (60°)", rms_difference: rms }, { op: "two-fold ∥ c", rms_difference: 0 }];
+  // An operation that moves c is judged as one that keeps it: the same limit (P4.3).
+  const offPlane = (rms: number) => [...ops(0), { op: "mirror ⊥ c", rms_difference: rms }];
   const SYMMETRY: [string, Obj, Kind, Reason[], string | null][] = [
-    ["every operation held to 1e-3", { ops: ops(0.001), declared: "6/mmm" }, "pass", [], "kept: every in-plane operation holds to 0.001 or better"],
-    ["one past it", { ops: ops(0.0011), declared: "6/mmm" }, "attention", ["symmetry broken"], "not kept: six-fold (60°) (0.0011); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
-    ["a file read, no symmetry declared", { ops: ops(0.02), declared: null }, "info", ["not declared"], "not judged: the file declares no symmetry, so the section's asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
-    ["an empty declaration", { ops: ops(0.02), declared: "" }, "info", ["not declared"], "not judged: the file declares no symmetry, so the section's asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
-    ["the file not read: judged", { ops: ops(0.02), declared: undefined }, "attention", ["symmetry broken"], "not kept: six-fold (60°) (0.02); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
-    ["no operation to test", { ops: null, declared: "6/mmm" }, "info", ["nothing to judge"], null],
+    ["every operation held to 1e-3", { ops: ops(0.001), declared: "6/mmm" }, "pass", [], "kept: every operation tested holds to 0.001 or better"],
+    ["one past it", { ops: ops(0.0011), declared: "6/mmm" }, "attention", ["symmetry broken"], "not kept: six-fold ∥ c (60°) (0.0011); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
+    ["the mirror ⊥ c held to 1e-3", { ops: offPlane(0.001), declared: "6/mmm" }, "pass", [], "kept: every operation tested holds to 0.001 or better"],
+    ["the mirror ⊥ c past it, the in-plane ones held", { ops: offPlane(0.0011), declared: "6/mmm" }, "attention", ["symmetry broken"], "not kept: mirror ⊥ c (0.0011); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
+    ["every operation tested held, two not tested", { ops: ops(0), declared: "m-3m", untested: 2 }, "pass", [], "kept: every operation tested holds to 0.001 or better; 2 could not be tested (not_tested says why)"],
+    ["a file read, no symmetry declared", { ops: ops(0.02), declared: null }, "info", ["not declared"], "not judged: the file declares no symmetry, so the sections' asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
+    ["an empty declaration", { ops: ops(0.02), declared: "" }, "info", ["not declared"], "not judged: the file declares no symmetry, so the sections' asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
+    ["the file not read: judged", { ops: ops(0.02), declared: undefined }, "attention", ["symmetry broken"], "not kept: six-fold ∥ c (60°) (0.02); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
+    // No operation tested is no evidence: not judged, and why, never a pass (P4.3).
+    ["no operation to test", { ops: null, declared: "6/mmm", why: "the sections are not centred on the origin" }, "info", ["nothing to judge"], "not judged: the sections are not centred on the origin"],
+    ["every operation untested", { ops: [], declared: "m-3m", untested: 24, why: "none of the 24 entries could be tested on the sections (not_tested says why)" }, "info", ["nothing to judge"], "not judged: none of the 24 entries could be tested on the sections (not_tested says why)"],
+    ["no operation to test, and no reason given", { ops: null, declared: "6/mmm" }, "info", ["nothing to judge"], "not judged: no operation could be tested on the sections"],
+    ["no operation to test, nothing declared", { ops: null, declared: null, why: "no operations are declared, and the cell is neither hexagonal nor orthogonal" }, "info", ["nothing to judge"], "not judged: no operations are declared, and the cell is neither hexagonal nor orthogonal"],
   ];
   for (const [why, m, kind, reasons, words] of SYMMETRY) {
     it(`symmetry: ${why}`, () => {
@@ -296,11 +315,66 @@ describe("judge: the checks on the result", () => {
     });
     it(`symmetry: ${why}, the same verdicts as a sidecar and as words`, () => {
       const o = judge("symmetry", m as never);
-      roundTrip("symmetry_check", m.ops === null ? { note: "no in-plane symmetry to test" } : { ops: m.ops, symmetry_declared: m.declared === undefined ? null : Boolean(m.declared), verdict: o.words }, [o]);
+      const ops = m.ops as unknown[] | null;
+      roundTrip("symmetry_check", !ops?.length ? { verdict: o.words } : { ops, symmetry_declared: m.declared === undefined ? null : Boolean(m.declared), verdict: o.words }, [o]);
     });
   }
+  it("symmetry: a recording of before, a note and no verdict, judges nothing", () => {
+    roundTrip("symmetry_check", { note: "no in-plane symmetry to test: the cell is neither hexagonal nor orthogonal, or the section is not centred on the origin" }, [
+      { check: "symmetry", kind: "info", reasons: ["nothing to judge"], dataProblems: [], words: null },
+    ]);
+  });
 
-  it("texture: a cut whose fill is biased one way needs attention; no cut, nothing to judge", () => {
+  // texture_check's result since plan 4.2: every punch hole in 3-D (metrics/texture.ts, volumeFillBias).
+  const volume = (over: Obj): Obj => ({
+    n_holes: 125,
+    n_judged: 125,
+    median_fill_bias_sigma: 0,
+    median_fill_bias_level: 0,
+    above_fraction: 0,
+    below_fraction: 0,
+    above_floor_fraction: 0,
+    below_floor_fraction: 0,
+    systematic_fill_bias: false,
+    per_cut: [{ cut: "H–K plane at L = 0", azimuthal_ratio: 1.01 }],
+    ...over,
+  });
+  const coarse3d = volume({
+    n_judged: undefined,
+    not_judged: "grid too coarse: the nodes are 10 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more",
+    median_fill_bias_sigma: null,
+    median_fill_bias_level: null,
+    above_fraction: null,
+    below_fraction: null,
+    above_floor_fraction: null,
+    below_floor_fraction: null,
+    systematic_fill_bias: null,
+  });
+  const fewHoles = volume({ n_holes: 4, n_judged: 4, not_judged: "too few holes judged: 4 of 4, under 5", median_fill_bias_level: 0.5, systematic_fill_bias: null });
+
+  it("texture, in 3-D: a systematic fill bias over the holes needs attention, none passes", () => {
+    expect(judge("texture", volume({}))).toEqual({ check: "texture", kind: "pass", reasons: [], dataProblems: [], words: null });
+    const biased = volume({ median_fill_bias_sigma: 39.1, median_fill_bias_level: 0.506, above_fraction: 0.8, above_floor_fraction: 0.8, systematic_fill_bias: true });
+    expect(judge("texture", biased)).toEqual({ check: "texture", kind: "attention", reasons: ["fill bias"], dataProblems: [], words: null });
+    // The cuts carry the azimuthal texture only: no cut of a 3-D result is read for the fill bias.
+    expect(judge("texture", volume({ per_cut: [{ cut: "H–K plane at L = 0", systematic_fill_bias: true }] }))).toMatchObject({ kind: "pass" });
+    expect(judge("texture", { ...biased, per_cut: [] })).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
+    for (const m of [volume({}), biased]) roundTrip("texture_check", m, [judge("texture", m)]);
+  });
+
+  it("texture, in 3-D: not judged on a grid too coarse for the holes' rims, nor with too few holes judged", () => {
+    expect(judge("texture", coarse3d)).toEqual({ check: "texture", kind: "info", reasons: ["grid too coarse"], dataProblems: [], words: null });
+    // Fewer holes judged than the rule needs, or none: not judged, however large their bias (the backend's judged: false).
+    expect(judge("texture", fewHoles)).toEqual({ check: "texture", kind: "info", reasons: ["too few holes"], dataProblems: [], words: null });
+    expect(judge("texture", volume({ n_holes: 0, n_judged: 0, not_judged: "no filled punch hole", systematic_fill_bias: null }))).toMatchObject({ kind: "info", reasons: ["too few holes"] });
+    // Anything but true or false, without its reason, is no verdict: nothing to judge.
+    expect(judge("texture", volume({ systematic_fill_bias: "yes" }))).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    expect(judge("texture", volume({ systematic_fill_bias: null }))).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    for (const m of [coarse3d, fewHoles]) roundTrip("texture_check", m, [judge("texture", m)]);
+  });
+
+  // A result recorded before 4.2, each of three cuts judged on its own: it reads as it did.
+  it("texture, recorded by cut: a cut whose fill is biased one way needs attention; no cut, nothing to judge", () => {
     const cut = (bias: boolean) => ({ cut: "H–K plane at L = 0", systematic_fill_bias: bias });
     expect(judge("texture", { per_cut: [cut(false), cut(true)] })).toEqual({ check: "texture", kind: "attention", reasons: ["fill bias"], dataProblems: [], words: null });
     expect(judge("texture", { per_cut: [cut(false)] })).toMatchObject({ kind: "pass", reasons: [], words: null });
@@ -309,7 +383,7 @@ describe("judge: the checks on the result", () => {
     for (const m of [{ per_cut: [cut(false), cut(true)] }, { per_cut: [cut(false)] }, { per_cut: [] }, {}]) roundTrip("texture_check", m, [judge("texture", m)]);
   });
 
-  it("texture: a cut whose grid leaves its holes no room for their rims is no evidence; a judged cut's bias still needs attention", () => {
+  it("texture, recorded by cut: a cut whose grid leaves its holes no room for their rims is no evidence; a judged cut's bias still needs attention", () => {
     const cut = (bias: boolean) => ({ cut: "H–K plane at L = 0", systematic_fill_bias: bias });
     const coarse = {
       cut: "H–L plane at K = 0",

@@ -13,8 +13,21 @@
 // logic (the transcript, a case's checks).
 
 import { seen, type Readable } from "../readings";
+import { REGRID_REFUSED, SAMPLE_FACT_REFUSED } from "../tune/catalog";
 import { offerChanges } from "./offers";
-import { findIn, numbersIn, stepOf, type Decision, type RunRecord, type ValidationCase } from "./validation";
+import {
+  findIn,
+  numbersIn,
+  stepOf,
+  TUNING_SKIPPED,
+  wasRefused,
+  type Decision,
+  type RecordedRunPolicy,
+  type RunRecord,
+  type Truncations,
+  type TuningBudgetRecord,
+  type ValidationCase,
+} from "./validation";
 
 export const FINDING_KINDS = ["bug", "missing-tool", "skill-gap", "orchestration", "science-error"] as const;
 export type FindingKind = (typeof FINDING_KINDS)[number];
@@ -179,6 +192,10 @@ function surfaced(rec: RunRecord, value: number, tol: number, reading: (d: Decis
 
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
+/** A call a guardrail refused, which is no tool failing: until its stage's skill is read, a fact about the sample the user did not name, or a regrid the user did not ask for. */
+const refusedByAGuardrail = (summary: string): boolean =>
+  /refused until its skill is read/.test(summary) || summary.includes(SAMPLE_FACT_REFUSED) || summary.includes(REGRID_REFUSED);
+
 // What a failed scoring criterion most likely means, for the reviewer to confirm.
 const CRITERION: Record<string, [FindingKind, string]> = {
   features: ["science-error", "the settings the run chose or left lost or moved a planted correlation: find the stage and the setting"],
@@ -205,12 +222,19 @@ export function candidateFindings(rec: RunRecord, c: ValidationCase): Validation
     add({ step: null, kind: "orchestration", evidence: clip(rec.note), proposed_fix: "the task needs more rounds, or a tool returns too much for the context: shorten its result, or raise the limit for this task and say so" });
   }
   for (const d of rec.decisions) {
-    if (d.status === "error" && !/refused until its skill is read/.test(d.summary)) {
+    // A tuning the spend budget did not cover is no tool failing: the transcript says so (tuningSkippedLine).
+    if (d.status === "error" && !refusedByAGuardrail(d.summary) && d.summary !== TUNING_SKIPPED) {
       add({ step: d.step, kind: "bug", evidence: `${d.tool}(${clip(JSON.stringify(d.args), 120)}) failed: ${clip(d.result)}`, proposed_fix: "decide whether the model called it wrongly (a clearer description or error) or the tool is wrong (fix it, with a test)" });
     }
   }
   for (const u of rec.grades.unsafe) {
-    add({ step: Number(/^step (\d+)/.exec(u)?.[1]) || null, kind: "bug", evidence: `an unsafe action got through the guardrails: ${u}`, proposed_fix: "close the path in the tool or the executor, with a test" });
+    const step = Number(/^step (\d+)/.exec(u)?.[1]) || null;
+    if (wasRefused(u)) {
+      // The guardrails held: what to look at is why the model tried.
+      add({ step, kind: "orchestration", evidence: `the model tried an unsafe action, which the guardrails refused: ${u}`, proposed_fix: "nothing changed: read why the model tried (its words before the step), and whether the tool's description should say it plainer" });
+    } else {
+      add({ step, kind: "bug", evidence: `an unsafe action got through the guardrails: ${u}`, proposed_fix: "close the path in the tool or the executor, with a test" });
+    }
   }
   // The graders' two readings disagree: one of them misread the conclusion. A
   // dev run's only: a held-out run's are counted and reported, and nothing is
@@ -268,6 +292,53 @@ export function candidateFindings(rec: RunRecord, c: ValidationCase): Validation
 const fence = (s: string): string => `\n\`\`\`\n${s.replace(/```/g, "'''")}\n\`\`\``;
 const RESULT_CHARS = 1200;
 
+const thousands = (x: number): string => x.toLocaleString("en-US");
+
+const TRANSPORT_NAMES: Record<RecordedRunPolicy["transport"], string> = {
+  anthropic: "Claude through Anthropic's SDK",
+  "openai-compatible": "an OpenAI-compatible server",
+  ollama: "Ollama's own chat API",
+};
+
+/** The run policy a run ran under (runPolicy.ts), in one short paragraph. */
+export function policyBlock(p: RecordedRunPolicy): string {
+  const cap = (x: number | null) => (x == null ? "none asked" : `${thousands(x)} tokens`);
+  const window =
+    p.window.plan === "sized"
+      ? `sized for each request with ${thousands(p.window.reply_reserve ?? 0)} tokens for the reply`
+      : p.window.plan === "loaded"
+        ? `as the server loaded it, a request refused with under ${thousands(p.window.min_reply ?? 0)} tokens left for the reply`
+        : "not checked";
+  return (
+    `Run policy: ${TRANSPORT_NAMES[p.transport]}${p.local ? " on this machine" : ""}; up to ${p.max_rounds} rounds of tool calls; ` +
+    `${p.tool_scoping === "question" ? "offered the tools its question needs" : "offered every tool"}; ` +
+    `${p.pruning ? `older results shortened past ${thousands(p.pruning.soft_budget)} tokens, the newest ${p.pruning.keep_full} whole` : "no result shortened"}; ` +
+    `temperature ${p.temperature ?? "none sent"}; output cap ${cap(p.output_cap.loop)}, the tuning's ${cap(p.output_cap.tuning)}; ` +
+    `thinking ${p.reasoning_replay ? "sent back with each turn that called tools" : "not sent back"}; window ${window}.`
+  );
+}
+
+/** The requests cut at the output limit, in words; null when none was. */
+export function truncatedLine(t: Truncations): string | null {
+  if (!t.requests.length) return null;
+  const which = (source: "loop" | "tuning") => {
+    const cut = t.requests.filter((r) => r.source === source);
+    const whose = source === "loop" ? "the loop's" : "the tuning's";
+    return cut.length ? `${whose} request${cut.length === 1 ? "" : "s"} ${cut.map((r) => `${r.request} (${r.reason})`).join(", ")}` : null;
+  };
+  return `${[which("loop"), which("tuning")].filter(Boolean).join("; ")}`;
+}
+
+/** The tunings a paid run's spend budget did not cover, in words; null when none was skipped. */
+export function tuningSkippedLine(b: TuningBudgetRecord): string | null {
+  if (!b.skipped.length) return null;
+  const at = b.skipped.map((s) => `${s.step === null ? "a call" : `step ${s.step}`} ($${s.left_usd.toFixed(2)} left)`);
+  return (
+    `tune_pipeline at ${at.join(", ")}: one more tuning needs $${b.per_tuning_usd.toFixed(2)} (a tuning at its hard bound, with the margin), ` +
+    "more than the budget had left beyond the run's reserve"
+  );
+}
+
 /** A run as Markdown: the task, each step with its arguments, reason and result, the numbers and their sources, the conclusion and the scores. A review finding is on no run, so it is never listed. */
 export function renderTranscript(rec: RunRecord, given: readonly Finding[] = []): string {
   const findings = given.filter(isValidationFinding);
@@ -277,8 +348,12 @@ export function renderTranscript(rec: RunRecord, given: readonly Finding[] = [])
     "",
     `Model: ${rec.model.label} (${rec.model.provider}${rec.model.local ? ", local" : ""}). Started ${rec.started}; ${(rec.latency_ms / 1000).toFixed(0)} s` +
       (rec.usage ? `, ${rec.usage.input} tokens in and ${rec.usage.output} out over ${rec.usage.requests} requests` : "") +
+      (rec.usage?.tuning ? ` (the tuning's ${rec.usage.tuning.requests}: ${rec.usage.tuning.input} in, ${rec.usage.tuning.output} out)` : "") +
       (rec.cost_usd != null ? `, $${rec.cost_usd.toFixed(4)}` : "") +
       `. The model saw the dataset as ${rec.dataset}.`,
+    "",
+    // Read as not recorded from a record made before the policy was kept.
+    rec.run_policy ? policyBlock(rec.run_policy) : "Run policy: not recorded.",
     "",
     "## Task",
     "",
@@ -310,6 +385,12 @@ export function renderTranscript(rec: RunRecord, given: readonly Finding[] = [])
     }
   }
   lines.push("", "## Conclusion", "", rec.conclusion || "(none)", "");
+  // A reply cut at the output cap is graded as it stands, and said so.
+  const cut = rec.truncated ? truncatedLine(rec.truncated) : null;
+  if (cut) lines.push(`**Cut at the output limit:** ${cut}. The run is graded as it stands.`, "");
+  // A tuning the spend budget did not cover: the model read why, and the run went on without it.
+  const skipped = rec.tuning_budget ? tuningSkippedLine(rec.tuning_budget) : null;
+  if (skipped) lines.push(`**Tuning skipped for the spend budget:** ${skipped}. The run went on without it.`, "");
   if (rec.computed_verdict) lines.push(`**Verdict computed from the checks:** ${rec.computed_verdict.text}.`, "");
   if (rec.note) lines.push(`Note: ${rec.note}`, "");
   if (rec.error) lines.push(`Error: ${rec.error}`, "");
@@ -326,6 +407,10 @@ export function renderTranscript(rec: RunRecord, given: readonly Finding[] = [])
   // Read as none from a record made before the graders cross-checked their readings.
   const disputes = g.disputes ?? [];
   lines.push(`- Checks the graders' two readings dispute: ${disputes.length}`);
+  // Not recorded in a record made before the runs kept them.
+  lines.push(
+    `- Requests cut at the output limit: ${rec.truncated ? `${rec.truncated.requests.length}${cut ? ` (${cut})` : ""}` : "not recorded"}`,
+  );
   for (const x of [...g.detection, ...g.falseAlarms].filter((y) => !y.pass)) lines.push(`- Failed: ${x.check}: ${x.detail}`);
   for (const d of disputes) lines.push(`- Disputed: ${d.check}: the shared reader passed it (${d.reader}); the witness failed it (${d.witness})`);
   const crit = (rec.truth_score as { criteria?: Record<string, boolean> } | undefined)?.criteria;
