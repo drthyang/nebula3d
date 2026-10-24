@@ -528,19 +528,69 @@ describe("run_log", () => {
 });
 
 describe("qmax_coverage", () => {
-  // Measured out to 1.5 r.l.u. of the origin on every plane; the box ends at 2.
+  // The coverage as Python measures and serves it (nebula3d.analysis.coverage)
+  // for tests/test_coverage.py's constructed volumes, its known answers: a
+  // cubic cell of 4 Å over ±3 r.l.u. (the nearest face at 4.712 Å⁻¹, the
+  // corner at 8.162), counts out to 4.4 Å⁻¹, and past them unmeasured space
+  // masked or NaN, where the measured voxels end with the counts, or zeros
+  // the volume marks measured, where they fill the box.
+  const CUT = {
+    id: "demo.raw", q: [], counted: [], q_min_edge: null, q_max_edge: 4.4, full_q_min: 0.35, full_q_max: 4.35,
+    measured_q_max: 4.35, box_q: 4.712, box_corner_q: 8.162, q_step: 0.1,
+  };
+  const ZEROS = { ...CUT, measured_q_max: 7.85 };
+  // Counts to the box's corners.
+  const FULL_BOX = { ...CUT, q_max_edge: null, full_q_max: 8.05, measured_q_max: 8.05 };
   beforeEach(() => {
-    api.fetchSlice.mockResolvedValue(makeSlice(21, 21, (x, y) => (Math.hypot(x, y) < 1.5 ? 1 : NaN), { half: 2 }));
-    usePipelineStore.setState({ pdfQMax: "", pdfApod: "", pdfWindowShape: "", pdfWindowSupport: true });
+    api.fetchVolumeCoverage.mockResolvedValue(CUT);
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "", pdfApod: "", pdfWindowShape: "", pdfWindowSupport: true });
   });
   const check = async () => JSON.parse((await run("qmax_coverage", {})).text);
   const judged = async () => (await run("qmax_coverage", {})).outcomes?.[0];
 
-  it("passes a window tapered to the measured coverage", async () => {
-    const out = await check();
-    expect(out.full_coverage_q).toBeLessThan(out.box_face_q);
+  it("reads the coverage Python measures, once, and shows it on the first plane through the origin", async () => {
+    const r = await run("qmax_coverage", {});
+    expect(api.fetchVolumeCoverage).toHaveBeenCalledWith("demo.raw");
+    expect(api.fetchSlice).not.toHaveBeenCalled(); // the planes only show where
+    expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0 });
+    const out = JSON.parse(r.text);
+    expect([out.full_coverage_q, out.box_face_q]).toEqual([4.35, 4.712]);
+    expect(out.raw_counts).toEqual({ q_min_edge: null, q_max_edge: 4.4, fully_measured: [0.35, 4.35], box_face_q: 4.712 });
+    expect(out).not.toHaveProperty("per_plane");
+    expect(out).not.toHaveProperty("low_q_gap");
+  });
+
+  it("passes a window tapered to the measured coverage, masked or NaN past the counts", async () => {
+    const r = await run("qmax_coverage", {});
+    const out = JSON.parse(r.text);
+    expect(out.transform_reach_q).toBe(4.35);
     expect(out.reach_from).toBe("the window is tapered to the measured coverage");
-    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["reach inside coverage"] });
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "pass", reasons: ["reach inside coverage"], dataProblems: ["the counts end at 4.4 Å⁻¹, inside the box"] });
+    expect(out.verdict).toContain("and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0–4.4 Å⁻¹");
+  });
+
+  // Known answer (tests/test_coverage.py): with zeros stored past the counts and
+  // marked measured, the backend's support takes them as data and does not fit
+  // the window, so the transform reaches the box faces, past the counts.
+  it("flags a volume that stores zeros past its counts: the taper cannot follow them", async () => {
+    api.fetchVolumeCoverage.mockResolvedValue(ZEROS);
+    const r = await run("qmax_coverage", {});
+    const out = JSON.parse(r.text);
+    expect(out.full_coverage_q).toBe(4.35); // the counts' edge, as on the NaN volume
+    expect(out.transform_reach_q).toBe(4.712);
+    expect(out.reach_from).toBe(
+      "the window tapers to zero at the box faces: past its counts the volume stores zeros it marks measured, which the taper to the coverage takes as data",
+    );
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["reach past coverage"], dataProblems: ["the counts end at 4.4 Å⁻¹, inside the box"] });
+    // The band is the remedy, not the taper; and no taper keeps the transform on the counts.
+    expect(out.verdict).toMatch(/past full coverage at 4\.35 Å⁻¹; set a \|Q\| band at or below it; the raw counts end at 4\.4 Å⁻¹/);
+    expect(out.verdict).toContain("and no |Q| band is set: the band they allow is 0–4.4 Å⁻¹");
+    expect(out.verdict).not.toMatch(/taper the window|only the window's taper/);
+    // Zeros stored up to inside the box, masked past them: the taper follows the measured voxels, past the counts.
+    api.fetchVolumeCoverage.mockResolvedValue({ ...ZEROS, measured_q_max: 4.55 });
+    const part = await check();
+    expect([part.transform_reach_q, part.reach_from]).toEqual([4.55, "the window is tapered to the measured voxels, which run past the counts: the volume stores zeros there"]);
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
   });
 
   it("flags a window that tapers only at the box faces past the coverage", async () => {
@@ -549,12 +599,23 @@ describe("qmax_coverage", () => {
     expect(out.transform_reach_q).toBe(out.box_face_q);
     expect(out.reach_from).toBe("the window tapers to zero at the box faces");
     expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
+    // The backend never fits a separable window the page asks for, the support on or not.
+    usePipelineStore.setState({ pdfWindowSupport: true, pdfWindowShape: "separable" });
+    expect((await check()).reach_from).toBe("the window tapers to zero at the box faces");
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
+  });
+
+  it("passes the box faces inside a box measured to its corners", async () => {
+    api.fetchVolumeCoverage.mockResolvedValue(FULL_BOX);
+    const out = await check();
+    expect([out.transform_reach_q, out.full_coverage_q, out.counts_end_inside_box]).toEqual([4.712, 8.05, false]);
+    expect(out.verdict).toBe("the transform reaches 4.712 Å⁻¹ (the window tapers to zero at the box faces), inside full coverage at 8.05 Å⁻¹");
   });
 
   it("gives where the raw counts begin and end, the band they allow, and checks a band that is set", async () => {
     api.fetchVolumeCoverage.mockResolvedValue({
       id: "demo.raw", q: [], counted: [], q_min_edge: 0.61, q_max_edge: 14.204,
-      full_q_min: 0.74, full_q_max: 13.6, box_q: 11.05, box_corner_q: 29.4,
+      full_q_min: 0.74, full_q_max: 13.6, measured_q_max: 13.6, box_q: 11.05, box_corner_q: 29.4, q_step: 0.1,
     });
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
     const none = await check();
@@ -593,7 +654,10 @@ describe("qmax_coverage", () => {
 
   // The dev coverage case (docs/pilot-review.md finding 7): counts cut at
   // 4.511 Å⁻¹ of a box whose nearest face is 6.444 Å⁻¹, a window shrunk to fit.
-  const cut = { id: "demo.raw", q: [], counted: [], q_min_edge: null, q_max_edge: 4.507, full_q_min: 0.15, full_q_max: 4.45, box_q: 6.444, box_corner_q: 11.16 };
+  const cut = {
+    id: "demo.raw", q: [], counted: [], q_min_edge: null, q_max_edge: 4.507, full_q_min: 0.15, full_q_max: 4.45,
+    measured_q_max: 4.45, box_q: 6.444, box_corner_q: 11.16, q_step: 0.1,
+  };
   const shrunk = async () => {
     const meta = await api.fetchDpdfMeta();
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 0.695, window_open_weight: 9.8e-4 });
@@ -623,7 +687,7 @@ describe("qmax_coverage", () => {
   it("adds nothing where the counts reach the box: a full box, or a turned one whose counts reach past its faces", async () => {
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
     for (const edge of [null, 10.95, 6.4]) {
-      api.fetchVolumeCoverage.mockResolvedValue({ ...cut, q_max_edge: edge, full_q_max: 8.45 });
+      api.fetchVolumeCoverage.mockResolvedValue({ ...cut, q_max_edge: edge, full_q_max: 8.45, measured_q_max: 8.45 });
       await shrunk();
       const out = await check();
       expect(out.counts_end_inside_box).toBe(false); // 6.4: within one coverage shell of the face

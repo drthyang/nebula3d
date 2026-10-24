@@ -44,8 +44,12 @@ export interface VolumeCoverage {
   q_max_edge: number | null; // where it last falls through ½ (null: to the corner)
   full_q_min: number | null; // first shell ≥ 95 %
   full_q_max: number | null; // last shell ≥ 95 %
+  // Last shell ≥ 95 % measured (mask set, finite): where the ΔPDF window's
+  // support ends, past the counts where the volume stores zeros it marks measured.
+  measured_q_max: number | null;
   box_q: number; // the nearest face of the box in Q (a face through the origin, a half-space volume's, aside)
   box_corner_q: number;
+  q_step: number; // the shells' width (Å⁻¹): every edge is known to one shell
 }
 
 /** One shell judged: does it rise in nearly every direction over the sphere (a powder ring)? */

@@ -499,7 +499,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## qmax_coverage {}
 
-2135 characters sent.
+1147 characters sent.
 
 ```json
 {
@@ -507,12 +507,11 @@ References of this skill (read one with read_skill and `reference`):
   "window_weight_on_unmeasured": 0.00024,
   "window_shape": "ellipsoid",
   "window_scale": 1,
-  "transform_reach_q": 4.36,
+  "transform_reach_q": 4.35,
   "reach_from": "an ellipsoid window inscribed in the box (its reach varies with direction; box_face_q is the nearest face)",
-  "full_coverage_q": 4.36,
-  "box_face_q": 4.71,
+  "full_coverage_q": 4.35,
+  "box_face_q": 4.712,
   "box_corner_q": 8.162,
-  "low_q_gap": 0.236,
   "raw_counts": {
     "q_min_edge": 0.25,
     "q_max_edge": 4.4,
@@ -529,149 +528,6 @@ References of this skill (read one with read_skill and `reference`):
     "pdfApod": "(default)",
     "pdfWindowShape": "(default)",
     "pdfWindowSupport": true
-  },
-  "per_plane": {
-    "hk0": {
-      "full_coverage_q": 4.36,
-      "half_coverage_q": 4.36,
-      "box_q": 4.71,
-      "shells": [
-        {
-          "q": 0.412,
-          "measured": 1
-        },
-        {
-          "q": 0.884,
-          "measured": 1
-        },
-        {
-          "q": 1.35,
-          "measured": 1
-        },
-        {
-          "q": 1.83,
-          "measured": 1
-        },
-        {
-          "q": 2.3,
-          "measured": 1
-        },
-        {
-          "q": 2.77,
-          "measured": 1
-        },
-        {
-          "q": 3.24,
-          "measured": 1
-        },
-        {
-          "q": 3.71,
-          "measured": 1
-        },
-        {
-          "q": 4.18,
-          "measured": 1
-        },
-        {
-          "q": 4.65,
-          "measured": 0
-        }
-      ]
-    },
-    "h0l": {
-      "full_coverage_q": 4.36,
-      "half_coverage_q": 4.36,
-      "box_q": 4.71,
-      "shells": [
-        {
-          "q": 0.412,
-          "measured": 1
-        },
-        {
-          "q": 0.884,
-          "measured": 1
-        },
-        {
-          "q": 1.35,
-          "measured": 1
-        },
-        {
-          "q": 1.83,
-          "measured": 1
-        },
-        {
-          "q": 2.3,
-          "measured": 1
-        },
-        {
-          "q": 2.77,
-          "measured": 1
-        },
-        {
-          "q": 3.24,
-          "measured": 1
-        },
-        {
-          "q": 3.71,
-          "measured": 1
-        },
-        {
-          "q": 4.18,
-          "measured": 1
-        },
-        {
-          "q": 4.65,
-          "measured": 0
-        }
-      ]
-    },
-    "0kl": {
-      "full_coverage_q": 4.36,
-      "half_coverage_q": 4.36,
-      "box_q": 4.71,
-      "shells": [
-        {
-          "q": 0.412,
-          "measured": 1
-        },
-        {
-          "q": 0.884,
-          "measured": 1
-        },
-        {
-          "q": 1.35,
-          "measured": 1
-        },
-        {
-          "q": 1.83,
-          "measured": 1
-        },
-        {
-          "q": 2.3,
-          "measured": 1
-        },
-        {
-          "q": 2.77,
-          "measured": 1
-        },
-        {
-          "q": 3.24,
-          "measured": 1
-        },
-        {
-          "q": 3.71,
-          "measured": 1
-        },
-        {
-          "q": 4.18,
-          "measured": 1
-        },
-        {
-          "q": 4.65,
-          "measured": 0
-        }
-      ]
-    }
   }
 }
 ```

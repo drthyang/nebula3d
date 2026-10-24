@@ -94,16 +94,21 @@ export type StageNumbers = Readonly<Record<string, unknown>> & { readonly [UNROU
  * What qmax_coverage measured: the ΔPDF window's recorded weight on unmeasured
  * space; else the transform's reach against full coverage; and where the raw
  * counts end (its result's raw_counts, suggested_band and counts_end_inside_box).
+ * The coverage is the raw volume's, measured once, in Python
+ * (nebula3d.analysis.coverage).
  */
 export interface CoverageMeasurements {
   window_weight: number | null; // the ΔPDF's record, raw
   window: string; // the window, as the verdict names it
   unit_cell: boolean; // |Q| is known
-  full_coverage_q: number | null;
+  full_coverage_q: number | null; // where the |Q| shells stop holding counts in 95 % of their voxels
   reach: number | null; // how far the transform's window reaches in |Q|
   reach_from: string; // why it reaches that far
-  shell: number; // the coverage edge's resolution in |Q|
+  shell: number; // the coverage edge's resolution in |Q|: the shells' width
   band_set: boolean; // a |Q| band is set on the Configure page
+  // Past its counts the volume holds zeros it marks measured: the window's
+  // support takes them as data, so no taper to the coverage follows the counts.
+  zeros_stored?: boolean;
   counts: {
     counts_end_inside_box: boolean;
     raw_counts?: { q_max_edge: number | null; box_face_q: number };
@@ -388,6 +393,8 @@ interface Words extends Judged {
 const COVERAGE_WORDS = "verdicts/rules.ts: qmax_coverage's verdict";
 const TAPER_OR_BAND = inference(COVERAGE_WORDS, "remedy", "; taper it to the coverage (pdfWindowSupport) or set a |Q| band");
 const BAND_OR_TAPER = inference(COVERAGE_WORDS, "remedy", "; set a |Q| band at or below it, or taper the window to the coverage");
+// Where the volume stores zeros it marks measured, no taper follows the counts.
+const BAND_AT_OR_BELOW = inference(COVERAGE_WORDS, "remedy", "; set a |Q| band at or below it");
 const SYMMETRY_WORDS = "verdicts/rules.ts: symmetry_check's verdict";
 const ASYMMETRY_IS = inference(SYMMETRY_WORDS, "evidence", ", so the section's asymmetry (");
 const THE_DATA_OWN = inference(SYMMETRY_WORDS, "evidence", ") is the data's own, counting noise included, not a break by a stage");
@@ -435,22 +442,23 @@ const coverage: CheckRule<CoverageMeasurements> = {
         : !m.unit_cell
           ? [nothing(), "no unit cell: |Q| is unknown, so the reach cannot be compared"]
           : full == null
-            ? [nothing(), "no |Q| shell is fully measured on these planes"]
+            ? [nothing(), "no |Q| shell is fully measured"]
             : m.reach == null
               ? [nothing(), "no ΔPDF yet to read the box corner from"]
               : m.reach <= full + m.shell
                 ? [{ kind: "pass", reasons: ["reach inside coverage"] }, `the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), inside full coverage at ${full} Å⁻¹`]
                 : [
                     { kind: "attention", reasons: ["reach past coverage"] },
-                    built`too far: the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), past full coverage at ${full} Å⁻¹${BAND_OR_TAPER}`,
+                    built`too far: the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), past full coverage at ${full} Å⁻¹${m.zeros_stored ? BAND_AT_OR_BELOW : BAND_OR_TAPER}`,
                   ];
     // The counts end inside the box and no band is set: only the window's taper
     // keeps the transform on the counts. Said in the verdict, which a model
     // quotes, and not only in raw_counts and suggested_band, which it may not.
+    // Where the volume stores zeros it marks measured, no taper follows them.
     const c = m.counts ?? { counts_end_inside_box: false };
     const cut =
       c.counts_end_inside_box && !m.band_set
-        ? `; the raw counts end at ${c.raw_counts?.q_max_edge} Å⁻¹, inside the box (its nearest face at ${c.raw_counts?.box_face_q} Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is ${c.suggested_band?.[0]}–${c.suggested_band?.[1]} Å⁻¹ (suggested_band), the user's to set`
+        ? `; the raw counts end at ${c.raw_counts?.q_max_edge} Å⁻¹, inside the box (its nearest face at ${c.raw_counts?.box_face_q} Å⁻¹), and no |Q| band is set${m.zeros_stored ? "" : ", so only the window's taper keeps the transform on the counts"}: the band they allow is ${c.suggested_band?.[0]}–${c.suggested_band?.[1]} Å⁻¹ (suggested_band), the user's to set`
         : "";
     return { ...outcome, words: joined([text, cut]), dataProblems: countsProblems(c) };
   },

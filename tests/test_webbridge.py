@@ -229,6 +229,42 @@ def test_volume_shell_floors_json_is_the_servers_response(tmp_path, monkeypatch)
         webbridge.volume_shell_floors_json("nope.flattened")
 
 
+@pytest.mark.parametrize("stored", ["nan", "zeros"])
+def test_volume_coverage_json_is_the_servers_response(tmp_path, stored):
+    """The browser build's coverage is the native server's, field for field, on a
+    raw volume whose counts end inside the box (tests/test_coverage.py's known
+    answers): the counts' edge, and where the measured voxels end, with the
+    counts when unmeasured space is NaN and at the box's corners when it holds
+    zeros the volume marks measured.  qmax_coverage reads it through either."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d.server import volumes as vol_mod
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+    from nebula3d.server.schemas import CoverageOut
+    from tests.test_coverage import Q_CUT, cut_volume
+    from tests.test_server import SLUG, STEM
+
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    nebula3d.save(cut_volume(stored), tmp_path / "raw" / f"{STEM}.nxs")
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    vid = f"{SLUG}.raw"
+    served = client.get(f"/api/volumes/{vid}/coverage")
+    assert served.status_code == 200, served.text
+    vol_mod.clear_cache()  # the bridge computes its own
+    webbridge.setup(workdir=str(tmp_path))
+    bridged = json.loads(webbridge.volume_coverage_json(vid))
+    assert bridged == served.json()
+    assert set(bridged) == set(CoverageOut.model_fields)
+    assert bridged["q_max_edge"] == pytest.approx(Q_CUT, abs=bridged["q_step"] / 2)
+    if stored == "nan":
+        assert bridged["measured_q_max"] == bridged["full_q_max"]
+    else:
+        assert bridged["measured_q_max"] > bridged["box_q"] > bridged["full_q_max"]
+
+
 def test_volume_texture_json_is_the_servers_response(tmp_path, monkeypatch):
     """The browser build's fill texture over every punch hole is the native
     server's, field for field: computed natively by the server and in
