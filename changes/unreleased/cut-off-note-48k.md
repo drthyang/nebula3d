@@ -1,1 +1,0 @@
-- **The cut-off note asks for 48k, not 32k.** When a reply is cut off because the model ran out of room, the note now asks for a Context Length of 48k or more, the measured need of a full assessment that reads two skills (about 46k tokens), instead of 32k and "about 18k".
