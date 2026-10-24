@@ -39,16 +39,16 @@ export function makeSlice(
 // ---------------------------------------------------------------- what a run's search left alone
 //
 // Stand-ins for the backend's answers about the sample's modulation, for the
-// tests that mock the API: the record of a run that declared the backend's
-// default (k = (1/3, 0, 0) as planes, ± 0.08 r.l.u.; nebula3d.pipeline.
-// default_modulation), and labels on a cut as GET /api/modulation/{id}/labels
+// tests that mock the API: the record of a run that declared k = (1/3, 0, 0)
+// as planes, ± 0.08 r.l.u. (the backend's default until plan 4.15's P3; the
+// default declares none since), and labels on a cut as GET /api/modulation/{id}/labels
 // sends them. The backend computes these (nebula3d.modulation); the app never
 // does: a test oracle, not a second implementation.
 
-/** The backend's default declaration, as a run's record writes it. */
+/** k = (1/3, 0, 0) declared as planes, as a run's record writes it. */
 export const THIRDS_AS_PLANES: ModulationDeclaration = { k: [["1/3", "0", "0"]], order: 1, form: "planes", half_width: 0.08, normal: null };
 
-/** Whether a coordinate lies in the default's planes: within 0.08 of the centres 0.3333 and 0.6667 (mod 1), as the backend quantises them. */
+/** Whether a coordinate lies in THIRDS_AS_PLANES's planes: within 0.08 of the centres 0.3333 and 0.6667 (mod 1), as the backend quantises them. */
 export const onTheThirds = (h: number): boolean =>
   [0.3333, 0.6667].some((c) => {
     const d = Math.abs((((h - c) % 1) + 1) % 1);

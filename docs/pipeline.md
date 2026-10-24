@@ -386,9 +386,11 @@ sample's satellites are a fact about it, declared like its symmetry
 either the points G ± m·k or the planes through them. The search then leaves
 them alone at every position equivalent under the symmetry.
 
-For now a run that declares none declares the planes H = n ± 1/3 ± 0.08 r.l.u.
-(k = (1/3, 0, 0) as planes), which is the protection from before declarations,
-bit for bit. The punch records what its search left alone. When its sharp
+Nothing is protected by default: a run that declares none leaves no position
+alone, and its search punches every sharp peak it finds off the lattice. The
+planes it protected by default before declarations, H = n ± 1/3 ± 0.08 r.l.u.,
+are k = (1/3, 0, 0) declared as planes, bit for bit. The punch records what
+its search left alone. When its sharp
 peaks off the lattice bunch at one commensurate fraction, as an undeclared
 modulation would leave them, it says so, and NEBULA Pilot asks the user
 whether the sample has that modulation. The physics, the record, the console's

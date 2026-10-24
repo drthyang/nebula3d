@@ -428,16 +428,22 @@ Should a sample have no protected planes unless you say it has satellites?
 their own line, out of the punch's verdict?
 
 - **Where:** step 1 (`SKILL.md:27-33`), firm rules (`SKILL.md:67-68`);
-  `punchProtectH` and `punchProtectHalfWidth` (`llm/tune/catalog.ts:16-31`);
-  the pipeline's default, `search_exclude_h_fractions = (0.3333, 0.6667)`
-  (`src/nebula3d/pipeline.py:514`); the punch's rule after D5
+  the `modulation` setting, which replaced `punchProtectH` and
+  `punchProtectHalfWidth` (`llm/tune/catalog.ts:114-131`); the pipeline's
+  default, `default_modulation()`, None since P3
+  (`src/nebula3d/pipeline.py:692`); the punch's rule after D5
   (`llm/verdicts/rules.ts:156-177`).
-- **Today:** By default the off-lattice search leaves the planes H = n + 1/3 and
-  n + 2/3 alone on every dataset. Since D5 (decided), sharp peaks on protected
-  planes stay out of the punch's verdict and are shown on their own line, as
-  the punch's goal says they stay by design. So with the defaults, a spurious
-  sharp peak at H = n ± 1/3 on a sample with no satellites is neither punched
-  nor counted against the punch.
+- **Today:** Nothing is protected by default since plan 4.15's P3: the
+  off-lattice search leaves a position alone only where the sample's
+  modulation is declared (the `modulation` setting, `PipelineParams.modulation`,
+  [modulation.md](modulation.md)), and the Pilot asks the user when the
+  search's sharp peaks off the lattice bunch at one commensurate fraction.
+  Until P3 the search left the planes H = n + 1/3 and n + 2/3 alone on every
+  dataset, so a spurious sharp peak there on a sample with no satellites was
+  neither punched nor, since D5, counted against the punch. Since D5
+  (decided), sharp peaks in declared positions stay out of the punch's
+  verdict and are shown on their own line, as the punch's goal says they stay
+  by design.
 - **Why it needs you:** The skill calls the protected planes a fact about the
   sample, set only when you ask; the default sets them for every sample. D5
   itself is decided and not reopened here.

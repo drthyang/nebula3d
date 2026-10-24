@@ -389,11 +389,10 @@ def test_bragg_profile_json_is_the_servers_response(ran_pipeline, tmp_path):
 def test_modulation_payloads_are_the_servers(ran_pipeline, tmp_path):
     """The browser build's modulation payloads are the native server's, byte
     for byte: the check of a declaration, a slice's labels from the punch's
-    record, and the record in the punch's profile (the run's default
-    declaration, the thirds as planes)."""
+    record, and the record in the punch's profile (the run's default, which
+    declares nothing since plan 4.15's P3)."""
     from fastapi.testclient import TestClient
 
-    from nebula3d.pipeline import default_modulation
     from nebula3d.server.app import create_app
     from nebula3d.server.config import ServerConfig
 
@@ -414,10 +413,12 @@ def test_modulation_payloads_are_the_servers(ran_pipeline, tmp_path):
         bridged = webbridge.modulation_labels_slice(dataset_id, plane, value, interp)
         assert bridged == served.content
     header, labels = _decode_envelope(bridged)
-    assert header["recorded"] is True and header["declared"] == default_modulation().to_json()
+    assert header["recorded"] is True and header["declared"] is None
+    assert header["legend"] == [] and not labels.any()
     assert labels.size == header["nx"] * header["ny"]
     record = json.loads(webbridge.bragg_profile_json(dataset_id))["modulation"]
-    assert record["declared"] == default_modulation().to_json() and record["bunching"] is None
+    assert record["declared"] is None and record["legacy"] is None
+    assert record["bunching"] is None
     with pytest.raises(KeyError):
         webbridge.modulation_labels_slice("nope", "hk", 0.0)
 

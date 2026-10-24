@@ -505,7 +505,8 @@ miss is a note.
   - *Acting*: `update_settings` (the method choices and thresholds in
     `tune/catalog.ts`, and the sample facts the tuner never proposes, the
     sample's modulation, one setting of the Configure page's four fields
-    (`{"k": "1/3, 0, 0", "form": "planes"}`, `"none"` or `"default"`), and
+    (`{"k": "1/3, 0, 0", "form": "planes"}`, `"none"` or `"default"`, the
+    backend's own, which declares none too), and
     the punch cell, only when the user's latest
     message names them: the agent loop hands that message to the tools, and a
     change to a fact it does not name is refused, the call's other changes

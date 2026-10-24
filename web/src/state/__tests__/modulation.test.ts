@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { BLANK_MODULATION, DeclarationError, kVectors, modulationFieldsOf, modulationRequest, modulationText } from "../modulation";
+import { BLANK_MODULATION, DeclarationError, kVectors, migratedProtection, modulationFieldsOf, modulationRequest, modulationText } from "../modulation";
 
 const fields = (patch: Partial<typeof BLANK_MODULATION>) => ({ ...BLANK_MODULATION, ...patch });
 
@@ -87,5 +87,20 @@ describe("what the model proposes", () => {
   ])("refuses %j, saying what is wrong", (value, why) => {
     expect(() => modulationFieldsOf(value)).toThrow(DeclarationError);
     expect(() => modulationFieldsOf(value)).toThrow(why);
+  });
+});
+
+describe("a remembered half width alone, since nothing is declared by default (plan 4.15, P3)", () => {
+  it("declares none and keeps the width; the run sends none", () => {
+    const migrated = migratedProtection({ punchProtectHalfWidth: "0.05" });
+    expect(migrated).toEqual(fields({ modulationK: "none", modulationHalfWidth: "0.05" }));
+    expect(modulationRequest(migrated!)).toBe("none");
+    expect(modulationText(migrated!)).toBe("none");
+  });
+
+  it("is the same where the fractions beside it could not be read", () => {
+    expect(migratedProtection({ punchProtectH: "thirds", punchProtectHalfWidth: "0.05" })).toEqual(
+      fields({ modulationK: "none", modulationHalfWidth: "0.05" }),
+    );
   });
 });
