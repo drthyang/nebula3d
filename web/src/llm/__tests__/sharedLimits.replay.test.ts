@@ -36,7 +36,7 @@ import { UB_TURNED, WORDS } from "../verdicts/rules";
 /** Modules whose own constants are read off their source. */
 const SOURCES: Record<string, string> = Object.fromEntries(
   Object.entries(
-    import.meta.glob<string>(["../metrics/texture.ts", "../metrics/coverage.ts", "../tools/defs/qmax_coverage.ts"], {
+    import.meta.glob<string>(["../metrics/texture.ts"], {
       query: "?raw",
       import: "default",
       eager: true,
@@ -52,8 +52,6 @@ function written(path: string, pattern: RegExp): number[] {
 }
 
 const TEXTURE = "web/src/llm/metrics/texture.ts";
-const COVERAGE = "web/src/llm/metrics/coverage.ts";
-const QMAX = "web/src/llm/tools/defs/qmax_coverage.ts";
 
 /** Where a rule's answer changes: false at lo, true at hi (skillLint.test.ts's). */
 function boundary(pred: (x: number) => boolean, lo: number, hi: number): number {
@@ -165,8 +163,6 @@ print(json.dumps({
     "floor_percentile": p.flatten.floor_percentile,
     "min_count": p.flatten.min_count,
     "coverage_full": coverage.FULL,
-    "coverage_half": coverage.HALF,
-    "coverage_q_step": default(coverage.q_coverage, "q_step"),
     "origin_excluded": dpdf_features.ORIGIN_EXCLUDED,
     "stages": list(pipeline.STAGES),
     "tune_stages": list(tuning.TUNE_STAGES),
@@ -188,8 +184,6 @@ type Py = {
   floor_percentile: number;
   min_count: number;
   coverage_full: number;
-  coverage_half: number;
-  coverage_q_step: number;
   origin_excluded: number;
   stages: string[];
   tune_stages: string[];
@@ -325,21 +319,14 @@ const PINS: Pin[] = [
       ];
     },
   },
+  // The coverage itself, its half-measured edges and their resolution (one
+  // shell), is measured in Python alone and read through the adapters: only
+  // the flatten's own "fully measured" share is held on both sides.
   {
-    name: "a fully measured shell, and a measured one",
-    ts: "FULL and HALF, metrics/coverage.ts; FULL_SHELL, metrics/flatten.ts",
-    py: "FULL and HALF, nebula3d.analysis.coverage",
-    values: () => {
-      const [full] = written(COVERAGE, /const FULL = ([0-9.]+);/);
-      const [half] = written(COVERAGE, /const HALF = ([0-9.]+);/);
-      return [[full, FULL_SHELL, half], [py.coverage_full, py.coverage_full, py.coverage_half]];
-    },
-  },
-  {
-    name: "the raw counts' edge resolution: one coverage shell, Å⁻¹",
-    ts: "COUNTS_EDGE_SHELL, tools/defs/qmax_coverage.ts",
-    py: "q_coverage(q_step=), nebula3d.analysis.coverage",
-    values: () => [written(QMAX, /const COUNTS_EDGE_SHELL = ([0-9.]+);/)[0], py.coverage_q_step],
+    name: "a fully measured shell",
+    ts: "FULL_SHELL, metrics/flatten.ts",
+    py: "FULL, nebula3d.analysis.coverage",
+    values: () => [FULL_SHELL, py.coverage_full],
   },
   {
     name: "the ΔPDF origin's disk, a share of the half-width",
