@@ -1,0 +1,2197 @@
+{
+ "claude": {
+  "reply": [
+   {
+    "model": "claude-opus-5-5",
+    "max_tokens": 64000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     }
+    ],
+    "system": [
+     {
+      "type": "text",
+      "text": "You are the Pilot.",
+      "cache_control": {
+       "type": "ephemeral"
+      }
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    },
+    "thinking": {
+     "type": "adaptive",
+     "display": "summarized"
+    },
+    "tools": [
+     {
+      "name": "read_skill",
+      "description": "read_skill.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "describe_dataset",
+      "description": "describe_dataset.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "current_view",
+      "description": "current_view.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "measure_reciprocal_cut",
+      "description": "measure_reciprocal_cut.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "measure_dpdf_cut",
+      "description": "measure_dpdf_cut.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "assess_stage",
+      "description": "assess_stage.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "texture_check",
+      "description": "texture_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "qmax_coverage",
+      "description": "qmax_coverage.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "symmetry_check",
+      "description": "symmetry_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "dpdf_contrast",
+      "description": "dpdf_contrast.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "dpdf_peaks",
+      "description": "dpdf_peaks.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "grain_check",
+      "description": "grain_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "ub_check",
+      "description": "ub_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "radial_profile",
+      "description": "radial_profile.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "line_profile",
+      "description": "line_profile.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "bragg_peaks",
+      "description": "bragg_peaks.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "consistency_details",
+      "description": "consistency_details.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "run_log",
+      "description": "run_log.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "compare_datasets",
+      "description": "compare_datasets.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "configure_settings",
+      "description": "configure_settings.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "update_settings",
+      "description": "update_settings.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "run_pipeline",
+      "description": "run_pipeline.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "tune_pipeline",
+      "description": "tune_pipeline.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "show_in_viewer",
+      "description": "show_in_viewer.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     }
+    ],
+    "betas": [
+     "server-side-fallback-2026-07-01"
+    ],
+    "fallbacks": "default"
+   },
+   {
+    "model": "claude-opus-5-5",
+    "max_tokens": 64000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "thinking",
+        "thinking": "Look first.",
+        "signature": "sig"
+       },
+       {
+        "type": "tool_use",
+        "id": "tu1",
+        "name": "describe_dataset",
+        "input": {}
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "tu1",
+        "content": "{\"stub\":\"describe_dataset\"}"
+       }
+      ]
+     }
+    ],
+    "system": [
+     {
+      "type": "text",
+      "text": "You are the Pilot.",
+      "cache_control": {
+       "type": "ephemeral"
+      }
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    },
+    "thinking": {
+     "type": "adaptive",
+     "display": "summarized"
+    },
+    "tools": [
+     {
+      "name": "read_skill",
+      "description": "read_skill.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "describe_dataset",
+      "description": "describe_dataset.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "current_view",
+      "description": "current_view.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "measure_reciprocal_cut",
+      "description": "measure_reciprocal_cut.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "measure_dpdf_cut",
+      "description": "measure_dpdf_cut.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "assess_stage",
+      "description": "assess_stage.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "texture_check",
+      "description": "texture_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "qmax_coverage",
+      "description": "qmax_coverage.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "symmetry_check",
+      "description": "symmetry_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "dpdf_contrast",
+      "description": "dpdf_contrast.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "dpdf_peaks",
+      "description": "dpdf_peaks.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "grain_check",
+      "description": "grain_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "ub_check",
+      "description": "ub_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "radial_profile",
+      "description": "radial_profile.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "line_profile",
+      "description": "line_profile.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "bragg_peaks",
+      "description": "bragg_peaks.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "consistency_details",
+      "description": "consistency_details.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "run_log",
+      "description": "run_log.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "compare_datasets",
+      "description": "compare_datasets.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "configure_settings",
+      "description": "configure_settings.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "update_settings",
+      "description": "update_settings.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "run_pipeline",
+      "description": "run_pipeline.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "tune_pipeline",
+      "description": "tune_pipeline.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "show_in_viewer",
+      "description": "show_in_viewer.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     }
+    ],
+    "betas": [
+     "server-side-fallback-2026-07-01"
+    ],
+    "fallbacks": "default"
+   }
+  ],
+  "replyAtTheRoundCap": [
+   {
+    "model": "claude-opus-5-5",
+    "max_tokens": 64000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     }
+    ],
+    "system": [
+     {
+      "type": "text",
+      "text": "You are the Pilot.",
+      "cache_control": {
+       "type": "ephemeral"
+      }
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    },
+    "thinking": {
+     "type": "adaptive",
+     "display": "summarized"
+    },
+    "tools": [
+     {
+      "name": "read_skill",
+      "description": "read_skill.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "describe_dataset",
+      "description": "describe_dataset.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "current_view",
+      "description": "current_view.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "measure_reciprocal_cut",
+      "description": "measure_reciprocal_cut.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "measure_dpdf_cut",
+      "description": "measure_dpdf_cut.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "assess_stage",
+      "description": "assess_stage.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "texture_check",
+      "description": "texture_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "qmax_coverage",
+      "description": "qmax_coverage.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "symmetry_check",
+      "description": "symmetry_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "dpdf_contrast",
+      "description": "dpdf_contrast.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "dpdf_peaks",
+      "description": "dpdf_peaks.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "grain_check",
+      "description": "grain_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "ub_check",
+      "description": "ub_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "radial_profile",
+      "description": "radial_profile.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "line_profile",
+      "description": "line_profile.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "bragg_peaks",
+      "description": "bragg_peaks.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "consistency_details",
+      "description": "consistency_details.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "run_log",
+      "description": "run_log.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "compare_datasets",
+      "description": "compare_datasets.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "configure_settings",
+      "description": "configure_settings.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "update_settings",
+      "description": "update_settings.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "run_pipeline",
+      "description": "run_pipeline.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "tune_pipeline",
+      "description": "tune_pipeline.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "show_in_viewer",
+      "description": "show_in_viewer.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     }
+    ],
+    "betas": [
+     "server-side-fallback-2026-07-01"
+    ],
+    "fallbacks": "default"
+   },
+   {
+    "model": "claude-opus-5-5",
+    "max_tokens": 64000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "thinking",
+        "thinking": "Look first.",
+        "signature": "sig"
+       },
+       {
+        "type": "tool_use",
+        "id": "tu1",
+        "name": "describe_dataset",
+        "input": {}
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "tu1",
+        "content": "{\"stub\":\"describe_dataset\"}"
+       }
+      ]
+     }
+    ],
+    "system": [
+     {
+      "type": "text",
+      "text": "You are the Pilot.",
+      "cache_control": {
+       "type": "ephemeral"
+      }
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    },
+    "thinking": {
+     "type": "adaptive",
+     "display": "summarized"
+    },
+    "tools": [
+     {
+      "name": "read_skill",
+      "description": "read_skill.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "describe_dataset",
+      "description": "describe_dataset.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "current_view",
+      "description": "current_view.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "measure_reciprocal_cut",
+      "description": "measure_reciprocal_cut.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "measure_dpdf_cut",
+      "description": "measure_dpdf_cut.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "assess_stage",
+      "description": "assess_stage.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "texture_check",
+      "description": "texture_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "qmax_coverage",
+      "description": "qmax_coverage.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "symmetry_check",
+      "description": "symmetry_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "dpdf_contrast",
+      "description": "dpdf_contrast.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "dpdf_peaks",
+      "description": "dpdf_peaks.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "grain_check",
+      "description": "grain_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "ub_check",
+      "description": "ub_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "radial_profile",
+      "description": "radial_profile.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "line_profile",
+      "description": "line_profile.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "bragg_peaks",
+      "description": "bragg_peaks.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "consistency_details",
+      "description": "consistency_details.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "run_log",
+      "description": "run_log.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "compare_datasets",
+      "description": "compare_datasets.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "configure_settings",
+      "description": "configure_settings.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "update_settings",
+      "description": "update_settings.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "run_pipeline",
+      "description": "run_pipeline.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "tune_pipeline",
+      "description": "tune_pipeline.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "show_in_viewer",
+      "description": "show_in_viewer.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     }
+    ],
+    "tool_choice": {
+     "type": "none"
+    },
+    "betas": [
+     "server-side-fallback-2026-07-01"
+    ],
+    "fallbacks": "default"
+   }
+  ],
+  "tuning": [
+   {
+    "model": "claude-opus-5-5",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "Propose the next trial."
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    },
+    "thinking": {
+     "type": "adaptive",
+     "display": "summarized"
+    },
+    "betas": [
+     "server-side-fallback-2026-07-01"
+    ],
+    "fallbacks": "default"
+   }
+  ]
+ },
+ "lmstudio": {
+  "reply": [
+   {
+    "model": "lm",
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are the Pilot."
+     },
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     }
+    ],
+    "temperature": 0.2,
+    "stream": true,
+    "stream_options": {
+     "include_usage": true
+    },
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "read_skill",
+       "description": "read_skill.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "describe_dataset",
+       "description": "describe_dataset.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "current_view",
+       "description": "current_view.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "measure_reciprocal_cut",
+       "description": "measure_reciprocal_cut.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "assess_stage",
+       "description": "assess_stage.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "texture_check",
+       "description": "texture_check.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "radial_profile",
+       "description": "radial_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "line_profile",
+       "description": "line_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "run_log",
+       "description": "run_log.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "configure_settings",
+       "description": "configure_settings.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "show_in_viewer",
+       "description": "show_in_viewer.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    ]
+   },
+   {
+    "model": "lm",
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are the Pilot."
+     },
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     },
+     {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+       {
+        "id": "c1",
+        "type": "function",
+        "function": {
+         "name": "describe_dataset",
+         "arguments": "{}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c1",
+      "content": "{\"stub\":\"describe_dataset\"}"
+     }
+    ],
+    "temperature": 0.2,
+    "stream": true,
+    "stream_options": {
+     "include_usage": true
+    },
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "read_skill",
+       "description": "read_skill.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "describe_dataset",
+       "description": "describe_dataset.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "current_view",
+       "description": "current_view.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "measure_reciprocal_cut",
+       "description": "measure_reciprocal_cut.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "assess_stage",
+       "description": "assess_stage.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "texture_check",
+       "description": "texture_check.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "radial_profile",
+       "description": "radial_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "line_profile",
+       "description": "line_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "run_log",
+       "description": "run_log.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "configure_settings",
+       "description": "configure_settings.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "show_in_viewer",
+       "description": "show_in_viewer.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "replyAtTheRoundCap": [
+   {
+    "model": "lm",
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are the Pilot."
+     },
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     }
+    ],
+    "temperature": 0.2,
+    "stream": true,
+    "stream_options": {
+     "include_usage": true
+    },
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "read_skill",
+       "description": "read_skill.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "describe_dataset",
+       "description": "describe_dataset.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "current_view",
+       "description": "current_view.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "measure_reciprocal_cut",
+       "description": "measure_reciprocal_cut.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "assess_stage",
+       "description": "assess_stage.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "texture_check",
+       "description": "texture_check.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "radial_profile",
+       "description": "radial_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "line_profile",
+       "description": "line_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "run_log",
+       "description": "run_log.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "configure_settings",
+       "description": "configure_settings.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "show_in_viewer",
+       "description": "show_in_viewer.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    ]
+   },
+   {
+    "model": "lm",
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are the Pilot."
+     },
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     },
+     {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+       {
+        "id": "c1",
+        "type": "function",
+        "function": {
+         "name": "describe_dataset",
+         "arguments": "{}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c1",
+      "content": "{\"stub\":\"describe_dataset\"}"
+     }
+    ],
+    "temperature": 0.2,
+    "stream": true,
+    "stream_options": {
+     "include_usage": true
+    },
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "read_skill",
+       "description": "read_skill.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "describe_dataset",
+       "description": "describe_dataset.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "current_view",
+       "description": "current_view.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "measure_reciprocal_cut",
+       "description": "measure_reciprocal_cut.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "assess_stage",
+       "description": "assess_stage.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "texture_check",
+       "description": "texture_check.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "radial_profile",
+       "description": "radial_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "line_profile",
+       "description": "line_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "run_log",
+       "description": "run_log.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "configure_settings",
+       "description": "configure_settings.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "show_in_viewer",
+       "description": "show_in_viewer.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    ],
+    "tool_choice": "none"
+   }
+  ],
+  "tuning": [
+   {
+    "model": "lm",
+    "messages": [
+     {
+      "role": "user",
+      "content": "Propose the next trial."
+     }
+    ],
+    "temperature": 0.2,
+    "stream": false
+   }
+  ]
+ },
+ "ollama": {
+  "reply": [
+   {
+    "model": "gemma4:26b",
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are the Pilot."
+     },
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     }
+    ],
+    "stream": true,
+    "options": {
+     "temperature": 0.2,
+     "num_ctx": 8192
+    },
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "read_skill",
+       "description": "read_skill.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "describe_dataset",
+       "description": "describe_dataset.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "current_view",
+       "description": "current_view.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "measure_reciprocal_cut",
+       "description": "measure_reciprocal_cut.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "assess_stage",
+       "description": "assess_stage.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "texture_check",
+       "description": "texture_check.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "radial_profile",
+       "description": "radial_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "line_profile",
+       "description": "line_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "run_log",
+       "description": "run_log.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "configure_settings",
+       "description": "configure_settings.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "show_in_viewer",
+       "description": "show_in_viewer.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    ]
+   },
+   {
+    "model": "gemma4:26b",
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are the Pilot."
+     },
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     },
+     {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+       {
+        "function": {
+         "name": "describe_dataset",
+         "arguments": {}
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "content": "{\"stub\":\"describe_dataset\"}",
+      "tool_name": "describe_dataset"
+     }
+    ],
+    "stream": true,
+    "options": {
+     "temperature": 0.2,
+     "num_ctx": 8192
+    },
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "read_skill",
+       "description": "read_skill.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "describe_dataset",
+       "description": "describe_dataset.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "current_view",
+       "description": "current_view.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "measure_reciprocal_cut",
+       "description": "measure_reciprocal_cut.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "assess_stage",
+       "description": "assess_stage.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "texture_check",
+       "description": "texture_check.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "radial_profile",
+       "description": "radial_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "line_profile",
+       "description": "line_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "run_log",
+       "description": "run_log.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "configure_settings",
+       "description": "configure_settings.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "show_in_viewer",
+       "description": "show_in_viewer.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "replyAtTheRoundCap": [
+   {
+    "model": "gemma4:26b",
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are the Pilot."
+     },
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     }
+    ],
+    "stream": true,
+    "options": {
+     "temperature": 0.2,
+     "num_ctx": 8192
+    },
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "read_skill",
+       "description": "read_skill.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "describe_dataset",
+       "description": "describe_dataset.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "current_view",
+       "description": "current_view.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "measure_reciprocal_cut",
+       "description": "measure_reciprocal_cut.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "assess_stage",
+       "description": "assess_stage.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "texture_check",
+       "description": "texture_check.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "radial_profile",
+       "description": "radial_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "line_profile",
+       "description": "line_profile.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "run_log",
+       "description": "run_log.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "configure_settings",
+       "description": "configure_settings.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "show_in_viewer",
+       "description": "show_in_viewer.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    ]
+   },
+   {
+    "model": "gemma4:26b",
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are the Pilot."
+     },
+     {
+      "role": "user",
+      "content": "Is the ring removal clean?"
+     },
+     {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+       {
+        "function": {
+         "name": "describe_dataset",
+         "arguments": {}
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "content": "{\"stub\":\"describe_dataset\"}",
+      "tool_name": "describe_dataset"
+     }
+    ],
+    "stream": true,
+    "options": {
+     "temperature": 0.2,
+     "num_ctx": 8192
+    }
+   }
+  ],
+  "tuning": [
+   {
+    "model": "gemma4:26b",
+    "messages": [
+     {
+      "role": "user",
+      "content": "Propose the next trial."
+     }
+    ],
+    "stream": false,
+    "options": {
+     "temperature": 0.2,
+     "num_ctx": 8192
+    }
+   }
+  ]
+ }
+}
