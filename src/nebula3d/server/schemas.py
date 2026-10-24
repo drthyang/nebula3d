@@ -389,6 +389,20 @@ class NodeTestOut(BaseModel):
     notice: str | None = None       # what the run log says, on a grid too coarse (voxel > needs)
 
 
+class ModulationRecordOut(BaseModel):
+    """The punch's record of what its search left alone: the sample's declared
+    modulation (Modulation.to_json, None for none), the indexing cell and the
+    symmetry it was applied on, the legacy H planes (search_exclude_h_*, None
+    for none), and whether the search's sharp peaks off the lattice bunched at
+    one commensurate fraction (Bunching.to_json, None when they did not)."""
+
+    declared: dict[str, Any] | None = None
+    cell: list[int] | None = None
+    symmetry_ops: list[list[list[int]]] | None = None
+    legacy: dict[str, Any] | None = None
+    bunching: dict[str, Any] | None = None
+
+
 class BraggProfileOut(BaseModel):
     dataset_id: str
     profile_path: str | None = None
@@ -403,6 +417,42 @@ class BraggProfileOut(BaseModel):
     peaks: list[BraggPeakWidthOut] = []
     # The nodes the node test could not judge, if any (pipeline.node_test_notice).
     node_test: NodeTestOut | None = None
+    # What the search left alone and what it found (server.modulation.record_out);
+    # None for a record written before the punch kept it.
+    modulation: ModulationRecordOut | None = None
+
+
+class ModulationPositionOut(BaseModel):
+    """One position a declaration protects (nebula3d.modulation.Position):
+    a plane family (its coordinate, centre and period) or a satellite about
+    each node (its vector)."""
+
+    label: str
+    kind: str  # "plane" | "point"
+    half_width: float
+    coordinate: list[int] | None = None
+    centre: str | None = None
+    period: int | None = None
+    vector: list[str] | None = None
+
+
+class ModulationCheckIn(BaseModel):
+    """A declaration to check: what StageParamsIn.modulation would hold (None:
+    the pipeline's default; "none": nothing), the punch's indexing cell and the
+    symmetry, as operation triplets or HKL matrices."""
+
+    modulation: dict[str, Any] | str | None = None
+    cell: list[int] | None = None
+    symmetry_ops: list[list[list[int]]] | str | None = None
+
+
+class ModulationCheckOut(BaseModel):
+    ok: bool
+    error: str | None = None
+    default: bool = False  # the request named none: the pipeline's default
+    declared: dict[str, Any] | None = None
+    description: str | None = None
+    positions: list[ModulationPositionOut] = []
 
 
 class StageParamsIn(BaseModel):
@@ -450,9 +500,16 @@ class StageParamsIn(BaseModel):
     # The |Q|-shell search's intensity and prominence floors, as multiples of
     # the diffuse scatter (both; > 0).
     punch_search_floor: float | None = None
-    # H planes the search leaves alone, as fractional parts of H (e.g. [1/3,
-    # 2/3] for a q = (1/3, 0, 0) satellite family; [] protects none), and
-    # their half width in r.l.u.
+    # The sample's modulation, a fact about the sample (PipelineParams.
+    # modulation): its k vectors, order, form ("points" or "planes") and half
+    # width, as Modulation.parse reads them (a mapping, or the k vectors as
+    # text); "none" declares none.  None: the pipeline's default.
+    modulation: dict[str, Any] | str | None = None
+    # Legacy: H planes the search leaves alone, as fractional parts of H (e.g.
+    # [1/3, 2/3]; [] protects none), and their half width in r.l.u.  Without a
+    # modulation they say what is protected as before: the fractions replace
+    # the default declaration, the half width alone sets its half width.  Not
+    # with a modulation.
     punch_search_protect_h: list[float] | None = None
     punch_search_protect_half_width: float | None = None
     punch_search_max_width_ratio: float | None = None
