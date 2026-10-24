@@ -22,10 +22,15 @@ export interface ToolContext {
   // C), the conversation has no skills: read_skill is not offered (toolsWithSkills)
   // and no stage waits for one to be read (runToolCall).
   skills?: boolean;
-  // The skills read in this conversation (read_skill adds to it). Set on every
-  // call the model makes, which gates a stage's changes on its skill; left
-  // unset by the app's own calls (the report), which change nothing.
+  // The skills read in this reply (read_skill adds to it), with those whose
+  // text the reply's messages carry (startReply, round.ts). Set on every call
+  // the model makes, which gates a stage's changes on its skill; left unset by
+  // the app's own calls (the report), which change nothing.
   skillsRead?: Set<string>;
+  // The skills read in the conversation's earlier turns. They open no gate:
+  // the chat sends an earlier turn as its text alone, so the skill's text is
+  // not in this reply, and the refusal asks for it again (skills.ts).
+  skillsReadEarlier?: ReadonlySet<string>;
   // The tool results of the conversation's earlier turns: what an answer's
   // numbers may come from besides this reply's own results (agent.ts).
   earlierResults?: readonly string[];

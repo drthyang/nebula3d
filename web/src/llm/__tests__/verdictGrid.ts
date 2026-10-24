@@ -110,6 +110,32 @@ export const COVERAGE: Variant[] = [
   }),
   v("counts end, no edge", { verdict: "clean: the window puts 2e-4 of its weight on unmeasured reciprocal space", window_weight_on_unmeasured: 0.0002, raw_counts: { q_max_edge: null }, counts_end_inside_box: true }),
   v("weight only", { window_weight_on_unmeasured: 0.04 }),
+  // With the window fitted to the coverage (plan 4.5): the weight, or the
+  // taper's reach, is the backend's own target, and a band past the counts
+  // needs attention.
+  v("fitted, counts end inside", {
+    verdict:
+      "fitted to the coverage: the ΔPDF's ellipsoid window (shrunk to 0.695 × to fit the coverage) puts 9.82e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the raw counts end at 4.507 Å⁻¹, inside the box (its nearest face at 6.444 Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0–4.5 Å⁻¹ (suggested_band), the user's to set",
+    window_weight_on_unmeasured: 0.000982,
+    raw_counts: { q_min_edge: null, q_max_edge: 4.507, fully_measured: [0.15, 4.45], box_face_q: 6.444 },
+    suggested_band: [0, 4.5],
+    counts_end_inside_box: true,
+  }),
+  v("fitted by the taper", {
+    verdict:
+      "fitted to the coverage: the window is tapered to the measured coverage, where the backend fits it to keep at most 1e-3 of its weight on unmeasured reciprocal space: its own target, not a check; the raw counts reach the box's nearest face",
+    window_weight_on_unmeasured: null,
+    counts_end_inside_box: false,
+  }),
+  v("fitted, a band past the counts", {
+    verdict:
+      "too far: Qmax past the counts' upper edge (4.507 Å⁻¹): empty voxels enter the transform; the ΔPDF's ellipsoid window (shrunk to 0.695 × to fit the coverage) puts 9.82e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the band the counts allow is suggested_band, the user's to set",
+    window_weight_on_unmeasured: 0.000982,
+    raw_counts: { q_min_edge: null, q_max_edge: 4.507, fully_measured: [0.15, 4.45], box_face_q: 6.444 },
+    suggested_band: [0, 4.5],
+    counts_end_inside_box: true,
+    band_check: "Qmax past the counts' upper edge (4.507 Å⁻¹): empty voxels enter the transform",
+  }),
 ];
 
 export const SYMMETRY: Variant[] = [

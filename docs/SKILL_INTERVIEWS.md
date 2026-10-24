@@ -15,7 +15,7 @@ Each answer lands in one of four places:
   in its own PR, which waits for the user;
 - **code:** a firm rule the app enforces, or a limit a tool judges by. The
   skill gate in `web/src/llm/skills.ts` is one: a stage's settings change, and
-  the stage is tuned, only after its skill has been read in the conversation. A
+  the stage is tuned, only after its skill has been read in the same reply. A
   tool can also hold a rule of its own, as `ub_check` does on a symmetrised
   volume. A limit that changes goes in its own PR, with a decision record in the
   findings record (`docs/evals/validation/review-findings/`);

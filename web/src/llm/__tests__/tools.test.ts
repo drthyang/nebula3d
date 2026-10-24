@@ -529,19 +529,75 @@ describe("run_log", () => {
 });
 
 describe("qmax_coverage", () => {
-  // Measured out to 1.5 r.l.u. of the origin on every plane; the box ends at 2.
+  // The coverage as Python measures and serves it (nebula3d.analysis.coverage)
+  // for tests/test_coverage.py's constructed volumes, its known answers: a
+  // cubic cell of 4 Å over ±3 r.l.u. (the nearest face at 4.712 Å⁻¹, the
+  // corner at 8.162), counts out to 4.4 Å⁻¹, and past them unmeasured space
+  // masked or NaN, where the measured voxels end with the counts, or zeros
+  // the volume marks measured, where they fill the box.
+  const CUT = {
+    id: "demo.raw", q: [], counted: [], q_min_edge: null, q_max_edge: 4.4, full_q_min: 0.35, full_q_max: 4.35,
+    measured_q_max: 4.35, box_q: 4.712, box_corner_q: 8.162, q_step: 0.1,
+  };
+  const ZEROS = { ...CUT, measured_q_max: 7.85 };
+  // Counts to the box's corners.
+  const FULL_BOX = { ...CUT, q_max_edge: null, full_q_max: 8.05, measured_q_max: 8.05 };
   beforeEach(() => {
-    api.fetchSlice.mockResolvedValue(makeSlice(21, 21, (x, y) => (Math.hypot(x, y) < 1.5 ? 1 : NaN), { half: 2 }));
-    usePipelineStore.setState({ pdfQMax: "", pdfApod: "", pdfWindowShape: "", pdfWindowSupport: true });
+    api.fetchVolumeCoverage.mockResolvedValue(CUT);
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "", pdfApod: "", pdfWindowShape: "", pdfWindowSupport: true });
   });
   const check = async () => JSON.parse((await run("qmax_coverage", {})).text);
   const judged = async () => (await run("qmax_coverage", {})).outcomes?.[0];
 
-  it("passes a window tapered to the measured coverage", async () => {
-    const out = await check();
-    expect(out.full_coverage_q).toBeLessThan(out.box_face_q);
+  it("reads the coverage Python measures, once, and shows it on the first plane through the origin", async () => {
+    const r = await run("qmax_coverage", {});
+    expect(api.fetchVolumeCoverage).toHaveBeenCalledWith("demo.raw");
+    expect(api.fetchSlice).not.toHaveBeenCalled(); // the planes only show where
+    expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0 });
+    const out = JSON.parse(r.text);
+    expect([out.full_coverage_q, out.box_face_q]).toEqual([4.35, 4.712]);
+    expect(out.raw_counts).toEqual({ q_min_edge: null, q_max_edge: 4.4, fully_measured: [0.35, 4.35], box_face_q: 4.712 });
+    expect(out).not.toHaveProperty("per_plane");
+    expect(out).not.toHaveProperty("low_q_gap");
+  });
+
+  // The window tapered to the measured coverage reaches it by construction
+  // (plan 4.5): the verdict says the reach is the backend's own target, and
+  // judges where the counts end and the band.
+  it("passes a window tapered to the measured coverage, masked or NaN past the counts, saying the reach is the backend's target", async () => {
+    const r = await run("qmax_coverage", {});
+    const out = JSON.parse(r.text);
+    expect(out.transform_reach_q).toBe(4.35);
     expect(out.reach_from).toBe("the window is tapered to the measured coverage");
-    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["reach inside coverage"] });
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "pass", reasons: ["window fitted"], dataProblems: ["the counts end at 4.4 Å⁻¹, inside the box"] });
+    expect(out.verdict).toBe(
+      "fitted to the coverage: the window is tapered to the measured coverage, where the backend fits it to keep at most 1e-3 of its weight on unmeasured reciprocal space: its own target, not a check; " +
+        "the raw counts end at 4.4 Å⁻¹, inside the box (its nearest face at 4.712 Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0–4.4 Å⁻¹ (suggested_band), the user's to set",
+    );
+  });
+
+  // Known answer (tests/test_coverage.py): with zeros stored past the counts and
+  // marked measured, the backend's support takes them as data and does not fit
+  // the window, so the transform reaches the box faces, past the counts.
+  it("flags a volume that stores zeros past its counts: the taper cannot follow them", async () => {
+    api.fetchVolumeCoverage.mockResolvedValue(ZEROS);
+    const r = await run("qmax_coverage", {});
+    const out = JSON.parse(r.text);
+    expect(out.full_coverage_q).toBe(4.35); // the counts' edge, as on the NaN volume
+    expect(out.transform_reach_q).toBe(4.712);
+    expect(out.reach_from).toBe(
+      "the window tapers to zero at the box faces: past its counts the volume stores zeros it marks measured, which the taper to the coverage takes as data",
+    );
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["reach past coverage"], dataProblems: ["the counts end at 4.4 Å⁻¹, inside the box"] });
+    // The band is the remedy, not the taper; and no taper keeps the transform on the counts.
+    expect(out.verdict).toMatch(/past full coverage at 4\.35 Å⁻¹; set a \|Q\| band at or below it; the raw counts end at 4\.4 Å⁻¹/);
+    expect(out.verdict).toContain("and no |Q| band is set: the band they allow is 0–4.4 Å⁻¹");
+    expect(out.verdict).not.toMatch(/taper the window|only the window's taper/);
+    // Zeros stored up to inside the box, masked past them: the taper follows the measured voxels, past the counts.
+    api.fetchVolumeCoverage.mockResolvedValue({ ...ZEROS, measured_q_max: 4.55 });
+    const part = await check();
+    expect([part.transform_reach_q, part.reach_from]).toEqual([4.55, "the window is tapered to the measured voxels, which run past the counts: the volume stores zeros there"]);
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
   });
 
   it("flags a window that tapers only at the box faces past the coverage", async () => {
@@ -550,12 +606,23 @@ describe("qmax_coverage", () => {
     expect(out.transform_reach_q).toBe(out.box_face_q);
     expect(out.reach_from).toBe("the window tapers to zero at the box faces");
     expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
+    // The backend never fits a separable window the page asks for, the support on or not.
+    usePipelineStore.setState({ pdfWindowSupport: true, pdfWindowShape: "separable" });
+    expect((await check()).reach_from).toBe("the window tapers to zero at the box faces");
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
+  });
+
+  it("passes the box faces inside a box measured to its corners", async () => {
+    api.fetchVolumeCoverage.mockResolvedValue(FULL_BOX);
+    const out = await check();
+    expect([out.transform_reach_q, out.full_coverage_q, out.counts_end_inside_box]).toEqual([4.712, 8.05, false]);
+    expect(out.verdict).toBe("the transform reaches 4.712 Å⁻¹ (the window tapers to zero at the box faces), inside full coverage at 8.05 Å⁻¹");
   });
 
   it("gives where the raw counts begin and end, the band they allow, and checks a band that is set", async () => {
     api.fetchVolumeCoverage.mockResolvedValue({
       id: "demo.raw", q: [], counted: [], q_min_edge: 0.61, q_max_edge: 14.204,
-      full_q_min: 0.74, full_q_max: 13.6, box_q: 11.05, box_corner_q: 29.4,
+      full_q_min: 0.74, full_q_max: 13.6, measured_q_max: 13.6, box_q: 11.05, box_corner_q: 29.4, q_step: 0.1,
     });
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
     const none = await check();
@@ -570,31 +637,99 @@ describe("qmax_coverage", () => {
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
   });
 
-  it("judges an explicit |Q| band, and a flat window by the box corners", async () => {
-    usePipelineStore.setState({ pdfQMax: "0.1" });
+  it("judges an explicit |Q| band by its reach where the window is not fitted, and a flat window by the box corners", async () => {
+    usePipelineStore.setState({ pdfWindowSupport: false, pdfQMax: "0.1" });
     expect(await judged()).toMatchObject({ kind: "pass", reasons: ["reach inside coverage"] });
-    usePipelineStore.setState({ pdfQMax: "", pdfApod: "none" });
+    usePipelineStore.setState({ pdfQMax: "4.6" });
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
+    usePipelineStore.setState({ pdfWindowSupport: true, pdfQMax: "", pdfApod: "none" });
     const flat = await check();
     expect(flat.transform_reach_q).toBe(6); // the ΔPDF's recorded q_max, the box corner
     expect(flat.reach_from).toMatch(/out to the box corners$/);
     expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
   });
 
-  it("judges by the window's recorded weight on unmeasured space when the ΔPDF has it", async () => {
+  it("judges by the window's recorded weight on unmeasured space where the window is not fitted to the coverage", async () => {
+    usePipelineStore.setState({ pdfWindowSupport: false });
     const meta = await api.fetchDpdfMeta();
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 1, window_open_weight: 4.1e-6 });
     const clean = await check();
     expect(clean.window_weight_on_unmeasured).toBe(4.1e-6);
     expect(clean.window_shape).toBe("ellipsoid");
+    expect(clean.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window puts 4\.1e-6 of its weight on unmeasured reciprocal space; /);
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 1, window_open_weight: 4.1e-6 });
     expect(await judged()).toMatchObject({ kind: "pass", reasons: ["window within limit"] });
-    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 0.04 });
-    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
+    // A record past the limit is judged, whatever the page says of the window.
+    for (const support of [false, true]) {
+      usePipelineStore.setState({ pdfWindowSupport: support });
+      api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 0.04 });
+      expect(await judged()).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
+    }
+  });
+
+  // Plan 4.5: the support on and a window the backend fits, the weight the
+  // ΔPDF records is the backend's own target; the verdict judges where the
+  // counts end and a band that is set.
+  it("says the recorded weight of a window fitted to the coverage is the backend's target, not a check", async () => {
+    const meta = await api.fetchDpdfMeta();
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 0.94, window_open_weight: 9.7e-4 });
+    const r = await run("qmax_coverage", {});
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "pass", reasons: ["window fitted", "window within limit"], dataProblems: ["the counts end at 4.4 Å⁻¹, inside the box"] });
+    expect(JSON.parse(r.text).verdict).toMatch(
+      /^fitted to the coverage: the ΔPDF's ellipsoid window \(shrunk to 0\.94 × to fit the coverage\) puts 9\.7e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the raw counts end at 4\.4 Å⁻¹/,
+    );
+    // Counts that reach the box: nothing else to say.
+    api.fetchVolumeCoverage.mockResolvedValue(FULL_BOX);
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 6.3e-4 });
+    const full = await run("qmax_coverage", {});
+    expect(full.outcomes?.[0]).toMatchObject({ kind: "pass", reasons: ["window fitted", "window within limit"], dataProblems: [] });
+    expect(JSON.parse(full.text).verdict).toMatch(/: its own target, not a check; the raw counts reach the box's nearest face$/);
+    // Not fitted: zeros stored past the counts (the record's weight judged as before).
+    api.fetchVolumeCoverage.mockResolvedValue(ZEROS);
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 6.3e-4 });
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["window within limit"] });
+  });
+
+  it("judges a band set where the window is fitted: inside the counts it passes, past their edges it needs attention", async () => {
+    const meta = await api.fetchDpdfMeta();
+    const fittedRecord = () => api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 0.94, window_open_weight: 9.7e-4 });
+    usePipelineStore.setState({ pdfQMin: "0", pdfQMax: "4.4" });
+    fittedRecord();
+    const inside = await run("qmax_coverage", {});
+    expect(inside.outcomes?.[0]).toMatchObject({ kind: "pass", reasons: ["window fitted", "window within limit"], dataProblems: ["the counts end at 4.4 Å⁻¹, inside the box"] });
+    expect(JSON.parse(inside.text).verdict).toMatch(/: its own target, not a check; the band 0–4\.4 Å⁻¹ stays inside the counts$/);
+    usePipelineStore.setState({ pdfQMax: "5.5" });
+    fittedRecord();
+    const past = await run("qmax_coverage", {});
+    expect(past.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["band past counts", "window within limit"] });
+    expect(JSON.parse(past.text).verdict).toMatch(
+      /^too far: Qmax past the counts' upper edge \(4\.4 Å⁻¹\): empty voxels enter the transform; the ΔPDF's ellipsoid window .*: its own target, not a check; the band the counts allow is suggested_band, the user's to set$/,
+    );
+    // Arm C reads it without the remedy.
+    fittedRecord();
+    const armC = await callTool({ ...ctx, skills: false }, "qmax_coverage", {});
+    expect(JSON.parse(armC.text).verdict).toMatch(/: its own target, not a check$/);
+    // No reach is judged with no ΔPDF weight either: the band is.
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["band past counts"] });
+  });
+
+  // A band set without a Qmin starts at 0: below the counts' lower edge only
+  // where the counts begin above the origin (a beam stop).
+  it("takes a band with no Qmin from 0, past the counts' lower edge only above a beam stop", async () => {
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "4.4" });
+    expect((await check()).band_check).toBe("the band 0–4.4 Å⁻¹ stays inside the counts");
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["window fitted"] });
+    api.fetchVolumeCoverage.mockResolvedValue({ ...CUT, q_min_edge: 0.61, full_q_min: 0.75 });
+    expect((await check()).band_check).toBe("Qmin below the counts' lower edge (0.61 Å⁻¹): the beam stop's empty voxels enter the transform");
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["band past counts"] });
   });
 
   // The dev coverage case (docs/pilot-review.md finding 7): counts cut at
   // 4.511 Å⁻¹ of a box whose nearest face is 6.444 Å⁻¹, a window shrunk to fit.
-  const cut = { id: "demo.raw", q: [], counted: [], q_min_edge: null, q_max_edge: 4.507, full_q_min: 0.15, full_q_max: 4.45, box_q: 6.444, box_corner_q: 11.16 };
+  const cut = {
+    id: "demo.raw", q: [], counted: [], q_min_edge: null, q_max_edge: 4.507, full_q_min: 0.15, full_q_max: 4.45,
+    measured_q_max: 4.45, box_q: 6.444, box_corner_q: 11.16, q_step: 0.1,
+  };
   const shrunk = async () => {
     const meta = await api.fetchDpdfMeta();
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 0.695, window_open_weight: 9.8e-4 });
@@ -624,7 +759,7 @@ describe("qmax_coverage", () => {
   it("adds nothing where the counts reach the box: a full box, or a turned one whose counts reach past its faces", async () => {
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
     for (const edge of [null, 10.95, 6.4]) {
-      api.fetchVolumeCoverage.mockResolvedValue({ ...cut, q_max_edge: edge, full_q_max: 8.45 });
+      api.fetchVolumeCoverage.mockResolvedValue({ ...cut, q_max_edge: edge, full_q_max: 8.45, measured_q_max: 8.45 });
       await shrunk();
       const out = await check();
       expect(out.counts_end_inside_box).toBe(false); // 6.4: within one coverage shell of the face

@@ -104,6 +104,7 @@ const TAKEN_OUT = [
   "Raise it toward the data's coverage", // flattenFitQMax's help: the same step
   "a UB error gives the same relative offset", // ub_check: reduction-qc's step 2
   "read the method first: call read_skill", // the skill gate's refusal
+  "read the method again: call read_skill", // its refusal in a later turn, for a skill read in an earlier one
   "call assess_stage with stage", // a send-back's next step
   "(e.g. {{assess_stage.flatten.verdict}})", // a send-back's example of a reference
 ];
@@ -359,6 +360,7 @@ describe("arm C's session, with the skills off", () => {
       ...Object.values(STAGE_GOALS),
       describeStageParams("flatten"),
       unreadSkillRefusal("update_settings", { changes: { flattenQ2: true } }, new Set()) ?? "",
+      unreadSkillRefusal("update_settings", { changes: { flattenQ2: true } }, new Set(), new Set(["reduction-qc"])) ?? "",
       issuesPrompt(issues),
       issuesPrompt(answerIssues("The reduction is ready for analysis.", [], "")!),
     ].join("\n");

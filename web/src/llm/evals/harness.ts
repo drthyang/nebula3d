@@ -17,6 +17,7 @@ import type { Failure } from "../recovery";
 import type { LlmSettings } from "../settings";
 import type { ComputedVerdict } from "../verdicts";
 import { CHAT_TOOLS, toolsWhere, type AgentTool } from "../tools";
+import type { Dispute } from "./graderReading";
 
 export interface EvalRun {
   scenario: string;
@@ -36,11 +37,14 @@ export interface Grade {
   check: string;
   pass: boolean;
   detail: string;
+  // The graders' two readings of the answer disagree on this check: the shared
+  // reader passes it, the witness fails it (graderReading.ts). Absent where they agree.
+  dispute?: Dispute;
 }
 
 export interface Check {
   name: string;
-  grade: (run: EvalRun) => { pass: boolean; detail: string };
+  grade: (run: EvalRun) => { pass: boolean; detail: string; dispute?: Dispute };
 }
 
 export interface Scenario {
@@ -90,6 +94,30 @@ export function grade(scenario: Scenario, run: EvalRun): ScenarioResult {
   const grades = scenario.checks.map((c) => ({ check: c.name, ...c.grade(run) }));
   return { scenario: scenario.id, passed: !run.error && grades.every((g) => g.pass), grades, run };
 }
+
+/** A run as a scenario record keeps it (live.test.ts writes it into docs/evals/results/). */
+export interface RecordedRun {
+  scenario: string;
+  latency_ms: number;
+  usage: EvalRun["usage"];
+  steps: Omit<AgentStep, "id">[];
+  answer: string;
+  note: string | null;
+  error: string | null;
+  failure?: EvalRun["failure"];
+}
+
+/** A recorded run as the run it records, to grade it again (NEBULA_EVAL_REGRADE) or read its answer. */
+export const runOfRecord = (r: RecordedRun): EvalRun => ({
+  scenario: r.scenario,
+  steps: r.steps.map((s, i) => ({ id: String(i), ...s })),
+  content: r.answer,
+  note: r.note ?? undefined,
+  error: r.error ?? undefined,
+  failure: r.failure ?? null,
+  latencyMs: r.latency_ms,
+  usage: r.usage,
+});
 
 export async function runScenario(
   scenario: Scenario,

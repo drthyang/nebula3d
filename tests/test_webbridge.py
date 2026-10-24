@@ -229,6 +229,42 @@ def test_volume_shell_floors_json_is_the_servers_response(tmp_path, monkeypatch)
         webbridge.volume_shell_floors_json("nope.flattened")
 
 
+@pytest.mark.parametrize("stored", ["nan", "zeros"])
+def test_volume_coverage_json_is_the_servers_response(tmp_path, stored):
+    """The browser build's coverage is the native server's, field for field, on a
+    raw volume whose counts end inside the box (tests/test_coverage.py's known
+    answers): the counts' edge, and where the measured voxels end, with the
+    counts when unmeasured space is NaN and at the box's corners when it holds
+    zeros the volume marks measured.  qmax_coverage reads it through either."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d.server import volumes as vol_mod
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+    from nebula3d.server.schemas import CoverageOut
+    from tests.test_coverage import Q_CUT, cut_volume
+    from tests.test_server import SLUG, STEM
+
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "processed").mkdir()
+    nebula3d.save(cut_volume(stored), tmp_path / "raw" / f"{STEM}.nxs")
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    vid = f"{SLUG}.raw"
+    served = client.get(f"/api/volumes/{vid}/coverage")
+    assert served.status_code == 200, served.text
+    vol_mod.clear_cache()  # the bridge computes its own
+    webbridge.setup(workdir=str(tmp_path))
+    bridged = json.loads(webbridge.volume_coverage_json(vid))
+    assert bridged == served.json()
+    assert set(bridged) == set(CoverageOut.model_fields)
+    assert bridged["q_max_edge"] == pytest.approx(Q_CUT, abs=bridged["q_step"] / 2)
+    if stored == "nan":
+        assert bridged["measured_q_max"] == bridged["full_q_max"]
+    else:
+        assert bridged["measured_q_max"] > bridged["box_q"] > bridged["full_q_max"]
+
+
 def test_volume_texture_json_is_the_servers_response(tmp_path, monkeypatch):
     """The browser build's fill texture over every punch hole is the native
     server's, field for field: computed natively by the server and in
@@ -311,6 +347,38 @@ def test_bragg_profile_json(ran_pipeline):
     assert prof["has_profile"] is True
     assert prof["n_peaks"] == len(prof["peaks"]) > 0
     assert prof["width_labels"]
+
+
+def test_bragg_profile_json_is_the_servers_response(ran_pipeline, tmp_path):
+    """The punch's record in the browser build is the native server's, field
+    for field. On the run's 25 points (0.5 Å⁻¹ a voxel) no node's background
+    shell holds the node test's 8 voxels: the record says how many nodes the
+    test left to the search pass, with the notice the punch's done line ends
+    on (G2)."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d.pipeline import node_test_notice
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+    from nebula3d.server.schemas import BraggProfileOut
+
+    dataset_id, _datasets, events = ran_pipeline
+    bridged = json.loads(webbridge.bragg_profile_json(dataset_id))
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path / "work")))
+    served = client.get(f"/api/bragg/{dataset_id}/profile")
+    assert served.status_code == 200, served.text
+    assert bridged == served.json()
+    assert set(bridged) == set(BraggProfileOut.model_fields)
+    left = bridged["node_test"]
+    assert left["under_floor"] == left["examined"] > 0 and left["left_to_search"] is True
+    assert left["voxel_q"] > left["needs_q"] == 0.1433
+    assert left["notice"] == node_test_notice(left["under_floor"], left["examined"],
+                                              left["voxel_q"], left["needs_q"])
+    (done,) = [m for stage, status, _f, m in events if stage == "punch" and status == "done"]
+    assert done.endswith(f". ⚠ {left['notice']}")
+    # Every node was left to the search: the peaks at nodes are its, as their records say.
+    assert {p["found_by"] for p in bridged["peaks"]} == {"search"}
+    assert any(p["source_node_hkl"] is not None for p in bridged["peaks"])
 
 
 def test_bragg_profile_json_missing_file(ran_pipeline):
@@ -566,6 +634,128 @@ def test_run_async_pool_skipped_when_rings_current(tmp_path, monkeypatch):
     asyncio.run(webbridge.run_async(
         "", "{}", flatten_enabled=True, force=False, progress=progress))
     assert any(status == "skip" for st, status, _f, _m in events if st == "rings")
+
+
+# ---------------------------------------------------------------------------
+# the stages' switches, which the page sends in params_json
+# ---------------------------------------------------------------------------
+def _numbers(path: Path) -> dict:
+    import h5py
+
+    out: dict = {}
+    with h5py.File(path, "r") as f:
+        f.visititems(lambda name, obj: out.__setitem__(name, obj[()])
+                     if isinstance(obj, h5py.Dataset) and obj.dtype.kind in "biuf" else None)
+    return out
+
+
+def _same_numbers(a: Path, b: Path) -> bool:
+    na, nb = _numbers(a), _numbers(b)
+    return na.keys() == nb.keys() and all(
+        np.array_equal(na[k], nb[k], equal_nan=True) for k in na)
+
+
+def _demo_after_a_full_run(workdir: Path) -> Path:
+    """A workspace with the demo input and every output of a full run."""
+    webbridge.setup(workdir=str(workdir))
+    webbridge.make_demo_input(n=25)
+    webbridge.run("", "{}", flatten_enabled=True, force=True)
+    return workdir / "processed"
+
+
+_PUNCH_OFF = json.dumps({"rings_enabled": True, "punch_enabled": False,
+                         "backfill_enabled": True})
+
+
+def test_run_with_a_stage_switched_off_passes_its_input_through(tmp_path):
+    """The bridge takes the page's switches in params_json: after a full run,
+    a run with the punch off has the backfill read the ring-removed volume,
+    never the punched one the full run left (which stays as it was), and
+    gives a fresh punch-off run's backfilled volume."""
+    from nebula3d.pipeline import pipeline_paths
+
+    webbridge.setup(workdir=str(tmp_path / "fresh"))
+    webbridge.make_demo_input(n=25)
+    webbridge.run("rings,backfill", _PUNCH_OFF, flatten_enabled=True)
+    fresh = next((tmp_path / "fresh" / "processed").glob("*_backfilled.h5"))
+
+    proc = _demo_after_a_full_run(tmp_path / "work")
+    paths = pipeline_paths(tmp_path / "work" / "raw" / "synthetic_rocksalt.nxs", proc_dir=proc)
+    left = paths.braggpunched.read_bytes()
+    assert not _same_numbers(paths.backfilled, fresh)  # the switch matters
+    events: list[tuple] = []
+    webbridge.run("rings,backfill,flatten,pdf,pdf_check", _PUNCH_OFF, flatten_enabled=True,
+                  force=True, progress=lambda *a: events.append(a))
+
+    assert ("backfill", "progress", None,
+            f"Bragg punch disabled: the backfill reads {paths.ringremoved.name}") in events
+    assert _same_numbers(paths.backfilled, fresh)
+    assert paths.braggpunched.read_bytes() == left
+
+
+def test_run_async_never_fans_out_a_switched_off_ring_stage(tmp_path, monkeypatch):
+    """With the ring removal off, the ring pool is not engaged even when
+    forced (ring_stage_pending is the shared gate), and the punch reads the
+    raw input."""
+    import asyncio
+
+    _demo_after_a_full_run(tmp_path / "work")
+
+    def _boom(pool, progress=None):  # noqa: ANN001
+        raise AssertionError("the pool must not run a switched-off ring stage")
+
+    monkeypatch.setattr(webbridge, "_ring_pool_js", lambda: object())
+    monkeypatch.setattr(webbridge, "_JsPlaneExecutor", _boom)
+    events: list[tuple] = []
+    params = json.dumps({"rings_model": "patched", "rings_enabled": False})
+    asyncio.run(webbridge.run_async("", params, flatten_enabled=True, force=True,
+                                    progress=lambda *a: events.append(a)))
+    assert ("rings", "skip", None, "ring removal disabled (no powder rings removed)") in events
+    assert ("punch", "progress", None,
+            "ring removal disabled: the Bragg punch reads synthetic_rocksalt.nxs") in events
+
+
+def test_the_webgpu_dpdf_takes_the_volume_run_pipeline_takes(tmp_path, monkeypatch):
+    """The browser's WebGPU ΔPDF path resolves its input as run_pipeline's
+    ΔPDF stage does: with the backfill and the flatten off, the punched
+    volume, never the backfilled or flattened one a full run left, in
+    processed/ or among a tuning trial's inputs; with every cleanup stage
+    off, the raw input, which it leaves to the CPU path (its edge trim)."""
+    import asyncio
+
+    from nebula3d.pipeline import STAGES, pipeline_paths
+    from nebula3d.server.params import build_params
+
+    proc = _demo_after_a_full_run(tmp_path / "work")
+    paths = pipeline_paths(tmp_path / "work" / "raw" / "synthetic_rocksalt.nxs", proc_dir=proc)
+
+    async def no_gpu(gpu, plan):  # the GPU refuses: the CPU path takes over
+        return None
+
+    monkeypatch.setattr(webbridge, "_gpu_forward", no_gpu)
+
+    def gpu_pdf(off: dict, stages=STAGES, inputs=None):
+        params = build_params(webbridge._make_request(
+            json.dumps(off), off.get("flatten_enabled", True)))
+        events: list[tuple] = []
+        done = asyncio.run(webbridge._run_pdf_stages_gpu(
+            params, tuple(stages), True, None, lambda *a: events.append(a), object(),
+            proc_dir=proc, inputs=inputs))
+        return done, events
+
+    notice = ("pdf", "progress", None,
+              f"backfill and flatten disabled: the ΔPDF transforms {paths.braggpunched.name}, "
+              "with no background removed")
+    off = {"backfill_enabled": False, "flatten_enabled": False}
+    done, events = gpu_pdf(off)
+    assert done is False and notice in events
+    inputs = {"rings": paths.ringremoved, "punch": paths.braggpunched,
+              "backfill": paths.backfilled, "flatten": paths.flattened}
+    done, events = gpu_pdf(off, stages=("pdf", "pdf_check"), inputs=inputs)
+    assert done is False and notice in events
+    done, events = gpu_pdf({"rings_enabled": False, "punch_enabled": False,
+                            "backfill_enabled": False, "flatten_enabled": False})
+    assert done is False and events == []
 
 
 def test_browser_run_is_matplotlib_free(tmp_path):

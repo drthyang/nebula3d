@@ -55,6 +55,10 @@ export type Reason =
   | "fill bias"
   | "reach past coverage"
   | "reach inside coverage"
+  // The window fitted to the coverage: its weight on unmeasured space, or the taper's reach, is the backend's own target (plan 4.5).
+  | "window fitted"
+  // A |Q| band set past the raw counts' edges (band_check), judged where the window is fitted to the coverage (plan 4.5).
+  | "band past counts"
   | "second grain"
   | "no second grain"
   | "UB off"
@@ -97,20 +101,34 @@ export type StageNumbers = Readonly<Record<string, unknown>> & { readonly [UNROU
  * What qmax_coverage measured: the ΔPDF window's recorded weight on unmeasured
  * space; else the transform's reach against full coverage; and where the raw
  * counts end (its result's raw_counts, suggested_band and counts_end_inside_box).
+ * The coverage is the raw volume's, measured once, in Python
+ * (nebula3d.analysis.coverage).
  */
 export interface CoverageMeasurements {
   window_weight: number | null; // the ΔPDF's record, raw
   window: string; // the window, as the verdict names it
   unit_cell: boolean; // |Q| is known
-  full_coverage_q: number | null;
+  full_coverage_q: number | null; // where the |Q| shells stop holding counts in 95 % of their voxels
   reach: number | null; // how far the transform's window reaches in |Q|
   reach_from: string; // why it reaches that far
-  shell: number; // the coverage edge's resolution in |Q|
+  shell: number; // the coverage edge's resolution in |Q|: the shells' width
   band_set: boolean; // a |Q| band is set on the Configure page
+  // Past its counts the volume holds zeros it marks measured: the window's
+  // support takes them as data, so no taper to the coverage follows the counts.
+  zeros_stored?: boolean;
+  // The backend fits the window to the coverage: the support on, a window it
+  // fits (auto or ellipsoid), and the support seeing where the counts end. It
+  // keeps at most 1e-3 of the window's weight on unmeasured space by
+  // construction, so that weight, or the taper's reach, is its own target, not
+  // a check (plan 4.5).
+  fitted?: boolean;
+  // Where a band that is set leaves the raw counts (band_check's problems).
+  band_problems?: readonly string[];
   counts: {
     counts_end_inside_box: boolean;
     raw_counts?: { q_max_edge: number | null; box_face_q: number };
     suggested_band?: readonly number[] | null;
+    band_check?: string; // whether a band that is set stays inside the counts, in words
   };
 }
 
@@ -391,6 +409,10 @@ interface Words extends Judged {
 const COVERAGE_WORDS = "verdicts/rules.ts: qmax_coverage's verdict";
 const TAPER_OR_BAND = inference(COVERAGE_WORDS, "remedy", "; taper it to the coverage (pdfWindowSupport) or set a |Q| band");
 const BAND_OR_TAPER = inference(COVERAGE_WORDS, "remedy", "; set a |Q| band at or below it, or taper the window to the coverage");
+// Where the volume stores zeros it marks measured, no taper follows the counts.
+const BAND_AT_OR_BELOW = inference(COVERAGE_WORDS, "remedy", "; set a |Q| band at or below it");
+// A band set past the counts, where the window is fitted to the coverage (plan 4.5).
+const BAND_THEY_ALLOW = inference(COVERAGE_WORDS, "remedy", "; the band the counts allow is suggested_band, the user's to set");
 const SYMMETRY_WORDS = "verdicts/rules.ts: symmetry_check's verdict";
 const ASYMMETRY_IS = inference(SYMMETRY_WORDS, "evidence", ", so the section's asymmetry (");
 const THE_DATA_OWN = inference(SYMMETRY_WORDS, "evidence", ") is the data's own, counting noise included, not a break by a stage");
@@ -420,10 +442,44 @@ export const shownWeight = (x: number): string => {
   return r !== 0 && Math.abs(r) < 1e-3 ? r.toExponential() : String(r);
 };
 
+/** The raw counts' upper edge inside the box, no band set, in the verdict's words: the edge, the box's face and the band the counts allow. */
+const countsEnd = (c: CoverageMeasurements["counts"], taper: string): string =>
+  `the raw counts end at ${c.raw_counts?.q_max_edge} Å⁻¹, inside the box (its nearest face at ${c.raw_counts?.box_face_q} Å⁻¹), and no |Q| band is set${taper}: the band they allow is ${c.suggested_band?.[0]}–${c.suggested_band?.[1]} Å⁻¹ (suggested_band), the user's to set`;
+
+/**
+ * Plan 4.5 (approved by the manager on the user's delegation, 2026-10-19): with
+ * the window fitted to the coverage the backend keeps at most 1e-3 of its
+ * weight on unmeasured space by construction (compute_delta_pdf's
+ * support_tol, the limit this rule judges against), so that weight, or the
+ * taper's reach, holds by construction and judges nothing. The verdict says
+ * so, and judges what it can: where the raw counts end (batch 1's sentence and
+ * data problem) and a band that is set (band_check), which needs attention
+ * past the counts' edges, the user's rule (reduction-qc, step 3).
+ */
+function fittedVerdict(m: CoverageMeasurements, w: number | null): Words {
+  const c = m.counts ?? { counts_end_inside_box: false };
+  const target =
+    w != null
+      ? `${m.window} puts ${shownWeight(w)} of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check`
+      : "the window is tapered to the measured coverage, where the backend fits it to keep at most 1e-3 of its weight on unmeasured reciprocal space: its own target, not a check";
+  const weight: Reason[] = w != null ? ["window within limit"] : [];
+  const past = m.band_set ? (m.band_problems ?? []) : [];
+  if (past.length) {
+    return { kind: "attention", reasons: ["band past counts", ...weight], words: built`too far: ${past.join("; ")}; ${target}${BAND_THEY_ALLOW}`, dataProblems: countsProblems(c) };
+  }
+  const judgedHere = m.band_set
+    ? (c.band_check ?? "the band set stays inside the counts")
+    : c.counts_end_inside_box
+      ? countsEnd(c, ", so only the window's taper keeps the transform on the counts")
+      : "the raw counts reach the box's nearest face";
+  return { kind: "pass", reasons: ["window fitted", ...weight], words: `fitted to the coverage: ${target}; ${judgedHere}`, dataProblems: countsProblems(c) };
+}
+
 const coverage: CheckRule<CoverageMeasurements> = {
   judge: (m) => {
     const w = m.window_weight ?? null;
     const full = m.full_coverage_q ?? null;
+    if (m.fitted && m.unit_cell && (w == null || w <= OPEN_WEIGHT_OK)) return fittedVerdict(m, w);
     // The ΔPDF on disk records the share of its window's weight on unmeasured
     // space: the direct measure of a reach past the coverage. Without it, the
     // reach from the Configure page's settings against full coverage.
@@ -438,23 +494,22 @@ const coverage: CheckRule<CoverageMeasurements> = {
         : !m.unit_cell
           ? [nothing(), "no unit cell: |Q| is unknown, so the reach cannot be compared"]
           : full == null
-            ? [nothing(), "no |Q| shell is fully measured on these planes"]
+            ? [nothing(), "no |Q| shell is fully measured"]
             : m.reach == null
               ? [nothing(), "no ΔPDF yet to read the box corner from"]
               : m.reach <= full + m.shell
                 ? [{ kind: "pass", reasons: ["reach inside coverage"] }, `the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), inside full coverage at ${full} Å⁻¹`]
                 : [
                     { kind: "attention", reasons: ["reach past coverage"] },
-                    built`too far: the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), past full coverage at ${full} Å⁻¹${BAND_OR_TAPER}`,
+                    built`too far: the transform reaches ${roundSig(m.reach, 4)} Å⁻¹ (${m.reach_from}), past full coverage at ${full} Å⁻¹${m.zeros_stored ? BAND_AT_OR_BELOW : BAND_OR_TAPER}`,
                   ];
-    // The counts end inside the box and no band is set: only the window's taper
-    // keeps the transform on the counts. Said in the verdict, which a model
-    // quotes, and not only in raw_counts and suggested_band, which it may not.
+    // The counts end inside the box and no band is set. Said in the verdict,
+    // which a model quotes, and not only in raw_counts and suggested_band,
+    // which it may not. With the window not fitted to the coverage (the support
+    // off, a window the backend does not fit, or zeros stored past the counts)
+    // no taper keeps the transform on the counts.
     const c = m.counts ?? { counts_end_inside_box: false };
-    const cut =
-      c.counts_end_inside_box && !m.band_set
-        ? `; the raw counts end at ${c.raw_counts?.q_max_edge} Å⁻¹, inside the box (its nearest face at ${c.raw_counts?.box_face_q} Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is ${c.suggested_band?.[0]}–${c.suggested_band?.[1]} Å⁻¹ (suggested_band), the user's to set`
-        : "";
+    const cut = c.counts_end_inside_box && !m.band_set ? `; ${countsEnd(c, "")}` : "";
     return { ...outcome, words: joined([text, cut]), dataProblems: countsProblems(c) };
   },
 };
@@ -580,8 +635,10 @@ const grain: CheckRule<GrainFacts> = {
 
 /**
  * A UB turned by this much (degrees) or more is reported: the fit's own noise
- * lies below it. The validation's grader keeps its own 0.1° (evals/validation.ts)
- * until the shared answer reader (plan 3.2): a separate rule, docs/evals.md.
+ * lies below it. The validation's grader holds an answer to the same limit
+ * with a number of its own (UB_NOISE_DEG, evals/validation.ts, which imports
+ * nothing of this module); a test holds the two to one boundary by behaviour
+ * (evals/validation.test.ts), so changing this one fails it (plan 3.2).
  */
 const UB_TURN = 0.05;
 
