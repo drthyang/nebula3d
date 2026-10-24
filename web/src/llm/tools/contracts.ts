@@ -231,6 +231,9 @@ const dpdfSection = obj({
   radial_trend: tuple(maybeNum, maybeNum, maybeNum),
 });
 
+/** metrics/bunching.ts OffLatticeBunching: the run's sharp peaks off the lattice bunched at one fraction, and the question for the user. */
+const offLatticeBunching = obj({ facts: str, ask_user: str });
+
 // ---------------------------------------------------------------- assess_stage's stages
 
 // Every stage's result opens with its verdict, by the stage's rule; one stage
@@ -282,6 +285,8 @@ const punchEvaluation = obj({
   noisy_spikes_skipped: num,
   mean_punched_fraction: maybeNum,
   fitted_peaks: maybeNum,
+  // Only when the run's punch record says its sharp peaks off the lattice bunch (plan 4.15).
+  off_lattice_bunching: optional(offLatticeBunching),
   per_plane: optional(
     byRecipPlane(
       obj({
@@ -645,6 +650,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     stages: rec(oneOf("computed", "reused")),
     outputs: arr(str),
     log_tail: arr(str),
+    // Only when the punch's record says its sharp peaks off the lattice bunch (plan 4.15).
+    off_lattice_bunching: optional(offLatticeBunching),
   }),
 
   tune_pipeline: obj({

@@ -35,8 +35,10 @@ import { fillReferences } from "../references";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, readSkill } from "../skills";
 import { callTool, CHAT_TOOLS, toolSpecs, toolsWithSkills, unreadSkillRefusal } from "../tools";
+import { BUNCHING_REMEDY, offLatticeBunching } from "../metrics/bunching";
 import { describeStageParams, SAMPLE_PARAMS, sampleFactRefusal, TUNE_STAGES } from "../tune/catalog";
 import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS } from "../tune/prompts";
+import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 import { namedInOwnWords, quotations, skillNamesIn, skillSentences, skillSentencesIn, type SkillSentence } from "./methodText";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
 
@@ -48,6 +50,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
@@ -430,7 +433,7 @@ describe("arm C's refusal of a change to a fact about the sample", () => {
   it("names no skill, tool or stage, and holds no inference, for every fact, alone or beside another change", async () => {
     usePipelineStore.setState({ running: false });
     for (const p of SAMPLE_PARAMS) {
-      const value = p.kind === "fractions" ? "none" : p.min ?? 1;
+      const value = p.key === "modulation" ? { k: "1/3, 0, 0", form: "planes" } : 1;
       const alone = await callTool(armC, "update_settings", { changes: { [p.key]: value } }, { tools: offered });
       expect(alone.ok).toBe(false);
       expect(alone.text).toBe(`Error: ${sampleFactRefusal(p.key)}`);
@@ -451,4 +454,50 @@ describe("arm C's refusal of a change to a fact about the sample", () => {
     const b = await callTool({ ...armC, skills: true, skillsRead: new Set(["bragg-node-audit"]) }, "update_settings", changes);
     expect(b.text).toBe(c.text);
   });
+});
+
+// The question for the user (plan 4.15): a run whose punch record says its
+// sharp peaks off the lattice bunch at one commensurate fraction. Arm C reads
+// the question as arm B does and its facts without their remedy; an answer
+// that neither asks it nor leaves it to the user goes back once, worded
+// without the method, and the revision that asks stands.
+describe("arm C's question for the user", () => {
+  it("reads the question whole and the facts without their remedy, and sends back an answer that assumes it, naming no tool, stage or skill", async () => {
+    freshConsole();
+    context ??= (await loadPipelineContext(DATASET)).context;
+    const real = api.fetchBraggProfile.getMockImplementation()!;
+    api.fetchBraggProfile.mockImplementation(async (id: string) => {
+      const profile = await real(id);
+      return { ...profile, modulation: { ...profile.modulation, bunching: BUNCHED_AT_THIRDS } };
+    });
+    try {
+      const whole = offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS }))!;
+      const assumed = "The sample has a modulation with k = (1/3, 0, 0).";
+      const asking = whole.ask_user;
+      const opening = armSetup("C", context).messages;
+      const { sent, result } = await reply(opening, [scripted([["assess_stage", { stage: "punch" }]], 0), [{ content: assumed }], [{ content: asking }]], []);
+      expect(result.content).toBe(asking);
+      expect(result.note).toBeUndefined();
+      // What arm C read: the question whole, the facts without their remedy.
+      const read = JSON.parse(result.steps[0].result!) as { punch: { off_lattice_bunching: { facts: string; ask_user: string } } };
+      expect(read.punch.off_lattice_bunching).toEqual({ facts: whole.facts.replace(BUNCHING_REMEDY.text, ""), ask_user: whole.ask_user });
+      expect(whole.facts).toContain(BUNCHING_REMEDY.text);
+      // No span of inference, no skill, in any request.
+      const spans = writtenInferences()
+        .map((e) => e.span.text.trim())
+        .filter((t) => t.split(/\s+/).length >= 3);
+      const texts = sent.flatMap(textsOf);
+      expect(spans.filter((t) => texts.some((x) => x.includes(t)))).toEqual([]);
+      for (const text of texts) expect(skillNamesIn(text), text.slice(0, 200)).toEqual([]);
+      // The send-back: what it lacks and what it says as fact, its own words naming no tool, stage or skill.
+      const back = sent[sent.length - 1].messages.slice(opening.length).filter((m) => m.role === "user").map((m) => String(m.content));
+      expect(back).toHaveLength(1);
+      expect(back[0]).toMatch(/has a question for the user that the answer does not ask/);
+      expect(back[0]).toMatch(/as fact what a result in this reply asks the user/);
+      expect(namedInOwnWords(back[0])).toEqual([]);
+      for (const q of quotations(back[0])) expect(assumed.includes(q), q).toBe(true);
+    } finally {
+      api.fetchBraggProfile.mockImplementation(real);
+    }
+  }, SESSION_TIMEOUT);
 });

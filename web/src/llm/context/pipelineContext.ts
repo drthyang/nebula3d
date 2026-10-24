@@ -10,6 +10,7 @@ import type {
   ConsistencyMetrics,
   DeltaPdfMeta,
   FlattenSettings,
+  ProtectedLabels,
   Slice,
   VolumeMeta,
 } from "../../api/types";
@@ -45,9 +46,12 @@ export interface BuildContextInput {
   // The punch's indexing supercell, so leftover peaks are classed at a lattice
   // node or off-lattice against the right nodes (default 1×1×1).
   supercell?: [number, number, number];
-  // The off-lattice search's protected H planes, so leftovers on them are told
-  // from leftovers the search should have punched.
-  protectedH?: { fractions: number[]; halfWidth: number };
+  // What the run's search left alone, as labels on the punched cut's grid
+  // (GET /api/modulation/{id}/labels: from the run's punch record, never from
+  // the form), so leftovers there are told from leftovers the search should
+  // have punched. Without it none is marked; a record from before the punch
+  // kept it (`recorded` false) marks none, and a note says so.
+  protectedLabels?: ProtectedLabels | null;
   // How many leftover peaks the scan lists, strongest first (default: the
   // scan's own, a few); the counts cover every one either way.
   leftoverTopK?: number;
@@ -76,6 +80,10 @@ export interface PipelineContext {
   delta_pdf?: ReturnType<typeof dpdfMetrics>;
   notes?: string[];
 }
+
+/** Why no leftover is marked protected on a run whose punch record predates what its search left alone. */
+export const UNRECORDED_PROTECTION_NOTE =
+  "the punch's record does not say what its search left alone (a run from before it kept that), so no leftover is marked as in a protected position";
 
 // The in-plane (x, y) reciprocal axes of each plane alias, as H/K/L indices.
 const PLANE_HKL_AXES: Record<string, [number, number]> = {
@@ -141,13 +149,16 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
           return hkl;
         }
       : undefined;
+    const labels = input.protectedLabels;
+    const recorded = labels?.header.recorded !== false;
     ctx.bragg_punch = {
       leftover: punchSlice
-        ? scanLeftoverPeaks(punchSlice, { toHkl, supercell: input.supercell, protectedH: input.protectedH, topK: input.leftoverTopK })
+        ? scanLeftoverPeaks(punchSlice, { toHkl, supercell: input.supercell, protectedLabels: recorded ? labels : null, topK: input.leftoverTopK })
         : { suspicious_peaks: [], n_suspicious: 0, n_skipped_noisy: 0, scan_sigma_threshold: 8 },
       peak_profile: summarizePeakProfile(braggProfile),
     };
     if (!punchSlice) notes.push("bragg punch: no punched slice at this cut; leftover-peak scan skipped");
+    else if (labels && !recorded) notes.push(`bragg punch: ${UNRECORDED_PROTECTION_NOTE}`);
   }
 
   // 3. Backfill — punched (holes) vs backfilled at the same cut.

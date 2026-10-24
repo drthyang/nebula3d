@@ -57,6 +57,21 @@ describe("formToParams", () => {
       backfill_enabled: false,
     });
   });
+
+  // The sample's modulation goes as `modulation`, never as the legacy H
+  // fractions (which the backend still reads from an older console).
+  it("sends the sample's modulation as declared, nothing for a blank k, and never the legacy H planes", () => {
+    const blank = formToParams(form({ modulationK: "", modulationOrder: "2", modulationForm: "planes", modulationHalfWidth: "0.05" }));
+    expect(blank).not.toHaveProperty("modulation");
+    const declared = formToParams(form({ modulationK: " 1/3, 0, 0 ", modulationOrder: "", modulationForm: "planes", modulationHalfWidth: "0.05" }));
+    expect(declared.modulation).toEqual({ k: "1/3, 0, 0", form: "planes", half_width: "0.05" });
+    expect(formToParams(form({ modulationK: "0.2, 0, 1/2", modulationOrder: "2", modulationForm: "", modulationHalfWidth: "" })).modulation).toEqual({ k: "0.2, 0, 1/2", order: "2" });
+    expect(formToParams(form({ modulationK: "None" })).modulation).toBe("none");
+    for (const params of [blank, declared]) {
+      expect(params).not.toHaveProperty("punch_search_protect_h");
+      expect(params).not.toHaveProperty("punch_search_protect_half_width");
+    }
+  });
 });
 
 describe("the run", () => {

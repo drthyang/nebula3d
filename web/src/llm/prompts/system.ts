@@ -162,6 +162,10 @@ ${reading(`Asked about a second grain, a twin, or the off-lattice peaks the punc
 Bragg peaks displaced by a UB that is slightly off${evidence(" (symmetrised into copies around the nodes)")},
 or neither. The leftover counts (bragg_punch.leftover) are only what the punch missed on one
 cut, never what its search found${reading("; use grain_check before calling such peaks spurious or real")}.
+off_lattice_bunching, in a punch assessment or a run, says the sharp peaks the search punched off
+the lattice bunch at one commensurate fraction${evidence(", as the satellites of a modulation nobody declared would")},
+and ask_user is a question for the user${remedy(`: ask it, naming the fraction, and never answer it yourself, as fact
+or by declaring a modulation; whether the sample has one, and in which form, is the user's to say`)}.
 ${reading("Asked whether the UB is right, or why the Bragg peaks sit off their nodes, call ")}ub_check${connective(": it", "")} fits
 the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
 keeps${remedy(": say so, and that the orientation needs the unsymmetrised file")}.${evidence(` A relative offset along
