@@ -415,7 +415,8 @@ def levels(monkeypatch):
         return int(round(float(np.nanmedian(v.data))))
 
     def mk(name):
-        def stub(v, params=None, *, progress=None):
+        # The punch also takes the sample's facts (symmetry, modulation).
+        def stub(v, params=None, *, progress=None, **_facts):
             read[name] = level(v)
             return _vol(fill=_LEVEL[name])
         return stub
