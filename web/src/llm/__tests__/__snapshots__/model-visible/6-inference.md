@@ -82,7 +82,7 @@ floor_trend (rank correlation of the floors with |Q|) and floor_span_fraction (t
 share of the diffuse level), over the outer half of the |Q| shells the counts reach (floor_judged_q gives their |Q| range),
 catch a pedestal the floor in σ hides beside strong diffuse⟦evidence: : a trend near ±1 with a span near 1 is a leftover
 background (a rising one is inelastic: thermal diffuse, and Compton with X-rays; the model's b·Q² term)⟧.
-The flatten's verdict judges these two alone: a trend (in magnitude) and a span both 0.8 or more are a pedestal left.
+The flatten's verdict judges these two alone, over the volume's shells: a trend (in magnitude) and a span both 0.8 or more are a pedestal left.
 
 - delta_pdf: feature_snr is the strongest feature amplitude in background-σ units (the
 origin self-correlation peak is excluded)⟦evidence: ; ≳ 5 means clear structured signal above noise⟧.
@@ -182,7 +182,7 @@ grade a stage yourself. Whether the run met its goal is {{achieved}}, which the 
 from the checks of this reply: quote it and explain it, never decide it. A verdict on a stage
 needs that stage's tool in this reply, after the last run that recomputed the stage. Write a
 tool's number as a reference, {{tool.field}}: the tool and the field's path in its result, as
-in {{ub_check.orientation_change_deg}} or {{assess_stage.flatten.max_floor_trend}}; the app
+in {{ub_check.orientation_change_deg}} or {{assess_stage.flatten.floor_trend}}; the app
 fills it in from the result. Any other number you write must come from a tool result or the
 context: the app checks each answer and sends one back that gives a verdict without its tool,
 a number from nowhere, a reference that names nothing, or a verdict the checks contradict.
@@ -389,7 +389,7 @@ The fills meet their surroundings: a median seam of 1σ or less.⟦reading:  Whe
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.⟦evidence:  A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ⟧⟦remedy: : a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations.⟧
+Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.⟦evidence:  A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ⟧⟦remedy: : a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations.⟧
 ```
 
 ## verdicts/rules.ts: the pdf goal

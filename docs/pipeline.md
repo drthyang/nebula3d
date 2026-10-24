@@ -503,9 +503,13 @@ defaults for a file that records none, which the Pilot's results say):
 4. **A pedestal is left** when the trend is 0.8 or more in size and the span
    0.8 or more (`pedestalLeft`).
 
-The Pilot reads those floors on the three planes through the origin (hk0,
-h0l, 0kl; 30 shells out to each plane's farthest |Q|). The whole volume's are
-measured by `nebula3d.preprocessing.shell_floors` (server:
+The Pilot's verdict reads those floors over the whole volume (plan 4.1:
+`assess_stage`'s `floor_trend`, `floor_span_fraction` and `floor_judged_q`
+for the flatten); it reports each of the three planes through the origin
+beside them (hk0, h0l, 0kl; 30 shells out to each plane's farthest |Q|, its
+`per_plane` numbers), and the largest floor in σ over the planes, which it
+does not judge. The whole volume's are measured by
+`nebula3d.preprocessing.shell_floors` (server:
 `GET /api/volumes/{id}/shell-floors`; browser:
 `webbridge.volume_shell_floors_json`, the same fields), on the flatten's own
 shells, so on the flatten's input the floors are the flatten's own levels,
@@ -545,6 +549,12 @@ spans differ by the level: a shell's voxels grow as Q² in the volume and as Q
 on a plane, so the volume's median sits further out, higher where a pedestal
 rises. With the same pedestal kept off the three planes, the planes read a
 level floor (span 0.03–0.05) and the volume the pedestal (trend 1, span 0.96).
+Where the counts fill the box instead, out to its corners, the volume's outer
+half runs further than a plane's (to the cube's corner, √3 times the nearest
+face's |Q|, where a plane reaches √2 times it), into shells only the
+corners' voxels fill, and it reads a Q² pedestal's span larger than the
+planes do, on the same construction: 1.3 times for one the planes read at
+0.8 (1.2 to 1.36 times for those they read at 0.5 to 1.3).
 
 The measurement reads the volumes one slab of H planes at a time and finds
 each percentile by a radix select on the values' sort keys, narrowing a

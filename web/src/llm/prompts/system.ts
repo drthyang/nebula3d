@@ -14,7 +14,7 @@
 
 import { connective, evidence, reading, remedy, written } from "../inference";
 import { FLATTEN_FLOOR_PERCENTILE, PEDESTAL_LIMIT } from "../metrics/flatten";
-import { BACK_FFT_R_OK, EVEN_PART, FLATTEN_FLOOR_SIGMA_NOTE, FLOOR_SIGMA_WHY, PEDESTAL_SHELLS, STAGE_NAMES, type Stage } from "../verdicts/rules";
+import { BACK_FFT_R_OK, EVEN_PART, FLATTEN_FLOOR_SIGMA_NOTE, FLOOR_SIGMA_WHY, PEDESTAL_SHELLS, PEDESTAL_WHERE, STAGE_NAMES, type Stage } from "../verdicts/rules";
 
 /** A stage as {{achieved}} names it, opening a sentence. */
 const opening = (stage: Stage): string => STAGE_NAMES[stage].charAt(0).toUpperCase() + STAGE_NAMES[stage].slice(1);
@@ -80,7 +80,7 @@ floor_trend (rank correlation of the floors with |Q|) and floor_span_fraction (t
 share of the diffuse level), over ${PEDESTAL_SHELLS} (floor_judged_q gives their |Q| range),
 catch a pedestal the floor in σ hides beside strong diffuse${evidence(`: a trend near ±1 with a span near 1 is a leftover
 background (a rising one is inelastic: thermal diffuse, and Compton with X-rays; the model's b·Q² term)`)}.
-The flatten's verdict judges these two alone: a trend (in magnitude) and a span both ${PEDESTAL_LIMIT} or more are a pedestal left.
+The flatten's verdict judges these two alone, over ${PEDESTAL_WHERE} shells: a trend (in magnitude) and a span both ${PEDESTAL_LIMIT} or more are a pedestal left.
 
 - delta_pdf: feature_snr is the strongest feature amplitude in background-σ units (the
 origin self-correlation peak is excluded)${evidence("; ≳ 5 means clear structured signal above noise")}.
@@ -176,7 +176,7 @@ grade a stage yourself. Whether the run met its goal is {{achieved}}, which the 
 from the checks of this reply: quote it and explain it, never decide it. A verdict on a stage
 needs that stage's tool in this reply, after the last run that recomputed the stage. Write a
 tool's number as a reference, {{tool.field}}: the tool and the field's path in its result, as
-in {{ub_check.orientation_change_deg}} or {{assess_stage.flatten.max_floor_trend}}; the app
+in {{ub_check.orientation_change_deg}} or {{assess_stage.flatten.floor_trend}}; the app
 fills it in from the result. Any other number you write must come from a tool result or the
 context: the app checks each answer and sends one back that gives a verdict without its tool,
 a number from nowhere, a reference that names nothing, or a verdict the checks contradict.

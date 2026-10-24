@@ -55,6 +55,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
@@ -270,7 +271,7 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "reduction-qc", phrase: "the share of the transform window's weight on unmeasured space", what: "the window's weight on unmeasured space", fields: ["window_weight_on_unmeasured"] },
   { skill: "reduction-qc", phrase: "`assess_stage` for the rings", what: "the rings' assessment", fields: ["rings"] },
   { skill: "reduction-qc", phrase: "`assess_stage` for the flatten", what: "the flatten's assessment", fields: ["flatten"] },
-  { skill: "reduction-qc", phrase: "a span small against the diffuse level", what: "the floors' span against the diffuse level", fields: ["flatten.max_floor_span_fraction"] },
+  { skill: "reduction-qc", phrase: "a span small against the diffuse level", what: "the floors' span against the diffuse level", fields: ["flatten.floor_span_fraction"] },
   { skill: "reduction-qc", phrase: "An operation the data were symmetrised with holds", what: "each operation's difference", fields: ["ops.rms_difference"] },
   { skill: "reduction-qc", phrase: "fits only the symmetric part of the UB on a symmetrised volume", what: "which part of the UB was fitted", fields: ["fit"] },
   // bragg-node-audit
@@ -335,7 +336,20 @@ type Kind = "tool" | "field" | "setting" | "name" | "claim" | "gate" | "unstated
  * what the skill names and why it fails. Fix the skill (with the user), then
  * take the entry off: the lint fails while an entry no longer fails.
  */
-const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [];
+const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [
+  {
+    skill: "reduction-qc",
+    kind: "field",
+    names: "max_floor_trend",
+    why: "step 6 names the planes' largest trend; assess_stage gives the whole volume's, floor_trend, since 4.1's TypeScript half. The skill's fact sync follows in its own PR (approved with #66).",
+  },
+  {
+    skill: "reduction-qc",
+    kind: "field",
+    names: "max_floor_span_fraction",
+    why: "step 6 names the planes' largest span; assess_stage gives the whole volume's, floor_span_fraction, since 4.1's TypeScript half. The skill's fact sync follows in its own PR (approved with #66).",
+  },
+];
 
 // ---------------------------------------------------------------- the skills, in units
 

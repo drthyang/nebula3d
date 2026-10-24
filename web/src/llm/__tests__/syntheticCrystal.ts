@@ -17,6 +17,7 @@ import type {
   FlattenSettings,
   RingDiagnostics,
   RingIsotropy,
+  ShellFloors,
   Slice,
   UbCheck,
   VolumeCoverage,
@@ -27,6 +28,7 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore } from "../tune/tuner";
+import { shellFloorsOf } from "./shellFloors";
 
 /** The API client's functions the crystal answers: the test file's mocks of them. */
 export type BackendMocks = Record<
@@ -39,6 +41,7 @@ export type BackendMocks = Record<
   | "fetchMeta"
   | "fetchRingDiagnostics"
   | "fetchRingIsotropy"
+  | "fetchShellFloors"
   | "fetchSlice"
   | "fetchUbCheck"
   | "fetchVolumeCoverage",
@@ -400,10 +403,30 @@ const ringDiagnostics = (id: string): RingDiagnostics => ({
   unconfirmed_at_grid: null,
 });
 
+// The whole volume's shell floors of a dataset's flattened stage, on the
+// flatten's shells, with its input's level (the server's shell-floors): once per dataset.
+const floorsByStem = new Map<string, ShellFloors>();
+function shellFloors(id: string): ShellFloors {
+  const stem = id.split(".")[0];
+  const hit = floorsByStem.get(stem);
+  if (hit) return hit;
+  const left = RING_LEFT[stem];
+  const q = (h: number, k: number, l: number) => QU * Math.sqrt(h * h + k * k + l * l);
+  const stage = (name: RecipStageName) => ({
+    axes: [R_AXIS, R_AXIS, R_AXIS] as [number[], number[], number[]],
+    q,
+    value: (h: number, k: number, l: number, idx: [number, number, number]) => recipValue(name, left, h, k, l, idx),
+  });
+  const out = shellFloorsOf(stage("flattened"), stage("backfilled"), { id: `${stem}.flattened`, flatten: FLATTEN_RECORD });
+  floorsByStem.set(stem, out);
+  return out;
+}
+
 /** Answer every mocked API call from the crystal. */
 export function installBackend(api: BackendMocks): void {
   const stemOf = (id: string) => id.split(".")[0];
   api.fetchMeta.mockImplementation(async (id: string) => volumeMeta(id));
+  api.fetchShellFloors.mockImplementation(async (id: string) => shellFloors(id));
   api.fetchDpdfMeta.mockImplementation(async (id: string) => dpdfMeta(id));
   api.fetchSlice.mockImplementation(async (id: string, plane: string, value: number) => {
     const [stem, stage] = id.split(".") as [string, RecipStageName];
