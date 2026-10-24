@@ -261,6 +261,29 @@ describe("completeChat with a stall watchdog (the tuner's requests)", () => {
     expect(seen).toEqual([{ input: 812, output: 9, cacheRead: 640 }, null]);
   });
 
+  it("counts a thinking model's thoughts that Gemini leaves out of completion_tokens but puts in total_tokens", async () => {
+    const done = "data: [DONE]\n";
+    const counts = (usage: object) => `data: ${JSON.stringify({ choices: [], usage })}\n`;
+    const seen: unknown[] = [];
+    for (const usage of [
+      { prompt_tokens: 500, completion_tokens: 40, total_tokens: 1340 }, // Gemini 2.5: 800 thinking tokens in the total only
+      { prompt_tokens: 500, completion_tokens: 40, total_tokens: 540 }, // OpenAI: the total adds up
+      { prompt_tokens: 500, completion_tokens: 40 }, // no total
+    ]) {
+      vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([line({ content: "{}" }), counts(usage), done], 5, init.signal ?? undefined, true)));
+      await completeChat({ ...args, baseUrl: "http://127.0.0.1:1320/v1", stallMs: { first: 1000, idle: 1000 }, onUsage: (u) => seen.push(u) });
+    }
+    // Read whole (no stream), the same.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }], usage: { prompt_tokens: 500, completion_tokens: 40, total_tokens: 1340 } }))));
+    await completeChat({ ...args, baseUrl: "http://127.0.0.1:1320/v1", onUsage: (u) => seen.push(u) });
+    expect(seen).toEqual([
+      { input: 500, output: 840 },
+      { input: 500, output: 40 },
+      { input: 500, output: 40 },
+      { input: 500, output: 840 },
+    ]);
+  });
+
   it("asks a server that refuses stream_options again without it", async () => {
     const bodies: { stream_options?: unknown }[] = [];
     vi.stubGlobal(
