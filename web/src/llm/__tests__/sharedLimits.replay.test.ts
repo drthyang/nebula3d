@@ -26,7 +26,7 @@ import { GRID_TOO_COARSE, isTooCoarse } from "../metrics/coarse";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_FIT_Q, FULL_SHELL } from "../metrics/flatten";
 import { percentile, radialFloorShells, type GridSlice } from "../metrics/sliceStats";
-import { FILL_BIAS_FLOOR, RIM, roomForRims } from "../metrics/texture";
+import { FILL_BIAS_FLOOR, FILL_BIAS_MIN_HOLES, FILL_BIAS_MIN_SIGMA, FILL_BIAS_ONE_WAY, RIM, roomForRims } from "../metrics/texture";
 import { joinPath } from "../skills";
 import { SAMPLE_PARAMS, TUNE_PARAMS, TUNE_STAGES, type TuneParam } from "../tune/catalog";
 import { UB_TURNED, WORDS } from "../verdicts/rules";
@@ -36,7 +36,7 @@ import { UB_TURNED, WORDS } from "../verdicts/rules";
 /** Modules whose own constants are read off their source. */
 const SOURCES: Record<string, string> = Object.fromEntries(
   Object.entries(
-    import.meta.glob<string>(["../metrics/texture.ts", "../metrics/coverage.ts", "../tools/defs/qmax_coverage.ts"], {
+    import.meta.glob<string>(["../metrics/texture.ts"], {
       query: "?raw",
       import: "default",
       eager: true,
@@ -52,8 +52,6 @@ function written(path: string, pattern: RegExp): number[] {
 }
 
 const TEXTURE = "web/src/llm/metrics/texture.ts";
-const COVERAGE = "web/src/llm/metrics/coverage.ts";
-const QMAX = "web/src/llm/tools/defs/qmax_coverage.ts";
 
 /** Where a rule's answer changes: false at lo, true at hi (skillLint.test.ts's). */
 function boundary(pred: (x: number) => boolean, lo: number, hi: number): number {
@@ -165,8 +163,6 @@ print(json.dumps({
     "floor_percentile": p.flatten.floor_percentile,
     "min_count": p.flatten.min_count,
     "coverage_full": coverage.FULL,
-    "coverage_half": coverage.HALF,
-    "coverage_q_step": default(coverage.q_coverage, "q_step"),
     "origin_excluded": dpdf_features.ORIGIN_EXCLUDED,
     "stages": list(pipeline.STAGES),
     "tune_stages": list(tuning.TUNE_STAGES),
@@ -188,8 +184,6 @@ type Py = {
   floor_percentile: number;
   min_count: number;
   coverage_full: number;
-  coverage_half: number;
-  coverage_q_step: number;
   origin_excluded: number;
   stages: string[];
   tune_stages: string[];
@@ -245,29 +239,25 @@ const PINS: Pin[] = [
       return [[n, n], [py.fill_constants.min_rim, py.fill.min_rim]];
     },
   },
+  // The TypeScript names them since 4.2's TypeScript half (FILL_BIAS_LIMITS, the
+  // limits it sends the backend's 3-D texture and checks it was judged by).
   {
     name: "a systematic fill bias's median, in the rim's σ",
-    ts: "textureMetrics' `Math.abs(bias) >= 0.5`, metrics/texture.ts",
+    ts: "FILL_BIAS_MIN_SIGMA, metrics/texture.ts",
     py: "MIN_SIGMA and fill_texture(min_sigma=)",
-    values: () => {
-      const [x] = written(TEXTURE, /Math\.abs\(bias\) >= ([0-9.]+)/);
-      return [[x, x], [py.fill_constants.min_sigma, py.fill.min_sigma]];
-    },
+    values: () => [[FILL_BIAS_MIN_SIGMA, FILL_BIAS_MIN_SIGMA], [py.fill_constants.min_sigma, py.fill.min_sigma]],
   },
   {
     name: "a systematic fill bias's share of the holes one way",
-    ts: "textureMetrics' `above >= 0.75 : below >= 0.75`, metrics/texture.ts",
+    ts: "FILL_BIAS_ONE_WAY, metrics/texture.ts",
     py: "ONE_WAY and fill_texture(one_way=)",
-    values: () => [written(TEXTURE, /bias > 0 \? above >= ([0-9.]+) : below >= ([0-9.]+)/), [py.fill_constants.one_way, py.fill.one_way]],
+    values: () => [[FILL_BIAS_ONE_WAY, FILL_BIAS_ONE_WAY], [py.fill_constants.one_way, py.fill.one_way]],
   },
   {
     name: "the fewest judged holes a systematic fill bias needs",
-    ts: "textureMetrics' `judged.length >= 5`, metrics/texture.ts",
+    ts: "FILL_BIAS_MIN_HOLES, metrics/texture.ts",
     py: "MIN_HOLES and fill_texture(min_holes=)",
-    values: () => {
-      const [n] = written(TEXTURE, /judged\.length >= ([0-9]+)/);
-      return [[n, n], [py.fill_constants.min_holes, py.fill.min_holes]];
-    },
+    values: () => [[FILL_BIAS_MIN_HOLES, FILL_BIAS_MIN_HOLES], [py.fill_constants.min_holes, py.fill.min_holes]],
   },
   {
     name: "the fills' room for their rims, and what a grid too coarse for it says (#60)",
@@ -325,21 +315,14 @@ const PINS: Pin[] = [
       ];
     },
   },
+  // The coverage itself, its half-measured edges and their resolution (one
+  // shell), is measured in Python alone and read through the adapters: only
+  // the flatten's own "fully measured" share is held on both sides.
   {
-    name: "a fully measured shell, and a measured one",
-    ts: "FULL and HALF, metrics/coverage.ts; FULL_SHELL, metrics/flatten.ts",
-    py: "FULL and HALF, nebula3d.analysis.coverage",
-    values: () => {
-      const [full] = written(COVERAGE, /const FULL = ([0-9.]+);/);
-      const [half] = written(COVERAGE, /const HALF = ([0-9.]+);/);
-      return [[full, FULL_SHELL, half], [py.coverage_full, py.coverage_full, py.coverage_half]];
-    },
-  },
-  {
-    name: "the raw counts' edge resolution: one coverage shell, Å⁻¹",
-    ts: "COUNTS_EDGE_SHELL, tools/defs/qmax_coverage.ts",
-    py: "q_coverage(q_step=), nebula3d.analysis.coverage",
-    values: () => [written(QMAX, /const COUNTS_EDGE_SHELL = ([0-9.]+);/)[0], py.coverage_q_step],
+    name: "a fully measured shell",
+    ts: "FULL_SHELL, metrics/flatten.ts",
+    py: "FULL, nebula3d.analysis.coverage",
+    values: () => [FULL_SHELL, py.coverage_full],
   },
   {
     name: "the ΔPDF origin's disk, a share of the half-width",
