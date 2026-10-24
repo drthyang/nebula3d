@@ -357,7 +357,7 @@ function finish(set: Setter, get: Getter, terminal: string, message?: string): v
   set({ reconnecting: false });
   if (terminal === "error" && message) {
     set({
-      events: [...get().events, { type: "progress", status: "error", message, end: true }],
+      events: [...get().events, { type: "progress", status: "error", message }],
       times: [...get().times, Date.now()],
     });
   }

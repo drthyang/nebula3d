@@ -7,10 +7,9 @@ import { useTuneStore } from "../../tune/tuner";
 
 // Neither acts while a run or a tuning run is going: both own the pipeline.
 export const checkIdle = () => {
-  // A run that lost its connection to the server may still be running there
-  // (pipelineBusy): it holds the pipeline as a running one does, in the words
-  // the model reads for one (the validation frozen at 812e686 has no other).
-  if (pipelineBusy(usePipelineStore.getState())) throw new Error("a pipeline run is in progress; wait for it to end");
+  const pipe = usePipelineStore.getState();
+  if (pipe.running) throw new Error("a pipeline run is in progress; wait for it to end");
+  if (pipelineBusy(pipe)) throw new Error("the last pipeline run lost its connection to the server and may still be running there; wait until it is heard from");
   if (useTuneStore.getState().active) throw new Error("a tuning run is in progress; wait for it to end");
 };
 
