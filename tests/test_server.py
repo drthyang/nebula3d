@@ -5,6 +5,7 @@ The key correctness check is that the binary slice endpoint returns exactly what
 ``extract_slice`` produces directly.
 """
 
+import dataclasses
 import json
 import struct
 
@@ -1070,17 +1071,21 @@ def test_build_params_punch_overrides():
 
 
 def test_build_params_punch_search_floor_and_protected_planes():
-    """The search floor and the protected H planes reach PunchParams; [] turns
-    the protection off, and bad values are refused."""
-    from nebula3d.pipeline import PunchParams
+    """The search floor and the legacy protected H planes reach the run; []
+    turns the protection off, and bad values are refused. The protection a
+    request leaves unset is the sample's default declaration (plan 4.15)."""
+    from nebula3d.pipeline import PunchParams, default_modulation
     from nebula3d.server.routers.pipeline import build_params
     from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
 
     base = PunchParams()
-    assert base.search_exclude_h_fractions  # protected by default
+    assert base.search_exclude_h_fractions is None  # the default is a declaration now
+
+    def run(**kw):
+        return build_params(PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw)))
 
     def punch(**kw):
-        return build_params(PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw))).punch
+        return run(**kw).punch
 
     p = punch(punch_search_floor=8.0, punch_search_protect_h=[],
               punch_search_protect_half_width=0.05)
@@ -1088,18 +1093,162 @@ def test_build_params_punch_search_floor_and_protected_planes():
     assert p.search_exclude_h_fractions is None
     assert p.search_exclude_h_half_width == 0.05
     assert punch(punch_search_protect_h=[0.5]).search_exclude_h_fractions == (0.5,)
-    # unset fields keep the defaults
-    q = punch()
-    assert q.search_exclude_h_fractions == base.search_exclude_h_fractions
-    assert q.search_min_intensity == base.search_min_intensity
+    # unset fields keep the defaults, the declared thirds among them
+    q = run()
+    assert q.punch.search_exclude_h_fractions is None and q.modulation == default_modulation()
+    assert q.punch.search_min_intensity == base.search_min_intensity
     assert punch(punch_search_max_width_ratio=2.5).search_max_width_ratio == 2.5
     assert punch(punch_search_max_width_ratio=0).search_max_width_ratio is None  # 0 = off
-    assert q.search_max_width_ratio is None
+    assert q.punch.search_max_width_ratio is None
     for bad in ({"punch_search_floor": 0.0}, {"punch_search_protect_h": [1.2]},
                 {"punch_search_protect_half_width": -0.1},
                 {"punch_search_max_width_ratio": 0.5}):
         with pytest.raises(ValueError):
             punch(**bad)
+
+
+def test_build_params_reads_the_samples_modulation():
+    """A request declares the sample's modulation as Modulation.parse reads
+    it; "none" declares none; with the legacy fields as well it is refused."""
+    from nebula3d.modulation import Modulation
+    from nebula3d.server.routers.pipeline import build_params
+    from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
+
+    def run(**kw):
+        return build_params(PipelineRunRequest(dataset_id="x", params=StageParamsIn(**kw)))
+
+    declared = {"k": "1/5, 0, 1/2", "order": "2", "form": "points", "half_width": "0.06"}
+    assert run(modulation=declared).modulation == Modulation.parse(declared)
+    assert run(modulation="0, 0, 1/2").modulation == Modulation.parse("0, 0, 1/2")
+    assert run(modulation="none").modulation is None
+    assert run(modulation={"k": ""}).modulation is None
+    with pytest.raises(ValueError, match="not both"):
+        run(modulation="none", punch_search_protect_h=[0.5])
+    with pytest.raises(ValueError, match="choose 'points' or 'planes'"):
+        run(modulation={"k": "1/5, 0, 0", "form": "rods"})
+
+
+@pytest.mark.parametrize("legacy", [
+    {}, {"punch_search_protect_h": []}, {"punch_search_protect_h": [0.25]},
+    {"punch_search_protect_h": [0.5], "punch_search_protect_half_width": 0.05},
+    {"punch_search_protect_half_width": 0.05}, {"punch_search_protect_half_width": 0.0},
+    {"punch_search_protect_h": [], "punch_search_protect_half_width": 0.05},
+    {"punch_search_protect_h": [0.3333, 0.6667], "punch_search_protect_half_width": 0.08},
+], ids=lambda kw: ",".join(f"{k[21:]}={v}" for k, v in kw.items()) or "none")
+def test_a_request_with_the_legacy_planes_protects_what_it_did(legacy):
+    """A console that knows only the legacy fields runs as before: the voxels
+    the search leaves alone are those the old fields named over the old
+    default, (0.3333, 0.6667) ± 0.08, voxel for voxel, on 6/m data too."""
+    from nebula3d.analysis.bragg import BraggRemover
+    from nebula3d.pipeline import bragg_remover
+    from nebula3d.server.routers.pipeline import build_params
+    from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
+    from nebula3d.symmetry import GridSymmetry, parse_symmetry_ops
+    from tests.test_symmetry import SIX_M, _hex_volume
+
+    vol = _hex_volume()
+    gs = GridSymmetry.for_volume(vol, parse_symmetry_ops(SIX_M))
+    fractions = legacy.get("punch_search_protect_h", (0.3333, 0.6667))
+    half = legacy.get("punch_search_protect_half_width", 0.08)
+    old = BraggRemover(search_exclude_h_fractions=tuple(fractions) or None,
+                       search_exclude_h_half_width=half, symmetry_ops=gs.ops)
+    p = build_params(PipelineRunRequest(dataset_id="x", params=StageParamsIn(**legacy)))
+    new = dataclasses.replace(bragg_remover(p.punch), symmetry_ops=gs.ops,
+                              search_protect=p.modulation)
+    np.testing.assert_array_equal(np.broadcast_to(new._search_excluded_mask(vol), vol.shape),
+                                  np.broadcast_to(old._search_excluded_h_mask(vol), vol.shape))
+
+
+def _labels_dataset(tmp_path, record):
+    """A dataset whose punch stage is on disk with a record of what its search
+    left alone (*record*: the profile's ``modulation``, or None for none)."""
+    (tmp_path / "raw").mkdir(parents=True)
+    proc = tmp_path / "processed"
+    proc.mkdir()
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=proc)
+    vol = HKLVolume.from_arrays(np.ones((61, 21, 11)), (-3, 3), (-1, 1), (-1, 1), ub_matrix=UB)
+    nebula3d.save(vol, paths.ringremoved)
+    nebula3d.save(vol, paths.braggpunched)
+    profile = {"schema_version": 1, "n_peaks": 0, "peaks": []}
+    if record is not None:
+        profile["modulation"] = record
+    paths.bragg_profile_json.write_text(json.dumps(profile), encoding="utf-8")
+    vol_mod.clear_cache()
+    return TestClient(create_app(ServerConfig(data_root=tmp_path))), vol
+
+
+def test_modulation_labels_follow_the_runs_record(tmp_path):
+    """A slice's labels are the positions the run's search left alone, read
+    from the punch's record (its declaration, cell and symmetry), voxel for
+    voxel as the punch's own mask; the legend names them."""
+    from nebula3d.pipeline import default_modulation
+
+    declared = default_modulation()
+    record = {"declared": declared.to_json(), "cell": [1, 1, 1], "symmetry_ops": None,
+              "legacy": None, "bunching": None}
+    client, vol = _labels_dataset(tmp_path / "declared", record)
+    r = client.get(f"/api/modulation/{SLUG}/labels", params={"plane": "hk", "value": 0.0})
+    assert r.status_code == 200 and r.headers["content-type"] == "application/octet-stream"
+    header, labels = _parse_envelope(r.content)
+    assert header["recorded"] is True and header["declared"] == declared.to_json()
+    assert [p["label"] for p in header["legend"]] == ["H ≡ 1/3 (mod 1)", "H ≡ 2/3 (mod 1)"]
+    mask = np.broadcast_to(declared.mask(vol), vol.shape)
+    il = int(np.argmin(np.abs(vol.l_axis)))
+    np.testing.assert_array_equal(labels.T > 0, mask[:, :, il])  # "hk": H across, K down
+    assert set(np.unique(labels)) == {0.0, 1.0, 2.0}
+    assert header["x_axis"] == vol.h_axis.tolist() and header["cut_label"] == "L = 0 r.l.u."
+    # A run that protected the legacy planes: they are labelled the same way.
+    legacy = {"declared": None, "cell": [1, 1, 1], "symmetry_ops": None,
+              "legacy": {"h_centers": None, "h_fractions": [0.25], "half_width": 0.05},
+              "bunching": None}
+    client, _ = _labels_dataset(tmp_path / "legacy", legacy)
+    header, labels = _parse_envelope(client.get(f"/api/modulation/{SLUG}/labels").content)
+    assert [p["label"] for p in header["legend"]] == ["H ≡ 0.25 (mod 1)"]
+    covered = vol.h_axis[np.any(labels.T > 0, axis=1)]
+    assert sorted({round(float(h) % 1, 2) for h in covered}) == [0.2, 0.3]  # 0.25 ± 0.05
+    # A record written before the punch kept one: no labels, and it says so.
+    client, _ = _labels_dataset(tmp_path / "old", None)
+    header, labels = _parse_envelope(client.get(f"/api/modulation/{SLUG}/labels").content)
+    assert header["recorded"] is False and header["legend"] == [] and not labels.any()
+    assert client.get(f"/api/modulation/{SLUG}/labels", params={"plane": "xy"}).status_code == 400
+    assert client.get("/api/modulation/nope/labels").status_code == 404
+
+
+def test_modulation_labels_need_a_punch_record(env):
+    client, _ = env
+    r = client.get(f"/api/modulation/{SLUG}/labels")
+    assert r.status_code == 404 and "no punch record" in r.json()["detail"]
+
+
+def test_modulation_check_says_what_a_declaration_protects(env):
+    """Before a run: what a declaration protects, or what is wrong with it.
+    Absent, it is the pipeline's default; "none", nothing."""
+    client, _ = env
+
+    def check(**body):
+        r = client.post("/api/modulation/check", json=body)
+        assert r.status_code == 200
+        return r.json()
+
+    default = check()
+    assert default["ok"] and default["default"] and default["declared"]["form"] == "planes"
+    assert default["description"].startswith("k = (1/3, 0, 0), m = 1, as planes")
+    none = check(modulation="none")
+    assert none["ok"] and none["declared"] is None and none["positions"] == []
+    points = check(modulation={"k": "0.2, 0, 1/2", "order": 2}, symmetry_ops="h+k,-h,l; h,k,-l")
+    assert points["ok"] and points["declared"]["k"] == [["1/5", "0", "1/2"]]
+    assert len(points["positions"]) == 12
+    assert points["positions"][0]["vector"] == ["1/5", "0", "1/2"]
+    assert points["positions"][0]["coordinate"] is None
+    doubled = check(modulation={"k": "1/3, 0, 0", "form": "planes"}, cell=[2, 1, 1])
+    assert [p["label"] for p in doubled["positions"]] == ["H ≡ 1/3 (mod 2)", "H ≡ 5/3 (mod 2)"]
+    not_a_symmetry = [[[2, 0, 0], [0, 1, 0], [0, 0, 1]]]
+    for body, says in (({"modulation": "1/3, 0"}, "three components"),
+                       ({"modulation": "1/3,0,0", "cell": [0, 1, 1]}, "three positive integers"),
+                       ({"modulation": "1/3,0,0", "symmetry_ops": not_a_symmetry},
+                        "not a lattice symmetry")):
+        bad = check(**body)
+        assert not bad["ok"] and says in bad["error"] and bad["positions"] == []
 
 
 def test_build_params_stage_switches():

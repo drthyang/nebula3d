@@ -176,14 +176,16 @@ class Position:
     vector: tuple[str, str, str] | None = None
 
     def to_json(self) -> dict[str, Any]:
-        out: dict[str, Any] = {"label": self.label, "kind": self.kind,
-                               "half_width": self.half_width}
-        if self.kind == "plane":
-            out.update(coordinate=list(self.coordinate or ()), centre=self.centre,
-                       period=self.period)
-        else:
-            out.update(vector=list(self.vector or ()))
-        return out
+        """Every field, those of the other kind None."""
+        return {
+            "label": self.label,
+            "kind": self.kind,
+            "half_width": self.half_width,
+            "coordinate": None if self.coordinate is None else list(self.coordinate),
+            "centre": self.centre,
+            "period": self.period,
+            "vector": None if self.vector is None else list(self.vector),
+        }
 
 
 @dataclass(frozen=True)

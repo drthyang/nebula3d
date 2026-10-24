@@ -18,6 +18,7 @@ from nebula3d.server.routers import bragg as bragg_router
 from nebula3d.server.routers import consistency as consistency_router
 from nebula3d.server.routers import datasets as datasets_router
 from nebula3d.server.routers import deltapdf as deltapdf_router
+from nebula3d.server.routers import modulation as modulation_router
 from nebula3d.server.routers import pipeline as pipeline_router
 from nebula3d.server.routers import rings as rings_router
 from nebula3d.server.routers import slices as slices_router
@@ -58,6 +59,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
     app.include_router(pipeline_router.router)
     app.include_router(consistency_router.router)
     app.include_router(bragg_router.router)
+    app.include_router(modulation_router.router)
     app.include_router(rings_router.router)
     app.include_router(tuning_router.router)
 
