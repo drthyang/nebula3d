@@ -606,6 +606,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   update_settings: obj({
     changed: arr(obj({ setting: str, from: settingValue, to: settingValue, note: optional(str) })),
     already_set: optional(arr(str)),
+    // A fact about the sample the user's latest message does not name (findings).
+    refused: optional(arr(obj({ setting: str, why: str }))),
     rerun_from: maybeStr,
   }),
 

@@ -6,17 +6,18 @@
 // follows, the answer it asks for when a round is stuck, and the calls it
 // forgets when it shortens their results.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { useNavStore } from "../../state/navStore";
+import { usePipelineStore } from "../../state/pipelineStore";
 import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, toolResultsIn, TOOLS_UNSUPPORTED_NOTE, type AgentStep } from "../agent";
 import { resetTokenState } from "../provider/tokens";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import * as readings from "../readings";
 import { isCompacted } from "../readings/compact";
 import { DEFAULT_SETTINGS } from "../settings";
-import { MAX_RESULT_CHARS, type AgentTool } from "../tools";
+import { CHAT_TOOLS, MAX_RESULT_CHARS, type AgentTool } from "../tools";
 import type { Outcome } from "../verdicts";
 
 const client = vi.hoisted(() => ({ streamChat: vi.fn() }));
@@ -214,6 +215,54 @@ describe("runAgent", () => {
     const kept = await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal });
     expect(kept.failure?.kind).toBe("malformed");
     expect(kept.note).toMatch(/peg-native format/);
+  });
+
+  // update_settings changes a fact about the sample only when the user's
+  // latest message names it (tune/catalog.ts): the loop hands that message to
+  // the tools, as the conversation arrived.
+  describe("the user's latest message, which the tools read", () => {
+    afterEach(() => usePipelineStore.setState(usePipelineStore.getInitialState()));
+
+    it("is the same in every round: never an earlier turn's, nor what the loop sends as the user", async () => {
+      const heard: AgentTool = {
+        name: "heard",
+        description: "what the user said",
+        parameters: { type: "object", properties: { n: { type: "number" } } },
+        run: async (_args, own) => ({ result: { heard: own.userMessage ?? null }, summary: "heard" }),
+      };
+      // The first answer writes a number no tool gave: the answer checks send it back, as the user, and the model calls again.
+      const seen = script([
+        [{ toolCalls: [call("c1", "heard", { n: 1 })] }],
+        [{ content: "The volume has 7777 voxels." }],
+        [{ toolCalls: [call("c2", "heard", { n: 2 })] }],
+        [{ content: "Done." }],
+      ]);
+      const messages: ChatMessage[] = [
+        { role: "user", content: "Set the punch cell to 2 along H." },
+        { role: "assistant", content: "Set." },
+        { role: "user", content: "Is the punch clean?" },
+      ];
+      const r = await runAgent({ messages, tools: [heard], ctx, settings, signal: new AbortController().signal });
+      expect(seen[2].messages[seen[2].messages.length - 1].role).toBe("user"); // the send-back
+      expect(r.steps.map((s) => JSON.parse(s.result ?? "{}").heard)).toEqual(["Is the punch clean?", "Is the punch clean?"]);
+    });
+
+    it("lets update_settings change a fact the latest message names, and refuses one only an earlier turn named", async () => {
+      usePipelineStore.setState({ punchSupercellH: "", running: false });
+      const change = call("c1", "update_settings", { changes: { punchSupercellH: 2 } });
+      const asked: ChatMessage = { role: "user", content: "The volume is indexed on a doubled cell: set the punch cell to 2 along H." };
+      const signal = new AbortController().signal;
+      const read = { ...ctx, skillsRead: new Set(["bragg-node-audit"]) }; // the punch's skill: its gate is not what this tests
+      script([[{ toolCalls: [change] }], [{ content: "Asked." }]]);
+      const later = [asked, { role: "assistant", content: "Set." } as ChatMessage, { role: "user", content: "Is the punch clean?" } as ChatMessage];
+      const refused = await runAgent({ messages: later, tools: CHAT_TOOLS, ctx: read, settings, signal, checkAnswers: false });
+      expect(refused.steps[0]).toMatchObject({ status: "error", result: expect.stringMatching(/^Error: punchSupercellH is a fact about the sample/) });
+      expect(usePipelineStore.getState().punchSupercellH).toBe("");
+      script([[{ toolCalls: [change] }], [{ content: "Set." }]]);
+      const named = await runAgent({ messages: [asked], tools: CHAT_TOOLS, ctx: read, settings, signal, checkAnswers: false });
+      expect(named.steps[0].status).toBe("done");
+      expect(usePipelineStore.getState().punchSupercellH).toBe("2");
+    });
   });
 
   // The round decides what repeats an earlier call and when a round brought

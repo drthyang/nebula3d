@@ -1,8 +1,10 @@
 // The settings the tuning run may change, per stage — a curated subset of the
 // Configure page's fields.  Only method choices and thresholds are here, not
 // physical facts about the sample (supercell, magnetic ion, |Q| band), which
-// stay with the user.  Each entry says what the model may set it to; whatever
-// the model proposes is checked against this before anything runs.
+// stay with the user: the few the user may ask the assistant to set are apart
+// (SAMPLE_PARAMS), with the words that name them, and are never tuned.  Each
+// entry says what the model may set it to; whatever the model proposes is
+// checked against this before anything runs.
 
 import { parseFractions, type PipelineConfig } from "../../state/pipelineStore";
 import { evidence, remedy, written, type Tagged, type Value } from "../inference";
@@ -19,16 +21,53 @@ const helped = (key: string) => (strings: TemplateStringsArray, ...values: Value
 export const TUNE_STAGES = ["rings", "punch", "backfill", "flatten", "pdf"] as const;
 export type TuneStage = (typeof TUNE_STAGES)[number];
 
+// The words that name a fact about the sample in the user's latest message
+// (namesSampleFact), for update_settings' gate: it changes a fact only when
+// that message names it. Each list is conservative: a false refusal costs the
+// user one question, a false accept defeats the rule. The words name the
+// setting, not the physics it is about. What every audit talks about names
+// nothing: "satellites", "modulation" and "superlattice" are what the data
+// show (the punch review's own instruction says "satellites"), every cut is a
+// "plane", every lattice has a "cell". A question that names a fact names it
+// all the same: the gate reads names, not intent. Every fact is named by its
+// key too (punchSupercellH).
+
+/** The protected planes: "protect…" or "unprotect…", with "plane(s)" in the same message. */
+const PROTECT = /\b(?:un)?protect/i;
+const PLANE = /\bplanes?\b/i;
+/** The protected planes in their help's words ("H fractions"), and the Configure page's ("Search skips H", "skipped H plane"). */
+const H_FRACTIONS = /\bH[- ]fractions?\b/i;
+const SKIPS_H = /\bskip(?:s|ped|ping)?\s+(?:the\s+)?H\b|\bskipped\s+(?:H\s+)?planes?\b/i;
+/** A width, beside the words for the planes: their half width. "±" is none: "H = n ± 1/3" is where the planes are. */
+const WIDTH = /\bwid(?:e|er|en|ened|ening|th|ths)\b|\bhalf-?width\b|\bnarrow\w*/i;
+/** The punch cell, all three axes: a supercell, the punch's (indexing) cell, a doubled or tripled cell, an n×n×n cell. */
+const PUNCH_CELL: readonly RegExp[] = [
+  /\bsuper[- ]?cells?\b/i,
+  /\bpunch(?:'s|’s)?\s+(?:indexing\s+)?cells?\b/i,
+  /\bindexing\s+cells?\b/i,
+  /\b(?:doubl|tripl)\w*\s+(?:the\s+)?(?:unit\s+)?cells?\b|\bcells?\s+(?:is\s+|was\s+)?(?:doubl|tripl)\w*/i,
+  /\b\d\s*[×x]\s*\d\s*[×x]\s*\d\s+(?:unit\s+)?cells?\b/i,
+];
+
+/** A fact about the sample: a setting only the user sets, with the words that name it in the user's message. */
+export interface SampleParam extends TuneParam {
+  // What names it besides its key: any one of these, where an array names it
+  // only in a message that holds every one of its words.
+  names: readonly (RegExp | readonly RegExp[])[];
+}
+
 // Facts about the sample that the user may ask the assistant to set, by name.
 // Never tuned: whether the H = n ± 1/3 planes hold real satellites is physics,
-// not a threshold to trade against a metric.
-export const SAMPLE_PARAMS: TuneParam[] = [
+// not a threshold to trade against a metric. update_settings changes one only
+// when the user's latest message names it (names, namesSampleFact).
+export const SAMPLE_PARAMS: SampleParam[] = [
   {
     key: "punchProtectH",
     stage: "punch",
     kind: "fractions",
     defaultValue: "1/3, 2/3",
     help: "H fractions the off-lattice search leaves alone (its protected planes, e.g. real satellites at H = n ± 1/3); none protects nothing.",
+    names: [[PROTECT, PLANE], H_FRACTIONS, SKIPS_H],
   },
   {
     key: "punchProtectHalfWidth",
@@ -38,6 +77,12 @@ export const SAMPLE_PARAMS: TuneParam[] = [
     max: 0.25,
     defaultValue: 0.08,
     help: "Half width (r.l.u.) of each protected H plane.",
+    // Not the planes alone: "protect the 1/2 planes" names which, not how wide.
+    names: [
+      [PROTECT, PLANE, WIDTH],
+      [H_FRACTIONS, WIDTH],
+      [SKIPS_H, WIDTH],
+    ],
   },
   {
     key: "punchSupercellH",
@@ -47,6 +92,7 @@ export const SAMPLE_PARAMS: TuneParam[] = [
     max: 6,
     defaultValue: 1,
     help: "The punch's indexing cell along H: the Bragg nodes are the multiples of this H (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.",
+    names: PUNCH_CELL,
   },
   {
     key: "punchSupercellK",
@@ -56,6 +102,7 @@ export const SAMPLE_PARAMS: TuneParam[] = [
     max: 6,
     defaultValue: 1,
     help: "The punch's indexing cell along K: the Bragg nodes are the multiples of this K (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.",
+    names: PUNCH_CELL,
   },
   {
     key: "punchSupercellL",
@@ -65,8 +112,34 @@ export const SAMPLE_PARAMS: TuneParam[] = [
     max: 6,
     defaultValue: 1,
     help: "The punch's indexing cell along L: the Bragg nodes are the multiples of this L (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.",
+    names: PUNCH_CELL,
   },
 ];
+
+/** Whether `key` is a fact about the sample (SAMPLE_PARAMS). */
+export const isSampleFact = (key: string): boolean => SAMPLE_PARAMS.some((p) => p.key === key);
+
+/**
+ * Whether `message`, the user's latest, names the fact about the sample
+ * `key`: by its key, or by one of its names (SampleParam.names). False for a
+ * setting that is no such fact, and for no message.
+ */
+export function namesSampleFact(message: string, key: string): boolean {
+  const p = SAMPLE_PARAMS.find((q) => q.key === key);
+  if (!p || !message) return false;
+  const holds = (re: RegExp): boolean => re.test(message);
+  return holds(new RegExp(`\\b${p.key}\\b`, "i")) || p.names.some((n) => (n instanceof RegExp ? holds(n) : n.every(holds)));
+}
+
+/** What a refusal of a change to a fact about the sample says, whatever the fact (findings.ts reads it). */
+export const SAMPLE_FACT_REFUSED = "is a fact about the sample, which only the user sets";
+
+/**
+ * update_settings' refusal of a change to the fact `key` that the user's
+ * latest message does not name. It names no skill, stage or tool, so it reads
+ * the same with the skills off (the validation's arm C).
+ */
+export const sampleFactRefusal = (key: string): string => `${key} ${SAMPLE_FACT_REFUSED}: ask the user, and change it once they name it.`;
 
 export const TUNE_STAGE_LABELS: Record<TuneStage, string> = {
   rings: "Ring removal",
