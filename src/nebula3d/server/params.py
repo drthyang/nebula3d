@@ -31,6 +31,13 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
     p = PipelineParams(flatten_enabled=req.flatten_enabled)
     sp = req.params
 
+    # The stages' switches: a stage switched off passes its input through.
+    if sp.rings_enabled is not None:
+        p.rings_enabled = bool(sp.rings_enabled)
+    if sp.punch_enabled is not None:
+        p.punch_enabled = bool(sp.punch_enabled)
+    if sp.backfill_enabled is not None:
+        p.backfill_enabled = bool(sp.backfill_enabled)
     if sp.edge_trim is not None:
         p.edge_trim = int(sp.edge_trim)
     if sp.rings_n_patches is not None:

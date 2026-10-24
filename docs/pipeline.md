@@ -93,6 +93,27 @@ the run's backfilled volume: `nebula3d.pipeline.run_pipeline`, which the
 server and the browser run, never reads a flattened volume an earlier run left
 on disk, and its log names the volume the ΔPDF transforms.
 
+Each cleanup stage has such a switch: `PipelineParams.rings_enabled`,
+`punch_enabled`, `backfill_enabled` and `flatten_enabled`, the web page's
+*Enable stage* switches, which the page sends with every run (the server's
+`StageParamsIn` and the browser's bridge take them; the flatten's is the
+request's `flatten_enabled`). A stage switched off is not run and passes its
+input through: the next stage reads the output of the last stage before it
+that is switched on, or the raw input (with the ring removal off, the punch
+reads the raw volume), never an output an earlier run left on disk, and the
+ΔPDF transforms the last one (`PipelinePaths.pdf_input`). The switched-off
+stage's own output from an earlier run stays on disk as it was, neither
+rewritten nor removed. The log says so: the stage after one switched off names
+the volume it reads ("ring removal disabled: the Bragg punch reads …"), and a
+stage switched off but listed in `stages` says it is off ("ring removal
+disabled (no powder rings removed)"). A stage left out of `run_pipeline`'s
+`stages` is another thing: it is not run in this call, and the stages after
+it read its output on disk (or from `inputs`, a tuning trial's): a partial
+re-run, as the Pilot's runs from a stage and the tuning's trials make. As for
+any setting, a run without `force` keeps the outputs that exist: after
+switching a stage off, run with `force` (the page's *Force*), or `force_from`
+the stage after it, for the stages after it to be recomputed.
+
 Useful overrides:
 
 | Variable | Effect |

@@ -1075,6 +1075,26 @@ def test_build_params_punch_search_floor_and_protected_planes():
             punch(**bad)
 
 
+def test_build_params_stage_switches():
+    """The cleanup stages' switches reach PipelineParams: unset, on; false,
+    off. The flatten's is the request's flatten_enabled."""
+    from nebula3d.server.params import build_params
+    from nebula3d.server.schemas import PipelineRunRequest
+
+    def switches(**req):
+        p = build_params(PipelineRunRequest(dataset_id="x", **req))
+        return (p.rings_enabled, p.punch_enabled, p.backfill_enabled, p.flatten_enabled)
+
+    assert switches() == (True, True, True, True)
+    # the page's request, as the server parses its JSON
+    assert switches(params={"rings_enabled": False, "punch_enabled": True,
+                            "backfill_enabled": True}) == (False, True, True, True)
+    assert switches(params={"punch_enabled": False}) == (True, False, True, True)
+    assert switches(params={"backfill_enabled": False}) == (True, True, False, True)
+    assert switches(flatten_enabled=False,
+                    params={"rings_enabled": True}) == (True, True, True, False)
+
+
 def test_build_params_flatten_q2_and_fit_range():
     """The b·Q² term and the fit range's end reach FlattenParams; a fit range
     ending before it starts is refused."""
