@@ -212,6 +212,60 @@ the test had judged a bump of the crystal's own a powder ring. 161 points
 (0.081 Å⁻¹) put 1.99 voxels across it and fill 90 % of the cells or more from
 1.2 Å⁻¹ out, and so would 81 points over ±2 r.l.u.
 
+#### The candidates' noise floor, where the counts end early
+
+The removal finds its candidates in the radial profile pooled over the planes,
+in |Q| bins from 1.5 to 10.5 Å⁻¹ whatever the volume holds: a narrow peak over
+a SNIP baseline that rises 6 × the profile's noise (`pooled_min_snr`), the MAD
+of the residual's bin-to-bin differences, /√2. The noise is taken over pairs of
+adjacent bins that are both measured: some plane samples them, and not sparsely
+(by a tenth of the median number of planes or more). With no such pair it is
+infinite and nothing is a candidate; with every bin measured it is the estimate
+over all of them. The bins left out are those the detection fills, flat past
+the last measured one, which SNIP leaves as they are, so their differences are
+exactly 0. Counted in, as they were before (review finding B3), they pulled the
+noise of a volume whose counts end inside the range towards 0: on the
+validation's dev crystal at 161 points, to exactly 0 with the counts ending
+anywhere from 4 to 5.5 Å⁻¹, 0.04 of the measured noise at 6 to 6.5, 0.28 at 7,
+0.60 at 8 and 0.90 at 10. Every local maximum then became a candidate. On
+dev-coverage (counts cut at 4.51 Å⁻¹, no ring) there were 24 at 161 points, 18
+judged and rejected, and 10 at 81 points, which the coarse-grid notice listed
+and `pooled_confirm_rings=False` would have subtracted, 9.4 % of |I|; now there
+are none at either grid. Their keep-outs also crowded a real ring's flanks to
+two or three bins in all, so the isotropy test drew its line through those (a
+signal-to-noise of 1e14 to 1e16) and skipped its curve check, which needs four.
+On volumes cut short with rings planted, the candidates fall from 14–37 to 0–6,
+a strong ring is judged on two clean bins a side (signal-to-noise 37 to 64,
+curve 0.92 to 1.05), and a weak ring under the 6σ floor goes undetected, as
+with full coverage.
+
+The shells kept out of a judged shell's flanks are picked at half that cut,
+3σ: a keep-out only protects a flank and is never subtracted, so the lower bar
+is the cautious side, and a weak ring under 6σ beside a strong one (the Al 420
+line at 6.95 Å⁻¹ beside the 331 at 6.76 Å⁻¹ on the 97-point demo of
+`tests/test_demo.py`) no longer lifts the strong one's flank until it fails.
+The lower bar can keep the crystal's own bumps out of a fully measured ring's
+flanks too: on dev-rings at 161 points the 2.2 Å⁻¹ ring is judged without its
+curve check, still a ring, the volume unchanged.
+
+- **Not taken: judging a ring only on two flank bins a side or more**, else
+  not judged, with a retry that keeps out the confirmed rings alone. With the
+  noise from the measured bins it never fired on the volumes tried; it stays
+  an option should crowded flanks show again.
+- **A known limit, outside this fix.** A weak ring beside a strong one
+  (amplitude 0.05 against 0.5) is subtracted at 1.2 to 2.4 times its
+  amplitude in every geometry tried, full coverage included.
+- **Open, for the user: the face–corner zone.** Between the box's face and its
+  corner (6.44 and 11.16 Å⁻¹ on the dev crystal) a shell is measured in some
+  directions only, and the isotropy test judges it on what it has: 16 to 32 of
+  its 128 direction cells, where it needs 16 (`IsotropyConfig.min_cells`). On
+  a synthetic cubic crystal, shells of the crystal's own pass there as rings
+  whatever the noise (4.41 Å⁻¹ on a ±3 Å⁻¹ box; 5.01, 5.49, 7.29 and
+  9.01 Å⁻¹ on others). With this fix, `min_cells` = 64, half the sphere,
+  removes all of them, keeps every planted ring and leaves the dev cases as
+  they are. Whether a ring may be confirmed from part of the sphere, and from
+  how much of it, is the user's rule: `min_cells` stays 16 until they decide.
+
 ### 2. Punch Bragg And Satellite Peaks
 
 ```bash
@@ -321,6 +375,21 @@ two: their |Q| shell holds 8 voxels, under the 20 its statistics need. 161
 points (0.081 Å⁻¹) leave 9 voxels or more in every node's shell, the box's
 corners included: every node is judged, nothing is left to the search, and
 the punch is as it was.
+
+#### What the search leaves alone: the sample's modulation
+
+The search pass punches sharp peaks off the lattice, satellites included. A
+sample's satellites are a fact about it, declared like its symmetry
+(`PipelineParams.modulation`): the wave vector k, the order and the form,
+either the points G ± m·k or the planes through them. The search then leaves
+them alone at every position equivalent under the symmetry.
+
+For now a run that declares none declares the planes H = n ± 1/3 ± 0.08 r.l.u.
+(k = (1/3, 0, 0) as planes), which is the protection from before declarations,
+bit for bit. The punch records what its search left alone. When its sharp
+peaks off the lattice bunch at one commensurate fraction, as an undeclared
+modulation would leave them, it says so. The physics, the record and the
+known limits are in [modulation.md](modulation.md).
 
 ### 3. Backfill Bragg Holes
 
@@ -486,7 +555,9 @@ multiphonon scattering with neutrons, Compton scattering with X-rays), whose
 leading term grows as Q²: that is what `Q2=1` (the Pilot's `flattenQ2`) takes.
 
 NEBULA Pilot judges it by one rule (`web/src/llm/metrics/flatten.ts`,
-provisional):
+provisional), with the run's own fit range and floor percentile, as the
+flattened file records them (`flatten_settings`, below; the flatten's
+defaults for a file that records none, which the Pilot's results say):
 
 1. **The shells judged** are the shells the counts reach, at least 0.95 of
    the shell's voxels measured and the centre at or past the fit range's
@@ -501,9 +572,13 @@ provisional):
 4. **A pedestal is left** when the trend is 0.8 or more in size and the span
    0.8 or more (`pedestalLeft`).
 
-The Pilot reads those floors on the three planes through the origin (hk0,
-h0l, 0kl; 30 shells out to each plane's farthest |Q|). The whole volume's are
-measured by `nebula3d.preprocessing.shell_floors` (server:
+The Pilot's verdict reads those floors over the whole volume (plan 4.1:
+`assess_stage`'s `floor_trend`, `floor_span_fraction` and `floor_judged_q`
+for the flatten); it reports each of the three planes through the origin
+beside them (hk0, h0l, 0kl; 30 shells out to each plane's farthest |Q|, its
+`per_plane` numbers), and the largest floor in σ over the planes, which it
+does not judge. The whole volume's are measured by
+`nebula3d.preprocessing.shell_floors` (server:
 `GET /api/volumes/{id}/shell-floors`; browser:
 `webbridge.volume_shell_floors_json`, the same fields), on the flatten's own
 shells, so on the flatten's input the floors are the flatten's own levels,
@@ -530,8 +605,12 @@ settings in its output (a `flatten_settings` attribute of the file's
 `nebula3d` group; `examples/run_pipeline.py`, the server and the browser all
 run it, the standalone `examples/flatten_background_3d.py` does not), so a
 run whose flatten took another percentile is measured with it, and the rule
-can start the judged shells at the run's own fit range
-(`flatten.fit_q_range`). On a synthetic volume with an isotropic Q²
+starts the judged shells at the run's own fit range
+(`flatten.fit_q_range`). The volume's meta carries the same record
+(`GET /api/volumes/{id}/meta`, `flatten_settings`), and the Pilot reads the
+planes' floors with it too: at the run's percentile, over its fit range.
+The Configure page's settings are not read for it: they may have changed
+since the run. On a synthetic volume with an isotropic Q²
 pedestal (a uniform diffuse, measured out to 6 Å⁻¹) the planes and the volume
 read the same pedestal: a trend of 1 on all, a span of 0.99 on each plane and
 0.94 on the volume, with the planes' floors within 0.03 of the volume's. The
@@ -539,6 +618,12 @@ spans differ by the level: a shell's voxels grow as Q² in the volume and as Q
 on a plane, so the volume's median sits further out, higher where a pedestal
 rises. With the same pedestal kept off the three planes, the planes read a
 level floor (span 0.03–0.05) and the volume the pedestal (trend 1, span 0.96).
+Where the counts fill the box instead, out to its corners, the volume's outer
+half runs further than a plane's (to the cube's corner, √3 times the nearest
+face's |Q|, where a plane reaches √2 times it), into shells only the
+corners' voxels fill, and it reads a Q² pedestal's span larger than the
+planes do, on the same construction: 1.3 times for one the planes read at
+0.8 (1.2 to 1.36 times for those they read at 0.5 to 1.3).
 
 The measurement reads the volumes one slab of H planes at a time and finds
 each percentile by a radix select on the values' sort keys, narrowing a

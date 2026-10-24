@@ -29,7 +29,7 @@ Fill punched holes seamlessly: median_seam_sigma ≲ 1, bright_fill_fraction sma
 ### flatten
 
 ```text
-Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
+Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
 ```
 
 ### pdf
@@ -121,11 +121,11 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
   },
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
     "pedestal_left": false
   },
   "pdf": {
@@ -156,11 +156,12 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
 {
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
+    "floor_judged_q": [2.2, 4.35],
     "pedestal_left": false,
     "per_plane": {
       "hk0": {
@@ -194,7 +195,7 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
         "floor_judged_q": [2.11, 4.11]
       }
     },
-    "goal": "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself."
+    "goal": "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself."
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
 }
@@ -436,7 +437,7 @@ Error: no tool named read_skill. Available: describe_dataset, current_view, meas
 
 ```text
 Stage: Flatten.
-Goal: Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
+Goal: Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
 
 Settings you may change (use these names exactly):
 - flattenQ2 (true | false; default false): model only: also fit b·Q², the smooth rise of an inelastic background (thermal diffuse; with X-rays also Compton); it varies too slowly to follow pair correlations.
@@ -445,7 +446,7 @@ Settings you may change (use these names exactly):
 
 Current settings: {"flattenQ2":false,"flattenFitQMax":10,"flattenEstimator":"model"}
 Settings already chosen for earlier stages: {}
-Trials so far (trial 1 = the current settings): [{"trial":1,"settings":{"flattenQ2":false,"flattenFitQMax":10,"flattenEstimator":"model"},"metrics":{"max_floor_trend":0.97,"max_floor_span_fraction":1.2,"pedestal_left":true}}]
+Trials so far (trial 1 = the current settings): [{"trial":1,"settings":{"flattenQ2":false,"flattenFitQMax":10,"flattenEstimator":"model"},"metrics":{"floor_trend":0.97,"floor_span_fraction":1.2,"pedestal_left":true}}]
 
 Propose up to 2 new settings to try, each different from every trial so far and
 each changing as few settings as possible, with a one-sentence reason tied to the metrics.

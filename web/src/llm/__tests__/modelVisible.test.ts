@@ -67,6 +67,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
@@ -428,6 +429,12 @@ const SAMPLES: Sample[] = [
     ctx: { skillsRead: new Set(["bragg-node-audit"]) },
   },
   {
+    name: "update_settings",
+    args: { changes: { punchMinSig: 6, punchSupercellH: 2 } },
+    note: "the punch's skill read; the user's latest message, “Raise the punch significance to 6.”, names no fact about the sample",
+    ctx: { skillsRead: new Set(["bragg-node-audit"]), userMessage: "Raise the punch significance to 6." },
+  },
+  {
     name: "run_pipeline",
     args: { from_stage: "punch" },
     note: "a stubbed run of 42.3 s",
@@ -479,6 +486,12 @@ const ERRORS: Sample[] = [
   { name: "measure_reciprocal_cut", args: "{plane: hk0", note: "arguments that are not JSON" },
   { name: "measure_reciprocal_cut", args: { plane: "hk0", value: 7 }, note: "a cut outside the data" },
   { name: "update_settings", args: { changes: { punchMinSig: 6 } }, note: "a change before its stage's skill was read", ctx: { skillsRead: new Set() } },
+  {
+    name: "update_settings",
+    args: { changes: { punchSupercellH: 2 } },
+    note: "a fact about the sample that the user's latest message, “Is the punch clean?”, does not name; the punch's skill read",
+    ctx: { skillsRead: new Set(["bragg-node-audit"]), userMessage: "Is the punch clean?" },
+  },
   { name: "tune_pipeline", args: { stages: ["flatten"] }, note: "tuning before its stage's skill was read", ctx: { skillsRead: new Set() } },
   {
     name: "update_settings",
@@ -603,7 +616,7 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
       stage: "flatten",
       current: currentStageSettings("flatten", config),
       earlier: {},
-      trials: [{ trial: 1, settings: currentStageSettings("flatten", config), metrics: { max_floor_trend: 0.97, max_floor_span_fraction: 1.2, pedestal_left: true } }],
+      trials: [{ trial: 1, settings: currentStageSettings("flatten", config), metrics: { floor_trend: 0.97, floor_span_fraction: 1.2, pedestal_left: true } }],
       count: 2,
       skills: false,
     });

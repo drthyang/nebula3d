@@ -133,6 +133,11 @@ def test_hkl_meta_and_slice(ran_pipeline):
     assert meta["kind"] == "hkl"
     assert meta["shape"] == [25, 25, 25]
     assert "hk" in meta["planes"]
+    # What made the file: the flatten records its settings, no other stage does.
+    assert meta["flatten_settings"] is None
+    flat = json.loads(webbridge.volume_meta_json(f"{dataset_id}.flattened"))
+    assert flat["flatten_settings"]["fit_q_range"] == [0.8, 10.0]
+    assert flat["flatten_settings"]["floor_percentile"] == 25.0
 
     env = webbridge.volume_slice(vid, "hk", 0.0, False)
     header, data = _decode_envelope(bytes(env))
@@ -379,6 +384,42 @@ def test_bragg_profile_json_is_the_servers_response(ran_pipeline, tmp_path):
     # Every node was left to the search: the peaks at nodes are its, as their records say.
     assert {p["found_by"] for p in bridged["peaks"]} == {"search"}
     assert any(p["source_node_hkl"] is not None for p in bridged["peaks"])
+
+
+def test_modulation_payloads_are_the_servers(ran_pipeline, tmp_path):
+    """The browser build's modulation payloads are the native server's, byte
+    for byte: the check of a declaration, a slice's labels from the punch's
+    record, and the record in the punch's profile (the run's default
+    declaration, the thirds as planes)."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d.pipeline import default_modulation
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+
+    dataset_id, _datasets, _events = ran_pipeline
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path / "work")))
+    for body in ({}, {"modulation": "none"}, {"modulation": "1/3, 0, 0"},
+                 {"modulation": {"k": "0.2, 0, 1/2", "order": 2}, "cell": [2, 1, 1],
+                  "symmetry_ops": "h+k,-h,l; -h,-k,-l"},
+                 {"modulation": {"k": "1/3, 0"}}):
+        served = client.post("/api/modulation/check", json=body)
+        assert served.status_code == 200, served.text
+        assert json.loads(webbridge.modulation_check_json(json.dumps(body))) == served.json()
+    for plane, value, interp in (("hk", 0.0, False), ("kl", 1.0 / 3.0, False),
+                                 ("h0l", 0.5, True)):
+        served = client.get(f"/api/modulation/{dataset_id}/labels",
+                            params={"plane": plane, "value": value, "interp": interp})
+        assert served.status_code == 200, served.text
+        bridged = webbridge.modulation_labels_slice(dataset_id, plane, value, interp)
+        assert bridged == served.content
+    header, labels = _decode_envelope(bridged)
+    assert header["recorded"] is True and header["declared"] == default_modulation().to_json()
+    assert labels.size == header["nx"] * header["ny"]
+    record = json.loads(webbridge.bragg_profile_json(dataset_id))["modulation"]
+    assert record["declared"] == default_modulation().to_json() and record["bunching"] is None
+    with pytest.raises(KeyError):
+        webbridge.modulation_labels_slice("nope", "hk", 0.0)
 
 
 def test_bragg_profile_json_missing_file(ran_pipeline):

@@ -135,7 +135,12 @@ def declared_symmetry(path: Path) -> tuple[str | None, list[list[list[int]]] | N
 
 def volume_meta(path: Path) -> dict:
     """Compact metadata for a volume: shape, axis ranges, lattice, the
-    symmetry its file declares, and whether its σ came with the data."""
+    symmetry its file declares, whether its σ came with the data, and the
+    settings the flatten that wrote it recorded
+    (:func:`~nebula3d.pipeline.read_flatten_settings`; ``None`` for a stage the
+    flatten did not write, or wrote before it recorded them)."""
+    from nebula3d.pipeline import read_flatten_settings
+
     vol = load_volume(path)
     symmetry, symmetry_ops = declared_symmetry(path)
     return {
@@ -150,6 +155,7 @@ def volume_meta(path: Path) -> dict:
         "symmetry_ops": symmetry_ops,
         "sigma": "estimated" if vol.sigma_estimated else "measured",
         "sigma_note": sigma_note(vol),
+        "flatten_settings": read_flatten_settings(path),
     }
 
 

@@ -25,11 +25,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { fetchDpdfFeatures, fetchRingDiagnostics } from "../../../api/client";
+import { fetchDpdfFeatures, fetchMeta, fetchRingDiagnostics, fetchShellFloors, fetchSlice } from "../../../api/client";
 import { usePipelineStore } from "../../../state/pipelineStore";
 import type { AgentStep } from "../../agent";
-import { dpdfVolumeId } from "../../context/loadContext";
+import { dpdfVolumeId, hklVolumeId, stageVolumeId } from "../../context/loadContext";
+import { qRadius } from "../../context/pipelineContext";
 import { withoutInference } from "../../inference";
+import { flattenJudging, flattenMetrics, volumePedestal } from "../../metrics/flatten";
 import { fit } from "../../readings";
 import { CHAT_TOOLS, MAX_RESULT_CHARS } from "../../tools";
 import { verdicts } from "../../verdicts";
@@ -473,19 +475,52 @@ for (const id of ["dev-origin", "dev-rings", "dev-shell"] as const) {
   });
 }
 
+// The flatten judged over the run's own range (plan 4.11): what made the file
+// on disk, its recorded settings, and not the Configure page's, which may have
+// changed since the run.
+describe("dev-control: the flatten judged over the range its run recorded", () => {
+  check("dev-control", "a run fitted to 5 Å⁻¹ is judged over its range after the page goes back to the default", async () => {
+    const c = devCase("dev-control");
+    ran(await c.tool("update_settings", { changes: { flattenFitQMax: 5 } }), "update_settings");
+    ran(await c.tool("run_pipeline", { from_stage: "flatten" }), "run_pipeline");
+    usePipelineStore.setState({ flattenFitQMax: "" }); // the page's default again, no run
+    const ds = await c.dataset();
+    const [rawId, filledId, flatId] = [hklVolumeId(ds)!, stageVolumeId(ds, "backfilled")!, stageVolumeId(ds, "flattened")!];
+    const recorded = (await fetchMeta(flatId)).flatten_settings;
+    const per = ((ran(await c.tool("assess_stage", { stage: "flatten" }), "assess_stage flatten").result.flatten as Record<string, unknown>).per_plane ?? {}) as Record<string, unknown>;
+    const meta = await fetchMeta(rawId);
+    const msg = evidence(c, { recorded, per_plane: per });
+    expect(recorded?.fit_q_range, msg).toEqual([0.8, 5]);
+    expect(Object.keys(per), msg).toEqual(["hk0", "h0l", "0kl"]);
+    // Each plane's numbers are its cut's over the run's range, which the
+    // page's would not give: the planes reach 9 Å⁻¹, past the run's 5.
+    for (const plane of Object.keys(per)) {
+      const [before, after] = await Promise.all([fetchSlice(filledId, plane, 0), fetchSlice(flatId, plane, 0)]);
+      const radius = qRadius(plane, 0, meta);
+      expect(per[plane], `${msg} (${plane})`).toEqual(flattenMetrics(before, after, radius, [0.8, 5], 25));
+      expect(per[plane], `${msg} (${plane})`).not.toEqual(flattenMetrics(before, after, radius, [0.8, 10], 25));
+    }
+  });
+});
+
 describe("dev-flatten: the pedestal is found, and the Q² term takes it out", () => {
+  // Judged over the whole volume's shell floors (plan 4.1), as the server
+  // measures them on the run's own shells, from its fit range (plan 4.11).
   check("dev-flatten", "a pedestal, then none with the Q² term on and the flatten rerun", async () => {
     const c = devCase("dev-flatten");
     const flatten = async () => {
       const r = ran(await c.tool("assess_stage", { stage: "flatten" }), "assess_stage flatten");
       const f = r.result.flatten as Record<string, unknown>;
-      return { pedestal_left: f.pedestal_left, trend: f.max_floor_trend, span: f.max_floor_span_fraction, verdict: f.verdict, outcome: outcomeOf(r)[0] };
+      const floors = await fetchShellFloors(stageVolumeId(await c.dataset(), "flattened")!);
+      const volume = volumePedestal(floors, flattenJudging(floors.flatten).fitQ);
+      return { pedestal_left: f.pedestal_left, trend: f.floor_trend, span: f.floor_span_fraction, judged: f.floor_judged_q, verdict: f.verdict, outcome: outcomeOf(r)[0], volume };
     };
     const before = await flatten();
     ran(await c.tool("update_settings", { changes: { flattenQ2: true } }), "update_settings");
     const rerun = ran(await c.tool("run_pipeline", { from_stage: "flatten" }), "run_pipeline");
     const after = await flatten();
     const msg = evidence(c, { before, rerun: rerun.result.stages, after });
+    for (const x of [before, after]) expect([x.trend, x.span, x.judged], msg).toEqual([x.volume.floor_trend, x.volume.floor_span_fraction, x.volume.floor_judged_q]);
     expect(before.pedestal_left, msg).toBe(true);
     expect(before.outcome.reasons, msg).toEqual(["pedestal"]);
     expect(rerun.result.stages, msg).toMatchObject({ flatten: "computed" });

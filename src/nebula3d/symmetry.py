@@ -22,11 +22,12 @@ the same way, by averaging them over each orbit (:meth:`GridSymmetry.orbit_mean`
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
 from nebula3d.core import HKLVolume, low_memory
 
@@ -109,6 +110,32 @@ def _group_closure(ops: tuple[NDArray[np.int64], ...]) -> tuple[NDArray[np.int64
     return tuple(seen.values())
 
 
+def point_group(ops: Sequence[ArrayLike]) -> tuple[NDArray[np.int64], ...]:
+    """The group the HKL matrices *ops* generate, identity first: the
+    ``ops`` of a :class:`GridSymmetry`, without a grid."""
+    return _group_closure(tuple(np.asarray(m, dtype=np.int64) for m in ops))
+
+
+def coordinate_forms(
+    ops: Sequence[ArrayLike], f: ArrayLike,
+) -> tuple[NDArray[np.int64], ...]:
+    """Distinct images of the coordinate ``f·x`` under the operations *ops*.
+
+    A voxel ``x`` maps to ``M⁻¹x``, whose coordinate ``f·M⁻¹x`` is ``g·x``
+    with ``g = f·M⁻¹``.  A rule on ``f·x`` (an integer-H guard, the planes a
+    modulation protects) holds at every equivalent voxel when it is applied to
+    each ``g·x``.  In the order of *ops*, so ``f`` itself comes first when the
+    identity does.
+    """
+    row = np.asarray(f, dtype=np.int64)
+    out: list[NDArray[np.int64]] = []
+    for m in ops:
+        g = np.rint(row @ np.linalg.inv(np.asarray(m, dtype=np.float64))).astype(np.int64)
+        if not any(np.array_equal(g, h) for h in out):
+            out.append(g)
+    return tuple(out)
+
+
 @dataclass(frozen=True)
 class GridSymmetry:
     """A point group acting on a volume's grid.
@@ -155,20 +182,21 @@ class GridSymmetry:
     def order(self) -> int:
         return len(self.ops)
 
+    def forms(self, f: ArrayLike) -> tuple[NDArray[np.int64], ...]:
+        """Distinct images of the coordinate ``f·x`` under the group
+        (:func:`coordinate_forms`); *f* itself comes first."""
+        return coordinate_forms(self.ops, f)
+
     def h_forms(self) -> tuple[NDArray[np.int64], ...]:
         """Distinct images of the H coordinate under the group.
 
         A voxel ``x`` maps to ``M⁻¹x``, whose H coordinate is ``f·x`` with
         ``f`` row 0 of ``M⁻¹``.  A rule on H (an integer-H guard, protected
         fractional-H planes) holds at every equivalent voxel when it is applied
-        to each ``f·x``.  ``(1, 0, 0)`` (H itself) comes first.
+        to each ``f·x``.  ``(1, 0, 0)`` (H itself) comes first: the
+        :meth:`forms` of ``(1, 0, 0)``.
         """
-        out: list[NDArray[np.int64]] = []
-        for m in self.ops:
-            f = np.rint(np.linalg.inv(m)[0]).astype(np.int64)
-            if not any(np.array_equal(f, g) for g in out):
-                out.append(f)
-        return tuple(out)
+        return self.forms((1, 0, 0))
 
     def orbit_any(self, mask: NDArray[np.bool_]) -> NDArray[np.bool_]:
         """True where any symmetry-equivalent voxel of *mask* is True.
