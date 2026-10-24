@@ -30,6 +30,7 @@ import type {
   DeltaPdfMeta,
   DpdfFeatures,
   ModulationCheck,
+  RegridResult,
   RingDiagnostics,
   RingIsotropy,
   ShellFloors,
@@ -414,6 +415,12 @@ export const engine = {
   },
   ubCheck(volumeId: string, cell: string, qMax: number | null): Promise<UbCheck> {
     return jsonCall<UbCheck>("volume_ub_check_json", [volumeId, cell, qMax]);
+  },
+  // The new file goes into the workspace's raw/ and is registered as an input
+  // there (webbridge.dataset_regrid_json): it lives in the worker's memory
+  // only, and a restarted worker loses it.
+  datasetRegrid(datasetId: string, cell: string, qMax: number | null): Promise<RegridResult> {
+    return jsonCall<RegridResult>("dataset_regrid_json", [datasetId, cell, qMax, false]);
   },
   volumeTexture(
     volumeId: string,

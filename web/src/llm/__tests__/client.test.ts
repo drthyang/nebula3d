@@ -4,7 +4,19 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { completeChat, contextWarning, isMalformedOutput, isToolsUnsupported, loadedContext, streamChat, ToolCallAssembler, type HttpError, type StreamDelta, withContextHint } from "../provider/client";
+import {
+  completeChat,
+  contextWarning,
+  isMalformedOutput,
+  isToolsUnsupported,
+  loadedContext,
+  stoppedAtLimit,
+  streamChat,
+  ToolCallAssembler,
+  type HttpError,
+  type StreamDelta,
+  withContextHint,
+} from "../provider/client";
 
 const sse = (chunks: string[]): Response => {
   const enc = new TextEncoder();
@@ -110,7 +122,22 @@ describe("streamChat", () => {
     vi.stubGlobal("fetch", vi.fn(async () => sse([line({ content: "Che" }), `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "length" }] })}\n`])));
     const got: StreamDelta[] = [];
     for await (const d of streamChat({ baseUrl: "u", model: "m", messages: [], temperature: 0 })) got.push(d);
-    expect(got[got.length - 1]).toEqual({ truncated: true });
+    expect(got[got.length - 1]).toEqual({ truncated: true, stopReason: "length" });
+  });
+
+  it("asks for the output cap it is given, sends no temperature when told none, and names a reply cut at the cap", async () => {
+    const fetchMock = vi.fn(async () => sse([line({ content: "Che" }), `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "length" }] })}\n`]));
+    vi.stubGlobal("fetch", fetchMock);
+    const got: StreamDelta[] = [];
+    for await (const d of streamChat({ baseUrl: "u", model: "m", messages: [], temperature: null, maxTokens: 16_000 })) got.push(d);
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(body).toEqual({ model: "m", messages: [], stream: true, max_tokens: 16_000 });
+    expect(got.filter((d) => d.stopReason)).toEqual([{ truncated: true, stopReason: "length" }]);
+    // A reply that ended on its own names no stop reason.
+    vi.stubGlobal("fetch", vi.fn(async () => sse([line({ content: "ok" }), `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n`])));
+    const ended: StreamDelta[] = [];
+    for await (const d of streamChat({ baseUrl: "u", model: "m", messages: [], temperature: 0 })) ended.push(d);
+    expect(ended.some((d) => d.stopReason || d.truncated)).toBe(false);
   });
 
   it("explains a streamed error the model's own output caused, and keeps its status", async () => {
@@ -205,26 +232,38 @@ describe("completeChat", () => {
   const reply = (payload: unknown) => vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 }));
   const ask = (onUsage: (u: unknown) => void) => completeChat({ baseUrl: "u", model: "m", messages: [], temperature: 0, onUsage });
 
-  it("reads the reply whole, as before, and reports its token counts, or null when the server gave none", async () => {
-    const fetchMock = reply({ choices: [{ message: { content: '{"best": 2}' } }], usage: { prompt_tokens: 812, completion_tokens: 40 } });
+  it("reads the reply whole, as before, and reports its token counts, or null when the server gave none, with its stop reason", async () => {
+    const fetchMock = reply({ choices: [{ message: { content: '{"best": 2}' }, finish_reason: "stop" }], usage: { prompt_tokens: 812, completion_tokens: 40 } });
     vi.stubGlobal("fetch", fetchMock);
     const onUsage = vi.fn();
     expect(await ask(onUsage)).toBe('{"best": 2}');
-    expect(onUsage.mock.calls).toEqual([[{ input: 812, output: 40 }]]);
+    expect(onUsage.mock.calls).toEqual([[{ input: 812, output: 40 }, "stop"]]);
     const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
     expect(body).toEqual({ model: "m", messages: [], temperature: 0, stream: false });
 
     vi.stubGlobal("fetch", reply({ choices: [{ message: { content: "{}" } }] }));
     onUsage.mockClear();
     await ask(onUsage);
-    expect(onUsage.mock.calls).toEqual([[null]]);
+    expect(onUsage.mock.calls).toEqual([[null, null]]);
+  });
+
+  it("asks for the output cap it is given, and reports a reply cut at it", async () => {
+    const fetchMock = reply({ choices: [{ message: { content: '{"be' }, finish_reason: "length" }], usage: { prompt_tokens: 812, completion_tokens: 16_000 } });
+    vi.stubGlobal("fetch", fetchMock);
+    const onUsage = vi.fn();
+    await completeChat({ baseUrl: "u", model: "m", messages: [], temperature: 0, maxTokens: 16_000, onUsage });
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(body).toEqual({ model: "m", messages: [], temperature: 0, stream: false, max_tokens: 16_000 });
+    expect(onUsage.mock.calls).toEqual([[{ input: 812, output: 16_000 }, "length"]]);
+    expect([stoppedAtLimit("length"), stoppedAtLimit("max_tokens")]).toEqual([true, true]);
+    expect([stoppedAtLimit("stop"), stoppedAtLimit("end_turn"), stoppedAtLimit(null), stoppedAtLimit(undefined)]).toEqual([false, false, false, false]);
   });
 
   it("reports the counts of a reply without text before it fails: they were spent", async () => {
     vi.stubGlobal("fetch", reply({ choices: [{ message: {} }], usage: { prompt_tokens: 90, completion_tokens: 3 } }));
     const onUsage = vi.fn();
     await expect(ask(onUsage)).rejects.toThrow("The model returned no message content");
-    expect(onUsage.mock.calls).toEqual([[{ input: 90, output: 3 }]]);
+    expect(onUsage.mock.calls).toEqual([[{ input: 90, output: 3 }, null]]);
   });
 });
 

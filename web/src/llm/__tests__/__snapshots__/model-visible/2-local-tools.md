@@ -8,22 +8,28 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 > How clean is this reduction?
 
-15 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, ub_check, radial_profile, line_profile, bragg_peaks, run_log, configure_settings, show_in_viewer.
+16 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, ub_check, radial_profile, line_profile, bragg_peaks, run_log, run_verdict, configure_settings, show_in_viewer.
 
 ## a ΔPDF question
 
 > What are the strongest pair correlations in the 3D-ΔPDF?
 
-15 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, line_profile, consistency_details, run_log, configure_settings, show_in_viewer.
+16 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, line_profile, consistency_details, run_log, run_verdict, configure_settings, show_in_viewer.
 
 ## a flatten question
 
 > Is there a background left after the flatten?
 
-10 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, radial_profile, line_profile, run_log, configure_settings, show_in_viewer.
+11 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, radial_profile, line_profile, run_log, run_verdict, configure_settings, show_in_viewer.
 
 ## an action request
 
 > Raise the punch significance to 6 and rerun the pipeline.
 
-15 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, grain_check, ub_check, line_profile, bragg_peaks, run_log, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer.
+16 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, grain_check, ub_check, line_profile, bragg_peaks, run_log, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer.
+
+## a regrid request
+
+> Regrid the volume onto the refined UB.
+
+14 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, grain_check, ub_check, line_profile, bragg_peaks, run_log, run_verdict, configure_settings, regrid_refined_ub, show_in_viewer.

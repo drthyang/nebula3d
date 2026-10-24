@@ -9,6 +9,7 @@ import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
 import { percentile, robustStats } from "../metrics/sliceStats";
 import { sectionSymmetry } from "../metrics/symmetry";
 import type { BraggProfile } from "../../api/types";
+import { ORIGIN_EXCLUDED } from "../../components/dpdfLevels";
 import { labelsOn, makeSlice, onTheThirds } from "./helpers";
 
 describe("sliceStats", () => {
@@ -465,6 +466,16 @@ describe("delta pdf metrics", () => {
     hex.header.axes_angle = 120;
     const m = dpdfMetrics(hex)!;
     expect(m.anisotropy_angle_deg!).toBeCloseTo(60, 0);
+  });
+
+  it("leaves out the origin's disk that the ΔPDF page and dpdf_peaks leave out: ORIGIN_EXCLUDED of the section's half-width", () => {
+    // Half-width 40 Å: the disk is r < 2 Å. A peak inside it is the origin's;
+    // one on its edge is a feature.
+    const at = (x: number, y: number, px: number, py: number) => Math.abs(x - px) < 1e-9 && Math.abs(y - py) < 1e-9;
+    const slice = makeSlice(81, 81, (x, y) => (at(x, y, 1, 0) ? 1e6 : at(x, y, 2, 0) ? 50 : Math.sin(3 * x + 1) * Math.cos(3 * y + 1)));
+    const m = dpdfMetrics(slice)!;
+    expect(m.origin_excluded_radius).toBe(ORIGIN_EXCLUDED * 40);
+    expect(m.feature_snr!).toBeCloseTo(50 / m.background_sigma!, -1);
   });
 
   it("handles a full-resolution slice without overflowing the stack", () => {

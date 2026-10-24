@@ -3,6 +3,7 @@
 
 import { fetchConsistencyCheck } from "../../../api/client";
 import { datasetLabel, safe } from "../../context/loadContext";
+import { SIGMA_OF } from "../../metrics/dpdf";
 import { num, oneOf } from "../shared/args";
 import { DPDF_PLANES, measureDpdf, measureRecip, planeLabel, RECIP_PLANES } from "../shared/cuts";
 import { r4 } from "../shared/figures";
@@ -62,6 +63,8 @@ export const compare_datasets: ChatTool = {
         }
       }),
     );
-    return { result: { cut: planeLabel(plane, value), rows }, summary: `${planeLabel(plane, value)} on ${rows.length} datasets` };
+    // Each dataset's feature_snr is in its own section's σ.
+    const sigma = kind === "dpdf" ? { sigma_of: SIGMA_OF.datasets } : {};
+    return { result: { cut: planeLabel(plane, value), ...sigma, rows }, summary: `${planeLabel(plane, value)} on ${rows.length} datasets` };
   },
 };

@@ -3,12 +3,13 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TOOLS_CONTEXT } from "../provider/client";
-import { COMPLETE_MAX_TOKENS } from "../provider/anthropic";
 import { MAX_TOOL_ROUNDS } from "../agent";
+import { TOOLS_CONTEXT } from "../provider/client";
+import { RUN_POLICIES, runPolicyOf, transportOf } from "../runPolicy";
 import { TUNE_STAGES } from "../tune/catalog";
 import {
   costOf,
+  covers,
   FIRST_RUN_WORST,
   firstRunWorstUsd,
   modelAt,
@@ -21,6 +22,10 @@ import {
   SPEND_CAP_USD,
   SPEND_TOTAL_USD,
   SpendTracker,
+  TUNE_REQUESTS_PER_STAGE,
+  tuningWorstUsd,
+  VALIDATION_MAX_TOKENS,
+  validationPolicy,
 } from "./validationModels";
 import { casesIn } from "./validation";
 
@@ -291,67 +296,149 @@ describe("cost", () => {
 });
 
 describe("the spend tracker", () => {
-  it("holds the first run to a ceiling and later ones to 1.5 times the dearest", () => {
-    const t = new SpendTracker(12);
-    expect(t.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
+  const sonnet = modelNamed("claude-sonnet-5-5").price!;
+  const run = (usd: number | null) => ({ case: "x", arm: "B", run: 1, usd });
+
+  it("holds the first run to its hard bound, $7.37: the arithmetic of FIRST_RUN_RESERVE_USD's comment, every count the code's", () => {
+    const { loop, tuning, margin } = FIRST_RUN_WORST;
+    // The loop: its rounds of tool calls and the answer, each request at the validation's output cap.
+    expect(loop.requests).toBe(MAX_TOOL_ROUNDS + 1);
+    expect(loop.requests).toBe(13);
+    expect(loop.outputPerRequest).toBe(VALIDATION_MAX_TOKENS);
+    // The tuning: five stages of a stage's most requests, each at the cap its run policy asks for.
+    expect(tuning.requests).toBe(TUNE_STAGES.length * TUNE_REQUESTS_PER_STAGE);
+    expect(tuning.requests).toBe(15);
+    const claude = modelNamed("claude-sonnet-5-5");
+    expect(tuning.outputPerRequest).toBe(validationPolicy({ baseUrl: claude.baseUrl, temperature: claude.temperature }, MAX_TOOL_ROUNDS).outputCap.tuning);
+    expect(VALIDATION_MAX_TOKENS).toBe(16_000);
+    expect(margin).toBe(0.25);
+    // Step by step, at Sonnet 5.5's price in MODELS.
+    expect([sonnet.input, sonnet.output]).toEqual([2, 10]);
+    expect((loop.requests * loop.inputPerRequest * sonnet.input) / 1e6).toBeCloseTo(1.04, 10);
+    expect((loop.requests * loop.outputPerRequest * sonnet.output) / 1e6).toBeCloseTo(2.08, 10);
+    expect((tuning.requests * tuning.inputPerRequest * sonnet.input) / 1e6).toBeCloseTo(0.375, 10);
+    expect((tuning.requests * tuning.outputPerRequest * sonnet.output) / 1e6).toBeCloseTo(2.4, 10);
+    expect(firstRunWorstUsd(sonnet)).toBeCloseTo(5.895 * 1.25, 10);
+    expect(firstRunWorstUsd(sonnet)).toBeCloseTo(7.36875, 10);
+    // Rounded up to the cent: $7.37, inside the $12 cap.
+    expect(SpendTracker.FIRST_RUN_RESERVE_USD).toBe(7.37);
+    expect(SpendTracker.FIRST_RUN_RESERVE_USD).toBeGreaterThanOrEqual(firstRunWorstUsd(sonnet));
+    expect(SpendTracker.FIRST_RUN_RESERVE_USD - firstRunWorstUsd(sonnet)).toBeLessThan(0.01);
+    const t = new SpendTracker(SPEND_CAP_USD);
+    expect(t.reserve()).toBe(7.37);
     expect(t.canStart()).toBe(true);
-    t.record({ case: "a", arm: "B", run: 1, usd: 0.2 });
-    t.record({ case: "b", arm: "B", run: 1, usd: 0.1 });
-    expect(t.reserve()).toBeCloseTo(0.3, 10);
+  });
+
+  it("prices a tuning past a run's first at its hard bound with the margin, $3.47", () => {
+    // The tuning's $0.375 in and $2.400 out, $2.775, × 1.25.
+    expect(tuningWorstUsd(sonnet)).toBeCloseTo(2.775 * 1.25, 10);
+    expect(tuningWorstUsd(sonnet)).toBeCloseTo(3.46875, 10);
+    expect(SpendTracker.EXTRA_TUNING_USD).toBe(3.47);
+    expect(SpendTracker.EXTRA_TUNING_USD).toBeGreaterThanOrEqual(tuningWorstUsd(sonnet));
+  });
+
+  it("covers every paid model at its own price", () => {
+    const paid = MODELS.filter((m) => m.spendCapUsd !== null);
+    expect(paid.map((m) => m.key)).toEqual(["claude-sonnet-5-5"]);
+    for (const m of paid) {
+      expect(firstRunWorstUsd(m.price!)).toBeLessThanOrEqual(SpendTracker.FIRST_RUN_RESERVE_USD);
+      expect(tuningWorstUsd(m.price!)).toBeLessThanOrEqual(SpendTracker.EXTRA_TUNING_USD);
+    }
+  });
+
+  it("holds a later run to the first run's reserve after cheap runs, and to 1.5 times the dearest after a dear one", () => {
+    const t = new SpendTracker(SPEND_CAP_USD);
+    t.record(run(0.2));
+    t.record(run(0.1));
+    // Not 1.5 × $0.20: never below the first run's.
+    expect(t.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
     expect(t.spent).toBeCloseTo(0.3, 10);
     expect(t.remaining).toBeCloseTo(11.7, 10);
+    // 1.5 × $4.91 = $7.365, under $7.37: still the first run's.
+    t.record(run(4.91));
+    expect(t.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
+    // A dear run: 1.5 × $5.00 = $7.50.
+    const dear = new SpendTracker(SPEND_CAP_USD);
+    dear.record(run(0.2));
+    dear.record(run(5));
+    dear.record(run(0.1));
+    expect(dear.reserve()).toBeCloseTo(7.5, 10);
   });
 
-  it("stops before a run that could pass the cap, and says why", () => {
-    const t = new SpendTracker(1);
-    t.record({ case: "a", arm: "B", run: 1, usd: 0.4 });
-    expect(t.canStart()).toBe(true); // 0.4 spent + 0.6 reserve = 1.0
-    t.record({ case: "b", arm: "B", run: 1, usd: 0.1 });
-    t.record({ case: "c", arm: "B", run: 1, usd: 0.3 });
-    expect(t.spent).toBeCloseTo(0.8, 10);
-    expect(t.canStart()).toBe(false); // 0.8 + 0.6 > 1
-    expect(t.refusal()).toMatch(/spend cap is reached: \$0\.80 spent of \$1\.00/);
-    expect(new SpendTracker(1).refusal()).toMatch(/cap is reached/); // the $5 first-run ceiling over a $1 cap
-  });
-
-  it("holds the first run to the dearest run that tunes, at Sonnet 5.5's price, inside the cap", () => {
-    const price = modelNamed("claude-sonnet-5-5").price!;
-    // The arithmetic of FIRST_RUN_RESERVE_USD's comment, step by step.
-    expect((13 * 40_000 * price.input) / 1e6).toBeCloseTo(1.04, 10);
-    expect((16_000 * price.output) / 1e6).toBeCloseTo(0.16, 10);
-    expect((15 * 12_500 * price.input) / 1e6).toBeCloseTo(0.375, 10);
-    expect((15 * 16_000 * price.output) / 1e6).toBeCloseTo(2.4, 10);
-    expect(firstRunWorstUsd(price)).toBeCloseTo(3.975 * 1.25, 10);
-    // The reserve covers it, rounded up to the dollar, and the cap holds the reserve.
-    expect(SpendTracker.FIRST_RUN_RESERVE_USD).toBeGreaterThanOrEqual(firstRunWorstUsd(price));
-    expect(SpendTracker.FIRST_RUN_RESERVE_USD - firstRunWorstUsd(price)).toBeLessThan(0.05);
-    expect(SpendTracker.FIRST_RUN_RESERVE_USD).toBeLessThanOrEqual(SPEND_CAP_USD);
-    expect(new SpendTracker(SPEND_CAP_USD).canStart()).toBe(true);
-    // Its counts are the code's: the loop's requests, five stages of three requests, the tuner's max_tokens.
-    expect(FIRST_RUN_WORST.loop.requests).toBe(MAX_TOOL_ROUNDS + 1);
-    expect(FIRST_RUN_WORST.tuning.requests).toBe(TUNE_STAGES.length * 3);
-    expect(FIRST_RUN_WORST.tuning.outputPerRequest).toBe(COMPLETE_MAX_TOKENS);
-    expect(COMPLETE_MAX_TOKENS).toBe(16_000);
-  });
-
-  it("never runs a $12 cap past $12 over a whole session of dear runs", () => {
+  it("stops at the $12 cap whatever the reserve says: no run starts while what is spent and its reserve pass it", () => {
     const t = new SpendTracker(SPEND_CAP_USD);
+    t.record(run(4.62));
+    expect(t.canStart()).toBe(true); // $4.62 + $7.37 = $11.99
+    expect(t.refusal()).toBeNull();
+    t.record(run(0.02));
+    expect(t.spent).toBeCloseTo(4.64, 10);
+    expect(t.canStart()).toBe(false); // $4.64 + $7.37 = $12.01
+    expect(t.refusal()).toBe("the spend cap is reached: $4.64 spent of $12.00, and the next run may cost up to $7.37");
+    // A dear run's 1.5 times, past what is left.
+    const dear = new SpendTracker(SPEND_CAP_USD);
+    dear.record(run(6));
+    expect(dear.reserve()).toBe(9);
+    expect(dear.canStart()).toBe(false);
+    expect(dear.refusal()).toBe("the spend cap is reached: $6.00 spent of $12.00, and the next run may cost up to $9.00");
+    // The first run's reserve over a smaller cap: no run starts at all.
+    expect(new SpendTracker(7).refusal()).toBe("the spend cap is reached: $0.00 spent of $7.00, and the next run may cost up to $7.37");
+  });
+
+  it("never runs a $12 cap past $12 over a whole session, whatever each run costs within its reserve", () => {
+    for (const cost of [0.05, 0.3, 1, 2.5, 5.895, 7.37]) {
+      const t = new SpendTracker(SPEND_CAP_USD);
+      let runs = 0;
+      while (t.canStart() && runs < 1000) {
+        // Each run costs `cost`, or the most its reserve allows when that is less.
+        t.record(run(Math.min(cost, t.reserve())));
+        runs += 1;
+      }
+      expect(t.spent, `runs of $${cost}`).toBeLessThanOrEqual(SPEND_CAP_USD);
+      expect(runs).toBeGreaterThan(0);
+    }
+    // Every run that starts after the first is held to $7.37: one starts only while
+    // the spend is at most $12 − $7.37 = $4.63, so the dearest so far is at most that,
+    // and 1.5 times it under $7.37.
+    const cheap = new SpendTracker(SPEND_CAP_USD);
     let runs = 0;
-    while (t.canStart() && runs < 1000) {
-      t.record({ case: "x", arm: "B", run: 1, usd: 0.5 }); // every run costs the most it may
+    while (cheap.canStart()) {
+      expect(cheap.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
+      cheap.record(run(0.3));
       runs += 1;
     }
-    expect(t.spent).toBeLessThanOrEqual(SPEND_CAP_USD);
-    expect(runs).toBeGreaterThan(10);
+    expect(runs).toBe(16); // $4.50 + $7.37 ≤ $12; $4.80 + $7.37 > $12
   });
 
   it("charges a run whose tokens were not reported at the reserve, so the total is never short", () => {
-    const t = new SpendTracker(12);
-    t.record({ case: "a", arm: "B", run: 1, usd: 0.2 });
-    const e = t.record({ case: "b", arm: "B", run: 1, usd: null });
+    const t = new SpendTracker(SPEND_CAP_USD);
+    t.record(run(0.2));
+    const e = t.record(run(null));
     expect(e.estimated).toBe(true);
-    expect(e.usd).toBeCloseTo(0.3, 10);
-    expect(t.reserve()).toBeCloseTo(0.3, 10); // an estimate does not raise the ceiling
+    expect(e.usd).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
+    expect(t.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD); // an estimate does not raise the ceiling
+    const dear = new SpendTracker(SPEND_CAP_USD);
+    dear.record(run(5));
+    expect(dear.record(run(null)).usd).toBeCloseTo(7.5, 10);
+  });
+
+  it("gives a run's tunings past its first what the cap leaves beyond the spend and the run's reserve", () => {
+    // The first run: $12 − $7.37 = $4.63, which covers one more tuning.
+    const first = new SpendTracker(SPEND_CAP_USD).tuningBudget();
+    expect(first.leftUsd).toBeCloseTo(4.63, 10);
+    expect(first.perTuningUsd).toBe(SpendTracker.EXTRA_TUNING_USD);
+    expect(covers(first.leftUsd, first.perTuningUsd)).toBe(true);
+    // After $2.00: $12 − $2 − $7.37 = $2.63, which does not.
+    const later = new SpendTracker(SPEND_CAP_USD);
+    later.record(run(2));
+    expect(later.tuningBudget().leftUsd).toBeCloseTo(2.63, 10);
+    expect(covers(later.tuningBudget().leftUsd, SpendTracker.EXTRA_TUNING_USD)).toBe(false);
+    // Past the cap, nothing.
+    const spent = new SpendTracker(SPEND_CAP_USD);
+    spent.record(run(5));
+    expect(spent.tuningBudget().leftUsd).toBe(0);
+    // To the micro-dollar.
+    expect(covers(3.47, 3.47)).toBe(true);
+    expect(covers(3.469999, 3.47)).toBe(false);
   });
 
   it("keeps its ledger between sessions", () => {
@@ -362,5 +449,36 @@ describe("the spend tracker", () => {
     expect(back.entries).toEqual(t.entries);
     expect(SpendTracker.fromJSON(null, 12).spent).toBe(0);
     expect(() => new SpendTracker(0)).toThrow();
+  });
+});
+
+describe("the validation's run policy", () => {
+  it("caps every request at 16,000 tokens, the loop's and the tuning's, on every model, and takes the run's round limit", () => {
+    expect(VALIDATION_MAX_TOKENS).toBe(16_000);
+    for (const m of MODELS) {
+      const policy = validationPolicy({ baseUrl: m.baseUrl, temperature: m.temperature }, 12);
+      expect(policy.outputCap).toEqual({ loop: VALIDATION_MAX_TOKENS, tuning: VALIDATION_MAX_TOKENS });
+      expect(policy.maxRounds).toBe(12);
+    }
+    expect(validationPolicy({ baseUrl: modelNamed("ollama-gemma4-26b").baseUrl, temperature: 0.2 }, 5).maxRounds).toBe(5);
+  });
+
+  it("is the transport's policy as the app ships it, the cap aside: arm B is the Pilot as it ships", () => {
+    for (const m of MODELS) {
+      const shipped = runPolicyOf({ baseUrl: m.baseUrl, temperature: m.temperature });
+      const run = validationPolicy({ baseUrl: m.baseUrl, temperature: m.temperature }, MAX_TOOL_ROUNDS);
+      expect({ ...run, outputCap: shipped.outputCap }).toEqual(shipped);
+    }
+    expect(runPolicyOf(modelNamed("claude-sonnet-5-5"))).toEqual(RUN_POLICIES.claude);
+    expect(runPolicyOf(modelNamed("lmstudio-qwen3.8-27b"))).toEqual(RUN_POLICIES.lmStudio);
+    expect(runPolicyOf(modelNamed("ollama-gemma4-26b"))).toEqual(RUN_POLICIES.ollama);
+  });
+
+  it("sends each model's temperature where its transport takes one, and none to Claude, which takes no sampling parameters", () => {
+    for (const m of MODELS) {
+      // What the model's entry says is what is sent and recorded: null exactly where the transport drops it.
+      expect(validationPolicy({ baseUrl: m.baseUrl, temperature: m.temperature }, 12).temperature).toBe(m.temperature);
+      expect(m.temperature === null).toBe(transportOf(m.baseUrl) === "anthropic");
+    }
   });
 });

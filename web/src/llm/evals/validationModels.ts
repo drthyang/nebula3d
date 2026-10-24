@@ -6,9 +6,11 @@
 // Every model is described the same way: where it is served, the context the
 // run needs it loaded with, the splits it may run, and the runs per case.
 
-import { COMPLETE_MAX_TOKENS } from "../provider/anthropic";
 import { isOllamaUrl, loadedContext, ollamaModel } from "../provider/client";
 import { isLocalUrl } from "../provider/presets";
+import { MAX_TOOL_ROUNDS, runPolicyOf, type RunPolicy } from "../runPolicy";
+import type { LlmSettings } from "../settings";
+import { TUNE_STAGES } from "../tune/catalog";
 import { casesToRun, datasetStem, type Arm, type RunContextWindow, type Split, type ValidationCase } from "./validation";
 
 export interface Price {
@@ -29,7 +31,7 @@ export interface ValidationModel {
   minContextTokens: number | null; // the least the run accepts (RUN_POLICY); null: a cloud model, not checked
   splits: readonly Split[]; // the splits it may run
   runsPerCase: number;
-  temperature: number | null; // null: the model takes no sampling parameters
+  temperature: number | null; // null: the model takes no sampling parameters, and none is sent (validationPolicy)
   apiKeyEnv: string | null; // the environment variable holding its key, never written out
   price: Price | null; // null: local, no cost
   spendCapUsd: number | null; // null: no cap, because nothing is paid
@@ -58,6 +60,31 @@ const OLLAMA = "http://localhost:11434/v1";
 export const RUN_POLICY = {
   minLocalContextTokens: 57_344,
 } as const;
+
+/**
+ * The output cap of every model request in a validation run: the agent loop's,
+ * in either arm, and its tuning's (tune_pipeline, which asks the run's model).
+ * One cap for every model and arm keeps the arms comparable, where the app's
+ * own caps differ by transport (Claude 64,000 for a reply and 16,000 for a
+ * tuning request, anthropic.ts; a local server none, runPolicy.ts). A reply
+ * cut at it is recorded and flagged, never graded silently (the record's
+ * `truncated`, validation.ts). The manager's decision, confirmed by the user,
+ * 2026-10-24 (plan 1.1).
+ */
+export const VALIDATION_MAX_TOKENS = 16_000;
+
+/**
+ * The policy a validation run runs under (runPolicy.ts): its transport's as
+ * the app ships it, arm B being the Pilot as it ships, with the run's round
+ * limit and the validation's output cap on every request, the loop's and the
+ * tuning's. The temperature is the model's (MODELS): null for Claude, whose
+ * transport sends none. The run's record keeps it (run_policy).
+ */
+export const validationPolicy = (settings: Pick<LlmSettings, "baseUrl" | "temperature">, rounds: number): RunPolicy => ({
+  ...runPolicyOf(settings),
+  maxRounds: rounds,
+  outputCap: { loop: VALIDATION_MAX_TOKENS, tuning: VALIDATION_MAX_TOKENS },
+});
 
 const MIN_CONTEXT = RUN_POLICY.minLocalContextTokens;
 const LOAD_IN_LM_STUDIO =
@@ -306,63 +333,116 @@ export interface SpendEntry {
 }
 
 /**
- * The dearest first run, in tokens: what SpendTracker.FIRST_RUN_RESERVE_USD
- * prices.
+ * The requests one stage of a tuning (tune_pipeline) can make: it asks for
+ * alternatives, once more after a reply none of whose candidates can run (or
+ * that is not the JSON asked for), then for the pick (tuneStage,
+ * tune/tuner.ts). The replay pins it (validationRun.replay.test.ts).
+ */
+export const TUNE_REQUESTS_PER_STAGE = 3;
+
+/**
+ * The dearest first run, in tokens, every request's output at its hard bound:
+ * what SpendTracker.FIRST_RUN_RESERVE_USD prices. Each count is read from the
+ * constant that decides it.
  *
- * - The agent loop: its 12 rounds of tool calls and the answer, 13 requests,
- *   each of at most 40,000 tokens in, uncached, and 16,000 out over the run.
- * - One tuning (tune_pipeline) of all five stages at its most trials, five: a
- *   stage asks for alternatives, once more after a reply none of whose
- *   candidates can run, then for the pick, so 3 requests a stage and 15 in
- *   all. Each is at most 12,500 tokens in: the largest the replay measures is
- *   the ring stage's pick of five trials on the dev cases at the validation's
- *   grid, about 16,900 characters, 12,100 tokens at the token estimate's rate
- *   for number-dense JSON (1.4 characters a token, provider/tokens.ts) for
- *   every character (validationRun.replay.test.ts pins it). Each is at most
- *   16,000 tokens out, its max_tokens, thinking included.
+ * - The agent loop: its MAX_TOOL_ROUNDS rounds of tool calls and the answer,
+ *   13 requests, each of at most 40,000 tokens in, uncached, and of at most
+ *   VALIDATION_MAX_TOKENS out, 16,000, thinking included: the output cap of
+ *   every request of a validation run (validationPolicy). Until 2026-10-24 the
+ *   loop's output was taken as 16,000 tokens over the whole run, an estimate,
+ *   where each request may run to the cap.
+ * - One tuning (tune_pipeline) of all five stages (TUNE_STAGES) at its most
+ *   trials, five: TUNE_REQUESTS_PER_STAGE requests a stage, 15 in all. Each is
+ *   at most 12,500 tokens in: the largest the replay measures is the ring
+ *   stage's pick of five trials on the dev cases at the validation's grid,
+ *   about 16,900 characters, 12,100 tokens at the token estimate's rate for
+ *   number-dense JSON (1.4 characters a token, provider/tokens.ts) for every
+ *   character (validationRun.replay.test.ts pins it). Each is at most
+ *   VALIDATION_MAX_TOKENS out, the run's cap on the tuning's requests too.
  * - A 25% margin on the whole.
  */
 export const FIRST_RUN_WORST = {
-  loop: { requests: 13, inputPerRequest: 40_000, outputOverRun: 16_000 },
-  tuning: { requests: 15, inputPerRequest: 12_500, outputPerRequest: COMPLETE_MAX_TOKENS },
+  loop: { requests: MAX_TOOL_ROUNDS + 1, inputPerRequest: 40_000, outputPerRequest: VALIDATION_MAX_TOKENS },
+  tuning: { requests: TUNE_STAGES.length * TUNE_REQUESTS_PER_STAGE, inputPerRequest: 12_500, outputPerRequest: VALIDATION_MAX_TOKENS },
   margin: 0.25,
 } as const;
+
+/** A part of FIRST_RUN_WORST at *price*, without the margin: its requests, each at its most tokens in, uncached, and out. */
+const atHardBound = (part: { requests: number; inputPerRequest: number; outputPerRequest: number }, price: Price): number =>
+  (part.requests * (part.inputPerRequest * price.input + part.outputPerRequest * price.output)) / 1e6;
 
 /** What FIRST_RUN_WORST costs at *price*, its margin included. */
 export function firstRunWorstUsd(price: Price): number {
   const { loop, tuning, margin } = FIRST_RUN_WORST;
-  const usd =
-    (loop.requests * loop.inputPerRequest * price.input +
-      loop.outputOverRun * price.output +
-      tuning.requests * tuning.inputPerRequest * price.input +
-      tuning.requests * tuning.outputPerRequest * price.output) /
-    1e6;
-  return usd * (1 + margin);
+  return (atHardBound(loop, price) + atHardBound(tuning, price)) * (1 + margin);
+}
+
+/** One tuning at its hard bound (FIRST_RUN_WORST.tuning) at *price*, its margin included: what a tuning past a run's first must find left. */
+export function tuningWorstUsd(price: Price): number {
+  return atHardBound(FIRST_RUN_WORST.tuning, price) * (1 + FIRST_RUN_WORST.margin);
+}
+
+/** Dollars rounded up to the cent, read to the micro-dollar first, so that a sum's rounding error never adds a cent. */
+const centsUp = (usd: number): number => Math.ceil(Math.round(usd * 1e6) / 1e4) / 100;
+
+/** Whether *left* dollars cover *need*, to the micro-dollar. */
+export const covers = (left: number, need: number): boolean => Math.round(left * 1e6) >= Math.round(need * 1e6);
+
+/** The price the reserves are set at: the paid model's, Claude Sonnet 5.5's in MODELS. */
+function reservePrice(): Price {
+  const price = modelNamed("claude-sonnet-5-5").price;
+  if (!price) throw new Error("the spend reserves are priced at Claude Sonnet 5.5's price, and MODELS gives it none");
+  return price;
 }
 
 /**
- * Money spent on a paid model, against a cap. Before a run starts it must be
- * affordable at its worst: the first run is held to a ceiling set by the round
- * limit, the context and a tuning (FIRST_RUN_WORST), and later ones to 1.5
- * times the dearest so far. A run whose tokens the server did not report is
- * charged that reserve, so the total is never short. The ledger is a plain
+ * What a paid run's tunings past its first may spend (SpendTracker.tuningBudget;
+ * validationRun.ts holds a run to it). The run's reserve covers its agent loop
+ * and one tuning, each at its hard bound; a tuning past that one starts only if
+ * what the cap leaves beyond the reserve still covers one, each drawing its share.
+ */
+export interface TuningBudget {
+  leftUsd: number; // the cap less the spend before the run and the run's reserve
+  perTuningUsd: number; // one tuning at its hard bound, with the margin (SpendTracker.EXTRA_TUNING_USD)
+}
+
+/**
+ * Money spent on a paid model, against a cap. The tracker charges a run only
+ * after it ends, from its record's cost, so the reserve a run is held to before
+ * it starts is what guarantees the cap: no run starts while what is spent and
+ * its reserve pass the cap (canStart). The first run's reserve is the dearest a
+ * run can be, every request at its hard bound (FIRST_RUN_WORST); a later run's
+ * is that, or 1.5 times the dearest run so far when more. A run whose tokens the
+ * server did not report is charged its reserve, so the total is never short. A
+ * second tuning in one run is not in the reserve: the run starts one only if the
+ * budget left beyond the reserve covers it (tuningBudget). The ledger is a plain
  * list, kept between sessions.
  */
 export class SpendTracker {
   /**
-   * The dearest a first run can be, a run that tunes included (FIRST_RUN_WORST),
-   * at Sonnet 5.5's price in MODELS ($2 per million tokens in, uncached; $10 out):
+   * The dearest a first run can be, one tuning included, every request at its
+   * hard bound (FIRST_RUN_WORST), at Sonnet 5.5's price in MODELS ($2 per
+   * million tokens in, uncached; $10 out):
    *
-   *   the agent loop:  13 requests × 40,000 in × $2/M  = $1.040
-   *                    16,000 out over the run × $10/M = $0.160
-   *   the tuning:      15 requests × 12,500 in × $2/M  = $0.375
+   *   the agent loop:  13 requests × 40,000 in × $2/M   = $1.040
+   *                    13 requests × 16,000 out × $10/M = $2.080
+   *   the tuning:      15 requests × 12,500 in × $2/M   = $0.375
    *                    15 requests × 16,000 out × $10/M = $2.400
-   *   together                                         = $3.975
-   *   with a 25% margin, × 1.25                        = $4.97, so $5.
+   *   together                                          = $5.895
+   *   with a 25% margin, × 1.25                         = $7.36875, so $7.37
    *
-   * $5 is inside the $12 cap; later runs are held to 1.5 times the dearest so far.
+   * rounded up to the cent. $7.37 is inside the $12 cap; a later run is held to
+   * it, or to 1.5 times the dearest run so far when more.
    */
-  static readonly FIRST_RUN_RESERVE_USD = 5;
+  static readonly FIRST_RUN_RESERVE_USD = centsUp(firstRunWorstUsd(reservePrice()));
+
+  /**
+   * A tuning past a run's first, at its hard bound, with the margin: the
+   * tuning's $0.375 in and $2.400 out above, $2.775, × 1.25 = $3.46875, so
+   * $3.47, rounded up to the cent. What the budget left beyond a run's reserve
+   * must cover for the run to start another tuning (tuningBudget).
+   */
+  static readonly EXTRA_TUNING_USD = centsUp(tuningWorstUsd(reservePrice()));
 
   constructor(
     readonly capUsd: number,
@@ -379,10 +459,19 @@ export class SpendTracker {
     return Math.max(0, this.capUsd - this.spent);
   }
 
-  /** What the next run may cost at worst. */
+  /** What the next run may cost at worst: the first run's reserve, or 1.5 times the dearest run so far when more. */
   reserve(): number {
-    const seen = this.entries.filter((e) => !e.estimated).map((e) => e.usd);
-    return seen.length ? Math.max(1.5 * Math.max(...seen), 0.05) : SpendTracker.FIRST_RUN_RESERVE_USD;
+    const seen = this.entries.filter((e) => !e.estimated).map((e) => 1.5 * e.usd);
+    return Math.max(SpendTracker.FIRST_RUN_RESERVE_USD, ...seen);
+  }
+
+  /**
+   * What the next run's tunings past its first may draw on (TuningBudget): what
+   * the cap leaves beyond the spend so far and the run's reserve, which covers
+   * its loop and one tuning.
+   */
+  tuningBudget(): TuningBudget {
+    return { leftUsd: Math.max(0, this.capUsd - this.spent - this.reserve()), perTuningUsd: SpendTracker.EXTRA_TUNING_USD };
   }
 
   canStart(): boolean {

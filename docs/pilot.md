@@ -12,17 +12,20 @@ does not compute them. Getting it running is in
 ## Tools
 
 With *Tools* on, a reply is an agent loop of up to twelve rounds. The model
-calls 24 tools, which run in the browser against the same API the viewers use:
+calls 25 tools, which run in the browser against the same API the viewers use:
 
 - **Skills:** `read_skill` reads one of the user's methods (below).
 - **Reading:** `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
   `measure_dpdf_cut`, `line_profile`, `bragg_peaks`, `consistency_details`,
-  `compare_datasets`, `configure_settings`, `run_log`.
+  `compare_datasets`, `configure_settings`, `run_log`, and `run_verdict` (the
+  run's verdict as `{{achieved}}` would give it now, read before writing).
 - **Assessing:** `assess_stage`, `radial_profile`, `texture_check`,
   `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`.
 - **Display:** `dpdf_contrast`.
 - **Acting:** `update_settings`, `run_pipeline`, `tune_pipeline`,
-  `show_in_viewer`.
+  `show_in_viewer`, and `regrid_refined_ub`, which writes the raw volume
+  regridded onto its refined UB as a new dataset, only when the user's latest
+  message asks for a regrid ([Regridding](regrid.md)).
 
 Each is described under [How it works](#how-it-works).
 
@@ -170,6 +173,19 @@ every token its model spends, a tuning run's (`tune_pipeline` asks the run's
 own model, not the console's settings) included and kept apart in its
 record (`usage.tuning`), in its cost and against a paid model's spend cap.
 [pilot-review.md](pilot-review.md) reviews each tool and skill.
+
+**The run policy** (`web/src/llm/runPolicy.ts`) states what a reply runs
+under on each transport (Claude, an OpenAI-compatible server such as LM
+Studio, Ollama): its round limit, the tools a model is offered, when older
+results are shortened, the temperature (none for Claude), the output cap,
+whether the model's thinking is sent back, and how a request is held to the
+model's window. The agent loop reads it. A validation run runs under its
+transport's policy as the app ships it, with one output cap on every request,
+the loop's and the tuning's, in either arm (16,000 tokens,
+`VALIDATION_MAX_TOKENS`). Each run's record keeps the policy it ran under
+(`run_policy`) and every request whose reply was cut at the cap
+(`truncated`). The transcript prints both, and `python -m nebula3d.validation
+summarize` names the cut runs under its table.
 
 ## What its reviews found
 
@@ -476,6 +492,16 @@ miss is a note.
     robust σ, the strongest feature and what the 99.5th and 99.97th percentiles
     would give, and warns when a range the user asks for is brighter than the
     optimum, where the FFT ripple shows. It acts: it sets the viewer's limit.
+  - *The ΔPDF's σ*: every size the ΔPDF tools give in σ is in a robust σ
+    (1.4826 × the median absolute deviation) outside the origin's disk, but
+    each tool takes it over its own values, and its result says which
+    (`sigma_of`, from `SIGMA_OF` in `metrics/dpdf.ts`): `measure_dpdf_cut` the
+    section measured, `compare_datasets` that section on each dataset,
+    `assess_stage` pdf each centre section its own, `dpdf_contrast` the three
+    centre sections together, and `dpdf_peaks` the volume (its reading). On
+    the validation's dev cases the volume's σ is 0.58 to 0.96 of the x–y
+    section's through the origin, so a size in σ from one tool is no size in
+    σ from another (plan 4.10).
   - *Acting*: `update_settings` (the method choices and thresholds in
     `tune/catalog.ts`, and the sample facts the tuner never proposes, the
     sample's modulation, one setting of the Configure page's four fields

@@ -18,6 +18,11 @@ export interface ScriptTurn {
   // The server fails the request instead, with this HTTP status and message
   // (one that cannot call tools: 400, "… does not support tools").
   fail?: { status: number; message: string };
+  // The reply stops at its output limit (finish_reason "length").
+  cut?: boolean;
+  // The token counts the reply reports, in place of the script's own (from the
+  // request's and the reply's lengths): a request at its hard bound, say.
+  usage?: { input: number; output: number };
 }
 
 export const SCRIPTED_URL = "http://scripted.invalid/v1";
@@ -27,6 +32,7 @@ export interface ScriptedRequest {
   model: string; // the model it named
   stream: boolean; // false: the reply read whole (a tuning run's request)
   usage: { input: number; output: number } | null; // the counts the reply reported; null: none
+  maxTokens: number | null; // the output cap it asked for (max_tokens); null: none
   messages: number; // how many messages it sent
   chars: number; // their text, in characters: what the token estimate reads (provider/tokens.ts)
 }
@@ -49,7 +55,13 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
 
   const respond = (body: string): Response => {
     requests += 1;
-    let request: { model?: string; stream?: boolean; stream_options?: { include_usage?: boolean }; messages?: { role: string; content: unknown }[] } = {};
+    let request: {
+      model?: string;
+      stream?: boolean;
+      stream_options?: { include_usage?: boolean };
+      max_tokens?: unknown;
+      messages?: { role: string; content: unknown }[];
+    } = {};
     try {
       request = JSON.parse(body);
       const last = [...(request.messages ?? [])].reverse().find((m) => m.role === "user");
@@ -63,6 +75,7 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
       model: String(request.model ?? ""),
       stream: request.stream !== false,
       usage: null,
+      maxTokens: typeof request.max_tokens === "number" ? request.max_tokens : null,
       messages: messages.length,
       chars: messages.reduce((n, m) => n + textOf(m.content).length, 0),
     };
@@ -78,11 +91,13 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
     // Past the script the model has nothing more to say: an empty reply (the
     // agent keeps the answer it had), counted as an overrun.
     const text = turn ? (turn.text ?? "") : "";
-    const counts = { prompt_tokens: Math.round(body.length / 4), completion_tokens: Math.round(text.length / 4) + 10 };
+    const counts = turn?.usage
+      ? { prompt_tokens: turn.usage.input, completion_tokens: turn.usage.output }
+      : { prompt_tokens: Math.round(body.length / 4), completion_tokens: Math.round(text.length / 4) + 10 };
     // A reply read whole carries its counts unasked, as OpenAI's and LM Studio's do.
     if (!entry.stream) {
       entry.usage = { input: counts.prompt_tokens, output: counts.completion_tokens };
-      const reply = { choices: [{ message: { role: "assistant", content: text }, finish_reason: "stop" }], usage: counts };
+      const reply = { choices: [{ message: { role: "assistant", content: text }, finish_reason: turn?.cut ? "length" : "stop" }], usage: counts };
       return new Response(JSON.stringify(reply), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     const chunks: string[] = [];
@@ -99,7 +114,7 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
         ],
       }),
     );
-    push({ choices: [{ delta: {}, finish_reason: turn?.calls?.length ? "tool_calls" : "stop" }] });
+    push({ choices: [{ delta: {}, finish_reason: turn?.cut ? "length" : turn?.calls?.length ? "tool_calls" : "stop" }] });
     if (request.stream_options?.include_usage) {
       entry.usage = { input: counts.prompt_tokens, output: counts.completion_tokens };
       push({ choices: [], usage: counts });

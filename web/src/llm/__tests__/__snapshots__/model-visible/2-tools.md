@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (24 tools, 23217 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (26 tools, 24515 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -500,7 +500,22 @@ Parameters:
 }
 ```
 
-## 20. configure_settings
+## 20. run_verdict
+
+```text
+The verdict on the run that {{achieved}} gives now, computed from this reply's checks: its words (null before any check), each stage's verdict, what needs attention, is not judged or not measured, and the data's problems no setting fixes. Read it before you write whether the run met its goal.
+```
+
+Parameters:
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+## 21. configure_settings
 
 ```text
 The Configure page's current settings — what the next run would use (blank = the backend default). They may differ from the settings that produced the files on disk. Name settings exactly as returned here when you suggest a change.
@@ -515,7 +530,7 @@ Parameters:
 }
 ```
 
-## 21. update_settings
+## 22. update_settings
 
 ```text
 Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. These method choices and thresholds can be changed: ringModel (pooled|global_v2|patched|parametric), ringPooledSectors (integer 8–144), ringPooledWindow (number 0.5–30), ringNFourier (integer 0–40), ringGlobalSubtraction (conservative|mean), punchMinSig (number 3–12), punchMode (both|integer|search), punchHGuard (number 0–0.3), punchSearchFloor (number 3–60), punchFootprint (own|profile|ellipsoid), punchProfileNSigma (number 0.1–3), punchSearchMaxWidth (number 1–6), punchMargin (number 0–0.5), punchFitUnconstrained (true|false), backfillMethod (laplace|local|q_shell), flattenQ2 (true|false), flattenFitQMax (number 3–25), flattenEstimator (model|floor|snip), pdfApod (gaussian|hann|none), pdfWindowShape (auto|separable|ellipsoid), pdfWindowSupport (true|false). These facts about the sample only when the user asks for that change, never to improve a result: modulation ({"k": "1/3, 0, 0", "order": 1, "form": "points|planes", "half_width": 0.08}, "none" or "default"; The sample's modulation: the off-lattice search leaves its satellites G ± m·k alone (form points, the default) or the planes through them (form planes), the form the user's to declare; k in r.l.u., several separated by ";", order m 1–6 (default 1), half_width in r.l.u. (default 0.08); "none" declares none, and so does "default", the backend's own.) punchSupercellH (integer 1–6; The punch's indexing cell along H: the Bragg nodes are the multiples of this H (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) punchSupercellK (integer 1–6; The punch's indexing cell along K: the Bragg nodes are the multiples of this K (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) punchSupercellL (integer 1–6; The punch's indexing cell along L: the Bragg nodes are the multiples of this L (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) A change to one of them is refused unless the user's latest message names it. The magnetic ion and |Q| band stay with the user. Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings already at the value are left as they are. Returns each change and the stage to rerun from.
@@ -536,7 +551,7 @@ Parameters:
 }
 ```
 
-## 22. run_pipeline
+## 23. run_pipeline
 
 ```text
 Run the reduction pipeline on the selected dataset with the Configure page's settings, as the Run button does: it writes the dataset's stage outputs, and the console shows the run on its Execution page while it goes. Without from_stage, outputs that already exist are reused (unless the user switched Force on), so it computes what is missing. With from_stage, that stage and every enabled stage after it are recomputed: use it after update_settings. A run takes seconds to minutes. Returns how it ended, which stages were computed or reused, and the outputs that now exist; measure them afterwards.
@@ -557,7 +572,7 @@ Parameters:
 }
 ```
 
-## 23. tune_pipeline
+## 24. tune_pipeline
 
 ```text
 Search for the best settings, one stage at a time: for each stage it runs the current settings, has you propose alternatives, runs each, judges which best meets the stage's goal, keeps it and moves on, so later stages build on the best earlier ones. Trials run in a tuning folder: the dataset's own outputs are not changed, and the chosen settings end up on the Configure page. The user watches the trials in the chat, under this reply, and each run on the Execution page. Takes minutes (one run per trial). Returns every trial's changes and numbers (a trial that matched the current settings' numbers exactly is marked no_effect), and each stage's chosen trial and why: quote these, never numbers the result does not hold.
@@ -587,7 +602,27 @@ Parameters:
 }
 ```
 
-## 24. show_in_viewer
+## 25. regrid_refined_ub
+
+```text
+Regrid the dataset's raw volume onto its refined UB, as a new dataset: the fit is ub_check's (the punch cell's Bragg nodes, q_max), and the volume resampled onto the refined UB is written as <stem>_regridded.nxs beside the raw file, never over a file. No pipeline is run. Only when the user's latest message asks for a regrid; otherwise refused. Nothing is written, and refusal gives code and reason, when the turn is under turn_threshold_deg, a symmetrised volume has no unsymmetrised source beside it, or the new file or dataset id exists. Returns the new dataset, the turn, the peaks' RMS before → after, and the measured voxels lost outside the old grid.
+```
+
+Parameters:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "q_max": {
+      "type": "number",
+      "description": "The nodes' |Q| limit in Å⁻¹ (default: everything the box holds)"
+    }
+  }
+}
+```
+
+## 26. show_in_viewer
 
 ```text
 Open a cut in the console's viewer so the user can see what you are describing: view=cleanup opens the reciprocal-space cleanup page (all stages side by side) at a reciprocal plane; view=dpdf opens the 3D-ΔPDF page at a real-space section. Use it for the one cut that best shows your point.

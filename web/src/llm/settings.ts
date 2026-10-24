@@ -12,7 +12,11 @@ export interface LlmSettings {
   // Sent as a Bearer token to cloud providers (OpenAI, Gemini, …). Empty for
   // local servers, which need none. Persisted in this browser only.
   apiKey: string;
-  temperature: number;
+  // Sent with each request. Null: none is sent, for a model that takes no
+  // sampling parameters (a validation run's Claude, evals/validationModels.ts);
+  // Claude's transport sends none whatever this says (the run policy,
+  // runPolicy.ts). The console keeps the default.
+  temperature: number | null;
   // When true, and the model is vision-capable, the rendered slice PNG is
   // attached to stage-review prompts so the model can literally assess the
   // image. Off by default — keeps the metrics-only path fully text/private.
