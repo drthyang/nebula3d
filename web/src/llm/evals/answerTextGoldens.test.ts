@@ -1,7 +1,9 @@
 // Characterisation goldens of how an answer's words are read, taken before the
-// answer checks and the graders shared one reader (plan 3.2): over the dev
-// corpus (answerCorpus.ts: the canned dev answers, the scripted replays and
-// the scenario records' answers), for each answer
+// answer checks and the graders shared one reader (plan 3.2) and kept since:
+// the answer checks' reading never moved, and the graders' moved where the
+// commits that gave them the shared reader's rules say. Over the dev corpus
+// (answerCorpus.ts: the canned dev answers, the scripted replays and the
+// scenario records' answers), for each answer
 //
 // - the graders' grades on every dev case of the validation (its detection
 //   checks, D, and its false-alarm checks, F, each a 1 or a 0 in their order)
@@ -23,12 +25,17 @@ import { describe, expect, it } from "vitest";
 
 import { assess, COVERAGE, GRAIN, GRID_STAGES, labelled, STAGE_VARIANTS, step, SYMMETRY, TEXTURE, UB } from "../__tests__/verdictGrid";
 import type { AgentStep } from "../agent";
-import { answerIssues, clauses, contradictions, overallContradiction, verdictsIn, writtenNumbers } from "../answerChecks";
+import { answerIssues, clauses, contradictions, overallContradiction, verdictsIn } from "../answerChecks";
+import { writtenNumbers } from "../answerText";
 import { answerCorpus, CANNED_DEV_ANSWERS, RESULT_RECORDS } from "./answerCorpus";
 import { exists, readText } from "./backend";
 import { grade, type Check, type EvalRun } from "./harness";
 import { SCENARIOS } from "./scenarios";
 import { casesIn, detectionChecks, falseAlarmChecks, type ValidationCase } from "./validation";
+
+// Grading the whole corpus takes seconds, more on CI's slower runners than the
+// default 5 s allows (tokenBudget.test.ts does the same for its turns).
+const CORPUS_TIMEOUT = 60_000;
 
 const GOLDEN = "./__goldens__/answerText.json";
 
@@ -114,7 +121,7 @@ const kindOf = (key: string): string => {
   return `${from} ${what.startsWith("dev-") ? "dev case" : what.startsWith("scenario ") ? "scenario" : what}`.trim();
 };
 
-describe("an answer's words, as the graders and the answer checks read them before the shared reader", () => {
+describe("an answer's words, as the graders and the answer checks read them", () => {
   it("grades the dev split's cases and the measured set's scenarios, the same with the held-out opt-in and without it", async () => {
     const corpus = await answerCorpus();
     const dev = devCases();
@@ -163,4 +170,4 @@ describe("an answer's words, as the graders and the answer checks read them befo
     }
     await expect(text).toMatchFileSnapshot(GOLDEN);
   });
-});
+}, CORPUS_TIMEOUT);

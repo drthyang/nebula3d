@@ -75,7 +75,10 @@ def arm_a_table(results: Sequence[dict[str, Any]]) -> str:
 
 def run_outcome(run: dict[str, Any]) -> dict[str, Any]:
     """One live run (a record's entry, with its ``truth_score`` and ``grades``) as
-    booleans: what it must get right, each judged by code (docs/evals.md)."""
+    booleans: what it must get right, each judged by code (docs/evals.md). Its
+    ``disputed`` counts the checks the graders' two readings of its conclusion
+    dispute (web/src/llm/evals/graderReading.ts), for a reviewer to settle: it
+    decides nothing, and a record made before the field has none."""
     ts = run.get("truth_score") or {}
     grades = run.get("grades") or {}
     criteria = dict(ts.get("criteria") or {"outputs": False})
@@ -86,6 +89,7 @@ def run_outcome(run: dict[str, Any]) -> dict[str, Any]:
         "no_false_alarm": bool(grades.get("noFalseAlarm", False)),
         "unsafe": len(grades.get("unsafe") or []),
         "error": bool(run.get("error")),
+        "disputed": len(grades.get("disputes") or []),
     }
     out["pass"] = (
         not out["error"]
@@ -132,6 +136,7 @@ def summarize_record(record: dict[str, Any]) -> list[dict[str, Any]]:
                 "false_alarms": sum(not o["no_false_alarm"] for o in outs),
                 "unsafe_actions": sum(o["unsafe"] for o in outs),
                 "errors": sum(o["error"] for o in outs),
+                "disputed": sum(o["disputed"] for o in outs),
                 "reproducible": len({_signature(o) for o in outs}) == 1,
                 "pass": len(runs) >= expected
                 and all(o["pass"] for o in outs)
@@ -145,9 +150,12 @@ def live_table(rows: Sequence[dict[str, Any]]) -> str:
     """The live arms' per-case table, in Markdown."""
     head = (
         "| Case | Arm | Passed | Planted correlations | Window | Rings / diffuse / pedestal "
-        "| Fault reported | False alarms | Unsafe | Same outcome in every run |"
+        "| Fault reported | False alarms | Unsafe | Disputed | Same outcome in every run |"
     )
-    out = [head, "| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |"]
+    out = [
+        head,
+        "| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+    ]
 
     def frac(r: dict[str, Any], k: str) -> str:
         return f"{r['criteria'][k]}/{r['runs']}" if k in r["criteria"] else "–"
@@ -158,6 +166,6 @@ def live_table(rows: Sequence[dict[str, Any]]) -> str:
         out.append(
             f"| `{r['case']}` | {r['arm']} | {r['passed']}/{r['runs']} | {frac(r, 'features')} "
             f"| {frac(r, 'window')} | {mid} | {det} | {r['false_alarms']} | {r['unsafe_actions']} "
-            f"| {'yes' if r['reproducible'] else 'no'} |"
+            f"| {r.get('disputed', 0)} | {'yes' if r['reproducible'] else 'no'} |"
         )
     return "\n".join(out)

@@ -230,6 +230,7 @@ describe.skipIf(!live)("validation, live", () => {
       console.log(
         `${job.case.id} ${job.arm}${job.run}: ${(record.latency_ms / 1000).toFixed(0)} s, ${record.decisions.length} steps, ` +
           `reported ${g.detected === null ? "n/a" : g.detected ? "yes" : "no"}, false alarms ${g.noFalseAlarm ? 0 : "yes"}, unsafe ${g.unsafe.length}` +
+          `${g.disputes?.length ? `, disputed ${g.disputes.length}` : ""}` +
           `${costUsd != null ? `, $${costUsd.toFixed(3)}` : ""}${record.error ? `, ERROR ${record.error}` : ""}`,
       );
     }
@@ -268,6 +269,7 @@ describe.skipIf(!regradeFrom)("validation, re-graded", () => {
     const record = JSON.parse(await readText(url)) as { split?: string; runs: RunRecord[] };
     const moved = regradeRecord(record, { report: env("NEBULA_VALIDATION_REPORT") === "1" });
     await writeText(url, `${JSON.stringify(record, null, 1)}\n`);
-    console.log(`${record.runs.length} runs graded again; the grades of ${moved} moved`);
+    const disputed = record.runs.reduce((n, r) => n + (r.grades.disputes?.length ?? 0), 0);
+    console.log(`${record.runs.length} runs graded again; the grades of ${moved} moved; ${disputed} check(s) disputed`);
   });
 });
