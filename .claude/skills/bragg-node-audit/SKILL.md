@@ -27,8 +27,13 @@ all three.
 1. **Settle the nodes.** `describe_dataset` and `configure_settings`: the cell,
    the symmetry the file declares, the punch cell (`punchSupercellH/K/L`:
    Bragg nodes every n along H, K and L, for a volume indexed on a supercell)
-   and the search's protected H planes. These are facts about the sample, set
-   only when the user asks. `describe_dataset` and `configure_settings` do not
+   and the sample's modulation (`modulation`: its satellites, or the planes
+   through them, which the punch's search leaves alone). These are facts about
+   the sample, set only when the user asks. None is declared by default: the
+   search then leaves no position alone, and when the sharp peaks it found off
+   the lattice bunch at one commensurate fraction, the punch's assessment and
+   the run carry a question for the user: whether the sample has that
+   modulation. `describe_dataset` and `configure_settings` do not
    give the declared symmetry: `grain_check` does (`declared_symmetry`). Which
    cell is the parent, and whether the supercell's other nodes hold Bragg peaks
    or diffuse scattering (to confirm with the user).
@@ -74,8 +79,8 @@ all three.
 
 - Changing a punch or backfill setting, or tuning those stages, is refused
   until this skill has been read in the conversation.
-- The protected H planes and the punch cell are facts about the sample: they
-  change only when the user asks, never to improve a number.
+- The sample's modulation and the punch cell are facts about the sample:
+  they change only when the user asks, never to improve a number.
 
 ## Acceptance checklist
 
@@ -96,14 +101,15 @@ all three.
 - Calling broad short-range-order maxima missed Bragg peaks, and widening the
   punch until they are gone.
 - Naming a second grain from displaced Bragg peaks without `grain_check`.
-- Changing the protected planes or the punch cell to make a number look better.
+- Changing the sample's modulation or the punch cell to make a number look
+  better.
 - Judging from the opening cut at L = 0 alone.
 
 ## What to report
 
 The audit in the order above. For each signal, the evidence and its likely
 cause, or that it was not tested; what to change and why; and what only the
-user can decide (the cell, the satellites, the protected planes).
+user can decide (the cell, the satellites, the sample's modulation).
 
 ## References
 
