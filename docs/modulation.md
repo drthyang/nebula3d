@@ -265,8 +265,9 @@ go:
   (mod 1): one vector per fraction, a fraction's twin 1 − f folded into it
   ("1/3, 2/3" is k = (1/3, 0, 0)), a fraction on the lattice left out;
 - `none`, or a half width of 0, declares none;
-- a half width alone keeps the planes the old default protected, at that
-  width (k = (1/3, 0, 0) as planes);
+- a half width alone declares none, and the width is kept for a modulation
+  the user declares: the old default's thirds were one sample's, and nothing
+  is declared by default since P3;
 - a blank value, or one the old page could not read and never sent, stays
   blank: the backend's default, which declares none since P3.
 

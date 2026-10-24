@@ -28,3 +28,7 @@
     the half width of what is declared, and with nothing declared protects
     nothing. A blank *Modulation k* on the Configure page sends no
     declaration and so declares none.
+  - **A remembered form that set only the protected planes' half width**
+    (the old default's thirds at that width) is migrated to declare none,
+    its width kept for a modulation you declare: the thirds were one
+    sample's. Declare `1/3, 0, 0` as planes to keep them.

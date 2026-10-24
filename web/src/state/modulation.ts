@@ -205,9 +205,6 @@ export function modulationFieldsOf(value: unknown): ModulationFields {
 
 // ---------------------------------------------------------------- the migration
 
-/** The legacy page's default H fractions, which a blank punchProtectH meant. */
-const LEGACY_FRACTIONS = ["1/3", "2/3"];
-
 /** A legacy H fraction's value mod 1, as the old page read it (parseFractions), or NaN. */
 const fractionValue = (token: string): number => {
   const [a, b] = token.split("/");
@@ -222,8 +219,9 @@ const fractionValue = (token: string): number => {
  * k = (f, 0, 0) in plane form, which protects H ≡ ±f (mod 1): one vector per
  * fraction, a fraction's twin 1 − f folded into it ("1/3, 2/3" is k = (1/3, 0,
  * 0)), a fraction on the lattice (0) left out. "none", or a half width of 0,
- * declares none. A half width alone keeps the planes the old default
- * protected, at that width. The half width carries over as it was.
+ * declares none. A half width alone declares none too, since the old
+ * default's thirds were one sample's and nothing is declared by default (plan
+ * 4.15's P3), and keeps the width. The half width carries over as it was.
  */
 export function migratedProtection(config: Record<string, unknown>): ModulationFields | null {
   const raw = (key: string): string => (typeof config[key] === "string" ? (config[key] as string).trim() : "");
@@ -234,7 +232,11 @@ export function migratedProtection(config: Record<string, unknown>): ModulationF
   let tokens: string[];
   if (!h) {
     if (!w || !Number.isFinite(width) || width < 0) return null;
-    tokens = LEGACY_FRACTIONS;
+    // A width alone set the old default's planes, the thirds, at that width.
+    // The thirds were one sample's, and nothing is declared by default since
+    // plan 4.15's P3 (the user's decision, 2026-10-19): none is declared, and
+    // the width is kept for a modulation the user declares.
+    return { ...BLANK_MODULATION, modulationK: "none", modulationHalfWidth: w };
   } else if (declaresNone(h)) {
     return { ...BLANK_MODULATION, modulationK: "none" };
   } else {
