@@ -4,8 +4,10 @@
 // measurement taken before it is evidence for a stage it reused and stale for
 // one it computed. The answer checks (answerChecks.ts) and the check-verdict
 // module's readers (verdicts/) count a stage's measurement only when it came
-// after that stage was last computed. Each reads what the tools found, whole
-// (`found`, readings/), however much of it the model read.
+// after that stage was last computed, and the answer checks count an earlier
+// turn's result as a number's source on the same terms (earlierSources). Each
+// reads what the tools found, whole (`found`, readings/), however much of it
+// the model read; an earlier turn's result, as the model read it.
 
 import type { AgentStep } from "./agent";
 import { found, type Found } from "./readings";

@@ -490,6 +490,18 @@ export interface RunContextWindow {
   read_from: "lmstudio-loaded" | "ollama-supported" | null;
 }
 
+/**
+ * The token calibration a run started from, for its server and model
+ * (provider/tokens.ts): what the requests before it taught the estimate. It
+ * decides when a local model's older results are shortened and the window an
+ * Ollama model runs with, and it carries over from run to run on purpose, so
+ * the record says where each run started (validationRun.ts).
+ */
+export interface TokensAtStart {
+  scale: number | null; // the server's counted prompt tokens over the estimate's, the largest seen; null: none counted yet
+  ollama_num_ctx: number | null; // the context length an Ollama model last ran with; null: none yet, or not Ollama
+}
+
 export interface RunRecord {
   schema: "nebula3d-validation-run/1";
   case: string;
@@ -504,6 +516,8 @@ export interface RunRecord {
   max_rounds: number;
   // The window the run had and the minimum it was held to; absent from records made before 2026-10-19.
   context_window?: RunContextWindow | null;
+  // The token calibration the run started from; absent from records made before 2026-10-19.
+  tokens_at_start?: TokensAtStart | null;
   started: string;
   latency_ms: number;
   usage: EvalRun["usage"];
@@ -536,6 +550,7 @@ export function buildRecord(p: {
   elsewhere?: readonly string[];
   offers?: readonly ToolOffer[];
   context?: RunContextWindow | null;
+  tokensAtStart?: TokensAtStart | null;
 }): RunRecord {
   const r = p.evalRun;
   return {
@@ -551,6 +566,7 @@ export function buildRecord(p: {
     task: TASK,
     max_rounds: p.maxRounds,
     context_window: p.context ?? null,
+    tokens_at_start: p.tokensAtStart ?? null,
     started: p.started,
     latency_ms: Math.round(r.latencyMs),
     usage: r.usage,
