@@ -182,6 +182,12 @@ export function closeGroup(ops: SymOp[], centering: Centering = "P"): SymOp[] {
   return [...group.values()];
 }
 
+/** Whether a group already holds a centring's translations (a CIF that lists them). */
+export function hasCentring(group: SymOp[], centering: Centering): boolean {
+  const keys = new Set(group.map(opKey));
+  return CENTERING_SHIFTS[centering].every((t) => keys.has(opKey({ rot: IDENTITY.rot, trans: t })));
+}
+
 /** Parse pasted operations and close them into a group. */
 export function symmetryGroup(text: string, centering: Centering = "P"): SymOp[] {
   return closeGroup(splitSymops(text).map(parseSymop), centering);

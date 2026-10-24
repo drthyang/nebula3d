@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyOp, closeGroup, parseSymop, splitSymops, symmetryGroup } from "../symops";
+import { applyOp, closeGroup, hasCentring, parseSymop, splitSymops, symmetryGroup } from "../symops";
 
 describe("parseSymop", () => {
   it("reads rotations and fractional translations", () => {
@@ -84,6 +84,13 @@ describe("closeGroup", () => {
   it("closes screw axes written as 4-digit decimals (P3_1, P6_1)", () => {
     expect(symmetryGroup("x,y,z\n-y,x-y,z+0.3333\n-x+y,-x,z+0.6667")).toHaveLength(3);
     expect(symmetryGroup("x,y,z\nx-y,x,z+0.1667")).toHaveLength(6);
+  });
+
+  it("tells whether a group already holds the centring translations", () => {
+    const gens = "x,y,z\n-x,-y,z\n-x,y,-z\nz,x,y\ny,x,-z\n-x,-y,-z";
+    expect(hasCentring(symmetryGroup(gens), "F")).toBe(false);
+    expect(hasCentring(symmetryGroup(gens, "F"), "F")).toBe(true);
+    expect(hasCentring(symmetryGroup(gens), "P")).toBe(true);
   });
 
   it("refuses operations that generate no finite group", () => {
