@@ -25,6 +25,7 @@ import {
   STAGE_NO,
   usePipelineStore,
   type PunchPlane,
+  pipelineBusy,
 } from "../state/pipelineStore";
 import { useHighlightKeys } from "../llm/highlight";
 import { datasetName } from "../api/datasetName";
@@ -1235,6 +1236,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       pdfQMin: st.pdfQMin,
       pdfQMax: st.pdfQMax,
       running: st.running,
+      // Also while a run that lost its connection may still be going on the server.
+      busy: pipelineBusy(st),
     })),
   );
   const patch = usePipelineStore((st) => st.patch);
@@ -1488,7 +1491,9 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 className={`dataset-stage-item ${stage.staleAfter ? "stale" : stage.exists ? "ok" : "missing"}`}
                 title={
                   stage.staleAfter
-                    ? `${stage.group} · ${stage.label}: stale. It is older than ${badgeLabel(stage.staleAfter)}, so it was made before that stage last ran; run the pipeline from here with Force to update it.`
+                    ? stale.has(stage.staleAfter)
+                      ? `${stage.group} · ${stage.label}: stale. It was made from ${badgeLabel(stage.staleAfter)}, which is itself stale; run the pipeline from the first stale stage with Force to update it.`
+                      : `${stage.group} · ${stage.label}: stale. It is older than ${badgeLabel(stage.staleAfter)}, so it was made before that stage last ran; run the pipeline from here with Force to update it.`
                     : `${stage.group} · ${stage.label}: ${stage.exists ? "available" : "missing"}`
                 }
               >
@@ -1510,16 +1515,17 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               type="button"
               className="btn btn-primary"
               onClick={onRun}
-              disabled={s.running || !datasetId}
+              disabled={s.busy || !datasetId}
+              title={s.busy && !s.running ? "The last run lost its connection to the server and may still be going there: wait until it is heard from (Execution page)" : undefined}
             >
               {s.running && <span className="spin" />}
-              {s.running ? "Running…" : "Run pipeline"}
+              {s.running ? "Running…" : s.busy ? "Waiting for the last run…" : "Run pipeline"}
             </button>
             <button
               type="button"
               className="btn btn-ghost"
               onClick={onStarted}
-              disabled={!s.running}
+              disabled={!s.busy}
             >
               View execution →
             </button>
@@ -1546,8 +1552,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               type="button"
               className="btn btn-ghost"
               onClick={() => sessionInputRef.current?.click()}
-              disabled={s.running || chatBusy}
-              title={s.running || chatBusy ? "Wait for the run or the reply to finish" : "Bring back a saved session: its settings, last run and conversation"}
+              disabled={s.busy || chatBusy}
+              title={s.busy || chatBusy ? "Wait for the run or the reply to finish" : "Bring back a saved session: its settings, last run and conversation"}
             >
               Restore session…
             </button>
@@ -1560,7 +1566,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                disabled={s.running}
+                disabled={s.busy}
                 onClick={() => void onRecompute(sessionNote.recompute!.datasetId, sessionNote.recompute!.stages)}
               >
                 Recompute them

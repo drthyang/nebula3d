@@ -18,7 +18,7 @@ export const configure_settings: ChatTool = {
     const settings: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(s)) {
       if (typeof v === "function" || UI_ONLY.test(k)) continue;
-      if (["jobId", "running", "events", "times", "terminal", "lastRun"].includes(k)) continue;
+      if (["jobId", "running", "reconnecting", "events", "times", "terminal", "lastRun"].includes(k)) continue;
       settings[k] = v === "" ? "(default)" : v;
     }
     return { result: { settings }, summary: `${Object.keys(settings).length} settings` };

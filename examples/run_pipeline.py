@@ -242,8 +242,13 @@ def _pdf_transform_config(env: dict) -> str:
     )
 
 
-def _pdf_is_current(pdf_path: Path, expected_src: str, expected_config: str) -> bool:
+def _pdf_is_current(pdf_path: Path, expected_src: str, expected_config: str,
+                    src_path: Path | None = None) -> bool:
     if not pdf_path.exists():
+        return False
+    # Older than its input: made before an upstream stage last ran — stale.
+    if (src_path is not None and src_path.exists()
+            and pdf_path.stat().st_mtime < src_path.stat().st_mtime):
         return False
     try:
         from nebula3d.io import load_delta_pdf  # either ΔPDF file layout
@@ -271,12 +276,13 @@ print(f"[background] step-4 radial flatten: {'ON' if FLATTEN else 'OFF'}   |   "
       f"ΔPDF SUBTRACT_BG (legacy blur): {_sbg if _sbg_on else 'off'}", flush=True)
 pdf_config = _pdf_transform_config(pdf_env)
 ran_pdf = False
-if _pdf_is_current(pdf_out, pdf_input.name, pdf_config) and not _forced("pdf"):
+if _pdf_is_current(pdf_out, pdf_input.name, pdf_config, pdf_input) and not _forced("pdf"):
     print(f"[skip] 5/8 3D-ΔPDF: {pdf_out.name} is current for this dataset "
           "and transform config (FORCE=1 or FORCE_FROM=pdf to redo)", flush=True)
 else:
     if pdf_out.exists():
-        print(f"[stale] {pdf_out.name} is from a different dataset/config — recomputing",
+        print(f"[stale] {pdf_out.name} is from a different dataset/config, or older than "
+              f"{pdf_input.name} — recomputing",
               flush=True)
     _run("5/8 3D-ΔPDF", "delta_pdf.py", pdf_env)
     ran_pdf = True

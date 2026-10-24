@@ -1,6 +1,7 @@
 // Cancelling an in-browser run: the engine's worker is stopped, which rejects
 // the run's pending call; that rejection is the cancel, so the run ends
-// "cancelled", not "error", and logs no error line.
+// "cancelled", not "error", and logs no error line; the outputs the worker
+// held went with it, so the dataset listing is read afresh.
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -22,6 +23,7 @@ const engine = vi.hoisted(() => {
 });
 vi.mock("../../api/pyodideEngine", () => engine);
 
+import { queryClient } from "../../api/queryClient";
 import { usePipelineStore } from "../pipelineStore";
 
 describe("cancelling an in-browser run", () => {
@@ -33,5 +35,15 @@ describe("cancelling an in-browser run", () => {
     const s = usePipelineStore.getState();
     expect([s.terminal, s.running]).toEqual(["cancelled", false]);
     expect(s.events.some((e) => e.status === "error")).toBe(false);
+  });
+
+  it("reads the dataset listing afresh after a Cancel of a run started from the page", async () => {
+    engine.engine.runPipeline.mockClear();
+    void usePipelineStore.getState().run();
+    await vi.waitFor(() => expect(engine.engine.runPipeline).toHaveBeenCalled());
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    await usePipelineStore.getState().cancel();
+    expect(invalidate).toHaveBeenCalled();
+    expect(usePipelineStore.getState().terminal).toBe("cancelled");
   });
 });

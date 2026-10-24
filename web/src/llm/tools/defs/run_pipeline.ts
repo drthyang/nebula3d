@@ -85,6 +85,7 @@ export const run_pipeline: ChatTool = {
 
     if (ended !== "done") {
       const failed = [...events].reverse().find((e) => e.status === "error");
+      if (ended === "lost") throw new Error("the connection to the server was lost during the run, so how it ended is not known; the Execution page shows its end once the server answers");
       throw new Error(`the run ${ended === "cancelled" ? "was cancelled" : "failed"}${failed ? `: ${eventLine(failed)}` : ""}`);
     }
     // The last word on each stage: done = computed, skip = its output was reused.

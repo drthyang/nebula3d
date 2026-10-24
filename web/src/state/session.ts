@@ -20,7 +20,7 @@ import type { Dataset, JobEvent } from "../api/types";
 import { useChatStore } from "../llm/chatStore";
 import { configOf } from "./configMemory";
 import { useDatasetStore } from "./datasetStore";
-import { enabledStages, STAGES, usePipelineStore, type PipelineConfig, type RunRecord } from "./pipelineStore";
+import { enabledStages, pipelineBusy, STAGES, usePipelineStore, type PipelineConfig, type RunRecord } from "./pipelineStore";
 import { useStructureStore } from "./structureStore";
 
 export const SESSION_FORMAT = "nebula3d-session";
@@ -28,7 +28,7 @@ export const SESSION_VERSION = 1;
 
 export interface SessionRun {
   record: RunRecord | null; // what the run was asked to do
-  terminal: string | null; // how it ended: "done" | "error" | "cancelled", null while it ran
+  terminal: string | null; // how it ended: "done" | "error" | "cancelled", "lost" (end unknown), null while it ran
   events: JobEvent[];
   times: number[];
 }
@@ -161,9 +161,10 @@ export function restoreSession(session: Session, datasets: readonly Dataset[]): 
   pipeline.patch(settings);
   restored.push("the settings");
 
-  if (session.run && !pipeline.running) {
-    // Saved while it ran: it never finished here, and its page says so.
-    const unfinished = session.run.terminal === null && session.run.events.length > 0;
+  if (session.run && !pipelineBusy(pipeline)) {
+    // Saved while it ran (or while its connection was lost): it never
+    // finished here, and its page says so.
+    const unfinished = (session.run.terminal === null || session.run.terminal === "lost") && session.run.events.length > 0;
     usePipelineStore.setState({
       events: unfinished
         ? [...session.run.events, { type: "progress", status: "error", message: "The session was saved while this run was going, so it did not finish here." }]

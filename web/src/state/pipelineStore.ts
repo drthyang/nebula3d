@@ -134,7 +134,11 @@ interface PipelineState extends PipelineConfig {
   // store (not component state) so the elapsed timer and log wall-clock times
   // survive navigating away from the Execution page mid-run.
   times: number[];
+  // How the run ended: "done" | "error" | "cancelled", or "lost" (the
+  // connection to a native job was lost, its end is not known yet); null while it runs.
   terminal: string | null;
+  // A native run's progress stream dropped and the page is reaching the job again.
+  reconnecting: boolean;
   // actions
   patch: (p: Partial<PipelineConfig>) => void;
   run: () => Promise<void>;
@@ -228,6 +232,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   events: [],
   times: [],
   terminal: null,
+  reconnecting: false,
 
   patch: (p) => set(p),
 
@@ -257,6 +262,8 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     if (PYODIDE_MODE) {
       cancelPipeline();
       set({ terminal: "cancelled", running: false });
+      // The worker held the outputs (in memory): they went with it.
+      void queryClient.invalidateQueries();
       return;
     }
     const { jobId } = get();
@@ -283,6 +290,9 @@ async function start(
   opts: RunOptions = {},
 ): Promise<void> {
   const s = get();
+  // The last run lost its connection while its job may still run (and write
+  // the same files): no other run starts until it is heard from.
+  if (pipelineBusy(s) && !s.running) return;
   const datasetId = opts.datasetId ?? useDatasetStore.getState().datasetId ?? "";
   closeStream();
   const params = formToParams(s);
@@ -291,6 +301,7 @@ async function start(
     times: [],
     terminal: null,
     running: true,
+    reconnecting: false,
     jobId: null,
     lastRun: { datasetId, stages, force, flattenEnabled: s.flatten, params, ...(opts.tuning ? { tuning: opts.tuning } : {}) },
   });
@@ -327,6 +338,7 @@ async function start(
 // banner reads it), the run over, and the outputs it left read afresh.
 function finish(set: Setter, get: Getter, terminal: string, message?: string): void {
   closeStream();
+  set({ reconnecting: false });
   if (terminal === "error" && message) {
     set({
       events: [...get().events, { type: "progress", status: "error", message }],
@@ -337,18 +349,31 @@ function finish(set: Setter, get: Getter, terminal: string, message?: string): v
   void queryClient.invalidateQueries();
 }
 
-// Reconnections to a job whose stream dropped while it still runs.
+// A dropped stream is followed again at once this many times in a row (any
+// event the stream brings resets the count); after that, after a pause.
 const RECONNECTS = 3;
+// While the server cannot be reached the run still counts as running (its job
+// may well be): only after this long is it shown as lost, never as failed.
+export const LOST_AFTER_MS = 45_000;
+// The longest pause between two looks at the job's status.
+const POLL_MAX_MS = 15_000;
+
+/** A run that lost its connection to the server while its job may still run: it holds the pipeline until the job is heard from. */
+export const pipelineBusy = (s: Pick<PipelineState, "running" | "terminal" | "jobId">): boolean =>
+  s.running || (s.terminal === "lost" && s.jobId !== null);
 
 // Follow a native job's progress stream to its end. The server replays a
 // job's events from its first on every connection, so a reconnection skips
 // those already logged.
-function follow(jobId: string, set: Setter, get: Getter, reconnects = 0): void {
+function follow(jobId: string, set: Setter, get: Getter, drops = 0): void {
   const logged = get().events.length;
   let replayed = 0;
+  let failures = drops;
   const source = new EventSource(`/api/pipeline/jobs/${jobId}/events`);
   es = source;
   source.onmessage = (e) => {
+    failures = 0; // the stream works: a later drop starts the count afresh
+    if (get().reconnecting) set({ reconnecting: false });
     const ev = JSON.parse(e.data) as JobEvent;
     if (["done", "error", "cancelled"].includes(ev.type)) {
       finish(set, get, ev.type, ev.message);
@@ -361,26 +386,47 @@ function follow(jobId: string, set: Setter, get: Getter, reconnects = 0): void {
   source.onerror = () => {
     if (es !== source) return; // ended, or replaced
     closeStream();
-    void afterDrop(jobId, set, get, reconnects);
+    void afterDrop(jobId, set, get, failures);
   };
 }
 
-async function afterDrop(jobId: string, set: Setter, get: Getter, reconnects: number): Promise<void> {
-  let job: JobOut | null | undefined;
-  try {
-    job = await fetchJob(jobId);
-  } catch {
-    job = undefined; // the server cannot be reached
-  }
-  if (get().jobId !== jobId || !get().running) return; // another run started, or this one was settled
-  if (job?.status === "running" && reconnects < RECONNECTS) {
-    follow(jobId, set, get, reconnects + 1);
-  } else if (job && job.status !== "running") {
-    finish(set, get, job.status, job.error ?? undefined);
-  } else if (job === null) {
-    finish(set, get, "error", "The server no longer knows this run (it restarted), so the run stopped. Stages that completed before it were saved; run again to compute the rest.");
-  } else {
-    finish(set, get, "error", "Lost the connection to the server during the run, so its progress can no longer be followed. When the server is back, reload: the outputs it saved are listed on the Configure page.");
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// Ask the server what became of the job, until it answers: still running ->
+// follow its stream again; ended -> that end; unknown (404: it restarted) ->
+// the run stopped. While the server cannot be reached the run stays running
+// (and holds the pipeline), and after LOST_AFTER_MS it is shown as lost: its
+// end is not known, so no stage is marked failed, and the page keeps asking
+// so that it shows the real end once the server answers.
+async function afterDrop(jobId: string, set: Setter, get: Getter, drops: number): Promise<void> {
+  const since = Date.now();
+  set({ reconnecting: true });
+  for (let wait = 1000, waited = false; ; wait = Math.min(wait * 2, POLL_MAX_MS), waited = true) {
+    let job: JobOut | null | undefined;
+    try {
+      job = await fetchJob(jobId);
+    } catch {
+      job = undefined; // the server cannot be reached
+    }
+    const s = get();
+    if (s.jobId !== jobId || !(s.running || s.terminal === "lost")) return; // another run started, or this one was settled
+    if (job === null) {
+      finish(set, get, "error", "The server no longer knows this run (it restarted), so the run stopped. Stages that completed before it were saved; run again to compute the rest.");
+      return;
+    }
+    if (job && job.status !== "running") {
+      finish(set, get, job.status, job.error ?? undefined);
+      return;
+    }
+    if (job && (drops < RECONNECTS || waited)) {
+      set({ running: true, terminal: null });
+      follow(jobId, set, get, drops + 1);
+      return;
+    }
+    if (!job && s.running && Date.now() - since >= LOST_AFTER_MS) {
+      set({ running: false, terminal: "lost", reconnecting: false });
+    }
+    await pause(wait);
   }
 }
 

@@ -14,7 +14,7 @@ import { usePipelineStore, type PipelineConfig } from "./pipelineStore";
 const CONFIG_KEY = "nebula3d.configByDataset.v1";
 
 // The store's job state, not settings.
-const NOT_CONFIG = new Set(["jobId", "running", "events", "times", "terminal", "lastRun"]);
+const NOT_CONFIG = new Set(["jobId", "running", "reconnecting", "events", "times", "terminal", "lastRun"]);
 
 type Saved = Record<string, Partial<PipelineConfig>>;
 

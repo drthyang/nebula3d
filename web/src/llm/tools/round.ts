@@ -151,11 +151,13 @@ export async function runRound(
       },
     });
     // The whole result arrives with the status, where the model reads it fitted.
+    // A call that failed once the reply was stopped ended because of the Stop
+    // (run_pipeline cancels its run on it): it is stopped, not an error.
     step = {
       ...step,
       progress: undefined,
       args: run.args,
-      status: run.ok ? "done" : "error",
+      status: run.ok ? "done" : signal?.aborted ? "stopped" : "error",
       summary: run.summary,
       result: run.text,
       ...(run.full !== undefined ? { full: run.full } : {}),

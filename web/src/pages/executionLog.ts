@@ -1,7 +1,7 @@
 // How the Execution page shows a run's log lines: each line's colour, from its
 // status and its marks. Pure, so it is tested without the page.
 
-import type { JobEvent } from "../api/types";
+import type { Dataset, JobEvent, StageStatus } from "../api/types";
 
 /**
  * Whether a line holds a warning (⚠): something the run says the user must not
@@ -28,8 +28,9 @@ export function logClass(ev: JobEvent): string {
 // The run's phase and each stage's state, from the job's events.
 // ---------------------------------------------------------------------------
 
-export type Phase = "idle" | "running" | "done" | "cancelled" | "error";
-export type NodeState = "done" | "active" | "failed" | "cancelled" | "pending" | "notrun" | "stale";
+// "lost": the connection to the run's job was lost and how it ended is not known (yet).
+export type Phase = "idle" | "running" | "done" | "cancelled" | "error" | "lost";
+export type NodeState = "done" | "active" | "failed" | "cancelled" | "pending" | "notrun" | "stale" | "unknown";
 
 export interface StageInfo {
   status: string;
@@ -64,7 +65,7 @@ export function stageInfo(events: readonly JobEvent[], times: readonly number[])
  */
 export function runPhase(running: boolean, terminal: string | null, events: number): Phase {
   if (running) return "running";
-  if (terminal === "done" || terminal === "cancelled" || terminal === "error") return terminal;
+  if (terminal === "done" || terminal === "cancelled" || terminal === "error" || terminal === "lost") return terminal;
   return events > 0 ? "error" : "idle";
 }
 
@@ -77,15 +78,20 @@ export interface StageStates {
   doneCount: number; // of those, the ones done or reused
   activeStage: string | null;
   activeFrac: number | null;
-  staleAfter: Record<string, string>; // a stale stage → the stage this run recomputed before it
+  staleAfter: Record<string, string>; // a stale stage the run did not ask for → the stage this run recomputed before it
 }
 
 /**
  * Each shown stage's state. A stage of the run: done (computed or reused),
  * active, failed, cancelled, or pending. A stage the run was not asked for: stale
  * when this run recomputed a stage before it and its output is still there
- * (made from what that stage wrote before), else not in this run. Without a
- * record of what the run was asked for, every shown stage counts as part of it.
+ * (made from what that stage wrote before), else not in this run. A stage of
+ * the run that reused its output (skip) when that output is stale (`isStale`,
+ * api/stale.ts) is stale too, not done; so is one it computed from a stale
+ * input, once the listing was read after the run (`listingAfterRun`: before
+ * that, the listing still dates the output the stage replaced). With the connection to the run lost,
+ * a stage that had not ended is unknown. Without a record of what the run was
+ * asked for, every shown stage counts as part of it.
  */
 export function stageStates({
   visible,
@@ -93,12 +99,16 @@ export function stageStates({
   phase,
   runStages,
   hasOutput,
+  isStale = () => false,
+  listingAfterRun = false,
 }: {
   visible: readonly string[];
   info: Record<string, StageInfo>;
   phase: Phase;
   runStages: readonly string[] | null;
   hasOutput: (stage: string) => boolean;
+  isStale?: (stage: string) => boolean; // the stage's output is stale (api/stale.ts)
+  listingAfterRun?: boolean; // the outputs isStale reads were listed after the run ended
 }): StageStates {
   const inRun = runStages ? visible.filter((s) => runStages.includes(s)) : [...visible];
   const states: Record<string, NodeState> = {};
@@ -116,12 +126,14 @@ export function stageStates({
       } else states[stage] = "notrun";
       continue;
     }
-    if (!s) states[stage] = "pending";
+    if ((s?.status === "skip" || (s?.status === "done" && listingAfterRun && phase === "done")) && isStale(stage)) states[stage] = "stale";
+    else if (!s) states[stage] = phase === "lost" ? "unknown" : "pending";
     else if (s.status === "done" || s.status === "skip") {
       states[stage] = "done";
       doneCount += 1;
     } else if (s.status === "error") states[stage] = "failed";
     else if (phase === "cancelled") states[stage] = "cancelled";
+    else if (phase === "lost") states[stage] = "unknown";
     else if (phase === "error") states[stage] = "failed";
     else if (phase === "done") {
       states[stage] = "done"; // the run finished: the stage did, without its own last word
@@ -133,4 +145,20 @@ export function stageStates({
     }
   }
   return { states, inRun, doneCount, activeStage, activeFrac, staleAfter };
+}
+
+/**
+ * The outputs a run's stage states are read against: those of the dataset the
+ * run was made on (not the sidebar's selection, which may have changed since),
+ * and none for a tuning trial, which writes into its own folder and leaves the
+ * dataset's outputs as they were.
+ */
+export function runOutputs(
+  run: { datasetId: string; tuning?: unknown } | null,
+  datasets: readonly Dataset[],
+  selected: string | null,
+): readonly StageStatus[] | null {
+  if (run?.tuning) return null;
+  const id = run?.datasetId || selected;
+  return datasets.find((d) => d.id === id)?.stages ?? null;
 }

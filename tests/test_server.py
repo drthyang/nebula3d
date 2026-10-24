@@ -99,6 +99,34 @@ def test_list_datasets_dates_each_output(env, tmp_path):
     assert isinstance(mtime["backfilled"], float)
 
 
+def test_list_datasets_says_what_the_delta_pdf_was_made_from(env, tmp_path):
+    # The ΔPDF's file records its input; the listing names that output, so
+    # the console follows the flatten link only when the ΔPDF was made from
+    # the flattened volume. The other stages carry none.
+    import os
+
+    import h5py
+
+    client, _ = env
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
+                           proc_dir=tmp_path / "processed")
+    assert client.get("/api/datasets").json()[0]["stages"][-1]["source"] is None
+    axis = np.linspace(-5.0, 5.0, 5)
+    for source, expected in ((paths.backfilled.name, "backfilled"),
+                             ("elsewhere.h5", None)):
+        with h5py.File(paths.delta_pdf, "w") as fh:
+            fh.create_dataset("data", data=np.zeros((5, 5, 5), np.float32))
+            for ax in ("x_axis", "y_axis", "z_axis"):
+                fh.create_dataset(ax, data=axis)
+            fh.attrs["q_max"] = 5.0
+            fh.attrs["source_file"] = source
+            fh.attrs["transform_config"] = "apodize=hann"
+        stages = {s["name"]: s for s in client.get("/api/datasets").json()[0]["stages"]}
+        assert stages["delta_pdf"]["source"] == expected
+        assert all(s["source"] is None for n, s in stages.items() if n != "delta_pdf")
+        os.utime(paths.delta_pdf, ns=(1, 1 + len(source)))  # a new version of the file
+
+
 def test_data_root_can_be_switched(tmp_path):
     (tmp_path / "raw").mkdir()
     (tmp_path / "processed").mkdir()
