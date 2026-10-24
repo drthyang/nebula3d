@@ -39,8 +39,16 @@ export function sliceToDisplay(x: number, y: number, g: SliceGeom): [number, num
   return [h + v * cos, v * sin];
 }
 
-/** The viewport that shows the whole slice. */
-export function fitViewport(ax: AxisExtent, g: SliceGeom): Viewport {
+/** A rectangle in display units. */
+export interface Bounds {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
+
+/** The display rectangle a slice covers (its corners' bounding box, for an oblique section too). */
+export function extentBounds(ax: AxisExtent, g: SliceGeom): Bounds {
   const xs = ax.x_axis, ys = ax.y_axis;
   const corners = [
     sliceToDisplay(xs[0], ys[0], g),
@@ -49,8 +57,28 @@ export function fitViewport(ax: AxisExtent, g: SliceGeom): Viewport {
     sliceToDisplay(xs[xs.length - 1], ys[ys.length - 1], g),
   ];
   const X = corners.map((c) => c[0]), Y = corners.map((c) => c[1]);
-  const x0 = Math.min(...X), x1 = Math.max(...X), y0 = Math.min(...Y), y1 = Math.max(...Y);
+  return { x0: Math.min(...X), x1: Math.max(...X), y0: Math.min(...Y), y1: Math.max(...Y) };
+}
+
+/** The viewport that shows the whole slice. */
+export function fitViewport(ax: AxisExtent, g: SliceGeom): Viewport {
+  const { x0, x1, y0, y1 } = extentBounds(ax, g);
   return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, half: Math.max(x1 - x0, y1 - y0) / 2 || 1 };
+}
+
+/** The square a viewport's `half` spans about its centre. */
+export const viewportBounds = (v: Viewport): Bounds => ({ x0: v.cx - v.half, x1: v.cx + v.half, y0: v.cy - v.half, y1: v.cy + v.half });
+
+/**
+ * Keep the view's centre on the data (`b`), as a map keeps its centre on the
+ * world: however far it is panned, the data stays on screen. A viewport whose
+ * centre is inside `b` is returned as it is, so a zoom about a point on the
+ * data keeps that point exactly where it was.
+ */
+export function clampToBounds(v: Viewport, b: Bounds): Viewport {
+  const cx = Math.min(b.x1, Math.max(b.x0, v.cx));
+  const cy = Math.min(b.y1, Math.max(b.y0, v.cy));
+  return cx === v.cx && cy === v.cy ? v : { ...v, cx, cy };
 }
 
 /** Keep `half` between a few voxels and a little past the whole slice. */

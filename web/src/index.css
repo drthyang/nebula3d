@@ -5545,6 +5545,7 @@ h6.md-h {
 /* Focus: the small views are thumbnails — hover highlights, a click enlarges. */
 .ws--focus > .thumb .view-foot,
 .ws--focus > .thumb .vf-fov,
+.ws--focus > .thumb .vf-zoom,
 .ws--focus > .thumb .view-reset,
 .ws--focus > .thumb .view-actions > :not(.layout-btn) {
   display: none;
@@ -5594,6 +5595,8 @@ h6.md-h {
   user-select: none;
   -webkit-user-select: none;
 }
+.vf:focus { outline: none; }
+.vf:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: -2px; }
 .vf--navigate { cursor: crosshair; }
 .vf--zoom { cursor: zoom-in; }
 .vf--move { cursor: grab; }
@@ -5648,6 +5651,51 @@ h6.md-h {
   position: absolute;
   left: 8px;
   top: 8px;
+}
+/* + / − zoom buttons, under the field-of-view chip */
+.vf-zoom {
+  position: absolute;
+  right: 6px;
+  top: 30px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  overflow: hidden;
+  background: rgba(11, 13, 16, 0.72);
+  cursor: default;
+}
+.vf-zoom button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 14px/1 var(--font-mono);
+  cursor: pointer;
+}
+.vf-zoom button + button { border-top: 1px solid var(--border-strong); }
+.vf-zoom button:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+/* the cooperative-wheel hint: a plain wheel over a view scrolls the page */
+.vf-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(11, 13, 16, 0.55);
+  pointer-events: none;
+  animation: vf-hint-in 150ms ease-out;
+}
+@keyframes vf-hint-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .ws-readout {
   display: flex;
