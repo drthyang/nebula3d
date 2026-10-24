@@ -90,7 +90,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 2 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06917 = 1.867 intensity, 1.867 prominence: 0 peaks",
@@ -103,7 +103,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98479, normalised RMS=1.459e-01"
+      "pdf_check done: back-FFT vs data: r=0.98479, normalised RMS=1.459e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -181,7 +181,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 2 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06917 = 1.867 intensity, 1.867 prominence: 0 peaks",
@@ -194,7 +194,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98479, normalised RMS=1.459e-01"
+      "pdf_check done: back-FFT vs data: r=0.98479, normalised RMS=1.459e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -272,7 +272,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 2 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06917 = 1.867 intensity, 1.867 prominence: 0 peaks",
@@ -285,7 +285,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98479, normalised RMS=1.459e-01"
+      "pdf_check done: back-FFT vs data: r=0.98479, normalised RMS=1.459e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -444,7 +444,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) and 1 not judged (measured in 4 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 171 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06831 = 1.844 intensity, 1.844 prominence: 0 peaks",
@@ -458,7 +458,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.99413, normalised RMS=9.065e-02"
+      "pdf_check done: back-FFT vs data: r=0.99413, normalised RMS=9.065e-02; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -537,7 +537,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) and 1 not judged (measured in 4 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 171 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06831 = 1.844 intensity, 1.844 prominence: 0 peaks",
@@ -551,7 +551,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.99413, normalised RMS=9.065e-02"
+      "pdf_check done: back-FFT vs data: r=0.99413, normalised RMS=9.065e-02; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -630,7 +630,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) and 1 not judged (measured in 4 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 171 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06831 = 1.844 intensity, 1.844 prominence: 0 peaks",
@@ -644,7 +644,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.99413, normalised RMS=9.065e-02"
+      "pdf_check done: back-FFT vs data: r=0.99413, normalised RMS=9.065e-02; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -803,7 +803,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 5 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) and 1 not judged (measured in 6 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 186 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06846 = 1.849 intensity, 1.849 prominence: 0 peaks",
@@ -817,7 +817,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.97921, normalised RMS=1.695e-01"
+      "pdf_check done: back-FFT vs data: r=0.97921, normalised RMS=1.695e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -896,7 +896,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 5 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) and 1 not judged (measured in 6 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 186 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06846 = 1.849 intensity, 1.849 prominence: 0 peaks",
@@ -910,7 +910,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.97921, normalised RMS=1.695e-01"
+      "pdf_check done: back-FFT vs data: r=0.97921, normalised RMS=1.695e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -989,7 +989,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 5 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) and 1 not judged (measured in 6 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 186 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06846 = 1.849 intensity, 1.849 prominence: 0 peaks",
@@ -1003,7 +1003,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.97921, normalised RMS=1.695e-01"
+      "pdf_check done: back-FFT vs data: r=0.97921, normalised RMS=1.695e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -1154,7 +1154,7 @@
       "rings progress: sector profiles 60/161",
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 16 not (the crystal's own scattering, kept) (of 95/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 0 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 95/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 14 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.0868 = 2.344 intensity, 2.344 prominence: 0 peaks",
@@ -1168,7 +1168,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98942, normalised RMS=1.289e-01"
+      "pdf_check done: back-FFT vs data: r=0.98942, normalised RMS=1.289e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -1238,7 +1238,7 @@
       "rings progress: sector profiles 60/161",
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 16 not (the crystal's own scattering, kept) (of 95/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 0 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 95/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 14 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.0868 = 2.344 intensity, 2.344 prominence: 0 peaks",
@@ -1252,7 +1252,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98942, normalised RMS=1.289e-01"
+      "pdf_check done: back-FFT vs data: r=0.98942, normalised RMS=1.289e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -1322,7 +1322,7 @@
       "rings progress: sector profiles 60/161",
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 16 not (the crystal's own scattering, kept) (of 95/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 0 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 95/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 14 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.0868 = 2.344 intensity, 2.344 prominence: 0 peaks",
@@ -1336,7 +1336,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98942, normalised RMS=1.289e-01"
+      "pdf_check done: back-FFT vs data: r=0.98942, normalised RMS=1.289e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -1511,7 +1511,7 @@
       "rings progress: pooled subtraction 90/161",
       "rings progress: pooled subtraction 120/161",
       "rings progress: pooled subtraction 150/161",
-      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 5.68% of |I|",
+      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 0 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 5.68% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06841 = 1.847 intensity, 1.847 prominence: 0 peaks",
@@ -1525,7 +1525,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98332, normalised RMS=1.532e-01"
+      "pdf_check done: back-FFT vs data: r=0.98332, normalised RMS=1.532e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -1627,7 +1627,7 @@
       "rings progress: pooled subtraction 90/161",
       "rings progress: pooled subtraction 120/161",
       "rings progress: pooled subtraction 150/161",
-      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 5.68% of |I|",
+      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 0 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 5.68% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06841 = 1.847 intensity, 1.847 prominence: 0 peaks",
@@ -1641,7 +1641,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98332, normalised RMS=1.532e-01"
+      "pdf_check done: back-FFT vs data: r=0.98332, normalised RMS=1.532e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -1743,7 +1743,7 @@
       "rings progress: pooled subtraction 90/161",
       "rings progress: pooled subtraction 120/161",
       "rings progress: pooled subtraction 150/161",
-      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 1 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 5.68% of |I|",
+      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 0 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 5.68% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06841 = 1.847 intensity, 1.847 prominence: 0 peaks",
@@ -1757,7 +1757,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98332, normalised RMS=1.532e-01"
+      "pdf_check done: back-FFT vs data: r=0.98332, normalised RMS=1.532e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -1936,7 +1936,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 5 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06895 = 1.862 intensity, 1.862 prominence: 0 peaks",
@@ -1949,7 +1949,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98484, normalised RMS=1.460e-01"
+      "pdf_check done: back-FFT vs data: r=0.98484, normalised RMS=1.460e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2029,7 +2029,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 5 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06895 = 1.862 intensity, 1.862 prominence: 0 peaks",
@@ -2042,7 +2042,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98484, normalised RMS=1.460e-01"
+      "pdf_check done: back-FFT vs data: r=0.98484, normalised RMS=1.460e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2122,7 +2122,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 5 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06895 = 1.862 intensity, 1.862 prominence: 0 peaks",
@@ -2135,7 +2135,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98484, normalised RMS=1.460e-01"
+      "pdf_check done: back-FFT vs data: r=0.98484, normalised RMS=1.460e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -2295,7 +2295,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.07068 = 1.908 intensity, 1.908 prominence: 0 peaks",
@@ -2308,7 +2308,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98444, normalised RMS=1.652e-01"
+      "pdf_check done: back-FFT vs data: r=0.98444, normalised RMS=1.652e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2386,7 +2386,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.07068 = 1.908 intensity, 1.908 prominence: 0 peaks",
@@ -2399,7 +2399,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98444, normalised RMS=1.652e-01"
+      "pdf_check done: back-FFT vs data: r=0.98444, normalised RMS=1.652e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2477,7 +2477,7 @@
       "rings progress: sector profiles 90/161",
       "rings progress: sector profiles 120/161",
       "rings progress: sector profiles 150/161",
-      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 4 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 0% of |I|",
+      "rings done: pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 3 not (the crystal's own scattering, kept) and 1 not judged (measured in 0 direction cells, under 16; kept) (of 161/161 planes fitted), removed 0% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.07068 = 1.908 intensity, 1.908 prominence: 0 peaks",
@@ -2490,7 +2490,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98444, normalised RMS=1.652e-01"
+      "pdf_check done: back-FFT vs data: r=0.98444, normalised RMS=1.652e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
@@ -2674,7 +2674,7 @@
       "rings progress: pooled subtraction 90/161",
       "rings progress: pooled subtraction 120/161",
       "rings progress: pooled subtraction 150/161",
-      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 5.59% of |I|",
+      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 1 not (the crystal's own scattering, kept) and 2 not judged (measured in 0 direction cells, under 16; no clean flank on one side; kept) (of 161/161 planes fitted), removed 5.59% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06811 = 1.839 intensity, 1.839 prominence: 0 peaks",
@@ -2688,7 +2688,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98342, normalised RMS=1.531e-01"
+      "pdf_check done: back-FFT vs data: r=0.98342, normalised RMS=1.531e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2792,7 +2792,7 @@
       "rings progress: pooled subtraction 90/161",
       "rings progress: pooled subtraction 120/161",
       "rings progress: pooled subtraction 150/161",
-      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 5.59% of |I|",
+      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 1 not (the crystal's own scattering, kept) and 2 not judged (measured in 0 direction cells, under 16; no clean flank on one side; kept) (of 161/161 planes fitted), removed 5.59% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06811 = 1.839 intensity, 1.839 prominence: 0 peaks",
@@ -2806,7 +2806,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98342, normalised RMS=1.531e-01"
+      "pdf_check done: back-FFT vs data: r=0.98342, normalised RMS=1.531e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     },
     {
@@ -2910,7 +2910,7 @@
       "rings progress: pooled subtraction 90/161",
       "rings progress: pooled subtraction 120/161",
       "rings progress: pooled subtraction 150/161",
-      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 3 not (the crystal's own scattering, kept) (of 161/161 planes fitted), removed 5.59% of |I|",
+      "rings done: pooled ring removal fitted: 6 shells confirmed as rings, 1 not (the crystal's own scattering, kept) and 2 not judged (measured in 0 direction cells, under 16; no clean flank on one side; kept) (of 161/161 planes fitted), removed 5.59% of |I|",
       "punch start: Bragg punch (mode=both)",
       "punch progress: integer nodes (excess over its shell ≥ 5σ after the window search, no broader than a Bragg peak (shell fraction ≤ 0.15), no intensity floor): 188 peaks",
       "punch progress: search floors 27 / 27 × diffuse scatter 0.06811 = 1.839 intensity, 1.839 prominence: 0 peaks",
@@ -2924,7 +2924,7 @@
       "pdf start: 3D-ΔPDF FFT (apodize=gaussian)",
       "pdf done: ΔPDF complete (|Q|max 10.62 Å⁻¹, shape (162, 162, 162))",
       "pdf_check start: back-FFT round-trip consistency check",
-      "pdf_check done: back-FFT vs data: r=0.98342, normalised RMS=1.531e-01"
+      "pdf_check done: back-FFT vs data: r=0.98342, normalised RMS=1.531e-01; vs the data's even part, which the transform keeps: r=1.00000"
      ]
     }
    ],
