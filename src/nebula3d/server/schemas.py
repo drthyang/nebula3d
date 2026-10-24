@@ -18,12 +18,18 @@ class StageStatusOut(BaseModel):
     mtime: float | None = None  # when the output was last written (POSIX s); None = no output
 
 
+class RawFileOut(BaseModel):
+    size: int            # bytes
+    mtime: float | None  # POSIX s; None where it is not the file's own (browser copy)
+
+
 class DatasetOut(BaseModel):
     id: str
     temperature: str | None
     raw_name: str
     stem: str
     stages: list[StageStatusOut]
+    raw_file: RawFileOut | None = None  # None = the raw input is not on disk
 
 
 class DataRootIn(BaseModel):

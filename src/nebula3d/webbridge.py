@@ -1023,9 +1023,13 @@ def _dataset_dict(ds: _ds.Dataset) -> dict[str, object]:
          "volume_id": f"{ds.id}.{s.name}", "mtime": _ds.output_mtime(s)}
         for s in ds.stages
     ]
+    # The raw input's size; its mtime here is when the browser copied it into
+    # the in-memory filesystem, not the file's own, so it is not reported.
+    raw = _ds.raw_file_stat(ds.raw_path)
     return {
         "id": ds.id, "temperature": ds.temperature, "raw_name": ds.raw_name,
         "stem": ds.stem, "stages": stages,
+        "raw_file": {"size": raw[0], "mtime": None} if raw else None,
     }
 
 

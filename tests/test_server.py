@@ -99,6 +99,24 @@ def test_list_datasets_dates_each_output(env, tmp_path):
     assert isinstance(mtime["backfilled"], float)
 
 
+def test_list_datasets_identifies_the_raw_file(env, tmp_path):
+    # A saved session checks its input is still the file it was saved with:
+    # the raw file's size and mtime, which change when it is replaced or
+    # re-reduced under the same name; none when it is not on disk.
+    import os
+
+    client, _ = env
+    assert client.get("/api/datasets").json()[0]["raw_file"] is None
+    raw = tmp_path / "raw" / f"{STEM}.nxs"
+    raw.write_bytes(b"x" * 100)
+    first = client.get("/api/datasets").json()[0]["raw_file"]
+    assert first == {"size": 100, "mtime": os.stat(raw).st_mtime}
+    raw.write_bytes(b"y" * 120)
+    os.utime(raw, (first["mtime"] + 5, first["mtime"] + 5))
+    second = client.get("/api/datasets").json()[0]["raw_file"]
+    assert second["size"] == 120 and second["mtime"] == first["mtime"] + 5
+
+
 def test_data_root_can_be_switched(tmp_path):
     (tmp_path / "raw").mkdir()
     (tmp_path / "processed").mkdir()

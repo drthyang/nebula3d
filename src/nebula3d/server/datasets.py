@@ -62,6 +62,20 @@ def output_mtime(stage: StageStatus) -> float | None:
         return None
 
 
+def raw_file_stat(raw_path: Path) -> tuple[int, float] | None:
+    """The raw input's size (bytes) and modification time (POSIX seconds), or
+    None when it is not on disk: what a saved session checks to tell that its
+    input is still the file it was saved with.  No content hash: a raw volume
+    is hundreds of MB to GB and the dataset list is read on every page, so
+    hashing it there costs seconds per dataset; a re-reduced or replaced file
+    changes its mtime (and nearly always its size)."""
+    try:
+        st = raw_path.stat()
+    except OSError:
+        return None
+    return st.st_size, st.st_mtime
+
+
 @dataclass(frozen=True)
 class Dataset:
     id: str
