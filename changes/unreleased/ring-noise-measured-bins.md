@@ -19,7 +19,19 @@
   dev-coverage there is now no candidate and no notice at either grid, and
   the remedy subtracts nothing; a strong ring is judged on two clean flank
   bins a side, with its curve check. A weak ring under the 6σ floor goes
-  undetected, as with full coverage. The ring-removed volume of every dev case
+  undetected, as with full coverage. The shells kept out of a judged ring's
+  flanks are now picked at half the detection cut, 3σ: a keep-out only
+  protects a flank and is never subtracted, so the lower bar is the cautious
+  side, and a weak ring under 6σ beside a strong one no longer lifts the
+  strong one's flank until it fails. The 97-point demo of the tests (±3
+  r.l.u., counts ending at 7.55 Å⁻¹) reaches the bug: it now subtracts the
+  aluminium rings at 2.69, 3.11, 4.38, 5.12 and 6.76 Å⁻¹ (14.1 % of |I|),
+  where it also subtracted the weak 222 and 420 lines at 5.36 and 6.95 Å⁻¹
+  (17.6 %); the 420, now under 6σ, is kept out of the 331's flank, which it
+  would otherwise lift until the 331 failed. On a fully measured volume the
+  lower bar can keep the crystal's own bumps out of a ring's flanks too (on
+  the validation's dev-rings at 161 points the 2.2 Å⁻¹ ring is judged without
+  its curve check, still a ring). The ring-removed volume of every dev case
   at 81 and 161 points, and of the console's demo volume (161 points over
   ±4 r.l.u.), is the same as before, bit for bit (review finding B3; the
-  manager's decision on the user's delegation, 2026-10-19).
+  manager's decisions on the user's delegation, 2026-10-19 and 2026-10-24).

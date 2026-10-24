@@ -239,6 +239,15 @@ a strong ring is judged on two clean bins a side (signal-to-noise 37 to 64,
 curve 0.92 to 1.05), and a weak ring under the 6σ floor goes undetected, as
 with full coverage.
 
+The shells kept out of a judged shell's flanks are picked at half that cut,
+3σ: a keep-out only protects a flank and is never subtracted, so the lower bar
+is the cautious side, and a weak ring under 6σ beside a strong one (the Al 420
+line at 6.95 Å⁻¹ beside the 331 at 6.76 Å⁻¹ on the 97-point demo of
+`tests/test_demo.py`) no longer lifts the strong one's flank until it fails.
+The lower bar can keep the crystal's own bumps out of a fully measured ring's
+flanks too: on dev-rings at 161 points the 2.2 Å⁻¹ ring is judged without its
+curve check, still a ring, the volume unchanged.
+
 - **Not taken: judging a ring only on two flank bins a side or more**, else
   not judged, with a retry that keeps out the confirmed rings alone. With the
   noise from the measured bins it never fired on the volumes tried; it stays
