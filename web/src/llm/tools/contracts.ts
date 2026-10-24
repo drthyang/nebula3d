@@ -336,6 +336,8 @@ const pdfEvaluation = obj({
   per_plane: optional(
     byDpdfPlane(nullable(obj({ feature_snr: maybeNum, strong_feature_fraction: maybeNum, positive_fraction: maybeNum, anisotropy_ratio: maybeNum }))),
   ),
+  // Which σ the sections' feature_snr are in (metrics/dpdf.ts SIGMA_OF): with the per-plane detail.
+  sigma_of: optional(str),
 });
 
 // ---------------------------------------------------------------- the rest
@@ -392,7 +394,7 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     notes: arr(str),
   }),
 
-  measure_dpdf_cut: obj({ cut: str, delta_pdf: dpdfSection }),
+  measure_dpdf_cut: obj({ cut: str, delta_pdf: dpdfSection, sigma_of: str }),
 
   assess_stage: obj({
     rings: optional(stage(ringsEvaluation)),
@@ -462,6 +464,7 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
       applied: obj({ ...contrastLimit, from: str }),
       note: optional(str),
       robust_sigma: num,
+      sigma_of: str,
       strongest_feature_sigma: maybeNum,
       not_applied: obj({
         "99.5th percentile": obj({ ...contrastLimit, effect: str }),
@@ -590,6 +593,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   // A dataset the cut could not be measured on is its label and the error (findings).
   compare_datasets: obj({
     cut: str,
+    // kind=dpdf: which σ each row's feature_snr is in.
+    sigma_of: optional(str),
     rows: arr(
       union(
         obj({

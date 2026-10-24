@@ -1,5 +1,7 @@
-// measure_dpdf_cut: the 3D-ΔPDF's feature metrics on any real-space section.
+// measure_dpdf_cut: the 3D-ΔPDF's feature metrics on any real-space section,
+// in that section's own robust σ (sigma_of says so).
 
+import { SIGMA_OF } from "../../metrics/dpdf";
 import { num, oneOf } from "../shared/args";
 import { DPDF_PLANES, dpdfMeta, dpdfView, measureDpdf } from "../shared/cuts";
 import type { ChatTool } from "../types";
@@ -23,7 +25,7 @@ export const measure_dpdf_cut: ChatTool = {
     const result = await measureDpdf(dataset, plane, value);
     const d = result.delta_pdf;
     return {
-      result,
+      result: { ...result, sigma_of: SIGMA_OF.section },
       summary: `${result.cut}: SNR ${d.feature_snr ?? "–"}, anisotropy ${d.anisotropy_ratio ?? "–"}`,
       view: dpdfView(await dpdfMeta(dataset), plane, value),
     };

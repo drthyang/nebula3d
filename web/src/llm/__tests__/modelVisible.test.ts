@@ -660,7 +660,8 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
         ].join("\n\n"),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/4-tool-results-arm-c.md`);
-  });
+    // Runs every sampled tool in both arms: about 1 s locally, past 5 s on a loaded CI runner.
+  }, 20_000);
 
   it("each sampled result keeps its tool's contract (tools/contracts.ts), in arm B and in arm C", async () => {
     const toolsC = toolsWithSkills(CHAT_TOOLS, false);
