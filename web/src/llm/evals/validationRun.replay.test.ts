@@ -4,7 +4,9 @@
 // run reads nothing the first left in the app: its log (run_log), the views it
 // moved (current_view), its tuning run, the settings it changed, and a server
 // it found refusing tools. The token calibration carries over on purpose, and
-// each record keeps the one its run started from.
+// each record keeps the one its run started from. A run's tuning asks the
+// run's model, not the console's, and its tokens are the run's: in the
+// record's usage and cost, and in the paid model's spend.
 
 import { describe, expect, it } from "vitest";
 
@@ -14,28 +16,63 @@ import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { TOOLS_UNSUPPORTED_NOTE, toolsKnownUnsupported } from "../agent";
 import { resetTokenState, tokenCalibration } from "../provider/tokens";
+import { loadSettings, saveSettings } from "../settings";
 import { callTool } from "../tools";
 import { useTuneStore } from "../tune/tuner";
 import { devCase, type DevCase } from "./devData";
-import { contentTuner, scriptedModel, SCRIPTED_URL, type ScriptTurn } from "./scripted";
+import { scriptedModel, SCRIPTED_URL, type ScriptedRequest, type ScriptTurn } from "./scripted";
 import { caseNamed, type Arm, type Decision, type RunRecord } from "./validation";
+import { costOf, SPEND_CAP_USD, SpendTracker, type Price } from "./validationModels";
 import { runCase } from "./validationRun";
 
 const SETTINGS = { baseUrl: SCRIPTED_URL, model: "scripted", apiKey: "", temperature: 0 };
 const KEY = `${SETTINGS.baseUrl}|${SETTINGS.model}`;
 const MODEL = { key: "scripted", label: "a scripted model", provider: "scripted", model: "scripted", local: false };
 
-/** One run on the case's dataset, as the live runner makes it, its model scripted; with the script's counts. */
-async function run(c: DevCase, arm: Arm, script: ScriptTurn[]): Promise<{ record: RunRecord; overrun: number }> {
+/** One run on the case's dataset, as the live runner makes it, its model scripted; with the script's counts and the requests it answered. */
+async function run(
+  c: DevCase,
+  arm: Arm,
+  script: ScriptTurn[],
+  { price = null }: { price?: Price | null } = {},
+): Promise<{ record: RunRecord; overrun: number; log: ScriptedRequest[] }> {
   const dataset = await c.dataset();
   const model = scriptedModel(script);
   const uninstall = model.install();
   try {
-    const record = await runCase({ job: { case: caseNamed(c.id)!, arm, run: 1 }, dataset, model: MODEL, settings: SETTINGS, rounds: 12, minutes: 5 });
-    return { record, overrun: model.overrun() };
+    const record = await runCase({ job: { case: caseNamed(c.id)!, arm, run: 1 }, dataset, model: MODEL, settings: SETTINGS, rounds: 12, minutes: 5, price });
+    return { record, overrun: model.overrun(), log: model.log() };
   } finally {
     uninstall();
   }
+}
+
+const CONSOLE_URL = "http://console.invalid/v1";
+
+/**
+ * The console's settings (settings.ts) on a model of their own, which the
+ * tuning asks in the app: content with the current settings, counting its
+ * requests. `restore` puts fetch and the settings back.
+ */
+function consoleModel(): { requests: () => number; restore: () => void } {
+  let requests = 0;
+  const real = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (!url.startsWith(CONSOLE_URL)) return real(input, init);
+    requests += 1;
+    const reply = { choices: [{ message: { content: JSON.stringify({ candidates: [], best: 1, why: "the current settings" }) } }] };
+    return Promise.resolve(new Response(JSON.stringify(reply), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  const settings = loadSettings();
+  saveSettings({ baseUrl: CONSOLE_URL, model: "console" });
+  return {
+    requests: () => requests,
+    restore: () => {
+      globalThis.fetch = real;
+      saveSettings(settings);
+    },
+  };
 }
 
 /** The decision a run made with `tool`, the only one. */
@@ -57,27 +94,23 @@ describe("validation runs back to back", () => {
     // The first run (arm B) reads the stages' skills, changes the flatten and
     // runs it again, moves both viewers, sets the ΔPDF's contrast, tunes the
     // ΔPDF and reads the log.
-    const restore = contentTuner();
-    let first: Awaited<ReturnType<typeof run>>;
-    try {
-      first = await run(c, "B", [
-        { calls: [{ name: "read_skill", args: { name: "reduction-qc" } }, { name: "read_skill", args: { name: "delta-pdf-interpretation" } }] },
-        { calls: [{ name: "update_settings", args: { changes: { flattenQ2: true } } }, { name: "run_pipeline", args: { from_stage: "flatten" } }] },
-        {
-          calls: [
-            { name: "show_in_viewer", args: { view: "cleanup", plane: "hk0", value: 0.5 } },
-            { name: "show_in_viewer", args: { view: "dpdf", plane: "xy", value: 2 } },
-            { name: "dpdf_contrast" },
-            { name: "current_view" },
-          ],
-        },
-        { calls: [{ name: "tune_pipeline", args: { stages: ["pdf"], trials_per_stage: 2 } }] },
-        { calls: [{ name: "run_log" }] },
-        { text: "Done." },
-      ]);
-    } finally {
-      restore();
-    }
+    const first = await run(c, "B", [
+      { calls: [{ name: "read_skill", args: { name: "reduction-qc" } }, { name: "read_skill", args: { name: "delta-pdf-interpretation" } }] },
+      { calls: [{ name: "update_settings", args: { changes: { flattenQ2: true } } }, { name: "run_pipeline", args: { from_stage: "flatten" } }] },
+      {
+        calls: [
+          { name: "show_in_viewer", args: { view: "cleanup", plane: "hk0", value: 0.5 } },
+          { name: "show_in_viewer", args: { view: "dpdf", plane: "xy", value: 2 } },
+          { name: "dpdf_contrast" },
+          { name: "current_view" },
+        ],
+      },
+      { calls: [{ name: "tune_pipeline", args: { stages: ["pdf"], trials_per_stage: 2 } }] },
+      // The tuning asks the run's model for alternatives: content with the current settings.
+      { text: JSON.stringify({ candidates: [] }) },
+      { calls: [{ name: "run_log" }] },
+      { text: "Done." },
+    ]);
     const one = first.record;
     expect(one.error).toBeNull();
     expect(one.decisions.filter((d) => d.status !== "done").map((d) => `${d.tool}: ${d.result}`)).toEqual([]);
@@ -141,5 +174,78 @@ describe("validation runs back to back", () => {
     expect(second.record.decisions.map((d) => d.tool)).toEqual(["run_log"]);
     expect(second.record.note).toBeNull();
     expect(second.overrun).toBe(0);
+  }, 300_000);
+});
+
+describe("a validation run's tuning", () => {
+  // What the run's model costs, as a paid model's entry gives it (validationModels.ts).
+  const PRICE: Price = { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 };
+  const total = (requests: ScriptedRequest[]) => ({
+    input: requests.reduce((n, r) => n + r.usage!.input, 0),
+    output: requests.reduce((n, r) => n + r.usage!.output, 0),
+    cacheRead: 0,
+    cacheWrite: 0,
+    requests: requests.length,
+  });
+
+  it("asks the run's model, not the console's, and its tokens are the run's: its usage, its cost and the spend", async () => {
+    const c = devCase("dev-control");
+    const onConsole = consoleModel();
+    let tuned: Awaited<ReturnType<typeof run>>;
+    try {
+      tuned = await run(
+        c,
+        "C",
+        [
+          { calls: [{ name: "tune_pipeline", args: { stages: ["pdf"], trials_per_stage: 2 } }] },
+          // The tuning's own requests: one alternative, run as trial 2, then the pick.
+          { text: JSON.stringify({ candidates: [{ changes: { pdfApod: "hann" }, why: "fewer ripples" }] }) },
+          { text: JSON.stringify({ best: 1, why: "the current settings" }) },
+          { text: "Done." },
+        ],
+        { price: PRICE },
+      );
+    } finally {
+      onConsole.restore();
+    }
+    const { record, log, overrun } = tuned;
+    expect(record.error).toBeNull();
+    expect(record.decisions.map((d) => [d.tool, d.status])).toEqual([["tune_pipeline", "done"]]);
+    expect(overrun).toBe(0);
+    expect(useTuneStore.getState().stages.map((s) => [s.stage, s.status, s.trials.length, s.best])).toEqual([["pdf", "done", 2, 1]]);
+
+    // Every request went to the run's model: the loop's streamed, the
+    // tuning's read whole; none to the model on the console's settings.
+    expect(log.map((r) => [r.model, r.stream])).toEqual([
+      ["scripted", true],
+      ["scripted", false],
+      ["scripted", false],
+      ["scripted", true],
+    ]);
+    expect(onConsole.requests()).toBe(0);
+
+    // The record's usage is every token the model reported: the loop's plus
+    // the tuning's, which it keeps apart. The offers are the loop's alone.
+    const loop = total(log.filter((r) => r.stream));
+    const tuning = total(log.filter((r) => !r.stream));
+    expect(tuning.requests).toBe(2);
+    expect(record.usage).toEqual({
+      input: loop.input + tuning.input,
+      output: loop.output + tuning.output,
+      cacheRead: 0,
+      cacheWrite: 0,
+      requests: 4,
+      tuning,
+    });
+    expect(record.tool_offers.map((o) => o.request)).toEqual([1, 2]);
+
+    // Its cost, and the paid model's spend, at the run model's price.
+    const usd = (u: { input: number; output: number }) => (u.input * PRICE.input + u.output * PRICE.output) / 1e6;
+    expect(usd(tuning)).toBeGreaterThan(0);
+    expect(record.cost_usd).toBeCloseTo(usd(loop) + usd(tuning), 12);
+    const tracker = new SpendTracker(SPEND_CAP_USD);
+    tracker.record({ case: record.case, arm: record.arm, run: record.run, usd: record.cost_usd });
+    expect(tracker.spent).toBeCloseTo(usd(loop) + usd(tuning), 12);
+    expect(tracker.spent - costOf(loop, PRICE)!).toBeCloseTo(usd(tuning), 12);
   }, 300_000);
 });

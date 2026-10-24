@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { contextWarning, isMalformedOutput, isToolsUnsupported, loadedContext, streamChat, ToolCallAssembler, type HttpError, type StreamDelta, withContextHint } from "../provider/client";
+import { completeChat, contextWarning, isMalformedOutput, isToolsUnsupported, loadedContext, streamChat, ToolCallAssembler, type HttpError, type StreamDelta, withContextHint } from "../provider/client";
 
 const sse = (chunks: string[]): Response => {
   const enc = new TextEncoder();
@@ -196,6 +196,33 @@ describe("streamChat", () => {
     };
     await expect(run()).rejects.toThrow("model crashed");
     expect(got).toEqual(["Che"]);
+  });
+});
+
+describe("completeChat", () => {
+  const reply = (payload: unknown) => vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 }));
+  const ask = (onUsage: (u: unknown) => void) => completeChat({ baseUrl: "u", model: "m", messages: [], temperature: 0, onUsage });
+
+  it("reads the reply whole, as before, and reports its token counts, or null when the server gave none", async () => {
+    const fetchMock = reply({ choices: [{ message: { content: '{"best": 2}' } }], usage: { prompt_tokens: 812, completion_tokens: 40 } });
+    vi.stubGlobal("fetch", fetchMock);
+    const onUsage = vi.fn();
+    expect(await ask(onUsage)).toBe('{"best": 2}');
+    expect(onUsage.mock.calls).toEqual([[{ input: 812, output: 40 }]]);
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(body).toEqual({ model: "m", messages: [], temperature: 0, stream: false });
+
+    vi.stubGlobal("fetch", reply({ choices: [{ message: { content: "{}" } }] }));
+    onUsage.mockClear();
+    await ask(onUsage);
+    expect(onUsage.mock.calls).toEqual([[null]]);
+  });
+
+  it("reports the counts of a reply without text before it fails: they were spent", async () => {
+    vi.stubGlobal("fetch", reply({ choices: [{ message: {} }], usage: { prompt_tokens: 90, completion_tokens: 3 } }));
+    const onUsage = vi.fn();
+    await expect(ask(onUsage)).rejects.toThrow("The model returned no message content");
+    expect(onUsage.mock.calls).toEqual([[{ input: 90, output: 3 }]]);
   });
 });
 

@@ -2,7 +2,9 @@
 // a model or a backend: what it clears and what it keeps, and a run cut short
 // by its time limit, whose pipeline run or tuning run it stops and waits for
 // before it clears, or, when that does not end, refuses to start the next run.
-// validationRun.replay.test.ts runs two runs back to back through runCase.
+// And TuningTokens: a run's tuning's tokens added to its usage, its cost and
+// the paid model's spend. validationRun.replay.test.ts runs two runs back to
+// back through runCase, and one whose tuning asks the run's model.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,7 +18,8 @@ import { runAgent, toolsKnownUnsupported } from "../agent";
 import { observeTokens, resetTokenState, tokenCalibration } from "../provider/tokens";
 import { useTuneStore } from "../tune/tuner";
 import { scriptedModel, SCRIPTED_URL } from "./scripted";
-import { startFresh } from "./validationRun";
+import { costOf, modelNamed, SPEND_CAP_USD, SpendTracker } from "./validationModels";
+import { startFresh, TuningTokens } from "./validationRun";
 
 const tuner = vi.hoisted(() => ({ stopTuning: vi.fn() }));
 vi.mock("../tune/tuner", async (importOriginal) => ({ ...(await importOriginal<typeof import("../tune/tuner")>()), stopTuning: tuner.stopTuning }));
@@ -108,5 +111,52 @@ describe("startFresh", () => {
       "a tuning run the run before started is still going after 1 s; the next run would read it, so the runs stop here",
     );
     expect(useNavStore.getState().tab).toBe("execution");
+  });
+});
+
+describe("a run's tuning tokens", () => {
+  // The agent loop's usage, as runAgent counts it.
+  const LOOP = { input: 9000, output: 400, cacheRead: 0, cacheWrite: 0, requests: 3 };
+
+  it("adds the tuning's counts to the loop's and keeps them apart; a run that did not tune keeps the loop's", () => {
+    const t = new TuningTokens();
+    expect(t.addTo(LOOP)).toBe(LOOP);
+    expect(t.addTo(null)).toBeNull();
+    t.report({ input: 700, output: 50 });
+    t.report({ input: 900, output: 20, cacheRead: 300, cacheWrite: 100 });
+    expect(t.addTo(LOOP)).toEqual({
+      input: 10_600,
+      output: 470,
+      cacheRead: 300,
+      cacheWrite: 100,
+      requests: 5,
+      tuning: { input: 1600, output: 70, cacheRead: 300, cacheWrite: 100, requests: 2 },
+    });
+  });
+
+  it("leaves the total unknown when the loop's is, or when a tuning request's counts were not reported", () => {
+    const t = new TuningTokens();
+    t.report({ input: 700, output: 50 });
+    expect(t.addTo(null)).toBeNull();
+    t.report(null);
+    expect(t.addTo(LOOP)).toBeNull();
+  });
+
+  it("is charged at the run model's price, in the run's cost and the paid model's spend", () => {
+    const price = modelNamed("claude-sonnet-5-5").price!;
+    const t = new TuningTokens();
+    t.report({ input: 1600, output: 70, cacheRead: 300, cacheWrite: 100 });
+    const tracker = new SpendTracker(SPEND_CAP_USD);
+    tracker.record({ case: "c", arm: "B", run: 1, usd: costOf(t.addTo(LOOP), price) });
+    // By hand: the loop's 9000 tokens in and 400 out; the tuning's 1200 in
+    // uncached, 300 read from the cache, 100 written to it, and 70 out.
+    const loopUsd = (9000 * price.input + 400 * price.output) / 1e6;
+    const tuningUsd = (1200 * price.input + 300 * price.cacheRead + 100 * price.cacheWrite + 70 * price.output) / 1e6;
+    expect(tracker.spent).toBeCloseTo(loopUsd + tuningUsd, 12);
+    expect(tracker.spent - costOf(LOOP, price)!).toBeCloseTo(tuningUsd, 12);
+    // A tuning request without counts leaves the cost unknown: the run is charged the reserve.
+    const unreported = new TuningTokens();
+    unreported.report(null);
+    expect(tracker.record({ case: "c", arm: "B", run: 2, usd: costOf(unreported.addTo(LOOP), price) }).estimated).toBe(true);
   });
 });

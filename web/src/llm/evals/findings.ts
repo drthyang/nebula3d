@@ -287,6 +287,7 @@ export function renderTranscript(rec: RunRecord, given: readonly Finding[] = [])
     "",
     `Model: ${rec.model.label} (${rec.model.provider}${rec.model.local ? ", local" : ""}). Started ${rec.started}; ${(rec.latency_ms / 1000).toFixed(0)} s` +
       (rec.usage ? `, ${rec.usage.input} tokens in and ${rec.usage.output} out over ${rec.usage.requests} requests` : "") +
+      (rec.usage?.tuning ? ` (the tuning's ${rec.usage.tuning.requests}: ${rec.usage.tuning.input} in, ${rec.usage.tuning.output} out)` : "") +
       (rec.cost_usd != null ? `, $${rec.cost_usd.toFixed(4)}` : "") +
       `. The model saw the dataset as ${rec.dataset}.`,
     "",
