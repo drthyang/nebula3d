@@ -11,7 +11,7 @@ import {
   streamAnthropic,
   toAnthropicMessages,
 } from "../provider/anthropic";
-import { streamChat, type ChatMessage, type StreamDelta } from "../provider/client";
+import { completeChat, streamChat, type ChatMessage, type StreamDelta } from "../provider/client";
 
 const sdk = vi.hoisted(() => {
   class APIError extends Error {
@@ -177,6 +177,21 @@ describe("streamAnthropic", () => {
     sdk.stream.mockReturnValue(fakeStream([textDelta("hello")], { content: [{ type: "text", text: "hello" }], stop_reason: "end_turn" }));
     const out = await collect(streamChat({ ...base, model: "claude-opus-5-5", temperature: 0.2 }));
     expect(out).toEqual([{ content: "hello" }]);
+  });
+});
+
+describe("completeAnthropic", () => {
+  it("reports the turn's token counts, the cache's reads and writes in the input, a refusal's too", async () => {
+    const usage = { input_tokens: 500, output_tokens: 30, cache_read_input_tokens: 1000, cache_creation_input_tokens: 200 };
+    const onUsage = vi.fn();
+    const ask = () => completeChat({ ...base, model: "claude-sonnet-5-5", temperature: 0, onUsage });
+    sdk.create.mockResolvedValueOnce({ content: [{ type: "text", text: '{"best": 1}' }], stop_reason: "end_turn", usage });
+    expect(await ask()).toBe('{"best": 1}');
+    expect(onUsage.mock.calls).toEqual([[{ input: 1700, output: 30, cacheRead: 1000, cacheWrite: 200 }]]);
+    expect(sdk.create.mock.calls[0][0]).not.toHaveProperty("stream");
+    sdk.create.mockResolvedValueOnce({ content: [], stop_reason: "refusal", stop_details: null, usage });
+    await expect(ask()).rejects.toThrow(/declined to continue/);
+    expect(onUsage).toHaveBeenCalledTimes(2);
   });
 });
 

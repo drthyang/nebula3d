@@ -9,8 +9,9 @@ import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
+import { loadSettings, saveSettings } from "../settings";
 import { useTuneStore, type StageRun } from "../tune/tuner";
-import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type ToolContext } from "../tools";
+import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type RunModel, type ToolContext } from "../tools";
 import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf";
 import { makeSlice } from "./helpers";
 
@@ -461,6 +462,29 @@ describe("tune_pipeline", () => {
     const r = await callTool({ ...ctx }, "tune_pipeline", { trials_per_stage: 9 });
     expect(r.text).toMatch(/trials_per_stage must be within \[2, 5\]/);
     expect(tuner.startTuning).not.toHaveBeenCalled();
+  });
+
+  it("asks the model on the console's settings in the app, and a validation run's own model in a run", async () => {
+    tuner.startTuning.mockImplementation(async () => useTuneStore.setState({ finishedNote: "Done." }));
+    const before = loadSettings();
+    saveSettings({ baseUrl: "http://console.invalid/v1", model: "console", apiKey: "", temperature: 0.4 });
+    try {
+      // The app: the console's settings, as read when it starts, and nothing counts its tokens.
+      expect((await callTool({ ...ctx }, "tune_pipeline", { stages: ["pdf"] })).ok).toBe(true);
+      const app = tuner.startTuning.mock.calls[0][0];
+      expect(app.llm).toBe(loadSettings());
+      expect(app.llm).toMatchObject({ baseUrl: "http://console.invalid/v1", model: "console", temperature: 0.4 });
+      expect(app).not.toHaveProperty("onUsage");
+
+      // A validation run (ToolContext.model): the run's model, and its counts to the run.
+      const model: RunModel = { settings: { baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.2 }, usage: vi.fn() };
+      expect((await callTool({ ...ctx, model }, "tune_pipeline", { stages: ["pdf"] })).ok).toBe(true);
+      const run = tuner.startTuning.mock.calls[1][0];
+      expect(run.llm).toBe(model.settings);
+      expect(run.onUsage).toBe(model.usage);
+    } finally {
+      saveSettings(before);
+    }
   });
 });
 

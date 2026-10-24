@@ -682,6 +682,12 @@ export async function* streamChat({
   if (usage) yield { usage };
 }
 
+// Called once for each request the server answered, an empty reply's too (its
+// tokens were spent), with the request's token counts, or null when the
+// server reported none: a validation run adds its tuning's counts to its own
+// (evals/validationRun.ts).
+export type UsageReport = (usage: TokenUsage | null) => void;
+
 // Non-streaming completion, used where the whole reply is parsed at once.
 export const completeChat = async ({
   baseUrl,
@@ -691,17 +697,22 @@ export const completeChat = async ({
   signal,
   apiKey,
   numCtx,
-}: Omit<PostChatArgs, "stream">): Promise<string> => {
-  if (isAnthropicUrl(baseUrl)) return completeAnthropic({ baseUrl, model, messages, apiKey, signal });
+  onUsage,
+}: Omit<PostChatArgs, "stream"> & { onUsage?: UsageReport }): Promise<string> => {
+  if (isAnthropicUrl(baseUrl)) return completeAnthropic({ baseUrl, model, messages, apiKey, signal, onUsage });
   if (isOllamaUrl(baseUrl)) {
     const response = await postOllama({ baseUrl, model, messages, temperature, signal, numCtx }, false);
     const payload = (await response.json()) as OllamaChunk;
     if (payload.error) throw streamedError(payload.error);
+    onUsage?.(typeof payload.prompt_eval_count === "number" ? { input: payload.prompt_eval_count, output: payload.eval_count ?? 0 } : null);
     if (typeof payload.message?.content !== "string") throw new Error("The model returned no message content");
     return payload.message.content;
   }
   const response = await postChat({ baseUrl, model, messages, temperature, stream: false, signal, apiKey });
   const payload = await response.json();
+  // A whole reply carries its token counts unasked (OpenAI, LM Studio).
+  const usage = payload?.usage;
+  onUsage?.(usage && typeof usage.prompt_tokens === "number" ? { input: usage.prompt_tokens, output: usage.completion_tokens ?? 0 } : null);
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content !== "string") throw new Error("The model returned no message content");
   return content;

@@ -143,7 +143,10 @@ run it live, and a local tier holds a local model to an acceptance (at least
 80 % of runs passing, no loops, no exceptions). The scenarios, the commands
 and the results per model are in [evals.md](evals.md), which also holds the
 validation on synthetic cases with a planted truth (the Pilot against the
-default pipeline, with and without its skills).
+default pipeline, with and without its skills). A validation run counts
+every token its model spends, a tuning run's (`tune_pipeline` asks the run's
+own model, not the console's settings) included and kept apart in its
+record (`usage.tuning`), in its cost and against a paid model's spend cap.
 [pilot-review.md](pilot-review.md) reviews each tool and skill.
 
 ## What its reviews found

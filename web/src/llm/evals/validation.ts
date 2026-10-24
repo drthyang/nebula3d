@@ -561,8 +561,11 @@ export interface RunRecord {
   tokens_at_start?: TokensAtStart | null;
   started: string;
   latency_ms: number;
+  // Every request's tokens, the tuning's among them (validationRun.ts) and
+  // apart in `usage.tuning` when the run tuned; records made before 2026-10-24
+  // counted the agent loop's alone.
   usage: EvalRun["usage"];
-  cost_usd: number | null;
+  cost_usd: number | null; // of `usage`, at the model's price
   tool_offers: ToolOffer[]; // the tools offered on each request, as sent (offers.ts)
   decisions: Decision[];
   numbers: NumberSource[];

@@ -38,12 +38,19 @@
 //   record keeps the calibration each run started from (tokens_at_start);
 // - what every run reads alike and none writes: the skills' texts, the tools'
 //   facts, the inference tags (inference.ts), the parse cache of results
-//   (readings/, a function of each text), the context an Ollama model supports
-//   (read once), and the console's LLM settings (settings.ts), which only a
-//   tuning run's proposals read;
+//   (readings/, a function of each text) and the context an Ollama model
+//   supports (read once);
 // - what no run reads: the chat panel's transcript and its highlights (the
 //   runner drives the agent loop itself), the crystal structure, the click
-//   mode and the viewers' query cache (the tools fetch through the client).
+//   mode, the viewers' query cache (the tools fetch through the client) and
+//   the console's LLM settings (settings.ts).
+//
+// The run's model answers every request the run makes: the agent loop's, and
+// its tuning's (tune_pipeline's proposals and judgements, through the tool
+// context's `model`), which in the app ask the model on the console's
+// settings. The tuning's tokens are the run's: the record's usage adds them
+// to the loop's and keeps them apart in `usage.tuning` (TuningTokens), and
+// so its cost, and the paid model's spend (validationModels.ts), include them.
 
 import { fetchDatasets } from "../../api/client";
 import type { Dataset } from "../../api/types";
@@ -54,11 +61,12 @@ import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { forgetToolsUnsupported, runAgent, type AgentProgress } from "../agent";
 import { loadPipelineContext } from "../context/loadContext";
+import type { UsageReport } from "../provider/client";
 import { tokenCalibration } from "../provider/tokens";
 import type { LlmSettings } from "../settings";
 import { CHAT_TOOLS } from "../tools";
 import { stopTuning, useTuneStore } from "../tune/tuner";
-import type { EvalRun } from "./harness";
+import type { EvalRun, TokenCount } from "./harness";
 import { OfferRecorder } from "./offers";
 import { armSetup, buildRecord, changedElsewhere, WhyTracker, type ModelInfo, type RunContextWindow, type RunRecord } from "./validation";
 import { costOf, type Job, type Price } from "./validationModels";
@@ -113,6 +121,49 @@ export async function startFresh(dataset: Dataset, { settleMs = SETTLE_MS }: { s
   forgetToolsUnsupported();
 }
 
+/**
+ * What a run's tuning spends. Its requests go to the run's model
+ * (tune_pipeline, through the tool context's `model`), and each one the server
+ * answered reports its token counts to `report`, or null when the server gave
+ * none.
+ */
+export class TuningTokens {
+  readonly counted: Required<TokenCount> = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 };
+  unreported = 0; // requests answered without counts
+
+  readonly report: UsageReport = (usage) => {
+    if (!usage) {
+      this.unreported += 1;
+      return;
+    }
+    this.counted.input += usage.input;
+    this.counted.output += usage.output;
+    this.counted.cacheRead += usage.cacheRead ?? 0;
+    this.counted.cacheWrite += usage.cacheWrite ?? 0;
+    this.counted.requests += 1;
+  };
+
+  /**
+   * The run's usage with the tuning's added to the loop's, every count and the
+   * requests, and kept apart in `tuning`. A run that tuned nothing keeps the
+   * loop's as it was. Unknown (null) when the loop's is, or when the server
+   * did not report a tuning request's counts: the total would be short.
+   */
+  addTo(loop: EvalRun["usage"]): EvalRun["usage"] {
+    const t = this.counted;
+    if (!t.requests && !this.unreported) return loop;
+    if (!loop || this.unreported) return null;
+    return {
+      input: loop.input + t.input,
+      output: loop.output + t.output,
+      cacheRead: (loop.cacheRead ?? 0) + t.cacheRead,
+      cacheWrite: (loop.cacheWrite ?? 0) + t.cacheWrite,
+      requests: loop.requests + t.requests,
+      tuning: { ...t },
+    };
+  }
+}
+
 export interface RunSpec {
   job: Pick<Job, "case" | "arm" | "run">;
   dataset: Dataset; // the run's own, and the only one it sees
@@ -150,16 +201,20 @@ export async function runCase(spec: RunSpec): Promise<RunRecord> {
   const stalled = new Promise<never>((_, reject) => {
     giveUp = setTimeout(() => reject(new Error(`timed out after ${minutes} min`)), (minutes + 1) * 60_000);
   });
-  // What goes over the wire to the model, request by request: the tools it was offered.
-  const recorder = new OfferRecorder();
+  // What goes over the wire to the model, request by request: the tools it was
+  // offered. A request sent while a tuning run is going is the tuning's (the
+  // loop waits for its tool to end): it offers no tools, and usage.tuning counts it.
+  const recorder = new OfferRecorder(() => useTuneStore.getState().active);
   const stopRecording = recorder.install();
+  // The tuning's requests go to the run's model, and their tokens are the run's.
+  const tuning = new TuningTokens();
   const t0 = performance.now();
   const started = new Date().toISOString();
   const loop = runAgent({
     messages: setup.messages,
     // Every tool the Pilot ships: the run's switch (ctx.skills) decides what arm C is offered.
     tools: CHAT_TOOLS,
-    ctx: { dataset, datasets: [dataset], skills: setup.skills, skillsRead: setup.skillsRead },
+    ctx: { dataset, datasets: [dataset], skills: setup.skills, skillsRead: setup.skillsRead, model: { settings, usage: tuning.report } },
     settings: { ...settings, attachImages: false, useTools: true, followViews: false },
     signal: abort.signal,
     usage: true,
@@ -180,7 +235,7 @@ export async function runCase(spec: RunSpec): Promise<RunRecord> {
       note: result.note,
       failure: result.failure ?? null,
       latencyMs: performance.now() - t0,
-      usage: result.usage ?? null,
+      usage: tuning.addTo(result.usage ?? null),
       verdict: result.verdict ?? null,
     };
   } catch (e) {
