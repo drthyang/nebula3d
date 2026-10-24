@@ -19,6 +19,7 @@ import type { Dataset, TuningRun } from "../../api/types";
 import { pipelineBusy, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { completeChat, type ChatMessage, type TokenUsage, type UsageReport } from "../provider/client";
 import { baseTokens, estimateTokens, PROSE_CHARS_PER_TOKEN } from "../provider/tokens";
+import { pause, RETRIES, RETRY_DELAYS_MS, STALL_MS, StallError } from "../recovery";
 import { estimated, measured, notCounted, ranNothing, recordUsage } from "../usage";
 import type { LlmSettings } from "../settings";
 import {
@@ -117,39 +118,48 @@ const snapshot = (stage: TuneStage): Partial<PipelineConfig> => {
 /** The model the tuning asks, the output cap it asks for, and where each request's token counts go (TuneOptions). */
 type TuneModel = Pick<TuneOptions, "llm" | "onUsage" | "maxTokens">;
 
-// The model's reply as JSON, from one request read whole, as the validation
-// frozen at 812e686 runs its tuning (docs/evals.md, "The freeze"): only the
-// user's Stop ends it. Its tokens count into the reply that runs the tuning
-// and the conversation (usage.ts): as the server gave them, else estimated;
-// and the request's counts go to the caller's `onUsage` with its stop reason
-// (a validation run's, UsageReport).
+// The model's reply as JSON. A server that goes quiet ends the request instead
+// of holding it open, by the chat's stall limits (recovery.ts), and is asked
+// once more after the chat's pause, as the chat asks a stalled request again; a
+// second stall ends the tuning run, with the reason. The user's Stop ends it at
+// once, never asked again. Its tokens count into the reply that runs the
+// tuning and the conversation (usage.ts): as the server gave them, else
+// estimated; and each answered request's go to the caller's `onUsage` with its
+// stop reason (a validation run's, UsageReport).
 async function ask(messages: ChatMessage[], { llm, onUsage, maxTokens }: TuneModel, signal: AbortSignal): Promise<Record<string, unknown> | null> {
-  let reported: TokenUsage | null = null;
-  let text: string;
-  try {
-    text = await completeChat({
-      baseUrl: llm.baseUrl,
-      model: llm.model,
-      messages,
-      temperature: llm.temperature,
-      apiKey: llm.apiKey || undefined,
-      signal,
-      onUsage: (u, stopReason) => {
-        reported = u;
-        onUsage?.(u, stopReason);
-      },
-      ...(maxTokens !== undefined ? { maxTokens } : {}),
-    });
-  } catch (e) {
-    if (!ranNothing(e)) recordUsage(notCounted()); // sent, never completed: said apart
-    throw e;
+  for (let attempt = 0; ; attempt++) {
+    let reported: TokenUsage | null = null;
+    let text: string;
+    try {
+      text = await completeChat({
+        baseUrl: llm.baseUrl,
+        model: llm.model,
+        messages,
+        temperature: llm.temperature,
+        apiKey: llm.apiKey || undefined,
+        signal,
+        stallMs: STALL_MS,
+        onUsage: (u, stopReason) => {
+          reported = u;
+          onUsage?.(u, stopReason);
+        },
+        ...(maxTokens !== undefined ? { maxTokens } : {}),
+      });
+    } catch (e) {
+      if (!ranNothing(e)) recordUsage(notCounted()); // sent, never completed: said apart
+      if (e instanceof StallError && !signal.aborted && attempt < (RETRIES.stalled ?? 0)) {
+        await pause(RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)] ?? 0, signal);
+        continue;
+      }
+      throw e;
+    }
+    recordUsage(
+      reported
+        ? measured(reported)
+        : estimated(estimateTokens(baseTokens(messages), `${llm.baseUrl}|${llm.model}`), text.length / PROSE_CHARS_PER_TOKEN),
+    );
+    return parseJsonReply(text);
   }
-  recordUsage(
-    reported
-      ? measured(reported)
-      : estimated(estimateTokens(baseTokens(messages), `${llm.baseUrl}|${llm.model}`), text.length / PROSE_CHARS_PER_TOKEN),
-  );
-  return parseJsonReply(text);
 }
 
 // Run the stage as trial n of the run, with the form as it stands, into the
