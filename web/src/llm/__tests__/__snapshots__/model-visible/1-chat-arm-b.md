@@ -127,7 +127,7 @@ over, or diffuse dented, at the rings confirmed in 3D); radial_profile shows any
 (2) The Bragg punch removes the Bragg peaks cleanly: assess_stage punch (leftover peaks on every plane,
 and how much was punched to get there); check an off-zero cut too.
 (3) The backfill meets its surroundings, and the punch and backfill add no texture to reciprocal space:
-assess_stage backfill (the seam) and texture_check (no cut whose fills sit systematically outside the range their
+assess_stage backfill (the seam) and texture_check (no fills sitting systematically outside the range their
 rims allow, azimuthal ratio near 1).
 (4) The flatten leaves no pedestal: assess_stage flatten (the floors' trend and span).
 (5) The 3D-ΔPDF's back-FFT reproduces the data's even part under Q → −Q, its declared symmetry is kept, and Qmax is not past the data coverage:

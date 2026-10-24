@@ -156,11 +156,43 @@ export const SYMMETRY: Variant[] = [
 /** Words no producer writes, read only from a reply. */
 export const SYMMETRY_UPPER: Variant = v("upper case", { verdict: "Not kept: six-fold (60°) (0.02)" });
 
+/** texture_check's result since plan 4.2: the fill bias over every punch hole in 3-D, the cuts carrying the azimuthal texture. */
+const AZIMUTHAL = [{ cut: "H–K plane at L = 0", azimuthal_ratio: 1.01 }, { cut: "H–L plane at K = 0", azimuthal_ratio: 1 }];
+const volumeTexture = (over: Record<string, unknown>): Record<string, unknown> => ({
+  n_holes: 189,
+  n_judged: 189,
+  median_fill_bias_sigma: 0.0109,
+  median_fill_bias_level: 0.00281,
+  above_fraction: 0.503,
+  below_fraction: 0.00529,
+  above_floor_fraction: 0.0423,
+  below_floor_fraction: 0,
+  systematic_fill_bias: false,
+  per_cut: AZIMUTHAL,
+  ...over,
+});
+
 export const TEXTURE: Variant[] = [
+  // Recorded before 4.2: each cut judged on its own.
   v("no bias", { per_cut: [{ cut: "H–K plane at L = 0", systematic_fill_bias: false }, { cut: "H–L plane at K = 0", systematic_fill_bias: false }] }),
   v("bias", { per_cut: [{ cut: "H–K plane at L = 0", systematic_fill_bias: false }, { cut: "H–L plane at K = 0", systematic_fill_bias: true }] }),
   v("no cuts", { per_cut: [] }),
   v("no per_cut", {}),
+  v("in 3-D, no bias", volumeTexture({})),
+  v("in 3-D, bias", volumeTexture({ median_fill_bias_sigma: 39.1, median_fill_bias_level: 0.506, above_fraction: 0.8, below_fraction: 0, above_floor_fraction: 0.8, systematic_fill_bias: true })),
+  v("in 3-D, grid too coarse", {
+    n_holes: 277,
+    not_judged: "grid too coarse: the nodes are 10 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more",
+    median_fill_bias_sigma: null,
+    median_fill_bias_level: null,
+    above_fraction: null,
+    below_fraction: null,
+    above_floor_fraction: null,
+    below_floor_fraction: null,
+    systematic_fill_bias: null,
+    per_cut: AZIMUTHAL,
+  }),
+  v("in 3-D, too few holes", volumeTexture({ n_holes: 4, n_judged: 4, not_judged: "too few holes judged: 4 of 4, under 5", median_fill_bias_level: 0.516, systematic_fill_bias: null })),
 ];
 
 export const GRAIN: Variant[] = [

@@ -15,15 +15,20 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { CUT_OFF_NOTE, TOOLS_UNSUPPORTED_NOTE, toolsKnownUnsupported } from "../agent";
-import { resetTokenState, tokenCalibration } from "../provider/tokens";
+import { COMPLETE_MAX_TOKENS } from "../provider/anthropic";
+import { DATA_CHARS_PER_TOKEN, resetTokenState, tokenCalibration } from "../provider/tokens";
 import { loadSettings, saveSettings } from "../settings";
-import { callTool } from "../tools";
+import { callTool, CHAT_TOOLS } from "../tools";
+import { currentStageSettings, TUNE_STAGES, type ParamValue } from "../tune/catalog";
+import { evaluateStage } from "../tune/evaluate";
+import { buildJudgeMessages, buildProposeMessages } from "../tune/prompts";
 import { useTuneStore } from "../tune/tuner";
 import { devCase, type DevCase } from "./devData";
+import { DEV_GRIDS } from "./devData/bridgeWorker";
 import { renderTranscript } from "./findings";
 import { scriptedModel, SCRIPTED_URL, type ScriptedRequest, type ScriptTurn } from "./scripted";
 import { caseNamed, type Arm, type Decision, type RunRecord } from "./validation";
-import { costOf, SPEND_CAP_USD, SpendTracker, VALIDATION_MAX_TOKENS, type Price } from "./validationModels";
+import { costOf, FIRST_RUN_WORST, firstRunWorstUsd, modelNamed, SPEND_CAP_USD, SpendTracker, VALIDATION_MAX_TOKENS, type Price } from "./validationModels";
 import { runCase } from "./validationRun";
 
 const SETTINGS = { baseUrl: SCRIPTED_URL, model: "scripted", apiKey: "", temperature: 0 };
@@ -280,5 +285,91 @@ describe("a validation run's tuning", () => {
     expect(record.run_policy).toMatchObject({ transport: "openai-compatible", max_rounds: 12, temperature: 0, output_cap: { loop: 16_000, tuning: 16_000 } });
     const text = renderTranscript(record);
     expect(text).toContain("**Cut at the output limit:** the loop's request 2 (length); the tuning's request 2 (length). The run is graded as it stands.");
+  }, 300_000);
+
+  it("is covered by the first run's reserve at its worst: a stage's most requests, each as long as the longest measured", async () => {
+    const sonnet = modelNamed("claude-sonnet-5-5").price!;
+    // A request's tokens as the token estimate counts number-dense JSON, for every character.
+    const tokens = (r: { messages: number; chars: number }) => r.messages * 5 + r.chars / DATA_CHARS_PER_TOKEN;
+    const most = (CHAT_TOOLS.find((t) => t.name === "tune_pipeline")!.parameters.properties as { trials_per_stage: { maximum: number } })
+      .trials_per_stage.maximum;
+    expect(most).toBe(5);
+    // The validation's own grid, where the ring stage's numbers run longest: its
+    // pick of five trials is the longest tuning request (FIRST_RUN_WORST).
+    const c = devCase("dev-flatten", { n: DEV_GRIDS[1] });
+    const { record, log, overrun } = await run(
+      c,
+      "B",
+      [
+        { calls: [{ name: "read_skill", args: { name: "reduction-qc" } }] },
+        { calls: [{ name: "tune_pipeline", args: { stages: ["rings"], trials_per_stage: most } }] },
+        // A reply none of whose candidates can run, so the stage asks again; then four that can; then the pick.
+        { text: JSON.stringify({ candidates: [{ changes: { ringPooledSectors: 2 }, why: "fewer sectors" }] }) },
+        {
+          text: JSON.stringify({
+            candidates: [
+              { changes: { ringPooledSectors: 36 }, why: "coarser sectors" },
+              { changes: { ringPooledWindow: 10 }, why: "a wider window" },
+              { changes: { ringModel: "global_v2" }, why: "one profile" },
+              { changes: { ringModel: "patched", ringNFourier: 12 }, why: "patched" },
+            ],
+          }),
+        },
+        { text: JSON.stringify({ best: 1, why: "the current settings" }) },
+        { text: "Done." },
+      ],
+      { price: sonnet },
+    );
+    expect(record.error).toBeNull();
+    expect(overrun).toBe(0);
+    expect(useTuneStore.getState().stages[0]).toMatchObject({ stage: "rings", status: "done", best: 1 });
+    expect(useTuneStore.getState().stages[0].trials.map((t) => t.status)).toEqual(["done", "done", "done", "done", "done"]);
+
+    // A stage's most requests, 3, and every one inside the reserve's tokens a request.
+    const tuning = log.filter((r) => !r.stream);
+    expect(tuning).toHaveLength(3);
+    expect(FIRST_RUN_WORST.tuning.requests).toBe(TUNE_STAGES.length * tuning.length);
+    const longest = Math.max(...tuning.map(tokens));
+    expect(longest).toBe(tokens(tuning[2])); // the pick of five trials
+    expect(longest).toBeLessThanOrEqual(FIRST_RUN_WORST.tuning.inputPerRequest);
+
+    // Every other stage's longest requests on this dataset, with its numbers
+    // in each of five trials, are inside it too: the pick, and asking again
+    // with every earlier stage's settings.
+    const dataset = await c.dataset();
+    const earlier: Record<string, Record<string, ParamValue>> = {};
+    for (const stage of TUNE_STAGES) {
+      const settings = currentStageSettings(stage, usePipelineStore.getState());
+      const metrics = await evaluateStage(stage, dataset);
+      const trials = [1, 2, 3, 4, 5].map((trial) => ({ trial, settings, metrics }));
+      const again = [
+        ...buildProposeMessages({ stage, current: settings, earlier, trials: trials.slice(0, 1), count: most - 1 }),
+        { role: "user" as const, content: `None of those can run: ${"a candidate outside the catalog; ".repeat(4)}Propose again.` },
+      ];
+      for (const messages of [buildJudgeMessages({ stage, trials }), again]) {
+        const chars = messages.reduce((n, m) => n + String(m.content).length, 0);
+        expect(tokens({ messages: messages.length, chars }), stage).toBeLessThanOrEqual(FIRST_RUN_WORST.tuning.inputPerRequest);
+      }
+      earlier[stage] = settings;
+    }
+
+    // The run at its worst: the loop's worst, and every stage tuned as the
+    // ring stage was here, each request as long as the longest measured and
+    // with its whole max_tokens out; with the margin. The reserve covers it,
+    // and this run, as the scripted model counted it, is far inside.
+    const { loop, margin } = FIRST_RUN_WORST;
+    const worst =
+      ((loop.requests * loop.inputPerRequest * sonnet.input +
+        loop.outputOverRun * sonnet.output +
+        TUNE_STAGES.length * tuning.length * (longest * sonnet.input + COMPLETE_MAX_TOKENS * sonnet.output)) /
+        1e6) *
+      (1 + margin);
+    expect(worst).toBeLessThanOrEqual(firstRunWorstUsd(sonnet));
+    expect(worst).toBeLessThanOrEqual(SpendTracker.FIRST_RUN_RESERVE_USD);
+    const tracker = new SpendTracker(SPEND_CAP_USD);
+    expect(tracker.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
+    expect(tracker.canStart()).toBe(true);
+    expect(record.usage?.tuning?.requests).toBe(3);
+    expect(record.cost_usd!).toBeLessThan(SpendTracker.FIRST_RUN_RESERVE_USD);
   }, 300_000);
 });

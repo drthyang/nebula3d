@@ -3,12 +3,14 @@
 // diffuse that peaks at the nodes, filled as a smooth interpolation does, is
 // not (docs/pilot-review.md, finding 4). And on a grid too coarse to leave a
 // hole's rim on its own side of the midpoint to the next node, a cut is not
-// judged, and says why.
+// judged, and says why. Last, why texture_check reads the fills in 3-D since
+// plan 4.2: on a cut, a hole crossed at its pole reads under the floor, a
+// satellite beside a node as much as the node itself.
 
 import { describe, expect, it } from "vitest";
 
 import { GRID_TOO_COARSE } from "../metrics/coarse";
-import { holeReach, nodeSpacing, RIM, roomForRims, textureMetrics } from "../metrics/texture";
+import { azimuthalTexture, FILL_BIAS_FLOOR, holeReach, nodeSpacing, RIM, roomForRims, textureMetrics } from "../metrics/texture";
 import { makeSlice } from "./helpers";
 
 // Deterministic noise in [-1, 1).
@@ -139,5 +141,65 @@ describe("room for the rims", () => {
     });
     // The azimuthal texture is no hole's measure: it is still read.
     expect(bright.azimuthal_ratio!).toBeGreaterThan(1.25);
+  });
+});
+
+describe("the azimuthal texture, on its own", () => {
+  it("is textureMetrics' azimuthal part, and needs the punched and backfilled cuts", () => {
+    const filled = slice((_x, _y, ix, iy) => diffuse(ix, iy) + (isHole(ix, iy) ? 30 : 0));
+    const { azimuthal_variation_before, azimuthal_variation_after, azimuthal_ratio } = textureMetrics(before, punched, filled)!;
+    expect(azimuthalTexture(before, punched, filled)).toEqual({ azimuthal_variation_before, azimuthal_variation_after, azimuthal_ratio });
+    expect(azimuthal_ratio!).toBeGreaterThan(1.25);
+    expect(azimuthalTexture(before, null, filled)).toEqual({ azimuthal_variation_before: null, azimuthal_variation_after: null, azimuthal_ratio: null });
+  });
+});
+
+// The case texture_check reads in 3-D since plan 4.2 (docs/pipeline.md, the
+// fills' texture): tests/test_fill_texture.py's lattice with satellites, built
+// here as it builds it, its noise deterministic. An 81³ grid at 0.05 r.l.u. a
+// voxel; a diffuse sharply peaked (a Gaussian of 4 voxels, as high as the
+// level) at every node, 20 voxels apart, and at a satellite beside each, at
+// (½, ½, 0.15) r.l.u.; each punched as a ball of 3 voxels and filled 12 % too
+// high, the gap band a voxel deep filled with the diffuse. In 3-D every node
+// and every whole satellite reads 0.28 to 0.30 of its level outside its range
+// (the server's read of the same lattice: tools.test.ts, texture_check).
+describe("the per-cut rule on satellites beside the nodes", () => {
+  const n = 81;
+  const half = (n - 1) / 2; // voxels each side of the centre
+  const ks = [-40, -20, 0, 20, 40];
+  const peaks = ks.flatMap((a) => ks.flatMap((b) => ks.flatMap((c) => [[a, b, c], [a + 10, b + 10, c + 3]])));
+  const r2 = (p: number[], h: number, k: number, l: number) => (h - p[0]) ** 2 + (k - p[1]) ** 2 + (l - p[2]) ** 2;
+  const truth = (h: number, k: number, l: number) =>
+    1 + 0.05 * Math.cos((2 * Math.PI * h) / 97) * Math.cos((2 * Math.PI * k) / 89) + peaks.reduce((s, p) => s + Math.exp((-0.5 * r2(p, h, k, l)) / 16), 0);
+  const inHole = (h: number, k: number, l: number) => peaks.some((p) => r2(p, h, k, l) <= 9);
+  const inBand = (h: number, k: number, l: number) =>
+    !inHole(h, k, l) &&
+    [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].some(([a, b, c]) => inHole(h + a, k + b, l + c));
+  const measured = (h: number, k: number, l: number) =>
+    truth(h, k, l) + 0.01 * (((((h + 41) * 7919 + (k + 41) * 104729 + (l + 41) * 1299709) % 1009) / 504.5) - 1);
+  /** The H–K cut l voxels from the centre, as the slice endpoint gives its three stages. */
+  const cutAt = (l: number) => {
+    const at = (f: (h: number, k: number) => number) => makeSlice(n, n, (_x, _y, ix, iy) => f(ix - half, iy - half), { half: 2 });
+    const fill = (h: number, k: number) => (inHole(h, k, l) ? 1.12 * truth(h, k, l) : inBand(h, k, l) ? truth(h, k, l) : measured(h, k, l));
+    return [at((h, k) => measured(h, k, l)), at((h, k) => (inHole(h, k, l) ? NaN : measured(h, k, l))), at(fill)] as const;
+  };
+
+  it("reads holes crossed at their poles under the floor, and nodes crossed at their centres past it", () => {
+    // Three voxels above the satellites' centres: their upper poles alone, a voxel each (16 inside the box).
+    const satellitePoles = textureMetrics(...cutAt(6))!;
+    expect(satellitePoles.n_holes).toBe(16);
+    // Three below the nodes' centres: their lower poles alone.
+    const nodePoles = textureMetrics(...cutAt(-3))!;
+    expect(nodePoles.n_holes).toBe(25);
+    for (const m of [satellitePoles, nodePoles]) {
+      expect(m.above_fraction).toBe(1); // every one above its range ...
+      expect(m.median_fill_bias_level!).toBeLessThan(FILL_BIAS_FLOOR); // ... and under the floor
+      expect(m.systematic_fill_bias).toBe(false);
+    }
+    // The nodes' plane, l = 0: 25 nodes crossed at their centres carry the cut, their satellites' lower poles beside them.
+    const nodes = textureMetrics(...cutAt(0))!;
+    expect(nodes.n_holes).toBe(25 + 16);
+    expect(nodes.median_fill_bias_level!).toBeGreaterThan(FILL_BIAS_FLOOR);
+    expect(nodes.systematic_fill_bias).toBe(true);
   });
 });

@@ -56,7 +56,10 @@ Each is described under [How it works](#how-it-works).
   no check on the result needs attention; not met, naming what needs it; or
   not judged, naming the stages not measured, and those measured on a grid
   too coarse for their check with that reason ("not judged: the ring removal
-  (grid too coarse for the ring check)"). The data's problems that no
+  (grid too coarse for the ring check)"), and likewise a check on the result
+  that ran and could not judge: the fills' texture on a grid too coarse for
+  the holes' rims, or with too few holes ("the backfill's texture (grid too
+  coarse)", "(too few holes)"). The data's problems that no
   setting fixes (a turned UB, a shifted origin, counts that end inside the
   box) are listed with it. It shows under a reply that judged the run (or
   found such a problem) and the report heads its own, and
@@ -366,10 +369,10 @@ miss is a note.
   result, and a long one shows a live line while it runs. As each measuring or
   assessing call finishes, the console moves to the figure it looked at
   (*Follow*, on by default; `tools/openView.ts`): the cleanup page at its cut (a
-  stage's worst plane for `assess_stage`, the strongest fill bias for
-  `texture_check`), the 3D-ΔPDF at its section, the Bragg profile with its peak
-  selected, the Q–R band transform for the back-FFT check, or the Execution
-  page for the run log. Each step's *Show* reopens its figure. While the panel
+  stage's worst plane for `assess_stage`, the H–K plane through the hole
+  farthest outside its range for `texture_check`), the 3D-ΔPDF at its
+  section, the Bragg profile with its peak selected, the Q–R band transform
+  for the back-FFT check, or the Execution page for the run log. Each step's *Show* reopens its figure. While the panel
   is open, the cards the agent is on breathe a blue edge (`llm/highlight.ts`,
   `.ai-glow`): those a running step works on (narrowed to the stage a run or a
   tuning run is on), then those its answer mentions, for 8 s after the reply.
@@ -394,10 +397,13 @@ miss is a note.
     planes (the tuning run's own evaluation, `tune/evaluate.ts`);
     `radial_profile` puts the stages' |Q|-shell medians side by side (rings
     left or diffuse dented); `texture_check` (`metrics/texture.ts`) asks
-    whether the fills sit systematically above or below their rims (a
-    lattice-periodic pattern; flagged at a median ≥ 0.5σ with ≥ 75 % of holes
-    one way) and whether the punch and backfill add variation around each |Q|
-    shell; `qmax_coverage` gives the share of the
+    whether the fills sit systematically above or below the range their rims
+    allow, over every punch hole of the volume, each with its 3-D rim (a
+    lattice-periodic pattern; flagged at a median ≥ 0.5σ and ≥ a fifth of the
+    level with ≥ 75 % of holes one way; not judged on a grid too coarse for the
+    rims; [the fills' texture](pipeline.md#the-fills-texture)), and whether the
+    punch and backfill add variation around each |Q| shell, on cuts;
+    `qmax_coverage` gives the share of the
     ΔPDF window's weight on unmeasured space, read from the ΔPDF's provenance
     (≲ 10⁻³ is clean), with the window's shape and scale. On a file without it,
     it compares how far the forward transform's window reaches in |Q| (the |Q|

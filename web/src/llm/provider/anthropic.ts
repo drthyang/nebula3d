@@ -32,7 +32,7 @@ export const isAnthropicUrl = (baseUrl: string): boolean => {
 // evals/validationModels.ts); the app never does. The run policy reads both
 // (runPolicy.ts).
 export const STREAM_MAX_TOKENS = 64000;
-export const COMPLETE_MAX_TOKENS = 16000;
+export const COMPLETE_MAX_TOKENS = 16000; // the validation's first-run reserve counts it (evals/validationModels.ts)
 
 // Models that take server-side fallback in its "default" form on the Claude
 // API: a request a safety classifier declines is re-run on another model in

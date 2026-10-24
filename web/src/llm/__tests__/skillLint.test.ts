@@ -59,6 +59,7 @@ const api = vi.hoisted(() => ({
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -291,9 +292,9 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "bragg-node-audit", phrase: "the same search at random directions", what: "the random directions' control", fields: ["random_control"] },
   {
     skill: "bragg-node-audit",
-    phrase: "no cut whose fills sit systematically outside the range their rims allow",
-    what: "whether a cut's fills sit systematically outside their rims' range",
-    fields: ["per_cut.systematic_fill_bias"],
+    phrase: "no fills sitting systematically outside the range their rims allow",
+    what: "whether the fills sit systematically outside their rims' range",
+    fields: ["systematic_fill_bias"],
   },
   { skill: "bragg-node-audit", phrase: "an azimuthal ratio near 1", what: "the azimuthal ratio", fields: ["per_cut.azimuthal_ratio"] },
   // delta-pdf-interpretation

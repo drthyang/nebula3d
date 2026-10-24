@@ -408,9 +408,13 @@ skill's text keeps its name and its first 400 characters
 skill opts in to keeping them by writing its gates under a heading of its
 own, exactly `## Gates`: compaction then keeps that section whole, up to the
 next heading of level 1 or 2, beside the head. The section is capped at
-`GATES_MAX`, 1,200 characters; past it, it is cut at a line boundary and a
-marker says how many lines were left out. A skill without the section is
-shortened as before, byte for byte. `web/src/llm/__tests__/readings.test.ts`
+`GATES_MAX`, 1,000 characters (lowered from 1,200 on 2026-10-24; on the worst
+turn a 32k window holds one gated skill at the cap and the live runs' 56k
+two, review finding P5.3b; it bounds the `## Gates` text the user writes for
+each skill, plan 5.3); past it, it is cut
+at a line boundary and a marker says how many lines were left out. A skill
+without the section is shortened as before, byte for byte.
+`web/src/llm/__tests__/readings.test.ts`
 pins the real skills that have no `## Gates` to the old rule, and has a test
 per skill, skipped until that skill gains the section, that every number in
 it survives compaction; a section past the cap fails it. Which gates a skill

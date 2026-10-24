@@ -59,7 +59,7 @@ One grain, its UB right: no rotation of the Bragg lattice indexes the off-lattic
 ### backfill
 
 ```text
-The fills meet their surroundings: a median seam of 1σ or less, and no cut whose fill is biased one way.
+The fills meet their surroundings: a median seam of 1σ or less, and the fills not biased one way.
 ```
 
 ### flatten

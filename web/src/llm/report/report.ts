@@ -252,24 +252,51 @@ function grainsCheck(m: Obj | null | undefined, kind: Verdict | undefined, crite
   };
 }
 
-function backfillCheck(measured: Obj | null | undefined, texture: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
-  if (verdict === undefined) return null;
-  const m = measured ?? {};
-  const seam = num(m.mean_median_seam_sigma);
-  const cuts = Array.isArray(texture?.per_cut) ? (texture!.per_cut as Obj[]) : [];
+/**
+ * What the Backfill card says of texture_check's fill bias: its headline's
+ * words and its line. Since plan 4.2 over every punch hole in 3-D
+ * (metrics/texture.ts, volumeFillBias); a result recorded before it, by cut.
+ */
+function fillBiasWords(texture: Obj): { headline: string; detail: [string, string] } {
+  if ("systematic_fill_bias" in texture) {
+    const holes = fmt(texture.n_judged ?? texture.n_holes);
+    const bias = texture.systematic_fill_bias;
+    const headline =
+      bias === true
+        ? `systematic fill bias over ${holes} holes`
+        : bias === false
+          ? `no fill bias over ${holes} holes`
+          : `fill bias not judged${isTooCoarse(texture.not_judged) ? " (grid too coarse)" : ""}`;
+    const detail =
+      bias === true
+        ? `yes, over ${holes} holes judged (median ${fmt(texture.median_fill_bias_level)} of the level)`
+        : bias === false
+          ? `no, over ${holes} holes judged`
+          : `not judged: ${typeof texture.not_judged === "string" ? texture.not_judged : "nothing to judge"}`;
+    return { headline, detail: ["Systematic fill bias, every hole in 3-D", detail] };
+  }
+  const cuts = Array.isArray(texture.per_cut) ? (texture.per_cut as Obj[]) : [];
   const biased = cuts.filter((c) => c.systematic_fill_bias === true).length;
   // Cuts whose grid is too coarse to judge their fills (texture.ts, roomForRims).
   const coarse = cuts.filter((c) => isTooCoarse(c.not_judged)).length;
   const notJudged = coarse ? `, ${coarse} not judged (grid too coarse)` : "";
+  return { headline: `fill bias on ${biased} of ${cuts.length} cuts${notJudged}`, detail: ["Cuts with a systematic fill bias", `${biased} of ${cuts.length}${notJudged}`] };
+}
+
+function backfillCheck(measured: Obj | null | undefined, texture: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
+  const m = measured ?? {};
+  const seam = num(m.mean_median_seam_sigma);
+  const fill = texture ? fillBiasWords(texture) : null;
   const details: [string, string][] = [
     ["Mean median seam", `${fmt(seam)} σ`],
     ["Largest bright-fill fraction", fmt(m.max_bright_fill_fraction)],
   ];
-  if (texture) details.push(["Cuts with a systematic fill bias", `${biased} of ${cuts.length}${notJudged}`]);
+  if (fill) details.push(fill.detail);
   return {
     title: "Backfill",
     verdict,
-    headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${texture ? ` · fill bias on ${biased} of ${cuts.length} cuts${notJudged}` : ""}`,
+    headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${fill ? ` · ${fill.headline}` : ""}`,
     criterion,
     details,
   };
