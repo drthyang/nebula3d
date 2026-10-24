@@ -220,7 +220,7 @@ async function drive(baseUrl: string, calls: Call[], softBudget?: number) {
   const result = await runAgent({
     messages: b.messages,
     tools: CHAT_TOOLS,
-    ctx: { dataset: DATASET, datasets: DATASETS, skills: b.skills, skillsRead: b.skillsRead, earlierResults: [] },
+    ctx: { dataset: DATASET, datasets: DATASETS, skills: b.skills, skillsRead: b.skillsRead, earlierSteps: [] },
     settings,
     signal: new AbortController().signal,
     // The answer is the reply's, not the prompt's. An answer its checks send

@@ -435,13 +435,16 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     settings: obj({ pdfQMin: str, pdfQMax: str, pdfApod: str, pdfWindowShape: str, pdfWindowSupport: bool }),
   }),
 
-  // A cell neither hexagonal nor orthogonal, or a section off the origin, is a note alone (findings).
+  // With no operation tested (none declared and no in-plane ones to fall back
+  // on, sections off the origin, or none the sections can test), the verdict
+  // alone, with any the sections could not test (findings).
   symmetry_check: union(
-    obj({ note: str }),
+    obj({ verdict: maybeStr, not_tested: optional(arr(obj({ op: str, why: str }))) }),
     obj({
-      section: str,
-      cell: oneOf("hexagonal", "orthogonal"),
-      ops: arr(obj({ op: str, rms_difference: num, pairs: num })),
+      sections: str,
+      operations: str,
+      ops: arr(obj({ op: str, rms_difference: num, pairs: num, tested_on: str })),
+      not_tested: optional(arr(obj({ op: str, why: str }))),
       holds: arr(str),
       symmetry_declared: nullable(bool),
       verdict: maybeStr,

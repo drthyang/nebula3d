@@ -150,8 +150,8 @@ rims allow, azimuthal ratio near 1)`)}${connective(".\n", "; ")}${reading("(4) "
 assess_stage pdf and symmetry_check; qmax_coverage says how far the forward transform's window reaches in |Q| and
 whether that stays inside the fully measured shells`)}${connective(".\n", "; ")}${reading("(6) ")}${connective("A", "a")} UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes${reading(`:
 ub_check and grain_check for the UB, ub_check for the origin, qmax_coverage for the counts`)}.
-On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
-symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
+On symmetrised data, symmetry_check says whether the ΔPDF kept each operation of the
+declared symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features
 carry the colour and the FFT ripple stays near neutral${remedy(`: use it when the ΔPDF looks too
 bright or full of ripple, and before describing a ΔPDF figure`)}. dpdf_peaks lists the ΔPDF's

@@ -1641,8 +1641,10 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
               + (f"shared Bragg profile (learned from {sum(footprint.n_peaks)} peaks"
                  f"{learned})" if footprint is not None and from_search else
                  "shared Bragg profile" if footprint is not None else "ellipsoid"))
+    # No search peak's footprint takes a voxel its search left alone.
     keep = remover._punch_centers(  # noqa: SLF001
-        vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference)
+        vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference,
+        protect=remover._search_protected(vol))  # noqa: SLF001
     keep = remover._punch_incident_beam(vol, keep)  # noqa: SLF001
     if symmetry is not None:
         before = int((vol.mask & ~keep).sum())
