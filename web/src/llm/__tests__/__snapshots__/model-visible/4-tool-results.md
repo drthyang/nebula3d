@@ -6,7 +6,7 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 ## read_skill {"name":"bragg-node-audit"}
 
-5304 characters sent.
+5347 characters sent.
 
 ```text
 Skill bragg-node-audit
@@ -61,13 +61,14 @@ all three.
    search's width limit (`punchSearchMaxWidth`) leaves such maxima unpunched,
    but it is off by default: then the search punches every candidate, broad
    or sharp.
-7. **The backfill.** `texture_check`: no cut whose fills sit systematically
-   outside the range their rims allow, and an azimuthal ratio near 1. The
-   diffuse often peaks at the nodes (thermal diffuse scattering), so a sound
-   fill sits above its rim's median; the range runs from the diffuse at the
-   hole's edge to its rise continued to the node, and a bias counts only when
-   it is also a fifth of the local diffuse level or more. A lattice-periodic
-   fill pattern is texture that the 3D-ΔPDF will show.
+7. **The backfill.** `texture_check`: over every punch hole of the volume, no
+   fills sitting systematically outside the range their rims allow; on the
+   cuts, an azimuthal ratio near 1. The diffuse often peaks at the nodes
+   (thermal diffuse scattering), so a sound fill sits above its rim's median;
+   the range runs from the diffuse at the hole's edge to its rise continued to
+   the node, and a bias counts only when it is also a fifth of the local
+   diffuse level or more. A lattice-periodic fill pattern is texture that the
+   3D-ΔPDF will show.
 8. **Report** (below).
 
 ## Firm rules (enforced in code)
