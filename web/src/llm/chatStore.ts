@@ -23,7 +23,9 @@ export interface ChatTurn {
   steps?: AgentStep[];
   note?: string;
   verdict?: ComputedVerdict | null; // computed from the checks the reply ran (verdicts/)
-  tokens?: Usage; // the reply's model requests, measured or estimated (usage.ts)
+  // The reply's model requests, measured or estimated (usage.ts); on a user
+  // turn, those of a reply that ended with nothing to keep (session.ts).
+  tokens?: Usage;
 }
 
 interface ChatState {
@@ -162,6 +164,7 @@ export const useChatStore = create<ChatState>((set) => ({
               cacheWrite: t.cacheWrite + u.cacheWrite,
               requests: t.requests + u.requests,
               estimated: t.estimated + u.estimated,
+              ...(t.uncounted || u.uncounted ? { uncounted: (t.uncounted ?? 0) + (u.uncounted ?? 0) } : {}),
             }
           : { ...u },
       };
@@ -173,7 +176,7 @@ export const useChatStore = create<ChatState>((set) => ({
     const turns = saved.filter(isTurn).map((t) => settled(fromFile(t)));
     nextId = Math.max(nextId, turns.reduce((m, t) => Math.max(m, t.id), 0) + 1);
     // The conversation's total is its replies' counts.
-    const counted = turns.flatMap((t) => (t.tokens?.requests ? [t.tokens] : []));
+    const counted = turns.flatMap((t) => (t.tokens?.requests || t.tokens?.uncounted ? [t.tokens] : []));
     const usage = counted.length
       ? counted.reduce((a, u) => ({
           input: a.input + u.input,
@@ -182,6 +185,7 @@ export const useChatStore = create<ChatState>((set) => ({
           cacheWrite: a.cacheWrite + u.cacheWrite,
           requests: a.requests + u.requests,
           estimated: a.estimated + u.estimated,
+          ...(a.uncounted || u.uncounted ? { uncounted: (a.uncounted ?? 0) + (u.uncounted ?? 0) } : {}),
         }))
       : null;
     set({ turns, error: null, usage });

@@ -257,7 +257,10 @@ export async function* streamAnthropic(args: TurnArgs): AsyncGenerator<StreamDel
       }
       message = await stream.finalMessage();
     } catch (e) {
-      if (!(e instanceof AnthropicClient.APIError) && !args.signal?.aborted && !streamed && attempt < 2) continue;
+      if (!(e instanceof AnthropicClient.APIError) && !args.signal?.aborted && !streamed && attempt < 2) {
+        yield { discarded: true }; // its tokens went uncounted (usage.ts)
+        continue;
+      }
       throw await asHttpError(e);
     }
     if (args.includeUsage) {

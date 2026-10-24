@@ -111,11 +111,76 @@ describe("each request's tokens (usage.ts)", () => {
     expect(counted).toMatchObject([{ requests: 1, estimated: 1 }]);
   });
 
-  it("counts no request that failed", async () => {
-    script([new Error("400 bad request")]);
+  // A request sent that did not complete has no counts: it is said apart
+  // (uncounted), never counted as if it were none.
+  const uncounted = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0, estimated: 0, uncounted: 1 };
+  const run = (signal = new AbortController().signal) => {
     const counted: Usage[] = [];
-    await runAgent({ messages: base, tools: [], ctx: null, settings, signal: new AbortController().signal, onUsage: (u) => counted.push(u), retryDelaysMs: [0] });
-    expect(counted).toEqual([]);
+    const done = runAgent({ messages: base, tools: [], ctx: null, settings, signal, onUsage: (u) => counted.push(u), retryDelaysMs: [0, 0], stallMs: { first: 60, idle: 60 } });
+    return { counted, done };
+  };
+
+  it("says a request that failed is not counted, and counts none of its tokens", async () => {
+    script([new Error("the server answered something odd")]);
+    const { counted, done } = run();
+    expect((await done).failure?.kind).toBe("error");
+    expect(counted).toEqual([uncounted]);
+  });
+
+  it("says the stalled, malformed or crashed requests asked again are not counted, beside the one that completed", async () => {
+    let calls = 0;
+    client.streamChat.mockImplementation((args: { signal: AbortSignal }) => {
+      calls += 1;
+      const n = calls;
+      return (async function* () {
+        if (n === 1) {
+          // Nothing, until the watchdog ends it.
+          await new Promise((_, reject) => args.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+        }
+        if (n === 2) throw new Error("Model output does not match the expected tool call format");
+        if (n === 3) {
+          yield { content: "Hal" };
+          throw new Error("Encountered fatal exception in the backend generation thread");
+        }
+        yield { content: "Hello." };
+      })();
+    });
+    const { counted, done } = run();
+    expect((await done).content).toBe("Hello.");
+    expect(calls).toBe(4);
+    expect(counted).toMatchObject([uncounted, uncounted, uncounted, { requests: 1, estimated: 1 }]);
+  });
+
+  it("says a request the user stopped is not counted", async () => {
+    client.streamChat.mockImplementation((args: { signal: AbortSignal }) =>
+      (async function* () {
+        yield { content: "Half" };
+        await new Promise((_, reject) => args.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+      })(),
+    );
+    const abort = new AbortController();
+    const { counted, done } = run(abort.signal);
+    setTimeout(() => abort.abort(), 20);
+    await expect(done).rejects.toMatchObject({ name: "AbortError" });
+    expect(counted).toEqual([uncounted]);
+  });
+
+  it("says a request the provider dropped and sent again itself is not counted", async () => {
+    script([[{ discarded: true }, { content: "ok" }]]);
+    const { counted, done } = run();
+    expect((await done).content).toBe("ok");
+    expect(counted).toMatchObject([uncounted, { requests: 1, estimated: 1 }]);
+  });
+
+  it("counts nothing for a request the server refused outright, or never got", async () => {
+    script([Object.assign(new Error("HTTP 401: invalid key"), { status: 401 })]);
+    const refused = run();
+    await refused.done;
+    expect(refused.counted).toEqual([]);
+    script([new TypeError("Failed to fetch"), new TypeError("Failed to fetch"), new TypeError("Failed to fetch")]);
+    const unreachable = run();
+    expect((await unreachable.done).failure?.kind).toBe("unreachable");
+    expect(unreachable.counted).toEqual([]);
   });
 });
 

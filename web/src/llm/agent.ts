@@ -29,7 +29,7 @@ import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, STALL
 import { baseTokens, DATA_CHARS_PER_TOKEN, estimateTokens, observeTokens, PROSE_CHARS_PER_TOKEN } from "./provider/tokens";
 import { planWindow } from "./provider/window";
 import { seen, shorten, whole } from "./readings";
-import { estimated, measured, type Usage } from "./usage";
+import { estimated, measured, notCounted, ranNothing, type Usage } from "./usage";
 import type { LlmSettings } from "./settings";
 import { skillsOn } from "./skills";
 import {
@@ -195,7 +195,7 @@ export async function runAgent({
   stallMs?: { first: number; idle: number }; // the watchdog's limits (tests shorten them)
   retryDelaysMs?: number[]; // the pauses before each retry
   softBudget?: number; // a local request's tokens past which older results are shortened
-  onUsage?: (u: Usage) => void; // each completed request's tokens, measured or estimated (usage.ts)
+  onUsage?: (u: Usage) => void; // each completed request's tokens, measured or estimated, and each one sent that did not complete (usage.ts)
 }): Promise<AgentResult> {
   // The reply's history, which the executor runs each round of calls over
   // (tools/round.ts): the tools the reply offers, runs and checks answers
@@ -275,6 +275,7 @@ export async function runAgent({
     signal.addEventListener("abort", stopRequest, { once: true });
     let stalled = false;
     let heard = false; // a piece of the reply arrived
+    let sent = false; // the request went to the server
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     const watch = (ms: number) => {
       clearTimeout(watchdog);
@@ -294,6 +295,7 @@ export async function runAgent({
         note = note ? `${note} ${plan.refusal}` : plan.refusal;
         break;
       }
+      sent = true;
       for await (const delta of streamChat({
         baseUrl: settings.baseUrl,
         model: settings.model,
@@ -308,6 +310,11 @@ export async function runAgent({
         includeUsage: !usageRefused(settings.baseUrl),
         numCtx: plan.numCtx,
       })) {
+        // A request the provider dropped and sent again itself (anthropic.ts).
+        if (delta.discarded) {
+          onUsage?.(notCounted());
+          continue;
+        }
         heard = true;
         watch(stallMs.idle);
         if (delta.usage) {
@@ -341,6 +348,8 @@ export async function runAgent({
             ),
       );
     } catch (e) {
+      // A request sent that did not complete has no counts: said apart (usage.ts).
+      if (sent && (heard || !ranNothing(e))) onUsage?.(notCounted());
       if (signal.aborted) throw e; // the reply was stopped
       if (useTools && round === 0 && !roundText && isToolsUnsupported(e)) {
         noTools.add(`${settings.baseUrl}|${settings.model}`);

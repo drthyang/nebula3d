@@ -136,6 +136,18 @@ describe("streamChat with Ollama", () => {
     expect(deltas.some((d) => d.truncated)).toBe(false);
   });
 
+  it("reads the part of the prompt a newer Ollama says came from its cache", async () => {
+    server(() =>
+      ndjson([
+        line({ message: { role: "assistant", content: "Yes." }, done: false }),
+        JSON.stringify({ message: { role: "assistant", content: "" }, done: true, done_reason: "stop", prompt_eval_count: 9120, prompt_eval_cached_count: 8800, eval_count: 3 }),
+      ]),
+    );
+    const deltas = await collect(streamChat({ baseUrl: OLLAMA, model: "gemma4:26b", messages: [{ role: "user", content: "q" }], temperature: 0, numCtx: 16384 }));
+    // The whole prompt in, the cached part of it said.
+    expect(deltas.find((d) => d.usage)?.usage).toEqual({ input: 9120, output: 3, cacheRead: 8800 });
+  });
+
   it("sends no tools when the reply must answer, and reports a reply cut at its length", async () => {
     const seen = server(() =>
       ndjson([line({ message: { content: "Partial" }, done: false }), line({ message: { content: "" }, done: true, done_reason: "length" })]),

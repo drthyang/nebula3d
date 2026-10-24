@@ -17,6 +17,11 @@ vi.mock("../provider/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../provider/client")>()),
   completeChat: llm.completeChat,
 }));
+// The pause before a stalled request is asked again, shortened.
+vi.mock("../recovery", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../recovery")>()),
+  RETRY_DELAYS_MS: [0, 0],
+}));
 const evaluate = vi.hoisted(() => ({ evaluateStage: vi.fn() }));
 const api = vi.hoisted(() => ({ startTuningRun: vi.fn(), promoteTrial: vi.fn(), fetchDataset: vi.fn() }));
 vi.mock("../../api/client", async (importOriginal) => ({
@@ -275,10 +280,11 @@ describe("startTuning", () => {
     expect(stages[0].trials.map((t) => [t.n, t.status])).toEqual([[1, "done"], [2, "stopped"], [3, "skipped"]]);
   });
 
-  it("asks under the chat's stall limits, and ends with the reason when the model server goes quiet", async () => {
-    llm.completeChat.mockRejectedValueOnce(new StallError(300));
+  it("asks under the chat's stall limits, once more after a stall, and ends with the reason when the server stays quiet", async () => {
+    llm.completeChat.mockRejectedValueOnce(new StallError(300)).mockRejectedValueOnce(new StallError(300));
     await startTuning({ dataset, stages: ["punch"], trialsPerStage: 3, llm: DEFAULT_SETTINGS });
     expect(llm.completeChat).toHaveBeenCalledWith(expect.objectContaining({ stallMs: STALL_MS }));
+    expect(llm.completeChat).toHaveBeenCalledTimes(2); // asked once more, no further
     const { stages, error, active } = useTuneStore.getState();
     expect(active).toBe(false);
     expect(error).toMatch(/the model server sent nothing for 300 s/);

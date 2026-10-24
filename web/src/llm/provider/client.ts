@@ -285,12 +285,31 @@ const postChat = async ({
     body.tools = tools;
     if (toolChoice) body.tool_choice = toolChoice;
   }
-  const response = await fetch(`${trimBase(baseUrl)}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
-    body: JSON.stringify(body),
-    signal,
-  });
+  const send = (b: Record<string, unknown>) =>
+    fetch(`${trimBase(baseUrl)}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+      body: JSON.stringify(b),
+      signal,
+    });
+  let response = await send(body);
+  const server = trimBase(baseUrl);
+  if (body.stream_options && !usageAnswered.has(server)) {
+    if (!response.ok && (response.status === 400 || response.status === 422)) {
+      // A request with stream_options, to a server not yet known to take it,
+      // refused as a bad request in whatever shape (a FastAPI `detail` list, a bare 400):
+      // asked once more without it, as before the counts were asked for. A
+      // request refused with a client error ran nothing, so nothing is
+      // repeated. Once it has answered either way, or taken the field, a
+      // later client error is not about the field.
+      void response.body?.cancel().catch(() => {});
+      const { stream_options: _asked, ...without } = body;
+      void _asked;
+      response = await send(without);
+      if (response.ok) refuseUsage(baseUrl);
+      usageAnswered.add(server);
+    } else if (response.ok) usageAnswered.add(server);
+  }
   if (!response.ok) throw await httpError(response);
   return response;
 };
@@ -316,6 +335,9 @@ export const isUsageUnsupported = (error: unknown): boolean => {
 
 // Servers known (this session) to refuse stream_options: asked without it.
 const noUsage = new Set<string>();
+// Servers whose first request with stream_options has had its answer (taken,
+// or refused and asked again without it): a later client error is not about it.
+const usageAnswered = new Set<string>();
 export const usageRefused = (baseUrl: string): boolean => noUsage.has(trimBase(baseUrl));
 export const refuseUsage = (baseUrl: string): void => void noUsage.add(trimBase(baseUrl));
 
@@ -484,9 +506,23 @@ interface OllamaChunk {
   done?: boolean;
   done_reason?: string;
   prompt_eval_count?: number;
+  prompt_eval_cached_count?: number;
   eval_count?: number;
   error?: unknown;
 }
+
+// Ollama's counts: prompt_eval_count is the whole prompt, its cached part
+// included (its Go runner counts the prompt before the cache is matched), and
+// newer versions say that part, prompt_eval_cached_count. Null without them.
+const ollamaUsage = (chunk: OllamaChunk): TokenUsage | null => {
+  if (typeof chunk.prompt_eval_count !== "number") return null;
+  const cached = chunk.prompt_eval_cached_count;
+  return {
+    input: chunk.prompt_eval_count,
+    output: chunk.eval_count ?? 0,
+    ...(typeof cached === "number" && cached > 0 ? { cacheRead: cached } : {}),
+  };
+};
 
 // Ollama's stream is one JSON object a line: text and thinking in pieces, each
 // tool call whole, and the counts on the last line.
@@ -521,9 +557,7 @@ async function* streamOllama(args: Omit<PostChatArgs, "stream">): AsyncGenerator
     }
     if (chunk.done) {
       doneReason = chunk.done_reason;
-      if (typeof chunk.prompt_eval_count === "number") {
-        usage = { input: chunk.prompt_eval_count, output: chunk.eval_count ?? 0 };
-      }
+      usage = ollamaUsage(chunk) ?? undefined;
     }
   }
   try {
@@ -558,7 +592,31 @@ export interface StreamDelta {
   // Emitted once, after the stream ends, when the server reported the
   // request's token counts (includeUsage).
   usage?: TokenUsage;
+  // A request the provider's client dropped before its reply began and sent
+  // again itself (anthropic.ts): no counts for it.
+  discarded?: true;
 }
+
+interface OpenAiUsage {
+  prompt_tokens: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+}
+
+// An OpenAI-compatible server's counts. OpenAI also says how much of the
+// prompt it read from its cache. Gemini's endpoint leaves a thinking model's
+// thoughts out of completion_tokens but in total_tokens, so the reply's tokens
+// are what the total holds beyond the prompt, when that is more.
+const openAiUsage = (u: OpenAiUsage): TokenUsage => {
+  const cached = u.prompt_tokens_details?.cached_tokens;
+  const completion = u.completion_tokens ?? 0;
+  return {
+    input: u.prompt_tokens,
+    output: typeof u.total_tokens === "number" ? Math.max(completion, u.total_tokens - u.prompt_tokens) : completion,
+    ...(typeof cached === "number" && cached > 0 ? { cacheRead: cached } : {}),
+  };
+};
 
 export interface TokenUsage {
   input: number; // prompt tokens (an Anthropic request: input plus cache reads and writes)
@@ -673,14 +731,7 @@ export async function* streamChat({
         if (parsed.error) throw streamedError(parsed.error);
         // The token counts come in the last chunk (with no choices) when asked for;
         // OpenAI also says how much of the prompt it read from its cache.
-        if (parsed.usage && typeof parsed.usage.prompt_tokens === "number") {
-          const cached = parsed.usage.prompt_tokens_details?.cached_tokens;
-          usage = {
-            input: parsed.usage.prompt_tokens,
-            output: parsed.usage.completion_tokens ?? 0,
-            ...(typeof cached === "number" && cached > 0 ? { cacheRead: cached } : {}),
-          };
-        }
+        if (parsed.usage && typeof parsed.usage.prompt_tokens === "number") usage = openAiUsage(parsed.usage);
         const reason = parsed.choices?.[0]?.finish_reason;
         if (reason) finish = reason;
         const delta = parsed.choices?.[0]?.delta;
@@ -779,7 +830,7 @@ export const completeChat = async ({
     const payload = (await response.json()) as OllamaChunk;
     if (payload.error) throw streamedError(payload.error);
     if (typeof payload.message?.content !== "string") throw new Error("The model returned no message content");
-    onUsage?.(typeof payload.prompt_eval_count === "number" ? { input: payload.prompt_eval_count, output: payload.eval_count ?? 0 } : null);
+    onUsage?.(ollamaUsage(payload));
     return payload.message.content;
   }
   const response = await postChat({ baseUrl, model, messages, temperature, stream: false, signal, apiKey });
@@ -787,6 +838,6 @@ export const completeChat = async ({
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content !== "string") throw new Error("The model returned no message content");
   const u = payload.usage;
-  onUsage?.(u && typeof u.prompt_tokens === "number" ? { input: u.prompt_tokens, output: u.completion_tokens ?? 0 } : null);
+  onUsage?.(u && typeof u.prompt_tokens === "number" ? openAiUsage(u) : null);
   return content;
 };

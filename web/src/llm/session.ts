@@ -4,7 +4,7 @@
 // keeps whatever was written so far.
 
 import { runAgent, type AgentStep } from "./agent";
-import { beginReply, endReply, recordUsage } from "./usage";
+import { beginReply, endReply, recordUsage, type Usage } from "./usage";
 import { useChatStore } from "./chatStore";
 import type { ChatMessage } from "./provider/client";
 import { loadSettings } from "./settings";
@@ -48,7 +48,7 @@ export async function askAssistant({
     useChatStore.getState().addTurn({
       role: "assistant",
       ...result,
-      ...(tokens.requests ? { tokens } : {}),
+      ...(tokens.requests || tokens.uncounted ? { tokens } : {}),
       note:
         result.note ??
         (empty
@@ -59,7 +59,7 @@ export async function askAssistant({
     });
   } catch (e) {
     const counted = endReply();
-    const tokens = counted.requests ? { tokens: counted } : {};
+    const tokens = counted.requests || counted.uncounted ? { tokens: counted } : {};
     const stopped = (e as Error).name === "AbortError";
     const ended = useChatStore.getState().live;
     // A step still running when the reply ended never finished: it is kept
@@ -68,6 +68,7 @@ export async function askAssistant({
     const kept = live && (live.content || live.reasoning || live.steps.length);
     if (stopped) {
       if (kept) useChatStore.getState().addTurn({ role: "assistant", ...live, ...tokens, note: "Stopped." });
+      else withQuestion(tokens);
     } else if (kept) {
       // The steps already ran (a tuning run, a pipeline run): keep them, and
       // what was written, with the error that ended the reply.
@@ -78,12 +79,24 @@ export async function askAssistant({
         note: `The reply ended with an error: ${(e as Error).message.replace(/\.$/, "")}. The steps above ran; ask again to continue from them.`,
       });
     } else {
+      withQuestion(tokens);
       useChatStore.setState({ error: (e as Error).message });
     }
   } finally {
     if (controller === abort) controller = null;
     useChatStore.setState({ busy: false, live: null });
   }
+}
+
+// A reply that ended with nothing to keep adds no turn, but its requests are
+// in the conversation's total already: they go with the question that asked,
+// so a restored conversation (chatStore.restoreTurns) totals the same.
+function withQuestion({ tokens }: { tokens?: Usage }): void {
+  if (!tokens) return;
+  useChatStore.setState((s) => {
+    const last = s.turns[s.turns.length - 1];
+    return last?.role === "user" ? { turns: [...s.turns.slice(0, -1), { ...last, tokens }] } : {};
+  });
 }
 
 /** The steps of a reply that ended, any still running marked stopped (with why). */
