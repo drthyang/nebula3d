@@ -517,6 +517,49 @@ P3.2); the change moved no grade of the dev corpus
 (`web/src/llm/evals/answerTextGoldens.test.ts`), and the scenarios' checks do
 not read the UB's angle.
 
+### Each run starts fresh
+
+No run reads what an earlier run left in the app. Besides its messages and
+its dataset, a run reads the app's stores and a few states held at module
+scope, and until 2026-10-19 the runner reset only the settings between runs:
+`run_log` read the run before's log, `current_view` the page and cuts it
+moved, a tuning run it left going had every change refused, and a server found
+refusing tools once was asked without them for the rest of the plan. Each run
+is `runCase`'s (`web/src/llm/evals/validationRun.ts`), and `startFresh`
+clears, before each:
+
+- the pipeline store: the settings, to their defaults, and the job (its log,
+  how it ended, its id, whether it is going);
+- the tuning store: its run, its trials, its note, and whether one is going;
+- the console's view stores: the page, the reciprocal viewer's axis, cut and
+  focus, and the ΔPDF viewer's cuts and colour limit; the selection becomes
+  the run's dataset;
+- the servers found refusing tools (`web/src/llm/agent.ts`).
+
+A run cut short by its time limit may leave its agent loop, a pipeline run or
+a tuning run going. The loop is let go first; then `startFresh` stops a run or
+a tuning run still going and waits for it to end, two minutes at most, before
+it clears, so nothing it writes reaches the next run and no dataset changes
+while the next run is held to what it changed. One that does not end stops the
+plan, and the record keeps the runs before it.
+
+Kept on purpose: the token calibration (`web/src/llm/provider/tokens.ts`),
+what each server's counts taught the token estimate and the window an Ollama
+model last ran with, which decides when a local model's older results are
+shortened. It is the model's and its server's, not a run's, so it carries
+over, and each record keeps the calibration its run started from. Kept too:
+what every run reads alike and none writes (the skills' texts, the tools'
+facts, the inference tags, the parse cache of results, the context an Ollama
+model supports, and the console's LLM settings, which only a tuning run's
+proposals read), and what no run reads (the chat panel's transcript and its
+highlights, the crystal structure, the click mode, the viewers' query cache).
+
+`validationRun.replay.test.ts` runs two scripted runs back to back through
+`runCase` on a dev case: the second reads none of the first's log, views,
+tuning run or settings, and a server that refused tools in the first is
+offered them in the second. `validationRun.test.ts` holds what `startFresh`
+clears and keeps, and its wait for a run cut short.
+
 ### What each run leaves
 
 One JSON record per model and split (`docs/evals/validation/<model>-<split>.json`)
@@ -524,6 +567,10 @@ and one Markdown transcript per run beside it, readable offline. Each run holds:
 
 - **the tools offered on each request**, as they went over the wire (a recording
   `fetch`), so a reviewer sees what the model could call and when a tool joined it;
+- **the token calibration the run started from** (`tokens_at_start`): the
+  server's counted prompt tokens over the estimate's (`scale`) and the window an
+  Ollama model last ran with (`ollama_num_ctx`), each null where there was none
+  yet. Optional, so records made before it (2026-10-19) keep the schema;
 - **the decisions:** every step's tool, arguments, status, summary and result,
   and the model's own words before it as the reason. A step's result has two
   readings (`web/src/llm/readings/`): `result` is what the model read when the

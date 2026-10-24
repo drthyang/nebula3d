@@ -172,7 +172,7 @@ describe("replyContext", () => {
     result,
   });
 
-  it("counts no skill as read, keeps the earlier reads for the refusal and the earlier results for the answer checks", () => {
+  it("counts no skill as read, keeps the earlier reads for the refusal and the earlier tool calls that ran for the answer checks", () => {
     const turns = [
       { steps: [step("read_skill", { name: "reduction-qc" }, "done", "Skill reduction-qc"), step("read_skill", { name: "bragg-node-audit", reference: "x" })] },
       { steps: [step("read_skill", { name: "delta-pdf-interpretation" }, "error", "Error: no")] },
@@ -181,7 +181,7 @@ describe("replyContext", () => {
     const ctx = replyContext({ ...toolContext, skillsRead: new Set(["reduction-qc"]) }, turns);
     expect(ctx.skillsRead).toEqual(new Set());
     expect(ctx.skillsReadEarlier).toEqual(new Set(["reduction-qc"]));
-    expect(ctx.earlierResults).toEqual(["Skill reduction-qc", "r"]);
+    expect(ctx.earlierSteps?.map((s) => s.result)).toEqual(["Skill reduction-qc", "r"]);
     expect([ctx.dataset, ctx.datasets]).toEqual([dataset, [dataset]]);
   });
 });

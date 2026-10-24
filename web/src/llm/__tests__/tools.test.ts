@@ -11,6 +11,7 @@ import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore, type StageRun } from "../tune/tuner";
 import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type ToolContext } from "../tools";
+import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -826,24 +827,39 @@ describe("qmax_coverage", () => {
 });
 
 describe("symmetry_check", () => {
+  // A hexagonal ΔPDF (constructedDpdf.ts): 6/mmm's orbit of a correlation, and
+  // a pair ±(0.4, 0, 0) that keeps the two-fold ∥ c but not the six-fold.
   const hexagonal = async () => {
     const meta = await api.fetchDpdfMeta();
-    api.fetchDpdfMeta.mockResolvedValue({ ...meta, lattice: { a: 8, b: 8, c: 10, alpha: 90, beta: 90, gamma: 120 } });
-    const section = makeSlice(41, 41, (u, v) => Math.cos(0.7 * u) + Math.cos(0.7 * v) + Math.cos(0.7 * (u - v)) + 0.3 * Math.cos(0.5 * u));
-    section.header.axes_angle = 120;
-    api.fetchDpdfSlice.mockResolvedValue(section);
+    api.fetchDpdfMeta.mockResolvedValue({ ...meta, lattice: { a: HEXAGONAL.a, b: HEXAGONAL.a, c: HEXAGONAL.c, alpha: 90, beta: 90, gamma: 120 } });
+    const features = [...orbit([{ at: [0.3, 0.1, 0.25], amp: 1, width: 0.35 }], directGroup(DECLARED["6/mmm"])), { at: [0.4, 0, 0], amp: 0.5, width: 0.35 }];
+    api.fetchDpdfSlice.mockImplementation(async (_id: string, plane: "xy" | "xz" | "yz", value: number) => cut(HEXAGONAL, features, plane, value));
   };
 
-  it("reports each in-plane operation of a hexagonal ΔPDF section of data declared symmetrised", async () => {
+  it("reports each operation of a hexagonal ΔPDF of data declared symmetrised: with none declared, the cell's in-plane ones", async () => {
     await hexagonal();
     api.fetchMeta.mockResolvedValue({ ...META, symmetry: "6/mmm" });
     const r = await runOn(full, "symmetry_check", {});
     const out = JSON.parse(r.text);
-    expect(out.cell).toBe("hexagonal");
+    expect(out.operations).toBe("the cell's in-plane ones (hexagonal): no operations declared");
     expect(out.symmetry_declared).toBe(true);
-    expect(out.holds).toEqual(["two-fold (180°)"]);
+    expect(out.holds).toEqual(["two-fold ∥ c"]);
+    expect(out.ops.map((o: { op: string }) => o.op)).toEqual(["six-fold ∥ c (60°)", "three-fold ∥ c (120°)", "two-fold ∥ c", "mirror ⊥ [1-10]"]);
     expect(r.outcomes).toMatchObject([{ check: "symmetry", kind: "attention", reasons: ["symmetry broken"], words: out.verdict }]);
     expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xy", 0);
+    expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xz", 0);
+    expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "yz", 0);
+  });
+
+  it("tests the declared group's operations where the file declares them, those that move c included", async () => {
+    await hexagonal();
+    api.fetchMeta.mockResolvedValue({ ...META, symmetry: "6/mmm", symmetry_ops: DECLARED["6/mmm"] });
+    const out = JSON.parse((await runOn(full, "symmetry_check", {})).text);
+    expect(out.operations).toBe("declared (6/mmm): 23 besides the identity");
+    // Each of the eleven rotations with its product with the inversion, and the inversion.
+    expect(out.ops).toHaveLength(12);
+    // The mirror ⊥ c, with the two-fold ∥ c, on the sections it maps onto themselves, off the x–y plane.
+    expect(out.ops.find((o: { op: string }) => o.op === "two-fold ∥ c / mirror ⊥ c")).toMatchObject({ tested_on: "xz; yz" });
   });
 
   it("does not call an asymmetry a break when the file declares no symmetry: the data were not symmetrised", async () => {
