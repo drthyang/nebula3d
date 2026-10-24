@@ -199,6 +199,15 @@
       "eager_input_streaming": true
      },
      {
+      "name": "run_verdict",
+      "description": "run_verdict.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
       "name": "configure_settings",
       "description": "configure_settings.",
       "input_schema": {
@@ -466,6 +475,15 @@
      {
       "name": "compare_datasets",
       "description": "compare_datasets.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "run_verdict",
+      "description": "run_verdict.",
       "input_schema": {
        "type": "object",
        "properties": {}
@@ -723,6 +741,15 @@
       "eager_input_streaming": true
      },
      {
+      "name": "run_verdict",
+      "description": "run_verdict.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
       "name": "configure_settings",
       "description": "configure_settings.",
       "input_schema": {
@@ -990,6 +1017,15 @@
      {
       "name": "compare_datasets",
       "description": "compare_datasets.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "run_verdict",
+      "description": "run_verdict.",
       "input_schema": {
        "type": "object",
        "properties": {}
@@ -1197,6 +1233,17 @@
      {
       "type": "function",
       "function": {
+       "name": "run_verdict",
+       "description": "run_verdict.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
        "name": "configure_settings",
        "description": "configure_settings.",
        "parameters": {
@@ -1348,6 +1395,17 @@
       "function": {
        "name": "run_log",
        "description": "run_log.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "run_verdict",
+       "description": "run_verdict.",
        "parameters": {
         "type": "object",
         "properties": {}
@@ -1500,6 +1558,17 @@
      {
       "type": "function",
       "function": {
+       "name": "run_verdict",
+       "description": "run_verdict.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
        "name": "configure_settings",
        "description": "configure_settings.",
        "parameters": {
@@ -1651,6 +1720,17 @@
       "function": {
        "name": "run_log",
        "description": "run_log.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "run_verdict",
+       "description": "run_verdict.",
        "parameters": {
         "type": "object",
         "properties": {}
@@ -1819,6 +1899,17 @@
      {
       "type": "function",
       "function": {
+       "name": "run_verdict",
+       "description": "run_verdict.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
        "name": "configure_settings",
        "description": "configure_settings.",
        "parameters": {
@@ -1977,6 +2068,17 @@
      {
       "type": "function",
       "function": {
+       "name": "run_verdict",
+       "description": "run_verdict.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
        "name": "configure_settings",
        "description": "configure_settings.",
        "parameters": {
@@ -2111,6 +2213,17 @@
       "function": {
        "name": "run_log",
        "description": "run_log.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "run_verdict",
+       "description": "run_verdict.",
        "parameters": {
         "type": "object",
         "properties": {}
