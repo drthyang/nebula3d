@@ -469,6 +469,16 @@ miss is a note.
     robust σ, the strongest feature and what the 99.5th and 99.97th percentiles
     would give, and warns when a range the user asks for is brighter than the
     optimum, where the FFT ripple shows. It acts: it sets the viewer's limit.
+  - *The ΔPDF's σ*: every size the ΔPDF tools give in σ is in a robust σ
+    (1.4826 × the median absolute deviation) outside the origin's disk, but
+    each tool takes it over its own values, and its result says which
+    (`sigma_of`, from `SIGMA_OF` in `metrics/dpdf.ts`): `measure_dpdf_cut` the
+    section measured, `compare_datasets` that section on each dataset,
+    `assess_stage` pdf each centre section its own, `dpdf_contrast` the three
+    centre sections together, and `dpdf_peaks` the volume (its reading). On
+    the validation's dev cases the volume's σ is 0.58 to 0.96 of the x–y
+    section's through the origin, so a size in σ from one tool is no size in
+    σ from another (plan 4.10).
   - *Acting*: `update_settings` (the method choices and thresholds in
     `tune/catalog.ts`, and the sample facts the tuner never proposes, the
     search's protected planes and the punch cell, only when the user's latest
