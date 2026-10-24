@@ -3,7 +3,9 @@
   prompt cache when the server says; in the chat's footer, the conversation's
   total, tuning requests included (hover for the details). Every request now
   asks its server for the counts (OpenAI-compatible servers report them only
-  when asked; OpenAI's cached prompt tokens are read too). A request whose
+  when asked; OpenAI's cached prompt tokens are read too); a server that
+  refuses the first request asking for them, in whatever words, is asked again
+  without them, and from then on is not asked. A request whose
   server reports none is counted by the console's estimate and marked ≈,
   "estimated", never passed off as a count; failed or stopped requests are not
   counted. The totals stay with the conversation (a reload, a saved session)

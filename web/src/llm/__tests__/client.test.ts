@@ -291,6 +291,81 @@ describe("completeChat with a stall watchdog (the tuner's requests)", () => {
   });
 });
 
+// A server that refuses stream_options may say so in any shape: the first
+// request to it that does is asked once more without the field.
+describe("a server that refuses stream_options in another error shape", () => {
+  const ask = (baseUrl: string) => completeChat({ baseUrl, model: "m", temperature: 0, messages: [{ role: "user", content: "q" }], stallMs: { first: 1000, idle: 1000 } });
+  const refusing = (status: number, payload: unknown) => {
+    const bodies: { stream_options?: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as { stream_options?: unknown };
+        bodies.push(body);
+        if (body.stream_options) return new Response(payload === undefined ? "" : JSON.stringify(payload), { status });
+        return slowBody([line({ content: "{}" }), "data: [DONE]\n"], 5, init.signal ?? undefined, true);
+      }),
+    );
+    return bodies;
+  };
+  const shapes: [string, number, unknown][] = [
+    ["a FastAPI detail list", 422, { detail: [{ loc: ["body", "stream_options"], msg: "extra fields not permitted", type: "value_error.extra" }] }],
+    ["a bare 400", 400, undefined],
+    ["an array-wrapped error", 400, [{ error: { code: 400, message: "Invalid JSON payload received. Unknown name" } }]],
+    ["an error object with no message", 400, { error: { code: 400 } }],
+  ];
+  for (const [name, status, payload] of shapes) {
+    it(`asks again without it after ${name}, and remembers the server`, async () => {
+      const bodies = refusing(status, payload);
+      const url = `http://127.0.0.1:1300/${encodeURIComponent(name)}/v1`;
+      await expect(ask(url)).resolves.toBe("{}");
+      await expect(ask(url)).resolves.toBe("{}");
+      expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, false, false]);
+    });
+  }
+
+  it("asks the agent's streamed requests again the same way", async () => {
+    const bodies = refusing(422, { detail: [{ loc: ["body", "stream_options"] }] });
+    const got: StreamDelta[] = [];
+    for await (const d of streamChat({ baseUrl: "http://127.0.0.1:1301/v1", model: "m", messages: [], temperature: 0, includeUsage: true })) got.push(d);
+    expect(got).toEqual([{ content: "{}" }]);
+    expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, false]);
+  });
+
+  it("asks once only, on a server whose bad request is not about the field", async () => {
+    const bodies: { stream_options?: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        bodies.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ detail: "prompt too long" }), { status: 400 });
+      }),
+    );
+    const url = "http://127.0.0.1:1302/v1";
+    await expect(ask(url)).rejects.toMatchObject({ status: 400 });
+    await expect(ask(url)).rejects.toMatchObject({ status: 400 });
+    // The first request once more without the field; the server is still asked for its counts.
+    expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, false, true]);
+  });
+
+  it("never asks again on a server that took the field before", async () => {
+    let n = 0;
+    const bodies: { stream_options?: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        bodies.push(JSON.parse(String(init.body)));
+        if (n++ === 0) return slowBody([line({ content: "{}" }), "data: [DONE]\n"], 5, init.signal ?? undefined, true);
+        return new Response("", { status: 400 });
+      }),
+    );
+    const url = "http://127.0.0.1:1303/v1";
+    await expect(ask(url)).resolves.toBe("{}");
+    await expect(ask(url)).rejects.toMatchObject({ status: 400 });
+    expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, true]);
+  });
+});
+
 describe("isToolsUnsupported", () => {
   const err = (status: number, message: string) => Object.assign(new Error(message), { status }) as HttpError;
   it("recognises a client error about tools only", () => {

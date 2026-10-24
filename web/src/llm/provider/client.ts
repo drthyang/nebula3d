@@ -285,12 +285,31 @@ const postChat = async ({
     body.tools = tools;
     if (toolChoice) body.tool_choice = toolChoice;
   }
-  const response = await fetch(`${trimBase(baseUrl)}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
-    body: JSON.stringify(body),
-    signal,
-  });
+  const send = (b: Record<string, unknown>) =>
+    fetch(`${trimBase(baseUrl)}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+      body: JSON.stringify(b),
+      signal,
+    });
+  let response = await send(body);
+  const server = trimBase(baseUrl);
+  if (body.stream_options && !usageAnswered.has(server)) {
+    if (!response.ok && (response.status === 400 || response.status === 422)) {
+      // A request with stream_options, to a server not yet known to take it,
+      // refused as a bad request in whatever shape (a FastAPI `detail` list, a bare 400):
+      // asked once more without it, as before the counts were asked for. A
+      // request refused with a client error ran nothing, so nothing is
+      // repeated. Once it has answered either way, or taken the field, a
+      // later client error is not about the field.
+      void response.body?.cancel().catch(() => {});
+      const { stream_options: _asked, ...without } = body;
+      void _asked;
+      response = await send(without);
+      if (response.ok) refuseUsage(baseUrl);
+      usageAnswered.add(server);
+    } else if (response.ok) usageAnswered.add(server);
+  }
   if (!response.ok) throw await httpError(response);
   return response;
 };
@@ -316,6 +335,9 @@ export const isUsageUnsupported = (error: unknown): boolean => {
 
 // Servers known (this session) to refuse stream_options: asked without it.
 const noUsage = new Set<string>();
+// Servers whose first request with stream_options has had its answer (taken,
+// or refused and asked again without it): a later client error is not about it.
+const usageAnswered = new Set<string>();
 export const usageRefused = (baseUrl: string): boolean => noUsage.has(trimBase(baseUrl));
 export const refuseUsage = (baseUrl: string): void => void noUsage.add(trimBase(baseUrl));
 
