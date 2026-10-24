@@ -124,7 +124,7 @@ the user's to say.
   - peaks within one grid step of a node on all three axes, a Bragg peak's
     wings;
   - peaks in a declared position or within one grid step of it, the flanks of
-    declared satellites (see the known limits below);
+    declared satellites that noise makes local maxima (see below);
   - peaks outside the measured voxels the legacy planes leave to the search.
 - **Orbits.** On symmetrised data each orbit counts once.
 - **The tests.** One per coordinate and denominator q:
@@ -168,38 +168,55 @@ Planted families at ±1/3, ±2/5 and ±1/5 are named; their orbits count once on
 6/m data. On the validation's dev cases at 81 and 161 points it fires on none,
 and the punch's records, holes and log are as before.
 
-## Known limits (plan 4.15, for P2 and P3)
+## A protected peak comes through the search whole
 
-**The search punches protected peaks from their flanks.** A protected
-position's voxels drop out of the search's candidates, and out of its
-local-maximum test, where they score −∞. The voxel just beyond a protected
-peak's box or band can then be a local maximum, and if it stands above the
-search floors it becomes a search peak whose punch takes the protected peak
-with it. The legacy planes behave the same way. Two measurements:
+A protected position's voxels are never the search's candidates, and no search
+peak's punch takes them, whatever its footprint. They still count in the
+search's local-maximum test, so the voxel beside a brighter protected peak is
+that peak's flank, not a peak of its own. The integer pass is not affected:
+the node test, its punches (held off fractional-H planes by
+`integer_h_guard_hkl`) and the incident beam's punch at the origin are as
+before. The thresholds are unchanged.
+
+Until 2026-10-24 the protected voxels dropped out of the local-maximum test
+too, where they scored −∞. The voxel just beyond a protected peak's box or band
+could then be a local maximum, and if it stood above the search floors it
+became a search peak whose punch took the protected peak with it. The legacy
+planes behaved the same way. Measured before the fix and after it:
 
 - On the exactly 6/m-symmetric test data of `tests/test_symmetry.py`, with
   Gaussian satellites of σ about 0.08 r.l.u. on a 0.1 r.l.u. grid at the star
-  of k = (1/3, 0, 0), the centre voxels punched were:
+  of k = (1/3, 0, 0), wider than a ± 0.08 protection, the satellites inside the
+  grid were punched as follows:
 
-  | Declared | Centre voxels punched (of 238) |
-  | --- | ---: |
-  | nothing | 232 |
-  | points, ± 0.08 | 214 |
-  | planes, ± 0.08 | 12 |
+  | Declared | Satellites punched (of 216), before | After |
+  | --- | ---: | ---: |
+  | nothing | 216 | 216 |
+  | points, ± 0.08 | 198 | 0 |
+  | planes, ± 0.08 | 0 | 0 |
+  | k = (0, 0, 1/2), elsewhere | 216 | 216 |
 
+  With the points declared, the search's punches had taken 1104 protected
+  voxels; now none. The protected voxels still punched (12 with the points,
+  114 with the planes) are the incident beam's, about the origin. A first
+  count, of 238, had taken 22 satellites beyond the grid's edge at their
+  nearest voxel, 12 of them nodes the integer pass punches; that count gave
+  214 and 12 where these give 198 and 0.
 - On the cubic test volume of `tests/test_modulation_punch.py` (a 0.05 r.l.u.
-  grid), satellites of σ 0.04 r.l.u. at G ± (1/5, 0, 0) were declared:
-  - as planes, the search found 200 peaks one voxel beyond the band, at
-    H ≡ ±0.3, flanks of about 2.8 against a floor of 1.38;
-  - as points, it found 837 peaks one voxel beyond the boxes.
+  grid), with satellites of σ 0.04 r.l.u. at G ± (1/5, 0, 0) declared:
+  - as planes, the search had found 200 peaks one voxel beyond the band, at
+    H ≡ ±0.3, flanks of about 2.8 against a floor of 1.38; now none;
+  - as points, it had found 837 one voxel beyond the boxes; now none.
 
-Satellites one voxel wide have no flank to start from: at every position of a
-6/m points star none is punched with the declaration, nearly all without it.
+The search is not blinded: undeclared satellites are punched as before. The
+change alters two things only: a search peak beside a brighter protected voxel
+is no longer one, and a search peak's punch no longer takes the protected
+voxels it reached. On the validation's dev cases, with today's default (the
+thirds as planes), the punch's holes, records and log at 81 and 161 points are
+as before, and so is arm A. The bunching test still leaves out peaks within one
+grid step of a declared position, for flanks that noise makes local maxima.
 
-A fix is to take the local maxima on every measured voxel and only then drop
-the candidates in protected positions. It changes today's results near the
-protected planes, so it waits for P3. Meanwhile the bunching test leaves the
-flanks out: the declared positions widened by one grid step.
+## Known limits (plan 4.15, for P2 and P3)
 
 **`measured_width_hkl` cannot tell broad from sharp.** The width recorded for
 each peak takes its background from the median of the detection window, which
