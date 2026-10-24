@@ -802,6 +802,31 @@ this may be high. The same plan on Claude Sonnet 5.5 is about 48 runs at an
 estimated $0.12 to $0.25, from the earlier mean of $0.0245 on a run a quarter as long;
 the $12 cap is there for the case that estimate is low.
 
+### The freeze
+
+The validation was frozen on 2026-10-24 at
+`812e686ab9b8017113030dd6c84fc47f4cb14c10` (main, with the changelog folded,
+#110), from a clean committed tree, and not tagged (the user, 2026-10-19).
+There:
+
+- **The test split is the one pinned** when its definitions moved to their own
+  module: the sha256 of its canonical JSON is
+  `ea16568b560ff0dcf258d762c34d55bc9f85810d3cc63be4b1ebe5f7c727c14f`
+  (`TEST_SPLIT_SHA256`, `tests/test_validation.py`), which
+  `test_the_opt_in_gives_the_test_split_as_it_was` checked at the frozen
+  commit.
+- **Arm A on dev** was run again: 5 of 8 cases pass, its table below is
+  unchanged, and every run's scores, detection and output digest are those
+  recorded before; each case's three runs are bit-identical. Two log lines
+  moved without moving a score: dev-coverage's ring stage now finds no
+  candidate shell where it kept 18 (the detector's noise from measured bins,
+  #89), and dev-rings' flatten writes R² 0.000 for -0.000 (the signed zero,
+  #84). `docs/evals/validation/arm-a-dev.json` holds the new runs.
+- **Arm A on the test split** was run once, with `--report`, into the
+  held-out records only (`docs/evals/validation/holdout/`).
+
+The live runs wait for the user's go or no-go.
+
 ### Arm A: the default pipeline, no agent
 
 Run on both splits, three runs per case, at 161 grid points per axis (every node on
