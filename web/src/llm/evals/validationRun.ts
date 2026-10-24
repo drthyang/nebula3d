@@ -61,9 +61,9 @@
 //
 // A paid run is held to its spend budget (TuningGate): its reserve
 // (SpendTracker, validationModels.ts) covers its agent loop and one tuning,
-// each at its hard bound, so a tune_pipeline call after the run's tuning has
-// sent a request runs only if the budget left beyond the reserve covers one
-// more tuning, each drawing its share. One it does not cover is not run: the
+// each at its hard bound, so a tune_pipeline call made once the run's tuning
+// has had a request answered runs only if the budget left beyond the reserve
+// covers one more tuning, each drawing its share. One it does not cover is not run: the
 // model reads why (TUNING_SKIPPED) and the run goes on; the record keeps the
 // budget and the skip (tuning_budget). The gate wraps the tool runCase hands
 // the agent loop; the tool, as offered and as the app runs it, is unchanged.
