@@ -20,6 +20,9 @@ export interface ScriptTurn {
   fail?: { status: number; message: string };
   // The reply stops at its output limit (finish_reason "length").
   cut?: boolean;
+  // The token counts the reply reports, in place of the script's own (from the
+  // request's and the reply's lengths): a request at its hard bound, say.
+  usage?: { input: number; output: number };
 }
 
 export const SCRIPTED_URL = "http://scripted.invalid/v1";
@@ -88,7 +91,9 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
     // Past the script the model has nothing more to say: an empty reply (the
     // agent keeps the answer it had), counted as an overrun.
     const text = turn ? (turn.text ?? "") : "";
-    const counts = { prompt_tokens: Math.round(body.length / 4), completion_tokens: Math.round(text.length / 4) + 10 };
+    const counts = turn?.usage
+      ? { prompt_tokens: turn.usage.input, completion_tokens: turn.usage.output }
+      : { prompt_tokens: Math.round(body.length / 4), completion_tokens: Math.round(text.length / 4) + 10 };
     // A reply read whole carries its counts unasked, as OpenAI's and LM Studio's do.
     if (!entry.stream) {
       entry.usage = { input: counts.prompt_tokens, output: counts.completion_tokens };
