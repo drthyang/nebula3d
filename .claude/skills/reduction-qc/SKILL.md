@@ -3,11 +3,10 @@ name: reduction-qc
 description: >-
   Check that a reduction can be trusted before reading physics from it: the UB,
   the symmetrisation, the raw counts' |Q| edges and the coverage, edge and
-  unmeasured voxels, the powder rings and the background-correction floor. Use
-  it when asked whether a run is sound or ready for the 3D-ΔPDF, and before
-  changing or tuning the ring removal or the background correction. NOT for
-  reading ΔPDF features (delta-pdf-interpretation) or auditing the Bragg nodes
-  (bragg-node-audit).
+  unmeasured voxels, the powder rings and the flatten floor. Use it when asked
+  whether a run is sound or ready for the 3D-ΔPDF, and before changing or tuning
+  the ring removal or the flatten. NOT for reading ΔPDF features
+  (delta-pdf-interpretation) or auditing the Bragg nodes (bragg-node-audit).
 ---
 
 # Reduction QC: is the reduced volume fit for a 3D-ΔPDF?
@@ -71,19 +70,18 @@ inward. Check these first, in this order, and say what each check found.
    say so. Not every instrument's data have rings (TOPAZ has no aluminium ring
    background): rings confirmed on data that should have none are an anomaly
    to report, not routine cleanup.
-6. **The background-correction floor.** `assess_stage` for the background
-   correction (stage `flatten`): the floors near zero, no trend with |Q|
-   (`floor_trend`), and a span small against the diffuse level
-   (`floor_span_fraction`), both judged over the whole volume, on the
+6. **The flatten floor.** `assess_stage` for the flatten: the floors near zero,
+   no trend with |Q| (`floor_trend`), and a span small against the diffuse
+   level (`floor_span_fraction`), both judged over the whole volume, on the
    outer half of the shells the counts reach; `pedestal_left` says whether
    they make a pedestal (a trend and a span both 0.8 or more). A floor that
    rises with |Q| is inelastic background (thermal diffuse and multiphonon
    scattering; with X-rays also Compton scattering, which neutrons lack). The
    `+ b·Q²` term (`flattenQ2`) and *Fit to |Q|* (`flattenFitQMax`) address it.
-   - **When to turn the Q² term on:** when `assess_stage` for the background
-     correction reports `pedestal_left`, set `flattenQ2` on, rerun from the
-     background correction (`run_pipeline` with `from_stage` flatten), and read
-     `assess_stage` for it again: keep the term if the pedestal is gone, and report its
+   - **When to turn the Q² term on:** when `assess_stage` for the flatten
+     reports `pedestal_left`, set `flattenQ2` on, rerun from the flatten
+     (`run_pipeline` with `from_stage` flatten), and read `assess_stage` for
+     the flatten again: keep the term if the pedestal is gone, and report its
      trend and span before and after. Leave it off otherwise: on a volume
      without such a background the term is not free, since it fits part of
      the crystal's own floor (on the validation's clean controls it raised
@@ -101,8 +99,8 @@ inward. Check these first, in this order, and say what each check found.
 
 ## Firm rules (enforced in code)
 
-- Changing a ring-removal or background-correction setting, or tuning those
-  stages, is refused until this skill has been read in the conversation.
+- Changing a ring-removal or flatten setting, or tuning those stages, is
+  refused until this skill has been read in the conversation.
 - `ub_check` fits only the symmetric part of the UB on a symmetrised volume.
 - A tuning trial whose ΔPDF window puts more than 1e-3 of its weight on
   unmeasured space cannot be chosen while the current settings stay inside that
@@ -118,8 +116,8 @@ A QC answer is complete when it states, each with the tool's numbers:
 - [ ] the raw counts' |Q| edges, and whether the band stays inside them;
 - [ ] the window's weight on unmeasured space;
 - [ ] the ring verdict, with the shells confirmed as rings and those that are not;
-- [ ] the background-correction floor, trend and span, whether a pedestal is
-  left, and whether the Q² term was turned on, with the numbers before and after;
+- [ ] the flatten floor, trend and span, whether a pedestal is left, and
+  whether the Q² term was turned on, with the numbers before and after;
 - [ ] what was not checked, and why.
 
 ## Failure modes
@@ -151,4 +149,4 @@ band, the magnetic ion, whether to regrid).
 - [ub_refinement](../../../docs/algorithms/ub_refinement.md) — how the UB is
   refined and checked, symmetrised volumes, regridding, reading the offsets
 - [delta_pdf](../../../docs/algorithms/delta_pdf.md) — the transform window, its
-  support on the coverage, and the background correction's terms
+  support on the coverage, and the flatten's background terms

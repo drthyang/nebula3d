@@ -247,8 +247,8 @@ const UNSTATED: { skill: SkillName; step: string; tool: string; limit: Limit; wo
   { skill: "reduction-qc", step: "**Powder rings.**", tool: "assess_stage", limit: LIMITS.ringSnr, words: "a ring's height three times its noise" },
   { skill: "reduction-qc", step: "**Powder rings.**", tool: "assess_stage", limit: LIMITS.ringCurve, words: "a quarter of the height above a curve through the flanks" },
   { skill: "reduction-qc", step: "**Powder rings.**", tool: "assess_stage", limit: LIMITS.ringNoise, words: "a leftover or a dent counts beyond three times its plane's noise" },
-  { skill: "reduction-qc", step: "**The background-correction floor.**", tool: "assess_stage", limit: LIMITS.pedestalTrend, words: "a pedestal: a floor trend of 0.8 or more" },
-  { skill: "reduction-qc", step: "**The background-correction floor.**", tool: "assess_stage", limit: LIMITS.pedestalSpan, words: "a pedestal: a span of 0.8 or more of the diffuse level" },
+  { skill: "reduction-qc", step: "**The flatten floor.**", tool: "assess_stage", limit: LIMITS.pedestalTrend, words: "a pedestal: a floor trend of 0.8 or more" },
+  { skill: "reduction-qc", step: "**The flatten floor.**", tool: "assess_stage", limit: LIMITS.pedestalSpan, words: "a pedestal: a span of 0.8 or more of the diffuse level" },
   { skill: "bragg-node-audit", step: "**The backfill.**", tool: "texture_check", limit: LIMITS.fillBiasFloor, words: "a fill bias counts at a fifth of the local diffuse level" },
 ];
 
@@ -273,7 +273,7 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "reduction-qc", phrase: "Read the radial offsets by |Q| band and direction", what: "the radial offsets by |Q| band and direction", fields: ["radial.direction"] },
   { skill: "reduction-qc", phrase: "the share of the transform window's weight on unmeasured space", what: "the window's weight on unmeasured space", fields: ["window_weight_on_unmeasured"] },
   { skill: "reduction-qc", phrase: "`assess_stage` for the rings", what: "the rings' assessment", fields: ["rings"] },
-  { skill: "reduction-qc", phrase: "`assess_stage` for the background correction", what: "the flatten's assessment", fields: ["flatten"] },
+  { skill: "reduction-qc", phrase: "`assess_stage` for the flatten", what: "the flatten's assessment", fields: ["flatten"] },
   { skill: "reduction-qc", phrase: "a span small against the diffuse level", what: "the floors' span against the diffuse level", fields: ["flatten.floor_span_fraction"] },
   { skill: "reduction-qc", phrase: "An operation the data were symmetrised with holds", what: "each operation's difference", fields: ["ops.rms_difference"] },
   { skill: "reduction-qc", phrase: "fits only the symmetric part of the UB on a symmetrised volume", what: "which part of the UB was fitted", fields: ["fit"] },
@@ -328,7 +328,6 @@ const OTHER_NAMES: { name: string; what: string; holds: () => boolean }[] = [
   { name: "edge_trim", what: "the pipeline's edge trim, a run parameter", holds: () => /\bedge_trim\?:/.test(source("web/src/api/types.ts")) },
   { name: "+ b·Q²", what: "the flatten's Q² term, as a formula (flattenQ2)", holds: () => true },
   { name: "b·Q²", what: "the flatten's Q² term, as a formula (flattenQ2)", holds: () => true },
-  { name: "flatten", what: "the background correction's stage key (assess_stage's and tune_pipeline's stage)", holds: () => (TUNE_STAGES as readonly string[]).includes("flatten") },
 ];
 
 // ---------------------------------------------------------------- the allow-list
