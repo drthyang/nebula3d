@@ -36,6 +36,12 @@ function CellInput({
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
+  // A value that changes under the cell (a commit, or the site edited
+  // elsewhere) replaces whatever was being typed.
+  useEffect(() => {
+    setDraft(null);
+    setInvalid(false);
+  }, [value]);
   const commit = () => {
     if (draft === null) return;
     if (numeric) {
@@ -76,6 +82,20 @@ function CellInput({
   );
 }
 
+/**
+ * A stable React key per site object, so a row's cells (and any text being
+ * typed in them) stay with their site when a row above is removed, and a new
+ * structure starts with fresh rows.  An edit replaces the site object; the
+ * edited copy takes over its key (see setSite).
+ */
+const siteKeys = new WeakMap<Site, number>();
+let nextSiteKey = 0;
+function siteKey(s: Site): number {
+  let k = siteKeys.get(s);
+  if (k === undefined) siteKeys.set(s, (k = nextSiteKey++));
+  return k;
+}
+
 const EMPTY: StructureDef = { name: "manual", cell: null, sites: [], ops: "x, y, z", centering: "P", notes: [] };
 
 export function StructurePanel({
@@ -108,7 +128,14 @@ export function StructurePanel({
   const editDef = useStructureStore((s) => s.editDef);
   const update = (patch: Partial<StructureDef>) => editDef(() => patch);
   const setSite = (i: number, patch: Partial<Site>) =>
-    editDef((d) => ({ sites: d.sites.map((s, k) => (k === i ? { ...s, ...patch } : s)) }));
+    editDef((d) => ({
+      sites: d.sites.map((s, k) => {
+        if (k !== i) return s;
+        const edited = { ...s, ...patch };
+        siteKeys.set(edited, siteKey(s));
+        return edited;
+      }),
+    }));
 
   const loadFile = async (f: File) => {
     try {
@@ -203,7 +230,7 @@ export function StructurePanel({
                 </thead>
                 <tbody>
                   {def.sites.map((s, i) => (
-                    <tr key={i}>
+                    <tr key={siteKey(s)}>
                       <td><CellInput label="Label" width="7ch" value={s.label} onCommit={(v) => v && setSite(i, { label: v })} /></td>
                       <td><CellInput label="Element" width="4ch" value={s.element} onCommit={(v) => v && setSite(i, { element: v })} /></td>
                       {(["x", "y", "z"] as const).map((k) => (
