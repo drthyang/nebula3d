@@ -6,7 +6,7 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 ## read_skill {"name":"bragg-node-audit"}
 
-5304 characters sent.
+5347 characters sent.
 
 ```text
 Skill bragg-node-audit
@@ -61,13 +61,14 @@ all three.
    search's width limit (`punchSearchMaxWidth`) leaves such maxima unpunched,
    but it is off by default: then the search punches every candidate, broad
    or sharp.
-7. **The backfill.** `texture_check`: no cut whose fills sit systematically
-   outside the range their rims allow, and an azimuthal ratio near 1. The
-   diffuse often peaks at the nodes (thermal diffuse scattering), so a sound
-   fill sits above its rim's median; the range runs from the diffuse at the
-   hole's edge to its rise continued to the node, and a bias counts only when
-   it is also a fifth of the local diffuse level or more. A lattice-periodic
-   fill pattern is texture that the 3D-ΔPDF will show.
+7. **The backfill.** `texture_check`: over every punch hole of the volume, no
+   fills sitting systematically outside the range their rims allow; on the
+   cuts, an azimuthal ratio near 1. The diffuse often peaks at the nodes
+   (thermal diffuse scattering), so a sound fill sits above its rim's median;
+   the range runs from the diffuse at the hole's edge to its rise continued to
+   the node, and a bias counts only when it is also a fifth of the local
+   diffuse level or more. A lattice-periodic fill pattern is texture that the
+   3D-ΔPDF will show.
 8. **Report** (below).
 
 ## Firm rules (enforced in code)
@@ -298,7 +299,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {}
 
-3279 characters sent.
+3277 characters sent.
 
 ```json
 {
@@ -372,7 +373,7 @@ References of this skill (read one with read_skill and `reference`):
   },
   "backfill": {
     "verdict": "meets its goal",
-    "criterion": "The fills meet their surroundings: a median seam of 1σ or less. Whether a cut's fill is biased one way is texture_check's to say.",
+    "criterion": "The fills meet their surroundings: a median seam of 1σ or less. Whether the fills are biased one way is texture_check's to say.",
     "headline": "seam 0.218σ · bright ≤ 0",
     "mean_median_seam_sigma": 0.218,
     "max_bright_fill_fraction": 0
@@ -463,45 +464,30 @@ References of this skill (read one with read_skill and `reference`):
 
 ## texture_check {}
 
-802 characters sent.
+370 characters sent.
 
 ```json
 {
+  "n_holes": 79,
+  "n_judged": 79,
+  "median_fill_bias_sigma": 0,
+  "median_fill_bias_level": 0,
+  "above_fraction": 0.152,
+  "below_fraction": 0.0886,
+  "above_floor_fraction": 0,
+  "below_floor_fraction": 0,
+  "systematic_fill_bias": false,
   "per_cut": [
     {
       "cut": "H–K plane at L = 0",
-      "n_holes": 23,
-      "median_fill_bias_sigma": 0,
-      "median_fill_bias_level": 0,
-      "above_fraction": 0.478,
-      "below_fraction": 0.348,
-      "systematic_fill_bias": false,
-      "azimuthal_variation_before": 0.0691,
-      "azimuthal_variation_after": 0.0703,
       "azimuthal_ratio": 1.02
     },
     {
       "cut": "H–L plane at K = 0",
-      "n_holes": 24,
-      "median_fill_bias_sigma": 0,
-      "median_fill_bias_level": 0,
-      "above_fraction": 0.458,
-      "below_fraction": 0.417,
-      "systematic_fill_bias": false,
-      "azimuthal_variation_before": 0.0599,
-      "azimuthal_variation_after": 0.0599,
       "azimuthal_ratio": 1
     },
     {
       "cut": "K–L plane at H = 0",
-      "n_holes": 24,
-      "median_fill_bias_sigma": 0,
-      "median_fill_bias_level": 0,
-      "above_fraction": 0.417,
-      "below_fraction": 0.458,
-      "systematic_fill_bias": false,
-      "azimuthal_variation_before": 0.0587,
-      "azimuthal_variation_after": 0.0587,
       "azimuthal_ratio": 1
     }
   ]

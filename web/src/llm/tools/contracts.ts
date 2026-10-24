@@ -343,21 +343,6 @@ const contrastLimit = { limit: num, limit_sigma: maybeNum, share_of_strongest: n
 /** A setting's value as the Configure page and the tuning name it. */
 const settingValue = union(str, num, bool);
 
-/** texture_check's measures on one cut (metrics/texture.ts TextureMetrics). */
-const textureCut = obj({
-  cut: str,
-  n_holes: num,
-  not_judged: optional(str),
-  median_fill_bias_sigma: maybeNum,
-  median_fill_bias_level: maybeNum,
-  above_fraction: maybeNum,
-  below_fraction: maybeNum,
-  systematic_fill_bias: nullable(bool),
-  azimuthal_variation_before: maybeNum,
-  azimuthal_variation_after: maybeNum,
-  azimuthal_ratio: maybeNum,
-});
-
 /** The back-FFT check as the run saved it (consistency_details passes its fields through). */
 const consistencyMetrics = obj({
   pearson_r: maybeNum,
@@ -415,8 +400,22 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     measured_on: optional(arr(str)),
   }),
 
-  // A cut whose slices could not be read is its label alone (findings).
-  texture_check: obj({ per_cut: arr(union(textureCut, obj({ cut: str }))) }),
+  // The fills over every punch hole in 3-D (metrics/texture.ts VolumeFillBias:
+  // no n_judged on a grid too coarse), and each cut's azimuthal texture, null
+  // where its slices could not be read (findings).
+  texture_check: obj({
+    n_holes: num,
+    n_judged: optional(num),
+    not_judged: optional(str),
+    median_fill_bias_sigma: maybeNum,
+    median_fill_bias_level: maybeNum,
+    above_fraction: maybeNum,
+    below_fraction: maybeNum,
+    above_floor_fraction: maybeNum,
+    below_floor_fraction: maybeNum,
+    systematic_fill_bias: nullable(bool),
+    per_cut: arr(obj({ cut: str, azimuthal_ratio: maybeNum })),
+  }),
 
   qmax_coverage: obj({
     verdict: str,

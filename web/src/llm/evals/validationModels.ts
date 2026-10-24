@@ -6,6 +6,7 @@
 // Every model is described the same way: where it is served, the context the
 // run needs it loaded with, the splits it may run, and the runs per case.
 
+import { COMPLETE_MAX_TOKENS } from "../provider/anthropic";
 import { isOllamaUrl, loadedContext, ollamaModel } from "../provider/client";
 import { isLocalUrl } from "../provider/presets";
 import { casesToRun, datasetStem, type Arm, type RunContextWindow, type Split, type ValidationCase } from "./validation";
@@ -63,7 +64,13 @@ const LOAD_IN_LM_STUDIO =
   `Load it in LM Studio with a Context Length of ${MIN_CONTEXT} or more, and make that the model's default ` +
   `(LM Studio reloads an idle model with its defaults); the run checks the loaded context and refuses less.`;
 
+/**
+ * What NEBULA may spend on a paid model: $12. The user's $40 is the total
+ * across three apps' Sonnet runs, so $12 for each keeps the total under it.
+ */
 export const SPEND_CAP_USD = 12;
+export const SPEND_TOTAL_USD = 40;
+const CAP_SHARE = `$${SPEND_CAP_USD} for NEBULA, within the $${SPEND_TOTAL_USD} total`;
 
 export const MODELS: readonly ValidationModel[] = [
   {
@@ -136,7 +143,7 @@ export const MODELS: readonly ValidationModel[] = [
     // Anthropic's published prices, fetched 2026-10-10 (docs/evals.md).
     price: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
     spendCapUsd: SPEND_CAP_USD,
-    how: "Paid. Set ANTHROPIC_API_KEY and NEBULA_VALIDATION_ALLOW_SPEND=12; the test split only, with NEBULA_VALIDATION_REPORT=1.",
+    how: `Paid (${CAP_SHARE}). Set ANTHROPIC_API_KEY and NEBULA_VALIDATION_ALLOW_SPEND=${SPEND_CAP_USD}; the test split only, with NEBULA_VALIDATION_REPORT=1.`,
   },
 ];
 
@@ -257,7 +264,7 @@ export function costOf(
 export function paidRunGate(model: ValidationModel, allow: string | undefined): string | null {
   if (model.spendCapUsd === null) return null;
   if (allow === undefined || Number(allow) !== model.spendCapUsd) {
-    return `${model.label} is paid: set NEBULA_VALIDATION_ALLOW_SPEND=${model.spendCapUsd} to approve spending at most $${model.spendCapUsd} on it`;
+    return `${model.label} is paid: set NEBULA_VALIDATION_ALLOW_SPEND=${model.spendCapUsd} to approve spending at most $${model.spendCapUsd} on it (${CAP_SHARE})`;
   }
   return null;
 }
@@ -299,15 +306,63 @@ export interface SpendEntry {
 }
 
 /**
+ * The dearest first run, in tokens: what SpendTracker.FIRST_RUN_RESERVE_USD
+ * prices.
+ *
+ * - The agent loop: its 12 rounds of tool calls and the answer, 13 requests,
+ *   each of at most 40,000 tokens in, uncached, and 16,000 out over the run.
+ * - One tuning (tune_pipeline) of all five stages at its most trials, five: a
+ *   stage asks for alternatives, once more after a reply none of whose
+ *   candidates can run, then for the pick, so 3 requests a stage and 15 in
+ *   all. Each is at most 12,500 tokens in: the largest the replay measures is
+ *   the ring stage's pick of five trials on the dev cases at the validation's
+ *   grid, about 16,900 characters, 12,100 tokens at the token estimate's rate
+ *   for number-dense JSON (1.4 characters a token, provider/tokens.ts) for
+ *   every character (validationRun.replay.test.ts pins it). Each is at most
+ *   16,000 tokens out, its max_tokens, thinking included.
+ * - A 25% margin on the whole.
+ */
+export const FIRST_RUN_WORST = {
+  loop: { requests: 13, inputPerRequest: 40_000, outputOverRun: 16_000 },
+  tuning: { requests: 15, inputPerRequest: 12_500, outputPerRequest: COMPLETE_MAX_TOKENS },
+  margin: 0.25,
+} as const;
+
+/** What FIRST_RUN_WORST costs at *price*, its margin included. */
+export function firstRunWorstUsd(price: Price): number {
+  const { loop, tuning, margin } = FIRST_RUN_WORST;
+  const usd =
+    (loop.requests * loop.inputPerRequest * price.input +
+      loop.outputOverRun * price.output +
+      tuning.requests * tuning.inputPerRequest * price.input +
+      tuning.requests * tuning.outputPerRequest * price.output) /
+    1e6;
+  return usd * (1 + margin);
+}
+
+/**
  * Money spent on a paid model, against a cap. Before a run starts it must be
  * affordable at its worst: the first run is held to a ceiling set by the round
- * limit and the context, and later ones to 1.5 times the dearest so far. A run
- * whose tokens the server did not report is charged that reserve, so the total
- * is never short. The ledger is a plain list, kept between sessions.
+ * limit, the context and a tuning (FIRST_RUN_WORST), and later ones to 1.5
+ * times the dearest so far. A run whose tokens the server did not report is
+ * charged that reserve, so the total is never short. The ledger is a plain
+ * list, kept between sessions.
  */
 export class SpendTracker {
-  /** The dearest a first run can be: 13 requests of 40k tokens uncached at $2 per million, plus output. */
-  static readonly FIRST_RUN_RESERVE_USD = 1.2;
+  /**
+   * The dearest a first run can be, a run that tunes included (FIRST_RUN_WORST),
+   * at Sonnet 5.5's price in MODELS ($2 per million tokens in, uncached; $10 out):
+   *
+   *   the agent loop:  13 requests × 40,000 in × $2/M  = $1.040
+   *                    16,000 out over the run × $10/M = $0.160
+   *   the tuning:      15 requests × 12,500 in × $2/M  = $0.375
+   *                    15 requests × 16,000 out × $10/M = $2.400
+   *   together                                         = $3.975
+   *   with a 25% margin, × 1.25                        = $4.97, so $5.
+   *
+   * $5 is inside the $12 cap; later runs are held to 1.5 times the dearest so far.
+   */
+  static readonly FIRST_RUN_RESERVE_USD = 5;
 
   constructor(
     readonly capUsd: number,
