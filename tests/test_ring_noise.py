@@ -10,8 +10,11 @@ were empty the noise was exactly 0, every local maximum became a ring candidate,
 and their keep-outs left a real ring's isotropy test a line through two flank
 bins (a signal-to-noise of about 1e16, the curve check skipped). The noise now
 comes from the measured bins only (``radial_background._measured_noise``;
-finding B3, docs/evals/validation/review-findings/B3.json). The numbers called
-"before" below were measured on main at 39b0835, before the fix.
+finding B3, docs/evals/validation/review-findings/B3.json). With the noise
+restored, a weak ring beside a strong one can fall under the detection's 6σ;
+the shells kept out of the flanks of those judged are picked at half that cut
+(the last two tests). The numbers called "before" below were measured on main
+at 39b0835, before the fix.
 """
 
 import dataclasses
@@ -20,8 +23,10 @@ import numpy as np
 import pytest
 
 from nebula3d.core import HKLVolume
+from nebula3d.demo import demo_volume
 from nebula3d.faults import add_rings, cut_coverage
 from nebula3d.pipeline import RingParams, remove_rings
+from nebula3d.preprocessing import pooled_rings
 from nebula3d.preprocessing.radial_background import (
     _detect_rings,
     _fill_nan_1d,
@@ -121,3 +126,50 @@ def test_the_coarse_grid_remedy_subtracts_no_flood_shell():
     assert diag["removed_fraction"] == 0.0
     measured = vol.mask & np.isfinite(vol.data)
     assert np.array_equal(out.data[measured], vol.data[measured])
+
+
+@pytest.fixture(scope="module")
+def demo_test_rings():
+    """test_demo's volume (97 points over ±3 r.l.u.: counts end at 7.55 Å⁻¹, 60
+    of the 193 bins empty) through the ring removal, with the shells each
+    isotropy verdict kept out of its flanks."""
+    kept_out: list[list[float]] = []
+    judge = pooled_rings.judge_shells
+
+    def spy(vol, shells, config=None, *, rings=(), others=()):
+        kept_out.append([q for q, _ in others])
+        return judge(vol, shells, config, rings=rings, others=others)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(pooled_rings, "judge_shells", spy)
+        vol = _loaded(demo_volume(97, extent=3.0))
+        diag = remove_rings(vol, RingParams())._ring_diagnostics  # type: ignore[attr-defined]
+    return diag, kept_out
+
+
+def _near(qs, q0, tol=0.03):
+    return [q for q in qs if abs(q - q0) <= tol]
+
+
+def test_the_demo_test_volumes_al_331_ring_is_confirmed(demo_test_rings):
+    """The demo's Al 331 ring at 6.76 Å⁻¹, 0.19 Å⁻¹ from the weak 420 line.
+    With the 420 left in its flank (the keep-outs at the 6σ detection cut, fix
+    b alone) its isotropy test read a signal-to-noise of 1.3 and a curve of
+    −0.29, it was rejected, and the punch took the ring left in for a Bragg
+    peak at (2.81, 3, 1.88) (test_demo.py::test_pipeline_punches_only_fcc_nodes)."""
+    diag, _ = demo_test_rings
+    ring = [s for s in diag["shells"] if abs(s["q_center"] - 6.76) <= 0.03]
+    assert len(ring) == 1, [round(s["q_center"], 3) for s in diag["shells"]]
+    assert ring[0]["isotropy"]["is_ring"] and ring[0]["isotropy"]["snr"] > 10.0
+
+
+def test_a_weak_neighbour_is_kept_out_of_the_flank_but_never_subtracted(demo_test_rings):
+    """The Al 420 line at 6.95 Å⁻¹ rises between 3σ and 6σ of the profile's
+    noise: above the keep-outs' cut, half the detection's, so it is kept out of
+    the 331's flanks; under the detection's, so it is neither judged nor
+    subtracted (main, its noise pulled down by the empty bins, subtracted it as
+    an Al-line ring)."""
+    diag, kept_out = demo_test_rings
+    assert kept_out and all(_near(others, 6.95) for others in kept_out)
+    assert not _near([s["q_center"] for s in diag["shells"]], 6.95)
+    assert not _near([s["q_center"] for s in diag["rejected_shells"]], 6.95)
