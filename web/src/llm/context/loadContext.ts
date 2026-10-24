@@ -78,11 +78,14 @@ export interface LoadOptions {
   recip?: Cut | null; // null skips the reciprocal stages
   dpdf?: Cut | null; // null skips the ΔPDF section
   records?: boolean; // the fitted Bragg profile and the back-FFT check (default true)
+  // Every leftover peak the punch's scan finds, not only the strongest few the
+  // model reads: the punch's evaluation counts them by their marks (tune/evaluate.ts).
+  allLeftovers?: boolean;
 }
 
 export async function loadPipelineContext(
   dataset: Dataset,
-  { recip = DEFAULT_RECIP_CUT, dpdf = DEFAULT_DPDF_CUT, records = true }: LoadOptions = {},
+  { recip = DEFAULT_RECIP_CUT, dpdf = DEFAULT_DPDF_CUT, records = true, allLeftovers = false }: LoadOptions = {},
 ): Promise<AssistantContext> {
   const hklVolId = hklVolumeId(dataset);
   const dpdfVolId = dpdfVolumeId(dataset);
@@ -122,6 +125,7 @@ export async function loadPipelineContext(
     slices,
     supercell: punchSupercell(),
     protectedH: punchProtectedH(),
+    ...(allLeftovers ? { leftoverTopK: Infinity } : {}),
   });
 
   return { context, slices, lattice: hklMeta?.lattice ?? dpdfMeta?.lattice ?? null };

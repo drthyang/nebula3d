@@ -5,8 +5,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
-import { stageCheck } from "../report/report";
-import { evaluateStage, headline } from "../tune/evaluate";
+import { loadPipelineContext } from "../context/loadContext";
+import { evaluateStage, headline, outOfBounds } from "../tune/evaluate";
+import { judge } from "../verdicts";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -15,6 +16,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchSlice: vi.fn(),
 }));
@@ -61,6 +63,34 @@ describe("evaluateStage", () => {
     expect(e.leftover_on_protected_planes).toBe(0);
     expect(headline("punch", e)).toBe("0 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.04");
     expect(e).not.toHaveProperty("sigma_note");
+  });
+
+  it("counts every sharp leftover on the protected planes, on its own line, and leaves them out of the verdict (D5, 2.4.5)", async () => {
+    // Synthetic punched cuts, 1/15 r.l.u. a voxel. On h0l (K = 0), twelve sharp peaks
+    // on the default protected H planes (1/3 and 2/3 mod 1), more than the eight the
+    // chat's context lists; on 0kl (H = 0, no protected plane), none, or one stray.
+    const noise = (ix: number, iy: number) => ((ix * 7919 + iy * 104729) % 1000) / 500 - 1;
+    const bump = (cx: number, cy: number) => (ix: number, iy: number) => 2 * Math.exp(-((ix - cx) ** 2 + (iy - cy) ** 2) / 2);
+    const onThirds = [11, 26, 41, 56]; // H = −5/3, −2/3, 1/3, 4/3
+    const onTwoThirds = [16, 31, 46, 61]; // H = −4/3, −1/3, 2/3, 5/3
+    const satellites = [...onThirds.map((ix) => bump(ix, 21)), ...onThirds.map((ix) => bump(ix, 36)), ...onTwoThirds.map((ix) => bump(ix, 51))]; // L = −1, 0, 1
+    const stray = bump(43, 36); // K = 7/15, L = 0 on 0kl
+    const punched = (peaks: { h0l: typeof satellites; "0kl": typeof satellites }) =>
+      api.fetchSlice.mockImplementation(async (id: string, plane: "h0l" | "0kl") =>
+        makeSlice(73, 73, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + (id.endsWith("braggpunched") ? peaks[plane].reduce((s, f) => s + f(ix, iy), 0) : 0), { half: 2.4 }),
+      );
+    punched({ h0l: satellites, "0kl": [] });
+    const e = await evaluateStage("punch", dataset);
+    expect([e.leftover_at_nodes, e.leftover_off_lattice_sharp, e.leftover_on_protected_planes, e.leftover_on_protected_planes_sharp]).toEqual([0, 12, 12, 12]);
+    expect(judge("punch", e)).toMatchObject({ kind: "pass", reasons: [] });
+    // The chat's context still lists the strongest eight; the counts hold all twelve.
+    const { context } = await loadPipelineContext(dataset, { recip: { plane: "h0l", value: 0 }, dpdf: null, records: false });
+    expect([context.bragg_punch?.leftover.suspicious_peaks.length, context.bragg_punch?.leftover.n_on_protected]).toEqual([8, 12]);
+    // A sharp peak off the protected planes: one the search left.
+    punched({ h0l: satellites, "0kl": [stray] });
+    const left = await evaluateStage("punch", dataset);
+    expect([left.leftover_off_lattice_sharp, left.leftover_on_protected_planes_sharp]).toEqual([13, 12]);
+    expect(judge("punch", left)).toMatchObject({ kind: "attention", reasons: ["sharp off-lattice"] });
   });
 
   it("passes on the raw volume's note when its σ is √|I| of normalized data", async () => {
@@ -125,6 +155,73 @@ describe("evaluateStage", () => {
     expect(e.max_ring_left).toBeNull();
     expect(e.max_ring_dent).toBeNull();
     expect(e.ring_rule).toMatch(/^not judged/);
+    expect(judge("rings", e)).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+  });
+
+  it("does not judge the rings on a grid too coarse for the 3D test, and says why, with a bump on the planes or none", async () => {
+    const coarse = "grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1";
+    api.fetchRingIsotropy.mockImplementation(async (_id: string, shells: { q: number; fwhm: number }[]) => ({
+      id: "demo.raw",
+      rule: { direction_share: 0.9, height_share: 0.15 },
+      shells: shells.map((sh) => ({ q_center: sh.q, fwhm: sh.fwhm, n_cells: 0, median_height: null, relative_height: null, isotropy: null, is_ring: false, not_judged: coarse })),
+      not_judged: coarse,
+    }));
+    ringAndBump();
+    const e = await evaluateStage("rings", dataset);
+    expect([e.max_ring_left, e.max_ring_dent, e.shells_judged]).toEqual([null, null, undefined]);
+    expect(e.ring_rule).toBe(`not judged: ${coarse}`);
+    expect(judge("rings", e)).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+    expect(headline("rings", e)).toMatch(/ring dent ≤ – · left ≤ –$/);
+    // No bump on any plane: on such a grid that is no evidence either, so the grid's limit is asked all the same.
+    api.fetchSlice.mockImplementation(async () => makeSlice(161, 161, () => 1, { half: 20 }));
+    api.fetchRingIsotropy.mockClear();
+    const flat = await evaluateStage("rings", dataset);
+    expect(api.fetchRingIsotropy).toHaveBeenCalledWith("demo.raw", []);
+    expect(flat.ring_rule).toBe(`not judged: ${coarse}`);
+    expect(judge("rings", flat)).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+  });
+
+  it("says first what the ring removal left unconfirmed on its grid, from its diagnostics, and nothing where it left none (G1)", async () => {
+    const coarse = "grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1";
+    const notice =
+      "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.";
+    api.fetchRingIsotropy.mockImplementation(async (_id: string, shells: { q: number; fwhm: number }[]) => ({
+      id: "demo.raw",
+      rule: { direction_share: 0.9, height_share: 0.15 },
+      shells: shells.map((sh) => ({ q_center: sh.q, fwhm: sh.fwhm, n_cells: 0, median_height: null, relative_height: null, isotropy: null, is_ring: false, not_judged: coarse })),
+      not_judged: coarse,
+    }));
+    const record = {
+      dataset_id: "demo",
+      diagnostics_path: "processed/demo_ringremoved_diagnostics.json",
+      has_diagnostics: true,
+      status: "no_confirmed_rings",
+      unconfirmed_at_grid: { count: 4, needs: "1 voxel across 0.16 Å⁻¹", notice, q_centers: [2.668, 3.071, 4.36, 5.165] },
+    };
+    api.fetchRingDiagnostics.mockResolvedValue(record);
+    ringAndBump();
+    const e = await evaluateStage("rings", dataset);
+    expect(api.fetchRingDiagnostics).toHaveBeenCalledWith("demo");
+    expect(Object.keys(e)[0]).toBe("notice");
+    expect(e.notice).toBe(notice);
+    expect(e.ring_rule).toBe(`not judged: ${coarse}`);
+    expect(judge("rings", e)).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+    // A removal that left none, diagnostics that give none, or none to read: no notice.
+    for (const answer of [{ ...record, status: "fitted", unconfirmed_at_grid: null }, { ...record, has_diagnostics: false, status: null, unconfirmed_at_grid: null }]) {
+      api.fetchRingDiagnostics.mockResolvedValue(answer);
+      expect(await evaluateStage("rings", dataset)).not.toHaveProperty("notice");
+    }
+    api.fetchRingDiagnostics.mockRejectedValue(new Error("404 Not Found"));
+    expect(await evaluateStage("rings", dataset)).not.toHaveProperty("notice");
+  });
+
+  it("asks for the grid's limit with no bump on the planes, and passes an empty shell list as before where the grid is fine", async () => {
+    api.fetchSlice.mockImplementation(async () => makeSlice(161, 161, () => 1, { half: 20 }));
+    judgeIn3d();
+    const e = await evaluateStage("rings", dataset);
+    expect(api.fetchRingIsotropy).toHaveBeenCalledWith("demo.raw", []);
+    expect([e.max_ring_left, e.max_ring_dent, e.shells_judged]).toEqual([0, 0, []]);
+    expect(judge("rings", e)).toMatchObject({ kind: "pass" });
   });
 
   it("reports the ΔPDF window's weight on unmeasured space and the section's symmetry", async () => {
@@ -141,13 +238,44 @@ describe("evaluateStage", () => {
     });
     api.fetchMeta.mockResolvedValue({ ...(await api.fetchMeta()), symmetry: "6/mmm" }); // declared symmetrised
     const e = await evaluateStage("pdf", withPdf);
-    expect(e.window_weight_on_unmeasured).toBe(0.044);
+    expect(e.window_weight_on_unmeasured).toBe(0.0436); // three figures (2.4.6b)
     expect(e.window_shape).toBe("separable");
     expect(e.max_symmetry_break as number).toBeGreaterThan(1);
     expect(typeof e.worst_symmetry_op).toBe("string");
     expect(e.symmetry_declared).toBe(true);
-    expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.044 · symmetry off ≤ \d/);
-    expect(stageCheck("pdf", e)?.headline).toMatch(/ · symmetry broken$/);
+    expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.0436 · symmetry off ≤ \d/);
+    expect(judge("pdf", e).reasons).toContain("symmetry broken");
+  });
+
+  it("judges the ΔPDF's window by its raw weight, as qmax_coverage does: 1.04e-3 is past 1e-3 (D6, 2.4.6), and shows it so (2.4.6b)", async () => {
+    const withPdf: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" }],
+    };
+    // A sound round trip on synthetic sections; the window's weight on unmeasured space is the only fault.
+    api.fetchConsistencyCheck.mockResolvedValue({ has_check: true, metrics: { pearson_r: 0.99, normalized_rms: 0.1, pearson_r_even: 1, normalized_rms_even: 0, odd_share: 0.01 } });
+    api.fetchDpdfSlice.mockImplementation(async () => makeSlice(21, 21, (x, y) => Math.cos(x) * Math.cos(y)));
+    const evaluate = async (weight: number) => {
+      api.fetchDpdfMeta.mockResolvedValue({ lattice: { a: 3.9, b: 3.9, c: 3.9 }, window_open_weight: weight, window_shape: "ellipsoid" });
+      return evaluateStage("pdf", withPdf);
+    };
+    const past = await evaluate(0.00104);
+    // Shown to three figures (2.4.6b): 0.00104 beside its verdict, where two showed 0.001.
+    expect(past.window_weight_on_unmeasured).toBe(0.00104);
+    expect(headline("pdf", past)).toMatch(/ · unmeasured 0\.00104 · /);
+    expect(judge("pdf", past)).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
+    expect(outOfBounds("pdf", past)).toMatch(/^its window puts 0\.00104 of its weight/);
+    // qmax_coverage reads the same raw weight the same way.
+    const coverage = { window: "the ΔPDF's ellipsoid window", unit_cell: true, full_coverage_q: null, reach: null, reach_from: "", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } };
+    expect(judge("coverage", { ...coverage, window_weight: 0.00104 }).kind).toBe("attention");
+    // At 1e-3, within the limit, to both.
+    const at = await evaluate(0.001);
+    expect([judge("pdf", at).kind, outOfBounds("pdf", at), judge("coverage", { ...coverage, window_weight: 0.001 }).kind]).toEqual(["pass", null, "pass"]);
+    // Past the limit at the fourth figure: shown 0.001, still judged raw.
+    const fourth = await evaluate(0.0010004);
+    expect([fourth.window_weight_on_unmeasured, judge("pdf", fourth).kind]).toEqual([0.001, "attention"]);
+    // A tiny weight, in exponent form, to three figures.
+    expect(headline("pdf", await evaluate(0.000976))).toMatch(/ · unmeasured 9\.76e-4 · /);
   });
 
   it("does not judge a symmetry the file never declared: unsymmetrised data differ from their images by their own noise", async () => {
@@ -165,11 +293,9 @@ describe("evaluateStage", () => {
     expect(e.symmetry_declared).toBe(false);
     expect(e.max_symmetry_break as number).toBeGreaterThan(1); // still measured, and reported
     expect(headline("pdf", e)).toMatch(/ · no symmetry declared \(asymmetry \d/);
-    const check = stageCheck("pdf", e)!;
-    expect(check.verdict).toBe("pass"); // nothing else fails
-    expect(check.headline).toMatch(/ · symmetry not judged$/);
+    expect(judge("pdf", e).kind).toBe("pass"); // nothing else fails
     // The rule still bites where symmetry is declared.
-    expect(stageCheck("pdf", { ...e, symmetry_declared: true })!.verdict).toBe("attention");
+    expect(judge("pdf", { ...e, symmetry_declared: true })).toMatchObject({ kind: "attention", reasons: ["symmetry broken", "window within limit"] });
   });
 
   it("judges the round trip against the data's even part: the clean control passes, a transform fault does not", async () => {
@@ -186,17 +312,15 @@ describe("evaluateStage", () => {
     const e = await evaluateStage("pdf", withPdf); // declares no symmetry
     expect([e.back_fft_pearson_r, e.back_fft_pearson_r_even, e.back_fft_odd_share]).toEqual([0.98901, 1, 0.0219]);
     expect(headline("pdf", e)).toMatch(/^r 0\.98901 \(even part 1\) · RMS 0\.1253/);
-    const check = stageCheck("pdf", e)!;
-    expect(check.verdict).toBe("pass"); // failed at r < 0.999 before
-    expect(check.headline).toMatch(/^r 0\.989 \(even part 1\)/);
+    expect(judge("pdf", e).kind).toBe("pass"); // failed at r < 0.999 before
     // A transform that loses part of the ΔPDF falls short of its own even part.
-    expect(stageCheck("pdf", { ...e, back_fft_pearson_r_even: 0.97 })!.verdict).toBe("attention");
+    expect(judge("pdf", { ...e, back_fft_pearson_r_even: 0.97 }).reasons).toContain("back-FFT");
     // A check recorded before the even part was compared: r against the data is
     // judged only where the file declares the data symmetrised.
     const old = { ...e, back_fft_pearson_r_even: null };
-    expect(stageCheck("pdf", old)!.verdict).toBe("pass");
-    expect(stageCheck("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4 })!.verdict).toBe("attention");
-    expect(stageCheck("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4, back_fft_pearson_r: 0.9995 })!.verdict).toBe("pass");
+    expect(judge("pdf", old).kind).toBe("pass");
+    expect(judge("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4 }).reasons).toEqual(["back-FFT"]);
+    expect(judge("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4, back_fft_pearson_r: 0.9995 }).kind).toBe("pass");
   });
 
   it("says whether the flatten left a pedestal, so the Q² term's question has a stated answer", async () => {
@@ -234,5 +358,16 @@ describe("evaluateStage", () => {
       worst_ring_left: null,
     };
     expect(headline("rings", e)).toBe("ring ratio 0.24 · over-sub ≤ 0.03 · ring dent ≤ 0.187 (h0l, 6.35 Å⁻¹) · left ≤ 0");
+  });
+});
+
+describe("the punch's headline (D5)", () => {
+  it("counts the sharp leftovers on protected planes apart, and names them whenever there are any", () => {
+    const e = { leftover_at_nodes: 0, leftover_off_lattice_sharp: 5, leftover_on_protected_planes_sharp: 3, leftover_off_lattice_broad: 7, mean_punched_fraction: 0.03 };
+    expect(headline("punch", e)).toBe("0 missed at nodes · 2 sharp off-lattice (3 more on protected planes, kept) · 7 broad maxima kept · punched 0.03");
+    expect(headline("punch", { ...e, leftover_on_protected_planes_sharp: 0 })).toBe("0 missed at nodes · 5 sharp off-lattice · 7 broad maxima kept · punched 0.03");
+    // An evaluation recorded before the count was split out counts every sharp one, as before.
+    const old = { leftover_at_nodes: 0, leftover_off_lattice_sharp: 5, leftover_off_lattice_broad: 7, mean_punched_fraction: 0.03 };
+    expect(headline("punch", old)).toBe("0 missed at nodes · 5 sharp off-lattice · 7 broad maxima kept · punched 0.03");
   });
 });

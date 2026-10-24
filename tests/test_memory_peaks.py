@@ -172,3 +172,78 @@ def test_flatten_bins_and_subtracts_by_slab(monkeypatch):
     assert np.array_equal(res.volume.data, whole.volume.data)
     assert np.array_equal(res.bg_curve, whole.bg_curve)
     assert peak < 16 * vol.data.size  # was ~25 B/voxel: full |Q| + temporaries
+
+
+def test_shell_floors_hold_no_volume_sized_array(monkeypatch):
+    # The whole-volume shell floors (the Pilot's flatten check) read a pair of
+    # volumes one slab at a time and select each percentile from histograms:
+    # what they hold is fixed by the shells, not the grid.  On a grid 1.5 times
+    # as fine over the same box (the same shells, 3.4 times the voxels) the
+    # traced peak grows by under a quarter of the extra float32 data (by 1 %
+    # when measured, 26 MiB both); a volume-sized int16 array alone would add
+    # half of it.
+    # The numbers are the native path's.
+    from nebula3d.preprocessing import shell_floors
+
+    def pair(n):
+        vol = _topaz_like(shape=(n, n, n))
+        return vol, dataclasses.replace(vol, data=vol.data - np.float32(0.5))
+
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # native, whatever ran before
+    small, small_after = pair(128)
+    big, big_after = pair(192)
+    native = shell_floors(big_after, before=big)
+    monkeypatch.setenv("NEBULA3D_LOW_MEMORY", "1")
+    _, peak_small = _traced_peak(shell_floors, small_after, before=small)
+    lean, peak_big = _traced_peak(shell_floors, big_after, before=big)
+
+    assert np.array_equal(lean.floors, native.floors, equal_nan=True)
+    assert np.array_equal(lean.floors_before, native.floors_before, equal_nan=True)
+    assert lean.level == native.level
+    assert peak_big - peak_small < 0.25 * (big.data.nbytes - small.data.nbytes)
+
+
+def test_fill_texture_holds_no_volume_sized_array(monkeypatch):
+    # The backfill's texture check (texture_check's rule over the volume)
+    # labels the punch's holes one slab of H planes at a time and measures
+    # each hole inside its own box: it holds a slab's labels and masks, one
+    # hole's box and the per-hole facts, not the grid.  A volume-sized int32
+    # label array would be four boolean volumes.  In low-memory mode, holes
+    # every 16 voxels on 128³ and on 192³ (3.4 times the voxels and the
+    # holes), the traced peak stays under 0.6 of a boolean volume of the larger
+    # grid and grows by under 40 % of the boolean volume it gained.  The
+    # numbers are the native path's.
+    from scipy import ndimage
+
+    from nebula3d.analysis import fill_texture
+
+    def lattice(n, spacing=16, radius=3):
+        rng = np.random.default_rng(n)
+        data = (1.0 + 0.02 * rng.standard_normal((n, n, n))).astype(np.float32)
+        record = np.zeros(data.shape, dtype=bool)
+        g = np.arange(-radius, radius + 1)
+        ball = np.array([(a, b, c) for a in g for b in g for c in g
+                         if a * a + b * b + c * c <= radius * radius])
+        for node in np.ndindex(*(len(range(8, n, spacing)),) * 3):
+            idx = ball + 8 + spacing * np.array(node)
+            record[tuple(idx[np.all(idx < n, axis=1)].T)] = True
+        filled = data.copy()
+        filled[ndimage.binary_dilation(record) & ~record] = 1.0  # the gap band
+        filled[record] = 1.1
+        vol = HKLVolume.from_arrays(data, (-4, 4), (-4, 4), (-4, 4))
+        return (dataclasses.replace(vol, mask=~record), dataclasses.replace(vol, data=filled),
+                record)
+
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # native, whatever ran before
+    small = lattice(128)
+    big = lattice(192)
+    native = fill_texture(*big[:2], punch_record=big[2])
+    monkeypatch.setenv("NEBULA3D_LOW_MEMORY", "1")
+    _, peak_small = _traced_peak(fill_texture, *small[:2], punch_record=small[2])
+    lean, peak_big = _traced_peak(fill_texture, *big[:2], punch_record=big[2])
+
+    assert lean.n_holes == native.n_holes == 12 ** 3
+    assert np.array_equal(lean.holes.bias, native.holes.bias)
+    assert lean.median_fill_bias_level == native.median_fill_bias_level
+    assert peak_big < 0.6 * big[2].nbytes
+    assert peak_big - peak_small < 0.4 * (big[2].nbytes - small[2].nbytes)

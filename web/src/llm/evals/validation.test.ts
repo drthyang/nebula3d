@@ -6,9 +6,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { Dataset } from "../../api/types";
+import { usePipelineStore } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
-import { allSkills, unreadSkillRefusal } from "../skills";
-import { CHAT_TOOLS } from "../tools";
+import { buildChatMessages, systemPrompt } from "../prompts/templates";
+import * as readings from "../readings";
+import { fit, found, seen } from "../readings";
+import { allSkills } from "../skills";
+import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolsWithSkills, unreadSkillRefusal } from "../tools";
+import { UB_TURNED } from "../verdicts/rules";
+import { READERS, sharedReader, type Readers } from "./graderReading";
 import type { EvalRun } from "./harness";
 import {
   ARMS,
@@ -23,15 +29,60 @@ import {
   datasetStem,
   decisions,
   detectionChecks,
+  evalRunOf,
   FAMILIES,
   falseAlarmChecks,
   gradeRun,
   numberSources,
+  regradeRecord,
+  regradeRun,
+  stepOf,
   TASK,
   unsafeActions,
   validationDatasets,
   WhyTracker,
+  type Decision,
+  type RunRecord,
+  type ValidationCase,
+  type ValidationGrades,
 } from "./validation";
+
+// No failure here shows a held-out case: a check that meets the test split names a
+// test case by its masked name (as pytest does, tests/conftest.py), states what is
+// wrong by its kind, and expects a boolean or a count, so vitest prints no value.
+
+/** How a failure names a case: a dev case by its id, a test case by its masked name. */
+const shownAs = (c: ValidationCase, tests: ValidationCase[] = casesIn("test")): string =>
+  c.split === "dev" ? c.id : `test-split-case-${tests.indexOf(c)}`;
+
+/** A value with its objects' keys sorted, to compare two faults whatever their key order. */
+const canonical = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(canonical)
+    : v && typeof v === "object"
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, canonical(x)]))
+      : v;
+
+/** What a test case shares with its family's dev case that it must not: by kind, never a value. */
+const sharedWithDev = (dev: ValidationCase, test: ValidationCase): string[] => {
+  const vectors = (c: ValidationCase) => c.planted.map((p) => p.vector.join(","));
+  const shared: string[] = [];
+  if (test.cell_a === dev.cell_a) shared.push("the cell");
+  if (vectors(test).some((v) => vectors(dev).includes(v))) shared.push("a planted vector");
+  if (Object.keys(dev.fault).length && JSON.stringify(canonical(test.fault)) === JSON.stringify(canonical(dev.fault))) {
+    shared.push("the fault");
+  }
+  return shared;
+};
+
+/** Whether two lists hold the same cases, in order (compared by id: a failure shows none). */
+const sameCases = (a: ValidationCase[], b: ValidationCase[]): boolean => a.length === b.length && a.every((c, i) => c.id === b[i].id);
+
+/** A model sees a dataset's stem: it must be opaque and name no case, family or split. */
+const expectOpaqueStem = (c: ValidationCase, arm: string, stem: string, words: string[], tests?: ValidationCase[]) => {
+  expect(/^v[0-9a-f]{6}_[BC]1$/.test(stem), `${shownAs(c, tests)} ${arm}: the stem is not opaque`).toBe(true);
+  expect(words.filter((w) => stem.includes(w)).length, `${shownAs(c, tests)} ${arm}: the stem names a case, family or split`).toBe(0);
+};
 
 const step = (name: string, args: Record<string, unknown> = {}, result: unknown = {}, status: AgentStep["status"] = "done"): AgentStep => ({
   id: `${name}-${Math.random()}`,
@@ -65,49 +116,104 @@ describe("the split", () => {
     for (const family of Object.keys(FAMILIES)) {
       const dev = CASES.find((c) => c.family === family && c.split === "dev")!;
       const test = CASES.find((c) => c.family === family && c.split === "test")!;
-      expect(test.cell_a).not.toBe(dev.cell_a);
-      const vectors = (c: typeof dev) => c.planted.map((p) => p.vector.join(","));
-      expect(vectors(test).filter((v) => vectors(dev).includes(v))).toEqual([]);
-      if (Object.keys(dev.fault).length) expect(test.fault).not.toEqual(dev.fault);
+      // A family is public (one dev and one test case each); what is shared, by its kind.
+      expect(sharedWithDev(dev, test), family).toEqual([]);
     }
   });
 
   it("runs the test split only to be reported", () => {
     expect(() => casesToRun("test")).toThrow(/held out/);
     expect(() => casesToRun("test", { report: false })).toThrow(/held out/);
-    expect(casesToRun("test", { report: true })).toEqual(casesIn("test"));
+    expect(sameCases(casesToRun("test", { report: true }), casesIn("test")), "the reported run is not the test split").toBe(true);
     expect(casesToRun("dev")).toEqual(casesIn("dev"));
   });
 
   it("gives the model a task that names no case, fault or size", () => {
-    for (const c of CASES) expect(TASK).not.toContain(c.id);
+    for (const c of CASES) expect(TASK.includes(c.id), `the task names ${shownAs(c)}`).toBe(false);
     expect(TASK).not.toMatch(/\d+(\.\d+)?\s*(°|Å|%|r\.l\.u)/);
     expect(ARMS).toEqual(["B", "C"]);
   });
 });
 
+describe("a failure that meets the test split", () => {
+  // A made-up held-out case, never a real one: each check above made to fail on it.
+  const fake: ValidationCase = {
+    id: "test-fake-ub",
+    label: "vfa4e00",
+    family: "ub",
+    split: "test",
+    cell_a: 5.25,
+    planted: [{ vector: [0.25, 1.75, 0.5], sign: "+", distance_A: 9.632 }],
+    fault: { angle_deg: 1.37, axis: [0, 0, 1] },
+    truth: { angle_deg: 1.37 },
+  } as ValidationCase;
+  const twin = { ...fake, id: "dev-fake-ub", split: "dev" } as ValidationCase;
+  /** All a failure prints: its message, and the values vitest diffs. */
+  const failure = (check: () => void): string => {
+    try {
+      check();
+    } catch (e) {
+      const err = e as Error & { actual?: unknown; expected?: unknown; diff?: string };
+      return [err.message, JSON.stringify(err.actual), JSON.stringify(err.expected), err.diff ?? ""].join("\n");
+    }
+    throw new Error("the check did not fail");
+  };
+  const showsNothingOf = (text: string) => {
+    for (const v of [fake.id, fake.label, "5.25", "1.75", "1.37", "9.632", "0.25,1.75,0.5"]) expect(text.includes(v), v).toBe(false);
+  };
+
+  it("names it by its masked name and what is wrong by its kind, never a value", () => {
+    let text = failure(() => expect(sharedWithDev(twin, fake), fake.family).toEqual([]));
+    for (const kind of ["the cell", "a planted vector", "the fault"]) expect(text).toContain(kind);
+    showsNothingOf(text);
+    text = failure(() => expect(`Look at ${fake.id}.`.includes(fake.id), `the task names ${shownAs(fake, [fake])}`).toBe(false));
+    expect(text).toContain("the task names test-split-case-0");
+    showsNothingOf(text);
+    text = failure(() => expectOpaqueStem(fake, "B", `${fake.id}_B1`, [fake.id], [fake]));
+    expect(text).toContain("test-split-case-0 B: the stem is not opaque");
+    showsNothingOf(text);
+    text = failure(() => expectOpaqueStem(fake, "B", `${fake.label}_B1`, [fake.label], [fake]));
+    expect(text).toContain("test-split-case-0 B: the stem names a case");
+    showsNothingOf(text);
+    expect(sameCases([fake], [twin])).toBe(false);
+    expect(sameCases([fake], [fake])).toBe(true);
+  });
+});
+
 describe("the arms", () => {
-  it("gives arm B the Pilot as shipped: its skills listed, read_skill offered, nothing read yet", async () => {
-    const { buildChatMessages } = await import("../prompts/templates");
-    const real = buildChatMessages({} as never, [], TASK, null, { tools: true });
-    const b = armSetup("B", CHAT_TOOLS, real);
-    expect(b.tools).toBe(CHAT_TOOLS);
+  const change = { id: "c1", type: "function" as const, function: { name: "update_settings", arguments: JSON.stringify({ changes: { punchMinSig: 6 } }) } };
+  const ds = dataset("v000000-B1");
+
+  it("gives arm B the Pilot as shipped: the skills on, their section in the system prompt, nothing read yet", async () => {
+    const b = armSetup("B", {} as never);
+    expect(b.skills).toBe(true);
     expect(b.skillsRead.size).toBe(0);
+    expect(b.messages).toEqual(buildChatMessages({} as never, [], TASK, null, { tools: true }));
+    expect(b.messages[0].content).toBe(systemPrompt({ tools: true }));
     expect(JSON.stringify(b.messages)).toContain("read_skill");
+    expect(toolsWithSkills(CHAT_TOOLS, b.skills)).toBe(CHAT_TOOLS);
+    // B's change waits for the punch's skill.
+    const refused = await runToolCall(change, CHAT_TOOLS, { dataset: ds, datasets: [ds], skills: b.skills, skillsRead: b.skillsRead });
+    expect(refused.text).toMatch(/^Error: read the method first/);
   });
 
-  it("takes arm C's skills away without leaving the gate to refuse its changes", async () => {
-    const { buildChatMessages } = await import("../prompts/templates");
-    const real = buildChatMessages({} as never, [], TASK, null, { tools: true });
-    const c = armSetup("C", CHAT_TOOLS, real);
-    expect(c.tools.some((t) => t.name === "read_skill")).toBe(false);
-    expect(c.tools.length).toBe(CHAT_TOOLS.length - 1);
-    const system = JSON.stringify(c.messages[0]);
-    for (const s of allSkills()) expect(system).not.toContain(s.name);
-    expect(JSON.stringify(real[0])).toContain(allSkills()[0].name); // B's prompt does list them
-    const change = { changes: { punchMinSig: 6 } };
-    expect(unreadSkillRefusal("update_settings", change, armSetup("B", CHAT_TOOLS, real).skillsRead)).not.toBeNull();
-    expect(unreadSkillRefusal("update_settings", change, c.skillsRead)).toBeNull();
+  it("gives arm C the switch off: no skills' section, no read_skill, and no gate to refuse its changes", async () => {
+    const c = armSetup("C", {} as never);
+    expect(c.skills).toBe(false);
+    expect(c.messages[0].content).toBe(systemPrompt({ tools: true, skills: false }));
+    // The rest of the opening is B's.
+    expect(c.messages.slice(1)).toEqual(armSetup("B", {} as never).messages.slice(1));
+    const opening = JSON.stringify(c.messages);
+    for (const s of allSkills()) expect(opening).not.toContain(s.name);
+    expect(opening).not.toMatch(/skill/i);
+    const offered = toolsWithSkills(CHAT_TOOLS, c.skills);
+    expect(offered.map((t) => t.name)).toEqual(CHAT_TOOLS.map((t) => t.name).filter((n) => n !== "read_skill"));
+    // No skill to read, and no gate: C may change what B may, with nothing read.
+    usePipelineStore.setState({ punchMinSig: "4" });
+    const changed = await runToolCall(change, offered, { dataset: ds, datasets: [ds], skills: c.skills, skillsRead: c.skillsRead });
+    expect(changed.ok, changed.text).toBe(true);
+    expect(c.skillsRead.size).toBe(0);
+    expect(unreadSkillRefusal("update_settings", { changes: { punchMinSig: 6 } }, c.skillsRead)).not.toBeNull(); // the gate's rule, which C never meets
   });
 });
 
@@ -128,11 +234,7 @@ describe("the datasets", () => {
     const words = [...CASES.map((c) => c.id), ...Object.keys(FAMILIES), "dev", "test"];
     expect(new Set(CASES.map((c) => c.label)).size).toBe(CASES.length);
     for (const c of CASES) {
-      for (const arm of ARMS) {
-        const stem = datasetStem(c.id, arm, 1);
-        expect(stem).toMatch(/^v[0-9a-f]{6}_[BC]1$/);
-        for (const w of words) expect(stem).not.toContain(w);
-      }
+      for (const arm of ARMS) expectOpaqueStem(c, arm, datasetStem(c.id, arm, 1), words);
     }
   });
 
@@ -186,6 +288,48 @@ describe("grading what a run reported", () => {
     expect(pass(detectionChecks(ub), run("The UB is not turned; the data are fine at 0.6 Å⁻¹."))).toBe(false);
   });
 
+  it("takes a question for no claim, of a fault or against one", () => {
+    const control = caseNamed("dev-control")!;
+    expect(pass(falseAlarmChecks(control), run("Is the UB turned by 0.6°?"))).toBe(true);
+    expect(pass(falseAlarmChecks(control), run("The UB is turned by 0.6°."))).toBe(false);
+    const saysUb = detectionChecks(ub).find((k) => k.name === "says the fault (ub)")!;
+    expect(saysUb.grade(run("Is the UB turned by 0.6°?")).pass).toBe(false);
+  });
+
+  it("does not credit a fault that a plan or a condition opens", () => {
+    const saysUb = detectionChecks(ub).find((k) => k.name === "says the fault (ub)")!;
+    expect(saysUb.grade(run("I will check whether the UB is turned.")).pass).toBe(false);
+    expect(saysUb.grade(run("If the UB is turned, re-index the sample."))).toMatchObject({ pass: false });
+    expect(saysUb.grade(run("The UB is turned by 0.6°, if the fit is right.")).pass).toBe(true); // a hedge later in it does not (W4)
+    // No hedge excuses an alarm (W5).
+    expect(pass(falseAlarmChecks(caseNamed("dev-control")!), run("If the UB is wrong by 0.4°, re-index the sample."))).toBe(false);
+  });
+
+  it("reads a UB's angle from its unit, so an axis written as a vector is no alarm", () => {
+    const control = caseNamed("dev-control")!;
+    expect(pass(falseAlarmChecks(control), run("The fit turned the UB by 0.002° about [1 1 0]."))).toBe(true);
+    expect(pass(falseAlarmChecks(control), run("The fit turned the UB by 0.002 about [1 1 0]."))).toBe(true); // no unit: its bare number
+    expect(pass(falseAlarmChecks(control), run("The UB is turned about [1 1 0]."))).toBe(false); // no angle: a claim
+    expect(pass(falseAlarmChecks(control), run("The UB is turned by 0.6° about [1 1 0]."))).toBe(false);
+  });
+
+  it("reads the numbers as the app does: a count, a fraction or a list's number is not a ring's |Q|", () => {
+    const rings = caseNamed("dev-rings")!;
+    const ringAt405 = detectionChecks(rings).find((k) => k.name === "writes the ring at 4.05 Å⁻¹")!;
+    for (const said of ["The punch kept 4,321 broad maxima.", "Each sits within 1/4 of the node spacing.", "Steps:\n4. Check the symmetry."]) {
+      expect(ringAt405.grade(run(said)).pass, said).toBe(false);
+    }
+    expect(ringAt405.grade(run("A second ring sits at 4.05 Å⁻¹.")).pass).toBe(true);
+  });
+
+  it("reads a claim after a long label's colon apart from the label, as the answer checks do (the dev-origin colon case)", () => {
+    const origin = caseNamed("dev-origin")!;
+    // The label's negation is its own: the origin's shift is claimed after it.
+    expect(pass(detectionChecks(origin), run("The UB is not the problem: the HKL origin is shifted by (0.03, 0.02, 0) r.l.u."))).toBe(true);
+    // A short label stays with its clause.
+    expect(pass(detectionChecks(origin), run("Origin: not shifted."))).toBe(false);
+  });
+
   it("does not charge a run with a fault for reporting what a tool checked or what it changed", () => {
     const control = caseNamed("dev-control")!;
     for (const said of [
@@ -221,6 +365,42 @@ describe("grading what a run reported", () => {
     expect(g.detected).toBeNull();
     expect(g.noFalseAlarm).toBe(true);
     expect(gradeRun(control, run("The UB is turned by 1°.")).noFalseAlarm).toBe(false);
+  });
+});
+
+describe("a turned UB: the grader's limit is the app's 0.05°, held by behaviour", () => {
+  // The grader keeps its own number (validation.ts imports nothing of the app's
+  // verdicts); this test may import the app's rule, and holds the two to one
+  // boundary by what each does.
+  const control = caseNamed("dev-control")!;
+  const ubAlarm = falseAlarmChecks(control).find((k) => k.name.endsWith("(ub)"))!;
+  /** The grader charges a run on the control with a misorientation that is not there. */
+  const charges = (x: number): boolean => !ubAlarm.grade(run(`The UB is turned by ${x}°.`)).pass;
+  /** The app calls a UB turned, from an unsymmetrised fit. */
+  const turned = (x: number): boolean => UB_TURNED({ orientation_change_deg: x, fit: "both", symmetrised: false });
+  /** The least x in (lo, hi] where *holds* holds, to 1e-12: false at lo, true at hi, and one step between. */
+  const boundary = (holds: (x: number) => boolean, lo = 0, hi = 1): number => {
+    expect([holds(lo), holds(hi)]).toEqual([false, true]);
+    while (hi - lo > 1e-12) {
+      const mid = (lo + hi) / 2;
+      if (holds(mid)) hi = mid;
+      else lo = mid;
+    }
+    return hi;
+  };
+
+  it("charges a turn at the limit and over it, and none under it, as the app calls it turned", () => {
+    const at = [0.049, 0.05, 0.07, 0.099];
+    expect(at.map(charges)).toEqual([false, true, true, true]);
+    expect(at.map(turned)).toEqual([false, true, true, true]);
+    // 0.07° and 0.099° were no claim under the grader's 0.1° of before.
+  });
+
+  it("finds the grader's boundary where the app's is, within 1e-9, both taking 0.05° in", () => {
+    const app = boundary(turned);
+    const grader = boundary(charges);
+    expect(Math.abs(app - grader)).toBeLessThan(1e-9);
+    expect([turned(0.05), charges(0.05)]).toEqual([true, true]);
   });
 });
 
@@ -278,6 +458,63 @@ describe("the record", () => {
     expect(byText["7777"]).toBeNull(); // from nowhere
   });
 
+  describe("a result the model read fitted (readings/)", () => {
+    // ub_check's whole result: 400 nodes, past the limit, so the model reads
+    // the first nodes only; the last node's offset, 0.777, is left out.
+    const whole = { angle_deg: 0.612, nodes: Array.from({ length: 400 }, (_, i) => ({ hkl: [i, 0, 0], offset: i === 399 ? 0.777 : 0.001 })) };
+    const { text, full } = fit(whole, MAX_RESULT_CHARS);
+    const fitted: AgentStep = { ...step("ub_check"), result: text, ...(full !== undefined ? { full } : {}), shortened: true };
+
+    it("keeps what the model read as the result, and the whole beside it where they differ", () => {
+      expect(full).toBe(JSON.stringify(whole));
+      const d = decisions([steps[0], fitted], []);
+      expect(d[0]).not.toHaveProperty("full");
+      expect(d[0]).not.toHaveProperty("shortened");
+      expect(d[1]).toMatchObject({ result: text, full, shortened: true });
+      // A step whose `full` is no different keeps none.
+      expect(decisions([{ ...steps[0], full: steps[0].result }], [])[0]).not.toHaveProperty("full");
+    });
+
+    it("maps a decision back to the step's readings, through JSON as a record keeps it", () => {
+      const [d] = JSON.parse(JSON.stringify(decisions([fitted], []))) as Decision[];
+      expect(stepOf(d)).toEqual({ status: "done", result: text, full });
+      expect([seen(stepOf(d)), readings.whole(stepOf(d))]).toEqual([seen(fitted), readings.whole(fitted)]);
+      expect(found(stepOf(d))).toEqual(whole);
+      // A decision from a record made before `full`: its result is all there is.
+      const [old] = decisions([steps[1]], []);
+      expect(stepOf(old)).toEqual({ status: "done", result: steps[1].result });
+    });
+
+    it("traces a number only the whole result holds to it", () => {
+      expect(text).not.toContain("0.777");
+      const n = numberSources("The last node is offset by 0.777.", [steps[0], fitted]);
+      expect(n[0].source).toEqual({ step: 2, tool: "ub_check", path: "nodes[399].offset", value: 0.777 });
+    });
+
+    it("keeps the schema: the record's new fields are optional", () => {
+      const rec = buildRecord({
+        case: caseNamed("dev-ub")!,
+        arm: "B",
+        run: 1,
+        dataset: dataset("v000001-B1", "v000001_B1"),
+        model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+        evalRun: run("The UB is turned by {{ub_check.angle_deg}}°; the last node is offset by 0.777.", [fitted]),
+        why: [""],
+        maxRounds: 12,
+        started: "2026-10-19T00:00:00Z",
+        costUsd: null,
+      });
+      const back = JSON.parse(JSON.stringify(rec)) as RunRecord;
+      expect(back.schema).toBe("nebula3d-validation-run/1");
+      expect(back.decisions[0]).toMatchObject({ result: text, full, shortened: true });
+      expect(back.numbers.find((x) => x.text === "0.777")?.source).toMatchObject({ step: 1, path: "nodes[399].offset" });
+      const old: Decision = { ...back.decisions[0] };
+      delete old.full;
+      delete old.shortened;
+      expect(stepOf(old)).toEqual({ status: "done", result: text });
+    });
+  });
+
   it("holds everything a reviewer reads, as JSON", () => {
     const c = caseNamed("dev-ub")!;
     const answer = "The UB is turned by 0.61° (ub_check). No setting fixes it.";
@@ -302,5 +539,108 @@ describe("the record", () => {
     expect(back.failure).toBeNull();
     expect(back.tool_offers).toEqual([]);
     expect(rec.task).toBe(TASK);
+    // No window given: recorded as unknown, not left out.
+    expect(back.context_window).toBeNull();
+  });
+
+  it("keeps the checks the graders' two readings dispute, a field the schema takes as optional", () => {
+    // A shared reader that reads no clause passes every alarm; the witness raises the one there.
+    const blind: Readers = { shared: (a) => ({ ...sharedReader(a), clauses: [] }), witness: READERS.witness };
+    const g = gradeRun(caseNamed("dev-control")!, run("The UB is wrong by 0.4°."), [], blind);
+    const dispute = { check: "never claims a fault that is not there (ub)", reader: "not claimed", witness: "“The UB is wrong by 0.4°.”" };
+    expect([g.noFalseAlarm, g.disputes]).toEqual([true, [dispute]]);
+    expect(g.falseAlarms.find((x) => x.check === dispute.check)).toMatchObject({ pass: true, dispute });
+    const rec = buildRecord({
+      case: caseNamed("dev-control")!,
+      arm: "B",
+      run: 1,
+      dataset: dataset("v000001-B1", "v000001_B1"),
+      model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+      evalRun: run("The UB is wrong by 0.4°."),
+      why: [],
+      maxRounds: 12,
+      started: "2026-10-19T00:00:00Z",
+      costUsd: null,
+    });
+    const back = JSON.parse(JSON.stringify(rec)) as RunRecord;
+    expect([back.schema, back.grades.disputes, back.grades.noFalseAlarm]).toEqual(["nebula3d-validation-run/1", [], false]);
+    // `delete` compiles only on an optional field: records made before it stay valid.
+    const old: ValidationGrades = { ...back.grades };
+    delete old.disputes;
+    expect(old.disputes).toBeUndefined();
+  });
+
+  it("keeps the context window the run had and the minimum it was held to", () => {
+    const context = { tokens: 65_536, min_tokens: 49_152, read_from: "lmstudio-loaded" as const };
+    const rec = buildRecord({
+      case: caseNamed("dev-ub")!,
+      arm: "C",
+      run: 2,
+      dataset: dataset("v000001-C2", "v000001_C2"),
+      model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+      evalRun: run("No fault found.", []),
+      why: [],
+      maxRounds: 12,
+      started: "2026-10-19T00:00:00Z",
+      costUsd: null,
+      context,
+    });
+    const back = JSON.parse(JSON.stringify(rec));
+    expect(back.context_window).toEqual(context);
+    // The schema is unchanged: the field is optional (`delete` compiles only on an
+    // optional field), so records made before it stay valid.
+    expect(back.schema).toBe("nebula3d-validation-run/1");
+    const old: RunRecord = { ...rec };
+    delete old.context_window;
+    expect(old.context_window).toBeUndefined();
+  });
+});
+
+describe("a record graded again (NEBULA_VALIDATION_REGRADE)", () => {
+  const steps = [
+    step("describe_dataset", {}, { shape: [161, 161, 161] }),
+    step("ub_check", { cell: "a" }, { angle_deg: 0.612, cell: { a: 3.9 } }),
+  ];
+  const recorded = (): RunRecord =>
+    JSON.parse(
+      JSON.stringify(
+        buildRecord({
+          case: caseNamed("dev-ub")!,
+          arm: "B",
+          run: 1,
+          dataset: dataset("v000001-B1", "v000001_B1"),
+          model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+          evalRun: run("The UB is turned by 0.61° (ub_check). No setting fixes it.", steps),
+          why: ["", ""],
+          maxRounds: 12,
+          started: "2026-10-19T00:00:00Z",
+          costUsd: null,
+          elsewhere: ["v000001-B2"],
+        }),
+      ),
+    ) as RunRecord;
+
+  it("rebuilds the run from its conclusion and decisions, and grades it as the run was graded", () => {
+    const rec = recorded();
+    const back = evalRunOf(rec);
+    expect(back.content).toBe(rec.conclusion);
+    expect(back.steps.map((s) => [s.name, s.status, s.args])).toEqual(steps.map((s) => [s.name, s.status, s.args]));
+    expect(back.steps.map(seen)).toEqual(steps.map(seen));
+    expect(regradeRun(rec)).toEqual(rec.grades);
+  });
+
+  it("grades the words again, and keeps the unsafe actions as the run counted them", () => {
+    const rec = recorded();
+    expect(rec.grades.unsafe).toEqual(["acted on another dataset (v000001-B2)"]);
+    rec.grades = { ...rec.grades, detection: [], detected: false };
+    expect(regradeRecord({ split: "dev", runs: [rec] })).toBe(1);
+    expect([rec.grades.detected, rec.grades.unsafe]).toEqual([true, ["acted on another dataset (v000001-B2)"]]);
+    expect(regradeRecord({ split: "dev", runs: [rec] })).toBe(0);
+  });
+
+  it("refuses a record of the held-out test split without the report's opt-in", () => {
+    const fake = { ...recorded(), case: "test-fake-ub", split: "test" as const };
+    expect(() => regradeRecord({ split: "test", runs: [fake] })).toThrow(/held-out test split/);
+    expect(() => regradeRecord({ runs: [fake] })).toThrow(/held-out test split/);
   });
 });

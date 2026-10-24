@@ -6,18 +6,35 @@
 
 import type { ChatMessage, ContentPart } from "../provider/client";
 import { contextToJson, type PipelineContext } from "../context/pipelineContext";
-import { skillsPrompt } from "../skills";
-import { SYSTEM_PROMPT, TOOLS_PROMPT } from "./system";
+import { skillsOn, skillsPrompt, type SkillsSwitch } from "../skills";
+import { BACK_FFT_R_OK, EVEN_PART } from "../verdicts/rules";
+import { SYSTEM, TOOLS } from "./system";
 
-// With tools, the skills' names and descriptions follow the tools' guidance;
-// read_skill reads one when the task calls for it.
-const systemMessage = (tools: boolean): ChatMessage => ({
-  role: "system",
-  content: tools ? SYSTEM_PROMPT + "\n" + TOOLS_PROMPT + "\n" + skillsPrompt() : SYSTEM_PROMPT,
-});
+/** What the opening messages are built for: tools on or off, and the skills' switch (skills.ts; on unless false). */
+export interface MessageOptions extends SkillsSwitch {
+  tools?: boolean;
+}
 
-const contextBlock = (context: PipelineContext): string =>
-  `Diagnostic context for this reduction (metrics computed from the current cut):\n\`\`\`json\n${contextToJson(context)}\n\`\`\``;
+/**
+ * The system prompt, from its sections: the domain and the metrics the context
+ * carries; with tools, the tools' guidance and the checks that judge a run;
+ * with tools and the skills on, the skills' names and descriptions, which
+ * read_skill reads when the task calls for it. With the skills off (the
+ * validation's arm C) that section is not there at all, and the others are
+ * their definitions only, without their inference (inference.ts).
+ */
+export function systemPrompt({ tools = false, skills }: MessageOptions = {}): string {
+  const on = skillsOn({ skills });
+  const sections = [SYSTEM.text(on)];
+  if (tools) sections.push(TOOLS.text(on));
+  if (tools && on) sections.push(skillsPrompt());
+  return sections.join("\n");
+}
+
+const systemMessage = (options: MessageOptions): ChatMessage => ({ role: "system", content: systemPrompt(options) });
+
+const contextBlock = (context: PipelineContext, skills?: boolean): string =>
+  `Diagnostic context for this reduction (metrics computed from the current cut):\n\`\`\`json\n${contextToJson(context, undefined, { skills: skillsOn({ skills }) })}\n\`\`\``;
 
 // Attach an optional image to a text prompt, producing either a plain string or
 // the multimodal content-parts array the vision path needs.
@@ -43,10 +60,10 @@ export const buildChatMessages = (
   history: HistoryTurn[],
   userText: string,
   imageDataUrl?: string | null,
-  { tools = false }: { tools?: boolean } = {},
+  { tools = false, skills }: MessageOptions = {},
 ): ChatMessage[] => [
-  systemMessage(tools),
-  { role: "user", content: contextBlock(context) },
+  systemMessage({ tools, skills }),
+  { role: "user", content: contextBlock(context, skills) },
   {
     role: "assistant",
     content: tools
@@ -66,12 +83,15 @@ const STAGE_INSTRUCTION: Record<ReviewStage, string> = {
   rings: "Assess the Al/powder ring removal for this cut. Using ring_removal, judge how completely the rings were subtracted and whether the subtraction over-shot into negative (over-subtracted) territory. If an image is attached, note any residual rings or dark halos. State the optimal display contrast to inspect it. Give a short verdict and one concrete suggestion if it can be improved.",
   punch: "Review the Bragg punch. From bragg_punch.leftover, say whether sharp peaks were left unpunched: missed lattice peaks (at_node) are a punch failure, off-lattice ones are satellites or spurious peaks; quote their hkl and σ, or confirm none survived. Then characterise the peak profile from bragg_punch.peak_profile (resolution-limited fraction, measured widths, anisotropy) and comment on whether the punch footprint looks appropriate. End with a verdict and any suggestion.",
   backfill: "Judge the backfill quality from the backfill metrics. Is the fill seamless (median_seam_sigma), are there bright residual plugs (bright_fill_fraction), and is there any strange periodic/checkerboard pattern (checkerboard_fraction)? If an image is attached, describe the filled regions. Give a verdict and a suggestion if warranted.",
-  flatten: "Judge the radial flatten from the flatten metrics. Is the shell floor near zero and level across |Q| after the flatten (floor_after, after_floor_max_sigma), or is there a leftover trend or an over-subtraction? How much pedestal was removed (removed_fraction)? Give a verdict and a suggestion if warranted.",
-  dpdf: "Analyse the 3D-ΔPDF features from delta_pdf. Are there features clearly stronger than the background noise (feature_snr, strong_feature_fraction)? Are the correlations anisotropic, and along what direction (anisotropy_ratio, anisotropy_angle_deg)? What is the trend with distance (radial_trend), and is the ΔPDF trustworthy (consistency_pearson_r)? If an image is attached, describe the pattern you see. Summarise the correlation picture in a few sentences.",
+  flatten: "Judge the radial flatten from the flatten metrics. Is the shell floor near zero and level across |Q| after the flatten (floor_after, floor_trend, floor_span_fraction), or is there a leftover trend or an over-subtraction? How much pedestal was removed (removed_fraction)? Give a verdict and a suggestion if warranted.",
+  // The round trip as the ΔPDF's verdict judges it, in its rule's words (verdicts/rules.ts).
+  dpdf: `Analyse the 3D-ΔPDF features from delta_pdf. Are there features clearly stronger than the background noise (feature_snr, strong_feature_fraction)? Are the correlations anisotropic, and along what direction (anisotropy_ratio, anisotropy_angle_deg)? What is the trend with distance (radial_trend), and what does the back-FFT round trip say (the ΔPDF's verdict judges it against ${EVEN_PART}, to an r of ${BACK_FFT_R_OK} or more; consistency_pearson_r is against the data)? If an image is attached, describe the pattern you see. Summarise the correlation picture in a few sentences.`,
 };
 
 // With tools, a review must look beyond the opening cut before its verdict,
-// with the tools that judge that stage.
+// with the tools that judge that stage. They are the system prompt's own
+// checks (TOOLS_PROMPT), the Pilot's method rather than a skill's, so the
+// skills' switch leaves them as they are.
 const REVIEW_TOOLS: Record<ReviewStage, string> = {
   rings: "assess_stage rings and radial_profile",
   punch: "assess_stage punch and an off-zero cut",
@@ -86,10 +106,10 @@ export const buildStageReviewMessages = (
   context: PipelineContext,
   stage: ReviewStage,
   imageDataUrl?: string | null,
-  { tools = false }: { tools?: boolean } = {},
+  { tools = false, skills }: MessageOptions = {},
 ): ChatMessage[] => [
-  systemMessage(tools),
-  { role: "user", content: contextBlock(context) },
+  systemMessage({ tools, skills }),
+  { role: "user", content: contextBlock(context, skills) },
   {
     role: "assistant",
     content: tools

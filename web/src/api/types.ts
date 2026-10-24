@@ -44,8 +44,12 @@ export interface VolumeCoverage {
   q_max_edge: number | null; // where it last falls through ½ (null: to the corner)
   full_q_min: number | null; // first shell ≥ 95 %
   full_q_max: number | null; // last shell ≥ 95 %
+  // Last shell ≥ 95 % measured (mask set, finite): where the ΔPDF window's
+  // support ends, past the counts where the volume stores zeros it marks measured.
+  measured_q_max: number | null;
   box_q: number; // the nearest face of the box in Q (a face through the origin, a half-space volume's, aside)
   box_corner_q: number;
+  q_step: number; // the shells' width (Å⁻¹): every edge is known to one shell
 }
 
 /** One shell judged: does it rise in nearly every direction over the sphere (a powder ring)? */
@@ -66,6 +70,28 @@ export interface RingIsotropy {
   id: string;
   rule: { direction_share: number; height_share: number };
   shells: RingShell[];
+  // Why the grid is too coarse to judge any ring ("grid too coarse: …"), or null;
+  // given with no shell asked too. Absent from a backend before it was measured.
+  not_judged?: string | null;
+}
+
+/**
+ * What the ring stage recorded in its diagnostics (GET /api/rings/{id}/diagnostics):
+ * the rings the pooled model detected and could not confirm on its grid, which it
+ * did not subtract, or null where it left none. Diagnostics older than the
+ * ring-removed volume give none (has_diagnostics false).
+ */
+export interface RingDiagnostics {
+  dataset_id: string;
+  diagnostics_path: string;
+  has_diagnostics: boolean;
+  status: string | null;
+  unconfirmed_at_grid: {
+    count: number;
+    needs: string; // what the grid needs, from the ring test's constants
+    notice: string; // what the run log says of them, the remedy included
+    q_centers: number[]; // their |Q| (Å⁻¹)
+  } | null;
 }
 
 export interface UbCheck {
@@ -193,6 +219,34 @@ export interface ConsistencyCheck {
   > | null;
 }
 
+// What the viewer's round trip transforms and how, and where both came from:
+// the run's ΔPDF records the volume it was made from (made_from) and its
+// window, σ, shape, support, padding and subtractions (source "run"); without
+// a readable record the package defaults are used (source "defaults").
+// defaulted names the settings a record lacked. input is the volume the view
+// transforms: the record's (same_input true), else the flattened volume, else
+// the backfilled one (same_input false when the record's is gone, null when no
+// record names one). note says why for every fallback. The view keeps the full
+// |Q| range and its own band: the run's crop and band are reported, not applied.
+export interface ConsistencySettings {
+  source: "run" | "defaults";
+  note: string | null;
+  delta_pdf: string | null;
+  made_from: string | null;
+  input: string | null;
+  same_input: boolean | null;
+  defaulted: string[];
+  apodization: string;
+  gaussian_sigma: number;
+  zero_pad: boolean;
+  subtract_mean: boolean;
+  subtract_smooth_bg: number | number[] | null;
+  window_shape: string;
+  window_support: boolean;
+  run_crop_hkl: number[] | null;
+  run_q_band: number[] | null;
+}
+
 export interface ConsistencyMeta {
   shape: [number, number, number];
   h_range: [number, number];
@@ -207,6 +261,7 @@ export interface ConsistencyMeta {
   q_data_max: number;
   r_data_max: number;
   metrics: ConsistencyMetrics;
+  settings: ConsistencySettings;
 }
 
 export interface BraggPeakWidth {
@@ -273,6 +328,14 @@ export interface Slice {
 }
 
 export interface StageParamsIn {
+  // The cleanup stages' switches (the page's "Enable stage"; the flatten's is
+  // the request's flatten_enabled). false: the stage is not run and its input
+  // passes through to the next stage, never an output an earlier run left. A
+  // stage merely left out of the request's `stages` is a partial re-run, whose
+  // output on disk the next stage reads. Omitted: on.
+  rings_enabled?: boolean;
+  punch_enabled?: boolean;
+  backfill_enabled?: boolean;
   // Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
   edge_trim?: number;
   rings_n_patches?: number;
@@ -368,7 +431,10 @@ export interface PipelineRunRequest {
   flatten_enabled: boolean;
   force: boolean;
   force_from?: string | null;
-  stages?: string[]; // enabled-stage subset; omitted → all stages run
+  // The stages to run in this call; omitted → all. One left out is a partial
+  // re-run (the stages after it read its output on disk); a stage switched off
+  // (flatten_enabled, params.*_enabled) is not run either way.
+  stages?: string[];
   params: StageParamsIn;
   tuning?: TuningTrial; // a tuning trial: never writes to processed/
 }

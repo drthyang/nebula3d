@@ -10,7 +10,7 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore, type StageRun } from "../tune/tuner";
-import { CHAT_TOOLS, fitResult, MAX_RESULT_CHARS, runToolCall, type AgentTool, type ToolContext } from "../tools";
+import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type ToolContext } from "../tools";
 import { makeSlice } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -64,8 +64,7 @@ const META: VolumeMeta = {
   planes: ["hk0", "h0l", "0kl"],
 };
 
-const run = (name: string, args: object) =>
-  runToolCall({ id: "c", type: "function", function: { name, arguments: JSON.stringify(args) } }, CHAT_TOOLS, ctx);
+const run = (name: string, args: Args) => callTool(ctx, name, args);
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -82,13 +81,22 @@ beforeEach(() => {
   });
 });
 
-describe("runToolCall", () => {
+describe("callTool", () => {
   it("reports unparseable arguments and unknown tools to the model", async () => {
-    const bad = await runToolCall({ id: "c", type: "function", function: { name: "describe_dataset", arguments: "{oops" } }, CHAT_TOOLS, ctx);
+    const bad = await callTool(ctx, "describe_dataset", "{oops");
     expect(bad.ok).toBe(false);
     expect(bad.text).toMatch(/not a JSON object/);
     const unknown = await run("delete_everything", {});
     expect(unknown.text).toMatch(/no tool named delete_everything/);
+  });
+
+  it("runs the registry's tools unless it is given others, against the context it is given", async () => {
+    const own: ToolContext = { dataset, datasets: [dataset], skillsRead: new Set() };
+    const read = await callTool(own, "read_skill", { name: "reduction-qc" });
+    expect(read.ok).toBe(true);
+    expect(own.skillsRead?.has("reduction-qc")).toBe(true); // the context itself, not a copy of it
+    const off = await callTool(own, "read_skill", { name: "reduction-qc" }, { tools: toolsWithSkills(CHAT_TOOLS, false) });
+    expect(off.text).toMatch(/^Error: no tool named read_skill\. Available: describe_dataset, /);
   });
 
   it("rejects an out-of-range cut with the valid range", async () => {
@@ -251,7 +259,6 @@ describe("run_pipeline", () => {
       usePipelineStore.setState({ running: false, terminal: ending });
       return ending;
     });
-  const call = (args: object) => ({ id: "c", type: "function" as const, function: { name: "run_pipeline", arguments: JSON.stringify(args) } });
 
   beforeEach(() => {
     usePipelineStore.setState({ running: false, force: false, flatten: true, pdfEnabled: true, events: [] });
@@ -265,7 +272,7 @@ describe("run_pipeline", () => {
     api.fetchDataset.mockResolvedValue(fresh);
     const own = { ...ctx };
     const lines: string[] = [];
-    const r = await runToolCall(call({}), CHAT_TOOLS, own, { progress: (t) => lines.push(t) });
+    const r = await callTool(own, "run_pipeline", {}, { progress: (t) => lines.push(t) });
     expect(r.ok).toBe(true);
     expect(runStages).toHaveBeenCalledWith(["rings", "punch", "backfill", "flatten", "pdf", "pdf_check"], { datasetId: "demo", force: false });
     expect(useNavStore.getState().tab).toBe("execution");
@@ -281,7 +288,7 @@ describe("run_pipeline", () => {
     const runStages = fakeRun("done");
     usePipelineStore.setState({ runStages, flatten: false });
     api.fetchDataset.mockResolvedValue(dataset);
-    await runToolCall(call({ from_stage: "punch" }), CHAT_TOOLS, { ...ctx });
+    await callTool({ ...ctx }, "run_pipeline", { from_stage: "punch" });
     expect(runStages).toHaveBeenCalledWith(["punch", "backfill", "pdf", "pdf_check"], { datasetId: "demo", force: true });
   });
 
@@ -289,7 +296,7 @@ describe("run_pipeline", () => {
     usePipelineStore.setState({
       runStages: fakeRun("error", [{ type: "progress", stage: "backfill", status: "error", message: "out of memory" }]),
     });
-    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx });
+    const r = await callTool({ ...ctx }, "run_pipeline", {});
     expect(r.ok).toBe(false);
     expect(r.text).toBe("Error: the run failed: Backfill · out of memory");
   });
@@ -297,7 +304,7 @@ describe("run_pipeline", () => {
   it("will not start while another run is going", async () => {
     const runStages = vi.fn();
     usePipelineStore.setState({ running: true, runStages });
-    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx });
+    const r = await callTool({ ...ctx }, "run_pipeline", {});
     expect(r.text).toMatch(/a pipeline run is in progress/);
     expect(runStages).not.toHaveBeenCalled();
   });
@@ -312,7 +319,7 @@ describe("run_pipeline", () => {
         return "cancelled";
       }),
     });
-    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx }, { signal: abort.signal });
+    const r = await callTool({ ...ctx }, "run_pipeline", {}, { signal: abort.signal });
     expect(cancel).toHaveBeenCalled();
     expect(r.text).toMatch(/the run was cancelled/);
   });
@@ -320,7 +327,6 @@ describe("run_pipeline", () => {
 
 describe("tune_pipeline", () => {
   const stage = (s: Partial<StageRun> & Pick<StageRun, "stage">): StageRun => ({ tuned: true, status: "waiting", trials: [], ...s });
-  const call = (args: object) => ({ id: "c", type: "function" as const, function: { name: "tune_pipeline", arguments: JSON.stringify(args) } });
 
   beforeEach(() => {
     usePipelineStore.setState({ running: false });
@@ -346,7 +352,7 @@ describe("tune_pipeline", () => {
       });
     });
     const lines: string[] = [];
-    const r = await runToolCall(call({ stages: ["backfill", "punch"], trials_per_stage: 2 }), CHAT_TOOLS, { ...ctx }, { progress: (t) => lines.push(t) });
+    const r = await callTool({ ...ctx }, "tune_pipeline", { stages: ["backfill", "punch"], trials_per_stage: 2 }, { progress: (t) => lines.push(t) });
     expect(r.ok).toBe(true);
     expect(tuner.startTuning).toHaveBeenCalledWith(expect.objectContaining({ dataset, stages: ["backfill", "punch"], trialsPerStage: 2 }));
     expect(lines).toEqual(["1/2 Bragg punch · trial 2/2 running"]);
@@ -378,7 +384,7 @@ describe("tune_pipeline", () => {
         ],
       });
     });
-    const out = JSON.parse((await runToolCall(call({ stages: ["punch"] }), CHAT_TOOLS, { ...ctx })).text);
+    const out = JSON.parse((await callTool({ ...ctx }, "tune_pipeline", { stages: ["punch"] })).text);
     const trials = out.stages[0].trials;
     expect(trials.map((t: { n: number }) => t.n)).toEqual([1, 2, 3]);
     expect(trials[1]).toMatchObject({ changes: { punchMinSig: 3 }, no_effect: true });
@@ -389,12 +395,12 @@ describe("tune_pipeline", () => {
 
   it("reports a tuning run that stopped on an error", async () => {
     tuner.startTuning.mockImplementation(async () => useTuneStore.setState({ error: "the run with your settings failed" }));
-    const r = await runToolCall(call({}), CHAT_TOOLS, { ...ctx });
+    const r = await callTool({ ...ctx }, "tune_pipeline", {});
     expect(r.text).toBe("Error: tuning stopped: the run with your settings failed");
   });
 
   it("checks its arguments before starting", async () => {
-    const r = await runToolCall(call({ trials_per_stage: 9 }), CHAT_TOOLS, { ...ctx });
+    const r = await callTool({ ...ctx }, "tune_pipeline", { trials_per_stage: 9 });
     expect(r.text).toMatch(/trials_per_stage must be within \[2, 5\]/);
     expect(tuner.startTuning).not.toHaveBeenCalled();
   });
@@ -409,8 +415,7 @@ const full: Dataset = {
     { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" },
   ],
 };
-const runOn = (ds: Dataset, name: string, args: object) =>
-  runToolCall({ id: "c", type: "function", function: { name, arguments: JSON.stringify(args) } }, CHAT_TOOLS, { dataset: ds, datasets: [ds] });
+const runOn = (ds: Dataset, name: string, args: Args) => callTool({ dataset: ds, datasets: [ds] }, name, args);
 
 describe("assess_stage", () => {
   it("judges each stage that exists by its criterion, headline numbers only for all", async () => {
@@ -431,13 +436,56 @@ describe("assess_stage", () => {
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
   });
 
+  it("keeps each stage's outcome beside its result, never in it", async () => {
+    evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, max_floor_trend: 0.9, max_floor_span_fraction: 0.9, per_plane: {} });
+    const r = await run("assess_stage", {});
+    // The rings' and the punch's outputs are missing on this dataset: no verdict for them.
+    expect(r.outcomes?.map((o) => [o.check, o.kind, o.reasons[0] ?? null])).toEqual([
+      ["rings", "info", "no output"],
+      ["punch", "info", "no output"],
+      ["backfill", "info", "no output"],
+      ["flatten", "attention", "pedestal"],
+      ["pdf", "info", "nothing to judge"], // a ΔPDF evaluation that measured nothing is not judged (D15)
+    ]);
+    expect(r.text).not.toMatch(/"(outcomes|reasons|dataProblems)"/);
+  });
+
+  it("shows the sharp leftovers on protected planes on their own line, out of the punch's verdict (D5, 2.4.5)", async () => {
+    evaluate.evaluateStage.mockResolvedValue({ leftover_at_nodes: 0, leftover_off_lattice: 3, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3, leftover_off_lattice_broad: 0, leftover_off_lattice_sharp: 3, mean_punched_fraction: 0.03, per_plane: {} });
+    const out = JSON.parse((await runOn(full, "assess_stage", { stage: "punch" })).text);
+    expect(out.punch).toMatchObject({ verdict: "meets its goal", leftover_off_lattice_sharp: 3, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3 });
+    expect(out.punch.goal).toMatch(/sit on protected planes and stay by design/);
+  });
+
   it("keeps the per-plane detail for one stage", async () => {
     evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, per_plane: { hk0: { after_floor_max_sigma: 0.8 } } });
     const out = JSON.parse((await run("assess_stage", { stage: "flatten" })).text);
     expect(out.flatten.per_plane.hk0).toEqual({ after_floor_max_sigma: 0.8 });
     expect(out.flatten.goal).toMatch(/floor/);
   });
+
+  it("says the rings the removal left unconfirmed on its grid, the remedy with the skills on only (G1)", async () => {
+    evaluate.evaluateStage.mockResolvedValue({
+      notice: NOTICE,
+      mean_ring_energy_ratio: 1,
+      max_ring_dent: null,
+      max_ring_left: null,
+      ring_rule: "not judged: grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1",
+      per_plane: {},
+    });
+    const b = JSON.parse((await runOn(full, "assess_stage", { stage: "rings" })).text);
+    expect(b.rings).toMatchObject({ verdict: "not judged", notice: NOTICE });
+    const armC = await callTool({ dataset: full, datasets: [full], skills: false }, "assess_stage", { stage: "rings" });
+    const c = JSON.parse(armC.text);
+    expect(c.rings).toMatchObject({ verdict: "not judged", notice: NOTICE_DEFINITION });
+    expect(armC.text).not.toContain("pooled_confirm_rings");
+  });
 });
+
+// The ring removal's notice as the pipeline writes it (nebula3d.pipeline.unconfirmed_rings_notice), and its definition: arm C's.
+const NOTICE_DEFINITION =
+  "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
+const NOTICE = `${NOTICE_DEFINITION} Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.`;
 
 describe("run_log", () => {
   it("returns the last run's lines, for one stage on request", async () => {
@@ -461,34 +509,119 @@ describe("run_log", () => {
     usePipelineStore.setState({ events: [] });
     expect((await run("run_log", {})).text).toMatch(/no pipeline run in this session yet/);
   });
+
+  it("gives the ring removal's notice whole with the skills on, without its remedy with them off (G1)", async () => {
+    const summary = "pooled ring removal no_confirmed_rings: 0 shells confirmed as rings, 0 not (the crystal's own scattering, kept) (of 81/81 planes fitted), removed 0% of |I|";
+    usePipelineStore.setState({
+      running: false,
+      terminal: "done",
+      events: [
+        { type: "progress", stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` },
+        { type: "progress", stage: "punch", status: "done", message: "188 peaks punched" },
+      ],
+    });
+    const b = JSON.parse((await run("run_log", { stage: "rings" })).text);
+    expect(b.lines).toEqual([{ stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` }]);
+    const c = JSON.parse((await callTool({ ...ctx, skills: false }, "run_log", {})).text);
+    expect(c.lines.map((l: { message: string }) => l.message)).toEqual([`${summary}. ⚠ ${NOTICE_DEFINITION}`, "188 peaks punched"]);
+  });
 });
 
 describe("qmax_coverage", () => {
-  // Measured out to 1.5 r.l.u. of the origin on every plane; the box ends at 2.
+  // The coverage as Python measures and serves it (nebula3d.analysis.coverage)
+  // for tests/test_coverage.py's constructed volumes, its known answers: a
+  // cubic cell of 4 Å over ±3 r.l.u. (the nearest face at 4.712 Å⁻¹, the
+  // corner at 8.162), counts out to 4.4 Å⁻¹, and past them unmeasured space
+  // masked or NaN, where the measured voxels end with the counts, or zeros
+  // the volume marks measured, where they fill the box.
+  const CUT = {
+    id: "demo.raw", q: [], counted: [], q_min_edge: null, q_max_edge: 4.4, full_q_min: 0.35, full_q_max: 4.35,
+    measured_q_max: 4.35, box_q: 4.712, box_corner_q: 8.162, q_step: 0.1,
+  };
+  const ZEROS = { ...CUT, measured_q_max: 7.85 };
+  // Counts to the box's corners.
+  const FULL_BOX = { ...CUT, q_max_edge: null, full_q_max: 8.05, measured_q_max: 8.05 };
   beforeEach(() => {
-    api.fetchSlice.mockResolvedValue(makeSlice(21, 21, (x, y) => (Math.hypot(x, y) < 1.5 ? 1 : NaN), { half: 2 }));
-    usePipelineStore.setState({ pdfQMax: "", pdfApod: "", pdfWindowShape: "", pdfWindowSupport: true });
+    api.fetchVolumeCoverage.mockResolvedValue(CUT);
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "", pdfApod: "", pdfWindowShape: "", pdfWindowSupport: true });
   });
   const check = async () => JSON.parse((await run("qmax_coverage", {})).text);
+  const judged = async () => (await run("qmax_coverage", {})).outcomes?.[0];
 
-  it("passes a window tapered to the measured coverage", async () => {
-    const out = await check();
-    expect(out.full_coverage_q).toBeLessThan(out.box_face_q);
+  it("reads the coverage Python measures, once, and shows it on the first plane through the origin", async () => {
+    const r = await run("qmax_coverage", {});
+    expect(api.fetchVolumeCoverage).toHaveBeenCalledWith("demo.raw");
+    expect(api.fetchSlice).not.toHaveBeenCalled(); // the planes only show where
+    expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0 });
+    const out = JSON.parse(r.text);
+    expect([out.full_coverage_q, out.box_face_q]).toEqual([4.35, 4.712]);
+    expect(out.raw_counts).toEqual({ q_min_edge: null, q_max_edge: 4.4, fully_measured: [0.35, 4.35], box_face_q: 4.712 });
+    expect(out).not.toHaveProperty("per_plane");
+    expect(out).not.toHaveProperty("low_q_gap");
+  });
+
+  // The window tapered to the measured coverage reaches it by construction
+  // (plan 4.5): the verdict says the reach is the backend's own target, and
+  // judges where the counts end and the band.
+  it("passes a window tapered to the measured coverage, masked or NaN past the counts, saying the reach is the backend's target", async () => {
+    const r = await run("qmax_coverage", {});
+    const out = JSON.parse(r.text);
+    expect(out.transform_reach_q).toBe(4.35);
     expect(out.reach_from).toBe("the window is tapered to the measured coverage");
-    expect(out.verdict).toMatch(/^the transform reaches .* inside full coverage/);
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "pass", reasons: ["window fitted"], dataProblems: ["the counts end at 4.4 Å⁻¹, inside the box"] });
+    expect(out.verdict).toBe(
+      "fitted to the coverage: the window is tapered to the measured coverage, where the backend fits it to keep at most 1e-3 of its weight on unmeasured reciprocal space: its own target, not a check; " +
+        "the raw counts end at 4.4 Å⁻¹, inside the box (its nearest face at 4.712 Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0–4.4 Å⁻¹ (suggested_band), the user's to set",
+    );
+  });
+
+  // Known answer (tests/test_coverage.py): with zeros stored past the counts and
+  // marked measured, the backend's support takes them as data and does not fit
+  // the window, so the transform reaches the box faces, past the counts.
+  it("flags a volume that stores zeros past its counts: the taper cannot follow them", async () => {
+    api.fetchVolumeCoverage.mockResolvedValue(ZEROS);
+    const r = await run("qmax_coverage", {});
+    const out = JSON.parse(r.text);
+    expect(out.full_coverage_q).toBe(4.35); // the counts' edge, as on the NaN volume
+    expect(out.transform_reach_q).toBe(4.712);
+    expect(out.reach_from).toBe(
+      "the window tapers to zero at the box faces: past its counts the volume stores zeros it marks measured, which the taper to the coverage takes as data",
+    );
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["reach past coverage"], dataProblems: ["the counts end at 4.4 Å⁻¹, inside the box"] });
+    // The band is the remedy, not the taper; and no taper keeps the transform on the counts.
+    expect(out.verdict).toMatch(/past full coverage at 4\.35 Å⁻¹; set a \|Q\| band at or below it; the raw counts end at 4\.4 Å⁻¹/);
+    expect(out.verdict).toContain("and no |Q| band is set: the band they allow is 0–4.4 Å⁻¹");
+    expect(out.verdict).not.toMatch(/taper the window|only the window's taper/);
+    // Zeros stored up to inside the box, masked past them: the taper follows the measured voxels, past the counts.
+    api.fetchVolumeCoverage.mockResolvedValue({ ...ZEROS, measured_q_max: 4.55 });
+    const part = await check();
+    expect([part.transform_reach_q, part.reach_from]).toEqual([4.55, "the window is tapered to the measured voxels, which run past the counts: the volume stores zeros there"]);
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
   });
 
   it("flags a window that tapers only at the box faces past the coverage", async () => {
     usePipelineStore.setState({ pdfWindowSupport: false });
     const out = await check();
     expect(out.transform_reach_q).toBe(out.box_face_q);
-    expect(out.verdict).toMatch(/^too far: .* tapers to zero at the box faces/);
+    expect(out.reach_from).toBe("the window tapers to zero at the box faces");
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
+    // The backend never fits a separable window the page asks for, the support on or not.
+    usePipelineStore.setState({ pdfWindowSupport: true, pdfWindowShape: "separable" });
+    expect((await check()).reach_from).toBe("the window tapers to zero at the box faces");
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
+  });
+
+  it("passes the box faces inside a box measured to its corners", async () => {
+    api.fetchVolumeCoverage.mockResolvedValue(FULL_BOX);
+    const out = await check();
+    expect([out.transform_reach_q, out.full_coverage_q, out.counts_end_inside_box]).toEqual([4.712, 8.05, false]);
+    expect(out.verdict).toBe("the transform reaches 4.712 Å⁻¹ (the window tapers to zero at the box faces), inside full coverage at 8.05 Å⁻¹");
   });
 
   it("gives where the raw counts begin and end, the band they allow, and checks a band that is set", async () => {
     api.fetchVolumeCoverage.mockResolvedValue({
       id: "demo.raw", q: [], counted: [], q_min_edge: 0.61, q_max_edge: 14.204,
-      full_q_min: 0.74, full_q_max: 13.6, box_q: 11.05, box_corner_q: 29.4,
+      full_q_min: 0.74, full_q_max: 13.6, measured_q_max: 13.6, box_q: 11.05, box_corner_q: 29.4, q_step: 0.1,
     });
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
     const none = await check();
@@ -503,28 +636,99 @@ describe("qmax_coverage", () => {
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
   });
 
-  it("judges an explicit |Q| band, and a flat window by the box corners", async () => {
-    usePipelineStore.setState({ pdfQMax: "0.1" });
-    expect((await check()).verdict).toMatch(/inside full coverage/);
-    usePipelineStore.setState({ pdfQMax: "", pdfApod: "none" });
+  it("judges an explicit |Q| band by its reach where the window is not fitted, and a flat window by the box corners", async () => {
+    usePipelineStore.setState({ pdfWindowSupport: false, pdfQMax: "0.1" });
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["reach inside coverage"] });
+    usePipelineStore.setState({ pdfQMax: "4.6" });
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
+    usePipelineStore.setState({ pdfWindowSupport: true, pdfQMax: "", pdfApod: "none" });
     const flat = await check();
     expect(flat.transform_reach_q).toBe(6); // the ΔPDF's recorded q_max, the box corner
-    expect(flat.verdict).toMatch(/^too far: .* out to the box corners/);
+    expect(flat.reach_from).toMatch(/out to the box corners$/);
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["reach past coverage"] });
   });
 
-  it("judges by the window's recorded weight on unmeasured space when the ΔPDF has it", async () => {
+  it("judges by the window's recorded weight on unmeasured space where the window is not fitted to the coverage", async () => {
+    usePipelineStore.setState({ pdfWindowSupport: false });
     const meta = await api.fetchDpdfMeta();
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 1, window_open_weight: 4.1e-6 });
     const clean = await check();
     expect(clean.window_weight_on_unmeasured).toBe(4.1e-6);
-    expect(clean.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window puts 4.1e-6 of its weight/);
-    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 0.04 });
-    expect((await check()).verdict).toMatch(/^too far: the ΔPDF's separable window puts 0.04/);
+    expect(clean.window_shape).toBe("ellipsoid");
+    expect(clean.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window puts 4\.1e-6 of its weight on unmeasured reciprocal space; /);
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 1, window_open_weight: 4.1e-6 });
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["window within limit"] });
+    // A record past the limit is judged, whatever the page says of the window.
+    for (const support of [false, true]) {
+      usePipelineStore.setState({ pdfWindowSupport: support });
+      api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 0.04 });
+      expect(await judged()).toMatchObject({ kind: "attention", reasons: ["window past limit"] });
+    }
+  });
+
+  // Plan 4.5: the support on and a window the backend fits, the weight the
+  // ΔPDF records is the backend's own target; the verdict judges where the
+  // counts end and a band that is set.
+  it("says the recorded weight of a window fitted to the coverage is the backend's target, not a check", async () => {
+    const meta = await api.fetchDpdfMeta();
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 0.94, window_open_weight: 9.7e-4 });
+    const r = await run("qmax_coverage", {});
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "pass", reasons: ["window fitted", "window within limit"], dataProblems: ["the counts end at 4.4 Å⁻¹, inside the box"] });
+    expect(JSON.parse(r.text).verdict).toMatch(
+      /^fitted to the coverage: the ΔPDF's ellipsoid window \(shrunk to 0\.94 × to fit the coverage\) puts 9\.7e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the raw counts end at 4\.4 Å⁻¹/,
+    );
+    // Counts that reach the box: nothing else to say.
+    api.fetchVolumeCoverage.mockResolvedValue(FULL_BOX);
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 6.3e-4 });
+    const full = await run("qmax_coverage", {});
+    expect(full.outcomes?.[0]).toMatchObject({ kind: "pass", reasons: ["window fitted", "window within limit"], dataProblems: [] });
+    expect(JSON.parse(full.text).verdict).toMatch(/: its own target, not a check; the raw counts reach the box's nearest face$/);
+    // Not fitted: zeros stored past the counts (the record's weight judged as before).
+    api.fetchVolumeCoverage.mockResolvedValue(ZEROS);
+    api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "separable", window_scale: 1, window_open_weight: 6.3e-4 });
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["window within limit"] });
+  });
+
+  it("judges a band set where the window is fitted: inside the counts it passes, past their edges it needs attention", async () => {
+    const meta = await api.fetchDpdfMeta();
+    const fittedRecord = () => api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 0.94, window_open_weight: 9.7e-4 });
+    usePipelineStore.setState({ pdfQMin: "0", pdfQMax: "4.4" });
+    fittedRecord();
+    const inside = await run("qmax_coverage", {});
+    expect(inside.outcomes?.[0]).toMatchObject({ kind: "pass", reasons: ["window fitted", "window within limit"], dataProblems: ["the counts end at 4.4 Å⁻¹, inside the box"] });
+    expect(JSON.parse(inside.text).verdict).toMatch(/: its own target, not a check; the band 0–4\.4 Å⁻¹ stays inside the counts$/);
+    usePipelineStore.setState({ pdfQMax: "5.5" });
+    fittedRecord();
+    const past = await run("qmax_coverage", {});
+    expect(past.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["band past counts", "window within limit"] });
+    expect(JSON.parse(past.text).verdict).toMatch(
+      /^too far: Qmax past the counts' upper edge \(4\.4 Å⁻¹\): empty voxels enter the transform; the ΔPDF's ellipsoid window .*: its own target, not a check; the band the counts allow is suggested_band, the user's to set$/,
+    );
+    // Arm C reads it without the remedy.
+    fittedRecord();
+    const armC = await callTool({ ...ctx, skills: false }, "qmax_coverage", {});
+    expect(JSON.parse(armC.text).verdict).toMatch(/: its own target, not a check$/);
+    // No reach is judged with no ΔPDF weight either: the band is.
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["band past counts"] });
+  });
+
+  // A band set without a Qmin starts at 0: below the counts' lower edge only
+  // where the counts begin above the origin (a beam stop).
+  it("takes a band with no Qmin from 0, past the counts' lower edge only above a beam stop", async () => {
+    usePipelineStore.setState({ pdfQMin: "", pdfQMax: "4.4" });
+    expect((await check()).band_check).toBe("the band 0–4.4 Å⁻¹ stays inside the counts");
+    expect(await judged()).toMatchObject({ kind: "pass", reasons: ["window fitted"] });
+    api.fetchVolumeCoverage.mockResolvedValue({ ...CUT, q_min_edge: 0.61, full_q_min: 0.75 });
+    expect((await check()).band_check).toBe("Qmin below the counts' lower edge (0.61 Å⁻¹): the beam stop's empty voxels enter the transform");
+    expect(await judged()).toMatchObject({ kind: "attention", reasons: ["band past counts"] });
   });
 
   // The dev coverage case (docs/pilot-review.md finding 7): counts cut at
   // 4.511 Å⁻¹ of a box whose nearest face is 6.444 Å⁻¹, a window shrunk to fit.
-  const cut = { id: "demo.raw", q: [], counted: [], q_min_edge: null, q_max_edge: 4.507, full_q_min: 0.15, full_q_max: 4.45, box_q: 6.444, box_corner_q: 11.16 };
+  const cut = {
+    id: "demo.raw", q: [], counted: [], q_min_edge: null, q_max_edge: 4.507, full_q_min: 0.15, full_q_max: 4.45,
+    measured_q_max: 4.45, box_q: 6.444, box_corner_q: 11.16, q_step: 0.1,
+  };
   const shrunk = async () => {
     const meta = await api.fetchDpdfMeta();
     api.fetchDpdfMeta.mockResolvedValueOnce({ ...meta, window_shape: "ellipsoid", window_scale: 0.695, window_open_weight: 9.8e-4 });
@@ -534,10 +738,13 @@ describe("qmax_coverage", () => {
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
     api.fetchVolumeCoverage.mockResolvedValue(cut);
     await shrunk();
-    const out = await check();
+    const r = await run("qmax_coverage", {});
+    const out = JSON.parse(r.text);
     expect(out.counts_end_inside_box).toBe(true);
-    expect(out.verdict).toMatch(/^clean: the ΔPDF's ellipsoid window \(shrunk to 0\.695 × to fit the coverage\) puts 9\.8e-4/);
-    expect(out.verdict).toMatch(/the raw counts end at 4\.507 Å⁻¹, inside the box \(its nearest face at 6\.444 Å⁻¹\), and no \|Q\| band is set.*the band they allow is 0–4\.5 Å⁻¹/);
+    expect(out.window_scale).toBe(0.695);
+    // The data's problem, and the verdict's note that only the taper keeps the transform on the counts.
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "pass", dataProblems: ["the counts end at 4.507 Å⁻¹, inside the box"] });
+    expect(out.verdict).toMatch(/raw counts end/);
     expect(out.band_check).toMatch(/the counts end at 4\.507 Å⁻¹, inside the box \(face 6\.444 Å⁻¹\): the band they allow is 0–4\.5 Å⁻¹$/);
     // With a band set inside the counts, the band does the work: nothing to add.
     usePipelineStore.setState({ pdfQMin: "0", pdfQMax: "4.5" });
@@ -551,7 +758,7 @@ describe("qmax_coverage", () => {
   it("adds nothing where the counts reach the box: a full box, or a turned one whose counts reach past its faces", async () => {
     usePipelineStore.setState({ pdfQMin: "", pdfQMax: "" });
     for (const edge of [null, 10.95, 6.4]) {
-      api.fetchVolumeCoverage.mockResolvedValue({ ...cut, q_max_edge: edge, full_q_max: 8.45 });
+      api.fetchVolumeCoverage.mockResolvedValue({ ...cut, q_max_edge: edge, full_q_max: 8.45, measured_q_max: 8.45 });
       await shrunk();
       const out = await check();
       expect(out.counts_end_inside_box).toBe(false); // 6.4: within one coverage shell of the face
@@ -578,7 +785,7 @@ describe("symmetry_check", () => {
     expect(out.cell).toBe("hexagonal");
     expect(out.symmetry_declared).toBe(true);
     expect(out.holds).toEqual(["two-fold (180°)"]);
-    expect(out.verdict).toMatch(/^not kept: six-fold/);
+    expect(r.outcomes).toMatchObject([{ check: "symmetry", kind: "attention", reasons: ["symmetry broken"], words: out.verdict }]);
     expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xy", 0);
   });
 
@@ -588,7 +795,7 @@ describe("symmetry_check", () => {
     const r = await runOn(full, "symmetry_check", {});
     const out = JSON.parse(r.text);
     expect(out.symmetry_declared).toBe(false);
-    expect(out.verdict).toMatch(/^not judged: the file declares no symmetry/);
+    expect(r.outcomes).toMatchObject([{ check: "symmetry", kind: "info", reasons: ["not declared"], words: out.verdict }]);
     expect(out.ops.length).toBeGreaterThan(0); // the numbers are still there
     expect(r.summary).toBe("no symmetry declared: not judged");
   });
@@ -648,7 +855,8 @@ describe("grain_check", () => {
     expect(out.off_lattice_peaks).toBe(8);
     expect(out.declared_symmetry).toBe("mmm");
     expect(out.near_bragg_nodes).toBe(8);
-    expect(out.verdict).not.toMatch(/^a second grain/);
+    expect(r.outcomes?.[0]).toMatchObject({ check: "grain", words: out.verdict });
+    expect(r.outcomes?.[0].reasons).not.toContain("second grain");
     expect((await run("grain_check", { top: 3 })).text).toMatch(/top must be within \[8, 120\]/);
   });
 
@@ -737,6 +945,24 @@ describe("ub_check", () => {
     expect([out.unexplained, out.origin_shift_rlu]).toEqual([true, null]);
     expect(out.reading).toMatch(/Look at the origin of the HKL grid, or at how \|Q\| was assigned/);
   });
+
+  it("reads the fit whole with the skills on, and without its inference with them off (inference.ts)", async () => {
+    const off = () =>
+      callTool({ ...ctx, skills: false }, "ub_check", {}, { tools: toolsWithSkills(CHAT_TOOLS, false) });
+    const reading = async (r: Promise<{ text: string }>) => JSON.parse((await r).text).reading as string;
+    // An origin shift: B names it and what to report; C, what the fit found.
+    api.fetchUbCheck.mockResolvedValue(shifted);
+    const b = await reading(run("ub_check", {}));
+    const tail = ", the HKL origin shifted by about that much, which no UB can make. Report the origin, not the UB.";
+    expect(b.endsWith(`Every peak sits a mean (0.0305, 0.0195, 0.0000) r.l.u. off its node, after the fit as before it: one vector moves them all${tail}`)).toBe(true);
+    expect(await reading(off())).toBe(`${b.slice(0, -tail.length)}.`);
+    // No common vector: B says where to look; C does not.
+    api.fetchUbCheck.mockResolvedValue({ ...shifted, mean_offset_rlu: { ...shifted.mean_offset_rlu, before: [0.002, 0, 0], after: [0.002, 0, 0] } });
+    const b2 = await reading(run("ub_check", {}));
+    const look = " Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.";
+    expect(b2.endsWith(`no UB change explains it.${look}`)).toBe(true);
+    expect(await reading(off())).toBe(b2.slice(0, -look.length));
+  });
 });
 
 describe("dpdf_peaks", () => {
@@ -804,23 +1030,39 @@ describe("consistency_details", () => {
 });
 
 describe("texture_check", () => {
-  // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs.
+  // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs,
+  // the nodes 10 voxels apart (±1.5 r.l.u., 0.1 r.l.u. a voxel).
   const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;
-  const hole = (ix: number, iy: number) => ix > 2 && iy > 2 && ix < 18 && iy < 18 && [4, 0, 1].includes(ix % 5) && [4, 0, 1].includes(iy % 5);
-  const slices: Record<string, ReturnType<typeof makeSlice>> = {
-    "demo.ringremoved": makeSlice(21, 21, (_x, _y, ix, iy) => 100 + 4 * noise(ix, iy)),
-    "demo.braggpunched": makeSlice(21, 21, (_x, _y, ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy))),
-    "demo.backfilled": makeSlice(21, 21, (_x, _y, ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? 30 : 0)),
-  };
+  const hole = (ix: number, iy: number) => [4, 5, 6].includes(ix % 10) && [4, 5, 6].includes(iy % 10);
+  const cut = (f: (ix: number, iy: number) => number, half = 1.5) => makeSlice(31, 31, (_x, _y, ix, iy) => f(ix, iy), { half });
+  const stages = (half?: number): Record<string, ReturnType<typeof makeSlice>> => ({
+    "demo.ringremoved": cut((ix, iy) => 100 + 4 * noise(ix, iy), half),
+    "demo.braggpunched": cut((ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy)), half),
+    "demo.backfilled": cut((ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? 30 : 0), half),
+  });
 
   it("flags fills that sit above their rims on every plane", async () => {
+    const slices = stages();
     api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
     const r = await runOn(full, "texture_check", {});
     const out = JSON.parse(r.text);
     expect(out.per_cut).toHaveLength(3);
     expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, above_fraction: 1 });
+    expect(out.per_cut[0].not_judged).toBeUndefined();
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
     expect(r.summary).toMatch(/^systematic fill bias on 3 of 3 cut\(s\)/);
     expect(r.view?.label).toBe("H–K plane at L = 0");
+  });
+
+  it("does not judge cuts whose grid leaves the holes no room for their rims, and says why", async () => {
+    // The same cuts at 0.2 r.l.u. a voxel: the nodes 5 voxels apart, under the 10 a hole reaching one voxel and its rim need.
+    const slices = stages(3);
+    api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
+    const r = await runOn(full, "texture_check", {});
+    const out = JSON.parse(r.text);
+    expect(out.per_cut[0]).toMatchObject({ n_holes: 9, not_judged: expect.stringMatching(/^grid too coarse: the nodes are 5 voxels apart, under 10/), systematic_fill_bias: null });
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
+    expect(r.summary).toMatch(/^fill bias not judged · 3 of 3 cut\(s\) not judged: grid too coarse/);
   });
 
   it("needs the punched and backfilled outputs", async () => {
@@ -881,46 +1123,5 @@ describe("openView", () => {
     expect(useNavStore.getState().tab).toBe("consistency");
     openView({ view: "execution", label: "the run log" });
     expect(useNavStore.getState().tab).toBe("execution");
-  });
-});
-
-describe("a long result, trimmed to valid JSON", () => {
-  // An assess_stage rings result past the limit: a long goal, long per-plane lists.
-  const residuals = (n: number) => Array.from({ length: n }, (_, i) => ({ at: 1 + i / 10, residual_fraction: 0.1, noise_fraction: 0.05, significant: true, ring: false }));
-  const long = {
-    rings: {
-      verdict: "needs attention",
-      headline: "ring ratio 0.7 · left ≤ 0.4 (h0l, 3.16 Å⁻¹)",
-      max_ring_left: 0.4,
-      per_plane: { hk0: { ring_residuals: residuals(30) }, h0l: { ring_residuals: residuals(30) }, "0kl": { ring_residuals: residuals(30) } },
-      goal: "g".repeat(1500),
-    },
-  };
-
-  it("leaves a result that fits as it is", () => {
-    expect(fitResult({ a: 1 }, 100)).toBe('{"a":1}');
-  });
-
-  it("drops the bulkiest parts first, keeps the verdict, and names what it left out", () => {
-    expect(JSON.stringify(long).length).toBeGreaterThan(MAX_RESULT_CHARS);
-    const text = fitResult(long, MAX_RESULT_CHARS);
-    expect(text.length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
-    const read = JSON.parse(text) as { rings: Record<string, unknown>; left_out: string[] };
-    expect(read.rings.verdict).toBe("needs attention");
-    expect(read.rings.headline).toBe(long.rings.headline);
-    expect(read.rings.max_ring_left).toBe(0.4);
-    expect(read.left_out.length).toBeGreaterThan(0);
-    expect(read.left_out.every((x) => x.startsWith("rings."))).toBe(true);
-  });
-
-  it("hands the whole result back beside the trimmed one", async () => {
-    const big: AgentTool = { name: "big", description: "", parameters: { type: "object", properties: {} }, run: async () => ({ result: long, summary: "big" }) };
-    const r = await runToolCall({ id: "c", type: "function", function: { name: "big", arguments: "{}" } }, [big], ctx);
-    expect(r.ok).toBe(true);
-    expect(() => JSON.parse(r.text)).not.toThrow();
-    expect(r.full).toBe(JSON.stringify(long));
-    const small: AgentTool = { ...big, name: "small", run: async () => ({ result: { a: 1 }, summary: "small" }) };
-    const s = await runToolCall({ id: "c", type: "function", function: { name: "small", arguments: "{}" } }, [small], ctx);
-    expect(s.full).toBeUndefined();
   });
 });

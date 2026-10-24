@@ -68,7 +68,7 @@ construction, so the set grades the tools as well as the model.
 
 `examples/make_eval_volumes.py` writes the five volumes. The CI replay
 (`heldout.test.ts`, part of `npm test`) plays each scenario with a good and a
-bad script against tool results recorded on them (`fixtures/heldout.json`). It
+bad script against tool results recorded on them (`fixtures/holdout/heldout.json`). It
 also checks what the tools read against the faults. No live model has run the
 set yet. The measured set's fixture (in `web/src/llm/evals/fixtures/`) was recorded
 before the 3D ring rule, and re-recording it needs the user's data.
@@ -130,7 +130,12 @@ the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
 
   `NEBULA_EVAL_ONLY` takes scenario ids, `NEBULA_EVAL_REPEAT` runs per scenario.
   A Claude base URL reads `ANTHROPIC_API_KEY` from the environment; the key is
-  never written out.
+  never written out. A model on a local server needs a context window of 48k
+  or more, the validation's run policy ([the models](#the-models)): before the
+  first run, and again before each, the runner reads the window (`runContext`)
+  and refuses one under 49,152 tokens or one it cannot read, as the
+  validation's runner does. Each run in the record keeps the window it had
+  (`context_window`).
 - **The held-out set:** write the volumes into a data root of their own, serve
   it, and run with `NEBULA_EVAL_SET=heldout`:
 
@@ -152,8 +157,14 @@ the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
     retries (a crash, out of memory, a stall) ends in a note instead, and is
     listed by kind.
 
-  The models are qwen3.8-27b in LM Studio, loaded at a 32,768-token context,
-  and gemma4:26b in Ollama. The Mac is shared: the script first shows what the
+  The models are qwen3.8-27b in LM Studio and gemma4:26b in Ollama, each with
+  a window of at least 48k (49,152 tokens), the run policy's minimum for a
+  local live run ([the models](#the-models)). Load qwen3.8-27b with a Context
+  Length of 49152 or more before the script (`lms load qwen/qwen3.8-27b
+  --context-length 49152`), and make that its default Context Length;
+  gemma4:26b must support 49152 or more, and the run sizes `num_ctx` itself.
+  Both sets check the window as above, so a model loaded at 32k is refused
+  before its first run. The Mac is shared: the script first shows what the
   model servers hold and how much memory is free, stops below 15 %, and never
   unloads a model. Before the local-model work, on the nine scenarios of the
   time: qwen3.8-27b passed 12/27 runs with 15 exceptions, qwen3:32b 17/27 and
@@ -164,9 +175,10 @@ the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
   they hold figures from unpublished data. Their summaries go to
   [`docs/evals/local/<date>/`](evals/local/): per run, whether it passed, the
   names of the checks it failed, how the model server failed it if it did,
-  whether it ended in an exception, at the round cap or by the loop guard, and
-  its time and tokens (`web/scripts/eval-records.mjs`). The 10 October runs
-  are there as the baseline, and the before/after report reads the folders:
+  whether it ended in an exception, at the round cap or by the loop guard, its
+  time and tokens, and the context window it had
+  (`web/scripts/eval-records.mjs`). The 10 October runs are there as the
+  baseline, and the before/after report reads the folders:
 
   ```bash
   cd web && node scripts/eval-report.mjs --before ../docs/evals/local/2026-10-10/*.json --after ../docs/evals/local/<date>/*.json
@@ -250,6 +262,15 @@ including a one-run pilot on Haiku (`claude-haiku-5-5-pilot.json`).
   are too few to show a second grain", which the grader read as claiming one.
   Every record was then re-graded with the current checks
   (`NEBULA_EVAL_REGRADE`); only that run changed.
+- **One reader of an answer's words, re-graded (plan 3.2).** The graders now
+  read an answer through the reader the answer checks read
+  (`web/src/llm/answerText/`): a question is no claim, a sentence a condition
+  or a plan opens is no credit, and the numbers are read as the app reads
+  them. Every record was re-graded with it (`NEBULA_EVAL_REGRADE`), and it
+  moved no grade. One grade moved from an earlier fix that no re-grade had
+  taken in: the ring check now reads a claim across a number's decimal point,
+  so gemma4:26b's second `rings-left` run says that a ring is left. The run
+  still fails: it never called `assess_stage`.
 - **Not run:**
   - LM Studio's muse-glimmer was not loaded, and these runs never load LM Studio
     models.
@@ -275,7 +296,7 @@ began with.
 | --- | --- |
 | **A** | The default pipeline, no agent: Run with nothing configured, three times |
 | **B** | The Pilot as shipped, for each model: its tools, skills and guardrails, and whatever tools the shipped code offers that model. A local model is offered the reading tools and those its question is about (`localTools.ts`), 23 of the 24 for this task (`compare_datasets` is withheld), and more as it calls them; the validation does not bypass that |
-| **C** | B without its skills and nothing else: `read_skill` is not offered and the system prompt lists no skill; the skill gate (a stage's settings change only after its skill is read) is counted as passed, so C may change what B may. A test (`validationArms.test.ts`) runs both through the real agent loop and shows their requests differ only by `read_skill` and the skills' listing |
+| **C** | B with the whole method taken away, structurally, and its guardrails kept (below) |
 | **D** | The planted truth: the crystal's own noise-free diffuse scattering through the same transform on the same support. It is the reference, and a check that the scorer passes it on every case |
 
 B and C get the same task, blind to the case, and one dataset each: its own, under
@@ -289,6 +310,40 @@ or another case. The task:
 > data that the settings cannot fix. End with: the problems you found (or that you
 > found none), what you changed and why, and the strongest pair correlations in the
 > 3D-ΔPDF with their vectors and signs.
+
+**Arm C** removes the whole method, not only the skills' listing. It is one switch,
+`skills: false` (`web/src/llm/skills.ts`), carried on the run's tool context and on
+the builders of the opening messages; every builder of what the model reads reads
+it, so nothing is cut out of a text after it is built. With it off:
+
+- the system prompt is built without the skills' section, and `read_skill` is not
+  offered;
+- every text the model reads keeps its definitions and leaves out its inference
+  (`web/src/llm/inference.ts`, the manager's rule): a definition says what a field,
+  a setting, a tool or a reading is, its units, how it is computed, its limits as a
+  measurement, or how to use the tools; an inference says which reading or tool to
+  use for a conclusion, what a value or a pattern is evidence of, or what a finding
+  calls for (a change, the check to run next, what to report). The system prompt
+  names the properties a run is judged by (its five stages and the data's own
+  problems, as `{{achieved}}` reads them), as what exists and in no order, and
+  leaves out the checklist, the readings each is settled with and the routing of a
+  question to a tool; the tool descriptions, the tools' readings, the stages' goals
+  and criteria, the verdicts' words, the context's prose and the tuning prompts'
+  settings lose theirs. Each span is tagged once, where the text is written, and
+  `web/src/llm/__tests__/__snapshots__/model-visible/6-inference.md` lists every
+  one, by class, in the text it sits in;
+- no send-back or refusal names a skill, a stage or a tool to run next: the answer
+  checks still check, and send the same answers back, quoting the answer's own words
+  and saying what they lack ("this verdict needs its evidence from a check run in
+  this reply");
+- there is no skill gate, so C may change and tune what B may.
+
+With the switch on, the text is arm B's byte for byte. `validationArms.test.ts`
+runs both arms through the real agent loop and shows their requests differ only by
+what the switch changes; `armC.test.ts` drives a scripted arm-C session over every
+tool and holds every request and result to no skill's name, no sentence of a
+skill's text of seven words or more, no span of inference, and no send-back that
+names a tool, a stage or a skill.
 
 ### The cases, and the split
 
@@ -312,15 +367,75 @@ a test case: 16 cases.
 **dev** is for improving the tools, the skills and the prompts. **test** is held
 out: each of its cases has another crystal (cell, order, seed, planted vectors) and
 another fault size, so what is learned on dev cannot fit it by its numbers, and
-its numbers are read once, to be reported. Four tests enforce this:
+its numbers are read once, to be reported. These tests enforce this:
 
+- the test split's definitions are held out in a module of their own,
+  `src/nebula3d/validation/holdout/heldout_cases.py`, which no builder or agent
+  opens, prints or reads. `cases.py` keeps the dev cases and every builder.
+  `cases("test")` loads the module with an opt-in alone, `NEBULA_HOLDOUT_TESTS=1`
+  (tests, CI) or the CLI's `--report`, and without one raises an error that says
+  how to opt in, never an empty split. One loader imports it
+  (`test_only_the_loader_imports_the_held_out_module`, an AST scan of every
+  import in `src`, `tests`, `scripts` and `examples`, checked on a planted tree by
+  `test_the_import_scan_finds_every_kind_of_import`); without the opt-in nothing
+  reaches it (`test_the_test_split_is_unreachable_without_the_opt_in`); and the
+  opt-in gives the cases it gave before the move, by a pinned sha256 of their
+  canonical JSON (`test_the_opt_in_gives_the_test_split_as_it_was`). The web
+  harness's manifest lists every case, so writing it needs the opt-in too:
+  `python -m nebula3d.validation manifest --report`;
 - every command that reads the test split needs `--report`
   (`NEBULA_VALIDATION_REPORT=1` for the live runner): `test_the_test_split_needs_report`,
   `casesToRun` in `validation.test.ts`;
-- no tool, skill, prompt, algorithm page or pipeline file names a test case
-  (`test_nothing_tuned_names_a_test_case`);
+- nothing that may be tuned names a test case
+  (`test_nothing_tuned_names_a_test_case`). The scan reads `web/src`,
+  `web/scripts`, `src`, `tests`, `examples`, `scripts`, `docs`, `.claude/skills`,
+  `changes` (the changelog's entries before they join it) and the top-level
+  Markdown. A case may be named only where the test split is
+  defined (`src/nebula3d/validation/holdout/`, not the rest of the package, the
+  dev cases' `cases.py` included), in the validation's held-out records
+  (`docs/evals/validation/holdout/`, where arm A's test results are reported and
+  which builders and agents do not open; every other doc is read, this page and
+  the review's findings included), and in the manifest the web harness grades
+  against (`fixtures/validation-cases.json`). It skips binary files, other people's
+  packages (`node_modules`) and generated files (bytecode, caches,
+  `*.egg-info`), but it reads a test's `__snapshots__`. It matches each test
+  case's id and opaque label; the test crystal's seed after the word *seed*; its
+  planted vectors only when all of them are written as vectors in one file,
+  since one alone is a common rock-salt vector; each planted vector's length in
+  Å; and each fault's size with its unit or its key: the UB angle, the origin
+  offset as a vector, the coverage edge and fraction, all the ring positions
+  together, the shell's |Q| and the Q² background; and arm A's scores on each
+  test case, its planted correlations' amplitude shares (×) with its pedestal,
+  read from the held-out record. A number matches however it is written, ½ and
+  3/2 among the forms. A bare number never matches,
+  so the cell, the UB's axis, the amplitudes and the shell's width, lobes and
+  power are not matched. A failure names the file and the kind of value, never
+  the value. Two controls check the scan. A made-up test split planted in a
+  temporary tree is found kind by kind and nowhere else
+  (`test_the_holdout_scan_finds_a_planted_test_case`). The held-out module and
+  the manifest, copied to a place the scan reads, are found for every kind
+  (`test_the_holdout_scan_finds_the_test_cases_out_of_place`);
 - the test crystals share no planted vector, cell or seed with the dev crystal
   (`test_dev_and_test_differ_in_crystal_and_fault`, `validation.test.ts`);
+- pytest leaves the test split out of the output whoever tunes reads. A test
+  that takes `validation_case` (arm D's) runs on the dev cases by default; the
+  test split's cases are collected only with `NEBULA_HOLDOUT_TESTS=1`, and then
+  as `test-split-case-0`, `-1` and so on, never by id, with a failure that names
+  the failed criteria and nothing of the case (`tests/conftest.py`). CI sets it
+  for every job, so CI covers the test split as before. Collecting with it unset
+  and set pins both (`test_the_default_run_leaves_the_test_split_out`,
+  `test_the_opt_in_runs_the_test_split_under_masked_names_only`); a value other
+  than `1`, `0` or unset stops the run (`test_a_mistyped_opt_in_stops_the_run`),
+  and `test_ci_runs_the_test_split` pins CI's setting. Without the opt-in, the
+  tests that need the test split skip and the rest check the dev cases. No
+  failure shows a held-out case: a test that loops over the cases names a test
+  case by its masked name and asserts on a boolean or a count with a message of
+  its own; the manifest's test entries are compared by digest, the dev entries
+  one by one; arm D names a test case's files by its masked name, not its id;
+  and an error on a test case is reported by its kind. Each of these failure
+  paths is run on a made-up test case
+  (`test_a_failure_shows_nothing_of_a_held_out_case`, and in
+  `validation.test.ts` for the web harness's own checks);
 - the one paid model runs the test split only (`validationModels.test.ts`).
 
 ### Scoring
@@ -347,6 +462,59 @@ resolvable"). The text graders are heuristics (a clause that negates does not
 claim); the outputs' scores carry the verdict, and a reviewer reads each
 transcript.
 
+The graders read a conclusion's words as the Pilot's answer checks read them,
+through one reader (`web/src/llm/answerText/`; [development.md](development.md#an-answers-words)):
+
+- a sentence's leading answer word ("Yes,", "No:") is no negation and no part
+  of its clauses; a clause ends at "; ", at a spaced dash and at ": " after a
+  label of more than three words ("The UB is not the problem: the origin is
+  shifted" claims the shift);
+- a clause negates with a negation or an absence ("nowhere", "too few",
+  "insufficient"), a curly apostrophe read as a straight one;
+- a question claims nothing, of a fault or against one; a clause that a
+  condition or a plan opens ("If …", "I will check whether …") reports no
+  fault, but no hedge excuses an alarm: "if the UB is off by 0.4°" on a case
+  without a turned UB is charged;
+- the numbers are read as the app reads them (a number inside a name such as
+  hk0 is none; 12,345 is one number), a percentage as written; a clause's
+  angles are its numbers in degrees, or where it writes none, its bare numbers
+  outside a vector, so an axis written as [1 1 0] is no turn.
+
+The checks (`credits` and `charges`, `web/src/llm/evals/validation.ts`) decide
+on that reading; where the graders and the answer checks keep different
+rules, each is named and pinned with both readings (W1 to W8,
+`web/src/llm/__tests__/answerTextPins.test.ts`). Every text check is also
+decided on a second reading, the witness (`web/src/llm/evals/witness.ts`): an
+independent minimal parse with the same rules written apart, which imports
+nothing. Where the shared reader passes a check that the witness fails, the
+run records a dispute: one of the two misread the conclusion. The grade
+stays the shared reader's, and the dispute is left for a reviewer to settle.
+CI holds the disputes over the dev corpus to a declared list, empty
+(`witness.test.ts`), and characterisation goldens hold every grade over it
+(`answerTextGoldens.test.ts`), so a change to the reading shows which grades
+it moves.
+
+A turned UB has one limit, 0.05°. The Pilot calls a UB turned at 0.05° or
+more from an unsymmetrised fit, for `{{achieved}}` and the answer checks
+alike, and a symmetrised volume's UB not judged (`UB_TURNED` and
+`UB_NOT_JUDGED`, `web/src/llm/verdicts/rules.ts`; the user's decision of
+2026-10-19, review entry D4). The grader reads a clause that calls the UB off,
+with every angle it writes under 0.05°, as no claim of a misorientation: a
+turn the size of the fit's own noise (`charges`, `web/src/llm/evals/validation.ts`).
+A symmetrised fit's turn is not judged by the app alone (W8): the grader
+charges an answer that calls it a turn.
+The grader keeps the number as its own (`UB_NOISE_DEG`) and imports nothing
+of the app's verdicts; a test holds the two to one boundary by what each does,
+bisecting the app's `UB_TURNED` and the grader's charge of "The UB is turned
+by x°" on `dev-control` to within 1e-9 (`validation.test.ts`), so a change to
+either rule fails it. On the dev cases built at 81³, the seven without a
+turned UB turn by far less, and the two agree on each
+(`devData/ubAgreement.replay.test.ts`). The grader's limit was 0.1° until
+2026-10-19 (plan 3.2, the manager on the user's delegation, review entry
+P3.2); the change moved no grade of the dev corpus
+(`web/src/llm/evals/answerTextGoldens.test.ts`), and the scenarios' checks do
+not read the UB's angle.
+
 ### What each run leaves
 
 One JSON record per model and split (`docs/evals/validation/<model>-<split>.json`)
@@ -354,41 +522,119 @@ and one Markdown transcript per run beside it, readable offline. Each run holds:
 
 - **the tools offered on each request**, as they went over the wire (a recording
   `fetch`), so a reviewer sees what the model could call and when a tool joined it;
-- **the decisions:** every step's tool, arguments, status, summary and whole
-  result, and the model's own words before it as the reason;
+- **the decisions:** every step's tool, arguments, status, summary and result,
+  and the model's own words before it as the reason. A step's result has two
+  readings (`web/src/llm/readings/`): `result` is what the model read when the
+  call returned, and `full` the whole result the tool found, kept only where
+  the two differ (a result past the limit, which the model reads fitted to
+  valid JSON, with what it left out named under `left_out`). `shortened` says
+  that the loop later shortened the model's copy, in a long reply on a local
+  model, to save room; `result` stays what was sent. Every record holds
+  `result` as what the model read, those made before the two new fields
+  (2026-10-19) included; `full` and `shortened` are optional, so the schema
+  stays `nebula3d-validation-run/1`;
 - **every number the conclusion writes, with its source:** the step, tool and
   field it came from, or that no tool result holds it (the latest result holding a
   value that matches to the written precision; a coincidence is possible, so read
-  the transcript);
-- **the conclusion**, and the grades above; then, after `score`, the scored outputs.
+  the transcript). The source is searched in what each tool found, whole, so a
+  number a `{{reference}}` filled from a field the model's copy left out has
+  one;
+- **the conclusion**, and the grades above; then, after `score`, the scored outputs;
+- **the disputes:** each check the graders' two readings dispute, with what
+  the shared reader and the witness each found (`grades.disputes`, and the
+  check's own grade). The field is optional, so the schema stays
+  `nebula3d-validation-run/1` and a record made before it reads as none. The
+  transcript lists them, a dev run's become candidate findings (`bug`), and
+  the table counts them (Disputed).
+
+A record is graded again with the current graders by
+`NEBULA_VALIDATION_REGRADE=<record.json>` (`validation.live.test.ts`): each
+run rebuilt from its conclusion and decisions, its unsafe actions kept as the
+run counted them; a test-split record needs `NEBULA_VALIDATION_REPORT=1`.
+`python -m nebula3d.validation summarize --record <record.json>` then writes
+its table again from the grades and scores it holds, scoring nothing (a
+test-split record needs `--report`), and `NEBULA_VALIDATION_RENDER` its
+transcripts.
 
 ### Findings
 
-A reviewer's finding from a run (or from the review) is
-`{case, run, step, kind, evidence, proposed_fix, needs_user_approval}`, with
-`kind` one of `bug`, `missing-tool`, `skill-gap`, `orchestration`, `science-error`
-(`web/src/llm/evals/findings.ts`; an optional `arm` says where it came from). The
-skills are the user's methods and a physical criterion is their call, so
-`skill-gap` and `science-error` need the user by default; the rest do not unless
-the fix moves a criterion. `candidateFindings` lists what a run's scores and
-transcript point at, with the evidence, and tells a fault no tool showed (a missing
-tool) from one a tool showed and the answer missed. The review's own are in
-[evals/validation/review-findings.json](evals/validation/review-findings.json).
+One record holds every finding,
+[evals/validation/review-findings/](evals/validation/review-findings/) (one file per finding),
+in one schema (`web/src/llm/evals/findings.ts`, checked by `findings.test.ts`).
+Every finding has `{source, kind, evidence, proposed_fix, needs_user_approval}`,
+with `kind` one of `bug`, `missing-tool`, `skill-gap`, `orchestration`,
+`science-error`. Its `source` sets the rest of its shape:
+
+- **`validation`**, a finding from a run, names the dev `case`, the `run` and the
+  `step` (null for the run as a whole); an optional `arm` says where it came from.
+  A finding without `source` reads as one, so older records stay valid.
+- **`review`**, a finding from reading the code, names no case, run, step or arm.
+  Its evidence cites file:line, and `at` names the commit (its SHA) those lines
+  are on. An optional `ref` is the review's own handle for it (`D1`), by which
+  the change that implements it finds it.
+
+A finding with the other source's fields, or a source neither of these, is
+refused. Either source says what became of it the same way: `status` (`open`,
+`implemented`, `deferred`); an implemented one names its `commit` and the
+regression `tests` that pin it; `note` says what is provisional or left open, and
+`decision` who chose which option, and when. The skills are the user's methods
+and a physical criterion is their call, so `skill-gap` and `science-error` need
+the user by default; the rest do not unless the fix moves a criterion.
+`candidateFindings` lists what a run's scores and transcript point at, as
+validation findings with the evidence. Of a fault the conclusion missed, it
+tells one no tool showed (a missing tool) from one a tool showed in the text
+the model read, which the answer missed (orchestration), and from one a tool
+found but the text the model read left out, its number only in the step's
+whole result (a bug: keep that field in the fitted text). Only validation
+findings enter per-case logic: a run's transcript lists none from the review, and
+the record's test checks the case of the validation ones alone (each a dev case).
+The record holds the eight from validation batch 1 and the eleven the
+architecture review filed on 2026-10-19 (`D1` to `D9`, `Q10`, `Q11`, read on
+`f807320`), each decided by the user and left open for plan rows 2.4.1 to 2.4.11.
 
 ### The models
 
 All four are set up the same way and reported side by side. Each runs three times
-per case and arm; the context is what the Pilot's tools need loaded.
+per case and arm; the context is the least window the run policy accepts.
 
 | Model | Served by | Context | Splits | Notes |
 | --- | --- | --- | --- | --- |
-| qwen/qwen3.8-27b | LM Studio | 32k | dev, test | Local |
-| gemma4:26b | Ollama | 32k (`OLLAMA_CONTEXT_LENGTH`) | dev, test | Local |
-| meta/muse-glimmer | LM Studio | 32k | dev, test | Local |
+| qwen/qwen3.8-27b | LM Studio | 48k or more (loaded) | dev, test | Local |
+| gemma4:26b | Ollama | 48k or more (supported) | dev, test | Local |
+| meta/muse-glimmer | LM Studio | 48k or more (loaded) | dev, test | Local |
 | Claude Sonnet 5.5 | Anthropic | – | **test only** | Paid; spend capped at $12 |
 
-The runner checks an LM Studio model's loaded context and stops if it is short
-(Ollama's cannot be read). The paid model also needs its cap typed
+**A local live run needs at least 48k of context (49,152 tokens).** This is
+the run policy (`RUN_POLICY.minLocalContextTokens` in
+`web/src/llm/evals/validationModels.ts`), as the sibling app RMC holds its local
+runs; the scenario evals and the local tier hold a local model to it too
+(`modelAt`; see "Running it" under the scenarios, above). Arm B's worst turn on a local model, the validation task with two skills
+read whole, is about 45.6k tokens with the reply reserve before the loop's
+compaction and 37k to 42k after it (`web/src/llm/__tests__/tokenBudget.test.ts`).
+A 32k window holds it only by shortening the skills just read to stubs, so a
+run at 32k would grade arm B on stubs of its method. Before the plan starts,
+and again before each run, the runner reads the window the run will get
+(`runContext`), without loading anything, and refuses one under the minimum or
+one it cannot read, saying the model, the window found, the minimum and how
+to load it with more:
+
+- **LM Studio:** the context the model is loaded with (`/api/v0/models`). Load
+  it with a Context Length of 49152 or more in its load settings, or with
+  `lms load qwen/qwen3.8-27b --context-length 49152` once it is unloaded, and
+  make that the model's default Context Length: LM Studio reloads an idle
+  model with its defaults. A model it has not loaded is refused, since its
+  defaults cannot be read.
+- **Ollama:** the longest context the model supports (`/api/show`; `ollama
+  show gemma4:26b` lists it). The run goes through Ollama's own chat API, and
+  the window plan sizes `num_ctx` for each request up to it (64k for the worst
+  turn, where the model supports it), so there is nothing to load; the machine
+  needs the memory for that window. A model that supports less than 48k cannot run.
+
+Each run's record keeps the window it had and the minimum it was held to
+(`context_window`: `tokens`, `min_tokens`, and `read_from`,
+`lmstudio-loaded` or `ollama-supported`), and the record's `model` keeps
+`min_context_tokens`. The field is optional, so records made before it keep the
+schema `nebula3d-validation-run/1`. The paid model also needs its cap typed
 (`NEBULA_VALIDATION_ALLOW_SPEND=12`) and a key in `ANTHROPIC_API_KEY`, which is
 never written out. The spend tracker (`SpendTracker`) refuses a run that could pass
 the cap at its worst: the first run is held to a ceiling set by the round limit and
@@ -442,8 +688,8 @@ a voxel), by `python -m nebula3d.validation arm-a --split {dev,test} --report`. 
 cell is the planted correlation's amplitude as a share of the truth's, and its
 shift. The test split is not tuned on: it is arm A's reported result. The full
 results, with each run's log and digest, are in
-[evals/validation/arm-a-dev.json](evals/validation/arm-a-dev.json) and
-[arm-a-test.json](evals/validation/arm-a-test.json). Dev was run again after the
+[evals/validation/arm-a-dev.json](evals/validation/arm-a-dev.json) for dev; the
+test split's are held out (below). Dev was run again after the
 review's batch 1 (2026-10-17, [pilot-review.md](pilot-review.md#batch-1-the-eight-findings-implemented-2026-10-17)):
 the same digests and scores, since the batch changes the Pilot's tools and not
 what the default pipeline writes.
@@ -461,18 +707,7 @@ what the default pipeline writes.
 | `dev-flatten` | ⟨½ 1 1⟩− 1.12× 0.01 Å; ⟨3/2 0 0⟩+ 0.92× 0.01 Å | – | – | 0.9776 | no | a pedestal left; the fault not reported |
 | `dev-rings-shell` | ⟨½ 1 1⟩− 1.14× 0.04 Å; ⟨3/2 0 0⟩+ 0.95× 0.01 Å | 0.0e+00 | 0.14, 0.14 / 1.03 | 0.1968 | yes | passes |
 
-**Test** (reported; `--report`)
-
-| Case | Planted correlations (amplitude, shift) | Window on unmeasured | Rings left / shell kept | Pedestal | Reported | Where it fails |
-| --- | --- | :---: | :---: | :---: | --- | --- |
-| `test-control` | ⟨½ 1 0⟩+ 0.86× 0.02 Å; ⟨3/2 1 0⟩− 1.20× 0.02 Å | – | – | 0.0289 | – | passes |
-| `test-ub` | ⟨½ 1 0⟩+ 0.84× 0.04 Å; ⟨3/2 1 0⟩− 1.19× 0.04 Å | 1.5e-04 | – | 0.0289 | no | the fault not reported |
-| `test-origin` | ⟨½ 1 0⟩+ 0.81× 0.03 Å; ⟨3/2 1 0⟩− 1.18× 0.02 Å | 9.8e-05 | – | 0.0314 | no | the fault not reported |
-| `test-coverage` | ⟨½ 1 0⟩+ not resolvable; ⟨3/2 1 0⟩− not resolvable | 9.2e-04 | – | – | yes | passes |
-| `test-rings` | ⟨½ 1 0⟩+ 0.69× 0.06 Å ✗; ⟨3/2 1 0⟩− 1.19× 0.04 Å | 0.0e+00 | 0.07, 0.08, 0.13, 0.13 | 0.1146 | yes | a planted correlation off |
-| `test-shell` | ⟨½ 1 0⟩+ 0.87× 0.02 Å; ⟨3/2 1 0⟩− 1.20× 0.04 Å | – | 1.01 | 0.0298 | yes | passes |
-| `test-flatten` | ⟨½ 1 0⟩+ 0.86× 0.02 Å; ⟨3/2 1 0⟩− 1.21× 0.02 Å | – | – | 0.7184 | no | a pedestal left; the fault not reported |
-| `test-rings-shell` | ⟨½ 1 0⟩+ 0.77× 0.06 Å ✗; ⟨3/2 1 0⟩− 1.24× 0.03 Å | 0.0e+00 | 0.07, 0.12, 0.13, 0.14 / 0.98 | 0.1165 | yes | a planted correlation off |
+The test split's results are a held-out record, in `docs/evals/validation/holdout/`, which builders and agents do not open.
 
 "Window on unmeasured" is the window's weight on unmeasured space (limit 1e-3);
 "rings left" is the share of each ring's contrast left (limit 0.15) and "shell kept"
@@ -480,31 +715,24 @@ the share of the crystal's own shell kept (at least 0.85); "pedestal" is the spa
 a |Q|-dependent background as a share of the diffuse level (limit 0.25); "reported"
 is whether the run's own log and records tell the user of the fault (for `shell`, that
 it did not call the shell a ring). Arm D, the planted truth, passes every criterion
-on all 16 cases (a test, `test_arm_d_passes_every_criterion_on_every_case`).
+on all 16 cases (a test, `test_arm_d_passes_every_criterion_on_every_case`, which
+runs the test split's cases only with `NEBULA_HOLDOUT_TESTS=1`, as CI does).
 
-What it shows, as the baseline the Pilot is held to:
+What it shows on dev, as the baseline the Pilot is held to (the test split's
+reading is in its held-out record):
 
-- **Eight of 16 cases pass** (dev: control, coverage, rings, shell, rings-shell;
-  test: control, coverage, shell), every one with three bit-identical runs, no unsafe
-  action (A takes none) and the window inside its limit (the closest is 9.8e-4, on
-  the dev coverage case).
+- **Five of the eight dev cases pass** (control, coverage, rings, shell,
+  rings-shell), every one with three bit-identical runs, no unsafe action (A takes
+  none) and the window inside its limit (the closest is 9.8e-4, on the coverage
+  case).
 - **It fails where the answer is a setting or a report.** A background rising as
-  |Q|² stays as a pedestal (a span of 0.98 and 0.72 of the diffuse level against 0.25)
-  and nothing says so. A turned UB and a shifted origin leave every planted
-  correlation within its limits and are never mentioned. The cut coverage is
-  noticed only as a log line that unmeasured voxels reach the box's edge, which does
-  not say where the counts end.
+  |Q|² stays as a pedestal (a span of 0.98 of the diffuse level on the flatten
+  case, against 0.25) and nothing says so. A turned UB and a shifted origin leave
+  every planted correlation within its limits and are never mentioned. The cut
+  coverage is noticed only as a log line that unmeasured voxels reach the box's
+  edge, which does not say where the counts end.
 - **The ring stage finds and removes the rings and keeps the crystal's own shell**
-  (rings left 0.07 to 0.14 of their contrast, shell kept 0.98 to 1.04), but on both test
-  cases with rings it takes the weaker planted correlation down to 0.69 and 0.77 of
-  its amplitude, under the 0.8 limit. The same ring removal costs the dev crystal's
-  correlations nothing.
-- **On the test crystal the baseline sits near the limits on every case, the control
-  included.** Its first planted correlation reads 0.81 to 0.87 of its amplitude outside the
-  ring cases (the lower limit is 0.8) and its second 1.18 to 1.24 (the upper limit is 1.25), against
-  0.91 to 0.95 and 1.09 to 1.16 on the dev crystal: the default reduction and
-  transform bias them, and arm D reads 1.00 on both. A test run that changes a setting
-  has little room on either side, and the limits, fixed before any run, were not
-  moved after this was seen.
-- **Not resolvable:** on the coverage cases the cut leaves the weaker correlation (and
-  on the test crystal both) merged with its neighbours, so no arm is judged on them.
+  (rings left 0.14 of their contrast, shell kept 1.03 to 1.04), and costs the dev
+  crystal's correlations nothing.
+- **Not resolvable:** on the coverage case the cut leaves the weaker correlation
+  merged with its neighbours, so no arm is judged on it.

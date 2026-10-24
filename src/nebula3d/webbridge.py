@@ -25,6 +25,8 @@ Workflow (one dataset per browser session):
     run(stages, params_json, …)   → run_pipeline (streams per-stage progress)
     datasets_json()               → dataset + per-stage status (for the viewers)
     volume_slice / dpdf_slice / consistency_slice → binary envelopes
+    dataset_regrid_json(id, …)    → regrid a raw volume onto its refined UB, as a
+                                    new dataset beside it (registered like a load)
 
 All file I/O happens in Pyodide's in-memory filesystem; nothing is uploaded.
 """
@@ -59,9 +61,12 @@ from nebula3d.pipeline import (
 )
 from nebula3d.pipeline import load_input as _load_run_input
 from nebula3d.preprocessing import write_global_ring_diagnostics
+from nebula3d.server import bragg as _bragg
 from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
 from nebula3d.server import deltapdf as _dpdf
+from nebula3d.server import regrid as _regrid
+from nebula3d.server import rings as _rings
 from nebula3d.server import tuning as _tune
 from nebula3d.server import volumes as _vol
 from nebula3d.server.config import ServerConfig
@@ -83,7 +88,10 @@ __all__ = [
     "volume_slice",
     "volume_coverage_json",
     "volume_ub_check_json",
+    "dataset_regrid_json",
     "volume_ring_isotropy_json",
+    "volume_shell_floors_json",
+    "volume_texture_json",
     "dpdf_meta_json",
     "dpdf_slice",
     "dpdf_features_json",
@@ -91,6 +99,7 @@ __all__ = [
     "consistency_check_json",
     "consistency_slice",
     "bragg_profile_json",
+    "ring_diagnostics_json",
     "save_dpdf",
 ]
 
@@ -884,12 +893,17 @@ async def _run_pdf_stages_gpu(
         _prepare_forward,
     )
     from nebula3d.core import low_memory  # noqa: PLC0415
-    from nebula3d.pipeline import _drop_sigma, _pdf_is_current  # noqa: PLC0415
+    from nebula3d.pipeline import (  # noqa: PLC0415
+        _drop_sigma,
+        _passed_through_notice,
+        _pdf_is_current,
+        _run_paths,
+        _stage_input,
+    )
 
     cfg = _require_cfg()
     assert _S.input is not None
-    paths = pipeline_paths(_S.input, proc_dir=proc_dir or cfg.processed_dir,
-                           flatten_enabled=params.flatten_enabled)  # type: ignore[attr-defined]
+    paths = _run_paths(_S.input, params, proc_dir=proc_dir or cfg.processed_dir)  # type: ignore[arg-type]
     p = params.delta_pdf  # type: ignore[attr-defined]
 
     def forced(stage: str) -> bool:
@@ -899,12 +913,11 @@ async def _run_pdf_stages_gpu(
             return STAGES.index(stage) >= STAGES.index(force_from)
         return False
 
-    pdf_input = paths.pdf_input
-    if inputs is not None:  # a tuning trial: the input lives in the run
-        upstream = inputs.get("flatten" if params.flatten_enabled else "backfill")  # type: ignore[attr-defined]
-        pdf_input = upstream if upstream is not None else pdf_input
-    if not pdf_input.exists():
-        return False  # pass-through subtleties → CPU path resolves them
+    # The volume run_pipeline's ΔPDF stage would read: the stages switched off
+    # passed through, a tuning trial's input from its run (`inputs`).
+    pdf_input = _stage_input("pdf", params, paths, stages, inputs)  # type: ignore[arg-type]
+    if pdf_input == paths.input or not pdf_input.exists():
+        return False  # the raw input (its edge trim), or none → the CPU path
     gpu_cfg = delta_pdf_transform_config(p) + _GPU_FFT_TOKEN
 
     async def forward_dpdf(vol: HKLVolume) -> DeltaPDF | None:
@@ -932,6 +945,9 @@ async def _run_pdf_stages_gpu(
             if paths.delta_pdf.exists() and not is_current:
                 _cb_emit(cb, "pdf", "progress", None,
                          f"{paths.delta_pdf.name} stale — recomputing")
+            notice = _passed_through_notice(params, "pdf", pdf_input)  # type: ignore[arg-type]
+            if notice is not None:
+                _cb_emit(cb, "pdf", "progress", None, notice)
             _cb_emit(cb, "pdf", "start", None,
                      f"3D-ΔPDF FFT (apodize={p.apodization}) [WebGPU]")
             pdf_vol = nebula3d.load(pdf_input, dtype=params.np_dtype())  # type: ignore[attr-defined]
@@ -1059,6 +1075,8 @@ def bragg_profile_json(dataset_id: str) -> str:
     the browser that is the Pyodide virtual FS — so this only re-reads a small
     JSON file.  The ``has_profile: false`` shape matches the native
     ``BraggProfileOut`` defaults so the viewer's empty states are identical.
+    ``node_test`` is the nodes the punch's node test could not judge, read as
+    the server reads it (:func:`nebula3d.server.bragg.node_test_out`).
     """
     cfg = _require_cfg()
     ds = _ds.find_dataset(cfg, dataset_id)
@@ -1071,7 +1089,7 @@ def bragg_profile_json(dataset_id: str) -> str:
             "has_profile": False, "schema_version": 1,
             "width_labels": [], "hkl_width_labels": [], "width_units": {},
             "n_peaks": 0, "fit_covariance": False, "punch_frame": None,
-            "peaks": [],
+            "peaks": [], "node_test": None,
         })
     data = json.loads(path.read_text(encoding="utf-8"))
     return _json({
@@ -1086,7 +1104,20 @@ def bragg_profile_json(dataset_id: str) -> str:
         "fit_covariance": bool(data.get("fit_covariance", False)),
         "punch_frame": data.get("punch_frame"),
         "peaks": list(data.get("peaks", [])),
+        "node_test": _bragg.node_test_out(data.get("node_test")),
     })
+
+
+def ring_diagnostics_json(dataset_id: str) -> str:
+    """The ring removal's record (mirrors GET /api/rings/{id}/diagnostics): the
+    ring candidates it detected and could not confirm on its grid, which it did
+    not subtract.  The ring stage writes ``*_diagnostics.json`` next to its output
+    volume (here the Pyodide virtual FS), so this only re-reads a small JSON
+    file, through the same helper as the server (:mod:`nebula3d.server.rings`)."""
+    out = _rings.saved_ring_diagnostics(_require_cfg(), dataset_id)
+    if out is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    return _json(out)
 
 
 def _resolve(volume_id: str, kind: str) -> _ds.StageStatus:
@@ -1132,16 +1163,56 @@ def volume_coverage_json(volume_id: str) -> str:
     return _json({**m, "id": volume_id})
 
 
+def _parse_cell(cell: str) -> tuple[int, int, int]:
+    """``"2,2,2"`` → (2, 2, 2): the Bragg nodes' spacing, three positive integers."""
+    try:
+        nodes = tuple(int(x) for x in str(cell).split(","))
+    except ValueError as exc:
+        raise ValueError(f"cell must be three positive integers, not {cell!r}") from exc
+    if len(nodes) != 3 or min(nodes) < 1:
+        raise ValueError(f"cell must be three positive integers, not {cell!r}")
+    return nodes[0], nodes[1], nodes[2]
+
+
 def volume_ub_check_json(volume_id: str, cell: str = "1,1,1",
                          q_max: float | None = None) -> str:
     """Whether an HKL stage's UB puts its Bragg peaks on their nodes (mirrors
     GET /api/volumes/{id}/ub)."""
     stage = _resolve(volume_id, "hkl")
-    nodes = tuple(int(x) for x in str(cell).split(","))
-    if len(nodes) != 3 or min(nodes) < 1:
-        raise ValueError(f"cell must be three positive integers, not {cell!r}")
-    m = _vol.volume_ub_check(stage.path, nodes, None if q_max is None else float(q_max))  # type: ignore[arg-type]
+    nodes = _parse_cell(cell)
+    m = _vol.volume_ub_check(stage.path, nodes, None if q_max is None else float(q_max))
     return _json({**m, "id": volume_id})
+
+
+def dataset_regrid_json(dataset_id: str, cell: str = "1,1,1", q_max: float | None = None,
+                        symmetrise: bool = False) -> str:
+    """Regrid a dataset's raw volume onto its refined UB, as a new dataset
+    beside it (mirrors POST /api/datasets/{id}/regrid: the same fields, and a
+    refusal as data, ``written`` false).
+
+    The new file is written into the workspace's ``raw/``, where
+    :func:`load_input` puts an uploaded volume, and registered as an input the
+    same way (:func:`select_input`): the dataset listing shows it, and a run
+    can reduce it.  It lives in Pyodide's in-memory filesystem only, like
+    every file here: a restarted worker loses it, and :func:`select_input`
+    then reports ``false`` for it.  The browser computes in float32, as its
+    runs do, so the volume is loaded and written in float32.
+    """
+    cfg = _require_cfg()
+    if _ds.find_dataset(cfg, dataset_id) is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    nodes = _parse_cell(cell)
+    limit = None if q_max is None else float(q_max)
+    if limit is not None and not (math.isfinite(limit) and limit > 0):
+        raise ValueError(f"q_max must be positive, not {q_max!r}")
+    # The regrid reads the volume itself and holds it twice (source and
+    # regridded): drop the viewers' cached volumes first, as a run does.
+    _clear_caches()
+    out = _regrid.regrid_dataset_out(cfg, dataset_id, nodes, limit, bool(symmetrise),
+                                     dtype=np.dtype(_BROWSER_PRECISION))
+    if out["written"] and json.loads(select_input(out["dataset_id"])) is not True:
+        raise RuntimeError(f"{out['file']} was written but is not listed as a dataset")
+    return _json(out)
 
 
 def volume_ring_isotropy_json(volume_id: str, q: str, fwhm: str) -> str:
@@ -1150,6 +1221,47 @@ def volume_ring_isotropy_json(volume_id: str, q: str, fwhm: str) -> str:
     stage = _resolve(volume_id, "hkl")
     m = _vol.volume_ring_isotropy(stage.path, _vol.parse_ring_shells(q, fwhm))
     return _json({**m, "id": volume_id})
+
+
+def volume_shell_floors_json(volume_id: str, q_step: float | None = None,
+                             percentile: float | None = None,
+                             min_count: int | None = None) -> str:
+    """The floor of every |Q| shell of an HKL stage over the whole volume, and
+    of the flatten's input for the flattened stage (mirrors
+    GET /api/volumes/{id}/shell-floors: the same fields).  Low-memory mode, as
+    every bridge call: the volumes are read a slab at a time."""
+    stage = _resolve(volume_id, "hkl")
+    pair = _ds.flatten_input_of(_require_cfg(), volume_id)
+    m = _vol.volume_shell_floors(
+        stage.path, pair[1].path if pair else None,
+        q_step=None if q_step is None else float(q_step),
+        percentile=None if percentile is None else float(percentile),
+        min_count=None if min_count is None else int(min_count))
+    return _json({"id": volume_id, "before_id": pair[0] if pair else None, **m})
+
+
+def volume_texture_json(volume_id: str, limit: int = 20, min_sigma: float | None = None,
+                        one_way: float | None = None, min_holes: int | None = None,
+                        floor: float | None = None) -> str:
+    """Whether the backfill's fills sit systematically off the diffuse around
+    their holes, on every punch hole of a backfilled stage with its 3-D rim,
+    against the dataset's punched stage (mirrors
+    GET /api/volumes/{id}/texture: the same fields).  Low-memory mode, as
+    every bridge call: the holes are labelled a slab at a time."""
+    stage = _resolve(volume_id, "hkl")
+    if stage.name != "backfilled":
+        raise ValueError(
+            f"the fills' texture is measured on a backfilled stage, not {stage.name!r}")
+    pair = _ds.punched_stage_of(_require_cfg(), volume_id)
+    if pair is None:
+        raise FileNotFoundError(f"no punched stage on disk for {volume_id!r}")
+    m = _vol.volume_texture(
+        stage.path, pair[1].path, limit=int(limit),
+        min_sigma=None if min_sigma is None else float(min_sigma),
+        one_way=None if one_way is None else float(one_way),
+        min_holes=None if min_holes is None else int(min_holes),
+        floor=None if floor is None else float(floor))
+    return _json({"id": volume_id, "punched_id": pair[0], **m})
 
 
 def dpdf_meta_json(volume_id: str) -> str:
@@ -1168,11 +1280,14 @@ def dpdf_slice(volume_id: str, plane: str, value: float) -> bytes:
 
 
 def dpdf_features_json(volume_id: str, min_sigma: float = 5.0, limit: int = 12) -> str:
-    """The ΔPDF's strongest extrema, grouped (mirrors GET /api/deltapdf/{id}/features)."""
+    """The ΔPDF's strongest extrema, grouped by the point group the dataset's
+    raw file declares, else by sign, length and size (mirrors
+    GET /api/deltapdf/{id}/features)."""
     if not float(min_sigma) > 0 or int(limit) < 1:
         raise ValueError("min_sigma must be positive and limit at least 1")
     stage = _resolve(volume_id, "delta_pdf")
-    m = _dpdf.dpdf_features(stage.path, float(min_sigma), int(limit))
+    m = _dpdf.dpdf_features(stage.path, float(min_sigma), int(limit),
+                            declared_by=_ds.raw_input_of(_require_cfg(), volume_id))
     return _json({**m, "id": volume_id})
 
 
@@ -1183,13 +1298,14 @@ def _band(lo: float | None, hi: float | None) -> tuple[float, float] | None:
     return (float(lo), float(hi)) if lo is not None and hi is not None else None
 
 
-def _pdf_input(dataset_id: str) -> Path:
-    cfg = _require_cfg()
-    path = _cons.pdf_input_path(cfg, dataset_id)
-    if path is None:
+def _view_input(dataset_id: str) -> _cons.ViewInput:
+    """The view's input volume and the run's transform, as the server takes
+    them (:func:`nebula3d.server.consistency.view_input`)."""
+    view = _cons.view_input(_require_cfg(), dataset_id)
+    if view is None:
         raise FileNotFoundError(
             f"no ΔPDF-input volume (flattened/backfilled) for {dataset_id!r}")
-    return path
+    return view
 
 
 def consistency_meta_json(
@@ -1199,8 +1315,9 @@ def consistency_meta_json(
     r_min: float | None = None,
     r_max: float | None = None,
 ) -> str:
-    """Consistency grid + agreement metrics (mirrors /api/consistency/{id}/meta)."""
-    path = _pdf_input(dataset_id)
+    """Consistency grid + agreement metrics, with the run's transform settings
+    (mirrors /api/consistency/{id}/meta)."""
+    view = _view_input(dataset_id)
     # The back-FFT round trip is the heaviest interactive computation (a forward
     # AND inverse 3-D FFT plus its comparison volumes).  Free the off-screen
     # views' caches first — the ΔPDF cache and the cleanup slice volumes are not
@@ -1210,7 +1327,7 @@ def consistency_meta_json(
     # run; the consistency cache itself is kept (the reconstruction manages its
     # own eviction).
     _release_other_caches("cons")
-    meta = _cons.consistency_meta(path, _band(q_min, q_max), _band(r_min, r_max))
+    meta = _cons.consistency_meta(view, _band(q_min, q_max), _band(r_min, r_max))
     return _json(meta)
 
 
@@ -1235,9 +1352,8 @@ def consistency_slice(
     r_max: float | None = None,
 ) -> bytes:
     """Binary slice envelope of one comparison panel (data/recon/residual/dpdf)."""
-    path = _pdf_input(dataset_id)
     return _cons.consistency_slice_envelope(
-        path, _band(q_min, q_max), _band(r_min, r_max),
+        _view_input(dataset_id), _band(q_min, q_max), _band(r_min, r_max),
         panel=panel, plane=plane, value=float(value))
 
 
@@ -1257,9 +1373,9 @@ def save_dpdf(
     which turns it into a browser download.
     """
     cfg = _require_cfg()
-    path = _pdf_input(dataset_id)
     out = _cons.save_reconstruction(
-        path, _band(q_min, q_max), _band(r_min, r_max), cfg.processed_dir)
+        _view_input(dataset_id), _band(q_min, q_max), _band(r_min, r_max),
+        cfg.processed_dir)
     payload = out.read_bytes()
     out.unlink()
     header = json.dumps({"filename": out.name}).encode("utf-8")

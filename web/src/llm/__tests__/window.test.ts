@@ -116,10 +116,23 @@ describe("planWindow", () => {
     const plan = await planWindow({ baseUrl: "http://localhost:1234/v1", model: "qwen", messages: asking(35_000) });
     expect(plan.window).toBe(8_192);
     expect(plan.refusal).toMatch(/loaded with a 8,192-token context/);
-    expect(plan.refusal).toMatch(/Context Length of 32,768/);
-    // The same request fits a 32k window.
+    // The suggestion is 48k at least (TOOLS_CONTEXT: a full assessment reaches about 45.6k, tokenBudget.test.ts).
+    expect(plan.refusal).toMatch(/Context Length of 49,152/);
+    // The same request fits a 32k window: the guard itself goes by the window, not the suggestion.
     vi.stubGlobal("fetch", vi.fn(async () => json({ data: [{ id: "qwen", state: "loaded", loaded_context_length: 32_768 }] })));
     expect((await planWindow({ baseUrl: "http://localhost:1234/v1", model: "qwen", messages: asking(35_000) })).refusal).toBeUndefined();
+  });
+
+  it("suggests 48k, then the power of two that holds the request, within what the model supports", async () => {
+    const loaded = (max?: number) =>
+      vi.stubGlobal("fetch", vi.fn(async () => json({ data: [{ id: "qwen", state: "loaded", loaded_context_length: 32_768, max_context_length: max }] })));
+    const refusal = async (chars: number) =>
+      (await planWindow({ baseUrl: "http://localhost:1234/v1", model: "qwen", messages: asking(chars) })).refusal;
+    loaded(262_144);
+    expect(await refusal(160_000)).toMatch(/needs about 45,720 tokens .* Context Length of 65,536 and ask again/);
+    expect(await refusal(220_000)).toMatch(/Context Length of 131,072 and ask again/);
+    loaded(98_304);
+    expect(await refusal(220_000)).toMatch(/Context Length of 98,304 and ask again/);
   });
 
   it("sends anyway where the window is unknown: a model LM Studio has not loaded, a cloud model", async () => {

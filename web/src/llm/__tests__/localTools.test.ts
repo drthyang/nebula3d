@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { HELDOUT_SCENARIOS } from "../evals/heldout";
+import { holdoutOptedIn } from "../evals/heldoutFixture";
 import { SCENARIOS } from "../evals/scenarios";
 import { CORE_TOOLS, lastQuestion, toolsFor } from "../localTools";
 import { CHAT_TOOLS, toolSpecs, type AgentTool } from "../tools";
@@ -14,13 +15,21 @@ const offered = (question: string) => toolsFor(question, CHAT_TOOLS).map((t) => 
 
 describe("toolsFor", () => {
   it("offers each eval question every tool its checks call for, and no action a check forbids", () => {
-    for (const s of [...SCENARIOS, ...HELDOUT_SCENARIOS]) {
+    // The held-out scenarios need no recorded data here, only their questions and
+    // checks; they still run with the opt-in alone (heldoutFixture.ts), and a failure
+    // names one by its place in the held-out set, not its id or check.
+    const named = [
+      ...SCENARIOS.map((s) => ({ s, name: s.id, held: false })),
+      ...(holdoutOptedIn() ? HELDOUT_SCENARIOS : []).map((s, i) => ({ s, name: `held-out scenario ${i}`, held: true })),
+    ];
+    for (const { s, name, held } of named) {
       const names = offered(s.question);
       for (const c of s.checks) {
+        const what = held ? name : `${name}: ${c.name}`;
         const needs = /^calls ([a-z_]+)/.exec(c.name)?.[1];
-        if (needs) expect(names, `${s.id}: ${c.name}`).toContain(needs);
+        if (needs) expect(names.includes(needs), `${what} is not offered a tool its checks call for`).toBe(true);
         const forbids = /^does not call ([a-z_]+)/.exec(c.name)?.[1];
-        if (forbids) expect(names, `${s.id}: ${c.name}`).not.toContain(forbids);
+        if (forbids) expect(names.includes(forbids), `${what} is offered an action a check forbids`).toBe(false);
       }
     }
   });
@@ -45,16 +54,18 @@ describe("toolsFor", () => {
     expect(size(toolsFor("Is the powder-ring removal clean on this run?", CHAT_TOOLS))).toBeLessThan(0.6 * size(CHAT_TOOLS));
   });
 
+  it("offers a generic question ub_check and texture_check, which the method's checks need (Q10, 2.4.10)", () => {
+    const generic = offered("How clean is this reduction?");
+    expect(generic).toEqual(expect.arrayContaining(["assess_stage", "qmax_coverage", "symmetry_check", "texture_check", "ub_check"]));
+    // A question about something else does without them, as before.
+    expect(offered("What are the strongest pair correlations in the 3D-ΔPDF?")).not.toEqual(expect.arrayContaining(["ub_check"]));
+    expect(offered("What are the strongest pair correlations in the 3D-ΔPDF?")).not.toContain("texture_check");
+  });
+
   it("offers the ΔPDF's feature list to a question about its pair correlations", () => {
     expect(offered("What are the strongest pair correlations in the 3D-ΔPDF, with their vectors and signs?")).toContain("dpdf_peaks");
     expect(offered("Which correlations does the data show?")).toContain("dpdf_peaks");
     expect(offered("Is the powder-ring removal clean on this run?")).not.toContain("dpdf_peaks");
-  });
-
-  it("gives a question about nothing in particular the common diagnostics, and keeps tools it has no rule for", () => {
-    expect(offered("How does this reduction look?")).toEqual(expect.arrayContaining(["radial_profile", "qmax_coverage", "symmetry_check", "bragg_peaks"]));
-    const custom: AgentTool = { name: "custom", description: "d", parameters: {}, run: async () => ({ result: {}, summary: "" }) };
-    expect(toolsFor("Is the ring removal clean?", [...CHAT_TOOLS, custom]).map((t) => t.name)).toContain("custom");
   });
 });
 

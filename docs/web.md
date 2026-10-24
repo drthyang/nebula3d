@@ -87,6 +87,41 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   voxels flipped out of 48.4 M, identical peak counts — and ~15–25 % faster
   (`tests/test_float32_equivalence.py` gates it; a `"precision"` key in the run
   params JSON pins either mode for A/B validation).
+- **Native and browser parity.** `tests/test_native_browser_parity.py` runs a
+  synthetic volume (the validation's dev case with powder rings and a shell
+  of the crystal's own, 121³) through the native engine (float64, low-memory
+  off, the server's parameters and endpoints) and through `nebula3d.webbridge`
+  as the Pyodide worker drives it (float32, low-memory on, `run_async`), and
+  pins which verdicts must agree. *Equal*: every log line's words, and its
+  numbers to the digit printed (the lines are identical: the flatten's
+  summary no longer prints a constant fit's zero R² as `-0.000`, as the
+  browser did); the ring decision (the shells found, the ones confirmed as
+  powder rings and the crystal's kept, the share removed); the punch (the
+  same peaks at the same nodes, the same voxels punched); the ΔPDF's grid,
+  window, provenance and strongest features; the consistency view's
+  settings. *To float32 rounding*: the cleaned volumes (normalised RMS 3e-8),
+  the ΔPDF (1.5e-7), the peaks' intensities (1.4e-7), the back-FFT r and RMS
+  (4e-10). *Allowed to differ*: the round trip against the data's even part
+  (1e-14 natively, about 6e-6 in float32, both sound), and the ring test's
+  measurements per direction, which the low-memory mode samples more thinly.
+
+  **Known limit: a ring near the ring test's `min_snr`.** In low-memory mode
+  the ring test reads at most an eighth of the volume's voxels for the shells
+  (`ring_isotropy.shell_isotropy`), so its medians per direction are noisier
+  and a confirmed ring's signal-to-noise drops by up to about 2.6× (on the
+  161³ demo 103 → 48 at 3.09 Å⁻¹ and 7.0 → 3.8 at 6.94 Å⁻¹, against the
+  rule's 3; their isotropy moved by up to 0.27). A ring near `min_snr` can be
+  confirmed natively and left in the browser. The decisions agreed on every
+  dev case and the demo at 121³ and 161³; a ring planted just above the
+  threshold shows the limit (`test_a_ring_just_above_min_snr_is_confirmed_in_both_runtimes`,
+  a strict expected failure that fails the run once a fix lifts it): the
+  native engine confirms it at a signal-to-noise of 3.8, while the browser,
+  reading about a third of that shell's voxels, measures 2.1 and keeps it,
+  counted among the crystal's own shells. float32 plays no part in it: the
+  native engine in low-memory mode measures what the browser does. The
+  validation is unaffected, since its live runs use the native server.
+  Whether the browser should sample more, at a memory cost, is a question for
+  the user after v1.
 - **WebGPU ΔPDF.** When WebGPU is available, the ΔPDF forward FFT and the
   back-FFT consistency inverse run on the GPU (`web/src/gpu/` — a mixed
   radix-2/3/4/5 Stockham line kernel with CPU-precomputed twiddles; index math
@@ -227,11 +262,11 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 
 | View | Replaces | What |
 | --- | --- | --- |
-| **Configure / Run pipeline** | `run_pipeline.py` | Pick a dataset and tune the key parameters per stage — ring removal (the *Model*, pooled 3D sectors by default; azimuthal patches and Fourier order for the per-plane models), punch (the *Footprint*: own width by default, profile-matched or an ellipsoid in the spherical ρ/θ/φ or reciprocal a*/b*/c* frame), backfill, flatten, ΔPDF, consistency — then run all stages with a live stepper and log. Existing outputs are skipped unless *force* is on. The form is remembered per dataset in the browser, with the selected dataset: another temperature of the same sample starts from the form as it stands, another sample from the defaults (`state/configMemory.ts`). Default landing view. |
+| **Configure / Run pipeline** | `run_pipeline.py` | Pick a dataset and tune the key parameters per stage — ring removal (the *Model*, pooled 3D sectors by default; azimuthal patches and Fourier order for the per-plane models), punch (the *Footprint*: own width by default, profile-matched or an ellipsoid in the spherical ρ/θ/φ or reciprocal a*/b*/c* frame), backfill, flatten, ΔPDF, consistency — then run all stages with a live stepper and log. Existing outputs are skipped unless *force* is on. A stage's *Enable stage* switch turns it off: the run sends the switch (`params.rings_enabled`, `punch_enabled`, `backfill_enabled`; the flatten's `flatten_enabled`), the stage is not run, and the stage after it reads what came before it, never an output an earlier run left, whose file stays as it was (see [the complete pipeline](pipeline.md#the-complete-pipeline)). With *force* off, the stages after it keep the outputs that exist. The form is remembered per dataset in the browser, with the selected dataset: another temperature of the same sample starts from the form as it stands, another sample from the defaults (`state/configMemory.ts`). Default landing view. |
 | **Reciprocal cleanup** | `explore_slice.py` | One view per HKLVolume stage (raw / ring-removed / punched / backfilled / flattened) on one H/K/L plane and cut, in the [viewer workspace](#viewer-workspace). All views share **one colour range**, set from a reference stage (the output stage by default, or *Each view* to scale each stage on its own), and one linked zoom and crosshair; hovering reads every stage's value at the same (K, L). The cut readout is an **editable box** — type `0.3333` and it snaps to the nearest plane. |
 | **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range, a gray dashed unit-cell overlay and an optional [structure overlay](#structure-overlay) of interatomic vectors. Views open at ±40 Å. In *Navigate* mode a click on one view moves the other two cuts through the point. |
 | **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related ΔPDF files × the three planes as a square grid, sharing cut, window, and contrast; a per-plane colour scale pooled across files. Component retained; unrouted from the sidebar for now. |
-| **Q–R Band Transform** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data, ΔPDF, back-FFT and residual** as four views (focus layout, data large, by default), with agreement metrics (Pearson r, normalised RMS) in the header. Data, back-FFT and residual share one plane, cut, colour range and view; the residual has its own ± range on a diverging map. The ΔPDF plane follows the Q plane (H ↔ x, K ↔ y, L ↔ z) while *Link orientation* is on. **\|Q\|** and real-space **\|R\|** bands, each with its own *Apply* in the view footer, isolate which ranges support a signal; applying a band keeps both cuts. The \|Q\| band is drawn as its true contour on the r.l.u. axes: a circle for an orthogonal cell, a tilted ellipse (centred off the origin where the cut axis is not normal to the plane) for any other. |
+| **Q–R Band Transform** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data, ΔPDF, back-FFT and residual** as four views (focus layout, data large, by default), with agreement metrics (Pearson r, normalised RMS) in the header. Data, back-FFT and residual share one plane, cut, colour range and view; the residual has its own ± range on a diverging map. The ΔPDF plane follows the Q plane (H ↔ x, K ↔ y, L ↔ z) while *Link orientation* is on. **\|Q\|** and real-space **\|R\|** bands, each with its own *Apply* in the view footer, isolate which ranges support a signal; applying a band keeps both cuts. The \|Q\| band is drawn as its true contour on the r.l.u. axes: a circle for an orthogonal cell, a tilted ellipse (centred off the origin where the cut axis is not normal to the plane) for any other. The round trip transforms what the run transformed, as the run did: the volume the run's ΔPDF was made from, with its window, σ, shape and support, padding and subtractions, which the ΔPDF records (`source_file`, `transform_config`), over the full \|Q\| range and the band applied here. Without a record to follow it falls back: to the package defaults when the ΔPDF records no transform (none on disk, or one written before the record), and to the flattened volume, else the backfilled one, when no record names its input or that file is gone. The header says which, and why: "the run's window: hann", or "the default window, gaussian σ 0.4: no ΔPDF on disk for this dataset; the view falls back to …". |
 | **NEBULA Pilot** | — (new) | A column docked beside every page, which the page reflows beside, never over it: drag its edge to resize it, or collapse it to a slim rail (opened from the sidebar or the rail). In a window under 1000 px wide (900 px in landscape) it is a bottom sheet under the page instead. With *Follow* on, the figure it works on stays fully in view beside it. Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic) model. One **chat**: free questions, five one-click stage reviews, and two one-click requests (*Assess the run*, *Tune for the best result*), grounded in metrics computed in the browser. With **Tools** on, the model measures any cut, judges each stage on three planes, checks the punch and backfill for texture, the ΔPDF's window against the data coverage (and where the raw counts begin and end in \|Q\|) and the ΔPDF's symmetry, sets the ΔPDF view's contrast, reads the Bragg profile, back-FFT check and run log, compares datasets, opens the viewer beside the chat, and acts: it runs the pipeline (shown live on the Execution page and in the chat), changes settings, and tunes the pipeline one stage at a time, keeping the best settings for each. Optional vision opt-in attaches the rendered slice for image-capable models. |
 
 ### Viewer workspace
@@ -350,22 +385,27 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 | --- | --- | --- |
 | GET | `/api/datasets` | discovered datasets with per-stage output status (tuning runs' chains included) |
 | GET | `/api/datasets/{id}` | one dataset, or a tuning view: `<id>~tune~<run>` (the run's chain) or `<id>~tune~<run>~<stage>-<n>` (one trial) |
+| POST | `/api/datasets/{id}/regrid` | `{cell, q_max, symmetrise}` → the dataset's raw volume regridded onto the UB the UB check refines, written as a new dataset beside it (`<stem>_regridded.nxs`) and never over a file: `{written, dataset_id, file, ub_start, ub, turn_deg, symmetrised, voxels_outside, voxels_outside_share, …}`. A refusal (the file exists, a turn under 0.05°, a symmetrised volume without its source) is a 200 with `written: false` and `refusal: {code, reason}`. The bridge's `dataset_regrid_json` returns the same fields. See [regrid.md](regrid.md) |
 | GET | `/api/volumes/{id}/meta` | HKLVolume shape, axis ranges, lattice, UB, and the symmetry the file declares (`symmetry`, `symmetry_ops`) |
 | GET | `/api/volumes/{id}/slice?plane=&value=&interp=` | binary 2D slice |
-| GET | `/api/volumes/{id}/coverage` | where the counts begin and end in \|Q\|: the share of each shell's voxels holding counts, the edges where it crosses ½, and the box's nearest face |
+| GET | `/api/volumes/{id}/coverage` | where the counts begin and end in \|Q\|: the share of each shell's voxels holding counts, the edges where it crosses ½, where the shells stop being fully measured (the ΔPDF window's support), the shells' width, and the box's nearest face |
 | GET | `/api/volumes/{id}/ub?cell=&q_max=` | whether the UB puts the Bragg peaks on their nodes, and the refined UB |
 | GET | `/api/volumes/{id}/rings?q=&fwhm=` | which shells are powder rings: each rises in nearly every direction |
+| GET | `/api/volumes/{id}/shell-floors?q_step=&percentile=&min_count=` | the flatten's floor of every \|Q\| shell over the whole volume (`centres`, `floors`, `counts`, `totals`, `medians`); for the flattened stage also of its input, the backfilled stage (`floors_before`, …), and the diffuse `level` the pedestal's span is a share of. Unset settings are those the flatten recorded in the file (returned as `flatten`, its fit range included), else its 0.05 Å⁻¹ shells, 25th percentile and 20 voxels. The bridge's `volume_shell_floors_json` returns the same fields. See [the floors and the pedestal](pipeline.md#the-floors-and-the-pedestal) |
+| GET | `/api/volumes/{id}/texture?limit=&min_sigma=&one_way=&min_holes=&floor=` | for a backfilled stage, whether the fills sit systematically off the diffuse around their holes: the Pilot's `texture_check` rule on every punch hole of the dataset's punched stage (`punched_id`; the holes from the punch's record), each with its 3-D rim (`systematic_fill_bias`, `median_fill_bias_sigma`, `median_fill_bias_level`, `above_fraction`, `below_fraction`, the shares beyond the floor, and the `limit` holes farthest outside their range). Unset limits are the Pilot's: 0.5σ, three quarters of the holes, 5 holes, a fifth of the level. 400 for another stage, 404 without the punched stage. The bridge's `volume_texture_json` returns the same fields. See [the fills' texture](pipeline.md#the-fills-texture) |
 | GET | `/api/deltapdf/{id}/meta` | ΔPDF shape, ranges, lattice, \|Q\|max |
 | GET | `/api/deltapdf/{id}/slice?plane=xy\|xz\|yz&value=` | binary ΔPDF orthoslice |
-| GET | `/api/consistency/{dataset_id}/meta?q_min=&q_max=&r_min=&r_max=` | back-FFT metadata and metrics |
+| GET | `/api/deltapdf/{id}/features?min_sigma=&limit=` | the strongest extrema outside the origin's disk, grouped by the point group the raw file declares, else by sign, length and size (`grouped_by`) |
+| GET | `/api/consistency/{dataset_id}/meta?q_min=&q_max=&r_min=&r_max=` | back-FFT metadata and metrics, and `settings`: the volume and transform the round trip ran and where they came from (`source` `"run"`, from the ΔPDF's record, or `"defaults"`; `input` the volume, the record's `made_from` when `same_input`; a `note` for every fallback; `defaulted` names what a partial record lacked) |
 | GET | `/api/consistency/{dataset_id}/check` | the pipeline's saved back-FFT check metrics (no FFT) |
 | GET | `/api/consistency/{dataset_id}/slice?panel=data\|recon\|residual\|dpdf&...` | binary consistency slice |
 | POST | `/api/consistency/{dataset_id}/save` | save the band-limited back-FFT result |
 | GET | `/api/bragg/{dataset_id}/profile` | the fitted Bragg profile the punch recorded |
+| GET | `/api/rings/{dataset_id}/diagnostics` | what the ring stage recorded in its diagnostics: their `status`, and `unconfirmed_at_grid`, the ring candidates (powder rings or the crystal's own scattering) the pooled model detected and could not confirm on its grid, which it did not subtract (`count`, `needs`, the `notice` its run log ends on, `q_centers`), else null. Diagnostics older than the ring-removed volume give none (`has_diagnostics` false). The bridge's `ring_diagnostics_json` returns the same fields. See [which shells are rings](pipeline.md#which-shells-are-rings-and-the-grid-that-takes) |
 | GET, PUT | `/api/data-root` | the data root the server reads, and changing it |
 | POST | `/api/data-root/browse` | pick the data root in a native folder dialog |
 | GET | `/api/health` | liveness |
-| POST | `/api/pipeline/run` | start a job; returns `{id, status, ...}`. With `tuning: {run_id, trial}` the job is one tuning trial: it runs only that stage, into the trial's folder |
+| POST | `/api/pipeline/run` | start a job; returns `{id, status, ...}`. `stages` are the stages to run: one left out is a partial re-run, the stages after it reading its output on disk. `params.rings_enabled`, `punch_enabled` or `backfill_enabled` false (the flatten's: `flatten_enabled`) switches a stage off: it is not run, and its input passes through to the next stage. With `tuning: {run_id, trial}` the job is one tuning trial: it runs only that stage, into the trial's folder |
 | POST | `/api/tuning/runs` | `{dataset_id, first_stage}` → a tuning-run folder, `{run_id, dataset_id}` |
 | POST | `/api/tuning/runs/{run_id}/promote` | `{trial}` → copy the trial into the run's chain, drop the stage's trials |
 | GET | `/api/pipeline/jobs/{id}` | a job's status |

@@ -15,8 +15,9 @@ import type { PipelineContext } from "../context/pipelineContext";
 import { buildChatMessages } from "../prompts/templates";
 import type { Failure } from "../recovery";
 import type { LlmSettings } from "../settings";
-import type { ComputedVerdict } from "../verdict";
-import { CHAT_TOOLS, type AgentTool } from "../tools";
+import type { ComputedVerdict } from "../verdicts";
+import { CHAT_TOOLS, toolsWhere, type AgentTool } from "../tools";
+import type { Dispute } from "./graderReading";
 
 export interface EvalRun {
   scenario: string;
@@ -29,18 +30,21 @@ export interface EvalRun {
   failure?: Failure | null;
   latencyMs: number;
   usage: { input: number; output: number; cacheRead?: number; cacheWrite?: number; requests: number } | null; // null: the server did not say
-  verdict?: ComputedVerdict | null; // computed from the reply's checks (verdict.ts)
+  verdict?: ComputedVerdict | null; // computed from the reply's checks (verdicts/)
 }
 
 export interface Grade {
   check: string;
   pass: boolean;
   detail: string;
+  // The graders' two readings of the answer disagree on this check: the shared
+  // reader passes it, the witness fails it (graderReading.ts). Absent where they agree.
+  dispute?: Dispute;
 }
 
 export interface Check {
   name: string;
-  grade: (run: EvalRun) => { pass: boolean; detail: string };
+  grade: (run: EvalRun) => { pass: boolean; detail: string; dispute?: Dispute };
 }
 
 export interface Scenario {
@@ -60,8 +64,8 @@ export interface ScenarioResult {
   run: EvalRun;
 }
 
-/** Tools that start pipeline runs on the backend: an eval never runs them. */
-export const ACTIONS = new Set(["run_pipeline", "tune_pipeline"]);
+/** Tools that start pipeline runs on the backend (their facts' `startsRuns`): an eval never runs them. */
+export const ACTIONS = new Set(toolsWhere((f) => f.startsRuns));
 
 /**
  * *tools* with the actions stubbed: a call is recorded (and graded) but fails
@@ -90,6 +94,30 @@ export function grade(scenario: Scenario, run: EvalRun): ScenarioResult {
   const grades = scenario.checks.map((c) => ({ check: c.name, ...c.grade(run) }));
   return { scenario: scenario.id, passed: !run.error && grades.every((g) => g.pass), grades, run };
 }
+
+/** A run as a scenario record keeps it (live.test.ts writes it into docs/evals/results/). */
+export interface RecordedRun {
+  scenario: string;
+  latency_ms: number;
+  usage: EvalRun["usage"];
+  steps: Omit<AgentStep, "id">[];
+  answer: string;
+  note: string | null;
+  error: string | null;
+  failure?: EvalRun["failure"];
+}
+
+/** A recorded run as the run it records, to grade it again (NEBULA_EVAL_REGRADE) or read its answer. */
+export const runOfRecord = (r: RecordedRun): EvalRun => ({
+  scenario: r.scenario,
+  steps: r.steps.map((s, i) => ({ id: String(i), ...s })),
+  content: r.answer,
+  note: r.note ?? undefined,
+  error: r.error ?? undefined,
+  failure: r.failure ?? null,
+  latencyMs: r.latency_ms,
+  usage: r.usage,
+});
 
 export async function runScenario(
   scenario: Scenario,

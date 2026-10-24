@@ -18,6 +18,11 @@
 // NEBULA_VALIDATION_BASE_URL  the model server, where it is not the model's usual one
 // NEBULA_VALIDATION_ALLOW_SPEND  a paid model's cap in dollars, to approve spending up to it
 // NEBULA_VALIDATION_RENDER  a scored record to write the transcripts and findings of again
+// NEBULA_VALIDATION_REGRADE a record to grade again with the current graders, in place: each
+//                           run's words from its conclusion and decisions, its unsafe actions
+//                           as counted; a test-split record needs NEBULA_VALIDATION_REPORT=1.
+//                           Then `python -m nebula3d.validation summarize` rewrites its table,
+//                           and NEBULA_VALIDATION_RENDER its transcripts.
 //
 // The record is rewritten after every run, so a run cut short keeps what it measured.
 
@@ -28,8 +33,6 @@ import { configOf } from "../../state/configMemory";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { MAX_TOOL_ROUNDS, runAgent, type AgentProgress } from "../agent";
 import { loadPipelineContext } from "../context/loadContext";
-import { buildChatMessages } from "../prompts/templates";
-import { contextWarning, loadedContext } from "../provider/client";
 import { CHAT_TOOLS } from "../tools";
 import { backendUrl, env, exists, makeDir, readText, useBackend, writeText } from "./backend";
 import { installEventSource } from "./eventSource";
@@ -42,14 +45,14 @@ import {
   buildRecord,
   caseNamed,
   changedElsewhere,
-  TASK,
+  regradeRecord,
   validationDatasets,
   WhyTracker,
   type Arm,
   type RunRecord,
   type Split,
 } from "./validation";
-import { costOf, modelNamed, paidRunGate, plan, SpendTracker } from "./validationModels";
+import { costOf, modelNamed, paidRunGate, plan, runContext, SpendTracker } from "./validationModels";
 
 const live = env("NEBULA_VALIDATION") === "1";
 const renderFrom = env("NEBULA_VALIDATION_RENDER");
@@ -80,12 +83,11 @@ describe.skipIf(!live)("validation, live", () => {
 
     useBackend();
     installEventSource();
-    // LM Studio reports the context a model is loaded with; a model loaded with less
-    // than the tools need would be cut off and graded for it.
-    const context = await loadedContext(baseUrl, model.model);
-    if (context && (context.loaded ?? 0) < model.contextTokens) {
-      throw new Error(contextWarning(context, model.model) ?? `${model.model} is not loaded with ${model.contextTokens} tokens of context`);
-    }
+    // The run policy's minimum context for a local live run (RUN_POLICY): a model
+    // whose window is under it would have the skills it read cut to stubs and be
+    // graded for it, so the plan does not start.
+    const context = await runContext(model, baseUrl);
+    if (context.refusal) throw new Error(context.refusal);
     const datasets = validationDatasets(await fetchDatasets());
     // Before an hour of runs: every dataset the plan needs is there.
     const missing = jobs.filter((j) => !datasets.some((d) => d.stem === j.stem)).map((j) => j.stem);
@@ -109,7 +111,15 @@ describe.skipIf(!live)("validation, live", () => {
     const save = async (complete: boolean) => {
       const record = {
         schema: "nebula3d-validation/1",
-        model: { key: model.key, label: model.label, provider: model.provider, model: model.model, local: model.local, context_tokens: model.contextTokens },
+        model: {
+          key: model.key,
+          label: model.label,
+          provider: model.provider,
+          model: model.model,
+          local: model.local,
+          context_tokens: model.contextTokens,
+          min_context_tokens: model.minContextTokens,
+        },
         split,
         arms,
         runs_per_case: runs,
@@ -130,13 +140,20 @@ describe.skipIf(!live)("validation, live", () => {
         console.log(`stopped before ${job.stem}: ${refusal}`);
         break;
       }
+      // Read again before each run, which records it: LM Studio may have unloaded
+      // the model and loaded it again with its defaults.
+      const runWindow = await runContext(model, baseUrl);
+      if (runWindow.refusal) {
+        await save(false);
+        throw new Error(`stopped before ${job.stem}: ${runWindow.refusal}`);
+      }
       const dataset = datasets.find((d) => d.stem === job.stem)!;
 
       // Every run starts from the defaults, and sees its own dataset alone: another
       // run's volume (or the control's) in compare_datasets would answer for it.
       usePipelineStore.getState().patch(configOf(usePipelineStore.getInitialState()));
       const { context: pipelineContext } = await loadPipelineContext(dataset);
-      const setup = armSetup(job.arm, CHAT_TOOLS, buildChatMessages(pipelineContext, [], TASK, null, { tools: true }));
+      const setup = armSetup(job.arm, pipelineContext);
       const before = await fetchDatasets();
 
       const why = new WhyTracker();
@@ -159,8 +176,9 @@ describe.skipIf(!live)("validation, live", () => {
         const result = await Promise.race([
           runAgent({
             messages: setup.messages,
-            tools: setup.tools,
-            ctx: { dataset, datasets: [dataset], skillsRead: setup.skillsRead },
+            // Every tool the Pilot ships: the run's switch (ctx.skills) decides what arm C is offered.
+            tools: CHAT_TOOLS,
+            ctx: { dataset, datasets: [dataset], skills: setup.skills, skillsRead: setup.skillsRead },
             settings: { baseUrl, model: model.model, apiKey, temperature: model.temperature ?? 0.2, attachImages: false, useTools: true, followViews: false },
             signal: abort.signal,
             usage: true,
@@ -203,6 +221,7 @@ describe.skipIf(!live)("validation, live", () => {
         costUsd,
         elsewhere,
         offers: recorder.offers,
+        context: { tokens: runWindow.tokens, min_tokens: runWindow.min_tokens, read_from: runWindow.read_from },
       });
       records.push(record);
       await writeText(new URL(transcriptName(record), transcripts), renderTranscript(record, candidateFindings(record, job.case)));
@@ -211,6 +230,7 @@ describe.skipIf(!live)("validation, live", () => {
       console.log(
         `${job.case.id} ${job.arm}${job.run}: ${(record.latency_ms / 1000).toFixed(0)} s, ${record.decisions.length} steps, ` +
           `reported ${g.detected === null ? "n/a" : g.detected ? "yes" : "no"}, false alarms ${g.noFalseAlarm ? 0 : "yes"}, unsafe ${g.unsafe.length}` +
+          `${g.disputes?.length ? `, disputed ${g.disputes.length}` : ""}` +
           `${costUsd != null ? `, $${costUsd.toFixed(3)}` : ""}${record.error ? `, ERROR ${record.error}` : ""}`,
       );
     }
@@ -236,5 +256,20 @@ describe.skipIf(!renderFrom)("validation, transcripts", () => {
     record.findings = findings;
     await writeText(url, `${JSON.stringify(record, null, 1)}\n`);
     console.log(`${record.runs.length} transcripts, ${findings.length} candidate findings`);
+  });
+});
+
+// Grades a record's runs again with the current graders (NEBULA_VALIDATION_REGRADE=<record.json>,
+// relative to the working directory), rewriting their grades in place. It prints counts only.
+const regradeFrom = env("NEBULA_VALIDATION_REGRADE");
+
+describe.skipIf(!regradeFrom)("validation, re-graded", () => {
+  it("grades a record's runs again", async () => {
+    const url = new URL(regradeFrom!, here());
+    const record = JSON.parse(await readText(url)) as { split?: string; runs: RunRecord[] };
+    const moved = regradeRecord(record, { report: env("NEBULA_VALIDATION_REPORT") === "1" });
+    await writeText(url, `${JSON.stringify(record, null, 1)}\n`);
+    const disputed = record.runs.reduce((n, r) => n + (r.grades.disputes?.length ?? 0), 0);
+    console.log(`${record.runs.length} runs graded again; the grades of ${moved} moved; ${disputed} check(s) disputed`);
   });
 });

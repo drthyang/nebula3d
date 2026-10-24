@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentStep } from "../agent";
-import { answers, asserts, didNotRun, measured, mentions, neverAsserts, numbers, quotes, ran, readSkillBefore, sentences } from "./checks";
+import { answers, asserts, didNotRun, measured, mentions, neverAsserts, quotes, ran, readSkillBefore } from "./checks";
 import type { Check, EvalRun } from "./harness";
 import { saysRingLeft } from "./scenarios";
 
@@ -19,21 +19,6 @@ const step = (name: string, args: Record<string, unknown> = {}, result: unknown 
 const run = (content: string, steps: AgentStep[] = [], extra: Partial<EvalRun> = {}): EvalRun =>
   ({ scenario: "t", steps, content, latencyMs: 0, ...extra }) as EvalRun;
 const passes = (check: Check, r: EvalRun) => check.grade(r).pass;
-
-describe("reading an answer", () => {
-  it("splits sentences at their ends and at lines, without Markdown emphasis", () => {
-    expect(sentences("The **ring** is left. Is it?\n- `0.41` of the diffuse")).toEqual(["The ring is left.", "Is it?", "- 0.41 of the diffuse"]);
-  });
-
-  it("reads numbers however a model writes them", () => {
-    expect(numbers("0.41, 3.2e-6, 3.2 × 10⁻⁶, 3.2 x 10^-6, $3.2 \\times 10^{-6}$, 12 %")).toEqual([0.41, 3.2e-6, 3.2e-6, 3.2e-6, 3.2e-6, 12]);
-  });
-
-  it("reads a range as two numbers, and a sign only where nothing precedes it", () => {
-    expect(numbers("the band 0.8-10 Å⁻¹")).toEqual([0.8, 10, -1]); // the unit's exponent reads as −1; quotes look for a match, not every number
-    expect(numbers("a dent of -0.23")).toContain(-0.23);
-  });
-});
 
 describe("what the model called", () => {
   it("counts a call only when it ran without an error, and says when it ran but not as needed", () => {
@@ -121,5 +106,21 @@ describe("numbers checked against the run's own tool results", () => {
     const r = check.grade(run("A ring is left at 7.2 Å⁻¹."));
     expect(r.pass).toBe(false);
     expect(r.detail).toMatch(/no the ring's \|Q\| in the tool results/);
+  });
+
+  it("credits only what the model read: a field only the whole result (`full`) holds is not credited", () => {
+    // The model read ub_check's result fitted, without the turn; the step keeps the whole beside it.
+    const fitted: AgentStep = {
+      ...step("ub_check", {}, { fit: "both", left_out: ["orientation_change_deg"] }),
+      full: JSON.stringify({ fit: "both", orientation_change_deg: 0.61 }),
+    };
+    const turn = measured("ub_check", "orientation_change_deg");
+    expect(turn(run("", [fitted]))).toBeNull();
+    const check = quotes("the UB's turn", turn, 0.05);
+    const r = check.grade(run("The UB is turned by 0.61°.", [fitted]));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/no the UB's turn in the tool results/);
+    // The same field in the text the model read is credited.
+    expect(passes(check, run("The UB is turned by 0.61°.", [{ ...fitted, result: fitted.full }]))).toBe(true);
   });
 });

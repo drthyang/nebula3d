@@ -3,14 +3,26 @@
 
 """The validation's commands (docs/evals.md, "Does the Pilot help?").
 
-    python -m nebula3d.validation manifest                 # the cases, as JSON
+    python -m nebula3d.validation manifest --report        # every case, as JSON
     python -m nebula3d.validation arm-a --split dev        # arm A, scored
     python -m nebula3d.validation arm-d --split dev        # arm D, the scorer's reference
     python -m nebula3d.validation make --root R --split dev --arms B,C --runs 3
     python -m nebula3d.validation score --root R --record web/.validation/<label>.json
+    python -m nebula3d.validation summarize --record web/.validation/<label>.json
 
 The test split is held out: every command that reads it needs ``--report``,
-which says the numbers are for the record, not for improving anything.
+which says the numbers are for the record, not for improving anything. Its
+definitions are in a module of their own (``holdout/heldout_cases.py``, which no
+one opens), loaded only with an opt-in (:func:`.cases.cases`): ``--report`` is
+this CLI's, and ``NEBULA_HOLDOUT_TESTS=1`` the tests' and CI's. ``manifest``
+lists every case, so it needs one too; the web harness's copy is written by
+
+    python -m nebula3d.validation manifest --report \
+        > web/src/llm/evals/fixtures/validation-cases.json
+
+Arm A on the test split writes its results into a held-out folder only (``--out``
+with a ``holdout`` folder in its path, docs/evals/validation/holdout/ here), and
+prints how many cases pass, never the cases.
 """
 
 from __future__ import annotations
@@ -20,10 +32,22 @@ import json
 import os
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from .cases import FAMILIES, Built, answer_truth, build, case_named, cases, label_of
+from .cases import (
+    FAMILIES,
+    Built,
+    Case,
+    HeldOutError,
+    all_cases,
+    answer_truth,
+    build,
+    case_named,
+    cases,
+    label_of,
+)
 
 ARMS = ("B", "C")
 
@@ -36,10 +60,10 @@ def _split(args: argparse.Namespace) -> str:
     return str(args.split)
 
 
-def manifest() -> dict[str, Any]:
-    """Every case: what the TS harness grades an answer against."""
-    from .cases import CASES
-
+def manifest(selected: Sequence[Case] | None = None, *, report: bool = False) -> dict[str, Any]:
+    """Every case (or the *selected*): what the TS harness grades an answer against. Every
+    case holds the test split, so it needs the opt-in (*report*, or ``NEBULA_HOLDOUT_TESTS=1``)."""
+    chosen = all_cases(report=report) if selected is None else selected
     return {
         "families": dict(FAMILIES),
         "cases": [
@@ -60,7 +84,7 @@ def manifest() -> dict[str, Any]:
                 "fault": {k: (list(v) if isinstance(v, tuple) else v) for k, v in c.fault.items()},
                 "truth": answer_truth(c),
             }
-            for c in CASES
+            for c in chosen
         ],
     }
 
@@ -82,7 +106,8 @@ def cmd_make(args: argparse.Namespace) -> None:
     from ..io.hkl_reader import save
 
     arms = [a.strip() for a in args.arms.split(",") if a.strip()]
-    for c in cases(_split(args)):
+    made = cases(_split(args), report=args.report)
+    for c in made:
         base = root / "volumes" / f"{label_of(c)}.nxs"
         if not base.exists():
             save(build(c, args.n).raw, base)
@@ -93,7 +118,10 @@ def cmd_make(args: argparse.Namespace) -> None:
                 if not link.exists():
                     os.symlink(Path("..") / "volumes" / base.name, link)
         print(base)
-    (root / "manifest.json").write_text(json.dumps(manifest(), indent=1, ensure_ascii=False) + "\n")
+    # The root's own record of its cases: the split it was made from, never the other's.
+    (root / "manifest.json").write_text(
+        json.dumps(manifest(made), indent=1, ensure_ascii=False) + "\n"
+    )
 
 
 def _outputs(processed: Path, stem: str) -> tuple[Path, Path] | None:
@@ -120,7 +148,15 @@ def cmd_score(args: argparse.Namespace) -> None:
     record = json.loads(Path(args.record).read_text())
     built: dict[str, Built] = {}
     for run in record["runs"]:
-        case = case_named(run["case"])
+        try:
+            case = case_named(run["case"], report=args.report)
+        except KeyError:
+            sys.exit(
+                "this record holds a case that is no validation case"
+                if args.report
+                else "this record holds a case that is no dev case: "
+                "pass --report if it is a test case"
+            )
         if case.split == "test" and not args.report:
             sys.exit("this record holds test cases: pass --report")
         if case.id not in built:
@@ -138,13 +174,53 @@ def cmd_score(args: argparse.Namespace) -> None:
     print(out)
 
 
+def holds_test_split(record: dict[str, Any]) -> bool:
+    """Whether a live record holds the held-out test split: as it says, or as any run says."""
+    return record.get("split") == "test" or any(
+        r.get("split") == "test" for r in record.get("runs", [])
+    )
+
+
+def cmd_summarize(args: argparse.Namespace) -> None:
+    """A live record's per-case table again, from the grades and the scores it holds, and
+    written back as its summary: after its runs' words were graded again
+    (NEBULA_VALIDATION_REGRADE, web/src/llm/evals/validation.live.test.ts), or to read it.
+    Nothing is scored, so it needs neither the data root nor the cases."""
+    from .report import live_table, summarize_record
+
+    record = json.loads(Path(args.record).read_text())
+    if holds_test_split(record) and not args.report:
+        sys.exit(
+            "this record holds the held-out test split: pass --report to summarize it for "
+            "the reported numbers only"
+        )
+    record["summary"] = summarize_record(record)
+    out = Path(args.out or args.record)
+    out.write_text(json.dumps(record, indent=1, ensure_ascii=False) + "\n")
+    print(live_table(record["summary"]))
+    print(out)
+
+
+#: Where arm A's results on the test split may go: a held-out folder, which no one
+#: opens (docs/evals/validation/holdout/ in this repo).
+HELD_OUT_FOLDER = "holdout"
+
+
 def cmd_arm_a(args: argparse.Namespace) -> None:
     from .arm_a import run_arm_a
-    from .report import arm_a_table
+    from .report import arm_a_table, fails
 
     split = _split(args)
+    # The test split's results go into a held-out folder only, and are never printed:
+    # whoever runs it reads the count, not the cases.
+    if split == "test" and not (args.out and HELD_OUT_FOLDER in Path(args.out).parts):
+        sys.exit(
+            "arm A on the test split writes its results into a held-out folder only, and "
+            f"prints none: pass --out with a '{HELD_OUT_FOLDER}' folder in its path, e.g. "
+            "docs/evals/validation/holdout/arm-a-test.json"
+        )
     root = Path(args.root) if args.root else Path(tempfile.mkdtemp(prefix="nebula-arm-a-"))
-    results = run_arm_a(cases(split), root, n=args.n, runs=args.runs)
+    results = run_arm_a(cases(split, report=args.report), root, n=args.n, runs=args.runs)
     if args.out:
         Path(args.out).write_text(
             json.dumps(
@@ -154,6 +230,13 @@ def cmd_arm_a(args: argparse.Namespace) -> None:
             )
             + "\n"
         )
+    if split == "test":
+        passed = sum(not fails(r) for r in results)
+        print(
+            f"arm A on the test split: {passed} of {len(results)} cases pass; "
+            f"the results are in {args.out}"
+        )
+        return
     print(arm_a_table(results))
 
 
@@ -162,7 +245,7 @@ def cmd_arm_d(args: argparse.Namespace) -> None:
 
     split = _split(args)
     root = Path(tempfile.mkdtemp(prefix="nebula-arm-d-"))
-    for r in run_arm_d(cases(split), root, n=args.n):
+    for r in run_arm_d(cases(split, report=args.report), root, n=args.n):
         bad = [k for k, ok in r["summary"]["criteria"].items() if not ok]
         print(f"{r['case']}: {'passes' if r['pass'] else 'FAILS ' + ', '.join(bad)}")
 
@@ -174,7 +257,10 @@ def main(argv: list[str] | None = None) -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("manifest", help="print the cases as JSON")
+    p = sub.add_parser("manifest", help="print every case as JSON (needs --report: the test split)")
+    p.add_argument(
+        "--report", action="store_true", help="allow the held-out test split (it lists every case)"
+    )
     for name, fn in (
         ("make", cmd_make),
         ("arm-a", cmd_arm_a),
@@ -204,9 +290,25 @@ def main(argv: list[str] | None = None) -> None:
             p.add_argument("--root", required=True)
             p.add_argument("--record", required=True)
             p.add_argument("--out")
+    p = sub.add_parser(
+        "summarize",
+        help="a live record's per-case table again, from the grades and scores it holds",
+    )
+    p.set_defaults(fn=cmd_summarize)
+    p.add_argument("--record", required=True)
+    p.add_argument("--out", help="write the record here (default: in place)")
+    p.add_argument(
+        "--report",
+        action="store_true",
+        help="allow the held-out test split (reported numbers only)",
+    )
     args = ap.parse_args(argv)
     if args.cmd == "manifest":
-        print(json.dumps(manifest(), indent=1, ensure_ascii=False))
+        try:
+            listed = manifest(report=args.report)
+        except HeldOutError as err:
+            sys.exit(f"{err}: the manifest lists every case")
+        print(json.dumps(listed, indent=1, ensure_ascii=False))
         return
     args.fn(args)
 

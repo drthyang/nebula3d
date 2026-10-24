@@ -19,7 +19,7 @@ A test that mocks the API and checks the wiring is not one.
 | `current_view` | The page and cuts the user has open | None | Untested; no science in it |
 | `measure_reciprocal_cut` | Ring, leftover-peak, backfill and flatten metrics on any cut | The metric modules, on constructed slices (`metrics.test.ts`); the tool checks cut range | The same metrics as `assess_stage`, one cut at a time |
 | `measure_dpdf_cut` | Feature SNR, anisotropy, radial trend of a ΔPDF section | The metric, on a directional pattern; the tool itself is untested | No feature positions or signs (see below) |
-| `assess_stage` | Each stage's evaluation on three planes, and a verdict by the report's rule | Rule and headline per stage with fixed inputs (`tools`, `evaluate`, `report` tests); the replay of recorded results against injected faults (`heldout.test.ts`) | The flatten and ΔPDF verdicts read "needs attention" on all eight dev cases, the clean control included (findings 3, 5, 6) |
+| `assess_stage` | Each stage's evaluation on three planes, and a verdict by the stage's rule (the check-verdict module, `verdicts/`) | Rule and headline per stage with fixed inputs (`verdicts`, `tools`, `evaluate` tests); the replay of recorded results against injected faults (`heldout.test.ts`) | The flatten and ΔPDF verdicts read "needs attention" on all eight dev cases, the clean control included (findings 3, 5, 6) |
 | `radial_profile` | Shell medians of every stage side by side | Layout only; the shell statistics on constructed fields | None found |
 | `texture_check` | Fill bias against the rim, in rim σ, and azimuthal texture | Constructed fills, biased and not (`texture.test.ts`) | Flags all three cuts of the clean control (finding 4) |
 | `qmax_coverage` | The window's weight on unmeasured space (recorded by the run), shell coverage, where the raw counts begin and end, a suggested band | Constructed coverage (`coverage.test.ts`, `test_coverage.py`); replay on a volume cut at 4.511 Å⁻¹. The sweep read 4.507 on the dev cut at 4.511 | Says "clean" with counts ending well inside the box (finding 7) |
@@ -72,7 +72,7 @@ limit, tuning never writing to `processed/`) are enforced in code and tested.
   before. Tests: `tools.test.ts`, `evaluate.test.ts`.
 - **"Does the flatten want its Q² term?" had no stated answer.** The skill points
   at a pedestal and the tool gave two numbers to combine. `assess_stage` for the
-  flatten now says `pedestal_left` (the report's own rule, one function), and its
+  flatten now says `pedestal_left` (the flatten's rule, one function), and its
   headline ends "pedestal left" or "no pedestal". On the dev cases it is true
   for the planted background and, wrongly, for the cut-coverage case (finding 8),
   and false for the other six; with the term on, the planted case reads false.
@@ -87,7 +87,7 @@ limit, tuning never writing to `processed/`) are enforced in code and tested.
 ## Findings left for the user
 
 In the schema of [evals.md](evals.md#findings), with their evidence, in
-[evals/validation/review-findings.json](evals/validation/review-findings.json),
+[evals/validation/review-findings/](evals/validation/review-findings/) (one file per finding),
 checked by a test.
 
 1. **Missing tool: the ΔPDF's strongest features.** The task and the
@@ -135,7 +135,7 @@ checked by a test.
 
 The user approved all eight. Each is implemented by one commit, with
 regression tests that pin it, and recorded as such in
-[review-findings.json](evals/validation/review-findings.json) (`status`,
+[review-findings/](evals/validation/review-findings/) (`status`,
 `commit`, `tests`, `note`). Every new criterion was derived from the physics and
 the dev cases; the test split was not read.
 

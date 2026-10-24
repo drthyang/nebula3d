@@ -8,20 +8,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../api/types";
 import type { AgentStep } from "../agent";
 import { ANSWER_REVISIONS, runAgent } from "../agent";
-import {
-  answerIssues,
-  clauses,
-  contradictions,
-  issuesNote,
-  issuesPrompt,
-  missingEvidence,
-  untracedNumbers,
-  verdictsIn,
-  writtenNumbers,
-} from "../answerChecks";
+import { answerIssues, contradictions, issuesNote, issuesPrompt, missingEvidence, untracedNumbers, verdictsIn } from "../answerChecks";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";
+import { shownGrains, type GrainFacts } from "../metrics/grains";
 import type { AgentTool } from "../tools";
+import { judge, verdicts } from "../verdicts";
 
 const step = (name: string, args: Record<string, unknown> = {}, result: unknown = {}, status: AgentStep["status"] = "done"): AgentStep => ({
   id: name,
@@ -53,15 +45,6 @@ describe("verdicts and their evidence", () => {
     expect(missingEvidence("The UB is off by a fraction of a degree.", [step("grain_check")])).toEqual([]);
   });
 
-  it("splits claims at ; and :, without a leading Yes or No", () => {
-    expect(clauses("No: the window reaches past the coverage; it should not. Yes, it is fine.")).toEqual([
-      "the window reaches past the coverage",
-      "it should not.",
-      "it is fine.",
-    ]);
-    expect(clauses("No ring is left.")).toEqual(["No ring is left."]); // a determiner, not an answer
-  });
-
   it("reads the peaks' offset from their nodes as the UB's verdict, not the punch's", () => {
     const ub = "ub_check found a rotation of only 0.001°, and the Bragg peaks' RMS offset from their nodes stayed at 0.0004 Å⁻¹.";
     expect(verdictsIn(ub).has("punch")).toBe(false);
@@ -76,13 +59,13 @@ describe("contradicting the tools' computed verdicts", () => {
   it("catches a stage called clean that the rule says needs attention, computing the verdict when the result lacks it", () => {
     expect(contradictions("The punch removed every Bragg peak; nothing is left at the nodes.", [punchMissed]).map((t) => t.id)).toEqual(["punch"]);
     expect(contradictions("The punch missed 12 peaks at nodes.", [punchMissed])).toEqual([]);
-    const judged = step("assess_stage", { stage: "rings" }, { rings: { verdict: "needs attention" } });
+    const judged = step("assess_stage", { stage: "rings" }, { rings: { verdict: "needs attention", max_ring_left: 0.12, max_ring_dent: 0 } });
     expect(contradictions("Ring removal: clean.", [judged]).map((t) => t.id)).toEqual(["rings"]);
     expect(contradictions("No ring is left.", [judged]).map((t) => t.id)).toEqual(["rings"]);
   });
 
   it("holds a 3D-ΔPDF called sound to the stage's verdict, and reads a feature as no verdict", () => {
-    const pdf = step("assess_stage", { stage: "pdf" }, { pdf: { verdict: "needs attention" } });
+    const pdf = step("assess_stage", { stage: "pdf" }, { pdf: { verdict: "needs attention", back_fft_pearson_r_even: 0.97 } });
     expect(contradictions("The 3D-ΔPDF meets its goal.", [pdf]).map((t) => t.id)).toEqual(["pdf"]);
     expect(verdictsIn("The 3D-ΔPDF shows a positive peak at 2.9 Å.").has("pdf")).toBe(false);
     expect(verdictsIn("The ΔPDF keeps its six-fold symmetry.").has("pdf")).toBe(false);
@@ -99,6 +82,29 @@ describe("contradicting the tools' computed verdicts", () => {
     expect(contradictions("The ΔPDF keeps its six-fold symmetry.", [notKept]).map((t) => t.id)).toEqual(["symmetry"]);
   });
 
+  it("reads a recording's coverage words no producer wrote as attention, to the answer checks and {{achieved}} alike (D10, 2.4b.2)", () => {
+    // Words an older qmax_coverage wrote, kept in a recording.
+    const legacy = step("qmax_coverage", {}, { verdict: "past full coverage: the window reaches the box corners" });
+    expect(contradictions("The window stays inside the coverage.", [legacy]).map((t) => t.id)).toEqual(["coverage"]);
+    expect(verdicts({ reply: [legacy] }).achieved).toMatchObject({ achieved: false, attention: ["the ΔPDF window against the coverage"] });
+  });
+
+  it("takes the transform's reach inside full coverage as coverage OK (D1, 2.4.1)", () => {
+    // Synthetic measurements: a window tapered to the coverage reaches 6.283 Å⁻¹, and full coverage ends at 6.5 Å⁻¹.
+    const reach = { window_weight: null, window: "the ΔPDF's ellipsoid window", unit_cell: true, full_coverage_q: 6.5, reach_from: "the window is tapered to the measured coverage", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } };
+    const inside = judge("coverage", { ...reach, reach: 6.283 });
+    const past = judge("coverage", { ...reach, reach: 9.1, reach_from: "the window tapers to zero at the box faces" });
+    expect([inside.kind, past.kind]).toEqual(["pass", "attention"]);
+    const reached = step("qmax_coverage", {}, { verdict: inside.words, window_weight_on_unmeasured: null });
+    const tooFar = step("qmax_coverage", {}, { verdict: past.words, window_weight_on_unmeasured: null });
+    const claim = "The window stays inside the coverage.";
+    // The reach brought inside: the claim stands (it was sent back on the "too far" before 2.4.1).
+    expect(contradictions(claim, [tooFar, reached])).toEqual([]);
+    expect(contradictions(claim, [reached])).toEqual([]);
+    // The reach past it, newest: sent back.
+    expect(contradictions(claim, [reached, tooFar]).map((t) => t.id)).toEqual(["coverage"]);
+  });
+
   it("knows a UB turned by the fit, or on a symmetrised volume, is not fine", () => {
     const turned = step("ub_check", {}, { symmetrised: false, orientation_change_deg: 0.6 });
     expect(contradictions("The UB is right; the peaks sit on their nodes.", [turned]).map((t) => t.id)).toEqual(["ub"]);
@@ -106,6 +112,66 @@ describe("contradicting the tools' computed verdicts", () => {
     expect(contradictions("The UB is fine: the fit changed nothing.", [symmetrised]).map((t) => t.id)).toEqual(["ub"]);
     const right = step("ub_check", {}, { symmetrised: false, orientation_change_deg: 0.01 });
     expect(contradictions("The UB is right.", [right])).toEqual([]);
+  });
+
+  it("holds a claim that the UB is right to grain_check's peaks beside the nodes, and names them among the data's problems (D3a, 2.4.3a)", () => {
+    // Synthetic grain facts: 28 of the 40 strongest off-lattice orbits sit beside Bragg nodes, offset by a median 1.2°; no rotation indexes them.
+    const facts: GrainFacts = { off_lattice_orbits: 60, judged: 40, near_bragg_nodes: 28, near_offset_angle_deg: { median: 1.2, quartiles: [0.9, 1.6] }, far: [], rotated_copy: { indexed: 3, misorientation_deg: 24.5 }, random_control: 5, symmetrised: false };
+    const o = judge("grain", facts);
+    expect([o.kind, o.reasons]).toEqual(["attention", ["no second grain", "peaks beside nodes"]]);
+    const grain = step("grain_check", {}, { ...shownGrains(facts, o.words!), off_lattice_peaks: 900 });
+    expect(contradictions("The UB is right.", [grain]).map((t) => t.id)).toEqual(["ub"]);
+    expect(contradictions("There is no second grain.", [grain])).toEqual([]);
+    expect(verdicts({ reply: [grain] }).achieved?.dataProblems).toEqual(["the UB is off by at least 1.2° (the strongest off-lattice peaks sit beside Bragg nodes)"]);
+    // The report's goal names it too (Q11).
+    expect(verdicts({ report: { grains: { ...shownGrains(facts, o.words!), off_lattice_peaks: 900 } } }).achieved?.dataProblems).toEqual([
+      "the UB is off by at least 1.2° (the strongest off-lattice peaks sit beside Bragg nodes)",
+    ]);
+  });
+
+  it("judges nothing of a ub_check result without an angle: no right UB, and no claim held to it (D16, 2.4b.5)", () => {
+    // A recording that kept no angle, on a volume not symmetrised.
+    const noAngle = step("ub_check", {}, { fit: "both", symmetrised: false, origin_shift_rlu: null });
+    expect(verdicts({ reply: [noAngle] }).checks.ub).toBe("info");
+    expect(contradictions("The UB is off by half a degree; refine it.", [noAngle])).toEqual([]); // sent back on a right UB before 2.4b.5
+    // Newest, it hides an older turn as not judged (D7), and names no problem.
+    const turned = step("ub_check", {}, { fit: "both", symmetrised: false, orientation_change_deg: 0.6 });
+    expect(verdicts({ reply: [turned, noAngle] }).checks.ub).toBe("info");
+  });
+
+  it("holds both readings to one UB turned, 0.05° or more from an unsymmetrised fit, and a symmetrised UB to no claim that it is right (D4, 2.4.4)", () => {
+    // Synthetic ub_check results, as the tool writes them.
+    const ub = (fit: string, symmetrised: boolean, turn: number) => step("ub_check", {}, { fit, symmetrised, orientation_change_deg: turn, origin_shift_rlu: null });
+    const right = "The UB is right; the peaks sit on their nodes.";
+    const off = "The UB is off by half a degree; refine it.";
+    const problems = (s: AgentStep) => verdicts({ reply: [s] }).achieved?.dataProblems;
+    // At the limit: turned, to both readers.
+    expect(contradictions(right, [ub("both", false, 0.05)]).map((t) => t.id)).toEqual(["ub"]);
+    expect(problems(ub("both", false, 0.05))).toEqual(["the UB is turned by 0.05°"]);
+    // Under it: right, to both.
+    expect(contradictions(right, [ub("both", false, 0.049)])).toEqual([]);
+    expect(contradictions(off, [ub("both", false, 0.049)]).map((t) => t.id)).toEqual(["ub"]);
+    expect(problems(ub("both", false, 0.049))).toEqual([]);
+    // Symmetrised: its symmetric fit's turn is not judged, so no data problem, and a claim that the UB is right is sent back.
+    const symmetrised = ub("symmetric", true, 0.3);
+    expect(contradictions(right, [symmetrised]).map((t) => t.id)).toEqual(["ub"]);
+    expect(contradictions(off, [symmetrised])).toEqual([]);
+    expect(problems(symmetrised)).toEqual([]);
+  });
+
+  it("holds a claim that the UB is right to grain_check's UB off, and names it among the data's problems (D3, 2.4.3)", () => {
+    // Synthetic measurements: one rotation of 0.9° puts 38 of the 40 strongest off-lattice orbits back on the Bragg lattice (random directions: 2).
+    const facts: GrainFacts = { off_lattice_orbits: 60, judged: 40, near_bragg_nodes: 6, near_offset_angle_deg: null, far: [], rotated_copy: { indexed: 38, misorientation_deg: 0.9 }, random_control: 2, symmetrised: false };
+    const o = judge("grain", facts);
+    expect([o.kind, o.reasons]).toEqual(["attention", ["UB off"]]);
+    const grain = step("grain_check", {}, { ...shownGrains(facts, o.words!), off_lattice_peaks: 900 });
+    expect(contradictions("The UB is right.", [grain]).map((t) => t.id)).toEqual(["ub"]);
+    expect(contradictions("The UB is off by about a degree; refine it.", [grain])).toEqual([]);
+    // It stays the check for a second grain: the UB off settles nothing there.
+    expect(contradictions("There is no second grain.", [grain])).toEqual([]);
+    expect(verdicts({ reply: [grain] }).achieved?.dataProblems).toEqual(["the UB is off by 0.9° (one rotation puts the off-lattice peaks back on the Bragg lattice)"]);
+    // A ub_check run after it, finding the UB right, is the newest that decides.
+    expect(contradictions("The UB is right.", [grain, step("ub_check", {}, { fit: "both", symmetrised: false, orientation_change_deg: 0.01 })])).toEqual([]);
   });
 });
 
@@ -128,13 +194,6 @@ describe("numbers read as they are written", () => {
 });
 
 describe("numbers by reference", () => {
-  it("reads numbers as written, not the digits inside names, exponents or list markers", () => {
-    const n = writtenNumbers("1. On hk0 the 3D-ΔPDF at 6/mmm: a ring at 7.2 Å⁻¹, 4.1 × 10⁻⁶ of the weight, 12 %, 10⁻³, x_H on a 201x201x201 grid.");
-    expect(n.map((x) => x.text)).toEqual(["7.2", "4.1e-6", "12 %", "1e-3"]);
-    expect(n[0].tolerance).toBeCloseTo(0.05);
-    expect(n[1].value).toBeCloseTo(4.1e-6);
-  });
-
   it("finds each number in the sources within its written precision, as a share or a percentage", () => {
     const sources = '{"at": 7.234, "weight": 4.1e-6, "share": 0.124, "dent": -0.187}';
     expect(untracedNumbers("A ring at 7.2 Å⁻¹ with 4.1e-6 on unmeasured space, 12 % punched, a dent of 0.19.", sources)).toEqual([]);
@@ -151,6 +210,35 @@ describe("numbers by reference", () => {
     );
     expect(answerIssues("", [], "")).toBeNull();
     expect(answerIssues("Here is what the stages show.", [], "")).toBeNull();
+  });
+
+  it("puts the same issues without the method when the skills are off: the answer's words, no topic, stage or tool", () => {
+    const issues = answerIssues("The ring removal is clean, at a ratio of 0.731.", [], '{"x": 1}')!;
+    const off = issuesPrompt(issues, { skills: false });
+    expect(issuesPrompt(issues, { skills: true })).toBe(issuesPrompt(issues)); // on: as written
+    expect(off).toBe(
+      [
+        "Before this answer goes to the user, fix it:",
+        "- “The ring removal is clean, at a ratio of 0.731.”: this verdict needs its evidence from a check run in this reply. Answer from that check's result.",
+        "- These numbers appear in no tool result or the context: 0.731. Quote the tools' numbers, or leave them out.",
+        "Then write the whole answer again.",
+      ].join("\n"),
+    );
+    expect(issues.said.missing).toEqual(["The ring removal is clean, at a ratio of 0.731."]);
+    // The note under the reply is the user's, and names the tool either way.
+    expect(issuesNote(issues)).toMatch(/assess_stage with stage rings/);
+  });
+
+  it("quotes each clause once, and clips a long one", () => {
+    const long = `The flatten left no pedestal ${"and the floors are level ".repeat(12)}everywhere.`;
+    const issues = answerIssues(`${long} The flatten left no pedestal.`, [], "")!;
+    expect(issues.missing.map((t) => t.id)).toEqual(["flatten"]);
+    const off = issuesPrompt(issues, { skills: false });
+    const quotes = [...off.matchAll(/“([^”]*)”/g)].map((m) => m[1]);
+    expect(quotes).toHaveLength(2);
+    expect(quotes[0].length).toBe(200);
+    expect(quotes[0].endsWith("…")).toBe(true);
+    expect(quotes[1]).toBe("The flatten left no pedestal.");
   });
 });
 
@@ -206,6 +294,23 @@ describe("runAgent holds the final answer to its evidence", () => {
     expect(String(sentBack.content)).toMatch(/verdict on the ring removal without its evidence in this reply: call assess_stage with stage rings/);
   });
 
+  it("with the skills off, sends the same answer back once, worded without the method", async () => {
+    const seen = script([
+      [{ content: "Yes, the ring removal is clean." }],
+      [{ toolCalls: [call] }],
+      [{ content: "Not clean: a ring is left at 7.2 Å⁻¹, so the stage needs attention." }],
+    ]);
+    const r = await runAgent({ messages: question, tools: [assess], ctx: { ...ctx, skills: false }, settings, signal: new AbortController().signal });
+    expect(r.content).toBe("Not clean: a ring is left at 7.2 Å⁻¹, so the stage needs attention.");
+    expect(String(seen[1][seen[1].length - 1].content)).toBe(
+      [
+        "Before this answer goes to the user, fix it:",
+        "- “the ring removal is clean.”: this verdict needs its evidence from a check run in this reply. Answer from that check's result.",
+        "Then write the whole answer again.",
+      ].join("\n"),
+    );
+  });
+
   it("notes what still fails after the one revision, and keeps a draft the revision left empty", async () => {
     script([[{ content: "Yes, the ring removal is clean." }], [{ content: "" }]]);
     const r = await runAgent({ messages: question, tools: [assess], ctx, settings, signal: new AbortController().signal });
@@ -230,10 +335,21 @@ describe("the checks judge what the tools found, and nothing the assistant said"
     const residuals = Array.from({ length: 90 }, (_, i) => ({ at: 1 + i / 10, residual_fraction: 0.1, noise_fraction: 0.05, significant: true, ring: false }));
     const long: AgentTool = {
       ...assess,
-      run: async () => ({ result: { rings: { verdict: "needs attention", per_plane: { hk0: { ring_residuals: residuals } }, goal: "g".repeat(1500) } }, summary: "rings judged" }),
+      run: async () => ({ result: { rings: { verdict: "needs attention", max_ring_left: 0.1, max_ring_dent: 0, per_plane: { hk0: { ring_residuals: residuals } }, goal: "g".repeat(1500) } }, summary: "rings judged" }),
     };
     script([[{ toolCalls: [call] }], [{ content: "No ring is left." }], [{ content: "" }]]);
     const r = await runAgent({ messages: question, tools: [long], ctx, settings, signal: new AbortController().signal });
+    expect(r.note).toMatch(/Contradicts the tools' verdict on the ring removal/);
+  });
+
+  it("carries a tool's outcomes to its step, beside the result the model reads, and holds the answer to them", async () => {
+    // The producer's outcome says attention where its words (a stale label) say nothing: the outcome decides.
+    const outcome = { check: "rings" as const, kind: "attention" as const, reasons: ["ring left" as const], dataProblems: [], words: "needs attention" };
+    const judged: AgentTool = { ...assess, run: async () => ({ result: { rings: { verdict: "pass" } }, summary: "rings judged", outcomes: [outcome] }) };
+    const seen = script([[{ toolCalls: [call] }], [{ content: "The ring removal is clean." }], [{ content: "" }]]);
+    const r = await runAgent({ messages: question, tools: [judged], ctx, settings, signal: new AbortController().signal });
+    expect(r.steps[0].outcomes).toEqual([outcome]);
+    expect(seen[1].find((m) => m.role === "tool")?.content).toBe('{"rings":{"verdict":"pass"}}');
     expect(r.note).toMatch(/Contradicts the tools' verdict on the ring removal/);
   });
 
@@ -255,6 +371,137 @@ describe("the checks judge what the tools found, and nothing the assistant said"
       signal: new AbortController().signal,
     });
     expect(traced.note).toBeUndefined();
+  });
+});
+
+describe("the newest current result, as {{achieved}} reads it (D7, 2.4.7)", () => {
+  // Synthetic ring evaluations: a ring left at 0.12 of the diffuse, then a 3D test that could not run.
+  const left = step("assess_stage", { stage: "rings" }, { rings: { max_ring_left: 0.12, max_ring_dent: 0 } });
+  const unjudged = step("assess_stage", { stage: "rings" }, { rings: { max_ring_left: null, max_ring_dent: null } });
+  const clean = "The ring removal is clean.";
+
+  it("holds a claim to the newest result, even one that judged nothing", () => {
+    expect(contradictions(clean, [left]).map((t) => t.id)).toEqual(["rings"]);
+    expect(contradictions(clean, [left, unjudged])).toEqual([]); // sent back before 2.4.7, on the older result
+    expect(verdicts({ reply: [left, unjudged] }).achieved?.stages.rings).toBe("info");
+    expect(contradictions(clean, [unjudged, left]).map((t) => t.id)).toEqual(["rings"]);
+  });
+
+  it("never reads a missing ΔPDF output as a pass, over an earlier verdict or alone (D11, 2.4b.3)", () => {
+    // Synthetic: a round trip falling short of the data's even part (r 0.97), then no ΔPDF output.
+    const short = step("assess_stage", { stage: "pdf" }, { pdf: { back_fft_pearson_r_even: 0.97 } });
+    const missing = step("assess_stage", { stage: "pdf" }, { pdf: { missing: "no delta_pdf output yet; run_pipeline computes it" } });
+    const sound = "The 3D-ΔPDF meets its goal.";
+    expect(contradictions(sound, [short, missing]).map((t) => t.id)).toEqual(["pdf"]); // it passed over "short" before 2.4b.3
+    expect(verdicts({ reply: [missing] }).checks.pdf).toBeUndefined();
+    expect(verdicts({ reply: [missing] }).achieved).toBeNull();
+  });
+
+  it("judges a stage from its numbers, whatever label a recording gives it (D18, 2.4b.3)", () => {
+    // Recordings whose labels the numbers do not give: "needs attention" over no ring left, "meets its goal" over a ring left.
+    const passing = step("assess_stage", { stage: "rings" }, { rings: { verdict: "needs attention", max_ring_left: 0, max_ring_dent: 0 } });
+    const failing = step("assess_stage", { stage: "rings" }, { rings: { verdict: "meets its goal", max_ring_left: 0.12, max_ring_dent: 0 } });
+    expect(contradictions(clean, [passing])).toEqual([]); // sent back on the label before 2.4b.3
+    expect(contradictions(clean, [failing]).map((t) => t.id)).toEqual(["rings"]);
+    expect([passing, failing].map((s) => verdicts({ reply: [s] }).achieved?.stages.rings)).toEqual(["pass", "attention"]);
+    // A label without its numbers judges nothing.
+    expect(verdicts({ reply: [step("assess_stage", { stage: "rings" }, { rings: { verdict: "needs attention" } })] }).checks.rings).toBe("info");
+  });
+
+  it("judges a stage from its numbers where its recorded words are no label (D12, 2.4b.3)", () => {
+    // A recording whose words were never a verdict label, over numbers with a ring left (0.12 of the diffuse).
+    const fine = step("assess_stage", { stage: "rings" }, { rings: { verdict: "fine", max_ring_left: 0.12, max_ring_dent: 0 } });
+    expect(contradictions(clean, [fine]).map((t) => t.id)).toEqual(["rings"]); // decided nothing before 2.4b.3
+    expect(verdicts({ reply: [fine] }).achieved?.stages.rings).toBe("attention");
+  });
+
+  it("reads no result that decides nothing, so it hides no earlier verdict", () => {
+    const missing = step("assess_stage", { stage: "rings" }, { rings: { missing: "no ringremoved output yet; run_pipeline computes it" } });
+    expect(contradictions(clean, [left, missing]).map((t) => t.id)).toEqual(["rings"]);
+    expect(verdicts({ reply: [left, missing] }).achieved?.stages.rings).toBe("attention");
+  });
+
+  it("reads no ub_check that cannot judge the UB over earlier UB evidence: the grain's UB off stands (2.4.7b)", () => {
+    // Synthetic: grain_check finds one rotation of 0.9° putting 38 of the 40 strongest orbits back on the lattice;
+    // then ub_check runs on a symmetrised volume, whose symmetric fit cannot see a misorientation.
+    const facts: GrainFacts = { off_lattice_orbits: 60, judged: 40, near_bragg_nodes: 6, near_offset_angle_deg: null, far: [], rotated_copy: { indexed: 38, misorientation_deg: 0.9 }, random_control: 2, symmetrised: true };
+    const off = step("grain_check", {}, { ...shownGrains(facts, judge("grain", facts).words!), off_lattice_peaks: 900 });
+    const symmetrised = step("ub_check", {}, { fit: "symmetric", symmetrised: true, orientation_change_deg: 0.3, origin_shift_rlu: null });
+    expect(verdicts({ reply: [off, symmetrised] }).achieved?.dataProblems).toEqual(["the UB is off by 0.9° (one rotation puts the off-lattice peaks back on the Bragg lattice)"]); // none before 2.4.7b
+    expect(contradictions("The UB is right.", [off, symmetrised]).map((t) => t.id)).toEqual(["ub"]);
+    expect(contradictions("The UB is off by about a degree; refine it.", [off, symmetrised])).toEqual([]);
+    // Alone, the symmetrised check still sends a right UB back, and names no problem.
+    expect(contradictions("The UB is right.", [symmetrised]).map((t) => t.id)).toEqual(["ub"]);
+    expect(verdicts({ reply: [symmetrised] }).achieved?.dataProblems).toEqual([]);
+  });
+
+  it("takes the newest UB evidence across ub_check and grain_check's UB off, for both readers", () => {
+    // Synthetic grain facts: one rotation of 0.9° puts 38 of the 40 strongest orbits back on the lattice.
+    const facts: GrainFacts = { off_lattice_orbits: 60, judged: 40, near_bragg_nodes: 6, near_offset_angle_deg: null, far: [], rotated_copy: { indexed: 38, misorientation_deg: 0.9 }, random_control: 2, symmetrised: false };
+    const off = step("grain_check", {}, { ...shownGrains(facts, judge("grain", facts).words!), off_lattice_peaks: 900 });
+    const offProblem = "the UB is off by 0.9° (one rotation puts the off-lattice peaks back on the Bragg lattice)";
+    const right = step("ub_check", {}, { fit: "both", symmetrised: false, orientation_change_deg: 0.01, origin_shift_rlu: [0.0305, 0.0195, 0] });
+    const originProblem = "the HKL origin is shifted by (0.0305, 0.0195, 0) r.l.u.";
+    const ubRight = "The UB is right.";
+    // ub_check after the grain: the UB is right, to both readers; the origin's shift is ub_check's either way.
+    expect(contradictions(ubRight, [off, right])).toEqual([]);
+    expect(verdicts({ reply: [off, right] }).achieved?.dataProblems).toEqual([originProblem]);
+    // The grain after ub_check: the UB is off, to both.
+    expect(contradictions(ubRight, [right, off]).map((t) => t.id)).toEqual(["ub"]);
+    expect(verdicts({ reply: [right, off] }).achieved?.dataProblems).toEqual([offProblem, originProblem]);
+  });
+});
+
+describe("the backfill topic counts the fill bias (D8, 2.4.8)", () => {
+  // Synthetic: a seam of 1.5σ (past 1σ) or 0.5σ; one cut whose fill is biased one way, or none.
+  const seamFails = step("assess_stage", { stage: "backfill" }, { backfill: { mean_median_seam_sigma: 1.5 } });
+  const seamOk = step("assess_stage", { stage: "backfill" }, { backfill: { mean_median_seam_sigma: 0.5 } });
+  const bias = step("texture_check", {}, { per_cut: [{ cut: "H–K plane at L = 0", systematic_fill_bias: true }] });
+  const noBias = step("texture_check", {}, { per_cut: [{ cut: "H–K plane at L = 0", systematic_fill_bias: false }] });
+  const clean = "The backfill is clean.";
+
+  it("sends a clean backfill back when either the seam or the fill needs attention, in either order", () => {
+    // The two sequences a reading of the newest of either let through.
+    expect(contradictions(clean, [seamFails, noBias]).map((t) => t.id)).toEqual(["backfill"]);
+    expect(contradictions(clean, [bias, seamOk]).map((t) => t.id)).toEqual(["backfill"]);
+    expect(contradictions(clean, [noBias, seamFails]).map((t) => t.id)).toEqual(["backfill"]);
+    expect(contradictions(clean, [seamOk, bias]).map((t) => t.id)).toEqual(["backfill"]);
+    // As {{achieved}} names them.
+    expect(verdicts({ reply: [seamFails, noBias] }).achieved?.attention).toEqual(["the backfill"]);
+    expect(verdicts({ reply: [bias, seamOk] }).achieved?.attention).toEqual(["the backfill's texture"]);
+  });
+
+  it("lets it stand when both pass", () => {
+    expect(contradictions(clean, [seamOk, noBias])).toEqual([]);
+    expect(verdicts({ reply: [seamOk, noBias] }).checks.backfill).toBe("pass");
+  });
+});
+
+describe("a repeated call's pointer reads as the result it points to (D17, 2.4b.1)", () => {
+  // qmax_coverage finding the window too far, its outcome judged by the coverage's rule, as its tool writes it.
+  const tooFar = judge("coverage", { window_weight: 0.04, window: "the ΔPDF's separable window", unit_cell: true, full_coverage_q: null, reach: null, reach_from: "", shell: 0.1, band_set: false, counts: { counts_end_inside_box: false } });
+  const coverage: AgentTool = {
+    name: "qmax_coverage",
+    description: "checks the window against the coverage",
+    parameters: { type: "object", properties: {} },
+    run: async () => ({ result: { verdict: tooFar.words, window_weight_on_unmeasured: 0.04 }, summary: "too far", outcomes: [tooFar] }),
+  };
+  const callCoverage = (id: string) => ({ id, type: "function" as const, function: { name: "qmax_coverage", arguments: "{}" } });
+
+  it("keeps {{achieved}} at not met after a pointer to a too far, and the answer checks send the claim back", async () => {
+    script([[{ toolCalls: [callCoverage("c1")] }], [{ toolCalls: [callCoverage("c2")] }], [{ content: "The window stays inside the coverage." }], [{ content: "" }]]);
+    const r = await runAgent({ messages: [{ role: "user", content: "Does the window stay inside the coverage?" }], tools: [coverage], ctx, settings, signal: new AbortController().signal });
+    // The loop ran it once, and pointed the repeat at that result.
+    expect(JSON.parse(r.steps[1].result!)).toHaveProperty("already_called");
+    expect(verdicts({ reply: r.steps }).achieved).toMatchObject({ achieved: false, attention: ["the ΔPDF window against the coverage"] });
+    expect(r.note).toMatch(/Contradicts the tools' verdict on the ΔPDF window against the coverage/);
+  });
+
+  it("reads a repeated ub_check as the UB it points to, not as a right one", () => {
+    const pointer = step("ub_check", {}, { already_called: "Called with these arguments earlier in this reply (step 1); its result is above. Use it, or call with other arguments." });
+    const turned = step("ub_check", {}, { fit: "both", symmetrised: false, orientation_change_deg: 0.6 });
+    expect(contradictions("The UB is right.", [turned, pointer]).map((t) => t.id)).toEqual(["ub"]);
+    expect(verdicts({ reply: [turned, pointer] }).achieved?.dataProblems).toEqual(["the UB is turned by 0.6°"]);
   });
 });
 

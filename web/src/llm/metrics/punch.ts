@@ -12,8 +12,15 @@
 // how many peaks are resolution-limited, and how anisotropic they are.
 
 import type { BraggProfile } from "../../api/types";
+import { reading, written } from "../inference";
 import type { GridSlice } from "./sliceStats";
 import { median, pixelCoord, robustStats, roundSig } from "./sliceStats";
+
+// What the search's count is (a definition), and which check says what they are
+// (inference: inference.ts; with the skills off the context carries the first only).
+const SEARCH_NOTE = written("metrics/punch.ts: the context's peak_profile.search_note")`peaks the search punched off the Bragg nodes${reading(
+  "; grain_check says whether they are a second grain or displaced Bragg peaks",
+)}`;
 
 export interface SuspiciousPeak {
   xy: [number, number]; // physical (x, y) coordinate in the slice plane (r.l.u.)
@@ -305,9 +312,7 @@ export const summarizePeakProfile = (profile: BraggProfile | null | undefined): 
     n_peaks: peaks.length,
     n_at_lattice_nodes: peaks.length - offLattice,
     n_search_off_lattice: offLattice,
-    ...(offLattice
-      ? { search_note: "peaks the search punched off the Bragg nodes; grain_check says whether they are a second grain or displaced Bragg peaks" }
-      : {}),
+    ...(offLattice ? { search_note: SEARCH_NOTE.whole } : {}),
     fit_kinds: fitKinds,
     resolution_limited_fraction: resKnown ? roundSig(resLimited / resKnown) : null,
     median_measured_width_q: axisWidths.map((w) =>
