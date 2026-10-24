@@ -15,7 +15,6 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { CUT_OFF_NOTE, TOOLS_UNSUPPORTED_NOTE, toolsKnownUnsupported } from "../agent";
-import { COMPLETE_MAX_TOKENS } from "../provider/anthropic";
 import { DATA_CHARS_PER_TOKEN, resetTokenState, tokenCalibration } from "../provider/tokens";
 import { loadSettings, saveSettings } from "../settings";
 import { callTool, CHAT_TOOLS } from "../tools";
@@ -353,15 +352,16 @@ describe("a validation run's tuning", () => {
       earlier[stage] = settings;
     }
 
-    // The run at its worst: the loop's worst, and every stage tuned as the
-    // ring stage was here, each request as long as the longest measured and
-    // with its whole max_tokens out; with the margin. The reserve covers it,
-    // and this run, as the scripted model counted it, is far inside.
+    // The run at its worst: the loop's worst, every request at the output cap
+    // it asked for, and every stage tuned as the ring stage was here, each
+    // request as long as the longest measured and with its whole cap out; with
+    // the margin. The reserve covers it, and this run, as the scripted model
+    // counted it, is far inside.
+    expect(log.every((r) => r.maxTokens === VALIDATION_MAX_TOKENS)).toBe(true);
     const { loop, margin } = FIRST_RUN_WORST;
     const worst =
-      ((loop.requests * loop.inputPerRequest * sonnet.input +
-        loop.outputOverRun * sonnet.output +
-        TUNE_STAGES.length * tuning.length * (longest * sonnet.input + COMPLETE_MAX_TOKENS * sonnet.output)) /
+      ((loop.requests * (loop.inputPerRequest * sonnet.input + VALIDATION_MAX_TOKENS * sonnet.output) +
+        TUNE_STAGES.length * tuning.length * (longest * sonnet.input + VALIDATION_MAX_TOKENS * sonnet.output)) /
         1e6) *
       (1 + margin);
     expect(worst).toBeLessThanOrEqual(firstRunWorstUsd(sonnet));
