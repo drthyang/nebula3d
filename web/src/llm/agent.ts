@@ -8,7 +8,10 @@
 // server would cut a longer one without saying so.  A request that fails the
 // way a local server's do, a crash, a model unloaded, a server gone quiet, is
 // asked again after a pause; what still fails ends the reply with a note that
-// says what to do (recovery.ts).
+// says what to do (recovery.ts). What the loop runs under, transport by
+// transport (its round limit, the tools a model is offered, when results are
+// shortened, the temperature and output cap it sends), is the run policy's
+// (runPolicy.ts): the app's own for its settings, or a validation run's.
 
 import {
   isMalformedOutput,
@@ -21,11 +24,11 @@ import {
 import { answerIssues, earlierSources, issuesNote, issuesPrompt } from "./answerChecks";
 import { fillReferences } from "./references";
 import { lastQuestion, toolsFor } from "./localTools";
-import { isLocalUrl } from "./provider/presets";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
 import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
 import { planWindow } from "./provider/window";
 import { seen, shorten, whole } from "./readings";
+import { runPolicyOf, type RunPolicy } from "./runPolicy";
 import type { LlmSettings } from "./settings";
 import { skillsOn } from "./skills";
 import {
@@ -83,10 +86,9 @@ export interface AgentResult extends AgentProgress {
   verdict?: ComputedVerdict | null;
 }
 
-// Rounds of tool calls before the model is asked to answer with what it has;
-// each round may call several tools.  Enough to change a setting, rerun and
-// measure a few times over.
-export const MAX_TOOL_ROUNDS = 12;
+// The loop's round limit and compaction budget are the run policy's
+// (runPolicy.ts), under the names the loop has always given them.
+export { KEEP_FULL, MAX_TOOL_ROUNDS, SOFT_BUDGET } from "./runPolicy";
 
 // Servers known (this session) to refuse `tools`, keyed by base URL + model, so
 // the next request goes straight to the plain path.
@@ -120,14 +122,6 @@ export const MAX_RECOVERIES = 4;
 // (tools/round.ts), and the model is asked to answer with what it has.
 export const LOOP_NOTE = "The model repeated calls that brought nothing new, so it was asked to answer with what it had.";
 const ANSWER_NOW = "The tool calls are bringing nothing new. Answer now from the results above, without calling more tools.";
-
-// A local model's request past this many tokens has its older tool results
-// shortened to their verdicts, headlines and numbers (shorten, readings/), the
-// newest KEEP_FULL left whole: it keeps the request inside a 32k window with
-// room to reply, and fast. A request no window can hold is shortened down to
-// the newest result before it is refused.
-export const SOFT_BUDGET = 24_000;
-export const KEEP_FULL = 3;
 
 // A final answer that fails its checks (answerChecks.ts: a verdict without its
 // tool, a number from nowhere, a stage called clean that the tools judged to
@@ -173,27 +167,37 @@ export async function runAgent({
   tools: given,
   ctx,
   settings,
+  policy = runPolicyOf(settings),
   signal,
   onProgress,
-  maxRounds = MAX_TOOL_ROUNDS,
+  maxRounds = policy.maxRounds,
   usage: wantUsage = false,
   checkAnswers = true,
   stallMs = STALL_MS,
   retryDelaysMs = RETRY_DELAYS_MS,
-  softBudget = SOFT_BUDGET,
+  softBudget = policy.pruning?.softBudget,
+  onTruncated,
 }: {
   messages: ChatMessage[];
   tools: AgentTool[];
   ctx: ToolContext | null;
   settings: LlmSettings;
+  // What the reply runs under (runPolicy.ts): the app's for its settings
+  // unless given (a validation run gives its own, validationRun.ts).
+  policy?: RunPolicy;
   signal: AbortSignal;
   onProgress?: (p: AgentProgress) => void;
-  maxRounds?: number;
+  maxRounds?: number; // the policy's unless given (tests)
   usage?: boolean; // count the reply's tokens (the evals)
   checkAnswers?: boolean; // hold a final answer to its evidence (answerChecks.ts); on whenever tools are
   stallMs?: { first: number; idle: number }; // the watchdog's limits (tests shorten them)
   retryDelaysMs?: number[]; // the pauses before each retry
-  softBudget?: number; // a local request's tokens past which older results are shortened
+  softBudget?: number; // the tokens past which a pruned request's older results are shortened: the policy's unless given (tests)
+  // Each request whose reply stopped at its output limit (stoppedAtLimit,
+  // provider/client.ts): its number, 1-based over every request the loop
+  // sent, retries included, and the server's stop reason (a validation run's
+  // record keeps them, validationRun.ts).
+  onTruncated?: (cut: { request: number; reason: string }) => void;
 }): Promise<AgentResult> {
   // The reply's history, which the executor runs each round of calls over
   // (tools/round.ts): the tools the reply offers, runs and checks answers
@@ -252,7 +256,7 @@ export async function runAgent({
   const windowKey = `${settings.baseUrl}|${settings.model}`;
   // A local model is offered the reading tools and those its question is
   // about (localTools.ts); one it calls by name all the same runs, and joins.
-  let offered = isLocalUrl(settings.baseUrl) ? toolsFor(lastQuestion(messages), tools) : tools;
+  let offered = policy.toolScoping === "question" ? toolsFor(lastQuestion(messages), tools) : tools;
   const offer = (name: string) => {
     const tool = tools.find((t) => t.name === name);
     if (tool && !offered.includes(tool)) offered = tools.filter((t) => offered.includes(t) || t === tool);
@@ -260,6 +264,7 @@ export async function runAgent({
   let answerNow = false; // asked to answer without calling more tools
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 }; // over the requests that reported them
   let requests = 0;
+  let sent = 0; // requests sent, retries included
   for (let round = 0; ; round++) {
     const last = round >= maxRounds;
     let roundText = "";
@@ -268,7 +273,9 @@ export async function runAgent({
     let cutOff = false;
     const reasoningBefore = reasoning;
     const specs = useTools ? toolSpecs(offered) : undefined;
-    if (isLocalUrl(settings.baseUrl) && estimateTokens(baseTokens(convo, specs), windowKey) > softBudget) compactOlder(KEEP_FULL);
+    if (policy.pruning && softBudget !== undefined && estimateTokens(baseTokens(convo, specs), windowKey) > softBudget) {
+      compactOlder(policy.pruning.keepFull);
+    }
     // The request's own controller: the reply's Stop ends it, and so does the
     // watchdog when the server goes quiet.
     const request = new AbortController();
@@ -295,21 +302,24 @@ export async function runAgent({
         note = note ? `${note} ${plan.refusal}` : plan.refusal;
         break;
       }
+      sent += 1;
       for await (const delta of streamChat({
         baseUrl: settings.baseUrl,
         model: settings.model,
         messages: convo,
-        temperature: settings.temperature,
+        temperature: policy.temperature, // null: none is sent
         apiKey: settings.apiKey || undefined,
         signal: request.signal,
         tools: specs,
         toolChoice: useTools && (last || answerNow) ? "none" : undefined,
         // A local server's counts calibrate the token estimate.
-        includeUsage: wantUsage || isLocalUrl(settings.baseUrl),
+        includeUsage: wantUsage || policy.local,
         numCtx: plan.numCtx,
+        ...(policy.outputCap.loop != null ? { maxTokens: policy.outputCap.loop } : {}),
       })) {
         heard = true;
         watch(stallMs.idle);
+        if (delta.stopReason) onTruncated?.({ request: sent, reason: delta.stopReason });
         if (delta.usage) {
           observeTokens(plan.key, plan.base, delta.usage.input);
           tokens.input += delta.usage.input;

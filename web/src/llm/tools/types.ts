@@ -19,12 +19,14 @@ export type Args = Record<string, unknown>;
 /**
  * A validation run's model (evals/validationRun.ts), for the requests a tool
  * makes of its own: tune_pipeline's proposals and judgements go to it, as the
- * run's replies do, and each request's token counts go to `usage`, which the
- * run adds to its own.
+ * run's replies do, each asking for the run's output cap (`maxTokens`, its
+ * run policy's), and each request's token counts and stop reason go to
+ * `usage`, which the run adds to its own.
  */
 export interface RunModel {
   settings: Pick<LlmSettings, "baseUrl" | "model" | "apiKey" | "temperature">;
   usage: UsageReport;
+  maxTokens?: number;
 }
 
 // The dataset the tools read.  run_pipeline replaces `dataset` with its fresh
@@ -50,6 +52,12 @@ export interface ToolContext {
   // this reply's own results, while what each measured stands (earlierSources,
   // answerChecks.ts).
   earlierSteps?: readonly AgentStep[];
+  // This reply's steps before the call, oldest first, as the agent loop keeps
+  // them: what the run's verdict ({{achieved}}, references.ts) is computed
+  // from at this point (run_verdict reads it). The round sets it on every call
+  // the model makes (round.ts); unset (the app's own calls), the reply has run
+  // nothing.
+  replySteps?: readonly AgentStep[];
   // The user's latest message, the one this reply answers: set by the agent
   // loop from the conversation as it arrived, never from what the loop itself
   // sends the model as the user (a send-back). update_settings changes a fact

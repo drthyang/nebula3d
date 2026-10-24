@@ -6,11 +6,11 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 ## The requests
 
-1. 4 messages, 23 tools offered
-2. 6 messages, 23 tools offered
-3. 8 messages, 23 tools offered
-4. 11 messages, 23 tools offered, tool_choice none
-5. 13 messages, 23 tools offered, tool_choice none
+1. 4 messages, 24 tools offered
+2. 6 messages, 24 tools offered
+3. 8 messages, 24 tools offered
+4. 11 messages, 24 tools offered, tool_choice none
+5. 13 messages, 24 tools offered, tool_choice none
 
 ## The conversation after the opening messages, as the last request sent it
 
