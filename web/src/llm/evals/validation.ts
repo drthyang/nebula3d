@@ -624,6 +624,31 @@ export interface Truncations {
   requests: TruncatedRequest[];
 }
 
+/**
+ * What the model reads when a paid run's spend budget does not cover another
+ * tuning (validationRun.ts, TuningGate): the call's error, as the record's
+ * decision keeps it ("Error: " and this) and its summary (this).
+ */
+export const TUNING_SKIPPED = "tune_pipeline did not run: the spend budget left does not cover another tuning";
+
+/** A tuning a paid run asked for and did not start, its budget not covering it; the run went on without it. */
+export interface TuningSkip {
+  step: number | null; // the tune_pipeline call's step (decisions); null: not among them (a run cut short)
+  left_usd: number; // what the budget had left for tunings past the run's first, at the call
+}
+
+/**
+ * What a paid run's tunings past its first could draw on, and those it did not
+ * start (SpendTracker.tuningBudget, validationModels.ts): its reserve covers
+ * its agent loop and one tuning, each at its hard bound, so another tuning
+ * starts only if what the cap leaves beyond the reserve covers one.
+ */
+export interface TuningBudgetRecord {
+  left_usd: number; // at the run's start: the cap less the spend before it and its reserve
+  per_tuning_usd: number; // one tuning at its hard bound, with the margin
+  skipped: TuningSkip[];
+}
+
 export interface RunRecord {
   schema: "nebula3d-validation-run/1";
   case: string;
@@ -662,6 +687,10 @@ export interface RunRecord {
   // tuning's: the run is graded as it stands, and the transcript and the
   // report say so. Absent from records made before 2026-10-24.
   truncated?: Truncations | null;
+  // A paid run's budget for tunings past its first, and the tunings it skipped
+  // for it: the transcript says so. Null: no budget held the run (nothing is
+  // paid). Absent from records made before 2026-10-24.
+  tuning_budget?: TuningBudgetRecord | null;
   grades: ValidationGrades;
   // The rule its unsafe actions (grades.unsafe) were counted under: UNSAFE_RULE
   // when the run was made, PRE_68_RULE once a regrade marked a record that
@@ -688,6 +717,7 @@ export function buildRecord(p: {
   tokensAtStart?: TokensAtStart | null;
   policy?: RunPolicy | null;
   truncated?: Truncations | null;
+  tuningBudget?: TuningBudgetRecord | null;
 }): RunRecord {
   const r = p.evalRun;
   return {
@@ -718,6 +748,7 @@ export function buildRecord(p: {
     error: r.error ?? null,
     failure: r.failure ?? null,
     truncated: p.truncated ?? null,
+    tuning_budget: p.tuningBudget ?? null,
     grades: gradeRun(p.case, r, p.elsewhere ?? []),
     unsafe_rule: UNSAFE_RULE,
   };

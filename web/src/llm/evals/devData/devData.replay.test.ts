@@ -96,7 +96,11 @@ const BACKEND_CALLS: Record<string, Record<string, unknown>> = {
   show_in_viewer: { view: "cleanup", plane: "hk0", value: 0 },
   run_pipeline: { from_stage: "pdf" },
   tune_pipeline: { stages: ["pdf"], trials_per_stage: 2 },
+  regrid_refined_ub: {},
 };
+
+// The user's latest message for a tool that runs only when it is asked for (its facts' askedFor).
+const ASKED: Record<string, string> = { regrid_refined_ub: "Regrid the volume onto the refined UB." };
 
 describe("the tools, through the bridge", () => {
   it("runs every tool that reaches the backend on dev-control, and no bridge call fails", async () => {
@@ -107,7 +111,7 @@ describe("the tools, through the bridge", () => {
     const restore = contentTuner();
     try {
       for (const [name, args] of Object.entries(BACKEND_CALLS)) {
-        const r = await c.tool(name, args);
+        const r = await c.tool(name, args, { userMessage: ASKED[name] });
         expect(r.ok, `${name}: ${r.summary}`).toBe(true);
       }
     } finally {

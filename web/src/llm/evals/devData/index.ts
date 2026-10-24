@@ -10,7 +10,8 @@
 // usePipelineStore.runStages), with the stores and the query cache reset. Then
 //
 // - dataset() is the dataset as the console lists it;
-// - tool(name, args) runs one of the Pilot's tools on it, as the app runs it;
+// - tool(name, args) runs one of the Pilot's tools on it, as the app runs it
+//   (with { userMessage }, after that message from the user);
 // - replay(question, script) runs the agent loop on it, a scripted model
 //   (scripted.ts) in place of the real one, with the real tools.
 //
@@ -100,7 +101,9 @@ export interface DevCase {
   readonly truth: ValidationCase["truth"]; // from the manifest's dev entry
   readonly fault: ValidationCase["fault"];
   dataset(): Promise<Dataset>;
-  tool(name: string, args?: Record<string, unknown>): Promise<ToolRunResult>;
+  // `userMessage`: the user's latest message, as the agent loop hands it to
+  // the tools (an action only the user asks for reads it: the regrid).
+  tool(name: string, args?: Record<string, unknown>, opts?: { userMessage?: string }): Promise<ToolRunResult>;
   replay(question: string, script: ScriptTurn[]): Promise<ReplayResult>;
 }
 
@@ -243,13 +246,14 @@ class Handle implements DevCase {
     return (await this.start()).dataset;
   }
 
-  async tool(name: string, args: Record<string, unknown> = {}): Promise<ToolRunResult> {
+  async tool(name: string, args: Record<string, unknown> = {}, { userMessage }: { userMessage?: string } = {}): Promise<ToolRunResult> {
     const ctx = await this.start();
     const tool = CHAT_TOOLS.find((t) => t.name === name);
     if (!tool) throw new Error(`no tool named ${name}`);
     try {
       // ctx is the handle's: a run refreshes its dataset for the calls after it.
-      const out = await tool.run(args, ctx, {});
+      // With a user's message, a copy of it that carries the message: this call's alone.
+      const out = await tool.run(args, userMessage === undefined ? ctx : { ...ctx, userMessage }, {});
       return { ok: true, result: asRecord(out.result), summary: out.summary, outcomes: out.outcomes ?? [] };
     } catch (e) {
       const message = (e as Error).message;

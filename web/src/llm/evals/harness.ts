@@ -16,7 +16,7 @@ import { buildChatMessages } from "../prompts/templates";
 import type { Failure } from "../recovery";
 import type { LlmSettings } from "../settings";
 import type { ComputedVerdict } from "../verdicts";
-import { CHAT_TOOLS, toolsWhere, type AgentTool } from "../tools";
+import { CHAT_TOOLS, factsOf, toolsWhere, type AgentTool } from "../tools";
 import type { Dispute } from "./graderReading";
 
 /** Token counts over a run's requests (provider/client.ts: TokenUsage), and how many requests they cover. */
@@ -77,8 +77,8 @@ export interface ScenarioResult {
   run: EvalRun;
 }
 
-/** Tools that start pipeline runs on the backend (their facts' `startsRuns`): an eval never runs them. */
-export const ACTIONS = new Set(toolsWhere((f) => f.startsRuns));
+/** Tools that write files on the backend, a run's outputs or a new dataset (their facts' `writesFiles`): an eval never runs them. */
+export const ACTIONS = new Set(toolsWhere((f) => f.writesFiles));
 
 /**
  * *tools* with the actions stubbed: a call is recorded (and graded) but fails
@@ -91,7 +91,8 @@ export const readOnly = (tools: AgentTool[]): AgentTool[] =>
       ? {
           ...t,
           run: async () => {
-            throw new Error("not run: the evals never start a pipeline run (the call is recorded)");
+            const never = factsOf(t.name).startsRuns ? "start a pipeline run" : "write a new dataset";
+            throw new Error(`not run: the evals never ${never} (the call is recorded)`);
           },
         }
       : t,

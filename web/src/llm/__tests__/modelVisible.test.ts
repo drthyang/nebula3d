@@ -57,7 +57,7 @@ import { writtenInferences } from "../inference";
 import { BUNCHING_REMEDY, offLatticeBunching } from "../metrics/bunching";
 import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 import { namedInOwnWords, quotations } from "./methodText";
-import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
+import { DATASET, DATASETS, freshConsole, installBackend, regridAnswer } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -75,6 +75,7 @@ const api = vi.hoisted(() => ({
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
   fetchVolumeTexture: vi.fn(),
+  regridDataset: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -271,6 +272,7 @@ describe("2. the tools, as sent to the model", () => {
       ["a ΔPDF question", "What are the strongest pair correlations in the 3D-ΔPDF?"],
       ["a flatten question", "Is there a background left after the flatten?"],
       ["an action request", "Raise the punch significance to 6 and rerun the pipeline."],
+      ["a regrid request", REGRID_ASKED],
     ];
     const body = questions
       .map(([what, q]) => {
@@ -400,6 +402,8 @@ const RUN_EVENTS: JobEvent[] = [
   { type: "progress", stage: "pdf_check", status: "done", fraction: 1, message: "back-FFT r = 0.99714" },
 ];
 
+// The user's latest message that asks for the regrid (its gate).
+const REGRID_ASKED = "Regrid the volume onto the refined UB.";
 /** The next punch record read says the run's sharp peaks off the lattice bunched at H ≡ ±1/3 (mod 1) (plan 4.15). */
 const bunchedOnce = (): void => {
   const real = api.fetchBraggProfile.getMockImplementation()!;
@@ -493,6 +497,19 @@ const SAMPLES: Sample[] = [
         });
       }),
   },
+  {
+    name: "regrid_refined_ub",
+    args: {},
+    note: `the user's latest message, “${REGRID_ASKED}”, asks for it; the crystal's UB, turned 0.3° for this sample, is written as a new dataset`,
+    ctx: { userMessage: REGRID_ASKED },
+    before: () => api.regridDataset.mockImplementationOnce(async (id: string) => regridAnswer(id, { turned: true })),
+  },
+  {
+    name: "regrid_refined_ub",
+    args: {},
+    note: `asked for as above; the crystal's own UB, turned 0.003°: refused by the backend, nothing written`,
+    ctx: { userMessage: REGRID_ASKED },
+  },
   { name: "show_in_viewer", args: { view: "dpdf", plane: "xy", value: 4 } },
 ];
 
@@ -509,6 +526,12 @@ const ERRORS: Sample[] = [
     ctx: { skillsRead: new Set(["bragg-node-audit"]), userMessage: "Is the punch clean?" },
   },
   { name: "tune_pipeline", args: { stages: ["flatten"] }, note: "tuning before its stage's skill was read", ctx: { skillsRead: new Set() } },
+  {
+    name: "regrid_refined_ub",
+    args: {},
+    note: "a regrid that the user's latest message, “Is the UB right?”, does not ask for",
+    ctx: { userMessage: "Is the UB right?" },
+  },
   {
     name: "update_settings",
     args: { changes: { flattenQ2: true } },

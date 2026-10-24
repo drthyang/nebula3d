@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { HELDOUT_SCENARIOS } from "../evals/heldout";
 import { holdoutOptedIn } from "../evals/heldoutFixture";
 import { SCENARIOS } from "../evals/scenarios";
+import { TASK } from "../evals/validation";
 import { CORE_TOOLS, lastQuestion, toolsFor } from "../localTools";
 import { CHAT_TOOLS, toolSpecs, type AgentTool } from "../tools";
 
@@ -60,6 +61,16 @@ describe("toolsFor", () => {
     // A question about something else does without them, as before.
     expect(offered("What are the strongest pair correlations in the 3D-ΔPDF?")).not.toEqual(expect.arrayContaining(["ub_check"]));
     expect(offered("What are the strongest pair correlations in the 3D-ΔPDF?")).not.toContain("texture_check");
+  });
+
+  it("offers the regrid only to a message that asks for one: the only message it would run for", () => {
+    for (const q of ["Regrid the volume onto the refined UB.", "Please regrid it.", "Run examples/refine_ub.py on this dataset."]) {
+      expect(offered(q), q).toContain("regrid_refined_ub");
+    }
+    for (const q of ["Is the UB right?", "How clean is this reduction?", "Refine the UB.", "Raise the punch's minimum significance to 6.", "Yes, do it.", TASK]) {
+      expect(offered(q), q).not.toContain("regrid_refined_ub");
+    }
+    expect(CORE_TOOLS).not.toContain("regrid_refined_ub");
   });
 
   it("offers the ΔPDF's feature list to a question about its pair correlations", () => {

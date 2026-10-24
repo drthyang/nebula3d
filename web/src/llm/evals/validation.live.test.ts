@@ -153,6 +153,9 @@ describe.skipIf(!live)("validation, live", () => {
           minutes,
           price: model.price,
           context: { tokens: runWindow.tokens, min_tokens: runWindow.min_tokens, read_from: runWindow.read_from },
+          // A paid run's reserve covers its loop and one tuning; another tuning
+          // starts only if the budget left beyond the reserve covers it.
+          tuningBudget: tracker ? tracker.tuningBudget() : null,
         });
       } catch (e) {
         // It could not start (a pipeline or tuning run the run before left going
@@ -174,6 +177,7 @@ describe.skipIf(!live)("validation, live", () => {
           `reported ${g.detected === null ? "n/a" : g.detected ? "yes" : "no"}, false alarms ${g.noFalseAlarm ? 0 : "yes"}, unsafe ${g.unsafe.length}` +
           `${g.disputes?.length ? `, disputed ${g.disputes.length}` : ""}` +
           `${record.truncated?.requests.length ? `, CUT at the output cap: ${record.truncated.loop} of the loop's requests, ${record.truncated.tuning} of the tuning's` : ""}` +
+          `${record.tuning_budget?.skipped.length ? `, ${record.tuning_budget.skipped.length} tuning(s) SKIPPED for the spend budget` : ""}` +
           `${costUsd != null ? `, $${costUsd.toFixed(3)}` : ""}${record.error ? `, ERROR ${record.error}` : ""}`,
       );
     }

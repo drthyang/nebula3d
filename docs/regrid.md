@@ -11,7 +11,9 @@ regrids the volume onto it, and writes the result as a **new** file beside the
 raw one, in the NeXus Viewer's layout. The server
 (`POST /api/datasets/{id}/regrid`) and the browser bridge
 (`webbridge.dataset_regrid_json`) call it through one helper, so they return the
-same fields.
+same fields. In the console, the Pilot's `regrid_refined_ub` runs it on the
+selected dataset when the user's latest message asks for a regrid
+([NEBULA Pilot](pilot.md)).
 
 | Raw volume | New file |
 | --- | --- |

@@ -57,6 +57,7 @@ describe("the registry", () => {
       "update_settings",
       "run_pipeline",
       "tune_pipeline",
+      "regrid_refined_ub",
       "show_in_viewer",
     ]);
   });

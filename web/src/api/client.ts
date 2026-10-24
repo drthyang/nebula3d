@@ -14,6 +14,7 @@ import type {
   ModulationCheckIn,
   PipelineRunRequest,
   ProtectedLabels,
+  RegridResult,
   RingDiagnostics,
   RingIsotropy,
   ShellFloors,
@@ -162,6 +163,18 @@ export async function fetchUbCheck(volumeId: string, cell: [number, number, numb
     throw new Error(detail ?? `${r.status} ${r.statusText}: ${url}`);
   }
   return (await r.json()) as UbCheck;
+}
+
+/**
+ * Regrid a dataset's raw volume onto its refined UB (the UB check's fit, Bragg
+ * nodes every `cell`), as a new dataset beside it; never over a file. A
+ * refusal (the target exists, the turn is within the fit's noise, a
+ * symmetrised volume without its source) comes back as data, `written` false;
+ * too few peaks to fit, or no raw volume, is an error (docs/regrid.md).
+ */
+export function regridDataset(datasetId: string, cell: [number, number, number], qMax: number | null = null): Promise<RegridResult> {
+  if (PYODIDE_MODE) return engine.datasetRegrid(datasetId, cell.join(","), qMax);
+  return postJSON<RegridResult>(`/api/datasets/${encodeURIComponent(datasetId)}/regrid`, { cell, q_max: qMax, symmetrise: false });
 }
 
 /** The limits of the fill-bias rule a texture request judges by; one left out is the server's (texture.ts's). */

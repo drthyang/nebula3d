@@ -13,17 +13,19 @@
 // logic (the transcript, a case's checks).
 
 import { seen, type Readable } from "../readings";
-import { SAMPLE_FACT_REFUSED } from "../tune/catalog";
+import { REGRID_REFUSED, SAMPLE_FACT_REFUSED } from "../tune/catalog";
 import { offerChanges } from "./offers";
 import {
   findIn,
   numbersIn,
   stepOf,
+  TUNING_SKIPPED,
   wasRefused,
   type Decision,
   type RecordedRunPolicy,
   type RunRecord,
   type Truncations,
+  type TuningBudgetRecord,
   type ValidationCase,
 } from "./validation";
 
@@ -190,8 +192,9 @@ function surfaced(rec: RunRecord, value: number, tol: number, reading: (d: Decis
 
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
-/** A call a guardrail refused, which is no tool failing: until its stage's skill is read, or a fact about the sample the user did not name. */
-const refusedByAGuardrail = (summary: string): boolean => /refused until its skill is read/.test(summary) || summary.includes(SAMPLE_FACT_REFUSED);
+/** A call a guardrail refused, which is no tool failing: until its stage's skill is read, a fact about the sample the user did not name, or a regrid the user did not ask for. */
+const refusedByAGuardrail = (summary: string): boolean =>
+  /refused until its skill is read/.test(summary) || summary.includes(SAMPLE_FACT_REFUSED) || summary.includes(REGRID_REFUSED);
 
 // What a failed scoring criterion most likely means, for the reviewer to confirm.
 const CRITERION: Record<string, [FindingKind, string]> = {
@@ -219,7 +222,8 @@ export function candidateFindings(rec: RunRecord, c: ValidationCase): Validation
     add({ step: null, kind: "orchestration", evidence: clip(rec.note), proposed_fix: "the task needs more rounds, or a tool returns too much for the context: shorten its result, or raise the limit for this task and say so" });
   }
   for (const d of rec.decisions) {
-    if (d.status === "error" && !refusedByAGuardrail(d.summary)) {
+    // A tuning the spend budget did not cover is no tool failing: the transcript says so (tuningSkippedLine).
+    if (d.status === "error" && !refusedByAGuardrail(d.summary) && d.summary !== TUNING_SKIPPED) {
       add({ step: d.step, kind: "bug", evidence: `${d.tool}(${clip(JSON.stringify(d.args), 120)}) failed: ${clip(d.result)}`, proposed_fix: "decide whether the model called it wrongly (a clearer description or error) or the tool is wrong (fix it, with a test)" });
     }
   }
@@ -325,6 +329,16 @@ export function truncatedLine(t: Truncations): string | null {
   return `${[which("loop"), which("tuning")].filter(Boolean).join("; ")}`;
 }
 
+/** The tunings a paid run's spend budget did not cover, in words; null when none was skipped. */
+export function tuningSkippedLine(b: TuningBudgetRecord): string | null {
+  if (!b.skipped.length) return null;
+  const at = b.skipped.map((s) => `${s.step === null ? "a call" : `step ${s.step}`} ($${s.left_usd.toFixed(2)} left)`);
+  return (
+    `tune_pipeline at ${at.join(", ")}: one more tuning needs $${b.per_tuning_usd.toFixed(2)} (a tuning at its hard bound, with the margin), ` +
+    "more than the budget had left beyond the run's reserve"
+  );
+}
+
 /** A run as Markdown: the task, each step with its arguments, reason and result, the numbers and their sources, the conclusion and the scores. A review finding is on no run, so it is never listed. */
 export function renderTranscript(rec: RunRecord, given: readonly Finding[] = []): string {
   const findings = given.filter(isValidationFinding);
@@ -374,6 +388,9 @@ export function renderTranscript(rec: RunRecord, given: readonly Finding[] = [])
   // A reply cut at the output cap is graded as it stands, and said so.
   const cut = rec.truncated ? truncatedLine(rec.truncated) : null;
   if (cut) lines.push(`**Cut at the output limit:** ${cut}. The run is graded as it stands.`, "");
+  // A tuning the spend budget did not cover: the model read why, and the run went on without it.
+  const skipped = rec.tuning_budget ? tuningSkippedLine(rec.tuning_budget) : null;
+  if (skipped) lines.push(`**Tuning skipped for the spend budget:** ${skipped}. The run went on without it.`, "");
   if (rec.computed_verdict) lines.push(`**Verdict computed from the checks:** ${rec.computed_verdict.text}.`, "");
   if (rec.note) lines.push(`Note: ${rec.note}`, "");
   if (rec.error) lines.push(`Error: ${rec.error}`, "");

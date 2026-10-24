@@ -244,6 +244,15 @@
       "eager_input_streaming": true
      },
      {
+      "name": "regrid_refined_ub",
+      "description": "regrid_refined_ub.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
       "name": "show_in_viewer",
       "description": "show_in_viewer.",
       "input_schema": {
@@ -520,6 +529,15 @@
      {
       "name": "tune_pipeline",
       "description": "tune_pipeline.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "regrid_refined_ub",
+      "description": "regrid_refined_ub.",
       "input_schema": {
        "type": "object",
        "properties": {}
@@ -786,6 +804,15 @@
       "eager_input_streaming": true
      },
      {
+      "name": "regrid_refined_ub",
+      "description": "regrid_refined_ub.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
       "name": "show_in_viewer",
       "description": "show_in_viewer.",
       "input_schema": {
@@ -1062,6 +1089,15 @@
      {
       "name": "tune_pipeline",
       "description": "tune_pipeline.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "regrid_refined_ub",
+      "description": "regrid_refined_ub.",
       "input_schema": {
        "type": "object",
        "properties": {}

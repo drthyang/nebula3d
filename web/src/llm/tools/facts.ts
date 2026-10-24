@@ -21,12 +21,14 @@ type Args = Record<string, unknown>;
 
 /**
  * What a tool changes when it acts: the console's view, the Configure page's
- * settings, the settings by a tuning run, or the outputs by a pipeline run.
+ * settings, the settings by a tuning run, the outputs by a pipeline run, or
+ * the datasets, by writing a new one beside the selected one (the regrid:
+ * never over a file, and no run).
  */
-export type Act = "view" | "settings" | "tune" | "run";
+export type Act = "view" | "settings" | "tune" | "run" | "dataset";
 
 /** A later reading that may differ once the tool has run. */
-export type Reading = "view" | "settings" | "outputs";
+export type Reading = "view" | "settings" | "outputs" | "datasets";
 
 /**
  * What a question is about, as localTools.ts reads it from the words; a
@@ -110,6 +112,12 @@ export interface ToolFacts {
   // It works only with the skills on (read_skill): with the switch off
   // (skills.ts, the validation's arm C) it is not offered. Left out: offered either way.
   needsSkills?: true;
+  // An action only the user asks for: whether the user's latest message asks
+  // for it, by name (the rule update_settings holds a fact about the sample to,
+  // tune/catalog.ts). Its run refuses a call the message does not ask for, and
+  // a local model is offered it only for a message that does (localTools.ts),
+  // whatever offeredFor says. Left out: no such rule.
+  askedFor?: (message: string) => boolean;
   // Its result is computed from this reply's steps before it (ToolContext's
   // replySteps: run_verdict), which every call that runs changes: the repeat
   // guard (round.ts) points a call to it at an earlier one only while no
@@ -126,6 +134,7 @@ export interface Facts {
   acts: Act | null;
   actsOnPipeline: boolean; // it changes the settings, or starts a run
   startsRuns: boolean; // it starts pipeline runs on the backend
+  writesFiles: boolean; // it writes files on the backend: a run's outputs, or a new dataset
   reachesBackend: boolean;
   invalidates: readonly Reading[];
   offeredFor: readonly AskedAbout[] | "always";
@@ -134,6 +143,7 @@ export interface Facts {
   highlights: (args: Args) => readonly HighlightKey[];
   gate: Gate | null;
   needsSkills: boolean;
+  askedFor: ((message: string) => boolean) | null;
   readsReply: boolean;
 }
 
@@ -154,6 +164,7 @@ export function resolveFacts(name: string, declared?: ToolFacts): Facts {
     acts,
     actsOnPipeline: acts === "settings" || acts === "tune" || acts === "run",
     startsRuns: acts === "tune" || acts === "run",
+    writesFiles: acts === "tune" || acts === "run" || acts === "dataset",
     reachesBackend: declared?.reachesBackend ?? true,
     invalidates: declared?.invalidates ?? [],
     offeredFor: declared?.offeredFor ?? "always",
@@ -162,6 +173,7 @@ export function resolveFacts(name: string, declared?: ToolFacts): Facts {
     highlights: byArgs(declared?.highlights, []),
     gate: declared?.gate ?? null,
     needsSkills: declared?.needsSkills ?? false,
+    askedFor: declared?.askedFor ?? null,
     readsReply: declared?.readsReply ?? false,
   };
 }
