@@ -295,8 +295,7 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "bragg-node-audit", phrase: "the same search at random directions", what: "the random directions' control", fields: ["random_control"] },
   {
     skill: "bragg-node-audit",
-    phrase: "no cut whose fills sit systematically outside the range their rims allow",
-    // Over every hole in 3-D since 4.2's TypeScript half: the skill's "no cut" wording waits for its fact sync.
+    phrase: "no fills sitting systematically outside the range their rims allow",
     what: "whether the fills sit systematically outside their rims' range",
     fields: ["systematic_fill_bias"],
   },
