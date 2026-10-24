@@ -19,12 +19,14 @@ export type Args = Record<string, unknown>;
 /**
  * A validation run's model (evals/validationRun.ts), for the requests a tool
  * makes of its own: tune_pipeline's proposals and judgements go to it, as the
- * run's replies do, and each request's token counts go to `usage`, which the
- * run adds to its own.
+ * run's replies do, each asking for the run's output cap (`maxTokens`, its
+ * run policy's), and each request's token counts and stop reason go to
+ * `usage`, which the run adds to its own.
  */
 export interface RunModel {
   settings: Pick<LlmSettings, "baseUrl" | "model" | "apiKey" | "temperature">;
   usage: UsageReport;
+  maxTokens?: number;
 }
 
 // The dataset the tools read.  run_pipeline replaces `dataset` with its fresh
