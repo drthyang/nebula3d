@@ -45,7 +45,7 @@ def meta(
     view = view_input(cfg, dataset_id)
     if view is None:
         raise HTTPException(
-            404, f"no flattened/backfilled volume for {dataset_id!r}; "
+            404, f"no background-corrected or backfilled volume for {dataset_id!r}; "
                  "run the pipeline first")
     return consistency_meta(view, _band(q_min, q_max), _band(r_min, r_max))
 
@@ -79,7 +79,7 @@ def slice_(
         raise HTTPException(400, f"unknown plane {plane!r}; choose one of {PLANES}")
     view = view_input(cfg, dataset_id)
     if view is None:
-        raise HTTPException(404, f"no flattened/backfilled volume for {dataset_id!r}")
+        raise HTTPException(404, f"no background-corrected or backfilled volume for {dataset_id!r}")
     body = consistency_slice_envelope(
         view, _band(q_min, q_max), _band(r_min, r_max), panel, plane, value)
     return Response(content=body, media_type="application/octet-stream")
@@ -98,7 +98,7 @@ def save(
     view = view_input(cfg, dataset_id)
     if view is None:
         raise HTTPException(
-            404, f"no flattened/backfilled volume for {dataset_id!r}; "
+            404, f"no background-corrected or backfilled volume for {dataset_id!r}; "
                  "run the pipeline first")
     out = save_reconstruction(
         view, _band(q_min, q_max), _band(r_min, r_max), cfg.processed_dir)

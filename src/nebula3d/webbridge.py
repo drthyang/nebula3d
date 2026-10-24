@@ -1311,7 +1311,7 @@ def _view_input(dataset_id: str) -> _cons.ViewInput:
     view = _cons.view_input(_require_cfg(), dataset_id)
     if view is None:
         raise FileNotFoundError(
-            f"no ΔPDF-input volume (flattened/backfilled) for {dataset_id!r}")
+            f"no ΔPDF-input volume (background-corrected or backfilled) for {dataset_id!r}")
     return view
 
 
