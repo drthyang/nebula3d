@@ -173,9 +173,13 @@ type Gate = { skill: SkillName; phrase: string; stated: number | null } & ({ lim
 
 const GATES: Gate[] = [
   // reduction-qc
+  { skill: "reduction-qc", phrase: "the UB turned at 0.05° or more", stated: 0.05, limit: LIMITS.ubTurn },
   { skill: "reduction-qc", phrase: "up to about 1e-3 is clean", stated: 1e-3, limit: LIMITS.openWeight },
   { skill: "reduction-qc", phrase: "at least 0.15 of its median height", stated: 0.15, limit: LIMITS.ringHeight },
   { skill: "reduction-qc", phrase: "in 90 % of the directions", stated: 0.9, limit: LIMITS.ringDirections },
+  { skill: "reduction-qc", phrase: "three times its noise above its flanks", stated: 3, limit: LIMITS.ringSnr },
+  { skill: "reduction-qc", phrase: "a quarter of its height above a curve", stated: 0.25, limit: LIMITS.ringCurve },
+  { skill: "reduction-qc", phrase: "beyond three times its plane's noise", stated: 3, limit: LIMITS.ringNoise },
   { skill: "reduction-qc", phrase: "holds to about 1e-3 or better", stated: 1e-3, limit: LIMITS.symmetryHolds },
   { skill: "reduction-qc", phrase: "more than 1e-3 of its weight on unmeasured space", stated: 1e-3, limit: LIMITS.tuningWeight },
   { skill: "reduction-qc", phrase: "a trend and a span both 0.8 or more", stated: 0.8, limit: LIMITS.pedestalTrend },
@@ -199,12 +203,12 @@ const GATES: Gate[] = [
     skill: "bragg-node-audit",
     phrase: "an azimuthal ratio near 1",
     stated: 1,
-    none: "texture_check reports azimuthal_ratio, and no rule judges it: the texture rule reads systematic_fill_bias only (verdicts/rules.ts).",
+    none: "texture_check reports azimuthal_ratio, and no rule judges it: the texture rule reads systematic_fill_bias only (verdicts/rules.ts). Interview B12.",
   },
   // delta-pdf-interpretation
   { skill: "delta-pdf-interpretation", phrase: "unmeasured space up to about 1e-3", stated: 1e-3, limit: LIMITS.openWeight },
   { skill: "delta-pdf-interpretation", phrase: "holds to about 1e-3 or better", stated: 1e-3, limit: LIMITS.symmetryHolds },
-  { skill: "delta-pdf-interpretation", phrase: "a back-FFT r near 1 only shows the transform ran correctly", stated: 1, limit: LIMITS.backFftR },
+  { skill: "delta-pdf-interpretation", phrase: "a back-FFT r of 0.999 or more only shows the transform ran correctly", stated: 0.999, limit: LIMITS.backFftR },
   { skill: "delta-pdf-interpretation", phrase: "more than 1e-3 of its weight on unmeasured space", stated: 1e-3, limit: LIMITS.tuningWeight },
 ];
 
@@ -257,8 +261,8 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "reduction-qc", phrase: "the stages on disk", what: "the stages on disk", fields: ["stages"] },
   { skill: "reduction-qc", phrase: "the reciprocal grid and its range", what: "the reciprocal grid", fields: ["reciprocal.grid"] },
   { skill: "reduction-qc", phrase: "the reciprocal grid and its range", what: "the reciprocal grid's range", fields: ["reciprocal.H"] },
-  { skill: "reduction-qc", phrase: "the cell, and the symmetry the file declares", what: "the cell", fields: ["cell"] },
-  { skill: "reduction-qc", phrase: "the cell, and the symmetry the file declares", what: "the symmetry the file declares", fields: SYMMETRY_FIELDS },
+  { skill: "reduction-qc", phrase: "its range, and the cell", what: "the cell", fields: ["cell"] },
+  { skill: "reduction-qc", phrase: "and the symmetry the file declares", what: "the symmetry the file declares", fields: SYMMETRY_FIELDS },
   { skill: "reduction-qc", phrase: "Note whether the volume is symmetrised", what: "whether the volume is symmetrised", fields: ["symmetrised"] },
   { skill: "reduction-qc", phrase: "with the punch cell as the Bragg nodes", what: "the Bragg nodes it fits", fields: ["bragg_nodes_every"] },
   { skill: "reduction-qc", phrase: "only the changes that commute with the symmetry operations can be fitted", what: "whether only the symmetric part was fitted", fields: ["fit", "symmetrised"] },
@@ -275,6 +279,7 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "bragg-node-audit", phrase: "the punch cell (", what: "the punch cell", fields: ["settings.punchSupercellH"] },
   { skill: "bragg-node-audit", phrase: "the search's protected H planes", what: "the search's protected H planes", fields: ["settings.punchProtectH"] },
   { skill: "bragg-node-audit", phrase: "`assess_stage` for the punch", what: "the punch's assessment", fields: ["punch"] },
+  { skill: "bragg-node-audit", phrase: "check an off-zero cut too", what: "the peaks left at nodes on an off-zero cut", fields: ["bragg_punch_leftover.n_at_nodes"] },
   { skill: "bragg-node-audit", phrase: "the peaks left at nodes", what: "the peaks left at nodes", fields: ["punch.leftover_at_nodes"] },
   { skill: "bragg-node-audit", phrase: "the sharp peaks off the lattice", what: "the sharp peaks off the lattice", fields: ["punch.leftover_off_lattice_sharp"] },
   { skill: "bragg-node-audit", phrase: "the broad maxima kept", what: "the broad maxima kept", fields: ["punch.leftover_off_lattice_broad"] },
@@ -291,15 +296,16 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   },
   { skill: "bragg-node-audit", phrase: "an azimuthal ratio near 1", what: "the azimuthal ratio", fields: ["per_cut.azimuthal_ratio"] },
   // delta-pdf-interpretation
-  { skill: "delta-pdf-interpretation", phrase: "the window's shape and scale", what: "the window's shape", fields: ["window_shape", "settings.pdfWindowShape"] },
+  // Trust check 1 reads the settings that made the ΔPDF on disk: not the next run's (configure_settings, settings.*).
+  { skill: "delta-pdf-interpretation", phrase: "the window's shape and scale", what: "the window's shape", fields: ["window_shape"] },
   { skill: "delta-pdf-interpretation", phrase: "the window's shape and scale", what: "the window's scale", fields: ["window_scale"] },
-  { skill: "delta-pdf-interpretation", phrase: "the |Q| band, the symmetry used", what: "the |Q| band", fields: ["q_band", "settings.pdfQMin", "settings.pdfQMax"] },
-  { skill: "delta-pdf-interpretation", phrase: "the |Q| band, the symmetry used", what: "the symmetry used", fields: SYMMETRY_FIELDS },
+  { skill: "delta-pdf-interpretation", phrase: "`consistency_details`: the |Q| band", what: "the |Q| band", fields: ["q_band"] },
+  { skill: "delta-pdf-interpretation", phrase: "the symmetry used", what: "the symmetry used", fields: SYMMETRY_FIELDS },
   { skill: "delta-pdf-interpretation", phrase: "`qmax_coverage`: the window's weight on unmeasured space", what: "the window's weight on unmeasured space", fields: ["window_weight_on_unmeasured"] },
   { skill: "delta-pdf-interpretation", phrase: "the band inside the raw counts' edges", what: "the raw counts' edges", fields: ["raw_counts.q_max_edge"] },
-  { skill: "delta-pdf-interpretation", phrase: "every operation the data were symmetrised with holds", what: "each operation's difference", fields: ["ops.rms_difference"] },
+  { skill: "delta-pdf-interpretation", phrase: "each one the data were symmetrised with holds", what: "each operation's difference", fields: ["ops.rms_difference"] },
   { skill: "delta-pdf-interpretation", phrase: "`assess_stage` for the ΔPDF", what: "the ΔPDF's assessment", fields: ["pdf"] },
-  { skill: "delta-pdf-interpretation", phrase: "a back-FFT r near 1 only shows", what: "the back-FFT r", fields: ["pdf.back_fft_pearson_r", "pearson_r"] },
+  { skill: "delta-pdf-interpretation", phrase: "a back-FFT r of 0.999 or more only shows", what: "the back-FFT r against the even part", fields: ["pdf.back_fft_pearson_r_even", "pearson_r_even"] },
   { skill: "delta-pdf-interpretation", phrase: "the range is set from the sections", what: "the colour range", fields: ["applied.limit"] },
   {
     skill: "delta-pdf-interpretation",
@@ -329,68 +335,7 @@ type Kind = "tool" | "field" | "setting" | "name" | "claim" | "gate" | "unstated
  * what the skill names and why it fails. Fix the skill (with the user), then
  * take the entry off: the lint fails while an entry no longer fails.
  */
-const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [
-  {
-    skill: "reduction-qc",
-    kind: "claim",
-    names: "the symmetry the file declares",
-    why: "step 1 takes the declared symmetry from describe_dataset, whose result has none; ub_check (symmetry_from), grain_check (declared_symmetry), symmetry_check and assess_stage for the ΔPDF (symmetry_declared) give it (agent plan E; interview R5).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "claim",
-    names: "whether the volume is symmetrised",
-    why: "step 1 has the reader note whether the volume is symmetrised, from describe_dataset, which does not say; ub_check does (symmetrised) (interview R5).",
-  },
-  {
-    skill: "bragg-node-audit",
-    kind: "claim",
-    names: "the symmetry the file declares",
-    why: "step 1 takes the declared symmetry from describe_dataset and configure_settings, neither of which gives it (agent plan E; interview R5).",
-  },
-  {
-    skill: "delta-pdf-interpretation",
-    kind: "claim",
-    names: "the window's scale",
-    why: "trust check 1 takes the window's scale from describe_dataset and configure_settings; qmax_coverage gives it (window_scale). The shape and the band pass only on configure_settings, which gives the next run's settings, not those on disk (agent plan E; interview P2).",
-  },
-  {
-    skill: "delta-pdf-interpretation",
-    kind: "claim",
-    names: "the symmetry used",
-    why: "trust check 1 takes the symmetry from describe_dataset and configure_settings, neither of which gives it (agent plan E; interview P2).",
-  },
-  {
-    skill: "delta-pdf-interpretation",
-    kind: "gate",
-    names: "a back-FFT r near 1 only shows the transform ran correctly",
-    why: "trust check 4 reads the round trip as r near 1; the verdict's line is r of 0.999 or more (BACK_FFT_R_OK) against the data's even part (back_fft_pearson_r_even), which the check does not name (agent plan E; interview P4).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "unstated",
-    names: LIMITS.ubTurn.constant,
-    why: "step 2 leaves the turn worth acting on to the user; the verdict calls the UB turned at 0.05° or more from an unsymmetrised fit (D4; interview R3).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "unstated",
-    names: LIMITS.ringSnr.constant,
-    why: "step 5 states the ring rule's 0.15 and 90 % only; a ring must also stand three times its noise above its flanks (agent plan E; interview R8).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "unstated",
-    names: LIMITS.ringCurve.constant,
-    why: "step 5 states the ring rule's 0.15 and 90 % only; a quarter of a ring's height must also stand above a curve through its flanks (agent plan E; interview R8).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "unstated",
-    names: LIMITS.ringNoise.constant,
-    why: "step 5 reports leftovers and dents as shares of the diffuse; the verdict counts one only beyond three times its plane's noise (agent plan E; interview R8).",
-  },
-];
+const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [];
 
 // ---------------------------------------------------------------- the skills, in units
 
