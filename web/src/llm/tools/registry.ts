@@ -87,11 +87,12 @@ export const toolsWhere = (pred: (facts: Facts) => boolean): string[] =>
 /**
  * Why a call must wait, or null: a call to a tool with a skill gate (its
  * facts' `gate`) waits until the skills of the stages it changes or tunes
- * have been read in the conversation (skills.ts words it).
+ * have been read in this reply (`read`); those read in an earlier turn
+ * (`earlier`) are asked for again (skills.ts words it).
  */
-export function unreadSkillRefusal(name: string, args: Args, read: ReadonlySet<string>): string | null {
+export function unreadSkillRefusal(name: string, args: Args, read: ReadonlySet<string>, earlier?: ReadonlySet<string>): string | null {
   const gate = factsOf(name).gate;
-  return gate ? refusalFor(gate.stages(args), gate.doing, read) : null;
+  return gate ? refusalFor(gate.stages(args), gate.doing, read, earlier) : null;
 }
 
 /**

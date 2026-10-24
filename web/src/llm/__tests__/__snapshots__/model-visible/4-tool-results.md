@@ -499,20 +499,19 @@ References of this skill (read one with read_skill and `reference`):
 
 ## qmax_coverage {}
 
-2135 characters sent.
+1270 characters sent.
 
 ```json
 {
-  "verdict": "clean: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space; the raw counts end at 4.4 Å⁻¹, inside the box (its nearest face at 4.712 Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0.25–4.4 Å⁻¹ (suggested_band), the user's to set",
+  "verdict": "fitted to the coverage: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the raw counts end at 4.4 Å⁻¹, inside the box (its nearest face at 4.712 Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0.25–4.4 Å⁻¹ (suggested_band), the user's to set",
   "window_weight_on_unmeasured": 0.00024,
   "window_shape": "ellipsoid",
   "window_scale": 1,
-  "transform_reach_q": 4.36,
+  "transform_reach_q": 4.35,
   "reach_from": "an ellipsoid window inscribed in the box (its reach varies with direction; box_face_q is the nearest face)",
-  "full_coverage_q": 4.36,
-  "box_face_q": 4.71,
+  "full_coverage_q": 4.35,
+  "box_face_q": 4.712,
   "box_corner_q": 8.162,
-  "low_q_gap": 0.236,
   "raw_counts": {
     "q_min_edge": 0.25,
     "q_max_edge": 4.4,
@@ -529,149 +528,6 @@ References of this skill (read one with read_skill and `reference`):
     "pdfApod": "(default)",
     "pdfWindowShape": "(default)",
     "pdfWindowSupport": true
-  },
-  "per_plane": {
-    "hk0": {
-      "full_coverage_q": 4.36,
-      "half_coverage_q": 4.36,
-      "box_q": 4.71,
-      "shells": [
-        {
-          "q": 0.412,
-          "measured": 1
-        },
-        {
-          "q": 0.884,
-          "measured": 1
-        },
-        {
-          "q": 1.35,
-          "measured": 1
-        },
-        {
-          "q": 1.83,
-          "measured": 1
-        },
-        {
-          "q": 2.3,
-          "measured": 1
-        },
-        {
-          "q": 2.77,
-          "measured": 1
-        },
-        {
-          "q": 3.24,
-          "measured": 1
-        },
-        {
-          "q": 3.71,
-          "measured": 1
-        },
-        {
-          "q": 4.18,
-          "measured": 1
-        },
-        {
-          "q": 4.65,
-          "measured": 0
-        }
-      ]
-    },
-    "h0l": {
-      "full_coverage_q": 4.36,
-      "half_coverage_q": 4.36,
-      "box_q": 4.71,
-      "shells": [
-        {
-          "q": 0.412,
-          "measured": 1
-        },
-        {
-          "q": 0.884,
-          "measured": 1
-        },
-        {
-          "q": 1.35,
-          "measured": 1
-        },
-        {
-          "q": 1.83,
-          "measured": 1
-        },
-        {
-          "q": 2.3,
-          "measured": 1
-        },
-        {
-          "q": 2.77,
-          "measured": 1
-        },
-        {
-          "q": 3.24,
-          "measured": 1
-        },
-        {
-          "q": 3.71,
-          "measured": 1
-        },
-        {
-          "q": 4.18,
-          "measured": 1
-        },
-        {
-          "q": 4.65,
-          "measured": 0
-        }
-      ]
-    },
-    "0kl": {
-      "full_coverage_q": 4.36,
-      "half_coverage_q": 4.36,
-      "box_q": 4.71,
-      "shells": [
-        {
-          "q": 0.412,
-          "measured": 1
-        },
-        {
-          "q": 0.884,
-          "measured": 1
-        },
-        {
-          "q": 1.35,
-          "measured": 1
-        },
-        {
-          "q": 1.83,
-          "measured": 1
-        },
-        {
-          "q": 2.3,
-          "measured": 1
-        },
-        {
-          "q": 2.77,
-          "measured": 1
-        },
-        {
-          "q": 3.24,
-          "measured": 1
-        },
-        {
-          "q": 3.71,
-          "measured": 1
-        },
-        {
-          "q": 4.18,
-          "measured": 1
-        },
-        {
-          "q": 4.65,
-          "measured": 0
-        }
-      ]
-    }
   }
 }
 ```
@@ -1641,6 +1497,12 @@ Error: read the method first: call read_skill with name "bragg-node-audit". It i
 
 ```text
 Error: read the method first: call read_skill with name "reduction-qc". It is how the user works on the flatten stage, and this tuning waits until it has been read in this conversation.
+```
+
+## update_settings {"changes":{"flattenQ2":true}} (a change in a later turn, its stage's skill read in an earlier one and not in this reply)
+
+```text
+Error: read the method again: call read_skill with name "reduction-qc". It was read earlier in the conversation, but its text is not in this reply. It is how the user works on the flatten stage, and this change waits until it has been read in this reply.
 ```
 
 # An older result, shortened
