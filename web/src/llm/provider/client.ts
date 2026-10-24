@@ -82,7 +82,7 @@ export interface HttpError extends Error {
 const CONTEXT_OVERFLOW = /context (length|window|size)|n_ctx|maximum context|too many tokens|exceeds? the (model's )?context|prompt is too long|tokens to keep/i;
 export const withContextHint = (message: string): string =>
   CONTEXT_OVERFLOW.test(message)
-    ? `${message} — the model's context window is full. In LM Studio, raise the model's Context Length in its load settings to 48k (49152) and reload it; start Ollama with OLLAMA_CONTEXT_LENGTH=49152. With Tools on, the first request alone is about 8k tokens, and a full assessment that reads two skills reaches about 46k; Tools off, or Clear, also helps.`
+    ? `${message} — the model's context window is full. In LM Studio, raise the model's Context Length in its load settings to 56k (57344) and reload it; start Ollama with OLLAMA_CONTEXT_LENGTH=57344. With Tools on, the first request alone is about 8k tokens, and a full assessment that reads two skills reaches about 48k; Tools off, or Clear, also helps.`
     : message;
 
 // A local model that writes a reply its own server cannot parse — most often a
@@ -181,15 +181,16 @@ export const loadedContext = async (
 };
 
 // The context window the console suggests loading a local model with when
-// Tools are on: 48k. The first request alone is about 8k tokens, and a full
-// assessment that reads two skills reaches about 45.6k with room for the reply
-// (measured through the agent loop: __tests__/tokenBudget.test.ts). A smaller
+// Tools are on: 56k. The first request alone is about 8k tokens, and a full
+// assessment that reads two skills reaches about 47.6k with room for the reply
+// (measured through the agent loop: __tests__/tokenBudget.test.ts), which 56k
+// holds with the 3k of headroom a model-visible addition must leave. A smaller
 // window still works, but the window guard then shortens the skills just read
 // to stubs, or refuses the request. The same number is the run policy's
 // minimum for a local live run of the validation (evals/validationModels.ts).
 // It is guidance only: what contextWarning and the window's refusal suggest.
 // The guard's budgets and the window plan do not read it.
-export const TOOLS_CONTEXT = 49152;
+export const TOOLS_CONTEXT = 57344;
 
 /** What to do about a model loaded with less context than Tools need, or null. */
 // LM Studio unloads an idle model and loads it again on the next request with
@@ -203,7 +204,7 @@ export const contextWarning = (context: ModelContext | null, model: string): str
     `In LM Studio, set this model's default Context Length to ${n(target)}${context.max != null ? ` (it supports up to ${n(context.max)})` : ""}: ` +
     "it loads an idle model again with its defaults.";
   const need =
-    "With Tools on, the first request alone is about 8k tokens and a full assessment that reads two skills reaches about 46k";
+    "With Tools on, the first request alone is about 8k tokens and a full assessment that reads two skills reaches about 48k";
   if (context.loaded == null) {
     return `${model} is not loaded: LM Studio will load it with its default Context Length on the next request. ${need}. ${fix}`;
   }

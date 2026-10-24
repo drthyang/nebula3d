@@ -44,18 +44,19 @@ const OLLAMA = "http://localhost:11434/v1";
  * the model, and for every local run of the scenario evals.
  *
  * minLocalContextTokens: the least context window a local live run may have,
- * 48k. The Pilot's worst turn on a local model (arm B on the validation TASK,
- * two skills read whole) is about 45.6k tokens with the reply reserve before
- * the loop's compaction, and 37k to 42k after it (tokenBudget.test.ts). A 32k
- * window holds it only by shortening the skills just read to stubs, so a run
- * at 32k would grade arm B on stubs of the skills it read. The validation's
- * runner (validation.live.test.ts) and the scenario evals (live.test.ts, which
- * scripts/eval-local.sh runs) refuse a window under it before the first run,
- * and read it again before each run (runContext). The sibling app RMC holds
- * its local live runs to the same rule.
+ * 56k. The Pilot's worst turn on a local model (arm B on the validation TASK,
+ * two skills read whole, the ΔPDF's features a full list) is about 47.6k
+ * tokens with the reply reserve before the loop's compaction, and 37.7k to
+ * 42k after it (tokenBudget.test.ts); a model-visible addition must leave 3k
+ * of the minimum free. A 32k window holds the turn only by shortening the
+ * skills just read to stubs, so a run at 32k would grade arm B on stubs of
+ * the skills it read. The validation's runner (validation.live.test.ts) and
+ * the scenario evals (live.test.ts, which scripts/eval-local.sh runs) refuse
+ * a window under it before the first run, and read it again before each run
+ * (runContext). The sibling app RMC keeps its own rule, 48k.
  */
 export const RUN_POLICY = {
-  minLocalContextTokens: 49_152,
+  minLocalContextTokens: 57_344,
 } as const;
 
 const MIN_CONTEXT = RUN_POLICY.minLocalContextTokens;
@@ -74,7 +75,7 @@ const CAP_SHARE = `$${SPEND_CAP_USD} for NEBULA, within the $${SPEND_TOTAL_USD} 
 export const MODELS: readonly ValidationModel[] = [
   {
     key: "lmstudio-qwen3.8-27b",
-    label: "qwen/qwen3.8-27b (LM Studio, 48k)",
+    label: "qwen/qwen3.8-27b (LM Studio, 56k)",
     provider: "LM Studio",
     baseUrl: LM_STUDIO,
     model: "qwen/qwen3.8-27b",
@@ -178,7 +179,7 @@ export async function runContext(
 ): Promise<RunContext> {
   const min = model.minContextTokens;
   if (min == null) return { tokens: null, min_tokens: null, read_from: null, refusal: null };
-  const policy = `the run policy's minimum of ${tokens(min)} for a local live run (RUN_POLICY in validationModels.ts: the Pilot's worst turn needs about 45.6k tokens, tokenBudget.test.ts)`;
+  const policy = `the run policy's minimum of ${tokens(min)} for a local live run (RUN_POLICY in validationModels.ts: the Pilot's worst turn needs about 47.6k tokens, tokenBudget.test.ts)`;
   if (isOllamaUrl(baseUrl)) {
     const { maxContext } = await ollamaModel(baseUrl, model.model, signal);
     const seen = { tokens: maxContext, min_tokens: min, read_from: "ollama-supported" as const };

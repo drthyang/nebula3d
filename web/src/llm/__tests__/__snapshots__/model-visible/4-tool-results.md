@@ -619,24 +619,51 @@ References of this skill (read one with read_skill and `reference`):
 
 ## dpdf_peaks {}
 
-755 characters sent.
+1450 characters sent.
 
 ```json
 {
+  "grouped_by": "declared symmetry (mmm: 8 operations, r ≡ −r)",
   "features": [
     {
       "sign": "−",
       "length_A": 4,
       "size_sigma": 35.2,
-      "n_vectors": 3,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
       "vectors_rlu": [
-        [1, 0, 0],
-        [0, 1, 0],
+        [1, 0, 0]
+      ],
+      "vectors_A": [
+        [4, 0, 0]
+      ]
+    },
+    {
+      "sign": "−",
+      "length_A": 4,
+      "size_sigma": 35.2,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
+      "vectors_rlu": [
+        [0, 1, 0]
+      ],
+      "vectors_A": [
+        [0, 4, 0]
+      ]
+    },
+    {
+      "sign": "−",
+      "length_A": 4,
+      "size_sigma": 35.2,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
+      "vectors_rlu": [
         [0, 0, 1]
       ],
       "vectors_A": [
-        [4, 0, 0],
-        [0, 4, 0],
         [0, 0, 4]
       ]
     },
@@ -644,18 +671,48 @@ References of this skill (read one with read_skill and `reference`):
       "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "n_vectors": 6,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
       "vectors_rlu": [
         [1, 1, 0],
-        [1, -1, 0],
+        [1, -1, 0]
+      ],
+      "vectors_A": [
+        [4, 4, 0],
+        [4, -4, 0]
+      ]
+    },
+    {
+      "sign": "+",
+      "length_A": 5.657,
+      "size_sigma": 21.1,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
+      "vectors_rlu": [
         [1, 0, 1],
         [1, 0, -1]
       ],
       "vectors_A": [
-        [4, 4, 0],
-        [4, -4, 0],
         [4, 0, 4],
         [4, 0, -4]
+      ]
+    },
+    {
+      "sign": "+",
+      "length_A": 5.657,
+      "size_sigma": 21.1,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
+      "vectors_rlu": [
+        [0, 1, 1],
+        [0, 1, -1]
+      ],
+      "vectors_A": [
+        [0, 4, 4],
+        [0, 4, -4]
       ]
     }
   ],

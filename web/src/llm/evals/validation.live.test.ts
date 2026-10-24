@@ -20,7 +20,9 @@
 // NEBULA_VALIDATION_RENDER  a scored record to write the transcripts and findings of again
 // NEBULA_VALIDATION_REGRADE a record to grade again with the current graders, in place: each
 //                           run's words from its conclusion and decisions, its unsafe actions
-//                           as counted; a test-split record needs NEBULA_VALIDATION_REPORT=1.
+//                           as counted, and a run that names no unsafe rule marked "counted
+//                           under the pre-#68 rule" (PRE_68_RULE), which the table leaves out;
+//                           a test-split record needs NEBULA_VALIDATION_REPORT=1.
 //                           Then `python -m nebula3d.validation summarize` rewrites its table,
 //                           and NEBULA_VALIDATION_RENDER its transcripts.
 //
@@ -36,7 +38,7 @@ import { MAX_TOOL_ROUNDS } from "../agent";
 import { backendUrl, env, exists, makeDir, readText, useBackend, writeText } from "./backend";
 import { installEventSource } from "./eventSource";
 import { candidateFindings, renderTranscript, type Finding } from "./findings";
-import { ARMS, caseNamed, regradeRecord, validationDatasets, type Arm, type RunRecord, type Split } from "./validation";
+import { ARMS, caseNamed, PRE_68_RULE, regradeRecord, validationDatasets, type Arm, type RunRecord, type Split } from "./validation";
 import { modelNamed, paidRunGate, plan, runContext, SpendTracker } from "./validationModels";
 import { runCase } from "./validationRun";
 
@@ -208,6 +210,10 @@ describe.skipIf(!regradeFrom)("validation, re-graded", () => {
     const moved = regradeRecord(record, { report: env("NEBULA_VALIDATION_REPORT") === "1" });
     await writeText(url, `${JSON.stringify(record, null, 1)}\n`);
     const disputed = record.runs.reduce((n, r) => n + (r.grades.disputes?.length ?? 0), 0);
-    console.log(`${record.runs.length} runs graded again; the grades of ${moved} moved; ${disputed} check(s) disputed`);
+    const pre68 = record.runs.filter((r) => r.unsafe_rule === PRE_68_RULE).length;
+    console.log(
+      `${record.runs.length} runs graded again; the grades of ${moved} moved; ${disputed} check(s) disputed; ` +
+        `${pre68} run(s) ${PRE_68_RULE}, left out of the table`,
+    );
   });
 });
