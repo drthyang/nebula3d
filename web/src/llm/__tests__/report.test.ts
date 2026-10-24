@@ -347,6 +347,24 @@ describe("a card states only what it judges", () => {
     expect(card.criterion).toMatch(/^No pedestal: .* The largest floor in σ is reported, not judged/);
   });
 
+  it("shows the whole volume's pedestal on the Flatten card, and an evaluation recorded before it as then (4.1)", () => {
+    const volume = { max_after_floor_sigma: 1.72, floor_trend: -0.226, floor_span_fraction: 0.72, floor_judged_q: [5.58, 11.1], pedestal_left: false };
+    const card = buildReport(input({ measured: { ...input().measured, flatten: volume } })).checks.find((c) => c.title === "Flatten")!;
+    expect(card.verdict).toBe("pass");
+    expect(card.headline).toBe("floor ≤ 1.72σ · trend -0.226 · span 0.72");
+    expect(card.details).toEqual([
+      ["Largest leftover floor (reported, not judged)", "1.72 σ"],
+      ["Floor trend with |Q| (the whole volume)", "-0.226"],
+      ["Floor span (share of the diffuse, the whole volume)", "0.72"],
+      ["|Q| judged (Å⁻¹)", "5.58–11.1"],
+    ]);
+    expect(card.criterion).toMatch(/^No pedestal: the volume's floor trend and span both 0\.8 or more/);
+    const planes = { max_after_floor_sigma: 1.72, max_floor_trend: 0.314, max_floor_span_fraction: 0.601, pedestal_left: false };
+    const old = buildReport(input({ measured: { ...input().measured, flatten: planes } })).checks.find((c) => c.title === "Flatten")!;
+    expect(old.headline).toBe("floor ≤ 1.72σ · trend ≤ 0.314 · span ≤ 0.601");
+    expect(old.details).toContainEqual(["Largest floor trend with |Q|", "0.314"]);
+  });
+
   it("counts the fill bias on the Backfill card, whose criterion says so", () => {
     const texture = { per_cut: [{ systematic_fill_bias: true }, { systematic_fill_bias: false }] };
     const card = buildReport(input({ measured: { ...input().measured, texture } })).checks.find((c) => c.title === "Backfill")!;

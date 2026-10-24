@@ -114,8 +114,10 @@ const BACKEND_DEFAULT: Record<string, string> = {
   pdfWindowShape: "p.delta_pdf.window_shape",
   pdfWindowSupport: "p.delta_pdf.window_support",
   // The sample's facts: the H fractions to four places, as the package writes them.
-  punchProtectH: "[round(f, 4) for f in p.punch.search_exclude_h_fractions]",
-  punchProtectHalfWidth: "p.punch.search_exclude_h_half_width",
+  // The package's protection is the sample's declared modulation (plan 4.15): by
+  // default the planes of k = (1/3, 0, 0), whose centres on H it protects.
+  punchProtectH: "sorted({b.centre for q in p.modulation.positions() for r in q.regions for b in r if b.form == (1, 0, 0)})",
+  punchProtectHalfWidth: "p.modulation.half_width",
   punchSupercellH: "p.punch.supercell[0]",
   punchSupercellK: "p.punch.supercell[1]",
   punchSupercellL: "p.punch.supercell[2]",

@@ -61,10 +61,10 @@ from nebula3d.pipeline import (
 )
 from nebula3d.pipeline import load_input as _load_run_input
 from nebula3d.preprocessing import write_global_ring_diagnostics
-from nebula3d.server import bragg as _bragg
 from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
 from nebula3d.server import deltapdf as _dpdf
+from nebula3d.server import modulation as _mod
 from nebula3d.server import regrid as _regrid
 from nebula3d.server import rings as _rings
 from nebula3d.server import tuning as _tune
@@ -99,6 +99,8 @@ __all__ = [
     "consistency_check_json",
     "consistency_slice",
     "bragg_profile_json",
+    "modulation_check_json",
+    "modulation_labels_slice",
     "ring_diagnostics_json",
     "save_dpdf",
 ]
@@ -1073,39 +1075,39 @@ def bragg_profile_json(dataset_id: str) -> str:
 
     The punch stage writes ``*_profile.json`` next to its output volume — in
     the browser that is the Pyodide virtual FS — so this only re-reads a small
-    JSON file.  The ``has_profile: false`` shape matches the native
-    ``BraggProfileOut`` defaults so the viewer's empty states are identical.
-    ``node_test`` is the nodes the punch's node test could not judge, read as
-    the server reads it (:func:`nebula3d.server.bragg.node_test_out`).
+    JSON file, through the server's own helper
+    (:func:`nebula3d.server.modulation.bragg_profile_payload`): the
+    ``has_profile: false`` shape, ``node_test`` (the nodes the punch's node
+    test could not judge) and ``modulation`` (what its search left alone) are
+    the native endpoint's.
     """
-    cfg = _require_cfg()
-    ds = _ds.find_dataset(cfg, dataset_id)
-    if ds is None:
+    out = _mod.bragg_profile_payload(_require_cfg(), dataset_id)
+    if out is None:
         raise KeyError(f"unknown dataset id {dataset_id!r}")
-    path = _ds.artifact_path(cfg, ds, "bragg_profile_json")
-    if not path.exists():
-        return _json({
-            "dataset_id": dataset_id, "profile_path": str(path),
-            "has_profile": False, "schema_version": 1,
-            "width_labels": [], "hkl_width_labels": [], "width_units": {},
-            "n_peaks": 0, "fit_covariance": False, "punch_frame": None,
-            "peaks": [], "node_test": None,
-        })
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return _json({
-        "dataset_id": dataset_id,
-        "profile_path": str(path),
-        "has_profile": True,
-        "schema_version": int(data.get("schema_version", 1)),
-        "width_labels": list(data.get("width_labels", [])),
-        "hkl_width_labels": list(data.get("hkl_width_labels", [])),
-        "width_units": dict(data.get("width_units", {})),
-        "n_peaks": int(data.get("n_peaks", 0)),
-        "fit_covariance": bool(data.get("fit_covariance", False)),
-        "punch_frame": data.get("punch_frame"),
-        "peaks": list(data.get("peaks", [])),
-        "node_test": _bragg.node_test_out(data.get("node_test")),
-    })
+    return _json(out)
+
+
+def modulation_check_json(body_json: str) -> str:
+    """What a declared modulation means before a run (mirrors
+    POST /api/modulation/check): *body_json* holds ``modulation``, ``cell``
+    and ``symmetry_ops``, as the endpoint's body does."""
+    body = json.loads(body_json or "{}")
+    if not isinstance(body, dict):
+        raise ValueError("the check takes a JSON object")
+    return _json(_mod.check_payload(body.get("modulation"), cell=body.get("cell"),
+                                    symmetry_ops=body.get("symmetry_ops")))
+
+
+def modulation_labels_slice(dataset_id: str, plane: str, value: float,
+                            interp: bool = False) -> bytes:
+    """Which protected position each voxel of a slice of the punched stage
+    lies in, from the punch's record (mirrors
+    GET /api/modulation/{id}/labels): the slice wire format, its ``legend``
+    in the header."""
+    out = _mod.labels_envelope(_require_cfg(), dataset_id, plane, float(value), bool(interp))
+    if out is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    return out
 
 
 def ring_diagnostics_json(dataset_id: str) -> str:

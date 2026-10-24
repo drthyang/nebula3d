@@ -53,6 +53,15 @@ export const STAGE_VARIANTS: Record<GridStage, Variant[]> = {
     v("falling", { max_after_floor_sigma: 0.5, max_floor_trend: -0.85, max_floor_span_fraction: 0.9 }, "attention"),
     v("at 0.8", { max_floor_trend: 0.8, max_floor_span_fraction: 0.8 }, "attention"),
     v("no trend", { max_after_floor_sigma: 0.8 }, "info"),
+    // Over the whole volume's shells (plan 4.1): its trend (signed) and span.
+    v("volume level", { max_after_floor_sigma: 1.7, floor_trend: -0.23, floor_span_fraction: 0.72, floor_judged_q: [5.58, 11.1], pedestal_left: false }, "pass"),
+    v("volume pedestal", { max_after_floor_sigma: 1.6, floor_trend: 0.99, floor_span_fraction: 1.3, floor_judged_q: [5.58, 11.1], pedestal_left: true }, "attention"),
+    v("volume falling", { floor_trend: -0.85, floor_span_fraction: 0.9 }, "attention"),
+    v("volume at 0.8", { floor_trend: 0.8, floor_span_fraction: 0.8 }, "attention"),
+    v("volume under 0.8", { floor_trend: 0.79, floor_span_fraction: 0.9 }, "pass"),
+    v("volume not measured", { max_after_floor_sigma: 1.7, floor_trend: null, floor_span_fraction: null, floor_judged_q: null, pedestal_left: null }, "info"),
+    // The volume's numbers beside the planes' largest: the volume's are judged.
+    v("volume level, planes' pedestal", { floor_trend: 0.3, floor_span_fraction: 0.6, max_floor_trend: 0.97, max_floor_span_fraction: 0.97 }, "pass"),
   ],
   pdf: [
     v("sound", { back_fft_pearson_r: 0.989, back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.00024, window_shape: "ellipsoid", max_symmetry_break: 0, worst_symmetry_op: "mirror ⊥ a", symmetry_declared: true }, "pass"),

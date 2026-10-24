@@ -34,8 +34,8 @@ import type { ChatMessage, StreamDelta, ToolSpec } from "../provider/client";
 import { fillReferences } from "../references";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, readSkill } from "../skills";
-import { CHAT_TOOLS, toolSpecs, toolsWithSkills, unreadSkillRefusal } from "../tools";
-import { describeStageParams, TUNE_STAGES } from "../tune/catalog";
+import { callTool, CHAT_TOOLS, toolSpecs, toolsWithSkills, unreadSkillRefusal } from "../tools";
+import { describeStageParams, SAMPLE_PARAMS, sampleFactRefusal, TUNE_STAGES } from "../tune/catalog";
 import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS } from "../tune/prompts";
 import { namedInOwnWords, quotations, skillNamesIn, skillSentences, skillSentencesIn, type SkillSentence } from "./methodText";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
@@ -50,6 +50,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
@@ -404,5 +405,49 @@ describe("arm C's session, with the skills off", () => {
         expect(skillSentencesIn(text, MIN_WORDS).map(label), stage).toEqual([]);
       }
     }
+  });
+});
+
+// update_settings refuses a change to a fact about the sample that the user's
+// latest message does not name (tune/catalog.ts). Its refusal is the tool's
+// own behaviour, the same in both arms: it says what the setting is and what
+// to do, and names no skill, no tool, no stage, and no inference.
+describe("arm C's refusal of a change to a fact about the sample", () => {
+  const offered = toolsWithSkills(CHAT_TOOLS, false);
+  const armC = { dataset: DATASET, datasets: DATASETS, skills: false, skillsRead: new Set<string>(), userMessage: TASK };
+  const spans = writtenInferences()
+    .map((e) => e.span.text.trim())
+    .filter((t) => t.split(/\s+/).length >= 3);
+  /** What of the method a text holds: a skill's name or sentence, the word skill, a tool's or a stage's name, an inference span. */
+  const method = (text: string): string[] => [
+    ...skillNamesIn(text),
+    ...skillSentencesIn(text, MIN_WORDS).map(label),
+    ...namedInOwnWords(text),
+    ...spans.filter((t) => text.includes(t)),
+  ];
+
+  it("names no skill, tool or stage, and holds no inference, for every fact, alone or beside another change", async () => {
+    usePipelineStore.setState({ running: false });
+    for (const p of SAMPLE_PARAMS) {
+      const value = p.kind === "fractions" ? "none" : p.min ?? 1;
+      const alone = await callTool(armC, "update_settings", { changes: { [p.key]: value } }, { tools: offered });
+      expect(alone.ok).toBe(false);
+      expect(alone.text).toBe(`Error: ${sampleFactRefusal(p.key)}`);
+      expect(method(alone.text), alone.text).toEqual([]);
+      // Beside a change it makes: the refusal is the same words, in its result.
+      const beside = await callTool(armC, "update_settings", { changes: { punchMinSig: 7, [p.key]: value } }, { tools: offered });
+      expect(beside.ok, beside.text).toBe(true);
+      const { refused } = JSON.parse(beside.text) as { refused: { setting: string; why: string }[] };
+      expect(refused).toEqual([{ setting: p.key, why: sampleFactRefusal(p.key) }]);
+      expect(method(refused[0].why), refused[0].why).toEqual([]);
+    }
+    expect(spans.length).toBeGreaterThan(60);
+  });
+
+  it("reads as arm B's: the refusal is the tool's own, not a skill's", async () => {
+    const changes = { changes: { punchSupercellH: 2 } };
+    const c = await callTool(armC, "update_settings", changes, { tools: offered });
+    const b = await callTool({ ...armC, skills: true, skillsRead: new Set(["bragg-node-audit"]) }, "update_settings", changes);
+    expect(b.text).toBe(c.text);
   });
 });

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPipelineContext, contextToJson } from "../context/pipelineContext";
-import type { VolumeMeta } from "../../api/types";
+import { buildPipelineContext, contextToJson, qRadius } from "../context/pipelineContext";
+import { FLATTEN_UNRECORDED_NOTE, flattenMetrics } from "../metrics/flatten";
+import type { FlattenSettings, VolumeMeta } from "../../api/types";
 import { makeSlice } from "./helpers";
 
 const meta = {
@@ -26,6 +27,25 @@ describe("buildPipelineContext", () => {
     // Backfill needs punched + backfilled, which are absent → a note, no section.
     expect(ctx.backfill).toBeUndefined();
     expect(ctx.notes?.some((n) => n.includes("backfill"))).toBe(true);
+  });
+
+  it("judges the flatten over the run's recorded fit range and percentile, and says when the file records none (4.11)", () => {
+    // A floor rising with |Q| over a level of 4, on the H–K plane of a 5 Å cubic cell.
+    const backfilled = makeSlice(41, 41, (x, y) => 4 + 0.02 * (x * x + y * y) + Math.sin(3 * x) * Math.cos(2 * y));
+    const flattened = makeSlice(41, 41, (x, y) => 0.02 * (x * x + y * y) + Math.sin(3 * x) * Math.cos(2 * y));
+    const radius = qRadius("hk0", 0, meta)!;
+    const build = (flattenSettings?: FlattenSettings | null) =>
+      buildPipelineContext({ datasetLabel: "d", plane: "hk0", cutValue: 0, hklMeta: meta, slices: { backfilled, flattened }, flattenSettings });
+    const run = build({ fit_q_range: [9, 30], floor_percentile: 10 });
+    expect(run.flatten).toEqual(flattenMetrics(backfilled, flattened, radius, [9, 30], 10));
+    expect(run.flatten).not.toEqual(flattenMetrics(backfilled, flattened, radius, [0.8, 10], 25));
+    expect(run.flatten!.floor_judged_q![0]).toBeGreaterThanOrEqual(9);
+    // Not read: the defaults, silently, as before. Read, and the file records none: the defaults, said so.
+    const defaults = flattenMetrics(backfilled, flattened, radius, [0.8, 10], 25);
+    expect(build(undefined).flatten).toEqual(defaults);
+    expect(build(undefined).notes ?? []).not.toContain(`flatten: ${FLATTEN_UNRECORDED_NOTE}`);
+    expect(build(null).flatten).toEqual(defaults);
+    expect(build(null).notes).toContain(`flatten: ${FLATTEN_UNRECORDED_NOTE}`);
   });
 
   it("serializes to valid JSON within the budget", () => {

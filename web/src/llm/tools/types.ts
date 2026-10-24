@@ -37,6 +37,12 @@ export interface ToolContext {
   // this reply's own results, while what each measured stands (earlierSources,
   // answerChecks.ts).
   earlierSteps?: readonly AgentStep[];
+  // The user's latest message, the one this reply answers: set by the agent
+  // loop from the conversation as it arrived, never from what the loop itself
+  // sends the model as the user (a send-back). update_settings changes a fact
+  // about the sample only when it names that fact (tune/catalog.ts). Unset
+  // (the app's own calls), it names none.
+  readonly userMessage?: string;
 }
 
 export interface ToolOutcome {

@@ -1,0 +1,38 @@
+{
+ "source": "review",
+ "ref": "P4.15",
+ "at": "a18e26d",
+ "kind": "science-error",
+ "evidence": "The punch's search pass left the planes H = n ± 1/3 ± 0.08 r.l.u. alone on every dataset by default (search_exclude_h_fractions = (0.3333, 0.6667), src/nebula3d/pipeline.py:546, applied to every image of H, src/nebula3d/analysis/bragg.py:2333-2364): a fact about one kind of sample made the default for all. A sharp spurious peak there, on a sample with no satellites, was neither punched nor, since D5, counted against the punch (web/src/llm/tune/evaluate.ts:267, web/src/llm/verdicts/rules.ts:255). The console kept a second implementation of the same planes: the leftover marks read the Configure form (web/src/llm/context/loadContext.ts:31, whose default is the exact 1/3 and 2/3 where the backend's is rounded to 1e-4, web/src/state/pipelineStore.ts:431; web/src/llm/metrics/punch.ts:181), not the run, so they could differ from what the run's search left alone. The protection named fractional H planes only: no modulation off H, no satellites as points, no parent lattice of a doubled cell. peak_profile.magnetic_satellite_centers assumed the thirds too (src/nebula3d/analysis/peak_profile.py:596).",
+ "proposed_fix": "Protection follows the sample's modulation, a fact declared per material beside its symmetry (PipelineParams.modulation; a request's modulation): its k vectors, order, form and half width. As points, the satellites G ± m·R·k (R over the point group), each in a box; as planes, t·x ≡ ±m·(k·t) (mod P) through them, t along k. Both are on the parent lattice of the punch's cell and closed under the symmetry, and read one predicate for the mask, the console's marks, D5, the guard and the validation (nebula3d.modulation). Nothing is protected by default. The punch records what its search left alone and measures whether its sharp peaks off the lattice bunch at one commensurate fraction (a binomial tail, family-wise at 1.35e-3 over coordinates × denominators the grid resolves, at least three hits); when they do, the Pilot asks the user. In three pull requests: P1, the Python module and its adapters, behaviour-neutral, its default today's planes declared as k = (1/3, 0, 0) in plane form, bit for bit; P2, the web and the Pilot; P3, the default becomes none.",
+ "needs_user_approval": true,
+ "status": "open",
+ "tests": [
+  "tests/test_modulation.py::test_the_thirds_as_planes_are_the_old_planes_on_a_plain_grid",
+  "tests/test_modulation.py::test_the_thirds_as_planes_are_the_old_planes_on_a_six_m_grid",
+  "tests/test_modulation.py::test_the_thirds_as_planes_are_the_old_planes_at_the_band_edge_itself",
+  "tests/test_modulation.py::test_h_forms_are_the_forms_of_h_in_the_same_order",
+  "tests/test_modulation.py::test_labels_are_the_mask_on_a_six_m_grid",
+  "tests/test_modulation.py::test_the_points_star_survives_the_punch_shared_across_the_orbit",
+  "tests/test_modulation.py::test_parse_says_what_is_wrong",
+  "tests/test_modulation.py::test_bunching_fires_on_a_planted_thirds_family",
+  "tests/test_modulation.py::test_bunching_seldom_fires_on_peaks_at_random",
+  "tests/test_modulation.py::test_on_symmetrised_data_each_orbit_counts_once",
+  "tests/test_modulation.py::test_the_fraction_named_is_the_one_the_hits_sit_on",
+  "tests/test_modulation.py::test_the_flank_of_a_declared_satellite_is_no_evidence",
+  "tests/test_modulation.py::test_the_log_line_says_none_of_the_words_arm_a_reads",
+  "tests/test_modulation_punch.py::test_the_default_declaration_punches_as_the_old_default",
+  "tests/test_modulation_punch.py::test_the_punch_says_when_sharp_peaks_off_the_lattice_bunch_at_a_fraction",
+  "tests/test_modulation_punch.py::test_a_declared_modulation_is_left_alone_and_raises_no_question",
+  "tests/test_server.py::test_a_request_with_the_legacy_planes_protects_what_it_did",
+  "tests/test_server.py::test_modulation_labels_follow_the_runs_record",
+  "tests/test_server.py::test_modulation_check_says_what_a_declaration_protects",
+  "tests/test_webbridge.py::test_modulation_payloads_are_the_servers"
+ ],
+ "note": "Decided by the user, 2026-10-19: nothing is protected by default; protection follows a modulation declared per material, in a form the user declares; when a run's sharp peaks off the lattice bunch at one commensurate fraction, the Pilot asks. Design B with three parts of design A (the guard reads only sharp peaks and needs three hits; tests/test_symmetry.py names the thirds it relied on), approved by the manager on the user's delegation the same day. P1, behaviour-neutral, in d9e236a, 3b1b202, 95e168e, b774f82, 7e2d340, 47ff7e2 and 260fc68, with this entry: on every dev case at n = 81 and n = 161 the rings and punch stages are bit for bit as main's (the volume, the holes, the profile and the log), and the bunching test fires on none. Arm A on dev re-run on the final head: 32 of 32 entries identical, 5 of 8 cases pass, as recorded. Found, not fixed (docs/modulation.md, known limits): the search punches a protected peak wider than its box from the voxel beside it, since protected voxels drop out of its local-maximum test (on 6/m test data, 214 of 238 satellite centres punched with the points declared at ± 0.08, 12 with the planes, 232 with nothing), so the bunching test leaves out peaks within one grid step of a declared position; and measured_width_hkl reads maxima up to about 2.5 times the Bragg width as sharp (0.105 to 0.108 r.l.u. for σ of 0.04 to 0.1 r.l.u., where the line-cut FWHM reads 0.092 to 0.23). Left: P2 (the web and the Pilot: the store's fields and their migration, the marks from the run's labels, off_lattice_bunching and the question, the update_settings gate) and P3 (the default becomes none, the behaviour-change fragment, SKILL_INTERVIEWS B2 decided).",
+ "decision": {
+  "by": "the user",
+  "on": "2026-10-19",
+  "option": "nothing is protected by default; protection comes from a modulation k declared per material, as points or planes, the user's to declare; when sharp peaks off the lattice bunch at one commensurate fraction, the Pilot asks"
+ }
+}

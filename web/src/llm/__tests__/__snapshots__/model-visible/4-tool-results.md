@@ -297,7 +297,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {}
 
-3261 characters sent.
+3264 characters sent.
 
 ```json
 {
@@ -378,11 +378,11 @@ References of this skill (read one with read_skill and `reference`):
   },
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
     "pedestal_left": false
   },
   "pdf": {
@@ -409,17 +409,18 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {"stage":"flatten"}
 
-2021 characters sent.
+2044 characters sent.
 
 ```json
 {
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
+    "floor_judged_q": [2.2, 4.35],
     "pedestal_left": false,
     "per_plane": {
       "hk0": {
@@ -453,7 +454,7 @@ References of this skill (read one with read_skill and `reference`):
         "floor_judged_q": [2.11, 4.11]
       }
     },
-    "goal": "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself. A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ: a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations."
+    "goal": "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself. A trend near 1 with a span near 1 or more is a background the model missed, however small it reads in σ: a rising one wants flattenQ2 and a fit range reaching the coverage (flattenFitQMax), not a free-form estimator, which also removes isotropic pair correlations."
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
 }
@@ -1345,6 +1346,29 @@ References of this skill (read one with read_skill and `reference`):
 }
 ```
 
+## update_settings {"changes":{"punchMinSig":6,"punchSupercellH":2}} (the punch's skill read; the user's latest message, “Raise the punch significance to 6.”, names no fact about the sample)
+
+243 characters sent.
+
+```json
+{
+  "changed": [
+    {
+      "setting": "punchMinSig",
+      "from": 5,
+      "to": 6
+    }
+  ],
+  "refused": [
+    {
+      "setting": "punchSupercellH",
+      "why": "punchSupercellH is a fact about the sample, which only the user sets: ask the user, and change it once they name it."
+    }
+  ],
+  "rerun_from": "punch"
+}
+```
+
 ## run_pipeline {"from_stage":"punch"} (a stubbed run of 42.3 s)
 
 460 characters sent.
@@ -1445,6 +1469,12 @@ Error: invalid arguments — L = 7 is outside the data range [-3, 3]
 Error: read the method first: call read_skill with name "bragg-node-audit". It is how the user works on the Bragg punch stage, and this change waits until it has been read in this conversation.
 ```
 
+## update_settings {"changes":{"punchSupercellH":2}} (a fact about the sample that the user's latest message, “Is the punch clean?”, does not name; the punch's skill read)
+
+```text
+Error: punchSupercellH is a fact about the sample, which only the user sets: ask the user, and change it once they name it.
+```
+
 ## tune_pipeline {"stages":["flatten"]} (tuning before its stage's skill was read)
 
 ```text
@@ -1518,10 +1548,10 @@ A local model's request past its soft budget has its older results shortened (`c
   },
   "flatten": {
     "verdict": "meets its goal",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
     "pedestal_left": false
   },
   "pdf": {
