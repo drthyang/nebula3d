@@ -189,13 +189,13 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
     expect(result.per_cut).toEqual([{ cut: "H–K plane at L = 0" }]);
   });
 
-  it("qmax_coverage: without the raw volume's coverage, no raw_counts, suggested_band or band_check", async () => {
+  // The coverage is measured once, in Python: without it there is no result
+  // to hold to the contract, and the call says why.
+  it("qmax_coverage: without the raw volume's coverage, the call fails, naming why", async () => {
     api.fetchVolumeCoverage.mockRejectedValue(new Error("no coverage"));
-    const result = await run("qmax_coverage");
-    expect(result).not.toHaveProperty("raw_counts");
-    expect(result).not.toHaveProperty("suggested_band");
-    expect(result).not.toHaveProperty("band_check");
-    expect(result.counts_end_inside_box).toBe(false);
+    const r: ToolRun = await callTool({ dataset: DATASET, datasets: DATASETS }, "qmax_coverage", {});
+    expect(r.ok).toBe(false);
+    expect(r.text).toContain("no coverage");
   });
 
   it("symmetry_check: a cell with no in-plane symmetry to test is a note alone", async () => {
