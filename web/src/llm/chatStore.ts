@@ -23,7 +23,9 @@ export interface ChatTurn {
   steps?: AgentStep[];
   note?: string;
   verdict?: ComputedVerdict | null; // computed from the checks the reply ran (verdicts/)
-  tokens?: Usage; // the reply's model requests, measured or estimated (usage.ts)
+  // The reply's model requests, measured or estimated (usage.ts); on a user
+  // turn, those of a reply that ended with nothing to keep (session.ts).
+  tokens?: Usage;
 }
 
 interface ChatState {

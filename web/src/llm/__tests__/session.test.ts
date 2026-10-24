@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useChatStore } from "../chatStore";
 import { askAssistant } from "../session";
+import { measured, notCounted } from "../usage";
 
 const agent = vi.hoisted(() => ({ runAgent: vi.fn() }));
 vi.mock("../agent", () => agent);
@@ -12,7 +13,7 @@ vi.mock("../agent", () => agent);
 const ask = () => askAssistant({ label: "Process the data", messages: [], tools: [], ctx: null });
 
 beforeEach(() => {
-  useChatStore.setState({ turns: [], busy: false, live: null, error: null });
+  useChatStore.setState({ turns: [], busy: false, live: null, error: null, usage: null });
 });
 
 describe("askAssistant", () => {
@@ -77,6 +78,51 @@ describe("askAssistant", () => {
     });
     await ask();
     expect(useChatStore.getState().turns[1].steps![0]).toMatchObject({ status: "stopped", summary: "the reply ended with an error" });
+  });
+
+  // The conversation's total as it was live, and as a restored conversation rebuilds it from its turns.
+  const totals = () => {
+    const live = useChatStore.getState().usage;
+    useChatStore.getState().restoreTurns(JSON.parse(JSON.stringify(useChatStore.getState().turns)));
+    return { live, restored: useChatStore.getState().usage };
+  };
+
+  it("keeps the requests of a reply that failed with nothing to keep with its question, so a restored total agrees", async () => {
+    agent.runAgent.mockImplementation(async ({ onUsage }) => {
+      onUsage(measured({ input: 900, output: 40 })); // a request that completed
+      onUsage(notCounted()); // and one that did not
+      throw new Error("HTTP 500");
+    });
+    await ask();
+    expect(useChatStore.getState().turns).toHaveLength(1);
+    expect(useChatStore.getState().error).toBe("HTTP 500");
+    const { live, restored } = totals();
+    expect(live).toMatchObject({ input: 900, output: 40, requests: 1, uncounted: 1 });
+    expect(restored).toEqual(live);
+  });
+
+  it("keeps the request of a reply stopped before it wrote anything with its question", async () => {
+    agent.runAgent.mockImplementation(async ({ onUsage }) => {
+      onUsage(notCounted());
+      throw new DOMException("The operation was aborted.", "AbortError");
+    });
+    await ask();
+    const { live, restored } = totals();
+    expect(live).toMatchObject({ requests: 0, uncounted: 1 });
+    expect(restored).toEqual(live);
+  });
+
+  it("totals a kept stopped reply the same restored, its uncounted request included", async () => {
+    agent.runAgent.mockImplementation(async ({ onUsage, onProgress }) => {
+      onUsage(measured({ input: 100, output: 10 }));
+      onProgress({ content: "Half", reasoning: "", steps: [] });
+      onUsage(notCounted());
+      throw new DOMException("The operation was aborted.", "AbortError");
+    });
+    await ask();
+    expect(useChatStore.getState().turns[1].tokens).toMatchObject({ requests: 1, uncounted: 1 });
+    const { live, restored } = totals();
+    expect(restored).toEqual(live);
   });
 
   it("shows an error that came before anything was written as the chat's error", async () => {
