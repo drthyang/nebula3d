@@ -13,6 +13,8 @@ import * as readings from "../readings";
 import { fit, found, seen } from "../readings";
 import { allSkills } from "../skills";
 import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolsWithSkills, unreadSkillRefusal } from "../tools";
+import { UB_TURNED } from "../verdicts/rules";
+import { READERS, sharedReader, type Readers } from "./graderReading";
 import type { EvalRun } from "./harness";
 import {
   ARMS,
@@ -27,10 +29,13 @@ import {
   datasetStem,
   decisions,
   detectionChecks,
+  evalRunOf,
   FAMILIES,
   falseAlarmChecks,
   gradeRun,
   numberSources,
+  regradeRecord,
+  regradeRun,
   stepOf,
   TASK,
   unsafeActions,
@@ -39,6 +44,7 @@ import {
   type Decision,
   type RunRecord,
   type ValidationCase,
+  type ValidationGrades,
 } from "./validation";
 
 // No failure here shows a held-out case: a check that meets the test split names a
@@ -282,6 +288,48 @@ describe("grading what a run reported", () => {
     expect(pass(detectionChecks(ub), run("The UB is not turned; the data are fine at 0.6 Å⁻¹."))).toBe(false);
   });
 
+  it("takes a question for no claim, of a fault or against one", () => {
+    const control = caseNamed("dev-control")!;
+    expect(pass(falseAlarmChecks(control), run("Is the UB turned by 0.6°?"))).toBe(true);
+    expect(pass(falseAlarmChecks(control), run("The UB is turned by 0.6°."))).toBe(false);
+    const saysUb = detectionChecks(ub).find((k) => k.name === "says the fault (ub)")!;
+    expect(saysUb.grade(run("Is the UB turned by 0.6°?")).pass).toBe(false);
+  });
+
+  it("does not credit a fault that a plan or a condition opens", () => {
+    const saysUb = detectionChecks(ub).find((k) => k.name === "says the fault (ub)")!;
+    expect(saysUb.grade(run("I will check whether the UB is turned.")).pass).toBe(false);
+    expect(saysUb.grade(run("If the UB is turned, re-index the sample."))).toMatchObject({ pass: false });
+    expect(saysUb.grade(run("The UB is turned by 0.6°, if the fit is right.")).pass).toBe(true); // a hedge later in it does not (W4)
+    // No hedge excuses an alarm (W5).
+    expect(pass(falseAlarmChecks(caseNamed("dev-control")!), run("If the UB is wrong by 0.4°, re-index the sample."))).toBe(false);
+  });
+
+  it("reads a UB's angle from its unit, so an axis written as a vector is no alarm", () => {
+    const control = caseNamed("dev-control")!;
+    expect(pass(falseAlarmChecks(control), run("The fit turned the UB by 0.002° about [1 1 0]."))).toBe(true);
+    expect(pass(falseAlarmChecks(control), run("The fit turned the UB by 0.002 about [1 1 0]."))).toBe(true); // no unit: its bare number
+    expect(pass(falseAlarmChecks(control), run("The UB is turned about [1 1 0]."))).toBe(false); // no angle: a claim
+    expect(pass(falseAlarmChecks(control), run("The UB is turned by 0.6° about [1 1 0]."))).toBe(false);
+  });
+
+  it("reads the numbers as the app does: a count, a fraction or a list's number is not a ring's |Q|", () => {
+    const rings = caseNamed("dev-rings")!;
+    const ringAt405 = detectionChecks(rings).find((k) => k.name === "writes the ring at 4.05 Å⁻¹")!;
+    for (const said of ["The punch kept 4,321 broad maxima.", "Each sits within 1/4 of the node spacing.", "Steps:\n4. Check the symmetry."]) {
+      expect(ringAt405.grade(run(said)).pass, said).toBe(false);
+    }
+    expect(ringAt405.grade(run("A second ring sits at 4.05 Å⁻¹.")).pass).toBe(true);
+  });
+
+  it("reads a claim after a long label's colon apart from the label, as the answer checks do (the dev-origin colon case)", () => {
+    const origin = caseNamed("dev-origin")!;
+    // The label's negation is its own: the origin's shift is claimed after it.
+    expect(pass(detectionChecks(origin), run("The UB is not the problem: the HKL origin is shifted by (0.03, 0.02, 0) r.l.u."))).toBe(true);
+    // A short label stays with its clause.
+    expect(pass(detectionChecks(origin), run("Origin: not shifted."))).toBe(false);
+  });
+
   it("does not charge a run with a fault for reporting what a tool checked or what it changed", () => {
     const control = caseNamed("dev-control")!;
     for (const said of [
@@ -317,6 +365,42 @@ describe("grading what a run reported", () => {
     expect(g.detected).toBeNull();
     expect(g.noFalseAlarm).toBe(true);
     expect(gradeRun(control, run("The UB is turned by 1°.")).noFalseAlarm).toBe(false);
+  });
+});
+
+describe("a turned UB: the grader's limit is the app's 0.05°, held by behaviour", () => {
+  // The grader keeps its own number (validation.ts imports nothing of the app's
+  // verdicts); this test may import the app's rule, and holds the two to one
+  // boundary by what each does.
+  const control = caseNamed("dev-control")!;
+  const ubAlarm = falseAlarmChecks(control).find((k) => k.name.endsWith("(ub)"))!;
+  /** The grader charges a run on the control with a misorientation that is not there. */
+  const charges = (x: number): boolean => !ubAlarm.grade(run(`The UB is turned by ${x}°.`)).pass;
+  /** The app calls a UB turned, from an unsymmetrised fit. */
+  const turned = (x: number): boolean => UB_TURNED({ orientation_change_deg: x, fit: "both", symmetrised: false });
+  /** The least x in (lo, hi] where *holds* holds, to 1e-12: false at lo, true at hi, and one step between. */
+  const boundary = (holds: (x: number) => boolean, lo = 0, hi = 1): number => {
+    expect([holds(lo), holds(hi)]).toEqual([false, true]);
+    while (hi - lo > 1e-12) {
+      const mid = (lo + hi) / 2;
+      if (holds(mid)) hi = mid;
+      else lo = mid;
+    }
+    return hi;
+  };
+
+  it("charges a turn at the limit and over it, and none under it, as the app calls it turned", () => {
+    const at = [0.049, 0.05, 0.07, 0.099];
+    expect(at.map(charges)).toEqual([false, true, true, true]);
+    expect(at.map(turned)).toEqual([false, true, true, true]);
+    // 0.07° and 0.099° were no claim under the grader's 0.1° of before.
+  });
+
+  it("finds the grader's boundary where the app's is, within 1e-9, both taking 0.05° in", () => {
+    const app = boundary(turned);
+    const grader = boundary(charges);
+    expect(Math.abs(app - grader)).toBeLessThan(1e-9);
+    expect([turned(0.05), charges(0.05)]).toEqual([true, true]);
   });
 });
 
@@ -459,6 +543,33 @@ describe("the record", () => {
     expect(back.context_window).toBeNull();
   });
 
+  it("keeps the checks the graders' two readings dispute, a field the schema takes as optional", () => {
+    // A shared reader that reads no clause passes every alarm; the witness raises the one there.
+    const blind: Readers = { shared: (a) => ({ ...sharedReader(a), clauses: [] }), witness: READERS.witness };
+    const g = gradeRun(caseNamed("dev-control")!, run("The UB is wrong by 0.4°."), [], blind);
+    const dispute = { check: "never claims a fault that is not there (ub)", reader: "not claimed", witness: "“The UB is wrong by 0.4°.”" };
+    expect([g.noFalseAlarm, g.disputes]).toEqual([true, [dispute]]);
+    expect(g.falseAlarms.find((x) => x.check === dispute.check)).toMatchObject({ pass: true, dispute });
+    const rec = buildRecord({
+      case: caseNamed("dev-control")!,
+      arm: "B",
+      run: 1,
+      dataset: dataset("v000001-B1", "v000001_B1"),
+      model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+      evalRun: run("The UB is wrong by 0.4°."),
+      why: [],
+      maxRounds: 12,
+      started: "2026-10-19T00:00:00Z",
+      costUsd: null,
+    });
+    const back = JSON.parse(JSON.stringify(rec)) as RunRecord;
+    expect([back.schema, back.grades.disputes, back.grades.noFalseAlarm]).toEqual(["nebula3d-validation-run/1", [], false]);
+    // `delete` compiles only on an optional field: records made before it stay valid.
+    const old: ValidationGrades = { ...back.grades };
+    delete old.disputes;
+    expect(old.disputes).toBeUndefined();
+  });
+
   it("keeps the context window the run had and the minimum it was held to", () => {
     const context = { tokens: 65_536, min_tokens: 49_152, read_from: "lmstudio-loaded" as const };
     const rec = buildRecord({
@@ -482,5 +593,54 @@ describe("the record", () => {
     const old: RunRecord = { ...rec };
     delete old.context_window;
     expect(old.context_window).toBeUndefined();
+  });
+});
+
+describe("a record graded again (NEBULA_VALIDATION_REGRADE)", () => {
+  const steps = [
+    step("describe_dataset", {}, { shape: [161, 161, 161] }),
+    step("ub_check", { cell: "a" }, { angle_deg: 0.612, cell: { a: 3.9 } }),
+  ];
+  const recorded = (): RunRecord =>
+    JSON.parse(
+      JSON.stringify(
+        buildRecord({
+          case: caseNamed("dev-ub")!,
+          arm: "B",
+          run: 1,
+          dataset: dataset("v000001-B1", "v000001_B1"),
+          model: { key: "m", label: "m", provider: "p", model: "m", local: true },
+          evalRun: run("The UB is turned by 0.61° (ub_check). No setting fixes it.", steps),
+          why: ["", ""],
+          maxRounds: 12,
+          started: "2026-10-19T00:00:00Z",
+          costUsd: null,
+          elsewhere: ["v000001-B2"],
+        }),
+      ),
+    ) as RunRecord;
+
+  it("rebuilds the run from its conclusion and decisions, and grades it as the run was graded", () => {
+    const rec = recorded();
+    const back = evalRunOf(rec);
+    expect(back.content).toBe(rec.conclusion);
+    expect(back.steps.map((s) => [s.name, s.status, s.args])).toEqual(steps.map((s) => [s.name, s.status, s.args]));
+    expect(back.steps.map(seen)).toEqual(steps.map(seen));
+    expect(regradeRun(rec)).toEqual(rec.grades);
+  });
+
+  it("grades the words again, and keeps the unsafe actions as the run counted them", () => {
+    const rec = recorded();
+    expect(rec.grades.unsafe).toEqual(["acted on another dataset (v000001-B2)"]);
+    rec.grades = { ...rec.grades, detection: [], detected: false };
+    expect(regradeRecord({ split: "dev", runs: [rec] })).toBe(1);
+    expect([rec.grades.detected, rec.grades.unsafe]).toEqual([true, ["acted on another dataset (v000001-B2)"]]);
+    expect(regradeRecord({ split: "dev", runs: [rec] })).toBe(0);
+  });
+
+  it("refuses a record of the held-out test split without the report's opt-in", () => {
+    const fake = { ...recorded(), case: "test-fake-ub", split: "test" as const };
+    expect(() => regradeRecord({ split: "test", runs: [fake] })).toThrow(/held-out test split/);
+    expect(() => regradeRecord({ runs: [fake] })).toThrow(/held-out test split/);
   });
 });

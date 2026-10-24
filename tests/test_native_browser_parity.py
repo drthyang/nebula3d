@@ -21,7 +21,12 @@ points): what the stages' summaries say, the ring decision, the punch, the
 Allowed to differ, by the measured amount: the values float32 rounds (about
 1e-7 of the data), the round trip against the data's even part (≈ 1e-14
 natively, ≈ 6e-6 in float32), and the ring test's direction measurements,
-which the low-memory mode samples more thinly (its decisions agree).
+which the low-memory mode samples more thinly (its decisions agree here).
+
+The known limit that thinner sampling leaves: a powder ring just above the
+ring test's ``min_snr`` natively falls under it in the browser, which leaves
+it in. A second synthetic volume, rings and nothing else, runs the ring stage
+alone through both engines and pins that, marked to fail once a fix lifts it.
 """
 
 from __future__ import annotations
@@ -37,9 +42,11 @@ from fastapi.testclient import TestClient
 
 import nebula3d
 from nebula3d import webbridge
+from nebula3d.core import HKLVolume
 from nebula3d.io import load_delta_pdf
 from nebula3d.io.hkl_reader import save
 from nebula3d.pipeline import pipeline_paths, read_punch_record, run_pipeline
+from nebula3d.preprocessing import IsotropyConfig
 from nebula3d.server.app import create_app
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.params import build_params
@@ -135,10 +142,17 @@ def test_the_two_paths_are_the_native_and_the_browser_engines(runs):
     assert not runs["browser"]["paths"].pdf_check_png.exists()
 
 
+def _negative_zeros(line: str) -> list[str]:
+    """The numbers *line* prints as a zero with a minus sign (-0.000)."""
+    return [t for t in NUMBER.findall(line)
+            if t.startswith("-") and float(t.replace(",", "")) == 0.0]
+
+
 def test_the_stage_summaries_say_the_same(runs):
     """Every line the run logs, start to done: the same words, and every
-    number the same to the digit it prints. Measured: identical, but for the
-    sign of a zero (the flatten's R² of a constant fit, ±0.000)."""
+    number the same to the digit it prints. Measured: identical. The
+    flatten's R² of a constant fit, 0 up to rounding of either sign, printed
+    -0.000 in the browser until the summary dropped the sign of a zero."""
     native, browser = _both(runs, lambda r: [(e[0], e[1], e[3]) for e in r["events"]])
     assert len(native) == len(browser) > 0
     for (stage, status, a), (stage_b, status_b, b) in zip(native, browser):
@@ -146,8 +160,11 @@ def test_the_stage_summaries_say_the_same(runs):
         for x, y in zip(NUMBER.findall(a), NUMBER.findall(b)):
             value_a, value_b = (float(t.replace(",", "")) for t in (x, y))
             assert abs(value_a - value_b) <= _last_digit(x), (stage, a, b)
+        assert not _negative_zeros(a) and not _negative_zeros(b), (stage, a, b)
     assert {e[0] for e in native if e[1] == "done"} == {
         "rings", "punch", "backfill", "flatten", "pdf", "pdf_check"}
+    flat = [m for stage, status, m in native + browser if (stage, status) == ("flatten", "done")]
+    assert len(flat) == 2 and all(m.endswith(", R² 0.000)") for m in flat), flat
 
 
 def _shells(diagnostics: dict) -> list[dict]:
@@ -196,7 +213,8 @@ def test_the_ring_test_samples_more_thinly_in_low_memory_mode(runs, tmp_path, mo
     up to 2.6 times lower); on an empty shell, where the median height is
     about 0 and the ratio has no scale, the isotropy by 36. float32 has no
     part in it: the native engine in low-memory mode measures what the
-    browser does."""
+    browser does. Near the rule's min_snr that moves the decision: the known
+    limit, test_a_ring_just_above_min_snr_is_confirmed_in_both_runtimes."""
     native, browser = _both(
         runs, lambda r: json.loads(r["paths"].ring_diagnostics_json.read_text()))
     for a, b in zip(native["shells"], browser["shells"]):  # the confirmed rings
@@ -294,3 +312,98 @@ def test_the_consistency_view_is_the_same(runs):
 
 def test_the_parity_volume_is_a_dev_case():
     assert case_named(CASE).split == "dev"
+
+
+# ---------------------------------------------------------------- the known limit
+
+#: The threshold volume's powder rings, (|Q| Å⁻¹, FWHM Å⁻¹, height): three well
+#: above the ring test's min_snr in both engines, and the last just above it
+#: natively.
+THRESHOLD_RINGS = ((2.4, 0.12, 0.1), (3.4, 0.12, 0.1), (4.4, 0.12, 0.1), (5.4, 0.12, 0.016))
+THRESHOLD_STEM = "threshold_synthetic"
+THRESHOLD_SLUG = "threshold-synthetic"
+
+
+def _threshold_volume() -> HKLVolume:
+    """The rings on a smooth radial background with Gaussian noise (σ 0.05),
+    and nothing else, on the parity volume's grid: the dev crystal's cubic
+    cell (a = 3.9 Å) over ±4 r.l.u., N points a side, its corners past the
+    ring stage's |Q| range. Stored as float32, as the dev case is, so both
+    engines read the same values."""
+    a_star = 2.0 * np.pi / 3.9
+    axis = np.linspace(-4.0, 4.0, N)
+    q = a_star * np.sqrt(axis[:, None, None] ** 2 + axis[None, :, None] ** 2
+                         + axis[None, None, :] ** 2)
+    data = 0.3 + 0.5 * np.exp(-q / 1.5) + 0.05 * np.exp(-0.5 * (q - 3.0) ** 2)
+    for q0, fwhm, height in THRESHOLD_RINGS:
+        data += height * np.exp(-4.0 * np.log(2.0) * ((q - q0) / fwhm) ** 2)
+    data += np.random.default_rng(0).normal(0.0, 0.05, q.shape)
+    return HKLVolume.from_arrays(data.astype(np.float32), (-4.0, 4.0), (-4.0, 4.0), (-4.0, 4.0),
+                                 sigma=np.full(q.shape, 0.05, dtype=np.float32),
+                                 ub_matrix=a_star * np.eye(3))
+
+
+@pytest.fixture(scope="module")
+def threshold(tmp_path_factory) -> dict:
+    """The ring stage alone on the threshold volume, through both engines as
+    the ``runs`` fixture drives them: each one's ring diagnostics."""
+    root = tmp_path_factory.mktemp("threshold")
+    raw = root / "native" / "raw" / f"{THRESHOLD_STEM}.nxs"
+    raw.parent.mkdir(parents=True)
+    save(_threshold_volume(), raw)
+    saved = os.environ.pop(LOW_MEMORY, None)
+    try:
+        run_pipeline(raw, build_params(PipelineRunRequest(dataset_id=THRESHOLD_SLUG)),
+                     proc_dir=root / "native" / "processed", stages=("rings",), force=True)
+        webbridge.setup(workdir=str(root / "browser"))
+        assert webbridge.load_input(f"{THRESHOLD_STEM}.nxs", str(raw)) == THRESHOLD_SLUG
+        asyncio.run(webbridge.run_async("rings", "{}", True, force=True))
+    finally:
+        os.environ.pop(LOW_MEMORY, None)
+        if saved is not None:
+            os.environ[LOW_MEMORY] = saved
+    return {side: json.loads(pipeline_paths(root / side / "raw" / f"{THRESHOLD_STEM}.nxs",
+                                            proc_dir=root / side / "processed")
+                             .ring_diagnostics_json.read_text())
+            for side in ("native", "browser")}
+
+
+def _record_at(diagnostics: dict, q: float) -> dict:
+    """The ring test's record of the one shell found within 0.05 Å⁻¹ of *q*."""
+    (shell,) = [s for s in _shells(diagnostics) if abs(s["q_center"] - q) < 0.05]
+    return shell["isotropy"]
+
+
+class KnownLimit(AssertionError):
+    """The browser build's known limit (docs/web.md, "Native and browser parity")."""
+
+
+@pytest.mark.xfail(strict=True, raises=KnownLimit, reason=(
+    "known limit (docs/web.md, 'Native and browser parity'): in low-memory mode the ring "
+    "test reads at most an eighth of the voxels, so a ring just above min_snr natively falls "
+    "under it in the browser, which leaves it in. Strict: once a fix lifts the limit, this "
+    "test passes and fails the run until the mark comes off."))
+def test_a_ring_just_above_min_snr_is_confirmed_in_both_runtimes(threshold):
+    """Today's behaviour, pinned. Both engines find the four planted rings
+    and nothing else, and confirm the three well above min_snr (signal-to-
+    noise 12.1, 16.8 and 20.4 natively; 12.1, 12.7 and 12.1 in the browser).
+    The native engine confirms the fourth, just above it (3.8, isotropy
+    0.511); the browser's thinner sample puts it under (2.1, isotropy 0.136)
+    and leaves it in. That raises KnownLimit, the expected failure; any other
+    failure is a real one."""
+    native, browser = threshold["native"], threshold["browser"]
+    planted = [q for q, _, _ in THRESHOLD_RINGS]
+    for d in (native, browser):
+        assert len(_shells(d)) == len(planted), [s["q_center"] for s in _shells(d)]
+    for q in planted[:-1]:
+        a, b = _record_at(native, q), _record_at(browser, q)
+        assert a["is_ring"] and b["is_ring"], (q, a, b)
+    min_snr = IsotropyConfig().min_snr
+    q = planted[-1]
+    a, b = _record_at(native, q), _record_at(browser, q)
+    assert a["is_ring"] and min_snr <= a["snr"] < min_snr + 1.5, a  # just above it, natively
+    if b["is_ring"]:
+        return  # the limit is lifted
+    assert b["snr"] < min_snr, b  # left in for its signal-to-noise
+    raise KnownLimit(f"the ring at {q} Å⁻¹: confirmed natively (signal-to-noise {a['snr']}), "
+                     f"left in the browser ({b['snr']}, under {min_snr:g})")

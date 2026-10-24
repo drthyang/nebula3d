@@ -64,13 +64,14 @@ import { buildChatMessages } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolSpec } from "../provider/client";
 import {
   baseTokens,
+  DATA_CHARS_PER_TOKEN,
   estimateTokens,
   MIN_REPLY,
   PROSE_CHARS_PER_TOKEN,
   REPLY_RESERVE,
   resetTokenState,
 } from "../provider/tokens";
-import { isCompacted } from "../readings/compact";
+import { isCompacted, SKILL_STUB_MAX } from "../readings/compact";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, readSkill, REFERENCE_MAX_CHARS } from "../skills";
 import { CHAT_TOOLS } from "../tools";
@@ -423,6 +424,12 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     expect(bodies.every(isCompacted)).toBe(true);
     const page = resultsOf(last, (c) => c.name === "read_skill" && c.args.reference !== undefined);
     const b = breakdown(run.sent[run.peak], run.key);
+    // A skill with a `## Gates` section is shortened to its head and the
+    // section, at most SKILL_STUB_MAX characters (readings/compact.ts). Were
+    // both skills to carry one at its cap, no request would grow by more than
+    // their two stubs' growth: the largest would still leave MIN_REPLY.
+    const growth = bodies.reduce((sum, t) => sum + Math.max(0, SKILL_STUB_MAX - t.length), 0);
+    expect(b.prompt + estimateTokens(growth / DATA_CHARS_PER_TOKEN, run.key) + MIN_REPLY).toBeLessThanOrEqual(WINDOW);
     columns.push({ head: ["LM Studio at 32k", "after the guard"], b, reserve: REPLY_RESERVE });
     expectPinned("LM Studio at 32k: largest prompt sent", b.prompt, PINNED.lmStudio32k.prompt);
     expectPinned("LM Studio at 32k: total", b.prompt + REPLY_RESERVE, PINNED.lmStudio32k.total);

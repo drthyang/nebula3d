@@ -1,6 +1,6 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 94 spans in 29 texts or sets: reading 29, evidence 50, remedy 15.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 96 spans in 29 texts or sets: reading 29, evidence 50, remedy 17.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -344,12 +344,14 @@ Spans of a text built for each call (its numbers vary), each as written:
 
 ## verdicts/rules.ts: qmax_coverage's verdict
 
-2 spans: remedy 2.
+4 spans: remedy 4.
 
 Spans of a text built for each call (its numbers vary), each as written:
 
 - remedy: “; taper it to the coverage (pdfWindowSupport) or set a |Q| band”
 - remedy: “; set a |Q| band at or below it, or taper the window to the coverage”
+- remedy: “; set a |Q| band at or below it”
+- remedy: “; the band the counts allow is suggested_band, the user's to set”
 
 ## verdicts/rules.ts: symmetry_check's verdict
 

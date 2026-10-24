@@ -262,6 +262,15 @@ including a one-run pilot on Haiku (`claude-haiku-5-5-pilot.json`).
   are too few to show a second grain", which the grader read as claiming one.
   Every record was then re-graded with the current checks
   (`NEBULA_EVAL_REGRADE`); only that run changed.
+- **One reader of an answer's words, re-graded (plan 3.2).** The graders now
+  read an answer through the reader the answer checks read
+  (`web/src/llm/answerText/`): a question is no claim, a sentence a condition
+  or a plan opens is no credit, and the numbers are read as the app reads
+  them. Every record was re-graded with it (`NEBULA_EVAL_REGRADE`), and it
+  moved no grade. One grade moved from an earlier fix that no re-grade had
+  taken in: the ring check now reads a claim across a number's decimal point,
+  so gemma4:26b's second `rings-left` run says that a ring is left. The run
+  still fails: it never called `assess_stage`.
 - **Not run:**
   - LM Studio's muse-glimmer was not loaded, and these runs never load LM Studio
     models.
@@ -453,15 +462,58 @@ resolvable"). The text graders are heuristics (a clause that negates does not
 claim); the outputs' scores carry the verdict, and a reviewer reads each
 transcript.
 
-The UB's two thresholds are two rules, not one. The Pilot calls a UB turned at
-0.05° or more from an unsymmetrised fit, for `{{achieved}}` and the answer
-checks alike, and a symmetrised volume's UB not judged (`UB_TURNED` and
+The graders read a conclusion's words as the Pilot's answer checks read them,
+through one reader (`web/src/llm/answerText/`; [development.md](development.md#an-answers-words)):
+
+- a sentence's leading answer word ("Yes,", "No:") is no negation and no part
+  of its clauses; a clause ends at "; ", at a spaced dash and at ": " after a
+  label of more than three words ("The UB is not the problem: the origin is
+  shifted" claims the shift);
+- a clause negates with a negation or an absence ("nowhere", "too few",
+  "insufficient"), a curly apostrophe read as a straight one;
+- a question claims nothing, of a fault or against one; a clause that a
+  condition or a plan opens ("If …", "I will check whether …") reports no
+  fault, but no hedge excuses an alarm: "if the UB is off by 0.4°" on a case
+  without a turned UB is charged;
+- the numbers are read as the app reads them (a number inside a name such as
+  hk0 is none; 12,345 is one number), a percentage as written; a clause's
+  angles are its numbers in degrees, or where it writes none, its bare numbers
+  outside a vector, so an axis written as [1 1 0] is no turn.
+
+The checks (`credits` and `charges`, `web/src/llm/evals/validation.ts`) decide
+on that reading; where the graders and the answer checks keep different
+rules, each is named and pinned with both readings (W1 to W8,
+`web/src/llm/__tests__/answerTextPins.test.ts`). Every text check is also
+decided on a second reading, the witness (`web/src/llm/evals/witness.ts`): an
+independent minimal parse with the same rules written apart, which imports
+nothing. Where the shared reader passes a check that the witness fails, the
+run records a dispute: one of the two misread the conclusion. The grade
+stays the shared reader's, and the dispute is left for a reviewer to settle.
+CI holds the disputes over the dev corpus to a declared list, empty
+(`witness.test.ts`), and characterisation goldens hold every grade over it
+(`answerTextGoldens.test.ts`), so a change to the reading shows which grades
+it moves.
+
+A turned UB has one limit, 0.05°. The Pilot calls a UB turned at 0.05° or
+more from an unsymmetrised fit, for `{{achieved}}` and the answer checks
+alike, and a symmetrised volume's UB not judged (`UB_TURNED` and
 `UB_NOT_JUDGED`, `web/src/llm/verdicts/rules.ts`; the user's decision of
 2026-10-19, review entry D4). The grader reads a clause that calls the UB off,
-with every angle it writes under 0.1°, as no claim of a misorientation: a turn
-the size of the fit's own noise (`claimed`, `web/src/llm/evals/validation.ts`).
-The grader's 0.1° stays as it is until the answer checks and the graders share
-one reader of an answer's words (plan 3.2).
+with every angle it writes under 0.05°, as no claim of a misorientation: a
+turn the size of the fit's own noise (`charges`, `web/src/llm/evals/validation.ts`).
+A symmetrised fit's turn is not judged by the app alone (W8): the grader
+charges an answer that calls it a turn.
+The grader keeps the number as its own (`UB_NOISE_DEG`) and imports nothing
+of the app's verdicts; a test holds the two to one boundary by what each does,
+bisecting the app's `UB_TURNED` and the grader's charge of "The UB is turned
+by x°" on `dev-control` to within 1e-9 (`validation.test.ts`), so a change to
+either rule fails it. On the dev cases built at 81³, the seven without a
+turned UB turn by far less, and the two agree on each
+(`devData/ubAgreement.replay.test.ts`). The grader's limit was 0.1° until
+2026-10-19 (plan 3.2, the manager on the user's delegation, review entry
+P3.2); the change moved no grade of the dev corpus
+(`web/src/llm/evals/answerTextGoldens.test.ts`), and the scenarios' checks do
+not read the UB's angle.
 
 ### What each run leaves
 
@@ -487,7 +539,22 @@ and one Markdown transcript per run beside it, readable offline. Each run holds:
   the transcript). The source is searched in what each tool found, whole, so a
   number a `{{reference}}` filled from a field the model's copy left out has
   one;
-- **the conclusion**, and the grades above; then, after `score`, the scored outputs.
+- **the conclusion**, and the grades above; then, after `score`, the scored outputs;
+- **the disputes:** each check the graders' two readings dispute, with what
+  the shared reader and the witness each found (`grades.disputes`, and the
+  check's own grade). The field is optional, so the schema stays
+  `nebula3d-validation-run/1` and a record made before it reads as none. The
+  transcript lists them, a dev run's become candidate findings (`bug`), and
+  the table counts them (Disputed).
+
+A record is graded again with the current graders by
+`NEBULA_VALIDATION_REGRADE=<record.json>` (`validation.live.test.ts`): each
+run rebuilt from its conclusion and decisions, its unsafe actions kept as the
+run counted them; a test-split record needs `NEBULA_VALIDATION_REPORT=1`.
+`python -m nebula3d.validation summarize --record <record.json>` then writes
+its table again from the grades and scores it holds, scoring nothing (a
+test-split record needs `--report`), and `NEBULA_VALIDATION_RENDER` its
+transcripts.
 
 ### Findings
 

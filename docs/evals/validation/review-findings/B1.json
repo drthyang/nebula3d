@@ -1,0 +1,22 @@
+{
+ "source": "review",
+ "ref": "B1",
+ "at": "6b4e275",
+ "kind": "bug",
+ "evidence": "With the flatten off (PipelineParams.flatten_enabled=False, the page's flatten switch), run_pipeline's stage_input (src/nebula3d/pipeline.py:2194-2213) walked back past the switched-off flatten and, finding a flattened volume an earlier run had left on disk, returned it as a partial re-run's input. A run with the flatten off after one with it on gave the ΔPDF the old flattened volume, its background removed, while PipelinePaths.pdf_input named the backfilled one and the log said \"flatten disabled (no background removed)\"; without force the stale-ΔPDF guard then found the first run's ΔPDF current and kept it, with its check. Found while making the consistency view follow the ΔPDF's record (P4.12b).",
+ "proposed_fix": "A stage the run's settings switch off (the flatten) passes its input through without reading an output an earlier run left, in the processed folder or among a tuning trial's inputs: the ΔPDF takes the run's backfilled volume, as PipelinePaths.pdf_input says, and a ΔPDF made from another volume is recomputed with its check. With the flatten off the ΔPDF stage's log names the volume it transforms, in the browser's WebGPU path too. A stage merely left out of stages still hands its output on, as partial re-runs need; the pdf_check stage's old JSON feeds no stage (and the server ignores one older than the ΔPDF).",
+ "needs_user_approval": false,
+ "status": "implemented",
+ "commit": "6233134",
+ "tests": [
+  "tests/test_pipeline_orchestration.py::test_flatten_disabled_never_reads_a_flattened_volume_left_on_disk (proc_dir and a tuning trial's inputs)",
+  "tests/test_pipeline_orchestration.py::test_the_flatten_off_transforms_the_runs_backfilled_volume (from scratch; after the flatten on, resumed and forced: the record names the backfilled volume, the ΔPDF and its check are its transform bit for bit, the log names it)",
+  "tests/test_pipeline_orchestration.py::test_the_flatten_on_transforms_its_flattened_volume_as_before"
+ ],
+ "note": "Decided by the lead as a bug fix, 2026-10-19. Against main (6b4e275), on the 61³ demo and the dev rings-and-shell case at 121³: with the flatten on, and with it off from scratch, every artifact is bit-identical (the ring diagnostics differ only in their timings), and a run with the flatten off gains the one log line naming its input; with the flatten on and then off, main kept the first run's ΔPDF and check, the fix recomputes both from the backfilled volume. The new tests fail on main (5 of the 6: the stale flattened volume taken, and no line naming the input). Arm A on dev re-run: 32 of 32 entries identical, 5 of 8 cases pass, as recorded, its 24 run logs unchanged (arm A runs with the flatten on, in fresh roots). Left: the page's switches for the ring removal, the punch and the backfill reach the backend only as stages left out of stages (web/src/state/pipelineStore.ts:323-332), which run_pipeline reads as a partial re-run. With an output an earlier run left on disk, that output still feeds the next stage: with the ring removal left out after a run that wrote its volume, the punch read that volume, not the raw input (dev rings case, 121³). Telling a switched-off stage from one not run now needs a switch per stage, like flatten_enabled, sent by the page: a decision for the lead.",
+ "decision": {
+  "by": "the lead, as a bug fix",
+  "on": "2026-10-19",
+  "option": "a stage switched off passes its input through; with the flatten off the ΔPDF takes the run's backfilled volume"
+ }
+}

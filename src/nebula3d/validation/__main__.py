@@ -8,6 +8,7 @@
     python -m nebula3d.validation arm-d --split dev        # arm D, the scorer's reference
     python -m nebula3d.validation make --root R --split dev --arms B,C --runs 3
     python -m nebula3d.validation score --root R --record web/.validation/<label>.json
+    python -m nebula3d.validation summarize --record web/.validation/<label>.json
 
 The test split is held out: every command that reads it needs ``--report``,
 which says the numbers are for the record, not for improving anything. Its
@@ -173,6 +174,33 @@ def cmd_score(args: argparse.Namespace) -> None:
     print(out)
 
 
+def holds_test_split(record: dict[str, Any]) -> bool:
+    """Whether a live record holds the held-out test split: as it says, or as any run says."""
+    return record.get("split") == "test" or any(
+        r.get("split") == "test" for r in record.get("runs", [])
+    )
+
+
+def cmd_summarize(args: argparse.Namespace) -> None:
+    """A live record's per-case table again, from the grades and the scores it holds, and
+    written back as its summary: after its runs' words were graded again
+    (NEBULA_VALIDATION_REGRADE, web/src/llm/evals/validation.live.test.ts), or to read it.
+    Nothing is scored, so it needs neither the data root nor the cases."""
+    from .report import live_table, summarize_record
+
+    record = json.loads(Path(args.record).read_text())
+    if holds_test_split(record) and not args.report:
+        sys.exit(
+            "this record holds the held-out test split: pass --report to summarize it for "
+            "the reported numbers only"
+        )
+    record["summary"] = summarize_record(record)
+    out = Path(args.out or args.record)
+    out.write_text(json.dumps(record, indent=1, ensure_ascii=False) + "\n")
+    print(live_table(record["summary"]))
+    print(out)
+
+
 #: Where arm A's results on the test split may go: a held-out folder, which no one
 #: opens (docs/evals/validation/holdout/ in this repo).
 HELD_OUT_FOLDER = "holdout"
@@ -262,6 +290,18 @@ def main(argv: list[str] | None = None) -> None:
             p.add_argument("--root", required=True)
             p.add_argument("--record", required=True)
             p.add_argument("--out")
+    p = sub.add_parser(
+        "summarize",
+        help="a live record's per-case table again, from the grades and scores it holds",
+    )
+    p.set_defaults(fn=cmd_summarize)
+    p.add_argument("--record", required=True)
+    p.add_argument("--out", help="write the record here (default: in place)")
+    p.add_argument(
+        "--report",
+        action="store_true",
+        help="allow the held-out test split (reported numbers only)",
+    )
     args = ap.parse_args(argv)
     if args.cmd == "manifest":
         try:

@@ -1,0 +1,30 @@
+{
+ "source": "review",
+ "ref": "P3.3",
+ "at": "fd2a96a",
+ "kind": "science-error",
+ "evidence": "qmax_coverage measured the coverage twice, with two meanings of \"measured\": on the three principal planes through the origin, a voxel finite in the raw slice (web/src/llm/metrics/coverage.ts:57), for full_coverage_q, low_q_gap and per_plane, which the verdict read; and in 3D, a voxel measured, finite and non-zero (src/nebula3d/analysis/coverage.py:116), for raw_counts and suggested_band. A volume that stores zeros for unmeasured space, unmasked, read as fully measured to the box on the planes, so the reach-based verdict passed while its counts end inside the box; and the planes' full coverage stopped at the box face where the 3D shells of a box measured to its corners run on (the dev control on 81³: 6.44 against 10.85 Å⁻¹). The taper's reach was taken to be full coverage whenever the support was on (web/src/llm/tools/defs/qmax_coverage.ts:29), though the backend fits its window to its support, the volume's mask and finite voxels (src/nebula3d/pipeline.py:1527, src/nebula3d/analysis/delta_pdf.py:614), which on zeros stored unmasked holds every voxel, and never fits a separable window the page asks for (delta_pdf.py:1124).",
+ "proposed_fix": "qmax_coverage reads the coverage from nebula3d.analysis.coverage alone, through either adapter (GET /api/volumes/{id}/coverage, the webbridge's volume_coverage_json): full_coverage_q is where the 3D |Q| shells stop holding counts in 95 % of their voxels, the edge's resolution the shells' width (q_step, served). The planes only show where: the figure opens on the first principal plane through the origin, and the result drops per_plane and low_q_gap (raw_counts gives the lower edges). The module also serves where the shells stop being fully measured (measured_q_max): the taper's reach is that edge, where the backend fits an auto or ellipsoid window; where the measured voxels run past the counts by more than a shell (zeros stored), the verdict says the taper cannot follow the counts, and its remedy is the |Q| band alone.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "b50a779",
+ "tests": [
+  "tests/test_coverage.py::test_the_counts_end_where_they_end_however_unmeasured_space_is_stored",
+  "tests/test_coverage.py::test_zeros_stored_are_measured_but_hold_no_counts",
+  "tests/test_coverage.py::test_the_window_support_follows_the_measured_voxels_not_the_counts",
+  "tests/test_coverage.py::test_the_shells_width_is_given",
+  "tests/test_webbridge.py::test_volume_coverage_json_is_the_servers_response",
+  "tests/test_server.py::test_volume_coverage",
+  "web/src/llm/__tests__/tools.test.ts (qmax_coverage: the coverage Python measures, once, shown on the first plane through the origin; a window tapered to the measured coverage, masked or NaN past the counts; a volume that stores zeros past its counts; a separable window the page asks for; a box measured to its corners)",
+  "web/src/llm/__tests__/verdicts.test.ts (coverage: the reach past it, zeros stored past the counts; no shell fully measured)",
+  "web/src/llm/evals/devData/knownAnswers.replay.test.ts (dev-control: the counts filling the box, past the faces the window reaches; dev-coverage: full coverage within a shell of the planted cut, the counts' own)",
+  "web/src/llm/__tests__/modelVisible.test.ts (2-tools.md, 2-tools-arm-c.md, 4-tool-results.md, 6-inference.md)",
+  "web/src/llm/__tests__/verdictGoldens.test.ts (the verdicts unchanged, the goldens untouched)"
+ ],
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 3.3, candidate 6). No dev case's coverage verdict changes kind, on 81³ or 161³. Those resting on the reach (no window weight recorded: dev-control, dev-rings, dev-shell, dev-flatten and dev-rings-shell on 81³; dev-control, dev-shell and dev-flatten on 161³) now give full coverage at 10.85 Å⁻¹ on 81³ and 11.05 on 161³, the box measured to its corners, for the face's 6.44, and the reach 6.444 for 6.44; the others are judged by the recorded weight and their verdicts read the same, with full_coverage_q from the 3D shells (dev-coverage 4.45 for 4.51). No dev case stores zeros: the constructed volumes carry that case. Arm A on dev re-run before and after: 32 of 32 entries identical, 5 of 8 cases pass, as recorded. qmax_coverage's result on the synthetic crystal is 1,147 characters, from 2,135, and its definition 97 shorter; the worst local turn before compaction 45,197 estimated tokens, from 45,931, every pin within 5 %. The band as the remedy where zeros are stored follows the verdict's reach rule; whether a band at the counts' edges changes the transform is open (P4.5's note).",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-19",
+  "option": "qmax_coverage reads the coverage Python measures, through both adapters; the planes only show where; the taper follows the measured voxels, not the counts"
+ }
+}
