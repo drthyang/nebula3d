@@ -18,8 +18,9 @@
 //
 // `fit` makes the model's copy (the executor, runToolCall, alone calls it) and
 // `shorten` shortens that copy later in a long reply (the agent loop's
-// compaction, compactOlder, alone calls it); neither changes a step's
-// readings: `seen` stays what was sent, and the step is marked `shortened`.
+// compaction, compactOlder, alone calls it: a skill's text keeps its head and
+// its `## Gates` section); neither changes a step's readings: `seen` stays
+// what was sent, and the step is marked `shortened`.
 //
 // Everything else under readings/ is implementation: fit.ts (fitting a result
 // to the limit), compact.ts (shortening) and found.ts (the parse, once per

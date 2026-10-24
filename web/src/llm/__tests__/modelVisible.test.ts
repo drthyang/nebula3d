@@ -41,7 +41,8 @@ import { shorten } from "../readings";
 import { fillReferences, NAMED_REFERENCES } from "../references";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, skillsPrompt } from "../skills";
-import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolSpecs, toolsWithSkills, type AgentTool, type ToolContext } from "../tools";
+import { CHAT_TOOLS, MAX_RESULT_CHARS, runToolCall, toolSpecs, toolsWithSkills, type AgentTool, type ToolContext, type ToolRun } from "../tools";
+import { contractDisagreements, TEXT_RESULTS } from "../tools/contracts";
 import { currentStageSettings } from "../tune/catalog";
 import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS, STAGE_GOALS_WITHOUT_SKILLS, TUNE_SYSTEM } from "../tune/prompts";
 import { useTuneStore } from "../tune/tuner";
@@ -491,6 +492,12 @@ const ERRORS: Sample[] = [
     ctx: { skillsRead: new Set(["bragg-node-audit"]), userMessage: "Is the punch clean?" },
   },
   { name: "tune_pipeline", args: { stages: ["flatten"] }, note: "tuning before its stage's skill was read", ctx: { skillsRead: new Set() } },
+  {
+    name: "update_settings",
+    args: { changes: { flattenQ2: true } },
+    note: "a change in a later turn, its stage's skill read in an earlier one and not in this reply",
+    ctx: { skillsRead: new Set(), skillsReadEarlier: new Set(["reduction-qc"]) },
+  },
 ];
 
 async function runSample(s: Sample) {
@@ -629,6 +636,29 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
         ].join("\n\n"),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/4-tool-results-arm-c.md`);
+  });
+
+  it("each sampled result keeps its tool's contract (tools/contracts.ts), in arm B and in arm C", async () => {
+    const toolsC = toolsWithSkills(CHAT_TOOLS, false);
+    // The whole result the model reads (the step's `full` where it reads it fitted), as JSON reads it.
+    const whole = (name: string, run: ToolRun): unknown => {
+      const text = run.full ?? run.text;
+      return TEXT_RESULTS.has(name) ? text : JSON.parse(text);
+    };
+    const problems: string[] = [];
+    for (const s of SAMPLES) {
+      const b = await runSample(s);
+      expect(b.ok, `${sampleTitle(s)}: ${b.text}`).toBe(true);
+      problems.push(...contractDisagreements(s.name, whole(s.name, b)).map((d) => `arm B, ${sampleTitle(s)}: ${d}`));
+      if (s.name === "read_skill") continue; // not offered in arm C
+      freshConsole();
+      s.before?.();
+      const call: ToolCall = { id: "call_1", type: "function", function: { name: s.name, arguments: JSON.stringify(s.args) } };
+      const c = await runToolCall(call, toolsC, { dataset: DATASET, datasets: DATASETS, skills: false, skillsRead: new Set(), ...s.ctx });
+      expect(c.ok, `${sampleTitle(s)}: ${c.text}`).toBe(true);
+      problems.push(...contractDisagreements(s.name, whole(s.name, c)).map((d) => `arm C, ${sampleTitle(s)}: ${d}`));
+    }
+    expect(problems).toEqual([]);
   });
 });
 

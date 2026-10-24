@@ -61,6 +61,7 @@ from nebula3d.pipeline import (
 )
 from nebula3d.pipeline import load_input as _load_run_input
 from nebula3d.preprocessing import write_global_ring_diagnostics
+from nebula3d.server import bragg as _bragg
 from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
 from nebula3d.server import deltapdf as _dpdf
@@ -892,12 +893,17 @@ async def _run_pdf_stages_gpu(
         _prepare_forward,
     )
     from nebula3d.core import low_memory  # noqa: PLC0415
-    from nebula3d.pipeline import _drop_sigma, _pdf_is_current  # noqa: PLC0415
+    from nebula3d.pipeline import (  # noqa: PLC0415
+        _drop_sigma,
+        _passed_through_notice,
+        _pdf_is_current,
+        _run_paths,
+        _stage_input,
+    )
 
     cfg = _require_cfg()
     assert _S.input is not None
-    paths = pipeline_paths(_S.input, proc_dir=proc_dir or cfg.processed_dir,
-                           flatten_enabled=params.flatten_enabled)  # type: ignore[attr-defined]
+    paths = _run_paths(_S.input, params, proc_dir=proc_dir or cfg.processed_dir)  # type: ignore[arg-type]
     p = params.delta_pdf  # type: ignore[attr-defined]
 
     def forced(stage: str) -> bool:
@@ -907,12 +913,11 @@ async def _run_pdf_stages_gpu(
             return STAGES.index(stage) >= STAGES.index(force_from)
         return False
 
-    pdf_input = paths.pdf_input
-    if inputs is not None:  # a tuning trial: the input lives in the run
-        upstream = inputs.get("flatten" if params.flatten_enabled else "backfill")  # type: ignore[attr-defined]
-        pdf_input = upstream if upstream is not None else pdf_input
-    if not pdf_input.exists():
-        return False  # pass-through subtleties → CPU path resolves them
+    # The volume run_pipeline's ΔPDF stage would read: the stages switched off
+    # passed through, a tuning trial's input from its run (`inputs`).
+    pdf_input = _stage_input("pdf", params, paths, stages, inputs)  # type: ignore[arg-type]
+    if pdf_input == paths.input or not pdf_input.exists():
+        return False  # the raw input (its edge trim), or none → the CPU path
     gpu_cfg = delta_pdf_transform_config(p) + _GPU_FFT_TOKEN
 
     async def forward_dpdf(vol: HKLVolume) -> DeltaPDF | None:
@@ -940,6 +945,9 @@ async def _run_pdf_stages_gpu(
             if paths.delta_pdf.exists() and not is_current:
                 _cb_emit(cb, "pdf", "progress", None,
                          f"{paths.delta_pdf.name} stale — recomputing")
+            notice = _passed_through_notice(params, "pdf", pdf_input)  # type: ignore[arg-type]
+            if notice is not None:
+                _cb_emit(cb, "pdf", "progress", None, notice)
             _cb_emit(cb, "pdf", "start", None,
                      f"3D-ΔPDF FFT (apodize={p.apodization}) [WebGPU]")
             pdf_vol = nebula3d.load(pdf_input, dtype=params.np_dtype())  # type: ignore[attr-defined]
@@ -1067,6 +1075,8 @@ def bragg_profile_json(dataset_id: str) -> str:
     the browser that is the Pyodide virtual FS — so this only re-reads a small
     JSON file.  The ``has_profile: false`` shape matches the native
     ``BraggProfileOut`` defaults so the viewer's empty states are identical.
+    ``node_test`` is the nodes the punch's node test could not judge, read as
+    the server reads it (:func:`nebula3d.server.bragg.node_test_out`).
     """
     cfg = _require_cfg()
     ds = _ds.find_dataset(cfg, dataset_id)
@@ -1079,7 +1089,7 @@ def bragg_profile_json(dataset_id: str) -> str:
             "has_profile": False, "schema_version": 1,
             "width_labels": [], "hkl_width_labels": [], "width_units": {},
             "n_peaks": 0, "fit_covariance": False, "punch_frame": None,
-            "peaks": [],
+            "peaks": [], "node_test": None,
         })
     data = json.loads(path.read_text(encoding="utf-8"))
     return _json({
@@ -1094,6 +1104,7 @@ def bragg_profile_json(dataset_id: str) -> str:
         "fit_covariance": bool(data.get("fit_covariance", False)),
         "punch_frame": data.get("punch_frame"),
         "peaks": list(data.get("peaks", [])),
+        "node_test": _bragg.node_test_out(data.get("node_test")),
     })
 
 

@@ -62,10 +62,13 @@ const weightReasons = (r: Obj): Reason[] => {
 /**
  * qmax_coverage's words. "clean" passes and "too far" needs attention; the
  * reach inside full coverage passes with that reason, a pass to every reader
- * (D1, unified by 2.4.1). "past", "unmeasured" and "not", words no producer
- * wrote, need attention, with the reason "legacy coverage words" (D10: to every
- * reader since 2.4b.2). Anything else is nothing to judge. The weight it
- * records, if any, is a reason of its own.
+ * (D1, unified by 2.4.1). "fitted to the coverage" passes, the window fitted
+ * by the backend, and "too far" on a band past the counts' edges ("Qmin
+ * below", "Qmax past") needs attention for the band (plan 4.5). "past",
+ * "unmeasured" and "not", words no producer wrote, need attention, with the
+ * reason "legacy coverage words" (D10: to every reader since 2.4b.2).
+ * Anything else is nothing to judge. The weight it records, if any, is a
+ * reason of its own.
  */
 function coverageOutcome(r: Obj): Outcome {
   const said = words(r) ?? "";
@@ -73,13 +76,17 @@ function coverageOutcome(r: Obj): Outcome {
   const problems = countsProblems(r);
   const [kind, reasons]: [Kind, Reason[]] = /^clean/i.test(said)
     ? ["pass", weight]
-    : /^too far/i.test(said)
-      ? ["attention", /^too far: the transform reaches/i.test(said) || !weight.length ? ["reach past coverage", ...weight] : weight]
-      : /^(past|unmeasured|not)/i.test(said)
-        ? ["attention", ["legacy coverage words", ...weight]]
-        : /^the transform reaches .* inside full coverage/.test(said)
-          ? ["pass", ["reach inside coverage", ...weight]]
-          : ["info", ["nothing to judge", ...weight]];
+    : /^fitted to the coverage/i.test(said)
+      ? ["pass", ["window fitted", ...weight]]
+      : /^too far: Q(min below|max past) the counts'/i.test(said)
+        ? ["attention", ["band past counts", ...weight]]
+        : /^too far/i.test(said)
+          ? ["attention", /^too far: the transform reaches/i.test(said) || !weight.length ? ["reach past coverage", ...weight] : weight]
+          : /^(past|unmeasured|not)/i.test(said)
+            ? ["attention", ["legacy coverage words", ...weight]]
+            : /^the transform reaches .* inside full coverage/.test(said)
+              ? ["pass", ["reach inside coverage", ...weight]]
+              : ["info", ["nothing to judge", ...weight]];
   return outcome("coverage", kind, reasons, words(r), problems);
 }
 

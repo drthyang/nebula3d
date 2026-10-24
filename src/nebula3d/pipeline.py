@@ -32,7 +32,7 @@ import dataclasses
 import json
 import os
 import sys
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, get_args
@@ -116,6 +116,7 @@ __all__ = [
     "RING_GRID_REMEDY",
     "RING_GRID_REMEDY_ONE",
     "unconfirmed_rings_notice",
+    "node_test_notice",
     "pipeline_paths",
     "run_pipeline",
 ]
@@ -323,6 +324,10 @@ def bragg_profile_from_records(
             "principal_width_q": widths_q_principal,
             "principal_directions_hkl": directions,
             "fit_kind": fit_kind,
+            # Which pass found it: "integer" (the node test) or "search"; a
+            # search peak with a source node is the Bragg peak of a node the
+            # node test left to the search (BraggRemover._claim_left_nodes).
+            "found_by": str(getattr(peak, "found_by", "integer")),
         })
     return {
         "schema_version": 1,
@@ -341,6 +346,8 @@ def bragg_profile_from_records(
             "axes": ["ρ", "θ", "φ"],
             "q_centers": [float(v) for v in footprint.q_centers],
             "n_peaks": list(footprint.n_peaks),
+            # Of those, the peaks the search found at nodes the node test left to it.
+            "from_search": int(footprint.from_search),
             "distances_q": [float(v) for v in footprint.distances],
             "template": footprint.profiles.tolist(),
             "stacked": None if footprint.raw is None else footprint.raw.tolist(),
@@ -649,13 +656,22 @@ class DeltaPdfParams:
 
 @dataclass
 class PipelineParams:
-    """All stage parameters plus the flatten on/off toggle."""
+    """All stage parameters plus the cleanup stages' on/off switches."""
 
     rings: RingParams = field(default_factory=RingParams)
     punch: PunchParams = field(default_factory=PunchParams)
     backfill: BackfillParams = field(default_factory=BackfillParams)
     flatten: FlattenParams = field(default_factory=FlattenParams)
     delta_pdf: DeltaPdfParams = field(default_factory=DeltaPdfParams)
+    # The cleanup stages' switches (the web page's "Enable stage").  A stage
+    # switched off is not run and passes its input through: the next stage
+    # reads what came before it, never an output an earlier run left on disk,
+    # and the switched-off stage's own output file is neither written nor
+    # removed.  Unlike a stage merely left out of run_pipeline's `stages`, a
+    # partial re-run, which reads that stage's output on disk.
+    rings_enabled: bool = True
+    punch_enabled: bool = True
+    backfill_enabled: bool = True
     flatten_enabled: bool = True
     # Stage 6 — back-FFT round-trip consistency check (inverse-transform the
     # ΔPDF and compare to the diffuse data it came from); writes a metric JSON
@@ -692,6 +708,16 @@ class PipelineParams:
 
     def np_dtype(self) -> type:
         return np.float64 if self.precision == "float64" else np.float32
+
+    def stage_enabled(self, stage: str) -> bool:
+        """Whether the run's settings switch *stage* on: a cleanup stage's
+        switch (``rings_enabled`` … ``flatten_enabled``), True for the others."""
+        return {
+            "rings": self.rings_enabled,
+            "punch": self.punch_enabled,
+            "backfill": self.backfill_enabled,
+            "flatten": self.flatten_enabled,
+        }.get(stage, True)
 
 
 def input_symmetry(vol: HKLVolume, p: PipelineParams, input_path: str | Path, *,
@@ -1309,6 +1335,54 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
 # ---------------------------------------------------------------------------
 # Stage 2 — Bragg / satellite punch
 # ---------------------------------------------------------------------------
+def node_test_notice(count: int, examined: int, voxel: float, needs: float, *,
+                     left_to_search: bool = True) -> str:
+    """What the Bragg punch says of the *count* nodes, of the *examined*, whose
+    background shell held fewer measured voxels than its node test's median
+    needs, on a grid too coarse for that shell: a voxel of *voxel* Å⁻¹ where the
+    shell needs one of *needs* Å⁻¹ or less
+    (:meth:`~nebula3d.analysis.bragg.BraggRemover.node_test_limit`). With
+    ``mode="both"`` (*left_to_search*) the test did not judge them and left
+    them to the search pass, whose peak in a node's window is that node's
+    Bragg peak; one the search cannot see may remain (below its floors, or in
+    a |Q| shell too thin for it, as at the box's far corners, where they are
+    strong). With ``mode="integer"`` it judged them against their window's
+    median, provisionally. It opens with
+    :data:`~nebula3d.preprocessing.ring_isotropy.GRID_TOO_COARSE` and ends on
+    the remedy. Out loud, in the run log and the punch's record (the
+    manager's decision, on the user's delegation, 2026-10-19: the review's G2).
+    """
+    one = count == 1
+    nodes = f"{count} of {examined} node{'' if examined == 1 else 's'} {'was' if one else 'were'}"
+    what = (f"{nodes} not judged and {'was' if one else 'were'} left to the search pass; "
+            "Bragg peaks the search cannot see may remain" if left_to_search else
+            f"{nodes} judged provisionally, against {'its' if one else 'their'} window's "
+            "median; diffuse maxima at nodes may be punched")
+    return (f"{GRID_TOO_COARSE} for the Bragg punch's node test: a voxel is {voxel:.3g} Å⁻¹; "
+            f"its background shell needs ≤ {needs:.3g} Å⁻¹. {what}. Use a finer grid.")
+
+
+def _node_test_record(report: dict[str, Any]) -> dict[str, Any] | None:
+    """The punch's record of the nodes its node test could not judge (the
+    remover's ``_node_report``), or None when it judged every node it
+    examined. The ⚠ notice (:func:`node_test_notice`) where the grid is too
+    coarse for the background shell (a voxel over the limit); else ``notice``
+    is None, the nodes being few, at the edge of the measured volume or in the
+    directions the grid samples thinnest just under the limit."""
+    under = int(report.get("under_floor", 0))
+    if not under:
+        return None
+    voxel, needs = float(report["voxel_q"]), float(report["needs_q"])
+    left = bool(report["left_to_search"])
+    examined = int(report["examined"])
+    return {
+        "examined": examined, "under_floor": under, "min_voxels": int(report["min_voxels"]),
+        "voxel_q": round(voxel, 4), "needs_q": round(needs, 4), "left_to_search": left,
+        "notice": (node_test_notice(under, examined, voxel, needs, left_to_search=left)
+                   if voxel > needs else None),
+    }
+
+
 def bragg_remover(p: PunchParams) -> BraggRemover:
     """The :class:`BraggRemover` the punch stage runs for *p*."""
     return BraggRemover(
@@ -1375,7 +1449,16 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     if symmetry is not None:
         remover = dataclasses.replace(remover, symmetry_ops=symmetry.ops)
     peak_records, reference, footprint = remover._detect(vol)  # noqa: SLF001 - avoid refitting
-    n_integer = sum(r.source_node_hkl is not None for r in peak_records)
+    n_integer = sum(r.found_by == "integer" for r in peak_records)
+    # The search's Bragg peaks at the nodes the node test left to it (G2).
+    n_claimed = sum(r.found_by == "search" and r.source_node_hkl is not None
+                    for r in peak_records)
+    from_search = 0 if footprint is None else int(footprint.from_search)
+    learned = (f", {from_search} of them the search's at nodes the node test left to it"
+               if from_search else "")
+    # The nodes whose background shell the grid (or the mask) left under the
+    # node test's floor: not judged, or judged provisionally (G2).
+    node_test = _node_test_record(remover._node_report)  # noqa: SLF001
     if p.mode in {"integer", "both"}:
         width = ("" if p.integer_max_shell_fraction is None else
                  f", no broader than a Bragg peak (shell fraction "
@@ -1383,8 +1466,16 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         test = (f"excess over its shell ≥ {p.min_significance:g}σ after the "
                 f"window search{width}, no intensity floor"
                 if p.integer_detect == "significance" else "intensity floors")
+        tally = ""
+        if node_test is not None:
+            shell = (f"fewer than {node_test['min_voxels']} measured voxels in the "
+                     f"background shell")
+            tally = (f"; {node_test['under_floor']} of {node_test['examined']} nodes "
+                     + (f"not judged ({shell}), left to the search pass"
+                        if node_test["left_to_search"] else
+                        f"judged provisionally, against the window's median ({shell})"))
         _emit(progress, "punch", "progress", None,
-              f"integer nodes ({test}): {n_integer} peaks")
+              f"integer nodes ({test}): {n_integer} peaks{tally}")
     found = remover._search_report  # noqa: SLF001 - what the search pass used
     if "min_intensity" in found:
         floors = (f"{found['min_intensity']:.4g} intensity, "
@@ -1395,12 +1486,15 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         broad = found.get("broad_kept")
         _emit(progress, "punch", "progress", None,
               f"search floors {floors}: {len(peak_records) - n_integer} peaks"
+              + (f", {n_claimed} of them the Bragg peaks of nodes the node test left to it"
+                 if n_claimed else "")
               + (f" ({broad} broader than {p.search_max_width_ratio:g} × the Bragg "
                  "width left as diffuse)" if broad else ""))
     if p.punch_footprint == "profile":
         _emit(progress, "punch", "progress", None, (
             f"profile-matched punch: Bragg profile learned from "
             f"{sum(footprint.n_peaks)} peaks in {len(footprint.n_peaks)} |Q| range(s)"
+            f"{learned}"
             if footprint is not None else
             "profile-matched punch: too few bright peaks to learn the Bragg "
             "profile; every peak gets the ellipsoid punch"))
@@ -1409,7 +1503,9 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         _emit(progress, "punch", "progress", None,
               f"own-width punch: {own:,} of {len(peak_records):,} peaks punched to their "
               f"own measured width, the rest to the "
-              + ("shared Bragg profile" if footprint is not None else "ellipsoid"))
+              + (f"shared Bragg profile (learned from {sum(footprint.n_peaks)} peaks"
+                 f"{learned})" if footprint is not None and from_search else
+                 "shared Bragg profile" if footprint is not None else "ellipsoid"))
     keep = remover._punch_centers(  # noqa: SLF001
         vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference)
     keep = remover._punch_incident_beam(vol, keep)  # noqa: SLF001
@@ -1421,10 +1517,16 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
               f"{int((vol.mask & ~keep).sum()) - before:,} more voxels punched "
               f"at positions equivalent to punched ones")
     profile = bragg_profile_from_records(vol, remover, peak_records, footprint)
+    notice = None
+    if node_test is not None:
+        # The punch's record of it, for as long as the output it describes.
+        profile["node_test"] = node_test
+        notice = node_test["notice"]
     punched = vol.mask & np.isfinite(vol.data) & ~keep
     out_vol = dataclasses.replace(vol, mask=vol.mask & keep)
     _emit(progress, "punch", "done", 1.0,
-          f"detected {len(peak_records)} peaks; punched {int(punched.sum()):,} voxels")
+          f"detected {len(peak_records)} peaks; punched {int(punched.sum()):,} voxels"
+          + (f". ⚠ {notice}" if notice else ""))
     setattr(out_vol, "_bragg_profile", profile)
     # Which masked voxels are punch holes (the rest are unmeasured coverage):
     # the backfill fills each hole from its own surroundings with it.
@@ -1503,7 +1605,9 @@ def flatten(vol: HKLVolume, params: FlattenParams | None = None, *,
     )
     if res.model_coef is not None:
         const, c = res.model_coef
-        r2 = f", R² {res.model_r2:.3f}" if res.model_r2 is not None else ""
+        # A constant fit's R² is 0 up to rounding, of either sign: no −0.000.
+        r2 = (f", R² {round(res.model_r2, 3) + 0.0:.3f}"
+              if res.model_r2 is not None else "")
         q2 = (f" + {res.model_q2:.4g}·Q²"
               + (f" (held past {res.model_q2_cap:g} Å⁻¹)" if res.model_q2_cap is not None else "")
               if res.model_q2 is not None else "")
@@ -2109,6 +2213,58 @@ def _write_consistency_figure(rows: list, out_png: Path) -> None:
     plt.close(fig)
 
 
+#: The cleanup stages, in order: each reads the output of the last one before
+#: it that the run's settings switch on (PipelineParams.stage_enabled).
+_CLEANUP_STAGES: tuple[str, ...] = ("rings", "punch", "backfill", "flatten")
+
+#: Each stage's name in the run's log.
+_STAGE_NAMES: dict[str, str] = {
+    "rings": "ring removal",
+    "punch": "Bragg punch",
+    "backfill": "backfill",
+    "flatten": "flatten",
+    "pdf": "ΔPDF",
+}
+
+#: What a cleanup stage switched off leaves undone.
+_LEFT_UNDONE: dict[str, str] = {
+    "rings": "no powder rings removed",
+    "punch": "no Bragg peaks punched",
+    "backfill": "no punched voxels filled",
+    "flatten": "no background removed",
+}
+
+
+def _disabled_notice(stage: str) -> str:
+    """The "skip" line of a cleanup stage the run's settings switch off."""
+    return f"{_STAGE_NAMES[stage]} disabled ({_LEFT_UNDONE[stage]})"
+
+
+def _stage_names(stages: Sequence[str]) -> str:
+    """``"ring removal and Bragg punch"``: the stages' log names as a list."""
+    names = [_STAGE_NAMES[s] for s in stages]
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _passed_through_notice(p: PipelineParams, stage: str, src: Path) -> str | None:
+    """The log line of *stage* (a cleanup stage or ``"pdf"``) naming the
+    volume *src* it reads when the stages right before it are switched off
+    (None when they are not), so the log says which one it took."""
+    upto = (_CLEANUP_STAGES.index(stage)
+            if stage in _CLEANUP_STAGES else len(_CLEANUP_STAGES))
+    off: list[str] = []
+    for prev in reversed(_CLEANUP_STAGES[:upto]):
+        if p.stage_enabled(prev):
+            break
+        off.insert(0, prev)
+    if not off:
+        return None
+    if stage == "pdf":  # the flatten is among them: no background removed
+        return (f"{_stage_names(off)} disabled: the ΔPDF transforms "
+                f"{Path(src).name}, with no background removed")
+    return f"{_stage_names(off)} disabled: the {_STAGE_NAMES[stage]} reads {Path(src).name}"
+
+
 def _pdf_is_current(pdf_path: Path, expected_src: str, expected_config: str) -> bool:
     """Whether *pdf_path* was made from *expected_src* with *expected_config*
     (its provenance only — the ΔPDF array is not read; either file layout)."""
@@ -2137,17 +2293,24 @@ class PipelinePaths:
     backfilled: Path
     flattened: Path
     delta_pdf: Path
-    pdf_input: Path     # flattened if flatten enabled, else backfilled
+    # The volume the ΔPDF transforms: the output of the last cleanup stage
+    # switched on (flattened with the flatten on, else backfilled, …), the raw
+    # input with all four off.
+    pdf_input: Path
     pdf_check_json: Path
     pdf_check_png: Path
 
 
 def pipeline_paths(input_path: str | Path, *, proc_dir: str | Path | None = None,
-                   flatten_enabled: bool = True) -> PipelinePaths:
+                   flatten_enabled: bool = True, rings_enabled: bool = True,
+                   punch_enabled: bool = True,
+                   backfill_enabled: bool = True) -> PipelinePaths:
     """Resolve the chained output paths for ``input_path``.
 
     Names match ``examples/run_pipeline.py`` exactly so the viewers and the
-    multi-volume auto-detection find the same ``*_delta_pdf.h5`` files.
+    multi-volume auto-detection find the same ``*_delta_pdf.h5`` files.  They
+    do not depend on the stages' switches (``*_enabled``, as in
+    :class:`PipelineParams`), which name ``pdf_input`` only.
     """
     inp = Path(input_path)
     proc = Path(proc_dir) if proc_dir is not None else Path("data/processed")
@@ -2156,16 +2319,57 @@ def pipeline_paths(input_path: str | Path, *, proc_dir: str | Path | None = None
     fill = proc / f"{punch.stem}_backfilled.h5"
     flat = proc / f"{fill.stem}_flattened.h5"
     pdf = proc / f"{fill.stem}_delta_pdf.h5"
+    switched_on = ((rings_enabled, ring), (punch_enabled, punch),
+                   (backfill_enabled, fill), (flatten_enabled, flat))
     return PipelinePaths(
         input=inp, ringremoved=ring,
         ring_diagnostics_json=proc / f"{ring.stem}_diagnostics.json",
         braggpunched=punch,
         bragg_profile_json=proc / f"{punch.stem}_profile.json",
         backfilled=fill, flattened=flat, delta_pdf=pdf,
-        pdf_input=flat if flatten_enabled else fill,
+        pdf_input=next((path for on, path in reversed(switched_on) if on), inp),
         pdf_check_json=proc / f"{pdf.stem}_consistency.json",
         pdf_check_png=proc / f"{pdf.stem}_consistency.png",
     )
+
+
+def _run_paths(input_path: str | Path, p: PipelineParams, *,
+               proc_dir: str | Path | None = None) -> PipelinePaths:
+    """:func:`pipeline_paths` with the stages' switches of *p*."""
+    return pipeline_paths(input_path, proc_dir=proc_dir,
+                          rings_enabled=p.rings_enabled,
+                          punch_enabled=p.punch_enabled,
+                          backfill_enabled=p.backfill_enabled,
+                          flatten_enabled=p.flatten_enabled)
+
+
+def _stage_input(stage: str, p: PipelineParams, paths: PipelinePaths,
+                 selected: Collection[str],
+                 inputs: Mapping[str, Path] | None = None) -> Path:
+    """The volume *stage* (a cleanup stage, ``"pdf"`` or ``"pdf_check"``)
+    reads in a run of the *selected* stages with the settings *p*.
+
+    Walk back from the stage before it.  A stage *p* switches off is passed
+    through without looking: an output an earlier run left on disk is not
+    this run's.  The first stage switched on gives its output: the one this
+    run writes when it is selected; for a partial re-run, where it is left
+    out, the file on disk (from *inputs* when given — a tuning trial reads
+    its run's), or, when there is none, the walk goes on.  The raw input when
+    nothing before *stage* gives a volume.
+    """
+    outputs = {"rings": paths.ringremoved, "punch": paths.braggpunched,
+               "backfill": paths.backfilled, "flatten": paths.flattened}
+    upto = (_CLEANUP_STAGES.index(stage)
+            if stage in _CLEANUP_STAGES else len(_CLEANUP_STAGES))
+    for prev in reversed(_CLEANUP_STAGES[:upto]):
+        if not p.stage_enabled(prev):
+            continue
+        if prev in selected:
+            return outputs[prev]
+        out = outputs[prev] if inputs is None else inputs.get(prev)
+        if out is not None and out.exists():
+            return out
+    return paths.input
 
 
 def ring_stage_pending(
@@ -2185,10 +2389,9 @@ def ring_stage_pending(
     can never drift between the two.
     """
     p = params or PipelineParams()
-    if "rings" not in set(stages):
+    if "rings" not in set(stages) or not p.rings_enabled:
         return False
-    paths = pipeline_paths(input_path, proc_dir=proc_dir,
-                           flatten_enabled=p.flatten_enabled)
+    paths = _run_paths(input_path, p, proc_dir=proc_dir)
     if force:
         return True
     if force_from is not None and force_from in STAGES \
@@ -2220,8 +2423,14 @@ def run_pipeline(
     proc_dir:
         Directory for the chained ``.h5`` outputs (default ``data/processed``).
     stages:
-        Subset of :data:`STAGES` to consider (always run in canonical order).
-        ``flatten`` is additionally gated by ``params.flatten_enabled``.
+        Subset of :data:`STAGES` to run in this call (always in canonical
+        order).  A cleanup stage left out is a partial re-run: the stages
+        after it read its output on disk (or from *inputs*).  A stage the
+        params switch off (``rings_enabled``, ``punch_enabled``,
+        ``backfill_enabled``, ``flatten_enabled``) is not run even when
+        listed, and passes its input through: the next stage reads what came
+        before it, never an output an earlier run left; its own output file
+        is neither written nor removed.
     force:
         Recompute every selected stage even if its output exists.
     force_from:
@@ -2253,41 +2462,14 @@ def run_pipeline(
         raise ValueError(f"force_from={force_from!r}; choose one of {STAGES}")
 
     selected = [s for s in STAGES if s in set(stages)]
-    paths = pipeline_paths(input_path, proc_dir=proc_dir,
-                           flatten_enabled=p.flatten_enabled)
+    paths = _run_paths(input_path, p, proc_dir=proc_dir)
     paths.delta_pdf.parent.mkdir(parents=True, exist_ok=True)
 
-    # Pass-through chaining: a disabled cleanup stage is skipped and its input
-    # flows to the next enabled stage.  Each stage reads the output of the most
-    # recent *enabled* stage before it (raw input if none upstream are enabled).
-    _stage_output = {
-        "rings": paths.ringremoved,
-        "punch": paths.braggpunched,
-        "backfill": paths.backfilled,
-        "flatten": paths.flattened,
-    }
-    _cleanup_chain = ("rings", "punch", "backfill", "flatten")
-
-    def _produces(stage: str) -> bool:
-        if stage == "flatten":
-            return "flatten" in selected and p.flatten_enabled
-        return stage in selected
-
+    # Pass-through chaining: a stage switched off is not run and its input
+    # flows to the next stage; a stage left out of `stages` hands on its
+    # output on disk (a partial re-run).  See _stage_input.
     def stage_input(stage: str) -> Path:
-        # Walk back from the immediate predecessor: take the most recent stage
-        # that is enabled this run (its output is produced), or — for a partial
-        # re-run where an upstream output already exists on disk — that file
-        # (from `inputs` when given); otherwise keep passing through, falling
-        # back to the raw input.
-        upto = (_cleanup_chain.index(stage)
-                if stage in _cleanup_chain else len(_cleanup_chain))
-        for prev in reversed(_cleanup_chain[:upto]):
-            if _produces(prev):
-                return _stage_output[prev]
-            out = _stage_output[prev] if inputs is None else inputs.get(prev)
-            if out is not None and out.exists():
-                return out
-        return paths.input
+        return _stage_input(stage, p, paths, selected, inputs)
 
     pdf_input = stage_input("pdf")
 
@@ -2300,6 +2482,19 @@ def run_pipeline(
 
     def want(stage: str) -> bool:
         return stage in selected
+
+    def runs(stage: str) -> bool:
+        # Selected and switched on: a stage switched off never runs.
+        return want(stage) and p.stage_enabled(stage)
+
+    def stage_source(stage: str) -> Path:
+        # The stage's input, and a log line naming it when stages right
+        # before it are switched off.
+        src = stage_input(stage)
+        notice = _passed_through_notice(p, stage, src)
+        if notice is not None:
+            _emit(progress, stage, "progress", None, notice)
+        return src
 
     # In-memory pass-through between consecutive stages: each stage's output is
     # still saved to disk (same artifacts, resume behaviour unchanged), but when
@@ -2324,7 +2519,7 @@ def run_pipeline(
         return nebula3d.load(src, dtype=p.np_dtype())
 
     # --- stage 1: rings -----------------------------------------------------
-    if want("rings"):
+    if runs("rings"):
         if not ring_stage_pending(input_path, p, proc_dir=proc_dir,
                                   stages=stages, force=force,
                                   force_from=force_from):
@@ -2344,14 +2539,16 @@ def run_pipeline(
                     ring_diagnostics, paths.ring_diagnostics_json)
             carry, carry_path = out, paths.ringremoved
             del vol, out  # free the input; `carry` hands the output onward
+    elif want("rings"):
+        _emit(progress, "rings", "skip", None, _disabled_notice("rings"))
 
     # --- stage 2: punch -----------------------------------------------------
-    if want("punch"):
+    if runs("punch"):
         if paths.braggpunched.exists() and not forced("punch"):
             _emit(progress, "punch", "skip", None,
                   f"{paths.braggpunched.name} exists")
         else:
-            vol = stage_load(stage_input("punch"), "punch")
+            vol = stage_load(stage_source("punch"), "punch")
             symmetry = input_symmetry(vol, p, paths.input, progress=progress,
                                       stage="punch")
             out = (punch_bragg(vol, p.punch, progress=progress) if symmetry is None
@@ -2366,14 +2563,16 @@ def run_pipeline(
                 write_bragg_profile_json(profile, paths.bragg_profile_json)
             carry, carry_path = out, paths.braggpunched
             del vol, out  # free the input; `carry` hands the output onward
+    elif want("punch"):
+        _emit(progress, "punch", "skip", None, _disabled_notice("punch"))
 
     # --- stage 3: backfill --------------------------------------------------
-    if want("backfill"):
+    if runs("backfill"):
         if paths.backfilled.exists() and not forced("backfill"):
             _emit(progress, "backfill", "skip", None,
                   f"{paths.backfilled.name} exists")
         else:
-            src = stage_input("backfill")
+            src = stage_source("backfill")
             vol = stage_load(src, "backfill")
             # A volume reloaded from disk lost the punch record punch_bragg
             # attached; read it back from the punch artifact (by name: it may
@@ -2395,14 +2594,16 @@ def run_pipeline(
             nebula3d.save(out, paths.backfilled)
             carry, carry_path = out, paths.backfilled
             del vol, out  # free the input; `carry` hands the output onward
+    elif want("backfill"):
+        _emit(progress, "backfill", "skip", None, _disabled_notice("backfill"))
 
     # --- stage 4: flatten (optional) ---------------------------------------
-    if want("flatten") and p.flatten_enabled:
+    if runs("flatten"):
         if paths.flattened.exists() and not forced("flatten"):
             _emit(progress, "flatten", "skip", None,
                   f"{paths.flattened.name} exists")
         else:
-            vol = stage_load(stage_input("flatten"), "flatten")
+            vol = stage_load(stage_source("flatten"), "flatten")
             out = flatten(vol, p.flatten, progress=progress)
             symmetry = input_symmetry(out, p, paths.input, progress=progress,
                                       stage="flatten")
@@ -2419,8 +2620,7 @@ def run_pipeline(
             carry, carry_path = out, paths.flattened
             del vol, out  # free the input; `carry` hands the output onward
     elif want("flatten"):
-        _emit(progress, "flatten", "skip", None,
-              "flatten disabled (no background removed)")
+        _emit(progress, "flatten", "skip", None, _disabled_notice("flatten"))
 
     # --- stage 5: ΔPDF (with stale-cache guard) -----------------------------
     dpdf_obj: DeltaPDF | None = None     # in-memory ΔPDF if (re)computed here
@@ -2436,6 +2636,9 @@ def run_pipeline(
             if paths.delta_pdf.exists() and not is_current:
                 _emit(progress, "pdf", "progress", None,
                       f"{paths.delta_pdf.name} stale — recomputing")
+            notice = _passed_through_notice(p, "pdf", pdf_input)
+            if notice is not None:
+                _emit(progress, "pdf", "progress", None, notice)
             pdf_vol = stage_load(pdf_input, "pdf")
             dpdf_obj = delta_pdf(pdf_vol, p.delta_pdf, progress=progress)
             write_delta_pdf_h5(dpdf_obj, pdf_vol, p.delta_pdf,

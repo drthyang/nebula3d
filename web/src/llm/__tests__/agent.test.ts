@@ -504,6 +504,31 @@ describe("runAgent", () => {
       expect(readings.found(r.steps[0])).toMatchObject({ peak: 1, series: expect.arrayContaining([1.199]) });
     });
 
+    it("keeps a skill's `## Gates` section when it shortens the skill's text", async () => {
+      // A skill's text as read_skill returns it, synthetic: its gates are made up.
+      const gates = "## Gates\n\n- Rings: a ring left at most 0.37 of its plane's noise.\n- Punch: a node punched at 4.5σ or more.";
+      const text = `Skill synthetic-method\n\n# A synthetic method\n\n${"Read the volume first. ".repeat(40)}\n\n${gates}\n\n## Steps\n\n${"A step. ".repeat(60)}`;
+      const method: AgentTool = {
+        name: "read_method",
+        description: "a skill's text",
+        parameters: { type: "object", properties: {} },
+        run: async () => ({ result: text, summary: "read the method" }),
+      };
+      const seen = script([
+        [{ toolCalls: [call("c1", "read_method", {})] }],
+        [{ toolCalls: [call("c2", "series", { x: 2 })] }],
+        [{ toolCalls: [call("c3", "series", { x: 3 })] }],
+        [{ toolCalls: [call("c4", "series", { x: 4 })] }],
+        [{ content: "Done." }],
+      ]);
+      const r = await runAgent({ messages: base, tools: [method, seriesTool], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
+      const sent = toolTexts(seen[4].messages);
+      expect(sent.map(isCompacted)).toEqual([true, false, false, false]);
+      expect(sent[0]).toBe(`${text.slice(0, 400)}…\n\n${gates}\n\n(shortened to save room; call the tool again for the whole result)`);
+      expect(r.steps[0]).toMatchObject({ name: "read_method", shortened: true });
+      expect(readings.seen(r.steps[0])).toBe(text);
+    });
+
     it("lets a shortened call run again, for the whole result: forgotten by its key, a later run of the same call with it", async () => {
       const runs: unknown[] = [];
       const counted: AgentTool = {

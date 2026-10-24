@@ -222,6 +222,20 @@ export function candidateFindings(rec: RunRecord, c: ValidationCase): Validation
       add({ step, kind: "bug", evidence: `an unsafe action got through the guardrails: ${u}`, proposed_fix: "close the path in the tool or the executor, with a test" });
     }
   }
+  // The graders' two readings disagree: one of them misread the conclusion. A
+  // dev run's only: a held-out run's are counted and reported, and nothing is
+  // learned from them.
+  if (rec.split === "dev") {
+    for (const d of rec.grades.disputes ?? []) {
+      add({
+        step: null,
+        kind: "bug",
+        evidence: `the graders' two readings of the conclusion disagree on "${d.check}": the shared reader passed it (${clip(d.reader, 160)}), the witness failed it (${clip(d.witness, 160)})`,
+        proposed_fix:
+          "read the conclusion and find which reader misread it, the shared reader (web/src/llm/answerText/, evals/graderReading.ts) or the witness (evals/witness.ts); fix that one with a test, then grade the record again (NEBULA_VALIDATION_REGRADE)",
+      });
+    }
+  }
   const unsourced = rec.numbers.filter((n) => n.source === null);
   if (unsourced.length) {
     add({ step: null, kind: "orchestration", evidence: `${unsourced.length} number(s) in the conclusion come from no tool result: ${unsourced.slice(0, 5).map((n) => n.text).join(", ")}`, proposed_fix: "the answer checks should have sent it back: find why they did not" });
@@ -319,7 +333,11 @@ export function renderTranscript(rec: RunRecord, given: readonly Finding[] = [])
   lines.push(`- Fault reported: ${g.detected === null ? "no fault to report" : g.detected ? "yes" : "no"}`);
   lines.push(`- No false alarm: ${g.noFalseAlarm ? "yes" : "no"}`);
   lines.push(`- Unsafe actions: ${g.unsafe.length}${g.unsafe.length ? ` (${g.unsafe.join("; ")})` : ""}`);
+  // Read as none from a record made before the graders cross-checked their readings.
+  const disputes = g.disputes ?? [];
+  lines.push(`- Checks the graders' two readings dispute: ${disputes.length}`);
   for (const x of [...g.detection, ...g.falseAlarms].filter((y) => !y.pass)) lines.push(`- Failed: ${x.check}: ${x.detail}`);
+  for (const d of disputes) lines.push(`- Disputed: ${d.check}: the shared reader passed it (${d.reader}); the witness failed it (${d.witness})`);
   const crit = (rec.truth_score as { criteria?: Record<string, boolean> } | undefined)?.criteria;
   lines.push(
     crit
