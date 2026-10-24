@@ -1,6 +1,6 @@
 # Tool definitions with the skills off (validation arm C)
 
-`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (23 tools, 20794 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
+`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (24 tools, 21205 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -10,7 +10,7 @@ read_skill: it works only with the skills on (its facts' `needsSkills`).
 
 ## As in arm B (2-tools.md)
 
-14 tools, their definitions as 2-tools.md has them: describe_dataset, current_view, measure_dpdf_cut, assess_stage, qmax_coverage, dpdf_contrast, bragg_peaks, run_log, compare_datasets, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer.
+15 tools, their definitions as 2-tools.md has them: describe_dataset, current_view, measure_dpdf_cut, assess_stage, qmax_coverage, dpdf_contrast, bragg_peaks, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer.
 
 ## measure_reciprocal_cut: its description with the skills off
 

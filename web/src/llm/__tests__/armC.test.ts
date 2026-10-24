@@ -162,7 +162,7 @@ const ROUNDS: Call[][] = [
   [["texture_check", {}], ["qmax_coverage", {}], ["symmetry_check", {}], ["consistency_details", {}]],
   [["grain_check", {}], ["ub_check", {}], ["bragg_peaks", {}]],
   [["dpdf_contrast", {}], ["dpdf_peaks", {}]],
-  [["compare_datasets", { kind: "reciprocal", plane: "hk0", value: 0 }], ["run_log", {}]],
+  [["compare_datasets", { kind: "reciprocal", plane: "hk0", value: 0 }], ["run_log", {}], ["run_verdict", {}]],
   [["tune_pipeline", { stages: ["flatten"], trials_per_stage: 2 }]],
   [["show_in_viewer", { view: "dpdf", plane: "xy", value: 4 }]],
   [["describe_dataset", {}]],
