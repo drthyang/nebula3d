@@ -59,6 +59,7 @@ const api = vi.hoisted(() => ({
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -292,8 +293,9 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   {
     skill: "bragg-node-audit",
     phrase: "no cut whose fills sit systematically outside the range their rims allow",
-    what: "whether a cut's fills sit systematically outside their rims' range",
-    fields: ["per_cut.systematic_fill_bias"],
+    // Over every hole in 3-D since 4.2's TypeScript half: the skill's "no cut" wording waits for its fact sync.
+    what: "whether the fills sit systematically outside their rims' range",
+    fields: ["systematic_fill_bias"],
   },
   { skill: "bragg-node-audit", phrase: "an azimuthal ratio near 1", what: "the azimuthal ratio", fields: ["per_cut.azimuthal_ratio"] },
   // delta-pdf-interpretation

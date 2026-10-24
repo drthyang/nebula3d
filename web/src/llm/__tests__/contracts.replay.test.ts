@@ -118,11 +118,11 @@ describe("the tools' live results against their contracts", () => {
       expect(r.ok, `${call}: ${r.summary}`).toBe(true);
       problems.push(...contractDisagreements(tool, r.result).map((d) => `${call}: ${d}`));
       if (tool === "assess_stage") shapes.push(typeof (r.result.rings as Record<string, unknown>).ring_rule);
-      if (tool === "texture_check") shapes.push(...(r.result.per_cut as Record<string, unknown>[]).map((cut) => typeof cut.systematic_fill_bias));
+      if (tool === "texture_check") shapes.push(typeof r.result.systematic_fill_bias);
     }
     expect(problems).toEqual([]);
-    // The judged shapes: the ring rule as its two shares, and each cut's fill bias judged.
-    expect(shapes).toEqual(["object", "object", "boolean", "boolean", "boolean"]);
+    // The judged shapes: the ring rule as its two shares, and the fill bias judged over every hole in 3-D.
+    expect(shapes).toEqual(["object", "object", "boolean"]);
   });
 });
 

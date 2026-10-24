@@ -40,6 +40,7 @@ import type {
   UbCheck,
   VolumeCoverage,
   VolumeMeta,
+  VolumeTexture,
 } from "./types";
 
 export { ringPoolStatus, subscribeRingPool } from "./ringPool";
@@ -412,6 +413,16 @@ export const engine = {
   },
   ubCheck(volumeId: string, cell: string, qMax: number | null): Promise<UbCheck> {
     return jsonCall<UbCheck>("volume_ub_check_json", [volumeId, cell, qMax]);
+  },
+  volumeTexture(
+    volumeId: string,
+    limit: number,
+    minSigma: number | null,
+    oneWay: number | null,
+    minHoles: number | null,
+    floor: number | null,
+  ): Promise<VolumeTexture> {
+    return jsonCall<VolumeTexture>("volume_texture_json", [volumeId, limit, minSigma, oneWay, minHoles, floor]);
   },
   ringIsotropy(volumeId: string, q: string, fwhm: string): Promise<RingIsotropy> {
     return jsonCall<RingIsotropy>("volume_ring_isotropy_json", [volumeId, q, fwhm]);
