@@ -15,7 +15,7 @@ Regenerate those files by rerunning the scripts below.
 
 | Script | Purpose |
 | --- | --- |
-| `run_pipeline.py` | End-to-end 3D-ΔPDF workflow: ring removal, Bragg punch, backfill, radial-background flatten, 3D-ΔPDF, consistency check, and viewers. |
+| `run_pipeline.py` | End-to-end 3D-ΔPDF workflow: ring removal, Bragg punch, backfill, background correction (the radial-background flatten), 3D-ΔPDF, consistency check, and viewers. |
 | `run_pipeline_pdf.py` | End-to-end **3D-PDF** workflow — KEEP Bragg (no punch, no backfill): ring removal → 3D-PDF → viewer. |
 | `remove_rings_3d.py` | Remove powder rings from a raw Mantid HKL volume. |
 | `punch_bragg_3d.py` | Punch Bragg and satellite peaks from a ring-removed volume. |
@@ -44,7 +44,7 @@ Regenerate those files by rerunning the scripts below.
 | `compare_delta_pdf_methods.py` | Compare ΔPDF background-removal methods. |
 | `ring_linecut.py` | Inspect a Bragg-free linecut and ring positions. |
 | `investigate_bragg_diffuse.py` | Separate Bragg from co-located diffuse scattering: line-cut peak-shape fits, resolution `σ(\|Q\|)`, correlation length ξ, diffuse fraction, and optional series overlays. |
-| `validate_flatten.py` | Robustness QA for the step-4 flatten (non-circular): background isotropy, feature-contrast retention, over-subtraction, high-`\|Q\|` coverage. |
+| `validate_flatten.py` | Robustness QA for the step-4 background correction (non-circular): background isotropy, feature-contrast retention, over-subtraction, high-`\|Q\|` coverage. |
 | `qa_punch_fill.py` | Real-data QA of a Bragg punch + backfill: detection significance, hole sizes and merging, Bragg tails leaking past each hole (by distance in Å⁻¹), and the fill against each hole's surroundings. |
 | `refine_ub.py` | Refine the UB from the Bragg peaks' centres (orientation, cell, both, or the changes a symmetrised volume can show), report the peaks' radial offsets by \|Q\| band, and optionally write the volume regridded onto the refined UB, symmetrised or not. |
 | `benchmark_punch_fill.py` | Ground-truth benchmark of the punch + backfill on the synthetic demo volume (known Bragg, diffuse and noise): Bragg left, diffuse removed, false detections, fill bias, 3D-ΔPDF error at the lattice vectors; a clean and a low-exposure-edge scenario. |

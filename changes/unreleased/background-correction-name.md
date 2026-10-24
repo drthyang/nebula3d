@@ -9,4 +9,7 @@
   identifier keeps the name flatten, so saved settings, sessions, outputs
   (`*_flattened.h5`), scripts and the Pilot's tools work as before; the
   Pilot's system prompt tells the model the stage's name in the console, and
-  its answer checks hold a claim about the stage by either name.
+  its answer checks hold a claim about the stage by either name. The tuner's
+  prompt, the skills (reduction-qc, delta-pdf-interpretation), the Consistency
+  page's "no background-corrected or backfilled volume" message and the
+  command docs use the new name too.
