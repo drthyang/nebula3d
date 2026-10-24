@@ -213,14 +213,19 @@ export interface DeltaPdfMeta {
   window_open_weight?: number | null;
 }
 
-// The ΔPDF's strongest extrema outside the origin's disk, grouped by sign,
-// length and size (nebula3d.analysis.dpdf_features): one per ± pair.
+// The ΔPDF's strongest extrema outside the origin's disk, grouped by the point
+// group the dataset's raw file declares, else by sign, length and size
+// (nebula3d.analysis.dpdf_features): one per ± pair.
 export interface DpdfFeatureGroup {
   sign: 1 | -1;
-  length: number; // |r|, Å
+  length: number; // |r| of the strongest, Å
   size_sigma: number; // the largest |ΔPDF| in the group, in robust σ
+  mean_size_sigma: number; // the mean |ΔPDF| of its n extrema, in robust σ
   value: number;
-  n: number; // extrema in the group
+  n: number; // extrema in the group, one per ± pair
+  // With a declared symmetry, the orbit's distinct vectors, one per ± pair (n is
+  // fewer when some are below the threshold or outside the volume); null without.
+  multiplicity: number | null;
   vectors: number[][]; // (x, y, z) along a, b, c, Å, strongest first
   vectors_rlu: (number[] | null)[]; // the same in lattice units
   sizes_sigma: number[];
@@ -232,6 +237,9 @@ export interface DpdfFeatures {
   min_sigma: number;
   origin_radius: number; // Å
   n_extrema: number;
+  // "declared symmetry (<label or operations>: <n> operations, r ≡ −r)", or
+  // "sign, length and size (<why: none declared, or why it was not applied>)"
+  grouped_by: string;
   groups: DpdfFeatureGroup[];
 }
 

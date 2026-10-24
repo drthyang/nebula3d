@@ -200,7 +200,7 @@ export function fetchDpdfMeta(volumeId: string): Promise<DeltaPdfMeta> {
   return getJSON<DeltaPdfMeta>(`/api/deltapdf/${encodeURIComponent(volumeId)}/meta`);
 }
 
-/** The ΔPDF's strongest extrema above `minSigma` robust σ, grouped by sign, length and size. */
+/** The ΔPDF's strongest extrema above `minSigma` robust σ, grouped by the declared point group, else by sign, length and size. */
 export function fetchDpdfFeatures(volumeId: string, minSigma = 5, limit = 12): Promise<DpdfFeatures> {
   if (PYODIDE_MODE) return engine.dpdfFeatures(volumeId, minSigma, limit);
   const params = new URLSearchParams({ min_sigma: String(minSigma), limit: String(limit) });
