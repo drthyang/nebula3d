@@ -123,6 +123,7 @@ __all__ = [
     "write_bragg_profile_json",
     "read_flatten_settings",
     "read_punch_record",
+    "read_node_test_notice",
     "RING_GRID_REMEDY",
     "RING_GRID_REMEDY_ONE",
     "unconfirmed_rings_notice",
@@ -457,6 +458,26 @@ def read_punch_record(path: str | Path) -> np.ndarray | None:
         return _read_punched(Path(path))
     except OSError:
         return None
+
+
+def read_node_test_notice(path: str | Path) -> str | None:
+    """The notice the Bragg punch's record ends on where its node test could
+    not resolve the nodes (``node_test.notice``, :func:`node_test_notice`),
+    for the punch stage's output *path*: read from its record, the profile
+    JSON beside it (``<stem>_profile.json``, :func:`pipeline_paths`), as the
+    punch wrote it.  None where the record has none: no record (or one that
+    cannot be read), a punch written before it recorded its node test, a node
+    test that judged every node it examined, or one that left a few nodes to
+    the search on a grid fine enough for it (the notice None: nodes at the
+    edge of the measured volume)."""
+    p = Path(path)
+    try:
+        record = json.loads(p.with_name(f"{p.stem}_profile.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    node_test = record.get("node_test") if isinstance(record, dict) else None
+    notice = node_test.get("notice") if isinstance(node_test, dict) else None
+    return notice if isinstance(notice, str) and notice else None
 
 
 # ---------------------------------------------------------------------------
