@@ -399,3 +399,19 @@ allow-list, `ALLOWED`, each with why. It is the user's skill-review queue
 (agent plan 5.2), not a list to fix here: the lint fails on a disagreement
 that is not on it, and on an entry that no longer fails, so the list shrinks
 as the skills are corrected.
+
+### A skill's gates, through compaction
+
+When the agent loop compacts an older `read_skill` result in a long reply, a
+skill's text keeps its name and its first 400 characters
+(`web/src/llm/readings/compact.ts`), which can cut its thresholds away. A
+skill opts in to keeping them by writing its gates under a heading of its
+own, exactly `## Gates`: compaction then keeps that section whole, up to the
+next heading of level 1 or 2, beside the head. The section is capped at
+`GATES_MAX`, 1,200 characters; past it, it is cut at a line boundary and a
+marker says how many lines were left out. A skill without the section is
+shortened as before, byte for byte. `web/src/llm/__tests__/readings.test.ts`
+pins the real skills that have no `## Gates` to the old rule, and has a test
+per skill, skipped until that skill gains the section, that every number in
+it survives compaction; a section past the cap fails it. Which gates a skill
+states, and their words, are the user's.

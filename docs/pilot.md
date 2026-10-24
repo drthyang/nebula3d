@@ -92,8 +92,11 @@ Each is described under [How it works](#how-it-works).
   about 24k tokens, the reply's older tool results go back to it shortened to
   their verdicts, headlines and numbers, the newest three whole; a request too
   long for the window is shortened to its newest result before it is refused.
-  The model can call a shortened tool again, and the answer checks always
-  read the whole results.
+  A skill the model read is shortened to its name and its opening lines; a
+  skill that writes its gates (its thresholds and rules) under a `## Gates`
+  heading keeps that section whole too, up to 1,200 characters, so the
+  model keeps working by them. The model can call a shortened tool again,
+  and the answer checks always read the whole results.
 - **No prompt is cut to fit.** A local server handed a prompt longer than the
   model's context window cuts it or fails, so each request is held to the
   window first. Ollama is asked for a window that holds the request (its own
