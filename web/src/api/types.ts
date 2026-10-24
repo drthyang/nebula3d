@@ -22,6 +22,11 @@ export interface Dataset {
   raw_name: string;
   stem: string;
   stages: StageStatus[];
+  // The raw input file's size (bytes) and mtime (POSIX s; null in the
+  // browser build, whose copy's time is not the file's); null when it is not
+  // on disk, absent from a server that does not say. A saved session checks
+  // its input against it (state/session.ts).
+  raw_file?: { size: number; mtime: number | null } | null;
 }
 
 export interface DataRoot {

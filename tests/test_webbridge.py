@@ -79,6 +79,16 @@ def test_demo_input_is_labelled_synthetic_and_stored_float32(tmp_path):
     assert vol.data.dtype == np.float32 and vol.sigma.dtype == np.float32
 
 
+def test_datasets_give_the_raw_size_but_not_the_copy_time(tmp_path):
+    """A saved session checks its raw input against the file's size; the
+    in-memory copy's mtime is when the browser wrote it, so none is given."""
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    dataset_id = webbridge.make_demo_input(n=9)
+    (raw,) = (tmp_path / "work" / "raw").glob("*.nxs")
+    (ds,) = [d for d in json.loads(webbridge.datasets_json()) if d["id"] == dataset_id]
+    assert ds["raw_file"] == {"size": raw.stat().st_size, "mtime": None}
+
+
 def test_select_input_runs_the_named_dataset_not_the_last_loaded(tmp_path):
     """With two volumes loaded, a run reduces the one the UI names; a dataset
     the workspace does not hold (the worker was restarted) reports false so

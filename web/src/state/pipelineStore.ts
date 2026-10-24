@@ -146,7 +146,8 @@ interface PipelineState extends PipelineConfig {
   // job ended: "done" | "error" | "cancelled".  With `tuning`, the run is one
   // trial of the assistant's tuning run: its outputs go to the trial's own
   // folder and processed/ is only read.  `datasetId` defaults to the
-  // sidebar's selection; `force: false` reuses outputs that already exist.
+  // sidebar's selection; `force: false` reuses outputs that already exist;
+  // `params`/`flattenEnabled` replace the form's settings for this run.
   runStages: (stages: string[], opts?: RunOptions) => Promise<string>;
   cancel: () => Promise<void>;
 }
@@ -274,12 +275,16 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
 type Setter = (p: Partial<PipelineState>) => void;
 type Getter = () => PipelineState;
 
-// Launch `stages` with the current form settings; native runs stream their
-// progress (and their end) over SSE after this returns.
+// Launch `stages` with the current form settings (or opts.params); native
+// runs stream their progress (and their end) over SSE after this returns.
 export interface RunOptions {
   tuning?: TuningTrial;
   datasetId?: string;
   force?: boolean; // runStages: recompute outputs that exist (default true)
+  // Run with these settings instead of the form's: a restored session
+  // recomputes its outputs with the settings of the run that made them.
+  params?: StageParamsIn;
+  flattenEnabled?: boolean;
 }
 
 async function start(
@@ -295,7 +300,8 @@ async function start(
   if (pipelineBusy(s) && !s.running) return;
   const datasetId = opts.datasetId ?? useDatasetStore.getState().datasetId ?? "";
   closeStream();
-  const params = formToParams(s);
+  const params = opts.params ?? formToParams(s);
+  const flattenEnabled = opts.flattenEnabled ?? s.flatten;
   set({
     events: [],
     times: [],
@@ -303,18 +309,18 @@ async function start(
     running: true,
     reconnecting: false,
     jobId: null,
-    lastRun: { datasetId, stages, force, flattenEnabled: s.flatten, params, ...(opts.tuning ? { tuning: opts.tuning } : {}) },
+    lastRun: { datasetId, stages, force, flattenEnabled, params, ...(opts.tuning ? { tuning: opts.tuning } : {}) },
   });
 
   if (PYODIDE_MODE) {
-    await runInBrowser(datasetId, params, s.flatten, force, stages, set, get, opts.tuning);
+    await runInBrowser(datasetId, params, flattenEnabled, force, stages, set, get, opts.tuning);
     return;
   }
 
   try {
     const job = await runPipeline({
       dataset_id: datasetId,
-      flatten_enabled: s.flatten,
+      flatten_enabled: flattenEnabled,
       force,
       stages,
       params,
@@ -446,7 +452,7 @@ export function enabledStages(s: PipelineConfig): string[] {
 
 // Convert the editable form values into the curated StageParamsIn the pipeline
 // accepts (empty fields stay unset → the backend/bridge default is used).
-function formToParams(s: PipelineConfig): StageParamsIn {
+export function formToParams(s: PipelineConfig): StageParamsIn {
   const params: StageParamsIn = {};
   if (s.ringModel) params.rings_model = s.ringModel;
   if (s.ringNPatches) params.rings_n_patches = Number(s.ringNPatches);
