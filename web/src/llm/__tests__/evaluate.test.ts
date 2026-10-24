@@ -4,13 +4,15 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Dataset } from "../../api/types";
+import type { Dataset, FlattenSettings } from "../../api/types";
 import { loadPipelineContext } from "../context/loadContext";
+import { FLATTEN_UNRECORDED_NOTE, pedestalLeft } from "../metrics/flatten";
 import { operationName } from "../metrics/symmetry";
 import { evaluateStage, headline, outOfBounds } from "../tune/evaluate";
 import { judge } from "../verdicts";
 import { cut, directGroup, HKL, orbit } from "./constructedDpdf";
 import { makeSlice } from "./helpers";
+import { shellFloorsOf } from "./shellFloors";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -20,6 +22,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
+  fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
@@ -358,30 +361,6 @@ describe("evaluateStage", () => {
     expect(judge("pdf", { ...old, symmetry_declared: true, max_symmetry_break: 1e-4, back_fft_pearson_r: 0.9995 }).kind).toBe("pass");
   });
 
-  it("says whether the flatten left a pedestal, so the Q² term's question has a stated answer", async () => {
-    const withFlat: Dataset = {
-      ...dataset,
-      stages: [...dataset.stages, ...["backfilled", "flattened"].map((name) => ({ name, exists: true, kind: "hkl" as const, volume_id: `demo.${name}` }))],
-    };
-    api.fetchMeta.mockResolvedValue({ shape: [81, 81, 81], h_range: [-10, 10], k_range: [-10, 10], l_range: [-10, 10], lattice: { a: 4, b: 4, c: 4 } });
-    const lumpy = (x: number, y: number) => 0.8 * Math.cos(1.3 * x) * Math.cos(1.1 * y);
-    // A |Q|² floor the flatten left, spanning more than the diffuse level over
-    // the outer half of the coverage, where the pedestal is judged.
-    const q2 = (x: number, y: number) => 0.25 * Math.hypot(x, y) ** 2 / 4;
-    const evaluate = async (after: (x: number, y: number) => number) => {
-      api.fetchSlice.mockImplementation(async (id: string) =>
-        makeSlice(81, 81, id.endsWith("backfilled") ? (x, y) => 4 + q2(x, y) + lumpy(x, y) : after, { half: 10 }),
-      );
-      return evaluateStage("flatten", withFlat);
-    };
-    const rising = await evaluate((x, y) => q2(x, y) + lumpy(x, y));
-    expect(rising.pedestal_left).toBe(true);
-    expect(headline("flatten", rising)).toMatch(/ · pedestal left$/);
-    const level = await evaluate(lumpy);
-    expect(level.pedestal_left).toBe(false);
-    expect(headline("flatten", level)).toMatch(/ · no pedestal$/);
-    expect(headline("flatten", { max_after_floor_sigma: 0.8 })).toBe("floor ≤ 0.8σ · trend ≤ – · span ≤ –"); // not measured: not said
-  });
 
   it("names the plane and |Q| of the worst ring residual in the headline", () => {
     const e = {
@@ -393,6 +372,139 @@ describe("evaluateStage", () => {
       worst_ring_left: null,
     };
     expect(headline("rings", e)).toBe("ring ratio 0.24 · over-sub ≤ 0.03 · ring dent ≤ 0.187 (h0l, 6.35 Å⁻¹) · left ≤ 0");
+  });
+});
+
+// Volumes built to a known answer, as tests/test_shell_floors.py's _ball: a
+// cubic cell of 4 Å on 81³ points over ±4 r.l.u., measured out to 6 Å⁻¹ (the
+// box's faces at 6.28 Å⁻¹, so every shell the counts reach is whole). The
+// flattened stage is a uniform diffuse, 0.2 of a deterministic u in [0, 1),
+// plus what the flatten left; its input is that plus the 0.25 it took out.
+// The planes are the volume's own cuts through the origin, and the whole
+// volume's floors are measured as the server measures them (shellFloorsOf).
+// Each shell's floor is the diffuse's 25th percentile, 0.05, plus the
+// pedestal at its |Q|.
+describe("the flatten's pedestal, over the whole volume (4.1)", () => {
+  const N = 81;
+  const HALF = 4;
+  const QU = (2 * Math.PI) / 4;
+  const AXIS = Array.from({ length: N }, (_v, i) => -HALF + (2 * HALF * i) / (N - 1));
+  const MID = (N - 1) / 2;
+  const u = (i: number, j: number, k: number) => {
+    const x = Math.sin(i * 12.9898 + j * 78.233 + k * 37.719) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  const qOf = (h: number, k: number, l: number) => QU * Math.hypot(h, k, l);
+  const withFlat: Dataset = {
+    ...dataset,
+    stages: [...dataset.stages, ...["backfilled", "flattened"].map((name) => ({ name, exists: true, kind: "hkl" as const, volume_id: `demo.${name}` }))],
+  };
+  const cell = { shape: [N, N, N], h_range: [-HALF, HALF], k_range: [-HALF, HALF], l_range: [-HALF, HALF], lattice: { a: 4, b: 4, c: 4 } };
+  const DEFAULT_RECORD = { fit_q_range: [0.8, 10] as [number, number], floor_percentile: 25, q_step: 0.05 };
+
+  /** Build the stages with `pedestal` left (h, k, l, |Q| → its height), mock the API with them, and evaluate the flatten. */
+  async function evaluateWith(pedestal: (h: number, k: number, l: number, q: number) => number, record: unknown = DEFAULT_RECORD) {
+    const after = (h: number, k: number, l: number, idx: [number, number, number]) => {
+      const q = qOf(h, k, l);
+      return q > 6 ? NaN : 0.2 * u(...idx) + pedestal(h, k, l, q);
+    };
+    const before = (h: number, k: number, l: number, idx: [number, number, number]) => after(h, k, l, idx) + 0.25;
+    const volume = (f: typeof after) => ({ axes: [AXIS, AXIS, AXIS] as [number[], number[], number[]], q: qOf, value: f });
+    const floors = shellFloorsOf(volume(after), volume(before), { id: "demo.flattened", flatten: record as FlattenSettings | null });
+    api.fetchMeta.mockResolvedValue(cell);
+    api.fetchShellFloors.mockResolvedValue(floors);
+    // A plane's point (x, y) as (h, k, l) and its voxel.
+    const at: Record<string, (x: number, y: number, ix: number, iy: number) => [number, number, number, [number, number, number]]> = {
+      hk0: (x, y, ix, iy) => [x, y, 0, [ix, iy, MID]],
+      h0l: (x, y, ix, iy) => [x, 0, y, [ix, MID, iy]],
+      "0kl": (x, y, ix, iy) => [0, x, y, [MID, ix, iy]],
+    };
+    api.fetchSlice.mockImplementation(async (id: string, plane: string) =>
+      makeSlice(N, N, (x, y, ix, iy) => (id.endsWith("backfilled") ? before : after)(...at[plane](x, y, ix, iy)), { half: HALF }),
+    );
+    const e = await evaluateStage("flatten", withFlat);
+    const planes = Object.values(e.per_plane as Record<string, { floor_trend: number; floor_span_fraction: number; floor_judged_q: [number, number] }>);
+    return { e, floors, planes };
+  }
+  // What the planes alone would have judged, the largest of their trends and spans (the rule before 4.1).
+  const byPlanes = (planes: { floor_trend: number; floor_span_fraction: number }[]) =>
+    pedestalLeft(Math.max(...planes.map((p) => Math.abs(p.floor_trend))), Math.max(...planes.map((p) => p.floor_span_fraction)));
+
+  it("reads a flat floor as no pedestal, on the planes and over the volume", async () => {
+    const { e, planes } = await evaluateWith(() => 0);
+    expect(e.floor_judged_q).toEqual([3.02, 5.97]); // the outer half of the 0–6 Å⁻¹ the counts reach (3.025–5.975, to three figures)
+    expect(e.floor_span_fraction as number).toBeLessThan(0.05);
+    expect(e.pedestal_left).toBe(false);
+    expect(judge("flatten", e)).toMatchObject({ kind: "pass", reasons: [] });
+    expect(byPlanes(planes)).toBe(false);
+    expect(headline("flatten", e)).toBe(`floor ≤ ${e.max_after_floor_sigma}σ · trend ${e.floor_trend} · span ${e.floor_span_fraction} · no pedestal`);
+  });
+
+  it("reads an isotropic pedestal at the span and trend it was built with, as the planes do", async () => {
+    const b = 0.06; // b·|Q|²: 9b at 3 Å⁻¹, 36b at 6 Å⁻¹
+    const { e, floors, planes } = await evaluateWith((_h, _k, _l, q) => b * q * q);
+    const [lo, hi] = e.floor_judged_q as [number, number];
+    expect([lo, hi]).toEqual([3.02, 5.97]);
+    expect(e.floor_trend).toBe(1);
+    // The span built in: b·(hi² − lo²) over the flatten input's level.
+    expect(e.floor_span_fraction as number).toBeCloseTo((b * (hi * hi - lo * lo)) / floors.level!, 1);
+    expect(Math.abs((e.floor_span_fraction as number) / ((b * (hi * hi - lo * lo)) / floors.level!) - 1)).toBeLessThan(0.02);
+    expect(e.pedestal_left).toBe(true);
+    expect(judge("flatten", e)).toMatchObject({ kind: "attention", reasons: ["pedestal"] });
+    // The planes read it too, with a span a little higher: a plane's median
+    // level weights the inner shells more than the volume's does (#37: 5 % on this pedestal).
+    for (const p of planes) expect([p.floor_trend, p.floor_span_fraction >= 0.8]).toEqual([1, true]);
+    const planeSpan = Math.min(...planes.map((p) => p.floor_span_fraction));
+    expect(e.floor_span_fraction as number).toBeLessThan(planeSpan);
+    expect(e.floor_span_fraction as number).toBeGreaterThan(0.85 * planeSpan);
+    expect(headline("flatten", e)).toMatch(/ · pedestal left$/);
+  });
+
+  it("sees a pedestal the three planes miss: one off the planes h = 0, k = 0 and l = 0", async () => {
+    const b = 0.06;
+    const off = (h: number, k: number, l: number, q: number) => (h === 0 || k === 0 || l === 0 ? 0 : b * q * q);
+    const { e, planes } = await evaluateWith(off);
+    for (const p of planes) expect(p.floor_span_fraction).toBeLessThan(0.2); // a level floor on every plane
+    expect(byPlanes(planes)).toBe(false); // the planes' rule passed it
+    expect(e.floor_trend as number).toBeGreaterThanOrEqual(0.99);
+    expect(e.floor_span_fraction as number).toBeGreaterThanOrEqual(0.8);
+    expect(judge("flatten", e)).toMatchObject({ kind: "attention", reasons: ["pedestal"] });
+  });
+
+  it("judges the volume's shells from the run's fit range, read with the floors (4.11), and says when the file records none", async () => {
+    // The run fitted 5–10 Å⁻¹ only: below 5 Å⁻¹ its model, extrapolated, sits
+    // too high, and the floors climb 1 per Å⁻¹ up to it; from 5 out they are level.
+    const climb = (_h: number, _k: number, _l: number, q: number) => (q < 5 ? q - 5 : 0);
+    const run = await evaluateWith(climb, { ...DEFAULT_RECORD, fit_q_range: [5, 10] });
+    expect((run.e.floor_judged_q as number[])[0]).toBeGreaterThanOrEqual(5);
+    for (const p of run.planes) expect(p.floor_judged_q[0]).toBeGreaterThanOrEqual(5);
+    expect(run.e.pedestal_left).toBe(false);
+    expect(run.e).not.toHaveProperty("settings_note");
+    expect(api.fetchMeta).not.toHaveBeenCalledWith("demo.flattened"); // the record came with the floors
+    // The same floors without the record: judged with the defaults, which read the climb, and said so.
+    const old = await evaluateWith(climb, null);
+    expect(old.e.floor_judged_q).toEqual([3.02, 5.97]);
+    expect(old.e.pedestal_left).toBe(true);
+    expect(old.e.settings_note).toBe(FLATTEN_UNRECORDED_NOTE);
+  });
+
+  it("does not judge the pedestal when the volume's floors cannot be read, or were read without the flatten's input", async () => {
+    const { e, floors } = await evaluateWith((_h, _k, _l, q) => 0.06 * q * q);
+    api.fetchShellFloors.mockRejectedValue(new Error("500"));
+    const unread = await evaluateStage("flatten", withFlat);
+    expect([unread.floor_trend, unread.floor_span_fraction, unread.pedestal_left]).toEqual([null, null, null]);
+    expect(judge("flatten", unread)).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    // Without the input there is no diffuse level: the volume's own median is no span's denominator.
+    api.fetchShellFloors.mockResolvedValue({ ...floors, before_id: null });
+    const alone = await evaluateStage("flatten", withFlat);
+    expect([alone.floor_trend, alone.floor_span_fraction, alone.pedestal_left]).toEqual([e.floor_trend, null, null]);
+  });
+
+  it("reads an evaluation recorded before 4.1 by the planes' largest trend and span, as then", () => {
+    const old = { max_after_floor_sigma: 1.8, max_floor_trend: 0.97, max_floor_span_fraction: 0.97, pedestal_left: true };
+    expect(judge("flatten", old)).toMatchObject({ kind: "attention", reasons: ["pedestal"] });
+    expect(headline("flatten", old)).toBe("floor ≤ 1.8σ · trend ≤ 0.97 · span ≤ 0.97 · pedestal left");
+    expect(headline("flatten", { max_after_floor_sigma: 0.8 })).toBe("floor ≤ 0.8σ · trend ≤ – · span ≤ –"); // not measured: not said
   });
 });
 

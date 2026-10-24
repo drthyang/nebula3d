@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { qRadius } from "../context/pipelineContext";
 import { backfillMetrics } from "../metrics/backfill";
 import { dpdfMetrics } from "../metrics/dpdf";
-import { flattenMetrics, pedestalLeft } from "../metrics/flatten";
+import { FLATTEN_FLOOR_PERCENTILE, flattenJudging, flattenMetrics, pedestalLeft } from "../metrics/flatten";
 import { ringEnergy, ringMetrics } from "../metrics/rings";
 import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
 import { percentile, robustStats } from "../metrics/sliceStats";
@@ -103,6 +103,14 @@ describe("a pedestal left", () => {
     expect(pedestalLeft(0.93, 0.49)).toBe(false); // the cut coverage, whose truth has none
   });
 
+  // The same cases over the whole volume's shells (plan 4.1, at 161³).
+  it("separates them over the whole volume too", () => {
+    expect(pedestalLeft(0.996, 1.3)).toBe(true); // |Q|² background left by the constant flatten
+    expect(pedestalLeft(0.0384, 0.636)).toBe(false); // the control
+    expect(pedestalLeft(0.756, 0.455)).toBe(false); // the planted case with the Q² term on: the corners past its fit range's end
+    expect(pedestalLeft(0.158, 0.192)).toBe(false); // the cut coverage
+  });
+
   it("is what the flattened floors give: rising floors are a pedestal, level floors are not", () => {
     const lumpy = (x: number, y: number) => 0.8 * Math.cos(1.3 * x) * Math.cos(1.1 * y);
     // A |Q|² floor spanning more than the diffuse level over the outer half.
@@ -139,6 +147,65 @@ describe("a pedestal left", () => {
     const withQ2 = makeSlice(161, 161, cut((x, y) => hump(Math.hypot(x, y)) + 0.12 * (x * x + y * y) + lumpy(x, y)), { half: 6.4 });
     const q = flattenMetrics(before, withQ2, undefined, [0.8, 10]);
     expect(pedestalLeft(Math.abs(q.floor_trend!), q.floor_span_fraction)).toBe(true);
+  });
+});
+
+// Plan 4.11: the flatten is judged over the run's own fit range and at its
+// own floor percentile, as its output records them, not the defaults'.
+describe("the flatten judged over the run's own range (4.11)", () => {
+  // Counts out to 8 (the box face at 10), so the shells judged are the outer
+  // half of 0–8, from 4 out, unless the fit range starts later; the diffuse
+  // level (the flatten's input) is 2.
+  const lumpy = (x: number, y: number) => 0.15 * Math.cos(3.1 * x) * Math.cos(2.9 * y);
+  const cut = (f: (x: number, y: number) => number) => (x: number, y: number) => (Math.hypot(x, y) <= 8 ? f(x, y) : NaN);
+  const before = makeSlice(161, 161, cut((x, y) => 2 + lumpy(x, y)), { half: 10 });
+  const ruled = (m: ReturnType<typeof flattenMetrics>) => pedestalLeft(m.floor_trend == null ? null : Math.abs(m.floor_trend), m.floor_span_fraction);
+
+  it("reads its judging from the record, each field it lacks the default's", () => {
+    expect(flattenJudging(undefined)).toEqual({ fitQ: [0.8, 10], percentile: 25, recorded: false });
+    expect(flattenJudging(null)).toEqual({ fitQ: [0.8, 10], percentile: 25, recorded: false });
+    expect(flattenJudging({ fit_q_range: [4.5, 10], floor_percentile: 10 })).toEqual({ fitQ: [4.5, 10], percentile: 10, recorded: true });
+    // A run that fitted every shell with a level: no range.
+    expect(flattenJudging({ fit_q_range: null, floor_percentile: 25 })).toEqual({ fitQ: null, percentile: 25, recorded: true });
+    // Fields out of range, or not recorded by an older version: the defaults'.
+    expect(flattenJudging({ fit_q_range: [6, 2] as [number, number], floor_percentile: 150 })).toEqual({ fitQ: [0.8, 10], percentile: 25, recorded: true });
+    expect(flattenJudging({ q2_term: true })).toEqual({ fitQ: [0.8, 10], percentile: 25, recorded: true });
+  });
+
+  it("starts the judged shells at the run's fit range: floors below it are not the fit's", () => {
+    // The run fitted 5.2–10 only (FlattenParams.fit_q_range): below 5.2 its
+    // model, extrapolated, sits too high, and the floors climb 1.5 per unit
+    // of |Q| up to it; from 5.2 out they are level, rising by 0.01 per unit.
+    const below = (r: number) => (r < 5.2 ? -1.5 * (5.2 - r) : 0) + 0.01 * r;
+    const after = makeSlice(161, 161, cut((x, y) => below(Math.hypot(x, y)) + lumpy(x, y)), { half: 10 });
+    const defaults = flattenMetrics(before, after, undefined, [0.8, 10]);
+    expect(defaults.floor_judged_q![0]).toBeLessThan(4.5); // the outer half of 0–8
+    expect(ruled(defaults)).toBe(true); // the climb below 5.2 read as a pedestal
+    const run = flattenMetrics(before, after, undefined, [5.2, 10]);
+    expect(run.floor_judged_q![0]).toBeGreaterThanOrEqual(5.2);
+    expect(run.floor_span_fraction!).toBeLessThan(0.1); // level there: 0.01 per unit, against a level of 2
+    expect(ruled(run)).toBe(false);
+  });
+
+  it("takes each shell's floor at the run's percentile", () => {
+    // A fifth of the voxels sit on a level floor (±0.005), the rest on a
+    // |Q|² rise of 0.1·r² over the diffuse: the run's 10th percentile is the
+    // level population, the default 25th the rising one.
+    const low = (ix: number, iy: number) => (ix * 7 + iy * 13) % 5 === 0;
+    const after = makeSlice(
+      161,
+      161,
+      (x, y, ix, iy) => (Math.hypot(x, y) > 8 ? NaN : low(ix, iy) ? 0.005 * Math.sin(ix * 1.7 + iy * 2.3) : 0.1 * (x * x + y * y) + 0.3 + lumpy(x, y)),
+      { half: 10 },
+    );
+    const p25 = flattenMetrics(before, after, undefined, [0.8, 10]);
+    expect(ruled(p25)).toBe(true);
+    const p10 = flattenMetrics(before, after, undefined, [0.8, 10], 10);
+    expect(Math.abs(p10.floor_after![2])).toBeLessThan(0.01); // the level population's floor
+    expect(p10.floor_span_fraction!).toBeLessThan(0.01);
+    expect(ruled(p10)).toBe(false);
+    // The default percentile is the flatten's own default, as before.
+    expect(flattenMetrics(before, after, undefined, [0.8, 10], FLATTEN_FLOOR_PERCENTILE)).toEqual(p25);
   });
 });
 

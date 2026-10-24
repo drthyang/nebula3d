@@ -40,6 +40,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from nebula3d.core import HKLVolume, q_bin_indices, q_magnitude_from_axes
+from nebula3d.modulation import Modulation, h_planes, protected_mask
 from nebula3d.symmetry import GridSymmetry
 
 
@@ -539,12 +540,19 @@ class BraggRemover:
         median over |Q| shells (weighted by voxel count) of each shell's robust
         scatter 1.4826·MAD.  The floors then follow the data's scale, so a
         volume multiplied by any factor is punched the same.
+    search_protect:
+        The sample's declared modulation (:class:`nebula3d.modulation.Modulation`):
+        the satellites **G** ± m·**k**, or the planes through them, that the
+        search leaves alone, on the parent lattice of ``supercell`` and, with
+        ``symmetry_ops``, at every equivalent position.  ``None`` (default)
+        declares none.  The legacy H planes below are left alone too.
     search_exclude_h_centers:
-        Optional H-plane centres excluded from the hkl-agnostic search stage.
+        Legacy: H-plane centres excluded from the hkl-agnostic search stage.
         Use this to protect known fractional-H diffuse planes while still using
-        ``mode="both"`` for integer Bragg plus off-integer satellites elsewhere.
+        ``mode="both"`` for integer Bragg plus off-integer satellites elsewhere;
+        a modulation is declared with ``search_protect``.
     search_exclude_h_half_width:
-        Half-width in H around each protected search-exclusion centre.
+        Half-width in H around each legacy protected centre or fraction.
     search_max_width_ratio:
         Keep the search to peaks as sharp as Bragg peaks (``mode="both"``): a
         search candidate whose full width at half maximum exceeds this × the
@@ -657,12 +665,16 @@ class BraggRemover:
     search_min_intensity: float = 2.0
     search_min_prominence: float = 0.0
     search_floor_unit: str = "data"
+    # The sample's declared modulation: the positions the search leaves alone
+    # (nebula3d.modulation).  None declares none.
+    search_protect: Modulation | None = None
     search_exclude_h_centers: tuple[float, ...] | None = None
     search_exclude_h_half_width: float = 0.0
-    # Periodic H protection: fractional parts (mod 1, in [0,1)) of H to protect
-    # across the WHOLE range, e.g. (1/3, 2/3) shields every integer±1/3 plane
-    # (the q=1/3 satellite family) — not just a fixed centre list.  Uses the same
-    # search_exclude_h_half_width.  ``None`` disables.
+    # Legacy periodic H protection: fractional parts (mod 1, in [0,1)) of H to
+    # protect across the WHOLE range, e.g. (1/3, 2/3) shields every integer±1/3
+    # plane — not just a fixed centre list.  Uses the same
+    # search_exclude_h_half_width.  ``None`` disables.  A modulation is
+    # declared with search_protect.
     search_exclude_h_fractions: tuple[float, ...] | None = None
     search_max_width_ratio: float | None = None
     subtract_profile: bool = False
@@ -2245,7 +2257,7 @@ class BraggRemover:
         from scipy import ndimage
 
         self._search_report.clear()
-        valid = (vol.mask & np.isfinite(vol.data)) & ~self._search_excluded_h_mask(vol)
+        valid = (vol.mask & np.isfinite(vol.data)) & ~self._search_excluded_mask(vol)
         if not valid.any():
             return []
         bin_idx, med, scale, count = self._q_shell_stats(vol, self.search_q_step)
@@ -2331,53 +2343,35 @@ class BraggRemover:
         return out
 
     def _search_excluded_h_mask(self, vol: HKLVolume) -> NDArray[np.bool_]:
-        """Return True for voxels protected from hkl-agnostic search punching.
+        """Return True for voxels the legacy H planes protect from the search.
 
         Two complementary mechanisms (combined), both using
         ``search_exclude_h_half_width``:
         - ``search_exclude_h_centers``: explicit H-plane centres.
         - ``search_exclude_h_fractions``: fractional parts mod 1 protected
           periodically across the whole range — e.g. ``(1/3, 2/3)`` shields
-          every integer±1/3 plane (the q=1/3 satellite family).
+          every integer±1/3 plane.
 
         With ``symmetry_ops`` the planes equivalent to them are protected too.
-        The mask broadcasts to the volume's shape.
+        The planes are :func:`nebula3d.modulation.h_planes`, read through the
+        module's one predicate.  The mask broadcasts to the volume's shape.
         """
-        half_width = max(float(self.search_exclude_h_half_width), 0.0)
-        centers = self.search_exclude_h_centers
-        fractions = self.search_exclude_h_fractions
-        if half_width <= 0 or (not centers and not fractions):
+        planes = h_planes(centres=self.search_exclude_h_centers,
+                          fractions=self.search_exclude_h_fractions,
+                          half_width=self.search_exclude_h_half_width,
+                          symmetry=self._grid_symmetry(vol))
+        if not planes:
             return np.zeros(vol.shape, dtype=bool)
-        h_excluded = np.zeros((1, 1, 1), dtype=bool)
-        for form in self._h_forms(vol):
-            h = self._form_coordinate(vol, form)
-            for h0 in centers or ():
-                h_excluded = h_excluded | (np.abs(h - float(h0)) <= half_width)
-            if fractions:
-                frac = np.mod(h, 1.0)  # [0,1); handles negative H naturally
-                for f in fractions:
-                    f0 = float(f) % 1.0
-                    # circular distance on the unit interval
-                    d = np.abs(frac - f0)
-                    d = np.minimum(d, 1.0 - d)
-                    h_excluded = h_excluded | (d <= half_width)
-        return h_excluded
+        return protected_mask(planes, vol)
 
-    @staticmethod
-    def _form_coordinate(vol: HKLVolume, form: NDArray[np.int64]) -> NDArray[np.float64]:
-        """``form·(H, K, L)`` on the grid, broadcastable to the volume's shape.
-
-        Only the axes the form uses take a dimension, so H alone is
-        ``h_axis[:, None, None]``.
-        """
-        axes = (vol.h_axis[:, None, None], vol.k_axis[None, :, None],
-                vol.l_axis[None, None, :])
-        out: NDArray[np.float64] | None = None
-        for c, ax in zip(form, axes):
-            if c:
-                term = ax if c == 1 else float(c) * ax
-                out = term if out is None else out + term
-        return out if out is not None else np.zeros((1, 1, 1))
+    def _search_excluded_mask(self, vol: HKLVolume) -> NDArray[np.bool_]:
+        """Every voxel the search leaves alone: the legacy H planes
+        (:meth:`_search_excluded_h_mask`) and the positions of the declared
+        modulation (``search_protect``).  Broadcasts to the volume's shape."""
+        out = self._search_excluded_h_mask(vol)
+        if self.search_protect is not None:
+            out = out | self.search_protect.mask(vol, self._grid_symmetry(vol), self.supercell)
+        return out
 
     def _scale_factor(self, peak: float, ref: float) -> float:
         if not self.intensity_scale or not np.isfinite(peak) or ref <= 0:

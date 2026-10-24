@@ -230,18 +230,75 @@ describe("update_settings", () => {
     expect(usePipelineStore.getState().punchMinSig).toBe("");
   });
 
-  it("sets a fact about the sample the user asks for: the search's protected planes", async () => {
-    usePipelineStore.setState({ punchProtectH: "none" });
-    const r = await run("update_settings", { changes: { punchProtectH: "1/3, 2/3" } });
-    expect(usePipelineStore.getState().punchProtectH).toBe(""); // the default
-    expect(JSON.parse(r.text).changed).toEqual([{ setting: "punchProtectH", from: "none", to: "1/3, 2/3" }]);
-    await run("update_settings", { changes: { punchProtectH: [0.5] } });
-    expect(usePipelineStore.getState().punchProtectH).toBe("0.5");
-    const bad = await run("update_settings", { changes: { punchProtectH: "thirds" } });
-    expect(bad.text).toMatch(/H fractions/);
-    // The punch cell, for a volume indexed on a doubled cell.
-    await run("update_settings", { changes: { punchSupercellH: 2, punchSupercellK: 2, punchSupercellL: 2 } });
-    expect(usePipelineStore.getState()).toMatchObject({ punchSupercellH: "2", punchSupercellK: "2", punchSupercellL: "2" });
+  // The facts about the sample (tune/catalog.ts, SAMPLE_PARAMS) change only
+  // when the user's latest message names them: the agent loop hands it to
+  // the tools as the context's userMessage.
+  describe("a fact about the sample, which only the user sets", () => {
+    const FACTS = { punchProtectH: "", punchProtectHalfWidth: "", punchSupercellH: "", punchSupercellK: "", punchSupercellL: "", flattenIon: "" };
+    const refusal = (key: string) => `${key} is a fact about the sample, which only the user sets: ask the user, and change it once they name it.`;
+    /** update_settings after the user's latest message `said`. */
+    const after = (said: string | undefined, changes: Args) => callTool({ ...ctx, userMessage: said }, "update_settings", { changes });
+    beforeEach(() => usePipelineStore.setState(FACTS));
+
+    it("refuses a change the user's latest message does not name, and leaves the store as it was", async () => {
+      for (const said of [undefined, "Is the punch clean? Take it to a 3D-ΔPDF you would trust."]) {
+        const r = await after(said, { punchSupercellH: 2 });
+        expect(r.ok).toBe(false);
+        expect(r.text).toBe(`Error: ${refusal("punchSupercellH")}`);
+        expect(usePipelineStore.getState()).toMatchObject(FACTS);
+      }
+      // Each fact the call changes is refused in the same words, whatever its value.
+      const both = await after("Rerun the punch.", { punchProtectH: "none", punchSupercellK: 99 });
+      expect(both.text).toBe(`Error: ${refusal("punchProtectH")} ${refusal("punchSupercellK")}`);
+      expect(usePipelineStore.getState()).toMatchObject(FACTS);
+    });
+
+    it("makes the change once the user's latest message names it", async () => {
+      const r = await after("The volume is indexed on a doubled cell along H: set the punch cell to 2 along H.", { punchSupercellH: 2 });
+      expect(r.ok, r.text).toBe(true);
+      expect(JSON.parse(r.text)).toEqual({ changed: [{ setting: "punchSupercellH", from: 1, to: 2 }], rerun_from: "punch" });
+      expect(usePipelineStore.getState().punchSupercellH).toBe("2");
+    });
+
+    it("refuses the fact the message does not name and makes the call's other changes, and says both", async () => {
+      const r = await after("Raise the punch significance to 6.", { punchMinSig: 6, punchSupercellH: 2 });
+      expect(r.ok, r.text).toBe(true);
+      expect(usePipelineStore.getState()).toMatchObject({ punchMinSig: "6", punchSupercellH: "" });
+      expect(JSON.parse(r.text)).toEqual({
+        changed: [{ setting: "punchMinSig", from: 5, to: 6 }],
+        refused: [{ setting: "punchSupercellH", why: refusal("punchSupercellH") }],
+        rerun_from: "punch",
+      });
+      expect(r.summary).toBe("punchMinSig 5 → 6; refused, a fact about the sample: punchSupercellH");
+      // A fact the message names beside one it does not: the named one changes.
+      const planes = await after("Protect the H = 0.5 planes.", { punchProtectH: "1/2", punchProtectHalfWidth: 0.2 });
+      expect(JSON.parse(planes.text)).toEqual({
+        changed: [{ setting: "punchProtectH", from: "1/3, 2/3", to: "1/2" }],
+        refused: [{ setting: "punchProtectHalfWidth", why: refusal("punchProtectHalfWidth") }],
+        rerun_from: "punch",
+      });
+      expect(usePipelineStore.getState()).toMatchObject({ punchProtectH: "1/2", punchProtectHalfWidth: "" });
+    });
+
+    it("sets the search's protected planes and the punch cell the user names", async () => {
+      usePipelineStore.setState({ punchProtectH: "none" });
+      const r = await after("Keep the 1/3 and 2/3 planes protected.", { punchProtectH: "1/3, 2/3" });
+      expect(usePipelineStore.getState().punchProtectH).toBe(""); // the default
+      expect(JSON.parse(r.text).changed).toEqual([{ setting: "punchProtectH", from: "none", to: "1/3, 2/3" }]);
+      await after("Set the H fractions to 0.5.", { punchProtectH: [0.5] });
+      expect(usePipelineStore.getState().punchProtectH).toBe("0.5");
+      const bad = await after("Set the H fractions to thirds.", { punchProtectH: "thirds" });
+      expect(bad.text).toMatch(/H fractions/);
+      // The punch cell, for a volume indexed on a doubled cell: the words name all three axes.
+      await after("Index the punch on a 2×2×2 supercell.", { punchSupercellH: 2, punchSupercellK: 2, punchSupercellL: 2 });
+      expect(usePipelineStore.getState()).toMatchObject({ punchSupercellH: "2", punchSupercellK: "2", punchSupercellL: "2" });
+    });
+
+    it("never sets the magnetic ion, which stays with the user, whatever the message says", async () => {
+      const r = await after("Use Tb3+ for the flatten.", { flattenIon: "Tb3+" });
+      expect(r.text).toMatch(/invalid arguments — flattenIon cannot be changed/);
+      expect(usePipelineStore.getState().flattenIon).toBe("");
+    });
   });
 });
 
