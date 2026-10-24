@@ -4,8 +4,9 @@ import { configDefaults, defineConfig } from "vitest/config";
 // - unit: every test but the replays; no Python needed (`npx vitest --project unit`);
 // - replay: *.replay.test.ts, the console's Pages path (VITE_DATA_MODE=pyodide)
 //   on the validation's dev cases, with the CPython bridge in place of Pyodide
-//   (src/llm/evals/devData/). globalSetup finds the Python and fails, saying
-//   how to fix it, when there is none.
+//   (src/llm/evals/devData/), and the tests that read the package's own values
+//   with that Python (sharedLimits.replay.test.ts). globalSetup finds the
+//   Python and fails, saying how to fix it, when there is none.
 export default defineConfig({
   test: {
     projects: [

@@ -11,7 +11,7 @@ import { COLORMAPS } from "../../colormaps/luts";
 import type { Slice } from "../../api/types";
 import { BrandGlyph } from "../../components/ui";
 import { useNavStore } from "../../state/navStore";
-import { toolResultsIn, toolsKnownUnsupported, type AgentStep } from "../agent";
+import { toolsKnownUnsupported, type AgentStep } from "../agent";
 import { useChatStore } from "../chatStore";
 import {
   buildChatMessages,
@@ -21,9 +21,8 @@ import {
 } from "../prompts/templates";
 import { seen } from "../readings";
 import { renderSliceToDataUrl } from "../render/sliceImage";
-import { askAssistant, stopAssistant } from "../session";
+import { askAssistant, replyContext, stopAssistant } from "../session";
 import { saveSettings, type LlmSettings } from "../settings";
-import { skillsReadIn } from "../skills";
 import { CHAT_TOOLS, factsOf, type ToolContext } from "../tools";
 import { openView } from "../tools/openView";
 import type { AssistantContext } from "../useAssistant";
@@ -193,8 +192,9 @@ export function ChatView({
         label: text,
         messages: buildChatMessages(assistant.context, history, text, null, { tools }),
         tools: settings.useTools ? CHAT_TOOLS : [],
-        // The skills read earlier in the conversation still count.
-        ctx: toolContext && { ...toolContext, skillsRead: skillsReadIn(turns), earlierResults: toolResultsIn(turns) },
+        // The earlier turns go as their text: a skill read in one is not in
+        // this reply, so it opens no gate here, and the refusal asks for it again.
+        ctx: toolContext && replyContext(toolContext, turns),
       });
     },
     [assistant, busy, turns, tools, settings.useTools, toolContext],
@@ -216,7 +216,8 @@ export function ChatView({
         label: STAGE_REVIEW_LABELS[stage] + (image ? " (with image)" : ""),
         messages: buildStageReviewMessages(assistant.context, stage, image, { tools }),
         tools: settings.useTools ? CHAT_TOOLS : [],
-        ctx: toolContext && { ...toolContext, skillsRead: skillsReadIn(turns), earlierResults: toolResultsIn(turns) },
+        // A review sends no earlier turn: a skill read in one opens no gate here.
+        ctx: toolContext && replyContext(toolContext, turns),
       });
     },
     [assistant, busy, turns, settings.attachImages, settings.useTools, tools, toolContext],

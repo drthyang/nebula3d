@@ -87,9 +87,10 @@ export async function runParsed(
     return { ok: false, args, text, summary: `unknown tool ${call.function.name}` };
   }
   // A firm rule: a stage's settings change, and the stage is tuned, only after
-  // its skill has been read in the conversation (skills.ts). With the skills
-  // off (the switch) there is no skill to read, so there is no gate.
-  const refusal = skillsOn(ctx) && ctx.skillsRead ? unreadSkillRefusal(tool.name, args, ctx.skillsRead) : null;
+  // its skill has been read in this reply (skills.ts); one read in an earlier
+  // turn is asked for again. With the skills off (the switch) there is no
+  // skill to read, so there is no gate.
+  const refusal = skillsOn(ctx) && ctx.skillsRead ? unreadSkillRefusal(tool.name, args, ctx.skillsRead, ctx.skillsReadEarlier) : null;
   if (refusal) return { ok: false, args, text: `Error: ${refusal}`, summary: "refused until its skill is read" };
   try {
     const out = await tool.run(args, ctx, io);

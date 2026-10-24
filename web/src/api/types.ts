@@ -44,8 +44,12 @@ export interface VolumeCoverage {
   q_max_edge: number | null; // where it last falls through ½ (null: to the corner)
   full_q_min: number | null; // first shell ≥ 95 %
   full_q_max: number | null; // last shell ≥ 95 %
+  // Last shell ≥ 95 % measured (mask set, finite): where the ΔPDF window's
+  // support ends, past the counts where the volume stores zeros it marks measured.
+  measured_q_max: number | null;
   box_q: number; // the nearest face of the box in Q (a face through the origin, a half-space volume's, aside)
   box_corner_q: number;
+  q_step: number; // the shells' width (Å⁻¹): every edge is known to one shell
 }
 
 /** One shell judged: does it rise in nearly every direction over the sphere (a powder ring)? */
@@ -346,6 +350,14 @@ export interface Slice {
 }
 
 export interface StageParamsIn {
+  // The cleanup stages' switches (the page's "Enable stage"; the flatten's is
+  // the request's flatten_enabled). false: the stage is not run and its input
+  // passes through to the next stage, never an output an earlier run left. A
+  // stage merely left out of the request's `stages` is a partial re-run, whose
+  // output on disk the next stage reads. Omitted: on.
+  rings_enabled?: boolean;
+  punch_enabled?: boolean;
+  backfill_enabled?: boolean;
   // Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
   edge_trim?: number;
   rings_n_patches?: number;
@@ -441,7 +453,10 @@ export interface PipelineRunRequest {
   flatten_enabled: boolean;
   force: boolean;
   force_from?: string | null;
-  stages?: string[]; // enabled-stage subset; omitted → all stages run
+  // The stages to run in this call; omitted → all. One left out is a partial
+  // re-run (the stages after it read its output on disk); a stage switched off
+  // (flatten_enabled, params.*_enabled) is not run either way.
+  stages?: string[];
   params: StageParamsIn;
   tuning?: TuningTrial; // a tuning trial: never writes to processed/
 }
