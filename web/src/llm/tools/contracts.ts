@@ -468,12 +468,16 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   ),
 
   dpdf_peaks: obj({
+    grouped_by: str,
     features: arr(
       obj({
         sign: oneOf("+", "−"),
         length_A: num,
         size_sigma: num,
+        // Only for an orbit of the declared symmetry (findings).
+        mean_size_sigma: optional(num),
         n_vectors: num,
+        multiplicity: optional(num),
         vectors_rlu: arr(nullable(v3)),
         vectors_A: arr(nullable(v3)),
       }),

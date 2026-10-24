@@ -712,7 +712,7 @@ describe("the record", () => {
   });
 
   it("keeps the context window the run had and the minimum it was held to", () => {
-    const context = { tokens: 65_536, min_tokens: 49_152, read_from: "lmstudio-loaded" as const };
+    const context = { tokens: 65_536, min_tokens: 57_344, read_from: "lmstudio-loaded" as const };
     const rec = buildRecord({
       case: caseNamed("dev-ub")!,
       arm: "C",

@@ -15,9 +15,9 @@
 // NEBULA_EVAL_PROVIDER  a label for the results (default: from the base URL)
 // ANTHROPIC_API_KEY / OPENAI_API_KEY  read for an Anthropic / other cloud base URL; never written out
 //
-// A model on a local server is held to the run policy's minimum context, 48k
+// A model on a local server is held to the run policy's minimum context, 56k
 // (RUN_POLICY, runContext in validationModels.ts), as the validation's runner
-// holds it: LM Studio must have it loaded with a Context Length of 49152 or
+// holds it: LM Studio must have it loaded with a Context Length of 57344 or
 // more, and Ollama must say it supports that much. A window under it, or one
 // that cannot be read, is refused before the first run and before each run.
 

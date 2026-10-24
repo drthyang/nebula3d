@@ -130,10 +130,10 @@ the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
 
   `NEBULA_EVAL_ONLY` takes scenario ids, `NEBULA_EVAL_REPEAT` runs per scenario.
   A Claude base URL reads `ANTHROPIC_API_KEY` from the environment; the key is
-  never written out. A model on a local server needs a context window of 48k
+  never written out. A model on a local server needs a context window of 56k
   or more, the validation's run policy ([the models](#the-models)): before the
   first run, and again before each, the runner reads the window (`runContext`)
-  and refuses one under 49,152 tokens or one it cannot read, as the
+  and refuses one under 57,344 tokens or one it cannot read, as the
   validation's runner does. Each run in the record keeps the window it had
   (`context_window`).
 - **The held-out set:** write the volumes into a data root of their own, serve
@@ -158,11 +158,11 @@ the user chose on 11 October 2026 (`nebula3d.preprocessing.ring_isotropy`,
     listed by kind.
 
   The models are qwen3.8-27b in LM Studio and gemma4:26b in Ollama, each with
-  a window of at least 48k (49,152 tokens), the run policy's minimum for a
+  a window of at least 56k (57,344 tokens), the run policy's minimum for a
   local live run ([the models](#the-models)). Load qwen3.8-27b with a Context
-  Length of 49152 or more before the script (`lms load qwen/qwen3.8-27b
-  --context-length 49152`), and make that its default Context Length;
-  gemma4:26b must support 49152 or more, and the run sizes `num_ctx` itself.
+  Length of 57344 or more before the script (`lms load qwen/qwen3.8-27b
+  --context-length 57344`), and make that its default Context Length;
+  gemma4:26b must support 57344 or more, and the run sizes `num_ctx` itself.
   Both sets check the window as above, so a model loaded at 32k is refused
   before its first run. The Mac is shared: the script first shows what the
   model servers hold and how much memory is free, stops below 15 %, and never
@@ -650,19 +650,24 @@ per case and arm; the context is the least window the run policy accepts.
 
 | Model | Served by | Context | Splits | Notes |
 | --- | --- | --- | --- | --- |
-| qwen/qwen3.8-27b | LM Studio | 48k or more (loaded) | dev, test | Local |
-| gemma4:26b | Ollama | 48k or more (supported) | dev, test | Local |
-| meta/muse-glimmer | LM Studio | 48k or more (loaded) | dev, test | Local |
+| qwen/qwen3.8-27b | LM Studio | 56k or more (loaded) | dev, test | Local |
+| gemma4:26b | Ollama | 56k or more (supported) | dev, test | Local |
+| meta/muse-glimmer | LM Studio | 56k or more (loaded) | dev, test | Local |
 | Claude Sonnet 5.5 | Anthropic | – | **test only** | Paid; spend capped at $12 |
 
-**A local live run needs at least 48k of context (49,152 tokens).** This is
+**A local live run needs at least 56k of context (57,344 tokens).** This is
 the run policy (`RUN_POLICY.minLocalContextTokens` in
-`web/src/llm/evals/validationModels.ts`), as the sibling app RMC holds its local
-runs; the scenario evals and the local tier hold a local model to it too
-(`modelAt`; see "Running it" under the scenarios, above). Arm B's worst turn on a local model, the validation task with two skills
-read whole, is about 45.6k tokens with the reply reserve before the loop's
-compaction and 37k to 42k after it (`web/src/llm/__tests__/tokenBudget.test.ts`).
-A 32k window holds it only by shortening the skills just read to stubs, so a
+`web/src/llm/evals/validationModels.ts`); the scenario evals and the local
+tier hold a local model to it too (`modelAt`; see "Running it" under the
+scenarios, above). The sibling app RMC keeps its own rule, 48k. Arm B's worst
+turn on a local model, the validation task with two skills read whole and the
+3D-ΔPDF's strongest features a full list (the dev control's, at
+`dpdf_peaks`' default), is about 47.6k tokens with the reply reserve before
+the loop's compaction and 37.7k to 42k after it
+(`web/src/llm/__tests__/tokenBudget.test.ts`). The minimum holds it with the
+3k of headroom a model-visible addition must leave; it was 48k (49,152) until
+the worst turn carried a full list. A 32k window holds the turn only by
+shortening the skills just read to stubs, so a
 run at 32k would grade arm B on stubs of its method. Before the plan starts,
 and again before each run, the runner reads the window the run will get
 (`runContext`), without loading anything, and refuses one under the minimum or
@@ -670,8 +675,8 @@ one it cannot read, saying the model, the window found, the minimum and how
 to load it with more:
 
 - **LM Studio:** the context the model is loaded with (`/api/v0/models`). Load
-  it with a Context Length of 49152 or more in its load settings, or with
-  `lms load qwen/qwen3.8-27b --context-length 49152` once it is unloaded, and
+  it with a Context Length of 57344 or more in its load settings, or with
+  `lms load qwen/qwen3.8-27b --context-length 57344` once it is unloaded, and
   make that the model's default Context Length: LM Studio reloads an idle
   model with its defaults. A model it has not loaded is refused, since its
   defaults cannot be read.
@@ -679,7 +684,7 @@ to load it with more:
   show gemma4:26b` lists it). The run goes through Ollama's own chat API, and
   the window plan sizes `num_ctx` for each request up to it (64k for the worst
   turn, where the model supports it), so there is nothing to load; the machine
-  needs the memory for that window. A model that supports less than 48k cannot run.
+  needs the memory for that window. A model that supports less than 56k cannot run.
 
 Each run's record keeps the window it had and the minimum it was held to
 (`context_window`: `tokens`, `min_tokens`, and `read_from`,
