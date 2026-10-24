@@ -41,8 +41,8 @@ describe("the skills", () => {
 
   it("says when the flatten's Q² term goes on: when assess_stage reports a pedestal left (docs/pilot-review.md finding 5)", () => {
     const qc = allSkills().find((s) => s.name === "reduction-qc")!.body;
-    const step = qc.slice(qc.indexOf("6. **The flatten floor.**"), qc.indexOf("7. **Symmetry kept.**"));
-    expect(step).toMatch(/When to turn the Q² term on:\*\* when `assess_stage` for the flatten\s+reports `pedestal_left`, set `flattenQ2` on, rerun/);
+    const step = qc.slice(qc.indexOf("6. **The background-correction floor.**"), qc.indexOf("7. **Symmetry kept.**"));
+    expect(step).toMatch(/When to turn the Q² term on:\*\* when `assess_stage` for the background\s+correction reports `pedestal_left`, set `flattenQ2` on, rerun/);
     expect(step).toMatch(/Leave it off otherwise/);
     // It names the fields assess_stage gives, judged over the whole volume
     // since 4.1, not the planes' largest it gave before.
