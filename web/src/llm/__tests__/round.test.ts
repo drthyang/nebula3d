@@ -103,6 +103,24 @@ describe("runRound", () => {
     expect([round.history.barren, round.stuck]).toEqual([0, false]);
   });
 
+  it("hands each call the reply's steps before it, across rounds, repeats and errors included (replySteps)", async () => {
+    const before: string[][] = [];
+    const reads = tool("reads", async (_args, c) => {
+      before.push((c.replySteps ?? []).map((s) => `${s.id} ${s.name} ${s.status}`));
+      return { result: {}, summary: "read" };
+    });
+    const start = startReply({ ...ctx, replySteps: [{ id: "x", name: "stale", args: {}, status: "done" }] }, [reads, echo, fails]);
+    expect(start.ctx.replySteps).toEqual([]); // a reply starts with none
+    const first = await runRound([call("c1", "echo", {}), call("c2", "fails", {}), call("c3", "reads", {})], start);
+    const second = await runRound([call("c4", "echo", {}), call("c5", "reads", { a: 1 })], first.history);
+    expect(before).toEqual([
+      ["0:c1 echo done", "1:c2 fails error"],
+      ["0:c1 echo done", "1:c2 fails error", "2:c3 reads done", "3:c4 echo done"],
+    ]);
+    expect(second.history.ctx.replySteps).toEqual([...first.results, ...second.results].map((r) => r.step));
+    expect(first.history.ctx.replySteps).toHaveLength(3); // the round never changes the history it was given
+  });
+
   it("numbers each step in the reply, so call ids a server reuses across rounds stay apart", async () => {
     const first = await runRound([call("c1", "echo", { a: 1 }), call("c2", "echo", { a: 2 })], startReply(ctx, [echo]));
     const second = await runRound([call("c1", "echo", { a: 3 }), call("c1", "echo", { a: 1 })], first.history);

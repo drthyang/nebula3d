@@ -31,6 +31,7 @@ import { bragg_peaks } from "./defs/bragg_peaks";
 import { consistency_details } from "./defs/consistency_details";
 import { run_log } from "./defs/run_log";
 import { compare_datasets } from "./defs/compare_datasets";
+import { run_verdict } from "./defs/run_verdict";
 import { configure_settings } from "./defs/configure_settings";
 import { update_settings } from "./defs/update_settings";
 import { run_pipeline } from "./defs/run_pipeline";
@@ -59,6 +60,7 @@ export const CHAT_TOOLS: ChatTool[] = [
   consistency_details,
   run_log,
   compare_datasets,
+  run_verdict,
   configure_settings,
   update_settings,
   run_pipeline,
