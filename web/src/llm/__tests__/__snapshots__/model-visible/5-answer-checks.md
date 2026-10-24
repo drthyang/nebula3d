@@ -129,3 +129,22 @@ Before this answer goes to the user, fix it:
 - These numbers were measured before the last run recomputed the outputs they describe: 3.2, 0.12. Quote numbers measured since, or leave them out.
 Then write the whole answer again.
 ```
+
+## a question a result puts to the user, not asked, and its answer said as fact
+
+Tools run in the reply: assess_stage {"stage":"punch"}.
+
+The answer:
+
+```text
+The punch meets its goal. The 14 sharp peaks at H = n ± 1/3 are satellites of a modulation with k = (1/3, 0, 0).
+```
+
+Sent back to the model:
+
+```text
+Before this answer goes to the user, fix it:
+- A result in this reply has a question for the user (ask_user) that the answer does not ask: "14 of the 17 sharp peaks off the lattice sit at H = n ± 1/3, where about 2 would by chance. Does the sample have a modulation with k = (1/3, 0, 0)?" Ask it, naming the fraction or the modulation, and leave the answer to the user.
+- “The 14 sharp peaks at H = n ± 1/3 are satellites of a modulation with k = (1/3, 0, 0).”: this says the sample has the modulation a result in this reply asks the user about (ask_user). Only the user can say so: ask instead, and declare nothing.
+Then write the whole answer again.
+```

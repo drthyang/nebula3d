@@ -147,6 +147,10 @@ grain_check: it reads every peak the search punched and says whether they are a 
 Bragg peaks displaced by a UB that is slightly off (symmetrised into copies around the nodes),
 or neither. The leftover counts (bragg_punch.leftover) are only what the punch missed on one
 cut, never what its search found; use grain_check before calling such peaks spurious or real.
+off_lattice_bunching, in a punch assessment or a run, says the sharp peaks the search punched off
+the lattice bunch at one commensurate fraction, as the satellites of a modulation nobody declared would,
+and ask_user is a question for the user: ask it, naming the fraction, and never answer it yourself, as fact
+or by declaring a modulation; whether the sample has one, and in which form, is the user's to say.
 Asked whether the UB is right, or why the Bragg peaks sit off their nodes, call ub_check: it fits
 the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
 keeps: say so, and that the orientation needs the unsymmetrised file. A relative offset along

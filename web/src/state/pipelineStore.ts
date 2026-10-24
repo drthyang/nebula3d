@@ -13,6 +13,7 @@ import { cancelPipeline, engine, PYODIDE_MODE } from "../api/pyodideEngine";
 import { queryClient } from "../api/queryClient";
 import type { JobEvent, StageParamsIn, TuningTrial } from "../api/types";
 import { useDatasetStore } from "./datasetStore";
+import { modulationRequest } from "./modulation";
 
 // Mirrors nebula3d.pipeline.STAGES (incl. the 6th back-FFT consistency check) so the
 // Execution stepper and log show every stage the backend streams progress for.
@@ -73,11 +74,17 @@ export interface PipelineConfig {
   punchSupercellL: string;
   // Integer-punch H guard (r.l.u.); blank = backend default (0.12), 0 = off.
   punchHGuard: string;
-  // The off-lattice search: its floor (× the diffuse scatter), and the H planes
-  // it leaves alone ("1/3, 2/3", "none"; blank = the backend default).
+  // The off-lattice search's floor (× the diffuse scatter).
   punchSearchFloor: string;
-  punchProtectH: string;
-  punchProtectHalfWidth: string;
+  // The sample's modulation, a fact about the sample, which the search leaves
+  // alone (state/modulation.ts): its k vectors ("1/3, 0, 0", several separated
+  // by ;, "none" declares none; blank = the backend's default declaration),
+  // order (blank = 1), form ("points", the blank default, or "planes") and
+  // half width (r.l.u.; blank = 0.08). Without k the other three are unused.
+  modulationK: string;
+  modulationOrder: string;
+  modulationForm: string;
+  modulationHalfWidth: string;
   punchSearchMaxWidth: string; // search: leave candidates broader than this × the Bragg width
   // Punch ellipsoid frame: "spherical" (rρ,rθ,rφ, default) | "q" (a*,b*,c*)
   punchFrame: string;
@@ -177,8 +184,10 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   punchSupercellL: "",
   punchHGuard: "",
   punchSearchFloor: "",
-  punchProtectH: "",
-  punchProtectHalfWidth: "",
+  modulationK: "",
+  modulationOrder: "",
+  modulationForm: "",
+  modulationHalfWidth: "",
   punchSearchMaxWidth: "",
   punchFrame: "spherical",
   punchRho: "",
@@ -374,9 +383,10 @@ export function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.punchSupercellL) params.punch_supercell_l = Number(s.punchSupercellL);
   if (s.punchHGuard) params.punch_h_guard = Number(s.punchHGuard);
   if (s.punchSearchFloor) params.punch_search_floor = Number(s.punchSearchFloor);
-  const protect = parseFractions(s.punchProtectH);
-  if (protect) params.punch_search_protect_h = protect;
-  if (s.punchProtectHalfWidth) params.punch_search_protect_half_width = Number(s.punchProtectHalfWidth);
+  // The sample's modulation, as the backend reads a declaration; a blank k
+  // leaves the run to the backend's default. Never the legacy H fractions.
+  const modulation = modulationRequest(s);
+  if (modulation !== undefined) params.modulation = modulation;
   if (s.punchSearchMaxWidth) params.punch_search_max_width_ratio = Number(s.punchSearchMaxWidth);
   if (s.punchFootprint) params.punch_footprint = s.punchFootprint;
   if (s.punchProfileNSigma) params.punch_profile_n_sigma = Number(s.punchProfileNSigma);
@@ -412,23 +422,6 @@ export function formToParams(s: PipelineConfig): StageParamsIn {
     if (s.pdfQMax) params.pdf_q_max = Number(s.pdfQMax);
   }
   return params;
-}
-
-// H fractions as typed: "1/3, 2/3" → [0.3333, 0.6667], "none" → [] (protect
-// nothing), blank → undefined (the backend default).  Each is taken mod 1.
-export function parseFractions(text: string): number[] | undefined {
-  const t = text.trim().toLowerCase();
-  if (!t) return undefined;
-  if (t === "none" || t === "off") return [];
-  const values = t
-    .split(/[\s,;]+/)
-    .filter(Boolean)
-    .map((part) => {
-      const [a, b] = part.split("/");
-      return b === undefined ? Number(a) : Number(a) / Number(b);
-    });
-  if (!values.every(Number.isFinite)) return undefined;
-  return values.map((v) => Math.round((((v % 1) + 1) % 1) * 1e4) / 1e4);
 }
 
 // Drive the pipeline locally via Pyodide (Worker).  Boot progress appears in

@@ -2,10 +2,13 @@
 // acts, and waits for the skill of each stage it changes (its facts' gate). A
 // fact about the sample changes only when the user's latest message names it
 // (tune/catalog.ts: namesSampleFact): a change to one it does not name is
-// refused, and the rest of the call runs.
+// refused, and the rest of the call runs. A fact may hold more than one of the
+// page's fields (the sample's modulation holds four): the model reads and
+// writes it as one setting (SampleParam).
 
 import { usePipelineStore, type PipelineConfig } from "../../../state/pipelineStore";
 import {
+  allowedValues,
   displayValue,
   isSampleFact,
   namesSampleFact,
@@ -14,26 +17,40 @@ import {
   toFormValue,
   TUNE_PARAMS,
   TUNE_STAGES,
-  type TuneParam,
+  type ParamValue,
+  type TuneStage,
 } from "../../tune/catalog";
 import { keysOf } from "../facts";
 import { checkIdle, unique } from "../shared/pipeline";
 import { ToolArgError, type ChatTool } from "../types";
 
-const SETTABLE = [...TUNE_PARAMS, ...SAMPLE_PARAMS];
-const findParam = (key: string): TuneParam | undefined => SETTABLE.find((p) => p.key === key);
+/** A setting update_settings changes: a method choice or threshold of the catalog, or a fact about the sample. */
+interface Settable {
+  key: string;
+  stage: TuneStage;
+  fields: readonly (keyof PipelineConfig)[];
+  read: (s: PipelineConfig) => ParamValue;
+  write: (value: unknown) => Partial<PipelineConfig>;
+  appliesWhen?: (s: PipelineConfig) => boolean;
+}
+
+const SETTABLE: Settable[] = [
+  ...TUNE_PARAMS.map(
+    (p): Settable => ({
+      key: p.key,
+      stage: p.stage,
+      fields: [p.key],
+      read: (s) => displayValue(p, s[p.key]),
+      write: (value) => ({ [p.key]: toFormValue(p.key, value, p.stage) }),
+      appliesWhen: p.appliesWhen,
+    }),
+  ),
+  ...SAMPLE_PARAMS,
+];
+const findSettable = (key: string): Settable | undefined => SETTABLE.find((p) => p.key === key);
 
 // The stage of each setting, for the skill gate (skills.ts).
-const SETTING_STAGE = new Map([...TUNE_PARAMS, ...SAMPLE_PARAMS].map((p) => [p.key as string, p.stage]));
-
-const allowedValues = (p: TuneParam): string =>
-  p.kind === "enum"
-    ? p.options!.map((o) => o.name).join("|")
-    : p.kind === "boolean"
-      ? "true|false"
-      : p.kind === "fractions"
-        ? 'H fractions like "1/3, 2/3", or none'
-        : `${p.kind} ${p.min}–${p.max}`;
+const SETTING_STAGE = new Map(SETTABLE.map((p) => [p.key, p.stage]));
 
 export const update_settings: ChatTool = {
   name: "update_settings",
@@ -60,7 +77,7 @@ export const update_settings: ChatTool = {
   description:
     "Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. " +
     `These method choices and thresholds can be changed: ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
-    `These facts about the sample only when the user asks for that change, never to improve a result: ${SAMPLE_PARAMS.map((p) => `${p.key} (${allowedValues(p)}; ${p.help})`).join(" ")} ` +
+    `These facts about the sample only when the user asks for that change, never to improve a result: ${SAMPLE_PARAMS.map((p) => `${p.key} (${p.allowed}; ${p.help})`).join(" ")} ` +
     "A change to one of them is refused unless the user's latest message names it. " +
     "The magnetic ion and |Q| band stay with the user. " +
     "Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings " +
@@ -80,7 +97,7 @@ export const update_settings: ChatTool = {
       throw new ToolArgError("changes must be an object of setting → value");
     }
     for (const key of Object.keys(changes)) {
-      if (!findParam(key)) throw new ToolArgError(`${key} cannot be changed; these can: ${SETTABLE.map((q) => q.key).join(", ")}`);
+      if (!findSettable(key)) throw new ToolArgError(`${key} cannot be changed; these can: ${SETTABLE.map((q) => q.key).join(", ")}`);
     }
     // A fact about the sample the user's latest message does not name is
     // refused, whatever its value; the other changes go ahead. A call whose
@@ -88,30 +105,36 @@ export const update_settings: ChatTool = {
     const refused = Object.keys(changes).filter((key) => isSampleFact(key) && !namesSampleFact(ctx.userMessage ?? "", key));
     const asked = Object.entries(changes).filter(([key]) => !refused.includes(key));
     if (!asked.length) throw new Error(refused.map(sampleFactRefusal).join(" "));
-    const patch: Record<string, string | boolean> = {};
+    // Each setting's fields as the change asks for them, checked.
+    const wanted = new Map<string, Partial<PipelineConfig>>();
     for (const [key, value] of asked) {
       try {
-        patch[key] = toFormValue(key, value, findParam(key)!.stage, { sample: true });
+        wanted.set(key, findSettable(key)!.write(value));
       } catch (e) {
         throw new ToolArgError((e as Error).message);
       }
     }
     const before = usePipelineStore.getState();
-    // A setting already at the value is no change: leave it out of the patch.
-    const unchanged = Object.keys(patch).filter((key) => before[key as keyof PipelineConfig] === patch[key]);
-    for (const key of unchanged) delete patch[key];
-    before.patch(patch as Partial<PipelineConfig>);
-    const after = usePipelineStore.getState();
-    const changed = Object.keys(patch).map((key) => {
-      const p = findParam(key)!;
-      return {
-        setting: key,
-        from: displayValue(p, before[p.key]),
-        to: displayValue(p, after[p.key]),
-        ...(p.appliesWhen && !p.appliesWhen(after) ? { note: "no effect with the current model" } : {}),
-      };
+    // A setting already at the value, every field of it, is no change: leave it out of the patch.
+    const unchanged = [...wanted.keys()].filter((key) => {
+      const fields = wanted.get(key)!;
+      return (Object.keys(fields) as (keyof PipelineConfig)[]).every((f) => before[f] === fields[f]);
     });
-    const rerunFrom = TUNE_STAGES.find((st) => changed.some((c) => findParam(c.setting)!.stage === st));
+    const patch = Object.assign({}, ...[...wanted].filter(([key]) => !unchanged.includes(key)).map(([, fields]) => fields)) as Partial<PipelineConfig>;
+    before.patch(patch);
+    const after = usePipelineStore.getState();
+    const changed = [...wanted.keys()]
+      .filter((key) => !unchanged.includes(key))
+      .map((key) => {
+        const p = findSettable(key)!;
+        return {
+          setting: key,
+          from: p.read(before),
+          to: p.read(after),
+          ...(p.appliesWhen && !p.appliesWhen(after) ? { note: "no effect with the current model" } : {}),
+        };
+      });
+    const rerunFrom = TUNE_STAGES.find((st) => changed.some((c) => findSettable(c.setting)!.stage === st));
     const done = changed.length
       ? changed.map((c) => `${c.setting} ${c.from} → ${c.to}`).join(", ")
       : `no change: ${unchanged.join(", ")} already set`;

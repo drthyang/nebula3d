@@ -5,13 +5,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset, FlattenSettings } from "../../api/types";
+import { usePipelineStore } from "../../state/pipelineStore";
 import { loadPipelineContext } from "../context/loadContext";
+import { UNRECORDED_PROTECTION_NOTE } from "../context/pipelineContext";
+import { offLatticeBunching } from "../metrics/bunching";
 import { FLATTEN_UNRECORDED_NOTE, pedestalLeft } from "../metrics/flatten";
 import { operationName } from "../metrics/symmetry";
 import { evaluateStage, headline, outOfBounds } from "../tune/evaluate";
 import { judge } from "../verdicts";
 import { cut, directGroup, HKL, orbit } from "./constructedDpdf";
-import { makeSlice } from "./helpers";
+import { BUNCHED_AT_THIRDS, labelsOn, makeSlice, onTheThirds, recordOf, THIRDS_AS_PLANES } from "./helpers";
 import { shellFloorsOf } from "./shellFloors";
 
 const api = vi.hoisted(() => ({
@@ -20,6 +23,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
@@ -56,6 +60,14 @@ beforeEach(() => {
   );
 });
 
+/** A punched cut's grid in the punch's tests below: 73 voxels over ±2.4 r.l.u. */
+const CUT_GRID = makeSlice(73, 73, () => 0, { half: 2.4 });
+/** The run's labels of the backend's default, the H planes 1/3 and 2/3 (± 0.08), on each cut: H is x on h0l, the cut itself on 0kl. */
+const protectThirds = () =>
+  api.fetchProtectedLabels.mockImplementation(async (_id: string, plane: string, value: number) =>
+    labelsOn(CUT_GRID, (x) => (onTheThirds(plane === "0kl" ? value : x) ? 1 : 0)),
+  );
+
 describe("evaluateStage", () => {
   it("measures the punch on the planes inside the grid", async () => {
     const e = await evaluateStage("punch", dataset);
@@ -84,6 +96,8 @@ describe("evaluateStage", () => {
       api.fetchSlice.mockImplementation(async (id: string, plane: "h0l" | "0kl") =>
         makeSlice(73, 73, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + (id.endsWith("braggpunched") ? peaks[plane].reduce((s, f) => s + f(ix, iy), 0) : 0), { half: 2.4 }),
       );
+    // What the run's search left alone, from its record: the default's H planes, on each cut's grid.
+    protectThirds();
     punched({ h0l: satellites, "0kl": [] });
     const e = await evaluateStage("punch", dataset);
     expect([e.leftover_at_nodes, e.leftover_off_lattice_sharp, e.leftover_on_protected_planes, e.leftover_on_protected_planes_sharp]).toEqual([0, 12, 12, 12]);
@@ -96,6 +110,57 @@ describe("evaluateStage", () => {
     const left = await evaluateStage("punch", dataset);
     expect([left.leftover_off_lattice_sharp, left.leftover_on_protected_planes_sharp]).toEqual([13, 12]);
     expect(judge("punch", left)).toMatchObject({ kind: "attention", reasons: ["sharp off-lattice"] });
+  });
+
+  // The same twelve satellites on h0l, and the run's labels of what its search left alone.
+  const satellitesOnTheThirds = () => {
+    const noise = (ix: number, iy: number) => ((ix * 7919 + iy * 104729) % 1000) / 500 - 1;
+    const bump = (cx: number, cy: number) => (ix: number, iy: number) => 2 * Math.exp(-((ix - cx) ** 2 + (iy - cy) ** 2) / 2);
+    const satellites = [...[11, 26, 41, 56].flatMap((ix) => [bump(ix, 21), bump(ix, 36)]), ...[16, 31, 46, 61].map((ix) => bump(ix, 51))];
+    api.fetchSlice.mockImplementation(async (id: string, plane: string) =>
+      makeSlice(73, 73, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + (id.endsWith("braggpunched") && plane === "h0l" ? satellites.reduce((s, f) => s + f(ix, iy), 0) : 0), { half: 2.4 }),
+    );
+  };
+
+  it("marks what the run's search left alone, from its record, never from the form (plan 4.15)", async () => {
+    satellitesOnTheThirds();
+    // The form declares other planes, or none: the run's labels mark the thirds all the same.
+    protectThirds();
+    for (const form of [{ modulationK: "1/2, 0, 0", modulationForm: "planes" }, { modulationK: "none", modulationForm: "" }]) {
+      usePipelineStore.setState(form);
+      const e = await evaluateStage("punch", dataset);
+      expect([e.leftover_off_lattice_sharp, e.leftover_on_protected_planes_sharp], JSON.stringify(form)).toEqual([12, 12]);
+    }
+    expect(api.fetchProtectedLabels).toHaveBeenCalledWith("demo", "h0l", 0);
+    // A run whose search left nothing alone marks none, whatever the form declares: every sharp one counts.
+    usePipelineStore.setState({ modulationK: "1/3, 0, 0", modulationForm: "planes" });
+    api.fetchProtectedLabels.mockImplementation(async () => labelsOn(CUT_GRID, () => 0, { declared: null }));
+    const none = await evaluateStage("punch", dataset);
+    expect([none.leftover_off_lattice_sharp, none.leftover_on_protected_planes_sharp]).toEqual([12, 0]);
+    expect(judge("punch", none)).toMatchObject({ kind: "attention", reasons: ["sharp off-lattice"] });
+    usePipelineStore.setState({ modulationK: "", modulationForm: "" });
+  });
+
+  it("marks none on a run whose record predates what its search left alone, and the context says why", async () => {
+    satellitesOnTheThirds();
+    api.fetchProtectedLabels.mockImplementation(async () => labelsOn(CUT_GRID, () => 1, { recorded: false }));
+    const e = await evaluateStage("punch", dataset);
+    expect([e.leftover_off_lattice_sharp, e.leftover_on_protected_planes, e.leftover_on_protected_planes_sharp]).toEqual([12, 0, 0]);
+    const { context } = await loadPipelineContext(dataset, { recip: { plane: "h0l", value: 0 }, dpdf: null, records: false });
+    expect(context.bragg_punch?.leftover).not.toHaveProperty("n_on_protected");
+    expect(context.notes).toContain(`bragg punch: ${UNRECORDED_PROTECTION_NOTE}`);
+  });
+
+  it("puts the run's sharp peaks off the lattice bunched at one fraction to the user, beside the verdict it leaves as it was (plan 4.15)", async () => {
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 12, modulation: recordOf({ declared: THIRDS_AS_PLANES, bunching: BUNCHED_AT_THIRDS }) });
+    const e = await evaluateStage("punch", dataset);
+    expect(e.off_lattice_bunching).toEqual(offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })));
+    expect(judge("punch", e)).toEqual(judge("punch", { ...e, off_lattice_bunching: undefined }));
+    // No bunching in the record, or no record of it: no question.
+    for (const modulation of [recordOf({ declared: THIRDS_AS_PLANES }), null, undefined]) {
+      api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 12, modulation });
+      expect(await evaluateStage("punch", dataset)).not.toHaveProperty("off_lattice_bunching");
+    }
   });
 
   it("passes on the raw volume's note when its σ is √|I| of normalized data", async () => {

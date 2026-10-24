@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../api/types";
 import { usePipelineStore, type RunOptions } from "../../state/pipelineStore";
 import { DEFAULT_SETTINGS } from "../settings";
-import { currentStageSettings, proposalToPatch, ProposalError, toFormValue } from "../tune/catalog";
+import { currentStageSettings, proposalToPatch, ProposalError, sampleParam, toFormValue } from "../tune/catalog";
 import { parseJsonReply, STAGE_GOALS, STAGE_GOALS_WITHOUT_SKILLS } from "../tune/prompts";
 import { startTuning, useTuneStore } from "../tune/tuner";
 
@@ -43,8 +43,10 @@ describe("catalog", () => {
     // Physical facts about the sample are not tunable.
     expect(() => proposalToPatch("flatten", { flattenIon: "Mn2+" })).toThrow(/not a flatten setting/);
     // Facts about the sample are never tuned, though the user may set them.
-    expect(() => proposalToPatch("punch", { punchProtectH: "none" })).toThrow(/not a punch setting/);
-    expect(toFormValue("punchProtectH", "none", "punch", { sample: true })).toBe("none");
+    expect(() => proposalToPatch("punch", { modulation: "none" })).toThrow(/not a punch setting/);
+    expect(() => toFormValue("modulation", "none", "punch")).toThrow(/not a punch setting/);
+    expect(sampleParam("modulation")!.write("none")).toEqual({ modulationK: "none", modulationOrder: "", modulationForm: "", modulationHalfWidth: "" });
+    expect(() => sampleParam("modulation")!.write({ k: "thirds" })).toThrow(ProposalError);
     expect(() => proposalToPatch("punch", { punchSupercellH: 3 })).toThrow(ProposalError);
   });
 

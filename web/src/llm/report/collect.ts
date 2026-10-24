@@ -14,7 +14,7 @@ import { datasetLabel, dpdfVolumeId, hklVolumeId, safe } from "../context/loadCo
 import { isLocalUrl, providerForUrl } from "../provider/presets";
 import type { LlmSettings } from "../settings";
 import { CHAT_TOOLS, toolsWhere, type ToolContext } from "../tools";
-import { currentStageSettings, displayValue, SAMPLE_PARAMS, TUNE_STAGES, type ParamValue } from "../tune/catalog";
+import { currentStageSettings, SAMPLE_PARAMS, TUNE_STAGES, type ParamValue } from "../tune/catalog";
 import { headline } from "../tune/evaluate";
 import { useTuneStore } from "../tune/tuner";
 import type { Outcome } from "../verdicts";
@@ -169,7 +169,7 @@ export async function collectReport({ dataset, datasets, turn, question, llm }: 
   const [measured, figs] = await Promise.all([measure(ctx), figures(dataset)]);
   const s = usePipelineStore.getState();
   const settings = TUNE_STAGES.map((stage) => ({ stage, values: currentStageSettings(stage, s) }));
-  const sampleFacts: Record<string, ParamValue> = Object.fromEntries(SAMPLE_PARAMS.map((p) => [p.key, displayValue(p, s[p.key as keyof typeof s])]));
+  const sampleFacts: Record<string, ParamValue> = Object.fromEntries(SAMPLE_PARAMS.map((p) => [p.key, p.read(s)]));
   // The facts outside the tuning catalog: the ΔPDF's |Q| band and the flatten's magnetic ion.
   sampleFacts["|Q| band"] = s.pdfQMax ? `${s.pdfQMin || "0"} … ${s.pdfQMax} Å⁻¹` : "full (none set)";
   sampleFacts.flattenIon = s.flattenIon || "none";

@@ -231,6 +231,9 @@ const dpdfSection = obj({
   radial_trend: tuple(maybeNum, maybeNum, maybeNum),
 });
 
+/** metrics/bunching.ts OffLatticeBunching: the run's sharp peaks off the lattice bunched at one fraction, and the question for the user. */
+const offLatticeBunching = obj({ facts: str, ask_user: str });
+
 // ---------------------------------------------------------------- assess_stage's stages
 
 // Every stage's result opens with its verdict, by the stage's rule; one stage
@@ -282,6 +285,8 @@ const punchEvaluation = obj({
   noisy_spikes_skipped: num,
   mean_punched_fraction: maybeNum,
   fitted_peaks: maybeNum,
+  // Only when the run's punch record says its sharp peaks off the lattice bunch (plan 4.15).
+  off_lattice_bunching: optional(offLatticeBunching),
   per_plane: optional(
     byRecipPlane(
       obj({
@@ -331,6 +336,8 @@ const pdfEvaluation = obj({
   per_plane: optional(
     byDpdfPlane(nullable(obj({ feature_snr: maybeNum, strong_feature_fraction: maybeNum, positive_fraction: maybeNum, anisotropy_ratio: maybeNum }))),
   ),
+  // Which σ the sections' feature_snr are in (metrics/dpdf.ts SIGMA_OF): with the per-plane detail.
+  sigma_of: optional(str),
 });
 
 // ---------------------------------------------------------------- the rest
@@ -387,7 +394,7 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     notes: arr(str),
   }),
 
-  measure_dpdf_cut: obj({ cut: str, delta_pdf: dpdfSection }),
+  measure_dpdf_cut: obj({ cut: str, delta_pdf: dpdfSection, sigma_of: str }),
 
   assess_stage: obj({
     rings: optional(stage(ringsEvaluation)),
@@ -457,6 +464,7 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
       applied: obj({ ...contrastLimit, from: str }),
       note: optional(str),
       robust_sigma: num,
+      sigma_of: str,
       strongest_feature_sigma: maybeNum,
       not_applied: obj({
         "99.5th percentile": obj({ ...contrastLimit, effect: str }),
@@ -585,6 +593,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   // A dataset the cut could not be measured on is its label and the error (findings).
   compare_datasets: obj({
     cut: str,
+    // kind=dpdf: which σ each row's feature_snr is in.
+    sigma_of: optional(str),
     rows: arr(
       union(
         obj({
@@ -640,6 +650,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     stages: rec(oneOf("computed", "reused")),
     outputs: arr(str),
     log_tail: arr(str),
+    // Only when the punch's record says its sharp peaks off the lattice bunch (plan 4.15).
+    off_lattice_bunching: optional(offLatticeBunching),
   }),
 
   tune_pipeline: obj({

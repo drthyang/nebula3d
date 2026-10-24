@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
 
-import { browseDataRoot, fetchMeta, fetchSlice, fetchVolumeCoverage, setDataRoot } from "../api/client";
+import { browseDataRoot, checkModulation, fetchMeta, fetchSlice, fetchVolumeCoverage, setDataRoot } from "../api/client";
 import {
   bootPercent,
   engine,
@@ -21,6 +21,7 @@ import { boxQMax, metricFromUb, qContour, qSection, reciprocalMetric, type Ellip
 import { SliceCanvas } from "../components/SliceCanvas";
 import { Field, HelpTip, RangeSlider, Slider, Switch } from "../components/ui";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
+import { declaresNone, modulationRequest } from "../state/modulation";
 import {
   STAGE_NO,
   usePipelineStore,
@@ -1187,8 +1188,10 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       punchSupercellL: st.punchSupercellL,
       punchHGuard: st.punchHGuard,
       punchSearchFloor: st.punchSearchFloor,
-      punchProtectH: st.punchProtectH,
-      punchProtectHalfWidth: st.punchProtectHalfWidth,
+      modulationK: st.modulationK,
+      modulationOrder: st.modulationOrder,
+      modulationForm: st.modulationForm,
+      modulationHalfWidth: st.modulationHalfWidth,
       punchSearchMaxWidth: st.punchSearchMaxWidth,
       punchFrame: st.punchFrame,
       punchRho: st.punchRho,
@@ -1283,6 +1286,24 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     staleTime: Infinity,
   });
   const rawEdges = rawCoverageQ.data;
+  // What the sample's modulation as the form declares it protects, from the
+  // backend (POST /api/modulation/check): on the punch cell, under the
+  // symmetry the volume declares. In the browser build only once the engine
+  // is up: typing must not boot it.
+  const modulation = modulationRequest(s);
+  const modulationSymmetry = punchMetaQ.data?.symmetry_ops ?? null;
+  const modulationCheckQ = useQuery({
+    queryKey: ["modulation-check", JSON.stringify(modulation ?? null), punchGeom.supercell.join(","), JSON.stringify(modulationSymmetry)],
+    queryFn: () => checkModulation({ modulation, cell: punchGeom.supercell, symmetry_ops: modulationSymmetry }),
+    enabled: !PYODIDE_MODE || bootStatus.ready,
+    staleTime: Infinity,
+  });
+  const modulationChecked = modulationCheckQ.data;
+  const modulationNote = !modulationChecked
+    ? "The sample's modulation, a fact about the sample: the off-lattice search leaves alone the satellites G ± m·k it implies, or the planes through them."
+    : modulationChecked.ok
+      ? `${modulationChecked.default ? "Blank, the backend's default: " : declaresNone(s.modulationK) ? "" : "Protects "}${modulationChecked.description}.`
+      : `Not a declaration the run can read: ${modulationChecked.error}.`;
   const punchCuts: Record<HklAxis, number> = {
     H: s.punchCutH,
     K: s.punchCutK,
@@ -1921,13 +1942,39 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchSearchFloor: e.target.value })}
                     />
                   </Field>
-                  <Field label="Search skips H">
+                  <Field label="Modulation k (r.l.u.)">
                     <input
                       type="text"
-                      placeholder="1/3, 2/3"
-                      value={s.punchProtectH}
-                      title="Fractional H planes the off-lattice search leaves alone (real satellites, e.g. 1/3, 2/3 for q = (1/3, 0, 0)). 'none' lets the search punch everywhere; blank keeps 1/3, 2/3."
-                      onChange={(e) => patch({ punchProtectH: e.target.value })}
+                      placeholder="default"
+                      value={s.modulationK}
+                      title="The sample's modulation, a fact about the sample: its wave vector k in r.l.u., e.g. 1/3, 0, 0 (several separated by ;). The off-lattice search leaves its satellites G ± m·k alone, at every symmetry-equivalent position. 'none' declares none; blank leaves the backend's default."
+                      onChange={(e) => patch({ modulationK: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Form">
+                    <select
+                      value={s.modulationForm === "planes" ? "planes" : ""}
+                      disabled={!s.modulationK.trim() || declaresNone(s.modulationK)}
+                      title="points: each satellite G ± m·k, in a box of ± the width on every axis. planes: the whole planes through the satellites. Yours to declare with k."
+                      onChange={(e) => patch({ modulationForm: e.target.value })}
+                    >
+                      <option value="">points</option>
+                      <option value="planes">planes</option>
+                    </select>
+                  </Field>
+                </div>
+                <div className="config-grid-3">
+                  <Field label="Order m">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      max="6"
+                      placeholder="1"
+                      value={s.modulationOrder}
+                      disabled={!s.modulationK.trim() || declaresNone(s.modulationK)}
+                      title="The highest harmonic m of the satellites G ± m·k, 1 to 6."
+                      onChange={(e) => patch({ modulationOrder: e.target.value })}
                     />
                   </Field>
                   <Field label="± width (r.l.u.)">
@@ -1936,12 +1983,14 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       step="0.01"
                       min="0"
                       placeholder="0.08"
-                      value={s.punchProtectHalfWidth}
-                      title="Half width of each skipped H plane."
-                      onChange={(e) => patch({ punchProtectHalfWidth: e.target.value })}
+                      value={s.modulationHalfWidth}
+                      disabled={!s.modulationK.trim() || declaresNone(s.modulationK)}
+                      title="How far from each satellite, or each plane, the search leaves alone (r.l.u.)."
+                      onChange={(e) => patch({ modulationHalfWidth: e.target.value })}
                     />
                   </Field>
                 </div>
+                <p className="config-note">{modulationNote}</p>
                 <div className="config-grid-3">
                   <Field label="Search width ×Bragg">
                     <input

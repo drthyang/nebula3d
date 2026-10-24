@@ -29,6 +29,7 @@ import type {
   Dataset,
   DeltaPdfMeta,
   DpdfFeatures,
+  ModulationCheck,
   RingDiagnostics,
   RingIsotropy,
   ShellFloors,
@@ -476,6 +477,14 @@ export const engine = {
   },
   ringDiagnostics(datasetId: string): Promise<RingDiagnostics> {
     return jsonCall<RingDiagnostics>("ring_diagnostics_json", [datasetId]);
+  },
+  // The sample's modulation: what a declaration means before a run, and the
+  // labels of what a run's search left alone, from its punch record.
+  modulationCheck(bodyJson: string): Promise<ModulationCheck> {
+    return jsonCall<ModulationCheck>("modulation_check_json", [bodyJson]);
+  },
+  protectedLabels(datasetId: string, plane: string, value: number, interp: boolean): Promise<Slice> {
+    return sliceCall("modulation_labels_slice", [datasetId, plane, value, interp]);
   },
   // Compute the band-limited ΔPDF .h5 in the Worker and return its bytes +
   // filename, decoded from the same [uint32 hdr_len][JSON hdr][payload]

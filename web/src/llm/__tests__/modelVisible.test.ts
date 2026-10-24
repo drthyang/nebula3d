@@ -54,6 +54,8 @@ const VERDICT_LABEL = WORDS.label;
 // What the symmetry's rule says of a volume that declares no symmetry.
 const NOT_DECLARED = (asymmetry: number): string => judge("symmetry", { ops: [{ op: "six-fold (60°)", rms_difference: asymmetry }], declared: null }).words ?? "";
 import { writtenInferences } from "../inference";
+import { BUNCHING_REMEDY, offLatticeBunching } from "../metrics/bunching";
+import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 import { namedInOwnWords, quotations } from "./methodText";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
 
@@ -65,6 +67,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
@@ -397,6 +400,16 @@ const RUN_EVENTS: JobEvent[] = [
   { type: "progress", stage: "pdf_check", status: "done", fraction: 1, message: "back-FFT r = 0.99714" },
 ];
 
+/** The next punch record read says the run's sharp peaks off the lattice bunched at H ≡ ±1/3 (mod 1) (plan 4.15). */
+const bunchedOnce = (): void => {
+  const real = api.fetchBraggProfile.getMockImplementation()!;
+  api.fetchBraggProfile.mockImplementationOnce(async (id: string) => {
+    const profile = await real(id);
+    return { ...profile, modulation: { ...profile.modulation, bunching: BUNCHED_AT_THIRDS } };
+  });
+};
+const BUNCHED_NOTE = "a run whose punch record says its sharp peaks off the lattice bunch at H ≡ ±1/3 (mod 1)";
+
 const SAMPLES: Sample[] = [
   { name: "read_skill", args: { name: "bragg-node-audit" } },
   { name: "describe_dataset", args: {} },
@@ -405,6 +418,7 @@ const SAMPLES: Sample[] = [
   { name: "measure_dpdf_cut", args: { plane: "xz", value: 0 } },
   { name: "assess_stage", args: {} },
   { name: "assess_stage", args: { stage: "flatten" } },
+  { name: "assess_stage", args: { stage: "punch" }, note: BUNCHED_NOTE, before: bunchedOnce },
   { name: "texture_check", args: {} },
   { name: "qmax_coverage", args: {} },
   { name: "symmetry_check", args: {} },
@@ -579,9 +593,16 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
     expect(differ.map((d) => d.split("\n")[0])).toEqual([
       "## assess_stage {}",
       '## assess_stage {"stage":"flatten"}',
+      `## assess_stage {"stage":"punch"} (${BUNCHED_NOTE})`,
       "## dpdf_peaks {}",
       "## grain_check {}",
     ]);
+    // The question for the user reads the same in both arms; its facts lose their remedy in arm C.
+    const bunched = SAMPLES.find((s) => s.note === BUNCHED_NOTE)!;
+    const [bb, cc] = [JSON.parse((await runSample(bunched)).text), JSON.parse((await runC(bunched)).text)];
+    expect(cc.punch.off_lattice_bunching.ask_user).toBe(bb.punch.off_lattice_bunching.ask_user);
+    expect(bb.punch.off_lattice_bunching.facts).toContain(BUNCHING_REMEDY.text);
+    expect(cc.punch.off_lattice_bunching.facts).toBe(bb.punch.off_lattice_bunching.facts.replace(BUNCHING_REMEDY.text, ""));
 
     // The stages' goals: arm C's, each its definitions only.
     const stages = Object.keys(STAGE_GOALS) as (keyof typeof STAGE_GOALS)[];
@@ -639,7 +660,8 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
         ].join("\n\n"),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/4-tool-results-arm-c.md`);
-  });
+    // Runs every sampled tool in both arms: about 1 s locally, past 5 s on a loaded CI runner.
+  }, 20_000);
 
   it("each sampled result keeps its tool's contract (tools/contracts.ts), in arm B and in arm C", async () => {
     const toolsC = toolsWithSkills(CHAT_TOOLS, false);
@@ -726,6 +748,19 @@ const RINGS = step("assess_stage", { stage: "rings" }, {
   },
 });
 const RERUN = step("run_pipeline", { from_stage: "rings" }, { ended: "done", seconds: 42.3, stages: { rings: "computed", punch: "computed" } });
+// A punch that meets its goal, whose run's sharp peaks off the lattice bunched at H ≡ ±1/3 (mod 1): a question for the user.
+const BUNCHED = step("assess_stage", { stage: "punch" }, {
+  punch: {
+    verdict: VERDICT_LABEL.pass,
+    criterion: CRITERIA.punch,
+    headline: "0 missed at nodes · 0 sharp off-lattice · 2 broad maxima kept · punched 0.031",
+    leftover_at_nodes: 0,
+    leftover_off_lattice_sharp: 0,
+    leftover_off_lattice_broad: 2,
+    mean_punched_fraction: 0.031,
+    off_lattice_bunching: offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })),
+  },
+});
 const COVERED = step("qmax_coverage", {}, { verdict: "clean: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space", window_weight_on_unmeasured: 2.4e-4 });
 
 const REPLIES: { what: string; reply: string; steps: AgentStep[]; earlier?: AgentStep[] }[] = [
@@ -764,6 +799,11 @@ const REPLIES: { what: string; reply: string; steps: AgentStep[]; earlier?: Agen
     reply: "The worst ring sat at 3.2 Å⁻¹, at 0.12 of the diffuse.",
     steps: [RERUN],
     earlier: [RINGS],
+  },
+  {
+    what: "a question a result puts to the user, not asked, and its answer said as fact",
+    reply: "The punch meets its goal. The 14 sharp peaks at H = n ± 1/3 are satellites of a modulation with k = (1/3, 0, 0).",
+    steps: [BUNCHED],
   },
 ];
 
@@ -865,6 +905,8 @@ describe("5. the text sent back to the model", () => {
         [issues.contradicted.length > 0, /this contradicts the verdict a check computed/],
         [issues.untraced.length > 0, /These numbers appear in no tool result/],
         [issues.staleNumbers.length > 0, /These numbers were measured before the last run recomputed the outputs they describe/],
+        [issues.unasked.length > 0, /has a question for the user that the answer does not ask/],
+        [issues.assumed.length > 0, /as fact what a result in this reply asks the user/],
       ];
       for (const [found, line] of kinds) expect(line.test(sent), `${what}: ${line}`).toBe(found);
     }
