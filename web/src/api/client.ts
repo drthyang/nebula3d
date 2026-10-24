@@ -10,7 +10,10 @@ import type {
   DeltaPdfMeta,
   DpdfFeatures,
   JobOut,
+  ModulationCheck,
+  ModulationCheckIn,
   PipelineRunRequest,
+  ProtectedLabels,
   RegridResult,
   RingDiagnostics,
   RingIsotropy,
@@ -279,6 +282,29 @@ export function fetchConsistencyCheck(datasetId: string): Promise<ConsistencyChe
 export function fetchBraggProfile(datasetId: string): Promise<BraggProfile> {
   if (PYODIDE_MODE) return engine.braggProfile(datasetId);
   return getJSON<BraggProfile>(`/api/bragg/${encodeURIComponent(datasetId)}/profile`);
+}
+
+/**
+ * What a declared modulation means before a run (POST /api/modulation/check):
+ * its description and the positions it protects on the cell and under the
+ * symmetry given, or what is wrong with it (ok false). Without a
+ * `modulation`, the backend's default declaration.
+ */
+export function checkModulation(body: ModulationCheckIn): Promise<ModulationCheck> {
+  if (PYODIDE_MODE) return engine.modulationCheck(JSON.stringify(body));
+  return postJSON<ModulationCheck>("/api/modulation/check", body);
+}
+
+/**
+ * Which protected position each voxel of a slice of the dataset's punched
+ * stage lies in (GET /api/modulation/{id}/labels), on that stage's grid: what
+ * the run's search left alone, from its punch record, never from the form.
+ * The header's `recorded` is false for a record from before the punch kept it.
+ */
+export async function fetchProtectedLabels(datasetId: string, plane: string, value: number, interp = false): Promise<ProtectedLabels> {
+  if (PYODIDE_MODE) return (await engine.protectedLabels(datasetId, plane, value, interp)) as ProtectedLabels;
+  const params = new URLSearchParams({ plane, value: String(value), interp: String(interp) });
+  return (await fetchEnvelope(`/api/modulation/${encodeURIComponent(datasetId)}/labels?${params.toString()}`)) as ProtectedLabels;
 }
 
 export function fetchRingDiagnostics(datasetId: string): Promise<RingDiagnostics> {

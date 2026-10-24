@@ -6,7 +6,8 @@
 // entry says what the model may set it to; whatever the model proposes is
 // checked against this before anything runs.
 
-import { parseFractions, type PipelineConfig } from "../../state/pipelineStore";
+import { DeclarationError, MODULATION_FIELDS, modulationFieldsOf, modulationText } from "../../state/modulation";
+import type { PipelineConfig } from "../../state/pipelineStore";
 import { evidence, remedy, written, type Tagged, type Value } from "../inference";
 
 /**
@@ -26,20 +27,30 @@ export type TuneStage = (typeof TUNE_STAGES)[number];
 // that message names it. Each list is conservative: a false refusal costs the
 // user one question, a false accept defeats the rule. The words name the
 // setting, not the physics it is about. What every audit talks about names
-// nothing: "satellites", "modulation" and "superlattice" are what the data
-// show (the punch review's own instruction says "satellites"), every cut is a
-// "plane", every lattice has a "cell". A question that names a fact names it
-// all the same: the gate reads names, not intent. Every fact is named by its
-// key too (punchSupercellH).
+// nothing: "satellites" and "superlattice" are what the data show (the punch
+// review's own instruction says "satellites"), every cut is a "plane", every
+// lattice has a "cell". A question that names a fact names it all the same:
+// the gate reads names, not intent. Every fact is named by its key too
+// (punchSupercellH), so "modulation", the key of the sample's modulation,
+// names it wherever it stands.
+//
+// The modulation's words are provisional, the user's to confirm (plan 4.15,
+// P2): its key and its forms (MODULATION), "wave vector" and "propagation
+// vector", a written k ("k = (1/3, 0, 0)"), and the words that named the
+// protected H planes it replaced (PROTECT with PLANE, H_FRACTIONS, SKIPS_H).
 
-/** The protected planes: "protect…" or "unprotect…", with "plane(s)" in the same message. */
+/** The sample's modulation by its own word: "modulation(s)", "modulated". */
+const MODULATION = /\bmodulat(?:ion|ions|ed)\b/i;
+/** Its wave vector by name: "wave vector", "wavevector", "propagation vector". */
+const WAVE_VECTOR = /\b(?:wave[- ]?|propagation[- ])vectors?\b/i;
+/** A k written out: "k = (1/3, 0, 0)", "k=[0.2, 0, 1/2]". */
+const WRITTEN_K = /\bk\s*=\s*[([⟨]/i;
+/** What the search leaves alone, in the words of the protected planes the modulation replaced: "protect…" or "unprotect…" with "plane(s)" in the same message. */
 const PROTECT = /\b(?:un)?protect/i;
 const PLANE = /\bplanes?\b/i;
-/** The protected planes in their help's words ("H fractions"), and the Configure page's ("Search skips H", "skipped H plane"). */
+/** The protected planes in their old help's words ("H fractions"), and the old Configure page's ("Search skips H", "skipped H plane"). */
 const H_FRACTIONS = /\bH[- ]fractions?\b/i;
 const SKIPS_H = /\bskip(?:s|ped|ping)?\s+(?:the\s+)?H\b|\bskipped\s+(?:H\s+)?planes?\b/i;
-/** A width, beside the words for the planes: their half width. "±" is none: "H = n ± 1/3" is where the planes are. */
-const WIDTH = /\bwid(?:e|er|en|ened|ening|th|ths)\b|\bhalf-?width\b|\bnarrow\w*/i;
 /** The punch cell, all three axes: a supercell, the punch's (indexing) cell, a doubled or tripled cell, an n×n×n cell. */
 const PUNCH_CELL: readonly RegExp[] = [
   /\bsuper[- ]?cells?\b/i,
@@ -49,72 +60,83 @@ const PUNCH_CELL: readonly RegExp[] = [
   /\b\d\s*[×x]\s*\d\s*[×x]\s*\d\s+(?:unit\s+)?cells?\b/i,
 ];
 
-/** A fact about the sample: a setting only the user sets, with the words that name it in the user's message. */
-export interface SampleParam extends TuneParam {
+/**
+ * A fact about the sample: a setting only the user sets, by name. The model
+ * reads it as one value (`read`) and asks for one (`write`, checked), whatever
+ * Configure page fields hold it (`fields`): the sample's modulation is four.
+ */
+export interface SampleParam {
+  key: string; // as the model names it
+  stage: TuneStage;
+  help: string;
+  allowed: string; // what it takes, as update_settings' description says it
+  fields: readonly Key[]; // the Configure page's fields it reads and writes
   // What names it besides its key: any one of these, where an array names it
   // only in a message that holds every one of its words.
   names: readonly (RegExp | readonly RegExp[])[];
+  read: (s: PipelineConfig) => ParamValue; // as the model sees it
+  write: (value: unknown) => Partial<PipelineConfig>; // the change asked for, checked (ProposalError)
 }
 
+/** A fact about the sample held in one field of the page, checked as a setting of the catalog is. */
+function oneField(p: TuneParam, names: SampleParam["names"]): SampleParam {
+  return {
+    key: p.key,
+    stage: p.stage,
+    help: p.help,
+    allowed: allowedValues(p),
+    fields: [p.key],
+    names,
+    read: (s) => displayValue(p, s[p.key]),
+    write: (value) => ({ [p.key]: formValue(p, value) }),
+  };
+}
+
+const cellAxis = (axis: "H" | "K" | "L"): SampleParam =>
+  oneField(
+    {
+      key: `punchSupercell${axis}`,
+      stage: "punch",
+      kind: "integer",
+      min: 1,
+      max: 6,
+      defaultValue: 1,
+      help: `The punch's indexing cell along ${axis}: the Bragg nodes are the multiples of this ${axis} (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.`,
+    },
+    PUNCH_CELL,
+  );
+
+/**
+ * The sample's modulation (state/modulation.ts): one setting to the model, the
+ * four fields of the Configure page. A run's marks of what its search left
+ * alone come from its record, never from these (context/loadContext.ts).
+ */
+const MODULATION_PARAM: SampleParam = {
+  key: "modulation",
+  stage: "punch",
+  help: 'The sample\'s modulation: the off-lattice search leaves its satellites G ± m·k alone (form points, the default) or the planes through them (form planes), the form the user\'s to declare; k in r.l.u., several separated by ";", order m 1–6 (default 1), half_width in r.l.u. (default 0.08); "none" declares none, "default" leaves the backend\'s own.',
+  allowed: '{"k": "1/3, 0, 0", "order": 1, "form": "points|planes", "half_width": 0.08}, "none" or "default"',
+  fields: MODULATION_FIELDS,
+  names: [MODULATION, WAVE_VECTOR, WRITTEN_K, [PROTECT, PLANE], H_FRACTIONS, SKIPS_H],
+  read: (s) => modulationText(s),
+  write: (value) => {
+    try {
+      return modulationFieldsOf(value);
+    } catch (e) {
+      if (e instanceof DeclarationError) throw new ProposalError(e.message);
+      throw e;
+    }
+  },
+};
+
 // Facts about the sample that the user may ask the assistant to set, by name.
-// Never tuned: whether the H = n ± 1/3 planes hold real satellites is physics,
-// not a threshold to trade against a metric. update_settings changes one only
-// when the user's latest message names it (names, namesSampleFact).
-export const SAMPLE_PARAMS: SampleParam[] = [
-  {
-    key: "punchProtectH",
-    stage: "punch",
-    kind: "fractions",
-    defaultValue: "1/3, 2/3",
-    help: "H fractions the off-lattice search leaves alone (its protected planes, e.g. real satellites at H = n ± 1/3); none protects nothing.",
-    names: [[PROTECT, PLANE], H_FRACTIONS, SKIPS_H],
-  },
-  {
-    key: "punchProtectHalfWidth",
-    stage: "punch",
-    kind: "number",
-    min: 0,
-    max: 0.25,
-    defaultValue: 0.08,
-    help: "Half width (r.l.u.) of each protected H plane.",
-    // Not the planes alone: "protect the 1/2 planes" names which, not how wide.
-    names: [
-      [PROTECT, PLANE, WIDTH],
-      [H_FRACTIONS, WIDTH],
-      [SKIPS_H, WIDTH],
-    ],
-  },
-  {
-    key: "punchSupercellH",
-    stage: "punch",
-    kind: "integer",
-    min: 1,
-    max: 6,
-    defaultValue: 1,
-    help: "The punch's indexing cell along H: the Bragg nodes are the multiples of this H (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.",
-    names: PUNCH_CELL,
-  },
-  {
-    key: "punchSupercellK",
-    stage: "punch",
-    kind: "integer",
-    min: 1,
-    max: 6,
-    defaultValue: 1,
-    help: "The punch's indexing cell along K: the Bragg nodes are the multiples of this K (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.",
-    names: PUNCH_CELL,
-  },
-  {
-    key: "punchSupercellL",
-    stage: "punch",
-    kind: "integer",
-    min: 1,
-    max: 6,
-    defaultValue: 1,
-    help: "The punch's indexing cell along L: the Bragg nodes are the multiples of this L (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.",
-    names: PUNCH_CELL,
-  },
-];
+// Never tuned: whether the sample has a modulation is physics, not a threshold
+// to trade against a metric. update_settings changes one only when the
+// user's latest message names it (names, namesSampleFact).
+export const SAMPLE_PARAMS: SampleParam[] = [MODULATION_PARAM, cellAxis("H"), cellAxis("K"), cellAxis("L")];
+
+/** A fact about the sample by the name the model uses, or undefined. */
+export const sampleParam = (key: string): SampleParam | undefined => SAMPLE_PARAMS.find((p) => p.key === key);
 
 /** Whether `key` is a fact about the sample (SAMPLE_PARAMS). */
 export const isSampleFact = (key: string): boolean => SAMPLE_PARAMS.some((p) => p.key === key);
@@ -196,8 +218,7 @@ export type ParamValue = string | number | boolean;
 export interface TuneParam {
   key: Key;
   stage: TuneStage;
-  // fractions: H fractions as the form's text, "1/3, 2/3" or "none" (blank = default)
-  kind: "enum" | "number" | "integer" | "boolean" | "fractions";
+  kind: "enum" | "number" | "integer" | "boolean";
   // enum: the form value ("" = the backend default) and the name the model uses
   options?: { value: string; name: string }[];
   min?: number;
@@ -296,7 +317,7 @@ export const TUNE_PARAMS: TuneParam[] = [
     min: 0,
     max: 0.3,
     defaultValue: 0.12,
-    help: "Integer-node punches only: each node's punch stops this far (r.l.u.) from the node's H plane, so the H planes between nodes (e.g. satellites at H = n ± 1/3) stay unpunched. 0 turns the guard off and lets every node's punch run along H, discarding the diffuse there. Not the off-lattice search's protected H planes, which are a fact about the sample set on the Configure page.",
+    help: "Integer-node punches only: each node's punch stops this far (r.l.u.) from the node's H plane, so the H planes between nodes (e.g. satellites at H = n ± 1/3) stay unpunched. 0 turns the guard off and lets every node's punch run along H, discarding the diffuse there. Not what the off-lattice search leaves alone, which the sample's modulation sets, a fact about the sample.",
   },
   {
     key: "punchSearchFloor",
@@ -445,8 +466,7 @@ export const TUNE_PARAMS: TuneParam[] = [
 export const stageParams = (stage: TuneStage, s?: PipelineConfig): TuneParam[] =>
   TUNE_PARAMS.filter((p) => p.stage === stage && (!s || !p.appliesWhen || p.appliesWhen(s)));
 
-const findParam = (key: string, sample = false): TuneParam | undefined =>
-  TUNE_PARAMS.find((p) => p.key === key) ?? (sample ? SAMPLE_PARAMS.find((p) => p.key === key) : undefined);
+const findParam = (key: string): TuneParam | undefined => TUNE_PARAMS.find((p) => p.key === key);
 
 // A setting as the model sees it: enum names, numbers, booleans; a blank form
 // field shows as its default value.
@@ -454,8 +474,12 @@ export function displayValue(p: TuneParam, formValue: unknown): ParamValue {
   if (p.kind === "enum") return p.options!.find((o) => o.value === formValue)?.name ?? String(p.defaultValue);
   if (p.kind === "boolean") return Boolean(formValue);
   if (formValue === "" || formValue == null) return p.defaultValue;
-  if (p.kind === "fractions") return String(formValue);
   return Number(formValue);
+}
+
+/** What a setting takes, as update_settings' description says it. */
+export function allowedValues(p: TuneParam): string {
+  return p.kind === "enum" ? p.options!.map((o) => o.name).join("|") : p.kind === "boolean" ? "true|false" : `${p.kind} ${p.min}–${p.max}`;
 }
 
 /** The stage's current settings, as the model sees them. */
@@ -466,17 +490,18 @@ export function currentStageSettings(stage: TuneStage, s: PipelineConfig): Recor
 /** Rejected proposal, with the reason the model reads back. */
 export class ProposalError extends Error {}
 
-// Turn a value the model proposed into the form value, or throw.  `sample`
-// admits the sample facts too (a change the user asked for, never a tuning).
-export function toFormValue(key: string, value: unknown, stage: TuneStage, { sample = false } = {}): string | boolean {
-  const p = findParam(key, sample);
+// Turn a value the model proposed into the form value, or throw. The facts
+// about the sample are none of these: never tuned, they are set through their
+// own SampleParam (update_settings), a change the user asked for.
+export function toFormValue(key: string, value: unknown, stage: TuneStage): string | boolean {
+  const p = findParam(key);
   if (!p || p.stage !== stage) throw new ProposalError(`${key} is not a ${stage} setting that can be tuned`);
-  if (p.kind === "fractions") {
-    const text = (Array.isArray(value) ? value.join(", ") : String(value ?? "")).trim();
-    if (!text || text.toLowerCase() === "default" || text === p.defaultValue) return "";
-    if (parseFractions(text) === undefined) throw new ProposalError(`${key} must be H fractions like "1/3, 2/3", or none`);
-    return text;
-  }
+  return formValue(p, value);
+}
+
+/** A value proposed for the setting `p`, as its form field holds it, or throws ProposalError. */
+function formValue(p: TuneParam, value: unknown): string | boolean {
+  const { key } = p;
   if (p.kind === "enum") {
     const opt = p.options!.find((o) => o.name === value || (o.value !== "" && o.value === value));
     if (!opt) throw new ProposalError(`${key} must be one of ${p.options!.map((o) => o.name).join(", ")}`);
@@ -513,9 +538,7 @@ export function describeStageParams(stage: TuneStage, { skills = true }: { skill
           ? `one of ${p.options!.map((o) => o.name).join(" | ")}`
           : p.kind === "boolean"
             ? "true | false"
-            : p.kind === "fractions"
-              ? 'H fractions like "1/3, 2/3", or none'
-              : `${p.kind} in [${p.min}, ${p.max}]`;
+            : `${p.kind} in [${p.min}, ${p.max}]`;
       return `- ${p.key} (${allowed}; default ${p.defaultValue}): ${help}`;
     })
     .join("\n");

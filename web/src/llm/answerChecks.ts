@@ -21,6 +21,11 @@
 //   module (verdicts/) reads both from the tools' results, the answer checks
 //   as one of its readers. The tools compute verdicts, the model quotes and
 //   explains them.
+// - **The user's questions are asked, never answered for them.** A result
+//   that carries a question only the user can answer (ask_user: the punch's
+//   sharp peaks off the lattice bunched at one commensurate fraction) has the
+//   answer ask it, naming the fraction or the modulation (`unasked`), and
+//   never say outright that the sample has that modulation (`assumed`).
 //
 // A failed check sends the answer back once, with what to fix; what still
 // fails is noted under the reply.  The text checks are heuristic by design:
@@ -319,6 +324,87 @@ export function overallContradiction(text: string, verdict: ComputedVerdict | nu
     : `It calls the run a success, but the checks it rests on did not all run on the outputs as they now are (${verdict ? verdict.text : "nothing measured"})`;
 }
 
+// ------------------------------------------------------------------ the user's questions
+//
+// A result may carry a question only the user can answer, as ask_user:
+// off_lattice_bunching's, when the punch's sharp peaks off the lattice bunch
+// at one commensurate fraction, as the satellites of a modulation nobody
+// declared would (metrics/bunching.ts). Whether the sample has one, and in
+// which form, is the user's to say (the user's decision, 2026-10-19): the
+// answer asks it, and never answers it for the user.
+//
+// - unasked: no question of the answer (a sentence ending with "?") names the
+//   question's fraction (p/q, its twin 1 − p/q, or a decimal of either to
+//   two places) or the word "modulation";
+// - assumed: with such a question in the reply, a clause that says outright
+//   that the sample has the modulation or that its peaks are satellites: one
+//   that names them and claims them, not hedged, conditional, negated or a
+//   question, and not about the question or the setting (asking, answering,
+//   declaring). Hedged clauses are exempt.
+//
+// Heuristic, as the other text checks are: known answers on both sides are
+// pinned in answerChecks.test.ts.
+
+/** The questions for the user that the reply's results carry (ask_user, at any depth), each once, in order. */
+export function questionsForUser(steps: readonly AgentStep[]): string[] {
+  const out: string[] = [];
+  const walk = (v: unknown): void => {
+    if (!v || typeof v !== "object") return;
+    if (Array.isArray(v)) return v.forEach(walk);
+    for (const [k, x] of Object.entries(v)) {
+      if (k === "ask_user" && typeof x === "string" && x.trim()) {
+        if (!out.includes(x)) out.push(x);
+      } else walk(x);
+    }
+  };
+  for (const s of steps) walk(found(s));
+  return out;
+}
+
+const VULGAR: Record<string, number> = { "½": 1 / 2, "⅓": 1 / 3, "⅔": 2 / 3, "¼": 1 / 4, "¾": 3 / 4, "⅕": 1 / 5, "⅖": 2 / 5, "⅗": 3 / 5, "⅘": 4 / 5, "⅙": 1 / 6, "⅚": 5 / 6 };
+
+/** The fractions a text writes, as p/q or ⅓, by value. */
+const fractionsIn = (text: string): number[] => [
+  ...[...text.matchAll(/(?<![\d/.])(\d+)\s*\/\s*(\d+)(?![\d/])/g)].map((m) => Number(m[1]) / Number(m[2])),
+  ...[...text].filter((c) => c in VULGAR).map((c) => VULGAR[c]),
+].filter(Number.isFinite);
+
+/** The decimals of two places or more a text writes. */
+const decimalsIn = (text: string): number[] => [...text.matchAll(/(?<![\d.])\d*\.\d{2,}(?![\d.])/g)].map((m) => Number(m[0]));
+
+const MODULATION_WORD = /\bmodulat\w*/i;
+
+/** Whether one of the answer's questions names the fraction `question` asks about, or the modulation. */
+function asksIt(text: string, question: string): boolean {
+  const asked = fractionsIn(question).map((f) => f % 1).filter((f) => f > 0);
+  const wanted = [...asked, ...asked.map((f) => 1 - f)];
+  const near = (v: number) => wanted.some((f) => Math.abs((v % 1) - f) < 0.005);
+  return readAnswer(text, READING).sentences.some(
+    (s) => s.question && (MODULATION_WORD.test(s.text) || fractionsIn(s.text).some(near) || decimalsIn(s.text).some(near)),
+  );
+}
+
+/** The questions for the user that the reply's results carry and the answer does not ask. */
+export function unaskedQuestions(text: string, steps: readonly AgentStep[]): string[] {
+  return questionsForUser(steps).filter((q) => !asksIt(text, q));
+}
+
+/** A clause that names the sample's modulation, its satellites or its wave vector. */
+const NAMES_MODULATION = /\bmodulat\w*|\bsatellites?\b|\b(?:wave[- ]?|propagation[- ])vectors?\b/i;
+/** That claims it: the sample has it, the peaks are its satellites, the data show it. */
+const CLAIMS_IT =
+  /\b(?:has|have|had|is|are|was|were|been|shows?|showed|shown|exhibits?|displays?|hosts?|carr(?:y|ies)|contains?|reveals?|revealed|indicates?|indicated|confirms?|confirmed|proves?|proved|exists?|present|real|genuine)\b/i;
+/** A hedge, or the question or the setting spoken of: no claim about the sample. */
+const NOT_A_CLAIM =
+  /\b(?:possibl\w*|perhaps|maybe|likely|unlikely|probabl\w*|suggest\w*|consistent with|compatible with|appears?|seems?|looks? like|hints?|points? to|candidates?|potential\w*|tentative\w*|unconfirmed|ask\w*|question\w*|answer\w*|declar\w*|your call|yours to|up to you|you decide|let me know|tell me)\b/i;
+
+/** The answer's clauses that say outright the sample has a modulation (not hedged, conditional, negated or a question). */
+export function assumedModulation(text: string): string[] {
+  return claimsOf(text)
+    .filter((c) => !notAVerdict(c) && !c.cues.has("doubt") && !negated(c) && NAMES_MODULATION.test(c.text) && CLAIMS_IT.test(c.text) && !NOT_A_CLAIM.test(c.text))
+    .map((c) => c.text);
+}
+
 // ------------------------------------------------------------------ numbers
 //
 // Read by the reader (answerText/numbers.ts: writtenNumbers, sourceNumbers).
@@ -408,6 +494,12 @@ export interface AnswerIssues {
   // stage or the tool that settles it (issuesPrompt).
   said: { missing: string[]; stale: string[]; contradicted: string[]; overall: string[] };
   achieved: boolean | null; // the computed verdict's: false, not met; null, not judged or nothing measured
+  // The questions for the user the reply's results carry (ask_user) that the
+  // answer does not ask, as the results word them.
+  unasked: string[];
+  // With such a question in the reply, the answer's clauses that say outright
+  // the sample has the modulation it asks about: the answer's own words.
+  assumed: string[];
 }
 
 const unique = <T>(xs: T[]): T[] => [...new Set(xs)];
@@ -430,6 +522,7 @@ export function answerIssues(text: string, steps: readonly AgentStep[], sources:
   const written = filled.replace(/\{\{[^}]*\}\}/g, "");
   const notCurrent = untracedNumbers(written, sources);
   const nowhere = stale && notCurrent.length ? untracedNumbers(written, `${sources}\n${stale}`) : notCurrent;
+  const questions = questionsForUser(steps);
   const issues: AnswerIssues = {
     missing,
     stale: staleTopics,
@@ -445,8 +538,18 @@ export function answerIssues(text: string, steps: readonly AgentStep[], sources:
       overall: unique(successClaims(filled, verdict)),
     },
     achieved: verdict?.achieved ?? null,
+    unasked: questions.filter((q) => !asksIt(filled, q)),
+    assumed: questions.length ? unique(assumedModulation(filled)) : [],
   };
-  return issues.missing.length || issues.stale.length || issues.untraced.length || issues.staleNumbers.length || issues.contradicted.length || issues.unknownReferences.length || issues.overall
+  return issues.missing.length ||
+    issues.stale.length ||
+    issues.untraced.length ||
+    issues.staleNumbers.length ||
+    issues.contradicted.length ||
+    issues.unknownReferences.length ||
+    issues.overall ||
+    issues.unasked.length ||
+    issues.assumed.length
     ? issues
     : null;
 }
@@ -484,6 +587,14 @@ export function issuesPrompt(issues: AnswerIssues, { skills = true }: { skills?:
     lines.push(`- These numbers appear in no tool result or the context: ${listed(issues.untraced)}. Quote the tools' numbers, or leave them out.`);
   }
   if (issues.staleNumbers.length) lines.push(staleNumbersLine(issues.staleNumbers));
+  for (const q of issues.unasked) {
+    lines.push(`- A result in this reply has a question for the user (ask_user) that the answer does not ask: "${q}" Ask it, naming the fraction or the modulation, and leave the answer to the user.`);
+  }
+  if (issues.assumed.length) {
+    lines.push(
+      `- ${issues.assumed.map(quoted).join(", ")}: ${issues.assumed.length > 1 ? "these say" : "this says"} the sample has the modulation a result in this reply asks the user about (ask_user). Only the user can say so: ask instead, and declare nothing.`,
+    );
+  }
   lines.push("Then write the whole answer again.");
   return lines.join("\n");
 }
@@ -531,6 +642,15 @@ function withoutSkills(issues: AnswerIssues): string {
     lines.push(`- These numbers appear in no tool result or the context: ${listed(issues.untraced)}. Quote the tools' numbers, or leave them out.`);
   }
   if (issues.staleNumbers.length) lines.push(staleNumbersLine(issues.staleNumbers));
+  // The result's question is the result's words, not the answer's: given as written, never quoted as the answer's.
+  for (const q of issues.unasked) {
+    lines.push(`- A result in this reply has a question for the user that the answer does not ask: ${q} Ask it, naming the fraction or the modulation, and leave the answer to the user.`);
+  }
+  if (issues.assumed.length) {
+    lines.push(
+      `- ${issues.assumed.map(quoted).join(", ")}: ${issues.assumed.length > 1 ? "these say" : "this says"} as fact what a result in this reply asks the user. Only the user can say so: ask instead.`,
+    );
+  }
   lines.push("Then write the whole answer again.");
   return lines.join("\n");
 }
@@ -545,5 +665,7 @@ export function issuesNote(issues: AnswerIssues): string {
   if (issues.contradicted.length) parts.push(`Contradicts the tools' verdict on ${issues.contradicted.map((t) => t.label).join(" and ")}.`);
   if (issues.untraced.length) parts.push(`Not found in any tool result or the context: ${listed(issues.untraced)}.`);
   if (issues.staleNumbers.length) parts.push(`Measured before the last run recomputed the outputs they describe: ${listed(issues.staleNumbers)}.`);
+  for (const q of issues.unasked) parts.push(`Not asked of you, though a result asks it: ${q}`);
+  if (issues.assumed.length) parts.push(`Says as fact what only you can say: ${listed(issues.assumed.map(quoted))}.`);
   return parts.join(" ");
 }

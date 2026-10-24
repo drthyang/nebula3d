@@ -9,11 +9,13 @@ import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
+import { SIGMA_OF } from "../metrics/dpdf";
 import { loadSettings, saveSettings } from "../settings";
 import { useTuneStore, type StageRun } from "../tune/tuner";
 import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type RunModel, type ToolContext } from "../tools";
+import { offLatticeBunching } from "../metrics/bunching";
 import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf";
-import { makeSlice } from "./helpers";
+import { BUNCHED_AT_THIRDS, makeSlice, recordOf } from "./helpers";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -23,6 +25,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
@@ -236,7 +239,7 @@ describe("update_settings", () => {
   // when the user's latest message names them: the agent loop hands it to
   // the tools as the context's userMessage.
   describe("a fact about the sample, which only the user sets", () => {
-    const FACTS = { punchProtectH: "", punchProtectHalfWidth: "", punchSupercellH: "", punchSupercellK: "", punchSupercellL: "", flattenIon: "" };
+    const FACTS = { modulationK: "", modulationOrder: "", modulationForm: "", modulationHalfWidth: "", punchSupercellH: "", punchSupercellK: "", punchSupercellL: "", flattenIon: "" };
     const refusal = (key: string) => `${key} is a fact about the sample, which only the user sets: ask the user, and change it once they name it.`;
     /** update_settings after the user's latest message `said`. */
     const after = (said: string | undefined, changes: Args) => callTool({ ...ctx, userMessage: said }, "update_settings", { changes });
@@ -250,8 +253,12 @@ describe("update_settings", () => {
         expect(usePipelineStore.getState()).toMatchObject(FACTS);
       }
       // Each fact the call changes is refused in the same words, whatever its value.
-      const both = await after("Rerun the punch.", { punchProtectH: "none", punchSupercellK: 99 });
-      expect(both.text).toBe(`Error: ${refusal("punchProtectH")} ${refusal("punchSupercellK")}`);
+      const both = await after("Rerun the punch.", { modulation: "none", punchSupercellK: 99 });
+      expect(both.text).toBe(`Error: ${refusal("modulation")} ${refusal("punchSupercellK")}`);
+      expect(usePipelineStore.getState()).toMatchObject(FACTS);
+      // Satellites alone name nothing: what the data show is no declaration.
+      const satellites = await after("Are there satellites at H = n ± 1/3? Keep them.", { modulation: { k: "1/3, 0, 0", form: "planes" } });
+      expect(satellites.text).toBe(`Error: ${refusal("modulation")}`);
       expect(usePipelineStore.getState()).toMatchObject(FACTS);
     });
 
@@ -273,24 +280,54 @@ describe("update_settings", () => {
       });
       expect(r.summary).toBe("punchMinSig 5 → 6; refused, a fact about the sample: punchSupercellH");
       // A fact the message names beside one it does not: the named one changes.
-      const planes = await after("Protect the H = 0.5 planes.", { punchProtectH: "1/2", punchProtectHalfWidth: 0.2 });
-      expect(JSON.parse(planes.text)).toEqual({
-        changed: [{ setting: "punchProtectH", from: "1/3, 2/3", to: "1/2" }],
-        refused: [{ setting: "punchProtectHalfWidth", why: refusal("punchProtectHalfWidth") }],
+      const declared = await after("The sample has a modulation with k = (1/2, 0, 0); declare it as planes.", {
+        modulation: { k: "1/2, 0, 0", form: "planes" },
+        punchSupercellH: 2,
+      });
+      expect(JSON.parse(declared.text)).toEqual({
+        changed: [{ setting: "modulation", from: "default", to: "k = (1/2, 0, 0), order 1, planes, ± 0.08 r.l.u." }],
+        refused: [{ setting: "punchSupercellH", why: refusal("punchSupercellH") }],
         rerun_from: "punch",
       });
-      expect(usePipelineStore.getState()).toMatchObject({ punchProtectH: "1/2", punchProtectHalfWidth: "" });
+      expect(usePipelineStore.getState()).toMatchObject({ modulationK: "1/2, 0, 0", modulationForm: "planes", modulationOrder: "", modulationHalfWidth: "", punchSupercellH: "" });
     });
 
-    it("sets the search's protected planes and the punch cell the user names", async () => {
-      usePipelineStore.setState({ punchProtectH: "none" });
-      const r = await after("Keep the 1/3 and 2/3 planes protected.", { punchProtectH: "1/3, 2/3" });
-      expect(usePipelineStore.getState().punchProtectH).toBe(""); // the default
-      expect(JSON.parse(r.text).changed).toEqual([{ setting: "punchProtectH", from: "none", to: "1/3, 2/3" }]);
-      await after("Set the H fractions to 0.5.", { punchProtectH: [0.5] });
-      expect(usePipelineStore.getState().punchProtectH).toBe("0.5");
-      const bad = await after("Set the H fractions to thirds.", { punchProtectH: "thirds" });
-      expect(bad.text).toMatch(/H fractions/);
+    it("declares the sample's modulation the user names, in the form the user names, as one setting of four fields", async () => {
+      const said = "The sample's modulation is k = (0.2, 0, 1/2), order 2, as points, ± 0.05 r.l.u.";
+      const r = await after(said, { modulation: { k: [0.2, 0, "1/2"], order: 2, form: "points", half_width: 0.05 } });
+      expect(r.ok, r.text).toBe(true);
+      expect(usePipelineStore.getState()).toMatchObject({ modulationK: "0.2, 0, 1/2", modulationOrder: "2", modulationForm: "points", modulationHalfWidth: "0.05" });
+      expect(JSON.parse(r.text).changed).toEqual([{ setting: "modulation", from: "default", to: "k = (0.2, 0, 1/2), order 2, points, ± 0.05 r.l.u." }]);
+      // The line configure_settings shows reads back as the same declaration: no change.
+      const shown = (JSON.parse((await run("configure_settings", {})).text) as { settings: Record<string, unknown> }).settings;
+      expect(shown.modulation).toBe("k = (0.2, 0, 1/2), order 2, points, ± 0.05 r.l.u.");
+      expect(shown).not.toHaveProperty("modulationK");
+      const same = await after(said, { modulation: shown.modulation });
+      expect(JSON.parse(same.text)).toEqual({ changed: [], already_set: ["modulation"], rerun_from: null });
+      // None, and back to the backend's default; k alone, in the default form.
+      await after("Declare no modulation.", { modulation: "none" });
+      expect(usePipelineStore.getState()).toMatchObject({ modulationK: "none", modulationOrder: "", modulationForm: "", modulationHalfWidth: "" });
+      await after("Put the modulation back to the default.", { modulation: "default" });
+      expect(usePipelineStore.getState().modulationK).toBe("");
+      await after("The wave vector is k = (1/3, 1/3, 0).", { modulation: "1/3, 1/3, 0" });
+      expect(usePipelineStore.getState()).toMatchObject({ modulationK: "1/3, 1/3, 0", modulationForm: "" });
+      // What is no declaration is refused with what is wrong, and nothing changes.
+      for (const [bad, why] of [
+        [{ k: "thirds" }, /k is one or more vectors of three components/],
+        [{ k: "0, 0, 0" }, /k is one or more vectors/],
+        [{ k: "1/3, 0, 0", order: 7 }, /order is a whole number from 1 to 6/],
+        [{ k: "1/3, 0, 0", form: "rods" }, /form is points or planes/],
+        [{ k: "1/3, 0, 0", half_width: 0.5 }, /half_width is above 0 and below 0.5/],
+        [{ form: "planes" }, /modulation needs k/],
+        [{ k: "1/3, 0, 0", normal: [1, 0, 0] }, /modulation takes k, order, form and half_width; not normal/],
+      ] as const) {
+        const refused = await after("Set the modulation.", { modulation: bad });
+        expect(refused.text, JSON.stringify(bad)).toMatch(why);
+        expect(usePipelineStore.getState().modulationK).toBe("1/3, 1/3, 0");
+      }
+    });
+
+    it("sets the punch cell the user names", async () => {
       // The punch cell, for a volume indexed on a doubled cell: the words name all three axes.
       await after("Index the punch on a 2×2×2 supercell.", { punchSupercellH: 2, punchSupercellK: 2, punchSupercellL: 2 });
       expect(usePipelineStore.getState()).toMatchObject({ punchSupercellH: "2", punchSupercellK: "2", punchSupercellL: "2" });
@@ -342,6 +379,25 @@ describe("run_pipeline", () => {
     expect(out.outputs).toContain("braggpunched");
     expect(own.dataset).toBe(fresh);
     expect(r.summary).toMatch(/^done in .* s · 1 computed, 1 reused$/);
+    expect(out).not.toHaveProperty("off_lattice_bunching");
+  });
+
+  it("puts the question for the user in its result when the punch's record says its sharp peaks off the lattice bunch (plan 4.15)", async () => {
+    usePipelineStore.setState({ runStages: fakeRun("done") });
+    const fresh = { ...dataset, stages: [...dataset.stages, { name: "braggpunched", exists: true, kind: "hkl", volume_id: "demo.braggpunched" }] };
+    api.fetchDataset.mockResolvedValue(fresh);
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 0, peaks: [], modulation: recordOf({ bunching: BUNCHED_AT_THIRDS }) });
+    const out = JSON.parse((await callTool({ ...ctx }, "run_pipeline", {})).text);
+    expect(api.fetchBraggProfile).toHaveBeenCalledWith("demo");
+    expect(out.off_lattice_bunching).toEqual(offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })));
+    expect(out.off_lattice_bunching.ask_user).toBe(
+      "14 of the 17 sharp peaks off the lattice sit at H = n ± 1/3, where about 2 would by chance. Does the sample have a modulation with k = (1/3, 0, 0)?",
+    );
+    // A record whose peaks did not bunch, or a record from before the punch kept it: no question.
+    for (const modulation of [recordOf(), null, undefined]) {
+      api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 0, peaks: [], modulation });
+      expect(JSON.parse((await callTool({ ...ctx }, "run_pipeline", {})).text)).not.toHaveProperty("off_lattice_bunching");
+    }
   });
 
   it("recomputes from a stage on", async () => {
@@ -542,11 +598,35 @@ describe("assess_stage", () => {
     expect(out.punch.goal).toMatch(/sit on protected planes and stay by design/);
   });
 
+  it("carries the question for the user beside the punch's verdict, which it leaves as it was (plan 4.15)", async () => {
+    const e = { leftover_at_nodes: 0, leftover_off_lattice: 0, leftover_on_protected_planes: 0, leftover_on_protected_planes_sharp: 0, leftover_off_lattice_broad: 0, leftover_off_lattice_sharp: 0, mean_punched_fraction: 0.03, per_plane: {} };
+    evaluate.evaluateStage.mockResolvedValue({ ...e, off_lattice_bunching: offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })) });
+    const out = JSON.parse((await runOn(full, "assess_stage", { stage: "punch" })).text);
+    expect(out.punch.verdict).toBe("meets its goal");
+    expect(out.punch.off_lattice_bunching.ask_user).toMatch(/Does the sample have a modulation with k = \(1\/3, 0, 0\)\?$/);
+    // With every stage too: it is no per-plane detail.
+    evaluate.evaluateStage.mockResolvedValue({ ...e, off_lattice_bunching: offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })) });
+    const all = JSON.parse((await runOn(full, "assess_stage", {})).text);
+    expect(all.punch.off_lattice_bunching).toEqual(out.punch.off_lattice_bunching);
+  });
+
   it("keeps the per-plane detail for one stage", async () => {
     evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, per_plane: { hk0: { after_floor_max_sigma: 0.8 } } });
     const out = JSON.parse((await run("assess_stage", { stage: "flatten" })).text);
     expect(out.flatten.per_plane.hk0).toEqual({ after_floor_max_sigma: 0.8 });
     expect(out.flatten.goal).toMatch(/floor/);
+    expect(out.flatten).not.toHaveProperty("sigma_of");
+  });
+
+  it("names the σ the ΔPDF sections' feature_snr are in beside their per-plane detail, which stage=all leaves out (4.10)", async () => {
+    evaluate.evaluateStage.mockResolvedValue({ back_fft_pearson_r: 0.99, mean_feature_snr: 40, per_plane: { xy: { feature_snr: 40 } } });
+    const one = JSON.parse((await runOn(full, "assess_stage", { stage: "pdf" })).text);
+    expect(one.pdf.sigma_of).toBe(SIGMA_OF.sections);
+    expect(Object.keys(one.pdf).slice(-3)).toEqual(["per_plane", "sigma_of", "goal"]);
+    const all = JSON.parse((await runOn(full, "assess_stage", {})).text);
+    expect(all.pdf.mean_feature_snr).toBe(40);
+    expect(all.pdf).not.toHaveProperty("per_plane");
+    expect(all.pdf).not.toHaveProperty("sigma_of");
   });
 
   it("says the rings the removal left unconfirmed on its grid, the remedy with the skills on only (G1)", async () => {
@@ -901,6 +981,32 @@ describe("symmetry_check", () => {
   });
 });
 
+describe("the ΔPDF's sections in σ (4.10)", () => {
+  // Ripple of amplitude 1 and one feature of 50, 8 Å from the origin.
+  const section = makeSlice(41, 41, (x, y) => (Math.abs(x - 8) < 1e-9 && Math.abs(y) < 1e-9 ? 50 : Math.sin(3 * x + 1) * Math.cos(3 * y + 1)), { half: 20 });
+
+  it("measure_dpdf_cut names its σ: the section's own", async () => {
+    api.fetchDpdfSlice.mockResolvedValue(section);
+    const r = await run("measure_dpdf_cut", { plane: "xz", value: 0 });
+    expect(r.ok, r.text).toBe(true);
+    const out = JSON.parse(r.text);
+    expect(out.sigma_of).toBe(SIGMA_OF.section);
+    expect(out.delta_pdf.feature_snr).toBeCloseTo(50 / out.delta_pdf.background_sigma, -1);
+  });
+
+  it("compare_datasets names its σ for the ΔPDF: each dataset's own on the section", async () => {
+    api.fetchDpdfSlice.mockResolvedValue(section);
+    api.fetchConsistencyCheck.mockResolvedValue({ dataset_id: "demo", check_path: "", has_check: false, metrics: null });
+    const dpdf = JSON.parse((await run("compare_datasets", { kind: "dpdf", plane: "xy", value: 0 })).text);
+    expect(Object.keys(dpdf)).toEqual(["cut", "sigma_of", "rows"]);
+    expect(dpdf.sigma_of).toBe(SIGMA_OF.datasets);
+    expect(dpdf.rows[0].feature_snr).toBeGreaterThan(5);
+    // The reciprocal stages' numbers are not the ΔPDF's.
+    const recip = JSON.parse((await run("compare_datasets", { kind: "reciprocal", plane: "hk0", value: 9 })).text);
+    expect(recip).not.toHaveProperty("sigma_of");
+  });
+});
+
 describe("dpdf_contrast", () => {
   // Ripple of amplitude 1 everywhere, a huge origin peak, and four compact
   // features of 100: the limit must land on the features.
@@ -917,6 +1023,7 @@ describe("dpdf_contrast", () => {
     expect(r.ok).toBe(true);
     const out = JSON.parse(r.text);
     expect(out.applied).toMatchObject({ limit: 100, share_of_strongest: 1, from: expect.stringMatching(/^optimised/) });
+    expect(out.sigma_of).toBe(SIGMA_OF.centre);
     expect(out.note).toBeUndefined();
     expect(Object.keys(out.not_applied)).toEqual(["99.5th percentile", "99.97th percentile"]);
     expect(useDpdfStore.getState().limit).toEqual({ value: 100, dataset: "demo" });

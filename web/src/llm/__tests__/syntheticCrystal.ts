@@ -30,6 +30,7 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore } from "../tune/tuner";
+import { labelsOn, onTheThirds, recordOf, THIRDS_AS_PLANES } from "./helpers";
 import { shellFloorsOf } from "./shellFloors";
 
 /**
@@ -45,6 +46,7 @@ export type BackendMocks = { regridDataset?: Mock } & Record<
   | "fetchDpdfMeta"
   | "fetchDpdfSlice"
   | "fetchMeta"
+  | "fetchProtectedLabels"
   | "fetchRingDiagnostics"
   | "fetchRingIsotropy"
   | "fetchShellFloors"
@@ -295,6 +297,8 @@ const BRAGG_PROFILE: BraggProfile = {
     peak(12, [0.5, 0.5, 1], 1.924, 52, 11, false),
     peak(13, [1.5, 0.5, 1], 2.938, 48, 10, false),
   ],
+  // The run declared the backend's default, and its sharp peaks off the lattice did not bunch.
+  modulation: { ...recordOf({ declared: THIRDS_AS_PLANES }), symmetry_ops: MMM },
 };
 
 const CONSISTENCY: ConsistencyCheck = {
@@ -545,6 +549,12 @@ export function installBackend(api: BackendMocks): void {
     makeCut(plane, value, D_AXIS, (p, idx) => dpdfValue(p[0], p[1], p[2], idx), true),
   );
   api.fetchBraggProfile.mockImplementation(async (id: string) => ({ ...BRAGG_PROFILE, dataset_id: id }));
+  // What the run's search left alone, on a cut of its punched stage: the default's H planes.
+  api.fetchProtectedLabels.mockImplementation(async (_id: string, plane: string, value: number) => {
+    const cut = makeCut(plane, value, R_AXIS, () => 0, false);
+    const h = (x: number) => (PLANE_AXES[plane].fixed === 0 ? value : x);
+    return labelsOn(cut, (x) => (onTheThirds(h(x)) ? 1 : 0), { declared: THIRDS_AS_PLANES });
+  });
   api.fetchConsistencyCheck.mockImplementation(async (id: string) => ({ ...CONSISTENCY, dataset_id: id }));
   api.fetchVolumeCoverage.mockImplementation(async (id: string) => ({ ...COVERAGE, id }));
   api.fetchVolumeTexture.mockImplementation(async (id: string, limit?: number, limits?: Record<string, number>) => volumeTexture(id, limit ?? 20, limits));

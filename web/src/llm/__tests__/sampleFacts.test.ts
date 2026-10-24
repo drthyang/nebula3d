@@ -16,12 +16,14 @@ import { isSampleFact, namesRegrid, namesSampleFact, REGRID_REFUSED, regridRefus
 const named = (message: string): string[] => SAMPLE_PARAMS.filter((p) => namesSampleFact(message, p.key)).map((p) => p.key);
 
 const CELL = ["punchSupercellH", "punchSupercellK", "punchSupercellL"];
-const PLANES = ["punchProtectH"];
-const WIDTH = ["punchProtectHalfWidth"];
+const MODULATION = ["modulation"];
 
 describe("the facts about the sample", () => {
-  it("are the search's protected planes and the punch cell: the magnetic ion is none, update_settings cannot change it", () => {
-    expect(SAMPLE_PARAMS.map((p) => p.key)).toEqual(["punchProtectH", "punchProtectHalfWidth", ...CELL]);
+  it("are the sample's modulation and the punch cell: the magnetic ion is none, update_settings cannot change it", () => {
+    expect(SAMPLE_PARAMS.map((p) => p.key)).toEqual([...MODULATION, ...CELL]);
+    // The modulation is one setting of the Configure page's four fields.
+    expect(SAMPLE_PARAMS[0].fields).toEqual(["modulationK", "modulationOrder", "modulationForm", "modulationHalfWidth"]);
+    expect(isSampleFact("punchProtectH")).toBe(false); // the protected H planes it replaced
     expect(isSampleFact("flattenIon")).toBe(false);
     expect(isSampleFact("punchMinSig")).toBe(false);
     for (const p of SAMPLE_PARAMS) {
@@ -49,27 +51,39 @@ describe("the words that name a fact about the sample", () => {
     ["Set the punch's indexing cell back to 1.", CELL],
     // Its key names that axis alone.
     ["Set punchSupercellK to 2.", ["punchSupercellK"]],
-    // The search's protected planes.
-    ["The satellites at H = n ± 1/2 are real: protect the H = 0.5 planes.", PLANES],
-    ["Turn off the protected planes.", PLANES],
-    ["Don't protect any planes.", PLANES],
-    ["Set the H fractions to 1/2.", PLANES],
-    ["The search skips H = 1/3 and 2/3; make it skip none.", PLANES], // the Configure page's "Search skips H"
-    ["Set punchProtectH to none.", PLANES],
-    // Their half width: a width, beside the words for the planes.
-    ["Widen the protected planes to 0.1 r.l.u.", [...PLANES, ...WIDTH]],
-    ["Set the half width of the protected H planes to 0.05.", [...PLANES, ...WIDTH]],
-    ["Set punchProtectHalfWidth to 0.05.", WIDTH],
+    // The sample's modulation (provisional words, the user's to confirm): its key and its word,
+    ["Set modulation to none.", MODULATION],
+    ["The sample has a modulation with k = (1/3, 0, 0), as planes.", MODULATION],
+    ["Yes, it has that modulation.", MODULATION], // the answer to the Pilot's question, saying which
+    ["The modulation is q = (1/3, 0, 0).", MODULATION],
+    ["The sample is modulated along H; declare it.", MODULATION],
+    // its wave vector by name, or written as k,
+    ["The propagation vector is (1/2, 0, 0).", MODULATION],
+    ["Use the wave vector (0.2, 0, 1/2), order 2.", MODULATION],
+    ["Declare k = (1/3, 0, 0) in plane form.", MODULATION],
+    ["k=[0.2, 0, 1/2], points, order 2.", MODULATION],
+    // and the words of the protected planes it replaced.
+    ["The satellites at H = n ± 1/2 are real: protect the H = 0.5 planes.", MODULATION],
+    ["Turn off the protected planes.", MODULATION],
+    ["Don't protect any planes.", MODULATION],
+    ["Set the H fractions to 1/2.", MODULATION],
+    ["The search skips H = 1/3 and 2/3; make it skip none.", MODULATION], // the old Configure page's "Search skips H"
+    ["Widen the protected planes to 0.1 r.l.u.", MODULATION],
+    // The old settings' keys name nothing: no setting has them.
+    ["Set punchProtectH to none.", []],
+    ["Set punchProtectHalfWidth to 0.05.", []],
     // What every audit talks about names no fact.
     ["Are there satellites at H = n ± 1/3?", []],
+    ["Keep the satellites at H = n ± 1/3.", []],
     ["Does the volume show superlattice peaks, or a lower symmetry?", []],
     ["What is the unit cell? Is it hexagonal?", []],
     ["Show the HK0 plane and the H0L plane.", []],
+    ["Show the k = 0 plane.", []],
     ["Is the punch clean? Raise the punch significance to 6.", []],
     ["Make the punch footprint profile, and protect the diffuse maxima.", []],
-    ["The modulation is q = (1/3, 0, 0).", []],
     ["Use Tb3+ for the flatten.", []], // the magnetic ion: no fact update_settings sets
     ["Yes, do it.", []], // a bare yes names nothing: the user says which
+    ["Yes.", []],
     ["", []],
   ];
 
@@ -79,7 +93,8 @@ describe("the words that name a fact about the sample", () => {
 
   it("reads names, not intent: a question that names a fact names it", () => {
     expect(named("Is the punch cell right?")).toEqual(CELL);
-    expect(named("Why are the 1/3 planes protected?")).toEqual(PLANES);
+    expect(named("Why are the 1/3 planes protected?")).toEqual(MODULATION);
+    expect(named("Does the sample have a modulation?")).toEqual(MODULATION);
   });
 
   it("names no fact by a setting that is none", () => {

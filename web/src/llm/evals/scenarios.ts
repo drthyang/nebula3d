@@ -23,7 +23,7 @@ export const HEX_CONFIG: Partial<PipelineConfig> = {
   punchSupercellH: "2",
   punchSupercellK: "2",
   punchSupercellL: "2",
-  punchProtectH: "none",
+  modulationK: "none",
   punchSearchMaxWidth: "2",
   punchFrame: "spherical",
   backfillEnabled: true,

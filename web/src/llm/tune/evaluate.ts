@@ -7,6 +7,7 @@
 import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy, fetchShellFloors } from "../../api/client";
 import type { Dataset } from "../../api/types";
 import { dpdfVolumeId, loadPipelineContext, readFlattenRecord, safe, hklVolumeId, stageVolumeId, type Cut } from "../context/loadContext";
+import { offLatticeBunching } from "../metrics/bunching";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_UNRECORDED_NOTE, flattenJudging, pedestalLeft, volumePedestal } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
@@ -303,8 +304,13 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     );
     const total = (key: "n_suspicious" | "n_at_nodes" | "n_off_nodes" | "n_on_protected" | "n_broad_off_nodes" | "n_skipped_noisy") =>
       leftovers.reduce((s, l) => s + (l?.[key] ?? 0), 0);
-    // The sharp off-lattice leftovers on the protected H planes, from each peak's marks: they stay by design.
+    // The sharp off-lattice leftovers in the positions the run's search left
+    // alone, from each peak's marks (the run's record, read as labels on each
+    // cut: context/loadContext.ts): they stay by design.
     const sharpOnProtected = leftovers.reduce((s, l) => s + (l?.suspicious_peaks ?? []).filter((p) => p.on_protected_plane === true && !p.broad).length, 0);
+    // The run's sharp peaks off the lattice bunched at one commensurate
+    // fraction, as its record says: the facts and the question for the user.
+    const bunching = offLatticeBunching(profile?.modulation);
     // The strongest leftover over the planes, with its plane.
     const strongest = cuts.reduce<Record<string, unknown> | null>((best, c, i) => {
       const p = leftovers[i]?.suspicious_peaks[0];
@@ -316,8 +322,9 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       total_leftover_peaks: total("n_suspicious"),
       leftover_at_nodes: total("n_at_nodes"),
       leftover_off_lattice: total("n_off_nodes"),
-      // Of those, on the H planes the search leaves alone (protected satellites),
-      // and broad enough to be diffuse maxima rather than reflections.
+      // Of those, in the positions the run's search left alone (the declared
+      // modulation's planes or satellites), and broad enough to be diffuse
+      // maxima rather than reflections.
       leftover_on_protected_planes: total("n_on_protected"),
       // The sharp ones of those, on their own line: by design, as the punch's goal says, and out of its verdict (verdicts/rules.ts, D5).
       leftover_on_protected_planes_sharp: sharpOnProtected,
@@ -327,6 +334,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       noisy_spikes_skipped: total("n_skipped_noisy"),
       mean_punched_fraction: mean(fractions),
       fitted_peaks: profile?.has_profile ? profile.n_peaks : null,
+      // Only when the run's record says so (metrics/bunching.ts).
+      ...(bunching ? { off_lattice_bunching: bunching } : {}),
       per_plane: per((i) => ({
         leftover_peaks: leftovers[i]?.n_suspicious ?? null,
         at_nodes: leftovers[i]?.n_at_nodes ?? null,

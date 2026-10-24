@@ -1,8 +1,16 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 96 spans in 29 texts or sets: reading 29, evidence 50, remedy 17.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 99 spans in 30 texts or sets: reading 29, evidence 51, remedy 19.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
+
+## metrics/bunching.ts: off_lattice_bunching's facts
+
+1 span: remedy 1.
+
+Spans of a text built for each call (its numbers vary), each as written:
+
+- remedy: “ Whether the sample has that modulation, and in which form, is the user's to say: ask them (ask_user), and do not assume the answer either way.”
 
 ## metrics/punch.ts: the context's peak_profile.search_note
 
@@ -110,7 +118,7 @@ scientifically cautious; do not overstate certainty from summary statistics.
 
 ## prompts/system.ts: the system prompt, the tools' guidance
 
-24 spans: reading 18, evidence 4, remedy 2.
+26 spans: reading 18, evidence 5, remedy 3.
 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
 
@@ -168,6 +176,10 @@ for the strongest pair correlations rather than reading them off a figure⟧.
 Bragg peaks displaced by a UB that is slightly off⟦evidence:  (symmetrised into copies around the nodes)⟧,
 or neither. The leftover counts (bragg_punch.leftover) are only what the punch missed on one
 cut, never what its search found⟦reading: ; use grain_check before calling such peaks spurious or real⟧.
+off_lattice_bunching, in a punch assessment or a run, says the sharp peaks the search punched off
+the lattice bunch at one commensurate fraction⟦evidence: , as the satellites of a modulation nobody declared would⟧,
+and ask_user is a question for the user⟦remedy: : ask it, naming the fraction, and never answer it yourself, as fact
+or by declaring a modulation; whether the sample has one, and in which form, is the user's to say⟧.
 ⟦reading: Asked whether the UB is right, or why the Bragg peaks sit off their nodes, call ⟧ub_check⟨connective: “: it” → “”⟩ fits
 the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
 keeps⟦remedy: : say so, and that the orientation needs the unsymmetrised file⟧.⟦evidence:  A relative offset along
