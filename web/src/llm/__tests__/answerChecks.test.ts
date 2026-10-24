@@ -79,15 +79,6 @@ describe("contradicting the tools' computed verdicts", () => {
     expect(contradictions("No ring is left.", [judged]).map((t) => t.id)).toEqual(["rings"]);
   });
 
-  it("holds the flatten to its verdict by either of its names, the console's (background correction) or the stage's", () => {
-    const flat = step("assess_stage", { stage: "flatten" }, { flatten: { verdict: "needs attention", max_floor_trend: 0.97, max_floor_span_fraction: 0.97 } });
-    expect(contradictions("The background correction is clean.", [flat]).map((t) => t.id)).toEqual(["flatten"]);
-    expect(contradictions("The background-corrected volume is clean.", [flat]).map((t) => t.id)).toEqual(["flatten"]);
-    expect(contradictions("The flatten is clean.", [flat]).map((t) => t.id)).toEqual(["flatten"]);
-    // Without its tool, a verdict on it by the new name is sent back for evidence.
-    expect(missingEvidence("The background correction passed.", []).map((t) => t.id)).toEqual(["flatten"]);
-  });
-
   it("holds a 3D-ΔPDF called sound to the stage's verdict, and reads a feature as no verdict", () => {
     const pdf = step("assess_stage", { stage: "pdf" }, { pdf: { verdict: "needs attention", back_fft_pearson_r_even: 0.97 } });
     expect(contradictions("The 3D-ΔPDF meets its goal.", [pdf]).map((t) => t.id)).toEqual(["pdf"]);

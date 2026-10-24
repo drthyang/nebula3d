@@ -68,7 +68,7 @@ Sent back to the model:
 
 ```text
 Before this answer goes to the user, fix it:
-- It gives a verdict on the background correction without its evidence in this reply: call assess_stage with stage flatten, and answer from its result.
+- It gives a verdict on the flatten without its evidence in this reply: call assess_stage with stage flatten, and answer from its result.
 Then write the whole answer again.
 ```
 

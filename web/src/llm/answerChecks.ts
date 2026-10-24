@@ -85,9 +85,9 @@ export const TOPICS: readonly Topic[] = [
   },
   {
     id: "flatten",
-    label: "the background correction",
+    label: "the flatten",
     evidence: "assess_stage with stage flatten",
-    subject: /\b(flatten(ed|ing)?|background[- ]correct(ion|ed)|floors?|pedestal)\b/i,
+    subject: /\b(flatten(ed|ing)?|floors?|pedestal)\b/i,
     stage: "flatten",
   },
   {

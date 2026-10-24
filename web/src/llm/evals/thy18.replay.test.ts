@@ -74,7 +74,7 @@ describe("THY-18: no verdict without its evidence", () => {
       },
     ]);
     expect(called(r)).toEqual(["assess_stage:flatten", "update_settings", "run_pipeline", "assess_stage:flatten"]);
-    expect(r.sent[4]).toMatch(/gives a verdict on the background correction from a measurement taken before the last run recomputed it: call assess_stage with stage flatten again/);
+    expect(r.sent[4]).toMatch(/gives a verdict on the flatten from a measurement taken before the last run recomputed it: call assess_stage with stage flatten again/);
     // The first assessment found the planted background; the rerun with the Q² term recomputed the flatten, and the second found none.
     const [before, after] = r.results("assess_stage").map((x) => x.flatten as Record<string, unknown>);
     expect([before.pedestal_left, after.pedestal_left]).toEqual([true, false]);
@@ -160,11 +160,11 @@ describe("THY-18: computed verdicts", () => {
       },
     ]);
     // The planted pedestal is the one thing the checks find.
-    expect(r.verdict).toMatchObject({ achieved: false, attention: ["the background correction"], text: "not met: needs attention: the background correction" });
-    expect(r.sent[2]).toMatch(/It calls the run a success, but the verdict computed from the checks is "not met: needs attention: the background correction".*quote it as \{\{achieved\}\}/);
+    expect(r.verdict).toMatchObject({ achieved: false, attention: ["the flatten"], text: "not met: needs attention: the flatten" });
+    expect(r.sent[2]).toMatch(/It calls the run a success, but the verdict computed from the checks is "not met: needs attention: the flatten".*quote it as \{\{achieved\}\}/);
     const flatten = r.results("assess_stage").find((x) => x.flatten)!.flatten as Record<string, unknown>;
     expect(r.content).toBe(
-      `The run's goal is not met: needs attention: the background correction. The flatten left a pedestal: its floors follow |Q| (trend ${shown(flatten.floor_trend)}, span ${shown(flatten.floor_span_fraction)}); ` +
+      `The run's goal is not met: needs attention: the flatten. The flatten left a pedestal: its floors follow |Q| (trend ${shown(flatten.floor_trend)}, span ${shown(flatten.floor_span_fraction)}); ` +
         "the reduction-qc skill turns the Q² term on for that.",
     );
     expect([r.note, r.requests]).toEqual([undefined, 3]);

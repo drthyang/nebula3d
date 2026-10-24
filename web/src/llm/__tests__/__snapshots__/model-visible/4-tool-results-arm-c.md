@@ -515,7 +515,7 @@ Error: no tool named read_skill. Available: describe_dataset, current_view, meas
 `buildProposeMessages({ stage: "flatten", …, skills: false })` with a synthetic trial: the goal and the settings' help with the skills off. The system message is TUNE_SYSTEM (3-tuning-prompts.md).
 
 ```text
-Stage: Background correction.
+Stage: Flatten.
 Goal: Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
 
 Settings you may change (use these names exactly):

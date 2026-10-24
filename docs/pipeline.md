@@ -566,7 +566,11 @@ texture (grid too coarse)".
 
 The console calls this stage *Background correction* and its output
 *background-corrected*; the code, settings, files and the Pilot's tools keep the
-name `flatten` (`flatten_enabled`, `FlattenParams`, `*_flattened.h5`).
+name `flatten` (`flatten_enabled`, `FlattenParams`, `*_flattened.h5`). So do,
+for now, the run's log lines and what NEBULA Pilot's model reads (its prompts,
+the skills, the verdict and the answer checks' words): the validation is frozen
+at `812e686` ([evals.md](evals.md#the-freeze)), and their wording waits for its
+live runs.
 
 ```bash
 PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl \

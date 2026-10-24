@@ -803,7 +803,7 @@ def test_the_webgpu_dpdf_takes_the_volume_run_pipeline_takes(tmp_path, monkeypat
         return done, events
 
     notice = ("pdf", "progress", None,
-              f"backfill and background correction disabled: the ΔPDF transforms {paths.braggpunched.name}, "
+              f"backfill and flatten disabled: the ΔPDF transforms {paths.braggpunched.name}, "
               "with no background removed")
     off = {"backfill_enabled": False, "flatten_enabled": False}
     done, events = gpu_pdf(off)
