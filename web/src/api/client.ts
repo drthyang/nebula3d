@@ -275,7 +275,7 @@ export function fetchBraggProfile(datasetId: string): Promise<BraggProfile> {
  * What a declared modulation means before a run (POST /api/modulation/check):
  * its description and the positions it protects on the cell and under the
  * symmetry given, or what is wrong with it (ok false). Without a
- * `modulation`, the backend's default declaration.
+ * `modulation`, the backend's default (which declares none).
  */
 export function checkModulation(body: ModulationCheckIn): Promise<ModulationCheck> {
   if (PYODIDE_MODE) return engine.modulationCheck(JSON.stringify(body));

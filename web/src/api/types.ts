@@ -438,7 +438,7 @@ export interface ModulationPosition {
   vector: string[] | null;
 }
 
-/** POST /api/modulation/check's body: a declaration as a run's request holds it (absent: the backend's default), on a cell and a symmetry. */
+/** POST /api/modulation/check's body: a declaration as a run's request holds it (absent: the backend's default, none), on a cell and a symmetry. */
 export interface ModulationCheckIn {
   modulation?: StageParamsIn["modulation"] | null;
   cell?: [number, number, number] | null;
@@ -450,7 +450,7 @@ export interface ModulationCheckIn {
 export interface ModulationCheck {
   ok: boolean;
   error: string | null;
-  default: boolean; // none named: the backend's default declaration
+  default: boolean; // none named: the backend's default, which declares none
   declared: ModulationDeclaration | null;
   description: string | null;
   positions: ModulationPosition[];
@@ -578,7 +578,7 @@ export interface StageParamsIn {
   // The sample's modulation, a fact about the sample, which the search leaves
   // alone: its k vectors, order, form and half width as Modulation.parse reads
   // them, as the Configure page holds them (state/modulation.ts); "none"
-  // declares none, and absent the backend's default.
+  // declares none, and absent the backend's default (none too).
   modulation?: string | Record<string, string>;
   // Legacy: the protected H fractions ([] = none) and their half width
   // (r.l.u.), as a console from before declarations sent them. The backend

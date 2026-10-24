@@ -78,7 +78,7 @@ export interface PipelineConfig {
   punchSearchFloor: string;
   // The sample's modulation, a fact about the sample, which the search leaves
   // alone (state/modulation.ts): its k vectors ("1/3, 0, 0", several separated
-  // by ;, "none" declares none; blank = the backend's default declaration),
+  // by ;, "none" declares none; blank = the backend's default, also none),
   // order (blank = 1), form ("points", the blank default, or "planes") and
   // half width (r.l.u.; blank = 0.08). Without k the other three are unused.
   modulationK: string;
@@ -384,7 +384,8 @@ export function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.punchHGuard) params.punch_h_guard = Number(s.punchHGuard);
   if (s.punchSearchFloor) params.punch_search_floor = Number(s.punchSearchFloor);
   // The sample's modulation, as the backend reads a declaration; a blank k
-  // leaves the run to the backend's default. Never the legacy H fractions.
+  // leaves the run to the backend's default, which declares none. Never the
+  // legacy H fractions.
   const modulation = modulationRequest(s);
   if (modulation !== undefined) params.modulation = modulation;
   if (s.punchSearchMaxWidth) params.punch_search_max_width_ratio = Number(s.punchSearchMaxWidth);

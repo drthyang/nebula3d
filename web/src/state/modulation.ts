@@ -13,7 +13,7 @@
 
 import type { StageParamsIn } from "../api/types";
 
-/** The store's fields of a declaration, as raw strings (blank: the default). */
+/** The store's fields of a declaration, as raw strings (blank: the default, none). */
 export const MODULATION_FIELDS = ["modulationK", "modulationOrder", "modulationForm", "modulationHalfWidth"] as const;
 export type ModulationField = (typeof MODULATION_FIELDS)[number];
 export type ModulationFields = Record<ModulationField, string>;
@@ -22,14 +22,15 @@ export type ModulationFields = Record<ModulationField, string>;
  * A blank field's value, as the package's Modulation holds it
  * (nebula3d.modulation: order 1, form "points", HALF_WIDTH 0.08 r.l.u.;
  * sharedLimits.replay.test.ts pins the three). A blank k is no field of the
- * declaration: it leaves the run to the backend's default declaration.
+ * declaration: it leaves the run to the backend's default, which declares
+ * none (nebula3d.pipeline.default_modulation; plan 4.15, P3).
  */
 export const MODULATION_DEFAULTS = { order: 1, form: "points", halfWidth: 0.08 } as const;
 /** The highest order a declaration may name (nebula3d.modulation.MAX_ORDER). */
 export const MAX_ORDER = 6;
 export const FORMS = ["points", "planes"] as const;
 
-/** Every field blank: the backend's default declaration. */
+/** Every field blank: the backend's default, which declares none. */
 export const BLANK_MODULATION: ModulationFields = { modulationK: "", modulationOrder: "", modulationForm: "", modulationHalfWidth: "" };
 
 const NONE = /^(none|off)$/i;
@@ -69,7 +70,7 @@ export function kVectors(text: string): string[][] | null {
 
 /**
  * What a run's request carries for the fields (StageParamsIn.modulation): a
- * blank k carries nothing (the backend's default), "none" declares none, and
+ * blank k carries nothing (the backend's default, none), "none" declares none, and
  * a declaration its fields as typed, blank ones left out. The backend reads
  * the strings (Modulation.parse) and refuses a malformed one, saying why.
  */
@@ -89,7 +90,7 @@ export function modulationRequest(f: ModulationFields): StageParamsIn["modulatio
 
 /**
  * The declaration in one line, as the Pilot reads it and the report shows it:
- * "default" (a blank k: the backend's own), "none", or
+ * "default" (a blank k: the backend's own, which declares none), "none", or
  * "k = (1/3, 0, 0), order 1, planes, ± 0.08 r.l.u.", a blank field as its
  * default. update_settings reads this form back (modulationFieldsOf).
  */
@@ -167,7 +168,7 @@ function fromText(text: string): ModulationFields {
 /**
  * The fields a value the Pilot proposes declares, or throws DeclarationError
  * saying what is wrong:
- * - "default" (or blank): the backend's default declaration;
+ * - "default" (or blank): the backend's default, which declares none;
  * - "none" (or "off"): none;
  * - k alone, as text ("1/3, 0, 0", several separated by ;) or as numbers
  *   ([1/3, 0, 0]): in the default form, as Modulation.parse reads it;

@@ -114,7 +114,7 @@ const cellAxis = (axis: "H" | "K" | "L"): SampleParam =>
 const MODULATION_PARAM: SampleParam = {
   key: "modulation",
   stage: "punch",
-  help: 'The sample\'s modulation: the off-lattice search leaves its satellites G ± m·k alone (form points, the default) or the planes through them (form planes), the form the user\'s to declare; k in r.l.u., several separated by ";", order m 1–6 (default 1), half_width in r.l.u. (default 0.08); "none" declares none, "default" leaves the backend\'s own.',
+  help: 'The sample\'s modulation: the off-lattice search leaves its satellites G ± m·k alone (form points, the default) or the planes through them (form planes), the form the user\'s to declare; k in r.l.u., several separated by ";", order m 1–6 (default 1), half_width in r.l.u. (default 0.08); "none" declares none, and so does "default", the backend\'s own.',
   allowed: '{"k": "1/3, 0, 0", "order": 1, "form": "points|planes", "half_width": 0.08}, "none" or "default"',
   fields: MODULATION_FIELDS,
   names: [MODULATION, WAVE_VECTOR, WRITTEN_K, [PROTECT, PLANE], H_FRACTIONS, SKIPS_H],

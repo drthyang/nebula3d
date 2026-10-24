@@ -62,7 +62,7 @@ beforeEach(() => {
 
 /** A punched cut's grid in the punch's tests below: 73 voxels over ±2.4 r.l.u. */
 const CUT_GRID = makeSlice(73, 73, () => 0, { half: 2.4 });
-/** The run's labels of the backend's default, the H planes 1/3 and 2/3 (± 0.08), on each cut: H is x on h0l, the cut itself on 0kl. */
+/** The run's labels of k = (1/3, 0, 0) declared as planes, the H planes 1/3 and 2/3 (± 0.08), on each cut: H is x on h0l, the cut itself on 0kl. */
 const protectThirds = () =>
   api.fetchProtectedLabels.mockImplementation(async (_id: string, plane: string, value: number) =>
     labelsOn(CUT_GRID, (x) => (onTheThirds(plane === "0kl" ? value : x) ? 1 : 0)),
@@ -84,7 +84,7 @@ describe("evaluateStage", () => {
 
   it("counts every sharp leftover on the protected planes, on its own line, and leaves them out of the verdict (D5, 2.4.5)", async () => {
     // Synthetic punched cuts, 1/15 r.l.u. a voxel. On h0l (K = 0), twelve sharp peaks
-    // on the default protected H planes (1/3 and 2/3 mod 1), more than the eight the
+    // on the declared protected H planes (1/3 and 2/3 mod 1), more than the eight the
     // chat's context lists; on 0kl (H = 0, no protected plane), none, or one stray.
     const noise = (ix: number, iy: number) => ((ix * 7919 + iy * 104729) % 1000) / 500 - 1;
     const bump = (cx: number, cy: number) => (ix: number, iy: number) => 2 * Math.exp(-((ix - cx) ** 2 + (iy - cy) ** 2) / 2);
@@ -96,7 +96,7 @@ describe("evaluateStage", () => {
       api.fetchSlice.mockImplementation(async (id: string, plane: "h0l" | "0kl") =>
         makeSlice(73, 73, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + (id.endsWith("braggpunched") ? peaks[plane].reduce((s, f) => s + f(ix, iy), 0) : 0), { half: 2.4 }),
       );
-    // What the run's search left alone, from its record: the default's H planes, on each cut's grid.
+    // What the run's search left alone, from its record: the declared H planes, on each cut's grid.
     protectThirds();
     punched({ h0l: satellites, "0kl": [] });
     const e = await evaluateStage("punch", dataset);
