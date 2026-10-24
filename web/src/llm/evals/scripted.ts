@@ -26,6 +26,8 @@ export interface ScriptedRequest {
   model: string; // the model it named
   stream: boolean; // false: the reply read whole (a tuning run's request)
   usage: { input: number; output: number } | null; // the counts the reply reported; null: none
+  messages: number; // how many messages it sent
+  chars: number; // their text, in characters: what the token estimate reads (provider/tokens.ts)
 }
 
 export interface ScriptedModel {
@@ -54,7 +56,15 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
     } catch {
       sent.push("");
     }
-    const entry: ScriptedRequest = { model: String(request.model ?? ""), stream: request.stream !== false, usage: null };
+    const messages = request.messages ?? [];
+    const textOf = (content: unknown): string => (typeof content === "string" ? content : JSON.stringify(content ?? ""));
+    const entry: ScriptedRequest = {
+      model: String(request.model ?? ""),
+      stream: request.stream !== false,
+      usage: null,
+      messages: messages.length,
+      chars: messages.reduce((n, m) => n + textOf(m.content).length, 0),
+    };
     log.push(entry);
     const turn = turns[next++];
     if (!turn) overrun += 1;

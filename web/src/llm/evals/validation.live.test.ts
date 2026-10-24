@@ -16,7 +16,7 @@
 // NEBULA_VALIDATION_TIMEOUT minutes per run (default 40)
 // NEBULA_VALIDATION_OUT     where the record and the transcripts go (default ../docs/evals/validation)
 // NEBULA_VALIDATION_BASE_URL  the model server, where it is not the model's usual one
-// NEBULA_VALIDATION_ALLOW_SPEND  a paid model's cap in dollars, to approve spending up to it
+// NEBULA_VALIDATION_ALLOW_SPEND  a paid model's cap in dollars, to approve spending up to it (12: $12 for NEBULA, within the $40 total)
 // NEBULA_VALIDATION_RENDER  a scored record to write the transcripts and findings of again
 // NEBULA_VALIDATION_REGRADE a record to grade again with the current graders, in place: each
 //                           run's words from its conclusion and decisions, its unsafe actions
