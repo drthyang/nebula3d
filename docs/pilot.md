@@ -23,7 +23,9 @@ calls 25 tools, which run in the browser against the same API the viewers use:
   `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`.
 - **Display:** `dpdf_contrast`.
 - **Acting:** `update_settings`, `run_pipeline`, `tune_pipeline`,
-  `show_in_viewer`.
+  `show_in_viewer`, and `regrid_refined_ub`, which writes the raw volume
+  regridded onto its refined UB as a new dataset, only when the user's latest
+  message asks for a regrid ([Regridding](regrid.md)).
 
 Each is described under [How it works](#how-it-works).
 

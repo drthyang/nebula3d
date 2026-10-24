@@ -1578,6 +1578,69 @@ References of this skill (read one with read_skill and `reference`):
 }
 ```
 
+## regrid_refined_ub {} (the user's latest message, “Regrid the volume onto the refined UB.”, asks for it; the crystal's UB, turned 0.3° for this sample, is written as a new dataset)
+
+578 characters sent.
+
+```json
+{
+  "written": true,
+  "refusal": null,
+  "dataset_id": "synthetic_a_regridded",
+  "file": "synthetic_a_regridded.nxs",
+  "source_file": "synthetic_a.nxs",
+  "refined_on": "synthetic_a.nxs",
+  "fit": "both",
+  "bragg_nodes_every": [1, 1, 1],
+  "turn_deg": 0.3001,
+  "turn_threshold_deg": 0.05,
+  "axis_uvw": [0.12, -0.31, 0.94],
+  "rms_start": 0.0171,
+  "rms": 0.0002,
+  "cell_start": "4.0000, 4.0000, 4.0000 Å; 90.000°, 90.000°, 90.000°",
+  "cell": "4.0012, 4.0009, 3.9994 Å; 90.010°, 89.990°, 90.000°",
+  "peaks_used": 112,
+  "symmetrised": false,
+  "measured_before": 812400,
+  "measured_after": 808150,
+  "voxels_outside": 4120,
+  "voxels_outside_share": 0.0051
+}
+```
+
+## regrid_refined_ub {} (asked for as above; the crystal's own UB, turned 0.003°: refused by the backend, nothing written)
+
+767 characters sent.
+
+```json
+{
+  "written": false,
+  "refusal": {
+    "code": "turn_below_noise",
+    "reason": "The both fit turns the UB by 0.003°, under the UB check's 0.05° rule (UB_TURN): a turn that small is within the fit's own noise, and regridding onto it would only resample the data. Nothing was written."
+  },
+  "dataset_id": null,
+  "file": null,
+  "source_file": "synthetic_a.nxs",
+  "refined_on": "synthetic_a.nxs",
+  "fit": "both",
+  "bragg_nodes_every": [1, 1, 1],
+  "turn_deg": 0.003,
+  "turn_threshold_deg": 0.05,
+  "axis_uvw": [0.12, -0.31, 0.94],
+  "rms_start": 0.0123,
+  "rms": 0.0119,
+  "cell_start": "4.0000, 4.0000, 4.0000 Å; 90.000°, 90.000°, 90.000°",
+  "cell": "4.0012, 4.0009, 3.9994 Å; 90.010°, 89.990°, 90.000°",
+  "peaks_used": 112,
+  "symmetrised": false,
+  "measured_before": null,
+  "measured_after": null,
+  "voxels_outside": null,
+  "voxels_outside_share": null
+}
+```
+
 ## show_in_viewer {"view":"dpdf","plane":"xy","value":4}
 
 40 characters sent.
@@ -1593,7 +1656,7 @@ References of this skill (read one with read_skill and `reference`):
 ## delete_dataset {} (a tool that does not exist)
 
 ```text
-Error: no tool named delete_dataset. Available: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer
+Error: no tool named delete_dataset. Available: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer
 ```
 
 ## measure_reciprocal_cut {plane: hk0 (arguments that are not JSON)
@@ -1624,6 +1687,12 @@ Error: punchSupercellH is a fact about the sample, which only the user sets: ask
 
 ```text
 Error: read the method first: call read_skill with name "reduction-qc". It is how the user works on the flatten stage, and this tuning waits until it has been read in this conversation.
+```
+
+## regrid_refined_ub {} (a regrid that the user's latest message, “Is the UB right?”, does not ask for)
+
+```text
+Error: A regrid writes a new dataset, which only the user asks for: nothing was written. Ask the user, and regrid once they ask for it.
 ```
 
 ## update_settings {"changes":{"flattenQ2":true}} (a change in a later turn, its stage's skill read in an earlier one and not in this reply)

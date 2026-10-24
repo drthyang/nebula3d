@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (25 tools, 23622 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (26 tools, 24509 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -602,7 +602,27 @@ Parameters:
 }
 ```
 
-## 25. show_in_viewer
+## 25. regrid_refined_ub
+
+```text
+Regrid the dataset's raw volume onto its refined UB, as a new dataset: the fit is ub_check's (the punch cell's Bragg nodes, q_max), and the volume resampled onto the refined UB is written as <stem>_regridded.nxs beside the raw file, never over a file. No pipeline is run. Only when the user's latest message asks for a regrid; otherwise refused. Nothing is written, and refusal gives code and reason, when the turn is under turn_threshold_deg, a symmetrised volume has no unsymmetrised source beside it, or the new file or dataset id exists. Returns the new dataset, the turn, the peaks' RMS before → after, and the measured voxels lost outside the old grid.
+```
+
+Parameters:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "q_max": {
+      "type": "number",
+      "description": "The nodes' |Q| limit in Å⁻¹ (default: everything the box holds)"
+    }
+  }
+}
+```
+
+## 26. show_in_viewer
 
 ```text
 Open a cut in the console's viewer so the user can see what you are describing: view=cleanup opens the reciprocal-space cleanup page (all stages side by side) at a reciprocal plane; view=dpdf opens the 3D-ΔPDF page at a real-space section. Use it for the one cut that best shows your point.

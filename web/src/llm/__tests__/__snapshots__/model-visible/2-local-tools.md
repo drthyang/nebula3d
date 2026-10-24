@@ -27,3 +27,9 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 > Raise the punch significance to 6 and rerun the pipeline.
 
 16 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, grain_check, ub_check, line_profile, bragg_peaks, run_log, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer.
+
+## a regrid request
+
+> Regrid the volume onto the refined UB.
+
+14 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, grain_check, ub_check, line_profile, bragg_peaks, run_log, run_verdict, configure_settings, regrid_refined_ub, show_in_viewer.

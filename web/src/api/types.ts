@@ -174,6 +174,42 @@ export interface UbCheck {
   mean_offset_rlu?: { before: (number | null)[]; after: (number | null)[]; standard_error: (number | null)[]; n: number } | null;
 }
 
+/**
+ * A dataset's raw volume regridded onto its refined UB, as a new dataset beside
+ * it, or why nothing was written (POST /api/datasets/{id}/regrid, the bridge's
+ * dataset_regrid_json: nebula3d.server.regrid.regrid_out). The fit is the UB
+ * check's. Fields a refusal came before are null; docs/regrid.md.
+ */
+export interface RegridResult {
+  id: string; // the dataset asked for
+  written: boolean;
+  // Why nothing was written: target_exists | symmetrised_without_source | turn_below_noise | cannot_symmetrise.
+  refusal: { code: string; reason: string } | null;
+  dataset_id: string | null; // the new dataset, or the existing one a target_exists refusal names
+  file: string | null; // ... its file, beside the raw one
+  source_file: string; // the dataset's raw file
+  refined_on: string | null; // whose peaks were fitted and whose data regridded
+  fit: string | null;
+  operations: number | null;
+  operations_from: string | null;
+  source_symmetrised: boolean | null;
+  symmetrised: boolean; // the new file is symmetrised, and declares its operations
+  turn_deg: number | null; // the fit's turn of the UB
+  turn_threshold_deg: number; // the UB check's rule (UB_TURN): a smaller turn is within the fit's noise
+  axis_uvw: number[] | null;
+  ub_start: number[][] | null;
+  ub: number[][] | null;
+  cell_start: number[] | null; // a, b, c (Å), α, β, γ (°)
+  cell: number[] | null;
+  rms_start: number | null; // the peaks' RMS distance from their nodes, Å⁻¹, before and after
+  rms: number | null;
+  n_used: number | null;
+  measured_before: number | null; // measured voxels regridded (after the edge trim)
+  measured_after: number | null; // measured voxels in the new file
+  voxels_outside: number | null; // measured before, unmeasured now: their Q left the old grid
+  voxels_outside_share: number | null; // ... over measured_before
+}
+
 export interface VolumeMeta {
   id: string;
   stage: string;

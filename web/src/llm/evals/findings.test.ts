@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentStep } from "../agent";
+import { regridRefusal } from "../tune/catalog";
 import {
   APPROVAL_BY_DEFAULT,
   candidateFindings,
@@ -251,6 +252,12 @@ describe("candidate findings", () => {
   it("does not count update_settings' refusal of a fact about the sample as a tool failure", () => {
     const why = "punchSupercellH is a fact about the sample, which only the user sets: ask the user, and change it once they name it.";
     const refused = { step: 1, tool: "update_settings", args: { changes: { punchSupercellH: 2 } }, why: "", status: "error" as const, summary: why, result: `Error: ${why}` };
+    expect(candidateFindings(record({ decisions: [refused] }), c)).toEqual([]);
+  });
+
+  it("does not count the refusal of a regrid the user did not ask for as a tool failure", () => {
+    const why = regridRefusal();
+    const refused = { step: 1, tool: "regrid_refined_ub", args: {}, why: "", status: "error" as const, summary: why, result: `Error: ${why}` };
     expect(candidateFindings(record({ decisions: [refused] }), c)).toEqual([]);
   });
 
