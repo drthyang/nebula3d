@@ -336,6 +336,8 @@ const pdfEvaluation = obj({
   per_plane: optional(
     byDpdfPlane(nullable(obj({ feature_snr: maybeNum, strong_feature_fraction: maybeNum, positive_fraction: maybeNum, anisotropy_ratio: maybeNum }))),
   ),
+  // Which σ the sections' feature_snr are in (metrics/dpdf.ts SIGMA_OF): with the per-plane detail.
+  sigma_of: optional(str),
 });
 
 // ---------------------------------------------------------------- the rest
@@ -392,7 +394,7 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     notes: arr(str),
   }),
 
-  measure_dpdf_cut: obj({ cut: str, delta_pdf: dpdfSection }),
+  measure_dpdf_cut: obj({ cut: str, delta_pdf: dpdfSection, sigma_of: str }),
 
   assess_stage: obj({
     rings: optional(stage(ringsEvaluation)),
@@ -462,6 +464,7 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
       applied: obj({ ...contrastLimit, from: str }),
       note: optional(str),
       robust_sigma: num,
+      sigma_of: str,
       strongest_feature_sigma: maybeNum,
       not_applied: obj({
         "99.5th percentile": obj({ ...contrastLimit, effect: str }),
@@ -590,6 +593,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   // A dataset the cut could not be measured on is its label and the error (findings).
   compare_datasets: obj({
     cut: str,
+    // kind=dpdf: which σ each row's feature_snr is in.
+    sigma_of: optional(str),
     rows: arr(
       union(
         obj({
@@ -614,6 +619,18 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
         obj({ dataset: str, error: str }),
       ),
     ),
+  }),
+
+  // The run's verdict as {{achieved}} gives it now (verdicts/, the achieved
+  // reader): its words, null before any check; each measured stage by its id.
+  run_verdict: obj({
+    verdict: maybeStr,
+    achieved: oneOf("met", "not met", "not judged"),
+    stages: rec(oneOf("meets its goal", "needs attention", "not judged")),
+    needs_attention: arr(str),
+    not_judged: arr(str),
+    not_measured: arr(str),
+    data_problems: arr(str),
   }),
 
   // The Configure page's settings by name: a blank one reads "(default)".

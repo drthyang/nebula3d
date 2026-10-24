@@ -97,7 +97,7 @@ export const tune_pipeline: ChatTool = {
         stages,
         trialsPerStage: trials,
         llm: ctx.model?.settings ?? loadSettings(),
-        ...(ctx.model && { onUsage: ctx.model.usage }),
+        ...(ctx.model && { onUsage: ctx.model.usage, maxTokens: ctx.model.maxTokens }),
         skills: skillsOn(ctx),
       });
     } finally {

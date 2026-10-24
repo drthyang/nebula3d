@@ -278,7 +278,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## measure_dpdf_cut {"plane":"xz","value":0}
 
-262 characters sent.
+322 characters sent.
 
 ```json
 {
@@ -292,7 +292,8 @@ References of this skill (read one with read_skill and `reference`):
     "anisotropy_ratio": 1,
     "anisotropy_angle_deg": 0,
     "radial_trend": [8.68, 0.781, 0.302]
-  }
+  },
+  "sigma_of": "this section outside the origin's disk, robust"
 }
 ```
 
@@ -651,7 +652,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## dpdf_contrast {}
 
-652 characters sent.
+728 characters sent.
 
 ```json
 {
@@ -663,6 +664,7 @@ References of this skill (read one with read_skill and `reference`):
     "from": "optimised: the 99.9th percentile of |ΔPDF|"
   },
   "robust_sigma": 0.502,
+  "sigma_of": "the three sections together, outside the origin's disk, robust",
   "strongest_feature_sigma": 252,
   "not_applied": {
     "99.5th percentile": {
@@ -1391,6 +1393,22 @@ References of this skill (read one with read_skill and `reference`):
 }
 ```
 
+## run_verdict {} (before any check in this reply)
+
+205 characters sent.
+
+```json
+{
+  "verdict": null,
+  "achieved": "not judged",
+  "stages": {},
+  "needs_attention": [],
+  "not_judged": [],
+  "not_measured": ["the ring removal", "the Bragg punch", "the backfill", "the flatten", "the 3D-ΔPDF"],
+  "data_problems": []
+}
+```
+
 ## configure_settings {}
 
 1404 characters sent.
@@ -1575,7 +1593,7 @@ References of this skill (read one with read_skill and `reference`):
 ## delete_dataset {} (a tool that does not exist)
 
 ```text
-Error: no tool named delete_dataset. Available: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer
+Error: no tool named delete_dataset. Available: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer
 ```
 
 ## measure_reciprocal_cut {plane: hk0 (arguments that are not JSON)

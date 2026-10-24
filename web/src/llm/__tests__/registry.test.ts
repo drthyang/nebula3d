@@ -52,6 +52,7 @@ describe("the registry", () => {
       "consistency_details",
       "run_log",
       "compare_datasets",
+      "run_verdict",
       "configure_settings",
       "update_settings",
       "run_pipeline",

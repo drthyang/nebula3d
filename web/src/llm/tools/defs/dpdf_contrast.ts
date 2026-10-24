@@ -6,6 +6,7 @@ import { fetchDpdfSlice } from "../../../api/client";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../../components/dpdfLevels";
 import { useDpdfStore } from "../../../state/dpdfStore";
 import { dpdfVolumeId } from "../../context/loadContext";
+import { SIGMA_OF } from "../../metrics/dpdf";
 import { median, roundSig } from "../../metrics/sliceStats";
 import { num } from "../shared/args";
 import { dpdfMeta, dpdfView } from "../shared/cuts";
@@ -87,6 +88,7 @@ export const dpdf_contrast: ChatTool = {
           ? { note: "brighter than the optimum (the 99.9th percentile): the FFT ripple around the features will show" }
           : {}),
         robust_sigma: roundSig(sigma, 3),
+        sigma_of: SIGMA_OF.centre,
         strongest_feature_sigma: inSigma(strongest),
         not_applied: {
           "99.5th percentile": { ...describe(quantileOf(mags, 0.995)), effect: "a lower limit: brighter, weaker correlations and more of the ripple coloured" },

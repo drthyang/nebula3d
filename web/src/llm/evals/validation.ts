@@ -25,6 +25,7 @@ import { buildChatMessages } from "../prompts/templates";
 import type { ChatMessage } from "../provider/client";
 import { found, seen, whole, type Readable } from "../readings";
 import type { Failure } from "../recovery";
+import type { RunPolicy, Transport } from "../runPolicy";
 import { SAMPLE_PARAMS } from "../tune/catalog";
 import { answers } from "./checks";
 import manifest from "./fixtures/validation-cases.json";
@@ -573,6 +574,56 @@ export interface TokensAtStart {
   ollama_num_ctx: number | null; // the context length an Ollama model last ran with; null: none yet, or not Ollama
 }
 
+/**
+ * The run policy a run ran under (runPolicy.ts), as its record keeps it: its
+ * transport's as the app ships it, with the run's round limit and the
+ * validation's output cap (validationPolicy, validationModels.ts). The fields
+ * are RunPolicy's, named as the record names its own.
+ */
+export interface RecordedRunPolicy {
+  transport: Transport;
+  local: boolean;
+  max_rounds: number;
+  tool_scoping: RunPolicy["toolScoping"];
+  pruning: { soft_budget: number; keep_full: number } | null;
+  temperature: number | null; // null: none was sent
+  output_cap: { loop: number | null; tuning: number | null }; // null: none was asked
+  reasoning_replay: boolean;
+  window: { plan: RunPolicy["window"]["plan"]; reply_reserve: number | null; min_reply: number | null };
+}
+
+export const recordedPolicy = (p: RunPolicy): RecordedRunPolicy => ({
+  transport: p.transport,
+  local: p.local,
+  max_rounds: p.maxRounds,
+  tool_scoping: p.toolScoping,
+  pruning: p.pruning && { soft_budget: p.pruning.softBudget, keep_full: p.pruning.keepFull },
+  temperature: p.temperature,
+  output_cap: { ...p.outputCap },
+  reasoning_replay: p.reasoningReplay,
+  window: { plan: p.window.plan, reply_reserve: p.window.replyReserve, min_reply: p.window.minReply },
+});
+
+/**
+ * A request of a run whose reply stopped at its output limit (stoppedAtLimit,
+ * provider/client.ts): the agent loop's, numbered over the requests it sent,
+ * retries included; or the tuning's, numbered over the tuning's requests the
+ * server answered. Its reply was cut, and the run is graded as it stands.
+ */
+export interface TruncatedRequest {
+  request: number; // 1-based, within its source
+  source: "loop" | "tuning";
+  transport: Transport;
+  reason: string; // the server's stop reason: "max_tokens" (Claude) or "length"
+}
+
+/** A run's requests cut at the output limit, and how many were the loop's and the tuning's. */
+export interface Truncations {
+  loop: number;
+  tuning: number;
+  requests: TruncatedRequest[];
+}
+
 export interface RunRecord {
   schema: "nebula3d-validation-run/1";
   case: string;
@@ -589,6 +640,8 @@ export interface RunRecord {
   context_window?: RunContextWindow | null;
   // The token calibration the run started from; absent from records made before 2026-10-19.
   tokens_at_start?: TokensAtStart | null;
+  // The run policy it ran under; absent from records made before 2026-10-24.
+  run_policy?: RecordedRunPolicy | null;
   started: string;
   latency_ms: number;
   // Every request's tokens, the tuning's among them (validationRun.ts) and
@@ -605,6 +658,10 @@ export interface RunRecord {
   note: string | null;
   error: string | null;
   failure: Failure | null; // the model server failed the reply after its retries: infrastructure, apart from a wrong answer
+  // The requests whose reply was cut at the output limit, the loop's and the
+  // tuning's: the run is graded as it stands, and the transcript and the
+  // report say so. Absent from records made before 2026-10-24.
+  truncated?: Truncations | null;
   grades: ValidationGrades;
   // The rule its unsafe actions (grades.unsafe) were counted under: UNSAFE_RULE
   // when the run was made, PRE_68_RULE once a regrade marked a record that
@@ -629,6 +686,8 @@ export function buildRecord(p: {
   offers?: readonly ToolOffer[];
   context?: RunContextWindow | null;
   tokensAtStart?: TokensAtStart | null;
+  policy?: RunPolicy | null;
+  truncated?: Truncations | null;
 }): RunRecord {
   const r = p.evalRun;
   return {
@@ -645,6 +704,7 @@ export function buildRecord(p: {
     max_rounds: p.maxRounds,
     context_window: p.context ?? null,
     tokens_at_start: p.tokensAtStart ?? null,
+    run_policy: p.policy ? recordedPolicy(p.policy) : null,
     started: p.started,
     latency_ms: Math.round(r.latencyMs),
     usage: r.usage,
@@ -657,6 +717,7 @@ export function buildRecord(p: {
     note: r.note ?? null,
     error: r.error ?? null,
     failure: r.failure ?? null,
+    truncated: p.truncated ?? null,
     grades: gradeRun(p.case, r, p.elsewhere ?? []),
     unsafe_rule: UNSAFE_RULE,
   };

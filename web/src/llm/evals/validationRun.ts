@@ -51,6 +51,13 @@
 // settings. The tuning's tokens are the run's: the record's usage adds them
 // to the loop's and keeps them apart in `usage.tuning` (TuningTokens), and
 // so its cost, and the paid model's spend (validationModels.ts), include them.
+//
+// The run runs under its validation policy (validationPolicy,
+// validationModels.ts): its transport's as the app ships it, with the run's
+// round limit and the validation's output cap on every request, the loop's
+// and the tuning's, in either arm. The record keeps the policy (run_policy),
+// and every request whose reply was cut at the cap, the loop's and the
+// tuning's (truncated, TruncationTracker).
 
 import { fetchDatasets } from "../../api/client";
 import type { Dataset } from "../../api/types";
@@ -61,15 +68,26 @@ import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { forgetToolsUnsupported, runAgent, type AgentProgress } from "../agent";
 import { loadPipelineContext } from "../context/loadContext";
-import type { UsageReport } from "../provider/client";
+import { stoppedAtLimit, type UsageReport } from "../provider/client";
 import { tokenCalibration } from "../provider/tokens";
+import type { Transport } from "../runPolicy";
 import type { LlmSettings } from "../settings";
 import { CHAT_TOOLS } from "../tools";
 import { stopTuning, useTuneStore } from "../tune/tuner";
 import type { EvalRun, TokenCount } from "./harness";
 import { OfferRecorder } from "./offers";
-import { armSetup, buildRecord, changedElsewhere, WhyTracker, type ModelInfo, type RunContextWindow, type RunRecord } from "./validation";
-import { costOf, type Job, type Price } from "./validationModels";
+import {
+  armSetup,
+  buildRecord,
+  changedElsewhere,
+  WhyTracker,
+  type ModelInfo,
+  type RunContextWindow,
+  type RunRecord,
+  type TruncatedRequest,
+  type Truncations,
+} from "./validation";
+import { costOf, validationPolicy, type Job, type Price } from "./validationModels";
 
 /** How long startFresh waits for a pipeline run or a tuning run the run before left going to end. */
 export const SETTLE_MS = 120_000;
@@ -164,11 +182,39 @@ export class TuningTokens {
   }
 }
 
+/**
+ * The requests of a run whose reply stopped at its output limit
+ * (stoppedAtLimit): the agent loop's, as runAgent reports each (`loop`), and
+ * the tuning's, from each request's stop reason (`tuning`, a UsageReport).
+ */
+export class TruncationTracker {
+  private readonly cut: TruncatedRequest[] = [];
+  private tuningRequests = 0; // the tuning's requests the server answered
+
+  constructor(private readonly transport: Transport) {}
+
+  readonly loop = ({ request, reason }: { request: number; reason: string }): void => {
+    this.cut.push({ request, source: "loop", transport: this.transport, reason });
+  };
+
+  readonly tuning: UsageReport = (_usage, stopReason) => {
+    this.tuningRequests += 1;
+    if (stopReason && stoppedAtLimit(stopReason)) {
+      this.cut.push({ request: this.tuningRequests, source: "tuning", transport: this.transport, reason: stopReason });
+    }
+  };
+
+  toRecord(): Truncations {
+    const of = (source: TruncatedRequest["source"]) => this.cut.filter((c) => c.source === source).length;
+    return { loop: of("loop"), tuning: of("tuning"), requests: this.cut.map((c) => ({ ...c })) };
+  }
+}
+
 export interface RunSpec {
   job: Pick<Job, "case" | "arm" | "run">;
   dataset: Dataset; // the run's own, and the only one it sees
   model: ModelInfo; // as the record names it
-  settings: Pick<LlmSettings, "baseUrl" | "model" | "apiKey" | "temperature">;
+  settings: Pick<LlmSettings, "baseUrl" | "model" | "apiKey" | "temperature">; // temperature null: none is sent
   rounds: number; // rounds of tool calls
   minutes: number; // the run's time limit
   price?: Price | null; // what its tokens cost; null: nothing
@@ -179,11 +225,14 @@ export interface RunSpec {
 /**
  * One run: startFresh, the arm's opening on the dataset's context, the agent
  * loop with every tool the Pilot ships (the arm's switch decides what it is
- * offered), and its record. A run past its time limit is aborted, and given up
- * a minute later with the steps it had; its record says so.
+ * offered) under the run's validation policy, and its record. A run past its
+ * time limit is aborted, and given up a minute later with the steps it had;
+ * its record says so.
  */
 export async function runCase(spec: RunSpec): Promise<RunRecord> {
   const { job, dataset, settings, minutes } = spec;
+  const policy = validationPolicy(settings, spec.rounds);
+  const cut = new TruncationTracker(policy.transport);
   await startFresh(dataset, { settleMs: spec.settleMs });
   const { context: pipelineContext } = await loadPipelineContext(dataset);
   const setup = armSetup(job.arm, pipelineContext);
@@ -206,19 +255,26 @@ export async function runCase(spec: RunSpec): Promise<RunRecord> {
   // loop waits for its tool to end): it offers no tools, and usage.tuning counts it.
   const recorder = new OfferRecorder(() => useTuneStore.getState().active);
   const stopRecording = recorder.install();
-  // The tuning's requests go to the run's model, and their tokens are the run's.
+  // The tuning's requests go to the run's model under the run's output cap,
+  // and their tokens are the run's.
   const tuning = new TuningTokens();
+  const tuningUsage: UsageReport = (usage, stopReason) => {
+    tuning.report(usage);
+    cut.tuning(usage, stopReason);
+  };
+  const tuningModel = { settings, usage: tuningUsage, ...(policy.outputCap.tuning != null ? { maxTokens: policy.outputCap.tuning } : {}) };
   const t0 = performance.now();
   const started = new Date().toISOString();
   const loop = runAgent({
     messages: setup.messages,
     // Every tool the Pilot ships: the run's switch (ctx.skills) decides what arm C is offered.
     tools: CHAT_TOOLS,
-    ctx: { dataset, datasets: [dataset], skills: setup.skills, skillsRead: setup.skillsRead, model: { settings, usage: tuning.report } },
+    ctx: { dataset, datasets: [dataset], skills: setup.skills, skillsRead: setup.skillsRead, model: tuningModel },
     settings: { ...settings, attachImages: false, useTools: true, followViews: false },
+    policy,
     signal: abort.signal,
     usage: true,
-    maxRounds: spec.rounds,
+    onTruncated: cut.loop,
     onProgress: (p) => {
       progress = p;
       why.update(p);
@@ -267,5 +323,7 @@ export async function runCase(spec: RunSpec): Promise<RunRecord> {
     offers: recorder.offers,
     context: spec.context ?? null,
     tokensAtStart: { scale: calibration.scale, ollama_num_ctx: calibration.ollamaNumCtx },
+    policy,
+    truncated: cut.toRecord(),
   });
 }

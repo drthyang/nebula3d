@@ -7,7 +7,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   adaptiveThinking,
   checkAnthropicConnection,
+  COMPLETE_MAX_TOKENS,
   listAnthropicModels,
+  STREAM_MAX_TOKENS,
   streamAnthropic,
   toAnthropicMessages,
 } from "../provider/anthropic";
@@ -145,6 +147,34 @@ describe("streamAnthropic", () => {
     await expect(collect(streamAnthropic({ ...base, model: "claude-opus-5-5", tools: [tool] }))).rejects.toThrow(/cut off at the output limit/);
   });
 
+  it("asks for the output cap it is given, and names a turn cut at it, keeping its own handling of the cut", async () => {
+    // A cut answer stands, as it ships, and says it was cut.
+    sdk.stream.mockReturnValueOnce(fakeStream([textDelta("Partial")], { content: [{ type: "text", text: "Partial" }], stop_reason: "max_tokens" }));
+    const out = await collect(streamAnthropic({ ...base, model: "claude-opus-5-5", maxTokens: 16_000 }));
+    expect(out).toEqual([{ content: "Partial" }, { stopReason: "max_tokens" }]);
+    expect(sdk.stream.mock.calls[0][0]).toMatchObject({ max_tokens: 16_000 });
+    // A cut tool call says so before it fails the turn.
+    const use = { type: "tool_use", id: "tu1", name: "run_pipeline", input: {} };
+    sdk.stream.mockReturnValueOnce(fakeStream([], { content: [use], stop_reason: "max_tokens" }));
+    const seen: StreamDelta[] = [];
+    await expect(
+      (async () => {
+        for await (const d of streamAnthropic({ ...base, model: "claude-opus-5-5", tools: [tool], maxTokens: 16_000 })) seen.push(d);
+      })(),
+    ).rejects.toThrow(/cut off at the output limit/);
+    expect(seen).toEqual([{ stopReason: "max_tokens" }]);
+    // A turn that ended on its own names no stop reason; without a cap given, the transport's own.
+    sdk.stream.mockReturnValueOnce(fakeStream([textDelta("ok")], { content: [{ type: "text", text: "ok" }], stop_reason: "end_turn" }));
+    expect(await collect(streamAnthropic({ ...base, model: "claude-opus-5-5" }))).toEqual([{ content: "ok" }]);
+    expect(sdk.stream.mock.calls[2][0]).toMatchObject({ max_tokens: STREAM_MAX_TOKENS });
+  });
+
+  it("sends no temperature, whatever the caller gives it", async () => {
+    sdk.stream.mockReturnValue(fakeStream([textDelta("ok")], { content: [{ type: "text", text: "ok" }], stop_reason: "end_turn" }));
+    for (const temperature of [0.2, 0, null, undefined]) await collect(streamChat({ ...base, model: "claude-opus-5-5", temperature }));
+    for (const [body] of sdk.stream.mock.calls) expect(body).not.toHaveProperty("temperature");
+  });
+
   it("re-issues a turn whose tool input the SDK could not parse", async () => {
     const broken = {
       async *[Symbol.asyncIterator]() {
@@ -187,11 +217,22 @@ describe("completeAnthropic", () => {
     const ask = () => completeChat({ ...base, model: "claude-sonnet-5-5", temperature: 0, onUsage });
     sdk.create.mockResolvedValueOnce({ content: [{ type: "text", text: '{"best": 1}' }], stop_reason: "end_turn", usage });
     expect(await ask()).toBe('{"best": 1}');
-    expect(onUsage.mock.calls).toEqual([[{ input: 1700, output: 30, cacheRead: 1000, cacheWrite: 200 }]]);
+    expect(onUsage.mock.calls).toEqual([[{ input: 1700, output: 30, cacheRead: 1000, cacheWrite: 200 }, "end_turn"]]);
     expect(sdk.create.mock.calls[0][0]).not.toHaveProperty("stream");
+    expect(sdk.create.mock.calls[0][0]).toMatchObject({ max_tokens: COMPLETE_MAX_TOKENS });
+    expect(sdk.create.mock.calls[0][0]).not.toHaveProperty("temperature");
     sdk.create.mockResolvedValueOnce({ content: [], stop_reason: "refusal", stop_details: null, usage });
     await expect(ask()).rejects.toThrow(/declined to continue/);
     expect(onUsage).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks for the output cap it is given, and reports a turn cut at it", async () => {
+    const usage = { input_tokens: 500, output_tokens: 16_000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+    const onUsage = vi.fn();
+    sdk.create.mockResolvedValueOnce({ content: [{ type: "text", text: '{"be' }], stop_reason: "max_tokens", usage });
+    await completeChat({ ...base, model: "claude-sonnet-5-5", temperature: null, maxTokens: 16_000, onUsage });
+    expect(sdk.create.mock.calls[0][0]).toMatchObject({ max_tokens: 16_000 });
+    expect(onUsage.mock.calls).toEqual([[{ input: 500, output: 16_000, cacheRead: 0, cacheWrite: 0 }, "max_tokens"]]);
   });
 });
 

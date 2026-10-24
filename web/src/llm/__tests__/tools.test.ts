@@ -9,6 +9,7 @@ import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
+import { SIGMA_OF } from "../metrics/dpdf";
 import { loadSettings, saveSettings } from "../settings";
 import { useTuneStore, type StageRun } from "../tune/tuner";
 import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type RunModel, type ToolContext } from "../tools";
@@ -531,13 +532,15 @@ describe("tune_pipeline", () => {
       expect(app.llm).toBe(loadSettings());
       expect(app.llm).toMatchObject({ baseUrl: "http://console.invalid/v1", model: "console", temperature: 0.4 });
       expect(app).not.toHaveProperty("onUsage");
+      expect(app).not.toHaveProperty("maxTokens");
 
-      // A validation run (ToolContext.model): the run's model, and its counts to the run.
-      const model: RunModel = { settings: { baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.2 }, usage: vi.fn() };
+      // A validation run (ToolContext.model): the run's model, its output cap, and its counts to the run.
+      const model: RunModel = { settings: { baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.2 }, usage: vi.fn(), maxTokens: 16_000 };
       expect((await callTool({ ...ctx, model }, "tune_pipeline", { stages: ["pdf"] })).ok).toBe(true);
       const run = tuner.startTuning.mock.calls[1][0];
       expect(run.llm).toBe(model.settings);
       expect(run.onUsage).toBe(model.usage);
+      expect(run.maxTokens).toBe(16_000);
     } finally {
       saveSettings(before);
     }
@@ -612,6 +615,18 @@ describe("assess_stage", () => {
     const out = JSON.parse((await run("assess_stage", { stage: "flatten" })).text);
     expect(out.flatten.per_plane.hk0).toEqual({ after_floor_max_sigma: 0.8 });
     expect(out.flatten.goal).toMatch(/floor/);
+    expect(out.flatten).not.toHaveProperty("sigma_of");
+  });
+
+  it("names the σ the ΔPDF sections' feature_snr are in beside their per-plane detail, which stage=all leaves out (4.10)", async () => {
+    evaluate.evaluateStage.mockResolvedValue({ back_fft_pearson_r: 0.99, mean_feature_snr: 40, per_plane: { xy: { feature_snr: 40 } } });
+    const one = JSON.parse((await runOn(full, "assess_stage", { stage: "pdf" })).text);
+    expect(one.pdf.sigma_of).toBe(SIGMA_OF.sections);
+    expect(Object.keys(one.pdf).slice(-3)).toEqual(["per_plane", "sigma_of", "goal"]);
+    const all = JSON.parse((await runOn(full, "assess_stage", {})).text);
+    expect(all.pdf.mean_feature_snr).toBe(40);
+    expect(all.pdf).not.toHaveProperty("per_plane");
+    expect(all.pdf).not.toHaveProperty("sigma_of");
   });
 
   it("says the rings the removal left unconfirmed on its grid, the remedy with the skills on only (G1)", async () => {
@@ -966,6 +981,32 @@ describe("symmetry_check", () => {
   });
 });
 
+describe("the ΔPDF's sections in σ (4.10)", () => {
+  // Ripple of amplitude 1 and one feature of 50, 8 Å from the origin.
+  const section = makeSlice(41, 41, (x, y) => (Math.abs(x - 8) < 1e-9 && Math.abs(y) < 1e-9 ? 50 : Math.sin(3 * x + 1) * Math.cos(3 * y + 1)), { half: 20 });
+
+  it("measure_dpdf_cut names its σ: the section's own", async () => {
+    api.fetchDpdfSlice.mockResolvedValue(section);
+    const r = await run("measure_dpdf_cut", { plane: "xz", value: 0 });
+    expect(r.ok, r.text).toBe(true);
+    const out = JSON.parse(r.text);
+    expect(out.sigma_of).toBe(SIGMA_OF.section);
+    expect(out.delta_pdf.feature_snr).toBeCloseTo(50 / out.delta_pdf.background_sigma, -1);
+  });
+
+  it("compare_datasets names its σ for the ΔPDF: each dataset's own on the section", async () => {
+    api.fetchDpdfSlice.mockResolvedValue(section);
+    api.fetchConsistencyCheck.mockResolvedValue({ dataset_id: "demo", check_path: "", has_check: false, metrics: null });
+    const dpdf = JSON.parse((await run("compare_datasets", { kind: "dpdf", plane: "xy", value: 0 })).text);
+    expect(Object.keys(dpdf)).toEqual(["cut", "sigma_of", "rows"]);
+    expect(dpdf.sigma_of).toBe(SIGMA_OF.datasets);
+    expect(dpdf.rows[0].feature_snr).toBeGreaterThan(5);
+    // The reciprocal stages' numbers are not the ΔPDF's.
+    const recip = JSON.parse((await run("compare_datasets", { kind: "reciprocal", plane: "hk0", value: 9 })).text);
+    expect(recip).not.toHaveProperty("sigma_of");
+  });
+});
+
 describe("dpdf_contrast", () => {
   // Ripple of amplitude 1 everywhere, a huge origin peak, and four compact
   // features of 100: the limit must land on the features.
@@ -982,6 +1023,7 @@ describe("dpdf_contrast", () => {
     expect(r.ok).toBe(true);
     const out = JSON.parse(r.text);
     expect(out.applied).toMatchObject({ limit: 100, share_of_strongest: 1, from: expect.stringMatching(/^optimised/) });
+    expect(out.sigma_of).toBe(SIGMA_OF.centre);
     expect(out.note).toBeUndefined();
     expect(Object.keys(out.not_applied)).toEqual(["99.5th percentile", "99.97th percentile"]);
     expect(useDpdfStore.getState().limit).toEqual({ value: 100, dataset: "demo" });

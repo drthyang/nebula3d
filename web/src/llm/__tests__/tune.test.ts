@@ -215,18 +215,19 @@ describe("startTuning", () => {
       .mockResolvedValueOnce('{"best": 2, "why": "0 leftover peaks"}');
     const model = { baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.3 };
     const onUsage = vi.fn();
-    await startTuning({ dataset, stages: ["punch"], trialsPerStage: 2, llm: model, onUsage });
+    await startTuning({ dataset, stages: ["punch"], trialsPerStage: 2, llm: model, onUsage, maxTokens: 16_000 });
     expect(llm.completeChat).toHaveBeenCalledTimes(2);
     for (const [args] of llm.completeChat.mock.calls) {
-      expect(args).toMatchObject({ baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.3 });
+      expect(args).toMatchObject({ baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.3, maxTokens: 16_000 });
       expect(args.onUsage).toBe(onUsage);
     }
-    // Without one (the app), nothing is handed the counts.
+    // Without one (the app), nothing is handed the counts, and no cap is asked: each transport asks its own.
     llm.completeChat.mockReset().mockResolvedValue('{"candidates": []}');
     await startTuning({ dataset, stages: ["punch"], trialsPerStage: 2, llm: DEFAULT_SETTINGS });
     const [app] = llm.completeChat.mock.calls[0];
     expect(app).toMatchObject({ baseUrl: DEFAULT_SETTINGS.baseUrl, model: DEFAULT_SETTINGS.model });
     expect(app.onUsage).toBeUndefined();
+    expect(app).not.toHaveProperty("maxTokens");
   });
 
   it("re-runs the later stages when a tuned stage changed its settings", async () => {
