@@ -181,7 +181,8 @@ def stubbed(monkeypatch):
     vol = _vol()
 
     def mk(name):
-        def stub(v, params=None, *, progress=None):
+        # The punch also takes the sample's facts (symmetry, modulation).
+        def stub(v, params=None, *, progress=None, **_facts):
             calls.append(name)
             return vol
         return stub
@@ -299,7 +300,7 @@ def test_punch_record_survives_a_resume_from_disk(tmp_path, stubbed, monkeypatch
     record = np.zeros(stubbed.vol.shape, dtype=bool)
     record[2:4, 2:4, 2:4] = True
 
-    def punch_stub(v, params=None, *, progress=None):
+    def punch_stub(v, params=None, *, progress=None, **_facts):
         out = HKLVolume(**{f: getattr(stubbed.vol, f) for f in (
             "data", "sigma", "mask", "h_axis", "k_axis", "l_axis", "ub_matrix")})
         setattr(out, "_punched", record)
