@@ -421,17 +421,13 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     full_coverage_q: maybeNum,
     box_face_q: maybeNum,
     box_corner_q: maybeNum,
-    low_q_gap: maybeNum,
-    // These three only when the raw volume's coverage was read (findings).
-    raw_counts: optional(obj({ q_min_edge: maybeNum, q_max_edge: maybeNum, fully_measured: nullable(range), box_face_q: num })),
-    suggested_band: optional(nullable(range)),
+    // The coverage is measured once, in Python, so these are always given.
+    raw_counts: obj({ q_min_edge: maybeNum, q_max_edge: maybeNum, fully_measured: nullable(range), box_face_q: num }),
+    suggested_band: nullable(range),
     counts_end_inside_box: bool,
-    band_check: optional(str),
+    band_check: str,
     q_unit: str,
     settings: obj({ pdfQMin: str, pdfQMax: str, pdfApod: str, pdfWindowShape: str, pdfWindowSupport: bool }),
-    per_plane: byRecipPlane(
-      nullable(obj({ full_coverage_q: maybeNum, half_coverage_q: maybeNum, box_q: maybeNum, shells: arr(obj({ q: num, measured: num })) })),
-    ),
   }),
 
   // A cell neither hexagonal nor orthogonal, or a section off the origin, is a note alone (findings).

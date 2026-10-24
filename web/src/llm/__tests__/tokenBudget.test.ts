@@ -1,19 +1,20 @@
 // How long NEBULA Pilot's worst realistic turn grows, in the tokens the context
 // guard counts, against a 32k local context window.
 //
-// VERDICT (measured 2026-10-19, with the ΔPDF's features a real, full list):
+// VERDICT (measured 2026-10-19; re-pinned 2026-10-24 with the skill fact sync
+// on #17's skill text and the prompts of 1.6, and dpdf_peaks' orbits of 4.4):
 // OVER 32k in both configurations.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 41.7k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 41.5k + 6,144
-//   = 47.6k before the loop's compaction, and 37.7k to 42.0k after it, by the
-//   order the skills are read (39.3k in the method's order).
+//   about 42.4k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 42.2k + 6,144
+//   = 48.4k before the loop's compaction, and 39.2k to 43.2k after it, by the
+//   order the skills are read (39.4k in the method's order).
 // - A model LM Studio loaded with 32k gets the turn in only because the window
 //   guard then shortens the results down to the newest: the two skills just
 //   read reach the model as stubs of a few hundred characters.
 // A local live run needs a context of 56k (57,344) or more, the run policy's
 // minimum (RUN_POLICY): it holds the whole turn before compaction, with room
-// to reply, and leaves free the 3k a model-visible addition must leave (9.7k
+// to reply, and leaves free the 3k a model-visible addition must leave (9.0k
 // now). The estimate is conservative (every tool result, the skills' prose
 // included, counts at the data rate), but at the prose rate for the skills
 // the turn is still over 32k.
@@ -128,12 +129,12 @@ const BAND = 0.05;
 // The current sizes (estimated prompt tokens, and with the reply reserve).
 // Update deliberately, with the verdict in the header, when the turn changes.
 const PINNED = {
-  console: { prompt: 41_661, total: 105_661 },
-  localBefore: { prompt: 41_459, total: 47_603 },
-  localSkillsFirst: { prompt: 31_601, total: 37_745 },
-  localMethod: { prompt: 33_157, total: 39_301 },
-  localSkillsLast: { prompt: 35_824, total: 41_968 },
-  lmStudio32k: { prompt: 28_650, total: 34_794 },
+  console: { prompt: 42_449, total: 106_449 },
+  localBefore: { prompt: 42_247, total: 48_391 },
+  localSkillsFirst: { prompt: 33_007, total: 39_151 },
+  localMethod: { prompt: 33_235, total: 39_379 },
+  localSkillsLast: { prompt: 37_017, total: 43_161 },
+  lmStudio32k: { prompt: 28_464, total: 34_608 },
 };
 
 // ---------------------------------------------------------------- the turn
