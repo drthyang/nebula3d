@@ -359,7 +359,12 @@ miss is a note.
     it compares how far the forward transform's window reaches in |Q| (the |Q|
     band if set, else the box faces, the coverage edge when tapered to it, or
     the box corners for a flat separable window) with the |Q| where shells
-    stop being 95 % measured. The coverage is measured once, in Python, on the
+    stop being 95 % measured. With the window fitted to the coverage (the
+    support on, an auto or ellipsoid window) the backend keeps at most 10⁻³ of
+    its weight on unmeasured space by construction, so that weight, or the
+    taper's reach, is its own target, not a check: the verdict says so, and
+    judges where the counts end and a band that is set, which needs attention
+    past the counts' edges. The coverage is measured once, in Python, on the
     raw volume's |Q| shells in 3D (`analysis/coverage.py`, served by both
     adapters: `GET /api/volumes/{id}/coverage` and the webbridge's
     `volume_coverage_json`); the principal planes only show where. It gives
