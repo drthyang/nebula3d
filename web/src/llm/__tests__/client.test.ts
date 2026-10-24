@@ -201,13 +201,18 @@ describe("streamChat", () => {
 });
 
 // A body that sends `chunks` one every `everyMs`, and never ends unless they
-// run out (`close`) or the request is aborted.
+// run out (`close`) or the request is aborted. A reader that cancels the body
+// (the client does on `[DONE]`) stops its timer.
 const slowBody = (chunks: string[], everyMs: number, signal: AbortSignal | undefined, close: boolean): Response => {
   const enc = new TextEncoder();
+  let timer: ReturnType<typeof setInterval> | undefined;
   const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      clearInterval(timer);
+    },
     start(controller) {
       let i = 0;
-      const timer = setInterval(() => {
+      timer = setInterval(() => {
         if (i < chunks.length) controller.enqueue(enc.encode(chunks[i++]));
         else if (close) {
           clearInterval(timer);
