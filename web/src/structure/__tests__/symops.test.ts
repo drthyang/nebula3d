@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyOp, closeGroup, parseSymop, splitSymops, symmetryGroup } from "../symops";
+import { applyOp, closeGroup, hasCentring, parseSymop, splitSymops, symmetryGroup } from "../symops";
 
 describe("parseSymop", () => {
   it("reads rotations and fractional translations", () => {
@@ -23,6 +23,20 @@ describe("parseSymop", () => {
     expect(() => parseSymop("x, y")).toThrow(/three components/);
     expect(() => parseSymop("x, y, q")).toThrow(/cannot read/);
     expect(() => parseSymop("x, x, z")).toThrow(/not a lattice symmetry/);
+  });
+
+  it("reads a typeset minus (U+2212), as the panel's hint writes it", () => {
+    expect(parseSymop("\u2212x+1/2, y, z+1/2")).toEqual(parseSymop("-x+1/2, y, z+1/2"));
+  });
+
+  it("takes decimal translations within 1e-3 of a multiple of 1/24 as that multiple", () => {
+    expect(parseSymop("x, y, z+0.3333").trans[2]).toBe(1 / 3);
+    expect(parseSymop("x, y, z+0.667").trans[2]).toBe(2 / 3);
+    expect(parseSymop("x, y, z-0.1667").trans[2]).toBe(5 / 6);
+    expect(parseSymop("x+0.0417, y, z").trans[0]).toBe(1 / 24);
+    // an origin shift that is no such multiple is kept as written
+    expect(parseSymop("x+0.1, y, z").trans[0]).toBe(0.1);
+    expect(parseSymop("x+0.33, y, z").trans[0]).toBe(0.33);
   });
 });
 
@@ -65,6 +79,18 @@ describe("closeGroup", () => {
     const g = symmetryGroup("-x,-y,z+1/2");
     expect(g).toHaveLength(2);
     expect(applyOp(g[1], [0.1, 0.2, 0.3])).toEqual([-0.1, -0.2, 0.8]);
+  });
+
+  it("closes screw axes written as 4-digit decimals (P3_1, P6_1)", () => {
+    expect(symmetryGroup("x,y,z\n-y,x-y,z+0.3333\n-x+y,-x,z+0.6667")).toHaveLength(3);
+    expect(symmetryGroup("x,y,z\nx-y,x,z+0.1667")).toHaveLength(6);
+  });
+
+  it("tells whether a group already holds the centring translations", () => {
+    const gens = "x,y,z\n-x,-y,z\n-x,y,-z\nz,x,y\ny,x,-z\n-x,-y,-z";
+    expect(hasCentring(symmetryGroup(gens), "F")).toBe(false);
+    expect(hasCentring(symmetryGroup(gens, "F"), "F")).toBe(true);
+    expect(hasCentring(symmetryGroup(gens), "P")).toBe(true);
   });
 
   it("refuses operations that generate no finite group", () => {

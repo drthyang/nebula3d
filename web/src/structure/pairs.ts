@@ -20,25 +20,52 @@ export interface Atom {
   frac: Vec3; // in [0, 1)
 }
 
+/**
+ * Two images of one site closer than this (Å) are the same atom.  A CIF that
+ * writes a special position to 3 decimals (0.333, 0.667 for ⅓, ⅔) puts its
+ * images up to ~1.5e-3 of the cell apart — 0.005 Å in a 3 Å cell, 0.04 Å in a
+ * 25 Å one — while the closest images of one site that are really distinct,
+ * the halves of a split (disordered) site, are ≳ 0.1 Å apart, and real
+ * interatomic distances start near 0.7 Å (H–H).  0.05 Å sits between, and
+ * well under a ΔPDF voxel (≳ 0.1 Å), so merging below it changes no marker.
+ * Only images of the same site are compared: two sites stay two atoms however
+ * close they are.
+ */
+export const DUPLICATE_TOLERANCE = 0.05;
+
 /** Atoms in one cell: every site under every operation, duplicates removed. */
-export function expandSites(sites: Site[], ops: SymOp[], tol = 1e-3): Atom[] {
+export function expandSites(sites: Site[], ops: SymOp[], cell: Cell | null = null): Atom[] {
+  // Squared length of a small fractional difference on the cell's metric; with
+  // no cell (nothing can be drawn then, only the atoms counted), 5e-3 of the
+  // cell along each axis — DUPLICATE_TOLERANCE in a 10 Å cell.
+  const g = cell ? metric(cell) : null;
+  const tol2 = g ? DUPLICATE_TOLERANCE ** 2 : 25e-6;
+  const len2 = (d: Vec3) =>
+    g
+      ? g[0] * d[0] * d[0] + g[1] * d[1] * d[1] + g[2] * d[2] * d[2] +
+        2 * (g[3] * d[0] * d[1] + g[4] * d[0] * d[2] + g[5] * d[1] * d[2])
+      : Math.max(d[0] * d[0], d[1] * d[1], d[2] * d[2]);
   const atoms: Atom[] = [];
   for (const s of sites) {
     const mine: Vec3[] = [];
     for (const op of ops) {
       const p = applyOp(op, [s.x, s.y, s.z]).map(wrap01) as Vec3;
-      const dup = mine.some((q) =>
-        q.every((v, k) => {
-          const d = v - p[k];
-          return Math.abs(d - Math.round(d)) < tol;
-        }),
-      );
+      const dup = mine.some((q) => {
+        const d = q.map((v, k) => v - p[k] - Math.round(v - p[k])) as Vec3;
+        return len2(d) < tol2;
+      });
       if (dup) continue;
       mine.push(p);
       atoms.push({ label: s.label, element: s.element, frac: p });
     }
   }
   return atoms;
+}
+
+/** The metric tensor's (G11, G22, G33, G12, G13, G23), Å². */
+function metric(c: Cell): number[] {
+  const cos = (x: number) => (Math.abs(x - 90) < 1e-9 ? 0 : Math.cos((x * Math.PI) / 180));
+  return [c.a * c.a, c.b * c.b, c.c * c.c, c.a * c.b * cos(c.gamma), c.a * c.c * cos(c.beta), c.b * c.c * cos(c.alpha)];
 }
 
 /** Axis permutations: data axis i is the CIF's axis perm[i]. */
@@ -115,7 +142,7 @@ export interface PairDiff {
 }
 
 /** Elements in the order their sites first appear. */
-export function elementOrder(atoms: Atom[]): string[] {
+export function elementOrder(atoms: readonly { element: string }[]): string[] {
   const out: string[] = [];
   for (const a of atoms) if (!out.includes(a.element)) out.push(a.element);
   return out;
@@ -126,20 +153,48 @@ export function pairKey(e1: string, e2: string, order: string[]): string {
   return order.indexOf(e1) <= order.indexOf(e2) ? `${e1}–${e2}` : `${e2}–${e1}`;
 }
 
-/** All pair differences of the cell's atoms, grouped by (from, to, difference). */
+/**
+ * All pair differences of the cell's atoms, grouped by (from, to, difference).
+ * There are N² pairs, so the work is kept to the grouping that can merge
+ * anything: pairs are taken site pair by site pair, a site pair with one atom
+ * at each end (every pair of a P1 supercell) is one difference as it stands,
+ * and the others are grouped on a number key (the difference to 1e-5 of the
+ * cell), not a string.
+ */
 export function pairDifferences(atoms: Atom[]): PairDiff[] {
   const order = elementOrder(atoms);
-  const groups = new Map<string, PairDiff>();
-  for (const ai of atoms) {
-    for (const aj of atoms) {
-      const d = aj.frac.map((v, k) => wrap01(Math.round((v - ai.frac[k]) * 1e5) / 1e5)) as Vec3;
-      const g = `${ai.label}|${aj.label}|${d.map((v) => v.toFixed(5)).join(",")}`;
-      const hit = groups.get(g);
-      if (hit) hit.count++;
-      else groups.set(g, { d, from: ai.label, to: aj.label, key: pairKey(ai.element, aj.element, order), count: 1 });
+  const S = 1e5;
+  const bySite = new Map<string, { atom: Atom; g: number[] }[]>();
+  for (const a of atoms) {
+    let list = bySite.get(a.label);
+    if (!list) bySite.set(a.label, (list = []));
+    list.push({ atom: a, g: a.frac.map((v) => Math.round(v * S)) });
+  }
+  const sites = [...bySite.values()];
+  const out: PairDiff[] = [];
+  for (const from of sites) {
+    for (const to of sites) {
+      const key = pairKey(from[0].atom.element, to[0].atom.element, order);
+      const groups = from.length * to.length > 1 ? new Map<number, PairDiff>() : null;
+      for (const ai of from) {
+        for (const aj of to) {
+          const n0 = (((aj.g[0] - ai.g[0]) % S) + S) % S;
+          const n1 = (((aj.g[1] - ai.g[1]) % S) + S) % S;
+          const n2 = (((aj.g[2] - ai.g[2]) % S) + S) % S;
+          const k = (n0 * S + n1) * S + n2;
+          const hit = groups?.get(k);
+          if (hit) {
+            hit.count++;
+            continue;
+          }
+          const p: PairDiff = { d: [n0 / S, n1 / S, n2 / S], from: ai.atom.label, to: aj.atom.label, key, count: 1 };
+          groups?.set(k, p);
+          out.push(p);
+        }
+      }
     }
   }
-  return [...groups.values()];
+  return out;
 }
 
 /** A marker on one ΔPDF slice: one vector of one element pair. */

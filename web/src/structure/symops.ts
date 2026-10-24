@@ -37,9 +37,15 @@ export function wrap01(v: number): number {
   return w > 1 - 1e-9 ? 0 : w;
 }
 
+/**
+ * Minus signs as typeset (U+2212 −, as in the hint and International Tables
+ * copied from a PDF; U+2013 – en dash) read as "-".
+ */
+export const normaliseMinus = (s: string) => s.replace(/[\u2212\u2013]/g, "-");
+
 /** One component, e.g. "-x+1/2", "x-y", "1/2+z", "0.25-y": (coefficients, constant). */
 function parseComponent(src: string, op: string): { coef: Vec3; c: number } {
-  const s = src.replace(/\s+/g, "").toLowerCase();
+  const s = normaliseMinus(src).replace(/\s+/g, "").toLowerCase();
   const terms = s.match(/[+-]?[^+-]+/g);
   if (!s || !terms || terms.join("") !== s) throw new Error(`symmetry operation "${op}": cannot read "${src}"`);
   const coef: Vec3 = [0, 0, 0];
@@ -69,6 +75,24 @@ function det3(m: number[]): number {
   );
 }
 
+/**
+ * Space-group translations are multiples of 1/24 in any setting with a
+ * conventional origin (1/2, 1/3, 1/4, 1/6, 1/8, 1/12); a CIF that writes them
+ * as decimals ("z+0.3333", "0.1667") is rounded to 4 or 5 digits, sometimes 3,
+ * an error of at most 5e-4.  A translation within 1e-3 of such a multiple is
+ * taken as that multiple — 1e-3 is well under half their spacing (1/48 ≈ 0.02),
+ * so no other value is moved — and anything else (an arbitrary origin shift) is
+ * kept as written.  Without it z+0.3333 composes to z+0.9999, z+1.3332, … and
+ * never closes into a group.
+ */
+const SNAP_DIVISOR = 24;
+const SNAP_TOLERANCE = 1e-3;
+
+function snapTranslation(t: number): number {
+  const n = Math.round(t * SNAP_DIVISOR);
+  return Math.abs(t - n / SNAP_DIVISOR) < SNAP_TOLERANCE ? wrap01(n / SNAP_DIVISOR) : wrap01(t);
+}
+
 /** Parse one triplet "x', y', z'" (each in terms of x, y, z). */
 export function parseSymop(text: string): SymOp {
   const op = text.trim();
@@ -79,7 +103,7 @@ export function parseSymop(text: string): SymOp {
   if (Math.abs(Math.abs(det3(rot)) - 1) > 1e-9) {
     throw new Error(`symmetry operation "${op}" is not a lattice symmetry (|det| ≠ 1)`);
   }
-  return { rot, trans: rows.map((r) => wrap01(r.c)) as Vec3 };
+  return { rot, trans: rows.map((r) => snapTranslation(r.c)) as Vec3 };
 }
 
 /**
@@ -156,6 +180,12 @@ export function closeGroup(ops: SymOp[], centering: Centering = "P"): SymOp[] {
     }
   }
   return [...group.values()];
+}
+
+/** Whether a group already holds a centring's translations (a CIF that lists them). */
+export function hasCentring(group: SymOp[], centering: Centering): boolean {
+  const keys = new Set(group.map(opKey));
+  return CENTERING_SHIFTS[centering].every((t) => keys.has(opKey({ rot: IDENTITY.rot, trans: t })));
 }
 
 /** Parse pasted operations and close them into a group. */

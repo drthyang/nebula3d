@@ -48,7 +48,13 @@ import {
 } from "../state/viewerStore";
 import { useStructureStore } from "../state/structureStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
-import { markersNear, usePlaneMarkers, useStructureModel, type PlaneAxis } from "../structure/useStructure";
+import {
+  markersNear,
+  structureBlockedText,
+  usePlaneMarkers,
+  useStructureModel,
+  type PlaneAxis,
+} from "../structure/useStructure";
 import { useGlow } from "../llm/highlight";
 
 const AXES: FixedAxis[] = ["H", "K", "L"];
@@ -293,6 +299,8 @@ export function ConsistencyViewer() {
   // The 3D-ΔPDF page's structure overlay, on this page's ΔPDF view.
   const structure = useStructureModel(meta?.lattice);
   const showStructure = useStructureStore((s) => s.show) && structure !== null;
+  // Why the overlay draws nothing (cell mismatch, too many atoms), as the 3D-ΔPDF page's legend says it.
+  const structureNote = structure ? structureBlockedText(structure, "on the 3D-ΔPDF page (Edit structure)") : null;
   const setShowStructure = useStructureStore((s) => s.setShow);
   const rDepth = useStructureStore((s) => s.depth) ?? (dpdfAxisInfo?.step ?? 0) / 2;
   const rHeader = rResult.data?.header;
@@ -547,6 +555,13 @@ export function ConsistencyViewer() {
             <Switch label="Structure" checked={showStructure} disabled={!structure} onChange={setShowStructure} />
           </div>
         </div>
+        {showStructure && structure && structureNote && (
+          <div className="ws-row">
+            <span className="struct-sub">
+              <b>{structure.def.name}</b>: {structureNote}
+            </span>
+          </div>
+        )}
       </div>
 
       {datasetsQ.isError && (
