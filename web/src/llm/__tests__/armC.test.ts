@@ -35,7 +35,7 @@ import { fillReferences } from "../references";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, readSkill } from "../skills";
 import { callTool, CHAT_TOOLS, toolSpecs, toolsWithSkills, unreadSkillRefusal } from "../tools";
-import { describeStageParams, SAMPLE_PARAMS, sampleFactRefusal, TUNE_STAGES } from "../tune/catalog";
+import { describeStageParams, regridRefusal, SAMPLE_PARAMS, sampleFactRefusal, TUNE_STAGES } from "../tune/catalog";
 import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS } from "../tune/prompts";
 import { namedInOwnWords, quotations, skillNamesIn, skillSentences, skillSentencesIn, type SkillSentence } from "./methodText";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
@@ -160,7 +160,8 @@ const ROUNDS: Call[][] = [
     ["line_profile", { stage: "flattened", along: "H", at: { K: 0.5, L: 0 } }],
   ],
   [["texture_check", {}], ["qmax_coverage", {}], ["symmetry_check", {}], ["consistency_details", {}]],
-  [["grain_check", {}], ["ub_check", {}], ["bragg_peaks", {}]],
+  // The regrid the TASK does not ask for: refused, nothing written (its gate, the same in both arms).
+  [["grain_check", {}], ["ub_check", {}], ["regrid_refined_ub", {}], ["bragg_peaks", {}]],
   [["dpdf_contrast", {}], ["dpdf_peaks", {}]],
   [["compare_datasets", { kind: "reciprocal", plane: "hk0", value: 0 }], ["run_log", {}]],
   [["tune_pipeline", { stages: ["flatten"], trials_per_stage: 2 }]],
@@ -277,10 +278,10 @@ describe("arm C's session, with the skills off", () => {
     }
   }, SESSION_TIMEOUT);
 
-  it("ran the session it was scripted to: every tool arm C has, none refused, every kind of send-back, and the note to answer", () => {
+  it("ran the session it was scripted to: every tool arm C has, none refused but the regrid the task does not ask for, every kind of send-back, and the note to answer", () => {
     const offered = toolsWithSkills(CHAT_TOOLS, false).map((t) => t.name);
     expect(new Set(first.result.steps.map((s) => s.name))).toEqual(new Set(offered));
-    expect(first.result.steps.filter((s) => s.status !== "done").map((s) => `${s.name}: ${s.result}`)).toEqual([]);
+    expect(first.result.steps.filter((s) => s.status !== "done").map((s) => `${s.name}: ${s.result}`)).toEqual([`regrid_refined_ub: Error: ${regridRefusal()}`]);
     expect(first.result.steps.filter((s) => s.result?.includes("already_called"))).toHaveLength(2);
     expect(first.result.content).toBe("The grid is 97 × 97 × 97 voxels and the cell edge is 4 Å.");
     expect(second.result.content).toBe(SECOND_REVISED);
@@ -449,6 +450,40 @@ describe("arm C's refusal of a change to a fact about the sample", () => {
     const changes = { changes: { punchSupercellH: 2 } };
     const c = await callTool(armC, "update_settings", changes, { tools: offered });
     const b = await callTool({ ...armC, skills: true, skillsRead: new Set(["bragg-node-audit"]) }, "update_settings", changes);
+    expect(b.text).toBe(c.text);
+  });
+});
+
+// regrid_refined_ub writes a new dataset only when the user's latest message
+// asks for a regrid (tune/catalog.ts: namesRegrid). Its description is
+// definitions only, so arm C reads it as arm B does, and its refusal is the
+// tool's own: it names no skill, tool or stage, and holds no inference.
+describe("arm C's regrid", () => {
+  const offered = toolsWithSkills(CHAT_TOOLS, false);
+  const armC = { dataset: DATASET, datasets: DATASETS, skills: false, skillsRead: new Set<string>(), userMessage: TASK };
+  const spans = writtenInferences()
+    .map((e) => e.span.text.trim())
+    .filter((t) => t.split(/\s+/).length >= 3);
+
+  it("is described in definitions only: arm C reads arm B's description", () => {
+    const b = CHAT_TOOLS.find((t) => t.name === "regrid_refined_ub")!;
+    const c = offered.find((t) => t.name === "regrid_refined_ub")!;
+    expect(b.descriptionWithoutSkills).toBeUndefined();
+    expect(c.description).toBe(b.description);
+    expect(skillNamesIn(c.description)).toEqual([]);
+    expect(c.description).not.toMatch(/\bskills?\b/i);
+    expect(skillSentencesIn(c.description, MIN_WORDS).map(label)).toEqual([]);
+    expect(spans.filter((t) => c.description.includes(t))).toEqual([]);
+  });
+
+  it("is refused for the validation's task, in words that name no skill, tool or stage and hold no inference, as in arm B", async () => {
+    usePipelineStore.setState({ running: false });
+    const c = await callTool(armC, "regrid_refined_ub", {}, { tools: offered });
+    expect(c.ok).toBe(false);
+    expect(c.text).toBe(`Error: ${regridRefusal()}`);
+    expect([...skillNamesIn(c.text), ...namedInOwnWords(c.text), ...spans.filter((t) => c.text.includes(t))]).toEqual([]);
+    expect(c.text).not.toMatch(/\bskills?\b/i);
+    const b = await callTool({ ...armC, skills: true, skillsRead: new Set(allSkills().map((s) => s.name)) }, "regrid_refined_ub", {});
     expect(b.text).toBe(c.text);
   });
 });

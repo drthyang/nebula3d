@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { armSetup, TASK } from "../evals/validation";
 import { lastQuestion } from "../localTools";
 import { buildStageReviewMessages, type ReviewStage } from "../prompts/templates";
-import { isSampleFact, namesSampleFact, SAMPLE_PARAMS, sampleFactRefusal } from "../tune/catalog";
+import { isSampleFact, namesRegrid, namesSampleFact, REGRID_REFUSED, regridRefusal, SAMPLE_PARAMS, sampleFactRefusal } from "../tune/catalog";
 
 /** The facts a message names, in the catalog's order. */
 const named = (message: string): string[] => SAMPLE_PARAMS.filter((p) => namesSampleFact(message, p.key)).map((p) => p.key);
@@ -101,5 +101,47 @@ describe("the words that name a fact about the sample", () => {
     }
     // Why "satellites" names nothing: the punch review asks about them in every review of the punch.
     expect(lastQuestion(buildStageReviewMessages({} as never, "punch", null, { tools: true }))).toMatch(/\bsatellites\b/);
+  });
+});
+
+// The same gate for the regrid onto the refined UB (regrid_refined_ub), which
+// writes a new dataset: it runs only when the user's latest message names a
+// regrid (namesRegrid), and is refused otherwise in the tool's own words.
+describe("the words that ask for a regrid", () => {
+  // [the user's latest message, whether it asks for a regrid]
+  const KNOWN: [string, boolean][] = [
+    ["Regrid the volume onto the refined UB.", true],
+    ["Please re-grid the raw data.", true],
+    ["The UB is turned: write a regridded copy.", true],
+    ["Go ahead with the regridding.", true],
+    ["Run regrid_refined_ub.", true],
+    ["Run examples/refine_ub.py on it.", true],
+    // A question that names it names it: the gate reads names, not intent.
+    ["Should I regrid?", true],
+    // What a UB question says names no regrid: the UB check refines the UB and writes nothing.
+    ["Is the UB right?", false],
+    ["Refine the UB and tell me the turn.", false],
+    ["The grid is coarse; is the punch on the grid nodes?", false],
+    ["Yes, do it.", false], // a bare yes names nothing: the user says which
+    ["", false],
+  ];
+
+  it.each(KNOWN)("“%s” asks for one: %s", (message, asks) => {
+    expect(namesRegrid(message)).toBe(asks);
+  });
+
+  it("finds none in the app's own instructions: the validation's task and each stage review", () => {
+    expect(namesRegrid(TASK)).toBe(false);
+    const stages: ReviewStage[] = ["rings", "punch", "backfill", "flatten", "dpdf"];
+    for (const stage of stages) {
+      for (const tools of [true, false]) {
+        expect(namesRegrid(lastQuestion(buildStageReviewMessages({} as never, stage, null, { tools }))), stage).toBe(false);
+      }
+    }
+  });
+
+  it("is refused in words that say what it does and what to do, and nothing else", () => {
+    expect(regridRefusal()).toBe("A regrid writes a new dataset, which only the user asks for: nothing was written. Ask the user, and regrid once they ask for it.");
+    expect(regridRefusal()).toContain(REGRID_REFUSED);
   });
 });

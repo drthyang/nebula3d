@@ -1,11 +1,13 @@
 // The tools a local model is offered for a question. Every request carries the
-// definitions of the tools it offers, and all 24 come to about 5k tokens, more
+// definitions of the tools it offers, and all 25 come to about 7k tokens, more
 // than half of the first request: a local model reads them on every request,
 // and the more it is offered, the more it picks the wrong one. So it gets the
 // reading tools every question needs, and the ones the question is about: each
 // tool declares the questions it is for (its facts' `offeredFor`, in the
-// registry), and one that declares none is offered for every question. A tool
-// it calls by name all the same still runs (agent.ts), and stays offered.
+// registry), and one that declares none is offered for every question. An
+// action only the user asks for (its facts' `askedFor`: the regrid) is offered
+// only for a message that asks for it. A tool it calls by name all the same
+// still runs (agent.ts), and stays offered.
 
 import { factsOf, toolsWhere, type AgentTool } from "./tools";
 import type { AskedAbout } from "./tools/facts";
@@ -37,7 +39,7 @@ const ASKS_TO_ACT =
   /(^|[.!?\n]\s*|\b(please|can you|could you|would you|go ahead and|then)\s+)(raise|lower|increase|decrease|set|change|use|switch|turn|enable|disable|apply|run|rerun|re-run|tune|try|update|make|redo)\b/i;
 
 /** Offered for every question: reading the dataset, the stages' verdicts, any cut, the log, the viewer. */
-export const CORE_TOOLS = toolsWhere((f) => f.offeredFor === "always" && !f.actsOnPipeline);
+export const CORE_TOOLS = toolsWhere((f) => f.offeredFor === "always" && !f.actsOnPipeline && !f.askedFor);
 
 /** The tools to offer a local model for `question`, in their usual order. */
 export function toolsFor(question: string, tools: readonly AgentTool[]): AgentTool[] {
@@ -45,6 +47,9 @@ export function toolsFor(question: string, tools: readonly AgentTool[]): AgentTo
   const acting = ASKS_TO_ACT.test(question.trim());
   return tools.filter((t) => {
     const f = factsOf(t.name);
+    // An action only the user asks for (the regrid): offered when the message
+    // asks for it by name, the only message it would run for.
+    if (f.askedFor) return f.askedFor(question);
     if (f.actsOnPipeline) return acting;
     return f.offeredFor === "always" || f.offeredFor.some((a) => asked.includes(a));
   });

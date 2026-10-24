@@ -15,6 +15,7 @@ import type {
   DeltaPdfMeta,
   DpdfFeatures,
   FlattenSettings,
+  RegridResult,
   RingDiagnostics,
   RingIsotropy,
   ShellFloors,
@@ -31,8 +32,12 @@ import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore } from "../tune/tuner";
 import { shellFloorsOf } from "./shellFloors";
 
-/** The API client's functions the crystal answers: the test file's mocks of them. */
-export type BackendMocks = Record<
+/**
+ * The API client's functions the crystal answers: the test file's mocks of
+ * them. The regrid's (regridDataset) is optional: only a file that runs
+ * regrid_refined_ub's gate open mocks it.
+ */
+export type BackendMocks = { regridDataset?: Mock } & Record<
   | "fetchBraggProfile"
   | "fetchConsistencyCheck"
   | "fetchDataset"
@@ -355,6 +360,68 @@ const UB_CHECK: UbCheck = {
   mean_offset_rlu: { before: [0.0011, -0.0007, 0.0002], after: [0.0009, -0.0006, 0.0002], standard_error: [0.0008, 0.0008, 0.0009], n: 112 },
 };
 
+/**
+ * The regrid of a dataset of the crystal (POST /api/datasets/{id}/regrid), as
+ * nebula3d.server.regrid words it. The crystal's UB is right (UB_CHECK turns
+ * it 0.003°), so the regrid is refused, nothing written: the turn is under
+ * the UB check's 0.05°. `turned` is the same crystal with its UB turned
+ * 0.3°, made up for the tests: the regrid writes it as a new dataset.
+ */
+export function regridAnswer(datasetId: string, { turned = false }: { turned?: boolean } = {}): RegridResult {
+  const common = {
+    id: datasetId,
+    source_file: `${datasetId}.nxs`,
+    refined_on: `${datasetId}.nxs`,
+    fit: "both",
+    operations: 8,
+    operations_from: `${datasetId}.nxs`,
+    source_symmetrised: false,
+    symmetrised: false,
+    turn_threshold_deg: 0.05,
+    axis_uvw: UB_CHECK.axis_uvw,
+    ub_start: UB_CHECK.ub_start,
+    cell_start: UB_CHECK.cell_start,
+    cell: UB_CHECK.cell,
+    n_used: UB_CHECK.n_used,
+  };
+  if (!turned) {
+    return {
+      ...common,
+      written: false,
+      refusal: {
+        code: "turn_below_noise",
+        reason:
+          "The both fit turns the UB by 0.003°, under the UB check's 0.05° rule (UB_TURN): a turn that small is within the fit's own noise, and regridding onto it would only resample the data. Nothing was written.",
+      },
+      dataset_id: null,
+      file: null,
+      turn_deg: UB_CHECK.angle_deg,
+      ub: UB_CHECK.ub,
+      rms_start: UB_CHECK.rms_start,
+      rms: UB_CHECK.rms,
+      measured_before: null,
+      measured_after: null,
+      voxels_outside: null,
+      voxels_outside_share: null,
+    };
+  }
+  return {
+    ...common,
+    written: true,
+    refusal: null,
+    dataset_id: `${datasetId}_regridded`,
+    file: `${datasetId}_regridded.nxs`,
+    turn_deg: 0.30012,
+    ub: UB_CHECK.ub,
+    rms_start: 0.0171,
+    rms: 0.0002,
+    measured_before: 812_400,
+    measured_after: 808_150,
+    voxels_outside: 4_120,
+    voxels_outside_share: 4_120 / 812_400,
+  };
+}
+
 // The ΔPDF's features grouped as the backend groups them: by the point group
 // the raw file declares (mmm, volumeMeta below). Its orbits are smaller than
 // the cube's, so each cube orbit of the crystal's correlations is three
@@ -487,6 +554,7 @@ export function installBackend(api: BackendMocks): void {
   // The grid is fine (0.0625 r.l.u., 0.098 Å⁻¹ a voxel): the ring removal left no ring unconfirmed.
   api.fetchRingDiagnostics.mockImplementation(async (id: string) => ringDiagnostics(id));
   api.fetchDataset.mockImplementation(async (id: string) => DATASETS.find((d) => d.id === stemOf(id)));
+  api.regridDataset?.mockImplementation(async (id: string) => regridAnswer(id));
 }
 
 // The console as a fresh session leaves it: default settings, no run, the

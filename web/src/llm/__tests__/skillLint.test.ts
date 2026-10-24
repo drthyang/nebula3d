@@ -43,7 +43,7 @@ import { TUNE_STAGES } from "../tune/catalog";
 import { outOfBounds } from "../tune/evaluate";
 import { useTuneStore } from "../tune/tuner";
 import { BACK_FFT_R_OK, UB_TURNED } from "../verdicts/rules";
-import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
+import { DATASET, DATASETS, freshConsole, installBackend, regridAnswer } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -60,6 +60,7 @@ const api = vi.hoisted(() => ({
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
   fetchVolumeTexture: vi.fn(),
+  regridDataset: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -525,7 +526,7 @@ const RUN_EVENTS: JobEvent[] = [
 ];
 
 /** One or more calls of every tool, as modelVisible.test.ts samples them; assess_stage for each stage too. */
-const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => void }[] = [
+const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => void; userMessage?: string }[] = [
   { name: "read_skill", args: { name: "reduction-qc" } },
   { name: "describe_dataset", args: {} },
   { name: "current_view", args: {} },
@@ -581,6 +582,13 @@ const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => voi
         });
       }),
   },
+  // The user asks for it (its gate); the crystal's UB turned 0.3°, so it writes the new dataset.
+  {
+    name: "regrid_refined_ub",
+    args: {},
+    userMessage: "Regrid the volume onto the refined UB.",
+    before: () => api.regridDataset.mockImplementationOnce(async (id: string) => regridAnswer(id, { turned: true })),
+  },
   { name: "show_in_viewer", args: { view: "dpdf", plane: "xy", value: 4 } },
 ];
 
@@ -589,7 +597,7 @@ beforeAll(async () => {
   for (const s of SAMPLES) {
     freshConsole();
     s.before?.();
-    const ctx: ToolContext = { dataset: DATASET, datasets: DATASETS, skillsRead: new Set<string>(SKILL_NAMES) };
+    const ctx: ToolContext = { dataset: DATASET, datasets: DATASETS, skillsRead: new Set<string>(SKILL_NAMES), userMessage: s.userMessage };
     const run = await callTool(ctx, s.name, s.args);
     if (!run.ok) throw new Error(`${s.name} ${JSON.stringify(s.args)}: ${run.text}`);
     const text = run.full ?? run.text;

@@ -11,7 +11,7 @@ import { loadSettings, saveSettings } from "../settings";
 import { contractDisagreements, RESULT_CONTRACTS } from "../tools/contracts";
 import { devCase } from "../evals/devData";
 
-type Call = [tool: string, args: Record<string, unknown>];
+type Call = [tool: string, args: Record<string, unknown>, userMessage?: string];
 
 // Each call in turn, on one handle: the tools that change settings or outputs
 // come last, so the reads see the case's default run.
@@ -61,6 +61,9 @@ const CALLS: Call[] = [
   ["update_settings", { changes: { flattenQ2: true } }],
   ["run_pipeline", { from_stage: "pdf" }],
   ["tune_pipeline", { stages: ["pdf"], trials_per_stage: 2 }],
+  // Asked for by the user (its gate). The dev control's UB is right: refused, nothing written
+  // (its written shape is held on the turned UB, evals/devData/regrid.replay.test.ts).
+  ["regrid_refined_ub", {}, "Regrid the volume onto the refined UB."],
 ];
 
 // The tuning run asks its model for alternatives outside the agent loop: a
@@ -93,8 +96,8 @@ describe("the tools' live results against their contracts", () => {
     const restore = contentTuner();
     const problems: string[] = [];
     try {
-      for (const [tool, args] of CALLS) {
-        const r = await c.tool(tool, args);
+      for (const [tool, args, userMessage] of CALLS) {
+        const r = await c.tool(tool, args, { userMessage });
         const call = `${tool} ${JSON.stringify(args)}`;
         expect(r.ok, `${call}: ${r.summary}`).toBe(true);
         problems.push(...contractDisagreements(tool, r.result).map((d) => `${call}: ${d}`));

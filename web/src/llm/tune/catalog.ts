@@ -126,10 +126,37 @@ export const isSampleFact = (key: string): boolean => SAMPLE_PARAMS.some((p) => 
  */
 export function namesSampleFact(message: string, key: string): boolean {
   const p = SAMPLE_PARAMS.find((q) => q.key === key);
-  if (!p || !message) return false;
-  const holds = (re: RegExp): boolean => re.test(message);
-  return holds(new RegExp(`\\b${p.key}\\b`, "i")) || p.names.some((n) => (n instanceof RegExp ? holds(n) : n.every(holds)));
+  if (!p) return false;
+  return namedIn(message, [new RegExp(`\\b${p.key}\\b`, "i"), ...p.names]);
 }
+
+/** Whether `message` holds one of `names`: a word, or an array whose words it holds every one of. False for no message. */
+const namedIn = (message: string, names: readonly (RegExp | readonly RegExp[])[]): boolean => {
+  if (!message) return false;
+  const holds = (re: RegExp): boolean => re.test(message);
+  return names.some((n) => (n instanceof RegExp ? holds(n) : n.every(holds)));
+};
+
+// The words that name a regrid onto the refined UB (regrid_refined_ub, which
+// writes a new dataset): the same gate as a fact about the sample's, for an
+// action only the user asks for. The tool runs only when the user's latest
+// message names it, and a local model is offered it only then (its facts'
+// `askedFor`). Conservative as the facts' lists are: "refine the UB" names
+// none, as the UB check refines it and writes nothing.
+const REGRID_NAMES: readonly RegExp[] = [/\bre-?grid(?:s|ded|ding)?\b/i, /\bregrid_refined_ub\b/i, /\brefine_ub(?:\.py)?\b/i];
+
+/** Whether `message`, the user's latest, asks for a regrid onto the refined UB, by name. */
+export const namesRegrid = (message: string): boolean => namedIn(message, REGRID_NAMES);
+
+/** What a refusal of a regrid the user's latest message does not name says (findings.ts reads it). */
+export const REGRID_REFUSED = "A regrid writes a new dataset, which only the user asks for";
+
+/**
+ * The regrid's refusal when the user's latest message does not ask for one.
+ * Like sampleFactRefusal it names no skill, stage or tool, so it reads the
+ * same with the skills off (the validation's arm C).
+ */
+export const regridRefusal = (): string => `${REGRID_REFUSED}: nothing was written. Ask the user, and regrid once they ask for it.`;
 
 /** What a refusal of a change to a fact about the sample says, whatever the fact (findings.ts reads it). */
 export const SAMPLE_FACT_REFUSED = "is a fact about the sample, which only the user sets";

@@ -660,6 +660,58 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     write_outputs_with: optional(obj({ tool: lit("run_pipeline"), from_stage: str })),
   }),
 
+  // Written as a new dataset, or refused with nothing written (docs/regrid.md):
+  // the fields a refusal came before are null (a target_exists refusal comes
+  // before the fit, and names the dataset in the way).
+  regrid_refined_ub: union(
+    obj({
+      written: lit(true),
+      refusal: nul,
+      dataset_id: str,
+      file: str,
+      source_file: str,
+      refined_on: str,
+      fit: str,
+      bragg_nodes_every: v3,
+      turn_deg: num,
+      turn_threshold_deg: num,
+      axis_uvw: v3,
+      rms_start: num,
+      rms: num,
+      cell_start: str,
+      cell: str,
+      peaks_used: num,
+      symmetrised: bool,
+      measured_before: num,
+      measured_after: num,
+      voxels_outside: num,
+      voxels_outside_share: maybeNum,
+    }),
+    obj({
+      written: lit(false),
+      refusal: obj({ code: oneOf("target_exists", "symmetrised_without_source", "turn_below_noise", "cannot_symmetrise"), reason: str }),
+      dataset_id: maybeStr,
+      file: maybeStr,
+      source_file: str,
+      refined_on: maybeStr,
+      fit: maybeStr,
+      bragg_nodes_every: v3,
+      turn_deg: maybeNum,
+      turn_threshold_deg: num,
+      axis_uvw: nullable(v3),
+      rms_start: maybeNum,
+      rms: maybeNum,
+      cell_start: maybeStr,
+      cell: maybeStr,
+      peaks_used: maybeNum,
+      symmetrised: bool,
+      measured_before: nul,
+      measured_after: nul,
+      voxels_outside: nul,
+      voxels_outside_share: nul,
+    }),
+  ),
+
   show_in_viewer: obj({ opened: str }),
 };
 

@@ -14,7 +14,7 @@
 // and a frozen clock. No model is loaded, no backend or API is called, and no
 // measured data is used.
 //
-// Tool results sampled: all 24 tools in CHAT_TOOLS. None skipped. Covered in part:
+// Tool results sampled: all 25 tools in CHAT_TOOLS. None skipped. Covered in part:
 // - read_skill: one skill's body; not a reference (those are docs/algorithms
 //   pages, read as written).
 // - run_pipeline, tune_pipeline: the runs are stubs; what is sampled is the
@@ -55,7 +55,7 @@ const VERDICT_LABEL = WORDS.label;
 const NOT_DECLARED = (asymmetry: number): string => judge("symmetry", { ops: [{ op: "six-fold (60°)", rms_difference: asymmetry }], declared: null }).words ?? "";
 import { writtenInferences } from "../inference";
 import { namedInOwnWords, quotations } from "./methodText";
-import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
+import { DATASET, DATASETS, freshConsole, installBackend, regridAnswer } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -72,6 +72,7 @@ const api = vi.hoisted(() => ({
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
   fetchVolumeTexture: vi.fn(),
+  regridDataset: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -268,6 +269,7 @@ describe("2. the tools, as sent to the model", () => {
       ["a ΔPDF question", "What are the strongest pair correlations in the 3D-ΔPDF?"],
       ["a flatten question", "Is there a background left after the flatten?"],
       ["an action request", "Raise the punch significance to 6 and rerun the pipeline."],
+      ["a regrid request", REGRID_ASKED],
     ];
     const body = questions
       .map(([what, q]) => {
@@ -397,6 +399,9 @@ const RUN_EVENTS: JobEvent[] = [
   { type: "progress", stage: "pdf_check", status: "done", fraction: 1, message: "back-FFT r = 0.99714" },
 ];
 
+// The user's latest message that asks for the regrid (its gate).
+const REGRID_ASKED = "Regrid the volume onto the refined UB.";
+
 const SAMPLES: Sample[] = [
   { name: "read_skill", args: { name: "bragg-node-audit" } },
   { name: "describe_dataset", args: {} },
@@ -478,6 +483,19 @@ const SAMPLES: Sample[] = [
         });
       }),
   },
+  {
+    name: "regrid_refined_ub",
+    args: {},
+    note: `the user's latest message, “${REGRID_ASKED}”, asks for it; the crystal's UB, turned 0.3° for this sample, is written as a new dataset`,
+    ctx: { userMessage: REGRID_ASKED },
+    before: () => api.regridDataset.mockImplementationOnce(async (id: string) => regridAnswer(id, { turned: true })),
+  },
+  {
+    name: "regrid_refined_ub",
+    args: {},
+    note: `asked for as above; the crystal's own UB, turned 0.003°: refused by the backend, nothing written`,
+    ctx: { userMessage: REGRID_ASKED },
+  },
   { name: "show_in_viewer", args: { view: "dpdf", plane: "xy", value: 4 } },
 ];
 
@@ -494,6 +512,12 @@ const ERRORS: Sample[] = [
     ctx: { skillsRead: new Set(["bragg-node-audit"]), userMessage: "Is the punch clean?" },
   },
   { name: "tune_pipeline", args: { stages: ["flatten"] }, note: "tuning before its stage's skill was read", ctx: { skillsRead: new Set() } },
+  {
+    name: "regrid_refined_ub",
+    args: {},
+    note: "a regrid that the user's latest message, “Is the UB right?”, does not ask for",
+    ctx: { userMessage: "Is the UB right?" },
+  },
   {
     name: "update_settings",
     args: { changes: { flattenQ2: true } },

@@ -35,6 +35,7 @@ import { configure_settings } from "./defs/configure_settings";
 import { update_settings } from "./defs/update_settings";
 import { run_pipeline } from "./defs/run_pipeline";
 import { tune_pipeline } from "./defs/tune_pipeline";
+import { regrid_refined_ub } from "./defs/regrid_refined_ub";
 import { show_in_viewer } from "./defs/show_in_viewer";
 import { resolveFacts, type Facts } from "./facts";
 import type { AgentTool, Args, ChatTool } from "./types";
@@ -63,6 +64,7 @@ export const CHAT_TOOLS: ChatTool[] = [
   update_settings,
   run_pipeline,
   tune_pipeline,
+  regrid_refined_ub,
   show_in_viewer,
 ];
 
