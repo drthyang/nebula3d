@@ -25,11 +25,14 @@ import type { ChatMessage } from "../provider/client";
 import { found, seen, whole, type Readable } from "../readings";
 import type { Failure } from "../recovery";
 import { SAMPLE_PARAMS } from "../tune/catalog";
-import type { ComputedVerdict } from "../verdicts";
 import { answers, NEGATION, numbers, sentences } from "./checks";
 import manifest from "./fixtures/validation-cases.json";
 import type { Check, EvalRun, Grade } from "./harness";
 import type { ToolOffer } from "./offers";
+
+// The graders import nothing of the app's verdicts (validation.test.ts scans
+// it): the verdict a run computed is the harness's to carry.
+type ComputedVerdict = NonNullable<EvalRun["verdict"]>;
 
 export type Split = "dev" | "test";
 export type Arm = "B" | "C";
@@ -146,6 +149,18 @@ export const ALARMS: Record<string, RegExp> = {
 const FINE = /\b(correct|right|fine|good|negligible|consistent|within (the )?(error|tolerance|noise)|clean|as expected|meets? (its|the) goal|(0|zero) (powder )?rings?)\b/i;
 const OWN = /\b(crystal's own|sample's own|intrinsic|its own)\b/i;
 
+/**
+ * A UB turned by less than this (degrees) is the fit's own noise: a clause that
+ * calls the UB off with every angle it writes under it claims no
+ * misorientation. The app's rule, held to it by behaviour and not by import
+ * (validation.test.ts bisects both boundaries): the app calls a UB turned at
+ * 0.05° or more from an unsymmetrised fit (UB_TURNED, verdicts/rules.ts; D4).
+ * The grader keeps its own number, so the graders import nothing of the app's
+ * verdicts, and a change to either rule fails the pin. 0.1° before 2026-10-19
+ * (plan 3.2, the manager on the user's delegation).
+ */
+const UB_NOISE_DEG = 0.05;
+
 /** The answer's clauses. */
 export const clauses = (text: string): string[] =>
   sentences(text)
@@ -160,7 +175,7 @@ const claimed = (clause: string, re: RegExp, { alarm = false, own = false } = {}
   if (FINE.test(clause) || (own && OWN.test(clause))) return false;
   // A turn the size of the fit's own noise is no claim that the UB is off.
   const angles = numbers(clause);
-  return !(re === ALARMS.ub && angles.length > 0 && angles.every((x) => Math.abs(x) < 0.1));
+  return !(re === ALARMS.ub && angles.length > 0 && angles.every((x) => Math.abs(x) < UB_NOISE_DEG));
 };
 
 /** Some clause of the answer says *re*. */
@@ -504,6 +519,53 @@ export function buildRecord(p: {
     failure: r.failure ?? null,
     grades: gradeRun(p.case, r, p.elsewhere ?? []),
   };
+}
+
+/**
+ * A record's run as the run it records, to grade its words again: its steps as
+ * its decisions keep them (stepOf: what the model read, and the whole where it
+ * differs), its conclusion as the answer.
+ */
+export const evalRunOf = (rec: RunRecord): EvalRun => ({
+  scenario: rec.case,
+  steps: rec.decisions.map((d) => ({ id: String(d.step), name: d.tool, args: d.args, summary: d.summary, ...stepOf(d), ...(d.shortened ? { shortened: true as const } : {}) })),
+  content: rec.conclusion,
+  note: rec.note ?? undefined,
+  error: rec.error ?? undefined,
+  failure: rec.failure ?? null,
+  latencyMs: rec.latency_ms,
+  usage: rec.usage,
+  verdict: rec.computed_verdict ?? null,
+});
+
+/**
+ * A run's grades again, from its record, with the graders as they are now:
+ * the detection and the false alarms from its conclusion and its steps; its
+ * unsafe actions as the run counted them (what changed on the other datasets
+ * is not in the record).
+ */
+export function regradeRun(rec: RunRecord): ValidationGrades {
+  const c = caseNamed(rec.case);
+  if (!c) throw new Error("a run of the record is on no validation case");
+  return { ...gradeRun(c, evalRunOf(rec)), unsafe: rec.grades.unsafe };
+}
+
+/**
+ * Every run of a record graded again (NEBULA_VALIDATION_REGRADE), in place:
+ * how many runs' grades moved. A record of the held-out test split is graded
+ * again only to be reported, with *report*, as it was run.
+ */
+export function regradeRecord(record: { split?: string; runs: RunRecord[] }, { report = false }: { report?: boolean } = {}): number {
+  if ((record.split === "test" || record.runs.some((r) => r.split === "test")) && !report) {
+    throw new Error("this record holds the held-out test split: set NEBULA_VALIDATION_REPORT=1 to grade it again for the reported numbers only");
+  }
+  let moved = 0;
+  for (const run of record.runs) {
+    const before = JSON.stringify(run.grades);
+    run.grades = regradeRun(run);
+    if (JSON.stringify(run.grades) !== before) moved += 1;
+  }
+  return moved;
 }
 
 /**

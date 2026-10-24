@@ -24,11 +24,11 @@
 import { describe, expect, it } from "vitest";
 
 import { fetchDatasets } from "../../api/client";
-import { LOOP_NOTE, type AgentStep } from "../agent";
+import { LOOP_NOTE } from "../agent";
 import { isAnthropicUrl } from "../provider/anthropic";
 import { isLocalUrl, providerForUrl } from "../provider/presets";
 import { backendUrl, env, readText, useBackend, writeText } from "./backend";
-import { grade, runScenario, transcript, type EvalRun, type ScenarioResult } from "./harness";
+import { grade, runOfRecord, runScenario, transcript, type EvalRun, type RecordedRun, type ScenarioResult } from "./harness";
 import { HELDOUT_SCENARIOS } from "./heldout";
 import { SCENARIOS } from "./scenarios";
 import { sampleScrubber } from "./scrub";
@@ -172,17 +172,7 @@ describe.skipIf(!regrade)("NEBULA Pilot evals, re-graded", () => {
     for (const r of record.runs) {
       const scenario = [...SCENARIOS, ...HELDOUT_SCENARIOS].find((s) => s.id === r.scenario);
       if (!scenario) continue;
-      const run: EvalRun = {
-        scenario: r.scenario,
-        steps: r.steps.map((s, i) => ({ id: String(i), ...s })),
-        content: r.answer,
-        note: r.note ?? undefined,
-        error: r.error ?? undefined,
-        failure: r.failure ?? null,
-        latencyMs: r.latency_ms,
-        usage: r.usage,
-      };
-      const g = grade(scenario, run);
+      const g = grade(scenario, runOfRecord(r));
       r.passed = g.passed;
       r.grades = g.grades;
     }
@@ -197,16 +187,5 @@ describe.skipIf(!regrade)("NEBULA Pilot evals, re-graded", () => {
 
 interface RecordFile {
   summary: { id: string; passed: number; runs: number }[];
-  runs: {
-    scenario: string;
-    passed: boolean;
-    grades: unknown;
-    latency_ms: number;
-    usage: EvalRun["usage"];
-    steps: Omit<AgentStep, "id">[];
-    answer: string;
-    note: string | null;
-    error: string | null;
-    failure?: EvalRun["failure"];
-  }[];
+  runs: (RecordedRun & { passed: boolean; grades: unknown })[];
 }

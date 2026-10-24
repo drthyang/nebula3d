@@ -18,6 +18,11 @@
 // NEBULA_VALIDATION_BASE_URL  the model server, where it is not the model's usual one
 // NEBULA_VALIDATION_ALLOW_SPEND  a paid model's cap in dollars, to approve spending up to it
 // NEBULA_VALIDATION_RENDER  a scored record to write the transcripts and findings of again
+// NEBULA_VALIDATION_REGRADE a record to grade again with the current graders, in place: each
+//                           run's words from its conclusion and decisions, its unsafe actions
+//                           as counted; a test-split record needs NEBULA_VALIDATION_REPORT=1.
+//                           Then `python -m nebula3d.validation summarize` rewrites its table,
+//                           and NEBULA_VALIDATION_RENDER its transcripts.
 //
 // The record is rewritten after every run, so a run cut short keeps what it measured.
 
@@ -40,6 +45,7 @@ import {
   buildRecord,
   caseNamed,
   changedElsewhere,
+  regradeRecord,
   validationDatasets,
   WhyTracker,
   type Arm,
@@ -249,5 +255,19 @@ describe.skipIf(!renderFrom)("validation, transcripts", () => {
     record.findings = findings;
     await writeText(url, `${JSON.stringify(record, null, 1)}\n`);
     console.log(`${record.runs.length} transcripts, ${findings.length} candidate findings`);
+  });
+});
+
+// Grades a record's runs again with the current graders (NEBULA_VALIDATION_REGRADE=<record.json>,
+// relative to the working directory), rewriting their grades in place. It prints counts only.
+const regradeFrom = env("NEBULA_VALIDATION_REGRADE");
+
+describe.skipIf(!regradeFrom)("validation, re-graded", () => {
+  it("grades a record's runs again", async () => {
+    const url = new URL(regradeFrom!, here());
+    const record = JSON.parse(await readText(url)) as { split?: string; runs: RunRecord[] };
+    const moved = regradeRecord(record, { report: env("NEBULA_VALIDATION_REPORT") === "1" });
+    await writeText(url, `${JSON.stringify(record, null, 1)}\n`);
+    console.log(`${record.runs.length} runs graded again; the grades of ${moved} moved`);
   });
 });

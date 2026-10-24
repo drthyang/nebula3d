@@ -1,0 +1,22 @@
+{
+ "source": "review",
+ "ref": "P3.2",
+ "at": "6b4e275",
+ "kind": "bug",
+ "evidence": "The validation's grader read a clause that calls the UB off, with every angle it writes under 0.1°, as no claim of a misorientation (web/src/llm/evals/validation.ts:163), while the app calls a UB turned at 0.05° or more from an unsymmetrised fit (web/src/llm/verdicts/rules.ts:568, UB_TURNED at :593-596; D4, which left the grader's 0.1° until the shared reader), so an answer that quotes a turn of 0.05° to 0.1° on a case without a turned UB is a data problem to {{achieved}} and no false alarm to the grader. The answer checks and the graders read an answer's words apart: each splits, negates, hedges and reads numbers its own way (web/src/llm/answerChecks.ts:150-196, :223-256, :287-292, :311-377; web/src/llm/evals/checks.ts:14-61, :106-162; web/src/llm/evals/validation.ts:111-182, :199-217).",
+ "proposed_fix": "The grader takes the app's 0.05° as a number of its own (UB_NOISE_DEG), held to UB_TURNED by behaviour, not by import: both boundaries bisected and equal within 1e-9. Then one reader of an answer's words (web/src/llm/answerText/), which the answer checks read exactly as before (nothing the model sees changes) and the graders read through a port, checked at grading time by a witness, an independent minimal parse: where the shared reader passes a check the witness fails, the run records a dispute. The differences kept are named and pinned (W1 to W8).",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "85a51f1",
+ "tests": [
+  "web/src/llm/evals/validation.test.ts (a turned UB: the grader's limit is the app's 0.05°, held by behaviour; the graders import nothing of the app's verdicts)",
+  "web/src/llm/evals/devData/ubAgreement.replay.test.ts (the grader and the app on each dev case's own UB turn (n=81))",
+  "web/src/llm/evals/answerTextGoldens.test.ts (an answer's words, as the graders and the answer checks read them before the shared reader: no golden moved)"
+ ],
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 3.2, candidate #5). It completes D4, whose grader kept its 0.1° until the shared reader. Implemented in 85a51f1 (the grader's 0.05°): no grade of the dev corpus moved (35 canned answers, 24 scripted replays, the scenario records' 121 answers), and on the seven dev cases without a turned UB, built at 81³, the grader and the app agree, none turned by 0.05° to 0.1°. The rest of 3.2 (the shared reader, the witness and its disputes) is still to come.",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-19",
+  "option": "the grader takes the app's 0.05° UB rule; 0.1° retired; one reader of an answer's words, with a witness"
+ }
+}
