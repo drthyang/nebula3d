@@ -16,12 +16,7 @@ import { oneOf } from "../shared/args";
 import { checkIdle } from "../shared/pipeline";
 import type { ChatTool } from "../types";
 
-// The stages as the tool's lines name them to the model: the console's labels
-// (STAGE_LABELS), but the flatten keeps the name the model's other texts give
-// it while the validation frozen at 812e686 waits for its live runs
-// (docs/evals.md, "The freeze"); the console calls it "Background correction".
-const TOOL_STAGE_LABELS: Record<string, string> = { ...STAGE_LABELS, flatten: "Flatten" };
-const stageLabel = (stage?: string): string => (stage ? TOOL_STAGE_LABELS[stage] ?? stage : "");
+const stageLabel = (stage?: string): string => (stage ? STAGE_LABELS[stage] ?? stage : "");
 
 // One log line: "Bragg punch 45% · fitting 312 peaks".
 const eventLine = (ev: JobEvent): string =>

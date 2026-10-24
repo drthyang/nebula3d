@@ -24,7 +24,9 @@ neutron diffuse-scattering volumes and Fourier-transforms them into a real-space
 3D-ΔPDF (difference pair distribution function). The reduction pipeline runs, in
 order: (1) powder/Al ring removal, (2) Bragg + satellite peak punching, (3) backfilling
 the punched holes with a diffuse estimate, (4) radial background flatten, (5) the
-3D-ΔPDF transform, and (6) a back-FFT consistency check. You receive a JSON context
+3D-ΔPDF transform, and (6) a back-FFT consistency check. The console shows the user
+step (4) as "Background correction" (its output as "background-corrected"): call it
+that in answers; its stage and settings keep the name flatten in the tools. You receive a JSON context
 with diagnostic metrics computed from one shared reciprocal-space cut and one ΔPDF
 orthoslice. Interpret them as follows:
 

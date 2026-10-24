@@ -361,7 +361,7 @@ def test_flatten_disabled_routes_backfilled_into_pdf(tmp_path, stubbed):
 
 
 def _flatten_off_notice(paths):
-    return (f"flatten disabled: the ΔPDF transforms {paths.backfilled.name}, "
+    return (f"background correction disabled: the ΔPDF transforms {paths.backfilled.name}, "
             "with no background removed")
 
 
@@ -547,10 +547,10 @@ def test_a_stage_left_out_hands_on_its_output_on_disk(tmp_path, levels, left_out
     (("rings", "punch"), "backfill", "raw",
      "ring removal and Bragg punch disabled: the backfill reads sample.nxs"),
     (("backfill", "flatten"), "pdf", "punch",
-     "backfill and flatten disabled: the ΔPDF transforms "
+     "backfill and background correction disabled: the ΔPDF transforms "
      "sample_ringremoved_braggpunched.h5, with no background removed"),
     (("rings", "punch", "backfill", "flatten"), "pdf", "raw",
-     "ring removal, Bragg punch, backfill and flatten disabled: the ΔPDF "
+     "ring removal, Bragg punch, backfill and background correction disabled: the ΔPDF "
      "transforms sample.nxs, with no background removed"),
 ], ids=["rings+punch", "backfill+flatten", "all-four"])
 def test_stages_switched_off_together_pass_through_together(
@@ -669,7 +669,7 @@ def test_the_flatten_summary_prints_a_zero_r2_without_a_sign(monkeypatch, r2, pr
     monkeypatch.setattr(pipeline, "flatten_radial_background", lambda *a, **k: fit)
     lines: list[str] = []
     pipeline.flatten(vol, progress=lambda stage, status, frac, msg: lines.append(msg))
-    assert lines[-1] == f"flatten complete (const 0.5 + 0·F(Q)², {printed})"
+    assert lines[-1] == f"background correction complete (const 0.5 + 0·F(Q)², {printed})"
 
 
 def test_real_pdf_stale_guard_skips_on_rerun(tmp_path):
@@ -837,4 +837,4 @@ def test_the_flatten_on_transforms_its_flattened_volume_as_before(tmp_path):
     paths = pipeline.run_pipeline(inp, proc_dir=tmp_path / "processed",
                                   progress=lambda *a: events.append(a))
     _transforms(paths, paths.flattened)
-    assert not any("flatten disabled" in e[3] for e in events)
+    assert not any("background correction disabled" in e[3] for e in events)

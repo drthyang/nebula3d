@@ -190,21 +190,13 @@ export const SAMPLE_FACT_REFUSED = "is a fact about the sample, which only the u
  */
 export const sampleFactRefusal = (key: string): string => `${key} ${SAMPLE_FACT_REFUSED}: ask the user, and change it once they name it.`;
 
-// The stages as the model's texts name them (the tuning prompts, assess_stage's
-// and tune_pipeline's lines).
 export const TUNE_STAGE_LABELS: Record<TuneStage, string> = {
   rings: "Ring removal",
   punch: "Bragg punch",
   backfill: "Backfill",
-  flatten: "Flatten",
+  flatten: "Background correction",
   pdf: "3D-ΔPDF",
 };
-
-// The stages as the console's tuning cards name them (TuneProgress): the
-// flatten is "Background correction" there, as everywhere in the console. The
-// model's texts keep "Flatten" (TUNE_STAGE_LABELS) while the validation frozen
-// at 812e686 waits for its live runs (docs/evals.md, "The freeze").
-export const TUNE_STAGE_TITLES: Record<TuneStage, string> = { ...TUNE_STAGE_LABELS, flatten: "Background correction" };
 
 // The pipeline stages one tuning trial recomputes.
 export const TRIAL_STAGES: Record<TuneStage, string[]> = {

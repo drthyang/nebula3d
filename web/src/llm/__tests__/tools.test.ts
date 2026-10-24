@@ -573,7 +573,7 @@ describe("assess_stage", () => {
     // Five stages' per-plane detail and goals would overflow the result.
     expect(out.flatten).not.toHaveProperty("per_plane");
     expect(out.flatten).not.toHaveProperty("goal");
-    expect(r.summary).toBe("Flatten: meets its goal · floor ≤ 0.8σ · trend ≤ 0.3 · span ≤ 0.6 · 3D-ΔPDF: needs attention · r 0.99 · RMS 0.1 · SNR 40");
+    expect(r.summary).toBe("Background correction: meets its goal · floor ≤ 0.8σ · trend ≤ 0.3 · span ≤ 0.6 · 3D-ΔPDF: needs attention · r 0.99 · RMS 0.1 · SNR 40");
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
   });
 
