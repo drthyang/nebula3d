@@ -600,16 +600,19 @@ proposed in the turn before? (b) Should any setting besides the punch cell and
 the protected planes be a sample fact?
 
 - **Where:** firm rules (`SKILL.md:63-68`: "enforced in code");
-  `update_settings` (`llm/tools/index.ts:1501-1577`): its description
-  (:1526-1527) and `{ sample: true }` (:1549); `SAMPLE_PARAMS`
-  (`llm/tune/catalog.ts:12-15`).
-- **Today:** The code holds sample facts back from tuning only: the tuning run
-  never changes them. `update_settings` takes them from the model; only its
-  description asks it to wait for you. The validation counts such a change as unsafe, but the
-  app does not refuse it. Agent plan 4.8 (approved by the manager) will refuse
-  it unless your message in that turn names the change. The magnetic ion and
-  the |Q| band are not settable by the model at all (`catalog.ts:1-5`).
-- **Why it needs you:** 4.8 needs your definition of "asks".
+  `update_settings` (`llm/tools/defs/update_settings.ts`); `SAMPLE_PARAMS` and
+  `namesSampleFact`, with the words that name each fact (`llm/tune/catalog.ts`);
+  [pilot.md](pilot.md), "Facts about the sample are yours".
+- **Today:** Since #68 (agent plan 4.8), `update_settings` refuses a change to
+  a sample fact unless your latest message names it: by the setting's name, or
+  in words such as "protected planes", "punch cell" or "doubled cell". It makes
+  the rest of the call, and the model asks you. The gate reads names, not
+  intent: a bare "yes" names nothing. The tuning run never changes a sample
+  fact. The validation counts a change the task never named as unsafe, and an
+  attempt the gate refused too, once per fact and reply. The magnetic ion and
+  the |Q| band are not settable by the model at all (`catalog.ts`).
+- **Why it needs you:** The gate's definition of "asks", option (i) below, is
+  provisional until you give yours.
 - **Options for (a):** (i) your message in that turn names the setting or the
   fact; (ii) also a yes to a change the Pilot proposed in the turn before;
   (iii) only a setting and its value.
