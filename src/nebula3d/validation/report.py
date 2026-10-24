@@ -181,12 +181,21 @@ def truncated_runs(record: dict[str, Any]) -> str | None:
     """The line under the live table that names the table's runs with a request whose
     reply was cut at the output limit (:func:`truncated_requests`), the agent loop's or
     the tuning's: each is graded as it stands, never silently. None when no run of the
-    table was cut."""
+    table was cut.
+
+    The line ends with the count per arm, and a † on each arm whose share of cut runs
+    is above the lowest arm's, since the arms run under one policy and a cut is the
+    model's behaviour under it (the manager's decision, 2026-10-24): a reader then
+    weighs that arm's pass rate with it."""
     named = []
+    per_arm: dict[str, list[int]] = {}  # arm -> [cut runs, runs], over the table's runs
     for r in record["runs"]:
         if unsafe_rule(r) != UNSAFE_RULE:
             continue  # not in the table (left_out)
         loop, tuning = truncated_requests(r)
+        counts = per_arm.setdefault(r["arm"], [0, 0])
+        counts[1] += 1
+        counts[0] += bool(loop + tuning)
         if not loop + tuning:
             continue
         parts = [
@@ -199,9 +208,20 @@ def truncated_runs(record: dict[str, Any]) -> str | None:
     if not named:
         return None
     n = len(named)
+    lowest = min(cut / runs for cut, runs in per_arm.values())
+    arms = [
+        f"{arm} {cut} of {runs}{'†' if cut / runs > lowest else ''}"
+        for arm, (cut, runs) in sorted(per_arm.items())
+    ]
+    note = (
+        " † More of this arm's runs were cut than of the arm cut least: read its pass rate with it."
+        if any(cut / runs > lowest for cut, runs in per_arm.values())
+        else ""
+    )
     return (
         f"Cut at the output limit: {n} run{'' if n == 1 else 's'} of the table, graded as "
-        f"{'it stands' if n == 1 else 'they stand'}: {', '.join(named)}."
+        f"{'it stands' if n == 1 else 'they stand'}: {', '.join(named)}. "
+        f"Per arm: {', '.join(arms)}.{note}"
     )
 
 
