@@ -58,6 +58,15 @@
 // and the tuning's, in either arm. The record keeps the policy (run_policy),
 // and every request whose reply was cut at the cap, the loop's and the
 // tuning's (truncated, TruncationTracker).
+//
+// A paid run is held to its spend budget (TuningGate): its reserve
+// (SpendTracker, validationModels.ts) covers its agent loop and one tuning,
+// each at its hard bound, so a tune_pipeline call after the run's tuning has
+// sent a request runs only if the budget left beyond the reserve covers one
+// more tuning, each drawing its share. One it does not cover is not run: the
+// model reads why (TUNING_SKIPPED) and the run goes on; the record keeps the
+// budget and the skip (tuning_budget). The gate wraps the tool runCase hands
+// the agent loop; the tool, as offered and as the app runs it, is unchanged.
 
 import { fetchDatasets } from "../../api/client";
 import type { Dataset } from "../../api/types";
@@ -66,13 +75,13 @@ import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
-import { forgetToolsUnsupported, runAgent, type AgentProgress } from "../agent";
+import { forgetToolsUnsupported, runAgent, type AgentProgress, type AgentStep } from "../agent";
 import { loadPipelineContext } from "../context/loadContext";
 import { stoppedAtLimit, type UsageReport } from "../provider/client";
 import { tokenCalibration } from "../provider/tokens";
 import type { Transport } from "../runPolicy";
 import type { LlmSettings } from "../settings";
-import { CHAT_TOOLS } from "../tools";
+import { CHAT_TOOLS, type ChatTool } from "../tools";
 import { stopTuning, useTuneStore } from "../tune/tuner";
 import type { EvalRun, TokenCount } from "./harness";
 import { OfferRecorder } from "./offers";
@@ -80,14 +89,16 @@ import {
   armSetup,
   buildRecord,
   changedElsewhere,
+  TUNING_SKIPPED,
   WhyTracker,
   type ModelInfo,
   type RunContextWindow,
   type RunRecord,
   type TruncatedRequest,
   type Truncations,
+  type TuningBudgetRecord,
 } from "./validation";
-import { costOf, validationPolicy, type Job, type Price } from "./validationModels";
+import { costOf, covers, validationPolicy, type Job, type Price, type TuningBudget } from "./validationModels";
 
 /** How long startFresh waits for a pipeline run or a tuning run the run before left going to end. */
 export const SETTLE_MS = 120_000;
@@ -148,6 +159,11 @@ export async function startFresh(dataset: Dataset, { settleMs = SETTLE_MS }: { s
 export class TuningTokens {
   readonly counted: Required<TokenCount> = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 };
   unreported = 0; // requests answered without counts
+
+  /** The tuning's requests the server answered so far, with counts or without. */
+  get answered(): number {
+    return this.counted.requests + this.unreported;
+  }
 
   readonly report: UsageReport = (usage) => {
     if (!usage) {
@@ -210,6 +226,68 @@ export class TruncationTracker {
   }
 }
 
+/** Dollars to the micro-dollar, as the record keeps them. */
+const usd6 = (usd: number): number => Math.round(usd * 1e6) / 1e6;
+
+/**
+ * A paid run's spend budget for its tunings past the first (TuningBudget,
+ * SpendTracker.tuningBudget). The run's reserve covers its agent loop and one
+ * tuning, each at its hard bound. A tune_pipeline call made once the run's
+ * tuning has had a request answered (`answered`, TuningTokens) is a tuning past
+ * that one: it runs only if what the budget has left covers one more, and draws
+ * that share. One the budget does not cover is not run: the call's error is
+ * TUNING_SKIPPED, which the model reads, the run goes on, and the record keeps
+ * the skip. A run without a budget (a local model: nothing is paid) tunes as
+ * often as it asks.
+ */
+export class TuningGate {
+  private drawn = 0;
+  private readonly skips: number[] = []; // what the budget had left at each skip
+
+  constructor(
+    private readonly budget: TuningBudget | null,
+    private readonly answered: () => number,
+  ) {}
+
+  /** Lets a tuning start, drawing its share when it is past the run's first; throws TUNING_SKIPPED, and keeps the skip, when the budget does not cover it. */
+  admit(): void {
+    if (!this.budget || this.answered() === 0) return;
+    const left = this.budget.leftUsd - this.drawn;
+    if (!covers(left, this.budget.perTuningUsd)) {
+      this.skips.push(left);
+      throw new Error(TUNING_SKIPPED);
+    }
+    this.drawn += this.budget.perTuningUsd;
+  }
+
+  /** The tools with tune_pipeline held to the budget, as offered unchanged; without a budget, the tools as they are. */
+  tools(tools: ChatTool[]): ChatTool[] {
+    if (!this.budget) return tools;
+    return tools.map((tool) =>
+      tool.name !== "tune_pipeline"
+        ? tool
+        : {
+            ...tool,
+            run: async (args, ctx, io) => {
+              this.admit();
+              return tool.run(args, ctx, io);
+            },
+          },
+    );
+  }
+
+  /** The record's tuning_budget: the budget, and each skip at its step among the run's `steps`; null without a budget. */
+  toRecord(steps: readonly AgentStep[]): TuningBudgetRecord | null {
+    if (!this.budget) return null;
+    const at = steps.flatMap((s, i) => (s.name === "tune_pipeline" && s.summary === TUNING_SKIPPED ? [i + 1] : []));
+    return {
+      left_usd: usd6(this.budget.leftUsd),
+      per_tuning_usd: this.budget.perTuningUsd,
+      skipped: this.skips.map((left, k) => ({ step: at[k] ?? null, left_usd: usd6(left) })),
+    };
+  }
+}
+
 export interface RunSpec {
   job: Pick<Job, "case" | "arm" | "run">;
   dataset: Dataset; // the run's own, and the only one it sees
@@ -219,6 +297,9 @@ export interface RunSpec {
   minutes: number; // the run's time limit
   price?: Price | null; // what its tokens cost; null: nothing
   context?: RunContextWindow | null; // the window it had, read before it (validationModels.runContext)
+  // A paid run's budget for its tunings past the first (SpendTracker.tuningBudget,
+  // TuningGate); null: none, every tuning runs (nothing is paid).
+  tuningBudget?: TuningBudget | null;
   settleMs?: number; // startFresh's wait
 }
 
@@ -263,12 +344,14 @@ export async function runCase(spec: RunSpec): Promise<RunRecord> {
     cut.tuning(usage, stopReason);
   };
   const tuningModel = { settings, usage: tuningUsage, ...(policy.outputCap.tuning != null ? { maxTokens: policy.outputCap.tuning } : {}) };
+  // A paid run's tunings past its first, held to its spend budget.
+  const gate = new TuningGate(spec.tuningBudget ?? null, () => tuning.answered);
   const t0 = performance.now();
   const started = new Date().toISOString();
   const loop = runAgent({
     messages: setup.messages,
     // Every tool the Pilot ships: the run's switch (ctx.skills) decides what arm C is offered.
-    tools: CHAT_TOOLS,
+    tools: gate.tools(CHAT_TOOLS),
     ctx: { dataset, datasets: [dataset], skills: setup.skills, skillsRead: setup.skillsRead, model: tuningModel },
     settings: { ...settings, attachImages: false, useTools: true, followViews: false },
     policy,
@@ -325,5 +408,6 @@ export async function runCase(spec: RunSpec): Promise<RunRecord> {
     tokensAtStart: { scale: calibration.scale, ollama_num_ctx: calibration.ollamaNumCtx },
     policy,
     truncated: cut.toRecord(),
+    tuningBudget: gate.toRecord(evalRun.steps),
   });
 }

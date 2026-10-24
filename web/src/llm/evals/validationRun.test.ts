@@ -3,8 +3,10 @@
 // by its time limit, whose pipeline run or tuning run it stops and waits for
 // before it clears, or, when that does not end, refuses to start the next run.
 // And TuningTokens: a run's tuning's tokens added to its usage, its cost and
-// the paid model's spend. validationRun.replay.test.ts runs two runs back to
-// back through runCase, and one whose tuning asks the run's model.
+// the paid model's spend; and TuningGate, a paid run's tunings past its first
+// held to its spend budget. validationRun.replay.test.ts runs two runs back to
+// back through runCase, one whose tuning asks the run's model, and runs whose
+// second tuning the budget covers or does not.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,12 +16,14 @@ import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
-import { runAgent, toolsKnownUnsupported } from "../agent";
+import { runAgent, toolsKnownUnsupported, type AgentStep } from "../agent";
 import { observeTokens, resetTokenState, tokenCalibration } from "../provider/tokens";
+import { CHAT_TOOLS, runToolCall, toolSpecs, toolsWithSkills } from "../tools";
 import { useTuneStore } from "../tune/tuner";
 import { scriptedModel, SCRIPTED_URL } from "./scripted";
+import { TUNING_SKIPPED } from "./validation";
 import { costOf, modelNamed, SPEND_CAP_USD, SpendTracker } from "./validationModels";
-import { startFresh, TruncationTracker, TuningTokens } from "./validationRun";
+import { startFresh, TruncationTracker, TuningGate, TuningTokens } from "./validationRun";
 
 const tuner = vi.hoisted(() => ({ stopTuning: vi.fn() }));
 vi.mock("../tune/tuner", async (importOriginal) => ({ ...(await importOriginal<typeof import("../tune/tuner")>()), stopTuning: tuner.stopTuning }));
@@ -180,5 +184,70 @@ describe("a run's requests cut at the output limit", () => {
         { request: 4, source: "tuning", transport: "ollama", reason: "max_tokens" },
       ],
     });
+  });
+});
+
+describe("a paid run's tunings past its first", () => {
+  const step = (name: string, summary: string, status: AgentStep["status"] = "done"): AgentStep => ({ id: `${name}-${summary}`, name, args: {}, status, summary });
+
+  it("lets the run's first tuning start, and each past it only while the budget covers one more, drawing its share", () => {
+    let answered = 0; // the run's tuning requests the server answered
+    const gate = new TuningGate({ leftUsd: 7, perTuningUsd: SpendTracker.EXTRA_TUNING_USD }, () => answered);
+    gate.admit(); // the run's first: the reserve covers it
+    gate.admit(); // one that sent nothing leaves the next the first, and draws nothing
+    answered = 3;
+    gate.admit(); // past the first: $7.00 covers $3.47, and $3.53 is left
+    gate.admit(); // $3.53 covers it, and $0.06 is left
+    expect(() => gate.admit()).toThrow(TUNING_SKIPPED);
+    expect(() => gate.admit()).toThrow(TUNING_SKIPPED);
+    // The record finds each skip at its step: the call whose error the model read.
+    const steps = [
+      step("tune_pipeline", "3 min"),
+      step("run_log", "12 lines"),
+      step("tune_pipeline", TUNING_SKIPPED, "error"),
+      step("tune_pipeline", "bad stage", "error"),
+      step("tune_pipeline", TUNING_SKIPPED, "error"),
+    ];
+    expect(gate.toRecord(steps)).toEqual({
+      left_usd: 7,
+      per_tuning_usd: 3.47,
+      skipped: [
+        { step: 3, left_usd: 0.06 },
+        { step: 5, left_usd: 0.06 },
+      ],
+    });
+    // A skip whose step the run's steps do not hold (a run cut short) keeps no step.
+    expect(gate.toRecord(steps.slice(0, 3))?.skipped).toEqual([
+      { step: 3, left_usd: 0.06 },
+      { step: null, left_usd: 0.06 },
+    ]);
+  });
+
+  it("without a budget, tunes as often as asked, hands the loop the tools as they are, and records none", () => {
+    const gate = new TuningGate(null, () => 5);
+    for (let i = 0; i < 5; i++) gate.admit();
+    expect(gate.tools(CHAT_TOOLS)).toBe(CHAT_TOOLS);
+    expect(gate.toRecord([step("tune_pipeline", TUNING_SKIPPED, "error")])).toBeNull();
+  });
+
+  it("holds tune_pipeline alone, offered as it is in either arm, and refuses before the tool runs", async () => {
+    const gate = new TuningGate({ leftUsd: 0, perTuningUsd: SpendTracker.EXTRA_TUNING_USD }, () => 1);
+    const held = gate.tools(CHAT_TOOLS);
+    held.forEach((t, i) => (t.name === "tune_pipeline" ? expect(t).not.toBe(CHAT_TOOLS[i]) : expect(t).toBe(CHAT_TOOLS[i])));
+    // What the model is offered is unchanged: the tools' names, descriptions and parameters, with the skills on and off.
+    expect(toolSpecs(held)).toEqual(toolSpecs(CHAT_TOOLS));
+    expect(toolSpecs(toolsWithSkills(held, false))).toEqual(toolSpecs(toolsWithSkills(CHAT_TOOLS, false)));
+    const tune = held.find((t) => t.name === "tune_pipeline")!;
+    const shipped = CHAT_TOOLS.find((t) => t.name === "tune_pipeline")!;
+    expect({ ...tune, run: null }).toEqual({ ...shipped, run: null });
+    // A call the budget does not cover: its error is what the model reads, and nothing ran.
+    const out = await runToolCall(
+      { id: "c1", type: "function", function: { name: "tune_pipeline", arguments: JSON.stringify({ stages: ["pdf"] }) } },
+      held,
+      { dataset: DATASET, datasets: [DATASET], skills: false },
+    );
+    expect(out).toMatchObject({ ok: false, text: `Error: ${TUNING_SKIPPED}`, summary: TUNING_SKIPPED });
+    expect(TUNING_SKIPPED).toBe("tune_pipeline did not run: the spend budget left does not cover another tuning");
+    expect(useTuneStore.getState()).toMatchObject({ active: false, run: null, stages: [] });
   });
 });

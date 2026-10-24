@@ -6,7 +6,12 @@
 // it found refusing tools. The token calibration carries over on purpose, and
 // each record keeps the one its run started from. A run's tuning asks the
 // run's model, not the console's, and its tokens are the run's: in the
-// record's usage and cost, and in the paid model's spend.
+// record's usage and cost, and in the paid model's spend. A paid run at its
+// hard bound fits inside the first run's reserve, $7.37; the next run's
+// reserve is the first run's after a cheap run and 1.5 times the dearest after
+// a dear one, and the $12 cap stops the next run when the two pass it. A
+// second tuning in one run starts only if the budget left beyond the run's
+// reserve covers it; one it does not is skipped, recorded, and the run goes on.
 
 import { describe, expect, it } from "vitest";
 
@@ -14,20 +19,31 @@ import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
-import { CUT_OFF_NOTE, TOOLS_UNSUPPORTED_NOTE, toolsKnownUnsupported } from "../agent";
+import { CUT_OFF_NOTE, MAX_TOOL_ROUNDS, TOOLS_UNSUPPORTED_NOTE, toolsKnownUnsupported } from "../agent";
 import { DATA_CHARS_PER_TOKEN, resetTokenState, tokenCalibration } from "../provider/tokens";
 import { loadSettings, saveSettings } from "../settings";
 import { callTool, CHAT_TOOLS } from "../tools";
-import { currentStageSettings, TUNE_STAGES, type ParamValue } from "../tune/catalog";
+import { currentStageSettings, TUNE_STAGES, type ParamValue, type TuneStage } from "../tune/catalog";
 import { evaluateStage } from "../tune/evaluate";
 import { buildJudgeMessages, buildProposeMessages } from "../tune/prompts";
 import { useTuneStore } from "../tune/tuner";
 import { devCase, type DevCase } from "./devData";
 import { DEV_GRIDS } from "./devData/bridgeWorker";
-import { renderTranscript } from "./findings";
+import { candidateFindings, renderTranscript } from "./findings";
 import { scriptedModel, SCRIPTED_URL, type ScriptedRequest, type ScriptTurn } from "./scripted";
-import { caseNamed, type Arm, type Decision, type RunRecord } from "./validation";
-import { costOf, FIRST_RUN_WORST, firstRunWorstUsd, modelNamed, SPEND_CAP_USD, SpendTracker, VALIDATION_MAX_TOKENS, type Price } from "./validationModels";
+import { caseNamed, TUNING_SKIPPED, type Arm, type Decision, type RunRecord } from "./validation";
+import {
+  costOf,
+  FIRST_RUN_WORST,
+  firstRunWorstUsd,
+  modelNamed,
+  SPEND_CAP_USD,
+  SpendTracker,
+  TUNE_REQUESTS_PER_STAGE,
+  VALIDATION_MAX_TOKENS,
+  type Price,
+  type TuningBudget,
+} from "./validationModels";
 import { runCase } from "./validationRun";
 
 const SETTINGS = { baseUrl: SCRIPTED_URL, model: "scripted", apiKey: "", temperature: 0 };
@@ -39,13 +55,22 @@ async function run(
   c: DevCase,
   arm: Arm,
   script: ScriptTurn[],
-  { price = null }: { price?: Price | null } = {},
+  { price = null, tuningBudget = null }: { price?: Price | null; tuningBudget?: TuningBudget | null } = {},
 ): Promise<{ record: RunRecord; overrun: number; log: ScriptedRequest[] }> {
   const dataset = await c.dataset();
   const model = scriptedModel(script);
   const uninstall = model.install();
   try {
-    const record = await runCase({ job: { case: caseNamed(c.id)!, arm, run: 1 }, dataset, model: MODEL, settings: SETTINGS, rounds: 12, minutes: 5, price });
+    const record = await runCase({
+      job: { case: caseNamed(c.id)!, arm, run: 1 },
+      dataset,
+      model: MODEL,
+      settings: SETTINGS,
+      rounds: MAX_TOOL_ROUNDS,
+      minutes: 5,
+      price,
+      tuningBudget,
+    });
     return { record, overrun: model.overrun(), log: model.log() };
   } finally {
     uninstall();
@@ -326,7 +351,8 @@ describe("a validation run's tuning", () => {
 
     // A stage's most requests, 3, and every one inside the reserve's tokens a request.
     const tuning = log.filter((r) => !r.stream);
-    expect(tuning).toHaveLength(3);
+    expect(tuning).toHaveLength(TUNE_REQUESTS_PER_STAGE);
+    expect(TUNE_REQUESTS_PER_STAGE).toBe(3);
     expect(FIRST_RUN_WORST.tuning.requests).toBe(TUNE_STAGES.length * tuning.length);
     const longest = Math.max(...tuning.map(tokens));
     expect(longest).toBe(tokens(tuning[2])); // the pick of five trials
@@ -371,5 +397,166 @@ describe("a validation run's tuning", () => {
     expect(tracker.canStart()).toBe(true);
     expect(record.usage?.tuning?.requests).toBe(3);
     expect(record.cost_usd!).toBeLessThan(SpendTracker.FIRST_RUN_RESERVE_USD);
+  }, 300_000);
+});
+
+describe("a paid run against the $12 cap", () => {
+  const sonnet = modelNamed("claude-sonnet-5-5").price!;
+  // A request's counts at the hard bound the first run's reserve prices (FIRST_RUN_WORST).
+  const LOOP_AT_BOUND = { input: FIRST_RUN_WORST.loop.inputPerRequest, output: FIRST_RUN_WORST.loop.outputPerRequest };
+  const TUNING_AT_BOUND = { input: FIRST_RUN_WORST.tuning.inputPerRequest, output: FIRST_RUN_WORST.tuning.outputPerRequest };
+  // A change each stage runs on a dev case, so that its trial is done and the stage asks for the pick.
+  const RUNNABLE: Record<TuneStage, Record<string, ParamValue>> = {
+    rings: { ringPooledSectors: 36 },
+    punch: { punchMinSig: 6 },
+    backfill: { backfillMethod: "local" },
+    flatten: { flattenQ2: true },
+    pdf: { pdfApod: "hann" },
+  };
+
+  it("at its hard bound fits inside the first run's reserve, $7.37; the next is held to 1.5 times it, and the cap stops it", async () => {
+    const tracker = new SpendTracker(SPEND_CAP_USD);
+    expect(tracker.reserve()).toBe(7.37);
+    expect(firstRunWorstUsd(sonnet).toFixed(2)).toBe("7.37");
+    expect(tracker.canStart()).toBe(true);
+    // The loop's most requests: a tuning of every stage in its first round, a
+    // view in each round after, then the answer. The tuning's most: each stage
+    // asks for alternatives, again after a reply that is not the JSON asked
+    // for, then for the pick. Every reply counted at its request's hard bound.
+    const tuningTurns: ScriptTurn[] = TUNE_STAGES.flatMap((stage) => [
+      { text: "Let me think about that.", usage: TUNING_AT_BOUND },
+      { text: JSON.stringify({ candidates: [{ changes: RUNNABLE[stage], why: "a change to compare" }] }), usage: TUNING_AT_BOUND },
+      { text: JSON.stringify({ best: 1, why: "the current settings" }), usage: TUNING_AT_BOUND },
+    ]);
+    const views: ScriptTurn[] = Array.from({ length: MAX_TOOL_ROUNDS - 1 }, (_, i) => ({
+      calls: [{ name: "show_in_viewer", args: { view: "cleanup", plane: "hk0", value: i / 10 } }],
+      usage: LOOP_AT_BOUND,
+    }));
+    const { record, log, overrun } = await run(
+      devCase("dev-control"),
+      "C",
+      [
+        { calls: [{ name: "tune_pipeline", args: { trials_per_stage: 2 } }], usage: LOOP_AT_BOUND },
+        ...tuningTurns,
+        ...views,
+        { text: "Done.", usage: LOOP_AT_BOUND },
+      ],
+      { price: sonnet, tuningBudget: tracker.tuningBudget() },
+    );
+    resetTokenState(); // the counts at the bound taught the estimate nothing a later run should start from
+    expect(overrun).toBe(0);
+    expect(record.error).toBeNull();
+    expect(record.decisions.filter((d) => d.status !== "done").map((d) => `${d.tool}: ${d.result}`)).toEqual([]);
+    expect(useTuneStore.getState().stages.map((s) => [s.stage, s.status, s.trials.length])).toEqual(TUNE_STAGES.map((s) => [s, "done", 2]));
+
+    // It made the hard bound's requests, the loop's 13 and the tuning's 15,
+    // each asking for the output cap its reply was counted at.
+    const { loop, tuning, margin } = FIRST_RUN_WORST;
+    expect(log.filter((r) => r.stream)).toHaveLength(loop.requests);
+    expect(log.filter((r) => !r.stream)).toHaveLength(tuning.requests);
+    expect(log.every((r) => r.maxTokens === VALIDATION_MAX_TOKENS)).toBe(true);
+    expect(record.usage).toMatchObject({
+      input: loop.requests * loop.inputPerRequest + tuning.requests * tuning.inputPerRequest,
+      output: (loop.requests + tuning.requests) * VALIDATION_MAX_TOKENS,
+      requests: loop.requests + tuning.requests,
+      tuning: { requests: tuning.requests },
+    });
+    // Its cost: the loop's $3.12 and the tuning's $2.775, $5.895, the hard
+    // bound without the margin, inside the $7.37 reserved for it.
+    expect(record.cost_usd!).toBeCloseTo(5.895, 9);
+    expect(record.cost_usd!).toBeCloseTo(firstRunWorstUsd(sonnet) / (1 + margin), 9);
+    tracker.record({ case: record.case, arm: record.arm, run: record.run, usd: record.cost_usd });
+    expect(tracker.spent).toBeLessThanOrEqual(SpendTracker.FIRST_RUN_RESERVE_USD);
+    // A dear run: the next is held to 1.5 times it, past the first run's reserve,
+    // and the two pass the $12 cap, so no run starts.
+    expect(tracker.reserve()).toBeCloseTo(1.5 * 5.895, 9);
+    expect(tracker.reserve()).toBeGreaterThan(SpendTracker.FIRST_RUN_RESERVE_USD);
+    expect(tracker.canStart()).toBe(false);
+    expect(tracker.refusal()).toMatch(/^the spend cap is reached: \$5\.\d\d spent of \$12\.00, and the next run may cost up to \$8\.84$/);
+    // It tuned once, which its reserve covers.
+    expect(record.tuning_budget).toEqual({ left_usd: 4.63, per_tuning_usd: 3.47, skipped: [] });
+  }, 600_000);
+
+  it("after a cheap run holds the next to the first run's reserve, not 1.5 times the cheap one", async () => {
+    const tracker = new SpendTracker(SPEND_CAP_USD);
+    const { record, overrun } = await run(devCase("dev-control"), "B", [{ calls: [{ name: "configure_settings" }] }, { text: "Done." }], {
+      price: sonnet,
+      tuningBudget: tracker.tuningBudget(),
+    });
+    expect(overrun).toBe(0);
+    expect(record.error).toBeNull();
+    expect(record.cost_usd!).toBeGreaterThan(0);
+    expect(1.5 * record.cost_usd!).toBeLessThan(SpendTracker.FIRST_RUN_RESERVE_USD);
+    tracker.record({ case: record.case, arm: record.arm, run: record.run, usd: record.cost_usd });
+    expect(tracker.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
+    expect(tracker.canStart()).toBe(true);
+    expect(record.tuning_budget).toEqual({ left_usd: 4.63, per_tuning_usd: 3.47, skipped: [] });
+  }, 300_000);
+
+  it("skips a second tuning the budget left beyond the run's reserve does not cover, records the skip, and finishes", async () => {
+    // An earlier run cost $2.00: this one may start ($2.00 + $7.37 ≤ $12), and
+    // $2.63 is left beyond its reserve, short of a tuning's $3.47.
+    const tracker = SpendTracker.fromJSON({ entries: [{ case: "an earlier run", arm: "B", run: 1, usd: 2, estimated: false }] }, SPEND_CAP_USD);
+    expect(tracker.canStart()).toBe(true);
+    const c = devCase("dev-control");
+    const { record, log, overrun } = await run(
+      c,
+      "C",
+      [
+        { calls: [{ name: "tune_pipeline", args: { stages: ["pdf"], trials_per_stage: 2 } }] },
+        { text: JSON.stringify({ candidates: [] }) },
+        { calls: [{ name: "tune_pipeline", args: { stages: ["pdf"], trials_per_stage: 3 } }] },
+        { text: "Done." },
+      ],
+      { price: sonnet, tuningBudget: tracker.tuningBudget() },
+    );
+    expect(overrun).toBe(0);
+    expect(record.error).toBeNull();
+    expect(record.conclusion).toBe("Done.");
+    expect(record.decisions.map((d) => [d.tool, d.status])).toEqual([
+      ["tune_pipeline", "done"],
+      ["tune_pipeline", "error"],
+    ]);
+    // The model read why, and the second tuning sent nothing and changed nothing.
+    expect(record.decisions[1]).toMatchObject({ summary: TUNING_SKIPPED, result: `Error: ${TUNING_SKIPPED}` });
+    expect(log.map((r) => r.stream)).toEqual([true, false, true, true]);
+    expect(record.usage?.tuning?.requests).toBe(1);
+    expect(useTuneStore.getState().stages.map((s) => [s.stage, s.status, s.trials.length])).toEqual([["pdf", "done", 1]]);
+    // The record keeps the budget and the skip, the transcript says so, and no finding calls it a tool failing.
+    expect(record.tuning_budget).toEqual({ left_usd: 2.63, per_tuning_usd: 3.47, skipped: [{ step: 2, left_usd: 2.63 }] });
+    expect(renderTranscript(record)).toContain(
+      "**Tuning skipped for the spend budget:** tune_pipeline at step 2 ($2.63 left): one more tuning needs $3.47 (a tuning at its hard bound, " +
+        "with the margin), more than the budget had left beyond the run's reserve. The run went on without it.",
+    );
+    expect(candidateFindings(record, caseNamed(c.id)!).filter((f) => f.step === 2)).toEqual([]);
+  }, 300_000);
+
+  it("tunes again when the budget covers it, each tuning past the first drawing its share", async () => {
+    // The first run: $12 − $7.37 = $4.63 beyond its reserve, one tuning's $3.47 and $1.16 over.
+    const tracker = new SpendTracker(SPEND_CAP_USD);
+    const { record, log, overrun } = await run(
+      devCase("dev-control"),
+      "C",
+      [
+        { calls: [{ name: "tune_pipeline", args: { stages: ["pdf"], trials_per_stage: 2 } }] },
+        { text: JSON.stringify({ candidates: [] }) },
+        { calls: [{ name: "tune_pipeline", args: { stages: ["pdf"], trials_per_stage: 3 } }] },
+        { text: JSON.stringify({ candidates: [] }) },
+        // A third: $1.16 is left, short of another.
+        { calls: [{ name: "tune_pipeline", args: { stages: ["pdf"], trials_per_stage: 4 } }] },
+        { text: "Done." },
+      ],
+      { price: sonnet, tuningBudget: tracker.tuningBudget() },
+    );
+    expect(overrun).toBe(0);
+    expect(record.error).toBeNull();
+    expect(record.decisions.map((d) => [d.tool, d.status])).toEqual([
+      ["tune_pipeline", "done"],
+      ["tune_pipeline", "done"],
+      ["tune_pipeline", "error"],
+    ]);
+    expect(log.map((r) => r.stream)).toEqual([true, false, true, false, true, true]);
+    expect(record.usage?.tuning?.requests).toBe(2);
+    expect(record.tuning_budget).toEqual({ left_usd: 4.63, per_tuning_usd: 3.47, skipped: [{ step: 3, left_usd: 1.16 }] });
   }, 300_000);
 });
