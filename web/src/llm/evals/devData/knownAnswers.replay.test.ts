@@ -8,8 +8,9 @@
 //   evals/validation.ts, for the same angle);
 // - an origin shift within half the smallest planted component of it, so the
 //   direction and the size are both found;
-// - the counts' edge within one shell (0.1 Å⁻¹) of the planted cut: the
-//   coverage measures the edge to one shell (qmax_coverage);
+// - the counts' edge, and full coverage, within one shell (0.1 Å⁻¹) of the
+//   planted cut: the coverage measures them to one shell (qmax_coverage, from
+//   nebula3d.analysis.coverage);
 // - a ring or shell within 0.1 Å⁻¹ of the planted |Q|: the match radius of the
 //   ring check (tune/evaluate.ts) and of arm A (nebula3d.validation.arm_a).
 //
@@ -24,6 +25,7 @@
 import { describe, expect, it } from "vitest";
 
 import { fetchRingDiagnostics } from "../../../api/client";
+import { usePipelineStore } from "../../../state/pipelineStore";
 import type { AgentStep } from "../../agent";
 import { withoutInference } from "../../inference";
 import { verdicts } from "../../verdicts";
@@ -156,6 +158,21 @@ describe("dev-control: nothing flagged", () => {
     const msg = evidence(c, { achieved: v });
     expect(v?.text, msg).toBe(tooCoarse("rings") ? "not judged: the ring removal (grid too coarse for the ring check)" : "met: every stage meets its goal");
   });
+
+  // The coverage, measured once, in Python, on 3D |Q| shells: the control's
+  // counts fill the box to its corners, so full coverage reaches past the box
+  // faces, where the window tapers, and no edge of the counts is inside it.
+  check("dev-control", "qmax_coverage finds the counts filling the box, past the faces the window reaches", async () => {
+    const c = devCase("dev-control");
+    const cov = ran(await c.tool("qmax_coverage"), "qmax_coverage");
+    const [outcome] = outcomeOf(cov);
+    const r = cov.result;
+    const msg = evidence(c, { full_coverage_q: r.full_coverage_q, box_face_q: r.box_face_q, transform_reach_q: r.transform_reach_q, raw_counts: r.raw_counts, outcome });
+    expect(r.full_coverage_q as number, msg).toBeGreaterThan(r.box_face_q as number);
+    expect(r.transform_reach_q as number, msg).toBeLessThanOrEqual(r.full_coverage_q as number);
+    expect([r.counts_end_inside_box, (r.raw_counts as { q_max_edge: number | null }).q_max_edge], msg).toEqual([false, null]);
+    expect(outcome, msg).toMatchObject({ kind: "pass", dataProblems: [] });
+  });
 });
 
 describe("dev-ub: the turn is found", () => {
@@ -196,6 +213,53 @@ describe("dev-coverage: the counts end inside the box", () => {
     expect(cov.result.counts_end_inside_box, msg).toBe(true);
     expect(Math.abs(counts.q_max_edge! - c.truth.q_cut!), msg).toBeLessThanOrEqual(COUNTS_SHELL);
     expect(outcome.dataProblems, msg).toContain(`the counts end at ${counts.q_max_edge} Å⁻¹, inside the box`);
+  });
+
+  // Measured once: full coverage is where the counts stop filling the shells,
+  // the number raw_counts gives too, within a shell of the planted cut.
+  check("dev-coverage", "qmax_coverage puts full coverage within a shell of the planted cut, the counts' own", async () => {
+    const c = devCase("dev-coverage");
+    const cov = ran(await c.tool("qmax_coverage"), "qmax_coverage");
+    const full = cov.result.full_coverage_q as number;
+    const fully = (cov.result.raw_counts as { fully_measured: [number, number] | null }).fully_measured;
+    const msg = evidence(c, { full_coverage_q: full, fully_measured: fully, box_face_q: cov.result.box_face_q, transform_reach_q: cov.result.transform_reach_q });
+    expect(full, msg).toBe(fully?.[1]);
+    expect(Math.abs(full - c.truth.q_cut!), msg).toBeLessThanOrEqual(COUNTS_SHELL);
+    expect(full, msg).toBeLessThan(cov.result.box_face_q as number);
+  });
+
+  // Plan 4.5: the default run fits the window to the coverage (the support on,
+  // an auto window), so the weight it records on unmeasured space is the
+  // backend's own target: the verdict says so, and judges where the counts end
+  // and a band the user sets (on the Configure page; the model sets none).
+  check("dev-coverage", "qmax_coverage says the fitted window's weight is the backend's target, and judges the counts' edge", async () => {
+    const c = devCase("dev-coverage");
+    const cov = ran(await c.tool("qmax_coverage"), "qmax_coverage");
+    const [outcome] = outcomeOf(cov);
+    const msg = evidence(c, { verdict: cov.result.verdict, window_weight_on_unmeasured: cov.result.window_weight_on_unmeasured, window_scale: cov.result.window_scale, outcome });
+    expect(cov.result.window_weight_on_unmeasured as number, msg).toBeLessThanOrEqual(1e-3);
+    expect(outcome, msg).toMatchObject({ kind: "pass", reasons: ["window fitted", "window within limit"] });
+    expect(outcome.dataProblems, msg).toEqual([`the counts end at ${(cov.result.raw_counts as { q_max_edge: number }).q_max_edge} Å⁻¹, inside the box`]);
+    expect(String(cov.result.verdict), msg).toMatch(/^fitted to the coverage: .*: its own target, not a check; the raw counts end at [\d.]+ Å⁻¹, inside the box/);
+  });
+
+  check("dev-coverage", "a band set inside the counts passes; past their upper edge it needs attention, the transform rerun with it", async () => {
+    const c = devCase("dev-coverage");
+    const before = ran(await c.tool("qmax_coverage"), "qmax_coverage");
+    const [lo, hi] = before.result.suggested_band as [number, number];
+    const banded = async (qMax: number) => {
+      usePipelineStore.setState({ pdfQMin: String(lo), pdfQMax: String(qMax) });
+      ran(await c.tool("run_pipeline", { from_stage: "pdf" }), "run_pipeline");
+      const r = ran(await c.tool("qmax_coverage"), "qmax_coverage");
+      return { band: [lo, qMax], band_check: r.result.band_check, weight: r.result.window_weight_on_unmeasured, outcome: outcomeOf(r)[0] };
+    };
+    const inside = await banded(hi);
+    const past = await banded(hi + 1);
+    const msg = evidence(c, { suggested_band: [lo, hi], inside, past });
+    expect(inside.outcome, msg).toMatchObject({ kind: "pass", reasons: ["window fitted", "window within limit"] });
+    expect(inside.band_check, msg).toBe(`the band ${lo}–${hi} Å⁻¹ stays inside the counts`);
+    expect(past.outcome, msg).toMatchObject({ kind: "attention", reasons: ["band past counts", "window within limit"] });
+    expect(String(past.band_check), msg).toMatch(/^Qmax past the counts' upper edge/);
   });
 });
 

@@ -8,18 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../api/types";
 import type { AgentStep } from "../agent";
 import { ANSWER_REVISIONS, runAgent } from "../agent";
-import {
-  answerIssues,
-  clauses,
-  contradictions,
-  earlierSources,
-  issuesNote,
-  issuesPrompt,
-  missingEvidence,
-  untracedNumbers,
-  verdictsIn,
-  writtenNumbers,
-} from "../answerChecks";
+import { answerIssues, contradictions, earlierSources, issuesNote, issuesPrompt, missingEvidence, untracedNumbers, verdictsIn } from "../answerChecks";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";
 import { shownGrains, type GrainFacts } from "../metrics/grains";
@@ -54,15 +43,6 @@ describe("verdicts and their evidence", () => {
     expect(missingEvidence(text, [step("assess_stage", { stage: "rings" })]).map((t) => t.id)).toEqual(["punch"]);
     expect(missingEvidence(text, [step("assess_stage", { stage: "punch" }, {}, "error")]).map((t) => t.id)).toEqual(["rings", "punch"]);
     expect(missingEvidence("The UB is off by a fraction of a degree.", [step("grain_check")])).toEqual([]);
-  });
-
-  it("splits claims at ; and :, without a leading Yes or No", () => {
-    expect(clauses("No: the window reaches past the coverage; it should not. Yes, it is fine.")).toEqual([
-      "the window reaches past the coverage",
-      "it should not.",
-      "it is fine.",
-    ]);
-    expect(clauses("No ring is left.")).toEqual(["No ring is left."]); // a determiner, not an answer
   });
 
   it("reads the peaks' offset from their nodes as the UB's verdict, not the punch's", () => {
@@ -214,13 +194,6 @@ describe("numbers read as they are written", () => {
 });
 
 describe("numbers by reference", () => {
-  it("reads numbers as written, not the digits inside names, exponents or list markers", () => {
-    const n = writtenNumbers("1. On hk0 the 3D-ΔPDF at 6/mmm: a ring at 7.2 Å⁻¹, 4.1 × 10⁻⁶ of the weight, 12 %, 10⁻³, x_H on a 201x201x201 grid.");
-    expect(n.map((x) => x.text)).toEqual(["7.2", "4.1e-6", "12 %", "1e-3"]);
-    expect(n[0].tolerance).toBeCloseTo(0.05);
-    expect(n[1].value).toBeCloseTo(4.1e-6);
-  });
-
   it("finds each number in the sources within its written precision, as a share or a percentage", () => {
     const sources = '{"at": 7.234, "weight": 4.1e-6, "share": 0.124, "dent": -0.187}';
     expect(untracedNumbers("A ring at 7.2 Å⁻¹ with 4.1e-6 on unmeasured space, 12 % punched, a dent of 0.19.", sources)).toEqual([]);

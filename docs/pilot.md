@@ -63,7 +63,8 @@ Each is described under [How it works](#how-it-works).
   an answer that calls the run a success it does not give goes back to the
   model to quote it (`verdicts/`, `verdict.ts`).
 - **Skills come first.** A stage's settings change, and the stage is tuned,
-  only after its skill has been read in the conversation.
+  only after its skill has been read in the same reply. A skill read in an
+  earlier turn must be read again.
 - **Tuning cannot touch your results.** Each trial runs in its own folder,
   never in `processed/`; the model proposes settings only from a checked
   catalog, every trial is measured on three planes, and a trial past a hard
@@ -94,8 +95,11 @@ Each is described under [How it works](#how-it-works).
   about 24k tokens, the reply's older tool results go back to it shortened to
   their verdicts, headlines and numbers, the newest three whole; a request too
   long for the window is shortened to its newest result before it is refused.
-  The model can call a shortened tool again, and the answer checks always
-  read the whole results.
+  A skill the model read is shortened to its name and its opening lines; a
+  skill that writes its gates (its thresholds and rules) under a `## Gates`
+  heading keeps that section whole too, up to 1,200 characters, so the
+  model keeps working by them. The model can call a shortened tool again,
+  and the answer checks always read the whole results.
 - **No prompt is cut to fit.** A local server handed a prompt longer than the
   model's context window cuts it or fails, so each request is held to the
   window first. Ollama is asked for a window that holds the request (its own
@@ -191,8 +195,13 @@ are drafts awaiting the user's interview (questions in
 names and descriptions. `read_skill` reads a skill whole, or a document it
 cites (a long one by section). A firm rule rides on them (`llm/skills.ts`): a
 stage's settings change (`update_settings`) and the stage is tuned
-(`tune_pipeline`) only after its skill has been read in the conversation.
-Otherwise the executor refuses the call and names the skill to read. The ring
+(`tune_pipeline`) only after its skill has been read in the same reply, or
+while the skill's whole text is in the messages the reply was sent (a user
+who pastes it, say). Otherwise the executor refuses the call and names the
+skill to read. The chat sends earlier turns as their text alone, so a skill
+read in an earlier turn is no longer in front of the model and does not count;
+the refusal then says so and asks for the skill again (`replyContext` in
+`llm/session.ts`, `startReply` in `llm/tools/round.ts`). The ring
 removal and the flatten belong to `reduction-qc`, the punch and the backfill to
 `bragg-node-audit`, and the ΔPDF to `delta-pdf-interpretation`. The app's own
 tool calls (the report's) are not gated.
@@ -356,16 +365,26 @@ miss is a note.
     whether the fills sit systematically above or below their rims (a
     lattice-periodic pattern; flagged at a median ≥ 0.5σ with ≥ 75 % of holes
     one way) and whether the punch and backfill add variation around each |Q|
-    shell; `qmax_coverage` (`metrics/coverage.ts`) gives the share of the
+    shell; `qmax_coverage` gives the share of the
     ΔPDF window's weight on unmeasured space, read from the ΔPDF's provenance
     (≲ 10⁻³ is clean), with the window's shape and scale. On a file without it,
     it compares how far the forward transform's window reaches in |Q| (the |Q|
     band if set, else the box faces, the coverage edge when tapered to it, or
     the box corners for a flat separable window) with the |Q| where shells
-    stop being 95 % measured. From the raw volume (`analysis/coverage.py`,
-    `GET /api/volumes/{id}/coverage`) it also gives where the counts begin
-    and end in |Q|, where a shell's voxels stop being mostly measured,
-    finite and non-zero, with the box's nearest face. It suggests the |Q| band
+    stop being 95 % measured. With the window fitted to the coverage (the
+    support on, an auto or ellipsoid window) the backend keeps at most 10⁻³ of
+    its weight on unmeasured space by construction, so that weight, or the
+    taper's reach, is its own target, not a check: the verdict says so, and
+    judges where the counts end and a band that is set, which needs attention
+    past the counts' edges. The coverage is measured once, in Python, on the
+    raw volume's |Q| shells in 3D (`analysis/coverage.py`, served by both
+    adapters: `GET /api/volumes/{id}/coverage` and the webbridge's
+    `volume_coverage_json`); the principal planes only show where. It gives
+    where the counts begin and end in |Q|, where a shell's voxels stop being
+    mostly measured, finite and non-zero, with the box's nearest face. A
+    volume that stores zeros for unmeasured space marks them measured: the
+    window's support, the measured voxels, then runs past the counts, and no
+    taper to the coverage follows them. It suggests the |Q| band
     they allow, and checks a band that is set. The Configure page shows the
     same edges under its |Q| band, with a *From raw data* button that sets
     the band to them. `symmetry_check` (`metrics/symmetry.ts`)

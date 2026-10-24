@@ -73,6 +73,11 @@ class _PeakPunch:
     # Which final footprint ``shape_hkl`` is: "profile" (the shared Bragg
     # profile) or "own" (the peak's own measured width); None otherwise.
     footprint_kind: str | None = None
+    # Which pass found it: "integer" (the node test, or every node when no
+    # test is set) or "search".  A search peak at a node the node test left to
+    # the search keeps "search" and takes that node as ``source_node_hkl``
+    # (``BraggRemover._claim_left_nodes``).
+    found_by: str = "integer"
 
     def as_tuple(self) -> tuple[int, int, int, float]:
         return self.ih, self.ik, self.il, self.intensity
@@ -269,6 +274,9 @@ class _BraggProfile:
     profiles: NDArray[np.float64]  # (n_bins, 3, n_dist): the Bragg template
     n_peaks: tuple[int, ...]
     raw: NDArray[np.float64] | None = None  # the stacked profiles it came from
+    # Of the peaks stacked (sum of n_peaks), those the search found at nodes
+    # the node test left to it (``found_by="search"``); the rest the node test's.
+    from_search: int = 0
 
     def radii(self, q_abs: float, level: float) -> NDArray[np.float64]:
         """Distances along ρ̂, θ̂, φ̂ at which the profile falls to *level*.
@@ -293,6 +301,13 @@ _WIDTH_REFERENCE_MIN = 5
 _WING_REACH = 0.25
 # Voxels either side of a peak through which the width test's baseline runs.
 _FWHM_REACH = 5
+# The fewest measured voxels a shell's median is taken from: the node test's
+# background shell, 1–2× the resolution ellipsoid (BraggRemover.
+# _background_shell), and the width test's two shells (_broader_than_bragg).
+# It is also the node test's resolution guard: at a node whose background
+# shell holds fewer, the test does not judge (BraggRemover._detect_integer;
+# the grid that takes, BraggRemover.node_test_limit).
+_SHELL_MIN_VOXELS = 8
 
 
 @dataclass
@@ -336,7 +351,15 @@ class BraggRemover:
         a node, which stands no higher than its own surroundings, from passing
         on good counting statistics.  Nothing in the test depends on the
         intensity units, so data of any scale (X-ray rates, neutron counts)
-        are judged alike; requires ``min_significance``.
+        are judged alike; requires ``min_significance``.  The shell's median
+        needs 8 measured voxels (``_SHELL_MIN_VOXELS``); at a node whose shell
+        holds fewer (on a grid too coarse for the resolution ellipsoid, see
+        :meth:`node_test_limit`, or at the edge of the measured volume) the
+        test does not judge: with ``mode="both"`` the node is left to the
+        search pass, whose peak in the node's window is then the node's Bragg
+        peak (see :meth:`_claim_left_nodes`); with ``mode="integer"`` it is
+        judged against its window's median instead, provisionally (see
+        :meth:`_detect_integer`).
     integer_max_shell_fraction:
         With ``integer_detect="significance"``, also reject a node whose excess
         is resolvably broader than a Bragg peak (see
@@ -651,6 +674,11 @@ class BraggRemover:
     # What the last search pass measured and used: the diffuse scatter and the
     # floors in data units (see ``search_floor_unit``), for the run log.
     _search_report: dict[str, Any] = dataclasses.field(
+        default_factory=dict, init=False, repr=False, compare=False)
+    # What the last integer pass's node test (``integer_detect="significance"``)
+    # could not judge, for the run log and the punch's record (see
+    # ``_detect_integer``); empty with the floors test or no integer pass.
+    _node_report: dict[str, Any] = dataclasses.field(
         default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -1233,8 +1261,10 @@ class BraggRemover:
     ) -> _BraggProfile | None:
         """Stack the brightest peaks' profiles along their (ρ̂, θ̂, φ̂) axes.
 
-        Calibration peaks are the integer-node peaks (all *peaks* when there
-        are none) with a positive excess, more than twice the reach
+        Calibration peaks are the peaks at integer nodes, the node test's and
+        those the search found at nodes the node test left to it
+        (:meth:`_claim_left_nodes`), or all *peaks* when there are none, with
+        a positive excess, more than twice the reach
         (``profile_max_radius_q``) from the origin and a ≥ 90 %-measured
         window, most significant first, at most ``profile_calibration_peaks``.
         For each, the excess over its own background (the median beyond 0.8 ×
@@ -1272,6 +1302,7 @@ class BraggRemover:
                   else excess(p), reverse=True)
         axes = (vol.h_axis, vol.k_axis, vol.l_axis)
         samples: list[tuple[float, NDArray[np.int64], NDArray[np.float64]]] = []
+        from_search = 0  # samples from peaks the search found at left nodes
         for p in pool:
             if len(samples) >= int(self.profile_calibration_peaks):
                 break
@@ -1313,6 +1344,7 @@ class BraggRemover:
                 values.append(e[sel])
             samples.append((float(np.linalg.norm(q0)), np.concatenate(keys),
                             np.concatenate(values)))
+            from_search += int(p.found_by == "search" and p.source_node_hkl is not None)
         n_bins = min(int(self.profile_q_bins), len(samples) // min_per_bin)
         if n_bins < 1:
             return None
@@ -1341,7 +1373,7 @@ class BraggRemover:
                 raw[b, k] = _monotone_profile(dist, np.concatenate([[1.0], med]))
         profiles = np.stack([_bragg_template(dist, raw[b]) for b in range(n_bins)])
         return _BraggProfile(q_centers=q_centers, distances=dist, profiles=profiles,
-                             n_peaks=tuple(counts), raw=raw)
+                             n_peaks=tuple(counts), raw=raw, from_search=from_search)
 
     def _with_profile_shape(
         self, vol: HKLVolume, rec: _PeakPunch, profile: _BraggProfile,
@@ -1493,6 +1525,11 @@ class BraggRemover:
         :meth:`_learn_profile`) and every peak carries its profile-matched
         footprint; the profile is ``None`` otherwise, or when too few bright
         peaks were found (the peaks then keep the ellipsoid footprint).
+
+        With ``mode="both"``, a search peak at a node the node test left to the
+        search (:meth:`_claim_left_nodes`) is that node's Bragg peak: the
+        profile is then learned again from the node test's peaks and these,
+        and every peak's footprint is taken from it.
         """
         rejected: list[float] = []
         # The own-width footprint falls back to the profile for a peak it
@@ -1514,24 +1551,71 @@ class BraggRemover:
             # residual.  With the strong integer peaks already masked out, the
             # per-|Q|-shell statistics are no longer inflated by them, so the
             # off-integer satellites stand out as clean outliers.
-            integer = self._detect_integer(vol, rejected)
-            reference = self._bragg_width(vol, integer) if learn else None
+            found = self._detect_integer(vol, rejected)
+            # The nodes the node test could not judge, left to the search.
+            left: list[tuple[int, int, int]] = list(self._node_report.get("nodes", []))
+            reference = self._bragg_width(vol, found) if learn else None
+            integer = found
             if learn:
-                profile = self._learn_profile(vol, integer)
-                integer = self._footprints(vol, integer, profile, reference)
+                profile = self._learn_profile(vol, found)
+                integer = self._footprints(vol, found, profile, reference)
             keep = self._punch_centers(
                 vol, np.ones(vol.shape, dtype=bool), integer,
                 reference=self._scaling_reference(integer, rejected))
             keep = self._symmetric_keep(vol, keep)
             residual = dataclasses.replace(vol, mask=vol.mask & keep)
-            search = self._sharp_only(
-                vol, residual, self._detect_search(residual, rejected), integer)
+            search = self._claim_left_nodes(vol, self._sharp_only(
+                vol, residual, self._detect_search(residual, rejected), integer), left)
+            claimed = [p for p in search if p.source_node_hkl is not None]
+            if learn and claimed:
+                # The search's Bragg peaks at the left nodes are Bragg peaks
+                # like the node test's: the profile is learned from both.
+                profile = self._learn_profile(vol, found + claimed)
+                integer = self._footprints(vol, found, profile, reference)
             if learn:
                 search = self._footprints(vol, search, profile, reference)
             peaks = integer + search
         else:
             raise ValueError(f"Unknown mode: {self.mode!r}")
         return peaks, self._scaling_reference(peaks, rejected), profile
+
+    def _claim_left_nodes(
+        self, vol: HKLVolume, search: list[_PeakPunch],
+        left: list[tuple[int, int, int]],
+    ) -> list[_PeakPunch]:
+        """*search* with the Bragg peaks of the nodes the node test left to the
+        search pass (*left*: their background shell under the floor).
+
+        A search peak inside the window of such a node, the box the node test
+        searches about the node's nearest voxel (:meth:`_detect_half_widths`),
+        is that node's Bragg peak: the brightest there takes the node as its
+        ``source_node_hkl`` and keeps ``found_by="search"``.  It is then
+        punched (``integer_h_guard_hkl`` included) and learned from
+        (:meth:`_learn_profile`) as the node test's peaks are.  The window
+        stays in the node's own cell, so the node is the one nearest the peak
+        (of the parent lattice, with ``supercell``).
+        """
+        if not left or not search:
+            return search
+        axes = (vol.h_axis, vol.k_axis, vol.l_axis)
+        half = self._detect_half_widths(vol)
+        cell = np.asarray(self.supercell, dtype=np.float64)
+        nodes = set(left)
+        best: dict[tuple[int, int, int], int] = {}
+        for i, p in enumerate(search):
+            r = np.round(np.asarray(p.center_hkl, dtype=np.float64) / cell) * cell
+            node = (int(r[0]), int(r[1]), int(r[2]))
+            if node not in nodes:
+                continue
+            centre = [int(np.argmin(np.abs(ax - v))) for ax, v in zip(axes, node)]
+            if any(abs(j - c) > w for j, c, w in zip((p.ih, p.ik, p.il), centre, half)):
+                continue
+            if node not in best or p.intensity > search[best[node]].intensity:
+                best[node] = i
+        out = list(search)
+        for node, i in best.items():
+            out[i] = dataclasses.replace(out[i], source_node_hkl=node)
+        return out
 
     def _sharp_only(
         self, vol: HKLVolume, residual: HKLVolume,
@@ -1671,10 +1755,45 @@ class BraggRemover:
         significant, whatever its size in data units.  Every node is a
         candidate there, so none is appended to *rejected* (the scaling
         reference is the median of the kept peaks).
+
+        Resolution: the shell background is the median of the measured voxels
+        between 1× and 2× the resolution ellipsoid R (:meth:`_background_shell`),
+        and a median needs ``_SHELL_MIN_VOXELS`` (8) of them.  The shell's
+        Q-volume is (2³ − 1) = 7 times the ellipsoid's, (28π/3)·rρ·rθ·rφ, so
+        8 voxels need a voxel Q-volume of (7π/6)·rρ·rθ·rφ or less: at the
+        default R (0.097, 0.072, 0.115) Å⁻¹ a cubic voxel of 0.143 Å⁻¹ or less,
+        about 2·r_min (:meth:`node_test_limit`).  The count is checked at each
+        node, around the voxel judged, since it varies with the direction of
+        Q (the ellipsoid turns with it, the grid does not) and with the mask:
+        a node whose shell holds fewer is not judged.  Without the guard the
+        test fell back on the window's median, which on a coarse grid passes
+        the diffuse at a node: a saddle's corner stands many σ above its
+        window's median (on the validation's dev crystal at 0.161 Å⁻¹ a voxel,
+        96 % of the nodes held 2 to 6 shell voxels, and dozens of forbidden
+        nodes were punched).  With ``mode="both"`` a node not judged is left to
+        the search pass, which punches it only if it stands out of its |Q|
+        shell, and then as that node's Bragg peak (:meth:`_claim_left_nodes`).
+        A Bragg peak the search cannot see may remain: one below its floors,
+        the lesser error, or one in a |Q| shell too thin for its statistics
+        (under 20 voxels, at the box's far corners), which it does not read.
+        With ``mode="integer"`` there is no search pass to
+        leave it to: it is judged as before the guard, against its window's
+        median, and the width test, whose shells are as thin, takes it as no
+        broader than a Bragg peak.  That verdict is provisional, and the run
+        log says so.  ``_node_report`` holds the counts: the nodes examined
+        (a measured window), those whose shell was under the floor, and the
+        grid against the limit.
         """
         nh, nk, nl = vol.shape
         data, valid = vol.data, (vol.mask & np.isfinite(vol.data))
         by_significance = self.integer_detect == "significance"
+        self._node_report.clear()
+        # The nodes examined (a measured window) and those whose background
+        # shell holds under _SHELL_MIN_VOXELS measured voxels (the guard).
+        examined = 0
+        under_floor: list[tuple[int, int, int]] = []
+        # mode="both": a node the test cannot judge is left to the search pass.
+        leave_to_search = self.mode == "both"
 
         def nearest(axis: NDArray, val: int) -> int:
             return int(np.argmin(np.abs(axis - val)))
@@ -1739,11 +1858,24 @@ class BraggRemover:
             pl = int(ls + int(off[2]))
 
             if by_significance:
+                examined += 1
                 # A window whose maximum is its median holds no excess at all.
                 if not prom > 0:
                     continue
                 noise = float(np.nanmedian(np.abs(wv - local_bg))) * 1.4826
-                shell_bg = self._shell_background(vol, (ph, pk, pl))
+                shell = self._background_shell(vol, (ph, pk, pl))
+                shell_bg = None
+                if shell is not None:  # None only at the origin (no frame)
+                    if shell.size >= _SHELL_MIN_VOXELS:
+                        shell_bg = float(np.median(shell))
+                    else:
+                        # Under the floor: the test cannot judge this node
+                        # (the docstring, Resolution). Left to the search pass,
+                        # or with mode="integer" judged against the window's
+                        # median below, provisionally.
+                        under_floor.append((h, k, l))
+                        if leave_to_search:
+                            continue
                 z = self._peak_significance(
                     vol, (ph, pk, pl), local_bg if shell_bg is None else shell_bg, noise)
                 if not z >= self._window_threshold(int(wval.sum())):
@@ -1790,14 +1922,22 @@ class BraggRemover:
                     continue
             out.append(self._integer_record(
                 vol, (h, k, l), (ph, pk, pl), peak, local_bg, z))
+        if by_significance:
+            self._node_report.update(
+                examined=examined, under_floor=len(under_floor), nodes=under_floor,
+                min_voxels=_SHELL_MIN_VOXELS, voxel_q=self.voxel_edge_q(vol),
+                needs_q=self.node_test_limit(vol), left_to_search=leave_to_search)
         return out
 
-    def _shell_background(
+    def _background_shell(
         self, vol: HKLVolume, idx: tuple[int, int, int],
-    ) -> float | None:
-        """Median of the valid voxels between 1× and 2× the resolution ellipsoid
-        around voxel *idx*: the peak's own background, as in a peak-integration
-        annulus.  ``None`` with fewer than 8 such voxels, or at the origin."""
+    ) -> NDArray[np.float64] | None:
+        """The measured voxels between 1× and 2× the resolution ellipsoid around
+        voxel *idx*: the peak's own background, as in a peak-integration
+        annulus, whose median the node test takes when they are
+        ``_SHELL_MIN_VOXELS`` or more (see :meth:`_detect_integer`).  Their
+        values, as many as the grid, the box and the mask leave; ``None`` at
+        the origin, where the frame is undefined."""
         center = (float(vol.h_axis[idx[0]]), float(vol.k_axis[idx[1]]),
                   float(vol.l_axis[idx[2]]))
         a = self._active_shape_matrix(vol, center)
@@ -1815,9 +1955,41 @@ class BraggRemover:
                 + 2.0 * a[1, 2] * kk * ll)
         win = vol.data[sl]
         shell = (quad > 1.0) & (quad <= 4.0) & vol.mask[sl] & np.isfinite(win)
-        if int(shell.sum()) < 8:
-            return None
-        return float(np.median(win[shell].astype(np.float64)))
+        return np.asarray(win[shell], dtype=np.float64)
+
+    @staticmethod
+    def voxel_edge_q(vol: HKLVolume) -> float:
+        """A voxel's size in Å⁻¹: the edge of a cube of its Q-volume,
+        ∛(|det UB|·ΔH·ΔK·ΔL), the step itself on a cubic grid.  What counts
+        when voxels are counted in a Q-volume, as the node test's background
+        shell counts them (:meth:`node_test_limit`)."""
+        steps = np.abs(np.asarray(BraggRemover._steps(vol), dtype=np.float64))
+        det = abs(float(np.linalg.det(np.asarray(vol.ub_matrix, dtype=np.float64))))
+        return float((det * float(np.prod(steps))) ** (1.0 / 3.0))
+
+    def node_test_limit(self, vol: HKLVolume) -> float:
+        """The largest voxel (Å⁻¹, :meth:`voxel_edge_q`) whose grid gives the
+        node test's background shell ``_SHELL_MIN_VOXELS`` voxels, on average
+        over the directions of Q.
+
+        The shell runs from 1× to 2× the resolution ellipsoid R (the punch
+        frame's, :meth:`_active_shape_matrix`): (2³ − 1) times R's Q-volume
+        V_R, which is (4π/3)·rρ·rθ·rφ in the spherical frame.  It holds
+        ``_SHELL_MIN_VOXELS`` voxels when a voxel's Q-volume is at most
+        7·V_R / ``_SHELL_MIN_VOXELS``: (7π/6)·rρ·rθ·rφ for 8, so a cubic
+        voxel of 0.143 Å⁻¹ at the default R (0.097, 0.072, 0.115) Å⁻¹, about
+        2·r_min.  V_R is the same at every node (R turns with Q, its volume
+        does not); the count about a node varies with the direction, a few
+        voxels either way near the limit, which the test checks at each node
+        (:meth:`_detect_integer`).
+        """
+        a = self._active_shape_matrix(vol, (1.0, 0.0, 0.0))
+        if a is None:  # never off the origin: the frame is defined at (1, 0, 0)
+            raise ValueError("the punch ellipsoid is undefined for this UB matrix")
+        det_ub = abs(float(np.linalg.det(np.asarray(vol.ub_matrix, dtype=np.float64))))
+        # R's Q-volume: (4π/3)/√det A in H, K, L, times |det UB| into Q.
+        v_r = 4.0 / 3.0 * np.pi * det_ub / float(np.sqrt(np.linalg.det(a)))
+        return float(((2.0 ** 3 - 1.0) * v_r / _SHELL_MIN_VOXELS) ** (1.0 / 3.0))
 
     def _broader_than_bragg(
         self, vol: HKLVolume, idx: tuple[int, int, int], noise: float,
@@ -1861,7 +2033,7 @@ class BraggRemover:
         def shell(lo: float, hi: float) -> tuple[float, float] | None:
             m = ok & (quad > lo * lo) & (quad <= hi * hi)
             n = int(m.sum())
-            if n < 8:
+            if n < _SHELL_MIN_VOXELS:
                 return None
             # Standard error of a median: √(π/2) σ/√n.
             return (float(np.median(win[m])),
@@ -2154,6 +2326,7 @@ class BraggRemover:
                 ),
                 local_background=bg,
                 significance=z,
+                found_by="search",
             ))
         return out
 

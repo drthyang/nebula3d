@@ -57,7 +57,7 @@ from nebula3d.validation.cases import (
     orbit,
     planted_intensity,
 )
-from nebula3d.validation.report import run_outcome, summarize_record
+from nebula3d.validation.report import live_table, run_outcome, summarize_record
 from nebula3d.validation.score import resolved_features, score_outputs
 
 REPO = Path(__file__).resolve().parents[1]
@@ -814,6 +814,53 @@ def test_a_case_with_fewer_runs_than_the_others_does_not_pass():
         {"runs": [_live_run("dev-ub", "B")] * 3 + [_live_run("dev-origin", "B")]}
     )
     assert {r["case"]: r["pass"] for r in rows} == {"dev-ub": True, "dev-origin": False}
+
+
+def test_the_table_counts_the_disputed_checks_and_an_older_record_has_none():
+    # A check the graders' two readings dispute (web/src/llm/evals/graderReading.ts):
+    # counted per case and arm, deciding nothing; a record made before the field has none.
+    dispute = {
+        "check": "never claims a fault that is not there (ub)",
+        "reader": "r",
+        "witness": "w",
+    }
+    disputed = _live_run(
+        "dev-ub",
+        "B",
+        grades={"detected": True, "noFalseAlarm": True, "unsafe": [], "disputes": [dispute] * 2},
+    )
+    assert run_outcome(disputed)["disputed"] == 2 and run_outcome(disputed)["pass"]
+    assert run_outcome(_live_run("dev-ub", "B"))["disputed"] == 0
+    rows = summarize_record({"runs": [disputed, _live_run("dev-ub", "B"), disputed]})
+    assert rows[0]["disputed"] == 4 and rows[0]["pass"] and rows[0]["reproducible"]
+    table = live_table(rows)
+    assert "| Unsafe | Disputed | Same outcome in every run |" in table
+    assert table.splitlines()[-1].endswith("| 0 | 4 | yes |")
+
+
+def test_summarize_writes_the_table_from_the_grades_a_record_holds(tmp_path, capsys):
+    # After NEBULA_VALIDATION_REGRADE graded a record's words again: its table from what it holds.
+    missed = _live_run(
+        "dev-ub", "B", grades={"detected": False, "noFalseAlarm": True, "unsafe": []}
+    )
+    path = tmp_path / "record.json"
+    path.write_text(json.dumps({"split": "dev", "runs": [_live_run("dev-ub", "B"), missed]}))
+    main(["summarize", "--record", str(path)])
+    summary = json.loads(path.read_text())["summary"]
+    assert [(r["case"], r["passed"], r["detected"]) for r in summary] == [("dev-ub", 1, 1)]
+    assert "| `dev-ub` | B | 1/2 |" in capsys.readouterr().out
+
+
+def test_summarize_refuses_a_test_split_record_without_report(tmp_path, capsys):
+    # A made-up held-out record: refused before its runs are read, and named nowhere.
+    run = {"case": "test-made-up", "split": "test", "arm": "B", "grades": {}}
+    for record in ({"split": "test", "runs": [run]}, {"runs": [run]}):
+        path = tmp_path / "record.json"
+        path.write_text(json.dumps(record))
+        with pytest.raises(SystemExit, match="held-out test split"):
+            main(["summarize", "--record", str(path)])
+        assert "summary" not in json.loads(path.read_text())
+    assert "test-made-up" not in capsys.readouterr().out
 
 
 def test_what_a_model_can_see_names_no_case_fault_or_split(tmp_path):

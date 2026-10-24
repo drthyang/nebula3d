@@ -200,9 +200,10 @@ export async function runAgent({
   // against are the given ones under the skills' switch (skills.ts), as the
   // conversation's context carries it (with the skills off, no read_skill);
   // the tool context is the reply's own copy, so a run's fresh dataset and
-  // the skills read stay this reply's. Without a context no tool runs, and
-  // the tools are the given ones.
-  let history: History | null = ctx && startReply(ctx, given);
+  // the skills read stay this reply's, and a skill counts as read from the
+  // start only if its text is in the messages. Without a context no tool
+  // runs, and the tools are the given ones.
+  let history: History | null = ctx && startReply(ctx, given, messages);
   const tools = history ? history.tools : given;
   const convo = [...messages];
   const arrived = convo.length;

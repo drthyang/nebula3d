@@ -9,10 +9,11 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from nebula3d.server.bragg import node_test_out
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import artifact_path, find_dataset
 from nebula3d.server.deps import get_config
-from nebula3d.server.schemas import BraggProfileOut
+from nebula3d.server.schemas import BraggProfileOut, NodeTestOut
 
 router = APIRouter(prefix="/api/bragg", tags=["bragg"])
 
@@ -22,7 +23,8 @@ def profile(
     dataset_id: str,
     cfg: ServerConfig = Depends(get_config),
 ) -> BraggProfileOut:
-    """Return per-peak Bragg punch width metadata for one dataset."""
+    """Return per-peak Bragg punch width metadata for one dataset, and the
+    nodes the punch's node test could not judge (``node_test``), if any."""
     ds = find_dataset(cfg, dataset_id)
     if ds is None:
         raise HTTPException(404, f"unknown dataset id {dataset_id!r}")
@@ -41,6 +43,7 @@ def profile(
         raise HTTPException(
             500, f"could not read Bragg profile {path.name}: {exc}") from exc
 
+    node_test = node_test_out(data.get("node_test"))
     return BraggProfileOut(
         dataset_id=dataset_id,
         profile_path=str(path),
@@ -53,4 +56,5 @@ def profile(
         fit_covariance=bool(data.get("fit_covariance", False)),
         punch_frame=data.get("punch_frame"),
         peaks=list(data.get("peaks", [])),
+        node_test=None if node_test is None else NodeTestOut(**node_test),
     )

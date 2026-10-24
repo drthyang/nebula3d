@@ -156,7 +156,9 @@ The console's tests are two vitest projects (`web/vitest.config.ts`):
   `devCase(id)` (`web/src/llm/evals/devData/index.ts`) is their interface: a
   handle on one dev case, from its default run, for running a tool on it or
   replaying a scripted model through the agent loop. Only the dev split is
-  built; the held-out test split never is.
+  built; the held-out test split never is. The tests that read the package's
+  own values (`sharedLimits.replay.test.ts`, below) run here too, for its
+  Python.
 
 `npm run test` runs both. The replay project needs a Python 3.10 or newer with
 the package installed (`pip install -e .` from the repository root). It takes
@@ -198,6 +200,55 @@ disagreement between the readers, D1 to D18, with both readings. A change
 that moves a verdict shows in the goldens; one that unifies a disagreement
 flips its rule's constant (or deletes its matrix cell, as its comment says)
 and updates its pin and the goldens it moves, saying which and why.
+
+### An answer's words
+
+One reader reads the words of a NEBULA Pilot answer,
+`web/src/llm/answerText/`, for the answer checks (`web/src/llm/answerChecks.ts`,
+which send an answer back before the user reads it) and for the validation's
+graders (`web/src/llm/evals/`) alike. It reads an answer into plain data and
+decides nothing: its sentences and their clauses, the cues each holds
+(negation, absence, doubt, condition, plan, modal, sequence, purpose) and the
+cue that opens it, whether it asks, and the numbers it writes, each with its
+unit and whether it sits in a vector. What a cue does to a verdict or a grade
+is each reader's policy.
+
+- **The answer checks** read it with their own options and keep their own
+  reading of it, which nothing the model sees may change: a clause splits at
+  "; " and at ": " after a long label, not at a dash; a negation alone
+  negates, not an absence; a hedge anywhere in a clause makes it no verdict.
+  Each difference from the graders is a flag in `answerChecks.ts`, off
+  (`W1_GATE_SPLITS_AT_DASHES`, `W2_GATE_NEGATES_ABSENCE`,
+  `W9_GATE_READS_CURLY_APOSTROPHE`, their blind spot for "isn’t"), kept until
+  after the validation.
+- **The graders** read it through a port (`evals/graderReading.ts`) whose
+  shared reader is answerText/ with its own options, and decide on that
+  (`credits` and `charges` in `evals/validation.ts`, the sentence checks in
+  `evals/checks.ts`). Every text check is decided again on the witness's
+  reading (`evals/witness.ts`), an independent minimal parse with the same
+  rules written apart, which imports nothing: a check the shared reader passes
+  and the witness fails is a dispute, recorded on the run.
+
+The tests:
+
+- `web/src/llm/__tests__/answerText.test.ts`: the reader's splits, cues,
+  questions and numbers;
+- `web/src/llm/__tests__/answerTextPins.test.ts`: each kept difference between
+  the two readings, W1 to W8 and the curly apostrophe, with both readings, in
+  the manner of the verdict pins: unifying one flips its flag and updates its
+  pin;
+- `web/src/llm/evals/answerTextGoldens.test.ts`: characterisation goldens over
+  the dev corpus (`evals/answerCorpus.ts`: the canned dev answers, the scripted
+  replays and the scenario records' 121 answers), every grade on every dev
+  case and on its own scenario's checks, and the answer checks' reading by
+  digest; booleans and digests only, dev cases only. A diff there is a moved
+  grade: update it (`-u` after the file) only in a commit that means it, and
+  say which grades moved and why;
+- `web/src/llm/evals/witness.test.ts`: the import scans (the graders import
+  nothing of the app's verdicts or of the answer checks, and the witness
+  nothing at all), the disputes over the dev corpus against a declared list,
+  empty, and planted controls that show the witness catching a shared reader
+  that misreads.
 
 ### What the Pilot's model sees
 
@@ -246,6 +297,7 @@ web/src/llm/tools/
 ├── call.ts              one call: runToolCall (as the model wrote it), callTool (by name)
 ├── round.ts             the executor's round: a model turn's calls over the reply's history
 ├── facts.ts             what a tool declares beside what the model reads
+├── contracts.ts         the shape of each tool's result, which the tests hold it to
 └── openView.ts          moves the console to the figure a step looked at
 ```
 
@@ -278,6 +330,8 @@ To add a tool:
    in `armC.test.ts`'s session if arm C is offered it, then update the
    model-visible snapshots (above) and read the diff. `tokenBudget.test.ts`
    shows what its definition adds to every request.
+4. Write its result's contract (below) and call it in
+   `contracts.replay.test.ts`.
 
 `registry.test.ts` holds the files under `defs/` to `CHAT_TOOLS` one to one,
 each exporting its tool under its file's name, and `imports.test.ts` holds the
@@ -295,6 +349,34 @@ nowhere else. `web/src/llm/__tests__/facts.test.ts` holds what every
 declaration keeps: a tool that acts says what it changes, one that changes a
 stage's settings or tunes it waits for the stage's skill, and every verdict
 topic and every kind of question has a tool.
+
+### A Pilot tool's result contract
+
+`web/src/llm/tools/contracts.ts` writes the shape of every tool's result as
+the model reads it (JSON): its fields, their types, which may be left out,
+and, as a union, the other shapes a tool returns on its other paths (a note
+alone, a stage whose output is missing). read_skill returns text and has
+none. Three tests hold the results to them: `modelVisible.test.ts` (every
+sampled result, arms B and C), `contracts.test.ts` (the paths the samples do
+not reach, each run by the tool on the synthetic crystal) and
+`contracts.replay.test.ts` (every tool live on the dev control, and the ring
+and texture checks again on 161³). A failure names the call and the field.
+
+When a tool's result changes on purpose (a field added, renamed, retyped, or
+left out on a new path), change its contract in the same commit: the
+contract follows the tool. When the result changed by accident, fix the tool.
+
+### The limits both languages hold
+
+`web/src/llm/__tests__/sharedLimits.replay.test.ts` pins each limit or
+constant the Python and the TypeScript both hold (the window's 1e-3, the fill
+texture's limits, the ring rule's shares, the UB turn, a blank setting's
+default, ...), reading the Python by importing this checkout's package with
+the replay project's interpreter. When a pin fails, change the other side
+with it; when the two are meant to differ, move the pin to its `INDEPENDENT`
+table with the reason. The scorer's tolerances
+(`src/nebula3d/validation/score.py`) and the grader's own UB rule are listed
+there, never pinned.
 
 ### The skills against the code
 
@@ -317,3 +399,19 @@ allow-list, `ALLOWED`, each with why. It is the user's skill-review queue
 (agent plan 5.2), not a list to fix here: the lint fails on a disagreement
 that is not on it, and on an entry that no longer fails, so the list shrinks
 as the skills are corrected.
+
+### A skill's gates, through compaction
+
+When the agent loop compacts an older `read_skill` result in a long reply, a
+skill's text keeps its name and its first 400 characters
+(`web/src/llm/readings/compact.ts`), which can cut its thresholds away. A
+skill opts in to keeping them by writing its gates under a heading of its
+own, exactly `## Gates`: compaction then keeps that section whole, up to the
+next heading of level 1 or 2, beside the head. The section is capped at
+`GATES_MAX`, 1,200 characters; past it, it is cut at a line boundary and a
+marker says how many lines were left out. A skill without the section is
+shortened as before, byte for byte. `web/src/llm/__tests__/readings.test.ts`
+pins the real skills that have no `## Gates` to the old rule, and has a test
+per skill, skipped until that skill gains the section, that every number in
+it survives compaction; a section past the cap fails it. Which gates a skill
+states, and their words, are the user's.
