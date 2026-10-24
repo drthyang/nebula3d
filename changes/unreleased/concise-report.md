@@ -8,4 +8,8 @@
   in one *Details and provenance* section, collapsed on the page, opened by
   *Print / PDF*, and in full in the Markdown, so nothing it held is lost. On
   the demo run the page shows 2 709 characters instead of 8 126. A ΔPDF
-  figure's caption no longer prints its field of view to 15 digits.
+  figure's caption no longer prints its field of view to 15 digits. A tool
+  call of the agent's that failed is now listed among the limitations, not
+  only in the collapsed steps; the ΔPDF card's numbers add the odd share and
+  the back-FFT's normalised RMS; and the downloaded page prints its details
+  open from the browser's own Print as well.

@@ -20,12 +20,13 @@ replace `$PY` with `python`.
 `examples/run_pipeline.py` runs:
 
 ```text
-ring removal -> Bragg punch -> Bragg backfill -> radial-background flatten -> ΔPDF -> consistency check
+ring removal -> Bragg punch -> Bragg backfill -> background correction (flatten) -> ΔPDF -> consistency check
 ```
 
-Step 4, the **radial-background flatten, is the explicit background-removal step
-and is on by default** (disable with `FLATTEN=0`). The ΔPDF's own Gaussian
-`SUBTRACT_BG` blur is the alternative remover and defaults off; do not run both.
+Step 4, the **background correction** (the radial-background flatten), **is the
+explicit background-removal step and is on by default** (disable with
+`FLATTEN=0`). The ΔPDF's own Gaussian `SUBTRACT_BG` blur is the alternative
+remover and defaults off; do not run both.
 
 It skips stages whose output files already exist. Add `FORCE=1` to recompute
 everything, or `FORCE_FROM=punch` to recompute from one stage onward. Valid
@@ -57,8 +58,8 @@ done
 ## ΔPDF Files
 
 Use this when the reciprocal-space cleanup stages already exist and you want a
-persistent ΔPDF file in `data/processed`. The input is the **flattened**
-(step-4, background-removed) volume, so the transform's own `SUBTRACT_BG` is left
+persistent ΔPDF file in `data/processed`. The input is the **background-corrected**
+(step-4 flatten, `*_flattened.h5`) volume, so the transform's own `SUBTRACT_BG` is left
 off. To use the legacy in-FFT Gaussian blur instead, point `PROC_FILE` at a
 `*_backfilled.h5` file and add `SUBTRACT_BG="0,1.5,1.5"`, but not both.
 
@@ -100,7 +101,8 @@ $PY examples/explore_delta_pdf_ortho.py
 ## Check ΔPDF Consistency
 
 Use this as the endpoint of a single-volume workflow. It starts from the
-flattened diffuse volume (or a backfilled volume if flattening was disabled),
+background-corrected diffuse volume (or a backfilled volume if the background
+correction was disabled),
 computes the ΔPDF, inverse-transforms it back to reciprocal space, and
 writes a `data | back-FFT | residual` figure plus metrics on stdout.
 

@@ -272,14 +272,32 @@ two apps work the same way.
 - **Click modes** (left of the header, remembered): *Navigate* — hover reads
   values, and on 3D-ΔPDF a click moves the other two cuts through the point;
   *Zoom* — a click zooms in 2× (Alt-click zooms out), a drag zooms into the box;
-  *Move* — a drag pans. In every mode, as on a map: the scroll wheel, a
-  two-finger scroll or a pinch zooms about the pointer (one wheel notch is a
-  factor 2, in any browser; a trackpad zooms smoothly), a middle-button drag or
-  a Shift+drag pans, and a double-click (or the header's *Reset zoom*) returns
-  to the full view. Zooming out stops a little past the whole slice, or at the
-  view a page opens with if that is wider. A sideways scroll is left to the
-  page. Views fill their cell: the field of view (the chip in each view's
-  corner, ± Å⁻¹ or ± Å) spans the shorter side, and a wide view shows more.
+  *Move* — a drag pans. In every mode the views behave like an embedded map
+  ("cooperative" gestures):
+  - **Wheel.** When the page can scroll, a plain wheel or two-finger scroll
+    over a view scrolls the page, and the view says *Use Ctrl + scroll to zoom*
+    (*⌘ + scroll* on macOS) for a moment; **Ctrl/⌘ + wheel** zooms about the
+    pointer, and so does a trackpad **pinch** (Chrome, Edge and Firefox send it
+    as Ctrl + wheel; Safari's pinch gestures are read too). When the page
+    cannot scroll (the views fill the window), a plain wheel zooms. One wheel
+    notch is a factor 2 in any browser; a trackpad zooms smoothly. A sideways
+    scroll is left to the page.
+  - **Drag.** A middle-button drag or a Shift+drag pans (and any drag in
+    *Move*). The view's centre stays on the data, so the slice cannot be
+    dragged off screen.
+  - **Double-click** zooms in 2× at the pointer (Alt+double-click zooms out);
+    in *Zoom* mode its two clicks have zoomed already. **Shift+double-click**,
+    the header's *Reset zoom* or the **0** key returns to the full view (a
+    plain double-click did this before it zoomed).
+  - **Buttons and keys.** The **+ / −** buttons under the field-of-view chip
+    zoom about the view's centre; on a focused view (click it or Tab to it)
+    **+ / −** zoom, the **arrow keys** pan a tenth of the view, and **0**
+    resets.
+
+  Zooming out stops a little past the whole slice, or at the view a page opens
+  with if that is wider. Views fill their cell: the field of view (the chip in
+  each view's corner, ± Å⁻¹ or ± Å) spans the shorter side, and a wide view
+  shows more.
 - **Display bar**: colormap, then the colour range — vmin, the colour bar with
   the reference data's histogram behind it and a handle at each limit, vmax —
   then *asinh / lin / log*, *Auto* and *Brightness*. *Auto* sets vmin 0 (± for

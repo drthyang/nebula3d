@@ -12,7 +12,7 @@ import type { StageEvaluation } from "./evaluate";
 export const TUNE_SYSTEM = [
   "You tune nebula3d, a pipeline that cleans a 3D reciprocal-space diffuse-scattering volume",
   "and Fourier-transforms it into a 3D-ΔPDF. Stages run in order: ring removal, Bragg punch,",
-  "backfill, flatten, ΔPDF. You tune one stage at a time; each stage reads the output the",
+  "backfill, background correction (flatten), ΔPDF. You tune one stage at a time; each stage reads the output the",
   "earlier stages settled on. For each stage you are asked to propose settings to try, then",
   "to pick the best trial from metrics measured on the three principal planes. Diffuse",
   "scattering is the signal: never trade it away for a cleaner-looking number. Change as",

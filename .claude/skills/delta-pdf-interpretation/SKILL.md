@@ -78,9 +78,9 @@ z = 0 plane: rods in reciprocal space are planes in real space.
   features; signal does not.
 - **A window past the data** (the coverage check above).
 - **The origin.** The self-correlation and the smooth background terms (the
-  flatten's constant and `b·Q²`) land near the origin. Do not interpret
-  features closer to it than the shortest interatomic distance. A leftover
-  pedestal shows as a broad feature there.
+  constant and `b·Q²` of the background correction, stage `flatten`) land near
+  the origin. Do not interpret features closer to it than the shortest
+  interatomic distance. A leftover pedestal shows as a broad feature there.
 - **Ring residue.** A leftover powder ring is a sphere in reciprocal space and
   a spherical ripple in real space.
 - **Backfill texture.** A lattice-periodic fill pattern (`texture_check`).

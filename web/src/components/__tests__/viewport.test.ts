@@ -6,8 +6,10 @@ import { describe, expect, it } from "vitest";
 import {
   boxViewport,
   clampHalf,
+  clampToBounds,
   displayToPixel,
   displayToSlice,
+  extentBounds,
   fitViewport,
   niceStep,
   panBy,
@@ -15,6 +17,7 @@ import {
   sampleIndex,
   sliceToDisplay,
   viewExtent,
+  viewportBounds,
   wheelZoomFactor,
   zoomAbout,
 } from "../viewport";
@@ -119,6 +122,18 @@ describe("zoom and pan", () => {
     const p = panBy(v, 20, 20, 400, 200);
     expect(p.cx).toBeCloseTo(-2);
     expect(p.cy).toBeCloseTo(2);
+  });
+
+  it("keeps the view's centre on the data however far it is panned, and leaves a view on it as it is", () => {
+    const b = extentBounds({ x_axis: [-4, 0, 4], y_axis: [-2, 2] }, ortho);
+    expect(b).toEqual({ x0: -4, x1: 4, y0: -2, y1: 2 });
+    const far = panBy({ cx: 0, cy: 0, half: 1 }, -100000, 100000, 200); // the data dragged far left and down
+    expect(clampToBounds(far, b)).toEqual({ cx: 4, cy: 2, half: 1 }); // the centre stops at the data's right and top edges
+    const on = { cx: 1, cy: -1, half: 0.5 };
+    expect(clampToBounds(on, b)).toBe(on); // the same object: a zoom about a point on the data stays exact
+    // An oblique section is held to its corners' box; the fit's square is the default.
+    expect(extentBounds({ x_axis: [0, 4], y_axis: [0, 4] }, { sx: 1, sy: 1, angle: 120 }).x0).toBeCloseTo(-2);
+    expect(viewportBounds({ cx: 1, cy: 2, half: 3 })).toEqual({ x0: -2, x1: 4, y0: -1, y1: 5 });
   });
 
   it("clamps the half-width between a few voxels and past the slice", () => {

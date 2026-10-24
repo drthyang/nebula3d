@@ -25,9 +25,9 @@ viewers, and reproducible command recipes in more detail.
 8. [Bragg cleanup](algorithms/bragg_cleanup.md) - integer-node Bragg punching,
    search-mode satellite punching, direct-beam handling, and backfill.
 9. [3D-ΔPDF transform](algorithms/delta_pdf.md) - centred FFT recipe, the
-   radial-background flatten (the default step-4 background removal), the
-   alternative smooth-background subtraction, real-space viewer assumptions, and
-   the back-FFT consistency check.
+   background correction (the radial-background flatten, the default step-4
+   background removal), the alternative smooth-background subtraction,
+   real-space viewer assumptions, and the back-FFT consistency check.
 10. [UB refinement](algorithms/ub_refinement.md) - fitting the UB to where the
    Bragg peaks sit, what a symmetrised volume can still show, and regridding
    onto the refined UB.
@@ -67,7 +67,7 @@ Common generated files:
 | `data/processed/*_ringremoved.h5` | Powder-ring-subtracted reciprocal-space volume. |
 | `data/processed/*_braggpunched.h5` | Ring-removed volume with Bragg/satellite holes punched. |
 | `data/processed/*_braggpunched_backfilled.h5` | Cleaned diffuse volume after Bragg-hole backfill. |
-| `data/processed/*_backfilled_flattened.h5` | Background-removed diffuse volume (step-4 radial flatten; feeds the ΔPDF). |
+| `data/processed/*_backfilled_flattened.h5` | Background-removed diffuse volume (step-4 background correction; feeds the ΔPDF). |
 | `data/processed/*_delta_pdf.h5` | Per-volume 3D-ΔPDF output. |
 | `data/processed/*_delta_pdf_consistency.json` | Back-FFT consistency metrics from the library/web pipeline. |
 | `data/processed/*_delta_pdf_consistency.png` | `data | back-FFT | residual` consistency figure. |
@@ -101,7 +101,7 @@ sits in the standard place:
   nebula3d/                           what Mantid does not know: exact bin centres
                                       and UB, in-memory dtype, instrument text,
                                       the punch record (punched, int8, 1 = punched),
-                                      the flatten's settings (flatten_settings, JSON)
+                                      the background correction's settings (flatten_settings, JSON)
 ```
 
 A volume `(nh, nk, nl)` has D2 = `[H,0,0]`, D1 = `[0,K,0]`, D0 = `[0,0,L]`

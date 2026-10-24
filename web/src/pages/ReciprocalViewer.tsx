@@ -29,7 +29,7 @@ import {
 } from "../components/ui";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
-import { clampHalf, fitViewport, sampleIndex, type SliceGeom } from "../components/viewport";
+import { clampHalf, extentBounds, fitViewport, sampleIndex, type SliceGeom } from "../components/viewport";
 import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
 import { LayoutControl, Workspace } from "../components/Workspace";
 import {
@@ -203,6 +203,12 @@ export function ReciprocalViewer() {
     const range = { H: meta.h_range, K: meta.k_range, L: meta.l_range };
     return fitViewport({ x_axis: range[xAxis], y_axis: range[yAxis] }, geom);
   }, [meta, xAxis, yAxis, geom]);
+  // Panning keeps the view's centre on the data.
+  const bounds = useMemo(() => {
+    if (!meta) return undefined;
+    const range = { H: meta.h_range, K: meta.k_range, L: meta.l_range };
+    return extentBounds({ x_axis: range[xAxis], y_axis: range[yAxis] }, geom);
+  }, [meta, xAxis, yAxis, geom]);
   const viewport = views[plane] ?? fit;
   const step = (ax: FixedAxis) => {
     if (!meta) return 0.01;
@@ -329,6 +335,7 @@ export function ReciprocalViewer() {
                   viewport={viewport}
                   onViewport={(v) => setView(plane, v)}
                   fit={fit}
+                  bounds={bounds}
                   limit={limit}
                   mode={clickMode}
                   axes={{ sx: geom.sx, sy: geom.sy, xLabel: xAxis, yLabel: yAxis, unit: "r.l.u.", fovUnit: "Å⁻¹" }}

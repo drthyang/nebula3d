@@ -195,6 +195,51 @@ describe("rendering", () => {
     expect(md.indexOf("## The model's summary")).toBeLessThan(md.indexOf("## Details and provenance"));
   });
 
+  it("lists each failed tool call among the limitations, up front, not only in the steps table", () => {
+    const steps = [
+      { tool: "assess_stage", summary: "assessed the five stages on three planes", ok: true },
+      { tool: "texture_check", summary: "Error: the backfilled stage is not on disk.", ok: false },
+      { tool: "grain_check", summary: "timed out", ok: false },
+      { tool: "symmetry_check", summary: "", ok: false },
+    ];
+    const { texture: _t, grains: _g, symmetry: _s, ...measured } = input().measured;
+    const r = buildReport(input({ steps, measured }));
+    const failed = [
+      "The agent's texture_check call failed: Error: the backfilled stage is not on disk.",
+      "The agent's grain_check call failed: timed out.",
+      "The agent's symmetry_check call failed.",
+    ];
+    for (const t of failed) expect(r.caveats).toContain(t);
+    expect(r.caveats.filter((c) => c.startsWith("The agent's"))).toHaveLength(3); // the call that worked is not one
+    const html = reportHtml(r);
+    const summary = html.slice(0, html.indexOf('<details class="provenance">'));
+    const limits = summary.slice(summary.indexOf("<h2>Limitations</h2>"));
+    for (const t of failed) expect(limits).toContain(`<li>${t.replace(/'/g, "&#39;")}</li>`);
+    const md = reportMarkdown(r);
+    const mdLimits = md.slice(md.indexOf("## Limitations"), md.indexOf("## Details and provenance"));
+    for (const t of failed) expect(mdLimits).toContain(`- ${t}`);
+    // No failed call, no such line.
+    expect(buildReport(input()).caveats.some((c) => c.startsWith("The agent's"))).toBe(false);
+  });
+
+  it("gives the round trip's fit on the ΔPDF card: r, its even part and the odd share, and the RMS", () => {
+    const pdf = { ...input().measured.pdf, back_fft_pearson_r: 0.9793, back_fft_pearson_r_even: 1, back_fft_odd_share: 0.041, back_fft_normalized_rms: 0.203 };
+    const card = buildReport(input({ measured: { ...input().measured, pdf } })).checks.find((c) => c.title === "3D-ΔPDF")!;
+    expect(card.headline).toMatch(/^r 0\.9793 \(even part 1, odd share 0\.041\) · RMS 0\.203 · SNR 950 · /);
+    expect(card.details).toContainEqual(["Odd share of the data (no real transform keeps it)", "0.041"]);
+    // Without the even part (a run before the even-part check) the headline gives r and the RMS.
+    const plain = buildReport(input()).checks.find((c) => c.title === "3D-ΔPDF")!;
+    expect(plain.headline).toMatch(/^r 1 · RMS 5\.1e-15 · SNR 950 · /);
+  });
+
+  it("prints the provenance open from the browser's own Print", () => {
+    const html = reportHtml(buildReport(input()));
+    const print = html.slice(html.indexOf("@media print"));
+    expect(print).toContain("details.provenance::details-content { content-visibility: visible; }");
+    expect(html).toContain('<details class="provenance">'); // still collapsed on screen
+    expect(html).not.toContain('<details class="provenance" open');
+  });
+
   it("writes the same report as Markdown", () => {
     const md = reportMarkdown(buildReport(input()));
     expect(md.split("\n")[0]).toBe("# NEBULA Pilot report — 150K");

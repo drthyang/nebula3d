@@ -299,14 +299,16 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
   if (verdict === undefined) return null;
   const r = num(m?.back_fft_pearson_r);
   const rEven = num(m?.back_fft_pearson_r_even);
+  const odd = num(m?.back_fft_odd_share);
+  const rms = num(m?.back_fft_normalized_rms);
   const open = num(m?.window_weight_on_unmeasured) ?? num(cov?.window_weight_on_unmeasured);
   const symVerdict = typeof sym?.verdict === "string" ? (sym.verdict as string) : null;
   const covVerdict = typeof cov?.verdict === "string" ? (cov.verdict as string) : null;
   const details: [string, string][] = [
     ["Back-FFT Pearson r", fmt(r)],
     ["Back-FFT r against the data's even part (what the transform keeps)", fmt(rEven)],
-    ["Odd share of the data (no real transform keeps it)", fmt(m?.back_fft_odd_share)],
-    ["Back-FFT normalised RMS", fmt(m?.back_fft_normalized_rms)],
+    ["Odd share of the data (no real transform keeps it)", fmt(odd)],
+    ["Back-FFT normalised RMS", fmt(rms)],
     ["Mean feature SNR", fmt(m?.mean_feature_snr)],
     ["Window weight on unmeasured space", fmt(open)],
     ["Window shape", fmt(m?.window_shape ?? cov?.window_shape)],
@@ -319,7 +321,9 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
   return {
     title: "3D-ΔPDF",
     verdict,
-    headline: `r ${fmt(r)}${rEven != null ? ` (even part ${fmt(rEven)})` : ""} · SNR ${fmt(m?.mean_feature_snr)} · unmeasured ${fmt(open)}${symVerdict ? ` · symmetry ${symVerdict.startsWith("kept") ? "kept" : symVerdict.startsWith("not judged") ? "not judged" : "broken"}` : ""}`,
+    // The round trip's fit as the tuner reads it (r, its even part, RMS); the odd share is what
+    // reads r below 1 on unsymmetrised data (r² ≈ 1 − odd share, docs/algorithms/delta_pdf.md).
+    headline: `r ${fmt(r)}${rEven != null ? ` (even part ${fmt(rEven)}${odd != null ? `, odd share ${fmt(odd)}` : ""})` : ""}${rms != null ? ` · RMS ${fmt(rms)}` : ""} · SNR ${fmt(m?.mean_feature_snr)} · unmeasured ${fmt(open)}${symVerdict ? ` · symmetry ${symVerdict.startsWith("kept") ? "kept" : symVerdict.startsWith("not judged") ? "not judged" : "broken"}` : ""}`,
     criterion,
     details,
   };
@@ -370,6 +374,15 @@ export function buildReport(input: ReportInput): Report {
   const left = ringNotice(m.rings);
   if (left) caveats.push(`Ring removal: ${left}`);
   for (const c of checks) if (c.verdict === "attention") caveats.push(`${c.title}: ${c.headline}.`);
+  // A failed tool call drops what it would have measured from the cards (a texture_check,
+  // grain_check, qmax_coverage or symmetry_check that failed leaves its part out): said here,
+  // not only in the collapsed steps table.
+  for (const s of input.steps) {
+    if (s.ok !== false) continue;
+    const why = s.summary.trim().replace(/\.$/, "");
+    const text = `The agent's ${s.tool} call failed${why ? `: ${why}` : ""}.`;
+    if (!caveats.includes(text)) caveats.push(text);
+  }
   const missing = ["rings", "punch", "backfill", "flatten", "pdf"].filter((k) => !m[k as keyof Measured]);
   if (missing.length) caveats.push(`Not measured (no output, or the measurement failed): ${missing.map((k) => SETTING_STAGE_LABELS[k]).join(", ")}.`);
   for (const t of input.tuning ?? []) {

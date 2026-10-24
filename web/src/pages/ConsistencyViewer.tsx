@@ -30,7 +30,7 @@ import { EmptyState, IconAlert, RangeSlider, Segmented, Slider, Switch } from ".
 import { UnitCellGrid } from "../components/UnitCellGrid";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
-import { clampHalf, displayToSlice, fitViewport, sampleIndex, type SliceGeom, type Viewport } from "../components/viewport";
+import { clampHalf, displayToSlice, extentBounds, fitViewport, sampleIndex, type SliceGeom, type Viewport } from "../components/viewport";
 import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
 import { LayoutControl, Workspace } from "../components/Workspace";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
@@ -347,6 +347,12 @@ export function ConsistencyViewer() {
     const range = { H: meta.h_range, K: meta.k_range, L: meta.l_range };
     return fitViewport({ x_axis: range[qx], y_axis: range[qy] }, qGeom);
   }, [meta, qx, qy, qGeom]);
+  // Panning keeps each view's centre on its data.
+  const qBounds = useMemo(() => {
+    if (!meta) return undefined;
+    const range = { H: meta.h_range, K: meta.k_range, L: meta.l_range };
+    return extentBounds({ x_axis: range[qx], y_axis: range[qy] }, qGeom);
+  }, [meta, qx, qy, qGeom]);
   const qViewport = qViews[plane] ?? qFit;
   const qStep = (ax: FixedAxis) => {
     if (!meta) return 0.01;
@@ -410,6 +416,7 @@ export function ConsistencyViewer() {
       viewport={qViewport}
       onViewport={(v) => setQView(plane, v)}
       fit={qFit}
+      bounds={qBounds}
       limit={qLimit}
       mode={clickMode}
       axes={qAxes}
@@ -699,6 +706,7 @@ export function ConsistencyViewer() {
                   viewport={rViewport}
                   onViewport={(v) => setRView(dpdfPlane, v)}
                   fit={rFit}
+                  bounds={extentBounds(s.header, { sx: 1, sy: 1, angle: s.header.axes_angle ?? 90 })}
                   limit={rLimit}
                   mode={clickMode}
                   axes={{ sx: 1, sy: 1, xLabel: rx, yLabel: ry, unit: "Å", fovUnit: "Å" }}
