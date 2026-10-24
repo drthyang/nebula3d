@@ -1,6 +1,6 @@
 # Answer checks
 
-`answerIssues` and `issuesPrompt` (answerChecks.ts) on canned replies: what the agent loop sends back, once, before a failing answer reaches the user. Each reply's number sources here are its tools' results.
+`answerIssues` and `issuesPrompt` (answerChecks.ts) on canned replies: what the agent loop sends back, once, before a failing answer reaches the user. Each reply's number sources here are its tools' results, and an earlier turn's while what each measured stands (`earlierSources`).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -107,5 +107,44 @@ Before this answer goes to the user, fix it:
 - It gives a verdict on the 3D-ΔPDF without its evidence in this reply: call assess_stage with stage pdf, and answer from its result.
 - It calls the run a success, but the verdict computed from the checks is "not met: needs attention: the ring removal". That verdict is the checks', not yours: quote it as {{achieved}} and explain what it rests on.
 - What it says about the ring removal contradicts the verdict the tool computed: quote that verdict and its numbers.
+Then write the whole answer again.
+```
+
+## numbers from an earlier turn's result, measured before a later run
+
+Tools run in an earlier turn: assess_stage {"stage":"rings"}.
+
+Tools run in the reply: run_pipeline {"from_stage":"rings"}.
+
+The answer:
+
+```text
+The worst ring sat at 3.2 Å⁻¹, at 0.12 of the diffuse.
+```
+
+Sent back to the model:
+
+```text
+Before this answer goes to the user, fix it:
+- These numbers were measured before the last run recomputed the outputs they describe: 3.2, 0.12. Quote numbers measured since, or leave them out.
+Then write the whole answer again.
+```
+
+## a question a result puts to the user, not asked, and its answer said as fact
+
+Tools run in the reply: assess_stage {"stage":"punch"}.
+
+The answer:
+
+```text
+The punch meets its goal. The 14 sharp peaks at H = n ± 1/3 are satellites of a modulation with k = (1/3, 0, 0).
+```
+
+Sent back to the model:
+
+```text
+Before this answer goes to the user, fix it:
+- A result in this reply has a question for the user (ask_user) that the answer does not ask: "14 of the 17 sharp peaks off the lattice sit at H = n ± 1/3, where about 2 would by chance. Does the sample have a modulation with k = (1/3, 0, 0)?" Ask it, naming the fraction or the modulation, and leave the answer to the user.
+- “The 14 sharp peaks at H = n ± 1/3 are satellites of a modulation with k = (1/3, 0, 0).”: this says the sample has the modulation a result in this reply asks the user about (ask_user). Only the user can say so: ask instead, and declare nothing.
 Then write the whole answer again.
 ```

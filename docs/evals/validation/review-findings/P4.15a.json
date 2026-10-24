@@ -1,0 +1,22 @@
+{
+ "source": "review",
+ "ref": "P4.15a",
+ "at": "d2b1eeb",
+ "kind": "bug",
+ "evidence": "The punch's search left the voxels it protects (the declared modulation's positions and the legacy H planes) out of its candidates and out of its local-maximum test, where they scored −∞ (src/nebula3d/analysis/bragg.py:2260, :2294), and its peaks' footprints took any voxel in reach (src/nebula3d/analysis/bragg.py:2392-2464, :2697; src/nebula3d/pipeline.py:1623). The voxel beside a protected peak wider than its protection was then a local maximum, and above the search floors a search peak whose punch took the protected peak with it. On 6/m test data with Gaussian satellites of σ about 0.08 r.l.u. at the star of k = (1/3, 0, 0), declared as points ± 0.08, 198 of the 216 satellites in the grid were punched (1104 protected voxels); on a cubic test volume with satellites at G ± (1/5, 0, 0) declared, the search found 200 flank peaks with the planes declared and 837 with the points. Found in P4.15's P1.",
+ "proposed_fix": "Design (a): the protected voxels count in the search's local-maximum test with their own values, so a voxel beside a brighter protected peak is its flank, not a peak; they stay out of its candidates; and no search peak's footprint takes one. The integer pass (the node test, its punches, the incident beam's punch) and every threshold are unchanged. Design (b), not taken: each protected band widened by the search footprint's reach. Under today's default it would cover about two-thirds or more of every H period, blind the search there, drop the G2 claims of node peaks at H = n ± 0.2 at n = 81, and still not bound a bright peak's wider footprint.",
+ "needs_user_approval": false,
+ "status": "implemented",
+ "commit": "b73af57",
+ "tests": [
+  "tests/test_modulation_punch.py::test_a_protected_satellite_comes_through_the_search_whole",
+  "tests/test_modulation_punch.py::test_the_search_still_punches_the_satellites_nobody_declared",
+  "tests/test_modulation_punch.py::test_a_declared_modulation_is_left_alone_and_raises_no_question"
+ ],
+ "note": "Decided by the manager on the user's delegation, 2026-10-24: fixed before P3 flips the default. Design (a) chosen over (b) (proposed_fix). With today's default, the thirds as planes, the dev cases' punch records, holes and log at n = 81 and n = 161 are main's, test_demo and the punch tests pass unchanged, and arm A on dev is identical (32 of 32 entries, 5 of 8 cases pass). With the planes declared on the 6/m test data nothing changes: 0 of 216 punched before and after, the same 5,815 voxels punched. A first count there, of 238 satellites (214 punched with the points, 12 with the planes), had taken 22 beyond the grid's edge at their nearest voxel, 12 of them nodes the integer pass punches. Protected voxels that the integer pass or the incident beam's punch reaches are punched as before: 12 with the points declared and 114 with the planes, all the beam's, about the origin. The new tests fail before the fix (the 6/m points case and the cubic flanks) and pass after it; satellites nobody declared are still all punched.",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-24",
+  "option": "design (a): the protected voxels count in the search's local-maximum test with their own values, and no search peak's footprint takes one"
+ }
+}

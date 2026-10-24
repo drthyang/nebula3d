@@ -135,7 +135,12 @@ def declared_symmetry(path: Path) -> tuple[str | None, list[list[list[int]]] | N
 
 def volume_meta(path: Path) -> dict:
     """Compact metadata for a volume: shape, axis ranges, lattice, the
-    symmetry its file declares, and whether its σ came with the data."""
+    symmetry its file declares, whether its σ came with the data, and the
+    settings the flatten that wrote it recorded
+    (:func:`~nebula3d.pipeline.read_flatten_settings`; ``None`` for a stage the
+    flatten did not write, or wrote before it recorded them)."""
+    from nebula3d.pipeline import read_flatten_settings
+
     vol = load_volume(path)
     symmetry, symmetry_ops = declared_symmetry(path)
     return {
@@ -150,6 +155,7 @@ def volume_meta(path: Path) -> dict:
         "symmetry_ops": symmetry_ops,
         "sigma": "estimated" if vol.sigma_estimated else "measured",
         "sigma_note": sigma_note(vol),
+        "flatten_settings": read_flatten_settings(path),
     }
 
 
@@ -185,9 +191,12 @@ _coverage_cache: dict[tuple[str, float], dict] = {}
 
 
 def volume_coverage(path: Path) -> dict:
-    """The share of voxels holding counts per |Q| shell, and where the counts
-    begin and end (:func:`nebula3d.analysis.coverage.q_coverage`), cached by
-    ``(path, mtime)``."""
+    """The share of voxels holding counts per |Q| shell, where the counts
+    begin and end, and where the shells stop being fully measured
+    (:func:`nebula3d.analysis.coverage.q_coverage`), cached by
+    ``(path, mtime)``.  Both adapters serve it: the server's
+    ``GET /api/volumes/{id}/coverage`` and the webbridge's
+    ``volume_coverage_json``."""
     from nebula3d.analysis.coverage import q_coverage
 
     key = (str(path), path.stat().st_mtime)
@@ -201,7 +210,8 @@ def volume_coverage(path: Path) -> dict:
         "counted": [round(float(x), 4) for x in c.counted],
         "q_min_edge": c.q_min_edge, "q_max_edge": c.q_max_edge,
         "full_q_min": c.full_q_min, "full_q_max": c.full_q_max,
-        "box_q": c.box_q, "box_corner_q": c.box_corner_q,
+        "measured_q_max": c.measured_q_max,
+        "box_q": c.box_q, "box_corner_q": c.box_corner_q, "q_step": c.q_step,
     }
     with _lock:
         _coverage_cache.clear()  # one volume's worth: they are small, but unbounded otherwise
@@ -465,12 +475,17 @@ def volume_texture(filled: Path, punched: Path, *, limit: int = 20,
     *filled*, with the hole's 3-D rim, against the punched stage *punched*
     (:func:`~nebula3d.analysis.bragg_fill_texture.fill_texture`).  The holes
     are the punch's record in *punched* (:func:`~nebula3d.pipeline.
-    read_punch_record`) when it has one, else texture.ts's test.
+    read_punch_record`) when it has one, else texture.ts's test.  Where the
+    punch's record beside *punched* carries its node test's notice
+    (:func:`~nebula3d.pipeline.read_node_test_notice`), the fills are not
+    judged (``not_judged``: :data:`~nebula3d.analysis.bragg_fill_texture.
+    NODE_TEST_TOO_COARSE`).
 
     Each hole's facts are cached by both files' ``(path, mtime)``; the rule's
-    limits (texture.ts's where unset) are applied per call.  ``holes`` lists
-    the *limit* holes (0 – :data:`TEXTURE_MAX_LIMIT`) farthest outside their
-    range in units of their level, then in σ, the holes not judged last.
+    limits (texture.ts's where unset) and the punch's notice are read per
+    call.  ``holes`` lists the *limit* holes (0 – :data:`TEXTURE_MAX_LIMIT`)
+    farthest outside their range in units of their level, then in σ, the
+    holes not judged last.
     Values are exact, ``None`` where not finite; ``centre_hkl`` is rounded to
     1e-6 r.l.u.  Raises ``ValueError`` for limits out of range or two stages
     on different grids.
@@ -483,7 +498,7 @@ def volume_texture(filled: Path, punched: Path, *, limit: int = 20,
         hole_texture,
         judge_fill_bias,
     )
-    from nebula3d.pipeline import read_punch_record
+    from nebula3d.pipeline import read_node_test_notice, read_punch_record
 
     if not 0 <= int(limit) <= TEXTURE_MAX_LIMIT:
         raise ValueError(f"limit must lie in 0–{TEXTURE_MAX_LIMIT}, not {limit!r}")
@@ -502,7 +517,8 @@ def volume_texture(filled: Path, punched: Path, *, limit: int = 20,
         min_sigma=MIN_SIGMA if min_sigma is None else float(min_sigma),
         one_way=ONE_WAY if one_way is None else float(one_way),
         min_holes=MIN_HOLES if min_holes is None else int(min_holes),
-        floor=FILL_BIAS_FLOOR if floor is None else float(floor))
+        floor=FILL_BIAS_FLOOR if floor is None else float(floor),
+        node_test_notice=read_node_test_notice(punched))
 
     def num(x: float) -> float | None:
         return float(x) if np.isfinite(x) else None

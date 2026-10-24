@@ -46,6 +46,7 @@ viewers, and reproducible command recipes in more detail.
 | [evals.md](evals.md) | Read how the agent is graded, its results per model, and the validation on synthetic cases with a planted truth. |
 | [pilot-review.md](pilot-review.md) | Read what each of the agent's tools computes, which are tested against a known answer, and what its skills lack. |
 | [pipeline.md](pipeline.md) | Prepare input data, or run the pipeline and its stages from the command line or Python. |
+| [modulation.md](modulation.md) | Declare a sample's modulation, see what the punch's search leaves alone, and read when its sharp peaks off the lattice bunch at a fraction. |
 | [commands.md](commands.md) | Run batch workflows and viewers from the CLI. |
 | [algorithms/powder_rings.md](algorithms/powder_rings.md) | Understand or tune powder-ring subtraction. |
 | [algorithms/bragg_cleanup.md](algorithms/bragg_cleanup.md) | Tune Bragg punching, satellite search, or q-shell backfill. |

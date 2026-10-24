@@ -8,6 +8,7 @@
     python -m nebula3d.validation arm-d --split dev        # arm D, the scorer's reference
     python -m nebula3d.validation make --root R --split dev --arms B,C --runs 3
     python -m nebula3d.validation score --root R --record web/.validation/<label>.json
+    python -m nebula3d.validation summarize --record web/.validation/<label>.json
 
 The test split is held out: every command that reads it needs ``--report``,
 which says the numbers are for the record, not for improving anything. Its
@@ -140,7 +141,6 @@ def _outputs(processed: Path, stem: str) -> tuple[Path, Path] | None:
 
 def cmd_score(args: argparse.Namespace) -> None:
     """Score a live record's runs (arms B and C) on their outputs, and merge the grades."""
-    from .report import live_table, summarize_record
     from .score import score_outputs
 
     root = Path(args.root)
@@ -166,11 +166,45 @@ def cmd_score(args: argparse.Namespace) -> None:
             if found
             else {"pass": False, "criteria": {"outputs": False}, "note": "no ΔPDF was made"}
         )
+    _write_summary(record, Path(args.out or args.record))
+
+
+def _write_summary(record: dict[str, Any], out: Path) -> None:
+    """Write a live record to *out* with its per-case table as its summary, and print the
+    table, the line under it, where the table leaves runs out (those whose unsafe actions
+    were counted under another rule than v1's) the line that says how many and why, and
+    where a run of the table had a reply cut at the output limit the line that names it."""
+    from .report import left_out, live_table, summarize_record, truncated_runs
+
     record["summary"] = summarize_record(record)
-    out = Path(args.out or args.record)
     out.write_text(json.dumps(record, indent=1, ensure_ascii=False) + "\n")
     print(live_table(record["summary"]))
+    for line in (left_out(record), truncated_runs(record)):
+        if line is not None:
+            print(line)
     print(out)
+
+
+def holds_test_split(record: dict[str, Any]) -> bool:
+    """Whether a live record holds the held-out test split: as it says, or as any run says."""
+    return record.get("split") == "test" or any(
+        r.get("split") == "test" for r in record.get("runs", [])
+    )
+
+
+def cmd_summarize(args: argparse.Namespace) -> None:
+    """A live record's per-case table again, from the grades and the scores it holds, and
+    written back as its summary: after its runs' words were graded again
+    (NEBULA_VALIDATION_REGRADE, web/src/llm/evals/validation.live.test.ts), or to read it.
+    Nothing is scored, so it needs neither the data root nor the cases. A run counted under
+    the pre-#68 rule, or with no stamp, is left out of the table, and a line says how many."""
+    record = json.loads(Path(args.record).read_text())
+    if holds_test_split(record) and not args.report:
+        sys.exit(
+            "this record holds the held-out test split: pass --report to summarize it for "
+            "the reported numbers only"
+        )
+    _write_summary(record, Path(args.out or args.record))
 
 
 #: Where arm A's results on the test split may go: a held-out folder, which no one
@@ -262,6 +296,18 @@ def main(argv: list[str] | None = None) -> None:
             p.add_argument("--root", required=True)
             p.add_argument("--record", required=True)
             p.add_argument("--out")
+    p = sub.add_parser(
+        "summarize",
+        help="a live record's per-case table again, from the grades and scores it holds",
+    )
+    p.set_defaults(fn=cmd_summarize)
+    p.add_argument("--record", required=True)
+    p.add_argument("--out", help="write the record here (default: in place)")
+    p.add_argument(
+        "--report",
+        action="store_true",
+        help="allow the held-out test split (reported numbers only)",
+    )
     args = ap.parse_args(argv)
     if args.cmd == "manifest":
         try:

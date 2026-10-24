@@ -62,10 +62,13 @@ const weightReasons = (r: Obj): Reason[] => {
 /**
  * qmax_coverage's words. "clean" passes and "too far" needs attention; the
  * reach inside full coverage passes with that reason, a pass to every reader
- * (D1, unified by 2.4.1). "past", "unmeasured" and "not", words no producer
- * wrote, need attention, with the reason "legacy coverage words" (D10: to every
- * reader since 2.4b.2). Anything else is nothing to judge. The weight it
- * records, if any, is a reason of its own.
+ * (D1, unified by 2.4.1). "fitted to the coverage" passes, the window fitted
+ * by the backend, and "too far" on a band past the counts' edges ("Qmin
+ * below", "Qmax past") needs attention for the band (plan 4.5). "past",
+ * "unmeasured" and "not", words no producer wrote, need attention, with the
+ * reason "legacy coverage words" (D10: to every reader since 2.4b.2).
+ * Anything else is nothing to judge. The weight it records, if any, is a
+ * reason of its own.
  */
 function coverageOutcome(r: Obj): Outcome {
   const said = words(r) ?? "";
@@ -73,22 +76,30 @@ function coverageOutcome(r: Obj): Outcome {
   const problems = countsProblems(r);
   const [kind, reasons]: [Kind, Reason[]] = /^clean/i.test(said)
     ? ["pass", weight]
-    : /^too far/i.test(said)
-      ? ["attention", /^too far: the transform reaches/i.test(said) || !weight.length ? ["reach past coverage", ...weight] : weight]
-      : /^(past|unmeasured|not)/i.test(said)
-        ? ["attention", ["legacy coverage words", ...weight]]
-        : /^the transform reaches .* inside full coverage/.test(said)
-          ? ["pass", ["reach inside coverage", ...weight]]
-          : ["info", ["nothing to judge", ...weight]];
+    : /^fitted to the coverage/i.test(said)
+      ? ["pass", ["window fitted", ...weight]]
+      : /^too far: Q(min below|max past) the counts'/i.test(said)
+        ? ["attention", ["band past counts", ...weight]]
+        : /^too far/i.test(said)
+          ? ["attention", /^too far: the transform reaches/i.test(said) || !weight.length ? ["reach past coverage", ...weight] : weight]
+          : /^(past|unmeasured|not)/i.test(said)
+            ? ["attention", ["legacy coverage words", ...weight]]
+            : /^the transform reaches .* inside full coverage/.test(said)
+              ? ["pass", ["reach inside coverage", ...weight]]
+              : ["info", ["nothing to judge", ...weight]];
   return outcome("coverage", kind, reasons, words(r), problems);
 }
 
-/** symmetry_check's words: "kept" passes, "not kept" needs attention; "not judged" (no symmetry declared) and a note judge nothing. */
+/**
+ * symmetry_check's words: "kept" passes, "not kept" needs attention; "not
+ * judged: the file declares no symmetry" is not declared, and any other "not
+ * judged" (no operation could be tested, and why), or a note, judges nothing.
+ */
 function symmetryOutcome(r: Obj): Outcome {
   const said = words(r) ?? "";
   if (/^kept/i.test(said)) return outcome("symmetry", "pass", [], said);
   if (/^not kept/i.test(said)) return outcome("symmetry", "attention", ["symmetry broken"], said);
-  return outcome("symmetry", "info", [/^not judged/i.test(said) ? "not declared" : "nothing to judge"], words(r));
+  return outcome("symmetry", "info", [/^not judged: the file declares no symmetry/i.test(said) ? "not declared" : "nothing to judge"], words(r));
 }
 
 /**

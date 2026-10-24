@@ -2,7 +2,9 @@
 // every cleanup stage, one ΔPDF section, and the run's saved records — and folds
 // it in.  Every fetch is independent and failure-tolerant: a missing stage just
 // omits its metrics.  The opening context uses the default cuts; the assistant's
-// tools ask for any other.
+// tools ask for any other.  What the punch's search left alone comes from the
+// run itself, its punch record read as labels on the cut, never from the form:
+// the leftovers' marks are the run's.
 
 import {
   fetchBraggProfile,
@@ -10,10 +12,11 @@ import {
   fetchDpdfMeta,
   fetchDpdfSlice,
   fetchMeta,
+  fetchProtectedLabels,
   fetchSlice,
 } from "../../api/client";
-import type { Dataset } from "../../api/types";
-import { parseFractions, usePipelineStore } from "../../state/pipelineStore";
+import type { Dataset, FlattenSettings } from "../../api/types";
+import { usePipelineStore } from "../../state/pipelineStore";
 import { buildPipelineContext, type PipelineContext, type StageSlices } from "./pipelineContext";
 import { datasetName } from "../../api/datasetName";
 
@@ -21,14 +24,6 @@ import { datasetName } from "../../api/datasetName";
 const punchSupercell = (): [number, number, number] => {
   const s = usePipelineStore.getState();
   return [s.punchSupercellH, s.punchSupercellK, s.punchSupercellL].map((v) => Number(v) || 1) as [number, number, number];
-};
-
-// The off-lattice search's protected H planes as the Configure page has them
-// (blank = the backend's 1/3, 2/3 ± 0.08).
-const punchProtectedH = (): { fractions: number[]; halfWidth: number } => {
-  const s = usePipelineStore.getState();
-  const half = Number(s.punchProtectHalfWidth);
-  return { fractions: parseFractions(s.punchProtectH) ?? [1 / 3, 2 / 3], halfWidth: s.punchProtectHalfWidth && Number.isFinite(half) ? half : 0.08 };
 };
 
 export interface Cut {
@@ -74,6 +69,11 @@ export interface AssistantContext {
   lattice: { a: number | null; b: number | null; c: number | null } | null;
 }
 
+/** What the flatten recorded in its output, as a caller read it: `settings` null when the file records none, undefined when unknown. */
+export interface FlattenRecord {
+  settings: FlattenSettings | null | undefined;
+}
+
 export interface LoadOptions {
   recip?: Cut | null; // null skips the reciprocal stages
   dpdf?: Cut | null; // null skips the ΔPDF section
@@ -81,16 +81,33 @@ export interface LoadOptions {
   // Every leftover peak the punch's scan finds, not only the strongest few the
   // model reads: the punch's evaluation counts them by their marks (tune/evaluate.ts).
   allLeftovers?: boolean;
+  // What the flatten recorded, when the caller read it once for several cuts
+  // (tune/evaluate.ts); without it, read here from the flattened stage's meta.
+  flattenRecord?: FlattenRecord;
+}
+
+/**
+ * What the flatten recorded in the flattened stage's file (VolumeMeta.flatten_settings),
+ * the run's own fit range and floor percentile among them: null when it records
+ * none, undefined when there is no flattened stage or its meta does not say.
+ */
+export async function readFlattenRecord(dataset: Dataset): Promise<FlattenRecord> {
+  const id = stageVolumeId(dataset, "flattened");
+  const meta = id ? await safe(fetchMeta(id)) : null;
+  return { settings: meta?.flatten_settings };
 }
 
 export async function loadPipelineContext(
   dataset: Dataset,
-  { recip = DEFAULT_RECIP_CUT, dpdf = DEFAULT_DPDF_CUT, records = true, allLeftovers = false }: LoadOptions = {},
+  { recip = DEFAULT_RECIP_CUT, dpdf = DEFAULT_DPDF_CUT, records = true, allLeftovers = false, flattenRecord }: LoadOptions = {},
 ): Promise<AssistantContext> {
   const hklVolId = hklVolumeId(dataset);
   const dpdfVolId = dpdfVolumeId(dataset);
 
   const hklMeta = hklVolId ? await safe(fetchMeta(hklVolId)) : null;
+  // The flatten's record, for its floors over the run's own range (plan 4.11):
+  // only where the cut reaches the flattened stage.
+  const flatten = flattenRecord ?? (recip && stageVolumeId(dataset, "flattened") ? await readFlattenRecord(dataset) : { settings: undefined });
   const dpdfMeta = dpdfVolId ? await safe(fetchDpdfMeta(dpdfVolId)) : null;
 
   const getRecip = (name: RecipStage) => {
@@ -98,7 +115,7 @@ export async function loadPipelineContext(
     return id && recip ? safe(fetchSlice(id, recip.plane, recip.value)) : Promise.resolve(null);
   };
 
-  const [raw, ringremoved, braggpunched, backfilled, flattened, dpdfSlice, braggProfile, consistencyCheck] =
+  const [raw, ringremoved, braggpunched, backfilled, flattened, dpdfSlice, braggProfile, consistencyCheck, protectedLabels] =
     await Promise.all([
       getRecip("raw"),
       getRecip("ringremoved"),
@@ -110,6 +127,8 @@ export async function loadPipelineContext(
       // The run's own back-FFT check, not the consistency viewer's recompute:
       // it is a file read, and it describes the ΔPDF the context reports on.
       records && dpdfVolId ? safe(fetchConsistencyCheck(dataset.id)) : Promise.resolve(null),
+      // What the run's search left alone, on the punched cut's own grid.
+      recip && stageVolumeId(dataset, "braggpunched") ? safe(fetchProtectedLabels(dataset.id, recip.plane, recip.value)) : Promise.resolve(null),
     ]);
 
   const slices: StageSlices = { raw, ringremoved, braggpunched, backfilled, flattened, dpdf: dpdfSlice };
@@ -124,8 +143,9 @@ export async function loadPipelineContext(
     consistency: consistencyCheck?.metrics ?? null,
     slices,
     supercell: punchSupercell(),
-    protectedH: punchProtectedH(),
+    protectedLabels,
     ...(allLeftovers ? { leftoverTopK: Infinity } : {}),
+    flattenSettings: flatten.settings,
   });
 
   return { context, slices, lattice: hklMeta?.lattice ?? dpdfMeta?.lattice ?? null };

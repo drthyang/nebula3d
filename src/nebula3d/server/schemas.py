@@ -117,6 +117,10 @@ class VolumeMetaOut(BaseModel):
     # when that leaves a significance in σ meaningless (normalized values).
     sigma: str = "measured"
     sigma_note: str | None = None
+    # The settings the flatten that wrote this file ran with (FlattenParams:
+    # fit_q_range, floor_percentile, q_step, …; pipeline.read_flatten_settings),
+    # or None: a stage the flatten did not write, or wrote before it recorded them.
+    flatten_settings: dict[str, Any] | None = None
 
 
 class CoverageOut(BaseModel):
@@ -128,8 +132,13 @@ class CoverageOut(BaseModel):
     q_max_edge: float | None
     full_q_min: float | None
     full_q_max: float | None
+    # Where the shells stop being fully measured (mask, finite): the ΔPDF
+    # window's support, which a volume storing zeros for unmeasured space
+    # carries past its counts.
+    measured_q_max: float | None
     box_q: float
     box_corner_q: float
+    q_step: float  # the shells' width (Å⁻¹): every edge is known to one shell
 
 
 class RingShellOut(BaseModel):
@@ -369,6 +378,37 @@ class BraggPeakWidthOut(BaseModel):
     principal_width_q: list[float] | None = None
     principal_directions_hkl: list[list[float]]
     fit_kind: str
+    # Which pass found it: "integer" (the node test) or "search"; a search peak
+    # with a source node is the Bragg peak of a node the node test left to the
+    # search. None in a profile written before the punch recorded it.
+    found_by: str | None = None
+
+
+class NodeTestOut(BaseModel):
+    """The nodes whose background shell held fewer measured voxels than the
+    Bragg punch's node test needs (server.bragg): with mode "both" not judged
+    and left to the search pass, with mode "integer" judged provisionally."""
+    examined: int                   # the nodes with a measured window
+    under_floor: int                # of them, those whose shell was under min_voxels
+    min_voxels: int                 # the shell median's floor
+    voxel_q: float                  # a voxel, Å⁻¹ (the edge of a cube of its Q-volume)
+    needs_q: float                  # the largest voxel that gives the shell min_voxels, Å⁻¹
+    left_to_search: bool            # mode "both"; else judged provisionally
+    notice: str | None = None       # what the run log says, on a grid too coarse (voxel > needs)
+
+
+class ModulationRecordOut(BaseModel):
+    """The punch's record of what its search left alone: the sample's declared
+    modulation (Modulation.to_json, None for none), the indexing cell and the
+    symmetry it was applied on, the legacy H planes (search_exclude_h_*, None
+    for none), and whether the search's sharp peaks off the lattice bunched at
+    one commensurate fraction (Bunching.to_json, None when they did not)."""
+
+    declared: dict[str, Any] | None = None
+    cell: list[int] | None = None
+    symmetry_ops: list[list[list[int]]] | None = None
+    legacy: dict[str, Any] | None = None
+    bunching: dict[str, Any] | None = None
 
 
 class BraggProfileOut(BaseModel):
@@ -383,11 +423,58 @@ class BraggProfileOut(BaseModel):
     fit_covariance: bool = False
     punch_frame: str | None = None
     peaks: list[BraggPeakWidthOut] = []
+    # The nodes the node test could not judge, if any (pipeline.node_test_notice).
+    node_test: NodeTestOut | None = None
+    # What the search left alone and what it found (server.modulation.record_out);
+    # None for a record written before the punch kept it.
+    modulation: ModulationRecordOut | None = None
+
+
+class ModulationPositionOut(BaseModel):
+    """One position a declaration protects (nebula3d.modulation.Position):
+    a plane family (its coordinate, centre and period) or a satellite about
+    each node (its vector)."""
+
+    label: str
+    kind: str  # "plane" | "point"
+    half_width: float
+    coordinate: list[int] | None = None
+    centre: str | None = None
+    period: int | None = None
+    vector: list[str] | None = None
+
+
+class ModulationCheckIn(BaseModel):
+    """A declaration to check: what StageParamsIn.modulation would hold (None:
+    the pipeline's default; "none": nothing), the punch's indexing cell and the
+    symmetry, as operation triplets or HKL matrices."""
+
+    modulation: dict[str, Any] | str | None = None
+    cell: list[int] | None = None
+    symmetry_ops: list[list[list[int]]] | str | None = None
+
+
+class ModulationCheckOut(BaseModel):
+    ok: bool
+    error: str | None = None
+    default: bool = False  # the request named none: the pipeline's default
+    declared: dict[str, Any] | None = None
+    description: str | None = None
+    positions: list[ModulationPositionOut] = []
 
 
 class StageParamsIn(BaseModel):
     """Curated, optional per-stage overrides (None = use the validated default)."""
 
+    # The cleanup stages' switches (the page's "Enable stage"; the flatten's is
+    # the request's flatten_enabled).  False switches the stage off: it is not
+    # run and its input passes through to the next stage, never an output an
+    # earlier run left.  A stage merely left out of the request's `stages` is a
+    # partial re-run instead, whose output on disk the next stage reads.
+    # None: on.
+    rings_enabled: bool | None = None
+    punch_enabled: bool | None = None
+    backfill_enabled: bool | None = None
     # Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
     edge_trim: int | None = None
     rings_n_patches: int | None = None
@@ -421,9 +508,16 @@ class StageParamsIn(BaseModel):
     # The |Q|-shell search's intensity and prominence floors, as multiples of
     # the diffuse scatter (both; > 0).
     punch_search_floor: float | None = None
-    # H planes the search leaves alone, as fractional parts of H (e.g. [1/3,
-    # 2/3] for a q = (1/3, 0, 0) satellite family; [] protects none), and
-    # their half width in r.l.u.
+    # The sample's modulation, a fact about the sample (PipelineParams.
+    # modulation): its k vectors, order, form ("points" or "planes") and half
+    # width, as Modulation.parse reads them (a mapping, or the k vectors as
+    # text); "none" declares none.  None: the pipeline's default.
+    modulation: dict[str, Any] | str | None = None
+    # Legacy: H planes the search leaves alone, as fractional parts of H (e.g.
+    # [1/3, 2/3]; [] protects none), and their half width in r.l.u.  Without a
+    # modulation they say what is protected as before: the fractions replace
+    # the default declaration, the half width alone sets its half width.  Not
+    # with a modulation.
     punch_search_protect_h: list[float] | None = None
     punch_search_protect_half_width: float | None = None
     punch_search_max_width_ratio: float | None = None
@@ -494,7 +588,10 @@ class PipelineRunRequest(BaseModel):
     flatten_enabled: bool = True
     force: bool = False
     force_from: str | None = None
-    stages: list[str] | None = None  # enabled-stage subset; None → all stages
+    # The stages to run in this call; None → all.  One left out is a partial
+    # re-run (the stages after it read its output on disk); a stage switched
+    # off is not run either way (flatten_enabled, params.*_enabled).
+    stages: list[str] | None = None
     params: StageParamsIn = StageParamsIn()
     # A tuning trial: the stage runs into tuning/<run>/trials/<trial>/ and
     # reads its inputs from the run, never writing to processed/.

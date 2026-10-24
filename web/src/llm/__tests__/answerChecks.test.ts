@@ -10,20 +10,25 @@ import type { AgentStep } from "../agent";
 import { ANSWER_REVISIONS, runAgent } from "../agent";
 import {
   answerIssues,
-  clauses,
+  assumedModulation,
   contradictions,
+  earlierSources,
   issuesNote,
   issuesPrompt,
   missingEvidence,
+  questionsForUser,
+  unaskedQuestions,
   untracedNumbers,
   verdictsIn,
-  writtenNumbers,
 } from "../answerChecks";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";
+import { offLatticeBunching } from "../metrics/bunching";
 import { shownGrains, type GrainFacts } from "../metrics/grains";
 import type { AgentTool } from "../tools";
 import { judge, verdicts } from "../verdicts";
+import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
+import { namedInOwnWords, quotations } from "./methodText";
 
 const step = (name: string, args: Record<string, unknown> = {}, result: unknown = {}, status: AgentStep["status"] = "done"): AgentStep => ({
   id: name,
@@ -53,15 +58,6 @@ describe("verdicts and their evidence", () => {
     expect(missingEvidence(text, [step("assess_stage", { stage: "rings" })]).map((t) => t.id)).toEqual(["punch"]);
     expect(missingEvidence(text, [step("assess_stage", { stage: "punch" }, {}, "error")]).map((t) => t.id)).toEqual(["rings", "punch"]);
     expect(missingEvidence("The UB is off by a fraction of a degree.", [step("grain_check")])).toEqual([]);
-  });
-
-  it("splits claims at ; and :, without a leading Yes or No", () => {
-    expect(clauses("No: the window reaches past the coverage; it should not. Yes, it is fine.")).toEqual([
-      "the window reaches past the coverage",
-      "it should not.",
-      "it is fine.",
-    ]);
-    expect(clauses("No ring is left.")).toEqual(["No ring is left."]); // a determiner, not an answer
   });
 
   it("reads the peaks' offset from their nodes as the UB's verdict, not the punch's", () => {
@@ -222,13 +218,6 @@ describe("numbers read as they are written", () => {
 });
 
 describe("numbers by reference", () => {
-  it("reads numbers as written, not the digits inside names, exponents or list markers", () => {
-    const n = writtenNumbers("1. On hk0 the 3D-ΔPDF at 6/mmm: a ring at 7.2 Å⁻¹, 4.1 × 10⁻⁶ of the weight, 12 %, 10⁻³, x_H on a 201x201x201 grid.");
-    expect(n.map((x) => x.text)).toEqual(["7.2", "4.1e-6", "12 %", "1e-3"]);
-    expect(n[0].tolerance).toBeCloseTo(0.05);
-    expect(n[1].value).toBeCloseTo(4.1e-6);
-  });
-
   it("finds each number in the sources within its written precision, as a share or a percentage", () => {
     const sources = '{"at": 7.234, "weight": 4.1e-6, "share": 0.124, "dent": -0.187}';
     expect(untracedNumbers("A ring at 7.2 Å⁻¹ with 4.1e-6 on unmeasured space, 12 % punched, a dent of 0.19.", sources)).toEqual([]);
@@ -401,11 +390,64 @@ describe("the checks judge what the tools found, and nothing the assistant said"
     const traced = await runAgent({
       messages: earlier,
       tools: [assess],
-      ctx: { ...ctx, earlierResults: ['{"rings":{"worst_ring_left":{"at":9.99}}}'] },
+      ctx: { ...ctx, earlierSteps: [step("assess_stage", { stage: "rings" }, { rings: { worst_ring_left: { at: 9.99 } } })] },
       settings,
       signal: new AbortController().signal,
     });
     expect(traced.note).toBeUndefined();
+  });
+});
+
+describe("an earlier turn's result, once a later run recomputed what it measured", () => {
+  // Synthetic: a flatten assessment, one of every stage, and runs that recompute the flatten (and the ΔPDF) or reuse it.
+  const flatten = step("assess_stage", { stage: "flatten" }, { flatten: { verdict: "needs attention", max_floor_trend: 0.83 }, measured_on: ["hk0"] });
+  const all = step("assess_stage", {}, { rings: { max_ring_left: 0.012 }, flatten: { max_floor_trend: 0.83 }, pdf: { back_fft_pearson_r_even: 0.9993 } });
+  const run = (stages: Record<string, string>) => step("run_pipeline", { from_stage: "flatten" }, { ended: "done", stages });
+  const recomputed = run({ flatten: "computed", pdf: "computed", pdf_check: "computed" });
+  const reused = run({ flatten: "reused", pdf: "reused" });
+
+  it("counts while no later run recomputed its stage: a run before it, one that reused it, or none", () => {
+    expect(earlierSources([flatten], [])).toEqual({ standing: [flatten.result], stale: "" });
+    expect(earlierSources([recomputed, flatten], [])).toEqual({ standing: [recomputed.result, flatten.result], stale: "" });
+    expect(earlierSources([flatten, reused], [])).toEqual({ standing: [flatten.result, reused.result], stale: "" });
+    expect(earlierSources([flatten], [step("assess_stage", { stage: "rings" })]).stale).toBe("");
+  });
+
+  it("stops counting once a later run recomputed it, in a turn between or in this reply", () => {
+    for (const [earlier, steps] of [
+      [[flatten, recomputed], []],
+      [[flatten], [recomputed]],
+    ] as const) {
+      const { standing, stale } = earlierSources(earlier, steps);
+      expect(standing.join("\n")).not.toContain("0.83");
+      expect(JSON.parse(stale)).toEqual({ flatten: { verdict: "needs attention", max_floor_trend: 0.83 } });
+    }
+  });
+
+  it("keeps the stages still standing of an assessment of several, and takes any other result out whole", () => {
+    const { standing, stale } = earlierSources([all], [recomputed]);
+    expect(standing.map((s) => JSON.parse(s))).toEqual([{ rings: { max_ring_left: 0.012 } }]);
+    expect(JSON.parse(stale)).toEqual({ flatten: { max_floor_trend: 0.83 }, pdf: { back_fft_pearson_r_even: 0.9993 } });
+    const peaks = step("dpdf_peaks", {}, { features: [{ sign: "+", size_sigma: 41 }] });
+    expect(earlierSources([peaks], [recomputed])).toEqual({ standing: [], stale: peaks.result });
+  });
+
+  it("keeps what measured no stage a run recomputes: the raw volume, or no topic at all", () => {
+    const ub = step("ub_check", {}, { orientation_change_deg: 0.612 });
+    const cut = step("measure_reciprocal_cut", { plane: "hk0", value: 0 }, { flattened: { floor: 0.4 } });
+    expect(earlierSources([ub, cut], [recomputed])).toEqual({ standing: [ub.result, cut.result], stale: "" });
+  });
+
+  it("tells a number a later run made stale from one from nowhere, to the model in either arm and in the note", () => {
+    const { standing, stale } = earlierSources([flatten], [recomputed]);
+    const issues = answerIssues("The floor trend is 0.83, and 0.42 elsewhere.", [recomputed], standing.join("\n"), stale)!;
+    expect([issues.staleNumbers, issues.untraced]).toEqual([["0.83"], ["0.42"]]);
+    const line = "- These numbers were measured before the last run recomputed the outputs they describe: 0.83. Quote numbers measured since, or leave them out.";
+    expect(issuesPrompt(issues).split("\n")).toContain(line);
+    expect(issuesPrompt(issues, { skills: false }).split("\n")).toContain(line);
+    expect(issuesNote(issues)).toBe("Not found in any tool result or the context: 0.42. Measured before the last run recomputed the outputs they describe: 0.83.");
+    // Standing, the same number goes through.
+    expect(answerIssues("The floor trend is 0.83.", [], earlierSources([flatten], []).standing.join("\n"))).toBeNull();
   });
 });
 
@@ -545,5 +587,151 @@ describe("offsets no UB explains", () => {
     const shifted = step("ub_check", {}, { symmetrised: false, orientation_change_deg: 0.001, unexplained: true });
     expect(contradictions("The UB is off by half a degree; refine it.", [shifted]).map((t) => t.id)).toEqual(["ub"]);
     expect(contradictions("The peaks sit off their nodes, but the UB is right: the origin moved.", [shifted])).toEqual([]);
+  });
+});
+
+// The user's questions (plan 4.15): a result that carries ask_user (the punch's
+// sharp peaks off the lattice bunched at one commensurate fraction) has the
+// answer ask it, naming the fraction or the modulation (unasked), and never
+// say outright that the sample has the modulation (assumed). Known answers on
+// both sides of each.
+describe("the user's questions: asked, never answered for them (plan 4.15)", () => {
+  const bunching = offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS }))!;
+  const QUESTION = "14 of the 17 sharp peaks off the lattice sit at H = n ± 1/3, where about 2 would by chance. Does the sample have a modulation with k = (1/3, 0, 0)?";
+  const assessed = step("assess_stage", { stage: "punch" }, { punch: { verdict: "meets its goal", leftover_at_nodes: 0, leftover_off_lattice_sharp: 0, off_lattice_bunching: bunching } });
+  const ran = step("run_pipeline", {}, { ended: "done", seconds: 3, stages: { punch: "computed" }, outputs: ["braggpunched"], log_tail: [], off_lattice_bunching: bunching });
+  const issuesOf = (answer: string, steps: AgentStep[] = [assessed]) => answerIssues(answer, steps, steps.map((s) => s.result ?? "").join("\n"));
+
+  it("finds the question a result carries, at any depth, once", () => {
+    expect(bunching.ask_user).toBe(QUESTION);
+    expect(questionsForUser([assessed, ran])).toEqual([QUESTION]);
+    expect(questionsForUser([step("assess_stage", { stage: "punch" }, { punch: { verdict: "meets its goal" } })])).toEqual([]);
+    // An error, or a step still running, carries none.
+    expect(questionsForUser([{ ...assessed, status: "error" }])).toEqual([]);
+  });
+
+  // Each holds a question naming the fraction (1/3, its twin 2/3, a decimal of either, ⅓) or the modulation.
+  const ASKS = [
+    QUESTION,
+    "Does the sample have a modulation with k = (1/3, 0, 0)?",
+    "Are the 14 peaks at H = n ± 1/3 satellites of a modulation, or spurious?",
+    "Is there anything in the sample at H = n ± 1/3?",
+    "Should the search leave the H = n + 2/3 planes alone?",
+    "Is the sample's k (0.33, 0, 0)?",
+    "The punch meets its goal. **Does the sample have a modulation along H?**",
+    "Could the peaks at H = n ± ⅓ be real?",
+  ];
+  // None does: no question, a question about something else, or a request without a question mark (the check's strictness, pinned).
+  const DOES_NOT_ASK = [
+    "14 of the 17 sharp peaks off the lattice sit at H = n ± 1/3.",
+    "The punch meets its goal. Shall I rerun the flatten?",
+    "Tell me whether the sample has a modulation.",
+    "Is the sample cubic?",
+    "Are the peaks at H = n ± 1/4 real?",
+  ];
+
+  it.each(ASKS)("asks it: “%s”", (answer) => {
+    expect(unaskedQuestions(answer, [assessed])).toEqual([]);
+    expect(issuesOf(answer)?.unasked ?? []).toEqual([]);
+  });
+
+  it.each(DOES_NOT_ASK)("does not ask it: “%s”", (answer) => {
+    expect(unaskedQuestions(answer, [assessed])).toEqual([QUESTION]);
+    expect(issuesOf(answer)!.unasked).toEqual([QUESTION]);
+  });
+
+  // Each says outright that the sample has the modulation, or that its peaks are satellites.
+  const ASSUMES = [
+    "The sample has a modulation with k = (1/3, 0, 0).",
+    "These 14 peaks are satellites of the k = (1/3, 0, 0) modulation.",
+    "The sample is modulated along H.",
+    "The bunching confirms a modulation at H = n ± 1/3.",
+    "There is a modulation with k = (1/3, 0, 0), so the peaks should stay.",
+    "The peaks at H = n ± 1/3 are real satellites; they stay.",
+    "The data show a modulation of wave vector (1/3, 0, 0).",
+  ];
+  // Hedged, conditional, negated, a question, or about the question or the setting: exempt.
+  const HEDGED = [
+    "The peaks may be satellites of a modulation with k = (1/3, 0, 0).",
+    "If the sample has a modulation, these are its satellites.",
+    "This is consistent with a modulation with k = (1/3, 0, 0).",
+    "The bunching suggests a modulation.",
+    "Does the sample have a modulation with k = (1/3, 0, 0)?",
+    "Whether the sample has a modulation is yours to say.",
+    "No modulation is declared, so the search punched them.",
+    "I cannot tell whether the sample is modulated.",
+    "These could be satellites, or spurious peaks.",
+    "The sample's modulation is a question only you can answer.",
+    "It looks like a modulation to me.",
+    "Satellites are unlikely here.",
+  ];
+
+  it.each(ASSUMES)("assumes it: “%s”", (claim) => {
+    expect(assumedModulation(claim)).toHaveLength(1);
+    // With the question asked too, the claim still goes back: asking does not make it the user's answer.
+    const issues = issuesOf(`${claim} ${QUESTION}`)!;
+    expect(issues.unasked).toEqual([]);
+    expect(issues.assumed).toEqual(assumedModulation(claim));
+  });
+
+  it.each(HEDGED)("does not assume it: “%s”", (claim) => {
+    expect(assumedModulation(claim)).toEqual([]);
+    expect(issuesOf(`${claim} ${QUESTION}`)).toBeNull();
+  });
+
+  it("holds an answer to neither without a question in the reply: a claim about a modulation the user named is no assumption here", () => {
+    const plain = step("assess_stage", { stage: "punch" }, { punch: { verdict: "meets its goal", leftover_at_nodes: 0 } });
+    expect(issuesOf("The sample has a modulation with k = (1/3, 0, 0).", [plain])).toBeNull();
+    expect(issuesOf("The punch meets its goal.", [plain])).toBeNull();
+  });
+
+  it("puts both to the model, then in a note; with the skills off its own words name no tool, stage or skill, and it quotes only the answer", () => {
+    const answer = "The sample has a modulation with k = (1/3, 0, 0): these are its satellites.";
+    const issues = issuesOf(answer)!;
+    expect([issues.unasked, issues.assumed]).toEqual([[QUESTION], ["The sample has a modulation with k = (1/3, 0, 0)", "these are its satellites."]]);
+    const on = issuesPrompt(issues);
+    expect(on).toContain(`(ask_user) that the answer does not ask: "${QUESTION}" Ask it, naming the fraction or the modulation, and leave the answer to the user.`);
+    expect(on).toMatch(/these say the sample has the modulation a result in this reply asks the user about \(ask_user\)/);
+    const off = issuesPrompt(issues, { skills: false });
+    expect(off).toBe(
+      [
+        "Before this answer goes to the user, fix it:",
+        `- A result in this reply has a question for the user that the answer does not ask: ${QUESTION} Ask it, naming the fraction or the modulation, and leave the answer to the user.`,
+        "- “The sample has a modulation with k = (1/3, 0, 0)”, “these are its satellites.”: these say as fact what a result in this reply asks the user. Only the user can say so: ask instead.",
+        "Then write the whole answer again.",
+      ].join("\n"),
+    );
+    expect(namedInOwnWords(off)).toEqual([]);
+    for (const q of quotations(off)) expect(answer.includes(q.replace(/…$/, "")), q).toBe(true);
+    expect(issuesNote(issues)).toBe(
+      `Not asked of you, though a result asks it: ${QUESTION} Says as fact what only you can say: “The sample has a modulation with k = (1/3, 0, 0)”, “these are its satellites.”.`,
+    );
+  });
+
+  it("runAgent sends an answer that assumes it back once, and keeps the revision that asks", async () => {
+    const punch: AgentTool = {
+      name: "assess_stage",
+      description: "judges a stage",
+      parameters: { type: "object", properties: { stage: { type: "string" } } },
+      run: async () => ({ result: { punch: { verdict: "meets its goal", leftover_at_nodes: 0, off_lattice_bunching: bunching } }, summary: "punch judged" }),
+    };
+    const assessPunch = { ...call, function: { name: "assess_stage", arguments: '{"stage":"punch"}' } };
+    const asking = `The punch meets its goal. ${QUESTION}`;
+    const seen = script([
+      [{ toolCalls: [assessPunch] }],
+      [{ content: "The punch meets its goal, and the sample has a modulation with k = (1/3, 0, 0)." }],
+      [{ content: asking }],
+    ]);
+    const r = await runAgent({ messages: question, tools: [punch], ctx: { ...ctx, skills: false }, settings, signal: new AbortController().signal });
+    expect(r.content).toBe(asking);
+    expect(r.note).toBeUndefined();
+    const sentBack = String(seen[2][seen[2].length - 1].content);
+    expect(sentBack).toMatch(/has a question for the user that the answer does not ask/);
+    expect(sentBack).toMatch(/says as fact what a result in this reply asks the user/);
+    // Still not asked after the one revision: a note under the reply.
+    script([[{ toolCalls: [assessPunch] }], [{ content: "The punch meets its goal." }], [{ content: "The punch meets its goal; nothing else to report." }]]);
+    const still = await runAgent({ messages: question, tools: [punch], ctx, settings, signal: new AbortController().signal });
+    expect(still.content).toBe("The punch meets its goal; nothing else to report.");
+    expect(still.note).toBe(`Not asked of you, though a result asks it: ${QUESTION}`);
   });
 });

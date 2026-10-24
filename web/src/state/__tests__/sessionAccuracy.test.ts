@@ -16,7 +16,7 @@ const engine = vi.hoisted(() => ({
 vi.mock("../../api/pyodideEngine", () => engine);
 
 import type { Dataset, JobEvent } from "../../api/types";
-import { toolResultsIn } from "../../llm/agent";
+import { toolStepsIn } from "../../llm/agent";
 import { useChatStore } from "../../llm/chatStore";
 import { rememberConfig } from "../configMemory";
 import { useDatasetStore } from "../datasetStore";
@@ -226,13 +226,13 @@ describe("values from a file that could hold anything", () => {
 
   it("applies a setting only when the form has it as its own, with the form's type", async () => {
     const stop = rememberConfig();
-    restoreSession(parseSession(file({ settings: { toString: 5, constructor: "x", hasOwnProperty: 1, punchProtectH: 5, force: "yes", punchSliceZoom: "2", punchMinSig: "7", flatten: false } })), [dataset(["raw"])]);
+    restoreSession(parseSession(file({ settings: { toString: 5, constructor: "x", hasOwnProperty: 1, punchSupercellH: 5, force: "yes", punchSliceZoom: "2", punchMinSig: "7", flatten: false } })), [dataset(["raw"])]);
     const p = usePipelineStore.getState() as unknown as Record<string, unknown>;
     expect(Object.prototype.hasOwnProperty.call(p, "toString")).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(p, "hasOwnProperty")).toBe(false);
-    expect([p.punchProtectH, p.force, p.punchSliceZoom]).toEqual(["", false, 1]); // wrong types: kept as they were
+    expect([p.punchSupercellH, p.force, p.punchSliceZoom]).toEqual(["", false, 1]); // wrong types: kept as they were
     expect([p.punchMinSig, p.flatten]).toEqual(["7", false]); // right types: applied
-    expect(JSON.parse(storage.get("nebula3d.configByDataset.v1")!).S.punchProtectH).toBe("");
+    expect(JSON.parse(storage.get("nebula3d.configByDataset.v1")!).S.punchSupercellH).toBe("");
     // A run afterwards does not fail.
     expect(await usePipelineStore.getState().runStages(["punch"], { datasetId: "S" })).toBe("done");
     stop();
@@ -273,9 +273,9 @@ describe("values from a file that could hold anything", () => {
     restoreSession(parseSession(file({ chat: [{ id: 1, role: "user", content: "q" }, { id: 2, role: "assistant", content: "a", steps }] })), [dataset(["raw"])]);
     const turns = useChatStore.getState().turns;
     expect(turns[1].steps).toEqual([{ ...steps[0], restored: true }]);
-    expect(toolResultsIn(turns)).toEqual([]);
+    expect(toolStepsIn(turns)).toEqual([]);
     // A tool result of this console still counts.
     useChatStore.getState().addTurn({ role: "assistant", content: "b", steps: [{ id: "1:a", name: "assess_stage", args: {}, status: "done", result: "residual 0.0456" }] });
-    expect(toolResultsIn(useChatStore.getState().turns)).toEqual(["residual 0.0456"]);
+    expect(toolStepsIn(useChatStore.getState().turns).map((s) => s.result)).toEqual(["residual 0.0456"]);
   });
 });

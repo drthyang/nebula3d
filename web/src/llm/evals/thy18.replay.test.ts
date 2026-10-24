@@ -70,7 +70,7 @@ describe("THY-18: no verdict without its evidence", () => {
       {
         text:
           "There was a pedestal: the floors rose with |Q|. With the Q² term on and the flatten rerun, the flatten {{assess_stage.flatten.verdict}}: " +
-          "trend ≤ {{assess_stage.flatten.max_floor_trend}}, span ≤ {{assess_stage.flatten.max_floor_span_fraction}}.",
+          "trend {{assess_stage.flatten.floor_trend}}, span {{assess_stage.flatten.floor_span_fraction}}.",
       },
     ]);
     expect(called(r)).toEqual(["assess_stage:flatten", "update_settings", "run_pipeline", "assess_stage:flatten"]);
@@ -81,7 +81,7 @@ describe("THY-18: no verdict without its evidence", () => {
     expect(r.results("run_pipeline")[0].stages).toMatchObject({ flatten: "computed" });
     expect(r.content).toBe(
       `There was a pedestal: the floors rose with |Q|. With the Q² term on and the flatten rerun, the flatten ${after.verdict}: ` +
-        `trend ≤ ${shown(after.max_floor_trend)}, span ≤ ${shown(after.max_floor_span_fraction)}.`,
+        `trend ${shown(after.floor_trend)}, span ${shown(after.floor_span_fraction)}.`,
     );
     expect(r.note).toBeUndefined();
   });
@@ -155,7 +155,7 @@ describe("THY-18: computed verdicts", () => {
       { text: "Every stage meets its goal, so the 3D-ΔPDF can be trusted." },
       {
         text:
-          "The run's goal is {{achieved}}. The flatten left a pedestal: its floors follow |Q| (trend ≤ {{assess_stage.flatten.max_floor_trend}}, span ≤ {{assess_stage.flatten.max_floor_span_fraction}}); " +
+          "The run's goal is {{achieved}}. The flatten left a pedestal: its floors follow |Q| (trend {{assess_stage.flatten.floor_trend}}, span {{assess_stage.flatten.floor_span_fraction}}); " +
           "the reduction-qc skill turns the Q² term on for that.",
       },
     ]);
@@ -164,7 +164,7 @@ describe("THY-18: computed verdicts", () => {
     expect(r.sent[2]).toMatch(/It calls the run a success, but the verdict computed from the checks is "not met: needs attention: the background correction".*quote it as \{\{achieved\}\}/);
     const flatten = r.results("assess_stage").find((x) => x.flatten)!.flatten as Record<string, unknown>;
     expect(r.content).toBe(
-      `The run's goal is not met: needs attention: the background correction. The flatten left a pedestal: its floors follow |Q| (trend ≤ ${shown(flatten.max_floor_trend)}, span ≤ ${shown(flatten.max_floor_span_fraction)}); ` +
+      `The run's goal is not met: needs attention: the background correction. The flatten left a pedestal: its floors follow |Q| (trend ${shown(flatten.floor_trend)}, span ${shown(flatten.floor_span_fraction)}); ` +
         "the reduction-qc skill turns the Q² term on for that.",
     );
     expect([r.note, r.requests]).toEqual([undefined, 3]);

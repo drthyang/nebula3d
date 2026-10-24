@@ -3,12 +3,15 @@
 // the dataset and its settings.  A dataset seen for the first time keeps the
 // form as it stands when it is the same sample at another temperature, and
 // starts from the defaults when it is another sample.  Facts about a sample —
-// the protected satellite planes, the magnetic ion, the punch cell — then stay
-// with their sample instead of leaking to the next.
+// its modulation, the magnetic ion, the punch cell — then stay with their
+// sample instead of leaking to the next.  A form remembered before
+// modulations were declared has its protected H planes migrated, once
+// (migrateSaved).
 
 import { useEffect } from "react";
 
 import { DATASET_KEY, useDatasetStore } from "./datasetStore";
+import { LEGACY_PROTECTION_KEYS, migratedProtection } from "./modulation";
 import { usePipelineStore, type PipelineConfig } from "./pipelineStore";
 
 const CONFIG_KEY = "nebula3d.configByDataset.v1";
@@ -35,6 +38,30 @@ const writeSaved = (saved: Saved): void => {
   }
 };
 
+/**
+ * The one-time migration of the protected H planes a remembered form held
+ * before modulations were declared (punchProtectH, punchProtectHalfWidth) to
+ * the sample's modulation (state/modulation.ts, migratedProtection): an
+ * explicit value becomes k = (f, 0, 0) in plane form, "none" none, and a
+ * blank one stays blank (the backend's default). The legacy keys go, so it
+ * runs once; a form that already declares a modulation keeps its own. In
+ * place; whether anything changed.
+ */
+export function migrateSaved(saved: Record<string, unknown>): boolean {
+  let changed = false;
+  for (const config of Object.values(saved)) {
+    if (!config || typeof config !== "object") continue;
+    const c = config as Record<string, unknown>;
+    if (!LEGACY_PROTECTION_KEYS.some((k) => k in c)) continue;
+    const declared = typeof c.modulationK === "string" && c.modulationK.trim() !== "";
+    const fields = declared ? null : migratedProtection(c);
+    if (fields) Object.assign(c, fields);
+    for (const k of LEGACY_PROTECTION_KEYS) delete c[k];
+    changed = true;
+  }
+  return changed;
+}
+
 /** The sample a dataset id names: the part before its temperature token
  * ("Ab2Cd3-<T>-…" → "Ab2Cd3"), else its first segment. */
 export function sampleOf(id: string): string {
@@ -51,6 +78,8 @@ export function configOf(state: object): Partial<PipelineConfig> {
 
 /** Starts remembering the form per dataset; returns the stop function. */
 export function rememberConfig(): () => void {
+  const remembered = readSaved();
+  if (migrateSaved(remembered)) writeSaved(remembered);
   let current = useDatasetStore.getState().datasetId;
   let applying = false;
   const save = () => {

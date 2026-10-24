@@ -3,13 +3,15 @@
 //
 // devCase(id) is a handle on one dev case of the validation (synthetic, with a
 // planted fault and its truth; nebula3d.validation), on the run's grid
-// (NEBULA_DEV_N) or the one it asks for. Its first use builds the
-// case's volume in Python and gives it a fresh workspace: the case's default
-// run (the Run button's settings, through usePipelineStore.runStages), with the
-// stores and the query cache reset. Then
+// (NEBULA_DEV_N) or the one it asks for, and, where it asks, symmetrised over
+// a point group and declared so (SYMMETRISED: no dev case is). Its first use
+// builds the case's volume in Python and gives it a fresh workspace: the
+// case's default run (the Run button's settings, through
+// usePipelineStore.runStages), with the stores and the query cache reset. Then
 //
 // - dataset() is the dataset as the console lists it;
-// - tool(name, args) runs one of the Pilot's tools on it, as the app runs it;
+// - tool(name, args) runs one of the Pilot's tools on it, as the app runs it
+//   (with { userMessage }, after that message from the user);
 // - replay(question, script) runs the agent loop on it, a scripted model
 //   (scripted.ts) in place of the real one, with the real tools.
 //
@@ -68,6 +70,15 @@ export const DEV_CASE_IDS = [
 ] as const;
 export type DevCaseId = (typeof DEV_CASE_IDS)[number];
 
+/**
+ * The point groups a dev case can be symmetrised over, by the generators the
+ * bridge closes into the group (on (h, k, l), as the NeXus Viewer writes
+ * them): the volume is symmetrised and declared so, as that export is. The
+ * dev crystal is cubic, and m-3m its lattice's symmetry.
+ */
+export const SYMMETRISED = { "m-3m": "-k,h,l; l,h,k; -h,-k,-l" } as const;
+export type Symmetrised = keyof typeof SYMMETRISED;
+
 /** A tool's run, as the app runs it: its result (as JSON reads it), summary and outcomes; a failure is ok: false. */
 export interface ToolRunResult {
   ok: boolean;
@@ -90,7 +101,9 @@ export interface DevCase {
   readonly truth: ValidationCase["truth"]; // from the manifest's dev entry
   readonly fault: ValidationCase["fault"];
   dataset(): Promise<Dataset>;
-  tool(name: string, args?: Record<string, unknown>): Promise<ToolRunResult>;
+  // `userMessage`: the user's latest message, as the agent loop hands it to
+  // the tools (an action only the user asks for reads it: the regrid).
+  tool(name: string, args?: Record<string, unknown>, opts?: { userMessage?: string }): Promise<ToolRunResult>;
   replay(question: string, script: ScriptTurn[]): Promise<ReplayResult>;
 }
 
@@ -112,12 +125,13 @@ const SETTINGS: LlmSettings = {
  * The case's handle; it builds nothing until it is used. Only the dev split's
  * ids are taken. On the run's grid (NEBULA_DEV_N), or on `n`, one of
  * DEV_GRIDS: a test whose checks must judge every stage asks for the
- * validation's own, where no check is too coarse for the grid.
+ * validation's own, where no check is too coarse for the grid. With
+ * `symmetrise`, the case's volume symmetrised over that group and declared so.
  */
-export function devCase(id: DevCaseId, { n }: { n?: (typeof DEV_GRIDS)[number] } = {}): DevCase {
+export function devCase(id: DevCaseId, { n, symmetrise }: { n?: (typeof DEV_GRIDS)[number]; symmetrise?: Symmetrised } = {}): DevCase {
   const entry = casesIn("dev").find((c) => c.id === id);
   if (!entry) throw new Error(`${JSON.stringify(id)} is not a dev case of the validation: devCase builds the dev split only`);
-  return new Handle(id, entry, n);
+  return new Handle(id, entry, n, symmetrise);
 }
 
 // ---------------------------------------------------------------- implementation
@@ -153,17 +167,17 @@ function resetApp(): void {
 const lastError = (events: readonly JobEvent[]): string =>
   [...events].reverse().find((e) => e.status === "error")?.message ?? "no error logged";
 
-async function activate(id: DevCaseId, n: number): Promise<ToolContext> {
+async function activate(id: DevCaseId, n: number, symmetrise: Symmetrised | undefined): Promise<ToolContext> {
   if (!PYODIDE_MODE) throw new Error("devCase runs in the replay project, where VITE_DATA_MODE is pyodide: npx vitest --project replay");
   resetApp();
   await ensureBooted();
   const bridge = currentBridge();
   if (!bridge) throw new Error("the engine booted no CPython bridge");
-  const which = { case: id, n, arm: "B", run: 1 };
+  const which = { case: id, n, arm: "B", run: 1, ...(symmetrise ? { symmetrise: { label: symmetrise, ops: SYMMETRISED[symmetrise] } } : {}) };
   const { dataset_id: datasetId, restored } = await bridge.control<{ dataset_id: string; restored: boolean }>({ type: "dev_case", ...which });
   useDatasetStore.getState().setDataset(datasetId);
 
-  const key = `${id}|${n}`;
+  const key = `${id}|${n}|${symmetrise ?? ""}`;
   const saved = defaultRuns.get(key);
   if (restored && saved) {
     usePipelineStore.setState(saved);
@@ -195,6 +209,7 @@ class Handle implements DevCase {
     readonly id: DevCaseId,
     private readonly entry: ValidationCase,
     private readonly grid: number | undefined,
+    private readonly symmetrise: Symmetrised | undefined,
   ) {}
 
   /** The grid it is built on: its own, else the run's (read when asked, as the bridge is installed by then). */
@@ -216,7 +231,7 @@ class Handle implements DevCase {
     }
     if (!this.ready) {
       Handle.takeOver(this);
-      this.ready = activate(this.id, this.n);
+      this.ready = activate(this.id, this.n, this.symmetrise);
     }
     return this.ready;
   }
@@ -231,13 +246,14 @@ class Handle implements DevCase {
     return (await this.start()).dataset;
   }
 
-  async tool(name: string, args: Record<string, unknown> = {}): Promise<ToolRunResult> {
+  async tool(name: string, args: Record<string, unknown> = {}, { userMessage }: { userMessage?: string } = {}): Promise<ToolRunResult> {
     const ctx = await this.start();
     const tool = CHAT_TOOLS.find((t) => t.name === name);
     if (!tool) throw new Error(`no tool named ${name}`);
     try {
       // ctx is the handle's: a run refreshes its dataset for the calls after it.
-      const out = await tool.run(args, ctx, {});
+      // With a user's message, a copy of it that carries the message: this call's alone.
+      const out = await tool.run(args, userMessage === undefined ? ctx : { ...ctx, userMessage }, {});
       return { ok: true, result: asRecord(out.result), summary: out.summary, outcomes: out.outcomes ?? [] };
     } catch (e) {
       const message = (e as Error).message;

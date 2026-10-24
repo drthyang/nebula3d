@@ -32,7 +32,7 @@ import dataclasses
 import json
 import os
 import sys
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, get_args
@@ -58,6 +58,7 @@ from nebula3d.analysis import (
     compute_delta_pdf,
     invert_delta_pdf,
 )
+from nebula3d.analysis.bragg import _WIDTH_REFERENCE_MIN
 from nebula3d.analysis.delta_pdf import (
     Window,
     WindowShape,
@@ -68,6 +69,13 @@ from nebula3d.core import HKLVolume, sigma_note
 from nebula3d.core import low_memory as _low_memory
 from nebula3d.io.delta_pdf_file import load_delta_pdf, save_delta_pdf
 from nebula3d.io.mantid_nxs import NEBULA3D_GROUP
+from nebula3d.modulation import (
+    MIN_HITS,
+    SHARP_RATIO,
+    Bunching,
+    Modulation,
+    detect_commensurate,
+)
 from nebula3d.preprocessing import (
     GRID_TOO_COARSE,
     GlobalRingConfig,
@@ -101,6 +109,7 @@ __all__ = [
     "PipelineParams",
     "PipelinePaths",
     "STAGES",
+    "default_modulation",
     "remove_rings",
     "punch_bragg",
     "backfill",
@@ -113,9 +122,11 @@ __all__ = [
     "write_bragg_profile_json",
     "read_flatten_settings",
     "read_punch_record",
+    "read_node_test_notice",
     "RING_GRID_REMEDY",
     "RING_GRID_REMEDY_ONE",
     "unconfirmed_rings_notice",
+    "node_test_notice",
     "pipeline_paths",
     "run_pipeline",
 ]
@@ -323,6 +334,10 @@ def bragg_profile_from_records(
             "principal_width_q": widths_q_principal,
             "principal_directions_hkl": directions,
             "fit_kind": fit_kind,
+            # Which pass found it: "integer" (the node test) or "search"; a
+            # search peak with a source node is the Bragg peak of a node the
+            # node test left to the search (BraggRemover._claim_left_nodes).
+            "found_by": str(getattr(peak, "found_by", "integer")),
         })
     return {
         "schema_version": 1,
@@ -341,6 +356,8 @@ def bragg_profile_from_records(
             "axes": ["ρ", "θ", "φ"],
             "q_centers": [float(v) for v in footprint.q_centers],
             "n_peaks": list(footprint.n_peaks),
+            # Of those, the peaks the search found at nodes the node test left to it.
+            "from_search": int(footprint.from_search),
             "distances_q": [float(v) for v in footprint.distances],
             "template": footprint.profiles.tolist(),
             "stacked": None if footprint.raw is None else footprint.raw.tolist(),
@@ -442,6 +459,26 @@ def read_punch_record(path: str | Path) -> np.ndarray | None:
         return None
 
 
+def read_node_test_notice(path: str | Path) -> str | None:
+    """The notice the Bragg punch's record ends on where its node test could
+    not resolve the nodes (``node_test.notice``, :func:`node_test_notice`),
+    for the punch stage's output *path*: read from its record, the profile
+    JSON beside it (``<stem>_profile.json``, :func:`pipeline_paths`), as the
+    punch wrote it.  None where the record has none: no record (or one that
+    cannot be read), a punch written before it recorded its node test, a node
+    test that judged every node it examined, or one that left a few nodes to
+    the search on a grid fine enough for it (the notice None: nodes at the
+    edge of the measured volume)."""
+    p = Path(path)
+    try:
+        record = json.loads(p.with_name(f"{p.stem}_profile.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    node_test = record.get("node_test") if isinstance(record, dict) else None
+    notice = node_test.get("notice") if isinstance(node_test, dict) else None
+    return notice if isinstance(notice, str) and notice else None
+
+
 # ---------------------------------------------------------------------------
 # Stage parameters (defaults mirror the validated cc_on presets)
 # ---------------------------------------------------------------------------
@@ -534,9 +571,14 @@ class PunchParams:
     search_floor_unit: str = "scatter"
     search_min_intensity: float = 27.0
     search_min_prominence: float = 27.0
+    # Legacy: H planes the search leaves alone, as centres or as fractional
+    # parts of H (each ± search_exclude_h_half_width), e.g. (0.3333, 0.6667).
+    # What the search leaves alone is the sample's declared modulation,
+    # PipelineParams.modulation, a fact about the sample beside its symmetry;
+    # these still protect what they name, added to it.
     search_exclude_h_centers: tuple[float, ...] | None = None
     search_exclude_h_half_width: float = 0.08
-    search_exclude_h_fractions: tuple[float, ...] | None = (0.3333, 0.6667)
+    search_exclude_h_fractions: tuple[float, ...] | None = None
     # Search candidates broader than this × the Bragg width (any axis) are left
     # unpunched as short-range-order maxima; None punches them all.
     search_max_width_ratio: float | None = None
@@ -647,15 +689,38 @@ class DeltaPdfParams:
     window_support: bool = True
 
 
+def default_modulation() -> Modulation | None:
+    """The modulation a run declares when the user declares none: none.
+
+    Whether a sample has a modulation, and where, is the user's to declare
+    (plan 4.15, P3): with none declared the punch's search leaves no position
+    alone, and when its sharp peaks off the lattice bunch at one commensurate
+    fraction the punch records it and the console asks the user. The planes
+    the search protected before declarations, H = n ± 1/3 ± 0.08 r.l.u., are
+    ``k = (1/3, 0, 0)`` declared in plane form, bit for bit
+    (:mod:`nebula3d.modulation`).
+    """
+    return None
+
+
 @dataclass
 class PipelineParams:
-    """All stage parameters plus the flatten on/off toggle."""
+    """All stage parameters plus the cleanup stages' on/off switches."""
 
     rings: RingParams = field(default_factory=RingParams)
     punch: PunchParams = field(default_factory=PunchParams)
     backfill: BackfillParams = field(default_factory=BackfillParams)
     flatten: FlattenParams = field(default_factory=FlattenParams)
     delta_pdf: DeltaPdfParams = field(default_factory=DeltaPdfParams)
+    # The cleanup stages' switches (the web page's "Enable stage").  A stage
+    # switched off is not run and passes its input through: the next stage
+    # reads what came before it, never an output an earlier run left on disk,
+    # and the switched-off stage's own output file is neither written nor
+    # removed.  Unlike a stage merely left out of run_pipeline's `stages`, a
+    # partial re-run, which reads that stage's output on disk.
+    rings_enabled: bool = True
+    punch_enabled: bool = True
+    backfill_enabled: bool = True
     flatten_enabled: bool = True
     # Stage 6 — back-FFT round-trip consistency check (inverse-transform the
     # ΔPDF and compare to the diffuse data it came from); writes a metric JSON
@@ -689,9 +754,31 @@ class PipelineParams:
     # symmetry-equivalent voxels alike (see nebula3d.symmetry), so a
     # symmetrised input gives a symmetric ΔPDF.
     symmetry: str | None = "auto"
+    # The sample's modulation, a fact about the sample like its symmetry: the
+    # wave vector(s) k of its satellites, their order and form (the points
+    # G ± m·k, or the planes through them), which the punch's search leaves
+    # alone, at every position equivalent under the symmetry and on the parent
+    # lattice of the punch's cell (nebula3d.modulation.Modulation; a string or
+    # a mapping is read by Modulation.parse).  None declares none, the default
+    # (default_modulation()): the search then leaves no position alone, and
+    # the punch records whether its sharp peaks off the lattice bunch.
+    modulation: Modulation | None = field(default_factory=default_modulation)
+
+    def __post_init__(self) -> None:
+        self.modulation = Modulation.parse(self.modulation)
 
     def np_dtype(self) -> type:
         return np.float64 if self.precision == "float64" else np.float32
+
+    def stage_enabled(self, stage: str) -> bool:
+        """Whether the run's settings switch *stage* on: a cleanup stage's
+        switch (``rings_enabled`` … ``flatten_enabled``), True for the others."""
+        return {
+            "rings": self.rings_enabled,
+            "punch": self.punch_enabled,
+            "backfill": self.backfill_enabled,
+            "flatten": self.flatten_enabled,
+        }.get(stage, True)
 
 
 def input_symmetry(vol: HKLVolume, p: PipelineParams, input_path: str | Path, *,
@@ -1309,6 +1396,54 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
 # ---------------------------------------------------------------------------
 # Stage 2 — Bragg / satellite punch
 # ---------------------------------------------------------------------------
+def node_test_notice(count: int, examined: int, voxel: float, needs: float, *,
+                     left_to_search: bool = True) -> str:
+    """What the Bragg punch says of the *count* nodes, of the *examined*, whose
+    background shell held fewer measured voxels than its node test's median
+    needs, on a grid too coarse for that shell: a voxel of *voxel* Å⁻¹ where the
+    shell needs one of *needs* Å⁻¹ or less
+    (:meth:`~nebula3d.analysis.bragg.BraggRemover.node_test_limit`). With
+    ``mode="both"`` (*left_to_search*) the test did not judge them and left
+    them to the search pass, whose peak in a node's window is that node's
+    Bragg peak; one the search cannot see may remain (below its floors, or in
+    a |Q| shell too thin for it, as at the box's far corners, where they are
+    strong). With ``mode="integer"`` it judged them against their window's
+    median, provisionally. It opens with
+    :data:`~nebula3d.preprocessing.ring_isotropy.GRID_TOO_COARSE` and ends on
+    the remedy. Out loud, in the run log and the punch's record (the
+    manager's decision, on the user's delegation, 2026-10-19: the review's G2).
+    """
+    one = count == 1
+    nodes = f"{count} of {examined} node{'' if examined == 1 else 's'} {'was' if one else 'were'}"
+    what = (f"{nodes} not judged and {'was' if one else 'were'} left to the search pass; "
+            "Bragg peaks the search cannot see may remain" if left_to_search else
+            f"{nodes} judged provisionally, against {'its' if one else 'their'} window's "
+            "median; diffuse maxima at nodes may be punched")
+    return (f"{GRID_TOO_COARSE} for the Bragg punch's node test: a voxel is {voxel:.3g} Å⁻¹; "
+            f"its background shell needs ≤ {needs:.3g} Å⁻¹. {what}. Use a finer grid.")
+
+
+def _node_test_record(report: dict[str, Any]) -> dict[str, Any] | None:
+    """The punch's record of the nodes its node test could not judge (the
+    remover's ``_node_report``), or None when it judged every node it
+    examined. The ⚠ notice (:func:`node_test_notice`) where the grid is too
+    coarse for the background shell (a voxel over the limit); else ``notice``
+    is None, the nodes being few, at the edge of the measured volume or in the
+    directions the grid samples thinnest just under the limit."""
+    under = int(report.get("under_floor", 0))
+    if not under:
+        return None
+    voxel, needs = float(report["voxel_q"]), float(report["needs_q"])
+    left = bool(report["left_to_search"])
+    examined = int(report["examined"])
+    return {
+        "examined": examined, "under_floor": under, "min_voxels": int(report["min_voxels"]),
+        "voxel_q": round(voxel, 4), "needs_q": round(needs, 4), "left_to_search": left,
+        "notice": (node_test_notice(under, examined, voxel, needs, left_to_search=left)
+                   if voxel > needs else None),
+    }
+
+
 def bragg_remover(p: PunchParams) -> BraggRemover:
     """The :class:`BraggRemover` the punch stage runs for *p*."""
     return BraggRemover(
@@ -1357,13 +1492,85 @@ def bragg_remover(p: PunchParams) -> BraggRemover:
     )
 
 
+def _sharp_off_lattice(rows: Sequence[Mapping[str, Any]]) -> list[tuple[float, float, float]]:
+    """The centres of the search's peaks off the lattice that are as sharp as
+    Bragg peaks: no wider than ``SHARP_RATIO`` × the median width of the peaks
+    at the nodes on every axis (``measured_width_hkl`` of the punch's record).
+    A peak whose width was not measured is left out; with fewer than
+    ``_WIDTH_REFERENCE_MIN`` measured peaks at the nodes there is no Bragg
+    width to compare with, and none is."""
+    nodes = [r["measured_width_hkl"] for r in rows
+             if r.get("source_node_hkl") is not None and r.get("measured_width_hkl") is not None]
+    if len(nodes) < _WIDTH_REFERENCE_MIN:
+        return []
+    limit = SHARP_RATIO * np.median(np.asarray(nodes, dtype=np.float64), axis=0)
+    out = []
+    for r in rows:
+        width = r.get("measured_width_hkl")
+        if r.get("found_by") != "search" or r.get("source_node_hkl") is not None or width is None:
+            continue
+        if bool(np.all(np.asarray(width, dtype=np.float64) <= limit)):
+            x, y, z = (float(v) for v in r["center_hkl"])
+            out.append((x, y, z))
+    return out
+
+
+def _off_lattice_bunching(vol: HKLVolume, remover: BraggRemover,
+                          rows: Sequence[Mapping[str, Any]], symmetry: GridSymmetry | None,
+                          modulation: Modulation | None) -> Bunching | None:
+    """Whether the search's sharp peaks off the lattice bunch at one
+    commensurate fraction (:func:`nebula3d.modulation.detect_commensurate`):
+    on the measured voxels the legacy H planes leave to the search, each
+    orbit once, outside the declared modulation's positions."""
+    peaks = _sharp_off_lattice(rows)
+    if len(peaks) < MIN_HITS:
+        return None
+    eligible = (vol.mask & np.isfinite(vol.data)
+                & ~remover._search_excluded_h_mask(vol))  # noqa: SLF001
+    return detect_commensurate(peaks, (vol.h_axis, vol.k_axis, vol.l_axis), symmetry,
+                               modulation, cell=remover.supercell, eligible=eligible)
+
+
+def _modulation_record(p: PunchParams, modulation: Modulation | None,
+                       symmetry: GridSymmetry | None,
+                       bunching: Bunching | None) -> dict[str, Any]:
+    """The punch's record of what its search left alone and what it found:
+    the declared modulation, the cell and symmetry it was applied on, the
+    legacy H planes (``search_exclude_h_*``; None when they name none), and
+    the bunching the run measured (None when there was none)."""
+    half = max(float(p.search_exclude_h_half_width), 0.0)
+    named = p.search_exclude_h_centers or p.search_exclude_h_fractions
+    return {
+        "declared": None if modulation is None else modulation.to_json(),
+        "cell": [int(n) for n in p.supercell],
+        "symmetry_ops": (None if symmetry is None
+                         else [np.asarray(m, dtype=int).tolist() for m in symmetry.ops]),
+        "legacy": None if not named or half <= 0 else {
+            "h_centers": (None if not p.search_exclude_h_centers
+                          else [float(c) for c in p.search_exclude_h_centers]),
+            "h_fractions": (None if not p.search_exclude_h_fractions
+                            else [float(f) for f in p.search_exclude_h_fractions]),
+            "half_width": half,
+        },
+        "bunching": None if bunching is None else bunching.to_json(),
+    }
+
+
 def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
                 progress: ProgressFn | None = None,
-                symmetry: GridSymmetry | None = None) -> HKLVolume:
+                symmetry: GridSymmetry | None = None,
+                modulation: Modulation | None = None) -> HKLVolume:
     """Detect and punch Bragg/satellite peaks; return the masked volume.
 
     With the *symmetry* the data were symmetrised with, every punch decision
     is shared across the symmetry orbit (``BraggRemover.symmetry_ops``).
+    *modulation* is the sample's (``PipelineParams.modulation``): the search
+    leaves its satellites, or the planes through them, alone
+    (``BraggRemover.search_protect``). Without one the search leaves alone
+    only the legacy H planes *params* name. The punch records both, and
+    whether its sharp peaks off the lattice bunch at one commensurate
+    fraction, as a modulation it was not told of would make them
+    (``_bragg_profile["modulation"]``); a line in its log says so when they do.
     """
     p = params or PunchParams()
     _emit(progress, "punch", "start", None, f"Bragg punch (mode={p.mode})")
@@ -1374,8 +1581,19 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     remover = bragg_remover(p)
     if symmetry is not None:
         remover = dataclasses.replace(remover, symmetry_ops=symmetry.ops)
+    if modulation is not None:
+        remover = dataclasses.replace(remover, search_protect=modulation)
     peak_records, reference, footprint = remover._detect(vol)  # noqa: SLF001 - avoid refitting
-    n_integer = sum(r.source_node_hkl is not None for r in peak_records)
+    n_integer = sum(r.found_by == "integer" for r in peak_records)
+    # The search's Bragg peaks at the nodes the node test left to it (G2).
+    n_claimed = sum(r.found_by == "search" and r.source_node_hkl is not None
+                    for r in peak_records)
+    from_search = 0 if footprint is None else int(footprint.from_search)
+    learned = (f", {from_search} of them the search's at nodes the node test left to it"
+               if from_search else "")
+    # The nodes whose background shell the grid (or the mask) left under the
+    # node test's floor: not judged, or judged provisionally (G2).
+    node_test = _node_test_record(remover._node_report)  # noqa: SLF001
     if p.mode in {"integer", "both"}:
         width = ("" if p.integer_max_shell_fraction is None else
                  f", no broader than a Bragg peak (shell fraction "
@@ -1383,8 +1601,16 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         test = (f"excess over its shell ≥ {p.min_significance:g}σ after the "
                 f"window search{width}, no intensity floor"
                 if p.integer_detect == "significance" else "intensity floors")
+        tally = ""
+        if node_test is not None:
+            shell = (f"fewer than {node_test['min_voxels']} measured voxels in the "
+                     f"background shell")
+            tally = (f"; {node_test['under_floor']} of {node_test['examined']} nodes "
+                     + (f"not judged ({shell}), left to the search pass"
+                        if node_test["left_to_search"] else
+                        f"judged provisionally, against the window's median ({shell})"))
         _emit(progress, "punch", "progress", None,
-              f"integer nodes ({test}): {n_integer} peaks")
+              f"integer nodes ({test}): {n_integer} peaks{tally}")
     found = remover._search_report  # noqa: SLF001 - what the search pass used
     if "min_intensity" in found:
         floors = (f"{found['min_intensity']:.4g} intensity, "
@@ -1395,12 +1621,15 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         broad = found.get("broad_kept")
         _emit(progress, "punch", "progress", None,
               f"search floors {floors}: {len(peak_records) - n_integer} peaks"
+              + (f", {n_claimed} of them the Bragg peaks of nodes the node test left to it"
+                 if n_claimed else "")
               + (f" ({broad} broader than {p.search_max_width_ratio:g} × the Bragg "
                  "width left as diffuse)" if broad else ""))
     if p.punch_footprint == "profile":
         _emit(progress, "punch", "progress", None, (
             f"profile-matched punch: Bragg profile learned from "
             f"{sum(footprint.n_peaks)} peaks in {len(footprint.n_peaks)} |Q| range(s)"
+            f"{learned}"
             if footprint is not None else
             "profile-matched punch: too few bright peaks to learn the Bragg "
             "profile; every peak gets the ellipsoid punch"))
@@ -1409,9 +1638,13 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
         _emit(progress, "punch", "progress", None,
               f"own-width punch: {own:,} of {len(peak_records):,} peaks punched to their "
               f"own measured width, the rest to the "
-              + ("shared Bragg profile" if footprint is not None else "ellipsoid"))
+              + (f"shared Bragg profile (learned from {sum(footprint.n_peaks)} peaks"
+                 f"{learned})" if footprint is not None and from_search else
+                 "shared Bragg profile" if footprint is not None else "ellipsoid"))
+    # No search peak's footprint takes a voxel its search left alone.
     keep = remover._punch_centers(  # noqa: SLF001
-        vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference)
+        vol, np.ones(vol.shape, dtype=bool), peak_records, reference=reference,
+        protect=remover._search_protected(vol))  # noqa: SLF001
     keep = remover._punch_incident_beam(vol, keep)  # noqa: SLF001
     if symmetry is not None:
         before = int((vol.mask & ~keep).sum())
@@ -1421,10 +1654,23 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
               f"{int((vol.mask & ~keep).sum()) - before:,} more voxels punched "
               f"at positions equivalent to punched ones")
     profile = bragg_profile_from_records(vol, remover, peak_records, footprint)
+    # Sharp peaks off the lattice bunched at one commensurate fraction: what a
+    # modulation the sample did not declare would leave. Measured and
+    # recorded; whether the sample has one is the user's to say.
+    bunching = _off_lattice_bunching(vol, remover, profile["peaks"], symmetry, modulation)
+    profile["modulation"] = _modulation_record(p, modulation, symmetry, bunching)
+    if bunching is not None:
+        _emit(progress, "punch", "progress", None, bunching.describe())
+    notice = None
+    if node_test is not None:
+        # The punch's record of it, for as long as the output it describes.
+        profile["node_test"] = node_test
+        notice = node_test["notice"]
     punched = vol.mask & np.isfinite(vol.data) & ~keep
     out_vol = dataclasses.replace(vol, mask=vol.mask & keep)
     _emit(progress, "punch", "done", 1.0,
-          f"detected {len(peak_records)} peaks; punched {int(punched.sum()):,} voxels")
+          f"detected {len(peak_records)} peaks; punched {int(punched.sum()):,} voxels"
+          + (f". ⚠ {notice}" if notice else ""))
     setattr(out_vol, "_bragg_profile", profile)
     # Which masked voxels are punch holes (the rest are unmeasured coverage):
     # the backfill fills each hole from its own surroundings with it.
@@ -1503,7 +1749,9 @@ def flatten(vol: HKLVolume, params: FlattenParams | None = None, *,
     )
     if res.model_coef is not None:
         const, c = res.model_coef
-        r2 = f", R² {res.model_r2:.3f}" if res.model_r2 is not None else ""
+        # A constant fit's R² is 0 up to rounding, of either sign: no −0.000.
+        r2 = (f", R² {round(res.model_r2, 3) + 0.0:.3f}"
+              if res.model_r2 is not None else "")
         q2 = (f" + {res.model_q2:.4g}·Q²"
               + (f" (held past {res.model_q2_cap:g} Å⁻¹)" if res.model_q2_cap is not None else "")
               if res.model_q2 is not None else "")
@@ -2110,13 +2358,56 @@ def _write_consistency_figure(rows: list, out_png: Path) -> None:
     plt.close(fig)
 
 
-def _flatten_off_notice(p: PipelineParams, pdf_input: Path) -> str | None:
-    """The ΔPDF stage's log line naming the volume it transforms when the
-    flatten is off (None with it on), so the log says which one it took."""
-    if p.flatten_enabled:
+#: The cleanup stages, in order: each reads the output of the last one before
+#: it that the run's settings switch on (PipelineParams.stage_enabled).
+_CLEANUP_STAGES: tuple[str, ...] = ("rings", "punch", "backfill", "flatten")
+
+#: Each stage's name in the run's log.
+_STAGE_NAMES: dict[str, str] = {
+    "rings": "ring removal",
+    "punch": "Bragg punch",
+    "backfill": "backfill",
+    "flatten": "background correction",
+    "pdf": "ΔPDF",
+}
+
+#: What a cleanup stage switched off leaves undone.
+_LEFT_UNDONE: dict[str, str] = {
+    "rings": "no powder rings removed",
+    "punch": "no Bragg peaks punched",
+    "backfill": "no punched voxels filled",
+    "flatten": "no background removed",
+}
+
+
+def _disabled_notice(stage: str) -> str:
+    """The "skip" line of a cleanup stage the run's settings switch off."""
+    return f"{_STAGE_NAMES[stage]} disabled ({_LEFT_UNDONE[stage]})"
+
+
+def _stage_names(stages: Sequence[str]) -> str:
+    """``"ring removal and Bragg punch"``: the stages' log names as a list."""
+    names = [_STAGE_NAMES[s] for s in stages]
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _passed_through_notice(p: PipelineParams, stage: str, src: Path) -> str | None:
+    """The log line of *stage* (a cleanup stage or ``"pdf"``) naming the
+    volume *src* it reads when the stages right before it are switched off
+    (None when they are not), so the log says which one it took."""
+    upto = (_CLEANUP_STAGES.index(stage)
+            if stage in _CLEANUP_STAGES else len(_CLEANUP_STAGES))
+    off: list[str] = []
+    for prev in reversed(_CLEANUP_STAGES[:upto]):
+        if p.stage_enabled(prev):
+            break
+        off.insert(0, prev)
+    if not off:
         return None
-    return (f"background correction off: the ΔPDF transforms {Path(pdf_input).name}, "
-            "with no background removed")
+    if stage == "pdf":  # the flatten is among them: no background removed
+        return (f"{_stage_names(off)} disabled: the ΔPDF transforms "
+                f"{Path(src).name}, with no background removed")
+    return f"{_stage_names(off)} disabled: the {_STAGE_NAMES[stage]} reads {Path(src).name}"
 
 
 def _pdf_is_current(pdf_path: Path, expected_src: str, expected_config: str,
@@ -2157,17 +2448,24 @@ class PipelinePaths:
     backfilled: Path
     flattened: Path
     delta_pdf: Path
-    pdf_input: Path     # flattened if flatten enabled, else backfilled
+    # The volume the ΔPDF transforms: the output of the last cleanup stage
+    # switched on (flattened with the flatten on, else backfilled, …), the raw
+    # input with all four off.
+    pdf_input: Path
     pdf_check_json: Path
     pdf_check_png: Path
 
 
 def pipeline_paths(input_path: str | Path, *, proc_dir: str | Path | None = None,
-                   flatten_enabled: bool = True) -> PipelinePaths:
+                   flatten_enabled: bool = True, rings_enabled: bool = True,
+                   punch_enabled: bool = True,
+                   backfill_enabled: bool = True) -> PipelinePaths:
     """Resolve the chained output paths for ``input_path``.
 
     Names match ``examples/run_pipeline.py`` exactly so the viewers and the
-    multi-volume auto-detection find the same ``*_delta_pdf.h5`` files.
+    multi-volume auto-detection find the same ``*_delta_pdf.h5`` files.  They
+    do not depend on the stages' switches (``*_enabled``, as in
+    :class:`PipelineParams`), which name ``pdf_input`` only.
     """
     inp = Path(input_path)
     proc = Path(proc_dir) if proc_dir is not None else Path("data/processed")
@@ -2176,16 +2474,57 @@ def pipeline_paths(input_path: str | Path, *, proc_dir: str | Path | None = None
     fill = proc / f"{punch.stem}_backfilled.h5"
     flat = proc / f"{fill.stem}_flattened.h5"
     pdf = proc / f"{fill.stem}_delta_pdf.h5"
+    switched_on = ((rings_enabled, ring), (punch_enabled, punch),
+                   (backfill_enabled, fill), (flatten_enabled, flat))
     return PipelinePaths(
         input=inp, ringremoved=ring,
         ring_diagnostics_json=proc / f"{ring.stem}_diagnostics.json",
         braggpunched=punch,
         bragg_profile_json=proc / f"{punch.stem}_profile.json",
         backfilled=fill, flattened=flat, delta_pdf=pdf,
-        pdf_input=flat if flatten_enabled else fill,
+        pdf_input=next((path for on, path in reversed(switched_on) if on), inp),
         pdf_check_json=proc / f"{pdf.stem}_consistency.json",
         pdf_check_png=proc / f"{pdf.stem}_consistency.png",
     )
+
+
+def _run_paths(input_path: str | Path, p: PipelineParams, *,
+               proc_dir: str | Path | None = None) -> PipelinePaths:
+    """:func:`pipeline_paths` with the stages' switches of *p*."""
+    return pipeline_paths(input_path, proc_dir=proc_dir,
+                          rings_enabled=p.rings_enabled,
+                          punch_enabled=p.punch_enabled,
+                          backfill_enabled=p.backfill_enabled,
+                          flatten_enabled=p.flatten_enabled)
+
+
+def _stage_input(stage: str, p: PipelineParams, paths: PipelinePaths,
+                 selected: Collection[str],
+                 inputs: Mapping[str, Path] | None = None) -> Path:
+    """The volume *stage* (a cleanup stage, ``"pdf"`` or ``"pdf_check"``)
+    reads in a run of the *selected* stages with the settings *p*.
+
+    Walk back from the stage before it.  A stage *p* switches off is passed
+    through without looking: an output an earlier run left on disk is not
+    this run's.  The first stage switched on gives its output: the one this
+    run writes when it is selected; for a partial re-run, where it is left
+    out, the file on disk (from *inputs* when given — a tuning trial reads
+    its run's), or, when there is none, the walk goes on.  The raw input when
+    nothing before *stage* gives a volume.
+    """
+    outputs = {"rings": paths.ringremoved, "punch": paths.braggpunched,
+               "backfill": paths.backfilled, "flatten": paths.flattened}
+    upto = (_CLEANUP_STAGES.index(stage)
+            if stage in _CLEANUP_STAGES else len(_CLEANUP_STAGES))
+    for prev in reversed(_CLEANUP_STAGES[:upto]):
+        if not p.stage_enabled(prev):
+            continue
+        if prev in selected:
+            return outputs[prev]
+        out = outputs[prev] if inputs is None else inputs.get(prev)
+        if out is not None and out.exists():
+            return out
+    return paths.input
 
 
 def ring_stage_pending(
@@ -2205,10 +2544,9 @@ def ring_stage_pending(
     can never drift between the two.
     """
     p = params or PipelineParams()
-    if "rings" not in set(stages):
+    if "rings" not in set(stages) or not p.rings_enabled:
         return False
-    paths = pipeline_paths(input_path, proc_dir=proc_dir,
-                           flatten_enabled=p.flatten_enabled)
+    paths = _run_paths(input_path, p, proc_dir=proc_dir)
     if force:
         return True
     if force_from is not None and force_from in STAGES \
@@ -2240,8 +2578,14 @@ def run_pipeline(
     proc_dir:
         Directory for the chained ``.h5`` outputs (default ``data/processed``).
     stages:
-        Subset of :data:`STAGES` to consider (always run in canonical order).
-        ``flatten`` is additionally gated by ``params.flatten_enabled``.
+        Subset of :data:`STAGES` to run in this call (always in canonical
+        order).  A cleanup stage left out is a partial re-run: the stages
+        after it read its output on disk (or from *inputs*).  A stage the
+        params switch off (``rings_enabled``, ``punch_enabled``,
+        ``backfill_enabled``, ``flatten_enabled``) is not run even when
+        listed, and passes its input through: the next stage reads what came
+        before it, never an output an earlier run left; its own output file
+        is neither written nor removed.
     force:
         Recompute every selected stage even if its output exists.
     force_from:
@@ -2273,50 +2617,14 @@ def run_pipeline(
         raise ValueError(f"force_from={force_from!r}; choose one of {STAGES}")
 
     selected = [s for s in STAGES if s in set(stages)]
-    paths = pipeline_paths(input_path, proc_dir=proc_dir,
-                           flatten_enabled=p.flatten_enabled)
+    paths = _run_paths(input_path, p, proc_dir=proc_dir)
     paths.delta_pdf.parent.mkdir(parents=True, exist_ok=True)
 
-    # Pass-through chaining: a disabled cleanup stage is skipped and its input
-    # flows to the next enabled stage.  Each stage reads the output of the most
-    # recent *enabled* stage before it (raw input if none upstream are enabled).
-    _stage_output = {
-        "rings": paths.ringremoved,
-        "punch": paths.braggpunched,
-        "backfill": paths.backfilled,
-        "flatten": paths.flattened,
-    }
-    _cleanup_chain = ("rings", "punch", "backfill", "flatten")
-
-    def _switched_off(stage: str) -> bool:
-        # A stage the run's settings turn off (the flatten, flatten_enabled):
-        # it passes its input through, unlike a stage merely left out of
-        # `stages`, whose output on disk a partial re-run reads.
-        return stage == "flatten" and not p.flatten_enabled
-
-    def _produces(stage: str) -> bool:
-        return stage in selected and not _switched_off(stage)
-
+    # Pass-through chaining: a stage switched off is not run and its input
+    # flows to the next stage; a stage left out of `stages` hands on its
+    # output on disk (a partial re-run).  See _stage_input.
     def stage_input(stage: str) -> Path:
-        # Walk back from the immediate predecessor: take the most recent stage
-        # that is enabled this run (its output is produced), or — for a partial
-        # re-run where an upstream output already exists on disk — that file
-        # (from `inputs` when given); otherwise keep passing through, falling
-        # back to the raw input.  A stage switched off is passed through
-        # without looking: an output an earlier run left on disk is not this
-        # run's (with the flatten off, the ΔPDF takes the backfilled volume,
-        # never a flattened one left from before).
-        upto = (_cleanup_chain.index(stage)
-                if stage in _cleanup_chain else len(_cleanup_chain))
-        for prev in reversed(_cleanup_chain[:upto]):
-            if _switched_off(prev):
-                continue
-            if _produces(prev):
-                return _stage_output[prev]
-            out = _stage_output[prev] if inputs is None else inputs.get(prev)
-            if out is not None and out.exists():
-                return out
-        return paths.input
+        return _stage_input(stage, p, paths, selected, inputs)
 
     pdf_input = stage_input("pdf")
 
@@ -2329,6 +2637,19 @@ def run_pipeline(
 
     def want(stage: str) -> bool:
         return stage in selected
+
+    def runs(stage: str) -> bool:
+        # Selected and switched on: a stage switched off never runs.
+        return want(stage) and p.stage_enabled(stage)
+
+    def stage_source(stage: str) -> Path:
+        # The stage's input, and a log line naming it when stages right
+        # before it are switched off.
+        src = stage_input(stage)
+        notice = _passed_through_notice(p, stage, src)
+        if notice is not None:
+            _emit(progress, stage, "progress", None, notice)
+        return src
 
     # In-memory pass-through between consecutive stages: each stage's output is
     # still saved to disk (same artifacts, resume behaviour unchanged), but when
@@ -2353,7 +2674,7 @@ def run_pipeline(
         return nebula3d.load(src, dtype=p.np_dtype())
 
     # --- stage 1: rings -----------------------------------------------------
-    if want("rings"):
+    if runs("rings"):
         if not ring_stage_pending(input_path, p, proc_dir=proc_dir,
                                   stages=stages, force=force,
                                   force_from=force_from):
@@ -2373,18 +2694,27 @@ def run_pipeline(
                     ring_diagnostics, paths.ring_diagnostics_json)
             carry, carry_path = out, paths.ringremoved
             del vol, out  # free the input; `carry` hands the output onward
+    elif want("rings"):
+        _emit(progress, "rings", "skip", None, _disabled_notice("rings"))
 
     # --- stage 2: punch -----------------------------------------------------
-    if want("punch"):
+    if runs("punch"):
         if paths.braggpunched.exists() and not forced("punch"):
             _emit(progress, "punch", "skip", None,
                   f"{paths.braggpunched.name} exists")
         else:
-            vol = stage_load(stage_input("punch"), "punch")
+            vol = stage_load(stage_source("punch"), "punch")
             symmetry = input_symmetry(vol, p, paths.input, progress=progress,
                                       stage="punch")
-            out = (punch_bragg(vol, p.punch, progress=progress) if symmetry is None
-                   else punch_bragg(vol, p.punch, progress=progress, symmetry=symmetry))
+            # The sample's facts, beside the stage's settings: its symmetry
+            # and its modulation (each only when there is one).
+            facts: dict[str, Any] = {}
+            if symmetry is not None:
+                facts["symmetry"] = symmetry
+            modulation = Modulation.parse(p.modulation)
+            if modulation is not None:
+                facts["modulation"] = modulation
+            out = punch_bragg(vol, p.punch, progress=progress, **facts)
             nebula3d.save(out, paths.braggpunched)
             punch_record = getattr(out, "_punched", None)
             if punch_record is not None:
@@ -2395,14 +2725,16 @@ def run_pipeline(
                 write_bragg_profile_json(profile, paths.bragg_profile_json)
             carry, carry_path = out, paths.braggpunched
             del vol, out  # free the input; `carry` hands the output onward
+    elif want("punch"):
+        _emit(progress, "punch", "skip", None, _disabled_notice("punch"))
 
     # --- stage 3: backfill --------------------------------------------------
-    if want("backfill"):
+    if runs("backfill"):
         if paths.backfilled.exists() and not forced("backfill"):
             _emit(progress, "backfill", "skip", None,
                   f"{paths.backfilled.name} exists")
         else:
-            src = stage_input("backfill")
+            src = stage_source("backfill")
             vol = stage_load(src, "backfill")
             # A volume reloaded from disk lost the punch record punch_bragg
             # attached; read it back from the punch artifact (by name: it may
@@ -2424,14 +2756,16 @@ def run_pipeline(
             nebula3d.save(out, paths.backfilled)
             carry, carry_path = out, paths.backfilled
             del vol, out  # free the input; `carry` hands the output onward
+    elif want("backfill"):
+        _emit(progress, "backfill", "skip", None, _disabled_notice("backfill"))
 
     # --- stage 4: flatten (optional) ---------------------------------------
-    if want("flatten") and p.flatten_enabled:
+    if runs("flatten"):
         if paths.flattened.exists() and not forced("flatten"):
             _emit(progress, "flatten", "skip", None,
                   f"{paths.flattened.name} exists")
         else:
-            vol = stage_load(stage_input("flatten"), "flatten")
+            vol = stage_load(stage_source("flatten"), "flatten")
             out = flatten(vol, p.flatten, progress=progress)
             symmetry = input_symmetry(out, p, paths.input, progress=progress,
                                       stage="flatten")
@@ -2448,8 +2782,7 @@ def run_pipeline(
             carry, carry_path = out, paths.flattened
             del vol, out  # free the input; `carry` hands the output onward
     elif want("flatten"):
-        _emit(progress, "flatten", "skip", None,
-              "background correction off (no background removed)")
+        _emit(progress, "flatten", "skip", None, _disabled_notice("flatten"))
 
     # --- stage 5: ΔPDF (with stale-cache guard) -----------------------------
     dpdf_obj: DeltaPDF | None = None     # in-memory ΔPDF if (re)computed here
@@ -2465,7 +2798,7 @@ def run_pipeline(
             if paths.delta_pdf.exists() and not is_current:
                 _emit(progress, "pdf", "progress", None,
                       f"{paths.delta_pdf.name} stale — recomputing")
-            notice = _flatten_off_notice(p, pdf_input)
+            notice = _passed_through_notice(p, "pdf", pdf_input)
             if notice is not None:
                 _emit(progress, "pdf", "progress", None, notice)
             pdf_vol = stage_load(pdf_input, "pdf")

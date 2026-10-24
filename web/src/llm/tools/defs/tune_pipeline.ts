@@ -90,7 +90,16 @@ export const tune_pipeline: ChatTool = {
     const t0 = performance.now();
     try {
       // The tuning prompts read the skills' switch too: off, a stage's goal and settings without a skill's step.
-      await startTuning({ dataset: ctx.dataset, stages, trialsPerStage: trials, llm: loadSettings(), skills: skillsOn(ctx) });
+      // Its requests go to a validation run's own model, and their counts to
+      // the run (ctx.model); in the app, to the model on the console's settings.
+      await startTuning({
+        dataset: ctx.dataset,
+        stages,
+        trialsPerStage: trials,
+        llm: ctx.model?.settings ?? loadSettings(),
+        ...(ctx.model && { onUsage: ctx.model.usage, maxTokens: ctx.model.maxTokens }),
+        skills: skillsOn(ctx),
+      });
     } finally {
       unsubscribe();
       io.signal?.removeEventListener("abort", stopTuning);

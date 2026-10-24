@@ -17,7 +17,7 @@
 //
 // facts.ts and openView.ts are leaf modules, imported directly.
 
-export type { AgentTool, Args, ChatTool, ToolContext, ToolIO, ToolOutcome } from "./types";
+export type { AgentTool, Args, ChatTool, RunModel, ToolContext, ToolIO, ToolOutcome } from "./types";
 export { ToolArgError } from "./types";
 export type { ViewTarget } from "./openView";
 export { CHAT_TOOLS, factsOf, toolSpecs, toolsWhere, toolsWithSkills, unreadSkillRefusal } from "./registry";

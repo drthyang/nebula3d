@@ -167,6 +167,17 @@ describe("streamChat with Ollama", () => {
     expect(deltas.some((d) => d.truncated)).toBe(true);
   });
 
+  it("asks for the output cap it is given (num_predict), sends no temperature when told none, and names a reply cut at the cap", async () => {
+    const seen = server(() =>
+      ndjson([line({ message: { content: "Partial" }, done: false }), line({ message: { content: "" }, done: true, done_reason: "length" })]),
+    );
+    const deltas = await collect(
+      streamChat({ baseUrl: OLLAMA, model: "m", messages: [{ role: "user", content: "hi" }], temperature: null, numCtx: 8192, maxTokens: 16_000 }),
+    );
+    expect(seen[0].body.options).toEqual({ num_ctx: 8192, num_predict: 16_000 });
+    expect(deltas.filter((d) => d.stopReason)).toEqual([{ truncated: true, stopReason: "length" }]);
+  });
+
   it("sizes the context length from the request when none is given, within the model's longest", async () => {
     const seen = server(() => ndjson([line({ message: { content: "ok" }, done: true, done_reason: "stop" })]), 40960);
     const ask = (chars: number) =>
@@ -218,5 +229,25 @@ describe("completeChat with Ollama", () => {
     expect(text).toBe('{"trial": 1}');
     const chat = seen.find((s) => s.url.endsWith("/api/chat"))!;
     expect(chat.body).toMatchObject({ stream: false, options: { num_ctx: 8192 } });
+  });
+
+  it("reports the reply's token counts, or null when Ollama gave none", async () => {
+    const answer = (counts: object) => () => new Response(JSON.stringify({ message: { role: "assistant", content: "{}" }, done: true, ...counts }), { status: 200 });
+    const onUsage = vi.fn();
+    server(answer({ prompt_eval_count: 640, eval_count: 12 }));
+    await completeChat({ baseUrl: OLLAMA, model: "m", messages: [{ role: "user", content: "go" }], temperature: 0, onUsage });
+    server(answer({}));
+    await completeChat({ baseUrl: OLLAMA, model: "m", messages: [{ role: "user", content: "go" }], temperature: 0, onUsage });
+    expect(onUsage.mock.calls).toEqual([[{ input: 640, output: 12 }, null], [null, null]]);
+  });
+
+  it("asks for the output cap it is given (num_predict), and reports a reply cut at it", async () => {
+    const onUsage = vi.fn();
+    const cut = { message: { role: "assistant", content: '{"tri' }, done: true, done_reason: "length", prompt_eval_count: 640, eval_count: 16_000 };
+    const seen = server(() => new Response(JSON.stringify(cut), { status: 200 }));
+    await completeChat({ baseUrl: OLLAMA, model: "m", messages: [{ role: "user", content: "go" }], temperature: 0, maxTokens: 16_000, onUsage });
+    const chat = seen.find((s) => s.url.endsWith("/api/chat"))!;
+    expect(chat.body.options).toEqual({ temperature: 0, num_ctx: 8192, num_predict: 16_000 });
+    expect(onUsage.mock.calls).toEqual([[{ input: 640, output: 16_000 }, "length"]]);
   });
 });

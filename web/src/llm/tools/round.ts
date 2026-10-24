@@ -20,11 +20,13 @@
 // changes what a reading may give, so one that runs empties the record and is
 // not recorded itself; it runs every time it is called, an identical call
 // included (dpdf_contrast sets the ΔPDF viewer's colour limit: what it set is
-// what the console now shows). An error is never recorded.
+// what the console now shows). An error is never recorded. A tool whose
+// result reads the reply's own steps (its facts' `readsReply`: run_verdict)
+// is a repeat only while no other call has run since it.
 
 import type { AgentStep } from "../agent";
 import type { ChatMessage, ToolCall } from "../provider/client";
-import { skillsOn } from "../skills";
+import { skillsCarriedIn, skillsOn } from "../skills";
 import { parseArguments, runParsed } from "./call";
 import { factsOf, toolsWithSkills } from "./registry";
 import type { AgentTool, Args, ToolContext } from "./types";
@@ -47,11 +49,14 @@ const canonical = (v: unknown): unknown =>
 
 export const callKey = (name: string, args: Readonly<Args>): CallKey => `${name}|${JSON.stringify(canonical(args))}` as CallKey;
 
+/** The tool a call's key names. */
+const toolOf = (key: CallKey): string => key.slice(0, key.indexOf("|"));
+
 /** What the next round depends on. Never changed in place: a round, and forget, hand back a new one. */
 export interface History {
   /** The tools the reply offers and runs: the given ones under the skills' switch (toolsWithSkills; off, no read_skill). */
   readonly tools: readonly AgentTool[];
-  /** The tool context the next round runs on a copy of: a run's fresh dataset, the skills read so far. */
+  /** The tool context the next round runs on a copy of: a run's fresh dataset, the skills read so far in this reply, its steps so far (replySteps), the user's latest message. */
   readonly ctx: Readonly<ToolContext>;
   /** The reply's steps so far: the next step's number is steps + 1. */
   readonly steps: number;
@@ -76,12 +81,18 @@ function sealed(history: History): History {
  * A reply's first history. The skills' switch, as the conversation's context
  * carries it, decides the tools (toolsWithSkills); the context is copied, and
  * its skills read with it, so this reply's reads (read_skill) and a run's
- * fresh dataset (run_pipeline) stay this reply's.
+ * fresh dataset (run_pipeline) stay this reply's. The skills read start as the
+ * context's (the chat's: none, replyContext in session.ts) and those whose
+ * text the reply's opening messages carry (skillsCarriedIn): a skill read in
+ * an earlier turn opens no gate unless its text came with the messages. The
+ * user's latest message it carries (the loop sets it) stays the same for every
+ * round of the reply.
  */
-export function startReply(ctx: ToolContext, given: readonly AgentTool[]): History {
+export function startReply(ctx: ToolContext, given: readonly AgentTool[], opening: readonly ChatMessage[] = []): History {
+  const on = skillsOn(ctx);
   return sealed({
-    tools: [...toolsWithSkills(given, skillsOn(ctx))],
-    ctx: { ...ctx, skillsRead: new Set(ctx.skillsRead ?? []) },
+    tools: [...toolsWithSkills(given, on)],
+    ctx: { ...ctx, skillsRead: new Set([...(ctx.skillsRead ?? []), ...(on ? skillsCarriedIn(opening) : [])]), replySteps: [] },
     steps: 0,
     ran: [],
     barren: 0,
@@ -118,7 +129,13 @@ export async function runRound(
   history: History,
   { signal, onStep }: { signal?: AbortSignal; onStep?: (step: AgentStep) => void } = {},
 ): Promise<Round> {
-  const ctx: ToolContext = { ...history.ctx, skillsRead: new Set(history.ctx.skillsRead ?? []) };
+  // The reply's steps so far go with the context (replySteps), each call's
+  // added as it ends, so a call reads the steps before it and the next round
+  // starts from all of them.
+  const ctx: ToolContext = { ...history.ctx, skillsRead: new Set(history.ctx.skillsRead ?? []), replySteps: history.ctx.replySteps ?? [] };
+  const ended = (step: AgentStep) => {
+    ctx.replySteps = [...(ctx.replySteps ?? []), step];
+  };
   const parsed = calls.map((call) => parseArguments(call.function.arguments));
   let ran = history.ran;
   let fresh = 0; // calls that brought a new result
@@ -138,6 +155,7 @@ export async function runRound(
       });
       const step: AgentStep = { id, name, args, status: "done", summary: `same call as step ${earlier}: not run again`, result: text };
       onStep?.(step);
+      ended(step);
       results.push({ step, message: { role: "tool", tool_call_id: call.id, content: text }, key, repeatOf: earlier });
       continue;
     }
@@ -165,9 +183,11 @@ export async function runRound(
       outcomes: run.outcomes,
     };
     onStep?.(step);
+    ended(step);
     if (run.ok) {
       fresh += 1;
-      ran = factsOf(name).acts !== null ? [] : [...ran, { key, step: n }];
+      // A reading of the reply's own steps (readsReply) differs once another call has run: it is a repeat only until then.
+      ran = factsOf(name).acts !== null ? [] : [...ran.filter((r) => !factsOf(toolOf(r.key)).readsReply), { key, step: n }];
     }
     results.push({ step, message: { role: "tool", tool_call_id: call.id, content: run.text }, key, repeatOf: null });
   }

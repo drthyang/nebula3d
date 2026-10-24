@@ -31,10 +31,12 @@ import { bragg_peaks } from "./defs/bragg_peaks";
 import { consistency_details } from "./defs/consistency_details";
 import { run_log } from "./defs/run_log";
 import { compare_datasets } from "./defs/compare_datasets";
+import { run_verdict } from "./defs/run_verdict";
 import { configure_settings } from "./defs/configure_settings";
 import { update_settings } from "./defs/update_settings";
 import { run_pipeline } from "./defs/run_pipeline";
 import { tune_pipeline } from "./defs/tune_pipeline";
+import { regrid_refined_ub } from "./defs/regrid_refined_ub";
 import { show_in_viewer } from "./defs/show_in_viewer";
 import { resolveFacts, type Facts } from "./facts";
 import type { AgentTool, Args, ChatTool } from "./types";
@@ -59,10 +61,12 @@ export const CHAT_TOOLS: ChatTool[] = [
   consistency_details,
   run_log,
   compare_datasets,
+  run_verdict,
   configure_settings,
   update_settings,
   run_pipeline,
   tune_pipeline,
+  regrid_refined_ub,
   show_in_viewer,
 ];
 
@@ -87,11 +91,12 @@ export const toolsWhere = (pred: (facts: Facts) => boolean): string[] =>
 /**
  * Why a call must wait, or null: a call to a tool with a skill gate (its
  * facts' `gate`) waits until the skills of the stages it changes or tunes
- * have been read in the conversation (skills.ts words it).
+ * have been read in this reply (`read`); those read in an earlier turn
+ * (`earlier`) are asked for again (skills.ts words it).
  */
-export function unreadSkillRefusal(name: string, args: Args, read: ReadonlySet<string>): string | null {
+export function unreadSkillRefusal(name: string, args: Args, read: ReadonlySet<string>, earlier?: ReadonlySet<string>): string | null {
   const gate = factsOf(name).gate;
-  return gate ? refusalFor(gate.stages(args), gate.doing, read) : null;
+  return gate ? refusalFor(gate.stages(args), gate.doing, read, earlier) : null;
 }
 
 /**

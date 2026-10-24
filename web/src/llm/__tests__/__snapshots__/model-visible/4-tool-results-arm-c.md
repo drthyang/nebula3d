@@ -29,13 +29,13 @@ Fill punched holes seamlessly: median_seam_sigma ≲ 1, bright_fill_fraction sma
 ### flatten
 
 ```text
-Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
+Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
 ```
 
 ### pdf
 
 ```text
-The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate). max_symmetry_break is the x–y section's largest RMS difference from its image under the cell's in-plane operations (worst_symmetry_op names it). back_fft_pearson_r_even, the round trip against the data's even part under Q → −Q (what the real transform keeps), must stay near 1; back_fft_pearson_r against the data is lower by the odd part (back_fft_odd_share, counting noise on unsymmetrised data). Without a band or crop the round trip is the identity, so neither can rank trials. Apodization trades real-space resolution against truncation ripples; prefer the default unless another is clearly better on feature_snr without the reach leaving the coverage.
+The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate). max_symmetry_break is the x–y section's largest RMS difference from its image under the declared group's operations that map it onto itself (none declared: the cell's in-plane operations; worst_symmetry_op names it). back_fft_pearson_r_even, the round trip against the data's even part under Q → −Q (what the real transform keeps), must stay near 1; back_fft_pearson_r against the data is lower by the odd part (back_fft_odd_share, counting noise on unsymmetrised data). Without a band or crop the round trip is the identity, so neither can rank trials. Apodization trades real-space resolution against truncation ripples; prefer the default unless another is clearly better on feature_snr without the reach leaving the coverage.
 ```
 
 # The results that read otherwise
@@ -121,11 +121,11 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
   },
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
     "pedestal_left": false
   },
   "pdf": {
@@ -143,7 +143,7 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
     "window_weight_on_unmeasured": 0.00024,
     "window_shape": "ellipsoid",
     "max_symmetry_break": 0,
-    "worst_symmetry_op": "mirror ⊥ a",
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
     "symmetry_declared": true
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
@@ -156,11 +156,12 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
 {
   "flatten": {
     "verdict": "meets its goal",
-    "criterion": "No pedestal: a floor trend and a span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
-    "headline": "floor ≤ 2.78σ · trend ≤ 0.333 · span ≤ 0.17 · no pedestal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
     "max_after_floor_sigma": 2.78,
-    "max_floor_trend": 0.333,
-    "max_floor_span_fraction": 0.17,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
+    "floor_judged_q": [2.2, 4.35],
     "pedestal_left": false,
     "per_plane": {
       "hk0": {
@@ -194,7 +195,86 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
         "floor_judged_q": [2.11, 4.11]
       }
     },
-    "goal": "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself."
+    "goal": "Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself."
+  },
+  "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
+}
+```
+
+## assess_stage {"stage":"punch"} (a run whose punch record says its sharp peaks off the lattice bunch at H ≡ ±1/3 (mod 1))
+
+```json
+{
+  "punch": {
+    "verdict": "needs attention",
+    "criterion": "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima stay.",
+    "headline": "1 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.03",
+    "total_leftover_peaks": 1,
+    "leftover_at_nodes": 1,
+    "leftover_off_lattice": 0,
+    "leftover_on_protected_planes": 0,
+    "leftover_on_protected_planes_sharp": 0,
+    "leftover_off_lattice_broad": 0,
+    "leftover_off_lattice_sharp": 0,
+    "strongest_leftover": {
+      "plane": "hk0",
+      "xy": [2, 1],
+      "intensity": 452,
+      "local_background": 21.3,
+      "contrast": 21.2,
+      "sigma": 374,
+      "fwhm_voxels": [1, 1],
+      "broad": false,
+      "hkl": [2, 1, 0],
+      "at_node": true
+    },
+    "noisy_spikes_skipped": 0,
+    "mean_punched_fraction": 0.03,
+    "fitted_peaks": 14,
+    "off_lattice_bunching": {
+      "facts": "14 of the 17 sharp peaks the search punched off the lattice (each symmetry orbit once) lie within 0.05 r.l.u. of H ≡ ±1/3 (mod 1), where chance puts 1.9 (binomial tail 2.1e-11, under 0.00135 over 24 tests). No modulation is declared there, so the search punched them.",
+      "ask_user": "14 of the 17 sharp peaks off the lattice sit at H = n ± 1/3, where about 2 would by chance. Does the sample have a modulation with k = (1/3, 0, 0)?"
+    },
+    "per_plane": {
+      "hk0": {
+        "leftover_peaks": 1,
+        "at_nodes": 1,
+        "off_lattice": 0,
+        "on_protected_planes": 0,
+        "off_lattice_broad": 0,
+        "strongest_leftover": {
+          "xy": [2, 1],
+          "intensity": 452,
+          "local_background": 21.3,
+          "contrast": 21.2,
+          "sigma": 374,
+          "fwhm_voxels": [1, 1],
+          "broad": false,
+          "hkl": [2, 1, 0],
+          "at_node": true
+        },
+        "punched_fraction": 0.0291
+      },
+      "h0l": {
+        "leftover_peaks": 0,
+        "at_nodes": 0,
+        "off_lattice": 0,
+        "on_protected_planes": 0,
+        "off_lattice_broad": 0,
+        "strongest_leftover": null,
+        "punched_fraction": 0.0305
+      },
+      "0kl": {
+        "leftover_peaks": 0,
+        "at_nodes": 0,
+        "off_lattice": 0,
+        "on_protected_planes": 0,
+        "off_lattice_broad": 0,
+        "strongest_leftover": null,
+        "punched_fraction": 0.0305
+      }
+    },
+    "goal": "Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks."
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
 }
@@ -204,20 +284,47 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
 
 ```json
 {
+  "grouped_by": "declared symmetry (mmm: 8 operations, r ≡ −r)",
   "features": [
     {
       "sign": "−",
       "length_A": 4,
       "size_sigma": 35.2,
-      "n_vectors": 3,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
       "vectors_rlu": [
-        [1, 0, 0],
-        [0, 1, 0],
+        [1, 0, 0]
+      ],
+      "vectors_A": [
+        [4, 0, 0]
+      ]
+    },
+    {
+      "sign": "−",
+      "length_A": 4,
+      "size_sigma": 35.2,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
+      "vectors_rlu": [
+        [0, 1, 0]
+      ],
+      "vectors_A": [
+        [0, 4, 0]
+      ]
+    },
+    {
+      "sign": "−",
+      "length_A": 4,
+      "size_sigma": 35.2,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
+      "vectors_rlu": [
         [0, 0, 1]
       ],
       "vectors_A": [
-        [4, 0, 0],
-        [0, 4, 0],
         [0, 0, 4]
       ]
     },
@@ -225,18 +332,48 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
       "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "n_vectors": 6,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
       "vectors_rlu": [
         [1, 1, 0],
-        [1, -1, 0],
+        [1, -1, 0]
+      ],
+      "vectors_A": [
+        [4, 4, 0],
+        [4, -4, 0]
+      ]
+    },
+    {
+      "sign": "+",
+      "length_A": 5.657,
+      "size_sigma": 21.1,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
+      "vectors_rlu": [
         [1, 0, 1],
         [1, 0, -1]
       ],
       "vectors_A": [
-        [4, 4, 0],
-        [4, -4, 0],
         [4, 0, 4],
         [4, 0, -4]
+      ]
+    },
+    {
+      "sign": "+",
+      "length_A": 5.657,
+      "size_sigma": 21.1,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
+      "vectors_rlu": [
+        [0, 1, 1],
+        [0, 1, -1]
+      ],
+      "vectors_A": [
+        [0, 4, 4],
+        [0, 4, -4]
       ]
     }
   ],
@@ -370,7 +507,7 @@ No skill read: it runs, and passes the switch on to the tuning prompts.
 ## read_skill {"name":"reduction-qc"} (called by name: it is not offered)
 
 ```text
-Error: no tool named read_skill. Available: describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer
+Error: no tool named read_skill. Available: describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer
 ```
 
 ## The tuning prompt for the flatten, what to try
@@ -379,7 +516,7 @@ Error: no tool named read_skill. Available: describe_dataset, current_view, meas
 
 ```text
 Stage: Background correction.
-Goal: Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: max_floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and max_floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
+Goal: Bring the per-|Q|-shell floor to about 0 and level across |Q| (floor_after near 0 in all thirds) without over-subtracting (floors well below 0), and leave no pedestal: floor_trend (|rank correlation| of the floors with |Q|, over the outer half of the shells the counts reach) well below 1 and floor_span_fraction well below 1 (pedestal_left false). after_floor_max_sigma is the floors in the cut's own σ, which the diffuse sets: it reads above 1 on sound flattens and is no goal by itself.
 
 Settings you may change (use these names exactly):
 - flattenQ2 (true | false; default false): model only: also fit b·Q², the smooth rise of an inelastic background (thermal diffuse; with X-rays also Compton); it varies too slowly to follow pair correlations.
@@ -388,7 +525,7 @@ Settings you may change (use these names exactly):
 
 Current settings: {"flattenQ2":false,"flattenFitQMax":10,"flattenEstimator":"model"}
 Settings already chosen for earlier stages: {}
-Trials so far (trial 1 = the current settings): [{"trial":1,"settings":{"flattenQ2":false,"flattenFitQMax":10,"flattenEstimator":"model"},"metrics":{"max_floor_trend":0.97,"max_floor_span_fraction":1.2,"pedestal_left":true}}]
+Trials so far (trial 1 = the current settings): [{"trial":1,"settings":{"flattenQ2":false,"flattenFitQMax":10,"flattenEstimator":"model"},"metrics":{"floor_trend":0.97,"floor_span_fraction":1.2,"pedestal_left":true}}]
 
 Propose up to 2 new settings to try, each different from every trial so far and
 each changing as few settings as possible, with a one-sentence reason tied to the metrics.

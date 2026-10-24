@@ -70,12 +70,12 @@ reads it from there. A session typically runs top to bottom:
    anything about the reduction: with *Tools* on it measures cuts, judges each
    stage, runs and tunes the pipeline, and opens the figures it talks about
    ([docs/pilot.md](docs/pilot.md)).
-   A local model needs room: load it with a **48k context** (49152; in LM
+   A local model needs room: load it with a **56k context** (57344; in LM
    Studio, set the model's default Context Length, which it uses whenever it
    reloads an idle model; Ollama at its usual port gets its window from the app,
    up to what the model supports, and elsewhere start it with
-   `OLLAMA_CONTEXT_LENGTH=49152`). With *Tools* on, the first request alone is
-   about 8k tokens, and a full assessment that reads two skills about 46k; in a
+   `OLLAMA_CONTEXT_LENGTH=57344`). With *Tools* on, the first request alone is
+   about 8k tokens, and a full assessment that reads two skills about 48k; in a
    32k window the skills it read are shortened to stubs
    ([docs/pilot.md](docs/pilot.md#guardrails)).
 

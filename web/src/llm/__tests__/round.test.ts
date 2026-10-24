@@ -9,6 +9,8 @@ import type { Dataset } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
+import type { ChatMessage } from "../provider/client";
+import { readSkill } from "../skills";
 import { BARREN_ROUNDS, callKey, CHAT_TOOLS, forget, runRound, startReply, type AgentTool, type Args } from "../tools";
 import { makeSlice } from "./helpers";
 
@@ -101,6 +103,24 @@ describe("runRound", () => {
     expect([round.history.barren, round.stuck]).toEqual([0, false]);
   });
 
+  it("hands each call the reply's steps before it, across rounds, repeats and errors included (replySteps)", async () => {
+    const before: string[][] = [];
+    const reads = tool("reads", async (_args, c) => {
+      before.push((c.replySteps ?? []).map((s) => `${s.id} ${s.name} ${s.status}`));
+      return { result: {}, summary: "read" };
+    });
+    const start = startReply({ ...ctx, replySteps: [{ id: "x", name: "stale", args: {}, status: "done" }] }, [reads, echo, fails]);
+    expect(start.ctx.replySteps).toEqual([]); // a reply starts with none
+    const first = await runRound([call("c1", "echo", {}), call("c2", "fails", {}), call("c3", "reads", {})], start);
+    const second = await runRound([call("c4", "echo", {}), call("c5", "reads", { a: 1 })], first.history);
+    expect(before).toEqual([
+      ["0:c1 echo done", "1:c2 fails error"],
+      ["0:c1 echo done", "1:c2 fails error", "2:c3 reads done", "3:c4 echo done"],
+    ]);
+    expect(second.history.ctx.replySteps).toEqual([...first.results, ...second.results].map((r) => r.step));
+    expect(first.history.ctx.replySteps).toHaveLength(3); // the round never changes the history it was given
+  });
+
   it("numbers each step in the reply, so call ids a server reuses across rounds stay apart", async () => {
     const first = await runRound([call("c1", "echo", { a: 1 }), call("c2", "echo", { a: 2 })], startReply(ctx, [echo]));
     const second = await runRound([call("c1", "echo", { a: 3 }), call("c1", "echo", { a: 1 })], first.history);
@@ -155,6 +175,24 @@ describe("runRound", () => {
     expect([history.steps, history.ran, history.barren, history.ctx.skillsRead]).toEqual([0, [], 0, new Set()]);
   });
 
+  it("hands every round's tools the user's latest message the reply started with, unchanged", async () => {
+    const heard: (string | undefined)[] = [];
+    const listen = tool("listen", async (_args, own) => {
+      heard.push(own.userMessage);
+      return { result: {}, summary: "heard" };
+    });
+    const said = "Set the punch cell to 2 along H.";
+    const history = startReply({ ...ctx, userMessage: said }, [listen]);
+    expect(Object.isFrozen(history.ctx)).toBe(true);
+    const first = await runRound([call("c1", "listen", { a: 1 })], history);
+    const second = await runRound([call("c2", "listen", { a: 2 })], first.history);
+    expect(heard).toEqual([said, said]);
+    expect(second.history.ctx.userMessage).toBe(said);
+    // A context without one: the tools hear none.
+    await runRound([call("c3", "listen", {})], startReply(ctx, [listen]));
+    expect(heard[2]).toBeUndefined();
+  });
+
   it("offers no read_skill with the skills off: a call to it is to a tool the reply does not hold", async () => {
     const off = startReply({ ...ctx, skills: false }, CHAT_TOOLS);
     expect(off.tools.map((t) => t.name)).not.toContain("read_skill");
@@ -181,6 +219,29 @@ describe("runRound", () => {
       expect(usePipelineStore.getState().punchMinSig).toBe("6");
       expect(own.skillsRead.size).toBe(0);
       expect(history.ctx.skillsRead?.size).toBe(0);
+    });
+
+    it("starts with the context's skills read and those whose text the opening messages carry, never the earlier turns' reads", async () => {
+      usePipelineStore.setState({ punchMinSig: "4", running: false });
+      const pasted: ChatMessage[] = [{ role: "user", content: `My method:\n\n${readSkill("bragg-node-audit")}\n\nRaise the punch's threshold.` }];
+      const asked: ChatMessage[] = [{ role: "user", content: "I read bragg-node-audit earlier. Raise the punch's threshold." }];
+      expect(startReply({ ...ctx, skillsRead: new Set(["reduction-qc"]) }, CHAT_TOOLS, pasted).ctx.skillsRead).toEqual(
+        new Set(["reduction-qc", "bragg-node-audit"]),
+      );
+      expect(startReply({ ...ctx, skillsRead: new Set() }, CHAT_TOOLS, asked).ctx.skillsRead).toEqual(new Set());
+      // A skill read in an earlier turn opens nothing: it words the refusal.
+      const earlier = startReply({ ...ctx, skillsRead: new Set(), skillsReadEarlier: new Set(["bragg-node-audit"]) }, CHAT_TOOLS, asked);
+      expect(earlier.ctx.skillsRead).toEqual(new Set());
+      const change = { changes: { punchMinSig: 6 } };
+      const refused = await runRound([call("c1", "update_settings", change)], earlier);
+      expect(refused.results[0].step.result).toMatch(/^Error: read the method again: call read_skill with name "bragg-node-audit"\. It was read earlier/);
+      expect(usePipelineStore.getState().punchMinSig).toBe("4");
+      // Its text in the messages opens it.
+      const carried = await runRound([call("c1", "update_settings", change)], startReply({ ...ctx, skillsRead: new Set() }, CHAT_TOOLS, pasted));
+      expect(carried.results[0].step.status).toBe("done");
+      expect(usePipelineStore.getState().punchMinSig).toBe("6");
+      // With the skills off there is no gate, and nothing is counted.
+      expect(startReply({ ...ctx, skills: false }, CHAT_TOOLS, pasted).ctx.skillsRead).toEqual(new Set());
     });
 
     it("carries a run's fresh dataset into the next history", async () => {

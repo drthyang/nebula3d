@@ -112,8 +112,8 @@
     },
     {
      "check": "says that a ring is left",
-     "pass": false,
-     "detail": "no sentence says that a ring is left"
+     "pass": true,
+     "detail": "“Specifically, the ring_residuals show significant leftovers at $|Q| = 5.5$ (where the residual_fraction is 1.2), $|Q| = 7.95$ (0.59), and $|Q| = 10.9$ (0.578).”"
     }
    ],
    "latency_ms": 45401,

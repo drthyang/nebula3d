@@ -23,7 +23,7 @@ export const HEX_CONFIG: Partial<PipelineConfig> = {
   punchSupercellH: "2",
   punchSupercellK: "2",
   punchSupercellL: "2",
-  punchProtectH: "none",
+  modulationK: "none",
   punchSearchMaxWidth: "2",
   punchFrame: "spherical",
   backfillEnabled: true,
@@ -211,7 +211,7 @@ export const SCENARIOS: Scenario[] = [
     ],
   },
   // The skills' firm rule (skills.ts): a stage's settings change only after its
-  // skill has been read in the conversation. One request per skill.
+  // skill has been read in the reply. One request per skill.
   {
     id: "skill-punch-change",
     title: "Reads the punch's method before changing it",

@@ -8,7 +8,7 @@
 
 import { isTooCoarse } from "../metrics/coarse";
 import type { ParamValue } from "../tune/catalog";
-import { verdicts, WORDS, type Kind, type Outcome } from "../verdicts";
+import { pedestalOfVolume, verdicts, WORDS, type Kind, type Outcome } from "../verdicts";
 
 /** A check's verdict: its outcome's kind (verdicts/). */
 export type Verdict = Kind;
@@ -158,6 +158,16 @@ const CRITERIA = WORDS.criterion;
  */
 const ringNotice = (m: Obj | null | undefined): string | null => (typeof m?.notice === "string" && m.notice ? m.notice : null);
 
+/**
+ * The question the punch's evaluation puts to the user when its sharp peaks
+ * off the lattice bunch at one commensurate fraction (off_lattice_bunching's
+ * ask_user, metrics/bunching.ts), or null: among the caveats.
+ */
+const bunchingQuestion = (m: Obj | null | undefined): string | null => {
+  const ask = obj(m?.off_lattice_bunching)?.ask_user;
+  return typeof ask === "string" && ask ? ask : null;
+};
+
 function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
   if (verdict === undefined) return null;
   const m = measured ?? {};
@@ -252,24 +262,51 @@ function grainsCheck(m: Obj | null | undefined, kind: Verdict | undefined, crite
   };
 }
 
-function backfillCheck(measured: Obj | null | undefined, texture: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
-  if (verdict === undefined) return null;
-  const m = measured ?? {};
-  const seam = num(m.mean_median_seam_sigma);
-  const cuts = Array.isArray(texture?.per_cut) ? (texture!.per_cut as Obj[]) : [];
+/**
+ * What the Backfill card says of texture_check's fill bias: its headline's
+ * words and its line. Since plan 4.2 over every punch hole in 3-D
+ * (metrics/texture.ts, volumeFillBias); a result recorded before it, by cut.
+ */
+function fillBiasWords(texture: Obj): { headline: string; detail: [string, string] } {
+  if ("systematic_fill_bias" in texture) {
+    const holes = fmt(texture.n_judged ?? texture.n_holes);
+    const bias = texture.systematic_fill_bias;
+    const headline =
+      bias === true
+        ? `systematic fill bias over ${holes} holes`
+        : bias === false
+          ? `no fill bias over ${holes} holes`
+          : `fill bias not judged${isTooCoarse(texture.not_judged) ? " (grid too coarse)" : ""}`;
+    const detail =
+      bias === true
+        ? `yes, over ${holes} holes judged (median ${fmt(texture.median_fill_bias_level)} of the level)`
+        : bias === false
+          ? `no, over ${holes} holes judged`
+          : `not judged: ${typeof texture.not_judged === "string" ? texture.not_judged : "nothing to judge"}`;
+    return { headline, detail: ["Systematic fill bias, every hole in 3-D", detail] };
+  }
+  const cuts = Array.isArray(texture.per_cut) ? (texture.per_cut as Obj[]) : [];
   const biased = cuts.filter((c) => c.systematic_fill_bias === true).length;
   // Cuts whose grid is too coarse to judge their fills (texture.ts, roomForRims).
   const coarse = cuts.filter((c) => isTooCoarse(c.not_judged)).length;
   const notJudged = coarse ? `, ${coarse} not judged (grid too coarse)` : "";
+  return { headline: `fill bias on ${biased} of ${cuts.length} cuts${notJudged}`, detail: ["Cuts with a systematic fill bias", `${biased} of ${cuts.length}${notJudged}`] };
+}
+
+function backfillCheck(measured: Obj | null | undefined, texture: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
+  if (verdict === undefined) return null;
+  const m = measured ?? {};
+  const seam = num(m.mean_median_seam_sigma);
+  const fill = texture ? fillBiasWords(texture) : null;
   const details: [string, string][] = [
     ["Mean median seam", `${fmt(seam)} σ`],
     ["Largest bright-fill fraction", fmt(m.max_bright_fill_fraction)],
   ];
-  if (texture) details.push(["Cuts with a systematic fill bias", `${biased} of ${cuts.length}${notJudged}`]);
+  if (fill) details.push(fill.detail);
   return {
     title: "Backfill",
     verdict,
-    headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${texture ? ` · fill bias on ${biased} of ${cuts.length} cuts${notJudged}` : ""}`,
+    headline: `seam ${fmt(seam)}σ · bright ≤ ${fmt(m.max_bright_fill_fraction)}${fill ? ` · ${fill.headline}` : ""}`,
     criterion,
     details,
   };
@@ -279,19 +316,28 @@ function flattenCheck(measured: Obj | null | undefined, verdict: Verdict | undef
   if (verdict === undefined) return null;
   const m = measured ?? {};
   const floor = num(m.max_after_floor_sigma);
-  const trend = num(m.max_floor_trend);
-  const span = num(m.max_floor_span_fraction);
+  // The whole volume's pedestal (plan 4.1), or the planes' largest in an evaluation recorded before it.
+  const volume = pedestalOfVolume(m);
+  const trend = num(volume ? m.floor_trend : m.max_floor_trend);
+  const span = num(volume ? m.floor_span_fraction : m.max_floor_span_fraction);
   return {
     title: "Background correction",
     // The pedestal rule; the floor in σ is reported, not judged (verdicts/rules.ts, FLATTEN_FLOOR_SIGMA_NOTE).
     verdict,
-    headline: `floor ≤ ${fmt(floor)}σ · trend ≤ ${fmt(trend)} · span ≤ ${fmt(span)}`,
+    headline: volume ? `floor ≤ ${fmt(floor)}σ · trend ${fmt(trend)} · span ${fmt(span)}` : `floor ≤ ${fmt(floor)}σ · trend ≤ ${fmt(trend)} · span ≤ ${fmt(span)}`,
     criterion,
-    details: [
-      ["Largest leftover floor (reported, not judged)", `${fmt(floor)} σ`],
-      ["Largest floor trend with |Q|", fmt(trend)],
-      ["Largest floor span (share of the diffuse)", fmt(span)],
-    ],
+    details: volume
+      ? [
+          ["Largest leftover floor (reported, not judged)", `${fmt(floor)} σ`],
+          ["Floor trend with |Q| (the whole volume)", fmt(trend)],
+          ["Floor span (share of the diffuse, the whole volume)", fmt(span)],
+          ["|Q| judged (Å⁻¹)", Array.isArray(m.floor_judged_q) ? (m.floor_judged_q as unknown[]).map(fmt).join("–") : fmt(null)],
+        ]
+      : [
+          ["Largest leftover floor (reported, not judged)", `${fmt(floor)} σ`],
+          ["Largest floor trend with |Q|", fmt(trend)],
+          ["Largest floor span (share of the diffuse)", fmt(span)],
+        ],
   };
 }
 
@@ -333,7 +379,7 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
 
 /** The notes every report carries, the same in each (render.ts keeps them with the provenance). */
 export const STANDING_CAVEATS: readonly string[] = [
-  "Sample facts (the punch cell, protected planes, magnetic ion and |Q| band) are the user's: the agent changes them only when asked, and the tuning never does.",
+  "Sample facts (the punch cell, the modulation, the magnetic ion and the |Q| band) are the user's: the agent changes them only when asked, and the tuning never does.",
   "The tables and figures are measured by nebula3d's deterministic metrics; the summary is written by the model and may be wrong where it departs from them.",
 ];
 
@@ -373,6 +419,10 @@ export function buildReport(input: ReportInput): Report {
   // Out loud: the ring candidates the removal left, unconfirmed on its grid, whatever the card's verdict.
   const left = ringNotice(m.rings);
   if (left) caveats.push(`Ring removal: ${left}`);
+  // Out loud too: the punch's sharp peaks off the lattice bunched at one
+  // fraction, and the question only the user can answer (metrics/bunching.ts).
+  const asked = bunchingQuestion(m.punch);
+  if (asked) caveats.push(`Bragg punch, a question for you: ${asked} None is declared, so the search punched them; only you can say whether the sample has it.`);
   for (const c of checks) if (c.verdict === "attention") caveats.push(`${c.title}: ${c.headline}.`);
   // A failed tool call drops what it would have measured from the cards (a texture_check,
   // grain_check, qmax_coverage or symmetry_check that failed leaves its part out): said here,

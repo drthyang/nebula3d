@@ -14,21 +14,31 @@ import type {
   Dataset,
   DeltaPdfMeta,
   DpdfFeatures,
+  FlattenSettings,
+  RegridResult,
   RingDiagnostics,
   RingIsotropy,
+  ShellFloors,
   Slice,
   UbCheck,
   VolumeCoverage,
   VolumeMeta,
+  VolumeTexture,
 } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore } from "../tune/tuner";
+import { labelsOn, onTheThirds, recordOf, THIRDS_AS_PLANES } from "./helpers";
+import { shellFloorsOf } from "./shellFloors";
 
-/** The API client's functions the crystal answers: the test file's mocks of them. */
-export type BackendMocks = Record<
+/**
+ * The API client's functions the crystal answers: the test file's mocks of
+ * them. The regrid's (regridDataset) is optional: only a file that runs
+ * regrid_refined_ub's gate open mocks it.
+ */
+export type BackendMocks = { regridDataset?: Mock } & Record<
   | "fetchBraggProfile"
   | "fetchConsistencyCheck"
   | "fetchDataset"
@@ -36,11 +46,14 @@ export type BackendMocks = Record<
   | "fetchDpdfMeta"
   | "fetchDpdfSlice"
   | "fetchMeta"
+  | "fetchProtectedLabels"
   | "fetchRingDiagnostics"
   | "fetchRingIsotropy"
+  | "fetchShellFloors"
   | "fetchSlice"
   | "fetchUbCheck"
-  | "fetchVolumeCoverage",
+  | "fetchVolumeCoverage"
+  | "fetchVolumeTexture",
   Mock
 >;
 
@@ -195,6 +208,20 @@ const MMM = [
   [1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1],
 ].map(([a, b, c]) => [[a, 0, 0], [0, b, 0], [0, 0, c]]);
 
+// What the default flatten records in its output (nebula3d.pipeline.FlattenParams).
+const FLATTEN_RECORD: FlattenSettings = {
+  estimator: "model",
+  fit_q_range: [0.8, 10],
+  floor_percentile: 25,
+  ion: null,
+  min_count: 20,
+  q2_term: false,
+  q_range: null,
+  q_step: 0.05,
+  smooth: 0.1,
+  snip_width: 0.3,
+};
+
 const volumeMeta = (id: string): VolumeMeta => ({
   id,
   stage: id.split(".")[1],
@@ -209,6 +236,8 @@ const volumeMeta = (id: string): VolumeMeta => ({
   symmetry: "mmm",
   symmetry_ops: MMM,
   sigma: "measured",
+  // The flattened stage records the settings its flatten ran with; no other stage does.
+  flatten_settings: id.endsWith(".flattened") ? FLATTEN_RECORD : null,
 });
 
 const dpdfMeta = (id: string): DeltaPdfMeta => ({
@@ -268,6 +297,8 @@ const BRAGG_PROFILE: BraggProfile = {
     peak(12, [0.5, 0.5, 1], 1.924, 52, 11, false),
     peak(13, [1.5, 0.5, 1], 2.938, 48, 10, false),
   ],
+  // The run declared k = (1/3, 0, 0) as planes, and its sharp peaks off the lattice did not bunch.
+  modulation: { ...recordOf({ declared: THIRDS_AS_PLANES }), symmetry_ops: MMM },
 };
 
 const CONSISTENCY: ConsistencyCheck = {
@@ -298,8 +329,10 @@ const COVERAGE: VolumeCoverage = {
   q_max_edge: 4.4,
   full_q_min: 0.3,
   full_q_max: 4.35,
+  measured_q_max: 4.35, // NaN past the counts, as in its cuts: the measured voxels end with them
   box_q: 4.712,
   box_corner_q: 8.162,
+  q_step: 0.1,
 };
 
 const UB_CHECK: UbCheck = {
@@ -331,27 +364,128 @@ const UB_CHECK: UbCheck = {
   mean_offset_rlu: { before: [0.0011, -0.0007, 0.0002], after: [0.0009, -0.0006, 0.0002], standard_error: [0.0008, 0.0008, 0.0009], n: 112 },
 };
 
+/**
+ * The regrid of a dataset of the crystal (POST /api/datasets/{id}/regrid), as
+ * nebula3d.server.regrid words it. The crystal's UB is right (UB_CHECK turns
+ * it 0.003°), so the regrid is refused, nothing written: the turn is under
+ * the UB check's 0.05°. `turned` is the same crystal with its UB turned
+ * 0.3°, made up for the tests: the regrid writes it as a new dataset.
+ */
+export function regridAnswer(datasetId: string, { turned = false }: { turned?: boolean } = {}): RegridResult {
+  const common = {
+    id: datasetId,
+    source_file: `${datasetId}.nxs`,
+    refined_on: `${datasetId}.nxs`,
+    fit: "both",
+    operations: 8,
+    operations_from: `${datasetId}.nxs`,
+    source_symmetrised: false,
+    symmetrised: false,
+    turn_threshold_deg: 0.05,
+    axis_uvw: UB_CHECK.axis_uvw,
+    ub_start: UB_CHECK.ub_start,
+    cell_start: UB_CHECK.cell_start,
+    cell: UB_CHECK.cell,
+    n_used: UB_CHECK.n_used,
+  };
+  if (!turned) {
+    return {
+      ...common,
+      written: false,
+      refusal: {
+        code: "turn_below_noise",
+        reason:
+          "The both fit turns the UB by 0.003°, under the UB check's 0.05° rule (UB_TURN): a turn that small is within the fit's own noise, and regridding onto it would only resample the data. Nothing was written.",
+      },
+      dataset_id: null,
+      file: null,
+      turn_deg: UB_CHECK.angle_deg,
+      ub: UB_CHECK.ub,
+      rms_start: UB_CHECK.rms_start,
+      rms: UB_CHECK.rms,
+      measured_before: null,
+      measured_after: null,
+      voxels_outside: null,
+      voxels_outside_share: null,
+    };
+  }
+  return {
+    ...common,
+    written: true,
+    refusal: null,
+    dataset_id: `${datasetId}_regridded`,
+    file: `${datasetId}_regridded.nxs`,
+    turn_deg: 0.30012,
+    ub: UB_CHECK.ub,
+    rms_start: 0.0171,
+    rms: 0.0002,
+    measured_before: 812_400,
+    measured_after: 808_150,
+    voxels_outside: 4_120,
+    voxels_outside_share: 4_120 / 812_400,
+  };
+}
+
+// The ΔPDF's features grouped as the backend groups them: by the point group
+// the raw file declares (mmm, volumeMeta below). Its orbits are smaller than
+// the cube's, so each cube orbit of the crystal's correlations is three
+// entries: ⟨1 0 0⟩ one vector each, ⟨1 1 0⟩ two.
+const mmmOrbit = (sign: 1 | -1, length: number, size: number, value: number, rlu: number[][]): DpdfFeatures["groups"][number] => ({
+  sign, length, size_sigma: size, mean_size_sigma: size, value, n: rlu.length, multiplicity: rlu.length,
+  vectors: rlu.map((v) => v.map((x) => A * x)), vectors_rlu: rlu, sizes_sigma: rlu.map(() => size),
+});
 const DPDF_FEATURES: DpdfFeatures = {
   id: "synthetic_a.delta_pdf",
   sigma: 0.71,
   min_sigma: 5,
   origin_radius: 1.8,
   n_extrema: 26,
+  grouped_by: "declared symmetry (mmm: 8 operations, r ≡ −r)",
   groups: [
-    {
-      sign: -1, length: 4, size_sigma: 35.2, value: -25, n: 3,
-      vectors: [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
-      vectors_rlu: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      sizes_sigma: [35.2, 35.2, 35.2],
-    },
-    {
-      sign: 1, length: 5.657, size_sigma: 21.1, value: 15, n: 6,
-      vectors: [[4, 4, 0], [4, -4, 0], [4, 0, 4], [4, 0, -4], [0, 4, 4], [0, 4, -4]],
-      vectors_rlu: [[1, 1, 0], [1, -1, 0], [1, 0, 1], [1, 0, -1], [0, 1, 1], [0, 1, -1]],
-      sizes_sigma: [21.1, 21.1, 21.1, 21.1, 21.1, 21.1],
-    },
+    mmmOrbit(-1, 4, 35.2, -25, [[1, 0, 0]]),
+    mmmOrbit(-1, 4, 35.2, -25, [[0, 1, 0]]),
+    mmmOrbit(-1, 4, 35.2, -25, [[0, 0, 1]]),
+    mmmOrbit(1, 5.657, 21.1, 15, [[1, 1, 0], [1, -1, 0]]),
+    mmmOrbit(1, 5.657, 21.1, 15, [[1, 0, 1], [1, 0, -1]]),
+    mmmOrbit(1, 5.657, 21.1, 15, [[0, 1, 1], [0, 1, -1]]),
   ],
 };
+
+// The fills' texture over every punch hole, each with its 3-D rim: the 79
+// punched nodes (every one with 0.25 ≤ |Q| ≤ 4.4 Å⁻¹ but (2, 1, 0)), filled
+// with the diffuse they hide, read as a fill equal to the truth reads
+// (tests/test_fill_texture.py): no bias. The numbers are made up in that shape;
+// the limits are the ones asked for, as the server echoes them.
+const volumeTexture = (id: string, limit: number, limits: { minSigma?: number; oneWay?: number; minHoles?: number; floor?: number } = {}): VolumeTexture => ({
+  id,
+  punched_id: id.replace(/\.backfilled$/, ".braggpunched"),
+  holes_from: "punch_record",
+  rim: 4,
+  min_rim: 8,
+  min_sigma: limits.minSigma ?? 0.5,
+  one_way: limits.oneWay ?? 0.75,
+  min_holes: limits.minHoles ?? 5,
+  floor: limits.floor ?? 0.2,
+  n_holes: 79,
+  n_judged: 79,
+  judged: true,
+  node_spacing: 16,
+  room_needed: 10,
+  not_judged: null,
+  median_fill_bias_sigma: 0,
+  median_fill_bias_level: 0,
+  above_fraction: 0.152,
+  below_fraction: 0.0886,
+  above_floor_fraction: 0,
+  below_floor_fraction: 0,
+  systematic_fill_bias: false,
+  holes: [
+    {
+      index: 31, centre_hkl: [1, 1, 0], voxels: 19, rim_voxels: 1180, fill: 17.9, level: 17.5, sigma: 0.52, slope: -0.21,
+      edge: 17.62, peaked: 17.81, bias: 0.09, bias_sigma: 0.173, bias_level: 0.00514, not_judged: null,
+    },
+  ].slice(0, limit),
+});
 
 // The 3D test of each bump: the one at the powder ring's |Q| rises in nearly every direction.
 const ringIsotropy = (id: string, shells: { q: number; fwhm: number }[]): RingIsotropy => ({
@@ -381,10 +515,30 @@ const ringDiagnostics = (id: string): RingDiagnostics => ({
   unconfirmed_at_grid: null,
 });
 
+// The whole volume's shell floors of a dataset's flattened stage, on the
+// flatten's shells, with its input's level (the server's shell-floors): once per dataset.
+const floorsByStem = new Map<string, ShellFloors>();
+function shellFloors(id: string): ShellFloors {
+  const stem = id.split(".")[0];
+  const hit = floorsByStem.get(stem);
+  if (hit) return hit;
+  const left = RING_LEFT[stem];
+  const q = (h: number, k: number, l: number) => QU * Math.sqrt(h * h + k * k + l * l);
+  const stage = (name: RecipStageName) => ({
+    axes: [R_AXIS, R_AXIS, R_AXIS] as [number[], number[], number[]],
+    q,
+    value: (h: number, k: number, l: number, idx: [number, number, number]) => recipValue(name, left, h, k, l, idx),
+  });
+  const out = shellFloorsOf(stage("flattened"), stage("backfilled"), { id: `${stem}.flattened`, flatten: FLATTEN_RECORD });
+  floorsByStem.set(stem, out);
+  return out;
+}
+
 /** Answer every mocked API call from the crystal. */
 export function installBackend(api: BackendMocks): void {
   const stemOf = (id: string) => id.split(".")[0];
   api.fetchMeta.mockImplementation(async (id: string) => volumeMeta(id));
+  api.fetchShellFloors.mockImplementation(async (id: string) => shellFloors(id));
   api.fetchDpdfMeta.mockImplementation(async (id: string) => dpdfMeta(id));
   api.fetchSlice.mockImplementation(async (id: string, plane: string, value: number) => {
     const [stem, stage] = id.split(".") as [string, RecipStageName];
@@ -395,14 +549,22 @@ export function installBackend(api: BackendMocks): void {
     makeCut(plane, value, D_AXIS, (p, idx) => dpdfValue(p[0], p[1], p[2], idx), true),
   );
   api.fetchBraggProfile.mockImplementation(async (id: string) => ({ ...BRAGG_PROFILE, dataset_id: id }));
+  // What the run's search left alone, on a cut of its punched stage: the declared H planes.
+  api.fetchProtectedLabels.mockImplementation(async (_id: string, plane: string, value: number) => {
+    const cut = makeCut(plane, value, R_AXIS, () => 0, false);
+    const h = (x: number) => (PLANE_AXES[plane].fixed === 0 ? value : x);
+    return labelsOn(cut, (x) => (onTheThirds(h(x)) ? 1 : 0), { declared: THIRDS_AS_PLANES });
+  });
   api.fetchConsistencyCheck.mockImplementation(async (id: string) => ({ ...CONSISTENCY, dataset_id: id }));
   api.fetchVolumeCoverage.mockImplementation(async (id: string) => ({ ...COVERAGE, id }));
+  api.fetchVolumeTexture.mockImplementation(async (id: string, limit?: number, limits?: Record<string, number>) => volumeTexture(id, limit ?? 20, limits));
   api.fetchUbCheck.mockImplementation(async (id: string) => ({ ...UB_CHECK, id }));
   api.fetchDpdfFeatures.mockImplementation(async (id: string) => ({ ...DPDF_FEATURES, id }));
   api.fetchRingIsotropy.mockImplementation(async (id: string, shells: { q: number; fwhm: number }[]) => ringIsotropy(id, shells));
   // The grid is fine (0.0625 r.l.u., 0.098 Å⁻¹ a voxel): the ring removal left no ring unconfirmed.
   api.fetchRingDiagnostics.mockImplementation(async (id: string) => ringDiagnostics(id));
   api.fetchDataset.mockImplementation(async (id: string) => DATASETS.find((d) => d.id === stemOf(id)));
+  api.regridDataset?.mockImplementation(async (id: string) => regridAnswer(id));
 }
 
 // The console as a fresh session leaves it: default settings, no run, the

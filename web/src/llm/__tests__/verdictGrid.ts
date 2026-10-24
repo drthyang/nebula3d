@@ -53,6 +53,15 @@ export const STAGE_VARIANTS: Record<GridStage, Variant[]> = {
     v("falling", { max_after_floor_sigma: 0.5, max_floor_trend: -0.85, max_floor_span_fraction: 0.9 }, "attention"),
     v("at 0.8", { max_floor_trend: 0.8, max_floor_span_fraction: 0.8 }, "attention"),
     v("no trend", { max_after_floor_sigma: 0.8 }, "info"),
+    // Over the whole volume's shells (plan 4.1): its trend (signed) and span.
+    v("volume level", { max_after_floor_sigma: 1.7, floor_trend: -0.23, floor_span_fraction: 0.72, floor_judged_q: [5.58, 11.1], pedestal_left: false }, "pass"),
+    v("volume pedestal", { max_after_floor_sigma: 1.6, floor_trend: 0.99, floor_span_fraction: 1.3, floor_judged_q: [5.58, 11.1], pedestal_left: true }, "attention"),
+    v("volume falling", { floor_trend: -0.85, floor_span_fraction: 0.9 }, "attention"),
+    v("volume at 0.8", { floor_trend: 0.8, floor_span_fraction: 0.8 }, "attention"),
+    v("volume under 0.8", { floor_trend: 0.79, floor_span_fraction: 0.9 }, "pass"),
+    v("volume not measured", { max_after_floor_sigma: 1.7, floor_trend: null, floor_span_fraction: null, floor_judged_q: null, pedestal_left: null }, "info"),
+    // The volume's numbers beside the planes' largest: the volume's are judged.
+    v("volume level, planes' pedestal", { floor_trend: 0.3, floor_span_fraction: 0.6, max_floor_trend: 0.97, max_floor_span_fraction: 0.97 }, "pass"),
   ],
   pdf: [
     v("sound", { back_fft_pearson_r: 0.989, back_fft_pearson_r_even: 1, window_weight_on_unmeasured: 0.00024, window_shape: "ellipsoid", max_symmetry_break: 0, worst_symmetry_op: "mirror ⊥ a", symmetry_declared: true }, "pass"),
@@ -110,6 +119,32 @@ export const COVERAGE: Variant[] = [
   }),
   v("counts end, no edge", { verdict: "clean: the window puts 2e-4 of its weight on unmeasured reciprocal space", window_weight_on_unmeasured: 0.0002, raw_counts: { q_max_edge: null }, counts_end_inside_box: true }),
   v("weight only", { window_weight_on_unmeasured: 0.04 }),
+  // With the window fitted to the coverage (plan 4.5): the weight, or the
+  // taper's reach, is the backend's own target, and a band past the counts
+  // needs attention.
+  v("fitted, counts end inside", {
+    verdict:
+      "fitted to the coverage: the ΔPDF's ellipsoid window (shrunk to 0.695 × to fit the coverage) puts 9.82e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the raw counts end at 4.507 Å⁻¹, inside the box (its nearest face at 6.444 Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0–4.5 Å⁻¹ (suggested_band), the user's to set",
+    window_weight_on_unmeasured: 0.000982,
+    raw_counts: { q_min_edge: null, q_max_edge: 4.507, fully_measured: [0.15, 4.45], box_face_q: 6.444 },
+    suggested_band: [0, 4.5],
+    counts_end_inside_box: true,
+  }),
+  v("fitted by the taper", {
+    verdict:
+      "fitted to the coverage: the window is tapered to the measured coverage, where the backend fits it to keep at most 1e-3 of its weight on unmeasured reciprocal space: its own target, not a check; the raw counts reach the box's nearest face",
+    window_weight_on_unmeasured: null,
+    counts_end_inside_box: false,
+  }),
+  v("fitted, a band past the counts", {
+    verdict:
+      "too far: Qmax past the counts' upper edge (4.507 Å⁻¹): empty voxels enter the transform; the ΔPDF's ellipsoid window (shrunk to 0.695 × to fit the coverage) puts 9.82e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the band the counts allow is suggested_band, the user's to set",
+    window_weight_on_unmeasured: 0.000982,
+    raw_counts: { q_min_edge: null, q_max_edge: 4.507, fully_measured: [0.15, 4.45], box_face_q: 6.444 },
+    suggested_band: [0, 4.5],
+    counts_end_inside_box: true,
+    band_check: "Qmax past the counts' upper edge (4.507 Å⁻¹): empty voxels enter the transform",
+  }),
 ];
 
 export const SYMMETRY: Variant[] = [
@@ -121,11 +156,43 @@ export const SYMMETRY: Variant[] = [
 /** Words no producer writes, read only from a reply. */
 export const SYMMETRY_UPPER: Variant = v("upper case", { verdict: "Not kept: six-fold (60°) (0.02)" });
 
+/** texture_check's result since plan 4.2: the fill bias over every punch hole in 3-D, the cuts carrying the azimuthal texture. */
+const AZIMUTHAL = [{ cut: "H–K plane at L = 0", azimuthal_ratio: 1.01 }, { cut: "H–L plane at K = 0", azimuthal_ratio: 1 }];
+const volumeTexture = (over: Record<string, unknown>): Record<string, unknown> => ({
+  n_holes: 189,
+  n_judged: 189,
+  median_fill_bias_sigma: 0.0109,
+  median_fill_bias_level: 0.00281,
+  above_fraction: 0.503,
+  below_fraction: 0.00529,
+  above_floor_fraction: 0.0423,
+  below_floor_fraction: 0,
+  systematic_fill_bias: false,
+  per_cut: AZIMUTHAL,
+  ...over,
+});
+
 export const TEXTURE: Variant[] = [
+  // Recorded before 4.2: each cut judged on its own.
   v("no bias", { per_cut: [{ cut: "H–K plane at L = 0", systematic_fill_bias: false }, { cut: "H–L plane at K = 0", systematic_fill_bias: false }] }),
   v("bias", { per_cut: [{ cut: "H–K plane at L = 0", systematic_fill_bias: false }, { cut: "H–L plane at K = 0", systematic_fill_bias: true }] }),
   v("no cuts", { per_cut: [] }),
   v("no per_cut", {}),
+  v("in 3-D, no bias", volumeTexture({})),
+  v("in 3-D, bias", volumeTexture({ median_fill_bias_sigma: 39.1, median_fill_bias_level: 0.506, above_fraction: 0.8, below_fraction: 0, above_floor_fraction: 0.8, systematic_fill_bias: true })),
+  v("in 3-D, grid too coarse", {
+    n_holes: 277,
+    not_judged: "grid too coarse: the nodes are 10 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more",
+    median_fill_bias_sigma: null,
+    median_fill_bias_level: null,
+    above_fraction: null,
+    below_fraction: null,
+    above_floor_fraction: null,
+    below_floor_fraction: null,
+    systematic_fill_bias: null,
+    per_cut: AZIMUTHAL,
+  }),
+  v("in 3-D, too few holes", volumeTexture({ n_holes: 4, n_judged: 4, not_judged: "too few holes judged: 4 of 4, under 5", median_fill_bias_level: 0.516, systematic_fill_bias: null })),
 ];
 
 export const GRAIN: Variant[] = [

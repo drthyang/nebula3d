@@ -8,7 +8,10 @@
 // server would cut a longer one without saying so.  A request that fails the
 // way a local server's do, a crash, a model unloaded, a server gone quiet, is
 // asked again after a pause; what still fails ends the reply with a note that
-// says what to do (recovery.ts).
+// says what to do (recovery.ts). What the loop runs under, transport by
+// transport (its round limit, the tools a model is offered, when results are
+// shortened, the temperature and output cap it sends), is the run policy's
+// (runPolicy.ts): the app's own for its settings, or a validation run's.
 
 import {
   isMalformedOutput,
@@ -21,14 +24,14 @@ import {
   type TokenUsage,
   type ToolCall,
 } from "./provider/client";
-import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
+import { answerIssues, earlierSources, issuesNote, issuesPrompt } from "./answerChecks";
 import { fillReferences } from "./references";
 import { lastQuestion, toolsFor } from "./localTools";
-import { isLocalUrl } from "./provider/presets";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, STALL_MS, StallError, type Failure } from "./recovery";
 import { baseTokens, DATA_CHARS_PER_TOKEN, estimateTokens, observeTokens, PROSE_CHARS_PER_TOKEN } from "./provider/tokens";
 import { planWindow } from "./provider/window";
 import { seen, shorten, whole } from "./readings";
+import { runPolicyOf, type RunPolicy } from "./runPolicy";
 import { estimated, measured, notCounted, ranNothing, type Usage } from "./usage";
 import type { LlmSettings } from "./settings";
 import { skillsOn } from "./skills";
@@ -68,7 +71,7 @@ export interface AgentStep {
   // and never in it: the model reads the result alone.
   outcomes?: Outcome[];
   // Brought back from a saved session file (state/session.ts): shown, but
-  // never taken as evidence for a later reply's numbers (toolResultsIn), since
+  // never taken as evidence for a later reply's numbers (toolStepsIn), since
   // the file could say anything.
   restored?: true;
 }
@@ -93,10 +96,9 @@ export interface AgentResult extends AgentProgress {
   verdict?: ComputedVerdict | null;
 }
 
-// Rounds of tool calls before the model is asked to answer with what it has;
-// each round may call several tools.  Enough to change a setting, rerun and
-// measure a few times over.
-export const MAX_TOOL_ROUNDS = 12;
+// The loop's round limit and compaction budget are the run policy's
+// (runPolicy.ts), under the names the loop has always given them.
+export { KEEP_FULL, MAX_TOOL_ROUNDS, SOFT_BUDGET } from "./runPolicy";
 
 // Servers known (this session) to refuse `tools`, keyed by base URL + model, so
 // the next request goes straight to the plain path.
@@ -104,11 +106,14 @@ const noTools = new Set<string>();
 export const toolsKnownUnsupported = (s: Pick<LlmSettings, "baseUrl" | "model">): boolean =>
   noTools.has(`${s.baseUrl}|${s.model}`);
 
+/** Forget the servers found to refuse tools: each is offered them again (a validation run starts so, evals/validationRun.ts). */
+export const forgetToolsUnsupported = (): void => noTools.clear();
+
 export const TOOLS_UNSUPPORTED_NOTE =
   "This model cannot call tools, so it answered from the fixed-cut metrics only. Pick a tool-capable model (Ollama and LM Studio mark them) to let it measure other cuts.";
 
 export const CUT_OFF_NOTE =
-  "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (48k or more: with Tools on, the first request alone is about 10k tokens, and a full assessment that reads two skills reaches about 46k), or turn Tools off; Clear starts a shorter conversation.";
+  "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (56k or more: with Tools on, the first request alone is about 10k tokens, and a full assessment that reads two skills reaches about 48k), or turn Tools off; Clear starts a shorter conversation.";
 
 // A reply its server could not parse ran none of its tools, so the same request
 // is sent again, at most this many times in one reply.
@@ -126,14 +131,6 @@ export const MAX_RECOVERIES = 4;
 export const LOOP_NOTE = "The model repeated calls that brought nothing new, so it was asked to answer with what it had.";
 const ANSWER_NOW = "The tool calls are bringing nothing new. Answer now from the results above, without calling more tools.";
 
-// A local model's request past this many tokens has its older tool results
-// shortened to their verdicts, headlines and numbers (shorten, readings/), the
-// newest KEEP_FULL left whole: it keeps the request inside a 32k window with
-// room to reply, and fast. A request no window can hold is shortened down to
-// the newest result before it is refused.
-export const SOFT_BUDGET = 24_000;
-export const KEEP_FULL = 3;
-
 // A final answer that fails its checks (answerChecks.ts: a verdict without its
 // tool, a number from nowhere, a stage called clean that the tools judged to
 // need attention) goes back to the model this many times; what still fails is
@@ -144,9 +141,10 @@ export const REVISING_NOTE = "Checking the answer against its evidence…";
 // What an answer's numbers may come from: the conversation as it arrived (the
 // system prompt, the context, the user's words), the tool results of this
 // reply (whole, though the model may read them fitted or shortened) and of
-// earlier turns, and the tools' own guidance. No assistant text: an earlier
-// answer's number from nowhere would otherwise vouch for the next answer, and
-// this reply's drafts, and the notes sent back about them, for themselves.
+// earlier turns while what they measured stands (earlierSources), and the
+// tools' own guidance. No assistant text: an earlier answer's number from
+// nowhere would otherwise vouch for the next answer, and this reply's drafts,
+// and the notes sent back about them, for themselves.
 function numberSources(convo: ChatMessage[], arrived: number, results: readonly string[], tools: readonly AgentTool[], earlier: readonly string[]): string {
   const text = (m: ChatMessage): string =>
     typeof m.content === "string"
@@ -162,9 +160,14 @@ function numberSources(convo: ChatMessage[], arrived: number, results: readonly 
   ].join("\n");
 }
 
-/** The tool results of a conversation's turns, as the model read them (`seen`): number sources for the next reply. Not those restored from a session file. */
-export const toolResultsIn = (turns: readonly { steps?: readonly AgentStep[] }[]): string[] =>
-  turns.flatMap((t) => (t.steps ?? []).flatMap((s) => (s.status === "done" && !s.restored && seen(s) ? [seen(s)] : [])));
+/**
+ * The tool calls of a conversation's turns that ran, oldest first, as the
+ * transcript keeps them: the next reply's number sources, each result as the
+ * model read it (`seen`) while what it measured stands (earlierSources). Not
+ * those restored from a session file.
+ */
+export const toolStepsIn = (turns: readonly { steps?: readonly AgentStep[] }[]): AgentStep[] =>
+  turns.flatMap((t) => (t.steps ?? []).filter((s) => s.status === "done" && !s.restored && seen(s)));
 
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
@@ -173,28 +176,38 @@ export async function runAgent({
   tools: given,
   ctx,
   settings,
+  policy = runPolicyOf(settings),
   signal,
   onProgress,
-  maxRounds = MAX_TOOL_ROUNDS,
+  maxRounds = policy.maxRounds,
   usage: wantUsage = false,
   checkAnswers = true,
   stallMs = STALL_MS,
   retryDelaysMs = RETRY_DELAYS_MS,
-  softBudget = SOFT_BUDGET,
+  softBudget = policy.pruning?.softBudget,
+  onTruncated,
   onUsage,
 }: {
   messages: ChatMessage[];
   tools: AgentTool[];
   ctx: ToolContext | null;
   settings: LlmSettings;
+  // What the reply runs under (runPolicy.ts): the app's for its settings
+  // unless given (a validation run gives its own, validationRun.ts).
+  policy?: RunPolicy;
   signal: AbortSignal;
   onProgress?: (p: AgentProgress) => void;
-  maxRounds?: number;
+  maxRounds?: number; // the policy's unless given (tests)
   usage?: boolean; // count the reply's tokens (the evals)
   checkAnswers?: boolean; // hold a final answer to its evidence (answerChecks.ts); on whenever tools are
   stallMs?: { first: number; idle: number }; // the watchdog's limits (tests shorten them)
   retryDelaysMs?: number[]; // the pauses before each retry
-  softBudget?: number; // a local request's tokens past which older results are shortened
+  softBudget?: number; // the tokens past which a pruned request's older results are shortened: the policy's unless given (tests)
+  // Each request whose reply stopped at its output limit (stoppedAtLimit,
+  // provider/client.ts): its number, 1-based over every request the loop
+  // sent, retries included, and the server's stop reason (a validation run's
+  // record keeps them, validationRun.ts).
+  onTruncated?: (cut: { request: number; reason: string }) => void;
   onUsage?: (u: Usage) => void; // each completed request's tokens, measured or estimated, and each one sent that did not complete (usage.ts)
 }): Promise<AgentResult> {
   // The reply's history, which the executor runs each round of calls over
@@ -202,9 +215,13 @@ export async function runAgent({
   // against are the given ones under the skills' switch (skills.ts), as the
   // conversation's context carries it (with the skills off, no read_skill);
   // the tool context is the reply's own copy, so a run's fresh dataset and
-  // the skills read stay this reply's. Without a context no tool runs, and
-  // the tools are the given ones.
-  let history: History | null = ctx && startReply(ctx, given);
+  // the skills read stay this reply's, and a skill counts as read from the
+  // start only if its text is in the messages. It carries the user's latest
+  // message, as the conversation arrived: what the loop later sends as the
+  // user (a send-back, the note to answer now) is not the user's, and names
+  // no fact about the sample to update_settings. Without a context no tool
+  // runs, and the tools are the given ones.
+  let history: History | null = ctx && startReply({ ...ctx, userMessage: lastQuestion(messages) }, given, messages);
   const tools = history ? history.tools : given;
   const convo = [...messages];
   const arrived = convo.length;
@@ -250,7 +267,7 @@ export async function runAgent({
   const windowKey = `${settings.baseUrl}|${settings.model}`;
   // A local model is offered the reading tools and those its question is
   // about (localTools.ts); one it calls by name all the same runs, and joins.
-  let offered = isLocalUrl(settings.baseUrl) ? toolsFor(lastQuestion(messages), tools) : tools;
+  let offered = policy.toolScoping === "question" ? toolsFor(lastQuestion(messages), tools) : tools;
   const offer = (name: string) => {
     const tool = tools.find((t) => t.name === name);
     if (tool && !offered.includes(tool)) offered = tools.filter((t) => offered.includes(t) || t === tool);
@@ -258,6 +275,7 @@ export async function runAgent({
   let answerNow = false; // asked to answer without calling more tools
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 }; // over the requests that reported them
   let requests = 0;
+  let sent = 0; // requests sent, retries included
   for (let round = 0; ; round++) {
     const last = round >= maxRounds;
     let roundText = "";
@@ -267,7 +285,9 @@ export async function runAgent({
     const reasoningBefore = reasoning;
     let reported: TokenUsage | undefined; // the request's counts, as its server gave them
     const specs = useTools ? toolSpecs(offered) : undefined;
-    if (isLocalUrl(settings.baseUrl) && estimateTokens(baseTokens(convo, specs), windowKey) > softBudget) compactOlder(KEEP_FULL);
+    if (policy.pruning && softBudget !== undefined && estimateTokens(baseTokens(convo, specs), windowKey) > softBudget) {
+      compactOlder(policy.pruning.keepFull);
+    }
     // The request's own controller: the reply's Stop ends it, and so does the
     // watchdog when the server goes quiet.
     const request = new AbortController();
@@ -275,7 +295,7 @@ export async function runAgent({
     signal.addEventListener("abort", stopRequest, { once: true });
     let stalled = false;
     let heard = false; // a piece of the reply arrived
-    let sent = false; // the request went to the server
+    let dispatched = false; // the request went to the server
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     const watch = (ms: number) => {
       clearTimeout(watchdog);
@@ -295,12 +315,13 @@ export async function runAgent({
         note = note ? `${note} ${plan.refusal}` : plan.refusal;
         break;
       }
-      sent = true;
+      dispatched = true;
+      sent += 1;
       for await (const delta of streamChat({
         baseUrl: settings.baseUrl,
         model: settings.model,
         messages: convo,
-        temperature: settings.temperature,
+        temperature: policy.temperature, // null: none is sent
         apiKey: settings.apiKey || undefined,
         signal: request.signal,
         tools: specs,
@@ -309,6 +330,7 @@ export async function runAgent({
         // the reply (usage.ts), and a local server's calibrate the token estimate.
         includeUsage: !usageRefused(settings.baseUrl),
         numCtx: plan.numCtx,
+        ...(policy.outputCap.loop != null ? { maxTokens: policy.outputCap.loop } : {}),
       })) {
         // A request the provider dropped and sent again itself (anthropic.ts).
         if (delta.discarded) {
@@ -317,6 +339,7 @@ export async function runAgent({
         }
         heard = true;
         watch(stallMs.idle);
+        if (delta.stopReason) onTruncated?.({ request: sent, reason: delta.stopReason });
         if (delta.usage) {
           observeTokens(plan.key, plan.base, delta.usage.input);
           tokens.input += delta.usage.input;
@@ -349,7 +372,7 @@ export async function runAgent({
       );
     } catch (e) {
       // A request sent that did not complete has no counts: said apart (usage.ts).
-      if (sent && (heard || !ranNothing(e))) onUsage?.(notCounted());
+      if (dispatched && (heard || !ranNothing(e))) onUsage?.(notCounted());
       if (signal.aborted) throw e; // the reply was stopped
       if (useTools && round === 0 && !roundText && isToolsUnsupported(e)) {
         noTools.add(`${settings.baseUrl}|${settings.model}`);
@@ -406,8 +429,9 @@ export async function runAgent({
       // The final answer: held to its evidence before the user reads it. A
       // revision that wrote nothing leaves the answer it revised.
       const answer = roundText.trim() ? roundText : rejected;
-      const sources = numberSources(convo, arrived, steps.map(whole), tools, ctx?.earlierResults ?? []);
-      const issues = useTools && checkAnswers ? answerIssues(answer, steps, sources) : null;
+      const earlier = earlierSources(ctx?.earlierSteps ?? [], steps);
+      const sources = numberSources(convo, arrived, steps.map(whole), tools, earlier.standing);
+      const issues = useTools && checkAnswers ? answerIssues(answer, steps, sources, earlier.stale) : null;
       if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
         revisions += 1;
         rejected = roundText;

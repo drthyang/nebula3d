@@ -11,8 +11,8 @@ import { fetchDatasets } from "../../../api/client";
 import { cancelPipeline } from "../../../api/pyodideEngine";
 import { usePipelineStore } from "../../../state/pipelineStore";
 import type { WorkerRequest } from "../../../workers/pyodideWorker";
-import { loadSettings, saveSettings } from "../../settings";
 import { toolsWhere } from "../../tools";
+import { contentTuner } from "../scripted";
 import { casesIn } from "../validation";
 import { bridgeConfig, bridgesStarted, clearRelayedErrors, currentBridge, relayedErrors, WORKER_MESSAGES } from "./bridgeWorker";
 import { DEV_CASE_IDS, devCase } from "./index";
@@ -96,33 +96,11 @@ const BACKEND_CALLS: Record<string, Record<string, unknown>> = {
   show_in_viewer: { view: "cleanup", plane: "hk0", value: 0 },
   run_pipeline: { from_stage: "pdf" },
   tune_pipeline: { stages: ["pdf"], trials_per_stage: 2 },
+  regrid_refined_ub: {},
 };
 
-// The tuning run asks its model for alternatives, not through the agent loop:
-// a model content with the current settings proposes none.
-const TUNER_URL = "http://tuner.invalid/v1";
-function contentTuner(): () => void {
-  const real = globalThis.fetch;
-  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (!url.startsWith(TUNER_URL)) return real(input, init);
-    const content = JSON.stringify({ candidates: [], best: 1, why: "the current settings" });
-    // Answered as asked, as a server does: streamed (the tuner's requests are,
-    // under the stall watchdog) or whole.
-    if ((JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean }).stream) {
-      const sse = `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`;
-      return Promise.resolve(new Response(sse, { status: 200, headers: { "Content-Type": "text/event-stream" } }));
-    }
-    const reply = { choices: [{ message: { content } }] };
-    return Promise.resolve(new Response(JSON.stringify(reply), { status: 200, headers: { "Content-Type": "application/json" } }));
-  }) as typeof fetch;
-  const settings = loadSettings();
-  saveSettings({ baseUrl: TUNER_URL, model: "content" });
-  return () => {
-    globalThis.fetch = real;
-    saveSettings(settings);
-  };
-}
+// The user's latest message for a tool that runs only when it is asked for (its facts' askedFor).
+const ASKED: Record<string, string> = { regrid_refined_ub: "Regrid the volume onto the refined UB." };
 
 describe("the tools, through the bridge", () => {
   it("runs every tool that reaches the backend on dev-control, and no bridge call fails", async () => {
@@ -133,7 +111,7 @@ describe("the tools, through the bridge", () => {
     const restore = contentTuner();
     try {
       for (const [name, args] of Object.entries(BACKEND_CALLS)) {
-        const r = await c.tool(name, args);
+        const r = await c.tool(name, args, { userMessage: ASKED[name] });
         expect(r.ok, `${name}: ${r.summary}`).toBe(true);
       }
     } finally {

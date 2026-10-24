@@ -62,7 +62,7 @@ const settled = (turn: ChatTurn): ChatTurn =>
 
 // A turn read from a session file, which could hold anything: only its steps
 // of the shape a step has, each marked as restored, so a later reply's number
-// check does not take its result for a tool's (agent.ts toolResultsIn).
+// check does not take its result for a tool's (agent.ts toolStepsIn).
 const STEP_STATUSES = new Set(["running", "done", "error", "stopped"]);
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const isStep = (s: unknown): s is AgentStep =>

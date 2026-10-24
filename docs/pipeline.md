@@ -93,6 +93,27 @@ the run's backfilled volume: `nebula3d.pipeline.run_pipeline`, which the
 server and the browser run, never reads a flattened volume an earlier run left
 on disk, and its log names the volume the ΔPDF transforms.
 
+Each cleanup stage has such a switch: `PipelineParams.rings_enabled`,
+`punch_enabled`, `backfill_enabled` and `flatten_enabled`, the web page's
+*Enable stage* switches, which the page sends with every run (the server's
+`StageParamsIn` and the browser's bridge take them; the flatten's is the
+request's `flatten_enabled`). A stage switched off is not run and passes its
+input through: the next stage reads the output of the last stage before it
+that is switched on, or the raw input (with the ring removal off, the punch
+reads the raw volume), never an output an earlier run left on disk, and the
+ΔPDF transforms the last one (`PipelinePaths.pdf_input`). The switched-off
+stage's own output from an earlier run stays on disk as it was, neither
+rewritten nor removed. The log says so: the stage after one switched off names
+the volume it reads ("ring removal disabled: the Bragg punch reads …"), and a
+stage switched off but listed in `stages` says it is off ("ring removal
+disabled (no powder rings removed)"). A stage left out of `run_pipeline`'s
+`stages` is another thing: it is not run in this call, and the stages after
+it read its output on disk (or from `inputs`, a tuning trial's): a partial
+re-run, as the Pilot's runs from a stage and the tuning's trials make. As for
+any setting, a run without `force` keeps the outputs that exist: after
+switching a stage off, run with `force` (the page's *Force*), or `force_from`
+the stage after it, for the stages after it to be recomputed.
+
 Useful overrides:
 
 | Variable | Effect |
@@ -191,6 +212,60 @@ the test had judged a bump of the crystal's own a powder ring. 161 points
 (0.081 Å⁻¹) put 1.99 voxels across it and fill 90 % of the cells or more from
 1.2 Å⁻¹ out, and so would 81 points over ±2 r.l.u.
 
+#### The candidates' noise floor, where the counts end early
+
+The removal finds its candidates in the radial profile pooled over the planes,
+in |Q| bins from 1.5 to 10.5 Å⁻¹ whatever the volume holds: a narrow peak over
+a SNIP baseline that rises 6 × the profile's noise (`pooled_min_snr`), the MAD
+of the residual's bin-to-bin differences, /√2. The noise is taken over pairs of
+adjacent bins that are both measured: some plane samples them, and not sparsely
+(by a tenth of the median number of planes or more). With no such pair it is
+infinite and nothing is a candidate; with every bin measured it is the estimate
+over all of them. The bins left out are those the detection fills, flat past
+the last measured one, which SNIP leaves as they are, so their differences are
+exactly 0. Counted in, as they were before (review finding B3), they pulled the
+noise of a volume whose counts end inside the range towards 0: on the
+validation's dev crystal at 161 points, to exactly 0 with the counts ending
+anywhere from 4 to 5.5 Å⁻¹, 0.04 of the measured noise at 6 to 6.5, 0.28 at 7,
+0.60 at 8 and 0.90 at 10. Every local maximum then became a candidate. On
+dev-coverage (counts cut at 4.51 Å⁻¹, no ring) there were 24 at 161 points, 18
+judged and rejected, and 10 at 81 points, which the coarse-grid notice listed
+and `pooled_confirm_rings=False` would have subtracted, 9.4 % of |I|; now there
+are none at either grid. Their keep-outs also crowded a real ring's flanks to
+two or three bins in all, so the isotropy test drew its line through those (a
+signal-to-noise of 1e14 to 1e16) and skipped its curve check, which needs four.
+On volumes cut short with rings planted, the candidates fall from 14–37 to 0–6,
+a strong ring is judged on two clean bins a side (signal-to-noise 37 to 64,
+curve 0.92 to 1.05), and a weak ring under the 6σ floor goes undetected, as
+with full coverage.
+
+The shells kept out of a judged shell's flanks are picked at half that cut,
+3σ: a keep-out only protects a flank and is never subtracted, so the lower bar
+is the cautious side, and a weak ring under 6σ beside a strong one (the Al 420
+line at 6.95 Å⁻¹ beside the 331 at 6.76 Å⁻¹ on the 97-point demo of
+`tests/test_demo.py`) no longer lifts the strong one's flank until it fails.
+The lower bar can keep the crystal's own bumps out of a fully measured ring's
+flanks too: on dev-rings at 161 points the 2.2 Å⁻¹ ring is judged without its
+curve check, still a ring, the volume unchanged.
+
+- **Not taken: judging a ring only on two flank bins a side or more**, else
+  not judged, with a retry that keeps out the confirmed rings alone. With the
+  noise from the measured bins it never fired on the volumes tried; it stays
+  an option should crowded flanks show again.
+- **A known limit, outside this fix.** A weak ring beside a strong one
+  (amplitude 0.05 against 0.5) is subtracted at 1.2 to 2.4 times its
+  amplitude in every geometry tried, full coverage included.
+- **Open, for the user: the face–corner zone.** Between the box's face and its
+  corner (6.44 and 11.16 Å⁻¹ on the dev crystal) a shell is measured in some
+  directions only, and the isotropy test judges it on what it has: 16 to 32 of
+  its 128 direction cells, where it needs 16 (`IsotropyConfig.min_cells`). On
+  a synthetic cubic crystal, shells of the crystal's own pass there as rings
+  whatever the noise (4.41 Å⁻¹ on a ±3 Å⁻¹ box; 5.01, 5.49, 7.29 and
+  9.01 Å⁻¹ on others). With this fix, `min_cells` = 64, half the sphere,
+  removes all of them, keeps every planted ring and leaves the dev cases as
+  they are. Whether a ring may be confirmed from part of the sphere, and from
+  how much of it, is the user's rule: `min_cells` stays 16 until they decide.
+
 ### 2. Punch Bragg And Satellite Peaks
 
 ```bash
@@ -207,6 +282,119 @@ Output:
 ```text
 data/processed/*_braggpunched.h5
 ```
+
+#### Which nodes are Bragg peaks, and the grid that takes
+
+The punch's node test (`integer_detect="significance"`, the default) takes
+the brightest voxel of each integer node's window and asks whether its
+integrated excess stands `min_significance` standard errors (corrected for
+the window search) above the node's own background: the median of the
+measured voxels in a shell between 1× and 2× the resolution ellipsoid R
+(`punch_spherical_radii`, rρ, rθ, rφ = 0.097, 0.072, 0.115 Å⁻¹). The shell
+tells a Bragg peak from a broad diffuse maximum at the node, which stands no
+higher than its own surroundings. A median needs 8 voxels
+(`_SHELL_MIN_VOXELS` in `nebula3d.analysis.bragg`, the floor of every
+shell median the punch takes), and that sets the grid:
+
+- **The limit.** The shell's Q-volume is 2³ − 1 = 7 times R's,
+  (28π/3)·rρ·rθ·rφ, so 8 voxels need a voxel Q-volume of (7π/6)·rρ·rθ·rφ
+  or less: a cubic voxel of 0.143 Å⁻¹ or less at the default R, about
+  2·r_min. A voxel's size is the edge of a cube of its Q-volume,
+  ∛(|det UB|·ΔH·ΔK·ΔL), the step itself on a cubic grid
+  (`BraggRemover.voxel_edge_q`; the limit, from R and the floor,
+  `BraggRemover.node_test_limit`).
+- **Node by node.** The count is checked at each node, around the voxel
+  judged: R turns with Q̂ and the grid does not, so the count varies with the
+  direction (at the limit about one direction in twelve falls short, at 0.94
+  of it none), and with the mask and the box's faces, which cut the shells of
+  nodes at the edge of the measured volume.
+
+A node whose shell holds fewer than 8 measured voxels is not judged. Before
+this guard the test fell back on the window's median, which on a coarse grid
+passes the diffuse at a node: a saddle's corner stands many σ above its
+window's median. With `mode="both"` (the default) such a node is left to the
+search pass, which punches a peak only if it stands out of its |Q| shell by
+the search floors. A search peak inside the window of a node left to it, the
+box the node test searches about the node, is that node's Bragg peak (the
+brightest, if there are more): its record takes the node as
+`source_node_hkl` and says the search found it (`found_by: "search"`; the
+node test's peaks say `"integer"`), and it is punched and learned from like
+the node test's peaks, the punch's Bragg profile (and the `integer_h_guard_hkl`
+slab) included. A Bragg peak the search cannot see may remain: one below its
+floors, the lesser error, or one in a |Q| shell too thin for its statistics
+(under 20 voxels, at the box's far corners), which may be strong. With
+`mode="integer"` there is no search pass to leave it to: the node is judged
+against its window's median as before, provisionally. On a grid coarser than
+the limit the punch says so out loud. Its done line ends on a notice, marked
+⚠, such as
+
+```text
+grid too coarse for the Bragg punch's node test: a voxel is 0.161 Å⁻¹; its background shell needs ≤ 0.143 Å⁻¹. 703 of 728 nodes were not judged and were left to the search pass; Bragg peaks the search cannot see may remain. Use a finer grid.
+```
+
+with `mode="integer"`: "… 703 of 728 nodes were judged provisionally,
+against their window's median; diffuse maxima at nodes may be punched. Use a
+finer grid." Its line on the integer nodes counts them on any grid ("8
+peaks; 703 of 728 nodes not judged (fewer than 8 measured voxels in the
+background shell), left to the search pass"): on a grid finer than the limit
+only the nodes at the edge of the measured volume or on the box's faces can
+fall short, and the line counts them without the ⚠ notice. The nodes are the
+ones the test examined, those with a measured window. The search's line
+counts the Bragg peaks it found at them ("172 peaks, 172 of them the Bragg
+peaks of nodes the node test left to it"), and the footprint's line what the
+profile was learned from ("… the shared Bragg profile (learned from 180
+peaks, 172 of them the search's at nodes the node test left to it)"; the
+record's `footprint_profile.from_search`). The punch's record, its
+profile beside the punched volume (`*_braggpunched_profile.json`), keeps
+them as `node_test`: `examined`, `under_floor`, `min_voxels`, `voxel_q`,
+`needs_q` (Å⁻¹), `left_to_search` and the `notice` (none on a grid finer
+than the limit); `GET /api/bragg/{id}/profile` and the browser build serve
+it. Where the record carries the notice, the fills' texture in 3-D judges no
+fill ([the fills' texture](#the-fills-texture)). The Execution page shows the
+done line, and the stage's summary, as a
+warning, and NEBULA Pilot's `run_log` gives the lines as written.
+
+On the validation's dev crystal (a = 3.9 Å, ±4 r.l.u.), 81 points (0.161 Å⁻¹
+a voxel) leave 2 to 6 voxels in the shell at 96 % of the nodes (703 of 728
+on the control). Without the guard the test punched 29 to 106 forbidden
+nodes of the crystal's FCC lattice on each case without rings (118 and 125
+with them), a quarter to a half of the punched voxels, and the ⟨3/2 0 0⟩
+correlation of three cases fell to 0.77–0.79 of its amplitude. With it no
+forbidden node is punched (on the ring cases, where the ring removal confirms
+no ring at this grid, the four and two the test judges with a full shell on
+the 4.05 Å⁻¹ ring aside), the three keep 0.89–0.93, and broad maxima planted
+at the (1,1,0) nodes under the search floors go unpunched, where the test
+as it was punched all twelve. The search finds the Bragg peaks instead: on
+the control 172, each the Bragg peak of a node left to it, and the punch
+learns its profile from them and the node test's 8 (180 peaks in three |Q|
+ranges; from 8 it could learn none, needing 20), so a peak whose own width it
+cannot measure (within 5 voxels of the box's faces) gets the profile's
+footprint, not the bare resolution ellipsoid. The ΔPDF then scores as it does
+with the forbidden nodes' punches simply taken out (the control's ⟨3/2 0 0⟩
+at 0.926, the ΔPDF's rms error 0.266). On five of the eight cases the search
+misses all eight Bragg peaks at the box's corners (±4, ±4, ±4), on a sixth
+two: their |Q| shell holds 8 voxels, under the 20 its statistics need. 161
+points (0.081 Å⁻¹) leave 9 voxels or more in every node's shell, the box's
+corners included: every node is judged, nothing is left to the search, and
+the punch is as it was.
+
+#### What the search leaves alone: the sample's modulation
+
+The search pass punches sharp peaks off the lattice, satellites included. A
+sample's satellites are a fact about it, declared like its symmetry
+(`PipelineParams.modulation`): the wave vector k, the order and the form,
+either the points G ± m·k or the planes through them. The search then leaves
+them alone at every position equivalent under the symmetry.
+
+Nothing is protected by default: a run that declares none leaves no position
+alone, and its search punches every sharp peak it finds off the lattice. The
+planes it protected by default before declarations, H = n ± 1/3 ± 0.08 r.l.u.,
+are k = (1/3, 0, 0) declared as planes, bit for bit. The punch records what
+its search left alone. When its sharp
+peaks off the lattice bunch at one commensurate fraction, as an undeclared
+modulation would leave them, it says so, and NEBULA Pilot asks the user
+whether the sample has that modulation. The physics, the record, the console's
+side and the known limits are in [modulation.md](modulation.md).
 
 ### 3. Backfill Bragg Holes
 
@@ -259,28 +447,27 @@ provisional):
    voxels apart or more. The nodes are the grid's: integer h, k and l, one
    r.l.u. apart along the coarsest axis (a supercell's parent nodes lie
    further apart, so this errs toward not judging). The rule reads the median
-   hole, so a cut is judged only where its median hole has that room; else it
-   says why (`not_judged`: "grid too coarse: …"), measures no bias and gives no
-   verdict (`systematic_fill_bias` null). The check passes only when every cut
-   it reads was judged; a judged cut's bias still needs attention. The fill's
-   gap band is the rim's first ring or two, inside its four, so it adds
-   nothing to the reach; it leaves the trend two rings or more while it is two
-   voxels deep or less (step 4's rim of one ring). On the validation's dev
-   crystal, 81 points over ±4 r.l.u. put the nodes 10 voxels apart, and the
-   punch's holes reach 2 voxels from their centres on the cuts (3 in 3-D):
-   their rims need 12 (14), and the cuts are not judged but where the median
-   hole reaches one voxel. 161 points put the nodes 20 apart, for holes of the
-   same reach.
+   hole, so the fills are judged only where the median hole has that room;
+   else the check says why (`not_judged`: "grid too coarse: …"), measures no
+   bias and gives no verdict (`systematic_fill_bias` null). The fill's gap
+   band is the rim's first ring or two, inside its four, so it adds nothing to
+   the reach; it leaves the trend two rings or more while it is two voxels
+   deep or less (step 4's rim of one ring). On the validation's dev crystal,
+   161 points over ±4 r.l.u. put the nodes 20 voxels apart, and the median
+   hole reaches 2 to 3.6 voxels from its centre in 3-D: the rims need 12 to
+   15. 81 points put them 10 apart, a grid too coarse for the punch's node
+   test (below), and the fills are not judged there.
 
-The Pilot reads holes on cuts, the three principal planes through the origin:
-a hole there is a 4-connected component of the cut, and its rim the ring
-around it in the plane. A cut through a hole's edge sees a small section of it,
-whose rim in the plane lies off the node, where the diffuse is rounded, so the
-range the rim allows depends on where the cut crosses the hole; peaks off those
-planes (satellites) are crossed at their edges only, or not at all.
+The Pilot first read holes on cuts, the three principal planes through the
+origin: a hole there is a 4-connected component of the cut, and its rim the
+ring around it in the plane. A cut through a hole's edge sees a small section
+of it, whose rim in the plane lies off the node, where the diffuse is rounded,
+so the range the rim allows depends on where the cut crosses the hole; peaks
+off those planes (satellites) are crossed at their edges only, or not at all.
 `nebula3d.analysis.fill_texture` applies the same rule to every hole of the
 volume in 3-D (server: `GET /api/volumes/{id}/texture` on a backfilled stage;
-browser: `webbridge.volume_texture_json`, the same fields). A hole is a
+browser: `webbridge.volume_texture_json`, the same fields), and since plan
+4.2 the Pilot's `texture_check` judges by it (below). A hole is a
 6-connected component of the punch's record, which the punch stage writes into
 its output (`nebula3d.pipeline.read_punch_record`); a punched file without the
 record falls back on the cut's test, unmeasured in the punched stage and
@@ -289,10 +476,31 @@ about 2400 around a hole three voxels in radius where a cut through its centre
 holds about 160. The limits are parameters, at the Pilot's values. On a volume
 one plane thick it is the Pilot's rule, hole for hole.
 
+Where the punch's record carries its node test's notice (`node_test.notice`
+in the punch's profile JSON, `nebula3d.pipeline.read_node_test_notice`: a
+voxel too coarse for the background shell the node test reads, so the punch
+left the nodes to its search pass), the 3-D read judges no fill, whatever room
+its holes leave: `not_judged` is "grid too coarse (the punch's node test could
+not resolve the holes at this grid)" and `systematic_fill_bias` false, the
+holes measured all the same. The limit is the punch's own (8 measured voxels
+in that shell, `BraggRemover.node_test_limit`), read from its record. The holes
+are then the search's peaks, each punched to its own measured width, and step
+6 no longer stands for the rims: on the dev crystal at 81 points the holes
+reach 1 voxel at the (111) nodes and 2 at the (200) ones, so where the counts
+end before the higher nodes (the dev-coverage case, 4.511 Å⁻¹) the median hole
+leaves its rim room by step 6's count, 2·(1 + 4) = 10 voxels for nodes 10
+apart, while the rim, 4 voxels deep, spans 0.2 to 0.5 r.l.u. from the node,
+across the diffuse's minimum and its rise toward the next nodes. Its trend
+then rises away from most holes (82 to 99 % on the dev cases at 81 points, 0
+to 2 % at 161), and step 6 read there a systematic bias above (0.52σ and 0.21
+of the level, 14 of 15 holes) that was the rims', not the fills': the fills
+sit at their rims' own level and below the case's true diffuse (review finding
+G3).
+
 | Field | What it is |
 | --- | --- |
-| `n_holes`, `n_judged`, `judged` | The holes, those judged, and whether the rule applies: room for the rims (step 6) and enough holes judged (`min_holes`) |
-| `node_spacing`, `room_needed`, `not_judged` | The voxels between the grid's nodes, those the median hole's rim needs (2·(reach + rim)), and why the grid is too coarse for the rule, if it is |
+| `n_holes`, `n_judged`, `judged` | The holes, those judged, and whether the rule applies: the punch's node test resolved the holes, room for the rims (step 6) and enough holes judged (`min_holes`) |
+| `node_spacing`, `room_needed`, `not_judged` | The voxels between the grid's nodes, those the median hole's rim needs (2·(reach + rim)), and why the grid is too coarse for the rule, if it is: for the punch's node test (its record's notice), else for the rims |
 | `median_fill_bias_sigma`, `median_fill_bias_level` | The median bias in the rim's σ and in units of the level (the Pilot's fields) |
 | `above_fraction`, `below_fraction` | The shares of the judged holes filled above, and below, the range their rim allows (the Pilot's) |
 | `above_floor_fraction`, `below_floor_fraction` | The shares filled above, and below, it by `floor` of their level or more |
@@ -329,8 +537,30 @@ The measurement labels the holes one slab of H planes at a time, joined across
 the slabs' faces, and measures each hole inside its own box. On a 401×401×301
 float32 pair with 6000 holes it holds 7.4 MiB at its peak in low-memory mode
 (the browser) and 23 MiB natively, and takes 1.4 s; both modes give the same
-numbers. It is a measurement only: the Pilot's `texture_check` does not read
-it yet.
+numbers.
+
+Since plan 4.2 the Pilot's `texture_check` judges the fills by this 3-D read,
+asking for the rule's own limits (`FILL_BIAS_MIN_SIGMA`, `FILL_BIAS_ONE_WAY`,
+`FILL_BIAS_MIN_HOLES` and `FILL_BIAS_FLOOR` in `metrics/texture.ts`, the
+values above). It reports the summary over the holes (`n_holes`, `n_judged`,
+the two medians, the shares above and below the range and beyond the floor,
+and `systematic_fill_bias`); on a grid too coarse for the rims it measures no
+bias (those numbers null) and says why (`not_judged`), as a cut did, and with
+fewer than five holes judged it gives no verdict either. Its cuts give the
+azimuthal texture only (`per_cut`: each cut's `azimuthal_ratio`), which is no
+hole's measure. Its verdict needs attention for a systematic bias, passes
+without one, and is not judged otherwise; a result recorded by cut, before
+4.2, is judged as it was. Not judged, the fills keep the run's verdict from
+"met", as the ring removal does on a grid too coarse for its check: it is
+"not judged: the backfill's texture (grid too coarse)", or "(too few
+holes)", in `{{achieved}}` and in the report's goal (where the Backfill card
+still shows its seam's verdict). On the validation's eight dev cases the
+check's verdicts are as before: at 161 points none has a systematic bias
+(the medians within 0.07 of the level, where the cuts read up to 0.14), and
+at 81 points the grid is too coarse for the rims on all eight, in 3-D as on
+the cuts, so the fills are not judged, and the control's run is "not judged:
+the ring removal (grid too coarse for the ring check), the backfill's
+texture (grid too coarse)".
 
 ### 4. Background Correction: Flatten The Radial Background
 
@@ -376,7 +606,9 @@ multiphonon scattering with neutrons, Compton scattering with X-rays), whose
 leading term grows as Q²: that is what `Q2=1` (the Pilot's `flattenQ2`) takes.
 
 NEBULA Pilot judges it by one rule (`web/src/llm/metrics/flatten.ts`,
-provisional):
+provisional), with the run's own fit range and floor percentile, as the
+flattened file records them (`flatten_settings`, below; the flatten's
+defaults for a file that records none, which the Pilot's results say):
 
 1. **The shells judged** are the shells the counts reach, at least 0.95 of
    the shell's voxels measured and the centre at or past the fit range's
@@ -391,9 +623,13 @@ provisional):
 4. **A pedestal is left** when the trend is 0.8 or more in size and the span
    0.8 or more (`pedestalLeft`).
 
-The Pilot reads those floors on the three planes through the origin (hk0,
-h0l, 0kl; 30 shells out to each plane's farthest |Q|). The whole volume's are
-measured by `nebula3d.preprocessing.shell_floors` (server:
+The Pilot's verdict reads those floors over the whole volume (plan 4.1:
+`assess_stage`'s `floor_trend`, `floor_span_fraction` and `floor_judged_q`
+for the flatten); it reports each of the three planes through the origin
+beside them (hk0, h0l, 0kl; 30 shells out to each plane's farthest |Q|, its
+`per_plane` numbers), and the largest floor in σ over the planes, which it
+does not judge. The whole volume's are measured by
+`nebula3d.preprocessing.shell_floors` (server:
 `GET /api/volumes/{id}/shell-floors`; browser:
 `webbridge.volume_shell_floors_json`, the same fields), on the flatten's own
 shells, so on the flatten's input the floors are the flatten's own levels,
@@ -420,8 +656,12 @@ settings in its output (a `flatten_settings` attribute of the file's
 `nebula3d` group; `examples/run_pipeline.py`, the server and the browser all
 run it, the standalone `examples/flatten_background_3d.py` does not), so a
 run whose flatten took another percentile is measured with it, and the rule
-can start the judged shells at the run's own fit range
-(`flatten.fit_q_range`). On a synthetic volume with an isotropic Q²
+starts the judged shells at the run's own fit range
+(`flatten.fit_q_range`). The volume's meta carries the same record
+(`GET /api/volumes/{id}/meta`, `flatten_settings`), and the Pilot reads the
+planes' floors with it too: at the run's percentile, over its fit range.
+The Configure page's settings are not read for it: they may have changed
+since the run. On a synthetic volume with an isotropic Q²
 pedestal (a uniform diffuse, measured out to 6 Å⁻¹) the planes and the volume
 read the same pedestal: a trend of 1 on all, a span of 0.99 on each plane and
 0.94 on the volume, with the planes' floors within 0.03 of the volume's. The
@@ -429,6 +669,12 @@ spans differ by the level: a shell's voxels grow as Q² in the volume and as Q
 on a plane, so the volume's median sits further out, higher where a pedestal
 rises. With the same pedestal kept off the three planes, the planes read a
 level floor (span 0.03–0.05) and the volume the pedestal (trend 1, span 0.96).
+Where the counts fill the box instead, out to its corners, the volume's outer
+half runs further than a plane's (to the cube's corner, √3 times the nearest
+face's |Q|, where a plane reaches √2 times it), into shells only the
+corners' voxels fill, and it reads a Q² pedestal's span larger than the
+planes do, on the same construction: 1.3 times for one the planes read at
+0.8 (1.2 to 1.36 times for those they read at 0.5 to 1.3).
 
 The measurement reads the volumes one slab of H planes at a time and finds
 each percentile by a radix select on the values' sort keys, narrowing a

@@ -3,14 +3,29 @@
 // or closes the panel.  One reply at a time; stopAssistant() aborts it and
 // keeps whatever was written so far.
 
-import { runAgent, type AgentStep } from "./agent";
+import { runAgent, toolStepsIn, type AgentStep } from "./agent";
 import { beginReply, endReply, recordUsage, type Usage } from "./usage";
 import { useChatStore } from "./chatStore";
 import type { ChatMessage } from "./provider/client";
 import { loadSettings } from "./settings";
+import { skillsReadIn } from "./skills";
 import type { AgentTool, ToolContext } from "./tools";
 
 let controller: AbortController | null = null;
+
+/**
+ * The tool context of a conversation's next reply. No skill counts as read
+ * yet: the chat sends the earlier turns as their text alone (ChatView), so a
+ * skill read in one of them is not in this reply, and the gate opens on a
+ * read in this reply, or on a skill whose text the messages carry
+ * (startReply, tools/round.ts). The earlier reads word the refusal, which asks
+ * for the skill again; the earlier tool calls that ran are what an answer's
+ * numbers may come from besides this reply's, while what each measured stands
+ * (toolStepsIn, agent.ts; earlierSources, answerChecks.ts).
+ */
+export function replyContext(ctx: ToolContext, turns: readonly { steps?: readonly AgentStep[] }[]): ToolContext {
+  return { ...ctx, skillsRead: new Set(), skillsReadEarlier: skillsReadIn(turns), earlierSteps: toolStepsIn(turns) };
+}
 
 export async function askAssistant({
   label,

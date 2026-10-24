@@ -156,6 +156,28 @@ describe("the verdict computed from the checks", () => {
     expect(overallContradiction("The 3D-ΔPDF can be trusted.", nothing)).toMatch(/did not all run on the outputs as they now are \(not judged: not measured/);
   });
 
+  it("says why the fills' texture could not be judged, and is then not met nor judged met (plan 4.2, as G1)", () => {
+    // texture_check over every punch hole in 3-D: not judged on a grid too coarse for the holes' rims, or with too few holes.
+    const unmeasured = { median_fill_bias_sigma: null, median_fill_bias_level: null, above_fraction: null, below_fraction: null, above_floor_fraction: null, below_floor_fraction: null };
+    const texture = (over: Record<string, unknown>) => step("texture_check", { n_holes: 277, ...unmeasured, systematic_fill_bias: null, per_cut: [], ...over });
+    const coarse = texture({ not_judged: "grid too coarse: the nodes are 10 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more" });
+    const few = texture({ n_holes: 4, n_judged: 4, not_judged: "too few holes judged: 4 of 4, under 5" });
+    const v = computedVerdict([all(), coarse])!;
+    expect(v).toMatchObject({ achieved: null, attention: [], notMeasured: [], notJudged: ["the backfill's texture (grid too coarse)"] });
+    expect(v.text).toBe("not judged: the backfill's texture (grid too coarse)");
+    expect(computedVerdict([all(), few])!.text).toBe("not judged: the backfill's texture (too few holes)");
+    // Beside a stage not judged for the grid (G1): the stages first.
+    const rings = { verdict: "not judged", max_ring_left: null, max_ring_dent: null, ring_rule: "not judged: grid too coarse: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1" };
+    expect(computedVerdict([all({ rings }), coarse])!.text).toBe("not judged: the ring removal (grid too coarse for the ring check), the backfill's texture (grid too coarse)");
+    // A need for attention elsewhere still decides: not met.
+    expect(computedVerdict([all({ flatten: stage("flatten", ATTENTION) }), coarse])!.text).toBe("not met: needs attention: the background correction");
+    // The newest texture_check counts: a judged one after it, met; one that judged nothing (no cuts, recorded before 4.2) says nothing of the run.
+    expect(computedVerdict([all(), coarse, texture({ n_judged: 189, ...unmeasured, median_fill_bias_level: 0, systematic_fill_bias: false })])!.text).toBe("met: every stage meets its goal");
+    expect(computedVerdict([all(), step("texture_check", { per_cut: [] })])!.text).toBe("met: every stage meets its goal");
+    // A claim of success is held to the verdict, which says why: the check ran.
+    expect(overallContradiction("The 3D-ΔPDF can be trusted.", v)).toBe(`It calls the run a success, but the verdict computed from the checks is "${v.text}"`);
+  });
+
   it("names the data's problems no setting fixes, apart from whether the reduction met its goal", () => {
     const v = computedVerdict([
       all(),

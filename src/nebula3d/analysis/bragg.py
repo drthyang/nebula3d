@@ -40,6 +40,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from nebula3d.core import HKLVolume, q_bin_indices, q_magnitude_from_axes
+from nebula3d.modulation import Modulation, h_planes, protected_mask
 from nebula3d.symmetry import GridSymmetry
 
 
@@ -73,6 +74,11 @@ class _PeakPunch:
     # Which final footprint ``shape_hkl`` is: "profile" (the shared Bragg
     # profile) or "own" (the peak's own measured width); None otherwise.
     footprint_kind: str | None = None
+    # Which pass found it: "integer" (the node test, or every node when no
+    # test is set) or "search".  A search peak at a node the node test left to
+    # the search keeps "search" and takes that node as ``source_node_hkl``
+    # (``BraggRemover._claim_left_nodes``).
+    found_by: str = "integer"
 
     def as_tuple(self) -> tuple[int, int, int, float]:
         return self.ih, self.ik, self.il, self.intensity
@@ -269,6 +275,9 @@ class _BraggProfile:
     profiles: NDArray[np.float64]  # (n_bins, 3, n_dist): the Bragg template
     n_peaks: tuple[int, ...]
     raw: NDArray[np.float64] | None = None  # the stacked profiles it came from
+    # Of the peaks stacked (sum of n_peaks), those the search found at nodes
+    # the node test left to it (``found_by="search"``); the rest the node test's.
+    from_search: int = 0
 
     def radii(self, q_abs: float, level: float) -> NDArray[np.float64]:
         """Distances along ρ̂, θ̂, φ̂ at which the profile falls to *level*.
@@ -293,6 +302,13 @@ _WIDTH_REFERENCE_MIN = 5
 _WING_REACH = 0.25
 # Voxels either side of a peak through which the width test's baseline runs.
 _FWHM_REACH = 5
+# The fewest measured voxels a shell's median is taken from: the node test's
+# background shell, 1–2× the resolution ellipsoid (BraggRemover.
+# _background_shell), and the width test's two shells (_broader_than_bragg).
+# It is also the node test's resolution guard: at a node whose background
+# shell holds fewer, the test does not judge (BraggRemover._detect_integer;
+# the grid that takes, BraggRemover.node_test_limit).
+_SHELL_MIN_VOXELS = 8
 
 
 @dataclass
@@ -336,7 +352,15 @@ class BraggRemover:
         a node, which stands no higher than its own surroundings, from passing
         on good counting statistics.  Nothing in the test depends on the
         intensity units, so data of any scale (X-ray rates, neutron counts)
-        are judged alike; requires ``min_significance``.
+        are judged alike; requires ``min_significance``.  The shell's median
+        needs 8 measured voxels (``_SHELL_MIN_VOXELS``); at a node whose shell
+        holds fewer (on a grid too coarse for the resolution ellipsoid, see
+        :meth:`node_test_limit`, or at the edge of the measured volume) the
+        test does not judge: with ``mode="both"`` the node is left to the
+        search pass, whose peak in the node's window is then the node's Bragg
+        peak (see :meth:`_claim_left_nodes`); with ``mode="integer"`` it is
+        judged against its window's median instead, provisionally (see
+        :meth:`_detect_integer`).
     integer_max_shell_fraction:
         With ``integer_detect="significance"``, also reject a node whose excess
         is resolvably broader than a Bragg peak (see
@@ -516,12 +540,23 @@ class BraggRemover:
         median over |Q| shells (weighted by voxel count) of each shell's robust
         scatter 1.4826·MAD.  The floors then follow the data's scale, so a
         volume multiplied by any factor is punched the same.
+    search_protect:
+        The sample's declared modulation (:class:`nebula3d.modulation.Modulation`):
+        the satellites **G** ± m·**k**, or the planes through them, that the
+        search leaves alone, on the parent lattice of ``supercell`` and, with
+        ``symmetry_ops``, at every equivalent position.  ``None`` (default)
+        declares none.  The legacy H planes below are left alone too.  A
+        protected voxel is never a search candidate, still counts in the
+        search's local-maximum test (so the voxel beside a brighter protected
+        peak is its flank, not a peak), and no search peak's footprint takes
+        it; the integer pass is not affected.
     search_exclude_h_centers:
-        Optional H-plane centres excluded from the hkl-agnostic search stage.
+        Legacy: H-plane centres excluded from the hkl-agnostic search stage.
         Use this to protect known fractional-H diffuse planes while still using
-        ``mode="both"`` for integer Bragg plus off-integer satellites elsewhere.
+        ``mode="both"`` for integer Bragg plus off-integer satellites elsewhere;
+        a modulation is declared with ``search_protect``.
     search_exclude_h_half_width:
-        Half-width in H around each protected search-exclusion centre.
+        Half-width in H around each legacy protected centre or fraction.
     search_max_width_ratio:
         Keep the search to peaks as sharp as Bragg peaks (``mode="both"``): a
         search candidate whose full width at half maximum exceeds this × the
@@ -634,12 +669,16 @@ class BraggRemover:
     search_min_intensity: float = 2.0
     search_min_prominence: float = 0.0
     search_floor_unit: str = "data"
+    # The sample's declared modulation: the positions the search leaves alone
+    # (nebula3d.modulation).  None declares none.
+    search_protect: Modulation | None = None
     search_exclude_h_centers: tuple[float, ...] | None = None
     search_exclude_h_half_width: float = 0.0
-    # Periodic H protection: fractional parts (mod 1, in [0,1)) of H to protect
-    # across the WHOLE range, e.g. (1/3, 2/3) shields every integer±1/3 plane
-    # (the q=1/3 satellite family) — not just a fixed centre list.  Uses the same
-    # search_exclude_h_half_width.  ``None`` disables.
+    # Legacy periodic H protection: fractional parts (mod 1, in [0,1)) of H to
+    # protect across the WHOLE range, e.g. (1/3, 2/3) shields every integer±1/3
+    # plane — not just a fixed centre list.  Uses the same
+    # search_exclude_h_half_width.  ``None`` disables.  A modulation is
+    # declared with search_protect.
     search_exclude_h_fractions: tuple[float, ...] | None = None
     search_max_width_ratio: float | None = None
     subtract_profile: bool = False
@@ -648,9 +687,17 @@ class BraggRemover:
     symmetry_ops: tuple[NDArray[np.int64], ...] | None = None
     _symmetry_cache: dict[tuple[object, ...], GridSymmetry] = dataclasses.field(
         default_factory=dict, init=False, repr=False, compare=False)
+    # The voxels the search leaves alone on a grid (``_search_protected``).
+    _protected_cache: dict[tuple[object, ...], NDArray[np.bool_] | None] = dataclasses.field(
+        default_factory=dict, init=False, repr=False, compare=False)
     # What the last search pass measured and used: the diffuse scatter and the
     # floors in data units (see ``search_floor_unit``), for the run log.
     _search_report: dict[str, Any] = dataclasses.field(
+        default_factory=dict, init=False, repr=False, compare=False)
+    # What the last integer pass's node test (``integer_detect="significance"``)
+    # could not judge, for the run log and the punch's record (see
+    # ``_detect_integer``); empty with the floors test or no integer pass.
+    _node_report: dict[str, Any] = dataclasses.field(
         default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -1233,8 +1280,10 @@ class BraggRemover:
     ) -> _BraggProfile | None:
         """Stack the brightest peaks' profiles along their (ρ̂, θ̂, φ̂) axes.
 
-        Calibration peaks are the integer-node peaks (all *peaks* when there
-        are none) with a positive excess, more than twice the reach
+        Calibration peaks are the peaks at integer nodes, the node test's and
+        those the search found at nodes the node test left to it
+        (:meth:`_claim_left_nodes`), or all *peaks* when there are none, with
+        a positive excess, more than twice the reach
         (``profile_max_radius_q``) from the origin and a ≥ 90 %-measured
         window, most significant first, at most ``profile_calibration_peaks``.
         For each, the excess over its own background (the median beyond 0.8 ×
@@ -1272,6 +1321,7 @@ class BraggRemover:
                   else excess(p), reverse=True)
         axes = (vol.h_axis, vol.k_axis, vol.l_axis)
         samples: list[tuple[float, NDArray[np.int64], NDArray[np.float64]]] = []
+        from_search = 0  # samples from peaks the search found at left nodes
         for p in pool:
             if len(samples) >= int(self.profile_calibration_peaks):
                 break
@@ -1313,6 +1363,7 @@ class BraggRemover:
                 values.append(e[sel])
             samples.append((float(np.linalg.norm(q0)), np.concatenate(keys),
                             np.concatenate(values)))
+            from_search += int(p.found_by == "search" and p.source_node_hkl is not None)
         n_bins = min(int(self.profile_q_bins), len(samples) // min_per_bin)
         if n_bins < 1:
             return None
@@ -1341,7 +1392,7 @@ class BraggRemover:
                 raw[b, k] = _monotone_profile(dist, np.concatenate([[1.0], med]))
         profiles = np.stack([_bragg_template(dist, raw[b]) for b in range(n_bins)])
         return _BraggProfile(q_centers=q_centers, distances=dist, profiles=profiles,
-                             n_peaks=tuple(counts), raw=raw)
+                             n_peaks=tuple(counts), raw=raw, from_search=from_search)
 
     def _with_profile_shape(
         self, vol: HKLVolume, rec: _PeakPunch, profile: _BraggProfile,
@@ -1493,6 +1544,11 @@ class BraggRemover:
         :meth:`_learn_profile`) and every peak carries its profile-matched
         footprint; the profile is ``None`` otherwise, or when too few bright
         peaks were found (the peaks then keep the ellipsoid footprint).
+
+        With ``mode="both"``, a search peak at a node the node test left to the
+        search (:meth:`_claim_left_nodes`) is that node's Bragg peak: the
+        profile is then learned again from the node test's peaks and these,
+        and every peak's footprint is taken from it.
         """
         rejected: list[float] = []
         # The own-width footprint falls back to the profile for a peak it
@@ -1514,24 +1570,71 @@ class BraggRemover:
             # residual.  With the strong integer peaks already masked out, the
             # per-|Q|-shell statistics are no longer inflated by them, so the
             # off-integer satellites stand out as clean outliers.
-            integer = self._detect_integer(vol, rejected)
-            reference = self._bragg_width(vol, integer) if learn else None
+            found = self._detect_integer(vol, rejected)
+            # The nodes the node test could not judge, left to the search.
+            left: list[tuple[int, int, int]] = list(self._node_report.get("nodes", []))
+            reference = self._bragg_width(vol, found) if learn else None
+            integer = found
             if learn:
-                profile = self._learn_profile(vol, integer)
-                integer = self._footprints(vol, integer, profile, reference)
+                profile = self._learn_profile(vol, found)
+                integer = self._footprints(vol, found, profile, reference)
             keep = self._punch_centers(
                 vol, np.ones(vol.shape, dtype=bool), integer,
                 reference=self._scaling_reference(integer, rejected))
             keep = self._symmetric_keep(vol, keep)
             residual = dataclasses.replace(vol, mask=vol.mask & keep)
-            search = self._sharp_only(
-                vol, residual, self._detect_search(residual, rejected), integer)
+            search = self._claim_left_nodes(vol, self._sharp_only(
+                vol, residual, self._detect_search(residual, rejected), integer), left)
+            claimed = [p for p in search if p.source_node_hkl is not None]
+            if learn and claimed:
+                # The search's Bragg peaks at the left nodes are Bragg peaks
+                # like the node test's: the profile is learned from both.
+                profile = self._learn_profile(vol, found + claimed)
+                integer = self._footprints(vol, found, profile, reference)
             if learn:
                 search = self._footprints(vol, search, profile, reference)
             peaks = integer + search
         else:
             raise ValueError(f"Unknown mode: {self.mode!r}")
         return peaks, self._scaling_reference(peaks, rejected), profile
+
+    def _claim_left_nodes(
+        self, vol: HKLVolume, search: list[_PeakPunch],
+        left: list[tuple[int, int, int]],
+    ) -> list[_PeakPunch]:
+        """*search* with the Bragg peaks of the nodes the node test left to the
+        search pass (*left*: their background shell under the floor).
+
+        A search peak inside the window of such a node, the box the node test
+        searches about the node's nearest voxel (:meth:`_detect_half_widths`),
+        is that node's Bragg peak: the brightest there takes the node as its
+        ``source_node_hkl`` and keeps ``found_by="search"``.  It is then
+        punched (``integer_h_guard_hkl`` included) and learned from
+        (:meth:`_learn_profile`) as the node test's peaks are.  The window
+        stays in the node's own cell, so the node is the one nearest the peak
+        (of the parent lattice, with ``supercell``).
+        """
+        if not left or not search:
+            return search
+        axes = (vol.h_axis, vol.k_axis, vol.l_axis)
+        half = self._detect_half_widths(vol)
+        cell = np.asarray(self.supercell, dtype=np.float64)
+        nodes = set(left)
+        best: dict[tuple[int, int, int], int] = {}
+        for i, p in enumerate(search):
+            r = np.round(np.asarray(p.center_hkl, dtype=np.float64) / cell) * cell
+            node = (int(r[0]), int(r[1]), int(r[2]))
+            if node not in nodes:
+                continue
+            centre = [int(np.argmin(np.abs(ax - v))) for ax, v in zip(axes, node)]
+            if any(abs(j - c) > w for j, c, w in zip((p.ih, p.ik, p.il), centre, half)):
+                continue
+            if node not in best or p.intensity > search[best[node]].intensity:
+                best[node] = i
+        out = list(search)
+        for node, i in best.items():
+            out[i] = dataclasses.replace(out[i], source_node_hkl=node)
+        return out
 
     def _sharp_only(
         self, vol: HKLVolume, residual: HKLVolume,
@@ -1671,10 +1774,45 @@ class BraggRemover:
         significant, whatever its size in data units.  Every node is a
         candidate there, so none is appended to *rejected* (the scaling
         reference is the median of the kept peaks).
+
+        Resolution: the shell background is the median of the measured voxels
+        between 1× and 2× the resolution ellipsoid R (:meth:`_background_shell`),
+        and a median needs ``_SHELL_MIN_VOXELS`` (8) of them.  The shell's
+        Q-volume is (2³ − 1) = 7 times the ellipsoid's, (28π/3)·rρ·rθ·rφ, so
+        8 voxels need a voxel Q-volume of (7π/6)·rρ·rθ·rφ or less: at the
+        default R (0.097, 0.072, 0.115) Å⁻¹ a cubic voxel of 0.143 Å⁻¹ or less,
+        about 2·r_min (:meth:`node_test_limit`).  The count is checked at each
+        node, around the voxel judged, since it varies with the direction of
+        Q (the ellipsoid turns with it, the grid does not) and with the mask:
+        a node whose shell holds fewer is not judged.  Without the guard the
+        test fell back on the window's median, which on a coarse grid passes
+        the diffuse at a node: a saddle's corner stands many σ above its
+        window's median (on the validation's dev crystal at 0.161 Å⁻¹ a voxel,
+        96 % of the nodes held 2 to 6 shell voxels, and dozens of forbidden
+        nodes were punched).  With ``mode="both"`` a node not judged is left to
+        the search pass, which punches it only if it stands out of its |Q|
+        shell, and then as that node's Bragg peak (:meth:`_claim_left_nodes`).
+        A Bragg peak the search cannot see may remain: one below its floors,
+        the lesser error, or one in a |Q| shell too thin for its statistics
+        (under 20 voxels, at the box's far corners), which it does not read.
+        With ``mode="integer"`` there is no search pass to
+        leave it to: it is judged as before the guard, against its window's
+        median, and the width test, whose shells are as thin, takes it as no
+        broader than a Bragg peak.  That verdict is provisional, and the run
+        log says so.  ``_node_report`` holds the counts: the nodes examined
+        (a measured window), those whose shell was under the floor, and the
+        grid against the limit.
         """
         nh, nk, nl = vol.shape
         data, valid = vol.data, (vol.mask & np.isfinite(vol.data))
         by_significance = self.integer_detect == "significance"
+        self._node_report.clear()
+        # The nodes examined (a measured window) and those whose background
+        # shell holds under _SHELL_MIN_VOXELS measured voxels (the guard).
+        examined = 0
+        under_floor: list[tuple[int, int, int]] = []
+        # mode="both": a node the test cannot judge is left to the search pass.
+        leave_to_search = self.mode == "both"
 
         def nearest(axis: NDArray, val: int) -> int:
             return int(np.argmin(np.abs(axis - val)))
@@ -1739,11 +1877,24 @@ class BraggRemover:
             pl = int(ls + int(off[2]))
 
             if by_significance:
+                examined += 1
                 # A window whose maximum is its median holds no excess at all.
                 if not prom > 0:
                     continue
                 noise = float(np.nanmedian(np.abs(wv - local_bg))) * 1.4826
-                shell_bg = self._shell_background(vol, (ph, pk, pl))
+                shell = self._background_shell(vol, (ph, pk, pl))
+                shell_bg = None
+                if shell is not None:  # None only at the origin (no frame)
+                    if shell.size >= _SHELL_MIN_VOXELS:
+                        shell_bg = float(np.median(shell))
+                    else:
+                        # Under the floor: the test cannot judge this node
+                        # (the docstring, Resolution). Left to the search pass,
+                        # or with mode="integer" judged against the window's
+                        # median below, provisionally.
+                        under_floor.append((h, k, l))
+                        if leave_to_search:
+                            continue
                 z = self._peak_significance(
                     vol, (ph, pk, pl), local_bg if shell_bg is None else shell_bg, noise)
                 if not z >= self._window_threshold(int(wval.sum())):
@@ -1790,14 +1941,22 @@ class BraggRemover:
                     continue
             out.append(self._integer_record(
                 vol, (h, k, l), (ph, pk, pl), peak, local_bg, z))
+        if by_significance:
+            self._node_report.update(
+                examined=examined, under_floor=len(under_floor), nodes=under_floor,
+                min_voxels=_SHELL_MIN_VOXELS, voxel_q=self.voxel_edge_q(vol),
+                needs_q=self.node_test_limit(vol), left_to_search=leave_to_search)
         return out
 
-    def _shell_background(
+    def _background_shell(
         self, vol: HKLVolume, idx: tuple[int, int, int],
-    ) -> float | None:
-        """Median of the valid voxels between 1× and 2× the resolution ellipsoid
-        around voxel *idx*: the peak's own background, as in a peak-integration
-        annulus.  ``None`` with fewer than 8 such voxels, or at the origin."""
+    ) -> NDArray[np.float64] | None:
+        """The measured voxels between 1× and 2× the resolution ellipsoid around
+        voxel *idx*: the peak's own background, as in a peak-integration
+        annulus, whose median the node test takes when they are
+        ``_SHELL_MIN_VOXELS`` or more (see :meth:`_detect_integer`).  Their
+        values, as many as the grid, the box and the mask leave; ``None`` at
+        the origin, where the frame is undefined."""
         center = (float(vol.h_axis[idx[0]]), float(vol.k_axis[idx[1]]),
                   float(vol.l_axis[idx[2]]))
         a = self._active_shape_matrix(vol, center)
@@ -1815,9 +1974,41 @@ class BraggRemover:
                 + 2.0 * a[1, 2] * kk * ll)
         win = vol.data[sl]
         shell = (quad > 1.0) & (quad <= 4.0) & vol.mask[sl] & np.isfinite(win)
-        if int(shell.sum()) < 8:
-            return None
-        return float(np.median(win[shell].astype(np.float64)))
+        return np.asarray(win[shell], dtype=np.float64)
+
+    @staticmethod
+    def voxel_edge_q(vol: HKLVolume) -> float:
+        """A voxel's size in Å⁻¹: the edge of a cube of its Q-volume,
+        ∛(|det UB|·ΔH·ΔK·ΔL), the step itself on a cubic grid.  What counts
+        when voxels are counted in a Q-volume, as the node test's background
+        shell counts them (:meth:`node_test_limit`)."""
+        steps = np.abs(np.asarray(BraggRemover._steps(vol), dtype=np.float64))
+        det = abs(float(np.linalg.det(np.asarray(vol.ub_matrix, dtype=np.float64))))
+        return float((det * float(np.prod(steps))) ** (1.0 / 3.0))
+
+    def node_test_limit(self, vol: HKLVolume) -> float:
+        """The largest voxel (Å⁻¹, :meth:`voxel_edge_q`) whose grid gives the
+        node test's background shell ``_SHELL_MIN_VOXELS`` voxels, on average
+        over the directions of Q.
+
+        The shell runs from 1× to 2× the resolution ellipsoid R (the punch
+        frame's, :meth:`_active_shape_matrix`): (2³ − 1) times R's Q-volume
+        V_R, which is (4π/3)·rρ·rθ·rφ in the spherical frame.  It holds
+        ``_SHELL_MIN_VOXELS`` voxels when a voxel's Q-volume is at most
+        7·V_R / ``_SHELL_MIN_VOXELS``: (7π/6)·rρ·rθ·rφ for 8, so a cubic
+        voxel of 0.143 Å⁻¹ at the default R (0.097, 0.072, 0.115) Å⁻¹, about
+        2·r_min.  V_R is the same at every node (R turns with Q, its volume
+        does not); the count about a node varies with the direction, a few
+        voxels either way near the limit, which the test checks at each node
+        (:meth:`_detect_integer`).
+        """
+        a = self._active_shape_matrix(vol, (1.0, 0.0, 0.0))
+        if a is None:  # never off the origin: the frame is defined at (1, 0, 0)
+            raise ValueError("the punch ellipsoid is undefined for this UB matrix")
+        det_ub = abs(float(np.linalg.det(np.asarray(vol.ub_matrix, dtype=np.float64))))
+        # R's Q-volume: (4π/3)/√det A in H, K, L, times |det UB| into Q.
+        v_r = 4.0 / 3.0 * np.pi * det_ub / float(np.sqrt(np.linalg.det(a)))
+        return float(((2.0 ** 3 - 1.0) * v_r / _SHELL_MIN_VOXELS) ** (1.0 / 3.0))
 
     def _broader_than_bragg(
         self, vol: HKLVolume, idx: tuple[int, int, int], noise: float,
@@ -1861,7 +2052,7 @@ class BraggRemover:
         def shell(lo: float, hi: float) -> tuple[float, float] | None:
             m = ok & (quad > lo * lo) & (quad <= hi * hi)
             n = int(m.sum())
-            if n < 8:
+            if n < _SHELL_MIN_VOXELS:
                 return None
             # Standard error of a median: √(π/2) σ/√n.
             return (float(np.median(win[m])),
@@ -2073,7 +2264,9 @@ class BraggRemover:
         from scipy import ndimage
 
         self._search_report.clear()
-        valid = (vol.mask & np.isfinite(vol.data)) & ~self._search_excluded_h_mask(vol)
+        measured = vol.mask & np.isfinite(vol.data)
+        protected = self._search_protected(vol)
+        valid = measured if protected is None else measured & ~protected
         if not valid.any():
             return []
         bin_idx, med, scale, count = self._q_shell_stats(vol, self.search_q_step)
@@ -2106,8 +2299,11 @@ class BraggRemover:
         # (≥ its 3×3×3 neighbours).  This catches every peak even when several are
         # joined into one above-threshold blob (taking a single max per connected
         # component would miss all but the brightest — e.g. satellites at the
-        # measured-volume edge that touch a residual arc).
-        scored = np.where(valid, vol.data, -np.inf)
+        # measured-volume edge that touch a residual arc).  The neighbours are
+        # every measured voxel, protected ones included: a voxel beside a
+        # brighter protected peak is that peak's flank, not a peak of its own.
+        scored = np.where(measured, vol.data, -np.inf)
+        del measured
         local_max = ndimage.maximum_filter(scored, size=3, mode="nearest")
         peaks = np.argwhere(cand & (scored >= local_max))
         del scored, local_max, cand  # free the full-volume temporaries
@@ -2154,57 +2350,52 @@ class BraggRemover:
                 ),
                 local_background=bg,
                 significance=z,
+                found_by="search",
             ))
         return out
 
     def _search_excluded_h_mask(self, vol: HKLVolume) -> NDArray[np.bool_]:
-        """Return True for voxels protected from hkl-agnostic search punching.
+        """Return True for voxels the legacy H planes protect from the search.
 
         Two complementary mechanisms (combined), both using
         ``search_exclude_h_half_width``:
         - ``search_exclude_h_centers``: explicit H-plane centres.
         - ``search_exclude_h_fractions``: fractional parts mod 1 protected
           periodically across the whole range — e.g. ``(1/3, 2/3)`` shields
-          every integer±1/3 plane (the q=1/3 satellite family).
+          every integer±1/3 plane.
 
         With ``symmetry_ops`` the planes equivalent to them are protected too.
-        The mask broadcasts to the volume's shape.
+        The planes are :func:`nebula3d.modulation.h_planes`, read through the
+        module's one predicate.  The mask broadcasts to the volume's shape.
         """
-        half_width = max(float(self.search_exclude_h_half_width), 0.0)
-        centers = self.search_exclude_h_centers
-        fractions = self.search_exclude_h_fractions
-        if half_width <= 0 or (not centers and not fractions):
+        planes = h_planes(centres=self.search_exclude_h_centers,
+                          fractions=self.search_exclude_h_fractions,
+                          half_width=self.search_exclude_h_half_width,
+                          symmetry=self._grid_symmetry(vol))
+        if not planes:
             return np.zeros(vol.shape, dtype=bool)
-        h_excluded = np.zeros((1, 1, 1), dtype=bool)
-        for form in self._h_forms(vol):
-            h = self._form_coordinate(vol, form)
-            for h0 in centers or ():
-                h_excluded = h_excluded | (np.abs(h - float(h0)) <= half_width)
-            if fractions:
-                frac = np.mod(h, 1.0)  # [0,1); handles negative H naturally
-                for f in fractions:
-                    f0 = float(f) % 1.0
-                    # circular distance on the unit interval
-                    d = np.abs(frac - f0)
-                    d = np.minimum(d, 1.0 - d)
-                    h_excluded = h_excluded | (d <= half_width)
-        return h_excluded
+        return protected_mask(planes, vol)
 
-    @staticmethod
-    def _form_coordinate(vol: HKLVolume, form: NDArray[np.int64]) -> NDArray[np.float64]:
-        """``form·(H, K, L)`` on the grid, broadcastable to the volume's shape.
+    def _search_protected(self, vol: HKLVolume) -> NDArray[np.bool_] | None:
+        """The voxels the search leaves alone (:meth:`_search_excluded_mask`) as
+        a view of the volume's shape, or None when nothing is protected; cached
+        per grid, for the search and the punch of its peaks."""
+        key = tuple((a.size, float(a[0]), float(a[-1]))
+                    for a in (vol.h_axis, vol.k_axis, vol.l_axis))
+        if key not in self._protected_cache:
+            mask = self._search_excluded_mask(vol)
+            self._protected_cache[key] = (np.broadcast_to(mask, vol.shape) if mask.any()
+                                          else None)
+        return self._protected_cache[key]
 
-        Only the axes the form uses take a dimension, so H alone is
-        ``h_axis[:, None, None]``.
-        """
-        axes = (vol.h_axis[:, None, None], vol.k_axis[None, :, None],
-                vol.l_axis[None, None, :])
-        out: NDArray[np.float64] | None = None
-        for c, ax in zip(form, axes):
-            if c:
-                term = ax if c == 1 else float(c) * ax
-                out = term if out is None else out + term
-        return out if out is not None else np.zeros((1, 1, 1))
+    def _search_excluded_mask(self, vol: HKLVolume) -> NDArray[np.bool_]:
+        """Every voxel the search leaves alone: the legacy H planes
+        (:meth:`_search_excluded_h_mask`) and the positions of the declared
+        modulation (``search_protect``).  Broadcasts to the volume's shape."""
+        out = self._search_excluded_h_mask(vol)
+        if self.search_protect is not None:
+            out = out | self.search_protect.mask(vol, self._grid_symmetry(vol), self.supercell)
+        return out
 
     def _scale_factor(self, peak: float, ref: float) -> float:
         if not self.intensity_scale or not np.isfinite(peak) or ref <= 0:
@@ -2219,7 +2410,8 @@ class BraggRemover:
         """
         peaks, reference, _ = self._detect(vol)
         keep = self._punch_centers(
-            vol, np.ones(vol.shape, dtype=bool), peaks, reference=reference)
+            vol, np.ones(vol.shape, dtype=bool), peaks, reference=reference,
+            protect=self._search_protected(vol))
         return self._symmetric_keep(vol, self._punch_incident_beam(vol, keep))
 
     def _punch_centers(
@@ -2229,12 +2421,15 @@ class BraggRemover:
         peaks: list[_PeakPunch],
         *,
         reference: float | None = None,
+        protect: NDArray[np.bool_] | None = None,
     ) -> NDArray[np.bool_]:
         """Punch an anisotropic, intensity-scaled ellipsoid at each peak centre,
         in place on *keep* (local windows only).
 
         *reference* is the intensity-scaling reference (:meth:`_detect` returns
-        it); ``None`` takes it from *peaks* alone.
+        it); ``None`` takes it from *peaks* alone.  *protect* (the volume's
+        shape, :meth:`_search_protected`) is what no search peak's footprint
+        takes; the integer pass's peaks are punched whole.
         """
         # The Q ellipsoid's HKL bounding box: the fallback where the punch
         # frame is undefined (a peak at the origin).
@@ -2246,6 +2441,7 @@ class BraggRemover:
         for peak_rec in peaks:
             s = self._scale_factor(peak_rec.intensity, ref if ref is not None else 1.0)
             center = (peak_rec.ih, peak_rec.ik, peak_rec.il)
+            spare = protect if peak_rec.found_by == "search" else None
 
             # (1) Profile-matched footprint (final as recorded), or the
             #     covariance fit (either frame): tilted ellipsoid with the
@@ -2260,7 +2456,7 @@ class BraggRemover:
                 self._punch_one(
                     vol, keep, center, self._ellipsoid_bounding_radii(a), 0.0,
                     center_hkl=peak_rec.center_hkl,
-                    h_guard=self._h_guard_for(peak_rec), shape_matrix=a)
+                    h_guard=self._h_guard_for(peak_rec), shape_matrix=a, protect=spare)
                 continue
 
             # (2) No per-peak fit (search peaks, shape fit off, peaks too weak
@@ -2276,7 +2472,7 @@ class BraggRemover:
                 self._punch_one(
                     vol, keep, center, self._ellipsoid_bounding_radii(a), 0.0,
                     center_hkl=peak_rec.center_hkl,
-                    h_guard=self._h_guard_for(peak_rec), shape_matrix=a)
+                    h_guard=self._h_guard_for(peak_rec), shape_matrix=a, protect=spare)
                 continue
 
             # (3) Frame undefined (origin): the base's HKL bounding box,
@@ -2292,7 +2488,7 @@ class BraggRemover:
                 vol, keep, center, radii,
                 max(0.0, float(self.phi_tail_hkl)) * s,
                 center_hkl=peak_rec.center_hkl,
-                h_guard=self._h_guard_for(peak_rec),
+                h_guard=self._h_guard_for(peak_rec), protect=spare,
             )
         return keep
 
@@ -2468,13 +2664,15 @@ class BraggRemover:
         center_hkl: tuple[float, float, float] | None = None,
         h_guard: tuple[tuple[float, float, float], float] | None = None,
         shape_matrix: NDArray[np.float64] | None = None,
+        protect: NDArray[np.bool_] | None = None,
     ) -> NDArray[np.bool_]:
         """Punch one ellipsoid, optionally stretched along the local K-L tangent.
 
         ``shape_matrix`` (Q-space mode) overrides the axis-aligned ``radii``
         ellipsoid with the general quadratic form ``δhklᵀ A δhkl ≤ 1``; ``radii``
         is then only the HKL bounding box used to size the local window, and the
-        φ-tail is not added.
+        φ-tail is not added.  ``protect`` (the volume's shape) holds the voxels
+        the punch leaves alone.
         """
         dh, dk, dl = self._steps(vol)
         nh, nk, nl = vol.shape
@@ -2527,6 +2725,8 @@ class BraggRemover:
                         d = grid - n0
                         offset = offset + (d if c == 1 else float(c) * d)
                 punch &= np.abs(offset) <= max(float(half_width), 0.0)
+        if protect is not None:
+            punch &= ~protect[hs:he, ks:ke, ls:le]
         keep[hs:he, ks:ke, ls:le] &= ~punch
         return keep
 

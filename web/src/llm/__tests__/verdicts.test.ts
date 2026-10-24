@@ -91,6 +91,15 @@ const STAGE_CASES: Record<"rings" | "punch" | "backfill" | "flatten" | "pdf", Ca
     c("a trend under 0.8", { max_floor_trend: 0.79, max_floor_span_fraction: 0.9 }, "pass"),
     c("the floor in σ is reported, not judged", { max_after_floor_sigma: 3, max_floor_trend: 0.31, max_floor_span_fraction: 0.6 }, "pass"),
     c("no span", { max_floor_trend: 0.9 }, "info", ["nothing to judge"]),
+    // Over the whole volume's shells (plan 4.1): the volume's signed trend and its span.
+    c("the volume: a trend and a span of 0.8", { floor_trend: 0.8, floor_span_fraction: 0.8 }, "attention", ["pedestal"]),
+    c("the volume: a falling floor", { floor_trend: -0.85, floor_span_fraction: 0.9 }, "attention", ["pedestal"]),
+    c("the volume: a trend under 0.8", { floor_trend: 0.79, floor_span_fraction: 0.9 }, "pass"),
+    c("the volume: a span under 0.8", { floor_trend: 0.99, floor_span_fraction: 0.79 }, "pass"),
+    c("the volume not measured", { max_after_floor_sigma: 1.7, floor_trend: null, floor_span_fraction: null }, "info", ["nothing to judge"]),
+    // The volume's numbers are judged, the planes' largest beside them are not.
+    c("the volume level, the planes' a pedestal", { floor_trend: 0.3, floor_span_fraction: 0.6, max_floor_trend: 0.97, max_floor_span_fraction: 0.97 }, "pass"),
+    c("the volume a pedestal, the planes' level", { floor_trend: 0.99, floor_span_fraction: 0.96, max_floor_trend: 0.2, max_floor_span_fraction: 0.04 }, "attention", ["pedestal"]),
   ],
   pdf: [
     c("the even part reproduced", { back_fft_pearson_r: 0.989, back_fft_pearson_r_even: 0.999 }, "pass"),
@@ -140,8 +149,9 @@ describe("judge: a stage's evaluation", () => {
   });
 
   it("states the backfill's own criterion without the fill bias it does not measure", () => {
-    expect(judge("backfill", { mean_median_seam_sigma: 0.6 }).criterion).not.toMatch(/no cut whose fill is biased/);
-    expect(WORDS.criterion.backfill).toMatch(/no cut whose fill is biased one way/);
+    expect(judge("backfill", { mean_median_seam_sigma: 0.6 }).criterion).not.toMatch(/the fills not biased/);
+    expect(judge("backfill", { mean_median_seam_sigma: 0.6 }).criterion).toMatch(/ Whether the fills are biased one way is texture_check's to say\.$/);
+    expect(WORDS.criterion.backfill).toMatch(/, and the fills not biased one way\.$/);
   });
 
   it("judges the rings alike with the ring removal's notice, which arm C reads without the remedy the backend writes (G1)", () => {
@@ -196,17 +206,79 @@ describe("judge: the checks on the result", () => {
     ["the reach one shell past it", { reach: 6.6 }, "pass", ["reach inside coverage"], "the transform reaches 6.6 Å⁻¹ (the window is tapered to the measured coverage), inside full coverage at 6.5 Å⁻¹"],
     ["the reach past it", { reach: 6.61 }, "attention", ["reach past coverage"], "too far: the transform reaches 6.61 Å⁻¹ (the window is tapered to the measured coverage), past full coverage at 6.5 Å⁻¹; set a |Q| band at or below it, or taper the window to the coverage"],
     ["no unit cell", { unit_cell: false }, "info", ["nothing to judge"], "no unit cell: |Q| is unknown, so the reach cannot be compared"],
-    ["no shell fully measured", { full_coverage_q: null }, "info", ["nothing to judge"], "no |Q| shell is fully measured on these planes"],
+    ["no shell fully measured", { full_coverage_q: null }, "info", ["nothing to judge"], "no |Q| shell is fully measured"],
     ["no ΔPDF to read the corner from", { reach: null }, "info", ["nothing to judge"], "no ΔPDF yet to read the box corner from"],
+    // With the window fitted to the coverage (plan 4.5) the weight, or the
+    // taper's reach, is the backend's own target: the verdict says so, and
+    // judges where the counts end (batch 1's sentence and data problem) and a
+    // band that is set.
     [
-      "the counts ending inside the box, no band set",
-      { window_weight: 0.00098, window: "the ΔPDF's ellipsoid window (shrunk to 0.695 × to fit the coverage)", counts },
+      "the counts ending inside the box, no band set, the window fitted",
+      { window_weight: 0.00098, window: "the ΔPDF's ellipsoid window (shrunk to 0.695 × to fit the coverage)", counts, fitted: true },
+      "pass",
+      ["window fitted", "window within limit"],
+      "fitted to the coverage: the ΔPDF's ellipsoid window (shrunk to 0.695 × to fit the coverage) puts 9.8e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the raw counts end at 4.507 Å⁻¹, inside the box (its nearest face at 6.444 Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0–4.5 Å⁻¹ (suggested_band), the user's to set",
+      ["the counts end at 4.507 Å⁻¹, inside the box"],
+    ],
+    [
+      "the window fitted, the counts reaching the box",
+      { window_weight: 0.00024, fitted: true },
+      "pass",
+      ["window fitted", "window within limit"],
+      "fitted to the coverage: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the raw counts reach the box's nearest face",
+    ],
+    [
+      "the window fitted by its taper, no weight recorded",
+      { fitted: true, counts },
+      "pass",
+      ["window fitted"],
+      "fitted to the coverage: the window is tapered to the measured coverage, where the backend fits it to keep at most 1e-3 of its weight on unmeasured reciprocal space: its own target, not a check; the raw counts end at 4.507 Å⁻¹, inside the box (its nearest face at 6.444 Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0–4.5 Å⁻¹ (suggested_band), the user's to set",
+      ["the counts end at 4.507 Å⁻¹, inside the box"],
+    ],
+    [
+      "the window fitted, a band inside the counts",
+      { window_weight: 0.00098, fitted: true, band_set: true, counts: { ...counts, band_check: "the band 0–4.5 Å⁻¹ stays inside the counts" } },
+      "pass",
+      ["window fitted", "window within limit"],
+      "fitted to the coverage: the ΔPDF's ellipsoid window puts 9.8e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the band 0–4.5 Å⁻¹ stays inside the counts",
+      ["the counts end at 4.507 Å⁻¹, inside the box"],
+    ],
+    [
+      "the window fitted, a band past the counts",
+      {
+        window_weight: 0.00098,
+        fitted: true,
+        band_set: true,
+        band_problems: ["Qmax past the counts' upper edge (4.507 Å⁻¹): empty voxels enter the transform"],
+        counts: { ...counts, band_check: "Qmax past the counts' upper edge (4.507 Å⁻¹): empty voxels enter the transform" },
+      },
+      "attention",
+      ["band past counts", "window within limit"],
+      "too far: Qmax past the counts' upper edge (4.507 Å⁻¹): empty voxels enter the transform; the ΔPDF's ellipsoid window puts 9.8e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check; the band the counts allow is suggested_band, the user's to set",
+      ["the counts end at 4.507 Å⁻¹, inside the box"],
+    ],
+    // The record past the limit is judged, whatever the page says of the window (it may have changed since the run).
+    ["the window fitted by the page, the record past the limit", { window_weight: 0.00104, fitted: true }, "attention", ["window past limit"], "too far: the ΔPDF's ellipsoid window puts 0.00104 of its weight on unmeasured reciprocal space; taper it to the coverage (pdfWindowSupport) or set a |Q| band"],
+    // Not fitted (the support off, a window the backend does not fit): the weight is judged, and no taper keeps the transform on the counts.
+    [
+      "the counts ending inside the box, no band set, the window not fitted",
+      { window_weight: 0.00098, counts },
       "pass",
       ["window within limit"],
-      "clean: the ΔPDF's ellipsoid window (shrunk to 0.695 × to fit the coverage) puts 9.8e-4 of its weight on unmeasured reciprocal space; the raw counts end at 4.507 Å⁻¹, inside the box (its nearest face at 6.444 Å⁻¹), and no |Q| band is set, so only the window's taper keeps the transform on the counts: the band they allow is 0–4.5 Å⁻¹ (suggested_band), the user's to set",
+      "clean: the ΔPDF's ellipsoid window puts 9.8e-4 of its weight on unmeasured reciprocal space; the raw counts end at 4.507 Å⁻¹, inside the box (its nearest face at 6.444 Å⁻¹), and no |Q| band is set: the band they allow is 0–4.5 Å⁻¹ (suggested_band), the user's to set",
       ["the counts end at 4.507 Å⁻¹, inside the box"],
     ],
     ["the counts ending inside, a band set: a data problem, no note", { window_weight: 0.00098, counts, band_set: true }, "pass", ["window within limit"], "clean: the ΔPDF's ellipsoid window puts 9.8e-4 of its weight on unmeasured reciprocal space", ["the counts end at 4.507 Å⁻¹, inside the box"]],
+    // Zeros stored past the counts, marked measured: the window's support takes
+    // them as data, so the band is the remedy and no taper keeps the transform on the counts.
+    [
+      "the reach past it, zeros stored past the counts",
+      { full_coverage_q: 4.45, reach: 6.444, reach_from: "the window tapers to zero at the box faces", zeros_stored: true, counts },
+      "attention",
+      ["reach past coverage"],
+      "too far: the transform reaches 6.444 Å⁻¹ (the window tapers to zero at the box faces), past full coverage at 4.45 Å⁻¹; set a |Q| band at or below it; the raw counts end at 4.507 Å⁻¹, inside the box (its nearest face at 6.444 Å⁻¹), and no |Q| band is set: the band they allow is 0–4.5 Å⁻¹ (suggested_band), the user's to set",
+      ["the counts end at 4.507 Å⁻¹, inside the box"],
+    ],
   ];
   for (const [why, over, kind, reasons, words, dataProblems = []] of COVERAGE) {
     it(`coverage: ${why}`, () => {
@@ -219,14 +291,23 @@ describe("judge: the checks on the result", () => {
     });
   }
 
-  const ops = (rms: number) => [{ op: "six-fold (60°)", rms_difference: rms }, { op: "two-fold (180°)", rms_difference: 0 }];
+  const ops = (rms: number) => [{ op: "six-fold ∥ c (60°)", rms_difference: rms }, { op: "two-fold ∥ c", rms_difference: 0 }];
+  // An operation that moves c is judged as one that keeps it: the same limit (P4.3).
+  const offPlane = (rms: number) => [...ops(0), { op: "mirror ⊥ c", rms_difference: rms }];
   const SYMMETRY: [string, Obj, Kind, Reason[], string | null][] = [
-    ["every operation held to 1e-3", { ops: ops(0.001), declared: "6/mmm" }, "pass", [], "kept: every in-plane operation holds to 0.001 or better"],
-    ["one past it", { ops: ops(0.0011), declared: "6/mmm" }, "attention", ["symmetry broken"], "not kept: six-fold (60°) (0.0011); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
-    ["a file read, no symmetry declared", { ops: ops(0.02), declared: null }, "info", ["not declared"], "not judged: the file declares no symmetry, so the section's asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
-    ["an empty declaration", { ops: ops(0.02), declared: "" }, "info", ["not declared"], "not judged: the file declares no symmetry, so the section's asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
-    ["the file not read: judged", { ops: ops(0.02), declared: undefined }, "attention", ["symmetry broken"], "not kept: six-fold (60°) (0.02); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
-    ["no operation to test", { ops: null, declared: "6/mmm" }, "info", ["nothing to judge"], null],
+    ["every operation held to 1e-3", { ops: ops(0.001), declared: "6/mmm" }, "pass", [], "kept: every operation tested holds to 0.001 or better"],
+    ["one past it", { ops: ops(0.0011), declared: "6/mmm" }, "attention", ["symmetry broken"], "not kept: six-fold ∥ c (60°) (0.0011); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
+    ["the mirror ⊥ c held to 1e-3", { ops: offPlane(0.001), declared: "6/mmm" }, "pass", [], "kept: every operation tested holds to 0.001 or better"],
+    ["the mirror ⊥ c past it, the in-plane ones held", { ops: offPlane(0.0011), declared: "6/mmm" }, "attention", ["symmetry broken"], "not kept: mirror ⊥ c (0.0011); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
+    ["every operation tested held, two not tested", { ops: ops(0), declared: "m-3m", untested: 2 }, "pass", [], "kept: every operation tested holds to 0.001 or better; 2 could not be tested (not_tested says why)"],
+    ["a file read, no symmetry declared", { ops: ops(0.02), declared: null }, "info", ["not declared"], "not judged: the file declares no symmetry, so the sections' asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
+    ["an empty declaration", { ops: ops(0.02), declared: "" }, "info", ["not declared"], "not judged: the file declares no symmetry, so the sections' asymmetry (0.02) is the data's own, counting noise included, not a break by a stage"],
+    ["the file not read: judged", { ops: ops(0.02), declared: undefined }, "attention", ["symmetry broken"], "not kept: six-fold ∥ c (60°) (0.02); a symmetry the data were symmetrised with should hold to ~0.001 or better"],
+    // No operation tested is no evidence: not judged, and why, never a pass (P4.3).
+    ["no operation to test", { ops: null, declared: "6/mmm", why: "the sections are not centred on the origin" }, "info", ["nothing to judge"], "not judged: the sections are not centred on the origin"],
+    ["every operation untested", { ops: [], declared: "m-3m", untested: 24, why: "none of the 24 entries could be tested on the sections (not_tested says why)" }, "info", ["nothing to judge"], "not judged: none of the 24 entries could be tested on the sections (not_tested says why)"],
+    ["no operation to test, and no reason given", { ops: null, declared: "6/mmm" }, "info", ["nothing to judge"], "not judged: no operation could be tested on the sections"],
+    ["no operation to test, nothing declared", { ops: null, declared: null, why: "no operations are declared, and the cell is neither hexagonal nor orthogonal" }, "info", ["nothing to judge"], "not judged: no operations are declared, and the cell is neither hexagonal nor orthogonal"],
   ];
   for (const [why, m, kind, reasons, words] of SYMMETRY) {
     it(`symmetry: ${why}`, () => {
@@ -234,11 +315,66 @@ describe("judge: the checks on the result", () => {
     });
     it(`symmetry: ${why}, the same verdicts as a sidecar and as words`, () => {
       const o = judge("symmetry", m as never);
-      roundTrip("symmetry_check", m.ops === null ? { note: "no in-plane symmetry to test" } : { ops: m.ops, symmetry_declared: m.declared === undefined ? null : Boolean(m.declared), verdict: o.words }, [o]);
+      const ops = m.ops as unknown[] | null;
+      roundTrip("symmetry_check", !ops?.length ? { verdict: o.words } : { ops, symmetry_declared: m.declared === undefined ? null : Boolean(m.declared), verdict: o.words }, [o]);
     });
   }
+  it("symmetry: a recording of before, a note and no verdict, judges nothing", () => {
+    roundTrip("symmetry_check", { note: "no in-plane symmetry to test: the cell is neither hexagonal nor orthogonal, or the section is not centred on the origin" }, [
+      { check: "symmetry", kind: "info", reasons: ["nothing to judge"], dataProblems: [], words: null },
+    ]);
+  });
 
-  it("texture: a cut whose fill is biased one way needs attention; no cut, nothing to judge", () => {
+  // texture_check's result since plan 4.2: every punch hole in 3-D (metrics/texture.ts, volumeFillBias).
+  const volume = (over: Obj): Obj => ({
+    n_holes: 125,
+    n_judged: 125,
+    median_fill_bias_sigma: 0,
+    median_fill_bias_level: 0,
+    above_fraction: 0,
+    below_fraction: 0,
+    above_floor_fraction: 0,
+    below_floor_fraction: 0,
+    systematic_fill_bias: false,
+    per_cut: [{ cut: "H–K plane at L = 0", azimuthal_ratio: 1.01 }],
+    ...over,
+  });
+  const coarse3d = volume({
+    n_judged: undefined,
+    not_judged: "grid too coarse: the nodes are 10 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more",
+    median_fill_bias_sigma: null,
+    median_fill_bias_level: null,
+    above_fraction: null,
+    below_fraction: null,
+    above_floor_fraction: null,
+    below_floor_fraction: null,
+    systematic_fill_bias: null,
+  });
+  const fewHoles = volume({ n_holes: 4, n_judged: 4, not_judged: "too few holes judged: 4 of 4, under 5", median_fill_bias_level: 0.5, systematic_fill_bias: null });
+
+  it("texture, in 3-D: a systematic fill bias over the holes needs attention, none passes", () => {
+    expect(judge("texture", volume({}))).toEqual({ check: "texture", kind: "pass", reasons: [], dataProblems: [], words: null });
+    const biased = volume({ median_fill_bias_sigma: 39.1, median_fill_bias_level: 0.506, above_fraction: 0.8, above_floor_fraction: 0.8, systematic_fill_bias: true });
+    expect(judge("texture", biased)).toEqual({ check: "texture", kind: "attention", reasons: ["fill bias"], dataProblems: [], words: null });
+    // The cuts carry the azimuthal texture only: no cut of a 3-D result is read for the fill bias.
+    expect(judge("texture", volume({ per_cut: [{ cut: "H–K plane at L = 0", systematic_fill_bias: true }] }))).toMatchObject({ kind: "pass" });
+    expect(judge("texture", { ...biased, per_cut: [] })).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
+    for (const m of [volume({}), biased]) roundTrip("texture_check", m, [judge("texture", m)]);
+  });
+
+  it("texture, in 3-D: not judged on a grid too coarse for the holes' rims, nor with too few holes judged", () => {
+    expect(judge("texture", coarse3d)).toEqual({ check: "texture", kind: "info", reasons: ["grid too coarse"], dataProblems: [], words: null });
+    // Fewer holes judged than the rule needs, or none: not judged, however large their bias (the backend's judged: false).
+    expect(judge("texture", fewHoles)).toEqual({ check: "texture", kind: "info", reasons: ["too few holes"], dataProblems: [], words: null });
+    expect(judge("texture", volume({ n_holes: 0, n_judged: 0, not_judged: "no filled punch hole", systematic_fill_bias: null }))).toMatchObject({ kind: "info", reasons: ["too few holes"] });
+    // Anything but true or false, without its reason, is no verdict: nothing to judge.
+    expect(judge("texture", volume({ systematic_fill_bias: "yes" }))).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    expect(judge("texture", volume({ systematic_fill_bias: null }))).toMatchObject({ kind: "info", reasons: ["nothing to judge"] });
+    for (const m of [coarse3d, fewHoles]) roundTrip("texture_check", m, [judge("texture", m)]);
+  });
+
+  // A result recorded before 4.2, each of three cuts judged on its own: it reads as it did.
+  it("texture, recorded by cut: a cut whose fill is biased one way needs attention; no cut, nothing to judge", () => {
     const cut = (bias: boolean) => ({ cut: "H–K plane at L = 0", systematic_fill_bias: bias });
     expect(judge("texture", { per_cut: [cut(false), cut(true)] })).toEqual({ check: "texture", kind: "attention", reasons: ["fill bias"], dataProblems: [], words: null });
     expect(judge("texture", { per_cut: [cut(false)] })).toMatchObject({ kind: "pass", reasons: [], words: null });
@@ -247,7 +383,7 @@ describe("judge: the checks on the result", () => {
     for (const m of [{ per_cut: [cut(false), cut(true)] }, { per_cut: [cut(false)] }, { per_cut: [] }, {}]) roundTrip("texture_check", m, [judge("texture", m)]);
   });
 
-  it("texture: a cut whose grid leaves its holes no room for their rims is no evidence; a judged cut's bias still needs attention", () => {
+  it("texture, recorded by cut: a cut whose grid leaves its holes no room for their rims is no evidence; a judged cut's bias still needs attention", () => {
     const cut = (bias: boolean) => ({ cut: "H–K plane at L = 0", systematic_fill_bias: bias });
     const coarse = {
       cut: "H–L plane at K = 0",
@@ -341,6 +477,11 @@ describe("judge: the checks on the result", () => {
   const OFF: Record<string, string> = {
     "the raw weight past the limit (D6)": "too far: the ΔPDF's ellipsoid window puts 0.00104 of its weight on unmeasured reciprocal space",
     "the reach past it": "too far: the transform reaches 6.61 Å⁻¹ (the window is tapered to the measured coverage), past full coverage at 6.5 Å⁻¹",
+    "the reach past it, zeros stored past the counts":
+      "too far: the transform reaches 6.444 Å⁻¹ (the window tapers to zero at the box faces), past full coverage at 4.45 Å⁻¹; the raw counts end at 4.507 Å⁻¹, inside the box (its nearest face at 6.444 Å⁻¹), and no |Q| band is set: the band they allow is 0–4.5 Å⁻¹ (suggested_band), the user's to set",
+    "the window fitted, a band past the counts":
+      "too far: Qmax past the counts' upper edge (4.507 Å⁻¹): empty voxels enter the transform; the ΔPDF's ellipsoid window puts 9.8e-4 of its weight on unmeasured reciprocal space, which the backend keeps within 1e-3 when it fits the window to the coverage: its own target, not a check",
+    "the window fitted by the page, the record past the limit": "too far: the ΔPDF's ellipsoid window puts 0.00104 of its weight on unmeasured reciprocal space",
     "a file read, no symmetry declared": "not judged: the file declares no symmetry",
     "an empty declaration": "not judged: the file declares no symmetry",
     "a rotation under 2°, judged unrounded: the UB, though it reads 2°":

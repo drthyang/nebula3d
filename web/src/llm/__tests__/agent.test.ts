@@ -6,17 +6,19 @@
 // follows, the answer it asks for when a round is stuck, and the calls it
 // forgets when it shortens their results.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { useNavStore } from "../../state/navStore";
-import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, toolResultsIn, TOOLS_UNSUPPORTED_NOTE, type AgentStep } from "../agent";
+import { usePipelineStore } from "../../state/pipelineStore";
+import { CUT_OFF_NOTE, LOOP_NOTE, runAgent, toolStepsIn, TOOLS_UNSUPPORTED_NOTE, type AgentStep } from "../agent";
+import { earlierSources } from "../answerChecks";
 import { resetTokenState } from "../provider/tokens";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import * as readings from "../readings";
 import { isCompacted } from "../readings/compact";
 import { DEFAULT_SETTINGS } from "../settings";
-import { MAX_RESULT_CHARS, type AgentTool } from "../tools";
+import { CHAT_TOOLS, MAX_RESULT_CHARS, type AgentTool } from "../tools";
 import type { Usage } from "../usage";
 import type { Outcome } from "../verdicts";
 
@@ -335,6 +337,54 @@ describe("runAgent", () => {
     expect(kept.note).toMatch(/peg-native format/);
   });
 
+  // update_settings changes a fact about the sample only when the user's
+  // latest message names it (tune/catalog.ts): the loop hands that message to
+  // the tools, as the conversation arrived.
+  describe("the user's latest message, which the tools read", () => {
+    afterEach(() => usePipelineStore.setState(usePipelineStore.getInitialState()));
+
+    it("is the same in every round: never an earlier turn's, nor what the loop sends as the user", async () => {
+      const heard: AgentTool = {
+        name: "heard",
+        description: "what the user said",
+        parameters: { type: "object", properties: { n: { type: "number" } } },
+        run: async (_args, own) => ({ result: { heard: own.userMessage ?? null }, summary: "heard" }),
+      };
+      // The first answer writes a number no tool gave: the answer checks send it back, as the user, and the model calls again.
+      const seen = script([
+        [{ toolCalls: [call("c1", "heard", { n: 1 })] }],
+        [{ content: "The volume has 7777 voxels." }],
+        [{ toolCalls: [call("c2", "heard", { n: 2 })] }],
+        [{ content: "Done." }],
+      ]);
+      const messages: ChatMessage[] = [
+        { role: "user", content: "Set the punch cell to 2 along H." },
+        { role: "assistant", content: "Set." },
+        { role: "user", content: "Is the punch clean?" },
+      ];
+      const r = await runAgent({ messages, tools: [heard], ctx, settings, signal: new AbortController().signal });
+      expect(seen[2].messages[seen[2].messages.length - 1].role).toBe("user"); // the send-back
+      expect(r.steps.map((s) => JSON.parse(s.result ?? "{}").heard)).toEqual(["Is the punch clean?", "Is the punch clean?"]);
+    });
+
+    it("lets update_settings change a fact the latest message names, and refuses one only an earlier turn named", async () => {
+      usePipelineStore.setState({ punchSupercellH: "", running: false });
+      const change = call("c1", "update_settings", { changes: { punchSupercellH: 2 } });
+      const asked: ChatMessage = { role: "user", content: "The volume is indexed on a doubled cell: set the punch cell to 2 along H." };
+      const signal = new AbortController().signal;
+      const read = { ...ctx, skillsRead: new Set(["bragg-node-audit"]) }; // the punch's skill: its gate is not what this tests
+      script([[{ toolCalls: [change] }], [{ content: "Asked." }]]);
+      const later = [asked, { role: "assistant", content: "Set." } as ChatMessage, { role: "user", content: "Is the punch clean?" } as ChatMessage];
+      const refused = await runAgent({ messages: later, tools: CHAT_TOOLS, ctx: read, settings, signal, checkAnswers: false });
+      expect(refused.steps[0]).toMatchObject({ status: "error", result: expect.stringMatching(/^Error: punchSupercellH is a fact about the sample/) });
+      expect(usePipelineStore.getState().punchSupercellH).toBe("");
+      script([[{ toolCalls: [change] }], [{ content: "Set." }]]);
+      const named = await runAgent({ messages: [asked], tools: CHAT_TOOLS, ctx: read, settings, signal, checkAnswers: false });
+      expect(named.steps[0].status).toBe("done");
+      expect(usePipelineStore.getState().punchSupercellH).toBe("2");
+    });
+  });
+
   // The round decides what repeats an earlier call and when a round brought
   // nothing new (round.test.ts); the loop asks for the answer then, and keeps
   // what it has when the model calls again all the same.
@@ -533,7 +583,64 @@ describe("runAgent", () => {
     it("gives the next reply an earlier turn's results as the model read them", () => {
       const step = { id: "0:c1", name: "long", args: {}, status: "done" as const, result: '{"items":[1],"left_out":["items: its last items"]}', full: '{"items":[1,2,3]}' };
       const turns = [{ steps: [step] }, { steps: [{ ...step, id: "1:c1", status: "error" as const }] }, {}];
-      expect(toolResultsIn(turns)).toEqual(['{"items":[1],"left_out":["items: its last items"]}']);
+      // The calls that ran, oldest first; each result as the model read it.
+      expect(toolStepsIn(turns).map((s) => s.id)).toEqual(["0:c1"]);
+      expect(earlierSources(toolStepsIn(turns), []).standing).toEqual(['{"items":[1],"left_out":["items: its last items"]}']);
+    });
+  });
+
+  describe("an earlier turn's result as a number source", () => {
+    // A flatten assessment, and a run that recomputes the flatten (and the ΔPDF after it).
+    const assess: AgentTool = {
+      name: "assess_stage",
+      description: "judges a stage",
+      parameters: { type: "object", properties: { stage: { type: "string" } } },
+      run: async () => ({ result: { flatten: { verdict: "needs attention", max_floor_trend: 0.83 } }, summary: "flatten judged" }),
+    };
+    const rerun: AgentTool = {
+      name: "run_pipeline",
+      description: "runs the pipeline",
+      parameters: { type: "object", properties: { from_stage: { type: "string" } } },
+      run: async () => ({ result: { ended: "done", stages: { flatten: "computed", pdf: "computed", pdf_check: "computed" } }, summary: "done" }),
+    };
+    const QUOTED = "The floor trend is 0.83.";
+    const SENT_BACK = [
+      "Before this answer goes to the user, fix it:",
+      "- These numbers were measured before the last run recomputed the outputs they describe: 0.83. Quote numbers measured since, or leave them out.",
+      "Then write the whole answer again.",
+    ].join("\n");
+    /** One turn of the conversation, its model scripted: the reply, and what each request carried. */
+    const turn = async (replies: Reply[], earlierSteps: AgentStep[] = []) => {
+      const seen = script(replies);
+      const r = await runAgent({ messages: base, tools: [assess, rerun], ctx: { ...ctx, earlierSteps }, settings, signal: new AbortController().signal });
+      return { r, seen };
+    };
+    const lastSent = (seen: { messages: ChatMessage[] }[], i: number): string => String(seen[i].messages[seen[i].messages.length - 1].content);
+
+    it("stops counting once the stage it measured was run again between the turns", async () => {
+      // Turn 1 reads the flatten, and quotes it.
+      const first = await turn([[{ toolCalls: [call("c1", "assess_stage", { stage: "flatten" })] }], [{ content: QUOTED }]]);
+      expect(first.r.note).toBeUndefined();
+      // The next turn may quote it while the flatten stands.
+      const standing = await turn([[{ content: QUOTED }]], toolStepsIn([first.r]));
+      expect([standing.r.content, standing.r.note, standing.seen.length]).toEqual([QUOTED, undefined, 1]);
+      // Between the turns, the flatten is run again.
+      const between = await turn([[{ toolCalls: [call("c1", "run_pipeline", { from_stage: "flatten" })] }], [{ content: "The pipeline ran again." }]], toolStepsIn([first.r]));
+      expect(between.r.note).toBeUndefined();
+      // Turn 2's number from turn 1's result is no source for the flatten as it now is: sent back once.
+      const second = await turn([[{ content: QUOTED }], [{ content: "The floor trend needs a new measurement." }]], toolStepsIn([first.r, between.r]));
+      expect(lastSent(second.seen, 1)).toBe(SENT_BACK);
+      expect([second.r.content, second.r.note]).toEqual(["The floor trend needs a new measurement.", undefined]);
+    });
+
+    it("stops counting once this reply ran the stage again, and says so under an answer that keeps it", async () => {
+      const first = await turn([[{ toolCalls: [call("c1", "assess_stage", { stage: "flatten" })] }], [{ content: QUOTED }]]);
+      const second = await turn(
+        [[{ toolCalls: [call("c1", "run_pipeline", { from_stage: "flatten" })] }], [{ content: QUOTED }], [{ content: QUOTED }]],
+        toolStepsIn([first.r]),
+      );
+      expect(lastSent(second.seen, 2)).toBe(SENT_BACK);
+      expect(second.r.note).toBe("Measured before the last run recomputed the outputs they describe: 0.83.");
     });
   });
 
@@ -572,6 +679,31 @@ describe("runAgent", () => {
       expect(readings.seen(r.steps[0])).toBe(toolTexts(seen[1].messages)[0]);
       expect(readings.seen(r.steps[0])).not.toBe(sent[0]);
       expect(readings.found(r.steps[0])).toMatchObject({ peak: 1, series: expect.arrayContaining([1.199]) });
+    });
+
+    it("keeps a skill's `## Gates` section when it shortens the skill's text", async () => {
+      // A skill's text as read_skill returns it, synthetic: its gates are made up.
+      const gates = "## Gates\n\n- Rings: a ring left at most 0.37 of its plane's noise.\n- Punch: a node punched at 4.5σ or more.";
+      const text = `Skill synthetic-method\n\n# A synthetic method\n\n${"Read the volume first. ".repeat(40)}\n\n${gates}\n\n## Steps\n\n${"A step. ".repeat(60)}`;
+      const method: AgentTool = {
+        name: "read_method",
+        description: "a skill's text",
+        parameters: { type: "object", properties: {} },
+        run: async () => ({ result: text, summary: "read the method" }),
+      };
+      const seen = script([
+        [{ toolCalls: [call("c1", "read_method", {})] }],
+        [{ toolCalls: [call("c2", "series", { x: 2 })] }],
+        [{ toolCalls: [call("c3", "series", { x: 3 })] }],
+        [{ toolCalls: [call("c4", "series", { x: 4 })] }],
+        [{ content: "Done." }],
+      ]);
+      const r = await runAgent({ messages: base, tools: [method, seriesTool], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
+      const sent = toolTexts(seen[4].messages);
+      expect(sent.map(isCompacted)).toEqual([true, false, false, false]);
+      expect(sent[0]).toBe(`${text.slice(0, 400)}…\n\n${gates}\n\n(shortened to save room; call the tool again for the whole result)`);
+      expect(r.steps[0]).toMatchObject({ name: "read_method", shortened: true });
+      expect(readings.seen(r.steps[0])).toBe(text);
     });
 
     it("lets a shortened call run again, for the whole result: forgotten by its key, a later run of the same call with it", async () => {

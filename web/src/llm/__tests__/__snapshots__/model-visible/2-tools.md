@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (24 tools, 22397 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (26 tools, 24515 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -140,7 +140,7 @@ Parameters:
 ## 7. texture_check
 
 ```text
-Check whether the punch and backfill printed a pattern of their own into reciprocal space, on a cut (default: the three principal planes through the origin). Fill bias: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median); the part outside that range, signed, in the rim's σ and in units of the local diffuse level. Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture that the ΔPDF turns into features at lattice vectors. Azimuthal texture: per |Q| shell, how much the sector means vary around the shell before the punch (unpunched voxels) and after the backfill; a ratio near 1 adds none.
+Check whether the punch and backfill printed a pattern of their own into reciprocal space. Fill bias, over every punch hole in 3-D: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median); the part outside that range, signed, in the rim's σ and in units of the local diffuse level, and the shares of holes above and below it, and beyond it by a fifth of the level or more (above_floor_fraction, below_floor_fraction). Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture that the ΔPDF turns into features at lattice vectors. Azimuthal texture, on a cut (default: the three principal planes through the origin): per |Q| shell, how much the sector means vary around the shell after the backfill against before the punch (unpunched voxels); a ratio near 1 adds none.
 ```
 
 Parameters:
@@ -165,7 +165,7 @@ Parameters:
 ## 8. qmax_coverage
 
 ```text
-Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. On the three principal planes through the origin it measures the share of each |Q| shell that was measured (finite in raw), the |Q| where shells stop being fully (95 %) measured, and where the data box ends, and compares them with how far the transform's window reaches: the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. From the raw volume, raw_counts gives where its counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts. When the counts end inside the box and no band is set, the verdict says so, with the edge and the band they allow (counts_end_inside_box).
+Check that the forward transform (data → 3D-ΔPDF) does not reach past the measured reciprocal space. When the ΔPDF on disk records it, the verdict is the share of its window's weight on unmeasured space (≲ 1e-3 is clean), with the window's shape and scale. Otherwise it compares how far the transform's window reaches (the |Q| band if one is set, else the box faces, the coverage edge when the window is tapered to the coverage, or the box corners when apodization is off with a separable window) with full_coverage_q, where the raw volume's |Q| shells, in 3D, stop holding counts (measured and non-zero) in 95 % of their voxels. With the window fitted to the coverage (pdfWindowSupport), that share and that reach are the backend's own target, not a check: the verdict judges where the counts end and the band instead. The reach comes from the Configure page's settings, which may differ from the ones that made the ΔPDF on disk. raw_counts gives where the counts begin and end in |Q| (beyond those edges most voxels hold no counts) and the box's nearest face; suggested_band is the |Q| band they allow, and band_check says whether a band that is set stays inside the counts. When the counts end inside the box and no band is set, the verdict says so, with the edge and the band they allow (counts_end_inside_box).
 ```
 
 Parameters:
@@ -180,7 +180,7 @@ Parameters:
 ## 9. symmetry_check
 
 ```text
-Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell, when the file declares that its data were symmetrised (with none declared the asymmetry is the data's own and is not judged): an x–y section (default z = 0) compared with its image under each in-plane operation (hexagonal: six-, three-, two-fold and the a ↔ b mirror; orthogonal: the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b), as the RMS of the difference over the section's RMS. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it; a larger share means a stage broke it, or the sample lacks that operation. Which operations the sample has is the user's to say.
+Check that the 3D-ΔPDF keeps the symmetry its data were declared symmetrised with (with none declared the asymmetry is the data's own and is not judged): the ΔPDF against its image under each operation of the declared point group, an operation and its product with the inversion one entry (equal on the centrosymmetric ΔPDF), those that move c included (none declared: the cell's in-plane ones), on the sections the operation maps onto sections (the x–y sections at z and −z, default z = 0, and the x–z and y–z sections through the origin), else on the voxels it maps from one onto another (tested_on says which; not_tested, any it cannot test), as the RMS of the difference over the RMS, the worst section's. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it; a larger share means a stage broke it, or the sample lacks that operation. Which operations the sample has is the user's to say.
 ```
 
 Parameters:
@@ -191,7 +191,7 @@ Parameters:
   "properties": {
     "z": {
       "type": "number",
-      "description": "Height of the x–y section along c, in Å (default 0)"
+      "description": "Height of the x–y section along c, in Å (default 0); the one at −z is read too"
     }
   }
 }
@@ -500,7 +500,22 @@ Parameters:
 }
 ```
 
-## 20. configure_settings
+## 20. run_verdict
+
+```text
+The verdict on the run that {{achieved}} gives now, computed from this reply's checks: its words (null before any check), each stage's verdict, what needs attention, is not judged or not measured, and the data's problems no setting fixes. Read it before you write whether the run met its goal.
+```
+
+Parameters:
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+## 21. configure_settings
 
 ```text
 The Configure page's current settings — what the next run would use (blank = the backend default). They may differ from the settings that produced the files on disk. Name settings exactly as returned here when you suggest a change.
@@ -515,10 +530,10 @@ Parameters:
 }
 ```
 
-## 21. update_settings
+## 22. update_settings
 
 ```text
-Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. These method choices and thresholds can be changed: ringModel (pooled|global_v2|patched|parametric), ringPooledSectors (integer 8–144), ringPooledWindow (number 0.5–30), ringNFourier (integer 0–40), ringGlobalSubtraction (conservative|mean), punchMinSig (number 3–12), punchMode (both|integer|search), punchHGuard (number 0–0.3), punchSearchFloor (number 3–60), punchFootprint (own|profile|ellipsoid), punchProfileNSigma (number 0.1–3), punchSearchMaxWidth (number 1–6), punchMargin (number 0–0.5), punchFitUnconstrained (true|false), backfillMethod (laplace|local|q_shell), flattenQ2 (true|false), flattenFitQMax (number 3–25), flattenEstimator (model|floor|snip), pdfApod (gaussian|hann|none), pdfWindowShape (auto|separable|ellipsoid), pdfWindowSupport (true|false). These facts about the sample only when the user asks for that change, never to improve a result: punchProtectH (H fractions like "1/3, 2/3", or none; H fractions the off-lattice search leaves alone (its protected planes, e.g. real satellites at H = n ± 1/3); none protects nothing.) punchProtectHalfWidth (number 0–0.25; Half width (r.l.u.) of each protected H plane.) punchSupercellH (integer 1–6; The punch's indexing cell along H: the Bragg nodes are the multiples of this H (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) punchSupercellK (integer 1–6; The punch's indexing cell along K: the Bragg nodes are the multiples of this K (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) punchSupercellL (integer 1–6; The punch's indexing cell along L: the Bragg nodes are the multiples of this L (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) The magnetic ion and |Q| band stay with the user. Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings already at the value are left as they are. Returns each change and the stage to rerun from.
+Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. These method choices and thresholds can be changed: ringModel (pooled|global_v2|patched|parametric), ringPooledSectors (integer 8–144), ringPooledWindow (number 0.5–30), ringNFourier (integer 0–40), ringGlobalSubtraction (conservative|mean), punchMinSig (number 3–12), punchMode (both|integer|search), punchHGuard (number 0–0.3), punchSearchFloor (number 3–60), punchFootprint (own|profile|ellipsoid), punchProfileNSigma (number 0.1–3), punchSearchMaxWidth (number 1–6), punchMargin (number 0–0.5), punchFitUnconstrained (true|false), backfillMethod (laplace|local|q_shell), flattenQ2 (true|false), flattenFitQMax (number 3–25), flattenEstimator (model|floor|snip), pdfApod (gaussian|hann|none), pdfWindowShape (auto|separable|ellipsoid), pdfWindowSupport (true|false). These facts about the sample only when the user asks for that change, never to improve a result: modulation ({"k": "1/3, 0, 0", "order": 1, "form": "points|planes", "half_width": 0.08}, "none" or "default"; The sample's modulation: the off-lattice search leaves its satellites G ± m·k alone (form points, the default) or the planes through them (form planes), the form the user's to declare; k in r.l.u., several separated by ";", order m 1–6 (default 1), half_width in r.l.u. (default 0.08); "none" declares none, and so does "default", the backend's own.) punchSupercellH (integer 1–6; The punch's indexing cell along H: the Bragg nodes are the multiples of this H (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) punchSupercellK (integer 1–6; The punch's indexing cell along K: the Bragg nodes are the multiples of this K (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) punchSupercellL (integer 1–6; The punch's indexing cell along L: the Bragg nodes are the multiples of this L (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) A change to one of them is refused unless the user's latest message names it. The magnetic ion and |Q| band stay with the user. Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings already at the value are left as they are. Returns each change and the stage to rerun from.
 ```
 
 Parameters:
@@ -536,7 +551,7 @@ Parameters:
 }
 ```
 
-## 22. run_pipeline
+## 23. run_pipeline
 
 ```text
 Run the reduction pipeline on the selected dataset with the Configure page's settings, as the Run button does: it writes the dataset's stage outputs, and the console shows the run on its Execution page while it goes. Without from_stage, outputs that already exist are reused (unless the user switched Force on), so it computes what is missing. With from_stage, that stage and every enabled stage after it are recomputed: use it after update_settings. A run takes seconds to minutes. Returns how it ended, which stages were computed or reused, and the outputs that now exist; measure them afterwards.
@@ -557,7 +572,7 @@ Parameters:
 }
 ```
 
-## 23. tune_pipeline
+## 24. tune_pipeline
 
 ```text
 Search for the best settings, one stage at a time: for each stage it runs the current settings, has you propose alternatives, runs each, judges which best meets the stage's goal, keeps it and moves on, so later stages build on the best earlier ones. Trials run in a tuning folder: the dataset's own outputs are not changed, and the chosen settings end up on the Configure page. The user watches the trials in the chat, under this reply, and each run on the Execution page. Takes minutes (one run per trial). Returns every trial's changes and numbers (a trial that matched the current settings' numbers exactly is marked no_effect), and each stage's chosen trial and why: quote these, never numbers the result does not hold.
@@ -587,7 +602,27 @@ Parameters:
 }
 ```
 
-## 24. show_in_viewer
+## 25. regrid_refined_ub
+
+```text
+Regrid the dataset's raw volume onto its refined UB, as a new dataset: the fit is ub_check's (the punch cell's Bragg nodes, q_max), and the volume resampled onto the refined UB is written as <stem>_regridded.nxs beside the raw file, never over a file. No pipeline is run. Only when the user's latest message asks for a regrid; otherwise refused. Nothing is written, and refusal gives code and reason, when the turn is under turn_threshold_deg, a symmetrised volume has no unsymmetrised source beside it, or the new file or dataset id exists. Returns the new dataset, the turn, the peaks' RMS before → after, and the measured voxels lost outside the old grid.
+```
+
+Parameters:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "q_max": {
+      "type": "number",
+      "description": "The nodes' |Q| limit in Å⁻¹ (default: everything the box holds)"
+    }
+  }
+}
+```
+
+## 26. show_in_viewer
 
 ```text
 Open a cut in the console's viewer so the user can see what you are describing: view=cleanup opens the reciprocal-space cleanup page (all stages side by side) at a reciprocal plane; view=dpdf opens the 3D-ΔPDF page at a real-space section. Use it for the one cut that best shows your point.

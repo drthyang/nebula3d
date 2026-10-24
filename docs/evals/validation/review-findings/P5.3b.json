@@ -1,0 +1,20 @@
+{
+ "source": "review",
+ "ref": "P5.3b",
+ "at": "a977d23",
+ "kind": "orchestration",
+ "evidence": "#82's guard (web/src/llm/__tests__/tokenBudget.test.ts:480, in the LM Studio test at 32k) held that, were both skills read in the worst local turn to carry a `## Gates` section at its cap (GATES_MAX, web/src/llm/readings/compact.ts:34), the largest request would still leave MIN_REPLY in a 32k window. Each addition to what the model sees on every request spends from that margin: #79 (4.2's texture_check over every hole) left it 24 tokens short, GATES_MAX was lowered from 1,200 to 1,000 characters to restore about 260, and P2 of plan 4.15 would leave 86. Plan 4.6 (run_verdict) and 4.7's TypeScript half (the regrid action) each add a tool description and would break it.",
+ "proposed_fix": "Two guards in place of one. At 32k (LM Studio, the degraded path): the base prompt, every tool and ONE skill gated at the cap fit, leaving MIN_REPLY, with the margin printed. At 56k (the live runs' minimum, RUN_POLICY.minLocalContextTokens): the worst local turn with BOTH skills read whole and gated at the cap fits, and leaves the 3,072-token headroom. GATES_MAX stays 1,000; the 32k path that shortens results to the newest, and its test, stay as they are.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "81b92f6",
+ "tests": [
+  "web/src/llm/__tests__/tokenBudget.test.ts (at 32k: one skill gated at the cap leaves MIN_REPLY, the margin printed; at 57,344: the worst local turn with both skills gated at the cap leaves the 3,072-token headroom)"
+ ],
+ "note": "Reversible by the user: a 32k LM Studio window no longer has to hold two gated skills at the cap. On main before #79 (GATES_MAX 1,200): at 32k one gated skill leaves 1,122 tokens past MIN_REPLY; at 56k the worst local turn with both skills gated is 50,392 tokens, 6,952 under the minimum. With #79 (GATES_MAX 1,000): one gated skill at 32k leaves 1,070 tokens; both at 56k, 49,843 tokens, leaving 7,501. Each new tool's description is reported against both guards when it is built.",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-24",
+  "option": "keep GATES_MAX at 1,000; at 32k one gated skill at the cap must fit, at 56k two, with the headroom asserted"
+ }
+}
