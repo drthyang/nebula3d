@@ -720,4 +720,8 @@ export interface JobEvent {
   status?: string;
   fraction?: number | null;
   message?: string;
+  // The job's own end, why it failed as the server said (state/pipelineStore
+  // finish): the page's log shows it; run_pipeline's result leaves it out, as
+  // the validation frozen at 812e686 does.
+  end?: true;
 }
