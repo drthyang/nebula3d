@@ -11,6 +11,8 @@
   the job now fails within a second or two, saying how the process ended, and
   the run's page shows why. (3) A tuning run's request to a model server that
   went quiet waited forever; it is now streamed under the chat's stall limits
-  (nothing for 5 minutes before the reply, or 2 minutes within it) and the
-  tuning run ends with the reason. (4) See the Execution page's fix for a run
+  (nothing for 5 minutes before the reply, or 2 minutes within it); a stalled
+  request is asked once more after a 5 s pause, as the chat does, and a second
+  stall ends the tuning run with the reason. Stop ends it at once, without
+  asking again. (4) See the Execution page's fix for a run
   whose progress stream drops.
