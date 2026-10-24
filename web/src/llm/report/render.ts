@@ -7,9 +7,9 @@
 // and numbers, the limitations that bear on them, the model's summary and the
 // figures. The provenance — each check's criterion and measures, the dataset,
 // the tuning trials, the agent's steps, the settings and the standing notes —
-// follows in one "Details and provenance" section: collapsed on the page (Print
-// opens it), in full in the Markdown, so the report still says how to
-// reproduce it.
+// follows in one "Details and provenance" section: collapsed on the page (it
+// prints open, from the console's Print / PDF or the browser's own), in full
+// in the Markdown, so the report still says how to reproduce it.
 
 import { parseBlocks, type Block, type Inline } from "../markdown";
 import { WORDS } from "../verdicts";
@@ -226,7 +226,11 @@ details.provenance { margin-top: 34px; border-top: 1px solid var(--line); paddin
 details.provenance > summary { cursor: pointer; font-size: 17px; font-weight: 650; padding: 4px 0; }
 details.provenance > summary span { color: var(--muted); font-size: 12.5px; font-weight: 400; margin-left: 6px; }
 details.provenance h3.sub { font-size: 15px; margin: 26px 0 10px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
-@media print { body { background: #fff; } .page { padding: 0; max-width: none; } h2 { break-after: avoid; } }
+@media print { body { background: #fff; } .page { padding: 0; max-width: none; } h2 { break-after: avoid; }
+  /* The printed report is the whole report: the provenance prints open from the browser's own
+     Print too (Chrome/Edge 131+, Safari 18.4+, Firefox 143+; the console's Print / PDF opens it). */
+  details.provenance::details-content { content-visibility: visible; }
+  details.provenance > summary { list-style: none; } }
 `;
 
 export function reportHtml(r: Report): string {

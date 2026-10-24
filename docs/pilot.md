@@ -445,7 +445,14 @@ miss is a note.
   provenance — each check's criterion and measures, the dataset, the tuning
   trials, the agent's steps, the settings and the standing notes — follows in
   one *Details and provenance* section, collapsed on the page (*Print / PDF*
-  opens it) and in full in the Markdown.
+  opens it, and the downloaded page prints it open from the browser's own
+  Print too, by a print style: Chrome/Edge 131+, Safari 18.4+, Firefox 143+)
+  and in full in the Markdown. A tool call of the agent's that failed is among
+  the limitations ("The agent's texture_check call failed: …"), since the
+  part of a card it would have measured is then missing; the ΔPDF card's
+  numbers give the round trip's fit as the tuner does: r, its even part and
+  the odd share (what reads r below 1 on unsymmetrised data), and the
+  normalised RMS.
 - **Tuning** (`tune/`, the `tune_pipeline` tool) — the chat starts it when asked
   for the best result, and shows each stage's trials under that reply
   (`components/TuneProgress.tsx`). It runs the pipeline one stage at a time (rings →
