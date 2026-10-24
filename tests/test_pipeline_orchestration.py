@@ -645,6 +645,31 @@ def test_flatten_records_its_settings_in_its_output(tmp_path):
     assert pipeline.read_flatten_settings(tmp_path / "missing.h5") is None
 
 
+@pytest.mark.parametrize(("r2", "printed"), [
+    (-2.2e-16, "R² 0.000"),  # a constant fit's 0, rounded below it
+    (0.0, "R² 0.000"),
+    (-4e-4, "R² 0.000"),     # rounds to zero: no sign either
+    (-0.25, "R² -0.250"),    # a fit worse than the mean keeps its sign
+    (0.9876, "R² 0.988"),
+])
+def test_the_flatten_summary_prints_a_zero_r2_without_a_sign(monkeypatch, r2, printed):
+    """The summary gives the fit's R² to three decimals, and one that rounds
+    to zero as 0.000, never -0.000. A constant fit's R² is 0 up to rounding,
+    of either sign: on the parity volume the browser printed -0.000 where the
+    native engine printed 0.000 (tests/test_native_browser_parity.py)."""
+    from nebula3d.preprocessing import RadialFlattenResult
+
+    vol = _vol()
+    fit = RadialFlattenResult(
+        volume=vol, q_grid=np.array([1.0]), bg_curve=np.array([0.5]),
+        raw_levels=np.array([0.5]), counts=np.array([10]), estimator="model",
+        model_coef=(0.5, 0.0), model_r2=r2)
+    monkeypatch.setattr(pipeline, "flatten_radial_background", lambda *a, **k: fit)
+    lines: list[str] = []
+    pipeline.flatten(vol, progress=lambda stage, status, frac, msg: lines.append(msg))
+    assert lines[-1] == f"flatten complete (const 0.5 + 0·F(Q)², {printed})"
+
+
 def test_real_pdf_stale_guard_skips_on_rerun(tmp_path):
     inp = tmp_path / "s.nxs"
     paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path)

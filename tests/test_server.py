@@ -506,6 +506,32 @@ def test_bragg_profile_reads_saved_json(tmp_path):
     assert body["has_profile"] is True
     assert body["fit_covariance"] is True
     assert body["peaks"][0]["width_q"] == [0.12, 0.08, 0.04]
+    assert body["node_test"] is None  # every node judged: the record has none
+
+
+def test_bragg_profile_gives_the_nodes_the_node_test_left(tmp_path):
+    """The punch's record (G2): the nodes whose background shell held fewer
+    voxels than the node test needs, how many of those it examined, the grid
+    against the limit, and the notice its log ends on. A record that is not
+    one gives none."""
+    from nebula3d.pipeline import node_test_notice
+
+    (tmp_path / "raw").mkdir()
+    proc = tmp_path / "processed"
+    proc.mkdir()
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=proc)
+    nebula3d.save(_vol(), paths.braggpunched)
+    notice = node_test_notice(703, 728, 0.1611, 0.1433)
+    record = {"examined": 728, "under_floor": 703, "min_voxels": 8, "voxel_q": 0.1611,
+              "needs_q": 0.1433, "left_to_search": True, "notice": notice}
+    profile = {"schema_version": 1, "n_peaks": 0, "peaks": [], "node_test": record}
+    paths.bragg_profile_json.write_text(json.dumps(profile), encoding="utf-8")
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    assert client.get(f"/api/bragg/{SLUG}/profile").json()["node_test"] == record
+
+    profile["node_test"] = {"examined": 728}
+    paths.bragg_profile_json.write_text(json.dumps(profile), encoding="utf-8")
+    assert client.get(f"/api/bragg/{SLUG}/profile").json()["node_test"] is None
 
 
 def test_ring_diagnostics_missing_returns_empty_state(env):
