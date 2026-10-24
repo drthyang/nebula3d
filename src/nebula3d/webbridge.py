@@ -61,6 +61,7 @@ from nebula3d.pipeline import (
 )
 from nebula3d.pipeline import load_input as _load_run_input
 from nebula3d.preprocessing import write_global_ring_diagnostics
+from nebula3d.server import bragg as _bragg
 from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
 from nebula3d.server import deltapdf as _dpdf
@@ -1074,6 +1075,8 @@ def bragg_profile_json(dataset_id: str) -> str:
     the browser that is the Pyodide virtual FS — so this only re-reads a small
     JSON file.  The ``has_profile: false`` shape matches the native
     ``BraggProfileOut`` defaults so the viewer's empty states are identical.
+    ``node_test`` is the nodes the punch's node test could not judge, read as
+    the server reads it (:func:`nebula3d.server.bragg.node_test_out`).
     """
     cfg = _require_cfg()
     ds = _ds.find_dataset(cfg, dataset_id)
@@ -1086,7 +1089,7 @@ def bragg_profile_json(dataset_id: str) -> str:
             "has_profile": False, "schema_version": 1,
             "width_labels": [], "hkl_width_labels": [], "width_units": {},
             "n_peaks": 0, "fit_covariance": False, "punch_frame": None,
-            "peaks": [],
+            "peaks": [], "node_test": None,
         })
     data = json.loads(path.read_text(encoding="utf-8"))
     return _json({
@@ -1101,6 +1104,7 @@ def bragg_profile_json(dataset_id: str) -> str:
         "fit_covariance": bool(data.get("fit_covariance", False)),
         "punch_frame": data.get("punch_frame"),
         "peaks": list(data.get("peaks", [])),
+        "node_test": _bragg.node_test_out(data.get("node_test")),
     })
 
 
