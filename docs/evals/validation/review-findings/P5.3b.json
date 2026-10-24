@@ -11,7 +11,7 @@
  "tests": [
   "web/src/llm/__tests__/tokenBudget.test.ts (at 32k: one skill gated at the cap leaves MIN_REPLY, the margin printed; at 57,344: the worst local turn with both skills gated at the cap leaves the 3,072-token headroom)"
  ],
- "note": "Reversible by the user: a 32k LM Studio window no longer has to hold two gated skills at the cap. On main before #79 (GATES_MAX 1,200): at 32k one gated skill leaves 1,122 tokens past MIN_REPLY; at 56k the worst local turn with both skills gated is 50,392 tokens, 6,952 under the minimum. Each new tool's description is reported against both guards when it is built.",
+ "note": "Reversible by the user: a 32k LM Studio window no longer has to hold two gated skills at the cap. On main before #79 (GATES_MAX 1,200): at 32k one gated skill leaves 1,122 tokens past MIN_REPLY; at 56k the worst local turn with both skills gated is 50,392 tokens, 6,952 under the minimum. With #79 (GATES_MAX 1,000): one gated skill at 32k leaves 1,070 tokens; both at 56k, 49,843 tokens, leaving 7,501. Each new tool's description is reported against both guards when it is built.",
  "decision": {
   "by": "the manager, on the user's delegation",
   "on": "2026-10-24",
