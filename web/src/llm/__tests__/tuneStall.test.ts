@@ -1,13 +1,11 @@
 // The tuning run against a stand-in model server that goes quiet: a stalled
 // request is asked once more, a second stall ends the run with the reason, and
 // the user's Stop during a stall ends it at once, never asked again. The real
-// client (completeChat's stall watchdog) talks to a real HTTP server here, the
-// chat's stall limits and pauses shortened.
+// client (completeChat's stall watchdog) talks to a stand-in for the server's
+// /chat/completions in place of fetch, the chat's stall limits and pauses
+// shortened.
 
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
-
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
@@ -30,39 +28,31 @@ vi.mock("../tune/evaluate", async (importOriginal) => ({
   evaluateStage: evaluate.evaluateStage,
 }));
 
-// What the server does with its nth request (1-based): sit on it, or answer.
+// What the server does with its nth request (1-based): sit on it, saying
+// nothing until the client gives up, or answer.
 let behaviour: (n: number) => "stall" | "answer" = () => "answer";
 let onRequest: (n: number) => void = () => {};
 let requests = 0;
-const open = new Set<ServerResponse>();
-let server: Server;
-let baseUrl = "";
+const baseUrl = "http://127.0.0.1:1310/v1";
 
-const answer = (res: ServerResponse) => {
-  res.writeHead(200, { "Content-Type": "text/event-stream" });
-  res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: '{"candidates": []}' } }] })}\n\n`);
-  res.end("data: [DONE]\n\n");
+const standIn = async (url: string, init: RequestInit): Promise<Response> => {
+  expect(url).toBe(`${baseUrl}/chat/completions`);
+  requests += 1;
+  const n = requests;
+  onRequest(n);
+  if (behaviour(n) === "stall") {
+    return new Promise<Response>((_resolve, reject) => {
+      const gone = () => reject(new DOMException("The operation was aborted.", "AbortError"));
+      if (init.signal?.aborted) gone();
+      init.signal?.addEventListener("abort", gone, { once: true });
+    });
+  }
+  const sse = `data: ${JSON.stringify({ choices: [{ delta: { content: '{"candidates": []}' } }] })}\n\ndata: [DONE]\n\n`;
+  return new Response(sse, { status: 200, headers: { "Content-Type": "text/event-stream" } });
 };
 
-beforeAll(async () => {
-  server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    req.resume();
-    req.on("end", () => {
-      requests += 1;
-      const n = requests;
-      onRequest(n);
-      if (behaviour(n) === "answer") answer(res);
-      else open.add(res); // says nothing until the client gives up
-      res.on("close", () => open.delete(res));
-    });
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
-});
-
-afterAll(async () => {
-  for (const res of open) res.destroy();
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("the tuning run when the model server stalls", () => {
@@ -73,6 +63,7 @@ describe("the tuning run when the model server stalls", () => {
   const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn(standIn));
     requests = 0;
     onRequest = () => {};
     evaluate.evaluateStage.mockReset().mockResolvedValue({ total_leftover_peaks: 1, mean_punched_fraction: 0.02 });
