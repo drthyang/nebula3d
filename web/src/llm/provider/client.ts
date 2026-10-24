@@ -846,8 +846,9 @@ async function completeWatched(
 
 // Completion read whole, used where the reply is parsed at once. Claude goes
 // through its SDK, which times a request out itself. Elsewhere, with `stallMs`
-// the reply is streamed under a stall watchdog (completeWatched); without, it
-// is one non-streamed request that only `signal` ends. `onUsage` is told the
+// the reply is streamed under a stall watchdog (completeWatched; no caller asks
+// for it while the tuner's requests stay as the validation frozen at 812e686
+// runs them); without, it is one non-streamed request that only `signal` ends. `onUsage` is told the
 // request's token counts as the server gave them, or null when it gave none,
 // and its stop reason (UsageReport).
 export const completeChat = async ({

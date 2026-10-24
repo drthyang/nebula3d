@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { usePipelineStore, type RunOptions } from "../../state/pipelineStore";
-import { STALL_MS, StallError } from "../recovery";
 import { DEFAULT_SETTINGS } from "../settings";
 import { currentStageSettings, proposalToPatch, ProposalError, sampleParam, toFormValue } from "../tune/catalog";
 import { parseJsonReply, STAGE_GOALS, STAGE_GOALS_WITHOUT_SKILLS } from "../tune/prompts";
@@ -16,11 +15,6 @@ const llm = vi.hoisted(() => ({ completeChat: vi.fn() }));
 vi.mock("../provider/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../provider/client")>()),
   completeChat: llm.completeChat,
-}));
-// The pause before a stalled request is asked again, shortened.
-vi.mock("../recovery", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../recovery")>()),
-  RETRY_DELAYS_MS: [0, 0],
 }));
 const evaluate = vi.hoisted(() => ({ evaluateStage: vi.fn() }));
 const api = vi.hoisted(() => ({ startTuningRun: vi.fn(), promoteTrial: vi.fn(), fetchDataset: vi.fn() }));
@@ -309,19 +303,5 @@ describe("startTuning", () => {
     expect(active).toBe(false);
     expect(finishedNote).toMatch(/^Stopped/);
     expect(stages[0].trials.map((t) => [t.n, t.status])).toEqual([[1, "done"], [2, "stopped"], [3, "skipped"]]);
-  });
-
-  it("asks under the chat's stall limits, once more after a stall, and ends with the reason when the server stays quiet", async () => {
-    llm.completeChat.mockRejectedValueOnce(new StallError(300)).mockRejectedValueOnce(new StallError(300));
-    await startTuning({ dataset, stages: ["punch"], trialsPerStage: 3, llm: DEFAULT_SETTINGS });
-    expect(llm.completeChat).toHaveBeenCalledWith(expect.objectContaining({ stallMs: STALL_MS }));
-    expect(llm.completeChat).toHaveBeenCalledTimes(2); // asked once more, no further
-    const { stages, error, active } = useTuneStore.getState();
-    expect(active).toBe(false);
-    expect(error).toMatch(/the model server sent nothing for 300 s/);
-    // The run with the user's settings stays, measured.
-    expect(stages[0].trials).toHaveLength(1);
-    expect(stages[0].trials[0].status).toBe("done");
-    expect(runs.map((r) => r.trial)).toEqual(["punch-1"]);
   });
 });
