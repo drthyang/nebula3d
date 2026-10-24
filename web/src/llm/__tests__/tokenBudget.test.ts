@@ -83,7 +83,7 @@ import {
   REPLY_RESERVE,
   resetTokenState,
 } from "../provider/tokens";
-import { isCompacted, SKILL_STUB_MAX } from "../readings/compact";
+import { GATES_MAX, isCompacted, SKILL_STUB_MAX } from "../readings/compact";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, readSkill, REFERENCE_MAX_CHARS } from "../skills";
 import { callTool, CHAT_TOOLS } from "../tools";
@@ -415,6 +415,13 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     const min = RUN_POLICY.minLocalContextTokens;
     expect(worst, `the worst local turn, ${n(worst)} tokens, does not fit the run policy's minimum of ${n(min)}`).toBeLessThanOrEqual(min);
     expect(min - worst, `the worst local turn leaves ${n(min - worst)} of the ${n(HEADROOM)} tokens of headroom under ${n(min)}`).toBeGreaterThanOrEqual(HEADROOM);
+    // The live-run rule holds everything, both skills read whole with a
+    // `## Gates` section at its cap (GATES_MAX, readings/compact.ts) included:
+    // each section adds at most GATES_MAX characters to its skill's text, and
+    // the turn still leaves the headroom under the minimum (the manager's
+    // decision on the user's delegation, 2026-10-24; review finding P5.3b).
+    const gated = worst + estimateTokens((2 * GATES_MAX) / DATA_CHARS_PER_TOKEN, before.key);
+    expect(min - gated, `with two gated skills at the cap the worst local turn, ${n(gated)} tokens, leaves ${n(min - gated)} under ${n(min)}`).toBeGreaterThanOrEqual(HEADROOM);
 
     // After: the loop as it runs, the skills read in each order. The largest
     // request of the reply is what the window must hold.
@@ -455,7 +462,8 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
       `Reply reserve: Claude ${n(CLAUDE_REPLY)} (anthropic.ts); a local run ${n(REPLY_RESERVE)} (REPLY_RESERVE: no cap is sent, the window plan keeps it free; ` +
         `a request is refused below MIN_REPLY ${n(MIN_REPLY)}).`,
       `The run policy's minimum for a local live run (RUN_POLICY): ${n(min)}; the worst local turn ${n(worst)} leaves ${n(min - worst)} ` +
-        `(at least ${n(HEADROOM)} must stay free).`,
+        `(at least ${n(HEADROOM)} must stay free); with both skills gated at the cap (${n(GATES_MAX)} characters each) it is ` +
+        `${n(gated)}, leaving ${n(min - gated)}.`,
     );
   }, TURN_TIMEOUT);
 
@@ -474,11 +482,15 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     const page = resultsOf(last, (c) => c.name === "read_skill" && c.args.reference !== undefined);
     const b = breakdown(run.sent[run.peak], run.key);
     // A skill with a `## Gates` section is shortened to its head and the
-    // section, at most SKILL_STUB_MAX characters (readings/compact.ts). Were
-    // both skills to carry one at its cap, no request would grow by more than
-    // their two stubs' growth: the largest would still leave MIN_REPLY.
-    const growth = bodies.reduce((sum, t) => sum + Math.max(0, SKILL_STUB_MAX - t.length), 0);
-    expect(b.prompt + estimateTokens(growth / DATA_CHARS_PER_TOKEN, run.key) + MIN_REPLY).toBeLessThanOrEqual(WINDOW);
+    // section, at most SKILL_STUB_MAX characters (readings/compact.ts). At
+    // 32k one skill gated at the cap still fits: its stub's growth leaves the
+    // largest request MIN_REPLY. Two gated at the cap need more than 32k: the
+    // live runs' 56k holds them (the test above). The manager's decision on
+    // the user's delegation, 2026-10-24 (review finding P5.3b), reversible by
+    // the user.
+    const growth = Math.max(...bodies.map((t) => Math.max(0, SKILL_STUB_MAX - t.length)));
+    const oneGated = b.prompt + estimateTokens(growth / DATA_CHARS_PER_TOKEN, run.key) + MIN_REPLY;
+    expect(oneGated, `one skill gated at the cap: ${n(oneGated)} tokens with MIN_REPLY, in a window of ${n(WINDOW)}`).toBeLessThanOrEqual(WINDOW);
     columns.push({ head: ["LM Studio at 32k", "after the guard"], b, reserve: REPLY_RESERVE });
     expectPinned("LM Studio at 32k: largest prompt sent", b.prompt, PINNED.lmStudio32k.prompt);
     expectPinned("LM Studio at 32k: total", b.prompt + REPLY_RESERVE, PINNED.lmStudio32k.total);
@@ -486,7 +498,8 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
       `LM Studio loaded with ${n(WINDOW)} (window.ts, agent.ts): a request without MIN_REPLY free is shortened down to its newest result. ` +
         `Largest sent ${n(b.prompt)} (request ${run.peak + 1} of ${run.sent.length}), ${n(WINDOW - b.prompt)} left for the reply. ` +
         `On the last request both skills read arrive as ${n(Math.max(...bodies.map((t) => t.length)))}-character stubs; ` +
-        `the reference page ${page.every(isCompacted) ? "too" : "stays whole"}.`,
+        `the reference page ${page.every(isCompacted) ? "too" : "stays whole"}. ` +
+        `One skill gated at the cap (${n(SKILL_STUB_MAX)}-character stub) leaves ${n(WINDOW - oneGated)} to spare past MIN_REPLY.`,
     );
   }, TURN_TIMEOUT);
 });

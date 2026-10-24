@@ -27,15 +27,19 @@ export const TEXT_HEAD = 400;
 // (reduction-qc states 5: skillLint.test.ts, GATES). They cost about 710
 // tokens at the estimator's data rate (provider/tokens.ts: 1.4 characters a
 // token). A gated skill's stub stays under SKILL_STUB_MAX characters (1,600),
-// well under half of any skill read today, so a turn that reads two gated
-// skills grows by at most about 1.6k tokens over today's stubs once
-// compacted: inside the 1.9k a 32k window keeps past MIN_REPLY on the worst
-// turn, with about 260 tokens to spare (tokenBudget.test.ts holds it).
+// well under half of any skill read today. On the worst turn
+// (tokenBudget.test.ts holds both): a 32k window keeps MIN_REPLY with one
+// skill gated at the cap, about 1.1k tokens to spare; the live runs' 56k keep
+// their 3,072-token headroom with both skills read whole and gated at the
+// cap, about 7.5k to spare. Two gated skills at the cap need more than 32k,
+// by the manager's decision on the user's delegation of 2026-10-24 (review
+// finding P5.3b), which the user may reverse.
 //
 // The cap was 1,200 until 2026-10-24, when the worst turn's growth (4.2's
-// texture_check over every hole) left that guard 24 tokens short; the manager
-// lowered it on the user's delegation. It binds the user's own `## Gates`
-// text (plan 5.3): each skill's section has at most 1,000 characters.
+// texture_check over every hole) left the 32k guard, then held for two gated
+// skills, 24 tokens short; the manager lowered it on the user's delegation.
+// It binds the user's own `## Gates` text (plan 5.3): each skill's section has
+// at most 1,000 characters.
 export const GATES_MAX = 1_000;
 const GATES_MARKER = (lines: number): string =>
   `[${lines} more line${lines === 1 ? "" : "s"} of the gates left out to save room: read the skill again for them]`;
