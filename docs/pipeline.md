@@ -322,6 +322,21 @@ points (0.081 Å⁻¹) leave 9 voxels or more in every node's shell, the box's
 corners included: every node is judged, nothing is left to the search, and
 the punch is as it was.
 
+#### What the search leaves alone: the sample's modulation
+
+The search pass punches sharp peaks off the lattice, satellites included. A
+sample's satellites are a fact about it, declared like its symmetry
+(`PipelineParams.modulation`): the wave vector k, the order and the form,
+either the points G ± m·k or the planes through them. The search then leaves
+them alone at every position equivalent under the symmetry.
+
+For now a run that declares none declares the planes H = n ± 1/3 ± 0.08 r.l.u.
+(k = (1/3, 0, 0) as planes), which is the protection from before declarations,
+bit for bit. The punch records what its search left alone. When its sharp
+peaks off the lattice bunch at one commensurate fraction, as an undeclared
+modulation would leave them, it says so. The physics, the record and the
+known limits are in [modulation.md](modulation.md).
+
 ### 3. Backfill Bragg Holes
 
 ```bash

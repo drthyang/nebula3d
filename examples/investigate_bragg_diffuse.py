@@ -28,7 +28,9 @@ Env:
     DATA_FILE      ring-removed .h5 (default: auto-detect *_ringremoved.h5)
     DATASET        substring used to pick one ringremoved file
     SERIES         1 → process all detected files + the series overlay
-    FRACTIONS      comma list of H fractional parts (default 0.3333,0.6667)
+    FRACTIONS      comma list of H fractional parts of the sample's satellite
+                   planes (this script's default 0.3333,0.6667 is an example:
+                   set the sample's own)
     H_HALF_WIDTH   half-width (rlu) around each fraction plane (default 0.08)
     MAX_SATELLITES detailed cut panels to draw (default 6)
     HALF_WINDOW    cut half-length in rlu (default 0.6)

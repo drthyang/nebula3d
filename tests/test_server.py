@@ -1199,13 +1199,13 @@ def test_modulation_labels_follow_the_runs_record(tmp_path):
     assert header["x_axis"] == vol.h_axis.tolist() and header["cut_label"] == "L = 0 r.l.u."
     # A run that protected the legacy planes: they are labelled the same way.
     legacy = {"declared": None, "cell": [1, 1, 1], "symmetry_ops": None,
-              "legacy": {"h_centers": None, "h_fractions": [0.25], "half_width": 0.05},
+              "legacy": {"h_centers": None, "h_fractions": [0.6667], "half_width": 0.08},
               "bunching": None}
     client, _ = _labels_dataset(tmp_path / "legacy", legacy)
     header, labels = _parse_envelope(client.get(f"/api/modulation/{SLUG}/labels").content)
-    assert [p["label"] for p in header["legend"]] == ["H ≡ 0.25 (mod 1)"]
+    assert [p["label"] for p in header["legend"]] == ["H ≡ 0.6667 (mod 1)"]
     covered = vol.h_axis[np.any(labels.T > 0, axis=1)]
-    assert sorted({round(float(h) % 1, 2) for h in covered}) == [0.2, 0.3]  # 0.25 ± 0.05
+    assert sorted({round(float(h) % 1, 2) for h in covered}) == [0.6, 0.7]  # 0.6667 ± 0.08
     # A record written before the punch kept one: no labels, and it says so.
     client, _ = _labels_dataset(tmp_path / "old", None)
     header, labels = _parse_envelope(client.get(f"/api/modulation/{SLUG}/labels").content)
