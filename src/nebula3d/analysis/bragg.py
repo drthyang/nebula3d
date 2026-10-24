@@ -545,7 +545,11 @@ class BraggRemover:
         the satellites **G** ± m·**k**, or the planes through them, that the
         search leaves alone, on the parent lattice of ``supercell`` and, with
         ``symmetry_ops``, at every equivalent position.  ``None`` (default)
-        declares none.  The legacy H planes below are left alone too.
+        declares none.  The legacy H planes below are left alone too.  A
+        protected voxel is never a search candidate, still counts in the
+        search's local-maximum test (so the voxel beside a brighter protected
+        peak is its flank, not a peak), and no search peak's footprint takes
+        it; the integer pass is not affected.
     search_exclude_h_centers:
         Legacy: H-plane centres excluded from the hkl-agnostic search stage.
         Use this to protect known fractional-H diffuse planes while still using
@@ -682,6 +686,9 @@ class BraggRemover:
     # shared across each symmetry orbit (see the class docstring).
     symmetry_ops: tuple[NDArray[np.int64], ...] | None = None
     _symmetry_cache: dict[tuple[object, ...], GridSymmetry] = dataclasses.field(
+        default_factory=dict, init=False, repr=False, compare=False)
+    # The voxels the search leaves alone on a grid (``_search_protected``).
+    _protected_cache: dict[tuple[object, ...], NDArray[np.bool_] | None] = dataclasses.field(
         default_factory=dict, init=False, repr=False, compare=False)
     # What the last search pass measured and used: the diffuse scatter and the
     # floors in data units (see ``search_floor_unit``), for the run log.
@@ -2257,7 +2264,9 @@ class BraggRemover:
         from scipy import ndimage
 
         self._search_report.clear()
-        valid = (vol.mask & np.isfinite(vol.data)) & ~self._search_excluded_mask(vol)
+        measured = vol.mask & np.isfinite(vol.data)
+        protected = self._search_protected(vol)
+        valid = measured if protected is None else measured & ~protected
         if not valid.any():
             return []
         bin_idx, med, scale, count = self._q_shell_stats(vol, self.search_q_step)
@@ -2290,8 +2299,11 @@ class BraggRemover:
         # (≥ its 3×3×3 neighbours).  This catches every peak even when several are
         # joined into one above-threshold blob (taking a single max per connected
         # component would miss all but the brightest — e.g. satellites at the
-        # measured-volume edge that touch a residual arc).
-        scored = np.where(valid, vol.data, -np.inf)
+        # measured-volume edge that touch a residual arc).  The neighbours are
+        # every measured voxel, protected ones included: a voxel beside a
+        # brighter protected peak is that peak's flank, not a peak of its own.
+        scored = np.where(measured, vol.data, -np.inf)
+        del measured
         local_max = ndimage.maximum_filter(scored, size=3, mode="nearest")
         peaks = np.argwhere(cand & (scored >= local_max))
         del scored, local_max, cand  # free the full-volume temporaries
@@ -2364,6 +2376,18 @@ class BraggRemover:
             return np.zeros(vol.shape, dtype=bool)
         return protected_mask(planes, vol)
 
+    def _search_protected(self, vol: HKLVolume) -> NDArray[np.bool_] | None:
+        """The voxels the search leaves alone (:meth:`_search_excluded_mask`) as
+        a view of the volume's shape, or None when nothing is protected; cached
+        per grid, for the search and the punch of its peaks."""
+        key = tuple((a.size, float(a[0]), float(a[-1]))
+                    for a in (vol.h_axis, vol.k_axis, vol.l_axis))
+        if key not in self._protected_cache:
+            mask = self._search_excluded_mask(vol)
+            self._protected_cache[key] = (np.broadcast_to(mask, vol.shape) if mask.any()
+                                          else None)
+        return self._protected_cache[key]
+
     def _search_excluded_mask(self, vol: HKLVolume) -> NDArray[np.bool_]:
         """Every voxel the search leaves alone: the legacy H planes
         (:meth:`_search_excluded_h_mask`) and the positions of the declared
@@ -2386,7 +2410,8 @@ class BraggRemover:
         """
         peaks, reference, _ = self._detect(vol)
         keep = self._punch_centers(
-            vol, np.ones(vol.shape, dtype=bool), peaks, reference=reference)
+            vol, np.ones(vol.shape, dtype=bool), peaks, reference=reference,
+            protect=self._search_protected(vol))
         return self._symmetric_keep(vol, self._punch_incident_beam(vol, keep))
 
     def _punch_centers(
@@ -2396,12 +2421,15 @@ class BraggRemover:
         peaks: list[_PeakPunch],
         *,
         reference: float | None = None,
+        protect: NDArray[np.bool_] | None = None,
     ) -> NDArray[np.bool_]:
         """Punch an anisotropic, intensity-scaled ellipsoid at each peak centre,
         in place on *keep* (local windows only).
 
         *reference* is the intensity-scaling reference (:meth:`_detect` returns
-        it); ``None`` takes it from *peaks* alone.
+        it); ``None`` takes it from *peaks* alone.  *protect* (the volume's
+        shape, :meth:`_search_protected`) is what no search peak's footprint
+        takes; the integer pass's peaks are punched whole.
         """
         # The Q ellipsoid's HKL bounding box: the fallback where the punch
         # frame is undefined (a peak at the origin).
@@ -2413,6 +2441,7 @@ class BraggRemover:
         for peak_rec in peaks:
             s = self._scale_factor(peak_rec.intensity, ref if ref is not None else 1.0)
             center = (peak_rec.ih, peak_rec.ik, peak_rec.il)
+            spare = protect if peak_rec.found_by == "search" else None
 
             # (1) Profile-matched footprint (final as recorded), or the
             #     covariance fit (either frame): tilted ellipsoid with the
@@ -2427,7 +2456,7 @@ class BraggRemover:
                 self._punch_one(
                     vol, keep, center, self._ellipsoid_bounding_radii(a), 0.0,
                     center_hkl=peak_rec.center_hkl,
-                    h_guard=self._h_guard_for(peak_rec), shape_matrix=a)
+                    h_guard=self._h_guard_for(peak_rec), shape_matrix=a, protect=spare)
                 continue
 
             # (2) No per-peak fit (search peaks, shape fit off, peaks too weak
@@ -2443,7 +2472,7 @@ class BraggRemover:
                 self._punch_one(
                     vol, keep, center, self._ellipsoid_bounding_radii(a), 0.0,
                     center_hkl=peak_rec.center_hkl,
-                    h_guard=self._h_guard_for(peak_rec), shape_matrix=a)
+                    h_guard=self._h_guard_for(peak_rec), shape_matrix=a, protect=spare)
                 continue
 
             # (3) Frame undefined (origin): the base's HKL bounding box,
@@ -2459,7 +2488,7 @@ class BraggRemover:
                 vol, keep, center, radii,
                 max(0.0, float(self.phi_tail_hkl)) * s,
                 center_hkl=peak_rec.center_hkl,
-                h_guard=self._h_guard_for(peak_rec),
+                h_guard=self._h_guard_for(peak_rec), protect=spare,
             )
         return keep
 
@@ -2635,13 +2664,15 @@ class BraggRemover:
         center_hkl: tuple[float, float, float] | None = None,
         h_guard: tuple[tuple[float, float, float], float] | None = None,
         shape_matrix: NDArray[np.float64] | None = None,
+        protect: NDArray[np.bool_] | None = None,
     ) -> NDArray[np.bool_]:
         """Punch one ellipsoid, optionally stretched along the local K-L tangent.
 
         ``shape_matrix`` (Q-space mode) overrides the axis-aligned ``radii``
         ellipsoid with the general quadratic form ``δhklᵀ A δhkl ≤ 1``; ``radii``
         is then only the HKL bounding box used to size the local window, and the
-        φ-tail is not added.
+        φ-tail is not added.  ``protect`` (the volume's shape) holds the voxels
+        the punch leaves alone.
         """
         dh, dk, dl = self._steps(vol)
         nh, nk, nl = vol.shape
@@ -2694,6 +2725,8 @@ class BraggRemover:
                         d = grid - n0
                         offset = offset + (d if c == 1 else float(c) * d)
                 punch &= np.abs(offset) <= max(float(half_width), 0.0)
+        if protect is not None:
+            punch &= ~protect[hs:he, ks:ke, ls:le]
         keep[hs:he, ks:ke, ls:le] &= ~punch
         return keep
 

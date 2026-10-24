@@ -336,20 +336,7 @@ type Kind = "tool" | "field" | "setting" | "name" | "claim" | "gate" | "unstated
  * what the skill names and why it fails. Fix the skill (with the user), then
  * take the entry off: the lint fails while an entry no longer fails.
  */
-const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [
-  {
-    skill: "reduction-qc",
-    kind: "field",
-    names: "max_floor_trend",
-    why: "step 6 names the planes' largest trend; assess_stage gives the whole volume's, floor_trend, since 4.1's TypeScript half. The skill's fact sync follows in its own PR (approved with #66).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "field",
-    names: "max_floor_span_fraction",
-    why: "step 6 names the planes' largest span; assess_stage gives the whole volume's, floor_span_fraction, since 4.1's TypeScript half. The skill's fact sync follows in its own PR (approved with #66).",
-  },
-];
+const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [];
 
 // ---------------------------------------------------------------- the skills, in units
 

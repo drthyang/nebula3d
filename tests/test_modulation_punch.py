@@ -18,11 +18,12 @@ import pytest
 
 import nebula3d
 from nebula3d.core import HKLVolume
-from nebula3d.modulation import Modulation, protected_labels
+from nebula3d.modulation import Modulation
 from nebula3d.pipeline import (
     PipelineParams,
     PunchParams,
     _sharp_off_lattice,
+    bragg_remover,
     default_modulation,
     punch_bragg,
     run_pipeline,
@@ -149,24 +150,70 @@ def test_the_punch_says_when_sharp_peaks_off_the_lattice_bunch_at_a_fraction():
 
 
 def test_a_declared_modulation_is_left_alone_and_raises_no_question():
-    """With k = (1/5, 0, 0) declared, as planes or as points, no satellite's
-    own voxel is a search peak and the punch asks nothing. The search still
-    finds the voxel beside a protected satellite (its summit drops out of the
-    local-maximum test), so its peaks off the lattice are all within one grid
-    step of the declared positions: flanks of the declared satellites, which
-    the bunching test leaves out (docs/modulation.md, known limits)."""
+    """With k = (1/5, 0, 0) declared, as planes or as points, the search finds
+    no peak off the lattice: not the satellites, and not the voxels beside
+    them, which are flanks of brighter protected peaks, not maxima. The punch
+    asks nothing. (Before the fix it found 200 such flanks with the planes
+    declared and 837 with the points.)"""
     vol = _satellites()
     for declared in (Modulation.parse({"k": "1/5, 0, 0", "form": "planes"}),
                      Modulation.parse("1/5, 0, 0")):
         out, lines = _punch_lines(vol, modulation=declared)
         assert out._bragg_profile["modulation"]["bunching"] is None
         assert not any(m.startswith("sharp peaks off the lattice") for m in lines)
-        centres = np.array([r["center_hkl"] for r in _off_lattice(out)])
-        assert len(centres)  # the flanks: the search's known limit
-        assert declared.labels(*centres.T).max() == 0  # no satellite's own voxel
-        beside = [dataclasses.replace(p, half_width=p.half_width + 0.05)
-                  for p in declared.positions()]
-        assert protected_labels(beside, *centres.T).min() > 0
+        assert not _off_lattice(out)
+
+
+def _six_m_satellites():
+    """The exactly 6/m test data of tests/test_symmetry.py with its noise as
+    σ, its symmetry on the grid, and the centre voxels of its satellites at the
+    star of k = (1/3, 0, 0) that lie in the grid and are measured: Gaussians of
+    σ about 0.08 r.l.u. on a 0.1 r.l.u. grid, wider than a ± 0.08 protection."""
+    vol = dataclasses.replace(_hex_volume(), sigma=np.full(_SHAPE, 0.2))
+    gs = GridSymmetry.for_volume(vol, parse_symmetry_ops(SIX_M))
+    measured = vol.mask & np.isfinite(vol.data)
+    nodes = [np.array(g, dtype=float) - [3, 3, 2] for g in np.ndindex(7, 7, 5)]
+    nodes = [n for n in nodes if n.any()]
+    axes = (vol.h_axis, vol.k_axis, vol.l_axis)
+    centres = set()
+    for n in nodes[::7]:  # the nodes _hex_volume plants satellites about
+        for op in gs.ops:
+            s = op @ (n + [1 / 3, 0, 0])
+            idx = tuple(int(np.argmin(np.abs(a - v))) for a, v in zip(axes, s))
+            if all(abs(float(a[i]) - v) <= 0.05 + 1e-9 for a, i, v in zip(axes, idx, s)) \
+                    and measured[idx]:
+                centres.add(idx)
+    return vol, gs, sorted(centres)
+
+
+@pytest.mark.parametrize("form", ["points", "planes"])
+def test_a_protected_satellite_comes_through_the_search_whole(form):
+    """Satellites wider than their protection, at the 6/m star of
+    k = (1/3, 0, 0) declared ± 0.08: none of the 216 is punched, and no
+    protected voxel is punched but by the incident beam's punch at the origin,
+    which is not the search's. Before the fix the search found the voxel beside
+    a protected satellite, and its punch took the satellite: 198 of 216 with
+    the points declared."""
+    vol, gs, centres = _six_m_satellites()
+    assert len(centres) == 216
+    declared = Modulation.parse({"k": "1/3, 0, 0", "form": form})
+    punched = punch_bragg(vol, PunchParams(), symmetry=gs, modulation=declared)._punched
+    assert sum(bool(punched[i]) for i in centres) == 0
+    remover = dataclasses.replace(bragg_remover(PunchParams()), symmetry_ops=gs.ops)
+    beam = ~remover._symmetric_keep(vol, remover._punch_incident_beam(
+        vol, np.ones(vol.shape, dtype=bool)))
+    protected = np.broadcast_to(declared.mask(vol, gs), vol.shape)
+    assert (punched & protected).any() and not (punched & protected & ~beam).any()
+
+
+def test_the_search_still_punches_the_satellites_nobody_declared():
+    """The fix does not blind the search: with nothing declared, or with a
+    modulation declared elsewhere (k = (0, 0, 1/2)), every one of the 216
+    satellites is punched."""
+    vol, gs, centres = _six_m_satellites()
+    for extra in ({}, {"modulation": Modulation.parse("0, 0, 1/2")}):
+        punched = punch_bragg(vol, PunchParams(), symmetry=gs, **extra)._punched
+        assert sum(bool(punched[i]) for i in centres) == len(centres) == 216
 
 
 def test_the_test_reads_the_sharp_peaks_off_the_lattice():
