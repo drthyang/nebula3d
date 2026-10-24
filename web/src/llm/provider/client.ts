@@ -259,10 +259,11 @@ interface PostChatArgs {
   // Ollama: the context length to run the model with (options.num_ctx); sized
   // from the request when left out.
   numCtx?: number;
-  // The most tokens the reply may run to: a validation run's output cap
-  // (evals/validationModels.ts), as each server takes it (max_tokens; Ollama's
-  // options.num_predict). Left out, none is asked, and Claude's transport asks
-  // its own (anthropic.ts). The app leaves it out.
+  // The most tokens the reply may run to, as each server takes it (max_tokens;
+  // Ollama's options.num_predict). Left out, none is asked, and Claude's
+  // transport asks its own (anthropic.ts). The agent loop passes its run
+  // policy's (runPolicy.ts): in the app, Claude's own and none elsewhere; in a
+  // validation run, its cap (evals/validationModels.ts).
   maxTokens?: number;
 }
 
