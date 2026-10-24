@@ -31,6 +31,7 @@ import { hklVolumeId, stageVolumeId } from "../../context/loadContext";
 import { qRadius } from "../../context/pipelineContext";
 import { withoutInference } from "../../inference";
 import { flattenJudging, flattenMetrics, volumePedestal } from "../../metrics/flatten";
+import { SYMMETRY_HOLDS } from "../../metrics/symmetry";
 import { verdicts } from "../../verdicts";
 import { bridgeConfig } from "./bridgeWorker";
 import { devCase, type DevCase, type DevCaseId, type ToolRunResult } from "./index";
@@ -175,6 +176,40 @@ describe("dev-control: nothing flagged", () => {
     expect(r.transform_reach_q as number, msg).toBeLessThanOrEqual(r.full_coverage_q as number);
     expect([r.counts_end_inside_box, (r.raw_counts as { q_max_edge: number | null }).q_max_edge], msg).toEqual([false, null]);
     expect(outcome, msg).toMatchObject({ kind: "pass", dataProblems: [] });
+  });
+});
+
+// No dev case is symmetrised, so the symmetry check judges none of them: each
+// reads "not judged", the file declaring no symmetry. dev-control symmetrised
+// over m-3m and declared so (devCase's symmetrise, as the NeXus Viewer's export
+// is) is one it judges: through the default run, each of m-3m's 47 operations
+// holds (24 entries: each rotation with its product with the inversion, and
+// the inversion), those that move c included, on the sections through the
+// origin and on the x–y sections off it, and the ΔPDF evaluation's own break
+// with them (plan 4.3).
+describe("dev-control symmetrised over m-3m: every declared operation holds", () => {
+  check("dev-control", "symmetry_check reads each of m-3m's 47 operations as held, at z = 0 and at z = 1 Å", async () => {
+    const c = devCase("dev-control", { symmetrise: "m-3m" });
+    for (const z of [0, 1]) {
+      const r = ran(await c.tool("symmetry_check", { z }), "symmetry_check");
+      const ops = r.result.ops as { op: string; rms_difference: number; tested_on: string }[];
+      const worst = ops.reduce((w, o) => (o.rms_difference > w.rms_difference ? o : w));
+      const [outcome] = outcomeOf(r);
+      const msg = evidence(c, { z, operations: r.result.operations, sections: r.result.sections, worst, not_tested: r.result.not_tested ?? [], outcome });
+      expect(r.result.operations, msg).toBe("declared (m-3m): 47 besides the identity");
+      expect(ops, msg).toHaveLength(24);
+      // The three-folds, which move c, on the x–z and y–z sections they map.
+      const threeFolds = ops.filter((o) => o.op.startsWith("three-fold"));
+      expect(threeFolds, msg).toHaveLength(8);
+      expect(threeFolds.every((o) => o.tested_on.includes("xz")), msg).toBe(true);
+      expect(r.result.not_tested, msg).toBeUndefined();
+      expect(worst.rms_difference, msg).toBeLessThanOrEqual(SYMMETRY_HOLDS);
+      expect(outcome, msg).toMatchObject({ kind: "pass", reasons: [] });
+    }
+    const pdf = ran(await c.tool("assess_stage", { stage: "pdf" }), "assess_stage pdf").result.pdf as Record<string, unknown>;
+    const msg = evidence(c, { max_symmetry_break: pdf.max_symmetry_break, worst_symmetry_op: pdf.worst_symmetry_op, symmetry_declared: pdf.symmetry_declared });
+    expect(pdf.symmetry_declared, msg).toBe(true);
+    expect(pdf.max_symmetry_break as number, msg).toBeLessThanOrEqual(SYMMETRY_HOLDS);
   });
 });
 

@@ -7,8 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset, FlattenSettings } from "../../api/types";
 import { loadPipelineContext } from "../context/loadContext";
 import { FLATTEN_UNRECORDED_NOTE, pedestalLeft } from "../metrics/flatten";
+import { operationName } from "../metrics/symmetry";
 import { evaluateStage, headline, outOfBounds } from "../tune/evaluate";
 import { judge } from "../verdicts";
+import { cut, directGroup, HKL, orbit } from "./constructedDpdf";
 import { makeSlice } from "./helpers";
 import { shellFloorsOf } from "./shellFloors";
 
@@ -248,6 +250,39 @@ describe("evaluateStage", () => {
     expect(e.symmetry_declared).toBe(true);
     expect(headline("pdf", e)).toMatch(/ · unmeasured 0\.0436 · symmetry off ≤ \d/);
     expect(judge("pdf", e).reasons).toContain("symmetry broken");
+  });
+
+  it("tests the declared group's operations that map the x–y section onto itself, as symmetry_check judges them; with none declared, the cell's in-plane ones", async () => {
+    const withPdf: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" }],
+    };
+    // A tetragonal ΔPDF symmetrised over 4/m: it keeps the four-fold and the
+    // mirror ⊥ c, and not the mirrors ⊥ a and ⊥ b, which 4/m lacks.
+    const fourOverM = [HKL.fourC, HKL.mirrorC];
+    const cell = { a: 4, c: 6, gamma: 90 };
+    const features = orbit([0, 0.25].map((w) => ({ at: [0.3, 0.1, w], amp: 1, width: 0.35 })), directGroup(fourOverM));
+    const lattice = { a: cell.a, b: cell.a, c: cell.c, alpha: 90, beta: 90, gamma: 90 };
+    api.fetchConsistencyCheck.mockResolvedValue({ has_check: false });
+    api.fetchDpdfMeta.mockResolvedValue({ lattice, window_open_weight: 0, window_shape: "ellipsoid" });
+    api.fetchDpdfSlice.mockImplementation(async (_id: string, plane: "xy" | "xz" | "yz", value: number) => cut(cell, features, plane, value));
+    const raw = { shape: [41, 41, 41], h_range: [-4, 4], k_range: [-4, 4], l_range: [-4, 4], lattice };
+
+    api.fetchMeta.mockResolvedValue({ ...raw, symmetry: "4/m", symmetry_ops: fourOverM });
+    const declared = await evaluateStage("pdf", withPdf);
+    expect(declared.max_symmetry_break as number).toBeLessThan(1e-6);
+    // An entry of the group symmetry_check judges: a rotation with its product with the inversion.
+    const onSection = directGroup(fourOverM).filter((m) => m[2][0] === 0 && m[2][1] === 0);
+    const entries = [...onSection.slice(1).filter((m) => operationName(m).includes("fold")).map((m) => `${operationName(m)} / ${operationName(m.map((r) => r.map((x) => -x + 0)))}`), "inversion"];
+    expect(entries).toContain(declared.worst_symmetry_op);
+    expect(judge("pdf", declared).reasons).not.toContain("symmetry broken");
+
+    // No operations declared, only the name: the cell's in-plane ones, as before, the mirrors ⊥ a and ⊥ b among them.
+    api.fetchMeta.mockResolvedValue({ ...raw, symmetry: "4/m" });
+    const named = await evaluateStage("pdf", withPdf);
+    expect(["mirror ⊥ a", "mirror ⊥ b"]).toContain(named.worst_symmetry_op);
+    expect(named.max_symmetry_break as number).toBeGreaterThan(0.05);
+    expect(judge("pdf", named).reasons).toContain("symmetry broken");
   });
 
   it("judges the ΔPDF's window by its raw weight, as qmax_coverage does: 1.04e-3 is past 1e-3 (D6, 2.4.6), and shows it so (2.4.6b)", async () => {

@@ -24,7 +24,11 @@ envelope). The messages:
 - this adapter's own (CONTROL_TYPES): ``dev_case`` gives a dev case of the
   validation a fresh workspace, from its default run's snapshot when this
   process's root holds one; ``dev_snapshot`` keeps the workspace's outputs as
-  that snapshot; ``terminate`` answers, then ends the process.
+  that snapshot; ``terminate`` answers, then ends the process. With
+  ``symmetrise: {label, ops}`` (operations on (h, k, l), as the NeXus Viewer
+  writes them), ``dev_case`` gives the case's volume symmetrised over the group
+  the operations generate and declared so, as that export is: no dev case is
+  symmetrised, and the symmetry check judges only data that are.
 
 Only the validation's dev split is built: a case id outside it is refused before
 anything is built (the third of the interface's three checks; devData/index.ts
@@ -52,6 +56,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO
 
 if TYPE_CHECKING:
+    from nebula3d.core import HKLVolume
+    from nebula3d.symmetry import GridSymmetry
     from nebula3d.validation import Case
 
 #: The pipeline worker's messages (pyodideWorker.ts, WorkerRequest): the TS type
@@ -268,7 +274,10 @@ class Bridge:
         from nebula3d.validation.__main__ import dataset_stem
 
         stem = dataset_stem(str(req["case"]), str(req.get("arm", "B")), int(req.get("run", 1)))
-        return stem, self.root / "snapshots" / f"{stem}-n{int(req['n'])}"
+        sym = req.get("symmetrise")
+        # A symmetrised volume is a case of its own: its snapshot apart.
+        variant = f"-{re.sub(r'[^0-9A-Za-z]+', '', str(sym['label']))}" if sym else ""
+        return stem, self.root / "snapshots" / f"{stem}-n{int(req['n'])}{variant}"
 
     def dev_case(self, rid: object, req: dict[str, Any], _body: bytes) -> None:
         import nebula3d
@@ -280,7 +289,12 @@ class Bridge:
         if not raw.exists():
             # Built once per root: the raw volume is kept beside its snapshot.
             raw.parent.mkdir(parents=True, exist_ok=True)
-            nebula3d.save(build(case, int(req["n"])).raw, raw)
+            vol = build(case, int(req["n"])).raw
+            sym = req.get("symmetrise")
+            group = symmetrised(vol, str(sym["ops"])) if sym else None
+            nebula3d.save(vol, raw)
+            if sym:
+                declare(raw, str(sym["label"]), group)
         work = self._new_workspace()
         shutil.copyfile(raw, work / "raw" / raw.name)
         restored = (snap / "processed").is_dir()
@@ -301,6 +315,38 @@ class Bridge:
         shutil.rmtree(snap / "processed", ignore_errors=True)
         shutil.copytree(self.workdir / "processed", snap / "processed")
         self.result(rid, True)
+
+
+def symmetrised(vol: HKLVolume, ops: str) -> GridSymmetry:
+    """*vol* symmetrised in place over the group *ops* generate (triplets on
+    (h, k, l)), as the NeXus Viewer's export is: each voxel the mean of its
+    equivalents, and unmeasured wherever one of them is. Returns the group on
+    the volume's grid (:class:`nebula3d.symmetry.GridSymmetry`)."""
+    import numpy as np
+
+    from nebula3d.symmetry import GridSymmetry, parse_symmetry_ops
+
+    group = GridSymmetry.for_volume(vol, parse_symmetry_ops(ops))
+    holes = group.orbit_any(~np.isfinite(vol.data))
+    vol.data[holes] = np.nan
+    group.orbit_mean(vol.data, ~holes)
+    return group
+
+
+def declare(path: Path, label: str, group: GridSymmetry) -> None:
+    """Write into the volume file at *path* the declaration the NeXus Viewer's
+    export carries: the symmetry's name and every operation of its group (the
+    ``symmetry`` and ``symmetry_ops`` attributes, which
+    :func:`nebula3d.io.hkl_reader.declared_attrs` reads)."""
+    import h5py
+
+    from nebula3d.io.mantid_nxs import NEBULA3D_GROUP
+    from nebula3d.symmetry import _triplet
+
+    with h5py.File(path, "r+") as f:
+        attrs = f.require_group(f"MDHistoWorkspace/{NEBULA3D_GROUP}").attrs
+        attrs["symmetry"] = label
+        attrs["symmetry_ops"] = "; ".join(_triplet(m) for m in group.ops)
 
 
 def serve(root: Path) -> int:

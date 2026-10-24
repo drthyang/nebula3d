@@ -129,10 +129,12 @@ export interface CoverageMeasurements {
   };
 }
 
-/** What symmetry_check measured: each in-plane operation's share (null: nothing to test), and the symmetry the file declares. */
+/** What symmetry_check measured: each operation's share (null: nothing to test), the symmetry the file declares, and how many operations the sections could not test. */
 export interface SymmetryMeasurements {
   ops: readonly { op: string; rms_difference: number }[] | null;
   declared: string | null | undefined; // null or "": none declared; undefined: the file was not read
+  untested?: number;
+  why?: string; // with no operation tested, why none could be
 }
 
 /** What each check's rule judges. */
@@ -387,7 +389,7 @@ const pdf: StageRule = {
   criterion: criterionOf("pdf")`The back-FFT reproduces what the transform keeps, ${EVEN_PART}, to an r of ${BACK_FFT_R_OK} or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.`,
   goal: goalOf("pdf")`The ΔPDF must show features above noise (feature_snr) with the transform's reach inside the measured coverage: window_weight_on_unmeasured, the share of the window's weight on unmeasured reciprocal space, must stay at or below 1e-3, where the backend's own window keeps it (a trial past it is not a candidate).${evidence(
     " A window that reaches further raises feature_snr with the backfill's guesses and the box's empty corners, which is worse, not better.",
-  )} max_symmetry_break is the x–y section's largest RMS difference from its image under the cell's in-plane operations (worst_symmetry_op names it)${evidence(
+  )} max_symmetry_break is the x–y section's largest RMS difference from its image under the declared group's operations that map it onto itself (none declared: the cell's in-plane operations; worst_symmetry_op names it)${evidence(
     ": a trial that raises it far above your settings' value broke a symmetry your settings kept, as a separable window does on a hexagonal cell",
   )}. back_fft_pearson_r_even, the round trip against the data's even part under Q → −Q (what the real transform keeps), must stay near 1; back_fft_pearson_r against the data is lower by the odd part (back_fft_odd_share, counting noise on unsymmetrised data). Without a band or crop the round trip is the identity, so neither can rank trials${evidence(
     ": back_fft_pearson_r_even below ~0.999 only flags a transform problem",
@@ -431,7 +433,7 @@ const BAND_AT_OR_BELOW = inference(COVERAGE_WORDS, "remedy", "; set a |Q| band a
 // A band set past the counts, where the window is fitted to the coverage (plan 4.5).
 const BAND_THEY_ALLOW = inference(COVERAGE_WORDS, "remedy", "; the band the counts allow is suggested_band, the user's to set");
 const SYMMETRY_WORDS = "verdicts/rules.ts: symmetry_check's verdict";
-const ASYMMETRY_IS = inference(SYMMETRY_WORDS, "evidence", ", so the section's asymmetry (");
+const ASYMMETRY_IS = inference(SYMMETRY_WORDS, "evidence", ", so the sections' asymmetry (");
 const THE_DATA_OWN = inference(SYMMETRY_WORDS, "evidence", ") is the data's own, counting noise included, not a break by a stage");
 const GRAIN_WORDS = "verdicts/rules.ts: grain_check's verdict";
 const REFINE_UB = inference(GRAIN_WORDS, "remedy", "; refine the UB");
@@ -543,14 +545,17 @@ const NOT_DECLARED = (asymmetry: unknown): Tagged =>
 
 const symmetry: CheckRule<SymmetryMeasurements> = {
   judge: (m) => {
-    if (!m.ops) return { ...nothing(), words: null };
-    // A file that declares no symmetry was not symmetrised: the section's
+    // No operation tested is no evidence: not judged, and why, never a pass.
+    if (!m.ops?.length) return { ...nothing(), words: `not judged: ${m.why ?? "no operation could be tested on the sections"}` };
+    // A file that declares no symmetry was not symmetrised: the sections'
     // asymmetry is the data's own, and no stage broke anything.
     if (m.declared === null || m.declared === "") return { kind: "info", reasons: ["not declared"], words: NOT_DECLARED(Math.max(...m.ops.map((o) => o.rms_difference))) };
+    // Every operation tested is judged alike, whether it keeps c or moves it.
     const broken = m.ops.filter((o) => o.rms_difference > SYMMETRY_HOLDS).map((o) => `${o.op} (${o.rms_difference})`);
+    const untested = m.untested ? `; ${m.untested} could not be tested (not_tested says why)` : "";
     return broken.length
       ? { kind: "attention", reasons: ["symmetry broken"], words: `not kept: ${broken.join(", ")}; a symmetry the data were symmetrised with should hold to ~${SYMMETRY_HOLDS} or better` }
-      : { kind: "pass", reasons: [], words: `kept: every in-plane operation holds to ${SYMMETRY_HOLDS} or better` };
+      : { kind: "pass", reasons: [], words: `kept: every operation tested holds to ${SYMMETRY_HOLDS} or better${untested}` };
   },
 };
 
