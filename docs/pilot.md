@@ -12,12 +12,13 @@ does not compute them. Getting it running is in
 ## Tools
 
 With *Tools* on, a reply is an agent loop of up to twelve rounds. The model
-calls 24 tools, which run in the browser against the same API the viewers use:
+calls 25 tools, which run in the browser against the same API the viewers use:
 
 - **Skills:** `read_skill` reads one of the user's methods (below).
 - **Reading:** `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
   `measure_dpdf_cut`, `line_profile`, `bragg_peaks`, `consistency_details`,
-  `compare_datasets`, `configure_settings`, `run_log`.
+  `compare_datasets`, `configure_settings`, `run_log`, and `run_verdict` (the
+  run's verdict as `{{achieved}}` would give it now, read before writing).
 - **Assessing:** `assess_stage`, `radial_profile`, `texture_check`,
   `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`.
 - **Display:** `dpdf_contrast`.
