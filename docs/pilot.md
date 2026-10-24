@@ -152,6 +152,19 @@ own model, not the console's settings) included and kept apart in its
 record (`usage.tuning`), in its cost and against a paid model's spend cap.
 [pilot-review.md](pilot-review.md) reviews each tool and skill.
 
+**The run policy** (`web/src/llm/runPolicy.ts`) states what a reply runs
+under on each transport (Claude, an OpenAI-compatible server such as LM
+Studio, Ollama): its round limit, the tools a model is offered, when older
+results are shortened, the temperature (none for Claude), the output cap,
+whether the model's thinking is sent back, and how a request is held to the
+model's window. The agent loop reads it. A validation run runs under its
+transport's policy as the app ships it, with one output cap on every request,
+the loop's and the tuning's, in either arm (16,000 tokens,
+`VALIDATION_MAX_TOKENS`). Each run's record keeps the policy it ran under
+(`run_policy`) and every request whose reply was cut at the cap
+(`truncated`). The transcript prints both, and `python -m nebula3d.validation
+summarize` names the cut runs under its table.
+
 ## What its reviews found
 
 NEBULA Pilot was used to review measured volumes as five domain experts in
