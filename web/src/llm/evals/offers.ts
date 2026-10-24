@@ -9,10 +9,13 @@ export interface ToolOffer {
   tools: string[]; // the names, in the order sent
 }
 
-// OpenAI-style servers (LM Studio, Ollama) and Anthropic's Messages API.
-const CHAT_URL = /\/(chat\/completions|v1\/messages)(\?|$)/;
+// OpenAI-style servers (LM Studio, any /v1), Ollama's own chat API, which the
+// app talks to at Ollama's port (provider/client.ts, isOllamaUrl: /api/chat,
+// not /v1), and Anthropic's Messages API. Ollama's other calls (/api/show,
+// /api/ps) are no chat requests.
+const CHAT_URL = /\/(chat\/completions|v1\/messages|api\/chat)(\?|$)/;
 
-/** The tool names in a chat request's body: OpenAI-style `tools[].function.name`, Anthropic's `tools[].name`. */
+/** The tool names in a chat request's body: OpenAI-style `tools[].function.name` (Ollama's too), Anthropic's `tools[].name`. */
 export function toolNamesIn(body: unknown): string[] {
   const tools = (body as { tools?: unknown } | null)?.tools;
   if (!Array.isArray(tools)) return [];

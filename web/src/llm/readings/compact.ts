@@ -21,17 +21,22 @@ export const TEXT_HEAD = 400;
 // skill without the section is shortened as before, byte for byte.
 //
 // GATES_MAX bounds the section kept: past it, the section is cut at a line
-// boundary and a marker says how many lines were left out. 1,200 characters
-// hold 10 to 12 gates of a line each (a quantity, its limit and what follows,
-// about 100 characters), twice the most a skill states today (reduction-qc
-// states 5: skillLint.test.ts, GATES). They cost about 860 tokens at the
-// estimator's data rate (provider/tokens.ts: 1.4 characters a token). A
-// gated skill's stub stays under SKILL_STUB_MAX characters, well under half
-// of any skill read today, so a turn that reads two gated skills grows by at
-// most about 1.9k tokens over today's stubs once compacted: inside the 3.7k a
-// 32k window keeps past MIN_REPLY on the worst turn (tokenBudget.test.ts
-// holds it).
-export const GATES_MAX = 1_200;
+// boundary and a marker says how many lines were left out. 1,000 characters
+// hold 8 to 10 gates of a line each (a quantity, its limit and what follows,
+// about 100 characters), nearly twice the most a skill states today
+// (reduction-qc states 5: skillLint.test.ts, GATES). They cost about 710
+// tokens at the estimator's data rate (provider/tokens.ts: 1.4 characters a
+// token). A gated skill's stub stays under SKILL_STUB_MAX characters (1,600),
+// well under half of any skill read today, so a turn that reads two gated
+// skills grows by at most about 1.6k tokens over today's stubs once
+// compacted: inside the 1.9k a 32k window keeps past MIN_REPLY on the worst
+// turn, with about 260 tokens to spare (tokenBudget.test.ts holds it).
+//
+// The cap was 1,200 until 2026-10-24, when the worst turn's growth (4.2's
+// texture_check over every hole) left that guard 24 tokens short; the manager
+// lowered it on the user's delegation. It binds the user's own `## Gates`
+// text (plan 5.3): each skill's section has at most 1,000 characters.
+export const GATES_MAX = 1_000;
 const GATES_MARKER = (lines: number): string =>
   `[${lines} more line${lines === 1 ? "" : "s"} of the gates left out to save room: read the skill again for them]`;
 /** The longest a shortened skill with gates can be: the head, the section at its cap, the marker and the note. */

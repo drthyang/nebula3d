@@ -4,7 +4,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TOOLS_CONTEXT } from "../provider/client";
-import { costOf, modelAt, MODELS, modelNamed, paidRunGate, plan, RUN_POLICY, runContext, SPEND_CAP_USD, SpendTracker } from "./validationModels";
+import { COMPLETE_MAX_TOKENS } from "../provider/anthropic";
+import { MAX_TOOL_ROUNDS } from "../agent";
+import { TUNE_STAGES } from "../tune/catalog";
+import {
+  costOf,
+  FIRST_RUN_WORST,
+  firstRunWorstUsd,
+  modelAt,
+  MODELS,
+  modelNamed,
+  paidRunGate,
+  plan,
+  RUN_POLICY,
+  runContext,
+  SPEND_CAP_USD,
+  SPEND_TOTAL_USD,
+  SpendTracker,
+} from "./validationModels";
 import { casesIn } from "./validation";
 
 // What LM Studio says a model is loaded with, and what Ollama says it supports;
@@ -39,6 +56,10 @@ describe("the models", () => {
     const claude = modelNamed("claude-sonnet-5-5");
     expect(claude.spendCapUsd).toBe(12);
     expect(SPEND_CAP_USD).toBe(12);
+    // NEBULA's share of the user's $40 across three apps' runs.
+    expect(SPEND_TOTAL_USD).toBe(40);
+    expect(3 * SPEND_CAP_USD).toBeLessThanOrEqual(SPEND_TOTAL_USD);
+    expect(claude.how).toContain("$12 for NEBULA, within the $40 total");
     expect(claude.splits).toEqual(["test"]);
   });
 
@@ -243,7 +264,9 @@ describe("what a paid model needs", () => {
   const claude = modelNamed("claude-sonnet-5-5");
 
   it("is the user typing its cap", () => {
-    expect(paidRunGate(claude, undefined)).toMatch(/NEBULA_VALIDATION_ALLOW_SPEND=12/);
+    expect(paidRunGate(claude, undefined)).toBe(
+      "Claude Sonnet 5.5 (Anthropic) is paid: set NEBULA_VALIDATION_ALLOW_SPEND=12 to approve spending at most $12 on it ($12 for NEBULA, within the $40 total)",
+    );
     expect(paidRunGate(claude, "5")).not.toBeNull();
     expect(paidRunGate(claude, "1")).not.toBeNull();
     expect(paidRunGate(claude, "12")).toBeNull();
@@ -288,7 +311,27 @@ describe("the spend tracker", () => {
     expect(t.spent).toBeCloseTo(0.8, 10);
     expect(t.canStart()).toBe(false); // 0.8 + 0.6 > 1
     expect(t.refusal()).toMatch(/spend cap is reached: \$0\.80 spent of \$1\.00/);
-    expect(new SpendTracker(1).refusal()).toMatch(/cap is reached/); // 1.2 first-run ceiling over a $1 cap
+    expect(new SpendTracker(1).refusal()).toMatch(/cap is reached/); // the $5 first-run ceiling over a $1 cap
+  });
+
+  it("holds the first run to the dearest run that tunes, at Sonnet 5.5's price, inside the cap", () => {
+    const price = modelNamed("claude-sonnet-5-5").price!;
+    // The arithmetic of FIRST_RUN_RESERVE_USD's comment, step by step.
+    expect((13 * 40_000 * price.input) / 1e6).toBeCloseTo(1.04, 10);
+    expect((16_000 * price.output) / 1e6).toBeCloseTo(0.16, 10);
+    expect((15 * 12_500 * price.input) / 1e6).toBeCloseTo(0.375, 10);
+    expect((15 * 16_000 * price.output) / 1e6).toBeCloseTo(2.4, 10);
+    expect(firstRunWorstUsd(price)).toBeCloseTo(3.975 * 1.25, 10);
+    // The reserve covers it, rounded up to the dollar, and the cap holds the reserve.
+    expect(SpendTracker.FIRST_RUN_RESERVE_USD).toBeGreaterThanOrEqual(firstRunWorstUsd(price));
+    expect(SpendTracker.FIRST_RUN_RESERVE_USD - firstRunWorstUsd(price)).toBeLessThan(0.05);
+    expect(SpendTracker.FIRST_RUN_RESERVE_USD).toBeLessThanOrEqual(SPEND_CAP_USD);
+    expect(new SpendTracker(SPEND_CAP_USD).canStart()).toBe(true);
+    // Its counts are the code's: the loop's requests, five stages of three requests, the tuner's max_tokens.
+    expect(FIRST_RUN_WORST.loop.requests).toBe(MAX_TOOL_ROUNDS + 1);
+    expect(FIRST_RUN_WORST.tuning.requests).toBe(TUNE_STAGES.length * 3);
+    expect(FIRST_RUN_WORST.tuning.outputPerRequest).toBe(COMPLETE_MAX_TOKENS);
+    expect(COMPLETE_MAX_TOKENS).toBe(16_000);
   });
 
   it("never runs a $12 cap past $12 over a whole session of dear runs", () => {
