@@ -501,7 +501,9 @@ multiphonon scattering with neutrons, Compton scattering with X-rays), whose
 leading term grows as Q²: that is what `Q2=1` (the Pilot's `flattenQ2`) takes.
 
 NEBULA Pilot judges it by one rule (`web/src/llm/metrics/flatten.ts`,
-provisional):
+provisional), with the run's own fit range and floor percentile, as the
+flattened file records them (`flatten_settings`, below; the flatten's
+defaults for a file that records none, which the Pilot's results say):
 
 1. **The shells judged** are the shells the counts reach, at least 0.95 of
    the shell's voxels measured and the centre at or past the fit range's
@@ -516,9 +518,13 @@ provisional):
 4. **A pedestal is left** when the trend is 0.8 or more in size and the span
    0.8 or more (`pedestalLeft`).
 
-The Pilot reads those floors on the three planes through the origin (hk0,
-h0l, 0kl; 30 shells out to each plane's farthest |Q|). The whole volume's are
-measured by `nebula3d.preprocessing.shell_floors` (server:
+The Pilot's verdict reads those floors over the whole volume (plan 4.1:
+`assess_stage`'s `floor_trend`, `floor_span_fraction` and `floor_judged_q`
+for the flatten); it reports each of the three planes through the origin
+beside them (hk0, h0l, 0kl; 30 shells out to each plane's farthest |Q|, its
+`per_plane` numbers), and the largest floor in σ over the planes, which it
+does not judge. The whole volume's are measured by
+`nebula3d.preprocessing.shell_floors` (server:
 `GET /api/volumes/{id}/shell-floors`; browser:
 `webbridge.volume_shell_floors_json`, the same fields), on the flatten's own
 shells, so on the flatten's input the floors are the flatten's own levels,
@@ -545,8 +551,12 @@ settings in its output (a `flatten_settings` attribute of the file's
 `nebula3d` group; `examples/run_pipeline.py`, the server and the browser all
 run it, the standalone `examples/flatten_background_3d.py` does not), so a
 run whose flatten took another percentile is measured with it, and the rule
-can start the judged shells at the run's own fit range
-(`flatten.fit_q_range`). On a synthetic volume with an isotropic Q²
+starts the judged shells at the run's own fit range
+(`flatten.fit_q_range`). The volume's meta carries the same record
+(`GET /api/volumes/{id}/meta`, `flatten_settings`), and the Pilot reads the
+planes' floors with it too: at the run's percentile, over its fit range.
+The Configure page's settings are not read for it: they may have changed
+since the run. On a synthetic volume with an isotropic Q²
 pedestal (a uniform diffuse, measured out to 6 Å⁻¹) the planes and the volume
 read the same pedestal: a trend of 1 on all, a span of 0.99 on each plane and
 0.94 on the volume, with the planes' floors within 0.03 of the volume's. The
@@ -554,6 +564,12 @@ spans differ by the level: a shell's voxels grow as Q² in the volume and as Q
 on a plane, so the volume's median sits further out, higher where a pedestal
 rises. With the same pedestal kept off the three planes, the planes read a
 level floor (span 0.03–0.05) and the volume the pedestal (trend 1, span 0.96).
+Where the counts fill the box instead, out to its corners, the volume's outer
+half runs further than a plane's (to the cube's corner, √3 times the nearest
+face's |Q|, where a plane reaches √2 times it), into shells only the
+corners' voxels fill, and it reads a Q² pedestal's span larger than the
+planes do, on the same construction: 1.3 times for one the planes read at
+0.8 (1.2 to 1.36 times for those they read at 0.5 to 1.3).
 
 The measurement reads the volumes one slab of H planes at a time and finds
 each percentile by a radix select on the values' sort keys, narrowing a

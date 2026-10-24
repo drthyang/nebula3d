@@ -60,7 +60,7 @@ bright_fill_fraction flags fills left implausibly bright (a peak not fully remov
 checkerboard_fraction ≈ 0.5 is random; approaching 1 signals a periodic interpolation
 artefact (a 'strange pattern').
 
-- flatten: the per-|Q|-shell low floor (25th percentile) of the backfilled (floor_before)
+- flatten: the per-|Q|-shell low floor (the run's own floor percentile, the 25th by default) of the backfilled (floor_before)
 and flattened (floor_after) slice, averaged over the inner / middle / outer third of |Q|.
 After a good flatten floor_after is near 0 in all three thirds; after_floor_max_sigma (the
 largest |shell floor| in robust σ) is reported, not judged, in the flatten's verdict: σ is the cut's own spread, and the floors follow the diffuse level. removed_fraction is the pedestal removed as a share of the level.
@@ -70,7 +70,7 @@ floor_trend (rank correlation of the floors with |Q|) and floor_span_fraction (t
 share of the diffuse level), over the outer half of the |Q| shells the counts reach (floor_judged_q gives their |Q| range),
 catch a pedestal the floor in σ hides beside strong diffuse: a trend near ±1 with a span near 1 is a leftover
 background (a rising one is inelastic: thermal diffuse, and Compton with X-rays; the model's b·Q² term).
-The flatten's verdict judges these two alone: a trend (in magnitude) and a span both 0.8 or more are a pedestal left.
+The flatten's verdict judges these two alone, over the volume's shells: a trend (in magnitude) and a span both 0.8 or more are a pedestal left.
 
 - delta_pdf: feature_snr is the strongest feature amplitude in background-σ units (the
 origin self-correlation peak is excluded); ≳ 5 means clear structured signal above noise.

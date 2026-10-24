@@ -9,6 +9,7 @@ import type {
   BraggProfile,
   ConsistencyMetrics,
   DeltaPdfMeta,
+  FlattenSettings,
   Slice,
   VolumeMeta,
 } from "../../api/types";
@@ -16,7 +17,7 @@ import { metricFromUb, qNorm, reciprocalMetric } from "../../components/reciproc
 import { withoutInference } from "../inference";
 import { backfillMetrics } from "../metrics/backfill";
 import { dpdfMetrics } from "../metrics/dpdf";
-import { FLATTEN_FIT_Q, flattenMetrics } from "../metrics/flatten";
+import { FLATTEN_UNRECORDED_NOTE, flattenJudging, flattenMetrics } from "../metrics/flatten";
 import { ringMetrics } from "../metrics/rings";
 import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
 import type { RadiusFn } from "../metrics/sliceStats";
@@ -50,6 +51,12 @@ export interface BuildContextInput {
   // How many leftover peaks the scan lists, strongest first (default: the
   // scan's own, a few); the counts cover every one either way.
   leftoverTopK?: number;
+  // The settings the flatten recorded in the flattened stage's file
+  // (VolumeMeta.flatten_settings): its floors are judged over the run's own
+  // fit range and at its floor percentile (flattenJudging). null: the file
+  // records none (a note says so, and the defaults stand in); undefined: not
+  // read, the defaults.
+  flattenSettings?: FlattenSettings | null;
 }
 
 export interface PipelineContext {
@@ -150,9 +157,12 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
     notes.push("backfill: needs both punched and backfilled slices at this cut");
   }
 
-  // 4. Flatten — the per-|Q|-shell floors, backfilled vs flattened.
+  // 4. Flatten — the per-|Q|-shell floors, backfilled vs flattened, over the
+  // run's own fit range and at its floor percentile (plan 4.11).
   if (slices.flattened) {
-    ctx.flatten = flattenMetrics(slices.backfilled ?? null, slices.flattened, radius, radius ? FLATTEN_FIT_Q : undefined);
+    const judging = flattenJudging(input.flattenSettings);
+    ctx.flatten = flattenMetrics(slices.backfilled ?? null, slices.flattened, radius, radius ? (judging.fitQ ?? undefined) : undefined, judging.percentile);
+    if (input.flattenSettings === null) notes.push(`flatten: ${FLATTEN_UNRECORDED_NOTE}`);
   }
 
   // 5. 3D-ΔPDF — feature/anisotropy/trend on the real-space orthoslice.

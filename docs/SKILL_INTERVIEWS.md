@@ -258,8 +258,9 @@ you want? (e) How large a dent or leftover do you tolerate?
 
 ### R9. The flatten floor: its fields, and when to turn on the Q² term
 
-**Ask:** (a) Should step 6 name the stage's fields, `max_floor_trend`,
-`max_floor_span_fraction` and `pedestal_left`, as #17 does? (b) Do you accept
+**Ask:** (a) Should step 6 name the stage's fields, `floor_trend`,
+`floor_span_fraction` and `pedestal_left` (`max_floor_trend` and
+`max_floor_span_fraction` before plan 4.1), as #17 does? (b) Do you accept
 #17's rule: turn `flattenQ2` on when `pedestal_left` is true, rerun from the
 flatten and read it again, keep the term if the pedestal is gone, and leave it
 off otherwise? (c) When is a floor that rises with |Q| background, and when
@@ -267,10 +268,12 @@ could it be signal? (d) When do you also extend *Fit to |Q|*
 (`flattenFitQMax`)?
 
 - **Where:** step 6 (`SKILL.md:67-74`); the flatten's evaluation
-  (`llm/tune/evaluate.ts:293-307`): `max_floor_trend` (:300),
-  `max_floor_span_fraction` (:301), `pedestal_left` (:305); the per-plane
-  `floor_trend` (`llm/metrics/flatten.ts:40`).
-- **Today:** The skill names `floor_trend`, a per-plane field, and asks for
+  (`llm/tune/evaluate.ts:318-338`): the whole volume's `floor_trend` (:329)
+  and `floor_span_fraction` (:330), `pedestal_left` (:335); each plane's
+  under `per_plane` (`llm/metrics/flatten.ts:83`).
+- **Today:** The skill names `floor_trend`, which since plan 4.1 is the
+  stage's own field (the whole volume's; before it, a per-plane field beside
+  the planes' largest, `max_floor_trend`), and asks for
   floors "near zero across the whole coverage", while the verdict judges the
   outer half of the shells the counts reach (R10). It says a rising floor wants
   the Q² term but not when to turn it on ([pilot-review.md](pilot-review.md),
@@ -332,17 +335,21 @@ controls and constructed pedestals only?
 - **Where:** `nebula3d.preprocessing.shell_floors`
   (`src/nebula3d/preprocessing/flatten_floors.py`, #37;
   [pipeline.md](pipeline.md#the-floors-and-the-pedestal));
-  `tests/test_shell_floors.py:389-415`; the three planes the verdict reads now
-  (`llm/tune/evaluate.ts:17-19`).
+  `tests/test_shell_floors.py:389-415`; the verdict's reading of them
+  (`llm/metrics/flatten.ts:298`, `volumePedestal`; `llm/tune/evaluate.ts:323`).
 - **Today:** The whole volume's floors are measured on the flatten's own
-  shells; nothing judges them yet. On a synthetic volume with an isotropic Q²
+  shells, and since plan 4.1 the flatten's verdict reads them, with the 0.8
+  limits as they were set on the planes. On a synthetic volume with an isotropic Q²
   pedestal, the planes read a span of 0.99 and the volume 0.94, about 5 % lower,
   with the same trend of 1. The span divides by the diffuse level, the median
   over the measured voxels, and a shell holds voxels in proportion to Q² in the
   volume but to Q on a plane: the volume's median sits further out, higher
   where a pedestal rises. With the pedestal kept off the three planes, the
   planes read a level floor (span 0.03 to 0.05) and the volume the pedestal
-  (span 0.96).
+  (span 0.96). Where the counts fill the box out to its corners, as on the
+  dev cases, the volume's judged shells run past the planes' into the
+  corners, and it reads a Q² pedestal's span 1.2 to 1.36 times the planes'
+  ([pipeline.md](pipeline.md#the-floors-and-the-pedestal)).
 - **Why it needs you:** 0.8 is your provisional limit, set on the planes'
   measure.
 - **Options:** (i) keep 0.8 on the volume; (ii) re-derive both limits for the

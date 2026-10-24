@@ -142,6 +142,58 @@ export interface VolumeMeta {
   // that leaves a significance in σ meaningless (normalized values).
   sigma?: "measured" | "estimated";
   sigma_note?: string | null;
+  // The settings the flatten that wrote this file ran with: null for a stage
+  // the flatten did not write, or wrote before it recorded them; absent from
+  // a backend that predates the field.
+  flatten_settings?: FlattenSettings | null;
+}
+
+/**
+ * What the flatten recorded in its output (nebula3d.pipeline.FlattenParams, as
+ * read_flatten_settings returns it: ranges as lists). Every field is optional:
+ * a file records the fields of the version that wrote it.
+ */
+export interface FlattenSettings {
+  estimator?: string;
+  ion?: string | null;
+  fit_q_range?: [number, number] | null; // Å⁻¹; null: every shell with a level was fitted
+  q2_term?: boolean;
+  floor_percentile?: number; // 0–100
+  q_step?: number; // Å⁻¹
+  smooth?: number;
+  snip_width?: number;
+  min_count?: number;
+  q_range?: [number, number] | null;
+}
+
+/**
+ * The floor of every |Q| shell over the whole volume, on the flatten's own
+ * shells (GET /api/volumes/{id}/shell-floors, the bridge's
+ * volume_shell_floors_json; nebula3d.preprocessing.shell_floors). One entry
+ * per shell in each list. For the flattened stage, the flatten's input (the
+ * backfilled stage, `before_id`) is measured on the same shells, and `level`
+ * is its median over the voxels measured in both: the diffuse level a
+ * pedestal's span is a share of. Without an input (`before_id` null) `level`
+ * is the volume's own median.
+ */
+export interface ShellFloors {
+  id: string;
+  before_id: string | null;
+  q_step: number; // Å⁻¹
+  percentile: number; // 0–100
+  min_count: number;
+  q_edges: number[]; // one more than the shells, Å⁻¹
+  centres: number[]; // Å⁻¹
+  totals: number[]; // the grid's voxels in the shell, measured or not
+  counts: number[]; // ... measured (mask and finite)
+  floors: (number | null)[]; // null under min_count
+  medians: (number | null)[];
+  counts_before?: number[] | null;
+  floors_before?: (number | null)[] | null;
+  medians_before?: (number | null)[] | null;
+  level: number | null;
+  level_count: number;
+  flatten?: FlattenSettings | null; // what the flatten recorded in the file, or null
 }
 
 export interface DeltaPdfMeta {

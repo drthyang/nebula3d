@@ -14,8 +14,10 @@ import type {
   Dataset,
   DeltaPdfMeta,
   DpdfFeatures,
+  FlattenSettings,
   RingDiagnostics,
   RingIsotropy,
+  ShellFloors,
   Slice,
   UbCheck,
   VolumeCoverage,
@@ -26,6 +28,7 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore } from "../tune/tuner";
+import { shellFloorsOf } from "./shellFloors";
 
 /** The API client's functions the crystal answers: the test file's mocks of them. */
 export type BackendMocks = Record<
@@ -38,6 +41,7 @@ export type BackendMocks = Record<
   | "fetchMeta"
   | "fetchRingDiagnostics"
   | "fetchRingIsotropy"
+  | "fetchShellFloors"
   | "fetchSlice"
   | "fetchUbCheck"
   | "fetchVolumeCoverage",
@@ -195,6 +199,20 @@ const MMM = [
   [1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1],
 ].map(([a, b, c]) => [[a, 0, 0], [0, b, 0], [0, 0, c]]);
 
+// What the default flatten records in its output (nebula3d.pipeline.FlattenParams).
+const FLATTEN_RECORD: FlattenSettings = {
+  estimator: "model",
+  fit_q_range: [0.8, 10],
+  floor_percentile: 25,
+  ion: null,
+  min_count: 20,
+  q2_term: false,
+  q_range: null,
+  q_step: 0.05,
+  smooth: 0.1,
+  snip_width: 0.3,
+};
+
 const volumeMeta = (id: string): VolumeMeta => ({
   id,
   stage: id.split(".")[1],
@@ -209,6 +227,8 @@ const volumeMeta = (id: string): VolumeMeta => ({
   symmetry: "mmm",
   symmetry_ops: MMM,
   sigma: "measured",
+  // The flattened stage records the settings its flatten ran with; no other stage does.
+  flatten_settings: id.endsWith(".flattened") ? FLATTEN_RECORD : null,
 });
 
 const dpdfMeta = (id: string): DeltaPdfMeta => ({
@@ -383,10 +403,30 @@ const ringDiagnostics = (id: string): RingDiagnostics => ({
   unconfirmed_at_grid: null,
 });
 
+// The whole volume's shell floors of a dataset's flattened stage, on the
+// flatten's shells, with its input's level (the server's shell-floors): once per dataset.
+const floorsByStem = new Map<string, ShellFloors>();
+function shellFloors(id: string): ShellFloors {
+  const stem = id.split(".")[0];
+  const hit = floorsByStem.get(stem);
+  if (hit) return hit;
+  const left = RING_LEFT[stem];
+  const q = (h: number, k: number, l: number) => QU * Math.sqrt(h * h + k * k + l * l);
+  const stage = (name: RecipStageName) => ({
+    axes: [R_AXIS, R_AXIS, R_AXIS] as [number[], number[], number[]],
+    q,
+    value: (h: number, k: number, l: number, idx: [number, number, number]) => recipValue(name, left, h, k, l, idx),
+  });
+  const out = shellFloorsOf(stage("flattened"), stage("backfilled"), { id: `${stem}.flattened`, flatten: FLATTEN_RECORD });
+  floorsByStem.set(stem, out);
+  return out;
+}
+
 /** Answer every mocked API call from the crystal. */
 export function installBackend(api: BackendMocks): void {
   const stemOf = (id: string) => id.split(".")[0];
   api.fetchMeta.mockImplementation(async (id: string) => volumeMeta(id));
+  api.fetchShellFloors.mockImplementation(async (id: string) => shellFloors(id));
   api.fetchDpdfMeta.mockImplementation(async (id: string) => dpdfMeta(id));
   api.fetchSlice.mockImplementation(async (id: string, plane: string, value: number) => {
     const [stem, stage] = id.split(".") as [string, RecipStageName];

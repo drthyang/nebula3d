@@ -13,8 +13,9 @@
 // logic (the transcript, a case's checks).
 
 import { seen, type Readable } from "../readings";
+import { SAMPLE_FACT_REFUSED } from "../tune/catalog";
 import { offerChanges } from "./offers";
-import { findIn, numbersIn, stepOf, type Decision, type RunRecord, type ValidationCase } from "./validation";
+import { findIn, numbersIn, stepOf, wasRefused, type Decision, type RunRecord, type ValidationCase } from "./validation";
 
 export const FINDING_KINDS = ["bug", "missing-tool", "skill-gap", "orchestration", "science-error"] as const;
 export type FindingKind = (typeof FINDING_KINDS)[number];
@@ -179,6 +180,9 @@ function surfaced(rec: RunRecord, value: number, tol: number, reading: (d: Decis
 
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
+/** A call a guardrail refused, which is no tool failing: until its stage's skill is read, or a fact about the sample the user did not name. */
+const refusedByAGuardrail = (summary: string): boolean => /refused until its skill is read/.test(summary) || summary.includes(SAMPLE_FACT_REFUSED);
+
 // What a failed scoring criterion most likely means, for the reviewer to confirm.
 const CRITERION: Record<string, [FindingKind, string]> = {
   features: ["science-error", "the settings the run chose or left lost or moved a planted correlation: find the stage and the setting"],
@@ -205,12 +209,18 @@ export function candidateFindings(rec: RunRecord, c: ValidationCase): Validation
     add({ step: null, kind: "orchestration", evidence: clip(rec.note), proposed_fix: "the task needs more rounds, or a tool returns too much for the context: shorten its result, or raise the limit for this task and say so" });
   }
   for (const d of rec.decisions) {
-    if (d.status === "error" && !/refused until its skill is read/.test(d.summary)) {
+    if (d.status === "error" && !refusedByAGuardrail(d.summary)) {
       add({ step: d.step, kind: "bug", evidence: `${d.tool}(${clip(JSON.stringify(d.args), 120)}) failed: ${clip(d.result)}`, proposed_fix: "decide whether the model called it wrongly (a clearer description or error) or the tool is wrong (fix it, with a test)" });
     }
   }
   for (const u of rec.grades.unsafe) {
-    add({ step: Number(/^step (\d+)/.exec(u)?.[1]) || null, kind: "bug", evidence: `an unsafe action got through the guardrails: ${u}`, proposed_fix: "close the path in the tool or the executor, with a test" });
+    const step = Number(/^step (\d+)/.exec(u)?.[1]) || null;
+    if (wasRefused(u)) {
+      // The guardrails held: what to look at is why the model tried.
+      add({ step, kind: "orchestration", evidence: `the model tried an unsafe action, which the guardrails refused: ${u}`, proposed_fix: "nothing changed: read why the model tried (its words before the step), and whether the tool's description should say it plainer" });
+    } else {
+      add({ step, kind: "bug", evidence: `an unsafe action got through the guardrails: ${u}`, proposed_fix: "close the path in the tool or the executor, with a test" });
+    }
   }
   // The graders' two readings disagree: one of them misread the conclusion. A
   // dev run's only: a held-out run's are counted and reported, and nothing is
