@@ -223,6 +223,61 @@ def test_server_tuning_run_leaves_processed_byte_identical(root: Path) -> None:
     assert _snapshot(cfg.processed_dir) == before
 
 
+def _numbers(path: Path) -> dict[str, np.ndarray]:
+    """Every numeric dataset of an HDF5 file (it also records when it was written)."""
+    import h5py
+
+    out: dict[str, np.ndarray] = {}
+    with h5py.File(path, "r") as f:
+        f.visititems(lambda name, obj: out.__setitem__(name, obj[()])
+                     if isinstance(obj, h5py.Dataset) and obj.dtype.kind in "biuf" else None)
+    return out
+
+
+def _same_numbers(a: Path, b: Path) -> bool:
+    na, nb = _numbers(a), _numbers(b)
+    return na.keys() == nb.keys() and all(
+        np.array_equal(na[k], nb[k], equal_nan=True) for k in na)
+
+
+def test_server_run_and_trial_with_the_punch_switched_off(root: Path,
+                                                          tmp_path: Path) -> None:
+    """The page's switch through the server: params.punch_enabled false
+    reaches the job, whose backfill reads the ring-removed volume, never the
+    punched one the full run left in processed/ (left as it was): the
+    backfilled volume is a fresh punch-off run's. A tuning trial of the
+    backfill, whose inputs name that punched volume, the same."""
+    cfg = ServerConfig(data_root=root)
+    client = TestClient(create_app(cfg))
+    (base,) = client.get("/api/datasets").json()
+    raw = cfg.raw_dir / f"{STEM}.nxs"
+    proc = pipeline_paths(raw, proc_dir=cfg.processed_dir)
+    left = proc.braggpunched.read_bytes()
+    fresh = run_pipeline(raw, PipelineParams(punch_enabled=False),
+                         proc_dir=tmp_path / "fresh", stages=("rings", "backfill"))
+    assert not _same_numbers(fresh.backfilled, proc.backfilled)  # the switch matters
+    switches = {"rings_enabled": True, "punch_enabled": False, "backfill_enabled": True}
+
+    r = client.post("/api/pipeline/run", json={
+        "dataset_id": base["id"], "stages": ["rings", "backfill", "flatten", "pdf", "pdf_check"],
+        "force": True, "params": switches})
+    assert r.status_code == 200, r.text
+    job = _wait(client, r.json()["id"])
+    assert job["status"] == "done", job
+    assert _same_numbers(proc.backfilled, fresh.backfilled)
+    assert proc.braggpunched.read_bytes() == left
+
+    r = client.post("/api/tuning/runs", json={"dataset_id": base["id"], "first_stage": "backfill"})
+    run_id = r.json()["run_id"]
+    r = client.post("/api/pipeline/run", json={
+        "dataset_id": base["id"], "stages": ["backfill"], "params": switches,
+        "tuning": {"run_id": run_id, "trial": "backfill-1"}})
+    assert r.status_code == 200, r.text
+    assert _wait(client, r.json()["id"])["status"] == "done"
+    trial = pipeline_paths(raw, proc_dir=root / "tuning" / run_id / "trials" / "backfill-1")
+    assert _same_numbers(trial.backfilled, fresh.backfilled)
+
+
 def test_bridge_tuning_run_leaves_processed_byte_identical(tmp_path: Path) -> None:
     webbridge.setup(workdir=str(tmp_path / "work"))
     dataset_id = webbridge.make_demo_input(n=25)
