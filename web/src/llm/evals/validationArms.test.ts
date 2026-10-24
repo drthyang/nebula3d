@@ -111,6 +111,47 @@ describe("what is offered, as it goes over the wire", () => {
       { request: 3, count: 1, added: [], dropped: ["b", "c"] },
     ]);
   });
+
+  it("records an Ollama chat request, which goes to /api/chat, and none of Ollama's other calls", async () => {
+    globalThis.fetch = (async () => new Response("{}")) as typeof fetch;
+    const recorder = new OfferRecorder();
+    const stop = recorder.install();
+    const ollama = "http://localhost:11434";
+    await fetch(`${ollama}/api/show`, { method: "POST", body: JSON.stringify({ model: "gemma4:26b" }) });
+    await fetch(`${ollama}/api/ps`);
+    const tools = ["describe_dataset", "ub_check"].map((name) => ({ type: "function", function: { name, description: "d", parameters: {} } }));
+    await fetch(`${ollama}/api/chat`, { method: "POST", body: JSON.stringify({ model: "gemma4:26b", messages: [], stream: true, options: { num_ctx: 16384 }, tools }) });
+    // A request that must answer goes to Ollama without tools (it takes no tool_choice).
+    await fetch(`${ollama}/api/chat`, { method: "POST", body: JSON.stringify({ model: "gemma4:26b", messages: [], stream: true, options: { num_ctx: 16384 } }) });
+    stop();
+    expect(recorder.offers).toEqual([
+      { request: 1, tools: ["describe_dataset", "ub_check"] },
+      { request: 2, tools: [] },
+    ]);
+  });
+
+  it("leaves out the requests that are not the agent loop's (a run's tuning), which still go through", async () => {
+    let sent = 0;
+    globalThis.fetch = (async () => {
+      sent += 1;
+      return new Response("{}");
+    }) as typeof fetch;
+    let tuning = false;
+    const recorder = new OfferRecorder(() => tuning);
+    const stop = recorder.install();
+    const body = (names: string[]) => JSON.stringify({ stream: true, tools: names.map((name) => ({ type: "function", function: { name } })) });
+    await fetch("http://localhost:1234/v1/chat/completions", { method: "POST", body: body(["a", "b"]) });
+    tuning = true;
+    await fetch("http://localhost:1234/v1/chat/completions", { method: "POST", body: JSON.stringify({ stream: false, messages: [] }) });
+    tuning = false;
+    await fetch("http://localhost:1234/v1/chat/completions", { method: "POST", body: body(["a", "b"]) });
+    stop();
+    expect(sent).toBe(3);
+    expect(recorder.offers).toEqual([
+      { request: 1, tools: ["a", "b"] },
+      { request: 2, tools: ["a", "b"] },
+    ]);
+  });
 });
 
 describe.each([

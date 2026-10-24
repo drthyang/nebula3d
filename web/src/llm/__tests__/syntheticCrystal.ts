@@ -22,6 +22,7 @@ import type {
   UbCheck,
   VolumeCoverage,
   VolumeMeta,
+  VolumeTexture,
 } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
@@ -46,7 +47,8 @@ export type BackendMocks = Record<
   | "fetchShellFloors"
   | "fetchSlice"
   | "fetchUbCheck"
-  | "fetchVolumeCoverage",
+  | "fetchVolumeCoverage"
+  | "fetchVolumeTexture",
   Mock
 >;
 
@@ -357,27 +359,66 @@ const UB_CHECK: UbCheck = {
   mean_offset_rlu: { before: [0.0011, -0.0007, 0.0002], after: [0.0009, -0.0006, 0.0002], standard_error: [0.0008, 0.0008, 0.0009], n: 112 },
 };
 
+// The ΔPDF's features grouped as the backend groups them: by the point group
+// the raw file declares (mmm, volumeMeta below). Its orbits are smaller than
+// the cube's, so each cube orbit of the crystal's correlations is three
+// entries: ⟨1 0 0⟩ one vector each, ⟨1 1 0⟩ two.
+const mmmOrbit = (sign: 1 | -1, length: number, size: number, value: number, rlu: number[][]): DpdfFeatures["groups"][number] => ({
+  sign, length, size_sigma: size, mean_size_sigma: size, value, n: rlu.length, multiplicity: rlu.length,
+  vectors: rlu.map((v) => v.map((x) => A * x)), vectors_rlu: rlu, sizes_sigma: rlu.map(() => size),
+});
 const DPDF_FEATURES: DpdfFeatures = {
   id: "synthetic_a.delta_pdf",
   sigma: 0.71,
   min_sigma: 5,
   origin_radius: 1.8,
   n_extrema: 26,
+  grouped_by: "declared symmetry (mmm: 8 operations, r ≡ −r)",
   groups: [
-    {
-      sign: -1, length: 4, size_sigma: 35.2, value: -25, n: 3,
-      vectors: [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
-      vectors_rlu: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      sizes_sigma: [35.2, 35.2, 35.2],
-    },
-    {
-      sign: 1, length: 5.657, size_sigma: 21.1, value: 15, n: 6,
-      vectors: [[4, 4, 0], [4, -4, 0], [4, 0, 4], [4, 0, -4], [0, 4, 4], [0, 4, -4]],
-      vectors_rlu: [[1, 1, 0], [1, -1, 0], [1, 0, 1], [1, 0, -1], [0, 1, 1], [0, 1, -1]],
-      sizes_sigma: [21.1, 21.1, 21.1, 21.1, 21.1, 21.1],
-    },
+    mmmOrbit(-1, 4, 35.2, -25, [[1, 0, 0]]),
+    mmmOrbit(-1, 4, 35.2, -25, [[0, 1, 0]]),
+    mmmOrbit(-1, 4, 35.2, -25, [[0, 0, 1]]),
+    mmmOrbit(1, 5.657, 21.1, 15, [[1, 1, 0], [1, -1, 0]]),
+    mmmOrbit(1, 5.657, 21.1, 15, [[1, 0, 1], [1, 0, -1]]),
+    mmmOrbit(1, 5.657, 21.1, 15, [[0, 1, 1], [0, 1, -1]]),
   ],
 };
+
+// The fills' texture over every punch hole, each with its 3-D rim: the 79
+// punched nodes (every one with 0.25 ≤ |Q| ≤ 4.4 Å⁻¹ but (2, 1, 0)), filled
+// with the diffuse they hide, read as a fill equal to the truth reads
+// (tests/test_fill_texture.py): no bias. The numbers are made up in that shape;
+// the limits are the ones asked for, as the server echoes them.
+const volumeTexture = (id: string, limit: number, limits: { minSigma?: number; oneWay?: number; minHoles?: number; floor?: number } = {}): VolumeTexture => ({
+  id,
+  punched_id: id.replace(/\.backfilled$/, ".braggpunched"),
+  holes_from: "punch_record",
+  rim: 4,
+  min_rim: 8,
+  min_sigma: limits.minSigma ?? 0.5,
+  one_way: limits.oneWay ?? 0.75,
+  min_holes: limits.minHoles ?? 5,
+  floor: limits.floor ?? 0.2,
+  n_holes: 79,
+  n_judged: 79,
+  judged: true,
+  node_spacing: 16,
+  room_needed: 10,
+  not_judged: null,
+  median_fill_bias_sigma: 0,
+  median_fill_bias_level: 0,
+  above_fraction: 0.152,
+  below_fraction: 0.0886,
+  above_floor_fraction: 0,
+  below_floor_fraction: 0,
+  systematic_fill_bias: false,
+  holes: [
+    {
+      index: 31, centre_hkl: [1, 1, 0], voxels: 19, rim_voxels: 1180, fill: 17.9, level: 17.5, sigma: 0.52, slope: -0.21,
+      edge: 17.62, peaked: 17.81, bias: 0.09, bias_sigma: 0.173, bias_level: 0.00514, not_judged: null,
+    },
+  ].slice(0, limit),
+});
 
 // The 3D test of each bump: the one at the powder ring's |Q| rises in nearly every direction.
 const ringIsotropy = (id: string, shells: { q: number; fwhm: number }[]): RingIsotropy => ({
@@ -449,6 +490,7 @@ export function installBackend(api: BackendMocks): void {
   });
   api.fetchConsistencyCheck.mockImplementation(async (id: string) => ({ ...CONSISTENCY, dataset_id: id }));
   api.fetchVolumeCoverage.mockImplementation(async (id: string) => ({ ...COVERAGE, id }));
+  api.fetchVolumeTexture.mockImplementation(async (id: string, limit?: number, limits?: Record<string, number>) => volumeTexture(id, limit ?? 20, limits));
   api.fetchUbCheck.mockImplementation(async (id: string) => ({ ...UB_CHECK, id }));
   api.fetchDpdfFeatures.mockImplementation(async (id: string) => ({ ...DPDF_FEATURES, id }));
   api.fetchRingIsotropy.mockImplementation(async (id: string, shells: { q: number; fwhm: number }[]) => ringIsotropy(id, shells));

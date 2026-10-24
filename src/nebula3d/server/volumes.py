@@ -475,12 +475,17 @@ def volume_texture(filled: Path, punched: Path, *, limit: int = 20,
     *filled*, with the hole's 3-D rim, against the punched stage *punched*
     (:func:`~nebula3d.analysis.bragg_fill_texture.fill_texture`).  The holes
     are the punch's record in *punched* (:func:`~nebula3d.pipeline.
-    read_punch_record`) when it has one, else texture.ts's test.
+    read_punch_record`) when it has one, else texture.ts's test.  Where the
+    punch's record beside *punched* carries its node test's notice
+    (:func:`~nebula3d.pipeline.read_node_test_notice`), the fills are not
+    judged (``not_judged``: :data:`~nebula3d.analysis.bragg_fill_texture.
+    NODE_TEST_TOO_COARSE`).
 
     Each hole's facts are cached by both files' ``(path, mtime)``; the rule's
-    limits (texture.ts's where unset) are applied per call.  ``holes`` lists
-    the *limit* holes (0 – :data:`TEXTURE_MAX_LIMIT`) farthest outside their
-    range in units of their level, then in σ, the holes not judged last.
+    limits (texture.ts's where unset) and the punch's notice are read per
+    call.  ``holes`` lists the *limit* holes (0 – :data:`TEXTURE_MAX_LIMIT`)
+    farthest outside their range in units of their level, then in σ, the
+    holes not judged last.
     Values are exact, ``None`` where not finite; ``centre_hkl`` is rounded to
     1e-6 r.l.u.  Raises ``ValueError`` for limits out of range or two stages
     on different grids.
@@ -493,7 +498,7 @@ def volume_texture(filled: Path, punched: Path, *, limit: int = 20,
         hole_texture,
         judge_fill_bias,
     )
-    from nebula3d.pipeline import read_punch_record
+    from nebula3d.pipeline import read_node_test_notice, read_punch_record
 
     if not 0 <= int(limit) <= TEXTURE_MAX_LIMIT:
         raise ValueError(f"limit must lie in 0–{TEXTURE_MAX_LIMIT}, not {limit!r}")
@@ -512,7 +517,8 @@ def volume_texture(filled: Path, punched: Path, *, limit: int = 20,
         min_sigma=MIN_SIGMA if min_sigma is None else float(min_sigma),
         one_way=ONE_WAY if one_way is None else float(one_way),
         min_holes=MIN_HOLES if min_holes is None else int(min_holes),
-        floor=FILL_BIAS_FLOOR if floor is None else float(floor))
+        floor=FILL_BIAS_FLOOR if floor is None else float(floor),
+        node_test_notice=read_node_test_notice(punched))
 
     def num(x: float) -> float | None:
         return float(x) if np.isfinite(x) else None

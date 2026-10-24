@@ -18,7 +18,7 @@ import {
   type TokenUsage,
   type ToolCall,
 } from "./provider/client";
-import { answerIssues, issuesNote, issuesPrompt } from "./answerChecks";
+import { answerIssues, earlierSources, issuesNote, issuesPrompt } from "./answerChecks";
 import { fillReferences } from "./references";
 import { lastQuestion, toolsFor } from "./localTools";
 import { isLocalUrl } from "./provider/presets";
@@ -94,11 +94,14 @@ const noTools = new Set<string>();
 export const toolsKnownUnsupported = (s: Pick<LlmSettings, "baseUrl" | "model">): boolean =>
   noTools.has(`${s.baseUrl}|${s.model}`);
 
+/** Forget the servers found to refuse tools: each is offered them again (a validation run starts so, evals/validationRun.ts). */
+export const forgetToolsUnsupported = (): void => noTools.clear();
+
 export const TOOLS_UNSUPPORTED_NOTE =
   "This model cannot call tools, so it answered from the fixed-cut metrics only. Pick a tool-capable model (Ollama and LM Studio mark them) to let it measure other cuts.";
 
 export const CUT_OFF_NOTE =
-  "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (48k or more: with Tools on, the first request alone is about 10k tokens, and a full assessment that reads two skills reaches about 46k), or turn Tools off; Clear starts a shorter conversation.";
+  "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (56k or more: with Tools on, the first request alone is about 10k tokens, and a full assessment that reads two skills reaches about 48k), or turn Tools off; Clear starts a shorter conversation.";
 
 // A reply its server could not parse ran none of its tools, so the same request
 // is sent again, at most this many times in one reply.
@@ -136,9 +139,10 @@ export const REVISING_NOTE = "Checking the answer against its evidence…";
 // What an answer's numbers may come from: the conversation as it arrived (the
 // system prompt, the context, the user's words), the tool results of this
 // reply (whole, though the model may read them fitted or shortened) and of
-// earlier turns, and the tools' own guidance. No assistant text: an earlier
-// answer's number from nowhere would otherwise vouch for the next answer, and
-// this reply's drafts, and the notes sent back about them, for themselves.
+// earlier turns while what they measured stands (earlierSources), and the
+// tools' own guidance. No assistant text: an earlier answer's number from
+// nowhere would otherwise vouch for the next answer, and this reply's drafts,
+// and the notes sent back about them, for themselves.
 function numberSources(convo: ChatMessage[], arrived: number, results: readonly string[], tools: readonly AgentTool[], earlier: readonly string[]): string {
   const text = (m: ChatMessage): string =>
     typeof m.content === "string"
@@ -154,9 +158,13 @@ function numberSources(convo: ChatMessage[], arrived: number, results: readonly 
   ].join("\n");
 }
 
-/** The tool results of a conversation's turns, as the model read them (`seen`): number sources for the next reply. */
-export const toolResultsIn = (turns: readonly { steps?: readonly AgentStep[] }[]): string[] =>
-  turns.flatMap((t) => (t.steps ?? []).flatMap((s) => (s.status === "done" && seen(s) ? [seen(s)] : [])));
+/**
+ * The tool calls of a conversation's turns that ran, oldest first, as the
+ * transcript keeps them: the next reply's number sources, each result as the
+ * model read it (`seen`) while what it measured stands (earlierSources).
+ */
+export const toolStepsIn = (turns: readonly { steps?: readonly AgentStep[] }[]): AgentStep[] =>
+  turns.flatMap((t) => (t.steps ?? []).filter((s) => s.status === "done" && seen(s)));
 
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
@@ -369,8 +377,9 @@ export async function runAgent({
       // The final answer: held to its evidence before the user reads it. A
       // revision that wrote nothing leaves the answer it revised.
       const answer = roundText.trim() ? roundText : rejected;
-      const sources = numberSources(convo, arrived, steps.map(whole), tools, ctx?.earlierResults ?? []);
-      const issues = useTools && checkAnswers ? answerIssues(answer, steps, sources) : null;
+      const earlier = earlierSources(ctx?.earlierSteps ?? [], steps);
+      const sources = numberSources(convo, arrived, steps.map(whole), tools, earlier.standing);
+      const issues = useTools && checkAnswers ? answerIssues(answer, steps, sources, earlier.stale) : null;
       if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
         revisions += 1;
         rejected = roundText;

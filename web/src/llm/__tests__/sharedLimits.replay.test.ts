@@ -27,7 +27,7 @@ import { GRID_TOO_COARSE, isTooCoarse } from "../metrics/coarse";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_FIT_Q, FULL_SHELL } from "../metrics/flatten";
 import { percentile, radialFloorShells, type GridSlice } from "../metrics/sliceStats";
-import { FILL_BIAS_FLOOR, RIM, roomForRims } from "../metrics/texture";
+import { FILL_BIAS_FLOOR, FILL_BIAS_MIN_HOLES, FILL_BIAS_MIN_SIGMA, FILL_BIAS_ONE_WAY, RIM, roomForRims } from "../metrics/texture";
 import { joinPath } from "../skills";
 import { SAMPLE_PARAMS, TUNE_PARAMS, TUNE_STAGES, type SampleParam, type TuneParam } from "../tune/catalog";
 import { UB_TURNED, WORDS } from "../verdicts/rules";
@@ -161,6 +161,7 @@ print(json.dumps({
     "fill_constants": {"rim": ft.RIM, "min_rim": ft.MIN_RIM_VOXELS, "min_sigma": ft.MIN_SIGMA, "one_way": ft.ONE_WAY,
                        "min_holes": ft.MIN_HOLES, "floor": ft.FILL_BIAS_FLOOR},
     "room": [too_coarse(reach, n) for reach, n in args["room"]],
+    "node_test_reason": ft.NODE_TEST_TOO_COARSE,
     "grid_too_coarse": ring_isotropy.GRID_TOO_COARSE,
     "height_share": iso.height_share,
     "direction_share": iso.direction_share,
@@ -209,6 +210,7 @@ type Py = {
   fill: Record<"rim" | "min_rim" | "min_sigma" | "one_way" | "min_holes" | "floor", number>;
   fill_constants: Record<"rim" | "min_rim" | "min_sigma" | "one_way" | "min_holes" | "floor", number>;
   room: (string | null)[];
+  node_test_reason: string;
   grid_too_coarse: string;
   height_share: number;
   direction_share: number;
@@ -273,29 +275,25 @@ const PINS: Pin[] = [
       return [[n, n], [py.fill_constants.min_rim, py.fill.min_rim]];
     },
   },
+  // The TypeScript names them since 4.2's TypeScript half (FILL_BIAS_LIMITS, the
+  // limits it sends the backend's 3-D texture and checks it was judged by).
   {
     name: "a systematic fill bias's median, in the rim's σ",
-    ts: "textureMetrics' `Math.abs(bias) >= 0.5`, metrics/texture.ts",
+    ts: "FILL_BIAS_MIN_SIGMA, metrics/texture.ts",
     py: "MIN_SIGMA and fill_texture(min_sigma=)",
-    values: () => {
-      const [x] = written(TEXTURE, /Math\.abs\(bias\) >= ([0-9.]+)/);
-      return [[x, x], [py.fill_constants.min_sigma, py.fill.min_sigma]];
-    },
+    values: () => [[FILL_BIAS_MIN_SIGMA, FILL_BIAS_MIN_SIGMA], [py.fill_constants.min_sigma, py.fill.min_sigma]],
   },
   {
     name: "a systematic fill bias's share of the holes one way",
-    ts: "textureMetrics' `above >= 0.75 : below >= 0.75`, metrics/texture.ts",
+    ts: "FILL_BIAS_ONE_WAY, metrics/texture.ts",
     py: "ONE_WAY and fill_texture(one_way=)",
-    values: () => [written(TEXTURE, /bias > 0 \? above >= ([0-9.]+) : below >= ([0-9.]+)/), [py.fill_constants.one_way, py.fill.one_way]],
+    values: () => [[FILL_BIAS_ONE_WAY, FILL_BIAS_ONE_WAY], [py.fill_constants.one_way, py.fill.one_way]],
   },
   {
     name: "the fewest judged holes a systematic fill bias needs",
-    ts: "textureMetrics' `judged.length >= 5`, metrics/texture.ts",
+    ts: "FILL_BIAS_MIN_HOLES, metrics/texture.ts",
     py: "MIN_HOLES and fill_texture(min_holes=)",
-    values: () => {
-      const [n] = written(TEXTURE, /judged\.length >= ([0-9]+)/);
-      return [[n, n], [py.fill_constants.min_holes, py.fill.min_holes]];
-    },
+    values: () => [[FILL_BIAS_MIN_HOLES, FILL_BIAS_MIN_HOLES], [py.fill_constants.min_holes, py.fill.min_holes]],
   },
   {
     name: "the fills' room for their rims, and what a grid too coarse for it says (#60)",
@@ -483,6 +481,13 @@ describe("the limits Python and TypeScript both hold", () => {
     const reason = `${py.grid_too_coarse}: 0.99 voxels across a ring's width (at most 0.16 Å⁻¹), under 1`;
     expect([isTooCoarse(reason), isTooCoarse(`not judged: ${reason}`)]).toEqual([true, true]);
     expect(py.room.filter((r): r is string => r !== null).every(isTooCoarse)).toBe(true);
+  });
+
+  it("isTooCoarse reads the 3-D texture read's reason on a grid too coarse for the punch's node test (G3)", () => {
+    // nebula3d.analysis.bragg_fill_texture.NODE_TEST_TOO_COARSE: the fills are
+    // not judged where the punch's record carries its node test's notice.
+    expect(py.node_test_reason).toBe("grid too coarse (the punch's node test could not resolve the holes at this grid)");
+    expect([isTooCoarse(py.node_test_reason), isTooCoarse(`not judged: ${py.node_test_reason}`)]).toEqual([true, true]);
   });
 
   it("keeps a limit pinned or independent, never both, and every entry with its reason", () => {

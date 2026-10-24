@@ -75,6 +75,56 @@ export interface RingIsotropy {
   not_judged?: string | null;
 }
 
+/** One punch hole's fill against the range its 3-D rim allows (VolumeTexture's `holes`); the values are null where it was not judged. */
+export interface TextureHole {
+  index: number; // its place among the holes, C order of their first voxels
+  centre_hkl: number[]; // the mean position of its voxels, r.l.u.
+  voxels: number;
+  rim_voxels: number; // measured, in no hole, left as they were by the fill
+  fill: number | null; // the mean backfilled value over the hole
+  level: number | null; // the rim's median: the local diffuse level
+  sigma: number | null; // the rim's robust σ about its trend
+  slope: number | null; // the trend's change per voxel outward
+  edge: number | null; // the range the rim allows: its trend at the hole's edge ...
+  peaked: number | null; // ... and continued linearly to the hole
+  bias: number | null; // the fill's signed distance outside that range (0 inside)
+  bias_sigma: number | null; // ... in the rim's σ
+  bias_level: number | null; // ... in units of the local level
+  not_judged: string | null; // "thin rim", "flat rim", "too large" or "no outside"
+}
+
+/**
+ * The Pilot's fill-bias rule (metrics/texture.ts) on every punch hole of a
+ * backfilled stage, each with its 3-D rim, against the dataset's punched stage
+ * (GET /api/volumes/{id}/texture; nebula3d.analysis.fill_texture).
+ */
+export interface VolumeTexture {
+  id: string;
+  punched_id: string; // the punched stage the holes were read from
+  holes_from: "punch_record" | "masks"; // the punch's record, or texture.ts's own test
+  rim: number; // the rim's depth, voxels
+  min_rim: number; // the fewest rim voxels a hole is judged with
+  // The rule's limits, as asked for (else the server's, texture.ts's).
+  min_sigma: number;
+  one_way: number;
+  min_holes: number;
+  floor: number;
+  n_holes: number;
+  n_judged: number;
+  judged: boolean; // room for the rims, and n_judged ≥ min_holes: else not judged
+  node_spacing: number | null; // voxels between neighbouring nodes of the grid's cell
+  room_needed: number | null; // ... that the median hole's rim needs, 2·(reach + rim)
+  not_judged: string | null; // why the grid is too coarse for the rule ("grid too coarse: …")
+  median_fill_bias_sigma: number | null;
+  median_fill_bias_level: number | null;
+  above_fraction: number | null;
+  below_fraction: number | null;
+  above_floor_fraction: number | null; // filled above their range by floor × level or more
+  below_floor_fraction: number | null;
+  systematic_fill_bias: boolean; // false whenever not judged
+  holes: TextureHole[]; // the `limit` holes farthest outside their range
+}
+
 /**
  * What the ring stage recorded in its diagnostics (GET /api/rings/{id}/diagnostics):
  * the rings the pooled model detected and could not confirm on its grid, which it
@@ -213,14 +263,19 @@ export interface DeltaPdfMeta {
   window_open_weight?: number | null;
 }
 
-// The ΔPDF's strongest extrema outside the origin's disk, grouped by sign,
-// length and size (nebula3d.analysis.dpdf_features): one per ± pair.
+// The ΔPDF's strongest extrema outside the origin's disk, grouped by the point
+// group the dataset's raw file declares, else by sign, length and size
+// (nebula3d.analysis.dpdf_features): one per ± pair.
 export interface DpdfFeatureGroup {
   sign: 1 | -1;
-  length: number; // |r|, Å
+  length: number; // |r| of the strongest, Å
   size_sigma: number; // the largest |ΔPDF| in the group, in robust σ
+  mean_size_sigma: number; // the mean |ΔPDF| of its n extrema, in robust σ
   value: number;
-  n: number; // extrema in the group
+  n: number; // extrema in the group, one per ± pair
+  // With a declared symmetry, the orbit's distinct vectors, one per ± pair (n is
+  // fewer when some are below the threshold or outside the volume); null without.
+  multiplicity: number | null;
   vectors: number[][]; // (x, y, z) along a, b, c, Å, strongest first
   vectors_rlu: (number[] | null)[]; // the same in lattice units
   sizes_sigma: number[];
@@ -232,6 +287,9 @@ export interface DpdfFeatures {
   min_sigma: number;
   origin_radius: number; // Å
   n_extrema: number;
+  // "declared symmetry (<label or operations>: <n> operations, r ≡ −r)", or
+  // "sign, length and size (<why: none declared, or why it was not applied>)"
+  grouped_by: string;
   groups: DpdfFeatureGroup[];
 }
 

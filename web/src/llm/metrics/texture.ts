@@ -1,6 +1,6 @@
 // Does the punch + backfill leave a pattern of its own in reciprocal space?
-// Two signs, on one cut through the ring-removed slice (before the punch), the
-// punched slice (its holes are NaN) and the backfilled slice:
+// Two signs, defined here on one cut through the ring-removed slice (before
+// the punch), the punched slice (its holes are NaN) and the backfilled slice:
 //
 // - Fill bias.  Each filled hole against what the diffuse around it allows.
 //   Holes filled systematically brighter (or darker) than that print a lattice
@@ -28,12 +28,26 @@
 //   hole's own node, which holds on its side of the midpoint to the next node
 //   only. On a grid too coarse for that the cut says why (not_judged), and
 //   gives no verdict.
+//   texture_check judges the fill bias in 3-D (plan 4.2): every punch hole of
+//   the volume, each with its 3-D rim (nebula3d.analysis.fill_texture, served
+//   by GET /api/volumes/{id}/texture and webbridge.volume_texture_json), by
+//   this rule taken from the cut's plane to the volume, with the limits below
+//   passed on. On a volume one plane thick the two are the same, hole for hole
+//   (tests/test_fill_texture.py). A cut sees a hole as the section it cuts out
+//   of it: a hole crossed at its edge reads against a rim that lies off its
+//   node, where the diffuse is rounded, and a peak off the cut (a satellite) is
+//   crossed at its pole or not at all. The volume judges each hole once, from
+//   all of its rim. textureMetrics is the rule on a cut, as it was judged
+//   before 4.2.
 // - Azimuthal texture.  Per |Q| shell, how much the sector means vary around
 //   the shell: before the punch over the unpunched voxels only (the diffuse
 //   without its peaks), after the backfill over every voxel.  Fills that follow
 //   the diffuse leave that variation unchanged (ratio ≈ 1); fills off the
-//   diffuse add variation around the shell.
+//   diffuse add variation around the shell.  No hole's measure: it is read on
+//   cuts (azimuthalTexture), texture_check's per_cut.
 
+import type { TextureLimits } from "../../api/client";
+import type { VolumeTexture } from "../../api/types";
 import { GRID_TOO_COARSE } from "./coarse";
 import { median, planarRadius, roundSig, type GridSlice, type RadiusFn } from "./sliceStats";
 
@@ -80,6 +94,86 @@ const SHELLS = 24;
  * the K–L plane of the control. Provisional, as the 0.5σ and 75 % are.
  */
 export const FILL_BIAS_FLOOR = 0.2;
+
+// The rule's other limits, provisional as the floor is: a systematic fill bias
+// also needs a median of FILL_BIAS_MIN_SIGMA of the rim's σ or more,
+// FILL_BIAS_ONE_WAY of the judged holes or more leaning the median's way, and
+// FILL_BIAS_MIN_HOLES holes judged or more.
+export const FILL_BIAS_MIN_SIGMA = 0.5;
+export const FILL_BIAS_ONE_WAY = 0.75;
+export const FILL_BIAS_MIN_HOLES = 5;
+
+/**
+ * The rule's limits as texture_check asks the 3-D read to judge by them
+ * (fetchVolumeTexture): this module's, whatever the backend's defaults (the
+ * same values, nebula3d.analysis.bragg_fill_texture).
+ */
+export const FILL_BIAS_LIMITS: Required<TextureLimits> = {
+  minSigma: FILL_BIAS_MIN_SIGMA,
+  oneWay: FILL_BIAS_ONE_WAY,
+  minHoles: FILL_BIAS_MIN_HOLES,
+  floor: FILL_BIAS_FLOOR,
+};
+
+/**
+ * The fill bias over every punch hole of the volume, each with its 3-D rim,
+ * as texture_check reports it: the 3-D read's summary over the judged holes,
+ * and systematic_fill_bias true or false where the rule applies, else null
+ * with why (not_judged).
+ */
+export interface VolumeFillBias {
+  n_holes: number;
+  n_judged?: number; // the holes whose rims could be judged; not given on a grid too coarse
+  // Why the fills are not judged: the grid too coarse for the median hole's
+  // rim ("grid too coarse: …", as on a cut), too few holes judged, or none.
+  not_judged?: string;
+  median_fill_bias_sigma: number | null;
+  median_fill_bias_level: number | null;
+  above_fraction: number | null;
+  below_fraction: number | null;
+  // Shares of the judged holes filled above, and below, their range by
+  // FILL_BIAS_FLOOR of their level or more.
+  above_floor_fraction: number | null;
+  below_floor_fraction: number | null;
+  systematic_fill_bias: boolean | null;
+}
+
+/**
+ * The 3-D read as texture_check reports it. On a grid too coarse for the
+ * holes' rims no bias is measured (null), as on a cut (roomForRims): the
+ * numbers would be read from rims past the midpoint to the next node. With
+ * fewer than FILL_BIAS_MIN_HOLES holes judged the numbers stand, and the rule
+ * gives no verdict.
+ */
+export function volumeFillBias(t: VolumeTexture): VolumeFillBias {
+  const r = (x: number | null): number | null => (x === null ? null : roundSig(x));
+  if (t.not_judged) {
+    return {
+      n_holes: t.n_holes,
+      not_judged: t.not_judged,
+      median_fill_bias_sigma: null,
+      median_fill_bias_level: null,
+      above_fraction: null,
+      below_fraction: null,
+      above_floor_fraction: null,
+      below_floor_fraction: null,
+      systematic_fill_bias: null,
+    };
+  }
+  const why = t.judged ? null : t.n_holes ? `too few holes judged: ${t.n_judged} of ${t.n_holes}, under ${t.min_holes}` : "no filled punch hole";
+  return {
+    n_holes: t.n_holes,
+    n_judged: t.n_judged,
+    ...(why ? { not_judged: why } : {}),
+    median_fill_bias_sigma: r(t.median_fill_bias_sigma),
+    median_fill_bias_level: r(t.median_fill_bias_level),
+    above_fraction: r(t.above_fraction),
+    below_fraction: r(t.below_fraction),
+    above_floor_fraction: r(t.above_floor_fraction),
+    below_floor_fraction: r(t.below_floor_fraction),
+    systematic_fill_bias: t.judged ? t.systematic_fill_bias : null,
+  };
+}
 
 // Holes: voxels NaN in the punched slice but finite in the backfilled one,
 // grouped into 4-connected components.
@@ -297,12 +391,8 @@ export const textureMetrics = (
   const biasLevel = inLevel.length ? median(inLevel) : null;
   const above = judged.length ? judged.filter((h) => h.bias > 0).length / judged.length : null;
   const below = judged.length ? judged.filter((h) => h.bias < 0).length / judged.length : null;
-  const oneWay = bias !== null && above !== null && below !== null && (bias > 0 ? above >= 0.75 : below >= 0.75);
-  const varBefore =
-    before && before.data.length === punched.data.length
-      ? azimuthalVariation(before, radius, (i) => Number.isFinite(punched.data[i]))
-      : null;
-  const varAfter = azimuthalVariation(filled, radius, () => true);
+  const oneWay =
+    bias !== null && above !== null && below !== null && (bias > 0 ? above >= FILL_BIAS_ONE_WAY : below >= FILL_BIAS_ONE_WAY);
   return {
     n_holes: holes.length,
     ...(coarse ? { not_judged: coarse } : {}),
@@ -312,14 +402,47 @@ export const textureMetrics = (
     below_fraction: below === null ? null : roundSig(below),
     systematic_fill_bias: coarse
       ? null
-      : judged.length >= 5 &&
+      : judged.length >= FILL_BIAS_MIN_HOLES &&
         bias !== null &&
-        Math.abs(bias) >= 0.5 &&
+        Math.abs(bias) >= FILL_BIAS_MIN_SIGMA &&
         biasLevel !== null &&
         Math.abs(biasLevel) >= FILL_BIAS_FLOOR &&
         oneWay,
+    ...azimuthalTexture(before, punched, filled, radius),
+  };
+};
+
+/** The azimuthal texture on one cut: how much the sector means vary around the |Q| shells before the punch and after the backfill, and the ratio. */
+export interface AzimuthalTexture {
+  azimuthal_variation_before: number | null;
+  azimuthal_variation_after: number | null;
+  azimuthal_ratio: number | null; // after / before; ≈ 1 adds no texture
+}
+
+/**
+ * The azimuthal texture on one cut: per |Q| shell the sector means' spread,
+ * before the punch over the voxels the punch left (the diffuse without its
+ * peaks) and after the backfill over every voxel, each the median over the
+ * shells. Without the punched or backfilled cut, nothing; without the cut
+ * before the punch, the variation after alone.
+ */
+export function azimuthalTexture(
+  before: GridSlice | null,
+  punched: GridSlice | null,
+  filled: GridSlice | null,
+  radius: RadiusFn = planarRadius,
+): AzimuthalTexture {
+  if (!punched || !filled || punched.data.length !== filled.data.length) {
+    return { azimuthal_variation_before: null, azimuthal_variation_after: null, azimuthal_ratio: null };
+  }
+  const varBefore =
+    before && before.data.length === punched.data.length
+      ? azimuthalVariation(before, radius, (i) => Number.isFinite(punched.data[i]))
+      : null;
+  const varAfter = azimuthalVariation(filled, radius, () => true);
+  return {
     azimuthal_variation_before: varBefore === null ? null : roundSig(varBefore),
     azimuthal_variation_after: varAfter === null ? null : roundSig(varAfter),
     azimuthal_ratio: varBefore && varAfter !== null ? roundSig(varAfter / varBefore) : null,
   };
-};
+}

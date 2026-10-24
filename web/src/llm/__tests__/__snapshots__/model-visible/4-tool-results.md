@@ -297,7 +297,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {}
 
-3264 characters sent.
+3277 characters sent.
 
 ```json
 {
@@ -371,7 +371,7 @@ References of this skill (read one with read_skill and `reference`):
   },
   "backfill": {
     "verdict": "meets its goal",
-    "criterion": "The fills meet their surroundings: a median seam of 1σ or less. Whether a cut's fill is biased one way is texture_check's to say.",
+    "criterion": "The fills meet their surroundings: a median seam of 1σ or less. Whether the fills are biased one way is texture_check's to say.",
     "headline": "seam 0.218σ · bright ≤ 0",
     "mean_median_seam_sigma": 0.218,
     "max_bright_fill_fraction": 0
@@ -400,7 +400,7 @@ References of this skill (read one with read_skill and `reference`):
     "window_weight_on_unmeasured": 0.00024,
     "window_shape": "ellipsoid",
     "max_symmetry_break": 0,
-    "worst_symmetry_op": "mirror ⊥ a",
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
     "symmetry_declared": true
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
@@ -543,45 +543,30 @@ References of this skill (read one with read_skill and `reference`):
 
 ## texture_check {}
 
-802 characters sent.
+370 characters sent.
 
 ```json
 {
+  "n_holes": 79,
+  "n_judged": 79,
+  "median_fill_bias_sigma": 0,
+  "median_fill_bias_level": 0,
+  "above_fraction": 0.152,
+  "below_fraction": 0.0886,
+  "above_floor_fraction": 0,
+  "below_floor_fraction": 0,
+  "systematic_fill_bias": false,
   "per_cut": [
     {
       "cut": "H–K plane at L = 0",
-      "n_holes": 23,
-      "median_fill_bias_sigma": 0,
-      "median_fill_bias_level": 0,
-      "above_fraction": 0.478,
-      "below_fraction": 0.348,
-      "systematic_fill_bias": false,
-      "azimuthal_variation_before": 0.0691,
-      "azimuthal_variation_after": 0.0703,
       "azimuthal_ratio": 1.02
     },
     {
       "cut": "H–L plane at K = 0",
-      "n_holes": 24,
-      "median_fill_bias_sigma": 0,
-      "median_fill_bias_level": 0,
-      "above_fraction": 0.458,
-      "below_fraction": 0.417,
-      "systematic_fill_bias": false,
-      "azimuthal_variation_before": 0.0599,
-      "azimuthal_variation_after": 0.0599,
       "azimuthal_ratio": 1
     },
     {
       "cut": "K–L plane at H = 0",
-      "n_holes": 24,
-      "median_fill_bias_sigma": 0,
-      "median_fill_bias_level": 0,
-      "above_fraction": 0.417,
-      "below_fraction": 0.458,
-      "systematic_fill_bias": false,
-      "azimuthal_variation_before": 0.0587,
-      "azimuthal_variation_after": 0.0587,
       "azimuthal_ratio": 1
     }
   ]
@@ -625,37 +610,41 @@ References of this skill (read one with read_skill and `reference`):
 
 ## symmetry_check {}
 
-452 characters sent.
+653 characters sent.
 
 ```json
 {
-  "section": "ΔPDF x–y section at z = 0 Å",
-  "cell": "orthogonal",
+  "sections": "xy at z = 0 Å, xz at y = 0, yz at x = 0",
+  "operations": "declared (mmm): 7 besides the identity",
   "ops": [
     {
-      "op": "mirror ⊥ a",
+      "op": "two-fold ∥ c / mirror ⊥ c",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 4608,
+      "tested_on": "xz; yz"
     },
     {
-      "op": "mirror ⊥ b",
+      "op": "two-fold ∥ a / mirror ⊥ a",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 4608,
+      "tested_on": "xy; xz"
     },
     {
-      "op": "two-fold (180°)",
+      "op": "two-fold ∥ b / mirror ⊥ b",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 4608,
+      "tested_on": "xy; yz"
     },
     {
-      "op": "four-fold (90°)",
+      "op": "inversion",
       "rms_difference": 0,
-      "pairs": 2401
+      "pairs": 7200,
+      "tested_on": "xy; xz; yz"
     }
   ],
-  "holds": ["mirror ⊥ a", "mirror ⊥ b", "two-fold (180°)", "four-fold (90°)"],
+  "holds": ["two-fold ∥ c / mirror ⊥ c", "two-fold ∥ a / mirror ⊥ a", "two-fold ∥ b / mirror ⊥ b", "inversion"],
   "symmetry_declared": true,
-  "verdict": "kept: every in-plane operation holds to 0.001 or better"
+  "verdict": "kept: every operation tested holds to 0.001 or better"
 }
 ```
 
@@ -696,24 +685,51 @@ References of this skill (read one with read_skill and `reference`):
 
 ## dpdf_peaks {}
 
-755 characters sent.
+1450 characters sent.
 
 ```json
 {
+  "grouped_by": "declared symmetry (mmm: 8 operations, r ≡ −r)",
   "features": [
     {
       "sign": "−",
       "length_A": 4,
       "size_sigma": 35.2,
-      "n_vectors": 3,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
       "vectors_rlu": [
-        [1, 0, 0],
-        [0, 1, 0],
+        [1, 0, 0]
+      ],
+      "vectors_A": [
+        [4, 0, 0]
+      ]
+    },
+    {
+      "sign": "−",
+      "length_A": 4,
+      "size_sigma": 35.2,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
+      "vectors_rlu": [
+        [0, 1, 0]
+      ],
+      "vectors_A": [
+        [0, 4, 0]
+      ]
+    },
+    {
+      "sign": "−",
+      "length_A": 4,
+      "size_sigma": 35.2,
+      "mean_size_sigma": 35.2,
+      "n_vectors": 1,
+      "multiplicity": 1,
+      "vectors_rlu": [
         [0, 0, 1]
       ],
       "vectors_A": [
-        [4, 0, 0],
-        [0, 4, 0],
         [0, 0, 4]
       ]
     },
@@ -721,18 +737,48 @@ References of this skill (read one with read_skill and `reference`):
       "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "n_vectors": 6,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
       "vectors_rlu": [
         [1, 1, 0],
-        [1, -1, 0],
+        [1, -1, 0]
+      ],
+      "vectors_A": [
+        [4, 4, 0],
+        [4, -4, 0]
+      ]
+    },
+    {
+      "sign": "+",
+      "length_A": 5.657,
+      "size_sigma": 21.1,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
+      "vectors_rlu": [
         [1, 0, 1],
         [1, 0, -1]
       ],
       "vectors_A": [
-        [4, 4, 0],
-        [4, -4, 0],
         [4, 0, 4],
         [4, 0, -4]
+      ]
+    },
+    {
+      "sign": "+",
+      "length_A": 5.657,
+      "size_sigma": 21.1,
+      "mean_size_sigma": 21.1,
+      "n_vectors": 2,
+      "multiplicity": 2,
+      "vectors_rlu": [
+        [0, 1, 1],
+        [0, 1, -1]
+      ],
+      "vectors_A": [
+        [0, 4, 4],
+        [0, 4, -4]
       ]
     }
   ],
@@ -1648,7 +1694,7 @@ A local model's request past its soft budget has its older results shortened (`c
     "window_weight_on_unmeasured": 0.00024,
     "window_shape": "ellipsoid",
     "max_symmetry_break": 0,
-    "worst_symmetry_op": "mirror ⊥ a",
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
     "symmetry_declared": true
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"],

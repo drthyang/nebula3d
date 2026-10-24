@@ -90,12 +90,16 @@ function coverageOutcome(r: Obj): Outcome {
   return outcome("coverage", kind, reasons, words(r), problems);
 }
 
-/** symmetry_check's words: "kept" passes, "not kept" needs attention; "not judged" (no symmetry declared) and a note judge nothing. */
+/**
+ * symmetry_check's words: "kept" passes, "not kept" needs attention; "not
+ * judged: the file declares no symmetry" is not declared, and any other "not
+ * judged" (no operation could be tested, and why), or a note, judges nothing.
+ */
 function symmetryOutcome(r: Obj): Outcome {
   const said = words(r) ?? "";
   if (/^kept/i.test(said)) return outcome("symmetry", "pass", [], said);
   if (/^not kept/i.test(said)) return outcome("symmetry", "attention", ["symmetry broken"], said);
-  return outcome("symmetry", "info", [/^not judged/i.test(said) ? "not declared" : "nothing to judge"], words(r));
+  return outcome("symmetry", "info", [/^not judged: the file declares no symmetry/i.test(said) ? "not declared" : "nothing to judge"], words(r));
 }
 
 /**

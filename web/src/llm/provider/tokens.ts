@@ -105,6 +105,24 @@ export function keepWindow(key: string, size: number): number {
   return size;
 }
 
+/**
+ * What the estimate has learned of a server's model (key: base URL + model):
+ * its counted prompt tokens over the starting rates' (the largest ratio seen;
+ * null: none counted yet), and the context length an Ollama model last ran
+ * with (null: none yet). It carries over from one reply to the next, and from
+ * one validation run to the next, by design: the validation's record keeps the
+ * calibration each run started from (evals/validationRun.ts).
+ */
+export interface TokenCalibration {
+  scale: number | null;
+  ollamaNumCtx: number | null;
+}
+
+export const tokenCalibration = (key: string): TokenCalibration => ({
+  scale: scales.get(key) ?? null,
+  ollamaNumCtx: windows.get(key) ?? null,
+});
+
 /** Forget what was measured and sized (tests). */
 export function resetTokenState(): void {
   scales.clear();

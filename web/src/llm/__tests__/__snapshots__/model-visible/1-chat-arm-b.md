@@ -127,7 +127,7 @@ over, or diffuse dented, at the rings confirmed in 3D); radial_profile shows any
 (2) The Bragg punch removes the Bragg peaks cleanly: assess_stage punch (leftover peaks on every plane,
 and how much was punched to get there); check an off-zero cut too.
 (3) The backfill meets its surroundings, and the punch and backfill add no texture to reciprocal space:
-assess_stage backfill (the seam) and texture_check (no cut whose fills sit systematically outside the range their
+assess_stage backfill (the seam) and texture_check (no fills sitting systematically outside the range their
 rims allow, azimuthal ratio near 1).
 (4) The flatten leaves no pedestal: assess_stage flatten (the floors' trend and span).
 (5) The 3D-ΔPDF's back-FFT reproduces the data's even part under Q → −Q, its declared symmetry is kept, and Qmax is not past the data coverage:
@@ -135,8 +135,8 @@ assess_stage pdf and symmetry_check; qmax_coverage says how far the forward tran
 whether that stays inside the fully measured shells.
 (6) A UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes:
 ub_check and grain_check for the UB, ub_check for the origin, qmax_coverage for the counts.
-On symmetrised data, symmetry_check says whether the ΔPDF kept the cell's in-plane
-symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
+On symmetrised data, symmetry_check says whether the ΔPDF kept each operation of the
+declared symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
 dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features
 carry the colour and the FFT ripple stays near neutral: use it when the ΔPDF looks too
 bright or full of ripple, and before describing a ΔPDF figure. dpdf_peaks lists the ΔPDF's

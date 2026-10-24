@@ -33,8 +33,11 @@ Each is described under [How it works](#how-it-works).
   reply, measured after the last run that recomputed that stage (a run that
   reused a stage leaves its measurement standing), that every number comes
   from a tool result or the context, and that no claim contradicts a verdict a
-  tool computed. A ring or punch verdict needs `assess_stage`, the ΔPDF's
-  correlations `dpdf_peaks` (or a measured section), the origin `ub_check`.
+  tool computed. An earlier turn's result counts as a number's source only
+  until a run in the conversation recomputes the stage it measured; a number
+  only such a result holds goes back as measured before that run. A ring or
+  punch verdict needs `assess_stage`, the ΔPDF's correlations `dpdf_peaks`
+  (or a measured section), the origin `ub_check`.
   The check runs in code after the answer, not as a forced tool call, which the
   paid models do not take. A failing answer goes back to the model once; what
   still fails is noted under the reply (`answerChecks.ts`, `evidence.ts`).
@@ -53,7 +56,10 @@ Each is described under [How it works](#how-it-works).
   no check on the result needs attention; not met, naming what needs it; or
   not judged, naming the stages not measured, and those measured on a grid
   too coarse for their check with that reason ("not judged: the ring removal
-  (grid too coarse for the ring check)"). The data's problems that no
+  (grid too coarse for the ring check)"), and likewise a check on the result
+  that ran and could not judge: the fills' texture on a grid too coarse for
+  the holes' rims, or with too few holes ("the backfill's texture (grid too
+  coarse)", "(too few holes)"). The data's problems that no
   setting fixes (a turned UB, a shifted origin, counts that end inside the
   box) are listed with it. It shows under a reply that judged the run (or
   found such a problem) and the report heads its own, and
@@ -133,20 +139,21 @@ Each is described under [How it works](#how-it-works).
   chat API takes the length per request; the OpenAI-style one cannot), and a
   request no window of the model can hold, or longer than the window LM Studio
   loaded the model with, is not sent: the reply says how to fix it.
-- **A local model wants a 48k window.** With Tools on, a full assessment that
-  reads two skills whole is about 45.6k tokens with room for the reply
-  (measured through the agent loop: `web/src/llm/__tests__/tokenBudget.test.ts`).
-  A 32k window still runs, but the guard then shortens the skills the model
-  just read to stubs, and refuses a request that still does not fit; 48k
-  (49,152 tokens) or more avoids that on long two-skill turns. In LM Studio,
-  set the model's default Context Length to 49152 in its load settings (it
-  reloads an idle model with its defaults), or load it with
-  `lms load <model> --context-length 49152`. Ollama at its usual port gets
-  its window from the app per request (`num_ctx`, up to the longest the model
-  supports, which `ollama show <model>` lists), so the model must support 48k
-  and the machine needs the memory for it; elsewhere, start Ollama with
-  `OLLAMA_CONTEXT_LENGTH=49152`. The validation holds its local live runs to
-  the same 48k ([evals.md](evals.md#the-models)).
+- **A local model wants a 56k window.** With Tools on, a full assessment that
+  reads two skills whole, the 3D-ΔPDF's strongest features a full list, is
+  about 47.6k tokens with room for the reply (measured through the agent loop:
+  `web/src/llm/__tests__/tokenBudget.test.ts`), and a model-visible addition
+  must leave 3k of the window free. A 32k window still runs, but the guard
+  then shortens the skills the model just read to stubs, and refuses a
+  request that still does not fit; 56k (57,344 tokens) or more avoids that on
+  long two-skill turns. In LM Studio, set the model's default Context Length
+  to 57344 in its load settings (it reloads an idle model with its defaults),
+  or load it with `lms load <model> --context-length 57344`. Ollama at its
+  usual port gets its window from the app per request (`num_ctx`, up to the
+  longest the model supports, which `ollama show <model>` lists), so the model
+  must support 56k and the machine needs the memory for it; elsewhere, start
+  Ollama with `OLLAMA_CONTEXT_LENGTH=57344`. The validation holds its local
+  live runs to the same 56k ([evals.md](evals.md#the-models)).
 
 ## Evals
 
@@ -158,7 +165,10 @@ run it live, and a local tier holds a local model to an acceptance (at least
 80 % of runs passing, no loops, no exceptions). The scenarios, the commands
 and the results per model are in [evals.md](evals.md), which also holds the
 validation on synthetic cases with a planted truth (the Pilot against the
-default pipeline, with and without its skills).
+default pipeline, with and without its skills). A validation run counts
+every token its model spends, a tuning run's (`tune_pipeline` asks the run's
+own model, not the console's settings) included and kept apart in its
+record (`usage.tuning`), in its cost and against a paid model's spend cap.
 [pilot-review.md](pilot-review.md) reviews each tool and skill.
 
 ## What its reviews found
@@ -333,11 +343,11 @@ miss is a note.
   picked): system messages become the system prompt, a round's tool results go
   back in one user message, and a turn that called tools is replayed exactly as
   Claude returned it, thinking included. With Tools on, the first request alone
-  is about 8k tokens and a full assessment that reads two skills about 45.6k
+  is about 8k tokens and a full assessment that reads two skills about 47.6k
   with room for the reply (`__tests__/tokenBudget.test.ts`), so on LM Studio
   the chat reads the context length the model was loaded with
-  (`/api/v0/models`) and, below 48k (`TOOLS_CONTEXT`, 49,152), says how far to
-  raise it (`loadedContext`, `contextWarning`). The 48k is guidance: the
+  (`/api/v0/models`) and, below 56k (`TOOLS_CONTEXT`, 57,344), says how far to
+  raise it (`loadedContext`, `contextWarning`). The 56k is guidance: the
   window guard below goes by the window the model has. Before each request `provider/window.ts` estimates its
   tokens (`tokens.ts`): prose at 3.5 characters a token and data at 1.4 (tool
   results, call arguments and the fenced context JSON: a tokenizer may give
@@ -367,10 +377,10 @@ miss is a note.
   result, and a long one shows a live line while it runs. As each measuring or
   assessing call finishes, the console moves to the figure it looked at
   (*Follow*, on by default; `tools/openView.ts`): the cleanup page at its cut (a
-  stage's worst plane for `assess_stage`, the strongest fill bias for
-  `texture_check`), the 3D-ΔPDF at its section, the Bragg profile with its peak
-  selected, the Q–R band transform for the back-FFT check, or the Execution
-  page for the run log. Each step's *Show* reopens its figure. While the panel
+  stage's worst plane for `assess_stage`, the H–K plane through the hole
+  farthest outside its range for `texture_check`), the 3D-ΔPDF at its
+  section, the Bragg profile with its peak selected, the Q–R band transform
+  for the back-FFT check, or the Execution page for the run log. Each step's *Show* reopens its figure. While the panel
   is open, the cards the agent is on breathe a blue edge (`llm/highlight.ts`,
   `.ai-glow`): those a running step works on (narrowed to the stage a run or a
   tuning run is on), then those its answer mentions, for 8 s after the reply.
@@ -395,10 +405,13 @@ miss is a note.
     planes (the tuning run's own evaluation, `tune/evaluate.ts`);
     `radial_profile` puts the stages' |Q|-shell medians side by side (rings
     left or diffuse dented); `texture_check` (`metrics/texture.ts`) asks
-    whether the fills sit systematically above or below their rims (a
-    lattice-periodic pattern; flagged at a median ≥ 0.5σ with ≥ 75 % of holes
-    one way) and whether the punch and backfill add variation around each |Q|
-    shell; `qmax_coverage` gives the share of the
+    whether the fills sit systematically above or below the range their rims
+    allow, over every punch hole of the volume, each with its 3-D rim (a
+    lattice-periodic pattern; flagged at a median ≥ 0.5σ and ≥ a fifth of the
+    level with ≥ 75 % of holes one way; not judged on a grid too coarse for the
+    rims; [the fills' texture](pipeline.md#the-fills-texture)), and whether the
+    punch and backfill add variation around each |Q| shell, on cuts;
+    `qmax_coverage` gives the share of the
     ΔPDF window's weight on unmeasured space, read from the ΔPDF's provenance
     (≲ 10⁻³ is clean), with the window's shape and scale. On a file without it,
     it compares how far the forward transform's window reaches in |Q| (the |Q|

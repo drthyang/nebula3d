@@ -60,6 +60,7 @@ const api = vi.hoisted(() => ({
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -295,8 +296,9 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   {
     skill: "bragg-node-audit",
     phrase: "no cut whose fills sit systematically outside the range their rims allow",
-    what: "whether a cut's fills sit systematically outside their rims' range",
-    fields: ["per_cut.systematic_fill_bias"],
+    // Over every hole in 3-D since 4.2's TypeScript half: the skill's "no cut" wording waits for its fact sync.
+    what: "whether the fills sit systematically outside their rims' range",
+    fields: ["systematic_fill_bias"],
   },
   { skill: "bragg-node-audit", phrase: "an azimuthal ratio near 1", what: "the azimuthal ratio", fields: ["per_cut.azimuthal_ratio"] },
   // delta-pdf-interpretation
@@ -339,20 +341,7 @@ type Kind = "tool" | "field" | "setting" | "name" | "claim" | "gate" | "unstated
  * what the skill names and why it fails. Fix the skill (with the user), then
  * take the entry off: the lint fails while an entry no longer fails.
  */
-const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [
-  {
-    skill: "reduction-qc",
-    kind: "field",
-    names: "max_floor_trend",
-    why: "step 6 names the planes' largest trend; assess_stage gives the whole volume's, floor_trend, since 4.1's TypeScript half. The skill's fact sync follows in its own PR (approved with #66).",
-  },
-  {
-    skill: "reduction-qc",
-    kind: "field",
-    names: "max_floor_span_fraction",
-    why: "step 6 names the planes' largest span; assess_stage gives the whole volume's, floor_span_fraction, since 4.1's TypeScript half. The skill's fact sync follows in its own PR (approved with #66).",
-  },
-];
+const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = [];
 
 // ---------------------------------------------------------------- the skills, in units
 

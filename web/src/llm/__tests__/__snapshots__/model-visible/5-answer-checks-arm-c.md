@@ -110,6 +110,26 @@ Before this answer goes to the user, fix it:
 Then write the whole answer again.
 ```
 
+## numbers from an earlier turn's result, measured before a later run
+
+Tools run in an earlier turn: assess_stage {"stage":"rings"}.
+
+Tools run in the reply: run_pipeline {"from_stage":"rings"}.
+
+The answer:
+
+```text
+The worst ring sat at 3.2 Å⁻¹, at 0.12 of the diffuse.
+```
+
+Sent back to the model:
+
+```text
+Before this answer goes to the user, fix it:
+- These numbers were measured before the last run recomputed the outputs they describe: 3.2, 0.12. Quote numbers measured since, or leave them out.
+Then write the whole answer again.
+```
+
 ## a question a result puts to the user, not asked, and its answer said as fact
 
 Tools run in the reply: assess_stage {"stage":"punch"}.

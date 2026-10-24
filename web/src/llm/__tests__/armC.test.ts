@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { JobEvent } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
-import { runAgent, type AgentResult } from "../agent";
+import { runAgent, toolStepsIn, type AgentResult, type AgentStep } from "../agent";
 import { answerIssues, issuesPrompt } from "../answerChecks";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
@@ -57,6 +57,7 @@ const api = vi.hoisted(() => ({
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -183,7 +184,9 @@ const FIRST = [
 ].join(" ");
 const REVISED = "The grid is 97 × 97 × 97 voxels and the cell edge is {{describe_dataset.cell.a}} Å.";
 
-// The second turn: verdicts with no check in that reply, and the run called a success.
+// The second turn: verdicts with no check in that reply, and the run called a
+// success; with a number from the first turn's flatten measured before its
+// rerun (beforeAll adds it, from the result).
 const FOLLOW_UP = "Is there a second grain, and does the ΔPDF keep its symmetry?";
 const SECOND = "There is no second grain, and the ΔPDF keeps its six-fold symmetry. The run is ready for analysis.";
 const SECOND_REVISED = "Those need checks in this reply; I will run them next.";
@@ -196,7 +199,7 @@ const scripted = (calls: Call[], round: number): StreamDelta[] => [
 let context: PipelineContext;
 
 /** One reply through runAgent with the skills off, as arm C runs it, its model scripted: every request it sent, and what it returned. */
-async function reply(messages: ChatMessage[], script: StreamDelta[][], earlierResults: string[]): Promise<{ sent: Sent[]; result: AgentResult }> {
+async function reply(messages: ChatMessage[], script: StreamDelta[][], earlierSteps: AgentStep[]): Promise<{ sent: Sent[]; result: AgentResult }> {
   const sent: Sent[] = [];
   model.streamChat.mockImplementation((args: Sent) => {
     sent.push({ messages: [...args.messages], tools: args.tools, toolChoice: args.toolChoice });
@@ -211,7 +214,7 @@ async function reply(messages: ChatMessage[], script: StreamDelta[][], earlierRe
   const result = await runAgent({
     messages,
     tools: CHAT_TOOLS,
-    ctx: { dataset: DATASET, datasets: DATASETS, skills: setup.skills, skillsRead: setup.skillsRead, earlierResults },
+    ctx: { dataset: DATASET, datasets: DATASETS, skills: setup.skills, skillsRead: setup.skillsRead, earlierSteps },
     settings,
     signal: new AbortController().signal,
     maxRounds: ROUNDS.length + 2,
@@ -259,13 +262,17 @@ describe("arm C's session, with the skills off", () => {
       { role: "user" as const, content: TASK },
       { role: "assistant" as const, content: first.result.content },
     ];
-    const earlier = first.result.steps.flatMap((s) => (s.status === "done" && s.result ? [s.result] : []));
+    const earlier = toolStepsIn([first.result]);
+    // And a number from the first turn's flatten measured before its rerun: stale in this one.
+    const before = first.result.steps.find((s) => s.name === "assess_stage" && s.args.stage === "flatten")!;
+    const plane = (JSON.parse(before.result!) as { flatten: { per_plane: { h0l: { after_negative_fraction: number } } } }).flatten.per_plane.h0l;
+    const secondAnswer = `${SECOND} On h0l, ${plane.after_negative_fraction} of the voxels were negative.`;
     const followUp = buildChatMessages(context, history, FOLLOW_UP, null, { tools: true, skills: false });
-    second = await reply(followUp, [[{ content: SECOND }], [{ content: SECOND_REVISED }]], earlier);
+    second = await reply(followUp, [[{ content: secondAnswer }], [{ content: SECOND_REVISED }]], earlier);
 
     for (const [run, opened, answer] of [
       [first, opening.length, FIRST],
-      [second, followUp.length, SECOND],
+      [second, followUp.length, secondAnswer],
     ] as const) {
       for (const m of run.sent[run.sent.length - 1].messages.slice(opened)) {
         if (m.role === "user") sentBack.push({ text: String(m.content), answer, steps: run.result.steps });
@@ -293,6 +300,7 @@ describe("arm C's session, with the skills off", () => {
       /These references name no value/,
       /this contradicts the verdict a check computed/,
       /These numbers appear in no tool result/,
+      /These numbers were measured before the last run recomputed the outputs they describe/,
       /^The tool calls are bringing nothing new\. Answer now/m,
     ]) {
       expect(all).toMatch(line);

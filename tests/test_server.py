@@ -1494,13 +1494,16 @@ def test_volume_shell_floors_take_the_runs_own_settings(tmp_path, monkeypatch):
     assert alone["percentile"] == 25.0 and alone["flatten"] is None
 
 
-def write_texture_stages(root, record=True, **lattice):
+def write_texture_stages(root, record=True, node_test=None, **lattice):
     """A dataset under *root* whose punched and backfilled stages exist:
     holes punched on a lattice of nodes and filled as
     ``tests.test_fill_texture._lattice(**lattice)`` builds them, the punch's
     record written into the punched stage unless *record* is False (a file
-    from before the punch recorded its holes).  Returns the lattice."""
+    from before the punch recorded its holes), and with *node_test* (its node
+    test's record, ``pipeline._node_test_record``) the punch's profile JSON
+    holding it.  Returns the lattice."""
     import dataclasses
+    import json
 
     from nebula3d.pipeline import _write_punched
     from tests.test_fill_texture import _lattice
@@ -1514,6 +1517,10 @@ def write_texture_stages(root, record=True, **lattice):
     nebula3d.save(lat.punched, paths.braggpunched)
     if record:
         _write_punched(paths.braggpunched, lat.record)
+    if node_test is not None:
+        paths.bragg_profile_json.write_text(
+            json.dumps({"schema_version": 1, "peaks": [], "node_test": node_test}),
+            encoding="utf-8")
     nebula3d.save(lat.filled, paths.backfilled)
     return lat
 
@@ -1569,6 +1576,39 @@ def test_volume_texture(tmp_path, monkeypatch):
         assert client.get(url, params=bad).status_code == 422, bad
     assert client.get(f"/api/volumes/{SLUG}.braggpunched/texture").status_code == 400
     assert client.get("/api/volumes/nope.backfilled/texture").status_code == 404
+
+
+@pytest.mark.parametrize("voxel_q, judged", [(0.1611, False), (0.0806, True)])
+def test_volume_texture_reads_the_punchs_node_test(tmp_path, monkeypatch, voxel_q, judged):
+    """/texture where the punch's record (its profile JSON) holds its node
+    test: on a grid too coarse for the test (a voxel over the 0.1433 Å⁻¹ its
+    shell needs, so the record carries the notice) the fills, half the level
+    high in 80 % of the holes, are not judged, the reason given, and measured
+    as without it; on a fine grid with a few nodes under the floor (the notice
+    None) they are judged as before (G3)."""
+    from nebula3d.analysis.bragg_fill_texture import NODE_TEST_TOO_COARSE
+    from nebula3d.pipeline import _node_test_record
+
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # whatever ran before
+    node_test = _node_test_record({"examined": 92, "under_floor": 88, "min_voxels": 8,
+                                   "voxel_q": voxel_q, "needs_q": 0.1433,
+                                   "left_to_search": True})
+    assert (node_test["notice"] is None) is judged
+    write_texture_stages(tmp_path, node_test=node_test, n=61, bias=0.5, share=0.8)
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    body = client.get(f"/api/volumes/{SLUG}.backfilled/texture").json()
+    assert body["holes_from"] == "punch_record" and body["n_holes"] == body["n_judged"] == 27
+    assert body["median_fill_bias_level"] == pytest.approx(0.5, abs=0.02)
+    assert body["above_floor_fraction"] == pytest.approx(0.8, abs=0.02)
+    if judged:
+        assert (body["judged"], body["systematic_fill_bias"], body["not_judged"]) == (
+            True, True, None)
+    else:
+        assert (body["judged"], body["systematic_fill_bias"], body["not_judged"]) == (
+            False, False, NODE_TEST_TOO_COARSE)
+        assert body["not_judged"] == (
+            "grid too coarse (the punch's node test could not resolve the holes at this grid)")
 
 
 def test_volume_texture_without_a_punch_record(tmp_path, monkeypatch):

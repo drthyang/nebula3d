@@ -5,14 +5,17 @@
 // what the evals think should have been.
 
 export interface ToolOffer {
-  request: number; // 1-based, over every chat request of the run, retries included
+  request: number; // 1-based, over every chat request of the agent loop, retries included
   tools: string[]; // the names, in the order sent
 }
 
-// OpenAI-style servers (LM Studio, Ollama) and Anthropic's Messages API.
-const CHAT_URL = /\/(chat\/completions|v1\/messages)(\?|$)/;
+// OpenAI-style servers (LM Studio, any /v1), Ollama's own chat API, which the
+// app talks to at Ollama's port (provider/client.ts, isOllamaUrl: /api/chat,
+// not /v1), and Anthropic's Messages API. Ollama's other calls (/api/show,
+// /api/ps) are no chat requests.
+const CHAT_URL = /\/(chat\/completions|v1\/messages|api\/chat)(\?|$)/;
 
-/** The tool names in a chat request's body: OpenAI-style `tools[].function.name`, Anthropic's `tools[].name`. */
+/** The tool names in a chat request's body: OpenAI-style `tools[].function.name` (Ollama's too), Anthropic's `tools[].name`. */
 export function toolNamesIn(body: unknown): string[] {
   const tools = (body as { tools?: unknown } | null)?.tools;
   if (!Array.isArray(tools)) return [];
@@ -22,16 +25,22 @@ export function toolNamesIn(body: unknown): string[] {
   });
 }
 
-/** Records the tool list of every chat request that goes through `fetch` while installed. */
+/**
+ * Records the tool list of every chat request that goes through `fetch` while
+ * installed, save those sent while `others` is true: requests that are not the
+ * agent loop's (a validation run's tuning, which offers no tools).
+ */
 export class OfferRecorder {
   readonly offers: ToolOffer[] = [];
+
+  constructor(private readonly others: () => boolean = () => false) {}
 
   /** Wraps `globalThis.fetch`; returns the function that puts it back. */
   install(): () => void {
     const real = globalThis.fetch;
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (CHAT_URL.test(url) && typeof init?.body === "string") {
+      if (CHAT_URL.test(url) && typeof init?.body === "string" && !this.others()) {
         try {
           this.offers.push({ request: this.offers.length + 1, tools: toolNamesIn(JSON.parse(init.body)) });
         } catch {

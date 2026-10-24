@@ -4,14 +4,16 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BraggProfile, Dataset, VolumeMeta } from "../../api/types";
+import type { BraggProfile, Dataset, VolumeMeta, VolumeTexture } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
+import { loadSettings, saveSettings } from "../settings";
 import { useTuneStore, type StageRun } from "../tune/tuner";
-import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type ToolContext } from "../tools";
+import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type RunModel, type ToolContext } from "../tools";
 import { offLatticeBunching } from "../metrics/bunching";
+import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf";
 import { BUNCHED_AT_THIRDS, makeSlice, recordOf } from "./helpers";
 
 const api = vi.hoisted(() => ({
@@ -26,6 +28,7 @@ const api = vi.hoisted(() => ({
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
+  fetchVolumeTexture: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
 
@@ -516,6 +519,29 @@ describe("tune_pipeline", () => {
     expect(r.text).toMatch(/trials_per_stage must be within \[2, 5\]/);
     expect(tuner.startTuning).not.toHaveBeenCalled();
   });
+
+  it("asks the model on the console's settings in the app, and a validation run's own model in a run", async () => {
+    tuner.startTuning.mockImplementation(async () => useTuneStore.setState({ finishedNote: "Done." }));
+    const before = loadSettings();
+    saveSettings({ baseUrl: "http://console.invalid/v1", model: "console", apiKey: "", temperature: 0.4 });
+    try {
+      // The app: the console's settings, as read when it starts, and nothing counts its tokens.
+      expect((await callTool({ ...ctx }, "tune_pipeline", { stages: ["pdf"] })).ok).toBe(true);
+      const app = tuner.startTuning.mock.calls[0][0];
+      expect(app.llm).toBe(loadSettings());
+      expect(app.llm).toMatchObject({ baseUrl: "http://console.invalid/v1", model: "console", temperature: 0.4 });
+      expect(app).not.toHaveProperty("onUsage");
+
+      // A validation run (ToolContext.model): the run's model, and its counts to the run.
+      const model: RunModel = { settings: { baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.2 }, usage: vi.fn() };
+      expect((await callTool({ ...ctx, model }, "tune_pipeline", { stages: ["pdf"] })).ok).toBe(true);
+      const run = tuner.startTuning.mock.calls[1][0];
+      expect(run.llm).toBe(model.settings);
+      expect(run.onUsage).toBe(model.usage);
+    } finally {
+      saveSettings(before);
+    }
+  });
 });
 
 // Every stage on disk, for the tools that compare stages.
@@ -893,24 +919,39 @@ describe("qmax_coverage", () => {
 });
 
 describe("symmetry_check", () => {
+  // A hexagonal ΔPDF (constructedDpdf.ts): 6/mmm's orbit of a correlation, and
+  // a pair ±(0.4, 0, 0) that keeps the two-fold ∥ c but not the six-fold.
   const hexagonal = async () => {
     const meta = await api.fetchDpdfMeta();
-    api.fetchDpdfMeta.mockResolvedValue({ ...meta, lattice: { a: 8, b: 8, c: 10, alpha: 90, beta: 90, gamma: 120 } });
-    const section = makeSlice(41, 41, (u, v) => Math.cos(0.7 * u) + Math.cos(0.7 * v) + Math.cos(0.7 * (u - v)) + 0.3 * Math.cos(0.5 * u));
-    section.header.axes_angle = 120;
-    api.fetchDpdfSlice.mockResolvedValue(section);
+    api.fetchDpdfMeta.mockResolvedValue({ ...meta, lattice: { a: HEXAGONAL.a, b: HEXAGONAL.a, c: HEXAGONAL.c, alpha: 90, beta: 90, gamma: 120 } });
+    const features = [...orbit([{ at: [0.3, 0.1, 0.25], amp: 1, width: 0.35 }], directGroup(DECLARED["6/mmm"])), { at: [0.4, 0, 0], amp: 0.5, width: 0.35 }];
+    api.fetchDpdfSlice.mockImplementation(async (_id: string, plane: "xy" | "xz" | "yz", value: number) => cut(HEXAGONAL, features, plane, value));
   };
 
-  it("reports each in-plane operation of a hexagonal ΔPDF section of data declared symmetrised", async () => {
+  it("reports each operation of a hexagonal ΔPDF of data declared symmetrised: with none declared, the cell's in-plane ones", async () => {
     await hexagonal();
     api.fetchMeta.mockResolvedValue({ ...META, symmetry: "6/mmm" });
     const r = await runOn(full, "symmetry_check", {});
     const out = JSON.parse(r.text);
-    expect(out.cell).toBe("hexagonal");
+    expect(out.operations).toBe("the cell's in-plane ones (hexagonal): no operations declared");
     expect(out.symmetry_declared).toBe(true);
-    expect(out.holds).toEqual(["two-fold (180°)"]);
+    expect(out.holds).toEqual(["two-fold ∥ c"]);
+    expect(out.ops.map((o: { op: string }) => o.op)).toEqual(["six-fold ∥ c (60°)", "three-fold ∥ c (120°)", "two-fold ∥ c", "mirror ⊥ [1-10]"]);
     expect(r.outcomes).toMatchObject([{ check: "symmetry", kind: "attention", reasons: ["symmetry broken"], words: out.verdict }]);
     expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xy", 0);
+    expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "xz", 0);
+    expect(api.fetchDpdfSlice).toHaveBeenCalledWith("demo.delta_pdf", "yz", 0);
+  });
+
+  it("tests the declared group's operations where the file declares them, those that move c included", async () => {
+    await hexagonal();
+    api.fetchMeta.mockResolvedValue({ ...META, symmetry: "6/mmm", symmetry_ops: DECLARED["6/mmm"] });
+    const out = JSON.parse((await runOn(full, "symmetry_check", {})).text);
+    expect(out.operations).toBe("declared (6/mmm): 23 besides the identity");
+    // Each of the eleven rotations with its product with the inversion, and the inversion.
+    expect(out.ops).toHaveLength(12);
+    // The mirror ⊥ c, with the two-fold ∥ c, on the sections it maps onto themselves, off the x–y plane.
+    expect(out.ops.find((o: { op: string }) => o.op === "two-fold ∥ c / mirror ⊥ c")).toMatchObject({ tested_on: "xz; yz" });
   });
 
   it("does not call an asymmetry a break when the file declares no symmetry: the data were not symmetrised", async () => {
@@ -1091,18 +1132,64 @@ describe("ub_check", () => {
 
 describe("dpdf_peaks", () => {
   // What the server returns on the dev control (docs/pilot-review.md finding 1),
-  // shortened: the strongest correlation, and a planted one at ⟨3/2 0 0⟩.
+  // shortened: the strongest correlation, and a planted one at ⟨3/2 0 0⟩. Its
+  // raw file declares no symmetry: grouped by sign, length and size.
   const features = {
     id: "demo.delta_pdf", sigma: 6.174, min_sigma: 5, origin_radius: 1.95, n_extrema: 619,
+    grouped_by: "sign, length and size (no symmetry declared)",
     groups: [
-      { sign: -1, length: 2.7393, size_sigma: 1515.5, value: -9357, n: 6,
+      { sign: -1, length: 2.7393, size_sigma: 1515.5, mean_size_sigma: 1514.2, value: -9357, n: 6, multiplicity: null,
         vectors: [[1.9383, 1.9383, 0], [0, 1.9383, -1.9383], [0, 1.9383, 1.9383], [1.9383, 0, -1.9383], [1.9383, 0, 1.9383]],
         vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497], [0.497, 0, 0.497]],
         sizes_sigma: [1515.5, 1515.3, 1514.1, 1513.7, 1513.4] },
-      { sign: 1, length: 5.8383, size_sigma: 238.39, value: 1472, n: 3,
+      { sign: 1, length: 5.8383, size_sigma: 238.39, mean_size_sigma: 238.3, value: 1472, n: 3, multiplicity: null,
         vectors: [[5.8383, 0.0039, 0]], vectors_rlu: [[1.497, 0.001, 0]], sizes_sigma: [238.39] },
     ],
   };
+
+  // What the server returns on a constructed ΔPDF (cubic, a = 4 Å, built as
+  // tests/test_dpdf_features.py's write_declared_dataset builds it, with its
+  // ⟨1 0 0⟩ copy along c left out), shortened: peaks on the m-3m orbit of
+  // (¼, ½, ¾), their copies 0.9 to 1.1 of one size, and a negative ⟨1 0 0⟩
+  // along a and b. Its raw file declares m-3m: each orbit is one entry, the
+  // general one 24 of its 24 vectors (one per ± pair), ⟨1 0 0⟩ 2 of its 3.
+  const general = {
+    vectors: [[2.9913, -0.9994, 2.0022], [1.0049, 2.0006, -2.9958], [3.0014, 0.9954, 2.0027], [1.0029, -2.9916, 1.9997], [0.9964, -2.998, -1.9977]],
+    vectors_rlu: [[0.7478, -0.2498, 0.5005], [0.2512, 0.5002, -0.7489], [0.7503, 0.2489, 0.5007], [0.2507, -0.7479, 0.4999], [0.2491, -0.7495, -0.4994]],
+    sizes_sigma: [63.669, 62.9163, 61.9904, 61.9312, 61.7096],
+  };
+  const declared = {
+    id: "demo.delta_pdf", sigma: 1.0458, min_sigma: 8, origin_radius: 0.375, n_extrema: 26,
+    grouped_by: "declared symmetry (m-3m: 48 operations, r ≡ −r)",
+    groups: [
+      { sign: 1, length: 3.7357, size_sigma: 63.669, mean_size_sigma: 57.8497, value: 66.587, n: 24, multiplicity: 24, ...general },
+      { sign: -1, length: 3.9999, size_sigma: 38.8873, mean_size_sigma: 37.2247, value: -40.67, n: 2, multiplicity: 3,
+        vectors: [[3.9999, -0.0121, 0.0027], [0.0048, 3.9911, 0.0046]], vectors_rlu: [[1, -0.003, 0.0007], [0.0012, 0.9978, 0.0012]],
+        sizes_sigma: [38.8873, 35.562] },
+    ],
+  };
+  // The same ΔPDF with nothing declared: by sign, length and size the unequal
+  // copies of the general orbit split by size, and ⟨1 0 0⟩'s two by size too
+  // (shortened to one vector an entry).
+  const byShape = (sign: 1 | -1, length: number, size: number, mean: number, n: number, rlu: number[]) => ({
+    sign, length, size_sigma: size, mean_size_sigma: mean, value: sign * size * declared.sigma, n, multiplicity: null,
+    vectors: [rlu.map((x) => 4 * x)], vectors_rlu: [rlu], sizes_sigma: [size],
+  });
+  const plain = {
+    ...declared,
+    grouped_by: "sign, length and size (no symmetry declared)",
+    groups: [
+      byShape(1, 3.7357, 63.669, 62.1074, 7, [0.7478, -0.2498, 0.5005]),
+      byShape(1, 3.7458, 60.1438, 58.784, 7, [0.2513, 0.5018, 0.7497]),
+      byShape(1, 3.7473, 56.8872, 55.4586, 6, [0.5007, 0.2502, -0.7513]),
+      byShape(1, 3.7472, 53.8623, 53.0155, 3, [0.5007, -0.2517, -0.7507]),
+      byShape(1, 3.7501, 50.3539, 50.3539, 1, [0.2496, 0.7514, -0.502]),
+      byShape(-1, 3.9999, 38.8873, 38.8873, 1, [1, -0.003, 0.0007]),
+      byShape(-1, 3.9911, 35.562, 35.562, 1, [0.0012, 0.9978, 0.0012]),
+    ],
+  };
+  // An entry's fields when the extrema are grouped by sign, length and size: as they were before.
+  const PLAIN_ENTRY = ["sign", "length_A", "size_sigma", "n_vectors", "vectors_rlu", "vectors_A"];
 
   it("lists the strongest features with their vectors, signs and sizes", async () => {
     api.fetchDpdfFeatures.mockResolvedValue(features);
@@ -1110,12 +1197,14 @@ describe("dpdf_peaks", () => {
     expect(r.ok).toBe(true);
     expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith("demo.delta_pdf", 5, 12);
     const out = JSON.parse(r.text);
+    expect(out.grouped_by).toBe("sign, length and size (no symmetry declared)");
     expect(out.features[0]).toEqual({
       sign: "−", length_A: 2.739, size_sigma: 1520, n_vectors: 6,
       vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497]],
       vectors_A: [[1.938, 1.938, 0], [0, 1.938, -1.938], [0, 1.938, 1.938], [1.938, 0, -1.938]],
     });
     expect(out.features[1]).toMatchObject({ sign: "+", length_A: 5.838, n_vectors: 3, vectors_rlu: [[1.5, 0.001, 0]] });
+    for (const e of out.features) expect(Object.keys(e)).toEqual(PLAIN_ENTRY);
     expect([out.robust_sigma, out.threshold_sigma, out.origin_disk_A, out.extrema_above_threshold]).toEqual([6.17, 5, 1.95, 619]);
     expect(r.summary).toBe("619 extrema above 5σ; strongest − at (0.497, 0.497, 0) r.l.u., 2.74 Å, 1520σ");
     expect(r.view).toMatchObject({ view: "dpdf", plane: "xy", value: 0 });
@@ -1128,6 +1217,46 @@ describe("dpdf_peaks", () => {
     const r = await run("dpdf_peaks", { min_sigma: 900, limit: 3 });
     expect(api.fetchDpdfFeatures).toHaveBeenLastCalledWith("demo.delta_pdf", 900, 3);
     expect(r.summary).toBe("no extremum above 5σ outside the origin's disk");
+  });
+
+  it("with a declared point group, names it, and gives each orbit its multiplicity and its copies' mean size", async () => {
+    api.fetchDpdfFeatures.mockResolvedValue(declared);
+    const r = await run("dpdf_peaks", { min_sigma: 8 });
+    expect(r.ok).toBe(true);
+    const out = JSON.parse(r.text);
+    expect(out.grouped_by).toBe("declared symmetry (m-3m: 48 operations, r ≡ −r)");
+    // Each orbit one entry: the vectors found (n_vectors) and the orbit's (multiplicity) apart.
+    expect(out.features.map((e: Record<string, unknown>) => [e.sign, e.n_vectors, e.multiplicity])).toEqual([["+", 24, 24], ["−", 2, 3]]);
+    expect(out.features[0]).toEqual({
+      sign: "+", length_A: 3.736, size_sigma: 63.7, mean_size_sigma: 57.8, n_vectors: 24, multiplicity: 24,
+      vectors_rlu: [[0.748, -0.25, 0.5], [0.251, 0.5, -0.749], [0.75, 0.249, 0.501], [0.251, -0.748, 0.5]],
+      vectors_A: [[2.991, -0.9994, 2.002], [1.005, 2.001, -2.996], [3.001, 0.9954, 2.003], [1.003, -2.992, 2]],
+    });
+    expect(out.features[1]).toEqual({
+      sign: "−", length_A: 4, size_sigma: 38.9, mean_size_sigma: 37.2, n_vectors: 2, multiplicity: 3,
+      vectors_rlu: [[1, -0.003, 0.0007], [0.0012, 0.998, 0.0012]],
+      vectors_A: [[4, -0.0121, 0.0027], [0.0048, 3.991, 0.0046]],
+    });
+    expect([out.robust_sigma, out.threshold_sigma, out.extrema_above_threshold]).toEqual([1.05, 8, 26]);
+    expect(r.summary).toBe("26 extrema above 8σ; strongest + at (0.748, -0.25, 0.5) r.l.u., 3.74 Å, 63.7σ");
+  });
+
+  it("without one, says so, and lists the entries as before: no multiplicity, no mean size", async () => {
+    api.fetchDpdfFeatures.mockResolvedValue(plain);
+    const out = JSON.parse((await run("dpdf_peaks", { min_sigma: 8 })).text);
+    expect(out.grouped_by).toBe("sign, length and size (no symmetry declared)");
+    // The orbits split by size: seven entries, the 26 extrema between them.
+    expect(out.features.map((e: Record<string, unknown>) => [e.sign, e.n_vectors])).toEqual([["+", 7], ["+", 7], ["+", 6], ["+", 3], ["+", 1], ["−", 1], ["−", 1]]);
+    expect(out.features.reduce((sum: number, e: { n_vectors: number }) => sum + e.n_vectors, 0)).toBe(26);
+    for (const e of out.features) expect(Object.keys(e)).toEqual(PLAIN_ENTRY);
+    expect(out.features[0]).toEqual({ sign: "+", length_A: 3.736, size_sigma: 63.7, n_vectors: 7, vectors_rlu: [[0.748, -0.25, 0.5]], vectors_A: [[2.991, -0.9992, 2.002]] });
+
+    // A symmetry declared that cannot be applied: grouped as without one, and grouped_by says why.
+    const why = "sign, length and size (the declared symmetry 6/mmm is not applied: the ΔPDF file records no cell)";
+    api.fetchDpdfFeatures.mockResolvedValue({ ...plain, grouped_by: why });
+    const notApplied = JSON.parse((await run("dpdf_peaks", { min_sigma: 8 })).text);
+    expect(notApplied.grouped_by).toBe(why);
+    expect(notApplied.features).toEqual(out.features);
   });
 });
 
@@ -1154,43 +1283,182 @@ describe("consistency_details", () => {
 });
 
 describe("texture_check", () => {
-  // Fills 30 above a noisy diffuse at nine nodes: a lattice of bright plugs,
-  // the nodes 10 voxels apart (±1.5 r.l.u., 0.1 r.l.u. a voxel).
+  // The cuts, for the azimuthal texture: 3×3 holes on the nodes of a noisy
+  // diffuse (±3 r.l.u., 0.05 r.l.u. a voxel), filled with the diffuse, or
+  // `plug` above it.
   const noise = (ix: number, iy: number) => (((ix * 7919 + iy * 104729) % 1000) / 500) - 1;
-  const hole = (ix: number, iy: number) => [4, 5, 6].includes(ix % 10) && [4, 5, 6].includes(iy % 10);
-  const cut = (f: (ix: number, iy: number) => number, half = 1.5) => makeSlice(31, 31, (_x, _y, ix, iy) => f(ix, iy), { half });
-  const stages = (half?: number): Record<string, ReturnType<typeof makeSlice>> => ({
-    "demo.ringremoved": cut((ix, iy) => 100 + 4 * noise(ix, iy), half),
-    "demo.braggpunched": cut((ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy)), half),
-    "demo.backfilled": cut((ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? 30 : 0), half),
+  const hole = (ix: number, iy: number) => [19, 0, 1].includes(ix % 20) && [19, 0, 1].includes(iy % 20);
+  const cut = (f: (ix: number, iy: number) => number) => makeSlice(121, 121, (_x, _y, ix, iy) => f(ix, iy), { half: 3 });
+  const stages = (plug: number): Record<string, ReturnType<typeof makeSlice>> => ({
+    "demo.ringremoved": cut((ix, iy) => 100 + 4 * noise(ix, iy)),
+    "demo.braggpunched": cut((ix, iy) => (hole(ix, iy) ? NaN : 100 + 4 * noise(ix, iy))),
+    "demo.backfilled": cut((ix, iy) => 100 + 4 * noise(ix, iy) + (hole(ix, iy) ? plug : 0)),
   });
-
-  it("flags fills that sit above their rims on every plane", async () => {
-    const slices = stages();
+  const onCuts = (plug: number) => {
+    const slices = stages(plug);
     api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
+  };
+
+  // What the server returns (GET /api/volumes/{id}/texture, limit 1, the
+  // rule's limits asked for) on the constructed volumes of
+  // tests/test_fill_texture.py (_lattice; the coarse grid as its _on_grid
+  // puts it), written as a dataset's stages as tests/test_server.py writes
+  // them: holes three voxels in radius, punched on the nodes of a smooth
+  // diffuse that peaks at them, the nodes 20 voxels apart. Each lists the hole
+  // farthest outside its range.
+  type Hole = VolumeTexture["holes"][number];
+  const row = (index: number, centre_hkl: number[], voxels: number, rim_voxels: number, values: number[]): Hole => {
+    const [fill, level, sigma, slope, edge, peaked, bias, bias_sigma, bias_level] = values;
+    return { index, centre_hkl, voxels, rim_voxels, fill, level, sigma, slope, edge, peaked, bias, bias_sigma, bias_level, not_judged: null };
+  };
+  const server = (over: Partial<VolumeTexture>): VolumeTexture => ({
+    id: "demo.backfilled", punched_id: "demo.braggpunched", holes_from: "punch_record", rim: 4, min_rim: 8,
+    min_sigma: 0.5, one_way: 0.75, min_holes: 5, floor: 0.2,
+    n_holes: 125, n_judged: 125, judged: true, node_spacing: 20, room_needed: 14, not_judged: null,
+    median_fill_bias_sigma: 0, median_fill_bias_level: 0, above_fraction: 0, below_fraction: 0,
+    above_floor_fraction: 0, below_floor_fraction: 0, systematic_fill_bias: false, holes: [],
+    ...over,
+  });
+  // A fill equal to the truth (_lattice()): no hole outside its range.
+  const TRUTH = server({
+    holes: [row(0, [-1.951724, -1.951724, -1.951724], 29, 363, [1.2676029908859836, 1.2407635975742777, 0.012642325063012515, -0.010843542091501825, 1.2636129322113534, 1.277073881014597, 0, 0, 0])],
+  });
+  // Half the level too high in 80 % of the holes (bias=0.5, share=0.8).
+  const BIAS_80 = server({
+    median_fill_bias_sigma: 39.119839779229835, median_fill_bias_level: 0.5061428748347895, above_fraction: 0.8, above_floor_fraction: 0.8, systematic_fill_bias: true,
+    holes: [row(62, [0, 0, 0], 123, 2418, [1.9523023411431835, 1.2671364760287895, 0.011486059140566576, -0.011051517523915392, 1.2904796045027955, 1.30323826701008, 0.6490640741331035, 56.508857057921, 0.5122290190613664])],
+  });
+  // Satellites at (½, ½, 0.15) beside the nodes on a diffuse sharply peaked at
+  // every one, all filled 12 % too high (width=4, amp=1, bias=0.12): 125 nodes
+  // and 80 satellites, 64 of them whole. Every node and every whole satellite
+  // reads 0.28 to 0.30 of the level outside its range, nodes and satellites
+  // alike: the 16 holes under the floor (0.17) are the satellites the box's
+  // face cuts down to a single voxel, their poles, as a cut through the nodes
+  // crossed them (docs/pipeline.md, the fills' texture).
+  const SATELLITES = server({
+    n_holes: 205, n_judged: 205,
+    median_fill_bias_sigma: 5.363201185121478, median_fill_bias_level: 0.2910240219427689, above_fraction: 1, above_floor_fraction: 0.9219512195121952, systematic_fill_bias: true,
+    holes: [row(90, [0, -1.953191, -1.953191], 47, 684, [2.0284386042421496, 1.2916152081934598, 0.06682883141019066, -0.10194819777087087, 1.512923388159816, 1.636562691839383, 0.39187591240276665, 5.86387497931035, 0.30339989024352754])],
+  });
+  // Half the level too high in every hole, the grid's nodes 13 voxels apart:
+  // under the 14 the holes, reaching 3 voxels, and their rims need.
+  const COARSE = server({
+    n_holes: 27, n_judged: 27, judged: false, node_spacing: 13,
+    not_judged: "grid too coarse: the nodes are 13 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more",
+    median_fill_bias_sigma: 4.727975561695145, median_fill_bias_level: 0.5102970053410898, above_fraction: 1, above_floor_fraction: 1,
+    holes: [row(0, [-1, -1, -1], 123, 2418, [2.1367289559837643, 1.3582709527243337, 0.1495568028563944, -0.017704561668688803, 1.4134041424917692, 1.4338435551499302, 0.7028854008338341, 4.699788892309701, 0.5174854099795266])],
+  });
+  // Half the level too high in each of four holes: under the five the rule needs.
+  const FOUR = server({
+    n_holes: 4, n_judged: 4, judged: false,
+    median_fill_bias_sigma: 41.412564914693164, median_fill_bias_level: 0.5163301414738879, above_fraction: 1, above_floor_fraction: 1,
+    holes: [row(0, [-1, -1, 0], 123, 2418, [1.7900651656929363, 1.1389149366967461, 0.013955049115759488, -0.01893101790564045, 1.179545958419301, 1.2014012799038618, 0.5886638857890745, 42.182860189599346, 0.5168637857155572])],
+  });
+  const LIMITS = { minSigma: 0.5, oneWay: 0.75, minHoles: 5, floor: 0.2 };
+
+  it("judges a fill equal to the truth by every hole in 3-D: no bias", async () => {
+    onCuts(0);
+    api.fetchVolumeTexture.mockResolvedValue(TRUTH);
     const r = await runOn(full, "texture_check", {});
+    expect(r.ok).toBe(true);
+    // The backfilled stage's holes, judged by the rule's own limits, the farthest one listed.
+    expect(api.fetchVolumeTexture).toHaveBeenCalledWith("demo.backfilled", 1, LIMITS);
     const out = JSON.parse(r.text);
-    expect(out.per_cut).toHaveLength(3);
-    expect(out.per_cut[0]).toMatchObject({ cut: "H–K plane at L = 0", n_holes: 9, systematic_fill_bias: true, above_fraction: 1 });
-    expect(out.per_cut[0].not_judged).toBeUndefined();
-    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
-    expect(r.summary).toMatch(/^systematic fill bias on 3 of 3 cut\(s\)/);
+    expect(out).toEqual({
+      n_holes: 125, n_judged: 125, median_fill_bias_sigma: 0, median_fill_bias_level: 0, above_fraction: 0, below_fraction: 0,
+      above_floor_fraction: 0, below_floor_fraction: 0, systematic_fill_bias: false,
+      // The cuts carry the azimuthal texture only.
+      per_cut: ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"].map((c) => ({ cut: c, azimuthal_ratio: expect.any(Number) })),
+    });
+    for (const c of out.per_cut) expect(Math.abs(c.azimuthal_ratio - 1)).toBeLessThan(0.25); // as texture.test.ts holds a fill that matches
+    expect(r.outcomes).toEqual([{ check: "texture", kind: "pass", reasons: [], dataProblems: [], words: null }]);
+    expect(r.summary).toMatch(/^no systematic fill bias over 125 holes in 3-D · azimuthal ratio /);
+    // No hole outside its range: the first cut.
     expect(r.view?.label).toBe("H–K plane at L = 0");
   });
 
-  it("does not judge cuts whose grid leaves the holes no room for their rims, and says why", async () => {
-    // The same cuts at 0.2 r.l.u. a voxel: the nodes 5 voxels apart, under the 10 a hole reaching one voxel and its rim need.
-    const slices = stages(3);
-    api.fetchSlice.mockImplementation(async (id: string) => slices[id]);
+  it("flags half the level too high in 80 % of the holes, and shows the plane through the farthest", async () => {
+    onCuts(30);
+    api.fetchVolumeTexture.mockResolvedValue(BIAS_80);
     const r = await runOn(full, "texture_check", {});
     const out = JSON.parse(r.text);
-    expect(out.per_cut[0]).toMatchObject({ n_holes: 9, not_judged: expect.stringMatching(/^grid too coarse: the nodes are 5 voxels apart, under 10/), systematic_fill_bias: null });
-    expect(r.outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
-    expect(r.summary).toMatch(/^fill bias not judged · 3 of 3 cut\(s\) not judged: grid too coarse/);
+    expect(out).toMatchObject({ n_holes: 125, n_judged: 125, median_fill_bias_sigma: 39.1, median_fill_bias_level: 0.506, above_fraction: 0.8, below_fraction: 0, above_floor_fraction: 0.8, systematic_fill_bias: true });
+    expect(out).not.toHaveProperty("not_judged");
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
+    expect(r.summary).toMatch(/^systematic fill bias over 125 holes in 3-D \(median 0\.506 of the level\)/);
+    expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, label: "H–K plane at L = 0" });
+  });
+
+  it("reads satellites beside the nodes as the nodes: all filled 12 % high, every whole hole past the floor", async () => {
+    onCuts(0);
+    api.fetchVolumeTexture.mockResolvedValue(SATELLITES);
+    const r = await runOn(full, "texture_check", {});
+    const out = JSON.parse(r.text);
+    // 189 of the 205 holes beyond the floor: the 125 nodes and the 64 whole satellites.
+    expect(out).toMatchObject({ n_holes: 205, n_judged: 205, median_fill_bias_level: 0.291, above_fraction: 1, above_floor_fraction: 0.922, systematic_fill_bias: true });
+    expect(Math.round(out.above_floor_fraction * out.n_judged)).toBe(125 + 64);
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
+    // The hole farthest outside its range: the H–K plane through it.
+    expect(r.view).toMatchObject({ plane: "hk0", value: -1.953, label: "H–K plane at L = -1.953" });
+    // A cut asked for is the figure.
+    expect((await runOn(full, "texture_check", { plane: "h0l", value: 0.5 })).view).toMatchObject({ plane: "h0l", value: 0.5 });
+  });
+
+  it("does not judge the fills on a grid too coarse for the holes' rims, and says why (the 3-D not_judged)", async () => {
+    onCuts(30);
+    api.fetchVolumeTexture.mockResolvedValue(COARSE);
+    const r = await runOn(full, "texture_check", {});
+    const out = JSON.parse(r.text);
+    // No bias measured, though the rims read past the midpoint call it 0.51 of the level: no verdict either way.
+    expect(out).toEqual({
+      n_holes: 27,
+      not_judged: "grid too coarse: the nodes are 13 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more",
+      median_fill_bias_sigma: null, median_fill_bias_level: null, above_fraction: null, below_fraction: null,
+      above_floor_fraction: null, below_floor_fraction: null, systematic_fill_bias: null,
+      per_cut: expect.any(Array),
+    });
+    expect(r.outcomes).toEqual([{ check: "texture", kind: "info", reasons: ["grid too coarse"], dataProblems: [], words: null }]);
+    expect(r.summary).toMatch(/^fill bias not judged: grid too coarse · azimuthal ratio /);
+    expect(r.view?.label).toBe("H–K plane at L = 0");
+  });
+
+  it("does not judge fewer holes than the rule needs, and says why", async () => {
+    onCuts(30);
+    api.fetchVolumeTexture.mockResolvedValue(FOUR);
+    const out = JSON.parse((await runOn(full, "texture_check", {})).text);
+    expect(out).toMatchObject({ n_holes: 4, n_judged: 4, not_judged: "too few holes judged: 4 of 4, under 5", median_fill_bias_level: 0.516, above_floor_fraction: 1, systematic_fill_bias: null });
+    expect((await runOn(full, "texture_check", {})).outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["too few holes"] });
+    api.fetchVolumeTexture.mockResolvedValue(server({ n_holes: 0, n_judged: 0, judged: false, median_fill_bias_sigma: null, median_fill_bias_level: null, above_fraction: null, below_fraction: null, above_floor_fraction: null, below_floor_fraction: null }));
+    const none = await runOn(full, "texture_check", {});
+    expect(JSON.parse(none.text)).toMatchObject({ n_holes: 0, not_judged: "no filled punch hole", systematic_fill_bias: null });
+    expect(none.outcomes?.[0]).toMatchObject({ kind: "info", reasons: ["too few holes"] });
+  });
+
+  it("reads the fill bias from the volume's holes, not from the cuts", async () => {
+    // Bright plugs on every cut, as the per-cut rule flagged them before 4.2, where the 3-D read finds none.
+    onCuts(30);
+    api.fetchVolumeTexture.mockResolvedValue(TRUTH);
+    const r = await runOn(full, "texture_check", {});
+    const out = JSON.parse(r.text);
+    expect(out.systematic_fill_bias).toBe(false);
+    for (const c of out.per_cut) {
+      expect(Object.keys(c)).toEqual(["cut", "azimuthal_ratio"]);
+      expect(c.azimuthal_ratio).toBeGreaterThan(1.25); // the plugs vary around the shells
+    }
+    expect(r.outcomes?.[0]).toMatchObject({ kind: "pass" });
+  });
+
+  it("refuses a 3-D read judged by other limits than the rule's", async () => {
+    onCuts(0);
+    api.fetchVolumeTexture.mockResolvedValue({ ...TRUTH, floor: 0.1 });
+    const r = await runOn(full, "texture_check", {});
+    expect(r.ok).toBe(false);
+    expect(r.text).toMatch(/the backend judged the fills by other limits \(\{"minSigma":0\.5,"oneWay":0\.75,"minHoles":5,"floor":0\.1\}\)/);
   });
 
   it("needs the punched and backfilled outputs", async () => {
     expect((await run("texture_check", {})).text).toMatch(/needs the punched and backfilled outputs/);
+    expect(api.fetchVolumeTexture).not.toHaveBeenCalled();
   });
 });
 

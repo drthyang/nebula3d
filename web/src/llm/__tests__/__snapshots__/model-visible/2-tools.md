@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (24 tools, 22771 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (24 tools, 23211 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -140,7 +140,7 @@ Parameters:
 ## 7. texture_check
 
 ```text
-Check whether the punch and backfill printed a pattern of their own into reciprocal space, on a cut (default: the three principal planes through the origin). Fill bias: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median); the part outside that range, signed, in the rim's σ and in units of the local diffuse level. Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture that the ΔPDF turns into features at lattice vectors. Azimuthal texture: per |Q| shell, how much the sector means vary around the shell before the punch (unpunched voxels) and after the backfill; a ratio near 1 adds none.
+Check whether the punch and backfill printed a pattern of their own into reciprocal space. Fill bias, over every punch hole in 3-D: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median); the part outside that range, signed, in the rim's σ and in units of the local diffuse level, and the shares of holes above and below it, and beyond it by a fifth of the level or more (above_floor_fraction, below_floor_fraction). Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture that the ΔPDF turns into features at lattice vectors. Azimuthal texture, on a cut (default: the three principal planes through the origin): per |Q| shell, how much the sector means vary around the shell after the backfill against before the punch (unpunched voxels); a ratio near 1 adds none.
 ```
 
 Parameters:
@@ -180,7 +180,7 @@ Parameters:
 ## 9. symmetry_check
 
 ```text
-Check that the 3D-ΔPDF keeps the in-plane symmetry of the cell, when the file declares that its data were symmetrised (with none declared the asymmetry is the data's own and is not judged): an x–y section (default z = 0) compared with its image under each in-plane operation (hexagonal: six-, three-, two-fold and the a ↔ b mirror; orthogonal: the mirrors ⊥ a and ⊥ b, the two-fold, and the four-fold when a = b), as the RMS of the difference over the section's RMS. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it; a larger share means a stage broke it, or the sample lacks that operation. Which operations the sample has is the user's to say.
+Check that the 3D-ΔPDF keeps the symmetry its data were declared symmetrised with (with none declared the asymmetry is the data's own and is not judged): the ΔPDF against its image under each operation of the declared point group, an operation and its product with the inversion one entry (equal on the centrosymmetric ΔPDF), those that move c included (none declared: the cell's in-plane ones), on the sections the operation maps onto sections (the x–y sections at z and −z, default z = 0, and the x–z and y–z sections through the origin), else on the voxels it maps from one onto another (tested_on says which; not_tested, any it cannot test), as the RMS of the difference over the RMS, the worst section's. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it; a larger share means a stage broke it, or the sample lacks that operation. Which operations the sample has is the user's to say.
 ```
 
 Parameters:
@@ -191,7 +191,7 @@ Parameters:
   "properties": {
     "z": {
       "type": "number",
-      "description": "Height of the x–y section along c, in Å (default 0)"
+      "description": "Height of the x–y section along c, in Å (default 0); the one at −z is read too"
     }
   }
 }

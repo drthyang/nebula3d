@@ -11,7 +11,8 @@ import { offLatticeBunching } from "../metrics/bunching";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_UNRECORDED_NOTE, flattenJudging, pedestalLeft, volumePedestal } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
-import { sectionSymmetry, type SectionSymmetry } from "../metrics/symmetry";
+import type { GridSlice } from "../metrics/sliceStats";
+import { operationSymmetry, pointGroup, sectionSymmetry, transpose } from "../metrics/symmetry";
 import { judge, pedestalOfVolume, shownWeight, UNROUNDED, WEIGHT_FIGURES, type Unrounded } from "../verdicts/rules";
 import type { TuneStage } from "./catalog";
 
@@ -72,6 +73,34 @@ const max = (xs: (number | null | undefined)[]): number | null => {
   return v.length ? roundSig(Math.max(...v)) : null;
 };
 
+/**
+ * The worst of the x–y section through the origin's agreements with its
+ * images: under each operation of the declared group (symmetry_ops, as
+ * symmetry_check closes and pairs them) that maps the section onto itself;
+ * with no operations declared, under the cell's in-plane ones (sectionSymmetry,
+ * as before). Null when there is nothing to test.
+ */
+function worstSymmetryOp(
+  slice: GridSlice | null,
+  cell: { a: number | null; b: number | null } | null,
+  declaredOps: number[][][] | null,
+): { op: string; rms_difference: number } | null {
+  if (!slice) return null;
+  const group = declaredOps?.length ? pointGroup(declaredOps) : null;
+  let ops: readonly { op: string; rms_difference: number }[] = [];
+  if (group) {
+    // Those whose image of the plane z = 0 is that plane: the third row (0, 0, ±1).
+    const onto = group.map(transpose).filter((m) => m[2][0] === 0 && m[2][1] === 0 && Math.abs(m[2][2]) === 1);
+    const { x_axis, y_axis } = slice.header;
+    const step = (axis: number[], length: number | null) => Math.abs(axis.length > 1 ? (axis[axis.length - 1] - axis[0]) / (axis.length - 1) : 1) / (length || 1);
+    const steps: [number, number, number] = [step(x_axis, cell?.a ?? null), step(y_axis, cell?.b ?? null), 1];
+    ops = operationSymmetry([{ plane: "xy", at: 0, label: "xy", slice }], onto, steps)?.ops ?? [];
+  } else if (cell?.a && cell?.b) {
+    ops = sectionSymmetry(slice, { a: cell.a, b: cell.b })?.ops ?? [];
+  }
+  return ops.reduce<{ op: string; rms_difference: number } | null>((w, o) => (!w || o.rms_difference > w.rms_difference ? o : w), null);
+}
+
 export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise<StageEvaluation> {
   if (stage === "pdf") {
     const dId = dpdfVolumeId(dataset);
@@ -82,12 +111,13 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       rawId ? safe(fetchMeta(rawId)) : Promise.resolve(null),
       ...DPDF_CUTS.map((dpdf) => loadPipelineContext(dataset, { recip: null, dpdf, records: false })),
     ]);
-    // The x–y section through the origin against its images under the cell's
-    // in-plane operations (symmetry_check's numbers): the worst one.
+    // The x–y section through the origin against its images under the
+    // operations of the group symmetry_check judges that map it onto itself
+    // (each with its product with the inversion, one entry, as there); with
+    // no operations declared, under the cell's in-plane ones, as before. The
+    // worst one.
     const xy = sections[0];
-    const cell = xy?.lattice;
-    const sym = xy?.slices.dpdf && cell?.a && cell?.b ? sectionSymmetry(xy.slices.dpdf, { a: cell.a, b: cell.b }) : null;
-    const worstOp = (sym?.ops ?? []).reduce<SectionSymmetry | null>((w, o) => (!w || o.rms_difference > w.rms_difference ? o : w), null);
+    const worstOp = worstSymmetryOp(xy?.slices.dpdf ?? null, xy?.lattice ?? null, rawMeta?.symmetry_ops ?? null);
     const perPlane = Object.fromEntries(
       sections.map((s, i) => {
         const d = s.context.delta_pdf;
@@ -120,10 +150,11 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       window_shape: dmeta?.window_shape ?? null,
       max_symmetry_break: worstOp ? worstOp.rms_difference : null,
       worst_symmetry_op: worstOp?.op ?? null,
-      // Whether the file declares a symmetry its data were symmetrised with.
-      // Without one the section's asymmetry is the data's own (counting noise
-      // included), not a stage's break; null when the volume was not read.
-      symmetry_declared: rawMeta ? Boolean(rawMeta.symmetry) : null,
+      // Whether the file declares a symmetry its data were symmetrised with, a
+      // name or operations, as symmetry_check reads it. Without one the
+      // section's asymmetry is the data's own (counting noise included), not a
+      // stage's break; null when the volume was not read.
+      symmetry_declared: rawMeta ? Boolean(rawMeta.symmetry) || Boolean(rawMeta.symmetry_ops?.length) : null,
       per_plane: perPlane,
       [UNROUNDED]: { window_weight_on_unmeasured: typeof open === "number" ? open : null },
     };

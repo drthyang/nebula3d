@@ -1,7 +1,8 @@
 // Known answers: each dev case's planted fault, found by the real tools and
 // their rules on the case built where the tests run (devData), against the
-// case's truth (the validation's manifest). The tools, the verdict rules and
-// the pipeline are the app's own; nothing is recorded.
+// case's truth (the validation's manifest), and the dev control's planted
+// correlations in dpdf_peaks' list. The tools, the verdict rules and the
+// pipeline are the app's own; nothing is recorded.
 //
 // The tolerances are the validation's own where it has one, else the tools':
 // - a turn of the UB within 0.15° of the planted one (the validation's grader,
@@ -24,16 +25,20 @@
 
 import { describe, expect, it } from "vitest";
 
-import { fetchMeta, fetchRingDiagnostics, fetchShellFloors, fetchSlice } from "../../../api/client";
+import { fetchDpdfFeatures, fetchMeta, fetchRingDiagnostics, fetchShellFloors, fetchSlice } from "../../../api/client";
 import { usePipelineStore } from "../../../state/pipelineStore";
 import type { AgentStep } from "../../agent";
-import { hklVolumeId, stageVolumeId } from "../../context/loadContext";
+import { dpdfVolumeId, hklVolumeId, stageVolumeId } from "../../context/loadContext";
 import { qRadius } from "../../context/pipelineContext";
 import { withoutInference } from "../../inference";
 import { flattenJudging, flattenMetrics, volumePedestal } from "../../metrics/flatten";
+import { SYMMETRY_HOLDS } from "../../metrics/symmetry";
+import { fit } from "../../readings";
+import { CHAT_TOOLS, MAX_RESULT_CHARS } from "../../tools";
 import { verdicts } from "../../verdicts";
+import { casesIn, type ValidationCase } from "../validation";
 import { bridgeConfig } from "./bridgeWorker";
-import { devCase, type DevCase, type DevCaseId, type ToolRunResult } from "./index";
+import { DEV_CASE_IDS, devCase, type DevCase, type DevCaseId, type ToolRunResult } from "./index";
 
 const { n } = bridgeConfig();
 
@@ -41,24 +46,48 @@ const ANGLE_DEG = 0.15;
 const COUNTS_SHELL = 0.1;
 const SAME_Q = 0.1;
 
+// The planted correlations by dpdf_peaks' entries: an entry of the correlation's
+// sign whose vectors hold an image of its vector under the cube's 48 operations
+// (the planted correlations keep all of them, docs/algorithms/delta_pdf.md),
+// within 0.15 lattice units: about one voxel of the ΔPDF at either grid (0.124
+// of a cell), where the vectors of the crystal's other correlations lie half a
+// lattice unit or more away.
+const SAME_VECTOR = 0.15;
+
 /**
  * The faults the tools miss, by case and check, with what they found instead:
- * each grid's own (81: the default; 161: the nightly run's). None now: the
- * misses at 81 (a false ring at 1.75 Å⁻¹, the shell at 2.9 Å⁻¹ never seen, and
- * fill biases on three cases' cuts) were the ring and texture checks judging a
- * grid too coarse for them, which they now say (TOO_COARSE).
+ * each grid's own (81: the default; 161: the nightly run's). The misses at 81
+ * (a false ring at 1.75 Å⁻¹, the shell at 2.9 Å⁻¹ never seen, and fill biases
+ * on three cases' cuts) were the ring and texture checks judging a grid too
+ * coarse for them, which they now say (TOO_COARSE).
+ *
+ * One now: the dev control's weaker planted correlation, ⟨½ 1 1⟩−, lies past
+ * dpdf_peaks' default limit of 12 entries at both grids. The dev cases declare
+ * no symmetry, so the list is grouped by sign, length and size, as before the
+ * grouping by the declared symmetry (plan 4.4). The default is still to be
+ * decided: the list the executor hands the model is cut at MAX_RESULT_CHARS,
+ * about 20 of these entries, and a longer list costs the worst turn tokens
+ * (tokenBudget.test.ts).
  */
-const MISSES: Partial<Record<DevCaseId, Record<string, Partial<Record<number, string>>>>> = {};
+const MISSES: Partial<Record<DevCaseId, Record<string, Partial<Record<number, string>>>>> = {
+  "dev-control": {
+    "dpdf_peaks, as the model reads it, lists each planted correlation": {
+      81: "⟨½ 1 1⟩− is entry 28 and ⟨3/2 0 0⟩+ entry 10, of a default 12",
+      161: "⟨½ 1 1⟩− is entry 19 and ⟨3/2 0 0⟩+ entry 7, of a default 12",
+    },
+  },
+};
 
 /**
  * The checks the grid is too coarse for, by grid: there each says "not
  * judged", with the grid's reason ("grid too coarse: …"), and gives no
  * verdict. The minimums are the checks' own (nebula3d.preprocessing.
- * ring_isotropy, Resolution; metrics/texture.ts, roomForRims): on 81 points
- * the dev crystal (a = 3.9 Å, ±4 r.l.u.) puts 0.99 voxels across the widest
- * ring the ring check judges, under one, and its holes with their rims need
- * the nodes 12 voxels apart or more, where they are 10. On 161 points neither
- * check is too coarse, and the known answers hold.
+ * ring_isotropy, Resolution; metrics/texture.ts, roomForRims, which the
+ * fills' 3-D read applies to the volume's holes): on 81 points the dev crystal
+ * (a = 3.9 Å, ±4 r.l.u.) puts 0.99 voxels across the widest ring the ring
+ * check judges, under one, and its holes, reaching 2 to 3 voxels in 3-D, with
+ * their rims need the nodes 12 to 14 voxels apart, where they are 10. On 161
+ * points neither check is too coarse, and the known answers hold.
  */
 type GridLimited = "rings" | "texture";
 const TOO_COARSE: Record<GridLimited, readonly number[]> = { rings: [81], texture: [81] };
@@ -144,8 +173,9 @@ describe("dev-control: nothing flagged", () => {
   });
 
   // The verdict on the run, {{achieved}}, from the checks a reply ran: met, or
-  // on a grid too coarse for the ring check not judged, saying why (G1).
-  check("dev-control", named("rings", "the verdict on the run is met, or says why the ring removal is not judged"), async () => {
+  // on a grid too coarse for the ring check not judged, saying why (G1), and
+  // likewise on one too coarse for the fills' texture (plan 4.2).
+  check("dev-control", named("rings", "the verdict on the run is met, or says why the ring removal and the fills' texture are not judged"), async () => {
     const c = devCase("dev-control");
     const steps: AgentStep[] = [];
     for (const [name, args] of [
@@ -159,7 +189,11 @@ describe("dev-control: nothing flagged", () => {
     }
     const v = verdicts({ reply: steps }).achieved;
     const msg = evidence(c, { achieved: v });
-    expect(v?.text, msg).toBe(tooCoarse("rings") ? "not judged: the ring removal (grid too coarse for the ring check)" : "met: every stage meets its goal");
+    const notJudged = [
+      ...(tooCoarse("rings") ? ["the ring removal (grid too coarse for the ring check)"] : []),
+      ...(tooCoarse("texture") ? ["the backfill's texture (grid too coarse)"] : []),
+    ];
+    expect(v?.text, msg).toBe(notJudged.length ? `not judged: ${notJudged.join(", ")}` : "met: every stage meets its goal");
   });
 
   // The coverage, measured once, in Python, on 3D |Q| shells: the control's
@@ -175,6 +209,101 @@ describe("dev-control: nothing flagged", () => {
     expect(r.transform_reach_q as number, msg).toBeLessThanOrEqual(r.full_coverage_q as number);
     expect([r.counts_end_inside_box, (r.raw_counts as { q_max_edge: number | null }).q_max_edge], msg).toEqual([false, null]);
     expect(outcome, msg).toMatchObject({ kind: "pass", dataProblems: [] });
+  });
+});
+
+type Planted = ValidationCase["planted"][number];
+interface PeakEntry {
+  sign: string;
+  vectors_rlu: (number[] | null)[];
+}
+
+/** A vector's images under the cube's 48 operations: every signed permutation of its components. */
+const cubeImages = (v: number[]): number[][] =>
+  [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]].flatMap((p) =>
+    [1, -1].flatMap((a) => [1, -1].flatMap((b) => [1, -1].map((c) => [a * v[p[0]], b * v[p[1]], c * v[p[2]]]))),
+  );
+
+/** Whether an entry of dpdf_peaks is the planted correlation: its sign, and an image of its vector among the entry's. */
+const listsCorrelation = (e: PeakEntry, p: Planted): boolean =>
+  e.sign === (p.sign === "+" ? "+" : "−") &&
+  e.vectors_rlu.some((u) => u !== null && cubeImages(p.vector).some((w) => Math.hypot(u[0] - w[0], u[1] - w[1], u[2] - w[2]) <= SAME_VECTOR));
+
+/** The entry (1-based) each planted correlation first comes in, 0 where none is it. */
+const entriesOf = (list: PeakEntry[], planted: Planted[]): number[] => planted.map((p) => list.findIndex((e) => listsCorrelation(e, p)) + 1);
+
+describe("dev-control: dpdf_peaks lists the planted correlations", () => {
+  // What the model reads of dpdf_peaks with its defaults: the result fitted
+  // to MAX_RESULT_CHARS, as the executor hands it over (runToolCall).
+  check("dev-control", "dpdf_peaks, as the model reads it, lists each planted correlation", async () => {
+    const c = devCase("dev-control");
+    const planted = casesIn("dev").find((x) => x.id === c.id)!.planted;
+    const r = ran(await c.tool("dpdf_peaks"), "dpdf_peaks");
+    const max = CHAT_TOOLS.find((t) => t.name === "dpdf_peaks")!.maxResultChars ?? MAX_RESULT_CHARS;
+    const read = (JSON.parse(fit(r.result, max).text) as { features: PeakEntry[] }).features;
+    // Where they come among the 30 strongest entries, the tool's longest list.
+    const longest = ran(await c.tool("dpdf_peaks", { limit: 30 }), "dpdf_peaks").result.features as PeakEntry[];
+    const msg = evidence(c, { planted, entries_read: read.length, read_at: entriesOf(read, planted), among_30_at: entriesOf(longest, planted) });
+    expect(planted.length, msg).toBeGreaterThan(0);
+    expect(entriesOf(read, planted), msg).not.toContain(0);
+  });
+
+  // The dev cases declare no symmetry: the list says so, and is grouped as
+  // before the grouping by the declared symmetry, each entry as it was.
+  check("dev-control", "dpdf_peaks says no symmetry is declared, and groups by sign, length and size as before", async () => {
+    const c = devCase("dev-control");
+    const r = ran(await c.tool("dpdf_peaks"), "dpdf_peaks");
+    const entries = r.result.features as Record<string, unknown>[];
+    // The server's list, as the tool reads it: no orbit, each size within 5 % of its group's largest.
+    const served = await fetchDpdfFeatures(dpdfVolumeId(await c.dataset())!, 5, 12);
+    const msg = evidence(c, {
+      grouped_by: r.result.grouped_by,
+      fields: [...new Set(entries.map((e) => Object.keys(e).join(", ")))],
+      served: served.groups.map((g) => ({ n: g.n, multiplicity: g.multiplicity, size_sigma: g.size_sigma, mean_size_sigma: g.mean_size_sigma })),
+    });
+    expect(r.result.grouped_by, msg).toBe("sign, length and size (no symmetry declared)");
+    expect(served.grouped_by, msg).toBe(r.result.grouped_by);
+    for (const g of served.groups) {
+      expect(g.multiplicity, msg).toBeNull();
+      expect(g.mean_size_sigma, msg).toBeLessThanOrEqual(g.size_sigma);
+      expect(g.mean_size_sigma, msg).toBeGreaterThanOrEqual(0.95 * g.size_sigma);
+    }
+    expect(entries.map((e) => e.n_vectors), msg).toEqual(served.groups.map((g) => g.n));
+    for (const e of entries) expect(Object.keys(e), msg).toEqual(["sign", "length_A", "size_sigma", "n_vectors", "vectors_rlu", "vectors_A"]);
+  });
+});
+
+// No dev case is symmetrised, so the symmetry check judges none of them: each
+// reads "not judged", the file declaring no symmetry. dev-control symmetrised
+// over m-3m and declared so (devCase's symmetrise, as the NeXus Viewer's export
+// is) is one it judges: through the default run, each of m-3m's 47 operations
+// holds (24 entries: each rotation with its product with the inversion, and
+// the inversion), those that move c included, on the sections through the
+// origin and on the x–y sections off it, and the ΔPDF evaluation's own break
+// with them (plan 4.3).
+describe("dev-control symmetrised over m-3m: every declared operation holds", () => {
+  check("dev-control", "symmetry_check reads each of m-3m's 47 operations as held, at z = 0 and at z = 1 Å", async () => {
+    const c = devCase("dev-control", { symmetrise: "m-3m" });
+    for (const z of [0, 1]) {
+      const r = ran(await c.tool("symmetry_check", { z }), "symmetry_check");
+      const ops = r.result.ops as { op: string; rms_difference: number; tested_on: string }[];
+      const worst = ops.reduce((w, o) => (o.rms_difference > w.rms_difference ? o : w));
+      const [outcome] = outcomeOf(r);
+      const msg = evidence(c, { z, operations: r.result.operations, sections: r.result.sections, worst, not_tested: r.result.not_tested ?? [], outcome });
+      expect(r.result.operations, msg).toBe("declared (m-3m): 47 besides the identity");
+      expect(ops, msg).toHaveLength(24);
+      // The three-folds, which move c, on the x–z and y–z sections they map.
+      const threeFolds = ops.filter((o) => o.op.startsWith("three-fold"));
+      expect(threeFolds, msg).toHaveLength(8);
+      expect(threeFolds.every((o) => o.tested_on.includes("xz")), msg).toBe(true);
+      expect(r.result.not_tested, msg).toBeUndefined();
+      expect(worst.rms_difference, msg).toBeLessThanOrEqual(SYMMETRY_HOLDS);
+      expect(outcome, msg).toMatchObject({ kind: "pass", reasons: [] });
+    }
+    const pdf = ran(await c.tool("assess_stage", { stage: "pdf" }), "assess_stage pdf").result.pdf as Record<string, unknown>;
+    const msg = evidence(c, { max_symmetry_break: pdf.max_symmetry_break, worst_symmetry_op: pdf.worst_symmetry_op, symmetry_declared: pdf.symmetry_declared });
+    expect(pdf.symmetry_declared, msg).toBe(true);
+    expect(pdf.max_symmetry_break as number, msg).toBeLessThanOrEqual(SYMMETRY_HOLDS);
   });
 });
 
@@ -349,39 +478,40 @@ for (const id of ["dev-shell", "dev-rings-shell"] as const) {
 }
 
 // The fills' texture (texture_check): the default backfill prints no fill bias
-// of its own on the three principal cuts. On a grid too coarse to leave its
-// holes room for their rims the check is not judged, each cut it cannot judge
-// saying why, and none flagged.
-for (const id of ["dev-origin", "dev-rings", "dev-shell"] as const) {
+// of its own over the punch's holes, every one judged in 3-D with its rim
+// (plan 4.2). On a grid too coarse to leave the holes room for their rims the
+// check is not judged, says why, and measures no bias. At 81 points, before
+// that rule (#60), the cuts read a false bias on three of these cases
+// (dev-origin, dev-rings, dev-shell), and the 3-D read, past it, would read
+// one on six: the rule, not the 3-D read, keeps them from a verdict.
+for (const id of DEV_CASE_IDS) {
   describe(`${id}: the fills leave no texture`, () => {
-    check(id, named("texture", "texture_check finds no systematic fill bias on any cut"), async () => {
+    check(id, named("texture", "texture_check finds no systematic fill bias over the holes in 3-D"), async () => {
       const c = devCase(id);
       const r = ran(await c.tool("texture_check"), "texture_check");
-      const cuts = r.result.per_cut as Record<string, unknown>[];
+      const fills = r.result;
       const [outcome] = outcomeOf(r);
-      const shown = cuts.map((x) => ({
-        cut: x.cut,
-        n_holes: x.n_holes,
-        ...(x.not_judged ? { not_judged: x.not_judged } : {}),
-        median_fill_bias_sigma: x.median_fill_bias_sigma,
-        median_fill_bias_level: x.median_fill_bias_level,
-        systematic_fill_bias: x.systematic_fill_bias,
-      }));
-      const msg = evidence(c, { per_cut: shown, outcome });
-      expect(cuts.filter((x) => x.systematic_fill_bias === true), msg).toEqual([]);
+      const { per_cut: cuts, ...shown } = fills;
+      const msg = evidence(c, { fills: shown, per_cut: cuts, outcome });
+      expect(fills.systematic_fill_bias, msg).not.toBe(true);
+      // The cuts carry the azimuthal texture only.
+      for (const x of cuts as Record<string, unknown>[]) expect(Object.keys(x), msg).toEqual(["cut", "azimuthal_ratio"]);
       if (tooCoarse("texture")) {
         expect(outcome, msg).toMatchObject({ kind: "info", reasons: ["grid too coarse"] });
-        const notJudged = cuts.filter((x) => typeof x.not_judged === "string");
-        expect(notJudged.length, msg).toBeGreaterThan(0);
-        for (const x of notJudged) {
-          const why = /^grid too coarse: the nodes are ([\d.]+) voxels apart, under ([\d.]+): a hole reaches [\d.]+ voxels? and its rim \d+ more$/.exec(String(x.not_judged));
+        // Either reason the backend gives for a grid too coarse: the punch's
+        // node test could not resolve the holes (G3, read from the punch's
+        // record), or the median hole leaves its rim no room.
+        if (fills.not_judged !== "grid too coarse (the punch's node test could not resolve the holes at this grid)") {
+          const why = /^grid too coarse: the nodes are ([\d.]+) voxels apart, under ([\d.]+): a hole reaches [\d.]+ voxels? and its rim \d+ more$/.exec(String(fills.not_judged));
           expect(why, msg).not.toBeNull();
           expect(Number(why![1]), msg).toBeLessThan(Number(why![2]));
-          expect([x.systematic_fill_bias, x.median_fill_bias_sigma], msg).toEqual([null, null]);
         }
+        expect([fills.systematic_fill_bias, fills.median_fill_bias_sigma, fills.median_fill_bias_level], msg).toEqual([null, null, null]);
       } else {
         expect(outcome, msg).toMatchObject({ kind: "pass", reasons: [] });
-        expect(cuts.filter((x) => "not_judged" in x), msg).toEqual([]);
+        expect(fills, msg).not.toHaveProperty("not_judged");
+        expect(fills.systematic_fill_bias, msg).toBe(false);
+        expect(fills.n_judged, msg).toBeGreaterThan(0);
       }
     });
   });

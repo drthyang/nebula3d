@@ -310,6 +310,12 @@ describe("the transcript", () => {
     expect(renderTranscript(old)).toContain("Not recorded.");
   });
 
+  it("gives the run's tokens, and the tuning's among them when it tuned", () => {
+    expect(renderTranscript(record())).toContain(", 1000 tokens in and 200 out over 3 requests. ");
+    const tuned = record({ usage: { input: 1600, output: 260, requests: 5, tuning: { input: 600, output: 60, requests: 2 } } });
+    expect(renderTranscript(tuned)).toContain(", 1600 tokens in and 260 out over 5 requests (the tuning's 2: 600 in, 60 out). ");
+  });
+
   it("clips a long result and says the record holds it", () => {
     const long = "x".repeat(5000);
     const rec = record({ decisions: [{ ...record().decisions[0], result: long }] });

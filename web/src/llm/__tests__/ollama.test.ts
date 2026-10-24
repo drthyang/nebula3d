@@ -207,4 +207,14 @@ describe("completeChat with Ollama", () => {
     const chat = seen.find((s) => s.url.endsWith("/api/chat"))!;
     expect(chat.body).toMatchObject({ stream: false, options: { num_ctx: 8192 } });
   });
+
+  it("reports the reply's token counts, or null when Ollama gave none", async () => {
+    const answer = (counts: object) => () => new Response(JSON.stringify({ message: { role: "assistant", content: "{}" }, done: true, ...counts }), { status: 200 });
+    const onUsage = vi.fn();
+    server(answer({ prompt_eval_count: 640, eval_count: 12 }));
+    await completeChat({ baseUrl: OLLAMA, model: "m", messages: [{ role: "user", content: "go" }], temperature: 0, onUsage });
+    server(answer({}));
+    await completeChat({ baseUrl: OLLAMA, model: "m", messages: [{ role: "user", content: "go" }], temperature: 0, onUsage });
+    expect(onUsage.mock.calls).toEqual([[{ input: 640, output: 12 }], [null]]);
+  });
 });

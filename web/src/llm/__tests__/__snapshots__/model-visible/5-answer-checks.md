@@ -1,6 +1,6 @@
 # Answer checks
 
-`answerIssues` and `issuesPrompt` (answerChecks.ts) on canned replies: what the agent loop sends back, once, before a failing answer reaches the user. Each reply's number sources here are its tools' results.
+`answerIssues` and `issuesPrompt` (answerChecks.ts) on canned replies: what the agent loop sends back, once, before a failing answer reaches the user. Each reply's number sources here are its tools' results, and an earlier turn's while what each measured stands (`earlierSources`).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -107,6 +107,26 @@ Before this answer goes to the user, fix it:
 - It gives a verdict on the 3D-ΔPDF without its evidence in this reply: call assess_stage with stage pdf, and answer from its result.
 - It calls the run a success, but the verdict computed from the checks is "not met: needs attention: the ring removal". That verdict is the checks', not yours: quote it as {{achieved}} and explain what it rests on.
 - What it says about the ring removal contradicts the verdict the tool computed: quote that verdict and its numbers.
+Then write the whole answer again.
+```
+
+## numbers from an earlier turn's result, measured before a later run
+
+Tools run in an earlier turn: assess_stage {"stage":"rings"}.
+
+Tools run in the reply: run_pipeline {"from_stage":"rings"}.
+
+The answer:
+
+```text
+The worst ring sat at 3.2 Å⁻¹, at 0.12 of the diffuse.
+```
+
+Sent back to the model:
+
+```text
+Before this answer goes to the user, fix it:
+- These numbers were measured before the last run recomputed the outputs they describe: 3.2, 0.12. Quote numbers measured since, or leave them out.
 Then write the whole answer again.
 ```
 
