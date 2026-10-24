@@ -655,10 +655,14 @@ Skill text goes in its own PR, which waits for the user (5.2 to 5.4). The lint (
 and queued, nothing new; all of it is on main (#101 to #109). Item 1: CI is
 green on main. Items 2 and 3 are not run here: they need live models, and no
 live run starts before the user's go or no-go after the freeze. Item 4: the
-fold and `docs/evals.md`'s records are #110; arm A at the freeze runs on main
-after it, on dev and on the test split, with the test split's pinned digest
-(`TEST_SPLIT_SHA256`, `tests/test_validation.py`) checked and the frozen
-commit recorded. Item 5: the paid model's cap is $12 for NEBULA within the $40
+fold and `docs/evals.md`'s records are #110, merged. **Frozen** at
+`812e686ab9b8017113030dd6c84fc47f4cb14c10` (main after #110), from a clean
+committed tree, no tag; the record is #112. The test split is the pinned one,
+`TEST_SPLIT_SHA256` = `ea16568b560ff0dcf258d762c34d55bc9f85810d3cc63be4b1ebe5f7c727c14f`
+(`tests/test_validation.py`), checked at that commit by the opt-in test. Arm A
+on dev: 5 of 8 pass, the table unchanged, every score, detection and digest
+as recorded, two log lines moved (#89, #84). Arm A on the test split: run once
+with `--report`, into the held-out records only. Item 5: the paid model's cap is $12 for NEBULA within the $40
 total, and each run is held to a reserve, $7.37 for the first (#98, #106).
 
 ### Follow-ups found while building
