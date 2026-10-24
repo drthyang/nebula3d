@@ -74,7 +74,10 @@ describe("a saved session", () => {
     const p = usePipelineStore.getState();
     expect([p.punchMinSig, p.flattenIon, p.force]).toEqual(["6", "Mn2+", true]);
     expect([p.events, p.times, p.terminal, p.lastRun]).toEqual([before.pipeline.events, before.pipeline.times, "done", before.pipeline.lastRun]);
-    expect(useChatStore.getState().turns).toEqual(before.turns);
+    // The same turns; their tool steps marked as from the file (agent.ts toolResultsIn).
+    expect(useChatStore.getState().turns).toEqual(
+      before.turns.map((t) => (t.steps ? { ...t, steps: t.steps.map((st) => ({ ...st, restored: true })) } : t)),
+    );
     expect(useStructureStore.getState().def).toEqual(before.structure);
     // The next turn is numbered after the restored ones.
     useChatStore.getState().addTurn({ role: "user", content: "next" });

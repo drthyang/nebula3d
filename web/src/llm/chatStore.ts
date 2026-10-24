@@ -58,6 +58,21 @@ const settled = (turn: ChatTurn): ChatTurn =>
     ? { ...turn, steps: turn.steps.map((s) => (s.status === "running" ? { ...s, status: "stopped" as const, progress: undefined } : s)) }
     : turn;
 
+// A turn read from a session file, which could hold anything: only its steps
+// of the shape a step has, each marked as restored, so a later reply's number
+// check does not take its result for a tool's (agent.ts toolResultsIn).
+const STEP_STATUSES = new Set(["running", "done", "error", "stopped"]);
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const isStep = (s: unknown): s is AgentStep =>
+  isObj(s) && typeof s.id === "string" && typeof s.name === "string" && isObj(s.args) &&
+  typeof s.status === "string" && STEP_STATUSES.has(s.status) &&
+  ["summary", "progress", "result", "full"].every((k) => s[k] === undefined || typeof s[k] === "string") &&
+  (s.outcomes === undefined || Array.isArray(s.outcomes)) && (s.view === undefined || isObj(s.view));
+const fromFile = (turn: ChatTurn): ChatTurn => {
+  const { steps, ...rest } = turn;
+  return Array.isArray(steps) ? { ...rest, steps: steps.filter(isStep).map((s) => ({ ...s, restored: true as const })) } : rest;
+};
+
 const restore = (): { turns: ChatTurn[]; draft: string } => {
   try {
     const saved: unknown = JSON.parse(sessionStorage.getItem(TRANSCRIPT_KEY) ?? "[]");
@@ -155,7 +170,7 @@ export const useChatStore = create<ChatState>((set) => ({
   setDraft: (draft) => set({ draft }),
   clear: () => set({ turns: [], draft: "", error: null, usage: null }),
   restoreTurns: (saved) => {
-    const turns = saved.filter(isTurn).map(settled);
+    const turns = saved.filter(isTurn).map((t) => settled(fromFile(t)));
     nextId = Math.max(nextId, turns.reduce((m, t) => Math.max(m, t.id), 0) + 1);
     // The conversation's total is its replies' counts.
     const counted = turns.flatMap((t) => (t.tokens?.requests ? [t.tokens] : []));

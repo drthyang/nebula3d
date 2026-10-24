@@ -30,7 +30,7 @@ import { useHighlightKeys } from "../llm/highlight";
 import { datasetName } from "../api/datasetName";
 import { staleOutputs } from "../api/stale";
 import { useChatStore } from "../llm/chatStore";
-import { captureSession, parseSession, restoreSession, sessionFileName, useSessionNote } from "../state/session";
+import { captureSession, parseSession, restoreSession, sessionFileName, useSessionNote, type SessionNote } from "../state/session";
 
 const DATASET_STAGE_BADGES = [
   { key: "raw", label: "Raw", group: "Input" },
@@ -1364,9 +1364,18 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
   const onRestoreSession = async (file: File) => {
     try {
       const session = parseSession(await file.text());
+      // It replaces the conversation and the run's log: ask first when there
+      // is one to lose.
+      const turns = useChatStore.getState().turns.length;
+      const logged = usePipelineStore.getState().events.length;
+      if (turns || logged) {
+        const losing = [turns ? `the NEBULA Pilot conversation (${turns} message${turns === 1 ? "" : "s"})` : "", logged ? "the last run's log" : ""].filter(Boolean).join(" and ");
+        if (!window.confirm(`Restoring ${file.name} replaces ${losing} with the session's. Restore it?`)) return;
+      }
       // The outputs as they are now, not as last fetched.
       const now = await queryClient.fetchQuery({ queryKey: ["datasets"], queryFn: fetchDatasets, staleTime: 0 });
-      const result = restoreSession(session, now);
+      const label = (o: string) => DATASET_STAGE_BADGES.find((b) => b.key === o)?.label ?? o;
+      const result = restoreSession(session, now, label);
       const when = session.saved ? new Date(session.saved).toLocaleString() : "earlier";
       if (!result.datasetFound) {
         setSessionNote({
@@ -1377,23 +1386,27 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
         });
         return;
       }
-      const label = (o: string) => DATASET_STAGE_BADGES.find((b) => b.key === o)?.label ?? o;
       const missing = result.missing.length
         ? ` ${result.missing.length} of the outputs it had are not here: ${result.missing.map(label).join(", ")}.`
         : "";
+      const warnings = result.warnings.length ? ` ${result.warnings.join(" ")}` : "";
       setSessionNote({
-        kind: result.missing.length ? "warn" : "ok",
-        text: `Restored ${result.restored.join(", ")} from the session saved ${when}.${missing}`,
-        ...(result.recompute.length && session.dataset ? { recompute: { datasetId: session.dataset.id, stages: result.recompute } } : {}),
+        kind: result.missing.length || result.warnings.length ? "warn" : "ok",
+        text: `Restored ${result.restored.join(", ")} from the session saved ${when}.${missing}${warnings}`,
+        ...(result.recompute.length && session.dataset
+          ? { recompute: { datasetId: session.dataset.id, stages: result.recompute, ...(result.recomputeWith ?? {}) } }
+          : {}),
       });
     } catch (e) {
       setSessionNote({ kind: "error", text: `${file.name}: ${(e as Error).message}` });
     }
   };
-  const onRecompute = async (datasetId: string, stages: string[]) => {
+  const onRecompute = async ({ datasetId, stages, params, flattenEnabled }: NonNullable<SessionNote["recompute"]>) => {
     setSessionNote(null);
     onStarted();
-    await usePipelineStore.getState().runStages(stages, { datasetId, force: true });
+    // With the settings of the run that made the outputs, when the session
+    // knows them (params), else the form's.
+    await usePipelineStore.getState().runStages(stages, { datasetId, force: true, params, flattenEnabled });
   };
 
   const applyDataRoot = async () => {
@@ -1561,7 +1574,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 type="button"
                 className="btn btn-primary btn-sm"
                 disabled={s.running}
-                onClick={() => void onRecompute(sessionNote.recompute!.datasetId, sessionNote.recompute!.stages)}
+                onClick={() => void onRecompute(sessionNote.recompute!)}
               >
                 Recompute them
               </button>

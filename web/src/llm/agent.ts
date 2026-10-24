@@ -67,6 +67,10 @@ export interface AgentStep {
   // The checks' outcomes the tool judged (verdicts/), kept beside the result
   // and never in it: the model reads the result alone.
   outcomes?: Outcome[];
+  // Brought back from a saved session file (state/session.ts): shown, but
+  // never taken as evidence for a later reply's numbers (toolResultsIn), since
+  // the file could say anything.
+  restored?: true;
 }
 
 export interface AgentProgress {
@@ -158,9 +162,9 @@ function numberSources(convo: ChatMessage[], arrived: number, results: readonly 
   ].join("\n");
 }
 
-/** The tool results of a conversation's turns, as the model read them (`seen`): number sources for the next reply. */
+/** The tool results of a conversation's turns, as the model read them (`seen`): number sources for the next reply. Not those restored from a session file. */
 export const toolResultsIn = (turns: readonly { steps?: readonly AgentStep[] }[]): string[] =>
-  turns.flatMap((t) => (t.steps ?? []).flatMap((s) => (s.status === "done" && seen(s) ? [seen(s)] : [])));
+  turns.flatMap((t) => (t.steps ?? []).flatMap((s) => (s.status === "done" && !s.restored && seen(s) ? [seen(s)] : [])));
 
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
