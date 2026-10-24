@@ -1,0 +1,21 @@
+{
+ "source": "review",
+ "ref": "P1.2b",
+ "at": "f9f3910",
+ "kind": "bug",
+ "evidence": "The validation record keeps the tools each request offered (tool_offers), which OfferRecorder takes from every chat request through fetch, by its URL: /chat/completions or /v1/messages (web/src/llm/evals/offers.ts:13, :40). The app talks to a model at Ollama's port through Ollama's own chat API (web/src/llm/provider/client.ts:315, :619-620), whose requests go to /api/chat (client.ts:456), so a run on gemma4:26b (web/src/llm/evals/validationModels.ts:90-91) recorded no offer at all, and its transcript said \"Not recorded.\" (web/src/llm/evals/findings.ts:310). Found while building the tuning's run model (P1.2's follow-up, #94); read in the code, then shown by a scripted run.",
+ "proposed_fix": "OfferRecorder takes Ollama's /api/chat as a chat request too, reading its tools as for the others (tools[].function.name, the shape Ollama's body carries); Ollama's other calls (/api/show, /api/ps) stay out. A replay runs a validation run on gemma4:26b through Ollama's API with a scripted model and checks the record's offers against what each request carried.",
+ "needs_user_approval": false,
+ "status": "implemented",
+ "commit": "0b69e2f",
+ "tests": [
+  "web/src/llm/evals/ollamaOffers.replay.test.ts (a validation run through runCase on gemma4:26b through Ollama's /api/chat, its model scripted: the record's tool_offers are its three chat requests', equal to the tools each carried)",
+  "web/src/llm/evals/validationArms.test.ts (the recorder takes an Ollama chat request, one without tools, and none of /api/show or /api/ps)"
+ ],
+ "note": "Decided by the manager on the user's delegation, 2026-10-24. Implemented in 0b69e2f. Nothing else in the record keys on the chat paths: the usage comes from each transport's own parsing (Ollama's counts on its last line, counted for Ollama runs before too), the token calibration keys on the base URL and the model, and the offers carry no token counts. Records of Ollama runs made before keep tool_offers empty. Recorded as its own finding, not on P1.2's note, so that this change and the spend reserve's (which adds to P1.2's note) touch no file in common.",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-24",
+  "option": "the recorder takes Ollama's /api/chat; a scripted Ollama run pins it"
+ }
+}
