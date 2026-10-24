@@ -318,8 +318,10 @@ const COVERAGE: VolumeCoverage = {
   q_max_edge: 4.4,
   full_q_min: 0.3,
   full_q_max: 4.35,
+  measured_q_max: 4.35, // NaN past the counts, as in its cuts: the measured voxels end with them
   box_q: 4.712,
   box_corner_q: 8.162,
+  q_step: 0.1,
 };
 
 const UB_CHECK: UbCheck = {

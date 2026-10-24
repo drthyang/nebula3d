@@ -124,8 +124,13 @@ class CoverageOut(BaseModel):
     q_max_edge: float | None
     full_q_min: float | None
     full_q_max: float | None
+    # Where the shells stop being fully measured (mask, finite): the ΔPDF
+    # window's support, which a volume storing zeros for unmeasured space
+    # carries past its counts.
+    measured_q_max: float | None
     box_q: float
     box_corner_q: float
+    q_step: float  # the shells' width (Å⁻¹): every edge is known to one shell
 
 
 class RingShellOut(BaseModel):
@@ -365,6 +370,23 @@ class BraggPeakWidthOut(BaseModel):
     principal_width_q: list[float] | None = None
     principal_directions_hkl: list[list[float]]
     fit_kind: str
+    # Which pass found it: "integer" (the node test) or "search"; a search peak
+    # with a source node is the Bragg peak of a node the node test left to the
+    # search. None in a profile written before the punch recorded it.
+    found_by: str | None = None
+
+
+class NodeTestOut(BaseModel):
+    """The nodes whose background shell held fewer measured voxels than the
+    Bragg punch's node test needs (server.bragg): with mode "both" not judged
+    and left to the search pass, with mode "integer" judged provisionally."""
+    examined: int                   # the nodes with a measured window
+    under_floor: int                # of them, those whose shell was under min_voxels
+    min_voxels: int                 # the shell median's floor
+    voxel_q: float                  # a voxel, Å⁻¹ (the edge of a cube of its Q-volume)
+    needs_q: float                  # the largest voxel that gives the shell min_voxels, Å⁻¹
+    left_to_search: bool            # mode "both"; else judged provisionally
+    notice: str | None = None       # what the run log says, on a grid too coarse (voxel > needs)
 
 
 class BraggProfileOut(BaseModel):
@@ -379,11 +401,22 @@ class BraggProfileOut(BaseModel):
     fit_covariance: bool = False
     punch_frame: str | None = None
     peaks: list[BraggPeakWidthOut] = []
+    # The nodes the node test could not judge, if any (pipeline.node_test_notice).
+    node_test: NodeTestOut | None = None
 
 
 class StageParamsIn(BaseModel):
     """Curated, optional per-stage overrides (None = use the validated default)."""
 
+    # The cleanup stages' switches (the page's "Enable stage"; the flatten's is
+    # the request's flatten_enabled).  False switches the stage off: it is not
+    # run and its input passes through to the next stage, never an output an
+    # earlier run left.  A stage merely left out of the request's `stages` is a
+    # partial re-run instead, whose output on disk the next stage reads.
+    # None: on.
+    rings_enabled: bool | None = None
+    punch_enabled: bool | None = None
+    backfill_enabled: bool | None = None
     # Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
     edge_trim: int | None = None
     rings_n_patches: int | None = None
@@ -490,7 +523,10 @@ class PipelineRunRequest(BaseModel):
     flatten_enabled: bool = True
     force: bool = False
     force_from: str | None = None
-    stages: list[str] | None = None  # enabled-stage subset; None → all stages
+    # The stages to run in this call; None → all.  One left out is a partial
+    # re-run (the stages after it read its output on disk); a stage switched
+    # off is not run either way (flatten_enabled, params.*_enabled).
+    stages: list[str] | None = None
     params: StageParamsIn = StageParamsIn()
     # A tuning trial: the stage runs into tuning/<run>/trials/<trial>/ and
     # reads its inputs from the run, never writing to processed/.

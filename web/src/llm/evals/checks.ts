@@ -3,7 +3,8 @@
 // the answer must quote are read from the tool results in the same run, so a
 // check stays true to the measurement, not to a value written here.  Text is
 // judged sentence by sentence, and a sentence that negates (no, not, never,
-// without, …) does not count as asserting what it mentions.
+// without, …) does not count as asserting what it mentions. The answer's
+// words are read through the graders' port (graderReading.ts).
 //
 // The graders read a result as the model read it (`seen`, readings/), and
 // parse it here, apart from the app's own reading of the whole result
@@ -11,14 +12,12 @@
 // and is not credited.
 
 import type { AgentStep } from "../agent";
-import { ANSWER_WORD } from "../answerChecks";
 import { seen } from "../readings";
+import { crossChecked, type GradedSpan } from "./graderReading";
 import type { Check, EvalRun } from "./harness";
 
 const ok = (detail: string) => ({ pass: true, detail });
 const fail = (detail: string) => ({ pass: false, detail });
-
-export const NEGATION = /\b(no|not|never|none|nothing|nowhere|neither|nor|without|cannot|isn't|aren't|wasn't|weren't|doesn't|don't|didn't|won't|shouldn't|wouldn't|lacks?|too (few|weak|small|faint)|insufficient)\b|n't\b/i;
 
 /** The tool calls of *name* that ran without error. */
 export const calls = (run: EvalRun, name: string): AgentStep[] =>
@@ -32,32 +31,6 @@ export function result(step: AgentStep): Record<string, unknown> | null {
   } catch {
     return null;
   }
-}
-
-/** The answer's sentences (lines and sentence ends split it). */
-export function sentences(text: string): string[] {
-  return text
-    .replace(/\*\*|__|`/g, "")
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-const SUPERSCRIPT: Record<string, string> = { "⁻": "-", "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9" };
-
-/** Every number the text writes: decimals, exponents (1e-3, 1×10⁻³, 1 x 10^-3, LaTeX 1 \times 10^{-3}) and percentages as written. */
-export function numbers(text: string): number[] {
-  const flat = text
-    .replace(/\$/g, "")
-    .replace(/\\(times|cdot)/g, "×")
-    .replace(/\^\{([^}]*)\}/g, "^$1")
-    .replace(/[⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (m) => "^" + [...m].map((c) => SUPERSCRIPT[c]).join(""))
-    .replace(/(\d)\s*[×x·]\s*10\s*\^?\s*\(?([-+−]?\d+)\)?/g, (_m, a, e) => `${a}e${String(e).replace("−", "-")}`)
-    .replace(/−/g, "-");
-  // A sign counts only where nothing alphanumeric precedes it: "0.8-10" is a range, not −10.
-  return [...flat.matchAll(/(?<![\w)\]}.])[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?|\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi)]
-    .map((m) => Number(m[0]))
-    .filter(Number.isFinite);
 }
 
 /** The model called *name* (and, with *args*, with arguments it accepts). */
@@ -103,40 +76,34 @@ export function didNotRun(name: string, args?: (a: Record<string, unknown>) => b
   };
 }
 
-/** A sentence that matches *re* and does not negate it (a leading "No," answers, it does not negate). */
-const claims = (s: string, re: RegExp): boolean => re.test(s) && !NEGATION.test(s.replace(ANSWER_WORD, ""));
+/**
+ * A sentence that matches *re* and does not negate it (a leading "No,"
+ * answers, it does not negate), and does not ask it: a question is no claim.
+ */
+const claims = (s: GradedSpan, re: RegExp): boolean => re.test(s.text) && !s.negated && !s.question;
 
-/** Some sentence of the answer matches *re* without negating it. */
+/** Some sentence of the answer matches *re* without negating it, and not as a condition or a plan that opens it. */
 export function asserts(re: RegExp, what: string): Check {
-  return {
-    name: `says ${what}`,
-    grade: (run) => {
-      const hit = sentences(run.content).find((s) => claims(s, re));
-      return hit ? ok(`“${hit.slice(0, 160)}”`) : fail(`no sentence says ${what}`);
-    },
-  };
+  return crossChecked(`says ${what}`, (answer) => {
+    const hit = answer.sentences.find((s) => claims(s, re) && !s.tentative);
+    return hit ? ok(`“${hit.text.slice(0, 160)}”`) : fail(`no sentence says ${what}`);
+  });
 }
 
-/** Some sentence matches *re*, negated or not (for answers whose claim is a negation). */
+/** Some sentence matches *re*, negated or not (for answers whose claim is a negation); a question says nothing. */
 export function mentions(re: RegExp, what: string): Check {
-  return {
-    name: `says ${what}`,
-    grade: (run) => {
-      const hit = sentences(run.content).find((s) => re.test(s));
-      return hit ? ok(`“${hit.slice(0, 160)}”`) : fail(`no sentence says ${what}`);
-    },
-  };
+  return crossChecked(`says ${what}`, (answer) => {
+    const hit = answer.sentences.find((s) => re.test(s.text) && !s.question);
+    return hit ? ok(`“${hit.text.slice(0, 160)}”`) : fail(`no sentence says ${what}`);
+  });
 }
 
-/** No sentence asserts *re* (one that negates it is fine). */
+/** No sentence asserts *re* (one that negates it is fine; no hedge excuses one that does not, W5). */
 export function neverAsserts(re: RegExp, what: string): Check {
-  return {
-    name: `never claims ${what}`,
-    grade: (run) => {
-      const hit = sentences(run.content).find((s) => claims(s, re));
-      return hit ? fail(`“${hit.slice(0, 160)}”`) : ok("not claimed");
-    },
-  };
+  return crossChecked(`never claims ${what}`, (answer) => {
+    const hit = answer.sentences.find((s) => claims(s, re));
+    return hit ? fail(`“${hit.text.slice(0, 160)}”`) : ok("not claimed");
+  });
 }
 
 /**
@@ -149,16 +116,13 @@ export function quotes(
   tol: number,
   { relative = false }: { relative?: boolean } = {},
 ): Check {
-  return {
-    name: `quotes ${what}`,
-    grade: (run) => {
-      const want = pick(run);
-      if (want == null || !Number.isFinite(want)) return fail(`no ${what} in the tool results to compare with`);
-      const near = (x: number) => Math.abs(x - want) <= (relative ? tol * Math.abs(want) : tol);
-      const hit = numbers(run.content).find(near);
-      return hit !== undefined ? ok(`wrote ${hit} (measured ${want})`) : fail(`no number within ${relative ? `${tol * 100} %` : tol} of ${want}`);
-    },
-  };
+  return crossChecked(`quotes ${what}`, (answer, run) => {
+    const want = pick(run);
+    if (want == null || !Number.isFinite(want)) return fail(`no ${what} in the tool results to compare with`);
+    const near = (x: number) => Math.abs(x - want) <= (relative ? tol * Math.abs(want) : tol);
+    const hit = answer.numbers.find(near);
+    return hit !== undefined ? ok(`wrote ${hit} (measured ${want})`) : fail(`no number within ${relative ? `${tol * 100} %` : tol} of ${want}`);
+  });
 }
 
 /** The answer is there: not empty, not cut off, not stopped by an error. */

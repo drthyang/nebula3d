@@ -245,6 +245,7 @@ def test_volume_coverage(env):
     assert c["id"] == f"{SLUG}.ringremoved"
     assert len(c["q"]) == len(c["counted"])  # a 7×9×11 volume has no 50-voxel shell
     assert 0 < c["box_q"] < c["box_corner_q"]
+    assert c["measured_q_max"] is None and c["q_step"] == 0.1
     assert client.get("/api/volumes/nope.ringremoved/coverage").status_code == 404
 
 
@@ -505,6 +506,32 @@ def test_bragg_profile_reads_saved_json(tmp_path):
     assert body["has_profile"] is True
     assert body["fit_covariance"] is True
     assert body["peaks"][0]["width_q"] == [0.12, 0.08, 0.04]
+    assert body["node_test"] is None  # every node judged: the record has none
+
+
+def test_bragg_profile_gives_the_nodes_the_node_test_left(tmp_path):
+    """The punch's record (G2): the nodes whose background shell held fewer
+    voxels than the node test needs, how many of those it examined, the grid
+    against the limit, and the notice its log ends on. A record that is not
+    one gives none."""
+    from nebula3d.pipeline import node_test_notice
+
+    (tmp_path / "raw").mkdir()
+    proc = tmp_path / "processed"
+    proc.mkdir()
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=proc)
+    nebula3d.save(_vol(), paths.braggpunched)
+    notice = node_test_notice(703, 728, 0.1611, 0.1433)
+    record = {"examined": 728, "under_floor": 703, "min_voxels": 8, "voxel_q": 0.1611,
+              "needs_q": 0.1433, "left_to_search": True, "notice": notice}
+    profile = {"schema_version": 1, "n_peaks": 0, "peaks": [], "node_test": record}
+    paths.bragg_profile_json.write_text(json.dumps(profile), encoding="utf-8")
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    assert client.get(f"/api/bragg/{SLUG}/profile").json()["node_test"] == record
+
+    profile["node_test"] = {"examined": 728}
+    paths.bragg_profile_json.write_text(json.dumps(profile), encoding="utf-8")
+    assert client.get(f"/api/bragg/{SLUG}/profile").json()["node_test"] is None
 
 
 def test_ring_diagnostics_missing_returns_empty_state(env):
@@ -1073,6 +1100,26 @@ def test_build_params_punch_search_floor_and_protected_planes():
                 {"punch_search_max_width_ratio": 0.5}):
         with pytest.raises(ValueError):
             punch(**bad)
+
+
+def test_build_params_stage_switches():
+    """The cleanup stages' switches reach PipelineParams: unset, on; false,
+    off. The flatten's is the request's flatten_enabled."""
+    from nebula3d.server.params import build_params
+    from nebula3d.server.schemas import PipelineRunRequest
+
+    def switches(**req):
+        p = build_params(PipelineRunRequest(dataset_id="x", **req))
+        return (p.rings_enabled, p.punch_enabled, p.backfill_enabled, p.flatten_enabled)
+
+    assert switches() == (True, True, True, True)
+    # the page's request, as the server parses its JSON
+    assert switches(params={"rings_enabled": False, "punch_enabled": True,
+                            "backfill_enabled": True}) == (False, True, True, True)
+    assert switches(params={"punch_enabled": False}) == (True, False, True, True)
+    assert switches(params={"backfill_enabled": False}) == (True, True, False, True)
+    assert switches(flatten_enabled=False,
+                    params={"rings_enabled": True}) == (True, True, True, False)
 
 
 def test_build_params_flatten_q2_and_fit_range():

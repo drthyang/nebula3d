@@ -330,19 +330,20 @@ def test_stage_subset_runs_only_requested(tmp_path, stubbed):
     assert stubbed.calls == ["backfill"]
 
 
-def test_disabled_stage_passes_input_through(tmp_path, stubbed):
-    """A disabled cleanup stage is skipped and its input flows to the next
-    enabled stage: with rings off, punch runs on the raw input and the
-    ring-removed output is never written."""
+def test_a_stage_left_out_with_no_output_on_disk_passes_input_through(tmp_path, stubbed):
+    """A cleanup stage left out of `stages` is not run; with no output of it
+    on disk, its input flows to the next stage: punch runs on the raw input
+    and the ring-removed output is never written. (With one on disk, the
+    next stage reads it: a partial re-run. The switches turn a stage off.)"""
     inp = _seed_input(tmp_path)
     paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path)
     pipeline.run_pipeline(
         inp, proc_dir=tmp_path,
         stages=("punch", "backfill", "flatten", "pdf", "pdf_check"),
     )
-    assert "rings" not in stubbed.calls          # disabled stage skipped
+    assert "rings" not in stubbed.calls          # left out: not run
     assert stubbed.calls[0] == "punch"           # punch ran first (on the raw input)
-    assert not paths.ringremoved.exists()        # disabled → no output written
+    assert not paths.ringremoved.exists()        # not run → no output written
     assert paths.braggpunched.exists()           # downstream still produced
     assert paths.delta_pdf.exists()
 
@@ -356,6 +357,213 @@ def test_flatten_disabled_routes_backfilled_into_pdf(tmp_path, stubbed):
     assert "flatten" not in stubbed.calls
     logs = load_delta_pdf(paths.delta_pdf, read_data=False).logs
     assert logs["source_file"] == paths.backfilled.name
+
+
+def _flatten_off_notice(paths):
+    return (f"flatten disabled: the ΔPDF transforms {paths.backfilled.name}, "
+            "with no background removed")
+
+
+@pytest.mark.parametrize("via_inputs", [False, True], ids=["proc_dir", "inputs"])
+def test_flatten_disabled_never_reads_a_flattened_volume_left_on_disk(
+        tmp_path, stubbed, via_inputs):
+    """With the flatten off, the ΔPDF takes the run's backfilled volume, as
+    PipelinePaths.pdf_input says: never a flattened one an earlier run left,
+    in the processed folder or among a tuning trial's inputs. A stage merely
+    left out of `stages` still hands its output on (a partial re-run)."""
+    inp = _seed_input(tmp_path)
+    paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path, flatten_enabled=False)
+    nebula3d.save(stubbed.vol, paths.flattened)  # left by a run with the flatten on
+    kw: dict = {}
+    if via_inputs:
+        nebula3d.save(stubbed.vol, paths.backfilled)
+        kw = dict(stages=("pdf",),
+                  inputs={"backfill": paths.backfilled, "flatten": paths.flattened})
+    events = []
+    pipeline.run_pipeline(inp, pipeline.PipelineParams(flatten_enabled=False),
+                          proc_dir=tmp_path, progress=lambda *a: events.append(a), **kw)
+
+    assert paths.pdf_input == paths.backfilled
+    logs = load_delta_pdf(paths.delta_pdf, read_data=False).logs
+    assert logs["source_file"] == paths.backfilled.name
+    assert ("pdf", "progress", None, _flatten_off_notice(paths)) in events
+    assert "flatten" not in stubbed.calls
+
+
+# ---------------------------------------------------------------------------
+# the stages' switches: a stage switched off passes its input through
+# ---------------------------------------------------------------------------
+#: The level of the volume each stub stage writes (the raw input's is 1), so
+#: the level a stage is given says which volume it read.
+_LEVEL = {"raw": 1, "rings": 10, "punch": 20, "backfill": 30, "flatten": 40}
+#: Each cleanup stage's output in PipelinePaths.
+_OUTPUT = {"rings": "ringremoved", "punch": "braggpunched",
+           "backfill": "backfilled", "flatten": "flattened"}
+#: The stage after each switch's, and what it reads with that one off.
+_NEXT = {"rings": ("punch", "raw"), "punch": ("backfill", "rings"),
+         "backfill": ("flatten", "punch")}
+
+
+@pytest.fixture
+def levels(monkeypatch):
+    """Stub stages that write a volume of their own level (_LEVEL) and record
+    the level of the volume each was given: stage → level read."""
+    read: dict[str, int] = {}
+
+    def level(v):
+        return int(round(float(np.nanmedian(v.data))))
+
+    def mk(name):
+        def stub(v, params=None, *, progress=None):
+            read[name] = level(v)
+            return _vol(fill=_LEVEL[name])
+        return stub
+
+    for name, fn in (("rings", "remove_rings"), ("punch", "punch_bragg"),
+                     ("backfill", "backfill"), ("flatten", "flatten")):
+        monkeypatch.setattr(pipeline, fn, mk(name))
+
+    def pdf_stub(v, params=None, *, progress=None):
+        read["pdf"] = level(v)
+        return _fake_dpdf()
+
+    def pdf_check_stub(vol, dpdf, params, *, h_values=(0.0,), figure_path=None,
+                       consume_dpdf=False):
+        if figure_path is not None:
+            Path(figure_path).write_bytes(b"")
+        return {"pearson_r": 1.0, "normalized_rms": 0.0}
+
+    monkeypatch.setattr(pipeline, "delta_pdf", pdf_stub)
+    monkeypatch.setattr(pipeline, "pdf_consistency_check", pdf_check_stub)
+    return read
+
+
+def _switched_off(*stages):
+    return pipeline.PipelineParams(**{f"{s}_enabled": False for s in stages})
+
+
+def test_pdf_input_is_the_output_of_the_last_stage_switched_on(tmp_path):
+    def pdf_input(*off):
+        flags = {f"{s}_enabled": False for s in off}
+        return pipeline.pipeline_paths(tmp_path / "s.nxs", proc_dir=tmp_path,
+                                       **flags).pdf_input
+
+    paths = pipeline.pipeline_paths(tmp_path / "s.nxs", proc_dir=tmp_path)
+    assert pdf_input() == paths.flattened
+    assert pdf_input("backfill") == paths.flattened
+    assert pdf_input("flatten") == paths.backfilled
+    assert pdf_input("backfill", "flatten") == paths.braggpunched
+    assert pdf_input("punch", "backfill", "flatten") == paths.ringremoved
+    assert pdf_input("rings", "punch", "backfill", "flatten") == paths.input
+
+
+def test_the_ring_stage_is_not_pending_when_switched_off(tmp_path):
+    inp = tmp_path / "s.nxs"
+    assert pipeline.ring_stage_pending(inp, proc_dir=tmp_path)  # no output yet
+    assert not pipeline.ring_stage_pending(inp, _switched_off("rings"),
+                                           proc_dir=tmp_path, force=True)
+
+
+@pytest.mark.parametrize("listed", [False, True], ids=["left-out", "listed"])
+@pytest.mark.parametrize("off", ["rings", "punch", "backfill"])
+def test_a_stage_switched_off_passes_its_input_through(tmp_path, levels, off, listed):
+    """After a run that wrote every output, a run with *off* switched off:
+    the stage after it reads what came before it, never the output the first
+    run left, which stays as it was. As the page sends it (the stage left out
+    of `stages`, with its switch) or listed (all stages, the CLI's), where
+    the stage says it is off."""
+    inp = _seed_input(tmp_path)
+    pipeline.run_pipeline(inp, proc_dir=tmp_path)  # all on: every output written
+    paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path)
+    old = getattr(paths, _OUTPUT[off])
+    left = old.stat().st_mtime_ns
+    levels.clear()
+    stages = pipeline.STAGES if listed else tuple(s for s in pipeline.STAGES if s != off)
+    events: list[tuple] = []
+    pipeline.run_pipeline(inp, _switched_off(off), proc_dir=tmp_path, stages=stages,
+                          force=True, progress=lambda *a: events.append(a))
+
+    nxt, source = _NEXT[off]
+    assert off not in levels                       # not run
+    assert levels[nxt] == _LEVEL[source]           # what came before it
+    assert levels["pdf"] == _LEVEL["flatten"]      # the chain after it ran
+    assert old.stat().st_mtime_ns == left          # its old output left as it was
+    src = paths.input if source == "raw" else getattr(paths, _OUTPUT[source])
+    name = pipeline._STAGE_NAMES
+    assert (nxt, "progress", None,
+            f"{name[off]} disabled: the {name[nxt]} reads {src.name}") in events
+    disabled = (off, "skip", None, pipeline._disabled_notice(off))
+    assert (disabled in events) is listed
+
+
+@pytest.mark.parametrize("off", ["rings", "punch", "backfill"])
+def test_a_tuning_trial_passes_a_switched_off_stage_through(tmp_path, levels, off):
+    """A trial of the stage after one switched off reads what came before
+    that one, never the output its `inputs` name for it (a run with the
+    stage on left it in processed/)."""
+    inp = _seed_input(tmp_path)
+    pipeline.run_pipeline(inp, proc_dir=tmp_path)  # processed/: all on
+    paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path)
+    nxt, source = _NEXT[off]
+    before = pipeline.STAGES[:pipeline.STAGES.index(nxt)]
+    inputs = {s: getattr(paths, _OUTPUT[s]) for s in before}
+    levels.clear()
+    pipeline.run_pipeline(inp, _switched_off(off), proc_dir=tmp_path / "trial",
+                          stages=(nxt,), force=True, inputs=inputs)
+    assert levels == {nxt: _LEVEL[source]}
+
+
+@pytest.mark.parametrize("via_inputs", [False, True], ids=["proc_dir", "inputs"])
+@pytest.mark.parametrize("left_out", ["rings", "punch", "backfill"])
+def test_a_stage_left_out_hands_on_its_output_on_disk(tmp_path, levels, left_out,
+                                                      via_inputs):
+    """A stage switched on but left out of `stages` is a partial re-run, as
+    before: the stage after it reads its output on disk, or the one `inputs`
+    names (a tuning trial's) — the Pilot's single-stage re-runs and the
+    tuning's trials need it."""
+    inp = _seed_input(tmp_path)
+    pipeline.run_pipeline(inp, proc_dir=tmp_path)
+    nxt, _ = _NEXT[left_out]
+    kw: dict = {"proc_dir": tmp_path}
+    level = _LEVEL[left_out]
+    if via_inputs:
+        chain = pipeline.pipeline_paths(inp, proc_dir=tmp_path / "chain")
+        given = getattr(chain, _OUTPUT[left_out])
+        given.parent.mkdir()
+        nebula3d.save(_vol(fill=77), given)
+        kw = {"proc_dir": tmp_path / "trial", "inputs": {left_out: given}}
+        level = 77
+    levels.clear()
+    events: list[tuple] = []
+    pipeline.run_pipeline(inp, stages=(nxt,), force=True,
+                          progress=lambda *a: events.append(a), **kw)
+    assert levels == {nxt: level}
+    assert not any("disabled" in ev[3] for ev in events)
+
+
+@pytest.mark.parametrize("off, nxt, source, notice", [
+    (("rings", "punch"), "backfill", "raw",
+     "ring removal and Bragg punch disabled: the backfill reads sample.nxs"),
+    (("backfill", "flatten"), "pdf", "punch",
+     "backfill and flatten disabled: the ΔPDF transforms "
+     "sample_ringremoved_braggpunched.h5, with no background removed"),
+    (("rings", "punch", "backfill", "flatten"), "pdf", "raw",
+     "ring removal, Bragg punch, backfill and flatten disabled: the ΔPDF "
+     "transforms sample.nxs, with no background removed"),
+], ids=["rings+punch", "backfill+flatten", "all-four"])
+def test_stages_switched_off_together_pass_through_together(
+        tmp_path, levels, off, nxt, source, notice):
+    inp = _seed_input(tmp_path)
+    pipeline.run_pipeline(inp, proc_dir=tmp_path)
+    levels.clear()
+    events: list[tuple] = []
+    paths = pipeline.run_pipeline(inp, _switched_off(*off), proc_dir=tmp_path,
+                                  force=True, progress=lambda *a: events.append(a))
+    assert levels[nxt] == _LEVEL[source]
+    assert not set(off) & set(levels)
+    assert (nxt, "progress", None, notice) in events
+    logs = load_delta_pdf(paths.delta_pdf, read_data=False).logs
+    assert logs["source_file"] == paths.pdf_input.name
 
 
 def test_invalid_force_from_raises(tmp_path):
@@ -437,6 +645,31 @@ def test_flatten_records_its_settings_in_its_output(tmp_path):
     assert pipeline.read_flatten_settings(tmp_path / "missing.h5") is None
 
 
+@pytest.mark.parametrize(("r2", "printed"), [
+    (-2.2e-16, "R² 0.000"),  # a constant fit's 0, rounded below it
+    (0.0, "R² 0.000"),
+    (-4e-4, "R² 0.000"),     # rounds to zero: no sign either
+    (-0.25, "R² -0.250"),    # a fit worse than the mean keeps its sign
+    (0.9876, "R² 0.988"),
+])
+def test_the_flatten_summary_prints_a_zero_r2_without_a_sign(monkeypatch, r2, printed):
+    """The summary gives the fit's R² to three decimals, and one that rounds
+    to zero as 0.000, never -0.000. A constant fit's R² is 0 up to rounding,
+    of either sign: on the parity volume the browser printed -0.000 where the
+    native engine printed 0.000 (tests/test_native_browser_parity.py)."""
+    from nebula3d.preprocessing import RadialFlattenResult
+
+    vol = _vol()
+    fit = RadialFlattenResult(
+        volume=vol, q_grid=np.array([1.0]), bg_curve=np.array([0.5]),
+        raw_levels=np.array([0.5]), counts=np.array([10]), estimator="model",
+        model_coef=(0.5, 0.0), model_r2=r2)
+    monkeypatch.setattr(pipeline, "flatten_radial_background", lambda *a, **k: fit)
+    lines: list[str] = []
+    pipeline.flatten(vol, progress=lambda stage, status, frac, msg: lines.append(msg))
+    assert lines[-1] == f"flatten complete (const 0.5 + 0·F(Q)², {printed})"
+
+
 def test_real_pdf_stale_guard_skips_on_rerun(tmp_path):
     inp = tmp_path / "s.nxs"
     paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path)
@@ -503,3 +736,63 @@ def test_real_pdf_check_roundtrip_metrics(tmp_path):
     metrics = json.loads(paths.pdf_check_json.read_text())
     assert metrics["pearson_r"] > 0.999        # gaussian window → near-exact
     assert metrics["normalized_rms"] < 1e-2
+
+
+# ---------------------------------------------------------------------------
+# the flatten off after a run with it on: the ΔPDF's input (known answers)
+# ---------------------------------------------------------------------------
+def _demo_input(tmp_path):
+    from nebula3d.demo import demo_volume
+
+    inp = tmp_path / "raw" / "synthetic_demo.nxs"
+    inp.parent.mkdir()
+    nebula3d.save(demo_volume(25), inp)
+    return inp
+
+
+def _transforms(paths, source):
+    """The run's ΔPDF records *source* as its input and is, bit for bit, the
+    pipeline's transform of that volume; its saved check is that volume's."""
+    pdf = load_delta_pdf(paths.delta_pdf)
+    assert pdf.logs["source_file"] == source.name
+    direct = pipeline.delta_pdf(nebula3d.load(source), pipeline.DeltaPdfParams())
+    np.testing.assert_array_equal(pdf.data, direct.data)
+    check = json.loads(paths.pdf_check_json.read_text())
+    want = pipeline.pdf_consistency_check(nebula3d.load(source), direct,
+                                          pipeline.DeltaPdfParams())
+    for key in ("pearson_r", "normalized_rms", "n_voxels"):
+        assert check[key] == pytest.approx(want[key], rel=1e-12), key
+
+
+@pytest.mark.parametrize("earlier", [None, "resume", "force"])
+def test_the_flatten_off_transforms_the_runs_backfilled_volume(tmp_path, earlier):
+    """With the flatten off the ΔPDF is the backfilled volume's: from scratch
+    (as before the fix), and after a run with the flatten on, which leaves its
+    flattened volume on disk (resumed or forced: before the fix the second run
+    transformed that file, or kept the first run's ΔPDF as current)."""
+    inp = _demo_input(tmp_path)
+    proc = tmp_path / "processed"
+    if earlier is not None:
+        pipeline.run_pipeline(inp, proc_dir=proc)  # the flatten on
+    paths = pipeline.pipeline_paths(inp, proc_dir=proc, flatten_enabled=False)
+    left = paths.flattened.stat().st_mtime_ns if earlier is not None else None
+    events = []
+    pipeline.run_pipeline(inp, pipeline.PipelineParams(flatten_enabled=False),
+                          proc_dir=proc, force=earlier == "force",
+                          progress=lambda *a: events.append(a))
+
+    _transforms(paths, paths.backfilled)
+    assert ("pdf", "progress", None, _flatten_off_notice(paths)) in events
+    if earlier is None:
+        assert not paths.flattened.exists()
+    else:  # the earlier run's flattened volume is left as it was
+        assert paths.flattened.stat().st_mtime_ns == left
+
+
+def test_the_flatten_on_transforms_its_flattened_volume_as_before(tmp_path):
+    inp = _demo_input(tmp_path)
+    events = []
+    paths = pipeline.run_pipeline(inp, proc_dir=tmp_path / "processed",
+                                  progress=lambda *a: events.append(a))
+    _transforms(paths, paths.flattened)
+    assert not any("flatten disabled" in e[3] for e in events)

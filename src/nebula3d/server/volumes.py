@@ -191,9 +191,12 @@ _coverage_cache: dict[tuple[str, float], dict] = {}
 
 
 def volume_coverage(path: Path) -> dict:
-    """The share of voxels holding counts per |Q| shell, and where the counts
-    begin and end (:func:`nebula3d.analysis.coverage.q_coverage`), cached by
-    ``(path, mtime)``."""
+    """The share of voxels holding counts per |Q| shell, where the counts
+    begin and end, and where the shells stop being fully measured
+    (:func:`nebula3d.analysis.coverage.q_coverage`), cached by
+    ``(path, mtime)``.  Both adapters serve it: the server's
+    ``GET /api/volumes/{id}/coverage`` and the webbridge's
+    ``volume_coverage_json``."""
     from nebula3d.analysis.coverage import q_coverage
 
     key = (str(path), path.stat().st_mtime)
@@ -207,7 +210,8 @@ def volume_coverage(path: Path) -> dict:
         "counted": [round(float(x), 4) for x in c.counted],
         "q_min_edge": c.q_min_edge, "q_max_edge": c.q_max_edge,
         "full_q_min": c.full_q_min, "full_q_max": c.full_q_max,
-        "box_q": c.box_q, "box_corner_q": c.box_corner_q,
+        "measured_q_max": c.measured_q_max,
+        "box_q": c.box_q, "box_corner_q": c.box_corner_q, "q_step": c.q_step,
     }
     with _lock:
         _coverage_cache.clear()  # one volume's worth: they are small, but unbounded otherwise
