@@ -4,7 +4,8 @@
 // deltas: text in pieces, tool calls with their JSON arguments, a finish
 // reason, a usage chunk when asked for), or, to a request that reads the
 // reply whole (a tuning run's), comes back in one JSON body with its counts,
-// or fails as a server does.  A tuning run's model on the console's settings,
+// or fails as a server does; the same behind Ollama's own chat API
+// (scriptedOllama).  A tuning run's model on the console's settings,
 // content with the current settings.  And the app's tools answering from
 // recorded results, so the replay needs no backend.
 
@@ -121,6 +122,93 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
     overrun: () => overrun,
     sent: () => [...sent],
     log: () => log.map((r) => ({ ...r })),
+  };
+}
+
+// The same kind of script behind Ollama's own chat API, as the app talks to a
+// model at Ollama's port (provider/client.ts: isOllamaUrl, streamOllama): one
+// JSON object a line, text in pieces, each tool call whole with its arguments
+// as an object, and the counts on the last line; a reply read whole in one
+// object. It answers /api/show (a model that supports tools, with
+// `contextLength`) and /api/ps (none running), and anything else under its
+// root with a 404, so no request reaches an Ollama on this machine.
+export const SCRIPTED_OLLAMA_URL = "http://localhost:11434/v1";
+const OLLAMA_ROOT = SCRIPTED_OLLAMA_URL.replace(/\/v1$/, "");
+
+export interface ScriptedOllama extends Omit<ScriptedModel, "log"> {
+  paths: () => string[]; // every request's path, in order
+  offered: () => string[][]; // each chat request's tool names, as its body carried them
+}
+
+export function scriptedOllama(turns: ScriptTurn[], { contextLength = 65_536 }: { contextLength?: number } = {}): ScriptedOllama {
+  let next = 0;
+  let requests = 0;
+  let overrun = 0;
+  const sent: string[] = [];
+  const paths: string[] = [];
+  const offered: string[][] = [];
+  const encoder = new TextEncoder();
+  const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json" } });
+
+  const chat = (body: string): Response => {
+    requests += 1;
+    let request: { model?: string; stream?: boolean; messages?: { role: string; content: unknown }[]; tools?: { function?: { name?: string } }[] } = {};
+    try {
+      request = JSON.parse(body);
+    } catch {
+      // not JSON: an empty request
+    }
+    const last = [...(request.messages ?? [])].reverse().find((m) => m.role === "user");
+    sent.push(typeof last?.content === "string" ? last.content : JSON.stringify(last?.content ?? ""));
+    offered.push((request.tools ?? []).map((t) => String(t.function?.name ?? "")));
+    const turn = turns[next++];
+    if (!turn) overrun += 1;
+    if (turn?.fail) return json({ error: turn.fail.message }, turn.fail.status);
+    const text = turn ? (turn.text ?? "") : "";
+    const counts = { prompt_eval_count: Math.round(body.length / 4), eval_count: Math.round(text.length / 4) + 10 };
+    const message = (content: string, extra: object = {}) => ({ model: request.model, message: { role: "assistant", content, ...extra } });
+    if (request.stream === false) return json({ ...message(text), done: true, done_reason: "stop", ...counts });
+    const lines: unknown[] = (text.match(/[\s\S]{1,40}/g) ?? []).map((piece) => ({ ...message(piece), done: false }));
+    if (turn?.calls?.length) {
+      lines.push({ ...message("", { tool_calls: turn.calls.map((c) => ({ function: { name: c.name, arguments: c.args ?? {} } })) }), done: false });
+    }
+    lines.push({ ...message(""), done: true, done_reason: "stop", ...counts });
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const l of lines) controller.enqueue(encoder.encode(`${JSON.stringify(l)}\n`));
+          controller.close();
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/x-ndjson" } },
+    );
+  };
+
+  const respond = (path: string, body: string): Response => {
+    paths.push(path);
+    if (path === "/api/chat") return chat(body);
+    if (path === "/api/show") return json({ model_info: { "gemma4.context_length": contextLength }, capabilities: ["completion", "tools"] });
+    if (path === "/api/ps") return json({ models: [] });
+    return json({ error: `no ${path} here` }, 404);
+  };
+
+  return {
+    install: () => {
+      const real = globalThis.fetch;
+      globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.startsWith(OLLAMA_ROOT)) return Promise.resolve(respond(new URL(url).pathname, String(init?.body ?? "{}")));
+        return real(input, init);
+      }) as typeof fetch;
+      return () => {
+        globalThis.fetch = real;
+      };
+    },
+    requests: () => requests,
+    overrun: () => overrun,
+    sent: () => [...sent],
+    paths: () => [...paths],
+    offered: () => offered.map((names) => [...names]),
   };
 }
 
