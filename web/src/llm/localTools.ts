@@ -1,5 +1,5 @@
 // The tools a local model is offered for a question. Every request carries the
-// definitions of the tools it offers, and all 25 come to about 7k tokens, more
+// definitions of the tools it offers, and all 26 come to about 7k tokens, more
 // than half of the first request: a local model reads them on every request,
 // and the more it is offered, the more it picks the wrong one. So it gets the
 // reading tools every question needs, and the ones the question is about: each
@@ -38,7 +38,7 @@ const askedAbout = (question: string): AskedAbout[] => {
 const ASKS_TO_ACT =
   /(^|[.!?\n]\s*|\b(please|can you|could you|would you|go ahead and|then)\s+)(raise|lower|increase|decrease|set|change|use|switch|turn|enable|disable|apply|run|rerun|re-run|tune|try|update|make|redo)\b/i;
 
-/** Offered for every question: reading the dataset, the stages' verdicts, any cut, the log, the viewer. */
+/** Offered for every question: reading the dataset, the stages' verdicts, any cut, the log, the run's verdict, the viewer. */
 export const CORE_TOOLS = toolsWhere((f) => f.offeredFor === "always" && !f.actsOnPipeline && !f.askedFor);
 
 /** The tools to offer a local model for `question`, in their usual order. */

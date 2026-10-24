@@ -13,12 +13,15 @@ import {
   FINDING_SOURCES,
   isReviewFinding,
   isValidationFinding,
+  policyBlock,
   renderTranscript,
   sourceOf,
+  truncatedLine,
   type Finding,
   type ReviewFinding,
 } from "./findings";
-import { caseNamed, decisions, numberSources, type RunRecord } from "./validation";
+import { caseNamed, decisions, numberSources, recordedPolicy, type RunRecord } from "./validation";
+import { validationPolicy } from "./validationModels";
 import { BY_REF, loadReviewFindings, NUMBERED, REVIEW_FINDINGS_DIR, reviewFindingFiles } from "./reviewFindings";
 
 // *o* without the fields *keys*.
@@ -329,6 +332,48 @@ describe("the transcript", () => {
     const text = renderTranscript(rec);
     expect(text).toContain("[5000 characters; the record holds them all]");
     expect(text.length).toBeLessThan(4000);
+  });
+
+  it("gives the run policy in one short block, and reads a record made before it was kept", () => {
+    const lmStudio = recordedPolicy(validationPolicy({ baseUrl: "http://localhost:1234/v1", temperature: 0.2 }, 12));
+    const claude = recordedPolicy(validationPolicy({ baseUrl: "https://api.anthropic.com", temperature: null }, 12));
+    const ollama = recordedPolicy(validationPolicy({ baseUrl: "http://localhost:11434/v1", temperature: 0.2 }, 12));
+    expect(policyBlock(lmStudio)).toBe(
+      "Run policy: an OpenAI-compatible server on this machine; up to 12 rounds of tool calls; offered the tools its question needs; " +
+        "older results shortened past 24,000 tokens, the newest 3 whole; temperature 0.2; output cap 16,000 tokens, the tuning's 16,000 tokens; " +
+        "thinking not sent back; window as the server loaded it, a request refused with under 2,048 tokens left for the reply.",
+    );
+    expect(policyBlock(claude)).toBe(
+      "Run policy: Claude through Anthropic's SDK; up to 12 rounds of tool calls; offered every tool; no result shortened; " +
+        "temperature none sent; output cap 16,000 tokens, the tuning's 16,000 tokens; thinking sent back with each turn that called tools; window not checked.",
+    );
+    expect(policyBlock(ollama)).toContain("Ollama's own chat API on this machine;");
+    expect(policyBlock(ollama)).toContain("window sized for each request with 6,144 tokens for the reply.");
+    const text = renderTranscript(record({ run_policy: lmStudio }));
+    expect(text.split("\n")).toContain(policyBlock(lmStudio));
+    expect(text.indexOf("Run policy:")).toBeLessThan(text.indexOf("## Task"));
+    expect(renderTranscript(record())).toContain("Run policy: not recorded.");
+  });
+
+  it("says when a request was cut at the output limit, the loop's or the tuning's, and that the run is graded as it stands", () => {
+    const truncated = {
+      loop: 1,
+      tuning: 2,
+      requests: [
+        { request: 4, source: "loop" as const, transport: "openai-compatible" as const, reason: "length" },
+        { request: 1, source: "tuning" as const, transport: "openai-compatible" as const, reason: "length" },
+        { request: 3, source: "tuning" as const, transport: "openai-compatible" as const, reason: "length" },
+      ],
+    };
+    expect(truncatedLine(truncated)).toBe("the loop's request 4 (length); the tuning's requests 1 (length), 3 (length)");
+    const text = renderTranscript(record({ truncated }));
+    expect(text).toContain("**Cut at the output limit:** the loop's request 4 (length); the tuning's requests 1 (length), 3 (length). The run is graded as it stands.");
+    expect(text).toContain("- Requests cut at the output limit: 3 (the loop's request 4 (length); the tuning's requests 1 (length), 3 (length))");
+    // None cut: said so in the score; a record made before they were kept: not recorded.
+    const clean = renderTranscript(record({ truncated: { loop: 0, tuning: 0, requests: [] } }));
+    expect(clean).toContain("- Requests cut at the output limit: 0");
+    expect(clean).not.toContain("**Cut at the output limit:**");
+    expect(renderTranscript(record())).toContain("- Requests cut at the output limit: not recorded");
   });
 
   it("shows the scored outputs once they are scored", () => {

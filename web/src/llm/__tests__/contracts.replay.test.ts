@@ -54,6 +54,8 @@ const CALLS: Call[] = [
   ["compare_datasets", { kind: "reciprocal", plane: "hk0", value: 0 }],
   // A cut outside the data: each dataset's row is its error.
   ["compare_datasets", { kind: "reciprocal", plane: "hk0", value: 99 }],
+  // No check on this handle: the verdict before any (its words null).
+  ["run_verdict", {}],
   ["configure_settings", {}],
   ["show_in_viewer", { view: "cleanup", plane: "hk0", value: 0 }],
   ["show_in_viewer", { view: "dpdf", plane: "xy", value: 0 }],

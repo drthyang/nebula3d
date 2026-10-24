@@ -476,13 +476,15 @@ describe("tune_pipeline", () => {
       expect(app.llm).toBe(loadSettings());
       expect(app.llm).toMatchObject({ baseUrl: "http://console.invalid/v1", model: "console", temperature: 0.4 });
       expect(app).not.toHaveProperty("onUsage");
+      expect(app).not.toHaveProperty("maxTokens");
 
-      // A validation run (ToolContext.model): the run's model, and its counts to the run.
-      const model: RunModel = { settings: { baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.2 }, usage: vi.fn() };
+      // A validation run (ToolContext.model): the run's model, its output cap, and its counts to the run.
+      const model: RunModel = { settings: { baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.2 }, usage: vi.fn(), maxTokens: 16_000 };
       expect((await callTool({ ...ctx, model }, "tune_pipeline", { stages: ["pdf"] })).ok).toBe(true);
       const run = tuner.startTuning.mock.calls[1][0];
       expect(run.llm).toBe(model.settings);
       expect(run.onUsage).toBe(model.usage);
+      expect(run.maxTokens).toBe(16_000);
     } finally {
       saveSettings(before);
     }

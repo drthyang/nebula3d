@@ -427,6 +427,7 @@ const SAMPLES: Sample[] = [
     before: () => usePipelineStore.setState({ events: RUN_EVENTS, terminal: "done", running: false }),
   },
   { name: "compare_datasets", args: { kind: "reciprocal", plane: "hk0", value: 0 } },
+  { name: "run_verdict", args: {}, note: "before any check in this reply" },
   { name: "configure_settings", args: {} },
   {
     name: "update_settings",
