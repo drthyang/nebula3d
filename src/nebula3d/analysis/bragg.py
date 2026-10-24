@@ -40,7 +40,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from nebula3d.core import HKLVolume, q_bin_indices, q_magnitude_from_axes
-from nebula3d.modulation import Modulation, coordinate, h_planes, protected_mask
+from nebula3d.modulation import Modulation, h_planes, protected_mask
 from nebula3d.symmetry import GridSymmetry
 
 
@@ -2372,16 +2372,6 @@ class BraggRemover:
         if self.search_protect is not None:
             out = out | self.search_protect.mask(vol, self._grid_symmetry(vol), self.supercell)
         return out
-
-    @staticmethod
-    def _form_coordinate(vol: HKLVolume, form: NDArray[np.int64]) -> NDArray[np.float64]:
-        """``form·(H, K, L)`` on the grid, broadcastable to the volume's shape.
-
-        Only the axes the form uses take a dimension, so H alone is
-        ``h_axis[:, None, None]`` (:func:`nebula3d.modulation.coordinate`).
-        """
-        return coordinate(form, vol.h_axis[:, None, None], vol.k_axis[None, :, None],
-                          vol.l_axis[None, None, :])
 
     def _scale_factor(self, peak: float, ref: float) -> float:
         if not self.intensity_scale or not np.isfinite(peak) or ref <= 0:
