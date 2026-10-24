@@ -616,6 +616,18 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     ),
   }),
 
+  // The run's verdict as {{achieved}} gives it now (verdicts/, the achieved
+  // reader): its words, null before any check; each measured stage by its id.
+  run_verdict: obj({
+    verdict: maybeStr,
+    achieved: oneOf("met", "not met", "not judged"),
+    stages: rec(oneOf("meets its goal", "needs attention", "not judged")),
+    needs_attention: arr(str),
+    not_judged: arr(str),
+    not_measured: arr(str),
+    data_problems: arr(str),
+  }),
+
   // The Configure page's settings by name: a blank one reads "(default)".
   configure_settings: obj({ settings: rec(union(str, bool)) }),
 

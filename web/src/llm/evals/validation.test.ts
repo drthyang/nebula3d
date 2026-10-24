@@ -37,6 +37,7 @@ import {
   gradeRun,
   numberSources,
   PRE_68_RULE,
+  recordedPolicy,
   regradeRecord,
   regradeRun,
   stepOf,
@@ -48,9 +49,11 @@ import {
   WhyTracker,
   type Decision,
   type RunRecord,
+  type Truncations,
   type ValidationCase,
   type ValidationGrades,
 } from "./validation";
+import { validationPolicy } from "./validationModels";
 
 // No failure here shows a held-out case: a check that meets the test split names a
 // test case by its masked name (as pytest does, tests/conftest.py), states what is
@@ -784,6 +787,61 @@ describe("the record", () => {
     const old: RunRecord = { ...rec };
     delete old.unsafe_rule;
     expect(old.unsafe_rule).toBeUndefined();
+  });
+
+  it("keeps the run policy it ran under and the requests cut at the output limit, fields the schema takes as optional", () => {
+    const args = {
+      case: caseNamed("dev-ub")!,
+      arm: "B" as const,
+      run: 1,
+      dataset: dataset("v000001-B1", "v000001_B1"),
+      model: { key: "m", label: "m", provider: "p", model: "m", local: false },
+      evalRun: run("No fault found.", []),
+      why: [],
+      maxRounds: 12,
+      started: "2026-10-24T00:00:00Z",
+      costUsd: null,
+    };
+    const policy = validationPolicy({ baseUrl: "https://api.anthropic.com", temperature: null }, 12);
+    const truncated: Truncations = {
+      loop: 1,
+      tuning: 1,
+      requests: [
+        { request: 3, source: "loop", transport: "anthropic", reason: "max_tokens" },
+        { request: 2, source: "tuning", transport: "anthropic", reason: "max_tokens" },
+      ],
+    };
+    const back = JSON.parse(JSON.stringify(buildRecord({ ...args, policy, truncated }))) as RunRecord;
+    expect(back.run_policy).toEqual({
+      transport: "anthropic",
+      local: false,
+      max_rounds: 12,
+      tool_scoping: "all",
+      pruning: null,
+      temperature: null, // none was sent
+      output_cap: { loop: 16_000, tuning: 16_000 },
+      reasoning_replay: true,
+      window: { plan: "none", reply_reserve: null, min_reply: null },
+    });
+    expect(back.run_policy).toEqual(recordedPolicy(policy));
+    expect(recordedPolicy(validationPolicy({ baseUrl: "http://localhost:11434/v1", temperature: 0.2 }, 12))).toMatchObject({
+      transport: "ollama",
+      local: true,
+      tool_scoping: "question",
+      pruning: { soft_budget: 24_000, keep_full: 3 },
+      temperature: 0.2,
+      window: { plan: "sized", reply_reserve: 6144, min_reply: 2048 },
+    });
+    expect(back.truncated).toEqual(truncated);
+    // None given: recorded as unknown, not left out.
+    const none = JSON.parse(JSON.stringify(buildRecord(args))) as RunRecord;
+    expect([none.run_policy, none.truncated]).toEqual([null, null]);
+    // The schema is unchanged: the fields are optional, so records made before them stay valid.
+    expect(back.schema).toBe("nebula3d-validation-run/1");
+    const old: RunRecord = { ...back };
+    delete old.run_policy;
+    delete old.truncated;
+    expect([old.run_policy, old.truncated]).toEqual([undefined, undefined]);
   });
 });
 

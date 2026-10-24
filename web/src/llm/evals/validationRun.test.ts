@@ -19,7 +19,7 @@ import { observeTokens, resetTokenState, tokenCalibration } from "../provider/to
 import { useTuneStore } from "../tune/tuner";
 import { scriptedModel, SCRIPTED_URL } from "./scripted";
 import { costOf, modelNamed, SPEND_CAP_USD, SpendTracker } from "./validationModels";
-import { startFresh, TuningTokens } from "./validationRun";
+import { startFresh, TruncationTracker, TuningTokens } from "./validationRun";
 
 const tuner = vi.hoisted(() => ({ stopTuning: vi.fn() }));
 vi.mock("../tune/tuner", async (importOriginal) => ({ ...(await importOriginal<typeof import("../tune/tuner")>()), stopTuning: tuner.stopTuning }));
@@ -158,5 +158,27 @@ describe("a run's tuning tokens", () => {
     const unreported = new TuningTokens();
     unreported.report(null);
     expect(tracker.record({ case: "c", arm: "B", run: 2, usd: costOf(unreported.addTo(LOOP), price) }).estimated).toBe(true);
+  });
+});
+
+describe("a run's requests cut at the output limit", () => {
+  it("keeps the loop's as runAgent reports them, and the tuning's by each request's stop reason, numbered over the tuning's", () => {
+    const cut = new TruncationTracker("ollama");
+    expect(cut.toRecord()).toEqual({ loop: 0, tuning: 0, requests: [] });
+    cut.tuning({ input: 50, output: 5 }, "stop");
+    cut.loop({ request: 3, reason: "length" });
+    cut.tuning(null, null);
+    cut.tuning({ input: 50, output: 16_000 }, "length");
+    cut.tuning({ input: 50, output: 16_000 }, "max_tokens");
+    cut.tuning({ input: 50, output: 5 }, undefined);
+    expect(cut.toRecord()).toEqual({
+      loop: 1,
+      tuning: 2,
+      requests: [
+        { request: 3, source: "loop", transport: "ollama", reason: "length" },
+        { request: 3, source: "tuning", transport: "ollama", reason: "length" },
+        { request: 4, source: "tuning", transport: "ollama", reason: "max_tokens" },
+      ],
+    });
   });
 });

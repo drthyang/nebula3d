@@ -14,7 +14,7 @@
 // and a frozen clock. No model is loaded, no backend or API is called, and no
 // measured data is used.
 //
-// Tool results sampled: all 24 tools in CHAT_TOOLS. None skipped. Covered in part:
+// Tool results sampled: all 25 tools in CHAT_TOOLS. None skipped. Covered in part:
 // - read_skill: one skill's body; not a reference (those are docs/algorithms
 //   pages, read as written).
 // - run_pipeline, tune_pipeline: the runs are stubs; what is sampled is the
@@ -422,6 +422,7 @@ const SAMPLES: Sample[] = [
     before: () => usePipelineStore.setState({ events: RUN_EVENTS, terminal: "done", running: false }),
   },
   { name: "compare_datasets", args: { kind: "reciprocal", plane: "hk0", value: 0 } },
+  { name: "run_verdict", args: {}, note: "before any check in this reply" },
   { name: "configure_settings", args: {} },
   {
     name: "update_settings",
@@ -638,7 +639,8 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
         ].join("\n\n"),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/4-tool-results-arm-c.md`);
-  });
+    // Runs every sampled tool in both arms: about 1 s locally, past 5 s on a loaded CI runner.
+  }, 20_000);
 
   it("each sampled result keeps its tool's contract (tools/contracts.ts), in arm B and in arm C", async () => {
     const toolsC = toolsWithSkills(CHAT_TOOLS, false);

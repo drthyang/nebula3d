@@ -244,7 +244,9 @@ interface PostChatArgs {
   baseUrl: string;
   model: string;
   messages: ChatMessage[];
-  temperature: number;
+  // Null: none is sent (the run policy's, runPolicy.ts, for a model that
+  // takes no sampling parameters). Claude's transport sends none at all.
+  temperature?: number | null;
   stream: boolean;
   signal?: AbortSignal;
   apiKey?: string;
@@ -257,7 +259,21 @@ interface PostChatArgs {
   // Ollama: the context length to run the model with (options.num_ctx); sized
   // from the request when left out.
   numCtx?: number;
+  // The most tokens the reply may run to, as each server takes it (max_tokens;
+  // Ollama's options.num_predict). Left out, none is asked, and Claude's
+  // transport asks its own (anthropic.ts). The agent loop passes its run
+  // policy's (runPolicy.ts): in the app, Claude's own and none elsewhere; in a
+  // validation run, its cap (evals/validationModels.ts).
+  maxTokens?: number;
 }
+
+/**
+ * Whether a server's stop reason says the reply stopped at its output limit:
+ * Anthropic's "max_tokens", an OpenAI-style finish_reason "length", Ollama's
+ * done_reason "length". A validation run records each such request
+ * (validationRun.ts).
+ */
+export const stoppedAtLimit = (reason: string | null | undefined): boolean => reason === "max_tokens" || reason === "length";
 
 // A failed request as an error that carries its status and says what to do.
 const httpError = async (response: Response): Promise<HttpError> => {
@@ -278,9 +294,11 @@ const postChat = async ({
   tools,
   toolChoice,
   includeUsage,
+  maxTokens,
 }: PostChatArgs): Promise<Response> => {
-  const body: Record<string, unknown> = { model, messages, temperature, stream };
+  const body: Record<string, unknown> = { model, messages, ...(temperature != null ? { temperature } : {}), stream };
   if (stream && includeUsage) body.stream_options = { include_usage: true };
+  if (maxTokens != null) body.max_tokens = maxTokens;
   if (tools?.length) {
     body.tools = tools;
     if (toolChoice) body.tool_choice = toolChoice;
@@ -449,7 +467,11 @@ const postOllama = async (args: Omit<PostChatArgs, "stream">, stream: boolean): 
     model: args.model,
     messages: toOllamaMessages(args.messages),
     stream,
-    options: { temperature: args.temperature, ...(numCtx ? { num_ctx: numCtx } : {}) },
+    options: {
+      ...(args.temperature != null ? { temperature: args.temperature } : {}),
+      ...(numCtx ? { num_ctx: numCtx } : {}),
+      ...(args.maxTokens != null ? { num_predict: args.maxTokens } : {}),
+    },
   };
   // Ollama takes no tool_choice: a request that must answer goes without tools.
   if (args.tools?.length && args.toolChoice !== "none") body.tools = args.tools;
@@ -528,7 +550,7 @@ async function* streamOllama(args: Omit<PostChatArgs, "stream">): AsyncGenerator
     reader.cancel().catch(() => {});
   }
   if (calls.length) yield { toolCalls: calls };
-  if (doneReason === "length") yield { truncated: true };
+  if (doneReason === "length") yield { truncated: true, stopReason: doneReason };
   if (usage) yield { usage };
 }
 
@@ -543,6 +565,11 @@ export interface StreamDelta {
   // out of room (finish_reason "length": its context window or output limit),
   // so its last text or tool call may be cut off.
   truncated?: boolean;
+  // Emitted once, after the stream ends, when the model stopped at its output
+  // limit (stoppedAtLimit): the server's own stop reason, with `truncated` from
+  // an OpenAI-style server or Ollama, alone from Claude, whose transport keeps
+  // its own handling of a cut turn (anthropic.ts). A validation run records it.
+  stopReason?: string;
   // Emitted once, after the stream ends, when the server reported the
   // request's token counts (includeUsage).
   usage?: TokenUsage;
@@ -611,13 +638,14 @@ export async function* streamChat({
   toolChoice,
   includeUsage,
   numCtx,
+  maxTokens,
 }: Omit<PostChatArgs, "stream">): AsyncGenerator<StreamDelta> {
   if (isAnthropicUrl(baseUrl)) {
-    yield* streamAnthropic({ baseUrl, model, messages, apiKey, signal, tools, toolChoice, includeUsage });
+    yield* streamAnthropic({ baseUrl, model, messages, apiKey, signal, tools, toolChoice, includeUsage, maxTokens });
     return;
   }
   if (isOllamaUrl(baseUrl)) {
-    yield* streamOllama({ baseUrl, model, messages, temperature, signal, tools, toolChoice, numCtx });
+    yield* streamOllama({ baseUrl, model, messages, temperature, signal, tools, toolChoice, numCtx, maxTokens });
     return;
   }
   const response = await postChat({
@@ -631,6 +659,7 @@ export async function* streamChat({
     tools,
     toolChoice,
     includeUsage,
+    maxTokens,
   });
   if (!response.body) throw new Error("The server returned no response body to stream");
   const reader = response.body.getReader();
@@ -678,15 +707,17 @@ export async function* streamChat({
   }
   const toolCalls = assembler.calls();
   if (toolCalls.length) yield { toolCalls };
-  if (finish === "length") yield { truncated: true };
+  if (finish === "length") yield { truncated: true, stopReason: finish };
   if (usage) yield { usage };
 }
 
 // Called once for each request the server answered, an empty reply's too (its
 // tokens were spent), with the request's token counts, or null when the
-// server reported none: a validation run adds its tuning's counts to its own
+// server reported none, and the server's stop reason where it gave one
+// (stoppedAtLimit: cut at the output limit): a validation run adds its
+// tuning's counts to its own, and records a tuning request that was cut
 // (evals/validationRun.ts).
-export type UsageReport = (usage: TokenUsage | null) => void;
+export type UsageReport = (usage: TokenUsage | null, stopReason?: string | null) => void;
 
 // Non-streaming completion, used where the whole reply is parsed at once.
 export const completeChat = async ({
@@ -697,22 +728,29 @@ export const completeChat = async ({
   signal,
   apiKey,
   numCtx,
+  maxTokens,
   onUsage,
 }: Omit<PostChatArgs, "stream"> & { onUsage?: UsageReport }): Promise<string> => {
-  if (isAnthropicUrl(baseUrl)) return completeAnthropic({ baseUrl, model, messages, apiKey, signal, onUsage });
+  if (isAnthropicUrl(baseUrl)) return completeAnthropic({ baseUrl, model, messages, apiKey, signal, onUsage, maxTokens });
   if (isOllamaUrl(baseUrl)) {
-    const response = await postOllama({ baseUrl, model, messages, temperature, signal, numCtx }, false);
+    const response = await postOllama({ baseUrl, model, messages, temperature, signal, numCtx, maxTokens }, false);
     const payload = (await response.json()) as OllamaChunk;
     if (payload.error) throw streamedError(payload.error);
-    onUsage?.(typeof payload.prompt_eval_count === "number" ? { input: payload.prompt_eval_count, output: payload.eval_count ?? 0 } : null);
+    onUsage?.(
+      typeof payload.prompt_eval_count === "number" ? { input: payload.prompt_eval_count, output: payload.eval_count ?? 0 } : null,
+      payload.done_reason ?? null,
+    );
     if (typeof payload.message?.content !== "string") throw new Error("The model returned no message content");
     return payload.message.content;
   }
-  const response = await postChat({ baseUrl, model, messages, temperature, stream: false, signal, apiKey });
+  const response = await postChat({ baseUrl, model, messages, temperature, stream: false, signal, apiKey, maxTokens });
   const payload = await response.json();
   // A whole reply carries its token counts unasked (OpenAI, LM Studio).
   const usage = payload?.usage;
-  onUsage?.(usage && typeof usage.prompt_tokens === "number" ? { input: usage.prompt_tokens, output: usage.completion_tokens ?? 0 } : null);
+  onUsage?.(
+    usage && typeof usage.prompt_tokens === "number" ? { input: usage.prompt_tokens, output: usage.completion_tokens ?? 0 } : null,
+    payload?.choices?.[0]?.finish_reason ?? null,
+  );
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content !== "string") throw new Error("The model returned no message content");
   return content;

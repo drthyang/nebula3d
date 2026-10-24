@@ -15,7 +15,17 @@
 import { seen, type Readable } from "../readings";
 import { SAMPLE_FACT_REFUSED } from "../tune/catalog";
 import { offerChanges } from "./offers";
-import { findIn, numbersIn, stepOf, wasRefused, type Decision, type RunRecord, type ValidationCase } from "./validation";
+import {
+  findIn,
+  numbersIn,
+  stepOf,
+  wasRefused,
+  type Decision,
+  type RecordedRunPolicy,
+  type RunRecord,
+  type Truncations,
+  type ValidationCase,
+} from "./validation";
 
 export const FINDING_KINDS = ["bug", "missing-tool", "skill-gap", "orchestration", "science-error"] as const;
 export type FindingKind = (typeof FINDING_KINDS)[number];
@@ -278,6 +288,43 @@ export function candidateFindings(rec: RunRecord, c: ValidationCase): Validation
 const fence = (s: string): string => `\n\`\`\`\n${s.replace(/```/g, "'''")}\n\`\`\``;
 const RESULT_CHARS = 1200;
 
+const thousands = (x: number): string => x.toLocaleString("en-US");
+
+const TRANSPORT_NAMES: Record<RecordedRunPolicy["transport"], string> = {
+  anthropic: "Claude through Anthropic's SDK",
+  "openai-compatible": "an OpenAI-compatible server",
+  ollama: "Ollama's own chat API",
+};
+
+/** The run policy a run ran under (runPolicy.ts), in one short paragraph. */
+export function policyBlock(p: RecordedRunPolicy): string {
+  const cap = (x: number | null) => (x == null ? "none asked" : `${thousands(x)} tokens`);
+  const window =
+    p.window.plan === "sized"
+      ? `sized for each request with ${thousands(p.window.reply_reserve ?? 0)} tokens for the reply`
+      : p.window.plan === "loaded"
+        ? `as the server loaded it, a request refused with under ${thousands(p.window.min_reply ?? 0)} tokens left for the reply`
+        : "not checked";
+  return (
+    `Run policy: ${TRANSPORT_NAMES[p.transport]}${p.local ? " on this machine" : ""}; up to ${p.max_rounds} rounds of tool calls; ` +
+    `${p.tool_scoping === "question" ? "offered the tools its question needs" : "offered every tool"}; ` +
+    `${p.pruning ? `older results shortened past ${thousands(p.pruning.soft_budget)} tokens, the newest ${p.pruning.keep_full} whole` : "no result shortened"}; ` +
+    `temperature ${p.temperature ?? "none sent"}; output cap ${cap(p.output_cap.loop)}, the tuning's ${cap(p.output_cap.tuning)}; ` +
+    `thinking ${p.reasoning_replay ? "sent back with each turn that called tools" : "not sent back"}; window ${window}.`
+  );
+}
+
+/** The requests cut at the output limit, in words; null when none was. */
+export function truncatedLine(t: Truncations): string | null {
+  if (!t.requests.length) return null;
+  const which = (source: "loop" | "tuning") => {
+    const cut = t.requests.filter((r) => r.source === source);
+    const whose = source === "loop" ? "the loop's" : "the tuning's";
+    return cut.length ? `${whose} request${cut.length === 1 ? "" : "s"} ${cut.map((r) => `${r.request} (${r.reason})`).join(", ")}` : null;
+  };
+  return `${[which("loop"), which("tuning")].filter(Boolean).join("; ")}`;
+}
+
 /** A run as Markdown: the task, each step with its arguments, reason and result, the numbers and their sources, the conclusion and the scores. A review finding is on no run, so it is never listed. */
 export function renderTranscript(rec: RunRecord, given: readonly Finding[] = []): string {
   const findings = given.filter(isValidationFinding);
@@ -290,6 +337,9 @@ export function renderTranscript(rec: RunRecord, given: readonly Finding[] = [])
       (rec.usage?.tuning ? ` (the tuning's ${rec.usage.tuning.requests}: ${rec.usage.tuning.input} in, ${rec.usage.tuning.output} out)` : "") +
       (rec.cost_usd != null ? `, $${rec.cost_usd.toFixed(4)}` : "") +
       `. The model saw the dataset as ${rec.dataset}.`,
+    "",
+    // Read as not recorded from a record made before the policy was kept.
+    rec.run_policy ? policyBlock(rec.run_policy) : "Run policy: not recorded.",
     "",
     "## Task",
     "",
@@ -321,6 +371,9 @@ export function renderTranscript(rec: RunRecord, given: readonly Finding[] = [])
     }
   }
   lines.push("", "## Conclusion", "", rec.conclusion || "(none)", "");
+  // A reply cut at the output cap is graded as it stands, and said so.
+  const cut = rec.truncated ? truncatedLine(rec.truncated) : null;
+  if (cut) lines.push(`**Cut at the output limit:** ${cut}. The run is graded as it stands.`, "");
   if (rec.computed_verdict) lines.push(`**Verdict computed from the checks:** ${rec.computed_verdict.text}.`, "");
   if (rec.note) lines.push(`Note: ${rec.note}`, "");
   if (rec.error) lines.push(`Error: ${rec.error}`, "");
@@ -337,6 +390,10 @@ export function renderTranscript(rec: RunRecord, given: readonly Finding[] = [])
   // Read as none from a record made before the graders cross-checked their readings.
   const disputes = g.disputes ?? [];
   lines.push(`- Checks the graders' two readings dispute: ${disputes.length}`);
+  // Not recorded in a record made before the runs kept them.
+  lines.push(
+    `- Requests cut at the output limit: ${rec.truncated ? `${rec.truncated.requests.length}${cut ? ` (${cut})` : ""}` : "not recorded"}`,
+  );
   for (const x of [...g.detection, ...g.falseAlarms].filter((y) => !y.pass)) lines.push(`- Failed: ${x.check}: ${x.detail}`);
   for (const d of disputes) lines.push(`- Disputed: ${d.check}: the shared reader passed it (${d.reader}); the witness failed it (${d.witness})`);
   const crit = (rec.truth_score as { criteria?: Record<string, boolean> } | undefined)?.criteria;
