@@ -1,22 +1,65 @@
 // Flatten quality.  The flatten stage subtracts a smooth isotropic pedestal (a
 // constant plus, optionally, a magnetic form-factor term, fitted to the low
 // floor of each |Q| shell) so the diffuse sits on zero at every |Q|.  We
-// compare the per-shell floors (25th percentile) before and after: after a good
-// flatten they are near zero and the same at every |Q|.  A floor that still
-// rises or falls with |Q| means the pedestal model missed; a floor well below
-// zero means it over-subtracted.  Only the shells inside the flatten's own fit
-// range are judged (with the true |Q| known): the direct-beam core, punched and
-// smoothly filled, and the box corners beyond the coverage say nothing of the fit.
+// compare the per-shell floors (the run's floor percentile, the 25th by
+// default) before and after: after a good flatten they are near zero and the
+// same at every |Q|.  A floor that still rises or falls with |Q| means the
+// pedestal model missed; a floor well below zero means it over-subtracted.
+// Only the shells inside the flatten's own fit range are judged (with the true
+// |Q| known): the direct-beam core, punched and smoothly filled, and the box
+// corners beyond the coverage say nothing of the fit.  The range and the
+// percentile are the run's, as its output records them (flattenJudging).
 //
 // Whether a pedestal is left is judged on the outer half of the shells the
 // counts reach (judgedShells, below), not on every shell past the fit range's
 // start: docs/pilot-review.md, finding 8.
 
+import type { FlattenSettings } from "../../api/types";
 import type { GridSlice, RadiusFn } from "./sliceStats";
 import { median, radialFloorShells, robustStats, roundSig } from "./sliceStats";
 
 // The flatten's default fit range in |Q| (Å⁻¹), as nebula3d.pipeline.FlattenParams.fit_q_range.
 export const FLATTEN_FIT_Q: [number, number] = [0.8, 10.0];
+
+// The flatten's default floor percentile (0–100), as nebula3d.pipeline.FlattenParams.floor_percentile.
+export const FLATTEN_FLOOR_PERCENTILE = 25;
+
+/**
+ * What the flatten's floors are judged with: its fit range (Å⁻¹; null when
+ * the run fitted every shell with a level) and its floor percentile (0–100).
+ */
+export interface FlattenJudging {
+  fitQ: [number, number] | null;
+  percentile: number;
+  // Whether they are the run's own: false when its output records no
+  // settings, and the flatten's defaults stand in for them.
+  recorded: boolean;
+}
+
+/** Why a flatten is judged with the defaults: its output records no settings. */
+export const FLATTEN_UNRECORDED_NOTE = `the flattened file records no flatten settings (written before the flatten recorded them): judged with the flatten's defaults, ${FLATTEN_FIT_Q[0]}–${FLATTEN_FIT_Q[1]} Å⁻¹ and the ${FLATTEN_FLOOR_PERCENTILE}th percentile`;
+
+/**
+ * The fit range and floor percentile a run's flatten is judged with (plan
+ * 4.11): the ones it ran with, as its output records them
+ * (VolumeMeta.flatten_settings, nebula3d.pipeline.read_flatten_settings),
+ * each field it does not record, or records out of range, the flatten's
+ * default. The Configure page's settings are another source, and not the
+ * right one: they may have changed since the run, and only the file says
+ * what made it.
+ */
+export function flattenJudging(settings: FlattenSettings | null | undefined): FlattenJudging {
+  if (!settings || typeof settings !== "object") return { fitQ: FLATTEN_FIT_Q, percentile: FLATTEN_FLOOR_PERCENTILE, recorded: false };
+  const r = settings.fit_q_range;
+  const range =
+    Array.isArray(r) && r.length === 2 && r.every((x) => typeof x === "number" && Number.isFinite(x)) && r[0] < r[1] ? ([r[0], r[1]] as [number, number]) : null;
+  const p = settings.floor_percentile;
+  return {
+    fitQ: r === null ? null : (range ?? FLATTEN_FIT_Q),
+    percentile: typeof p === "number" && Number.isFinite(p) && p >= 0 && p <= 100 ? p : FLATTEN_FLOOR_PERCENTILE,
+    recorded: true,
+  };
+}
 
 export interface FlattenMetrics {
   // Median pedestal removed (before − after) as a share of the backfilled
@@ -136,19 +179,22 @@ const thirds = (all: number[]): [number, number, number] | null => {
   return out as [number, number, number];
 };
 
-// The floors of the shells inside `qRange` (all of them without one).
-const floorsIn = (grid: GridSlice, radius?: RadiusFn, qRange?: [number, number]): number[] => {
-  const { floors, centres } = radialFloorShells(grid, NBINS, radius);
+// The floors (at the `percentile`, 0–100) of the shells inside `qRange` (all of them without one).
+const floorsIn = (grid: GridSlice, radius: RadiusFn | undefined, qRange: [number, number] | undefined, percentile: number): number[] => {
+  const { floors, centres } = radialFloorShells(grid, NBINS, radius, percentile / 100);
   return qRange ? floors.filter((_f, i) => centres[i] >= qRange[0] && centres[i] <= qRange[1]) : floors;
 };
 
 // `before` = the backfilled slice, `after` = the flattened slice at the same cut;
-// `qRange` limits the judged shells when `radius` is the true |Q|.
+// `qRange` limits the judged shells when `radius` is the true |Q|, and
+// `percentile` (0–100) is each shell's floor: the run's fit range and floor
+// percentile (flattenJudging), else the flatten's defaults.
 export const flattenMetrics = (
   before: GridSlice | null,
   after: GridSlice | null,
   radius?: RadiusFn,
   qRange?: [number, number],
+  percentile: number = FLATTEN_FLOOR_PERCENTILE,
 ): FlattenMetrics => {
   const nulls: FlattenMetrics = {
     removed_fraction: null,
@@ -162,11 +208,11 @@ export const flattenMetrics = (
   };
   if (!after) return nulls;
   const afterStats = robustStats(after.data);
-  const floorsAfter = floorsIn(after, radius, qRange);
+  const floorsAfter = floorsIn(after, radius, qRange, percentile);
   const sigma = afterStats && afterStats.sigma > 0 ? afterStats.sigma : null;
   const finiteAfter = floorsAfter.filter(Number.isFinite);
   // The outer half of the shells the counts reach (judgedShells).
-  const shells = radialFloorShells(after, NBINS, radius);
+  const shells = radialFloorShells(after, NBINS, radius, percentile / 100);
   const judged = judgedShells(shells, qRange);
   const outward = judged.map((i) => shells.floors[i]);
   const trend = rankTrend(outward);
@@ -183,7 +229,7 @@ export const flattenMetrics = (
   };
   if (!before || before.data.length !== after.data.length) return out;
 
-  out.floor_before = thirds(floorsIn(before, radius, qRange));
+  out.floor_before = thirds(floorsIn(before, radius, qRange, percentile));
   const removed: number[] = [];
   const level: number[] = [];
   for (let i = 0; i < before.data.length; i++) {

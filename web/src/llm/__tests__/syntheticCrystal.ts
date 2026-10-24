@@ -14,6 +14,7 @@ import type {
   Dataset,
   DeltaPdfMeta,
   DpdfFeatures,
+  FlattenSettings,
   RingDiagnostics,
   RingIsotropy,
   Slice,
@@ -195,6 +196,20 @@ const MMM = [
   [1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1],
 ].map(([a, b, c]) => [[a, 0, 0], [0, b, 0], [0, 0, c]]);
 
+// What the default flatten records in its output (nebula3d.pipeline.FlattenParams).
+const FLATTEN_RECORD: FlattenSettings = {
+  estimator: "model",
+  fit_q_range: [0.8, 10],
+  floor_percentile: 25,
+  ion: null,
+  min_count: 20,
+  q2_term: false,
+  q_range: null,
+  q_step: 0.05,
+  smooth: 0.1,
+  snip_width: 0.3,
+};
+
 const volumeMeta = (id: string): VolumeMeta => ({
   id,
   stage: id.split(".")[1],
@@ -209,6 +224,8 @@ const volumeMeta = (id: string): VolumeMeta => ({
   symmetry: "mmm",
   symmetry_ops: MMM,
   sigma: "measured",
+  // The flattened stage records the settings its flatten ran with; no other stage does.
+  flatten_settings: id.endsWith(".flattened") ? FLATTEN_RECORD : null,
 });
 
 const dpdfMeta = (id: string): DeltaPdfMeta => ({

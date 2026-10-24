@@ -266,9 +266,11 @@ miss is a note.
     (resolution-limited fraction, measured widths, anisotropy).
   - `backfill.ts` — hole-rim seam magnitude (σ units), bright residual plugs, and
     a checkerboard-fraction that flags periodic interpolation artefacts.
-  - `flatten.ts` — the per-|Q|-shell floors (25th percentile) before and after
-    the flatten, in thirds of |Q|, the largest leftover floor in σ, and the
-    pedestal removed. Over every well-measured shell out to the coverage
+  - `flatten.ts` — the per-|Q|-shell floors before and after the flatten, in
+    thirds of |Q|, the largest leftover floor in σ, and the pedestal removed,
+    over the run's own fit range and at its own floor percentile (the 25th by
+    default), as the flattened file records them (`flatten_settings`). Over
+    every well-measured shell out to the coverage
     edge, `floor_trend` (the floors' rank correlation with |Q|) and
     `floor_span_fraction` (their range against the diffuse level) catch a
     pedestal the σ test hides beside strong diffuse structure.

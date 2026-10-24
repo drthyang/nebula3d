@@ -1299,6 +1299,26 @@ def test_volume_shell_floors(tmp_path, monkeypatch):
     assert client.get("/api/volumes/nope.flattened/shell-floors").status_code == 404
 
 
+def test_volume_meta_gives_the_settings_the_flatten_recorded(tmp_path, monkeypatch):
+    """The flattened stage's meta carries what made the file (the Pilot judges
+    the flatten over the run's own fit range and percentile with it); a stage
+    the flatten did not write carries none."""
+    from nebula3d.pipeline import FlattenParams
+
+    monkeypatch.delenv("NEBULA3D_LOW_MEMORY", raising=False)  # whatever ran before
+    run = FlattenParams(floor_percentile=20.0, fit_q_range=(1.0, 4.0))
+    write_flatten_stages(tmp_path, run)
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    flat = client.get(f"/api/volumes/{SLUG}.flattened/meta").json()
+    assert flat["flatten_settings"]["fit_q_range"] == [1.0, 4.0]
+    assert flat["flatten_settings"]["floor_percentile"] == 20.0
+    assert flat["flatten_settings"] == client.get(
+        f"/api/volumes/{SLUG}.flattened/shell-floors").json()["flatten"]
+    for stage in ("ringremoved", "backfilled"):
+        assert client.get(f"/api/volumes/{SLUG}.{stage}/meta").json()["flatten_settings"] is None
+
+
 def test_volume_shell_floors_take_the_runs_own_settings(tmp_path, monkeypatch):
     """A flattened stage is measured with the settings its flatten recorded,
     here the 20th percentile, so the input's floors are that flatten's own

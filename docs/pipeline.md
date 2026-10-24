@@ -486,7 +486,9 @@ multiphonon scattering with neutrons, Compton scattering with X-rays), whose
 leading term grows as Q²: that is what `Q2=1` (the Pilot's `flattenQ2`) takes.
 
 NEBULA Pilot judges it by one rule (`web/src/llm/metrics/flatten.ts`,
-provisional):
+provisional), with the run's own fit range and floor percentile, as the
+flattened file records them (`flatten_settings`, below; the flatten's
+defaults for a file that records none, which the Pilot's results say):
 
 1. **The shells judged** are the shells the counts reach, at least 0.95 of
    the shell's voxels measured and the centre at or past the fit range's
@@ -530,8 +532,12 @@ settings in its output (a `flatten_settings` attribute of the file's
 `nebula3d` group; `examples/run_pipeline.py`, the server and the browser all
 run it, the standalone `examples/flatten_background_3d.py` does not), so a
 run whose flatten took another percentile is measured with it, and the rule
-can start the judged shells at the run's own fit range
-(`flatten.fit_q_range`). On a synthetic volume with an isotropic Q²
+starts the judged shells at the run's own fit range
+(`flatten.fit_q_range`). The volume's meta carries the same record
+(`GET /api/volumes/{id}/meta`, `flatten_settings`), and the Pilot reads the
+planes' floors with it too: at the run's percentile, over its fit range.
+The Configure page's settings are not read for it: they may have changed
+since the run. On a synthetic volume with an isotropic Q²
 pedestal (a uniform diffuse, measured out to 6 Å⁻¹) the planes and the volume
 read the same pedestal: a trend of 1 on all, a span of 0.99 on each plane and
 0.94 on the volume, with the planes' floors within 0.03 of the volume's. The

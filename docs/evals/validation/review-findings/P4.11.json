@@ -1,0 +1,26 @@
+{
+ "source": "review",
+ "ref": "P4.11",
+ "at": "fd2a96a",
+ "kind": "bug",
+ "evidence": "The flatten was judged over its default fit range and floor percentile whatever the run took: buildPipelineContext passed FLATTEN_FIT_Q, 0.8–10 Å⁻¹ (web/src/llm/context/pipelineContext.ts:155, web/src/llm/metrics/flatten.ts:19), and radialFloorShells its default 25th percentile (web/src/llm/metrics/sliceStats.ts:180), for the chat's context and for assess_stage's and the tuning's three cuts (web/src/llm/tune/evaluate.ts:140). The flatten records the settings it ran with in its output since #37 (src/nebula3d/pipeline.py:379-407, flatten_settings); the Configure page's settings (web/src/state/pipelineStore.ts:107) are another source, and may have changed since the run.",
+ "proposed_fix": "Judge the flatten's floors over the fit range and at the floor percentile its run recorded in the flattened file, read from the volume's meta (flatten_settings), each field it does not record the flatten's default; a file that records none is judged with the defaults, and assess_stage and the chat's context say so. The Configure page is not read for it.",
+ "needs_user_approval": true,
+ "status": "implemented",
+ "commit": "a33d339",
+ "tests": [
+  "tests/test_server.py::test_volume_meta_gives_the_settings_the_flatten_recorded",
+  "tests/test_webbridge.py::test_hkl_meta_and_slice",
+  "web/src/llm/__tests__/metrics.test.ts (the flatten judged over the run's own range (4.11): a run fitted from 5.2 Å⁻¹, and one at the 10th percentile)",
+  "web/src/llm/__tests__/context.test.ts (judges the flatten over the run's recorded fit range and percentile, and says when the file records none (4.11))",
+  "web/src/llm/__tests__/loadContext.test.ts (judges the flatten with what its run recorded in the flattened file (4.11))",
+  "web/src/llm/__tests__/evaluate.test.ts (judges the flatten over the run's own fit range and percentile, read once from the flattened file (4.11))",
+  "web/src/llm/evals/devData/knownAnswers.replay.test.ts (dev-control: a run fitted to 5 Å⁻¹ is judged over its range after the page goes back to the default)"
+ ],
+ "note": "Approved by the manager on the user's delegation, 2026-10-19 (plan 4.11). Implemented in 626697c (the volume's meta returns flatten_settings) and a33d339 (the Pilot judges with it). The run's own record, not the page: what made the file on disk. A run with the default settings reads as before: the dev cases' flatten verdicts and numbers at n=81 and n=161, the verdict goldens and the tool results' snapshots are unchanged. The system prompt names the floor as the run's own percentile, the 25th by default (1-chat-*.md, 6-inference.md): +10 tokens, every token-budget value within 5 % of its pin. src/ changed (the meta): arm A on dev re-run, 32 of 32 entries identical, 5 of 8 cases pass, as recorded.",
+ "decision": {
+  "by": "the manager, on the user's delegation",
+  "on": "2026-10-19",
+  "option": "the run's own fit range and floor percentile, read from what made the file on disk"
+ }
+}

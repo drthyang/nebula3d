@@ -133,6 +133,11 @@ def test_hkl_meta_and_slice(ran_pipeline):
     assert meta["kind"] == "hkl"
     assert meta["shape"] == [25, 25, 25]
     assert "hk" in meta["planes"]
+    # What made the file: the flatten records its settings, no other stage does.
+    assert meta["flatten_settings"] is None
+    flat = json.loads(webbridge.volume_meta_json(f"{dataset_id}.flattened"))
+    assert flat["flatten_settings"]["fit_q_range"] == [0.8, 10.0]
+    assert flat["flatten_settings"]["floor_percentile"] == 25.0
 
     env = webbridge.volume_slice(vid, "hk", 0.0, False)
     header, data = _decode_envelope(bytes(env))

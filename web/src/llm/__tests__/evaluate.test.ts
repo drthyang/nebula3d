@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { loadPipelineContext } from "../context/loadContext";
+import { FLATTEN_UNRECORDED_NOTE } from "../metrics/flatten";
 import { evaluateStage, headline, outOfBounds } from "../tune/evaluate";
 import { judge } from "../verdicts";
 import { makeSlice } from "./helpers";
@@ -346,6 +347,41 @@ describe("evaluateStage", () => {
     expect(level.pedestal_left).toBe(false);
     expect(headline("flatten", level)).toMatch(/ · no pedestal$/);
     expect(headline("flatten", { max_after_floor_sigma: 0.8 })).toBe("floor ≤ 0.8σ · trend ≤ – · span ≤ –"); // not measured: not said
+  });
+
+  it("judges the flatten over the run's own fit range and percentile, read once from the flattened file (4.11)", async () => {
+    const withFlat: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, ...["backfilled", "flattened"].map((name) => ({ name, exists: true, kind: "hkl" as const, volume_id: `demo.${name}` }))],
+    };
+    const cell = { shape: [81, 81, 81], h_range: [-10, 10], k_range: [-10, 10], l_range: [-10, 10], lattice: { a: 4, b: 4, c: 4 } };
+    // The flatten fitted 18–30 Å⁻¹ only: below 18 Å⁻¹ the floors climb, by 1
+    // per Å⁻¹, to its level, which the default range (judged from half the
+    // outermost shell, 11.5 Å⁻¹ here) sees; from 18 Å⁻¹ out they are level.
+    const qOf = (x: number, y: number) => ((2 * Math.PI) / 4) * Math.hypot(x, y);
+    const lumpy = (x: number, y: number) => 0.2 * Math.cos(1.3 * x) * Math.cos(1.1 * y);
+    api.fetchSlice.mockImplementation(async (id: string) =>
+      makeSlice(81, 81, id.endsWith("backfilled") ? (x, y) => 4 + lumpy(x, y) : (x, y) => (qOf(x, y) < 18 ? qOf(x, y) - 18 : 0) + lumpy(x, y), { half: 10 }),
+    );
+    const metaWith = (settings: unknown) =>
+      api.fetchMeta.mockImplementation(async (id: string) => (id === "demo.flattened" ? { ...cell, flatten_settings: settings } : cell));
+    metaWith({ fit_q_range: [18, 30], floor_percentile: 25 });
+    const run = await evaluateStage("flatten", withFlat);
+    expect(api.fetchMeta.mock.calls.filter(([id]) => id === "demo.flattened")).toHaveLength(1); // once, for the three cuts
+    const planes = Object.values(run.per_plane as Record<string, { floor_judged_q: [number, number] }>);
+    expect(planes.length).toBe(3);
+    for (const p of planes) expect(p.floor_judged_q[0]).toBeGreaterThanOrEqual(18);
+    expect(run.pedestal_left).toBe(false);
+    expect(run).not.toHaveProperty("settings_note");
+    // The same file without the record: judged over the defaults, which see the climb, and said so.
+    metaWith(null);
+    const old = await evaluateStage("flatten", withFlat);
+    for (const p of Object.values(old.per_plane as Record<string, { floor_judged_q: [number, number] }>)) expect(p.floor_judged_q[0]).toBeLessThan(12);
+    expect(old.pedestal_left).toBe(true);
+    expect(old.settings_note).toBe(FLATTEN_UNRECORDED_NOTE);
+    // A backend that predates the record: the defaults, with nothing to say of the file.
+    api.fetchMeta.mockResolvedValue(cell);
+    expect(await evaluateStage("flatten", withFlat)).not.toHaveProperty("settings_note");
   });
 
   it("names the plane and |Q| of the worst ring residual in the headline", () => {
