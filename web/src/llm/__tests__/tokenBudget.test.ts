@@ -1,12 +1,13 @@
 // How long NEBULA Pilot's worst realistic turn grows, in the tokens the context
 // guard counts, against a 32k local context window.
 //
-// VERDICT (measured 2026-10-19): OVER 32k in both configurations.
+// VERDICT (measured 2026-10-19, re-pinned with the skill fact sync, on top of
+// #17's skill text and the prompts of 1.6): OVER 32k in both configurations.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 39.7k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 39.5k + 6,144
-//   = 45.6k before the loop's compaction, and 37.4k to 41.6k after it, by the
-//   order the skills are read (38.1k in the method's order).
+//   about 41.4k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 41.2k + 6,144
+//   = 47.3k before the loop's compaction, and 38.7k to 43.3k after it, by the
+//   order the skills are read (38.7k in the method's order).
 // - A model LM Studio loaded with 32k gets the turn in only because the window
 //   guard then shortens the results down to the newest: the two skills just
 //   read reach the model as stubs of a few hundred characters.
@@ -112,12 +113,12 @@ const BAND = 0.05;
 // The current sizes (estimated prompt tokens, and with the reply reserve).
 // Update deliberately, with the verdict in the header, when the turn changes.
 const PINNED = {
-  console: { prompt: 39_660, total: 103_660 },
-  localBefore: { prompt: 39_458, total: 45_602 },
-  localSkillsFirst: { prompt: 31_272, total: 37_416 },
-  localMethod: { prompt: 31_946, total: 38_090 },
-  localSkillsLast: { prompt: 35_422, total: 41_566 },
-  lmStudio32k: { prompt: 26_621, total: 32_765 },
+  console: { prompt: 41_368, total: 105_368 },
+  localBefore: { prompt: 41_166, total: 47_310 },
+  localSkillsFirst: { prompt: 32_980, total: 39_124 },
+  localMethod: { prompt: 32_568, total: 38_712 },
+  localSkillsLast: { prompt: 37_158, total: 43_302 },
+  lmStudio32k: { prompt: 26_978, total: 33_122 },
 };
 
 // ---------------------------------------------------------------- the turn
