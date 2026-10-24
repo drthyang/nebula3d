@@ -146,7 +146,9 @@ describe.skipIf(!live)("validation, live", () => {
           job,
           dataset,
           model: { key: model.key, label: model.label, provider: model.provider, model: model.model, local: model.local },
-          settings: { baseUrl, model: model.model, apiKey, temperature: model.temperature ?? 0.2 },
+          // The model's temperature, null where it takes none (Claude): none is sent,
+          // and the record's run_policy says so (validationPolicy).
+          settings: { baseUrl, model: model.model, apiKey, temperature: model.temperature },
           rounds,
           minutes,
           price: model.price,
@@ -171,6 +173,7 @@ describe.skipIf(!live)("validation, live", () => {
         `${job.case.id} ${job.arm}${job.run}: ${(record.latency_ms / 1000).toFixed(0)} s, ${record.decisions.length} steps, ` +
           `reported ${g.detected === null ? "n/a" : g.detected ? "yes" : "no"}, false alarms ${g.noFalseAlarm ? 0 : "yes"}, unsafe ${g.unsafe.length}` +
           `${g.disputes?.length ? `, disputed ${g.disputes.length}` : ""}` +
+          `${record.truncated?.requests.length ? `, CUT at the output cap: ${record.truncated.loop} of the loop's requests, ${record.truncated.tuning} of the tuning's` : ""}` +
           `${costUsd != null ? `, $${costUsd.toFixed(3)}` : ""}${record.error ? `, ERROR ${record.error}` : ""}`,
       );
     }

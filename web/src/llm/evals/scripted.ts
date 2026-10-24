@@ -17,6 +17,8 @@ export interface ScriptTurn {
   // The server fails the request instead, with this HTTP status and message
   // (one that cannot call tools: 400, "… does not support tools").
   fail?: { status: number; message: string };
+  // The reply stops at its output limit (finish_reason "length").
+  cut?: boolean;
 }
 
 export const SCRIPTED_URL = "http://scripted.invalid/v1";
@@ -26,6 +28,7 @@ export interface ScriptedRequest {
   model: string; // the model it named
   stream: boolean; // false: the reply read whole (a tuning run's request)
   usage: { input: number; output: number } | null; // the counts the reply reported; null: none
+  maxTokens: number | null; // the output cap it asked for (max_tokens); null: none
 }
 
 export interface ScriptedModel {
@@ -46,7 +49,13 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
 
   const respond = (body: string): Response => {
     requests += 1;
-    let request: { model?: string; stream?: boolean; stream_options?: { include_usage?: boolean }; messages?: { role: string; content: unknown }[] } = {};
+    let request: {
+      model?: string;
+      stream?: boolean;
+      stream_options?: { include_usage?: boolean };
+      max_tokens?: unknown;
+      messages?: { role: string; content: unknown }[];
+    } = {};
     try {
       request = JSON.parse(body);
       const last = [...(request.messages ?? [])].reverse().find((m) => m.role === "user");
@@ -54,7 +63,12 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
     } catch {
       sent.push("");
     }
-    const entry: ScriptedRequest = { model: String(request.model ?? ""), stream: request.stream !== false, usage: null };
+    const entry: ScriptedRequest = {
+      model: String(request.model ?? ""),
+      stream: request.stream !== false,
+      usage: null,
+      maxTokens: typeof request.max_tokens === "number" ? request.max_tokens : null,
+    };
     log.push(entry);
     const turn = turns[next++];
     if (!turn) overrun += 1;
@@ -71,7 +85,7 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
     // A reply read whole carries its counts unasked, as OpenAI's and LM Studio's do.
     if (!entry.stream) {
       entry.usage = { input: counts.prompt_tokens, output: counts.completion_tokens };
-      const reply = { choices: [{ message: { role: "assistant", content: text }, finish_reason: "stop" }], usage: counts };
+      const reply = { choices: [{ message: { role: "assistant", content: text }, finish_reason: turn?.cut ? "length" : "stop" }], usage: counts };
       return new Response(JSON.stringify(reply), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     const chunks: string[] = [];
@@ -88,7 +102,7 @@ export function scriptedModel(turns: ScriptTurn[]): ScriptedModel {
         ],
       }),
     );
-    push({ choices: [{ delta: {}, finish_reason: turn?.calls?.length ? "tool_calls" : "stop" }] });
+    push({ choices: [{ delta: {}, finish_reason: turn?.cut ? "length" : turn?.calls?.length ? "tool_calls" : "stop" }] });
     if (request.stream_options?.include_usage) {
       entry.usage = { input: counts.prompt_tokens, output: counts.completion_tokens };
       push({ choices: [], usage: counts });

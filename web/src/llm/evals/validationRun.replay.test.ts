@@ -14,15 +14,16 @@ import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
-import { TOOLS_UNSUPPORTED_NOTE, toolsKnownUnsupported } from "../agent";
+import { CUT_OFF_NOTE, TOOLS_UNSUPPORTED_NOTE, toolsKnownUnsupported } from "../agent";
 import { resetTokenState, tokenCalibration } from "../provider/tokens";
 import { loadSettings, saveSettings } from "../settings";
 import { callTool } from "../tools";
 import { useTuneStore } from "../tune/tuner";
 import { devCase, type DevCase } from "./devData";
+import { renderTranscript } from "./findings";
 import { scriptedModel, SCRIPTED_URL, type ScriptedRequest, type ScriptTurn } from "./scripted";
 import { caseNamed, type Arm, type Decision, type RunRecord } from "./validation";
-import { costOf, SPEND_CAP_USD, SpendTracker, type Price } from "./validationModels";
+import { costOf, SPEND_CAP_USD, SpendTracker, VALIDATION_MAX_TOKENS, type Price } from "./validationModels";
 import { runCase } from "./validationRun";
 
 const SETTINGS = { baseUrl: SCRIPTED_URL, model: "scripted", apiKey: "", temperature: 0 };
@@ -247,5 +248,37 @@ describe("a validation run's tuning", () => {
     tracker.record({ case: record.case, arm: record.arm, run: record.run, usd: record.cost_usd });
     expect(tracker.spent).toBeCloseTo(usd(loop) + usd(tuning), 12);
     expect(tracker.spent - costOf(loop, PRICE)!).toBeCloseTo(usd(tuning), 12);
+  }, 300_000);
+
+  it("asks for the validation's output cap on every request, the loop's and the tuning's, and records each cut at it", async () => {
+    const c = devCase("dev-control");
+    const { record, log, overrun } = await run(c, "C", [
+      { calls: [{ name: "tune_pipeline", args: { stages: ["pdf"], trials_per_stage: 2 } }] },
+      { text: JSON.stringify({ candidates: [{ changes: { pdfApod: "hann" }, why: "fewer ripples" }] }) },
+      // The pick stops at the cap, its JSON whole: the tuning reads it, and the record says it was cut.
+      { text: JSON.stringify({ best: 1, why: "the current settings" }), cut: true },
+      // The answer stops at the cap too.
+      { text: "Done, and then", cut: true },
+    ]);
+    expect(overrun).toBe(0);
+    expect(record.decisions.map((d) => [d.tool, d.status])).toEqual([["tune_pipeline", "done"]]);
+    expect(log.map((r) => [r.stream, r.maxTokens])).toEqual([
+      [true, VALIDATION_MAX_TOKENS],
+      [false, VALIDATION_MAX_TOKENS],
+      [false, VALIDATION_MAX_TOKENS],
+      [true, VALIDATION_MAX_TOKENS],
+    ]);
+    expect(record.truncated).toEqual({
+      loop: 1,
+      tuning: 1,
+      requests: [
+        { request: 2, source: "tuning", transport: "openai-compatible", reason: "length" },
+        { request: 2, source: "loop", transport: "openai-compatible", reason: "length" },
+      ],
+    });
+    expect(record.note).toBe(CUT_OFF_NOTE);
+    expect(record.run_policy).toMatchObject({ transport: "openai-compatible", max_rounds: 12, temperature: 0, output_cap: { loop: 16_000, tuning: 16_000 } });
+    const text = renderTranscript(record);
+    expect(text).toContain("**Cut at the output limit:** the loop's request 2 (length); the tuning's request 2 (length). The run is graded as it stands.");
   }, 300_000);
 });

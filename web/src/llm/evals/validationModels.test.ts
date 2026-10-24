@@ -3,8 +3,23 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { MAX_TOOL_ROUNDS } from "../agent";
 import { TOOLS_CONTEXT } from "../provider/client";
-import { costOf, modelAt, MODELS, modelNamed, paidRunGate, plan, RUN_POLICY, runContext, SPEND_CAP_USD, SpendTracker } from "./validationModels";
+import { RUN_POLICIES, runPolicyOf, transportOf } from "../runPolicy";
+import {
+  costOf,
+  modelAt,
+  MODELS,
+  modelNamed,
+  paidRunGate,
+  plan,
+  RUN_POLICY,
+  runContext,
+  SPEND_CAP_USD,
+  SpendTracker,
+  VALIDATION_MAX_TOKENS,
+  validationPolicy,
+} from "./validationModels";
 import { casesIn } from "./validation";
 
 // What LM Studio says a model is loaded with, and what Ollama says it supports;
@@ -319,5 +334,36 @@ describe("the spend tracker", () => {
     expect(back.entries).toEqual(t.entries);
     expect(SpendTracker.fromJSON(null, 12).spent).toBe(0);
     expect(() => new SpendTracker(0)).toThrow();
+  });
+});
+
+describe("the validation's run policy", () => {
+  it("caps every request at 16,000 tokens, the loop's and the tuning's, on every model, and takes the run's round limit", () => {
+    expect(VALIDATION_MAX_TOKENS).toBe(16_000);
+    for (const m of MODELS) {
+      const policy = validationPolicy({ baseUrl: m.baseUrl, temperature: m.temperature }, 12);
+      expect(policy.outputCap).toEqual({ loop: VALIDATION_MAX_TOKENS, tuning: VALIDATION_MAX_TOKENS });
+      expect(policy.maxRounds).toBe(12);
+    }
+    expect(validationPolicy({ baseUrl: modelNamed("ollama-gemma4-26b").baseUrl, temperature: 0.2 }, 5).maxRounds).toBe(5);
+  });
+
+  it("is the transport's policy as the app ships it, the cap aside: arm B is the Pilot as it ships", () => {
+    for (const m of MODELS) {
+      const shipped = runPolicyOf({ baseUrl: m.baseUrl, temperature: m.temperature });
+      const run = validationPolicy({ baseUrl: m.baseUrl, temperature: m.temperature }, MAX_TOOL_ROUNDS);
+      expect({ ...run, outputCap: shipped.outputCap }).toEqual(shipped);
+    }
+    expect(runPolicyOf(modelNamed("claude-sonnet-5-5"))).toEqual(RUN_POLICIES.claude);
+    expect(runPolicyOf(modelNamed("lmstudio-qwen3.8-27b"))).toEqual(RUN_POLICIES.lmStudio);
+    expect(runPolicyOf(modelNamed("ollama-gemma4-26b"))).toEqual(RUN_POLICIES.ollama);
+  });
+
+  it("sends each model's temperature where its transport takes one, and none to Claude, which takes no sampling parameters", () => {
+    for (const m of MODELS) {
+      // What the model's entry says is what is sent and recorded: null exactly where the transport drops it.
+      expect(validationPolicy({ baseUrl: m.baseUrl, temperature: m.temperature }, 12).temperature).toBe(m.temperature);
+      expect(m.temperature === null).toBe(transportOf(m.baseUrl) === "anthropic");
+    }
   });
 });

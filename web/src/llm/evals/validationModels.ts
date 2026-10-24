@@ -8,6 +8,8 @@
 
 import { isOllamaUrl, loadedContext, ollamaModel } from "../provider/client";
 import { isLocalUrl } from "../provider/presets";
+import { runPolicyOf, type RunPolicy } from "../runPolicy";
+import type { LlmSettings } from "../settings";
 import { casesToRun, datasetStem, type Arm, type RunContextWindow, type Split, type ValidationCase } from "./validation";
 
 export interface Price {
@@ -28,7 +30,7 @@ export interface ValidationModel {
   minContextTokens: number | null; // the least the run accepts (RUN_POLICY); null: a cloud model, not checked
   splits: readonly Split[]; // the splits it may run
   runsPerCase: number;
-  temperature: number | null; // null: the model takes no sampling parameters
+  temperature: number | null; // null: the model takes no sampling parameters, and none is sent (validationPolicy)
   apiKeyEnv: string | null; // the environment variable holding its key, never written out
   price: Price | null; // null: local, no cost
   spendCapUsd: number | null; // null: no cap, because nothing is paid
@@ -57,6 +59,31 @@ const OLLAMA = "http://localhost:11434/v1";
 export const RUN_POLICY = {
   minLocalContextTokens: 57_344,
 } as const;
+
+/**
+ * The output cap of every model request in a validation run: the agent loop's,
+ * in either arm, and its tuning's (tune_pipeline, which asks the run's model).
+ * One cap for every model and arm keeps the arms comparable, where the app's
+ * own caps differ by transport (Claude 64,000 for a reply and 16,000 for a
+ * tuning request, anthropic.ts; a local server none, runPolicy.ts). A reply
+ * cut at it is recorded and flagged, never graded silently (the record's
+ * `truncated`, validation.ts). The manager's decision, confirmed by the user,
+ * 2026-10-24 (plan 1.1).
+ */
+export const VALIDATION_MAX_TOKENS = 16_000;
+
+/**
+ * The policy a validation run runs under (runPolicy.ts): its transport's as
+ * the app ships it, arm B being the Pilot as it ships, with the run's round
+ * limit and the validation's output cap on every request, the loop's and the
+ * tuning's. The temperature is the model's (MODELS): null for Claude, whose
+ * transport sends none. The run's record keeps it (run_policy).
+ */
+export const validationPolicy = (settings: Pick<LlmSettings, "baseUrl" | "temperature">, rounds: number): RunPolicy => ({
+  ...runPolicyOf(settings),
+  maxRounds: rounds,
+  outputCap: { loop: VALIDATION_MAX_TOKENS, tuning: VALIDATION_MAX_TOKENS },
+});
 
 const MIN_CONTEXT = RUN_POLICY.minLocalContextTokens;
 const LOAD_IN_LM_STUDIO =

@@ -17,7 +17,7 @@ export interface Script {
   sent: Body[]; // each chat request's body, in order
   cut?: boolean; // the answer stops at the output limit
   tuningCut?: boolean; // a request read whole stops at the output limit
-  tool?: string; // the tool the first round calls (default describe_dataset)
+  tool?: string | null; // the tool the first round calls (default describe_dataset); null: it answers at once
 }
 
 export const CLAUDE_URL = "https://api.anthropic.com";
@@ -34,9 +34,11 @@ const sse = (...chunks: unknown[]): Response =>
   new Response(chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "Content-Type": "text/event-stream" } });
 const ndjson = (...lines: unknown[]): Response => new Response(lines.map((l) => `${JSON.stringify(l)}\n`).join(""));
 
+// The tool the first round calls, as the script says when the request comes.
+const toolOf = (script: Script): string | null => (script.tool === undefined ? "describe_dataset" : script.tool);
+
 /** LM Studio (loaded with a 64k context) and Ollama (a 128k model, none running), on this machine. */
 export function localServer(script: Script): void {
-  const tool = script.tool ?? "describe_dataset";
   const stop = (cut?: boolean) => (cut ? "length" : "stop");
   vi.stubGlobal(
     "fetch",
@@ -50,13 +52,14 @@ export function localServer(script: Script): void {
       const body = JSON.parse(String(init?.body)) as Body;
       script.sent.push(body);
       const round = roundOf(body);
+      const tool = toolOf(script);
       if (url.endsWith("/chat/completions")) {
         if (!body.stream) {
           return new Response(
             JSON.stringify({ choices: [{ message: { content: '{"best": 1}' }, finish_reason: stop(script.tuningCut) }], usage: { prompt_tokens: 50, completion_tokens: 5 } }),
           );
         }
-        if (round === 0) {
+        if (round === 0 && tool) {
           return sse(
             { choices: [{ delta: { reasoning_content: "Look first." } }] },
             { choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", type: "function", function: { name: tool, arguments: "{}" } }] } }] },
@@ -76,7 +79,7 @@ export function localServer(script: Script): void {
           JSON.stringify({ message: { content: '{"best": 1}' }, done: true, done_reason: stop(script.tuningCut), prompt_eval_count: 50, eval_count: 5 }),
         );
       }
-      if (round === 0) {
+      if (round === 0 && tool) {
         return ndjson(
           { message: { thinking: "Look first." } },
           { message: { tool_calls: [{ function: { name: tool, arguments: {} } }] } },
@@ -97,11 +100,11 @@ const fakeStream = (events: object[], message: object) => ({
 
 /** Claude through the test file's mock of Anthropic's SDK: each streamed turn's body, and each turn read whole. */
 export function claudeServer(sdk: { stream: Mock; create: Mock }, script: Script): void {
-  const tool = script.tool ?? "describe_dataset";
   const usage = { input_tokens: 900, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   sdk.stream.mockImplementation((body: Body) => {
     script.sent.push(structuredClone(body));
-    if (roundOf(body) === 0) {
+    const tool = toolOf(script);
+    if (roundOf(body) === 0 && tool) {
       const content = [
         { type: "thinking", thinking: "Look first.", signature: "sig" },
         { type: "tool_use", id: "tu1", name: tool, input: {} },
