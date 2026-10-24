@@ -2,7 +2,9 @@
 // every cleanup stage, one ΔPDF section, and the run's saved records — and folds
 // it in.  Every fetch is independent and failure-tolerant: a missing stage just
 // omits its metrics.  The opening context uses the default cuts; the assistant's
-// tools ask for any other.
+// tools ask for any other.  What the punch's search left alone comes from the
+// run itself, its punch record read as labels on the cut, never from the form:
+// the leftovers' marks are the run's.
 
 import {
   fetchBraggProfile,
@@ -10,10 +12,11 @@ import {
   fetchDpdfMeta,
   fetchDpdfSlice,
   fetchMeta,
+  fetchProtectedLabels,
   fetchSlice,
 } from "../../api/client";
 import type { Dataset, FlattenSettings } from "../../api/types";
-import { parseFractions, usePipelineStore } from "../../state/pipelineStore";
+import { usePipelineStore } from "../../state/pipelineStore";
 import { buildPipelineContext, type PipelineContext, type StageSlices } from "./pipelineContext";
 import { datasetName } from "../../api/datasetName";
 
@@ -21,14 +24,6 @@ import { datasetName } from "../../api/datasetName";
 const punchSupercell = (): [number, number, number] => {
   const s = usePipelineStore.getState();
   return [s.punchSupercellH, s.punchSupercellK, s.punchSupercellL].map((v) => Number(v) || 1) as [number, number, number];
-};
-
-// The off-lattice search's protected H planes as the Configure page has them
-// (blank = the backend's 1/3, 2/3 ± 0.08).
-const punchProtectedH = (): { fractions: number[]; halfWidth: number } => {
-  const s = usePipelineStore.getState();
-  const half = Number(s.punchProtectHalfWidth);
-  return { fractions: parseFractions(s.punchProtectH) ?? [1 / 3, 2 / 3], halfWidth: s.punchProtectHalfWidth && Number.isFinite(half) ? half : 0.08 };
 };
 
 export interface Cut {
@@ -120,7 +115,7 @@ export async function loadPipelineContext(
     return id && recip ? safe(fetchSlice(id, recip.plane, recip.value)) : Promise.resolve(null);
   };
 
-  const [raw, ringremoved, braggpunched, backfilled, flattened, dpdfSlice, braggProfile, consistencyCheck] =
+  const [raw, ringremoved, braggpunched, backfilled, flattened, dpdfSlice, braggProfile, consistencyCheck, protectedLabels] =
     await Promise.all([
       getRecip("raw"),
       getRecip("ringremoved"),
@@ -132,6 +127,8 @@ export async function loadPipelineContext(
       // The run's own back-FFT check, not the consistency viewer's recompute:
       // it is a file read, and it describes the ΔPDF the context reports on.
       records && dpdfVolId ? safe(fetchConsistencyCheck(dataset.id)) : Promise.resolve(null),
+      // What the run's search left alone, on the punched cut's own grid.
+      recip && stageVolumeId(dataset, "braggpunched") ? safe(fetchProtectedLabels(dataset.id, recip.plane, recip.value)) : Promise.resolve(null),
     ]);
 
   const slices: StageSlices = { raw, ringremoved, braggpunched, backfilled, flattened, dpdf: dpdfSlice };
@@ -146,7 +143,7 @@ export async function loadPipelineContext(
     consistency: consistencyCheck?.metrics ?? null,
     slices,
     supercell: punchSupercell(),
-    protectedH: punchProtectedH(),
+    protectedLabels,
     ...(allLeftovers ? { leftoverTopK: Infinity } : {}),
     flattenSettings: flatten.settings,
   });

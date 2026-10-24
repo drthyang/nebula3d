@@ -325,6 +325,12 @@ describe("a card states only what it judges", () => {
     expect(plain.caveats.filter((c) => c.startsWith("Ring removal: ") && c.includes("not confirmed at this grid"))).toEqual([]);
   });
 
+  it("names the sample's modulation among the sample facts, the user's", () => {
+    expect(buildReport(input()).caveats).toContain(
+      "Sample facts (the punch cell, the modulation, the magnetic ion and the |Q| band) are the user's: the agent changes them only when asked, and the tuning never does.",
+    );
+  });
+
   it("says why its goal is not judged on a grid too coarse for the ring check, as {{achieved}} does, not that the stage was not measured (G1)", () => {
     const r = buildReport(input({ measured: COARSE_RUN }));
     expect(r.achieved).toEqual({ met: null, text: "not judged: Ring removal (grid too coarse for the ring check)" });

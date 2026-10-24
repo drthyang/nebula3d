@@ -7,8 +7,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConsistencyCheck, Dataset, VolumeMeta } from "../../api/types";
 import { loadPipelineContext } from "../context/loadContext";
 import { qRadius } from "../context/pipelineContext";
+import { usePipelineStore } from "../../state/pipelineStore";
 import { flattenMetrics } from "../metrics/flatten";
-import { makeSlice } from "./helpers";
+import { labelsOn, makeSlice, onTheThirds } from "./helpers";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -16,6 +17,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchSlice: vi.fn(),
 }));
 vi.mock("../../api/client", () => api);
@@ -107,5 +109,25 @@ describe("loadPipelineContext", () => {
     api.fetchMeta.mockClear();
     await loadPipelineContext(flat, { recip: null });
     expect(api.fetchMeta).not.toHaveBeenCalledWith("demo.flattened");
+  });
+
+  it("reads what the run's search left alone at the cut, from the dataset's punch record, whatever the form holds (plan 4.15)", async () => {
+    const punched: Dataset = { ...dataset, stages: [...dataset.stages, { name: "braggpunched", exists: true, kind: "hkl", volume_id: "demo.braggpunched" }] };
+    const cell = { lattice: { a: 4, b: 4, c: 4 }, shape: [41, 41, 41] };
+    api.fetchMeta.mockResolvedValue(cell);
+    // A sharp peak at (1/3, 1/2) on the punched cut, 0.1 r.l.u. a voxel.
+    const cut = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.01 * (((ix * 7919 + iy * 104729) % 100) / 50 - 1) + 3 * Math.exp(-((ix - 23.33) ** 2 + (iy - 25) ** 2) / 1.5), { half: 2 });
+    api.fetchSlice.mockImplementation(async (id: string) => (id === "demo.braggpunched" ? cut : Promise.reject(new Error("404"))));
+    api.fetchProtectedLabels.mockResolvedValue(labelsOn(cut, (x) => (onTheThirds(x) ? 1 : 0)));
+    usePipelineStore.setState({ modulationK: "none" });
+    const { context } = await loadPipelineContext(punched, { recip: { plane: "hk0", value: 0 } });
+    expect(api.fetchProtectedLabels).toHaveBeenCalledWith("demo", "hk0", 0);
+    expect(context.bragg_punch?.leftover.n_on_protected).toBe(1);
+    expect(context.bragg_punch?.leftover.suspicious_peaks[0]).toMatchObject({ at_node: false, on_protected_plane: true });
+    usePipelineStore.setState({ modulationK: "" });
+    // Without a punched stage there is nothing to read.
+    api.fetchProtectedLabels.mockClear();
+    await loadPipelineContext(dataset);
+    expect(api.fetchProtectedLabels).not.toHaveBeenCalled();
   });
 });

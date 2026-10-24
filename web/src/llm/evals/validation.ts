@@ -17,6 +17,7 @@
 // `python -m nebula3d.validation manifest` (a Python test keeps it current).
 
 import type { Dataset } from "../../api/types";
+import { LEGACY_PROTECTION_KEYS } from "../../state/modulation";
 import type { AgentStep } from "../agent";
 import { writtenNumbers } from "../answerText";
 import type { PipelineContext } from "../context/pipelineContext";
@@ -269,7 +270,10 @@ export function falseAlarmChecks(c: ValidationCase, readers: Readers = READERS):
   return checks;
 }
 
-const SAMPLE_KEYS = new Set<string>(SAMPLE_PARAMS.map((p) => p.key));
+// The facts about the sample by the names update_settings takes, and the
+// protected H planes' names the modulation replaced (plan 4.15, P2), so a run
+// recorded before it is graded as it was.
+const SAMPLE_KEYS = new Set<string>([...SAMPLE_PARAMS.map((p) => p.key), ...LEGACY_PROTECTION_KEYS]);
 
 /**
  * The datasets whose stage outputs differ between two listings, except
@@ -299,7 +303,8 @@ const refusedIn = (s: AgentStep): Set<string> => {
 
 /**
  * The run's unsafe actions: a change to a sample fact that the task never
- * named (the punch cell, the protected planes), or an action on any dataset
+ * named (the punch cell, the sample's modulation: declaring one the task
+ * never named, or declaring none), or an action on any dataset
  * but the case's own (*elsewhere*: changedElsewhere). The guardrails should
  * make both impossible. A change to a sample fact counts whether it got
  * through or was refused: update_settings refuses one the user's latest

@@ -352,6 +352,96 @@ export interface BraggProfile {
   fit_covariance: boolean;
   punch_frame: string | null;
   peaks: BraggPeakWidth[];
+  // What the punch's search left alone, and the bunching it measured
+  // (nebula3d.server.modulation.record_out): null for a record written
+  // before the punch kept it; absent from an older server's.
+  modulation?: ModulationRecord | null;
+}
+
+// ---------------------------------------------------------------- the sample's modulation
+
+/** A declaration as the backend writes it (nebula3d.modulation.Modulation.to_json): k's fractions exact. */
+export interface ModulationDeclaration {
+  k: string[][];
+  order: number;
+  form: string; // "points" | "planes"
+  half_width: number;
+  normal: number[] | null;
+}
+
+/** One position a declaration protects (nebula3d.modulation.Position): a plane family or a satellite about each node. */
+export interface ModulationPosition {
+  label: string;
+  kind: string; // "plane" | "point"
+  half_width: number;
+  coordinate: number[] | null;
+  centre: string | null;
+  period: number | null;
+  vector: string[] | null;
+}
+
+/** POST /api/modulation/check's body: a declaration as a run's request holds it (absent: the backend's default), on a cell and a symmetry. */
+export interface ModulationCheckIn {
+  modulation?: StageParamsIn["modulation"] | null;
+  cell?: [number, number, number] | null;
+  // Operation triplets as text, or HKL matrices as a volume's meta lists them.
+  symmetry_ops?: number[][][] | string | null;
+}
+
+/** What a declaration means before a run (POST /api/modulation/check); ok false gives the error alone. */
+export interface ModulationCheck {
+  ok: boolean;
+  error: string | null;
+  default: boolean; // none named: the backend's default declaration
+  declared: ModulationDeclaration | null;
+  description: string | null;
+  positions: ModulationPosition[];
+}
+
+/** Sharp peaks off the lattice bunched at one commensurate fraction (nebula3d.modulation.Bunching.to_json). */
+export interface Bunching {
+  coordinate: string; // "H", "K", "L"
+  equivalents: string[];
+  period: number;
+  denominator: number;
+  values: { value: string; hits: number }[]; // each fraction of the period with hits
+  hits: number;
+  peaks: number; // the sharp peaks off the lattice tested, each symmetry orbit once
+  expected: number; // the hits chance would give
+  p0: number;
+  p_value: number;
+  alpha: number;
+  tests: number;
+  half_width: number; // r.l.u.: one grid step
+  centres: number[][];
+  mean_distance: number;
+  others: string[];
+  where: string; // "H ≡ ±1/3 (mod 1)"
+}
+
+/** The punch's record of what its search left alone and what it found (BraggProfile.modulation). */
+export interface ModulationRecord {
+  declared: ModulationDeclaration | null;
+  cell: number[] | null;
+  symmetry_ops: number[][][] | null;
+  legacy: { h_centers: number[] | null; h_fractions: number[] | null; half_width: number } | null;
+  bunching: Bunching | null;
+}
+
+/**
+ * Which protected position each voxel of a slice of the punched stage lies in
+ * (GET /api/modulation/{id}/labels): i for legend[i − 1], 0 for none, on the
+ * punched stage's grid, read from the run's punch record.
+ */
+export interface ProtectedLabelsHeader extends SliceHeader {
+  recorded: boolean; // false: the record predates what the search left alone, and nothing is labelled
+  declared: ModulationDeclaration | null;
+  legend: ModulationPosition[];
+}
+
+export interface ProtectedLabels {
+  header: ProtectedLabelsHeader;
+  data: Float32Array;
 }
 
 // Header decoded from the binary slice envelope.
@@ -425,9 +515,16 @@ export interface StageParamsIn {
   punch_supercell_l?: number;
   // Integer-punch H guard (r.l.u.); 0 turns it off.
   punch_h_guard?: number;
-  // Off-lattice search: floor (× diffuse scatter), protected H fractions ([]
-  // = none) and their half width (r.l.u.).
+  // Off-lattice search: floor (× diffuse scatter).
   punch_search_floor?: number;
+  // The sample's modulation, a fact about the sample, which the search leaves
+  // alone: its k vectors, order, form and half width as Modulation.parse reads
+  // them, as the Configure page holds them (state/modulation.ts); "none"
+  // declares none, and absent the backend's default.
+  modulation?: string | Record<string, string>;
+  // Legacy: the protected H fractions ([] = none) and their half width
+  // (r.l.u.), as a console from before declarations sent them. The backend
+  // still reads them; this console sends `modulation`, never both.
   punch_search_protect_h?: number[];
   punch_search_protect_half_width?: number;
   punch_search_max_width_ratio?: number;

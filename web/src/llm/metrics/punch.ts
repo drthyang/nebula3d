@@ -7,9 +7,11 @@
 // taken for peaks; spikes where the local scatter is far above the slice's
 // typical noise are counted apart.  With the cut known, each peak gets its HKL
 // and is classed at a lattice node (a missed Bragg peak) or off-lattice (a
-// satellite or a spurious peak, which the search punches unless its H plane is
-// protected).  The second summarises the fitted BraggProfile — measured widths,
-// how many peaks are resolution-limited, and how anisotropic they are.
+// satellite or a spurious peak, which the search punches unless the run left
+// its position alone: the sample's declared modulation, read from the run's
+// punch record as labels on the cut, never from the form).  The second
+// summarises the fitted BraggProfile — measured widths, how many peaks are
+// resolution-limited, and how anisotropic they are.
 
 import type { BraggProfile } from "../../api/types";
 import { reading, written } from "../inference";
@@ -26,7 +28,9 @@ export interface SuspiciousPeak {
   xy: [number, number]; // physical (x, y) coordinate in the slice plane (r.l.u.)
   hkl?: [number, number, number]; // with the cut known
   at_node?: boolean; // within NODE_TOL of a lattice node (of the punch supercell)
-  on_protected_plane?: boolean; // off-lattice, on an H plane the search leaves alone
+  // Off-lattice, in a position the run's search left alone (a plane or a
+  // satellite of the declared modulation, by the run's punch record).
+  on_protected_plane?: boolean;
   // Full width at half maximum above the local level, in voxels along the
   // slice's x and y; broad when either reaches BROAD_VOXELS.
   fwhm_voxels: [number, number];
@@ -154,7 +158,7 @@ export interface LeftoverScan {
   suspicious_peaks: SuspiciousPeak[];
   n_suspicious: number;
   // With the cut known: missed lattice peaks, and off-lattice ones — of which
-  // n_on_protected sit on the H planes the off-lattice search leaves alone.
+  // n_on_protected sit in the positions the run's search left alone.
   n_at_nodes?: number;
   n_off_nodes?: number;
   n_on_protected?: number;
@@ -173,31 +177,29 @@ export interface LeftoverScanOptions {
   topK?: number;
   toHkl?: (x: number, y: number) => [number, number, number];
   supercell?: [number, number, number]; // the volume's indexing cell, per axis
-  // The off-lattice search's protected planes: H fractions and their half width.
-  protectedH?: { fractions: number[]; halfWidth: number };
+  // What the run's search left alone, on this cut's grid: which protected
+  // position each voxel lies in, 0 for none (GET /api/modulation/{id}/labels,
+  // from the run's punch record). Without it no peak is marked; a grid that is
+  // not the cut's marks none either.
+  protectedLabels?: GridSlice | null;
 }
-
-// Whether H lies within halfWidth of one of the fractions, modulo 1.
-const onProtectedPlane = (h: number, { fractions, halfWidth }: { fractions: number[]; halfWidth: number }): boolean =>
-  fractions.some((f) => {
-    const d = Math.abs((((h - f) % 1) + 1) % 1);
-    return Math.min(d, 1 - d) <= halfWidth;
-  });
 
 // Scan the punched slice for peaks the punch missed; returns the strongest
 // `topK` with the counts.
 export const scanLeftoverPeaks = (
   grid: GridSlice,
-  { sigmaThreshold = 8, noisyFactor = 4, minNeighbours = 2, topK = 8, toHkl, supercell = [1, 1, 1], protectedH }: LeftoverScanOptions = {},
+  { sigmaThreshold = 8, noisyFactor = 4, minNeighbours = 2, topK = 8, toHkl, supercell = [1, 1, 1], protectedLabels }: LeftoverScanOptions = {},
 ): LeftoverScan => {
   const stats = robustStats(grid.data);
+  // A voxel the run left alone: its label, on the cut's own grid.
+  const labels = protectedLabels && protectedLabels.header.nx === grid.header.nx && protectedLabels.header.ny === grid.header.ny ? protectedLabels.data : null;
   const empty: LeftoverScan = {
     suspicious_peaks: [],
     n_suspicious: 0,
     n_skipped_noisy: 0,
     scan_sigma_threshold: sigmaThreshold,
     ...(toHkl ? { n_at_nodes: 0, n_off_nodes: 0 } : {}),
-    ...(toHkl && protectedH ? { n_on_protected: 0 } : {}),
+    ...(toHkl && labels ? { n_on_protected: 0 } : {}),
     ...(toHkl ? { n_broad_off_nodes: 0 } : {}),
   };
   if (!stats || stats.sigma <= 0) return empty;
@@ -242,7 +244,7 @@ export const scanLeftoverPeaks = (
         const hkl = toHkl(x, y);
         peak.hkl = hkl.map((c) => roundSig(c, 4)) as [number, number, number];
         peak.at_node = hkl.every((c, i) => Math.abs(c - supercell[i] * Math.round(c / supercell[i])) <= NODE_TOL);
-        if (protectedH && !peak.at_node) peak.on_protected_plane = onProtectedPlane(hkl[0], protectedH);
+        if (labels && !peak.at_node) peak.on_protected_plane = labels[iy * nx + ix] > 0;
       }
       found.push(peak);
     }
@@ -253,7 +255,7 @@ export const scanLeftoverPeaks = (
     suspicious_peaks: found.slice(0, topK),
     n_suspicious: found.length,
     ...(toHkl ? { n_at_nodes: atNodes, n_off_nodes: found.length - atNodes } : {}),
-    ...(toHkl && protectedH ? { n_on_protected: found.filter((p) => p.on_protected_plane).length } : {}),
+    ...(toHkl && labels ? { n_on_protected: found.filter((p) => p.on_protected_plane).length } : {}),
     ...(toHkl ? { n_broad_off_nodes: found.filter((p) => !p.at_node && p.broad).length } : {}),
     n_skipped_noisy: noisy,
     scan_sigma_threshold: sigmaThreshold,

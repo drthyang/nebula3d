@@ -48,6 +48,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
@@ -422,7 +423,7 @@ describe("arm C's refusal of a change to a fact about the sample", () => {
   it("names no skill, tool or stage, and holds no inference, for every fact, alone or beside another change", async () => {
     usePipelineStore.setState({ running: false });
     for (const p of SAMPLE_PARAMS) {
-      const value = p.kind === "fractions" ? "none" : p.min ?? 1;
+      const value = p.key === "modulation" ? { k: "1/3, 0, 0", form: "planes" } : 1;
       const alone = await callTool(armC, "update_settings", { changes: { [p.key]: value } }, { tools: offered });
       expect(alone.ok).toBe(false);
       expect(alone.text).toBe(`Error: ${sampleFactRefusal(p.key)}`);

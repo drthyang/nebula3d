@@ -20,7 +20,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { ORIGIN_EXCLUDED } from "../../components/dpdfLevels";
-import { parseFractions, STAGES } from "../../state/pipelineStore";
+import { FORMS, kVectors, MAX_ORDER, MODULATION_DEFAULTS } from "../../state/modulation";
+import { STAGES, usePipelineStore } from "../../state/pipelineStore";
 import { bridgeConfig, nodeModules } from "../evals/devData/bridgeWorker";
 import { GRID_TOO_COARSE, isTooCoarse } from "../metrics/coarse";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
@@ -28,7 +29,7 @@ import { FLATTEN_FIT_Q, FULL_SHELL } from "../metrics/flatten";
 import { percentile, radialFloorShells, type GridSlice } from "../metrics/sliceStats";
 import { FILL_BIAS_FLOOR, RIM, roomForRims } from "../metrics/texture";
 import { joinPath } from "../skills";
-import { SAMPLE_PARAMS, TUNE_PARAMS, TUNE_STAGES, type TuneParam } from "../tune/catalog";
+import { SAMPLE_PARAMS, TUNE_PARAMS, TUNE_STAGES, type SampleParam, type TuneParam } from "../tune/catalog";
 import { UB_TURNED, WORDS } from "../verdicts/rules";
 
 // ---------------------------------------------------------------- the TypeScript side
@@ -113,24 +114,21 @@ const BACKEND_DEFAULT: Record<string, string> = {
   pdfApod: "p.delta_pdf.apodization",
   pdfWindowShape: "p.delta_pdf.window_shape",
   pdfWindowSupport: "p.delta_pdf.window_support",
-  // The sample's facts: the H fractions to four places, as the package writes them.
-  // The package's protection is the sample's declared modulation (plan 4.15): by
-  // default the planes of k = (1/3, 0, 0), whose centres on H it protects.
-  punchProtectH: "sorted({b.centre for q in p.modulation.positions() for r in q.regions for b in r if b.form == (1, 0, 0)})",
-  punchProtectHalfWidth: "p.modulation.half_width",
+  // The sample's facts. The modulation's blank declaration is the backend's own
+  // (state/modulation.ts names none of it): its fields' defaults are pinned below.
   punchSupercellH: "p.punch.supercell[0]",
   punchSupercellK: "p.punch.supercell[1]",
   punchSupercellL: "p.punch.supercell[2]",
 };
 
-/** A catalog default as the Python expression above reads it. */
-const pageDefault = (param: TuneParam): unknown =>
-  param.kind === "fractions" ? parseFractions(String(param.defaultValue))!.map((f) => Math.round(f * 1e4) / 1e4) : param.defaultValue;
+/** A catalog default as the Python expression above reads it: a setting's, or a fact's as a blank form shows it. */
+const pageDefault = (param: TuneParam | SampleParam): unknown =>
+  "defaultValue" in param ? param.defaultValue : param.read(usePipelineStore.getInitialState());
 
 const SCRIPT = String.raw`
 import dataclasses, inspect, json, sys
 import numpy as np
-from nebula3d import pipeline
+from nebula3d import modulation, pipeline
 from nebula3d.analysis import bragg_fill_texture as ft, coverage, dpdf_features, ub_refine
 from nebula3d.analysis.delta_pdf import _prepare_forward, compute_delta_pdf
 from nebula3d.preprocessing import ring_isotropy
@@ -142,6 +140,12 @@ iso = ring_isotropy.IsotropyConfig()
 
 def default(fn, name):
     return inspect.signature(fn).parameters[name].default
+
+def reads_k(text):
+    try:
+        return modulation.Modulation.parse({"k": text}) is not None
+    except ValueError:
+        return False
 
 def too_coarse(reach, n):
     axis = np.linspace(-1.0, 1.0, n)
@@ -169,8 +173,35 @@ print(json.dumps({
     "stages": list(pipeline.STAGES),
     "tune_stages": list(tuning.TUNE_STAGES),
     "defaults": {k: eval(expr, {"p": p}) for k, expr in args["defaults"].items()},
+    "modulation": {
+        "defaults": {f.name: f.default for f in dataclasses.fields(modulation.Modulation) if f.name in ("order", "form", "half_width")},
+        "half_width": modulation.HALF_WIDTH,
+        "max_order": modulation.MAX_ORDER,
+        "forms": list(modulation.FORMS),
+        "reads_k": [reads_k(t) for t in args["k_texts"]],
+    },
 }))
 `;
+
+/** k as people write it, read by both sides (Modulation.parse; state/modulation.ts kVectors). */
+const K_TEXTS = [
+  "1/3, 0, 0",
+  "(1/3,0,0)",
+  "[0.2, 0, 1/2]",
+  "1/3 0 0; ⟨0 1/3 0⟩",
+  "−1/3, 0, 0",
+  "1e-1, 0, 0",
+  "0.3333, 0, 0",
+  "1/3,,0,0",
+  "thirds",
+  "1/3, 0",
+  "1/3, 0, 0, 0",
+  "1/0, 0, 0",
+  "0, 0, 0",
+  "0/3, 0, 0",
+  "1/3, 0, 0; 0, 0, 0",
+  "1/3, x, 0",
+];
 
 type Py = {
   support_tol: number;
@@ -190,6 +221,7 @@ type Py = {
   stages: string[];
   tune_stages: string[];
   defaults: Record<string, unknown>;
+  modulation: { defaults: Record<"order" | "form" | "half_width", unknown>; half_width: number; max_order: number; forms: string[]; reads_k: boolean[] };
 };
 
 let py: Py;
@@ -198,7 +230,7 @@ beforeAll(async () => {
   const node = await nodeModules();
   const { python, src } = bridgeConfig();
   const env = { ...node.env, PYTHONPATH: [src, node.env.PYTHONPATH].filter(Boolean).join(node.delimiter), MPLBACKEND: "Agg" };
-  const run = node.spawnSync(python, ["-c", SCRIPT, JSON.stringify({ room: ROOM_CASES, defaults: BACKEND_DEFAULT })], { env, encoding: "utf8" });
+  const run = node.spawnSync(python, ["-c", SCRIPT, JSON.stringify({ room: ROOM_CASES, defaults: BACKEND_DEFAULT, k_texts: K_TEXTS })], { env, encoding: "utf8" });
   if (run.error || run.status !== 0) throw new Error(`${python} could not read the package's limits: ${run.error?.message ?? run.stderr}`);
   py = JSON.parse(run.stdout) as Py;
 });
@@ -343,6 +375,21 @@ const PINS: Pin[] = [
     values: () => [[[...STAGES], [...TUNE_STAGES]], [py.stages, py.tune_stages]],
   },
   {
+    name: "a declared modulation's blank fields, its highest order and its forms",
+    ts: "MODULATION_DEFAULTS, MAX_ORDER and FORMS, state/modulation.ts (what the Pilot and the report show for a blank order, form or half width)",
+    py: "Modulation's field defaults, HALF_WIDTH, MAX_ORDER and FORMS, nebula3d.modulation",
+    values: () => [
+      [{ order: MODULATION_DEFAULTS.order, form: MODULATION_DEFAULTS.form, half_width: MODULATION_DEFAULTS.halfWidth }, MODULATION_DEFAULTS.halfWidth, MAX_ORDER, [...FORMS]],
+      [py.modulation.defaults, py.modulation.half_width, py.modulation.max_order, py.modulation.forms],
+    ],
+  },
+  {
+    name: "which k a declaration takes: the page and the Pilot refuse before a run what the backend would refuse",
+    ts: "kVectors, state/modulation.ts (the Pilot's update_settings and the request's syntax)",
+    py: "Modulation.parse, nebula3d.modulation",
+    values: () => [Object.fromEntries(K_TEXTS.map((t) => [t, kVectors(t) !== null])), Object.fromEntries(K_TEXTS.map((t, i) => [t, py.modulation.reads_k[i]]))],
+  },
+  {
     name: "each setting's default: what a blank field means",
     ts: "defaultValue, TUNE_PARAMS and SAMPLE_PARAMS, tune/catalog.ts",
     py: "PipelineParams(), nebula3d.pipeline (BACKEND_DEFAULT names each field)",
@@ -426,7 +473,9 @@ describe("the limits Python and TypeScript both hold", () => {
 
   it("every setting the catalog defaults is pinned or independent", () => {
     const keys = [...TUNE_PARAMS, ...SAMPLE_PARAMS].map((p) => p.key as string);
-    expect(keys.filter((k) => !(k in BACKEND_DEFAULT) && k !== "ringNFourier")).toEqual([]);
+    // ringNFourier is INDEPENDENT; the modulation's blank is the backend's own
+    // declaration, which the TypeScript never names (its fields' defaults are pinned above).
+    expect(keys.filter((k) => !(k in BACKEND_DEFAULT) && k !== "ringNFourier" && k !== "modulation")).toEqual([]);
     expect(Object.keys(BACKEND_DEFAULT).filter((k) => !keys.includes(k))).toEqual([]);
   });
 

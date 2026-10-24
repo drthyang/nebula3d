@@ -9,7 +9,7 @@ import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
 import { percentile, robustStats } from "../metrics/sliceStats";
 import { sectionSymmetry } from "../metrics/symmetry";
 import type { BraggProfile } from "../../api/types";
-import { makeSlice } from "./helpers";
+import { labelsOn, makeSlice, onTheThirds } from "./helpers";
 
 describe("sliceStats", () => {
   it("robustStats ignores NaN and reports median/negative fraction", () => {
@@ -368,18 +368,29 @@ describe("bragg punch metrics", () => {
     expect(scan.n_broad_off_nodes).toBe(1);
   });
 
-  it("tells off-lattice leftovers on the search's protected H planes from the rest", () => {
-    // (0.3, -1.5) lies on the H = 1/3 plane (± 0.08); (0.5, -1) does not.
+  it("tells off-lattice leftovers in the positions the run left alone from the rest, by the run's labels", () => {
+    // (0.3, -1.5) lies on the H = 1/3 plane (± 0.08) the run's record protects; (0.5, -1) does not.
     const sat = peakAt(23, 5, 2);
     const off = peakAt(25, 10, 2);
     const slice = makeSlice(41, 41, (_x, _y, ix, iy) => 1 + 0.02 * noise(ix, iy) + sat(ix, iy) + off(ix, iy), { half: 2 });
-    const scan = scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], protectedH: { fractions: [1 / 3, 2 / 3], halfWidth: 0.08 } });
+    const thirds = labelsOn(slice, (x) => (onTheThirds(x) ? 1 : 0));
+    const scan = scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], protectedLabels: thirds });
     expect(scan.n_off_nodes).toBe(2);
     expect(scan.n_on_protected).toBe(1);
     const onPlane = Object.fromEntries(scan.suspicious_peaks.map((p) => [String(p.on_protected_plane), p.hkl![0]]));
     expect(onPlane).toEqual({ true: 0.3, false: 0.5 });
+    // A satellite as a point: only its own voxels are labelled, whatever its H.
+    const point = labelsOn(slice, (x, y) => (Math.abs(x - 0.5) < 0.05 && Math.abs(y + 1) < 0.05 ? 1 : 0));
+    const marked = scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], protectedLabels: point });
+    expect(Object.fromEntries(marked.suspicious_peaks.map((p) => [String(p.on_protected_plane), p.hkl![0]]))).toEqual({ true: 0.5, false: 0.3 });
     // Nothing protected: none of them is.
-    expect(scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], protectedH: { fractions: [], halfWidth: 0.08 } }).n_on_protected).toBe(0);
+    expect(scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], protectedLabels: labelsOn(slice, () => 0) }).n_on_protected).toBe(0);
+    // No labels, or labels on another grid: nothing is marked, and nothing counted.
+    for (const labels of [undefined, null, labelsOn(makeSlice(21, 21, () => 0, { half: 2 }), () => 1)]) {
+      const none = scanLeftoverPeaks(slice, { toHkl: (x, y) => [x, y, 0], protectedLabels: labels });
+      expect(none).not.toHaveProperty("n_on_protected");
+      expect(none.suspicious_peaks.every((p) => p.on_protected_plane === undefined)).toBe(true);
+    }
   });
 
   it("finds nothing on a punched (NaN-holed) smooth field", () => {

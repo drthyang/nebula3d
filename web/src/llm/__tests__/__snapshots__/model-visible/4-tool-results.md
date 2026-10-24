@@ -1265,7 +1265,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## configure_settings {}
 
-1443 characters sent.
+1404 characters sent.
 
 ```json
 {
@@ -1298,8 +1298,7 @@ References of this skill (read one with read_skill and `reference`):
     "punchSupercellL": "(default)",
     "punchHGuard": "(default)",
     "punchSearchFloor": "(default)",
-    "punchProtectH": "(default)",
-    "punchProtectHalfWidth": "(default)",
+    "modulation": "(default)",
     "punchSearchMaxWidth": "(default)",
     "punchFrame": "spherical",
     "punchRho": "(default)",

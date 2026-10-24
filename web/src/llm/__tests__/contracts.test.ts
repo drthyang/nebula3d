@@ -45,6 +45,7 @@ const api = vi.hoisted(() => ({
   fetchDpdfMeta: vi.fn(),
   fetchDpdfSlice: vi.fn(),
   fetchMeta: vi.fn(),
+  fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
@@ -243,6 +244,16 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
     expect(result.changed).toEqual([{ setting: "ringNFourier", from: 8, to: 6, note: "no effect with the current model" }]);
     const none = await run("update_settings", { changes: { ringNFourier: 6 } });
     expect([none.changed, none.rerun_from]).toEqual([[], null]);
+  });
+
+  it("configure_settings and update_settings: the sample's modulation, declared, as one setting", async () => {
+    usePipelineStore.setState({ modulationK: "1/3, 0, 0", modulationForm: "planes" });
+    const settings = (await run("configure_settings")).settings as Record<string, unknown>;
+    expect(settings.modulation).toBe("k = (1/3, 0, 0), order 1, planes, ± 0.08 r.l.u.");
+    const r: ToolRun = await callTool({ dataset: DATASET, datasets: DATASETS, userMessage: "Declare no modulation." }, "update_settings", { changes: { modulation: "none" } });
+    const result = JSON.parse(r.text) as Record<string, unknown>;
+    expect(contractDisagreements("update_settings", result)).toEqual([]);
+    expect(result.changed).toEqual([{ setting: "modulation", from: "k = (1/3, 0, 0), order 1, planes, ± 0.08 r.l.u.", to: "none" }]);
   });
 
   it("run_log: one stage's lines", async () => {

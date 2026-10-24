@@ -158,6 +158,7 @@ const CRITERIA = WORDS.criterion;
  */
 const ringNotice = (m: Obj | null | undefined): string | null => (typeof m?.notice === "string" && m.notice ? m.notice : null);
 
+
 function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefined, criterion?: string): ReportCheck | null {
   if (verdict === undefined) return null;
   const m = measured ?? {};
@@ -380,7 +381,7 @@ export function buildReport(input: ReportInput): Report {
     const chosen = t.trials.find((x) => x.chosen);
     if (chosen && chosen.n !== 1) caveats.push(`Tuning, ${SETTING_STAGE_LABELS[t.stage] ?? t.stage}: the model's proposal ${chosen.changes} replaced your settings; review it before relying on it.`);
   }
-  caveats.push("Sample facts (the punch cell, protected planes, magnetic ion and |Q| band) are the user's: the agent changes them only when asked, and the tuning never does.");
+  caveats.push("Sample facts (the punch cell, the modulation, the magnetic ion and the |Q| band) are the user's: the agent changes them only when asked, and the tuning never does.");
   caveats.push("The tables and figures are measured by nebula3d's deterministic metrics; the summary is written by the model and may be wrong where it departs from them.");
 
   return {
