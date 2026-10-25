@@ -827,6 +827,37 @@ There:
 
 The live runs wait for the user's go or no-go.
 
+### Live results (2026-10-24)
+
+The user approved the live runs after the freeze, then **paused the benchmark
+the same day** so the agent's tools can be improved first. **The test split is
+sealed: no model has run it.** It is saved for the improved agent.
+
+The runs that took place are dev-split baselines, from the frozen commit, arm
+B, one run per case (records and counts in
+[evals/validation/live-2026-10-24.md](evals/validation/live-2026-10-24.md)):
+
+- **gemma4:26b (Ollama): 1 of 8 dev cases pass, against arm A's 5 of 8.**
+  - Its pipeline outputs met every criterion in every run; its answers did
+    not. It reported the fault in 1 of the 6 cases that have one, with false
+    alarms in 3 runs and no unsafe action.
+  - It answered after a few checks, about a minute a run. It never called
+    `grain_check`, `radial_profile`, `consistency_details` or
+    `dpdf_contrast`, and called `symmetry_check` and `texture_check` once
+    each in 8 runs.
+  - One run used up its 12 rounds before measuring the repair it had made,
+    and its answer is empty.
+  - Ollama loaded a context of 32,768 tokens, sized to each request; no
+    request was cut.
+- **qwen/qwen3.8-27b (LM Studio, 65,536): incomplete, dropped by the user.**
+  - It ran 3 of the 8 dev cases. At the default 40-minute limit its first
+    run timed out, so the local models' limit became 90 minutes.
+  - At 90 minutes, its final answer was cut at the 16,000-token output cap
+    in 2 of 3 runs, because its thinking fills the cap.
+
+What these runs show about the tools is in
+[agent-tools-audit-2026-10-24.md](agent-tools-audit-2026-10-24.md).
+
 ### Arm A: the default pipeline, no agent
 
 Run on both splits, three runs per case, at 161 grid points per axis (every node on
