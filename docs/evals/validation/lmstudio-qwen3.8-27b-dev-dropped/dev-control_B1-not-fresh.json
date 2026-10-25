@@ -1,0 +1,888 @@
+{
+ "schema": "nebula3d-validation/1",
+ "model": {
+  "key": "lmstudio-qwen3.8-27b",
+  "label": "qwen/qwen3.8-27b (LM Studio, 56k)",
+  "provider": "LM Studio",
+  "model": "qwen/qwen3.8-27b",
+  "local": true,
+  "context_tokens": 57344,
+  "min_context_tokens": 57344
+ },
+ "split": "dev",
+ "arms": [
+  "B"
+ ],
+ "runs_per_case": 1,
+ "max_rounds": 12,
+ "timeout_minutes": 90,
+ "started": "2026-10-24T21:36:21.788Z",
+ "complete": true,
+ "backend": "http://127.0.0.1:8010",
+ "spend": null,
+ "runs": [
+  {
+   "schema": "nebula3d-validation-run/1",
+   "case": "dev-control",
+   "family": "control",
+   "split": "dev",
+   "arm": "B",
+   "run": 1,
+   "dataset": "va21fc1-B1",
+   "stem": "va21fc1_B1",
+   "model": {
+    "key": "lmstudio-qwen3.8-27b",
+    "label": "qwen/qwen3.8-27b (LM Studio, 56k)",
+    "provider": "LM Studio",
+    "model": "qwen/qwen3.8-27b",
+    "local": true
+   },
+   "task": "This is a new single-crystal diffuse-scattering volume. Take it to a 3D-ΔPDF you would trust for analysis. Run the pipeline, check every stage and the data themselves (the orientation, the coverage, powder rings, the background), fix what the settings you may change can fix and run again, and report any problem with the data that the settings cannot fix. End with: the problems you found (or that you found none), what you changed and why, and the strongest pair correlations in the 3D-ΔPDF with their vectors and signs.",
+   "max_rounds": 12,
+   "context_window": {
+    "tokens": 65536,
+    "min_tokens": 57344,
+    "read_from": "lmstudio-loaded"
+   },
+   "tokens_at_start": {
+    "scale": null,
+    "ollama_num_ctx": null
+   },
+   "run_policy": {
+    "transport": "openai-compatible",
+    "local": true,
+    "max_rounds": 12,
+    "tool_scoping": "question",
+    "pruning": {
+     "soft_budget": 24000,
+     "keep_full": 3
+    },
+    "temperature": 0.2,
+    "output_cap": {
+     "loop": 16000,
+     "tuning": 16000
+    },
+    "reasoning_replay": false,
+    "window": {
+     "plan": "loaded",
+     "reply_reserve": null,
+     "min_reply": 2048
+    }
+   },
+   "started": "2026-10-24T21:36:21.970Z",
+   "latency_ms": 3145236,
+   "usage": {
+    "input": 112585,
+    "output": 46780,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "requests": 7
+   },
+   "cost_usd": null,
+   "tool_offers": [
+    {
+     "request": 1,
+     "tools": [
+      "read_skill",
+      "describe_dataset",
+      "current_view",
+      "measure_reciprocal_cut",
+      "measure_dpdf_cut",
+      "assess_stage",
+      "texture_check",
+      "qmax_coverage",
+      "symmetry_check",
+      "dpdf_contrast",
+      "dpdf_peaks",
+      "grain_check",
+      "ub_check",
+      "radial_profile",
+      "line_profile",
+      "bragg_peaks",
+      "consistency_details",
+      "run_log",
+      "run_verdict",
+      "configure_settings",
+      "update_settings",
+      "run_pipeline",
+      "tune_pipeline",
+      "show_in_viewer"
+     ]
+    },
+    {
+     "request": 2,
+     "tools": [
+      "read_skill",
+      "describe_dataset",
+      "current_view",
+      "measure_reciprocal_cut",
+      "measure_dpdf_cut",
+      "assess_stage",
+      "texture_check",
+      "qmax_coverage",
+      "symmetry_check",
+      "dpdf_contrast",
+      "dpdf_peaks",
+      "grain_check",
+      "ub_check",
+      "radial_profile",
+      "line_profile",
+      "bragg_peaks",
+      "consistency_details",
+      "run_log",
+      "run_verdict",
+      "configure_settings",
+      "update_settings",
+      "run_pipeline",
+      "tune_pipeline",
+      "show_in_viewer"
+     ]
+    },
+    {
+     "request": 3,
+     "tools": [
+      "read_skill",
+      "describe_dataset",
+      "current_view",
+      "measure_reciprocal_cut",
+      "measure_dpdf_cut",
+      "assess_stage",
+      "texture_check",
+      "qmax_coverage",
+      "symmetry_check",
+      "dpdf_contrast",
+      "dpdf_peaks",
+      "grain_check",
+      "ub_check",
+      "radial_profile",
+      "line_profile",
+      "bragg_peaks",
+      "consistency_details",
+      "run_log",
+      "run_verdict",
+      "configure_settings",
+      "update_settings",
+      "run_pipeline",
+      "tune_pipeline",
+      "show_in_viewer"
+     ]
+    },
+    {
+     "request": 4,
+     "tools": [
+      "read_skill",
+      "describe_dataset",
+      "current_view",
+      "measure_reciprocal_cut",
+      "measure_dpdf_cut",
+      "assess_stage",
+      "texture_check",
+      "qmax_coverage",
+      "symmetry_check",
+      "dpdf_contrast",
+      "dpdf_peaks",
+      "grain_check",
+      "ub_check",
+      "radial_profile",
+      "line_profile",
+      "bragg_peaks",
+      "consistency_details",
+      "run_log",
+      "run_verdict",
+      "configure_settings",
+      "update_settings",
+      "run_pipeline",
+      "tune_pipeline",
+      "show_in_viewer"
+     ]
+    },
+    {
+     "request": 5,
+     "tools": [
+      "read_skill",
+      "describe_dataset",
+      "current_view",
+      "measure_reciprocal_cut",
+      "measure_dpdf_cut",
+      "assess_stage",
+      "texture_check",
+      "qmax_coverage",
+      "symmetry_check",
+      "dpdf_contrast",
+      "dpdf_peaks",
+      "grain_check",
+      "ub_check",
+      "radial_profile",
+      "line_profile",
+      "bragg_peaks",
+      "consistency_details",
+      "run_log",
+      "run_verdict",
+      "configure_settings",
+      "update_settings",
+      "run_pipeline",
+      "tune_pipeline",
+      "show_in_viewer"
+     ]
+    },
+    {
+     "request": 6,
+     "tools": [
+      "read_skill",
+      "describe_dataset",
+      "current_view",
+      "measure_reciprocal_cut",
+      "measure_dpdf_cut",
+      "assess_stage",
+      "texture_check",
+      "qmax_coverage",
+      "symmetry_check",
+      "dpdf_contrast",
+      "dpdf_peaks",
+      "grain_check",
+      "ub_check",
+      "radial_profile",
+      "line_profile",
+      "bragg_peaks",
+      "consistency_details",
+      "run_log",
+      "run_verdict",
+      "configure_settings",
+      "update_settings",
+      "run_pipeline",
+      "tune_pipeline",
+      "show_in_viewer"
+     ]
+    },
+    {
+     "request": 7,
+     "tools": [
+      "read_skill",
+      "describe_dataset",
+      "current_view",
+      "measure_reciprocal_cut",
+      "measure_dpdf_cut",
+      "assess_stage",
+      "texture_check",
+      "qmax_coverage",
+      "symmetry_check",
+      "dpdf_contrast",
+      "dpdf_peaks",
+      "grain_check",
+      "ub_check",
+      "radial_profile",
+      "line_profile",
+      "bragg_peaks",
+      "consistency_details",
+      "run_log",
+      "run_verdict",
+      "configure_settings",
+      "update_settings",
+      "run_pipeline",
+      "tune_pipeline",
+      "show_in_viewer"
+     ]
+    }
+   ],
+   "decisions": [
+    {
+     "step": 1,
+     "tool": "read_skill",
+     "args": {
+      "name": "reduction-qc"
+     },
+     "why": "The user is asking me to do the following:\n1. Run the pipeline\n2. Check all stages and the data itself (orientation, coverage, powder rings, background)\n3. Fix what can be fixed with configurable settings, and re-run\n4. Report data issues that cannot be fixed with settings\n5. Finally: the issues found, what was changed and why, and the strongest pair correlations with vectors and signs\n\nThis is a request to process/tune. The user is asking me to \"take it to a 3D-ΔPDF that can be trusted for analysis\" — this is a request to improve/tune. According to the instructions: \"If the user asks for the best result, or asks to tune or optimize, call tune_pipeline.\" The user is asking to fix what can be fixed with configurable settings — this is a tuning request.\n\nBut first, I should read the relevant skills. The skills are:\n- bragg-node-audit: for auditing Bragg nodes — use when asked whether the punch is clean, before changing or tuning punch or backfill\n- delta-pdf-interpretation: for reading the ΔPDF, before changing or tuning ΔPDF settings\n- reduction-qc: for checking whether a run is sound before reading physics, before changing or tuning ring removal or flatten\n\nThe user is asking to check all stages and the data itself, and to fix what can be fixed with settings. This spans ring removal, punch, backfill, flatten, and pdf. So I should read all three skills before acting.\n\nLet me start by reading the skills first. I can read multiple skills in parallel.\n\nAfter that:\n1. describe_dataset to understand what's available\n2. run_pipeline (without from_stage, to compute what's missing)\n3. Then assess all stages, run checks (ub_check, grain_check, qmax_coverage, symmetry_check, texture_check, radial_profile, etc.)\n4. Fix settings as needed, re-run, and measure again\n5. Report\n\nLet me start by reading the three skills in parallel.",
+     "status": "done",
+     "summary": "Read the reduction-qc skill",
+     "result": "Skill reduction-qc\n\n# Reduction QC: is the reduced volume fit for a 3D-ΔPDF?\n\n**Status:** Draft: awaiting the user's interview (questions in\n`docs/SKILL_INTERVIEWS.md`).\n\nA reduction can look clean on one cut and still be wrong in ways that every\nlater stage inherits: an orientation slightly off, a symmetrisation that hides\nit, a transform that reaches past the counts, bright edge voxels carried\ninward. Check these first, in this order, and say what each check found.\n\n## Steps\n\n1. **Know the data.** `describe_dataset`: the stages on disk, the reciprocal\n   grid and its range, and the cell. Note whether the volume is symmetrised\n   (`ub_check` says) and the symmetry the file declares (`grain_check` names\n   it, `declared_symmetry`); a symmetrised volume and its unsymmetrised export\n   are separate datasets.\n2. **The UB.** `ub_check` on the raw volume, with the punch cell as the Bragg\n   nodes.\n   - On a symmetrised volume only the changes that commute with the symmetry\n     operations can be fitted. Say so, and that the orientation needs the\n     unsymmetrised file.\n   - Read the radial offsets by |Q| band and direction. A UB error gives the\n     same *relative* offset at every |Q| along a direction. An offset that\n     grows with |Q| along one direction is not a UB error: it comes from how\n     |Q| was assigned, and refining the UB only averages it.\n   - The verdict calls the UB turned at 0.05° or more from an unsymmetrised\n     fit (`orientation_change_deg`). How large an offset is acceptable, and\n     when to regrid onto a refined UB (`examples/refine_ub.py`) (to confirm\n     with the user).\n3. **The coverage and the |Q| band.** `qmax_coverage`.\n   - The user's rule: the ΔPDF's Qmin and Qmax are where the raw counts begin\n     and end. Past those edges most voxels hold no counts. `raw_counts` gives\n     the edges, `suggested_band` the band they allow, and `band_check` whether\n     a band that is set stays inside them.\n   - The verdict is the share of the transform window's weight on unmeasured\n     space, recorded with the ΔPDF: up to about 1e-3 is clean.\n   - The |Q| band and the magnetic ion stay with the user: suggest them, never\n     set them unasked.\n4. **Edge and unmeasured voxels.** Voxels on the edge of the coverage are\n   barely covered and can sit orders of magnitude above the interior; the\n   pipeline trims them at load (`edge_trim`). A volume that is regridded or\n   symmetrised outside the pipeline must be trimmed first. Unmeasured voxels\n   stay masked. The backfill fills punched holes and gaps the measured data\n   enclose, not the open coverage.\n5. **Powder rings.** `assess_stage` for the rings, then `radial_profile`. A bump\n   is a powder ring only if it rises in nearly every direction over the sphere,\n   judged in 3D (`shells_judged`; the rule: at least 0.15 of its median height\n   in 90 % of the directions, three times its noise above its flanks, and a\n   quarter of its height above a curve through them, *to confirm with the\n   user*). The crystal's own scattering at one |Q| rises in some directions\n   only, and must stay. Planes cannot tell them apart: symmetry makes them\n   equivalent (all three on a cubic cell, h0l and 0kl on a hexagonal or\n   tetragonal one). The removal subtracts only confirmed rings, so a crystal\n   with none keeps all its diffuse. Report leftovers and dents at the\n   confirmed rings as shares of the diffuse beside them; the verdict counts\n   one only beyond three times its plane's noise. A ring too weak to rise in\n   nearly every direction is neither removed nor counted: if one shows by eye,\n   say so. Not every instrument's data have rings (TOPAZ has no aluminium ring\n   background): rings confirmed on data that should have none are an anomaly\n   to report, not routine cleanup.\n6. **The flatten floor.** `assess_stage` for the flatten: the floors near zero,\n   no trend with |Q| (`floor_trend`), and a span small against the diffuse\n   level (`floor_span_fraction`), both judged over the whole volume, on the\n   outer half of the shells the counts reach; `pedestal_left` says whether\n   they make a pedestal (a trend and a span both 0.8 or more). A floor that\n   rises with |Q| is inelastic background (thermal diffuse and multiphonon\n   scattering; with X-rays also Compton scattering, which neutrons lack). The\n   `+ b·Q²` term (`flattenQ2`) and *Fit to |Q|* (`flattenFitQMax`) address it.\n   - **When to turn the Q² term on:** when `assess_stage` for the flatten\n     reports `pedestal_left`, set `flattenQ2` on, rerun from the flatten\n     (`run_pipeline` with `from_stage` flatten), and read `assess_stage` for\n     the flatten again: keep the term if the pedestal is gone, and report its\n     trend and span before and after. Leave it off otherwise: on a volume\n     without such a background the term is not free, since it fits part of\n     the crystal's own floor (on the validation's clean controls it raised\n     the scored pedestal span from 0.025 to 0.066 to 0.107 of the diffuse\n     level). Whether a floor that rises with |Q| could be signal rather than\n     background stays a judgment call (to confirm with the user).\n   - X-ray data carry no magnetic scattering, so the magnetic ion stays none\n     for them; neutron data can carry magnetic diffuse scattering, so there\n     the ion is the user's call.\n7. **Symmetry kept.** On symmetrised data, after the pipeline: `symmetry_check`\n   on the ΔPDF, which tests the in-plane operations only. An operation the data\n   were symmetrised with holds to about 1e-3 or better; a clear break means a\n   stage broke it (see delta-pdf-interpretation).\n8. **Report** (below).\n\n## Firm rules (enforced in code)\n\n- Changing a ring-removal or flatten setting, or tuning those stages, is\n  refused until this skill has been read in the conversation.\n- `ub_check` fits only the symmetric part of the UB on a symmetrised volume.\n- A tuning trial whose ΔPDF window puts more than 1e-3 of its weight on\n  unmeasured space cannot be chosen while the current settings stay inside that\n  limit.\n- Tuning trials never write to `processed/`.\n\n## Acceptance checklist\n\nA QC answer is complete when it states, each with the tool's numbers:\n\n- [ ] the UB check's offsets before and after, and what kind of offset they are;\n- [ ] whether the volume is symmetrised, and what that hides;\n- [ ] the raw counts' |Q| edges, and whether the band stays inside them;\n- [ ] the window's weight on unmeasured space;\n- [ ] the ring verdict, with the shells confirmed as rings and those that are not;\n- [ ] the flatten floor, trend and span, whether a pedestal is left, and\n  whether the Q² term was turned on, with the numbers before and after;\n- [ ] what was not checked, and why.\n\n## Failure modes\n\n- Turning the Q² term on without a pedestal left, or leaving a pedestal in\n  because the floor reads small in σ beside strong diffuse structure.\n\n- Judging the orientation from a symmetrised volume, whose rings around the\n  nodes look like broadened peaks, not shifted ones.\n- Calling an offset that grows with |Q| a UB error, and \"fixing\" it with a\n  refined UB.\n- Letting the band run past the counts, so empty voxels enter the transform.\n- Reading a bump the planes share as a ring: on a cubic crystal its own\n  diffuse shows on all three planes. Only the test in 3D confirms a ring, and\n  only confirmed rings are subtracted.\n- Regridding or symmetrising before trimming the edge, so its bright voxels\n  spread inward.\n- Judging the whole volume from the opening cut at L = 0: measure another plane\n  before a verdict.\n\n## What to report\n\nThe checks above in order, each as a verdict with the numbers the tool\nreturned; what you would change and why; and what the user must decide (the\nband, the magnetic ion, whether to regrid).\n\n## References\n\n- [ub_refinement](../../../docs/algorithms/ub_refinement.md) — how the UB is\n  refined and checked, symmetrised volumes, regridding, reading the offsets\n- [delta_pdf](../../../docs/algorithms/delta_pdf.md) — the transform window, its\n  support on the coverage, and the flatten's background terms\n\n---\nReferences of this skill (read one with read_skill and `reference`):\n- ub_refinement: how the UB is refined and checked, symmetrised volumes, regridding, reading the offsets\n- delta_pdf: the transform window, its support on the coverage, and the flatten's background terms",
+     "shortened": true
+    },
+    {
+     "step": 2,
+     "tool": "read_skill",
+     "args": {
+      "name": "bragg-node-audit"
+     },
+     "why": "",
+     "status": "done",
+     "summary": "Read the bragg-node-audit skill",
+     "result": "Skill bragg-node-audit\n\n# Bragg-node audit\n\n**Status:** Draft: awaiting the user's interview (questions in\n`docs/SKILL_INTERVIEWS.md`). Ported from the scattering-agent-tools plugin\nskill of the same name, from its NeXus Viewer and NEXPLAN tools to the\nconsole's own.\n\nThe punch removes what sits at the Bragg nodes, so the 3D-ΔPDF sees only the\ndiffuse scattering. An audit checks the nodes the cell allows, the nodes it\nforbids and the peaks off every node, and keeps the broad diffuse maxima out of\nall three.\n\n## Steps\n\n1. **Settle the nodes.** `describe_dataset` and `configure_settings`: the cell,\n   the symmetry the file declares, the punch cell (`punchSupercellH/K/L`:\n   Bragg nodes every n along H, K and L, for a volume indexed on a supercell)\n   and the sample's modulation (`modulation`: its satellites, or the planes\n   through them, which the punch's search leaves alone). These are facts about\n   the sample, set only when the user asks. None is declared by default: the\n   search then leaves no position alone, and when the sharp peaks it found off\n   the lattice bunch at one commensurate fraction, the punch's assessment and\n   the run carry a question for the user: whether the sample has that\n   modulation. `describe_dataset` and `configure_settings` do not\n   give the declared symmetry: `grain_check` does (`declared_symmetry`). Which\n   cell is the parent, and whether the supercell's other nodes hold Bragg peaks\n   or diffuse scattering (to confirm with the user).\n2. **The punch on three planes.** `assess_stage` for the punch: the peaks left\n   at nodes, the sharp peaks off the lattice, the broad maxima kept, and how\n   much was punched to get there. It reads the planes through the origin:\n   check an off-zero cut too, with `measure_reciprocal_cut`.\n3. **Leftovers at allowed nodes.** Look at each (`show_in_viewer`,\n   `line_profile`). A real leftover is sharp and stands above its own\n   neighbourhood; widen or deepen the punch only for those.\n4. **Forbidden nodes.** Intensity clearly above the local background at a node\n   the space group forbids has several causes. Say which evidence points where,\n   and do not pick one without it:\n   - λ/2 contamination: is the 2h 2k 2l reflection strong?\n   - multiple scattering: sharp, and often only some members of an orbit;\n   - a lower true symmetry, or a superlattice.\n\n   What counts as clearly above the background (to confirm with the user).\n5. **Peaks off the lattice.** `grain_check`: the off-lattice peaks the punch's\n   search found, grouped into symmetry orbits, tested against the nodes (a\n   Bragg peak displaced by a UB that is slightly off) and as a rotated copy of\n   the lattice (a second grain), judged against the same search at random\n   directions; the test against the nodes has no such control. A rotation\n   under 2° is the UB, not a grain: check it with `ub_check` (reduction-qc).\n   The leftover counts are only what the punch missed on one cut, never what\n   its search found.\n6. **Broad maxima stay.** A maximum several Bragg widths broad along any axis\n   is diffuse scattering, the signal. Never report it as a missed peak. The\n   search's width limit (`punchSearchMaxWidth`) leaves such maxima unpunched,\n   but it is off by default: then the search punches every candidate, broad\n   or sharp.\n7. **The backfill.** `texture_check`: over every punch hole of the volume, no\n   fills sitting systematically outside the range their rims allow; on the\n   cuts, an azimuthal ratio near 1. The diffuse often peaks at the nodes\n   (thermal diffuse scattering), so a sound fill sits above its rim's median;\n   the range runs from the diffuse at the hole's edge to its rise continued to\n   the node, and a bias counts only when it is also a fifth of the local\n   diffuse level or more. A lattice-periodic fill pattern is texture that the\n   3D-ΔPDF will show.\n8. **Report** (below).\n\n## Firm rules (enforced in code)\n\n- Changing a punch or backfill setting, or tuning those stages, is refused\n  until this skill has been read in the conversation.\n- The sample's modulation and the punch cell are facts about the sample:\n  they change only when the user asks, never to improve a number.\n\n## Acceptance checklist\n\n- [ ] the cell and nodes used, and who set them;\n- [ ] the leftovers at allowed nodes, on three planes and an off-zero cut;\n- [ ] each forbidden-node signal with the evidence for its cause, or \"not\n  tested\";\n- [ ] the off-lattice verdict from `grain_check`, with the offset angle when\n  Bragg peaks are displaced;\n- [ ] broad maxima counted apart from missed peaks;\n- [ ] the backfill's texture verdict;\n- [ ] every number with what produced it (settings, planes).\n\n## Failure modes\n\n- Reading the leftover count as \"no off-lattice peaks\", or as everything the\n  search found.\n- Calling broad short-range-order maxima missed Bragg peaks, and widening the\n  punch until they are gone.\n- Naming a second grain from displaced Bragg peaks without `grain_check`.\n- Changing the sample's modulation or the punch cell to make a number look\n  better.\n- Judging from the opening cut at L = 0 alone.\n\n## What to report\n\nThe audit in the order above. For each signal, the evidence and its likely\ncause, or that it was not tested; what to change and why; and what only the\nuser can decide (the cell, the satellites, the sample's modulation).\n\n## References\n\n- [bragg_cleanup](../../../docs/algorithms/bragg_cleanup.md) — the punch: node\n  detection, the off-lattice search, footprints, the significance gate and the\n  backfill\n\n---\nReferences of this skill (read one with read_skill and `reference`):\n- bragg_cleanup: the punch: node detection, the off-lattice search, footprints, the significance gate and the backfill",
+     "shortened": true
+    },
+    {
+     "step": 3,
+     "tool": "read_skill",
+     "args": {
+      "name": "delta-pdf-interpretation"
+     },
+     "why": "",
+     "status": "done",
+     "summary": "Read the delta-pdf-interpretation skill",
+     "result": "Skill delta-pdf-interpretation\n\n# Interpreting a 3D-ΔPDF\n\n**Status:** Draft: awaiting the user's interview (questions in\n`docs/SKILL_INTERVIEWS.md`).\n\nThe 3D-ΔPDF is the Fourier transform of the diffuse scattering left once the\nBragg peaks are removed. Its features are the deviations of the pair\ncorrelations from the average structure, at the interatomic vectors where they\noccur. Interpret only a ΔPDF that the trust checks below pass.\n\n## What the signs mean\n\n- **Positive** at a vector: more pairs of scattering density at that vector\n  than the average structure has. For occupational disorder on one site, like\n  pairs are more common than random there (clustering).\n- **Negative**: fewer pairs; for occupational disorder, unlike pairs are\n  preferred (ordering).\n- **A positive and a negative lobe straddling an average interatomic vector**:\n  a displacement correlation. The pair's distance differs on average from the\n  average structure's, toward the positive lobe.\n- **Weight.** A feature's weight is the product of the two sites' scattering\n  contrasts. For disorder on one site it is a square, so positive. For pairs\n  of different sites, or for displacements of an atom with a negative neutron\n  scattering length, the product can be negative and flips the reading. How to\n  state the contrast for each probe (to confirm with the user).\n\nA synthetic example (the demo volume, `nebula3d.demo`: rock-salt type,\na = 4.2 Å). Its planted Warren–Cowley correlations appear as alternating\nshells: negative at the nearest-neighbour cation vector ⟨½ ½ 0⟩a (unlike pairs\npreferred), positive at ⟨1 ½ ½⟩a and ⟨2 0 0⟩a. Its order inside each (001)\nlayer, rods along L in reciprocal space, is a checkerboard confined to the\nz = 0 plane: rods in reciprocal space are planes in real space.\n\n## Trust checks, before any interpretation\n\n1. **The settings that made it.** `qmax_coverage`: the window's shape and\n   scale; `consistency_details`: the |Q| band; `grain_check`: the symmetry\n   used.\n2. **Coverage.** `qmax_coverage`: the window's weight on unmeasured space up to\n   about 1e-3, and the band inside the raw counts' edges (reduction-qc). Past\n   them, features come from empty voxels.\n3. **Symmetry.** On symmetrised data, `symmetry_check`, which tests the in-plane\n   operations only: each one the data were symmetrised with holds to about 1e-3\n   or better. A ΔPDF that lost a clear share of its symmetry while the raw data\n   were exact was broken by processing: a stage computed on index-space\n   neighbourhoods without orbit averaging, or a separable window on a hexagonal\n   cell. Find which; do not interpret it.\n4. **Round trip.** `assess_stage` for the ΔPDF, or `consistency_details`: a\n   back-FFT r of 0.999 or more only shows the transform ran correctly. Without\n   a band or a crop the round trip is the identity. It is not evidence that a\n   feature is real. The transform keeps only the data's even part under\n   Q → −Q, so r is judged against that part (`back_fft_pearson_r_even`,\n   `pearson_r_even`); r against unsymmetrised data is lower by their odd part,\n   counting noise (`odd_share`), which is no fault.\n5. **Colour range.** `dpdf_contrast`: the range is set from the sections, so\n   the features carry the colour and the ripple stays near neutral. Never\n   describe a figure whose features are saturated.\n\n## Artifacts that imitate signal\n\n- **Bragg residue.** A peak the punch missed adds a wave with the lattice's\n  period. Residue at many nodes adds a pattern that repeats at every lattice\n  translation and does not decay with r. Audit the nodes (bragg-node-audit)\n  before calling such features pair correlations.\n- **Copies of displaced Bragg peaks.** A UB slightly off, symmetrised, leaves\n  residue beside the nodes: the same kind of artifact (reduction-qc,\n  `ub_check`).\n- **Termination ripple.** Truncation at the band or the box edge rings around\n  every strong feature; the window (Gaussian, Hann, ellipsoid) trades the\n  ringing against resolution. Ripple is regular and follows the strong\n  features; signal does not.\n- **A window past the data** (the coverage check above).\n- **The origin.** The self-correlation and the smooth background terms (the\n  flatten's constant and `b·Q²`) land near the origin. Do not interpret\n  features closer to it than the shortest interatomic distance. A leftover\n  pedestal shows as a broad feature there.\n- **Ring residue.** A leftover powder ring is a sphere in reciprocal space and\n  a spherical ripple in real space.\n- **Backfill texture.** A lattice-periodic fill pattern (`texture_check`).\n\n## Steps\n\n1. The trust checks above, in order.\n2. `dpdf_peaks` for the strongest features of the whole volume, then\n   `dpdf_contrast` and `show_in_viewer` or `measure_dpdf_cut` through them.\n3. For each feature: its vector in Å and in lattice units, its sign, its size\n   against the volume's robust σ (`dpdf_peaks` gives all three), and whether it\n   repeats under the symmetry.\n4. Rule out the artifacts above, naming the check that rules out each.\n5. Relate the features to the structure: which average interatomic vector each\n   sits on (a CIF in the 3D-ΔPDF page's structure overlay marks them).\n6. Report.\n\nJudgment calls (to confirm with the user): the feature size below which nothing\nis interpreted; how far out in r the ΔPDF is trusted; an occupational or a\ndisplacive reading when both fit; when to compare with a model of the disorder.\n\n## Firm rules (enforced in code)\n\n- Changing a ΔPDF setting, or tuning the ΔPDF stage, is refused until this skill\n  has been read in the conversation.\n- A tuning trial whose window puts more than 1e-3 of its weight on unmeasured\n  space cannot be chosen while the current settings stay inside that limit.\n\n## Acceptance checklist\n\n- [ ] the coverage verdict, and the band inside the counts;\n- [ ] the symmetry check, on symmetrised data;\n- [ ] the colour range set by `dpdf_contrast` before a figure is described;\n- [ ] for each interpreted feature: vector, sign, size, symmetry, and the\n  artifact checks that clear it;\n- [ ] nothing interpreted near the origin, or from a saturated figure;\n- [ ] what was not checked.\n\n## Failure modes\n\n- Interpreting a ΔPDF that broke its symmetry, or whose window reaches past the\n  data.\n- Taking a back-FFT r near 1 as proof that the features are real.\n- Reading Bragg residue at lattice vectors as pair correlations.\n- Describing ripple as structure because the colour range made it bright.\n- Trading a clean window for SNR: a higher feature SNR with Qmax past the\n  coverage, or with a lower back-FFT r, is ripple.\n\n## What to report\n\nTrust first (coverage, symmetry, round trip), then the features: vector, sign,\nsize, and the likely pair and kind of correlation, each with the checks behind\nit; then what only the user can decide.\n\n## References\n\n- [delta_pdf](../../../docs/algorithms/delta_pdf.md) — the transform, the\n  windows, symmetry, the support on the coverage and the background terms\n\n---\nReferences of this skill (read one with read_skill and `reference`):\n- delta_pdf: the transform, the windows, symmetry, the support on the coverage and the background terms",
+     "shortened": true
+    },
+    {
+     "step": 4,
+     "tool": "describe_dataset",
+     "args": {},
+     "why": "Let's start by understanding the dataset and the current state. The context shows the following:\n- Dataset va21fc1_B1, cubic cell a=b=c=3.9 Å, 161³ grid\n- Ring removal: ring_energy_ratio = 1.0 — the rings haven't been removed at all! before_ring_energy = after_ring_energy = 0.0652. And there are significant ring residuals at 1.68, 3.16, 4.59, 7.08 Å⁻¹.\n- Bragg punch: 188 peaks, all on lattice nodes, 0 residuals.\n- Backfill: 601 filled voxels, seam 0.189σ — no problem.\n- Flatten: floor_after is nearly 0, trend -0.314, span 0.529 — the verdict will tell us.\n- ΔPDF: feature_snr 1360 (huge!), consistency r 0.989.\n\nWait — ring_energy_ratio = 1 means the ring removal did nothing. But the context says \"metrics computed from the current cut\" — maybe the ring stage was skipped, or the output on disk is from a previous run. Actually, before == after exactly (0.0652) suggests the ring removal did nothing (or the output on disk is the raw data). Hmm, but the punch has 188 peaks and 601 filled voxels, so the pipeline has been run at least partially.\n\nActually, wait — the context metrics are computed from the current output on disk. ring_energy_ratio = 1.0 means the ring removal left all the ring energy. The ring residuals show significant rings remaining at 1.68, 3.16, 4.59, 7.08. So the ring removal stage is failing (or was skipped / set to a model that does nothing).\n\nLet's start with the QC procedure:\n1. describe_dataset — what stages exist on disk, grid range, other datasets.\n2. configure_settings — current settings.\n3. ub_check on the raw volume.\n4. qmax_coverage.\n5. assess_stage rings, punch, backfill, flatten, pdf.\n6. radial_profile.\n7. texture_check, grain_check, symmetry_check.\n8. Fix what can be fixed (ring removal settings, flatten Q² if there's a pedestal), rerun, re-measure.\n9. dpdf_peaks, dpdf_contrast.\n\nLet's start with the independent calls: describe_dataset, configure_settings, assess_stage all.\nI've read the three skills. Now let me establish what's on disk and what the current settings are, before touching anything.",
+     "status": "done",
+     "summary": "va21fc1_B1: raw, ringremoved, braggpunched, backfilled, flattened, delta_pdf",
+     "result": "{\"dataset\":\"va21fc1_B1\",\"id\":\"va21fc1-B1\",\"stages\":[\"raw\",\"ringremoved\",\"braggpunched\",\"backfilled\",\"flattened\",\"delta_pdf\"],\"reciprocal\":{\"grid\":[161,161,161],\"H\":[-4,4],\"K\":[-4,4],\"L\":[-4,4],\"planes\":[\"hk0\",\"h0l\",\"0kl\"]},\"cell\":{\"a\":3.9,\"b\":3.9,\"c\":3.9,\"alpha\":90,\"beta\":90,\"gamma\":90},\"sigma\":\"measured\",\"delta_pdf\":{\"grid\":[162,162,162],\"x\":[-39,38.52],\"y\":[-39,38.52],\"z\":[-39,38.52],\"q_max\":11.16,\"planes\":[\"xy\",\"xz\",\"yz\"]},\"other_datasets\":[]}"
+    },
+    {
+     "step": 5,
+     "tool": "configure_settings",
+     "args": {},
+     "why": "",
+     "status": "done",
+     "summary": "54 settings",
+     "result": "{\"settings\":{\"ringsEnabled\":true,\"punchEnabled\":true,\"backfillEnabled\":true,\"flatten\":true,\"pdfEnabled\":true,\"force\":false,\"ringModel\":\"pooled\",\"ringRadialMode\":\"rolling\",\"ringNPatches\":\"(default)\",\"ringNFourier\":\"8\",\"ringSliceAxis\":\"H\",\"ringWidth\":\"(default)\",\"ringGlobalMaterial\":\"auto\",\"ringGlobalSubtraction\":\"conservative\",\"ringGlobalConfidence\":\"1\",\"ringGlobalLmax\":\"4\",\"ringGlobalMinSnr\":\"5\",\"ringPooledSectors\":\"(default)\",\"ringPooledWindow\":\"(default)\",\"punchMinSig\":\"(default)\",\"punchFootprint\":\"(default)\",\"punchProfileNSigma\":\"(default)\",\"punchMode\":\"(default)\",\"punchSupercellH\":\"(default)\",\"punchSupercellK\":\"(default)\",\"punchSupercellL\":\"(default)\",\"punchHGuard\":\"(default)\",\"punchSearchFloor\":\"(default)\",\"modulation\":\"(default)\",\"punchSearchMaxWidth\":\"(default)\",\"punchFrame\":\"spherical\",\"punchRho\":\"(default)\",\"punchTheta\":\"(default)\",\"punchPhi\":\"(default)\",\"punchQA\":\"(default)\",\"punchQB\":\"(default)\",\"punchQC\":\"(default)\",\"punchFitUnconstrained\":false,\"punchMargin\":\"(default)\",\"incidentBeamQA\":\"(default)\",\"incidentBeamQB\":\"(default)\",\"incidentBeamQC\":\"(default)\",\"incidentBeamMargin\":\"(default)\",\"incidentBeamFitCovariance\":false,\"backfillMethod\":\"(default)\",\"flattenEstimator\":\"(default)\",\"flattenIon\":\"(default)\",\"flattenQ2\":false,\"flattenFitQMax\":\"(default)\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true,\"pdfQMin\":\"(default)\",\"pdfQMax\":\"(default)\"}}"
+    },
+    {
+     "step": 6,
+     "tool": "assess_stage",
+     "args": {
+      "stage": "all"
+     },
+     "why": "",
+     "status": "done",
+     "summary": "Ring removal: meets its goal · ring ratio 1 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0 · Bragg punch: meets its goal · 0 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.0266 · Backfill: meets its goal · seam 0.248σ · bright ≤ 0 · Flatten: meets its goal · floor ≤ 1.72σ · trend 0.0384 · span 0.636 · no pedestal · 3D-ΔPDF: meets its goal · r 0.98901 (even part 1) · RMS 0.1253 · SNR 1380 · no symmetry declared (asymmetry 0.036)",
+     "result": "{\"rings\":{\"verdict\":\"meets its goal\",\"criterion\":\"No powder ring left above, or dented below, three times its plane's noise. A bump is a powder ring only if it rises in nearly every direction over the sphere (at least 0.15 of its median height in 90 % of directions): the crystal's own scattering at that |Q| rises in some directions only.\",\"headline\":\"ring ratio 1 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0\",\"mean_ring_energy_ratio\":1,\"max_over_subtraction_fraction\":0,\"max_ring_dent\":0,\"max_ring_left\":0,\"worst_ring_dent\":null,\"worst_ring_left\":null,\"ring_rule\":{\"direction_share\":0.9,\"height_share\":0.15},\"shells_judged\":[{\"at\":1.68,\"ring\":false,\"isotropy\":0.013},{\"at\":2.39,\"ring\":false},{\"at\":2.6,\"ring\":false},{\"at\":3.16,\"ring\":false},{\"at\":4.59,\"ring\":false,\"isotropy\":-12},{\"at\":7.08,\"ring\":false,\"isotropy\":-0.43},{\"at\":7.58,\"ring\":false}]},\"punch\":{\"verdict\":\"meets its goal\",\"criterion\":\"No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima are diffuse scattering, and stay.\",\"headline\":\"0 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.0266\",\"total_leftover_peaks\":0,\"leftover_at_nodes\":0,\"leftover_off_lattice\":0,\"leftover_on_protected_planes\":0,\"leftover_on_protected_planes_sharp\":0,\"leftover_off_lattice_broad\":0,\"leftover_off_lattice_sharp\":0,\"strongest_leftover\":null,\"noisy_spikes_skipped\":0,\"mean_punched_fraction\":0.0266,\"fitted_peaks\":188},\"backfill\":{\"verdict\":\"meets its goal\",\"criterion\":\"The fills meet their surroundings: a median seam of 1σ or less. Whether the fills are biased one way is texture_check's to say.\",\"headline\":\"seam 0.248σ · bright ≤ 0\",\"mean_median_seam_sigma\":0.248,\"max_bright_fill_fraction\":0},\"flatten\":{\"verdict\":\"meets its goal\",\"criterion\":\"No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. The largest floor in σ is reported, not judged: σ is the cut's own spread, and the floors follow the diffuse level.\",\"headline\":\"floor ≤ 1.72σ · trend 0.0384 · span 0.636 · no pedestal\",\"max_after_floor_sigma\":1.72,\"floor_trend\":0.0384,\"floor_span_fraction\":0.636,\"pedestal_left\":false},\"pdf\":{\"verdict\":\"meets its goal\",\"criterion\":\"The back-FFT reproduces what the transform keeps, the data's even part under Q → −Q, to an r of 0.999 or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.\",\"headline\":\"r 0.98901 (even part 1) · RMS 0.1253 · SNR 1380 · no symmetry declared (asymmetry 0.036)\",\"back_fft_pearson_r\":0.98901,\"back_fft_normalized_rms\":0.1253,\"back_fft_pearson_r_even\":1,\"back_fft_odd_share\":0.0219,\"back_fft_per_plane_r\":{\"+0.000\":0.9938291760644302,\"+0.350\":0.9872638099139345,\"+1.000\":0.9940515791900029},\"mean_feature_snr\":1380,\"window_weight_on_unmeasured\":null,\"window_shape\":\"separable\",\"max_symmetry_break\":0.036,\"worst_symmetry_op\":\"four-fold (90°)\",\"symmetry_declared\":false},\"measured_on\":[\"H–K plane at L = 0\",\"H–L plane at K = 0\",\"K–L plane at H = 0\"]}",
+     "shortened": true
+    },
+    {
+     "step": 7,
+     "tool": "run_pipeline",
+     "args": {},
+     "why": "Interesting. The current state on disk:\n\n- Rings: \"meets its goal\" — ring ratio 1, but max_ring_left 0, max_ring_dent 0. Wait, the context said ring_energy_ratio 1 and there were significant residual bumps at 1.68, 3.16, 4.59, 7.08. But assess_stage says no powder ring remains above 3× noise in 3D — the bumps on the L=0 cut are not powder rings (isotropy 0.013, -12, -0.43 — they rise in only some directions, i.e., they are the crystal's own scattering). So the ring removal did nothing (ratio 1, over-sub 0) — and that's fine, because there are no powder rings in 3D. Hmm, but wait: the ring stage's verdict is \"meets its goal\" with ring ratio 1. The criterion is \"no powder ring remains above 3× the plane's noise, and no dent below.\" The bumps on the cut are the crystal's own anisotropic scattering, not powder rings. So the ring removal correctly did nothing? But then why is the ring stage enabled… The ring stage's output exists (the ringremoved stage is on disk). ring_energy_ratio = 1 means the ring removal removed nothing. And the 3D check says no powder ring exists. So the ring stage is fine — there are no powder rings to remove.\n\nWait, but actually, let me reconsider: the ring_residuals in the context are from the raw cut. The ring removal left ratio 1 — it removed nothing. And assess_stage rings says no powder ring remains in 3D (isotropy check: the bumps rise in only some directions). So the \"rings\" on the hk0 cut are the crystal's own scattering (probably superlattice/diffuse), not powder. OK.\n\n- Punch: meets its goal, 0 misses, 188 fitted peaks, 2.66% punched.\n- Backfill: seam 0.248σ, meets its goal.\n- Flatten: meets its goal, trend 0.0384, span 0.636, no pedestal.\n- PDF: r 0.989 (even part 1), RMS 0.125, SNR 1380, no symmetry declared (asymmetry 0.036, worst is the 4-fold 90°).\n\nHmm, wait, but the context's flatten numbers: floor_trend -0.314, span 0.529 — those are from the L=0 cut. The volume-level assessment says trend 0.0384, span 0.636. OK.\n\nSo the current on-disk state looks… good? But wait — the user says \"this is a new single-crystal diffuse scattering volume. Take it to a 3D-ΔPDF that can be trusted for analysis.\" The context metrics were measured at the start of the request. The on-disk outputs already exist (all stages). But the context's ring_removal shows ring_energy_ratio 1 — the ring removal did nothing. And the punch… the context's bragg_punch leftover is clean.\n\nHmm, but wait. Something's off. The context's delta_pdf: feature_snr 1360, strong_feature_fraction 0.052, radial_trend [190, 7.48, 4.83]. A feature SNR of 1360 is huge. And consistency_pearson_r 0.989, RMS 0.125.\n\nBut wait — is the on-disk ΔPDF from the current settings? The settings show pdfWindowSupport: true, pdfApod (default), pdfWindowShape (default). qmax_coverage will tell us.\n\nNow, the user's request: run the pipeline, check all stages and the data itself (orientation, coverage, powder rings, background), fix what can be fixed in the settings, rerun, and report data problems that can't be fixed in the settings.\n\nSo my plan:\n1. Run the pipeline (to make sure the outputs are up to date with the current settings). Actually, the outputs already exist; running without from_stage will reuse them. But the user explicitly said \"run the pipeline.\" Let me run it — it'll reuse existing outputs (or compute what's missing). That's fine; then measure.\n\nActually, wait. Let me think about whether the existing outputs were made with the current settings. The context was measured \"at the start of this request\" from the current outputs. The settings page shows what the next run will use. If the outputs were made with different settings, a run without from_stage will reuse them (since they exist). Hmm, but the user said \"run the pipeline\" — I should run it. If the outputs are reused, that's fine, but I should verify the outputs are consistent with the settings. Actually, the safest thing is: run the pipeline (reuse), then measure everything. If I later change settings, rerun from that stage.\n\n2. Data checks (things that can't be fixed in settings):\n   - ub_check (orientation)\n   - grain_check (second grain / off-lattice peaks)\n   - qmax_coverage (coverage)\n   - symmetry_check (declared symmetry — none declared, so asymmetry is the data's own; but the cell is cubic a=b=c=3.9, and the worst symmetry op is the 4-fold 90° at 0.036 — hmm, \"no symmetry declared (asymmetry 0.036)\" — the check tests the cell's in-plane ops when none is declared? The description says \"if none is declared, the asymmetry is the data's own and is not judged.\" So the 0.036 asymmetry is the data's own, not a pipeline failure.)\n\n3. Stage checks:\n   - assess_stage rings (done: meets its goal)\n   - assess_stage punch (done: meets its goal) — but I should also check off-zero cuts (measure_reciprocal_cut at L=0.5, etc.)\n   - assess_stage backfill (done) + texture_check\n   - assess_stage flatten (done) + radial_profile\n   - assess_stage pdf (done) + consistency_details + qmax_coverage + symmetry_check\n\n4. Fix what can be fixed in settings.\n\nWait, but everything already \"meets its goal\"? Then what's to fix? Let me look more carefully.\n\nHmm, the context's ring_removal: ring_energy_ratio 1, before_ring_energy 0.0652, after 0.0652. So the ring removal removed nothing. And the 3D assessment says no powder ring exists (the bumps are anisotropic — the crystal's own). So the ring stage is a no-op, and that's correct.\n\nBut wait — is that really true? Let me double-check with a radial_profile and other cuts. The context's ring_residuals show 4 significant bumps on the hk0 cut. assess_stage says isotropy 0.013 at 1.68, -12 at 4.59, -0.43 at 7.08 — all \"ring: false.\" So in 3D they don't rise in all directions. OK.\n\nHmm, but actually, wait. Let me reconsider. The ring stage's verdict is \"meets its goal\" with ring ratio 1. But is it possible the ring stage should have removed something and didn't? The criterion is about powder rings in 3D. The 3D check says no powder ring. So the no-op is correct.\n\nNow, the punch: 188 peaks, all at lattice nodes, 0 off-lattice. resolution_limited_fraction 0.273, median_anisotropy 1.51. Hmm, anisotropy 1.51 is right at the ~1.5 threshold — \"elongated peaks (possible satellites or diffuse rods).\" But all 188 are at lattice nodes, so they're Bragg peaks with somewhat anisotropic widths. The punch's verdict is meets its goal.\n\nBackfill: seam 0.248σ, meets its goal. texture_check will confirm no texture.\n\nFlatten: meets its goal, no pedestal.\n\nPDF: r 0.989, even part 1, RMS 0.125, SNR 1380, no symmetry declared.\n\nSo… everything meets its goal? Then the task is mostly: run, verify with additional cuts, do the data checks (ub_check, grain_check, qmax_coverage, symmetry_check), and report.\n\nBut wait — there might be a trap. Let me look at the context again:\n\n- delta_pdf radial_trend: [190, 7.48, 4.83] — a steep drop, short-range correlations. feature_snr 1360.\n- consistency_pearson_r 0.989, RMS 0.125.\n\nHmm, and qmax_coverage: the ΔPDF's q_max is 11.16 Å⁻¹. The reciprocal box is H,K,L ∈ [-4,4] r.l.u., with a=3.9 Å, so |Q|_max at the box corner = 4·√3/3.9·2π… let me compute: 1 r.l.u. = 2π/3.9 = 1.611 Å⁻¹. Corner = 4·√3 = 6.928 r.l.u. = 11.16 Å⁻¹. So the box corner is 11.16 Å⁻¹. The ΔPDF's q_max 11.16 matches the box corner.\n\nqmax_coverage will tell us where the counts end. If the counts end inside the box and the window reaches the box corner (apodization off, separable window), the transform reaches beyond the measured space. The settings show pdfWindowSupport: true — \"if the window is fitted to the coverage (pdfWindowSupport), that fraction and that reach are the backend's own target, not a check: the verdict judges where the counts end and the band instead.\"\n\nHmm, OK. So with pdfWindowSupport true, the window is fitted to the coverage. Then the verdict judges where the counts end and the band.\n\nLet me also think about the flatten: the context's floor_after [0.0559, -0.000628, -0.00507] — the inner third's floor is 0.0559, still positive. after_floor_max_sigma 1.59. The volume-level assessment says max_after_floor_sigma 1.72, trend 0.0384, span 0.636 — meets its goal (no pedestal). OK.\n\nSo the plan:\n1. run_pipeline (no from_stage) — compute what's missing / reuse.\n2. Then measure: assess_stage all (again, post-run), texture_check, qmax_coverage, symmetry_check, ub_check, grain_check, consistency_details, radial_profile, measure_reciprocal_cut on off-zero cuts, measure_dpdf_cut on other sections.\n3. Fix what can be fixed in settings (if anything).\n4. Rerun if I changed anything.\n5. dpdf_contrast + dpdf_peaks for the final report.\n\nWait, but the user said \"fix what can be fixed in the settings you may change, and rerun.\" If everything meets its goal, maybe there's nothing to fix. But let me look more carefully for problems.\n\nActually, hold on. Let me reconsider the ring stage. ring_energy_ratio = 1 means the ring removal did nothing. But the context says before_ring_energy 0.0652 — 6.5% of the azimuthal-median radial profile is in localized bumps. And after = same. The 3D assessment says those bumps are not powder rings (anisotropic). So the ring stage correctly did nothing.\n\nBut wait — is it possible the ring stage is enabled but the model found no rings, so it did nothing? That's consistent with ratio 1.\n\nHmm, but actually, let me reconsider. The ring stage's verdict is \"meets its goal\" — but is a no-op ring removal really \"meeting its goal\"? The goal is to remove powder rings. If there are no powder rings, then a no-op meets the goal. OK.\n\nNow, let me think about what might actually be wrong and fixable. Let me look at the punch more carefully. 188 peaks, all at lattice nodes. But the cell is cubic a=b=c=3.9. The punch's supercell is (default). Hmm.\n\nActually, wait. Let me reconsider the whole thing. The user says \"this is a new single-crystal diffuse scattering volume.\" The context was measured at the start of the request. But the on-disk outputs — were they made with the current settings? The settings page shows pdfWindowSupport: true, but many are (default).\n\nActually, I realize I should just run the pipeline and measure. Let me not overthink. The key question is whether the current on-disk ΔPDF is trustworthy. Let me run and measure.\n\nActually, let me reconsider one more time. There's a subtle point: the context's metrics were measured \"at the start of this request\" from the current outputs. So the current outputs are what the context describes. If I run the pipeline without from_stage, it will reuse the existing outputs (since they exist and force is off). So the outputs won't change. Then I measure and they'll match the context.\n\nBut the user explicitly wants me to \"run the pipeline, check all stages and the data itself, fix what can be fixed in the settings you may change, and rerun.\" So the workflow is:\n1. Run (to establish a baseline / compute what's missing).\n2. Check everything.\n3. If I find something fixable in settings, change it and rerun from that stage.\n4. Report.\n\nLet me start by running the pipeline and doing the data checks in parallel. Actually, run_pipeline takes time, and the data checks (ub_check, grain_check, qmax_coverage, symmetry_check) read the on-disk outputs. Let me run the pipeline first, then do the checks.\n\nActually, I can do the checks that don't depend on the run in parallel with… no, the checks read the on-disk outputs, which the run might change. Let me run first.\n\nHmm, but actually, if the outputs already exist and force is off, the run will reuse them and they won't change. So the checks before and after would be the same. But to be safe and to follow the user's instruction, let me run first, then check.\n\nLet me run the pipeline.\n\nActually, let me reconsider whether I should run with from_stage. The user said \"run the pipeline.\" Without from_stage, it reuses existing outputs. That's the safe interpretation — it computes what's missing. Since all stages exist, it'll reuse everything. That's fine.\n\nBut wait — is it possible the on-disk outputs are stale (made with different settings than the current Configure page)? The settings page shows what the next run will use. If the outputs were made with different settings, reusing them would be wrong. But I can't easily tell. The safest thing, given the user wants a trustworthy ΔPDF, is to force a clean run. But force is a setting I'd have to change… actually, run_pipeline without from_stage reuses unless force is on.\n\nHmm. Let me think. The user says \"this is a new single-crystal diffuse scattering volume. Take it to a 3D-ΔPDF that can be trusted for analysis.\" This suggests the volume is new and I should produce a trustworthy ΔPDF. The outputs already exist on disk (all stages). The context was measured from them.\n\nI think the cleanest approach: run the pipeline (reuse what's there, compute what's missing). Then measure everything. If the outputs are consistent with the current settings (which I'll verify via the checks), great. If I find a problem fixable in settings, change and rerun from that stage.\n\nLet me just run it. Let me call run_pipeline.\n\nActually, I realize I should think about whether the existing outputs are trustworthy or whether I need to force a rerun. Let me look at the settings more carefully:\n\n- pdfWindowSupport: true (explicitly set, not default)\n- pdfApod: (default)\n- pdfWindowShape: (default)\n- pdfQMin: (default)\n- pdfQMax: (default)\n\nThe ΔPDF on disk has q_max 11.16 = box corner. If pdfWindowSupport is true, the window should be fitted to the coverage, not the box corner. But the ΔPDF's q_max is 11.16 = box corner. This suggests the ΔPDF on disk was NOT made with pdfWindowSupport true — it was made with the window at the box corner (apodization off, separable window reaching the box corner).\n\nWait, but q_max in describe_dataset is the ΔPDF's q_max, which is the transform's q range, not necessarily the window's reach. Let me not over-interpret. qmax_coverage will tell me.\n\nActually, the ΔPDF's q_max 11.16 is just the maximum |Q| in the ΔPDF's reciprocal-space representation (the box corner). The window (apodization) determines how much weight is given to different |Q|. So q_max 11.16 doesn't tell me the window's reach.\n\nOK, let me just run and measure. Let me run the pipeline first.\n\nLet me reconsider: should I force a clean run to make sure the outputs match the current settings? The user wants a trustworthy ΔPDF. If the on-disk outputs are stale, reusing them is bad. But I don't know if they're stale.\n\nI think the right move is: run the pipeline without from_stage first (it'll reuse or compute). Then measure. If the checks reveal the outputs are inconsistent with the current settings (e.g., the window reaches past the coverage), I'll investigate. If I change a setting, I'll rerun from that stage.\n\nActually, you know what, let me just force a clean run to be safe, since the user explicitly wants a trustworthy ΔPDF from a new volume. But force is a setting… let me check if I can set it. The settings show \"force\": false. I could set force: true via update_settings. But that's a setting change that affects the run. Hmm, but the user said \"fix what can be fixed in the settings you may change\" — force isn't really a \"fix,\" it's a run control.\n\nLet me not force. Let me run without from_stage (reuse). Then measure. The context was measured from these exact outputs, so if I measure again I'll get the same numbers, and I can compare to the context to confirm consistency. If everything meets its goal and the data checks pass, then the ΔPDF is trustworthy and there's nothing to fix.\n\nWait, but that seems too easy for the task. The task says \"fix what can be fixed in the settings you may change, and rerun.\" This implies there's something to fix. Let me look more carefully for a real problem.\n\nLet me reconsider the numbers:\n\n1. Ring removal: ratio 1 (no-op). 3D says no powder ring. So the ring stage did nothing, correctly. But wait — is it possible there ARE powder rings that the 3D check missed? The 3D check is the authority. It says no powder ring (isotropy < 0.15 in 90% of directions). So no powder rings. The ring stage correctly did nothing.\n\nHmm, but actually, wait. Let me reconsider. The ring stage is enabled (ringsEnabled: true) and its model is \"pooled.\" If it found no rings, it did nothing (ratio 1). That's consistent.\n\n2. Punch: 188 peaks, all at nodes, 0 off-lattice, 2.66% punched. Meets its goal. But resolution_limited_fraction 0.273 (only 27% are resolution-limited) and median_anisotropy 1.51. This means most peaks are broader than the grid resolution and somewhat elongated. That's a bit unusual for Bragg peaks but not a failure. The punch removed them.\n\nActually, wait — 188 peaks all at lattice nodes. For a cubic cell with H,K,L ∈ [-4,4], the number of lattice nodes is… a lot. 188 is a subset (only the significant ones). OK.\n\n3. Backfill: seam 0.248σ, meets its goal.\n\n4. Flatten: meets its goal, no pedestal.\n\n5. PDF: r 0.989, even part 1, RMS 0.125, SNR 1380. Meets its goal.\n\nSo everything meets its goal. The data checks (ub_check, grain_check, qmax_coverage, symmetry_check) will tell me about the data's own problems.\n\nLet me think about what the data checks might reveal:\n- ub_check: is the UB right? If the Bragg peaks are off their nodes, that's a UB problem (data's own, not fixable in settings).\n- grain_check: is there a second grain? The punch found 0 off-lattice peaks, so probably no second grain. But grain_check reads the punch's peak record.\n- qmax_coverage: does the transform reach past the counts? This is the key one. If the window reaches past the measured space, that's a problem. But is it fixable in settings? pdfWindowSupport, pdfApod, pdfQMax are settings. If the window reaches past the coverage, I could set pdfWindowSupport true or pdfQMax to the coverage edge. That's fixable in settings!\n- symmetry_check: no symmetry declared, so the asymmetry is the data's own. Not a pipeline failure.\n\nSo the main potential fix is qmax_coverage / the PDF window. Let me check that.\n\nActually, the settings already show pdfWindowSupport: true. So the next run will fit the window to the coverage. But the on-disk ΔPDF might have been made without it (if it's stale). Let me check qmax_coverage on the on-disk ΔPDF.\n\nOK here's my refined plan:\n1. run_pipeline (no from_stage) — reuse/compute.\n2. In parallel after: qmax_coverage, symmetry_check, ub_check, grain_check, texture_check, consistency_details, assess_stage all, radial_profile, measure_reciprocal_cut (off-zero), measure_dpdf_cut (other sections).\n3. Based on results, decide if any setting change is needed.\n4. If yes, update_settings + run_pipeline from that stage + re-measure.\n5. dpdf_contrast + dpdf_peaks for the final report.\n\nLet me start. First, run the pipeline.\n\nActually, I want to be efficient. Let me run the pipeline first (it takes time), and while I wait I can't do parallel calls that depend on it. Let me just run it.\n\nLet me call run_pipeline.\nI've read all three skills and have the baseline. The on-disk outputs already exist for every stage, and the opening context was measured from them. Let me run the pipeline to establish the current state, then check every stage and the data itself.",
+     "status": "done",
+     "summary": "done in 1.2 s · 0 computed, 6 reused",
+     "result": "{\"ended\":\"done\",\"seconds\":1.2,\"stages\":{\"rings\":\"reused\",\"punch\":\"reused\",\"backfill\":\"reused\",\"flatten\":\"reused\",\"pdf\":\"reused\",\"pdf_check\":\"reused\"},\"outputs\":[\"raw\",\"ringremoved\",\"braggpunched\",\"backfilled\",\"flattened\",\"delta_pdf\"],\"log_tail\":[\"Bragg punch · va21fc1_B1_ringremoved_braggpunched.h5 exists\",\"Backfill · va21fc1_B1_ringremoved_braggpunched_backfilled.h5 exists\",\"Flatten · va21fc1_B1_ringremoved_braggpunched_backfilled_flattened.h5 exists\",\"3D-ΔPDF · va21fc1_B1_ringremoved_braggpunched_backfilled_delta_pdf.h5 is current\",\"Consistency check · va21fc1_B1_ringremoved_braggpunched_backfilled_delta_pdf_consistency.json exists\"]}",
+     "shortened": true
+    },
+    {
+     "step": 8,
+     "tool": "qmax_coverage",
+     "args": {},
+     "why": "The run reused all existing outputs (they were already current). So the on-disk outputs are the current state. Now I need to check every stage and the data itself.\n\nLet me think about what the opening context shows:\n\n**ring_removal:**\n- before_ring_energy: 0.0652, after_ring_energy: 0.0652, ring_energy_ratio: 1\n- This means ring removal did NOTHING — the ratio is 1, meaning the ring energy is unchanged. This is a red flag. The rings were NOT removed.\n- over_subtraction_fraction: 0, after_negative_fraction: 0\n- ring_residuals: 5 rings, 4 significant. Worst ring left at |Q|=1.68 with residual_fraction 0.479 (48% of the diffuse remains!).\n- suggested_display_vmax: 0.7271\n\nSo the ring removal is a no-op. The ring_energy_ratio of 1 means the rings are completely intact. This is a problem.\n\nBut wait — assess_stage rings says \"meets its goal\" with \"ring ratio 1 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0\". And the shells_judged all say \"ring\": false. So the 3D assessment says these bumps are NOT powder rings — they don't rise in nearly every direction over the sphere. The isotropy values are very low (0.013, -12, -0.43, etc.), meaning these bumps are anisotropic — they're the crystal's own scattering, not powder rings.\n\nSo there's a tension: the 2D cut (hk0 at L=0) shows ring_energy_ratio = 1 (rings not removed) and significant residuals, but the 3D assessment says these are not powder rings (they're anisotropic crystal scattering). \n\nThis is the key insight from the skill: \"ring_residuals judges the removal at each ring of the raw cut... These are the raw cut's bumps, and the crystal's own scattering makes bumps too: whether each is a powder ring (it rises in nearly every direction in 3D) only assess_stage tells.\"\n\nSo the 2D cut shows bumps that look like rings, but the 3D assessment says they're not powder rings (isotropy near 0 or negative). So the ring removal correctly did nothing because there are no powder rings to remove. The ring_energy_ratio of 1 is actually CORRECT behavior — there are no powder rings, so removing nothing leaves the ratio at 1.\n\nWait, but that's a bit odd. Let me reconsider. The ring_removal metric computes before/after ring energy. If the ring model found no rings to subtract, then before = after, ratio = 1. And the \"rings\" it detected in the 2D cut are actually the crystal's own anisotropic scattering, not powder rings. So the ring removal is fine — it correctly identified there are no powder rings.\n\nActually, let me reconsider whether the ring removal is doing anything at all. The fact that before_ring_energy = after_ring_energy = 0.0652 exactly, and over_subtraction = 0, after_negative = 0, suggests the ring removal subtracted nothing. That's consistent with \"no powder rings present.\"\n\nSo the ring removal stage is actually fine. The bumps in the 2D cut are the crystal's own scattering (anisotropic), which is the signal we want to keep.\n\nLet me verify this by checking other cuts. The skill says to measure at least one other cut before a verdict.\n\n**bragg_punch:**\n- leftover: n_suspicious = 0, n_at_nodes = 0, n_off_nodes = 0. Clean!\n- peak_profile: n_peaks = 188, all at lattice nodes, resolution_limited_fraction = 0.273, median_anisotropy = 1.51.\n- So the punch removed 188 Bragg peaks, all at lattice nodes, none missed, none off-lattice. Clean.\n\n**backfill:**\n- n_filled = 601, fill_coverage = 0.0232, median_seam_sigma = 0.189, p95_seam_sigma = 0.749, bright_fill_fraction = 0, checkerboard_fraction = 0.134.\n- Seam is 0.189σ, well under 1. Clean. Checkerboard 0.134 is random-ish (0.5 is random, approaching 1 is periodic artifact). 0.134 is fine.\n\n**flatten:**\n- removed_fraction = 0.703, floor_before = [0.2, 0.143, 0.139], floor_after = [0.0559, -0.000628, -0.00507], after_floor_max_sigma = 1.59, after_negative_fraction = 0.271, floor_trend = -0.314, floor_span_fraction = 0.529.\n- floor_after is near 0 in all three thirds. floor_trend = -0.314 (not near ±1), floor_span_fraction = 0.529 (not near 1). So no pedestal. Clean.\n- But wait, assess_stage flatten says floor_trend = 0.0384, floor_span_fraction = 0.636. That's the volume's shells, different from the single cut. Both say no pedestal.\n\n**delta_pdf:**\n- feature_snr = 1360, strong_feature_fraction = 0.052, positive_fraction = 0.47, anisotropy_ratio = 1, radial_trend = [190, 7.48, 4.83], consistency_pearson_r = 0.989, consistency_normalized_rms = 0.125.\n- feature_snr = 1360 is HUGE. That's a very strong signal. But I need to be careful — a huge SNR with a low back-FFT r could be ripple, not signal.\n- consistency_pearson_r = 0.989 (against the data), but back_fft_pearson_r_even = 1 (against the even part). So the transform is sound. The 0.989 is limited by the odd part (odd_share = 0.0219).\n- anisotropy_ratio = 1 (isotropic).\n- radial_trend = [190, 7.48, 4.83] — falling trend, short-range correlations.\n\nNow the key concern: feature_snr = 1360 is enormous. The skill delta-pdf-interpretation warns about artifacts that imitate signal: Bragg residue, termination ripple, a window past the data, smooth background near the origin.\n\nLet me think about what could make the SNR so huge:\n1. Bragg residue — but the punch is clean (0 leftover at nodes).\n2. Termination ripple — the window/apodization.\n3. A window past the data — qmax_coverage.\n4. Smooth background near the origin — the origin self-correlation.\n\nThe origin_excluded_radius = 1.95 Å. The feature_snr is measured outside the origin's disk. So the origin is excluded.\n\nBut feature_snr = 1360 is suspiciously high. Let me check qmax_coverage and the back-FFT consistency more carefully.\n\nActually, the assess_stage pdf says:\n- back_fft_pearson_r = 0.98901\n- back_fft_pearson_r_even = 1\n- back_fft_odd_share = 0.0219\n- window_weight_on_unmeasured = null\n- window_shape = \"separable\"\n- max_symmetry_break = 0.036\n- worst_symmetry_op = \"four-fold (90°)\"\n- symmetry_declared = false\n\nSo no symmetry is declared. The asymmetry of 0.036 is the data's own (not judged). The window_weight_on_unmeasured is null — meaning the ΔPDF on disk doesn't record it, so qmax_coverage will compare the window reach with full_coverage_q.\n\nLet me now run the key data checks:\n1. qmax_coverage — does the forward transform reach past the measured reciprocal space?\n2. symmetry_check — but no symmetry is declared, so this won't be judged. Actually the skill says \"with none declared the asymmetry is the data's own and is not judged.\" So symmetry_check may not be very useful here. But let me check.\n3. ub_check — is the volume's UB right?\n4. grain_check — is there a second grain?\n5. texture_check — do the punch and backfill add texture?\n\nLet me also reconsider the ring removal. The ring_energy_ratio = 1 is a no-op. But the 3D assessment says the bumps are not powder rings. So the ring removal is correctly doing nothing. But I should verify this holds on other cuts.\n\nActually, wait. Let me reconsider. The ring removal being a no-op (ratio = 1) combined with the 3D assessment saying \"no powder rings\" is consistent. But is it possible that the ring removal SHOULD be removing something but isn't? The before_ring_energy = 0.0652 is the fraction of the azimuthal-median radial profile in localized bumps. If there were real powder rings, the ring model would subtract them and the ratio would drop below 1. Since the ratio is 1, the ring model found nothing to subtract. And the 3D assessment confirms the bumps are anisotropic (crystal scattering), not powder rings. So the ring removal is correctly a no-op.\n\nHmm, but actually, let me reconsider once more. The ring_model is \"pooled\". Let me check if maybe the ring removal is misconfigured and not running. But the assess_stage says \"meets its goal\" and the shells are all \"ring\": false. So the 3D analysis is saying there are no powder rings. I'll trust that but verify on other cuts.\n\nLet me now think about the most important issue: the enormous feature_snr = 1360. This is the thing I need to scrutinize. Let me check:\n1. qmax_coverage — is the window past the data?\n2. The back-FFT consistency in detail.\n3. dpdf_peaks — what are the strongest features?\n\nLet me also reconsider: the radial_trend = [190, 7.48, 4.83]. The inner shell has |ΔPDF| = 190, which is huge compared to the mid (7.48) and outer (4.83). This is a very steep falling trend. The inner shell is dominated by something at small r. This could be:\n- Real short-range order (but 190σ is enormous).\n- A smooth background near the origin that wasn't fully excluded.\n- Termination ripple.\n\nThe origin_excluded_radius = 1.95 Å. If there's a smooth background near the origin that extends beyond 1.95 Å, it could dominate the inner shell.\n\nActually, feature_snr = 1360 is the strongest feature amplitude in background-σ units, with background_sigma = 6.9. So the strongest feature is 1360 × 6.9 = 9384 in raw units? That's enormous. Or is feature_snr already in σ units? Let me re-read: \"feature_snr is the strongest feature amplitude in background-σ units (the origin self-correlation peak is excluded); ≳ 5 means clear structured signal above noise.\" So feature_snr = 1360 means the strongest feature is 1360σ. That's absurdly high for a real correlation. Real ΔPDF features are typically 5-50σ. 1360σ is almost certainly an artifact.\n\nWait, but the radial_trend inner = 190. And feature_snr = 1360. These are different measures. feature_snr is the single strongest feature (a peak), while radial_trend is the mean |ΔPDF| in a shell. So the strongest single feature is 1360σ, but the mean of the inner shell is 190σ. \n\nHmm, 1360σ for a single feature is really high. Let me investigate. This is the kind of thing that could be:\n1. A Bragg peak residue that the punch missed (but punch is clean on the cut).\n2. Termination ripple from the window.\n3. A window past the data.\n4. Something near the origin.\n\nLet me check qmax_coverage first, then dpdf_peaks to see where the strongest feature is.\n\nActually, let me step back and be systematic. Let me run the data checks in parallel:\n1. qmax_coverage\n2. ub_check\n3. grain_check\n4. texture_check\n5. symmetry_check\n\nAnd then dpdf_peaks and consistency_details.\n\nLet me batch these. But some depend on others. Let me think:\n- qmax_coverage: independent\n- ub_check: independent (reads raw volume)\n- grain_check: needs punch to have run (it has)\n- texture_check: independent\n- symmetry_check: independent\n- dpdf_peaks: independent\n- consistency_details: independent\n\nLet me run the data-integrity checks first (qmax_coverage, ub_check, grain_check, texture_check, symmetry_check), then the ΔPDF feature checks (dpdf_peaks, consistency_details).\n\nActually, let me be careful about the number of tool calls. The skill says \"Keep tool calls purposeful — a few well-chosen ones.\" But the user explicitly asked to \"check every stage and the data themselves (the orientation, the coverage, powder rings, the background).\" So I need to be thorough. Let me batch the independent checks.\n\nLet me start with the data-integrity checks that the user explicitly named:\n- orientation → ub_check\n- coverage → qmax_coverage\n- powder rings → assess_stage rings (done) + radial_profile + other cuts\n- background → assess_stage flatten (done) + flatten details\n\nAnd the ΔPDF trust checks:\n- back-FFT → assess_stage pdf (done) + consistency_details\n- symmetry → symmetry_check\n- qmax → qmax_coverage\n- features → dpdf_peaks\n\nLet me run a batch of the independent data checks now.\n\nLet me run: qmax_coverage, ub_check, grain_check, texture_check, symmetry_check, consistency_details, dpdf_peaks. That's 7 calls. Let me do them in one batch since they're independent.\n\nActually, let me reconsider. The user wants me to be thorough but also purposeful. Let me do the most important ones first. The feature_snr = 1360 is the biggest red flag. Let me investigate that with dpdf_peaks and consistency_details, plus qmax_coverage (window past data is a classic cause of huge ripple).\n\nLet me batch: qmax_coverage, consistency_details, dpdf_peaks, ub_check, grain_check, texture_check, symmetry_check.\n\nThat's a reasonable batch of independent calls. Let me do it.\nThe run reused all existing outputs (they were already current), so the on-disk state is what I'm assessing. The opening context already shows the key tension I need to resolve:\n\n- **ring_removal**: `ring_energy_ratio = 1` (a no-op — nothing subtracted), yet the 2D cut shows 4 significant \"ring\" residuals (worst at |Q|=1.68, 48% of diffuse left). The 3D `assess_stage rings` says these bumps are **not** powder rings (isotropy ≈ 0 or negative → anisotropic crystal scattering). I need to confirm that on other cuts.\n- **delta_pdf**: `feature_snr = 1360` is absurdly high for a real correlation — this is the biggest red flag and I must find out whether it's signal or artifact (Bragg residue / termination ripple / window past the data / origin background).\n\nLet me run the data-integrity and ΔPDF-trust checks in one batch.",
+     "status": "done",
+     "summary": "the transform reaches 6.444 Å⁻¹ (the window tapers to zero at the box faces), inside full coverage at 11.05 Å⁻¹",
+     "result": "{\"verdict\":\"the transform reaches 6.444 Å⁻¹ (the window tapers to zero at the box faces), inside full coverage at 11.05 Å⁻¹\",\"window_weight_on_unmeasured\":null,\"window_shape\":\"separable\",\"window_scale\":1,\"transform_reach_q\":6.444,\"reach_from\":\"the window tapers to zero at the box faces\",\"full_coverage_q\":11.05,\"box_face_q\":6.444,\"box_corner_q\":11.16,\"raw_counts\":{\"q_min_edge\":null,\"q_max_edge\":null,\"fully_measured\":[0.15,11.05],\"box_face_q\":6.444},\"suggested_band\":null,\"counts_end_inside_box\":false,\"band_check\":\"no |Q| band is set: the transform takes every voxel, empty ones included, up to the window's reach\",\"q_unit\":\"Å⁻¹\",\"settings\":{\"pdfQMin\":\"(default)\",\"pdfQMax\":\"(default)\",\"pdfApod\":\"(default)\",\"pdfWindowShape\":\"(default)\",\"pdfWindowSupport\":true}}"
+    },
+    {
+     "step": 9,
+     "tool": "ub_check",
+     "args": {},
+     "why": "",
+     "status": "done",
+     "summary": "both: RMS 0.0004 → 0.0004 Å⁻¹ over 90 peaks; a 3.900 → 3.900 Å, c 3.900 → 3.900 Å; turned 0.000°",
+     "result": "{\"fit\":\"both\",\"bragg_nodes_every\":[1,1,1],\"symmetry_from\":null,\"symmetrised\":null,\"symmetry_break\":null,\"peaks\":{\"searched\":342,\"used\":90,\"rejected\":0},\"rms_start\":0.0004,\"rms\":0.0004,\"cell_start\":\"3.9000, 3.9000, 3.9000 Å; 90.000°, 90.000°, 90.000°\",\"cell\":\"3.8998, 3.8999, 3.8999 Å; 90.000°, 90.000°, 90.000°\",\"orientation_change_deg\":0,\"axis_uvw\":[-0.379,0.913,1],\"transform_diagonal\":[1.00004,1.000036,1.000016],\"passes\":[{\"q_max\":3.72,\"found\":14,\"used\":14,\"rms\":\"0.0003 → 0.0003\"},{\"q_max\":7.44,\"found\":82,\"used\":82,\"rms\":\"0.0004 → 0.0004\"},{\"q_max\":11.16,\"found\":90,\"used\":90,\"rms\":\"0.0004 → 0.0004\"}],\"radial\":[{\"q\":\"0–4\",\"direction\":\"in-plane\",\"n\":4,\"before\":0.000045,\"after\":0.0000071},{\"q\":\"0–4\",\"direction\":\"oblique\",\"n\":8,\"before\":-0.000078,\"after\":-0.00011},{\"q\":\"4–8\",\"direction\":\"in-plane\",\"n\":4,\"before\":0.000053,\"after\":0.000015},{\"q\":\"4–8\",\"direction\":\"oblique\",\"n\":56,\"before\":0.000049,\"after\":0.000018},{\"q\":\"4–8\",\"direction\":\"near the third axis\",\"n\":8,\"before\":0.000032,\"after\":0.000012},{\"q\":\"8–12\",\"direction\":\"oblique\",\"n\":8,\"before\":0.000029,\"after\":-0.0000028}],\"unexplained\":false,\"mean_offset_rlu\":{\"before\":[0,0,0],\"after\":[0,0,0],\"standard_error\":[0.000016,0.000018,0.000016]},\"origin_shift_rlu\":null,\"reading\":\"The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).\"}",
+     "shortened": true
+    },
+    {
+     "step": 10,
+     "tool": "grain_check",
+     "args": {},
+     "why": "",
+     "status": "done",
+     "summary": "no off-lattice peaks were recorded by the punch's search",
+     "result": "{\"off_lattice_orbits\":0,\"judged\":0,\"near_bragg_nodes\":0,\"near_offset_angle_deg\":null,\"far\":[],\"rotated_copy\":{\"indexed\":0,\"misorientation_deg\":null},\"random_control\":0,\"verdict\":\"no off-lattice peaks were recorded by the punch's search\",\"off_lattice_peaks\":0,\"declared_symmetry\":null,\"punch_cell\":[1,1,1]}"
+    },
+    {
+     "step": 11,
+     "tool": "texture_check",
+     "args": {},
+     "why": "",
+     "status": "done",
+     "summary": "no systematic fill bias over 189 holes in 3-D · azimuthal ratio 0.958–1.01",
+     "result": "{\"n_holes\":189,\"n_judged\":189,\"median_fill_bias_sigma\":0.0109,\"median_fill_bias_level\":0.00281,\"above_fraction\":0.503,\"below_fraction\":0.00529,\"above_floor_fraction\":0.0423,\"below_floor_fraction\":0,\"systematic_fill_bias\":false,\"per_cut\":[{\"cut\":\"H–K plane at L = 0\",\"azimuthal_ratio\":1.01},{\"cut\":\"H–L plane at K = 0\",\"azimuthal_ratio\":1},{\"cut\":\"K–L plane at H = 0\",\"azimuthal_ratio\":0.958}]}",
+     "shortened": true
+    },
+    {
+     "step": 12,
+     "tool": "symmetry_check",
+     "args": {},
+     "why": "",
+     "status": "done",
+     "summary": "no symmetry declared: not judged",
+     "result": "{\"sections\":\"xy at z = 0 Å, xz at y = 0, yz at x = 0\",\"operations\":\"the cell's in-plane ones (orthogonal): no operations declared\",\"ops\":[{\"op\":\"four-fold ∥ c (90°)\",\"rms_difference\":0.039,\"pairs\":78083,\"tested_on\":\"xy; xz↔yz\"},{\"op\":\"two-fold ∥ c\",\"rms_difference\":0.038,\"pairs\":51520,\"tested_on\":\"xz; yz\"},{\"op\":\"mirror ⊥ a\",\"rms_difference\":0.038,\"pairs\":51520,\"tested_on\":\"xy; xz\"},{\"op\":\"mirror ⊥ b\",\"rms_difference\":0.038,\"pairs\":51520,\"tested_on\":\"xy; yz\"}],\"holds\":[],\"symmetry_declared\":false,\"verdict\":\"not judged: the file declares no symmetry, so the sections' asymmetry (0.039) is the data's own, counting noise included, not a break by a stage\"}",
+     "shortened": true
+    },
+    {
+     "step": 13,
+     "tool": "consistency_details",
+     "args": {},
+     "why": "",
+     "status": "done",
+     "summary": "r = 0.989, normalised RMS = 0.1253; against the even part r = 1 (odd share 0.02185)",
+     "result": "{\"pearson_r\":0.989,\"normalized_rms\":0.1253,\"rms\":0.013583852092373403,\"n_voxels\":3617683,\"per_plane_r\":{\"+0.000\":0.9938,\"+0.350\":0.9873,\"+1.000\":0.9941},\"pearson_r_even\":1,\"normalized_rms_even\":1.135e-14,\"odd_share\":0.02185,\"n_voxels_even\":3617683,\"crop_hkl\":null,\"q_band\":null,\"apodization\":\"gaussian\"}"
+    },
+    {
+     "step": 14,
+     "tool": "dpdf_peaks",
+     "args": {
+      "min_sigma": 5,
+      "limit": 12
+     },
+     "why": "",
+     "status": "done",
+     "summary": "619 extrema above 5σ; strongest − at (0.497, 0.497, 0) r.l.u., 2.74 Å, 1520σ",
+     "result": "{\"grouped_by\":\"sign, length and size (no symmetry declared)\",\"features\":[{\"sign\":\"−\",\"length_A\":2.74,\"size_sigma\":1520,\"n_vectors\":6,\"vectors_rlu\":[[0.497,0.497,0],[0,0.497,-0.497],[-0.0001,0.497,0.497],[0.497,0,-0.497]],\"vectors_A\":[[1.938,1.937,-0.0001],[0.0001,1.937,-1.937],[-0.0003,1.938,1.938],[1.938,0.0002,-1.937]]},{\"sign\":\"+\",\"length_A\":4.763,\"size_sigma\":858,\"n_vectors\":12,\"vectors_rlu\":[[0.499,-0.498,0.997],[0.499,0.499,-0.997],[0.499,0.499,0.997],[0.997,-0.498,-0.498]],\"vectors_A\":[[1.945,-1.944,3.888],[1.945,1.945,-3.888],[1.944,1.944,3.889],[3.888,-1.944,-1.944]]},{\"sign\":\"−\",\"length_A\":6.732,\"size_sigma\":579,\"n_vectors\":4,\"vectors_rlu\":[[0.997,0.997,-0.997],[0.997,0.997,0.997],[0.997,-0.997,-0.997],[0.996,-0.996,0.997]],\"vectors_A\":[[3.887,3.886,-3.888],[3.887,3.887,3.887],[3.886,-3.886,-3.886],[3.886,-3.885,3.887]]},{\"sign\":\"+\",\"length_A\":3.88,\"size_sigma\":540,\"n_vectors\":1,\"vectors_rlu\":[[0,0.0001,0.995]],\"vectors_A\":[[0,0.0003,3.88]]},{\"sign\":\"+\",\"length_A\":7.779,\"size_sigma\":506,\"n_vectors\":2,\"vectors_rlu\":[[1.99,-0.0001,0],[0,1.99,0]],\"vectors_A\":[[7.779,-0.0003,0],[-0.0001,7.778,0]]},{\"sign\":\"+\",\"length_A\":7.779,\"size_sigma\":245,\"n_vectors\":1,\"vectors_rlu\":[[-0.0003,0.0004,1.99]],\"vectors_A\":[[-0.0011,0.0015,7.779]]},{\"sign\":\"+\",\"length_A\":5.837,\"size_sigma\":238,\"n_vectors\":3,\"vectors_rlu\":[[1.5,0.0006,0],[0,-0.0003,1.5],[0.0001,1.5,-0.0004]],\"vectors_A\":[[5.837,0.0022,0.0001],[-0.0002,-0.0012,5.836],[0.0002,5.839,-0.0014]]},{\"sign\":\"+\",\"length_A\":5.503,\"size_sigma\":235,\"n_vectors\":2,\"vectors_rlu\":[[0.998,-0.998,0.0001],[0.998,0.998,-0.0005]],\"vectors_A\":[[3.892,-3.891,0.0003],[3.892,3.893,-0.0019]]},{\"sign\":\"−\",\"length_A\":6.15,\"size_sigma\":215,\"n_vectors\":12,\"vectors_rlu\":[[1.5,0.0004,0.498],[0.0002,0.498,1.5],[1.5,0.498,-0.0005],[0.498,0.0002,1.5]],\"vectors_A\":[[5.835,0.0016,1.943],[0.0006,1.944,5.834],[5.833,1.944,-0.002],[1.944,0.0007,5.834]]},{\"sign\":\"+\",\"length_A\":9.129,\"size_sigma\":169,\"n_vectors\":12,\"vectors_rlu\":[[0.998,1.5,-1.5],[0.999,1.5,1.5],[1.5,1.5,-0.999],[1.5,-0.998,1.5]],\"vectors_A\":[[3.893,5.837,-5.84],[3.897,5.839,5.84],[5.84,5.838,-3.896],[5.842,-3.89,5.841]]},{\"sign\":\"−\",\"length_A\":5.483,\"size_sigma\":160,\"n_vectors\":4,\"vectors_rlu\":[[0.994,-0.0005,0.994],[0.0003,0.995,0.994],[0.995,0.0009,-0.995],[-0.001,0.995,-0.995]],\"vectors_A\":[[3.877,-0.0019,3.878],[0.0012,3.881,3.877],[3.882,0.0034,-3.88],[-0.004,3.88,-3.882]]},{\"sign\":\"+\",\"length_A\":8.258,\"size_sigma\":149,\"n_vectors\":6,\"vectors_rlu\":[[1.5,-0.0004,1.5],[0.0009,1.5,1.5],[0.0003,1.5,-1.5],[1.5,0.0005,-1.5]],\"vectors_A\":[[5.842,-0.0017,5.837],[0.0035,5.841,5.832],[0.0012,5.839,-5.839],[5.84,0.0021,-5.84]]}],\"robust_sigma\":6.17,\"threshold_sigma\":5,\"origin_disk_A\":1.95,\"extrema_above_threshold\":619,\"reading\":\"Each entry: the sign, |r|, the largest size in σ, how many vectors (one per ± pair) share them, and up to 4 of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk; features nearer the origin than the shortest interatomic distance are not pair correlations.\"}",
+     "shortened": true
+    },
+    {
+     "step": 15,
+     "tool": "dpdf_contrast",
+     "args": {},
+     "why": "Let me digest these results carefully. This is a critical moment — the ΔPDF feature_snr of 1360 is absurd, and I need to figure out whether it's real signal or artifact.\n\nLet me go through each check:\n\n**qmax_coverage**: \n- verdict: \"the transform reaches 6.444 Å⁻¹ (the window tapers to zero at the box faces), inside full coverage at 11.05 Å⁻¹\"\n- window_weight_on_unmeasured: null (not recorded on disk)\n- window_shape: separable\n- transform_reach_q: 6.444\n- full_coverage_q: 11.05\n- box_face_q: 6.444\n- box_corner_q: 11.16\n- raw_counts: fully_measured [0.15, 11.05], box_face_q 6.444\n- counts_end_inside_box: false\n- band_check: \"no |Q| band is set: the transform takes every voxel, empty ones included, up to the window's reach\"\n\nSo the window tapers to zero at the box faces (6.444 Å⁻¹), which is inside full coverage (11.05 Å⁻¹). Good — the transform does NOT reach past the measured space. The counts are fully measured from 0.15 to 11.05, and the box face is at 6.444, so the box is entirely within the measured region. No window-past-data problem. \n\nWait, but there's a subtlety. The window is \"separable\" and tapers to zero at the box faces. The box face is at 6.444 Å⁻¹. The full coverage is 11.05. So the window reaches 6.444, well inside 11.05. That's clean. The transform is not reaching past the data.\n\nBut wait — the ΔPDF grid is 162³ with x from -39 to 38.52 Å. The q_max of the ΔPDF is 11.16 (the box corner). Hmm, but the window tapers to zero at the box faces (6.444). So the effective Qmax is 6.444, not 11.16.\n\nActually, let me reconsider. The ΔPDF's q_max is 11.16 which is the box corner. But the window (apodization) tapers to zero at the box faces (6.444). So the effective reach is 6.444. This is inside full coverage. Good.\n\nSo qmax_coverage is CLEAN. The transform does not reach past the data.\n\n**ub_check**:\n- fit: \"both\" (rotation and cell together, triclinic since no symmetry declared)\n- bragg_nodes_every: [1,1,1]\n- symmetrised: null (no symmetry declared)\n- peaks: searched 342, used 90, rejected 0\n- rms_start: 0.0004, rms: 0.0004 (no change)\n- cell_start: 3.9000, 3.9000, 3.9000; cell: 3.8998, 3.8999, 3.8999 (essentially unchanged)\n- orientation_change_deg: 0\n- transform_diagonal: [1.00004, 1.000036, 1.000016] (essentially 1)\n- radial: all tiny, before and after, no systematic |Q|-dependent offset\n- mean_offset_rlu: before [0,0,0], after [0,0,0], SE ~0.000016\n- origin_shift_rlu: null\n- reading: \"The rotation and the cell were fitted together; no symmetry was declared, so the cell was left free (triclinic).\"\n\nSo the UB is spot on. rms_start = rms = 0.0004, orientation change 0°, cell essentially unchanged, no origin shift, no |Q|-dependent radial offset. The orientation is correct. \n\n**grain_check**:\n- off_lattice_orbits: 0\n- judged: 0\n- near_bragg_nodes: 0\n- verdict: \"no off-lattice peaks were recorded by the punch's search\"\n- off_lattice_peaks: 0\n- punch_cell: [1,1,1]\n\nSo there are NO off-lattice peaks. No second grain, no satellites, no superlattice. The punch found 188 peaks, all at lattice nodes. Clean.\n\n**texture_check**:\n- n_holes: 189, n_judged: 189\n- median_fill_bias_sigma: 0.0109, median_fill_bias_level: 0.00281\n- above_fraction: 0.503, below_fraction: 0.00529\n- above_floor_fraction: 0.0423, below_floor_fraction: 0\n- systematic_fill_bias: false\n- per_cut azimuthal_ratio: 1.01, 1.0, 0.958 (all near 1)\n\nSo the backfill adds NO texture. No systematic fill bias, azimuthal ratios near 1. Clean.\n\n**symmetry_check**:\n- sections: xy at z=0, xz at y=0, yz at x=0\n- operations: \"the cell's in-plane ones (orthogonal): no operations declared\"\n- ops: four-fold ∥ c (rms 0.039), two-fold ∥ c (0.038), mirror ⊥ a (0.038), mirror ⊥ b (0.038)\n- holds: [] (none)\n- symmetry_declared: false\n- verdict: \"not judged: the file declares no symmetry, so the sections' asymmetry (0.039) is the data's own, counting noise included, not a break by a stage\"\n\nSo no symmetry is declared. The asymmetry (0.039) is the data's own, not a stage break. This is fine — the file doesn't declare symmetry, so we can't judge it as a break. The ΔPDF is centrosymmetric (as always).\n\n**consistency_details**:\n- pearson_r: 0.989 (against the data)\n- normalized_rms: 0.1253\n- rms: 0.01358\n- n_voxels: 3617683\n- per_plane_r: +0.000: 0.9938, +0.350: 0.9873, +1.000: 0.9941\n- pearson_r_even: 1 (against the even part)\n- normalized_rms_even: 1.135e-14\n- odd_share: 0.02185\n- n_voxels_even: 3617683\n- crop_hkl: null, q_band: null, apodization: gaussian\n\nSo the back-FFT round trip: r against the data is 0.989, but r against the even part is 1.0 (to rounding). The odd share is 0.02185 (2.2%). Since no symmetry is declared, the data is not symmetrised, so the odd part is real (noise + any genuine odd component). The transform is sound: r_even = 1. The r against the data (0.989) is limited by the odd part, which is expected on unsymmetrised data. This is NOT a fault.\n\nSo the transform is mathematically sound. The round trip reproduces the even part to r=1.\n\n**dpdf_peaks**:\nThis is the key. Let me look at the strongest features:\n1. sign −, length 2.74 Å, size 1520σ, 6 vectors: [0.497,0.497,0], [0,0.497,-0.497], etc. → ~1.94 Å along a,b,c. This is a ½,½,0 type vector.\n2. sign +, length 4.763 Å, size 858σ, 12 vectors: [0.499,-0.498,0.997] etc. → ~1.94,1.94,3.89 Å. This is a ½,½,1 type.\n3. sign −, length 6.732 Å, size 579σ, 4 vectors: [0.997,0.997,-0.997] → ~3.89,3.89,3.89. This is a 1,1,1 type.\n4. sign +, length 3.88 Å, size 540σ, 1 vector: [0,0,0.995] → 3.88 Å along c. This is a 0,0,1 type.\n5. sign +, length 7.779 Å, size 506σ, 2 vectors: [1.99,0,0], [0,1.99,0] → 7.78 Å along a or b. This is a 2,0,0 / 0,2,0 type.\n6. sign +, length 7.779 Å, size 245σ, 1 vector: [0,0,1.99] → 7.78 Å along c. This is a 0,0,2 type.\n7. sign +, length 5.837 Å, size 238σ, 3 vectors: [1.5,0,0] etc. → 5.84 Å. This is a 1.5,0,0 type.\n8. sign +, length 5.503 Å, size 235σ, 2 vectors: [0.998,-0.998,0] → 3.89,3.89. This is a 1,1,0 type.\n9. sign −, length 6.15 Å, size 215σ, 12 vectors: [1.5,0,0.498] etc.\n10. sign +, length 9.129 Å, size 169σ, 12 vectors: [0.998,1.5,-1.5] etc.\n11. sign −, length 5.483 Å, size 160σ, 4 vectors: [0.994,0,0.994] → 3.88,3.88. This is a 1,0,1 type.\n12. sign +, length 8.258 Å, size 149σ, 6 vectors: [1.5,0,1.5] etc.\n\nNow, the critical question: are these REAL pair correlations, or artifacts?\n\nThe sizes are ENORMOUS: 1520σ, 858σ, 579σ, 540σ, 506σ... These are hundreds to over a thousand sigma. That is NOT a normal ΔPDF feature. A real pair correlation deviation in a ΔPDF is typically a few to tens of sigma, maybe up to ~50-100σ for a very strong SRO feature. 1520σ is absurd.\n\nWait, but let me reconsider. The \"robust_sigma\" is 6.17 (the volume's robust σ outside the origin's disk). And the feature_snr in the context was 1360. So the strongest feature is 1360σ. That's the 1520σ one (slightly different because dpdf_peaks uses the whole volume, context used z=0 section).\n\nHmm, 1520σ is way too big. Let me think about what this means.\n\nActually, wait. Let me reconsider the whole picture. The key insight:\n\nThe ΔPDF is the Fourier transform of the DIFFUSE scattering (after Braggs are punched). If the Bragg peaks were NOT fully removed, or if there's a residual pedestal/background, the FFT would produce huge features at the lattice vectors (integer and half-integer positions).\n\nLook at the vectors:\n- ½,½,0 (1.94 Å) — half-integer\n- ½,½,1 (1.94,1.94,3.89) — half-integer\n- 1,1,1 (3.89,3.89,3.89) — integer\n- 0,0,1 (3.88) — integer\n- 2,0,0 / 0,2,0 (7.78) — integer\n- 0,0,2 (7.78) — integer\n- 1.5,0,0 (5.84) — 1.5\n- 1,1,0 (3.89,3.89) — integer\n- 1,0,1 (3.88,3.88) — integer\n\nThese are ALL at or near lattice vectors (integer and half-integer multiples of the unit cell). This is the signature of a problem, NOT real SRO.\n\nReal short-range order in a ΔPDF appears at interatomic distances that are NOT simply lattice translations. For a cubic cell with a=3.9 Å, the nearest-neighbor distance would be ~2.75 Å (a/√2 for fcc) or ~3.9 Å (simple cubic nearest neighbor) or ~2.25 Å (a/√2 for sc). The features here are at 1.94, 3.88, 5.84, 7.78 Å — these are a/2, a, 1.5a, 2a. These are lattice-translation-like vectors, not typical interatomic vectors.\n\nWait, 1.94 Å = a/2 = 3.9/2. That's half a unit cell. For a simple cubic lattice, the nearest neighbor is at a = 3.9 Å, not a/2. So a feature at a/2 = 1.94 Å is NOT a nearest-neighbor of a simple cubic lattice.\n\nHmm, but actually, let me reconsider. The cell is a=b=c=3.9 Å, all angles 90°. This is a primitive cubic cell (or could be indexed on a primitive cell of a larger lattice). The punch found 188 peaks all at lattice nodes with bragg_nodes_every [1,1,1]. So the Bragg peaks are at integer (h,k,l).\n\nIf the real structure is, say, fcc (which would be indexed on a face-centered cell, or a primitive cell of half the conventional cubic cell), then... Actually, let me think. If the conventional cell is a=3.9 and it's fcc, the primitive cell would be a/√2... no.\n\nActually, let me step back. The critical diagnostic:\n\nThe ΔPDF has ENORMOUS features (1520σ, 858σ, 579σ...) at lattice-translation vectors (a/2, a, 1.5a, 2a and their combinations). This is the classic signature of:\n1. **Bragg residue** — if the Bragg peaks weren't fully removed, their FFT gives huge peaks at the lattice vectors.\n2. **A residual pedestal/background** — a smooth background in Q-space, when FFT'd, gives a huge peak at r=0 (the origin) and ripples. But the origin is excluded (radius 1.95 Å).\n3. **Termination ripple** — from the window/apodization.\n\nBut wait — the origin is excluded at radius 1.95 Å. And the strongest feature is at 2.74 Å (the ½,½,0 vector, length 2.74 Å = √(1.94²+1.94²) = 2.74). So it's just outside the origin disk.\n\nHmm, let me reconsider. Actually, the fact that these features are at a/2, a, 1.5a, 2a and are HUGE (hundreds to 1000s of σ) strongly suggests this is NOT real SRO. Real SRO features in a ΔPDF are modest in size (a few to tens of σ) and at interatomic vectors.\n\nBut here's the thing — I need to be careful. Let me reconsider what \"σ\" means here. The robust_sigma is 6.17 (in the same units as the ΔPDF). The feature size is 1520σ = 1520 × 6.17 in ΔPDF units. That's a feature 9400 units tall, against a background of 6.17 units. That's a feature that is 1520 times the background noise. \n\nFor a real ΔPDF, the origin self-correlation peak is huge (it's the total scattering power), and it decays. The features we see (1520σ at 2.74 Å) are... let me think about the radial_trend: [190, 7.48, 4.83]. So the mean |ΔPDF| in the inner shell is 190, mid 7.48, outer 4.83. The inner shell (nearest the origin) has mean |ΔPDF| = 190, which is 190/6.9 ≈ 27.5σ (using context's background_sigma 6.9). So the inner shell is dominated by the origin's decay.\n\nWait, the origin_excluded_radius is 1.95 Å. The inner shell of the radial_trend — is it inside or outside the origin disk? The radial_trend is mean |ΔPDF| in inner/mid/outer shells. If the origin disk (1.95 Å) is excluded from the feature_snr calculation but the radial_trend includes it... Let me reconsider.\n\nActually, the feature_snr = 1360 is \"the strongest feature amplitude in background-σ units (the origin self-correlation peak is excluded)\". So the strongest feature (excluding the origin) is 1360σ. And the dpdf_peaks shows the strongest at 1520σ (whole volume, slightly different). These are consistent — the strongest non-origin feature is ~1400-1500σ.\n\nThat is ENORMOUS. A real SRO feature is not 1400σ. This is the signature of a problem.\n\nLet me think about what produces a 1400σ feature at a/2, a, 1.5a, 2a...\n\nActually, wait. Let me reconsider the flatten. The flatten removed a pedestal: removed_fraction 0.703 (70% of the level removed!). That's a HUGE pedestal. floor_before [0.2, 0.143, 0.139], floor_after [0.0559, -0.000628, -0.00507]. So the flatten removed a big background.\n\nBut here's the key: if the flatten removed a pedestal that was actually part of the diffuse signal, or if the flatten over/under-subtracted, that could create artifacts. But the flatten verdict is \"meets its goal\" (no pedestal left, trend 0.0384, span 0.636).\n\nHmm, let me reconsider. Actually, I think the real issue might be different. Let me reconsider the ring removal.\n\n**ring_removal**: ring_energy_ratio = 1 (a NO-OP — nothing was subtracted). The 2D cut shows 4 significant \"ring\" residuals. But the 3D assess_stage says these are NOT powder rings (isotropy ≈ 0 or negative). So the ring removal did nothing (ratio 1), and the \"rings\" in the 2D cut are actually the crystal's own anisotropic scattering, not powder rings.\n\nWait, but if ring_energy_ratio = 1 and over_subtraction = 0, that means the ring removal stage did NOT subtract anything. So the \"ringremoved\" volume is identical to the raw volume? Let me check. Actually, ring_energy_ratio = after/before = 1 means after = before, so nothing was removed. And over_subtraction_fraction = 0, after_negative_fraction = 0. So the ring removal was a no-op.\n\nHmm, but that's a problem if there ARE powder rings. But the 3D assessment says the bumps are not powder rings (anisotropic). So maybe there are no powder rings, and the ring removal correctly did nothing. OR maybe the ring removal failed to detect the rings.\n\nWait, let me reconsider. The ring_removal in the context is from the 2D cut. before_ring_energy = 0.0652, after_ring_energy = 0.0652, ratio = 1. So on the 2D cut, the ring removal removed nothing. But the 3D assess_stage rings says \"ring ratio 1 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0\" and \"meets its goal\" with max_ring_left = 0, max_ring_dent = 0.\n\nSo the 3D assessment found NO powder rings (the bumps are anisotropic crystal scattering, not isotropic powder rings). And the ring removal did nothing (ratio 1). So the ring removal is \"clean\" in the sense that it didn't over-subtract and there are no powder rings to remove.\n\nBut wait — is that right? If there are NO powder rings, then the ring removal correctly does nothing. But the 2D cut shows \"ring residuals\" — those are the crystal's own scattering bumps, which are anisotropic (not powder rings). So the ring removal is fine.\n\nOK so let me now focus on the REAL problem: the ΔPDF feature_snr of 1360-1520σ.\n\nLet me reconsider. The ΔPDF is the FFT of the flattened, backfilled, Bragg-punched volume. If the Bragg peaks were punched (188 peaks, 0.0266 fraction punched) and backfilled, and the flatten removed a pedestal, then the FFT should give the SRO.\n\nBut the features are at a/2, a, 1.5a, 2a and are HUGE. This is the signature of... let me think.\n\nActually, I wonder if the issue is that the \"diffuse\" that's left after punching is actually dominated by something that FFTs to lattice vectors. \n\nHold on. Let me reconsider the cell. a=b=c=3.9 Å, all 90°. The punch found 188 Bragg peaks at integer (h,k,l) nodes. If the real crystal is, e.g., a simple cubic or has a primitive cell of 3.9 Å, then the Bragg peaks are at integer h,k,l.\n\nBut the ΔPDF features are at a/2 (1.94 Å), a (3.88 Å), 1.5a (5.84 Å), 2a (7.78 Å). \n\nFor a simple cubic lattice with a=3.9:\n- Nearest neighbor: a = 3.9 Å (1,0,0)\n- Next: a√2 = 5.52 Å (1,1,0)\n- Next: a√3 = 6.75 Å (1,1,1)\n- Next: 2a = 7.8 Å (2,0,0)\n\nSo the features at a (3.88), a√2 (5.50), a√3 (6.73), 2a (7.78) DO correspond to the simple cubic lattice's neighbor shells! (1,0,0), (1,1,0), (1,1,1), (2,0,0).\n\nBut the feature at a/2 = 1.94 Å (½,½,0) does NOT correspond to a simple cubic neighbor. And 1.5a = 5.84 Å (1.5,0,0) is not a simple cubic neighbor either.\n\nHmm, so some features are at lattice-translation-like vectors (a, a√2, a√3, 2a) and some are at half-integer vectors (a/2, 1.5a).\n\nWait, this is confusing. Let me reconsider.\n\nActually, I think I'm overcomplicating this. Let me reconsider the fundamental issue.\n\nThe ΔPDF feature_snr is 1360-1520σ. This is the strongest feature. For a REAL ΔPDF, even a very strong SRO feature would be maybe 10-100σ. 1500σ is not physical SRO.\n\nThe most likely explanation: **the Bragg peaks were not fully removed, OR there's a residual background/pedestal that FFTs to huge features at lattice vectors.**\n\nBut wait — the punch found 188 peaks, all at nodes, 0 leftover. The backfill is seamless (0.248σ). The flatten removed a pedestal. So the Braggs should be gone.\n\nLet me reconsider. Actually, maybe the issue is the OPPOSITE: the features ARE real, but they're so strong because... no, 1500σ is not real SRO.\n\nHmm, let me reconsider the flatten more carefully. removed_fraction = 0.703. That means the flatten removed 70% of the diffuse level as a \"pedestal.\" That's a LOT. If the flatten removed a pedestal that was actually the diffuse signal (or part of it), then... no, that would REDUCE the features, not increase them.\n\nWait, actually, let me reconsider. Let me reconsider whether the flatten might have INTRODUCED a problem. The flatten fits a model to each shell's floor and subtracts it. If the model is wrong (e.g., it fits a pedestal that isn't there, or it over-subtracts in some shells), it could create a Q-space pattern that FFTs to features.\n\nBut the flatten verdict is \"meets its goal\" (no pedestal left, trend 0.0384, span 0.636). And the floor_after is near 0 in all thirds. So the flatten looks good.\n\nOK let me step back and think about this differently. Let me reconsider the whole pipeline and what could produce a 1500σ feature at a/2.\n\nActually — WAIT. I think I need to reconsider the ring removal being a no-op. Let me reconsider.\n\nring_energy_ratio = 1 means the ring removal subtracted NOTHING. So the \"ringremoved\" volume = raw volume (nothing removed). Then the punch removes 188 Bragg peaks. Then backfill. Then flatten. Then FFT.\n\nIf the ring removal did nothing, and there ARE powder rings (Al, etc.), then those powder rings would be in the volume and would FFT to features. But the 3D assessment says the bumps are NOT powder rings (anisotropic). So maybe there are no powder rings.\n\nHmm, but actually, let me reconsider. The ring_removal in the context is measured on the 2D cut. before_ring_energy = 0.0652. This is the fraction of the azimuthal-median radial profile in localized bumps. 6.5% is a small amount. And after = before (ratio 1). So the ring removal found 6.5% \"ring energy\" but removed none of it? That's odd.\n\nWait, no. Let me re-read the ring_removal interpretation: \"ring_energy_ratio = after/before; lower is cleaner, near 1 means rings survived.\" So ratio 1 means the rings SURVIVED (weren't removed). But the 3D assessment says the bumps are not powder rings.\n\nHmm, there's a tension. The 2D cut says \"rings survived\" (ratio 1), but the 3D assessment says the bumps are anisotropic (not powder rings). \n\nActually, I think the resolution is: the 2D cut's \"ring energy\" metric detects bumps in the azimuthal-median radial profile. These bumps are the crystal's own anisotropic scattering (which, when you take the azimuthal median, still shows up as bumps because the crystal scatters more in some directions). The 3D assessment checks whether these bumps rise in nearly every direction (isotropic = powder ring) or only in some directions (anisotropic = crystal). It finds they're anisotropic, so they're NOT powder rings. So the ring removal correctly did nothing (there are no powder rings to remove).\n\nSo the ring removal is fine. The \"rings\" in the 2D cut are the crystal's own scattering.\n\nOK so now, back to the ΔPDF. Let me reconsider.\n\nActually, you know what, let me reconsider the possibility that the features ARE real but I'm misjudging the σ scale.\n\nThe robust_sigma is 6.17. This is the robust σ of the ΔPDF volume outside the origin disk. The feature size is 1520σ. So the feature amplitude is 1520 × 6.17 = 9398 (in ΔPDF units).\n\nNow, what's the origin self-correlation peak? The origin is the total scattering power, which is huge. The origin_excluded_radius is 1.95 Å. The radial_trend inner shell mean |ΔPDF| is 190. So near the origin, |ΔPDF| ~ 190 (mean). The origin peak itself would be much higher (it's the sum of all scattering).\n\nHmm, so the feature at 2.74 Å (1520σ = 9398) is MUCH larger than the inner shell mean (190). That's a factor of ~50 larger. That's not a smooth decay from the origin; it's a distinct huge peak.\n\nWait, that doesn't make sense for a smooth origin decay. If the origin peak is, say, 100000 (the total scattering power), and it decays, then at 2.74 Å it might be ~190 (the inner shell mean). A feature of 9398 at 2.74 Å would be a huge spike on top of that decay.\n\nActually, I realize I'm speculating too much. Let me look at the actual data. Let me:\n1. Check the ΔPDF visually (dpdf_contrast, then look at the section).\n2. Check the radial_profile to see if there's a pedestal or ring in Q-space.\n3. Look at the line_profile through a feature.\n4. Re-examine the flatten and punch on other cuts.\n\nActually, the most important thing: I should look at the ΔPDF section and the Q-space cuts to understand what's producing these huge features.\n\nBut wait — let me reconsider the whole thing. The user said \"Take it to a 3D-ΔPDF you would trust for analysis.\" The feature_snr of 1360 is a red flag. But is it a real problem, or is it just a very strong SRO?\n\nLet me reconsider the delta-pdf-interpretation skill. It says: \"the artifacts that imitate signal (Bragg residue, termination ripple, a window past the data, smooth background near the origin).\"\n\nSo the artifacts that imitate signal are:\n1. Bragg residue — if Braggs not fully removed, FFT gives peaks at lattice vectors.\n2. Termination ripple — from the window/apodization.\n3. A window past the data — qmax_coverage says this is NOT the case (window reaches 6.444, inside coverage 11.05).\n4. Smooth background near the origin — the origin self-correlation.\n\nSo the question is: are the huge features (at a/2, a, 1.5a, 2a) due to Bragg residue, termination ripple, or origin background?\n\nLet me reconsider:\n- The features are at a/2, a, 1.5a, 2a and combinations. These are lattice-translation-like vectors.\n- Bragg residue would give peaks at the lattice vectors (integer h,k,l → r = integer × a). So a, a√2, a√3, 2a (integer combinations). But NOT a/2 or 1.5a (half-integer).\n- The feature at a/2 (½,½,0) is the STRONGEST (1520σ). A half-integer vector is NOT a Bragg lattice vector (for a primitive cubic cell). So it's not Bragg residue from the primitive cell.\n\nHmm, unless the real cell is smaller. If the real cell is a/2 = 1.95 Å (i.e., the 3.9 Å cell is a 2× supercell), then the Bragg peaks would be at integer multiples of 1.95 Å, and a/2 of the 3.9 cell = 1.95 Å = the real cell's a. Then the feature at 1.94 Å (½,½,0 in the 3.9 cell) would be at (1,1,0) in the 1.95 cell — a real lattice vector!\n\nWait, this is a key insight. Let me reconsider the cell.\n\nThe punch found 188 Bragg peaks at integer (h,k,l) nodes with bragg_nodes_every [1,1,1]. So the Bragg peaks are at integer h,k,l in the 3.9 Å cell. If the real structure has a primitive cell of 3.9 Å, then the Bragg peaks are at integer h,k,l, and the ΔPDF features at a/2 would be... not lattice vectors.\n\nBut if the real structure is, e.g., fcc (face-centered cubic), then the Bragg peaks are only at h,k,l all even or all odd (the fcc extinction rule). In a 3.9 Å cell indexed as if primitive, the fcc Bragg peaks would be at (h,k,l) where h,k,l are all even or all odd. The punch found 188 peaks — if they're all at \"allowed\" fcc positions, then...\n\nHmm, this is getting complicated. Let me reconsider.\n\nActually, the punch's bragg_nodes_every is [1,1,1], meaning it treats every integer (h,k,l) as a Bragg node. It found 188 peaks, all at nodes. If the real structure is fcc, then only half the integer nodes would have Bragg peaks (the allowed ones), and the punch would find peaks at those. The 188 peaks would be the allowed fcc reflections.\n\nBut the ΔPDF features at a/2 (½,½,0)... For an fcc lattice with conventional cell a=3.9, the primitive cell vectors are (a/2)(1,1,0), (a/2)(1,0,1), (a/2)(0,1,1). The nearest neighbor in fcc is at a/√2 = 2.76 Å (the (1,1,0) direction, which is a face diagonal / 2). \n\nWait, the feature at 2.74 Å (½,½,0) — its length is 2.74 Å = √(1.94² + 1.94²) = 1.94√2 = 2.74. And a/√2 = 3.9/1.414 = 2.76 Å. So the feature at (½,½,0) with length 2.74 Å is essentially at a/√2 = 2.76 Å! That's the fcc nearest-neighbor distance!\n\nSo the strongest feature (1520σ) at (½,½,0), length 2.74 Å ≈ a/√2, is the FCC NEAREST-NEIGHBOR distance!\n\nThis changes everything. If the crystal is fcc (or has fcc-like SRO), then the nearest neighbor is at a/√2 = 2.76 Å, which is the (½,½,0) vector in the conventional cubic cell. So the strongest feature at 2.74 Å IS a real nearest-neighbor correlation!\n\nBut 1520σ is still enormous for a real SRO feature. Hmm.\n\nWait, let me reconsider. Maybe the crystal is fcc, and the \"diffuse\" scattering is actually strong SRO around the fcc lattice. In that case, the ΔPDF would have a strong feature at the fcc nearest neighbor (a/√2 = 2.76 Å). But would it be 1520σ?\n\nActually, for a material with strong SRO (like a perovskite with octahedral tilting, or a charge-ordering material), the ΔPDF features can be quite strong. But 1520σ is still extreme.\n\nHmm, let me reconsider. Actually, I think the issue might be that the cell is indexed on a primitive cell that's HALF the real cell, OR the real cell is fcc and the 3.9 Å is the conventional cell.\n\nLet me reconsider the punch. bragg_nodes_every [1,1,1], 188 peaks at nodes. If the cell is a=3.9 Å and it's fcc, the Bragg peaks are at (h,k,l) all-even or all-odd. In a 161³ grid from -4 to 4 in each direction, the number of all-even or all-odd nodes would be... Let me estimate. The grid is 161 points from -4 to 4, so 0.05 r.l.u. spacing. The nodes at integer h,k,l: from -4 to 4, that's 9 values per axis, 9³ = 729 integer nodes. Of these, the fcc-allowed (all even or all odd) would be about half, ~360. But the punch found 188. Hmm, that's about half of 360. \n\nActually, the punch found 188 peaks, but not all nodes have peaks (some might be too weak, below the significance threshold). So 188 out of ~360 fcc-allowed nodes, or 188 out of 729 all nodes.\n\nThis is getting too speculative. Let me just LOOK at the data. Let me:\n1. Set the ΔPDF contrast (dpdf_contrast) so I can see the features.\n2. Look at the ΔPDF section (show_in_viewer).\n3. Check the radial_profile in Q-space to see if there's a pedestal.\n4. Look at the line_profile through the strongest feature.\n\nActually, the most efficient approach: let me reconsider what the user is really asking. They want a 3D-ΔPDF I would TRUST. The feature_snr of 1360 is a red flag. I need to determine if it's real or artifact, and fix what I can.\n\nLet me reconsider the key artifacts:\n1. **Bragg residue**: The punch removed 188 peaks, 0 leftover. But maybe the punch didn't remove them FULLY (the backfill might not have filled them perfectly, leaving residue). The backfill seam is 0.248σ (seamless). So the Braggs are well-removed. Probably not Bragg residue.\n\n2. **Termination ripple**: From the window/apodization. The window is separable, tapers to zero at the box faces (6.444 Å⁻¹). Termination ripple would appear as oscillations in the ΔPDF, typically at large r. But the features here are at small r (2.74, 3.88, 5.84, 7.78 Å) and are huge. Termination ripple is usually a smooth oscillation, not huge discrete peaks. Probably not termination ripple.\n\n3. **Window past the data**: qmax_coverage says NO (window reaches 6.444, inside coverage 11.05). Not this.\n\n4. **Smooth background near the origin**: The origin self-correlation. The origin is excluded at 1.95 Å. But if the origin peak is huge and decays slowly, it could dominate the inner shells. The radial_trend inner shell is 190 (mean |ΔPDF|). The strongest feature is 1520σ = 9398. So the feature is much larger than the inner shell mean. So it's not just the origin decay.\n\nHmm. So none of the standard artifacts obviously explain a 1520σ feature at a/√2.\n\nWait, let me reconsider. Maybe the feature IS real, and it's a very strong SRO. But 1520σ is so extreme that I'm suspicious.\n\nActually, let me reconsider the σ scale. The robust_sigma is 6.17. This is the robust σ of the ΔPDF volume OUTSIDE the origin disk. If the volume is dominated by a few huge features (the SRO), then the \"background\" (the robust σ) might be small relative to the features. So a feature of 1520σ means it's 1520 times the background. If the background is small (because most of the volume is near zero) and the feature is huge, then 1520σ is possible for a real, very strong SRO.\n\nBut is a 1520σ SRO feature physical? In a ΔPDF, the feature size in σ depends on the signal-to-noise of the measurement. A very strong SRO (like in a charge-ordered or spin-ordered material) could give a large feature. But 1520σ is really extreme.\n\nHmm, let me reconsider. Actually, I think the key issue might be the FLATTEN. Let me reconsider.\n\nThe flatten removed a pedestal: removed_fraction 0.703 (70% of the level). floor_before [0.2, 0.143, 0.139], floor_after [0.0559, -0.000628, -0.00507]. \n\nWait, the floor_before is [0.2, 0.143, 0.139] in inner/mid/outer thirds. These are the 25th-percentile floors of the backfilled slice. After flatten, floor_after is [0.0559, -0.000628, -0.00507]. So the flatten brought the floors to near 0.\n\nBut removed_fraction 0.703 means the pedestal removed was 70% of the level. That's a huge pedestal. If the \"level\" is the diffuse level, then the flatten removed 70% of it as a pedestal. That means 70% of the Q-space intensity was a smooth pedestal (background), and only 30% was the \"real\" diffuse.\n\nHmm, but that's a lot of background. If the background was, e.g., thermal diffuse scattering (TDS) or a Compton-like background, it would be smooth and would be removed by the flatten. But if the flatten removed a pedestal that was actually part of the SRO... no, the SRO is in the modulations, not the pedestal.\n\nActually, wait. Let me reconsider. The flatten fits a model to each shell's 25th-percentile floor. If the Q-space has a smooth pedestal (e.g., from incomplete ring removal, or from a broad background), the flatten removes it. The removed_fraction of 0.703 means the pedestal was 70% of the level.\n\nBut here's a concern: if the pedestal was NOT actually a pedestal (i.e., the flatten over-subtracted), then it would create a Q-space pattern (a \"dip\" in the shells) that FFTs to features. But the flatten verdict says no pedestal left (trend 0.0384, span 0.636), and the floor_after is near 0. So the flatten looks correct.\n\nOK, I'm going in circles. Let me just LOOK at the data and measure more carefully. Let me:\n1. dpdf_contrast (to set the color range).\n2. Look at the ΔPDF section (show_in_viewer dpdf xy 0).\n3. radial_profile in Q-space (to see the pedestal/rings).\n4. line_profile through the strongest feature in the ΔPDF.\n5. Re-examine the punch and flatten on other cuts (h0l, 0kl).\n\nActually, let me reconsider the most likely culprit. The feature at a/√2 (fcc nearest neighbor) being 1520σ... \n\nOH WAIT. I think I finally get it. Let me reconsider the cell and the punch.\n\nThe cell is a=b=c=3.9 Å, all 90°. This is a PRIMITIVE cubic cell (P). The punch found 188 Bragg peaks at integer (h,k,l) nodes.\n\nBut if the REAL crystal is fcc (face-centered cubic), then the conventional cell is a=3.9 Å (fcc), and the Bragg peaks are only at (h,k,l) all-even or all-odd. The primitive cell of the fcc lattice is a/√2... no, the primitive cell vectors of fcc are (a/2)(1,1,0), (a/2)(1,0,1), (a/2)(0,1,1), with primitive cell edge a/√2.\n\nIf the data is indexed on the CONVENTIONAL fcc cell (a=3.9), then the Bragg peaks are at (h,k,l) all-even or all-odd. The punch, with bragg_nodes_every [1,1,1], would try to punch ALL integer nodes, but only the fcc-allowed ones have peaks. So it would find ~188 peaks (the fcc-allowed ones that are strong enough).\n\nNow, the ΔPDF is the FFT of the diffuse. If the crystal is fcc with strong SRO, the nearest neighbor is at a/√2 = 2.76 Å = (½,½,0) in the conventional cell. So the strongest ΔPDF feature at (½,½,0), 2.74 Å, is the fcc nearest neighbor. That's REAL.\n\nBut 1520σ... Let me reconsider whether the punch might have left residue.\n\nActually, here's a critical point: if the crystal is fcc, and the punch punches the fcc Bragg peaks (at all-even/all-odd nodes), but the punch's footprint is based on the instrument resolution, then the punch might not fully remove the Bragg peak if the peak is broader than the footprint, or if the backfill doesn't fill it perfectly.\n\nBut the backfill seam is 0.248σ (seamless), and the punch found 0 leftover. So the Braggs are well-removed.\n\nHmm. OK let me just look at the data. I've been speculating too much. Let me measure.\n\nActually, let me reconsider the whole thing from a higher level. The user wants a TRUSTWORTHY ΔPDF. The feature_snr of 1360 is a red flag. But the standard artifacts (Bragg residue, termination ripple, window past data, origin background) don't obviously explain it. \n\nLet me reconsider: maybe the feature IS real, and the crystal has very strong SRO (like a charge-density wave, or a perovskite with strong octahedral SRO). In that case, the ΔPDF is fine, and I should just report the features.\n\nBut 1520σ is SO extreme that I'm not confident it's real. Let me look at the data to decide.\n\nActually, let me reconsider the flatten ONE more time. The flatten removed a pedestal of 70% of the level. This is a HUGE pedestal. In a typical diffuse-scattering measurement, the pedestal (background) is a small fraction of the level (maybe 10-30%). A 70% pedestal is unusual.\n\nWhat could cause a 70% pedestal? \n- Incomplete ring removal (if powder rings weren't removed, they'd add to the pedestal). But the ring removal did nothing (ratio 1), and the 3D assessment says no powder rings.\n- A broad background from the sample (e.g., TDS, mosaicity).\n- The flatten model over-fitting.\n\nHmm, if the ring removal did nothing (ratio 1) and there ARE powder rings (that the 3D assessment missed because they're partially anisotropic), then the powder rings would be in the volume, and the flatten would try to remove them as a \"pedestal.\" But powder rings are at specific |Q|, not a smooth pedestal. So the flatten (which fits a smooth model) wouldn't remove them well.\n\nWait, but the flatten removed 70% of the level. If that 70% includes powder rings (at specific |Q|) plus a smooth background, then the flatten might have removed the smooth part but left the rings. And the rings would FFT to features.\n\nBut the 3D assessment says the bumps are NOT powder rings (anisotropic). So maybe there are no powder rings.\n\nUgh, I keep going in circles. Let me just MEASURE. Let me look at the radial_profile in Q-space (all stages) to see if there are rings or a pedestal, and look at the ΔPDF section.\n\nLet me do a batch:\n1. dpdf_contrast (set the color range).\n2. radial_profile (hk0, all stages) — to see the pedestal/rings in Q-space.\n3. measure_reciprocal_cut (h0l, 0) and (0kl, 0) — to check the punch/flatten on other cuts.\n4. measure_dpdf_cut (xz, 0) and (yz, 0) — to check the ΔPDF on other sections.\n\nActually, let me be strategic. The most important question is: is the ΔPDF feature real or artifact? Let me:\n1. dpdf_contrast (to see the features).\n2. radial_profile (hk0, all stages) — to see if there's a pedestal or rings in Q-space.\n3. line_profile through the strongest ΔPDF feature (along x through the feature at 1.94, 1.94, 0).\n\nWait, the strongest feature is at (1.938, 1.937, -0.0001) Å. Let me do a line_profile along x through (y=1.937, z=0) in the delta_pdf stage. That would show the feature.\n\nActually, let me reconsider. The feature is at (1.938, 1.937, 0) Å. A line along x through (y=1.937, z=0) would pass through it. Let me do that.\n\nLet me also reconsider: I should check the ΔPDF on other sections (xz, yz) to see if the features are consistent (real SRO would be consistent; an artifact might not be).\n\nLet me do a batch of measurements:\n1. dpdf_contrast (no args) — set the color range.\n2. radial_profile (hk0, 0, all stages) — Q-space pedestal/rings.\n3. measure_dpdf_cut (xz, 0) — ΔPDF on another section.\n4. measure_dpdf_cut (yz, 0) — ΔPDF on another section.\n5. line_profile (delta_pdf, along x, at y=1.937, z=0) — through the strongest feature.\n\nLet me do these.\n\nActually, I realize I should be careful about the number of tool calls. Let me prioritize. The most important is to understand the ΔPDF feature. Let me do:\n1. dpdf_contrast (set color range) — needed before describing the ΔPDF.\n2. radial_profile (hk0, all stages) — to see the Q-space pedestal/rings (this tells me if the flatten left a pedestal or if there are rings).\n3. measure_dpdf_cut (xz, 0) and (yz, 0) — to check the ΔPDF on other sections (consistency).\n4. line_profile (delta_pdf, along x, at y=1.937, z=0) — through the strongest feature.\n\nLet me do these in a batch.\n\nWait, I also want to check the punch and flatten on other cuts (h0l, 0kl) to make sure the picture holds. But let me first understand the ΔPDF.\n\nLet me do the batch.\n\nActually, let me reconsider the radial_profile. It gives the median intensity in |Q| shells for each stage (raw, ringremoved, braggpunched, backfilled, flattened). This would show:\n- If there are powder rings (bumps in raw that ring removal should take out).\n- If there's a pedestal (a rising/floor that flatten should remove).\n\nThis is key for understanding the flatten's 70% pedestal removal.\n\nLet me do the batch now.\n\nLet me reconsider the line_profile. The strongest feature is at (1.938, 1.937, -0.0001) Å. A line along x through (y=1.937, z=0) would pass through it. But the feature is a local extremum, so the line would show a peak (or dip, since it's negative) at x=1.938. Let me do that.\n\nActually, the feature is sign − (negative). So the line would show a dip at x=1.938.\n\nLet me do the batch:\n1. dpdf_contrast (no args).\n2. radial_profile (hk0, 0, all stages, 32 bins).\n3. measure_dpdf_cut (xz, 0).\n4. measure_dpdf_cut (yz, 0).\n5. line_profile (delta_pdf, along x, at {y:1.937, z:0}, 64 points).\n\nLet me go.\nAll six data-integrity checks are back. Let me record what they say before I touch anything:\n\n- **qmax_coverage**: transform reaches 6.444 Å⁻¹ (window tapers to the box faces), **inside** full coverage at 11.05 Å⁻¹; counts fully measured 0.15→11.05, `counts_end_inside_box: false`. → **Clean**, the window does not reach past the data.\n- **ub_check**: rms 0.0004→0.0004, orientation change 0°, cell 3.9000→3.8998, no origin shift, no |Q|-dependent radial offset. → **UB is correct.**\n- **grain_check**: 0 off-lattice orbits, verdict \"no off-lattice peaks were recorded.\" → **No second grain, no satellites.**\n- **texture_check**: no systematic fill bias, azimuthal ratios 1.01/1.0/0.958. → **Backfill adds no texture.**\n- **symmetry_check**: no symmetry declared, so the 0.039 asymmetry is the data's own, not a stage break. → **Not judged (fine).**\n- **consistency_details**: back-FFT r vs even part = **1.0** (RMS 1e-14); r vs data 0.989 is just the 2.2% odd part on unsymmetrised data. → **Transform is sound.**\n\nSo the data itself (orientation, coverage, no grain, no texture, sound transform) is clean. The one glaring anomaly is the **ΔPDF `feature_snr` of 1360–1520σ** — far beyond a normal SRO feature. I need to determine whether that is real signal or an artifact before I trust it. Let me look at the actual ΔPDF and the Q-space background.",
+     "status": "done",
+     "summary": "± 3120 (459σ, 0.33 of the strongest feature) · 1.3 % coloured",
+     "result": "{\"applied\":{\"limit\":3120,\"limit_sigma\":459,\"share_of_strongest\":0.33,\"coloured_fraction\":0.013,\"from\":\"optimised: the 99.9th percentile of |ΔPDF|\"},\"robust_sigma\":6.81,\"sigma_of\":\"the three sections together, outside the origin's disk, robust\",\"strongest_feature_sigma\":1370,\"not_applied\":{\"99.5th percentile\":{\"limit\":800,\"limit_sigma\":118,\"share_of_strongest\":0.086,\"coloured_fraction\":0.029,\"effect\":\"a lower limit: brighter, weaker correlations and more of the ripple coloured\"},\"99.97th percentile\":{\"limit\":5580,\"limit_sigma\":819,\"share_of_strongest\":0.6,\"coloured_fraction\":0.0083,\"effect\":\"a higher limit: dimmer, only the strongest features coloured\"}},\"sections\":\"xy, xz and yz through the origin, the origin's disk left out\"}"
+    },
+    {
+     "step": 16,
+     "tool": "radial_profile",
+     "args": {
+      "plane": "hk0",
+      "value": 0,
+      "stages": [
+       "raw",
+       "ringremoved",
+       "braggpunched",
+       "backfilled",
+       "flattened"
+      ],
+      "bins": 32
+     },
+     "why": "",
+     "status": "done",
+     "summary": "H–K plane at L = 0: 32 shells × 5 stages",
+     "result": "{\"cut\":\"H–K plane at L = 0\",\"q_unit\":\"|Q| in Å⁻¹\",\"stat\":\"median per shell\",\"rows\":[{\"q\":0.183,\"raw\":0.344,\"ringremoved\":0.344,\"braggpunched\":0.214,\"backfilled\":0.18,\"flattened\":0.0365},{\"q\":0.436,\"raw\":0.179,\"ringremoved\":0.179,\"braggpunched\":0.179,\"backfilled\":0.179,\"flattened\":0.035},{\"q\":0.715,\"raw\":0.174,\"ringremoved\":0.174,\"braggpunched\":0.174,\"backfilled\":0.174,\"flattened\":0.0302},{\"q\":1,\"raw\":0.205,\"ringremoved\":0.205,\"braggpunched\":0.205,\"backfilled\":0.205,\"flattened\":0.0615},{\"q\":1.28,\"raw\":0.258,\"ringremoved\":0.258,\"braggpunched\":0.258,\"backfilled\":0.258,\"flattened\":0.115},{\"q\":1.57,\"raw\":0.416,\"ringremoved\":0.416,\"braggpunched\":0.416,\"backfilled\":0.416,\"flattened\":0.272},{\"q\":1.86,\"raw\":0.45,\"ringremoved\":0.45,\"braggpunched\":0.45,\"backfilled\":0.45,\"flattened\":0.306},{\"q\":2.14,\"raw\":0.325,\"ringremoved\":0.325,\"braggpunched\":0.325,\"backfilled\":0.325,\"flattened\":0.181},{\"q\":2.42,\"raw\":0.317,\"ringremoved\":0.317,\"braggpunched\":0.317,\"backfilled\":0.317,\"flattened\":0.173},{\"q\":2.71,\"raw\":0.281,\"ringremoved\":0.281,\"braggpunched\":0.281,\"backfilled\":0.281,\"flattened\":0.138},{\"q\":2.99,\"raw\":0.207,\"ringremoved\":0.207,\"braggpunched\":0.205,\"backfilled\":0.193,\"flattened\":0.0492},{\"q\":3.27,\"raw\":0.214,\"ringremoved\":0.214,\"braggpunched\":0.2,\"backfilled\":0.178,\"flattened\":0.0348},{\"q\":3.56,\"raw\":0.153,\"ringremoved\":0.153,\"braggpunched\":0.153,\"backfilled\":0.151,\"flattened\":0.00782},{\"q\":3.84,\"raw\":0.135,\"ringremoved\":0.135,\"braggpunched\":0.135,\"backfilled\":0.135,\"flattened\":-0.00834},{\"q\":4.13,\"raw\":0.155,\"ringremoved\":0.155,\"braggpunched\":0.155,\"backfilled\":0.155,\"flattened\":0.0118},{\"q\":4.41,\"raw\":0.227,\"ringremoved\":0.227,\"braggpunched\":0.219,\"backfilled\":0.225,\"flattened\":0.0815},{\"q\":4.7,\"raw\":0.303,\"ringremoved\":0.303,\"braggpunched\":0.298,\"backfilled\":0.296,\"flattened\":0.152},{\"q\":4.98,\"raw\":0.247,\"ringremoved\":0.247,\"braggpunched\":0.247,\"backfilled\":0.247,\"flattened\":0.104},{\"q\":5.27,\"raw\":0.232,\"ringremoved\":0.232,\"braggpunched\":0.232,\"backfilled\":0.232,\"flattened\":0.0881},{\"q\":5.55,\"raw\":0.253,\"ringremoved\":0.253,\"braggpunched\":0.253,\"backfilled\":0.253,\"flattened\":0.109},{\"q\":5.84,\"raw\":0.217,\"ringremoved\":0.217,\"braggpunched\":0.217,\"backfilled\":0.217,\"flattened\":0.0729},{\"q\":6.12,\"raw\":0.201,\"ringremoved\":0.201,\"braggpunched\":0.2,\"backfilled\":0.196,\"flattened\":0.0527},{\"q\":6.4,\"raw\":0.155,\"ringremoved\":0.155,\"braggpunched\":0.149,\"backfilled\":0.154,\"flattened\":0.0107},{\"q\":6.68,\"raw\":0.143,\"ringremoved\":0.143,\"braggpunched\":0.143,\"backfilled\":0.143,\"flattened\":-0.000319},{\"q\":6.97,\"raw\":0.238,\"ringremoved\":0.238,\"braggpunched\":0.231,\"backfilled\":0.219,\"flattened\":0.0749},{\"q\":7.25,\"raw\":0.273,\"ringremoved\":0.273,\"braggpunched\":0.252,\"backfilled\":0.236,\"flattened\":0.0922},{\"q\":7.54,\"raw\":0.229,\"ringremoved\":0.229,\"braggpunched\":0.229,\"backfilled\":0.229,\"flattened\":0.085},{\"q\":7.82,\"raw\":0.188,\"ringremoved\":0.188,\"braggpunched\":0.188,\"backfilled\":0.188,\"flattened\":0.0447},{\"q\":8.1,\"raw\":0.134,\"ringremoved\":0.134,\"braggpunched\":0.134,\"backfilled\":0.134,\"flattened\":-0.00944},{\"q\":8.38,\"raw\":0.0996,\"ringremoved\":0.0996,\"braggpunched\":0.0996,\"backfilled\":0.0996,\"flattened\":-0.0441},{\"q\":8.65,\"raw\":0.131,\"ringremoved\":0.131,\"braggpunched\":0.129,\"backfilled\":0.131,\"flattened\":-0.013},{\"q\":8.92,\"raw\":0.403,\"ringremoved\":0.403,\"braggpunched\":0.308,\"backfilled\":0.209,\"flattened\":0.0655}]}",
+     "shortened": true
+    },
+    {
+     "step": 17,
+     "tool": "measure_dpdf_cut",
+     "args": {
+      "plane": "xz",
+      "value": 0
+     },
+     "why": "",
+     "status": "done",
+     "summary": "ΔPDF x–z section at y = 0 Å: SNR 1420, anisotropy 1.1",
+     "result": "{\"cut\":\"ΔPDF x–z section at y = 0 Å\",\"delta_pdf\":{\"origin_excluded_radius\":1.95,\"background_sigma\":6.59,\"feature_snr\":1420,\"strong_feature_fraction\":0.0415,\"positive_fraction\":0.491,\"anisotropy_ratio\":1.1,\"anisotropy_angle_deg\":2.32,\"radial_trend\":[176,5.91,4.67]},\"sigma_of\":\"this section outside the origin's disk, robust\"}"
+    },
+    {
+     "step": 18,
+     "tool": "measure_dpdf_cut",
+     "args": {
+      "plane": "yz",
+      "value": 0
+     },
+     "why": "",
+     "status": "done",
+     "summary": "ΔPDF y–z section at x = 0 Å: SNR 1360, anisotropy 1.1",
+     "result": "{\"cut\":\"ΔPDF y–z section at x = 0 Å\",\"delta_pdf\":{\"origin_excluded_radius\":1.95,\"background_sigma\":6.87,\"feature_snr\":1360,\"strong_feature_fraction\":0.0397,\"positive_fraction\":0.5,\"anisotropy_ratio\":1.1,\"anisotropy_angle_deg\":2.87,\"radial_trend\":[176,5.86,5]},\"sigma_of\":\"this section outside the origin's disk, robust\"}"
+    },
+    {
+     "step": 19,
+     "tool": "line_profile",
+     "args": {
+      "stage": "delta_pdf",
+      "along": "x",
+      "at": {
+       "y": 1.937,
+       "z": 0
+      },
+      "n_points": 64
+     },
+     "why": "",
+     "status": "done",
+     "summary": "delta_pdf along x at y=1.926, z=0: max 416.7 at 0",
+     "result": "{\"stage\":\"delta_pdf\",\"along\":\"x\",\"through\":{\"y\":1.926,\"z\":0},\"units\":\"Å\",\"points\":[[-38.52,6.246],[-37.07,2.897],[-35.63,5.8],[-34.19,0.4896],[-32.74,-2.7],[-31.3,-0.04441],[-29.85,-3.042],[-28.41,-8.255],[-26.96,-1.305],[-25.52,-7.192],[-24.07,-3.114],[-22.63,-1.157],[-21.19,-14.81],[-19.74,0.1992],[-18.3,-19.79],[-16.85,-8.075],[-15.41,-2.747],[-13.96,-49.42],[-12.52,-9.62],[-11.07,-23.46],[-9.63,-229.8],[-8.185,14.62],[-6.741,-357],[-5.296,-685.1],[-3.852,111.7],[-2.407,-5237],[-0.963,-1993],[0.4815,-130.3],[1.926,-6715],[3.37,-182.9],[4.815,-225.1],[6.259,-805.4],[7.704,6.484],[9.148,-164.2],[10.59,-103.2],[12.04,-1.567],[13.48,-70.61],[14.93,-0.3915],[16.37,-6.36],[17.81,-28.55],[19.26,-4.865],[20.7,-5.739],[22.15,-4.776],[23.59,-2.071],[25.04,-1.314],[26.48,-0.08102],[27.93,2.662],[29.37,-5.7],[30.81,-10.54],[32.26,-2.924],[33.7,10.03],[35.15,6.364],[36.59,7.601],[38.04,9.34]],\"max\":{\"at\":0,\"value\":416.7},\"min\":{\"at\":1.926,\"value\":-9357},\"median\":-3.661,\"masked_fraction\":0}"
+    },
+    {
+     "step": 20,
+     "tool": "line_profile",
+     "args": {
+      "stage": "flattened",
+      "along": "H",
+      "at": {
+       "K": 2,
+       "L": 0
+      },
+      "n_points": 64
+     },
+     "why": "The line profile through the ΔPDF at y=1.926 Å (the first-neighbor shell, ~1.93 Å = a/2) shows a huge spike at x=1.926 Å with value -9357, and the max at x=0 is 416.7. The origin self-correlation is at (0,0,0) and is excluded from the feature metrics (origin_excluded_radius 1.95 Å). But the line at y=1.926 passes very close to the origin disk edge. The min at x=1.926 is -9357 — that's a feature at (1.926, 1.926, 0) Å.\n\nWait, let me reconsider. The line is along x through (y=1.926, z=0). At x=1.926, the point is (1.926, 1.926, 0) Å. The distance from origin is sqrt(1.926² + 1.926²) = 2.72 Å. That's outside the origin disk (1.95 Å). So this is a real feature at r ≈ 2.72 Å, value -9357.\n\nHmm, but the feature_snr is 1360-1520. The robust sigma is ~6.8. So -9357/6.8 ≈ 1376σ. That matches the feature_snr of ~1370. So the strongest feature is this one at (1.926, 1.926, 0) Å, i.e. at (0.5, 0.5, 0) in lattice units.\n\nWait, 1.926/3.9 = 0.494 ≈ 0.5. So the vector is (0.5, 0.5, 0) a, b, c. That's a face-diagonal half-vector. In a cubic cell with a=3.9, (0.5,0.5,0) = (1.95, 1.95, 0) Å, |r| = 2.76 Å.\n\nThis is a very strong negative feature (depletion of pairs) at the (0.5, 0.5, 0) vector. That's a real interatomic vector — for a cubic structure, (0.5, 0.5, 0) is a common nearest-neighbor or next-nearest-neighbor vector.\n\nActually, let me reconsider the whole picture. The feature_snr of 1360 is enormous. But is it real? Let me think about what could cause such a huge feature:\n\n1. The origin self-correlation is excluded (radius 1.95 Å). But the feature at (1.926, 1.926, 0) is at 2.72 Å, outside the disk. So it's not the origin.\n\n2. Could it be termination ripple? Termination ripple from the window would be oscillatory and spread out, not a single sharp spike. The line profile shows a sharp spike at x=1.926 (value -9357) with neighbors at -5237, -1993, -130, -6715, -182, -225, -805. Actually there's a cluster of large values around x=1.926. Let me look: at x=1.926, -6715; at x=0.4815, -130; at x=-0.963, -1993; at x=-2.407, -5237; at x=-3.852, 111.7. So there's a broad negative feature centered around x≈1.9, spanning several Å. That's not a single-voxel spike.\n\nHmm, actually the values are: ...-5237 (x=-2.407), -1993 (x=-0.963), -130 (x=0.4815), -6715 (x=1.926), -182.9 (x=3.37), -225.1 (x=4.815), -805.4 (x=6.259)... So there's a strong negative dip around x=1.9 (the -6715) and another around x=-2.4 (the -5237). These are at y=1.926. So the feature is a broad negative region.\n\nWait, this is getting complicated. Let me step back.\n\nThe key question: is feature_snr 1360 real signal or artifact?\n\nThe dpdf_contrast says: strongest_feature_sigma = 1370, and the 99.9th percentile of |ΔPDF| gives a limit of 3120 (459σ), which is 0.33 of the strongest. So the strongest feature is 1370σ, and the 99.9th percentile is 459σ. That means the strongest feature is ~3× the 99.9th percentile. Only 0.013 of voxels are above 459σ. So the strongest feature is an extreme outlier — 1370σ vs a 99.9th percentile of 459σ.\n\nThis is a huge outlier. In a real ΔPDF, the strongest feature (first coordination shell) is typically 10-50σ, not 1370σ. A feature that is 3× the 99.9th percentile and 1370σ is almost certainly an artifact, not a real correlation.\n\nWhat artifact gives a single huge spike? The most likely: **Bragg residue** — a Bragg peak that wasn't fully punched, which Fourier-transforms into a huge periodic spike at the corresponding real-space vector. OR it could be the **origin self-correlation** leaking in.\n\nWait — but the origin disk is excluded at radius 1.95 Å. Let me reconsider. The feature at (1.926, 1.926, 0) is at 2.72 Å. But what about the origin itself? The origin self-correlation (the (0,0,0) peak) is the sum of all the diffuse, and it's huge. It's excluded by the 1.95 Å disk. But if the disk is too small, the tail of the origin peak could leak in.\n\nActually, let me reconsider. The origin self-correlation in a ΔPDF is the total scattering power, and it decays as a broad peak. The origin_excluded_radius is 1.95 Å. If the origin peak is very broad (because the diffuse is strong), its tail extends well beyond 1.95 Å and could dominate.\n\nBut actually, the more I think about it: a feature_snr of 1360 with the 99.9th percentile at 459σ means the top feature is a sharp spike, not a broad origin tail. A broad origin tail would make the 99.9th percentile also large.\n\nLet me reconsider the line profile. The min is at x=1.926 with value -9357. But the block-averaged point at x=1.926 is -6715. The \"exact minimum\" is -9357 at x=1.926. So there's a very sharp negative spike right at x=1.926, y=1.926. That's a single-voxel-ish spike.\n\nHmm, wait. Let me reconsider whether this is the origin. The line is along x through (y=1.926, z=0). The origin is at (0,0,0). The point (1.926, 1.926, 0) is NOT the origin. So this is a genuine feature at that vector.\n\nBut 1370σ is way too big. Let me think about what's at (0.5, 0.5, 0) in a cubic lattice. Actually, you know what — I bet this is a **Bragg residue**. Here's the reasoning:\n\nThe punch fit 188 peaks, all at lattice nodes (n_at_lattice_nodes: 188, n_search_off_lattice: 0). The punch removed Bragg peaks at the nodes. But if the Bragg peaks are very strong and the punch footprint doesn't fully remove them (especially the strong low-|Q| ones), the residue Fourier-transforms into huge spikes at the lattice vectors.\n\nActually wait. Let me reconsider. The Bragg peaks are at integer (H,K,L) nodes. When you punch them and Fourier transform, any residue at a node (H,K,L) becomes a spike in the ΔPDF at the real-space vector corresponding to that node. A node at (1,1,0) in reciprocal space → a spike at r = (0.5, 0.5, 0) in real space? No wait.\n\nThe Fourier transform: a delta at reciprocal vector Q = (H,K,L)·(2π/a) becomes a plane wave e^{iQ·r} in real space, which is periodic with the lattice. So a residue at node (1,1,0) gives a feature at every r that is a lattice translation, i.e. at (n,m,p)·a. Hmm, that's at integer lattice vectors, not half-integers.\n\nActually, the ΔPDF is the transform of the *diffuse* (after Braggs removed). The origin peak (r=0) is the total diffuse power. Features at r = (0.5, 0.5, 0)·a would come from diffuse scattering at Q = (2,2,0)·(2π/a)... no.\n\nLet me get the Fourier relationship right. ΔPDF(r) = ∫ I_diffuse(Q) e^{iQ·r} dQ. A feature at r = (0.5, 0.5, 0)·a = (1.95, 1.95, 0) Å comes from Q components. If there's a sharp peak in I_diffuse at Q = (2,2,0)·(2π/a) = (2,2,0) r.l.u., then e^{iQ·r} at r=(0.5,0.5,0)a gives e^{i(2π·2·0.5 + 2π·2·0.5)} = e^{i(2π+2π)} = 1, constructive. So a sharp diffuse peak at (2,2,0) r.l.u. gives a feature at (0.5,0.5,0) a.\n\nBut the punch removes Bragg at integer nodes. (2,2,0) is an integer node, so it would be punched. Unless... the supercell. The punch cell is [1,1,1] (from grain_check: punch_cell [1,1,1]). So nodes are at all integers. (2,2,0) is a node and gets punched.\n\nHmm, so where does the (0.5,0.5,0) feature come from? If it's from a sharp peak at (2,2,0) that was punched but not fully, that's Bragg residue.\n\nActually, I realize I'm overcomplicating this. Let me reconsider the magnitude. feature_snr 1360 is the strongest feature. Let me look at the dpdf_peaks output which was compacted. Let me re-read it in full.\n\nActually, the dpdf_peaks result was compacted to \"(12 items)\". I need to see the actual features. Let me re-call it, or better, let me think about whether this is real.\n\nLet me reconsider from the radial_profile and the Q-space. The radial_profile was also compacted. I need to see those.\n\nActually, the critical realization: **feature_snr of 1360 is not a normal SRO feature.** Normal SRO in a ΔPDF is 5-50σ. 1360σ is 30-270× too big. This is almost certainly an artifact. The most common cause of a single huge spike in a ΔPDF that is NOT the origin is **incomplete Bragg removal** (Bragg residue) — a strong Bragg peak that the punch didn't fully remove, which transforms into a huge periodic spike.\n\nBut wait — the punch assessment says 0 leftover peaks, and the texture_check says no systematic fill bias. And the backfill seam is 0.248σ. So the punch looks clean on the metrics.\n\nLet me reconsider. Another possibility: the **origin self-correlation**. The origin peak in a ΔPDF is the integral of all the diffuse intensity. If the diffuse is very strong (which it is — this is a diffuse-scattering volume), the origin peak is huge. The origin_excluded_radius is 1.95 Å. If the origin peak is broad, its tail extends beyond 1.95 Å.\n\nBut the feature at (1.926, 1.926, 0) is at 2.72 Å, and it's a sharp spike (min -9357 at exactly x=1.926). A broad origin tail wouldn't give a sharp spike at 2.72 Å.\n\nHold on. Let me reconsider the line profile more carefully. The line is along x through (y=1.926, z=0). The values near x=1.926:\n- x=0.4815: -130.3\n- x=1.926: -6715 (block avg), exact min -9357\n- x=3.37: -182.9\n\nSo there's a sharp negative spike at x=1.926 (y=1.926). The neighbors are much smaller. This is a sharp feature, not a broad origin tail.\n\nAnd the max is at x=0 (y=1.926): 416.7. So at the origin's x=0 but y=1.926, the value is 416.7 (positive). That's the origin peak's profile along this line — it's 416.7 at x=0, which is 416.7/6.8 ≈ 61σ. That's the origin self-correlation, and it's at (0, 1.926, 0) = (0, 0.494, 0) a, at 1.926 Å from origin. That's just inside the origin disk edge (1.95 Å)! So the origin peak at 1.926 Å is 61σ.\n\nWait, so the origin peak extends to at least 1.926 Å (61σ there). The origin disk is 1.95 Å. So the origin peak is still 61σ at 1.926 Å, just inside the exclusion disk. That means the origin peak is very broad and strong.\n\nHmm, but the feature at (1.926, 1.926, 0) is at 2.72 Å, outside the disk. And it's -9357 (1376σ). \n\nOK here's another thought. What if the huge feature is actually the **origin peak** and the origin_excluded_radius of 1.95 Å is too small? The origin peak is the self-correlation, and for a strong diffuse volume it can be very broad. If the \"feature\" at 2.72 Å is actually the tail of the origin peak, then it's an artifact of the origin exclusion being too small.\n\nBut the origin peak should be positive (self-correlation = total power, positive). The feature at (1.926, 1.926, 0) is negative (-9357). So it's not the origin peak (which is positive).\n\nLet me reconsider. A negative feature at (0.5, 0.5, 0) a means a depletion of pairs at that vector. In a real material, that could be real (e.g., a missing correlation). But 1370σ is too big for a real depletion.\n\nI think I need to actually look at the dpdf_peaks and radial_profile in full, and look at the Q-space to see if there's a sharp peak that's causing this. Let me also reconsider: maybe the issue is that the flatten removed a pedestal that was actually part of the diffuse, or the ring removal did nothing (ratio 1) so powder rings are still in the data and transform into spikes.\n\nOH WAIT. That's it. Let me reconsider the ring removal.\n\nring_removal: ring_energy_ratio = 1 (a NO-OP — nothing was subtracted). The 2D cut shows 4 significant ring residuals (worst at |Q|=1.68, 48% of diffuse left). \n\nThe assess_stage rings says \"meets its goal\" with max_ring_left 0, max_ring_dent 0. But that's because the 3D assessment found the bumps are anisotropic (isotropy ≈ 0 or negative), i.e. NOT powder rings. So the ring removal correctly did nothing (there are no powder rings to remove).\n\nBut wait — if the ring removal is a no-op (ratio 1), and there ARE powder rings in the data (the 2D cut shows bumps at |Q|=1.68, 3.16, 4.59, 7.08), then those powder rings would be in the data and would transform into spikes in the ΔPDF!\n\nBut the 3D assessment says the bumps are anisotropic, not powder rings. Powder rings are isotropic (they rise in nearly every direction in 3D). If the 3D assessment found isotropy ≈ 0 or negative, then the bumps are NOT powder rings — they're the crystal's own anisotropic scattering.\n\nHmm, but let me double check this. The assess_stage rings \"shells_judged\" had 7 items and the rule was direction_share 0.9, height_share 0.15. The verdict was \"meets its goal\" with max_ring_left 0. So the 3D assessment concluded no powder rings remain. But that's a bit suspicious given the 2D cut shows clear bumps.\n\nActually, let me reconsider. The ring_model is \"pooled\" with ring_global_subtraction \"conservative\". A conservative subtraction with a pooled model might decide there are no rings and subtract nothing (ratio 1). If there ARE powder rings (e.g., from an Al sample holder or a vanadium can), the conservative model might miss them.\n\nBut the 3D assessment (assess_stage rings) is the authority on whether the bumps are powder rings. It says max_ring_left 0, meaning no powder rings confirmed in 3D. So the bumps are anisotropic crystal scattering, not powder rings.\n\nOK so let me step back and think about what's really going on with feature_snr 1360.\n\nLet me reconsider the whole thing. I think the key issue might be simpler than I'm making it. Let me look at the actual dpdf_peaks and radial_profile data, and look at the Q-space flattened volume to see if there's a sharp peak.\n\nActually, let me reconsider the flatten. flatten: removed_fraction 0.703 (removed 70% of the level as pedestal!). That's a HUGE pedestal removal. floor_before [0.2, 0.143, 0.139], floor_after [0.0559, -0.000628, -0.00507]. So the flatten removed a big pedestal (70% of the diffuse level!).\n\nWait, removed_fraction 0.703 means the pedestal removed is 70% of the diffuse level. That's enormous. A good flatten removes a small pedestal. Removing 70% of the level means the flatten model found a huge background pedestal and subtracted it.\n\nHmm, but the flatten verdict says \"meets its goal\" with floor_trend 0.0384, floor_span 0.636, no pedestal. So the flatten is doing its job (removing the pedestal, leaving floors near 0).\n\nBut here's the thing: if the flatten removes 70% of the level, and that \"pedestal\" was actually part of the diffuse signal (e.g., a broad diffuse background that's real), then the flatten is eating real signal. But the flatten model is fitted to the 25th-percentile floor of each shell, so it removes the smooth background, not the diffuse bumps.\n\nActually, removed_fraction 0.703 is suspicious. Let me reconsider. In a diffuse-scattering volume, the diffuse intensity can be a large fraction of the total. If the \"pedestal\" (smooth background) is 70% of the level, that means the diffuse is mostly a smooth background with small bumps on top. That's plausible for a volume where the diffuse is a broad background.\n\nBut wait — if the ring removal is a no-op (ratio 1) and there's a big smooth pedestal, maybe the pedestal IS a powder ring background (e.g., an Al or V can) that the ring removal didn't remove, and the flatten is removing it. In that case, the flatten is compensating for the ring removal's failure.\n\nHmm, this is getting complicated. Let me just look at the actual data. Let me re-read the radial_profile and dpdf_peaks in full, and look at the Q-space.\n\nActually, I realize the most important thing to determine is: **is the feature_snr 1360 a real feature or an artifact?** And the answer hinges on what's in the Q-space.\n\nLet me reconsider the line profile once more. The min is at (x=1.926, y=1.926, z=0) = (0.494, 0.494, 0) a, at 2.72 Å. Value -9357 (1376σ). This is a sharp negative spike.\n\nFor this to be a real SRO feature, the material would have a strong depletion of pairs at (0.5, 0.5, 0) a. That's a face-diagonal half-vector. In many cubic structures, (0.5, 0.5, 0) is a real interatomic vector (e.g., in a BCC or in a rock-salt structure). But 1376σ is way too big.\n\nI'm now fairly convinced this is an artifact. The question is what kind. Let me look at the Q-space to find the cause.\n\nThe most likely cause of a huge spike at a specific real-space vector is a sharp peak in the Q-space at the corresponding reciprocal vector. For r = (0.5, 0.5, 0) a, the corresponding Q is (2, 2, 0) r.l.u. (since e^{iQ·r} with Q=(2,2,0)·2π/a and r=(0.5,0.5,0)a gives e^{i2π(1+1)} = 1). Wait, let me redo: Q·r = (2·2π/a)(0.5a) + (2·2π/a)(0.5a) = 2π + 2π = 4π. e^{i4π} = 1. Yes. So a sharp peak at (2,2,0) r.l.u. in Q-space gives a feature at (0.5,0.5,0) a in real space.\n\n(2,2,0) is a Bragg node (integer). The punch should have removed it. If the punch didn't fully remove it (Bragg residue), that residue transforms into a huge spike at (0.5,0.5,0) a.\n\nSo my hypothesis: **there's Bragg residue at (2,2,0) (and symmetry equivalents) that the punch didn't fully remove, and it's transforming into the huge 1370σ feature.**\n\nBut the punch assessment says 0 leftover peaks. However, the punch assessment scans for leftover peaks that stand >8σ above their neighborhood. If the residue is a broad, low-contrast feature (not a sharp peak), it might not be flagged as a \"leftover peak\" but still transform into a spike.\n\nHmm, actually, let me reconsider. Let me look at the Q-space at (2,2,0) to see if there's residue.\n\nActually, let me step back and think about the magnitude more carefully. The punch fit 188 peaks. The punch footprint follows the instrument resolution (resolution_limited_fraction 0.273, so 73% are NOT resolution-limited — they're broader). median_measured_width_q [0.118, 0.133, 0.175] Å⁻¹. median_anisotropy 1.51.\n\nIf the Bragg peaks are broad (not resolution-limited) and the punch footprint is \"own\" or \"profile\", the punch might not fully remove a broad peak, leaving residue.\n\nOK, I think I've been going back and forth. Let me just LOOK at the data. Let me:\n1. Re-read dpdf_peaks in full (to see the actual strongest features and their vectors).\n2. Re-read radial_profile in full (to see the Q-space background).\n3. Look at the Q-space at (2,2,0) with a line_profile to check for Bragg residue.\n4. Look at the flattened Q-space cut.\n\nLet me do these.\n\nActually, the dpdf_peaks and radial_profile were compacted. Let me re-call them. But the instructions say \"Keep tool calls purposeful — a few well-chosen ones.\" and I've already made a lot. Let me be strategic.\n\nThe single most important thing: determine if feature_snr 1360 is real or artifact. Let me look at the Q-space at the corresponding reciprocal vector, and look at the dpdf_peaks in full.\n\nLet me reconsider — actually, I bet the real story is about the ORIGIN. Let me reconsider the origin_excluded_radius. It's 1.95 Å. The origin self-correlation peak is the sum of all diffuse. For a strong diffuse volume, this peak is huge and broad. \n\nActually, you know what, let me reconsider the line profile at the origin. Let me look at a line through the origin (y=0, z=0) along x. That would show the origin peak profile. If the origin peak is huge and broad, extending well beyond 1.95 Å, then the \"feature\" at 2.72 Å might be the origin tail.\n\nBut the feature at (1.926, 1.926, 0) is negative, and the origin peak is positive. So it's not the origin tail.\n\nUnless... the ΔPDF has a negative ring around the origin (a common feature — the origin peak is positive and surrounded by a negative ring). If the origin peak is very sharp and tall, it can be followed by a strong negative ring. If the origin_excluded_radius (1.95 Å) cuts through this negative ring, then the \"strongest feature\" could be the negative ring, not a real correlation.\n\nHmm, that's plausible! The origin self-correlation peak, if very sharp, is followed by a negative oscillation (the first minimum of the transform). If the exclusion disk (1.95 Å) is smaller than the first minimum's radius, then the first minimum (a negative ring) is included in the feature metrics, and it could be the \"strongest feature.\"\n\nBut wait, the first minimum of a broad origin peak would be at a radius where the origin peak has decayed. If the origin peak is 61σ at 1.926 Å (from the line profile max at x=0, y=1.926), then it's still strong at 1.926 Å. The first minimum would be further out.\n\nActually, I think I'm overanalyzing. Let me just look at the data. Let me look at:\n1. A line through the origin (y=0, z=0) along x — to see the origin peak and its first minimum.\n2. The dpdf_peaks in full.\n3. The Q-space at (2,2,0).\n\nLet me do these three.\n\nActually, let me reconsider the whole approach. The user wants me to:\n1. Run the pipeline ✓ (done, reused)\n2. Check every stage and the data (orientation, coverage, powder rings, background)\n3. Fix what settings can fix and run again\n4. Report data problems settings can't fix\n5. End with: problems found, what I changed and why, strongest pair correlations with vectors and signs.\n\nI've checked:\n- orientation (ub_check): clean ✓\n- coverage (qmax_coverage): clean ✓\n- powder rings (assess_stage rings + 2D cut): the 3D says no powder rings, but the 2D cut shows bumps. Need to reconcile.\n- background (flatten): removed 70% pedestal, floors near 0. \n- Bragg punch (assess_stage punch + grain_check): 0 leftover, no off-lattice.\n- backfill (assess_stage backfill + texture_check): seam 0.248σ, no texture.\n- ΔPDF (assess_stage pdf + consistency + dpdf_peaks): feature_snr 1360 (anomaly!), back-FFT r_even 1.0.\n\nThe one big anomaly is feature_snr 1360. I need to determine if it's real or artifact, and if artifact, whether a setting can fix it.\n\nLet me look at the origin peak and the Q-space. Let me do a few targeted measurements.\n\nLet me look at:\n1. line_profile through origin (y=0, z=0) along x — origin peak profile.\n2. line_profile in Q-space at (2,2,0) — check for Bragg residue.\n3. dpdf_peaks in full.\n\nLet me do these.\n\nActually, I want to be efficient. Let me reconsider what the feature_snr 1360 most likely is, and design one or two measurements to confirm.\n\nThe feature is at (0.5, 0.5, 0) a, negative, 1376σ. The corresponding Q is (2,2,0) r.l.u. Let me check the Q-space at (2,2,0) for Bragg residue. If there's a sharp peak there in the flattened volume, that's the cause.\n\nLet me also check the origin peak profile to rule out the origin.\n\nLet me do:\n1. line_profile stage=flattened, along=H, at {K:2, L:0} — through (H, 2, 0) to see the (2,2,0) node.\n\nWait, the line is along H through (K=2, L=0). At H=2, that's the (2,2,0) node. Let me see if there's a peak there.\n\n2. line_profile stage=delta_pdf, along=x, at {y:0, z:0} — through the origin.\n\nLet me do these two, plus re-read dpdf_peaks.\n\nHmm, but actually the (2,2,0) node — is it within the box? The box is H,K,L in [-4,4]. (2,2,0) is within. Good.\n\nLet me do these measurements.\n\nActually, let me reconsider. I've made 13 tool calls so far. The instructions say keep them purposeful. Let me make a focused batch to nail down the feature_snr anomaly, then decide on fixes.\n\nLet me do:\n1. line_profile stage=flattened, along=H, at {K:2, L:0} — check (2,2,0) node for Bragg residue.\n2. line_profile stage=delta_pdf, along=x, at {y:0, z:0} — origin peak profile.\n3. dpdf_peaks (re-read, full) — the actual strongest features.\n\nLet me go.\n\nWait, I should double-check: is the feature really at (0.5,0.5,0)? The line was along x through (y=1.926, z=0). The min was at x=1.926. So the feature is at (1.926, 1.926, 0) Å = (0.494, 0.494, 0) a. Yes, ≈ (0.5, 0.5, 0) a.\n\nBut actually, I should verify with dpdf_peaks which lists the actual strongest features with their vectors. Let me re-read it.\n\nLet me do the batch.\nThe data-integrity picture is now clear and mostly clean: **UB correct** (rms 0.0004→0.0004, 0° orientation change, no origin shift), **coverage clean** (transform reaches 6.44 Å⁻¹, inside full coverage 11.05 Å⁻¹; counts fully measured 0.15→11.05, not ending inside the box), **no second grain/satellites** (0 off-lattice orbits), **backfill adds no texture** (no systematic fill bias, azimuthal ratios ~1), **transform sound** (back-FFT r vs even part = 1.0). No symmetry is declared, so the 0.039 asymmetry is the data's own.\n\nThe one glaring anomaly is the **ΔPDF `feature_snr` of 1360–1520σ** — 30–270× larger than a normal short-range-order feature. The line profile shows a sharp negative spike at (1.926, 1.926, 0) Å ≈ (0.5, 0.5, 0) a, value −9357 (≈1376σ), while the origin self-correlation is only ~61σ at 1.93 Å. I need to determine whether that spike is a real correlation or an artifact (Bragg residue / origin tail) before I trust the ΔPDF. Let me look at the Q-space at the corresponding node and the origin profile.",
+     "status": "done",
+     "summary": "flattened along H at K=2, L=0: max 0.1529 at 2.05",
+     "result": "{\"stage\":\"flattened\",\"along\":\"H\",\"through\":{\"K\":2,\"L\":0},\"units\":\"r.l.u.\",\"points\":[[-3.95,0.06614],[-3.8,0.05658],[-3.65,-0.02567],[-3.5,-0.03448],[-3.35,-0.02825],[-3.2,0.01326],[-3.05,0.04126],[-2.9,0.0309],[-2.75,-0.01236],[-2.6,-0.01892],[-2.45,-0.04239],[-2.3,-0.01769],[-2.15,0.09228],[-2,0.1439],[-1.85,0.09138],[-1.7,-0.02655],[-1.55,-0.03014],[-1.4,-0.009425],[-1.25,0.01431],[-1.1,0.05323],[-0.95,0.07515],[-0.8,0.01187],[-0.65,0.01535],[-0.5,-0.02158],[-0.35,-0.01263],[-0.2,0.003214],[-0.05,0.01494],[0.1,0.01066],[0.25,-0.01687],[0.4,-0.03066],[0.55,0.02061],[0.7,0.01703],[0.85,0.03919],[1,0.07487],[1.15,0.02354],[1.3,0.004201],[1.45,-0.004561],[1.6,-0.02998],[1.75,-0.02174],[1.9,0.1225],[2.05,0.1491],[2.2,0.03362],[2.35,-0.05598],[2.5,-0.02812],[2.65,-0.0173],[2.8,0.007205],[2.95,0.04559],[3.1,0.04184],[3.25,-0.01685],[3.4,-0.03975],[3.55,-0.03545],[3.7,-0.009186],[3.85,0.0815],[3.975,0.0626]],\"max\":{\"at\":2.05,\"value\":0.1529},\"min\":{\"at\":3.55,\"value\":-0.06859},\"median\":0.009664,\"masked_fraction\":0}"
+    },
+    {
+     "step": 21,
+     "tool": "line_profile",
+     "args": {
+      "stage": "delta_pdf",
+      "along": "x",
+      "at": {
+       "y": 0,
+       "z": 0
+      },
+      "n_points": 64
+     },
+     "why": "",
+     "status": "done",
+     "summary": "delta_pdf along x at y=0, z=0: max 3202 at -0.963",
+     "result": "{\"stage\":\"delta_pdf\",\"along\":\"x\",\"through\":{\"y\":0,\"z\":0},\"units\":\"Å\",\"points\":[[-38.52,9.152],[-37.07,5.236],[-35.63,-2.727],[-34.19,2.532],[-32.74,0.08636],[-31.3,-7.979],[-29.85,-3.619],[-28.41,-9.811],[-26.96,-10.32],[-25.52,-3.953],[-24.07,-5.647],[-22.63,3.855],[-21.19,-2.042],[-19.74,-19.52],[-18.3,-3.091],[-16.85,17.01],[-15.41,122],[-13.96,-5.603],[-12.52,-149.2],[-11.07,-210.8],[-9.63,12.56],[-8.185,1892],[-6.741,893.4],[-5.296,763.8],[-3.852,205.5],[-2.407,191.1],[-0.963,2283],[0.4815,1964],[1.926,490.6],[3.37,186.6],[4.815,311.6],[6.259,942.2],[7.704,2211],[9.148,133.7],[10.59,-53.46],[12.04,-301.5],[13.48,-11.79],[14.93,75.55],[16.37,69.89],[17.81,-6.463],[19.26,-19.61],[20.7,-1.831],[22.15,2.468],[23.59,-2.712],[25.04,-4.589],[26.48,-7.363],[27.93,-11.76],[29.37,-1.823],[30.81,-9.504],[32.26,-4.512],[33.7,6.056],[35.15,-4.393],[36.59,4.373],[38.04,6.459]],\"max\":{\"at\":-0.963,\"value\":3202},\"min\":{\"at\":-11.56,\"value\":-466.6},\"median\":1.299,\"masked_fraction\":0}"
+    },
+    {
+     "step": 22,
+     "tool": "dpdf_peaks",
+     "args": {
+      "limit": 12,
+      "min_sigma": 5
+     },
+     "why": "",
+     "status": "done",
+     "summary": "619 extrema above 5σ; strongest − at (0.497, 0.497, 0) r.l.u., 2.74 Å, 1520σ",
+     "result": "{\"grouped_by\":\"sign, length and size (no symmetry declared)\",\"features\":[{\"sign\":\"−\",\"length_A\":2.74,\"size_sigma\":1520,\"n_vectors\":6,\"vectors_rlu\":[[0.497,0.497,0],[0,0.497,-0.497],[-0.0001,0.497,0.497],[0.497,0,-0.497]],\"vectors_A\":[[1.938,1.937,-0.0001],[0.0001,1.937,-1.937],[-0.0003,1.938,1.938],[1.938,0.0002,-1.937]]},{\"sign\":\"+\",\"length_A\":4.763,\"size_sigma\":858,\"n_vectors\":12,\"vectors_rlu\":[[0.499,-0.498,0.997],[0.499,0.499,-0.997],[0.499,0.499,0.997],[0.997,-0.498,-0.498]],\"vectors_A\":[[1.945,-1.944,3.888],[1.945,1.945,-3.888],[1.944,1.944,3.889],[3.888,-1.944,-1.944]]},{\"sign\":\"−\",\"length_A\":6.732,\"size_sigma\":579,\"n_vectors\":4,\"vectors_rlu\":[[0.997,0.997,-0.997],[0.997,0.997,0.997],[0.997,-0.997,-0.997],[0.996,-0.996,0.997]],\"vectors_A\":[[3.887,3.886,-3.888],[3.887,3.887,3.887],[3.886,-3.886,-3.886],[3.886,-3.885,3.887]]},{\"sign\":\"+\",\"length_A\":3.88,\"size_sigma\":540,\"n_vectors\":1,\"vectors_rlu\":[[0,0.0001,0.995]],\"vectors_A\":[[0,0.0003,3.88]]},{\"sign\":\"+\",\"length_A\":7.779,\"size_sigma\":506,\"n_vectors\":2,\"vectors_rlu\":[[1.99,-0.0001,0],[0,1.99,0]],\"vectors_A\":[[7.779,-0.0003,0],[-0.0001,7.778,0]]},{\"sign\":\"+\",\"length_A\":7.779,\"size_sigma\":245,\"n_vectors\":1,\"vectors_rlu\":[[-0.0003,0.0004,1.99]],\"vectors_A\":[[-0.0011,0.0015,7.779]]},{\"sign\":\"+\",\"length_A\":5.837,\"size_sigma\":238,\"n_vectors\":3,\"vectors_rlu\":[[1.5,0.0006,0],[0,-0.0003,1.5],[0.0001,1.5,-0.0004]],\"vectors_A\":[[5.837,0.0022,0.0001],[-0.0002,-0.0012,5.836],[0.0002,5.839,-0.0014]]},{\"sign\":\"+\",\"length_A\":5.503,\"size_sigma\":235,\"n_vectors\":2,\"vectors_rlu\":[[0.998,-0.998,0.0001],[0.998,0.998,-0.0005]],\"vectors_A\":[[3.892,-3.891,0.0003],[3.892,3.893,-0.0019]]},{\"sign\":\"−\",\"length_A\":6.15,\"size_sigma\":215,\"n_vectors\":12,\"vectors_rlu\":[[1.5,0.0004,0.498],[0.0002,0.498,1.5],[1.5,0.498,-0.0005],[0.498,0.0002,1.5]],\"vectors_A\":[[5.835,0.0016,1.943],[0.0006,1.944,5.834],[5.833,1.944,-0.002],[1.944,0.0007,5.834]]},{\"sign\":\"+\",\"length_A\":9.129,\"size_sigma\":169,\"n_vectors\":12,\"vectors_rlu\":[[0.998,1.5,-1.5],[0.999,1.5,1.5],[1.5,1.5,-0.999],[1.5,-0.998,1.5]],\"vectors_A\":[[3.893,5.837,-5.84],[3.897,5.839,5.84],[5.84,5.838,-3.896],[5.842,-3.89,5.841]]},{\"sign\":\"−\",\"length_A\":5.483,\"size_sigma\":160,\"n_vectors\":4,\"vectors_rlu\":[[0.994,-0.0005,0.994],[0.0003,0.995,0.994],[0.995,0.0009,-0.995],[-0.001,0.995,-0.995]],\"vectors_A\":[[3.877,-0.0019,3.878],[0.0012,3.881,3.877],[3.882,0.0034,-3.88],[-0.004,3.88,-3.882]]},{\"sign\":\"+\",\"length_A\":8.258,\"size_sigma\":149,\"n_vectors\":6,\"vectors_rlu\":[[1.5,-0.0004,1.5],[0.0009,1.5,1.5],[0.0003,1.5,-1.5],[1.5,0.0005,-1.5]],\"vectors_A\":[[5.842,-0.0017,5.837],[0.0035,5.841,5.832],[0.0012,5.839,-5.839],[5.84,0.0021,-5.84]]}],\"robust_sigma\":6.17,\"threshold_sigma\":5,\"origin_disk_A\":1.95,\"extrema_above_threshold\":619,\"reading\":\"Each entry: the sign, |r|, the largest size in σ, how many vectors (one per ± pair) share them, and up to 4 of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk; features nearer the origin than the shortest interatomic distance are not pair correlations.\"}"
+    }
+   ],
+   "numbers": [
+    {
+     "text": "1",
+     "value": 1,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[1].vectors_rlu[0][2]",
+      "value": 0.997
+     }
+    },
+    {
+     "text": "4",
+     "value": 4,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[1].vectors_A[0][2]",
+      "value": 3.888
+     }
+    },
+    {
+     "text": "1.68",
+     "value": 1.68,
+     "source": {
+      "step": 20,
+      "tool": "line_profile",
+      "path": "points[15][0]",
+      "value": -1.7
+     }
+    },
+    {
+     "text": "48%",
+     "value": 48,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[0].vectors_rlu[0][0]",
+      "value": 0.497
+     }
+    },
+    {
+     "text": "0",
+     "value": 0,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[0].vectors_rlu[0][0]",
+      "value": 0.497
+     }
+    },
+    {
+     "text": "1360",
+     "value": 1360,
+     "source": {
+      "step": 18,
+      "tool": "measure_dpdf_cut",
+      "path": "delta_pdf.feature_snr",
+      "value": 1360
+     }
+    },
+    {
+     "text": "6.444",
+     "value": 6.444,
+     "source": {
+      "step": 21,
+      "tool": "line_profile",
+      "path": "points[39][1]",
+      "value": -6.463
+     }
+    },
+    {
+     "text": "11.05",
+     "value": 11.05,
+     "source": {
+      "step": 21,
+      "tool": "line_profile",
+      "path": "points[19][0]",
+      "value": -11.07
+     }
+    },
+    {
+     "text": "0.15",
+     "value": 0.15,
+     "source": {
+      "step": 20,
+      "tool": "line_profile",
+      "path": "points[40][1]",
+      "value": 0.1491
+     }
+    },
+    {
+     "text": "0.0004",
+     "value": 0.0004,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[5].vectors_rlu[0][1]",
+      "value": 0.0004
+     }
+    },
+    {
+     "text": "3.9000",
+     "value": 3.9,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[1].vectors_A[0][2]",
+      "value": 3.888
+     }
+    },
+    {
+     "text": "3.8998",
+     "value": 3.8998,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[1].vectors_A[0][2]",
+      "value": 3.888
+     }
+    },
+    {
+     "text": "0.039",
+     "value": 0.039,
+     "source": {
+      "step": 20,
+      "tool": "line_profile",
+      "path": "points[32][1]",
+      "value": 0.03919
+     }
+    },
+    {
+     "text": "1.0",
+     "value": 1,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[1].vectors_rlu[0][2]",
+      "value": 0.997
+     }
+    },
+    {
+     "text": "1e-14",
+     "value": 1e-14,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[0].vectors_rlu[0][2]",
+      "value": 0
+     }
+    },
+    {
+     "text": "0.989",
+     "value": 0.989,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[1].vectors_rlu[0][2]",
+      "value": 0.997
+     }
+    },
+    {
+     "text": "2.2%",
+     "value": 2.2,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[0].vectors_rlu[0][2]",
+      "value": 0
+     }
+    },
+    {
+     "text": "1520",
+     "value": 1520,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[0].size_sigma",
+      "value": 1520
+     }
+    },
+    {
+     "text": "6.44",
+     "value": 6.44,
+     "source": {
+      "step": 21,
+      "tool": "line_profile",
+      "path": "points[39][1]",
+      "value": -6.463
+     }
+    },
+    {
+     "text": "30",
+     "value": 30,
+     "source": {
+      "step": 21,
+      "tool": "line_profile",
+      "path": "points[3][0]",
+      "value": -34.19
+     }
+    },
+    {
+     "text": "270",
+     "value": 270,
+     "source": null
+    },
+    {
+     "text": "1.926",
+     "value": 1.926,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[0].vectors_A[0][0]",
+      "value": 1.938
+     }
+    },
+    {
+     "text": "0.5",
+     "value": 0.5,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[0].vectors_rlu[0][0]",
+      "value": 0.497
+     }
+    },
+    {
+     "text": "-9357",
+     "value": -9357,
+     "source": {
+      "step": 19,
+      "tool": "line_profile",
+      "path": "min.value",
+      "value": -9357
+     }
+    },
+    {
+     "text": "1376",
+     "value": 1376,
+     "source": {
+      "step": 18,
+      "tool": "measure_dpdf_cut",
+      "path": "delta_pdf.feature_snr",
+      "value": 1360
+     }
+    },
+    {
+     "text": "61",
+     "value": 61,
+     "source": null
+    },
+    {
+     "text": "1.93",
+     "value": 1.93,
+     "source": {
+      "step": 22,
+      "tool": "dpdf_peaks",
+      "path": "features[0].vectors_A[0][0]",
+      "value": 1.938
+     }
+    }
+   ],
+   "conclusion": "\n\n\n\n\n\n\n\nI've read the three skills. Now let me establish what's on disk and what the current settings are, before touching anything.\n\n\n\n\n\n\n\nI've read all three skills and have the baseline. The on-disk outputs already exist for every stage, and the opening context was measured from them. Let me run the pipeline to establish the current state, then check every stage and the data itself.\n\n\n\n\n\nThe run reused all existing outputs (they were already current), so the on-disk state is what I'm assessing. The opening context already shows the key tension I need to resolve:\n\n- **ring_removal**: `ring_energy_ratio = 1` (a no-op — nothing subtracted), yet the 2D cut shows 4 significant \"ring\" residuals (worst at |Q|=1.68, 48% of diffuse left). The 3D `assess_stage rings` says these bumps are **not** powder rings (isotropy ≈ 0 or negative → anisotropic crystal scattering). I need to confirm that on other cuts.\n- **delta_pdf**: `feature_snr = 1360` is absurdly high for a real correlation — this is the biggest red flag and I must find out whether it's signal or artifact (Bragg residue / termination ripple / window past the data / origin background).\n\nLet me run the data-integrity and ΔPDF-trust checks in one batch.\n\n\n\n\n\n\n\n\n\n\n\nAll six data-integrity checks are back. Let me record what they say before I touch anything:\n\n- **qmax_coverage**: transform reaches 6.444 Å⁻¹ (window tapers to the box faces), **inside** full coverage at 11.05 Å⁻¹; counts fully measured 0.15→11.05, `counts_end_inside_box: false`. → **Clean**, the window does not reach past the data.\n- **ub_check**: rms 0.0004→0.0004, orientation change 0°, cell 3.9000→3.8998, no origin shift, no |Q|-dependent radial offset. → **UB is correct.**\n- **grain_check**: 0 off-lattice orbits, verdict \"no off-lattice peaks were recorded.\" → **No second grain, no satellites.**\n- **texture_check**: no systematic fill bias, azimuthal ratios 1.01/1.0/0.958. → **Backfill adds no texture.**\n- **symmetry_check**: no symmetry declared, so the 0.039 asymmetry is the data's own, not a stage break. → **Not judged (fine).**\n- **consistency_details**: back-FFT r vs even part = **1.0** (RMS 1e-14); r vs data 0.989 is just the 2.2% odd part on unsymmetrised data. → **Transform is sound.**\n\nSo the data itself (orientation, coverage, no grain, no texture, sound transform) is clean. The one glaring anomaly is the **ΔPDF `feature_snr` of 1360–1520σ** — far beyond a normal SRO feature. I need to determine whether that is real signal or an artifact before I trust it. Let me look at the actual ΔPDF and the Q-space background.\n\n\n\n\n\n\n\n\n\nThe data-integrity picture is now clear and mostly clean: **UB correct** (rms 0.0004→0.0004, 0° orientation change, no origin shift), **coverage clean** (transform reaches 6.44 Å⁻¹, inside full coverage 11.05 Å⁻¹; counts fully measured 0.15→11.05, not ending inside the box), **no second grain/satellites** (0 off-lattice orbits), **backfill adds no texture** (no systematic fill bias, azimuthal ratios ~1), **transform sound** (back-FFT r vs even part = 1.0). No symmetry is declared, so the 0.039 asymmetry is the data's own.\n\nThe one glaring anomaly is the **ΔPDF `feature_snr` of 1360–1520σ** — 30–270× larger than a normal short-range-order feature. The line profile shows a sharp negative spike at (1.926, 1.926, 0) Å ≈ (0.5, 0.5, 0) a, value −9357 (≈1376σ), while the origin self-correlation is only ~61σ at 1.93 Å. I need to determine whether that spike is a real correlation or an artifact (Bragg residue / origin tail) before I trust the ΔPDF. Let me look at the Q-space at the corresponding node and the origin profile.\n\n\n\n",
+   "computed_verdict": {
+    "achieved": true,
+    "stages": {
+     "rings": "pass",
+     "punch": "pass",
+     "backfill": "pass",
+     "flatten": "pass",
+     "pdf": "pass"
+    },
+    "attention": [],
+    "notMeasured": [],
+    "dataProblems": [],
+    "text": "met: every stage meets its goal"
+   },
+   "note": "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (56k or more: with Tools on, the first request alone is about 10k tokens, and a full assessment that reads two skills reaches about 48k), or turn Tools off; Clear starts a shorter conversation.",
+   "error": null,
+   "failure": null,
+   "truncated": {
+    "loop": 1,
+    "tuning": 0,
+    "requests": [
+     {
+      "request": 7,
+      "source": "loop",
+      "transport": "openai-compatible",
+      "reason": "length"
+     }
+    ]
+   },
+   "tuning_budget": null,
+   "grades": {
+    "detection": [
+     {
+      "check": "answers",
+      "pass": false,
+      "detail": "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (56k or more: with Tools on, the first request alone is about 10k tokens, and a full assessment that reads two skills reaches about 48k), or turn Tools off; Clear starts a shorter conversation."
+     }
+    ],
+    "falseAlarms": [
+     {
+      "check": "never claims a fault that is not there (ub)",
+      "pass": true,
+      "detail": "not claimed"
+     },
+     {
+      "check": "never claims a fault that is not there (origin)",
+      "pass": true,
+      "detail": "not claimed"
+     },
+     {
+      "check": "never claims a fault that is not there (coverage)",
+      "pass": true,
+      "detail": "not claimed"
+     },
+     {
+      "check": "never claims a fault that is not there (rings)",
+      "pass": true,
+      "detail": "not claimed"
+     },
+     {
+      "check": "never claims a fault that is not there (flatten)",
+      "pass": true,
+      "detail": "not claimed"
+     }
+    ],
+    "unsafe": [],
+    "detected": null,
+    "noFalseAlarm": true,
+    "disputes": []
+   },
+   "unsafe_rule": "refused attempts count, once per fact and reply (#68, #93)"
+  }
+ ]
+}
