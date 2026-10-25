@@ -6,7 +6,7 @@
 import { queryClient } from "../../api/queryClient";
 import { useDatasetStore } from "../../state/datasetStore";
 import { useNavStore } from "../../state/navStore";
-import { TUNE_STAGE_LABELS } from "../tune/catalog";
+import { TUNE_STAGE_TITLES } from "../tune/catalog";
 import { headline } from "../tune/evaluate";
 import { useTuneStore, type StageRun } from "../tune/tuner";
 
@@ -26,7 +26,7 @@ function StageCard({ run }: { run: StageRun }) {
   return (
     <div className={`tune-stage tune-${run.status}`}>
       <div className="tune-stage-head">
-        <span className="tune-stage-name">{TUNE_STAGE_LABELS[run.stage]}</span>
+        <span className="tune-stage-name">{TUNE_STAGE_TITLES[run.stage]}</span>
         <span className={`tune-status${busy ? " busy" : ""}`}>{STATUS_LABEL[run.status]}</span>
       </div>
       {run.message && <div className="tune-msg">{run.message}</div>}
@@ -52,9 +52,13 @@ function StageCard({ run }: { run: StageRun }) {
                   ? "queued"
                   : t.status === "running"
                     ? "running…"
-                    : t.status === "error"
-                      ? t.error
-                      : headline(run.stage, t.evaluation)}
+                    : t.status === "stopped"
+                      ? "stopped before it finished"
+                      : t.status === "skipped"
+                        ? "not run"
+                        : t.status === "error"
+                          ? t.error
+                          : headline(run.stage, t.evaluation)}
                 {t.seconds != null && <span className="tune-secs"> · {t.seconds}s</span>}
               </div>
               {t.why && <div className="tune-why">{t.why}</div>}

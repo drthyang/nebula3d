@@ -20,7 +20,7 @@ const MENTIONS: [HighlightKey, RegExp][] = [
   ["rings", /\brings?\b|\bring[_ -]/i],
   ["punch", /\bpunch|\bleftover peak/i],
   ["backfill", /\bbackfill|\bseams?\b|\bfill bias/i],
-  ["flatten", /\bflatten|\bshell floors?\b|\bpedestal/i],
+  ["flatten", /\bflatten|\bbackground[- ]correct(?:ion|ed)\b|\bshell floors?\b|\bpedestal/i],
   ["pdf", /ΔPDF|\bdelta[- ]?pdf|\bQ_?max\b|\bapodi[sz]ation/i],
   ["check", /\bback-?FFT|\bconsistency check|\bPearson\b/i],
   ["bragg", /\bBragg peaks?\b|\bfitted peaks?\b/i],

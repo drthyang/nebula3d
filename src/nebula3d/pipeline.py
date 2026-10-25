@@ -2409,11 +2409,21 @@ def _passed_through_notice(p: PipelineParams, stage: str, src: Path) -> str | No
     return f"{_stage_names(off)} disabled: the {_STAGE_NAMES[stage]} reads {Path(src).name}"
 
 
-def _pdf_is_current(pdf_path: Path, expected_src: str, expected_config: str) -> bool:
+def _pdf_is_current(pdf_path: Path, expected_src: str, expected_config: str,
+                    src_path: Path | None = None) -> bool:
     """Whether *pdf_path* was made from *expected_src* with *expected_config*
-    (its provenance only — the ΔPDF array is not read; either file layout)."""
+    (its provenance only — the ΔPDF array is not read; either file layout),
+    and, given the input's *src_path*, is not older than that input: a ΔPDF
+    older than its input was made from what the input held before a stage
+    upstream last ran (the ΔPDF switched off then), so it is stale whatever
+    its name and settings say."""
     if not pdf_path.exists():
         return False
+    try:
+        if src_path is not None and pdf_path.stat().st_mtime < src_path.stat().st_mtime:
+            return False
+    except OSError:
+        pass  # the input is not there to compare with: the provenance decides
     try:
         logs = load_delta_pdf(pdf_path, read_data=False).logs
     except Exception:
@@ -2779,7 +2789,7 @@ def run_pipeline(
     if want("pdf"):
         expected_config = delta_pdf_transform_config(p.delta_pdf)
         is_current = _pdf_is_current(paths.delta_pdf, pdf_input.name,
-                                     expected_config)
+                                     expected_config, pdf_input)
         if is_current and not forced("pdf"):
             _emit(progress, "pdf", "skip", None,
                   f"{paths.delta_pdf.name} is current")

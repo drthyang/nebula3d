@@ -19,6 +19,7 @@ import * as readings from "../readings";
 import { isCompacted } from "../readings/compact";
 import { DEFAULT_SETTINGS } from "../settings";
 import { CHAT_TOOLS, MAX_RESULT_CHARS, type AgentTool } from "../tools";
+import type { Usage } from "../usage";
 import type { Outcome } from "../verdicts";
 
 const client = vi.hoisted(() => ({ streamChat: vi.fn() }));
@@ -65,6 +66,124 @@ beforeEach(() => {
   // The window plan asks the model server about the model: none answers here.
   vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
   resetTokenState();
+});
+
+describe("each request's tokens (usage.ts)", () => {
+  it("counts every completed request: the server's numbers when it gave them, else marked as estimated", async () => {
+    script([
+      // Reported, with a cached part (an Anthropic- or OpenAI-style count).
+      [{ toolCalls: [call("c1", "echo", { x: 1 })] }, { usage: { input: 1200, output: 30, cacheRead: 1000 } }],
+      // Not reported: estimated from the request and the reply.
+      [{ content: "x is 1." }],
+    ]);
+    const counted: Usage[] = [];
+    await runAgent({ messages: base, tools: [echo], ctx, settings, signal: new AbortController().signal, checkAnswers: false, onUsage: (u) => counted.push(u) });
+    expect(counted).toHaveLength(2);
+    expect(counted[0]).toEqual({ input: 1200, output: 30, cacheRead: 1000, cacheWrite: 0, requests: 1, estimated: 0 });
+    expect(counted[1]).toMatchObject({ requests: 1, estimated: 1, cacheRead: 0 });
+    expect(counted[1].input).toBeGreaterThan(0);
+    expect(counted[1].output).toBe(Math.round("x is 1.".length / 3.5));
+  });
+
+  it("asks every server for its counts, the cloud ones included", async () => {
+    const asked: boolean[] = [];
+    client.streamChat.mockImplementation((args: { includeUsage?: boolean }) => {
+      asked.push(Boolean(args.includeUsage));
+      return (async function* () {
+        yield { content: "Hello." };
+      })();
+    });
+    await runAgent({ messages: base, tools: [], ctx: null, settings: { ...settings, baseUrl: "https://api.openai.com/v1" }, signal: new AbortController().signal });
+    expect(asked).toEqual([true]);
+  });
+
+  it("asks a server that refuses stream_options again without it, and estimates its counts", async () => {
+    const asked: boolean[] = [];
+    client.streamChat.mockImplementation((args: { includeUsage?: boolean }) => {
+      asked.push(Boolean(args.includeUsage));
+      return (async function* () {
+        if (args.includeUsage) throw Object.assign(new Error("HTTP 400: Unrecognized request argument supplied: stream_options"), { status: 400 });
+        yield { content: "Hello." };
+      })();
+    });
+    const counted: Usage[] = [];
+    const r = await runAgent({ messages: base, tools: [], ctx: null, settings: { ...settings, baseUrl: "http://10.0.0.9:8080/v1" }, signal: new AbortController().signal, onUsage: (u) => counted.push(u) });
+    expect(r.content).toBe("Hello.");
+    expect(asked).toEqual([true, false]);
+    expect(counted).toMatchObject([{ requests: 1, estimated: 1 }]);
+  });
+
+  // A request sent that did not complete has no counts: it is said apart
+  // (uncounted), never counted as if it were none.
+  const uncounted = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0, estimated: 0, uncounted: 1 };
+  const run = (signal = new AbortController().signal) => {
+    const counted: Usage[] = [];
+    const done = runAgent({ messages: base, tools: [], ctx: null, settings, signal, onUsage: (u) => counted.push(u), retryDelaysMs: [0, 0], stallMs: { first: 60, idle: 60 } });
+    return { counted, done };
+  };
+
+  it("says a request that failed is not counted, and counts none of its tokens", async () => {
+    script([new Error("the server answered something odd")]);
+    const { counted, done } = run();
+    expect((await done).failure?.kind).toBe("error");
+    expect(counted).toEqual([uncounted]);
+  });
+
+  it("says the stalled, malformed or crashed requests asked again are not counted, beside the one that completed", async () => {
+    let calls = 0;
+    client.streamChat.mockImplementation((args: { signal: AbortSignal }) => {
+      calls += 1;
+      const n = calls;
+      return (async function* () {
+        if (n === 1) {
+          // Nothing, until the watchdog ends it.
+          await new Promise((_, reject) => args.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+        }
+        if (n === 2) throw new Error("Model output does not match the expected tool call format");
+        if (n === 3) {
+          yield { content: "Hal" };
+          throw new Error("Encountered fatal exception in the backend generation thread");
+        }
+        yield { content: "Hello." };
+      })();
+    });
+    const { counted, done } = run();
+    expect((await done).content).toBe("Hello.");
+    expect(calls).toBe(4);
+    expect(counted).toMatchObject([uncounted, uncounted, uncounted, { requests: 1, estimated: 1 }]);
+  });
+
+  it("says a request the user stopped is not counted", async () => {
+    client.streamChat.mockImplementation((args: { signal: AbortSignal }) =>
+      (async function* () {
+        yield { content: "Half" };
+        await new Promise((_, reject) => args.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+      })(),
+    );
+    const abort = new AbortController();
+    const { counted, done } = run(abort.signal);
+    setTimeout(() => abort.abort(), 20);
+    await expect(done).rejects.toMatchObject({ name: "AbortError" });
+    expect(counted).toEqual([uncounted]);
+  });
+
+  it("says a request the provider dropped and sent again itself is not counted", async () => {
+    script([[{ discarded: true }, { content: "ok" }]]);
+    const { counted, done } = run();
+    expect((await done).content).toBe("ok");
+    expect(counted).toMatchObject([uncounted, { requests: 1, estimated: 1 }]);
+  });
+
+  it("counts nothing for a request the server refused outright, or never got", async () => {
+    script([Object.assign(new Error("HTTP 401: invalid key"), { status: 401 })]);
+    const refused = run();
+    await refused.done;
+    expect(refused.counted).toEqual([]);
+    script([new TypeError("Failed to fetch"), new TypeError("Failed to fetch"), new TypeError("Failed to fetch")]);
+    const unreachable = run();
+    expect((await unreachable.done).failure?.kind).toBe("unreachable");
+    expect(unreachable.counted).toEqual([]);
+  });
 });
 
 describe("runAgent", () => {

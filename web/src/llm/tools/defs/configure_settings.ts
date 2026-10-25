@@ -26,7 +26,7 @@ export const configure_settings: ChatTool = {
     const settings: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(s)) {
       if (typeof v === "function" || UI_ONLY.test(k)) continue;
-      if (["jobId", "running", "events", "times", "terminal"].includes(k)) continue;
+      if (["jobId", "running", "reconnecting", "events", "times", "terminal", "lastRun"].includes(k)) continue;
       if (HELD.has(k)) {
         const p = COMPOSITE.find((q) => q.fields[0] === k);
         // Read as one: "default" (nothing it needs is set) shows as a blank field does.

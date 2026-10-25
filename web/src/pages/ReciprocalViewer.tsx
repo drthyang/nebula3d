@@ -29,7 +29,7 @@ import {
 } from "../components/ui";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
-import { clampHalf, fitViewport, sampleIndex, type SliceGeom } from "../components/viewport";
+import { clampHalf, extentBounds, fitViewport, sampleIndex, type SliceGeom } from "../components/viewport";
 import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
 import { LayoutControl, Workspace } from "../components/Workspace";
 import {
@@ -48,7 +48,7 @@ const STAGE_LABELS: Record<string, string> = {
   ringremoved: "Ring-removed",
   braggpunched: "Bragg-punched",
   backfilled: "Backfilled",
-  flattened: "Flattened",
+  flattened: "Background-corrected",
 };
 const AXES: FixedAxis[] = ["H", "K", "L"];
 // In-plane axes (x, y) for each fixed axis.
@@ -203,6 +203,12 @@ export function ReciprocalViewer() {
     const range = { H: meta.h_range, K: meta.k_range, L: meta.l_range };
     return fitViewport({ x_axis: range[xAxis], y_axis: range[yAxis] }, geom);
   }, [meta, xAxis, yAxis, geom]);
+  // Panning keeps the view's centre on the data.
+  const bounds = useMemo(() => {
+    if (!meta) return undefined;
+    const range = { H: meta.h_range, K: meta.k_range, L: meta.l_range };
+    return extentBounds({ x_axis: range[xAxis], y_axis: range[yAxis] }, geom);
+  }, [meta, xAxis, yAxis, geom]);
   const viewport = views[plane] ?? fit;
   const step = (ax: FixedAxis) => {
     if (!meta) return 0.01;
@@ -225,7 +231,7 @@ export function ReciprocalViewer() {
         <div className="qr-roundtrip">
           <span className="qr-rt qr-rt--q">raw</span>
           <span className="qr-rt-arrow">→</span>
-          <span className="qr-rt">flattened</span>
+          <span className="qr-rt">background-corrected</span>
         </div>
         <span className="qr-eyebrow">{stages.length || 5} stages</span>
         <span className="qr-desc">Each stage strips one artifact, leaving the diffuse signal</span>
@@ -329,6 +335,7 @@ export function ReciprocalViewer() {
                   viewport={viewport}
                   onViewport={(v) => setView(plane, v)}
                   fit={fit}
+                  bounds={bounds}
                   limit={limit}
                   mode={clickMode}
                   axes={{ sx: geom.sx, sy: geom.sy, xLabel: xAxis, yLabel: yAxis, unit: "r.l.u.", fovUnit: "Å⁻¹" }}

@@ -96,7 +96,11 @@ async def job_events(jid: str, request: Request) -> StreamingResponse:
                 yield f"data: {json.dumps(ev)}\n\n"
             idx += len(events)
             if status != "running":
-                yield f"data: {json.dumps({'type': status})}\n\n"
+                end: dict = {"type": status}
+                error = job.snapshot()["error"]
+                if error:
+                    end["message"] = error  # why it failed, for the page's log
+                yield f"data: {json.dumps(end)}\n\n"
                 break
             if await request.is_disconnected():
                 break

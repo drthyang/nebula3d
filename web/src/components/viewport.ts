@@ -39,8 +39,16 @@ export function sliceToDisplay(x: number, y: number, g: SliceGeom): [number, num
   return [h + v * cos, v * sin];
 }
 
-/** The viewport that shows the whole slice. */
-export function fitViewport(ax: AxisExtent, g: SliceGeom): Viewport {
+/** A rectangle in display units. */
+export interface Bounds {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
+
+/** The display rectangle a slice covers (its corners' bounding box, for an oblique section too). */
+export function extentBounds(ax: AxisExtent, g: SliceGeom): Bounds {
   const xs = ax.x_axis, ys = ax.y_axis;
   const corners = [
     sliceToDisplay(xs[0], ys[0], g),
@@ -49,8 +57,28 @@ export function fitViewport(ax: AxisExtent, g: SliceGeom): Viewport {
     sliceToDisplay(xs[xs.length - 1], ys[ys.length - 1], g),
   ];
   const X = corners.map((c) => c[0]), Y = corners.map((c) => c[1]);
-  const x0 = Math.min(...X), x1 = Math.max(...X), y0 = Math.min(...Y), y1 = Math.max(...Y);
+  return { x0: Math.min(...X), x1: Math.max(...X), y0: Math.min(...Y), y1: Math.max(...Y) };
+}
+
+/** The viewport that shows the whole slice. */
+export function fitViewport(ax: AxisExtent, g: SliceGeom): Viewport {
+  const { x0, x1, y0, y1 } = extentBounds(ax, g);
   return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, half: Math.max(x1 - x0, y1 - y0) / 2 || 1 };
+}
+
+/** The square a viewport's `half` spans about its centre. */
+export const viewportBounds = (v: Viewport): Bounds => ({ x0: v.cx - v.half, x1: v.cx + v.half, y0: v.cy - v.half, y1: v.cy + v.half });
+
+/**
+ * Keep the view's centre on the data (`b`), as a map keeps its centre on the
+ * world: however far it is panned, the data stays on screen. A viewport whose
+ * centre is inside `b` is returned as it is, so a zoom about a point on the
+ * data keeps that point exactly where it was.
+ */
+export function clampToBounds(v: Viewport, b: Bounds): Viewport {
+  const cx = Math.min(b.x1, Math.max(b.x0, v.cx));
+  const cy = Math.min(b.y1, Math.max(b.y0, v.cy));
+  return cx === v.cx && cy === v.cy ? v : { ...v, cx, cy };
 }
 
 /** Keep `half` between a few voxels and a little past the whole slice. */
@@ -77,6 +105,19 @@ export function pixelToDisplay(v: Viewport, px: number, py: number, w: number, h
 export function displayToPixel(v: Viewport, X: number, Y: number, w: number, h = w): [number, number] {
   const s = (Math.min(w, h) || 1) / (2 * v.half);
   return [w / 2 + (X - v.cx) * s, h / 2 - (Y - v.cy) * s];
+}
+
+/**
+ * The zoom factor of one wheel event (< 1 zooms in): its vertical delta read
+ * in pixels whatever the device reports (a line as 40 px, the usual reading,
+ * e.g. normalize-wheel's; a page as the view's height), e^(Δ/100 px), at most
+ * 2× either way. One mouse notch (100 px in Chrome, 3 lines in Firefox) is
+ * then one map level, a factor 2, and a trackpad's or a pinch's small steps
+ * zoom smoothly, as they did.
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode: number, viewHeight: number): number {
+  const px = deltaMode === 1 ? deltaY * 40 : deltaMode === 2 ? deltaY * viewHeight : deltaY;
+  return Math.min(2, Math.max(0.5, Math.exp(px * 0.01)));
 }
 
 /** Zoom by `k` (< 1 zooms in) keeping the display point (X, Y) fixed. */

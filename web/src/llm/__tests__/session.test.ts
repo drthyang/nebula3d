@@ -3,8 +3,11 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AgentStep } from "../agent";
 import { useChatStore } from "../chatStore";
-import { askAssistant } from "../session";
+import { askAssistant, stopAssistant } from "../session";
+import { runRound, startReply, type AgentTool, type ToolContext } from "../tools";
+import { measured, notCounted } from "../usage";
 
 const agent = vi.hoisted(() => ({ runAgent: vi.fn() }));
 vi.mock("../agent", () => agent);
@@ -12,7 +15,7 @@ vi.mock("../agent", () => agent);
 const ask = () => askAssistant({ label: "Process the data", messages: [], tools: [], ctx: null });
 
 beforeEach(() => {
-  useChatStore.setState({ turns: [], busy: false, live: null, error: null });
+  useChatStore.setState({ turns: [], busy: false, live: null, error: null, usage: null });
 });
 
 describe("askAssistant", () => {
@@ -52,6 +55,107 @@ describe("askAssistant", () => {
     expect(turns[1].note).toMatch(/ended with an error: Engine protocol predict stream/);
     expect(error).toBeNull();
     expect(busy).toBe(false);
+  });
+
+  it("keeps the step the user stopped as stopped, not as an error, as the real round ends it", async () => {
+    // The real sequence: Stop aborts the reply; run_pipeline's run is cancelled
+    // and the call fails ("the run was cancelled"), which the round ends as the
+    // step's status; then the reply's next request rejects with an AbortError.
+    const done = { id: "0:a", name: "assess_stage", args: {}, status: "done" as const, summary: "clean" };
+    const runPipeline: AgentTool = {
+      name: "run_pipeline",
+      description: "",
+      parameters: { type: "object", properties: {} },
+      run: (_args, _ctx, io) =>
+        new Promise((_resolve, reject) => io.signal?.addEventListener("abort", () => reject(new Error("the run was cancelled")))),
+    };
+    agent.runAgent.mockImplementation(async ({ onProgress, signal }) => {
+      let steps: AgentStep[] = [done];
+      onProgress({ content: "", reasoning: "", steps });
+      await runRound([{ id: "b", type: "function", function: { name: "run_pipeline", arguments: "{}" } }], startReply({ dataset: null } as unknown as ToolContext, [runPipeline]), {
+        signal,
+        onStep: (step) => {
+          steps = [...steps.filter((s) => s.id !== step.id), step];
+          onProgress({ content: "", reasoning: "", steps });
+        },
+      });
+      throw new DOMException("The operation was aborted.", "AbortError"); // the next request
+    });
+    const asked = ask();
+    await vi.waitFor(() => expect(useChatStore.getState().live?.steps.map((s) => s.status)).toEqual(["done", "running"]));
+    stopAssistant();
+    await asked;
+    const steps = useChatStore.getState().turns[1].steps!;
+    expect(steps.map((st) => st.status)).toEqual(["done", "stopped"]);
+    expect(steps[1]).toMatchObject({ name: "run_pipeline", summary: "the run was cancelled" });
+    expect(useChatStore.getState().turns[1].note).toBe("Stopped.");
+  });
+
+  it("keeps a step still marked running when the reply was stopped as stopped", async () => {
+    const running = { id: "1:b", name: "assess_stage", args: {}, status: "running" as const, progress: "reading" };
+    agent.runAgent.mockImplementation(async ({ onProgress }) => {
+      onProgress({ content: "", reasoning: "", steps: [running] });
+      throw new DOMException("The operation was aborted.", "AbortError");
+    });
+    await ask();
+    const steps = useChatStore.getState().turns[1].steps!;
+    expect(steps[0]).toMatchObject({ status: "stopped", summary: "you stopped the reply" });
+    expect(steps[0].progress).toBeUndefined();
+  });
+
+  it("keeps a step that was running when an error ended the reply as stopped", async () => {
+    const running = { id: "0:a", name: "tune_pipeline", args: {}, status: "running" as const };
+    agent.runAgent.mockImplementation(async ({ onProgress }) => {
+      onProgress({ content: "", reasoning: "", steps: [running] });
+      throw new Error("socket hang up");
+    });
+    await ask();
+    expect(useChatStore.getState().turns[1].steps![0]).toMatchObject({ status: "stopped", summary: "the reply ended with an error" });
+  });
+
+  // The conversation's total as it was live, and as a restored conversation rebuilds it from its turns.
+  const totals = () => {
+    const live = useChatStore.getState().usage;
+    useChatStore.getState().restoreTurns(JSON.parse(JSON.stringify(useChatStore.getState().turns)));
+    return { live, restored: useChatStore.getState().usage };
+  };
+
+  it("keeps the requests of a reply that failed with nothing to keep with its question, so a restored total agrees", async () => {
+    agent.runAgent.mockImplementation(async ({ onUsage }) => {
+      onUsage(measured({ input: 900, output: 40 })); // a request that completed
+      onUsage(notCounted()); // and one that did not
+      throw new Error("HTTP 500");
+    });
+    await ask();
+    expect(useChatStore.getState().turns).toHaveLength(1);
+    expect(useChatStore.getState().error).toBe("HTTP 500");
+    const { live, restored } = totals();
+    expect(live).toMatchObject({ input: 900, output: 40, requests: 1, uncounted: 1 });
+    expect(restored).toEqual(live);
+  });
+
+  it("keeps the request of a reply stopped before it wrote anything with its question", async () => {
+    agent.runAgent.mockImplementation(async ({ onUsage }) => {
+      onUsage(notCounted());
+      throw new DOMException("The operation was aborted.", "AbortError");
+    });
+    await ask();
+    const { live, restored } = totals();
+    expect(live).toMatchObject({ requests: 0, uncounted: 1 });
+    expect(restored).toEqual(live);
+  });
+
+  it("totals a kept stopped reply the same restored, its uncounted request included", async () => {
+    agent.runAgent.mockImplementation(async ({ onUsage, onProgress }) => {
+      onUsage(measured({ input: 100, output: 10 }));
+      onProgress({ content: "Half", reasoning: "", steps: [] });
+      onUsage(notCounted());
+      throw new DOMException("The operation was aborted.", "AbortError");
+    });
+    await ask();
+    expect(useChatStore.getState().turns[1].tokens).toMatchObject({ requests: 1, uncounted: 1 });
+    const { live, restored } = totals();
+    expect(restored).toEqual(live);
   });
 
   it("shows an error that came before anything was written as the chat's error", async () => {

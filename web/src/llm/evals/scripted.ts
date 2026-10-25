@@ -250,7 +250,14 @@ export function contentTuner(): () => void {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (!url.startsWith(TUNER_URL)) return real(input, init);
-    const reply = { choices: [{ message: { content: JSON.stringify({ candidates: [], best: 1, why: "the current settings" }) } }] };
+    const content = JSON.stringify({ candidates: [], best: 1, why: "the current settings" });
+    // Answered as asked, as a server does: streamed (the tuner's requests are,
+    // under the stall watchdog) or whole.
+    if ((JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean }).stream) {
+      const sse = `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`;
+      return Promise.resolve(new Response(sse, { status: 200, headers: { "Content-Type": "text/event-stream" } }));
+    }
+    const reply = { choices: [{ message: { content } }] };
     return Promise.resolve(new Response(JSON.stringify(reply), { status: 200, headers: { "Content-Type": "application/json" } }));
   }) as typeof fetch;
   const settings = loadSettings();

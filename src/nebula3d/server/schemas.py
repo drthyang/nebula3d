@@ -15,6 +15,13 @@ class StageStatusOut(BaseModel):
     exists: bool
     kind: str            # "hkl" | "delta_pdf"
     volume_id: str       # "<dataset_id>.<stage>"
+    mtime: float | None = None  # when the output was last written (POSIX s); None = no output
+    source: str | None = None  # the ΔPDF only: the stage output (or "raw") it was made from
+
+
+class RawFileOut(BaseModel):
+    size: int            # bytes
+    mtime: float | None  # POSIX s; None where it is not the file's own (browser copy)
 
 
 class DatasetOut(BaseModel):
@@ -23,6 +30,7 @@ class DatasetOut(BaseModel):
     raw_name: str
     stem: str
     stages: list[StageStatusOut]
+    raw_file: RawFileOut | None = None  # None = the raw input is not on disk
 
 
 class DataRootIn(BaseModel):

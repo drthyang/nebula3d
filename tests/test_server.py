@@ -84,6 +84,68 @@ def test_list_datasets_reflects_disk(env):
     assert vid["ringremoved"] == f"{SLUG}.ringremoved"
 
 
+def test_list_datasets_dates_each_output(env, tmp_path):
+    # When each output was written, so the console can tell an output older
+    # than one upstream of it (made before that stage last ran); none when it
+    # does not exist.
+    import os
+
+    client, _ = env
+    ds = client.get("/api/datasets").json()[0]
+    mtime = {s["name"]: s["mtime"] for s in ds["stages"]}
+    assert mtime["braggpunched"] is None and mtime["raw"] is None
+    ring = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
+                          proc_dir=tmp_path / "processed").ringremoved
+    assert mtime["ringremoved"] == os.stat(ring).st_mtime
+    assert isinstance(mtime["backfilled"], float)
+
+
+def test_list_datasets_says_what_the_delta_pdf_was_made_from(env, tmp_path):
+    # The ΔPDF's file records its input; the listing names that output, so
+    # the console follows the flatten link only when the ΔPDF was made from
+    # the flattened volume. The other stages carry none.
+    import os
+
+    import h5py
+
+    client, _ = env
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
+                           proc_dir=tmp_path / "processed")
+    assert client.get("/api/datasets").json()[0]["stages"][-1]["source"] is None
+    axis = np.linspace(-5.0, 5.0, 5)
+    for source, expected in ((paths.backfilled.name, "backfilled"),
+                             ("elsewhere.h5", None)):
+        with h5py.File(paths.delta_pdf, "w") as fh:
+            fh.create_dataset("data", data=np.zeros((5, 5, 5), np.float32))
+            for ax in ("x_axis", "y_axis", "z_axis"):
+                fh.create_dataset(ax, data=axis)
+            fh.attrs["q_max"] = 5.0
+            fh.attrs["source_file"] = source
+            fh.attrs["transform_config"] = "apodize=hann"
+        stages = {s["name"]: s for s in client.get("/api/datasets").json()[0]["stages"]}
+        assert stages["delta_pdf"]["source"] == expected
+        assert all(s["source"] is None for n, s in stages.items() if n != "delta_pdf")
+        os.utime(paths.delta_pdf, ns=(1, 1 + len(source)))  # a new version of the file
+
+
+def test_list_datasets_identifies_the_raw_file(env, tmp_path):
+    # A saved session checks its input is still the file it was saved with:
+    # the raw file's size and mtime, which change when it is replaced or
+    # re-reduced under the same name; none when it is not on disk.
+    import os
+
+    client, _ = env
+    assert client.get("/api/datasets").json()[0]["raw_file"] is None
+    raw = tmp_path / "raw" / f"{STEM}.nxs"
+    raw.write_bytes(b"x" * 100)
+    first = client.get("/api/datasets").json()[0]["raw_file"]
+    assert first == {"size": 100, "mtime": os.stat(raw).st_mtime}
+    raw.write_bytes(b"y" * 120)
+    os.utime(raw, (first["mtime"] + 5, first["mtime"] + 5))
+    second = client.get("/api/datasets").json()[0]["raw_file"]
+    assert second["size"] == 120 and second["mtime"] == first["mtime"] + 5
+
+
 def test_data_root_can_be_switched(tmp_path):
     (tmp_path / "raw").mkdir()
     (tmp_path / "processed").mkdir()
@@ -1384,6 +1446,79 @@ def test_job_manager_runs_pipeline_in_process(tmp_path):
     assert paths.delta_pdf.exists()
     stages_done = {e["stage"] for e in job.events if e.get("status") == "done"}
     assert {"backfill", "flatten", "pdf"} <= stages_done
+
+
+class _EndedWorker:
+    """A worker process that has already exited, as the drain sees it."""
+
+    def __init__(self, exitcode):
+        self.exitcode = exitcode
+
+    def is_alive(self):
+        return False
+
+
+def _drained(monkeypatch, process, queued=(), status="running"):
+    import queue
+
+    from nebula3d.server import jobs as jobs_mod
+
+    monkeypatch.setattr(jobs_mod, "_POLL_S", 0.01)
+    q: queue.Queue = queue.Queue()
+    for ev in queued:
+        q.put(ev)
+    job = jobs_mod.Job(id="j", input_name="s.nxs", status=status, _process=process)
+    jobs_mod.JobManager()._drain(job, q)
+    return job
+
+
+def test_job_fails_when_its_worker_dies_without_a_word(monkeypatch):
+    # A worker the OS kills (the OOM killer) puts neither done nor error: the
+    # job must end, or its page and the Pilot's run wait on it forever.
+    job = _drained(monkeypatch, _EndedWorker(-9),
+                   queued=[{"type": "progress", "stage": "rings", "status": "start"}])
+    assert job.status == "error"
+    assert "killed (signal 9)" in job.error and "memory" in job.error
+    assert len(job.events) == 1  # what it ran stays in the log
+
+    crashed = _drained(monkeypatch, _EndedWorker(1))
+    assert crashed.status == "error" and "exited with code 1" in crashed.error
+
+
+def test_job_keeps_the_last_word_its_worker_put_before_exiting(monkeypatch):
+    # A worker that ended normally: its done (or error) is still read, never
+    # mistaken for a silent death.
+    done = _drained(monkeypatch, _EndedWorker(0), queued=[{"type": "done"}])
+    assert (done.status, done.error) == ("done", None)
+    failed = _drained(monkeypatch, _EndedWorker(0),
+                      queued=[{"type": "error", "message": "ValueError: bad"}])
+    assert (failed.status, failed.error) == ("error", "ValueError: bad")
+    # A cancelled job's terminated worker leaves it cancelled.
+    cancelled = _drained(monkeypatch, _EndedWorker(-15), status="cancelled")
+    assert (cancelled.status, cancelled.error) == ("cancelled", None)
+
+
+def test_job_manager_reports_a_killed_worker(tmp_path):
+    import os
+    import signal
+    import time
+
+    from nebula3d.pipeline import PipelineParams
+    from nebula3d.server.jobs import JobManager
+
+    if not hasattr(signal, "SIGKILL"):
+        pytest.skip("no SIGKILL on this platform")
+    inp = tmp_path / "s.nxs"
+    vol = HKLVolume.from_arrays(np.ones((9, 9, 9)), (-1, 1), (-1, 1), (-1, 1), ub_matrix=UB)
+    nebula3d.save(vol, inp)
+    job = JobManager().start(inp, PipelineParams(), proc_dir=tmp_path / "processed")
+    os.kill(job._process.pid, signal.SIGKILL)  # what the OOM killer does
+
+    deadline = time.time() + 20
+    while job.status == "running" and time.time() < deadline:
+        time.sleep(0.1)
+    assert job.status == "error", job.snapshot()
+    assert "killed (signal 9)" in job.error
 
 
 def write_flatten_stages(root, settings=None):

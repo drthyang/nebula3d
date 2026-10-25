@@ -939,7 +939,7 @@ async def _run_pdf_stages_gpu(
     dpdf: DeltaPDF | None = None
     pdf_vol: HKLVolume | None = None
     if "pdf" in stages:
-        is_current = _pdf_is_current(paths.delta_pdf, pdf_input.name, gpu_cfg)
+        is_current = _pdf_is_current(paths.delta_pdf, pdf_input.name, gpu_cfg, pdf_input)
         if is_current and not forced("pdf"):
             _cb_emit(cb, "pdf", "skip", None,
                      f"{paths.delta_pdf.name} is current")
@@ -1023,12 +1023,17 @@ def _json(obj: object) -> str:
 def _dataset_dict(ds: _ds.Dataset) -> dict[str, object]:
     stages = [
         {"name": s.name, "exists": s.exists, "kind": s.kind,
-         "volume_id": f"{ds.id}.{s.name}"}
+         "volume_id": f"{ds.id}.{s.name}", "mtime": _ds.output_mtime(s),
+         "source": _ds.output_source(ds, s)}
         for s in ds.stages
     ]
+    # The raw input's size; its mtime here is when the browser copied it into
+    # the in-memory filesystem, not the file's own, so it is not reported.
+    raw = _ds.raw_file_stat(ds.raw_path)
     return {
         "id": ds.id, "temperature": ds.temperature, "raw_name": ds.raw_name,
         "stem": ds.stem, "stages": stages,
+        "raw_file": {"size": raw[0], "mtime": None} if raw else None,
     }
 
 

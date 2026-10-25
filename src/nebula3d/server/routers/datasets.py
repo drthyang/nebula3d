@@ -24,6 +24,7 @@ from nebula3d.server.schemas import (
     DataRootIn,
     DataRootOut,
     DatasetOut,
+    RawFileOut,
     RegridIn,
     RegridOut,
     StageStatusOut,
@@ -156,12 +157,16 @@ def browse_data_root(
 def _dataset_out(ds: ds_mod.Dataset) -> DatasetOut:
     stages = [
         StageStatusOut(name=s.name, exists=s.exists, kind=s.kind,
-                       volume_id=f"{ds.id}.{s.name}")
+                       volume_id=f"{ds.id}.{s.name}",
+                       mtime=ds_mod.output_mtime(s),
+                       source=ds_mod.output_source(ds, s))
         for s in ds.stages
     ]
+    raw = ds_mod.raw_file_stat(ds.raw_path)
     return DatasetOut(
         id=ds.id, temperature=ds.temperature, raw_name=ds.raw_name,
         stem=ds.stem, stages=stages,
+        raw_file=RawFileOut(size=raw[0], mtime=raw[1]) if raw else None,
     )
 
 

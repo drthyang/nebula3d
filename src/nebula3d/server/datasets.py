@@ -12,6 +12,7 @@ absent), so the UI still works on a checkout that only has the processed outputs
 
 from __future__ import annotations
 
+import functools
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -47,6 +48,65 @@ class StageStatus:
     exists: bool
     path: Path
     kind: str  # "hkl" | "delta_pdf"
+
+
+def output_mtime(stage: StageStatus) -> float | None:
+    """When a stage's output was last written (POSIX seconds), or None when it
+    does not exist, and for the raw input, which no stage writes (copying a
+    data folder re-dates it): an output older than one upstream of it
+    predates that stage's last run."""
+    if stage.name == "raw":
+        return None
+    try:
+        return stage.path.stat().st_mtime if stage.exists else None
+    except OSError:
+        return None
+
+
+@functools.lru_cache(maxsize=256)
+def _recorded_source(path: str, mtime_ns: int) -> str | None:
+    """The input file name a ΔPDF file records (read once per version of it)."""
+    from nebula3d.io import load_delta_pdf  # noqa: PLC0415
+
+    try:
+        src = load_delta_pdf(path, read_data=False).logs.get("source_file")
+    except Exception:  # noqa: BLE001 - an unreadable file says nothing
+        return None
+    return str(src) if src else None
+
+
+def output_source(ds: Dataset, stage: StageStatus) -> str | None:
+    """The stage output (or "raw") the ΔPDF was made from, by the input name
+    its file records; None for the other stages, or when it is not known.
+    With the flatten off the ΔPDF is made from the backfilled volume, so a
+    flattened one left beside it is not its input (web/src/api/stale.ts)."""
+    if stage.kind != "delta_pdf" or not stage.exists:
+        return None
+    try:
+        src = _recorded_source(str(stage.path), stage.path.stat().st_mtime_ns)
+    except OSError:
+        return None
+    if not src:
+        return None
+    name = Path(src).name
+    for s in ds.stages:
+        if s.kind != "delta_pdf" and s.path.name == name:
+            return s.name
+    return None
+
+
+def raw_file_stat(raw_path: Path) -> tuple[int, float] | None:
+    """The raw input's size (bytes) and modification time (POSIX seconds), or
+    None when it is not on disk: what a saved session checks to tell that its
+    input is still the file it was saved with.  No content hash: a raw volume
+    is hundreds of MB to GB and the dataset list is read on every page, so
+    hashing it there costs seconds per dataset; a re-reduced or replaced file
+    changes its mtime (and nearly always its size)."""
+    try:
+        st = raw_path.stat()
+    except OSError:
+        return None
+    return st.st_size, st.st_mtime
 
 
 @dataclass(frozen=True)

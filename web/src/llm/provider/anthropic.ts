@@ -154,7 +154,7 @@ interface TurnArgs {
   signal?: AbortSignal;
   tools?: ToolSpec[];
   toolChoice?: "auto" | "none";
-  includeUsage?: boolean; // report the turn's token counts (the evals)
+  includeUsage?: boolean; // report the turn's token counts
   maxTokens?: number; // the turn's output cap, where the caller sets one (a validation run); else the call's own
 }
 
@@ -269,7 +269,10 @@ export async function* streamAnthropic(args: TurnArgs): AsyncGenerator<StreamDel
       }
       message = await stream.finalMessage();
     } catch (e) {
-      if (!(e instanceof AnthropicClient.APIError) && !args.signal?.aborted && !streamed && attempt < 2) continue;
+      if (!(e instanceof AnthropicClient.APIError) && !args.signal?.aborted && !streamed && attempt < 2) {
+        yield { discarded: true }; // its tokens went uncounted (usage.ts)
+        continue;
+      }
       throw await asHttpError(e);
     }
     if (args.includeUsage) yield { usage: turnUsage(message) };

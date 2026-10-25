@@ -321,7 +321,7 @@ function flattenCheck(measured: Obj | null | undefined, verdict: Verdict | undef
   const trend = num(volume ? m.floor_trend : m.max_floor_trend);
   const span = num(volume ? m.floor_span_fraction : m.max_floor_span_fraction);
   return {
-    title: "Flatten",
+    title: "Background correction",
     // The pedestal rule; the floor in σ is reported, not judged (verdicts/rules.ts, FLATTEN_FLOOR_SIGMA_NOTE).
     verdict,
     headline: volume ? `floor ≤ ${fmt(floor)}σ · trend ${fmt(trend)} · span ${fmt(span)}` : `floor ≤ ${fmt(floor)}σ · trend ≤ ${fmt(trend)} · span ≤ ${fmt(span)}`,
@@ -345,14 +345,16 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
   if (verdict === undefined) return null;
   const r = num(m?.back_fft_pearson_r);
   const rEven = num(m?.back_fft_pearson_r_even);
+  const odd = num(m?.back_fft_odd_share);
+  const rms = num(m?.back_fft_normalized_rms);
   const open = num(m?.window_weight_on_unmeasured) ?? num(cov?.window_weight_on_unmeasured);
   const symVerdict = typeof sym?.verdict === "string" ? (sym.verdict as string) : null;
   const covVerdict = typeof cov?.verdict === "string" ? (cov.verdict as string) : null;
   const details: [string, string][] = [
     ["Back-FFT Pearson r", fmt(r)],
     ["Back-FFT r against the data's even part (what the transform keeps)", fmt(rEven)],
-    ["Odd share of the data (no real transform keeps it)", fmt(m?.back_fft_odd_share)],
-    ["Back-FFT normalised RMS", fmt(m?.back_fft_normalized_rms)],
+    ["Odd share of the data (no real transform keeps it)", fmt(odd)],
+    ["Back-FFT normalised RMS", fmt(rms)],
     ["Mean feature SNR", fmt(m?.mean_feature_snr)],
     ["Window weight on unmeasured space", fmt(open)],
     ["Window shape", fmt(m?.window_shape ?? cov?.window_shape)],
@@ -365,7 +367,9 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
   return {
     title: "3D-ΔPDF",
     verdict,
-    headline: `r ${fmt(r)}${rEven != null ? ` (even part ${fmt(rEven)})` : ""} · SNR ${fmt(m?.mean_feature_snr)} · unmeasured ${fmt(open)}${symVerdict ? ` · symmetry ${symVerdict.startsWith("kept") ? "kept" : symVerdict.startsWith("not judged") ? "not judged" : "broken"}` : ""}`,
+    // The round trip's fit as the tuner reads it (r, its even part, RMS); the odd share is what
+    // reads r below 1 on unsymmetrised data (r² ≈ 1 − odd share, docs/algorithms/delta_pdf.md).
+    headline: `r ${fmt(r)}${rEven != null ? ` (even part ${fmt(rEven)}${odd != null ? `, odd share ${fmt(odd)}` : ""})` : ""}${rms != null ? ` · RMS ${fmt(rms)}` : ""} · SNR ${fmt(m?.mean_feature_snr)} · unmeasured ${fmt(open)}${symVerdict ? ` · symmetry ${symVerdict.startsWith("kept") ? "kept" : symVerdict.startsWith("not judged") ? "not judged" : "broken"}` : ""}`,
     criterion,
     details,
   };
@@ -373,11 +377,17 @@ function pdfCheck(m: Obj | null | undefined, cov: Obj | null | undefined, sym: O
 
 // ---------------------------------------------------------------- assemble
 
+/** The notes every report carries, the same in each (render.ts keeps them with the provenance). */
+export const STANDING_CAVEATS: readonly string[] = [
+  "Sample facts (the punch cell, the modulation, the magnetic ion and the |Q| band) are the user's: the agent changes them only when asked, and the tuning never does.",
+  "The tables and figures are measured by nebula3d's deterministic metrics; the summary is written by the model and may be wrong where it departs from them.",
+];
+
 const SETTING_STAGE_LABELS: Record<string, string> = {
   rings: "Ring removal",
   punch: "Bragg punch",
   backfill: "Backfill",
-  flatten: "Flatten",
+  flatten: "Background correction",
   pdf: "3D-ΔPDF",
 };
 
@@ -414,6 +424,15 @@ export function buildReport(input: ReportInput): Report {
   const asked = bunchingQuestion(m.punch);
   if (asked) caveats.push(`Bragg punch, a question for you: ${asked} None is declared, so the search punched them; only you can say whether the sample has it.`);
   for (const c of checks) if (c.verdict === "attention") caveats.push(`${c.title}: ${c.headline}.`);
+  // A failed tool call drops what it would have measured from the cards (a texture_check,
+  // grain_check, qmax_coverage or symmetry_check that failed leaves its part out): said here,
+  // not only in the collapsed steps table.
+  for (const s of input.steps) {
+    if (s.ok !== false) continue;
+    const why = s.summary.trim().replace(/\.$/, "");
+    const text = `The agent's ${s.tool} call failed${why ? `: ${why}` : ""}.`;
+    if (!caveats.includes(text)) caveats.push(text);
+  }
   const missing = ["rings", "punch", "backfill", "flatten", "pdf"].filter((k) => !m[k as keyof Measured]);
   if (missing.length) caveats.push(`Not measured (no output, or the measurement failed): ${missing.map((k) => SETTING_STAGE_LABELS[k]).join(", ")}.`);
   for (const t of input.tuning ?? []) {
@@ -421,8 +440,7 @@ export function buildReport(input: ReportInput): Report {
     const chosen = t.trials.find((x) => x.chosen);
     if (chosen && chosen.n !== 1) caveats.push(`Tuning, ${SETTING_STAGE_LABELS[t.stage] ?? t.stage}: the model's proposal ${chosen.changes} replaced your settings; review it before relying on it.`);
   }
-  caveats.push("Sample facts (the punch cell, the modulation, the magnetic ion and the |Q| band) are the user's: the agent changes them only when asked, and the tuning never does.");
-  caveats.push("The tables and figures are measured by nebula3d's deterministic metrics; the summary is written by the model and may be wrong where it departs from them.");
+  caveats.push(...STANDING_CAVEATS);
 
   return {
     title: `NEBULA Pilot report — ${input.dataset.label}`,

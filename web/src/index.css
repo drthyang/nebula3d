@@ -2109,6 +2109,17 @@ input[type="range"]::-moz-range-track {
 .dataset-stage-item.missing .dataset-stage-state {
   color: var(--amber);
 }
+/* An output older than one upstream of it: made before that stage last ran. */
+.dataset-stage-item.stale {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  background: var(--red-soft);
+}
+.dataset-stage-item.stale .dataset-stage-dot {
+  background: var(--red);
+}
+.dataset-stage-item.stale .dataset-stage-state {
+  color: var(--red);
+}
 .data-root-row {
   display: flex;
   align-items: center;
@@ -2125,6 +2136,30 @@ input[type="range"]::-moz-range-track {
   color: var(--text-3);
 }
 .data-root-status.error {
+  color: var(--red);
+}
+
+/* A saved session restored (or refused): what came back, and what is missing. */
+.session-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 2px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+  background: var(--green-soft);
+}
+.session-note > span {
+  flex: 1;
+}
+.session-note.warn {
+  background: var(--amber-soft);
+}
+.session-note.error {
+  background: var(--red-soft);
   color: var(--red);
 }
 
@@ -2383,6 +2418,7 @@ input[type="range"]::-moz-range-track {
 .exec-pill.done { background: rgba(52, 201, 142, 0.12); border: 1px solid rgba(52, 201, 142, 0.4); color: #34c98e; }
 .exec-pill.error { background: rgba(232, 100, 92, 0.12); border: 1px solid rgba(232, 100, 92, 0.4); color: #e8645a; }
 .exec-pill.cancelled { background: rgba(139, 148, 163, 0.1); border: 1px solid rgba(139, 148, 163, 0.35); color: #8b94a3; }
+.exec-pill.lost { background: rgba(232, 180, 84, 0.1); border: 1px solid rgba(232, 180, 84, 0.4); color: #e8b454; }
 .exec-pill.idle { background: #14181e; border: 1px solid #2a323d; color: #6c7686; }
 
 /* spinner shared by pill + active node */
@@ -2416,6 +2452,7 @@ input[type="range"]::-moz-range-track {
 .exec-timing-v.done { color: #34c98e; }
 .exec-timing-v.error { color: #e8645a; }
 .exec-timing-v.cancelled { color: #a8b1bf; }
+.exec-timing-v.lost { color: #e8b454; }
 .exec-timing-v.idle { color: #56627a; }
 .exec-timing-l { font: 500 10px/1 system-ui; color: #6c7686; }
 .exec-vrule { width: 1px; height: 30px; background: #2a323d; }
@@ -2450,6 +2487,7 @@ input[type="range"]::-moz-range-track {
 .exec-overall-lbl.done { color: #5a8f72; }
 .exec-overall-lbl.error { color: #e8645a; }
 .exec-overall-lbl.cancelled { color: #8b94a3; }
+.exec-overall-lbl.lost { color: #e8b454; }
 .exec-overall-pct { font: 700 12px ui-monospace, monospace; }
 .exec-track {
   position: relative;
@@ -2554,6 +2592,9 @@ input[type="range"]::-moz-range-track {
 .exec-node.failed { background: rgba(232, 100, 92, 0.16); border: 1px solid rgba(232, 100, 92, 0.5); color: #e8645a; font: 700 10px system-ui; }
 .exec-node.cancelled { background: #1b2027; border: 1px solid #3a424e; color: #8b94a3; font: 700 13px/1 system-ui; }
 .exec-node.pending { background: #11151b; border: 1px solid #333d4a; color: #56627a; font: 700 9px ui-monospace, monospace; }
+.exec-node.notrun { background: #11151b; border: 1px dashed #333d4a; color: #56627a; font: 700 9px ui-monospace, monospace; }
+.exec-node.stale { background: rgba(232, 180, 84, 0.12); border: 1px solid rgba(232, 180, 84, 0.45); color: #e8b454; font: 700 9px ui-monospace, monospace; }
+.exec-node.unknown { background: #11151b; border: 1px dashed rgba(232, 180, 84, 0.45); color: #e8b454; font: 700 9px ui-monospace, monospace; }
 .exec-connector { width: 2px; flex: 1; min-height: 30px; border-radius: 1px; margin: 4px 0 2px; background: #232a33; }
 .exec-connector.done { background: rgba(52, 201, 142, 0.35); }
 .exec-stage-main { flex: 1; min-width: 0; padding-bottom: 18px; }
@@ -2568,6 +2609,9 @@ input[type="range"]::-moz-range-track {
 .exec-stage-status.failed { color: #e8645a; }
 .exec-stage-status.cancelled { color: #8b94a3; }
 .exec-stage-status.pending { color: #56627a; }
+.exec-stage-status.notrun { color: #56627a; }
+.exec-stage-status.stale { color: #e8b454; }
+.exec-stage-status.unknown { color: #e8b454; }
 .exec-stage-meta { margin-top: 5px; font: 400 11.5px/1.4 system-ui; color: #6c7686; }
 .exec-stage-meta.dim { color: #56627a; }
 .exec-stage-meta.warn { color: #e8b454; }
@@ -4113,6 +4157,22 @@ body.ai-resizing iframe {
 .ai-step-error .ai-step-dot {
   background: var(--red);
 }
+.ai-step-stopped .ai-step-dot {
+  background: var(--text-3);
+}
+/* A reply's token count, and the conversation's (llm/usage.ts). */
+.ai-usage {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.ai-usage-total {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  cursor: help;
+}
 .ai-step-name {
   flex: none;
   font-weight: 600;
@@ -4219,6 +4279,9 @@ body.ai-resizing iframe {
 }
 .ai-toggles .ai-clear {
   margin-left: auto;
+}
+.ai-toggles .ai-usage-total + .ai-clear {
+  margin-left: 8px;
 }
 .ai-vision-chip {
   display: inline-flex;
@@ -5487,6 +5550,7 @@ h6.md-h {
 /* Focus: the small views are thumbnails — hover highlights, a click enlarges. */
 .ws--focus > .thumb .view-foot,
 .ws--focus > .thumb .vf-fov,
+.ws--focus > .thumb .vf-zoom,
 .ws--focus > .thumb .view-reset,
 .ws--focus > .thumb .view-actions > :not(.layout-btn) {
   display: none;
@@ -5536,6 +5600,8 @@ h6.md-h {
   user-select: none;
   -webkit-user-select: none;
 }
+.vf:focus { outline: none; }
+.vf:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: -2px; }
 .vf--navigate { cursor: crosshair; }
 .vf--zoom { cursor: zoom-in; }
 .vf--move { cursor: grab; }
@@ -5590,6 +5656,51 @@ h6.md-h {
   position: absolute;
   left: 8px;
   top: 8px;
+}
+/* + / − zoom buttons, under the field-of-view chip */
+.vf-zoom {
+  position: absolute;
+  right: 6px;
+  top: 30px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  overflow: hidden;
+  background: rgba(11, 13, 16, 0.72);
+  cursor: default;
+}
+.vf-zoom button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 14px/1 var(--font-mono);
+  cursor: pointer;
+}
+.vf-zoom button + button { border-top: 1px solid var(--border-strong); }
+.vf-zoom button:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+/* the cooperative-wheel hint: a plain wheel over a view scrolls the page */
+.vf-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(11, 13, 16, 0.55);
+  pointer-events: none;
+  animation: vf-hint-in 150ms ease-out;
+}
+@keyframes vf-hint-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .ws-readout {
   display: flex;
@@ -5715,6 +5826,10 @@ h6.md-h {
 }
 .struct-table input.struct-cell.num {
   text-align: right;
+}
+.struct-table input.struct-cell.invalid {
+  border-color: var(--red);
+  box-shadow: 0 0 0 1px var(--red-soft);
 }
 .struct-x {
   padding: 0 4px;

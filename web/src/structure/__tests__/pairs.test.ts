@@ -44,6 +44,26 @@ describe("expandSites", () => {
     expect(atoms.filter((a) => a.element === "Cl")).toHaveLength(4);
     for (const a of atoms) for (const v of a.frac) expect(v >= 0 && v < 1).toBe(true);
   });
+
+  // P6_3/mmc, Mg at 2c (1/3, 2/3, 1/4) written to 3 decimals.
+  const P63MMC = symmetryGroup("-y,x-y,z; -x,-y,z+1/2; y,x,-z; -x,-y,-z");
+  const HEX = { a: 3.21, b: 3.21, c: 5.21, alpha: 90, beta: 90, gamma: 120 };
+  const mg = (x: number, y: number): Site[] => [{ label: "Mg1", element: "Mg", x, y, z: 0.25, occ: 1 }];
+  it("takes images of a site closer than 0.05 Å as one atom, on the cell's metric", () => {
+    expect(P63MMC).toHaveLength(24);
+    expect(expandSites(mg(1 / 3, 2 / 3), P63MMC, HEX)).toHaveLength(2);
+    expect(expandSites(mg(0.333, 0.667), P63MMC, HEX)).toHaveLength(2);
+    expect(expandSites(mg(0.33333, 0.66667), P63MMC, HEX)).toHaveLength(2);
+    expect(expandSites(mg(0.333, 0.667), P63MMC)).toHaveLength(2); // no cell: 5e-3 of the cell
+  });
+
+  it("keeps images of a site 0.1 Å apart (a split position) apart", () => {
+    // x and its mirror image -x, 2·0.0125·4 Å = 0.1 Å apart
+    const m = symmetryGroup("-x,y,z");
+    const cell = { a: 4, b: 4, c: 4, alpha: 90, beta: 90, gamma: 90 };
+    expect(expandSites([{ label: "O1", element: "O", x: 0.0125, y: 0.3, z: 0.3, occ: 0.5 }], m, cell)).toHaveLength(2);
+    expect(expandSites([{ label: "O1", element: "O", x: 0.003, y: 0.3, z: 0.3, occ: 0.5 }], m, cell)).toHaveLength(1);
+  });
 });
 
 describe("pairDifferences", () => {
@@ -53,6 +73,13 @@ describe("pairDifferences", () => {
 
   it("keys pairs by element, in site order", () => {
     expect(new Set(diffs.map((d) => d.key))).toEqual(new Set(["Na–Na", "Na–Cl", "Cl–Cl"]));
+  });
+
+  it("groups each site pair's equal differences once", () => {
+    // Na–Na: 4 differences (0 and the three face centres), each from all 4 Na
+    const nana = diffs.filter((d) => d.from === "Na1" && d.to === "Na1");
+    expect(nana).toHaveLength(4);
+    expect(nana.every((d) => d.count === 4)).toBe(true);
   });
 });
 

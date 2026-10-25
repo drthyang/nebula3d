@@ -67,7 +67,7 @@ describe("buildReport", () => {
   it("judges each stage by its stated criterion, from the measured numbers", () => {
     const r = buildReport(input());
     const verdict = Object.fromEntries(r.checks.map((c) => [c.title, c.verdict]));
-    expect(verdict).toEqual({ "Ring removal": "attention", "Bragg punch": "attention", Backfill: "pass", Flatten: "pass", "3D-ΔPDF": "pass" });
+    expect(verdict).toEqual({ "Ring removal": "attention", "Bragg punch": "attention", Backfill: "pass", "Background correction": "pass", "3D-ΔPDF": "pass" });
     // Whether the goal is met is computed from those checks, not taken from the model's words.
     expect(r.achieved).toEqual({ met: false, text: "not met: needs attention: Ring removal, Bragg punch" });
     expect(reportMarkdown(r)).toContain("**Goal: not met: needs attention: Ring removal, Bragg punch.** *Computed from the checks below, not from the model's words.*");
@@ -101,7 +101,7 @@ describe("buildReport", () => {
       }),
     );
     expect(r.kind).toBe("Tuning");
-    expect(r.caveats).toContain("Not measured (no output, or the measurement failed): Flatten.");
+    expect(r.caveats).toContain("Not measured (no output, or the measurement failed): Background correction.");
     expect(r.caveats.some((c) => /Tuning, 3D-ΔPDF: .*Trial 2 was not a candidate/.test(c))).toBe(true);
     expect(r.caveats.some((c) => /Tuning, Bragg punch: the model's proposal punchMinSig=3 replaced your settings/.test(c))).toBe(true);
   });
@@ -153,6 +153,97 @@ describe("rendering", () => {
     expect(html).not.toContain("javascript:"); // only PNG data URLs are images
     expect(html).toContain("<strong>not clean</strong>"); // the model's Markdown, rendered
     expect(html).toContain("needs attention");
+  });
+
+  it("opens on the results and their limitations, and keeps the provenance, whole, in one collapsed section", () => {
+    const tuning = [{ stage: "punch", why: "fewer leftovers", trials: [{ n: 1, changes: "your settings", headline: "12 missed", chosen: false }, { n: 2, changes: "punchMinSig=4", headline: "0 missed", chosen: true }] }];
+    const steps = [{ tool: "assess_stage", summary: "assessed the five stages on three planes", ok: true }];
+    const r = buildReport(input({ tuning, steps }));
+    const html = reportHtml(r);
+    const at = html.indexOf('<details class="provenance">');
+    expect(at).toBeGreaterThan(0);
+    expect(html.indexOf("</details>")).toBeGreaterThan(at);
+    const [summary, details] = [html.slice(0, at), html.slice(at)];
+    const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    // Up front: the goal, each check's verdict and numbers, the limitations, the summary, the figures.
+    expect(summary).toContain(esc(r.achieved.text));
+    for (const c of r.checks) for (const t of [c.title, c.headline]) expect(summary).toContain(esc(t));
+    const limits = r.caveats.filter((c) => !/^Sample facts|^The tables and figures/.test(c));
+    expect(limits.length).toBeGreaterThan(1);
+    for (const c of limits) expect(summary).toContain(esc(c));
+    expect(summary).toContain("<strong>not clean</strong>");
+    expect(summary).toContain(`<img src="${PNG}"`);
+    expect(summary.indexOf("Limitations")).toBeLessThan(summary.indexOf("The model's summary"));
+    // Not up front: the criteria, the measure tables, the dataset, the trials, the steps, the settings, the notes.
+    for (const t of ["Judged by", "Measure", "Settings used", "What the agent did", "assessed the five stages", "pdfWindowShape", "fewer leftovers", "Sample facts (the punch cell"]) {
+      expect(summary).not.toContain(esc(t));
+    }
+    expect(summary).not.toContain("<th>Trial</th>");
+    // All of it in the section, as before.
+    for (const c of r.checks) {
+      if (c.criterion) expect(details).toContain(esc(c.criterion));
+      for (const [k, v] of c.details) expect(details).toContain(`<th scope="row">${esc(k)}</th><td>${esc(v)}</td>`);
+    }
+    for (const t of ["sample_150K.nxs", "assessed the five stages", "pdfWindowShape", "punchCell", "punchMinSig=4", "fewer leftovers", ...r.caveats.filter((c) => !limits.includes(c))]) {
+      expect(details).toContain(esc(t));
+    }
+    // The Markdown export keeps everything, in the same order.
+    const md = reportMarkdown(r);
+    for (const t of r.caveats) expect(md).toContain(`- ${t}`); // list items, as written
+    for (const t of [...r.checks.flatMap((c) => [c.headline, ...c.details.map(([k]) => k)]), "assessed the five stages", "pdfWindowShape", "punchMinSig=4"]) {
+      expect(md).toContain(t.replace(/\|/g, "\\|")); // table cells, their pipes escaped
+    }
+    expect(md.indexOf("## Limitations")).toBeLessThan(md.indexOf("## Details and provenance"));
+    expect(md.indexOf("## The model's summary")).toBeLessThan(md.indexOf("## Details and provenance"));
+  });
+
+  it("lists each failed tool call among the limitations, up front, not only in the steps table", () => {
+    const steps = [
+      { tool: "assess_stage", summary: "assessed the five stages on three planes", ok: true },
+      { tool: "texture_check", summary: "Error: the backfilled stage is not on disk.", ok: false },
+      { tool: "grain_check", summary: "timed out", ok: false },
+      { tool: "symmetry_check", summary: "", ok: false },
+    ];
+    // The failed checks measured nothing.
+    const measured = { ...input().measured };
+    delete measured.texture;
+    delete measured.grains;
+    delete measured.symmetry;
+    const r = buildReport(input({ steps, measured }));
+    const failed = [
+      "The agent's texture_check call failed: Error: the backfilled stage is not on disk.",
+      "The agent's grain_check call failed: timed out.",
+      "The agent's symmetry_check call failed.",
+    ];
+    for (const t of failed) expect(r.caveats).toContain(t);
+    expect(r.caveats.filter((c) => c.startsWith("The agent's"))).toHaveLength(3); // the call that worked is not one
+    const html = reportHtml(r);
+    const summary = html.slice(0, html.indexOf('<details class="provenance">'));
+    const limits = summary.slice(summary.indexOf("<h2>Limitations</h2>"));
+    for (const t of failed) expect(limits).toContain(`<li>${t.replace(/'/g, "&#39;")}</li>`);
+    const md = reportMarkdown(r);
+    const mdLimits = md.slice(md.indexOf("## Limitations"), md.indexOf("## Details and provenance"));
+    for (const t of failed) expect(mdLimits).toContain(`- ${t}`);
+    // No failed call, no such line.
+    expect(buildReport(input()).caveats.some((c) => c.startsWith("The agent's"))).toBe(false);
+  });
+
+  it("gives the round trip's fit on the ΔPDF card: r, its even part and the odd share, and the RMS", () => {
+    const pdf = { ...input().measured.pdf, back_fft_pearson_r: 0.9793, back_fft_pearson_r_even: 1, back_fft_odd_share: 0.041, back_fft_normalized_rms: 0.203 };
+    const card = buildReport(input({ measured: { ...input().measured, pdf } })).checks.find((c) => c.title === "3D-ΔPDF")!;
+    expect(card.headline).toMatch(/^r 0\.9793 \(even part 1, odd share 0\.041\) · RMS 0\.203 · SNR 950 · /);
+    expect(card.details).toContainEqual(["Odd share of the data (no real transform keeps it)", "0.041"]);
+    // Without the even part (a run before the even-part check) the headline gives r and the RMS.
+    const plain = buildReport(input()).checks.find((c) => c.title === "3D-ΔPDF")!;
+    expect(plain.headline).toMatch(/^r 1 · RMS 5\.1e-15 · SNR 950 · /);
+  });
+
+  it("prints the provenance open from the browser's own Print", () => {
+    const html = reportHtml(buildReport(input()));
+    const print = html.slice(html.indexOf("@media print"));
+    expect(print).toContain("details.provenance::details-content { content-visibility: visible; }");
+    expect(html).toContain('<details class="provenance">'); // still collapsed on screen
+    expect(html).not.toContain('<details class="provenance" open');
   });
 
   it("writes the same report as Markdown", () => {
@@ -349,7 +440,7 @@ describe("a card states only what it judges", () => {
     expect(verdicts({ report: COARSE_RUN }).achieved).toMatchObject({ notMeasured: [], notJudged: ["Ring removal (grid too coarse for the ring check)"] });
     // Beside a stage not measured: each with its own words.
     const noFlatten = buildReport(input({ measured: { ...COARSE_RUN, flatten: null } }));
-    expect(noFlatten.achieved.text).toBe("not judged: Ring removal (grid too coarse for the ring check); not measured: Flatten");
+    expect(noFlatten.achieved.text).toBe("not judged: Ring removal (grid too coarse for the ring check); not measured: Background correction");
     // A ring check that judged nothing for another reason reads as before.
     const rings = { max_ring_dent: null, max_ring_left: null, ring_rule: "not judged: the test of each bump in 3D could not run" };
     expect(buildReport(input({ measured: { ...COARSE_RUN, rings } })).achieved.text).toBe("not judged: not measured: Ring removal");
@@ -359,15 +450,15 @@ describe("a card states only what it judges", () => {
     // The validation's dev volumes (docs/pilot-review.md finding 6): floors of
     // 1.5 to 1.8σ on all eight, whatever the flatten did.
     const flatten = { max_after_floor_sigma: 1.72, max_floor_trend: 0.314, max_floor_span_fraction: 0.601, pedestal_left: false };
-    const card = buildReport(input({ measured: { ...input().measured, flatten } })).checks.find((c) => c.title === "Flatten")!;
+    const card = buildReport(input({ measured: { ...input().measured, flatten } })).checks.find((c) => c.title === "Background correction")!;
     expect(card.verdict).toBe("pass"); // "needs attention" under the 1σ clause
     expect(card.details).toContainEqual(["Largest leftover floor (reported, not judged)", "1.72 σ"]);
     expect(card.criterion).toMatch(/^No pedestal: .* The largest floor in σ is reported, not judged/);
   });
 
-  it("shows the whole volume's pedestal on the Flatten card, and an evaluation recorded before it as then (4.1)", () => {
+  it("shows the whole volume's pedestal on the Background correction card, and an evaluation recorded before it as then (4.1)", () => {
     const volume = { max_after_floor_sigma: 1.72, floor_trend: -0.226, floor_span_fraction: 0.72, floor_judged_q: [5.58, 11.1], pedestal_left: false };
-    const card = buildReport(input({ measured: { ...input().measured, flatten: volume } })).checks.find((c) => c.title === "Flatten")!;
+    const card = buildReport(input({ measured: { ...input().measured, flatten: volume } })).checks.find((c) => c.title === "Background correction")!;
     expect(card.verdict).toBe("pass");
     expect(card.headline).toBe("floor ≤ 1.72σ · trend -0.226 · span 0.72");
     expect(card.details).toEqual([
@@ -378,7 +469,7 @@ describe("a card states only what it judges", () => {
     ]);
     expect(card.criterion).toMatch(/^No pedestal: the volume's floor trend and span both 0\.8 or more/);
     const planes = { max_after_floor_sigma: 1.72, max_floor_trend: 0.314, max_floor_span_fraction: 0.601, pedestal_left: false };
-    const old = buildReport(input({ measured: { ...input().measured, flatten: planes } })).checks.find((c) => c.title === "Flatten")!;
+    const old = buildReport(input({ measured: { ...input().measured, flatten: planes } })).checks.find((c) => c.title === "Background correction")!;
     expect(old.headline).toBe("floor ≤ 1.72σ · trend ≤ 0.314 · span ≤ 0.601");
     expect(old.details).toContainEqual(["Largest floor trend with |Q|", "0.314"]);
   });

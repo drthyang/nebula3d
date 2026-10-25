@@ -240,6 +240,22 @@ The conversation and any reply still streaming live in module-scoped stores
 (`chatStore.ts`, `session.ts`), so collapsing the panel or changing pages does
 not stop them.
 
+**Token usage** (`llm/usage.ts`). Under each reply, its model requests' tokens
+in and out (and the part read from or written to a prompt cache, when the
+server says); in the chat's footer, the conversation's total, a tuning run's
+requests included. The counts are the server's own: OpenAI-compatible servers
+(OpenAI, Gemini, LM Studio) report them when asked, which every request does
+(Gemini's thinking tokens, in its total only, are counted with the reply);
+Ollama's are the whole prompt's tokens and the reply's, and the part read from
+its cache when it says (`prompt_eval_cached_count`); Claude's include the cache
+reads and writes. A request whose server reports none is counted by
+the console's own estimate and marked ≈ ("estimated"). A request sent that did
+not complete (stopped, failed, or dropped and asked again: a stall, a crash, a
+reply its server could not parse) has no counts: none of its tokens are in the
+numbers, and it is said after them, "+1 request not counted", so a total never
+looks whole when it is not. A request its server refused outright (a client
+error) or never received ran nothing, and is not one.
+
 **Skills.** The user's methods, one per topic, live in
 `.claude/skills/<name>/SKILL.md`, where Claude Code reads them too:
 `reduction-qc`, `bragg-node-audit` and `delta-pdf-interpretation`. All three
@@ -530,8 +546,20 @@ miss is a note.
   `report/figures.ts` draws the cleanup stages on one shared scale and the
   ΔPDF sections with the page's Auto, axes at their real angle.
   `report/render.ts` writes it as a self-contained HTML page (inline styles
-  and PNGs; *Print / PDF* uses the browser's print) and as Markdown. The
-  model's answer is included as a labelled summary.
+  and PNGs; *Print / PDF* uses the browser's print) and as Markdown. Both open
+  on the goal, each check's verdict and numbers, the limitations that bear on
+  them, the model's answer (a labelled summary) and the figures; the
+  provenance — each check's criterion and measures, the dataset, the tuning
+  trials, the agent's steps, the settings and the standing notes — follows in
+  one *Details and provenance* section, collapsed on the page (*Print / PDF*
+  opens it, and the downloaded page prints it open from the browser's own
+  Print too, by a print style: Chrome/Edge 131+, Safari 18.4+, Firefox 143+)
+  and in full in the Markdown. A tool call of the agent's that failed is among
+  the limitations ("The agent's texture_check call failed: …"), since the
+  part of a card it would have measured is then missing; the ΔPDF card's
+  numbers give the round trip's fit as the tuner does: r, its even part and
+  the odd share (what reads r below 1 on unsymmetrised data), and the
+  normalised RMS.
 - **Tuning** (`tune/`, the `tune_pipeline` tool) — the chat starts it when asked
   for the best result, and shows each stage's trials under that reply
   (`components/TuneProgress.tsx`). It runs the pipeline one stage at a time (rings →

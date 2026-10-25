@@ -17,6 +17,7 @@ import {
   type StreamDelta,
   withContextHint,
 } from "../provider/client";
+import { StallError } from "../recovery";
 
 const sse = (chunks: string[]): Response => {
   const enc = new TextEncoder();
@@ -228,6 +229,195 @@ describe("streamChat", () => {
   });
 });
 
+// A body that sends `chunks` one every `everyMs`, and never ends unless they
+// run out (`close`) or the request is aborted. A reader that cancels the body
+// (the client does on `[DONE]`) stops its timer.
+const slowBody = (chunks: string[], everyMs: number, signal: AbortSignal | undefined, close: boolean): Response => {
+  const enc = new TextEncoder();
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      clearInterval(timer);
+    },
+    start(controller) {
+      let i = 0;
+      timer = setInterval(() => {
+        if (i < chunks.length) controller.enqueue(enc.encode(chunks[i++]));
+        else if (close) {
+          clearInterval(timer);
+          controller.close();
+        }
+      }, everyMs);
+      signal?.addEventListener("abort", () => {
+        clearInterval(timer);
+        controller.error(new DOMException("The operation was aborted.", "AbortError"));
+      });
+    },
+  });
+  return new Response(body, { status: 200 });
+};
+
+describe("completeChat with a stall watchdog (the tuner's requests)", () => {
+  const args = { baseUrl: "http://127.0.0.1:1234/v1", model: "m", temperature: 0, messages: [{ role: "user" as const, content: "propose" }] };
+
+  it("ends a request the server never answers with a StallError", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([], 10, init.signal ?? undefined, false)));
+    const t0 = Date.now();
+    await expect(completeChat({ ...args, stallMs: { first: 150, idle: 100 } })).rejects.toBeInstanceOf(StallError);
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+
+  it("ends a reply that goes quiet part-way, after its idle limit", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([line({ content: "{" })], 10, init.signal ?? undefined, false)));
+    await expect(completeChat({ ...args, stallMs: { first: 150, idle: 100 } })).rejects.toBeInstanceOf(StallError);
+  });
+
+  it("reads a slow reply whole while its pieces keep coming, past the first-piece limit", async () => {
+    const pieces = ['{"candidates"', ": ", "[]", "}"].map((c) => line({ content: c }));
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([...pieces, "data: [DONE]\n"], 60, init.signal ?? undefined, true)));
+    // 5 pieces 60 ms apart: longer in all than `first`, never quiet for `idle`.
+    await expect(completeChat({ ...args, stallMs: { first: 150, idle: 150 } })).resolves.toBe('{"candidates": []}');
+  });
+
+  it("tells the caller the request's token counts, or that the server gave none", async () => {
+    const done = "data: [DONE]\n";
+    const usage = `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 812, completion_tokens: 9, prompt_tokens_details: { cached_tokens: 640 } } })}\n`;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([line({ content: "{}" }), usage, done], 5, init.signal ?? undefined, true)));
+    const seen: unknown[] = [];
+    await completeChat({ ...args, stallMs: { first: 1000, idle: 1000 }, onUsage: (u) => seen.push(u) });
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([line({ content: "{}" }), done], 5, init.signal ?? undefined, true)));
+    await completeChat({ ...args, stallMs: { first: 1000, idle: 1000 }, onUsage: (u) => seen.push(u) });
+    expect(seen).toEqual([{ input: 812, output: 9, cacheRead: 640 }, null]);
+  });
+
+  it("counts a thinking model's thoughts that Gemini leaves out of completion_tokens but puts in total_tokens", async () => {
+    const done = "data: [DONE]\n";
+    const counts = (usage: object) => `data: ${JSON.stringify({ choices: [], usage })}\n`;
+    const seen: unknown[] = [];
+    for (const usage of [
+      { prompt_tokens: 500, completion_tokens: 40, total_tokens: 1340 }, // Gemini 2.5: 800 thinking tokens in the total only
+      { prompt_tokens: 500, completion_tokens: 40, total_tokens: 540 }, // OpenAI: the total adds up
+      { prompt_tokens: 500, completion_tokens: 40 }, // no total
+    ]) {
+      vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([line({ content: "{}" }), counts(usage), done], 5, init.signal ?? undefined, true)));
+      await completeChat({ ...args, baseUrl: "http://127.0.0.1:1320/v1", stallMs: { first: 1000, idle: 1000 }, onUsage: (u) => seen.push(u) });
+    }
+    // Read whole (no stream), the same.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }], usage: { prompt_tokens: 500, completion_tokens: 40, total_tokens: 1340 } }))));
+    await completeChat({ ...args, baseUrl: "http://127.0.0.1:1320/v1", onUsage: (u) => seen.push(u) });
+    expect(seen).toEqual([
+      { input: 500, output: 840 },
+      { input: 500, output: 40 },
+      { input: 500, output: 40 },
+      { input: 500, output: 840 },
+    ]);
+  });
+
+  it("asks a server that refuses stream_options again without it", async () => {
+    const bodies: { stream_options?: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as { stream_options?: unknown };
+        bodies.push(body);
+        if (body.stream_options) return new Response(JSON.stringify({ error: { message: "Unrecognized request argument supplied: stream_options" } }), { status: 400 });
+        return slowBody([line({ content: "{}" }), "data: [DONE]\n"], 5, init.signal ?? undefined, true);
+      }),
+    );
+    const seen: unknown[] = [];
+    const strict = { ...args, baseUrl: "http://127.0.0.1:1299/v1" };
+    await expect(completeChat({ ...strict, stallMs: { first: 1000, idle: 1000 }, onUsage: (u) => seen.push(u) })).resolves.toBe("{}");
+    expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, false]);
+    expect(seen).toEqual([null]); // no counts from it: the caller estimates
+    // Remembered: the next request goes without it at once.
+    await completeChat({ ...strict, stallMs: { first: 1000, idle: 1000 } });
+    expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, false, false]);
+  });
+
+  it("leaves the user's Stop an AbortError, not a stall", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => slowBody([], 10, init.signal ?? undefined, false)));
+    const stop = new AbortController();
+    const pending = completeChat({ ...args, signal: stop.signal, stallMs: { first: 5000, idle: 5000 } });
+    setTimeout(() => stop.abort(), 50);
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+// A server that refuses stream_options may say so in any shape: the first
+// request to it that does is asked once more without the field.
+describe("a server that refuses stream_options in another error shape", () => {
+  const ask = (baseUrl: string) => completeChat({ baseUrl, model: "m", temperature: 0, messages: [{ role: "user", content: "q" }], stallMs: { first: 1000, idle: 1000 } });
+  const refusing = (status: number, payload: unknown) => {
+    const bodies: { stream_options?: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as { stream_options?: unknown };
+        bodies.push(body);
+        if (body.stream_options) return new Response(payload === undefined ? "" : JSON.stringify(payload), { status });
+        return slowBody([line({ content: "{}" }), "data: [DONE]\n"], 5, init.signal ?? undefined, true);
+      }),
+    );
+    return bodies;
+  };
+  const shapes: [string, number, unknown][] = [
+    ["a FastAPI detail list", 422, { detail: [{ loc: ["body", "stream_options"], msg: "extra fields not permitted", type: "value_error.extra" }] }],
+    ["a bare 400", 400, undefined],
+    ["an array-wrapped error", 400, [{ error: { code: 400, message: "Invalid JSON payload received. Unknown name" } }]],
+    ["an error object with no message", 400, { error: { code: 400 } }],
+  ];
+  for (const [name, status, payload] of shapes) {
+    it(`asks again without it after ${name}, and remembers the server`, async () => {
+      const bodies = refusing(status, payload);
+      const url = `http://127.0.0.1:1300/${encodeURIComponent(name)}/v1`;
+      await expect(ask(url)).resolves.toBe("{}");
+      await expect(ask(url)).resolves.toBe("{}");
+      expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, false, false]);
+    });
+  }
+
+  it("asks the agent's streamed requests again the same way", async () => {
+    const bodies = refusing(422, { detail: [{ loc: ["body", "stream_options"] }] });
+    const got: StreamDelta[] = [];
+    for await (const d of streamChat({ baseUrl: "http://127.0.0.1:1301/v1", model: "m", messages: [], temperature: 0, includeUsage: true })) got.push(d);
+    expect(got).toEqual([{ content: "{}" }]);
+    expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, false]);
+  });
+
+  it("asks once only, on a server whose bad request is not about the field", async () => {
+    const bodies: { stream_options?: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        bodies.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ detail: "prompt too long" }), { status: 400 });
+      }),
+    );
+    const url = "http://127.0.0.1:1302/v1";
+    await expect(ask(url)).rejects.toMatchObject({ status: 400 });
+    await expect(ask(url)).rejects.toMatchObject({ status: 400 });
+    // The first request once more without the field; the server is still asked for its counts.
+    expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, false, true]);
+  });
+
+  it("never asks again on a server that took the field before", async () => {
+    let n = 0;
+    const bodies: { stream_options?: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        bodies.push(JSON.parse(String(init.body)));
+        if (n++ === 0) return slowBody([line({ content: "{}" }), "data: [DONE]\n"], 5, init.signal ?? undefined, true);
+        return new Response("", { status: 400 });
+      }),
+    );
+    const url = "http://127.0.0.1:1303/v1";
+    await expect(ask(url)).resolves.toBe("{}");
+    await expect(ask(url)).rejects.toMatchObject({ status: 400 });
+    expect(bodies.map((b) => Boolean(b.stream_options))).toEqual([true, true]);
+  });
+});
+
 describe("completeChat", () => {
   const reply = (payload: unknown) => vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 }));
   const ask = (onUsage: (u: unknown) => void) => completeChat({ baseUrl: "u", model: "m", messages: [], temperature: 0, onUsage });
@@ -266,7 +456,6 @@ describe("completeChat", () => {
     expect(onUsage.mock.calls).toEqual([[{ input: 90, output: 3 }, null]]);
   });
 });
-
 describe("isToolsUnsupported", () => {
   const err = (status: number, message: string) => Object.assign(new Error(message), { status }) as HttpError;
   it("recognises a client error about tools only", () => {

@@ -43,6 +43,16 @@ describe("chat transcript across reloads", () => {
     expect((await load()).useChatStore.getState().turns).toEqual(saved);
   });
 
+  it("loads a step a saved transcript left running as stopped (its reply is gone)", async () => {
+    storage.set("nebula3d.chat.turns.v1", JSON.stringify([
+      { id: 1, role: "user", content: "Run it" },
+      { id: 2, role: "assistant", content: "", steps: [{ id: "0:c1", name: "run_pipeline", args: {}, status: "running", progress: "1/6 Ring removal" }] },
+    ]));
+    const step = (await load()).useChatStore.getState().turns[1].steps![0];
+    expect(step.status).toBe("stopped");
+    expect(step.progress).toBeUndefined();
+  });
+
   it("brings back the turns and the draft, and keeps numbering after them", async () => {
     const first = await load();
     first.useChatStore.getState().addTurn({ role: "user", content: "Assess the run" });
@@ -76,6 +86,29 @@ describe("chat transcript across reloads", () => {
     const kept = JSON.parse(fitTranscript(turns, 600)) as { id: number }[];
     expect(kept.length).toBeLessThan(10);
     expect(kept[kept.length - 1].id).toBe(10); // the newest stay
+  });
+
+  it("keeps exactly the newest turns whose JSON fits, as writing the transcript out once per dropped turn did", async () => {
+    const { fitTranscript } = await load();
+    // The rule written plainly (the former code, quadratic in the turns).
+    const reference = (turns: unknown[], budget: number): string => {
+      let from = 0;
+      let json = JSON.stringify(turns);
+      while (json.length > budget && from < turns.length) json = JSON.stringify(turns.slice(++from));
+      return json;
+    };
+    let seed = 7;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let trial = 0; trial < 200; trial++) {
+      const turns = Array.from({ length: Math.floor(rnd() * 12) }, (_v, i) => ({
+        id: i + 1,
+        role: (i % 2 ? "assistant" : "user") as "assistant" | "user",
+        content: "é\"\\\n".repeat(Math.floor(rnd() * 40)),
+        ...(rnd() < 0.5 ? { steps: [{ id: `${i}`, name: "assess_stage", args: { stage: "rings" }, status: "done" as const, result: "r".repeat(Math.floor(rnd() * 300)) }] } : {}),
+      }));
+      const budget = Math.floor(rnd() * 1500);
+      expect(fitTranscript(turns, budget)).toBe(reference(turns, budget));
+    }
   });
 
   it("starts empty when storage is unavailable", async () => {

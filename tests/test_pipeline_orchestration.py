@@ -689,6 +689,46 @@ def test_real_pdf_stale_guard_skips_on_rerun(tmp_path):
     assert {"backfill", "flatten", "pdf"} <= skipped
 
 
+def test_real_pdf_older_than_its_input_is_recomputed(tmp_path):
+    """A ΔPDF older than its input was made from what the input held before a
+    stage upstream last ran (with the ΔPDF switched off then): same input name
+    and settings, but stale — it is recomputed, never reused as current."""
+    import os
+
+    inp = tmp_path / "s.nxs"
+    paths = pipeline.pipeline_paths(inp, proc_dir=tmp_path)
+    nebula3d.save(_punched_vol(), paths.braggpunched)
+    params = pipeline.PipelineParams(
+        delta_pdf=pipeline.DeltaPdfParams(apodization="hann", zero_pad=False,
+                                          crop_hkl=None),
+    )
+    kw = dict(proc_dir=tmp_path, stages=("backfill", "flatten", "pdf"))
+    pipeline.run_pipeline(inp, params, **kw)
+    config = pipeline.delta_pdf_transform_config(params.delta_pdf)
+    assert pipeline._pdf_is_current(paths.delta_pdf, paths.flattened.name, config,
+                                    paths.flattened)
+
+    # The flatten re-ran after the ΔPDF (the ΔPDF off): the ΔPDF is older.
+    t = paths.flattened.stat().st_mtime
+    os.utime(paths.delta_pdf, (t - 10, t - 10))
+    assert not pipeline._pdf_is_current(paths.delta_pdf, paths.flattened.name, config,
+                                        paths.flattened)
+    events = []
+    pipeline.run_pipeline(inp, params, progress=lambda *a: events.append(a), **kw)
+    pdf = [(ev[1], ev[3]) for ev in events if ev[0] == "pdf"]
+    assert ("skip", f"{paths.delta_pdf.name} is current") not in pdf
+    assert ("progress", f"{paths.delta_pdf.name} stale — recomputing") in pdf
+    assert paths.delta_pdf.stat().st_mtime >= paths.flattened.stat().st_mtime
+    # Written after its input, it is current again; same-second dates count as current.
+    events.clear()
+    pipeline.run_pipeline(inp, params, progress=lambda *a: events.append(a), **kw)
+    assert ("pdf", "skip") in {(ev[0], ev[1]) for ev in events}
+    s = paths.flattened.stat().st_mtime
+    os.utime(paths.delta_pdf, (s, s))
+    assert pipeline._pdf_is_current(paths.delta_pdf, paths.flattened.name, config,
+                                    paths.flattened)
+
+
 def test_real_pdf_refuses_an_even_grid_after_the_cleanup_stages(tmp_path):
     """On an even grid Q = 0 falls between two voxels: the cleanup stages run and
     keep their outputs, and the ΔPDF stage refuses, naming the axes and the fix."""

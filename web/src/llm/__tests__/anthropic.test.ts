@@ -175,7 +175,7 @@ describe("streamAnthropic", () => {
     for (const [body] of sdk.stream.mock.calls) expect(body).not.toHaveProperty("temperature");
   });
 
-  it("re-issues a turn whose tool input the SDK could not parse", async () => {
+  it("re-issues a turn whose tool input the SDK could not parse, saying the dropped one went uncounted", async () => {
     const broken = {
       async *[Symbol.asyncIterator]() {
         yield* [];
@@ -184,7 +184,7 @@ describe("streamAnthropic", () => {
       finalMessage: async () => ({}),
     };
     sdk.stream.mockReturnValueOnce(broken).mockReturnValueOnce(fakeStream([textDelta("ok")], { content: [{ type: "text", text: "ok" }], stop_reason: "end_turn" }));
-    expect(await collect(streamAnthropic({ ...base, model: "claude-opus-5-5" }))).toEqual([{ content: "ok" }]);
+    expect(await collect(streamAnthropic({ ...base, model: "claude-opus-5-5" }))).toEqual([{ discarded: true }, { content: "ok" }]);
     expect(sdk.stream).toHaveBeenCalledTimes(2);
   });
 

@@ -372,6 +372,14 @@ export async function runPipeline(req: PipelineRunRequest): Promise<JobOut> {
   return (await r.json()) as JobOut;
 }
 
+/** A job's status, or null when the server does not know it (it restarted since). */
+export async function fetchJob(jobId: string): Promise<JobOut | null> {
+  const r = await fetch(`/api/pipeline/jobs/${encodeURIComponent(jobId)}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return (await r.json()) as JobOut;
+}
+
 export async function cancelJob(jobId: string): Promise<JobOut> {
   const r = await fetch(`/api/pipeline/jobs/${encodeURIComponent(jobId)}/cancel`, {
     method: "POST",

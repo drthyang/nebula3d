@@ -134,7 +134,7 @@ export function Workspace({
               <span className="view-actions">
                 {v.actions}
                 {v.onResetView && (
-                  <button type="button" className="icon-btn view-reset" title="Reset zoom (double-click the slice)" aria-label="Reset zoom" onClick={v.onResetView}>
+                  <button type="button" className="icon-btn view-reset" title="Reset zoom (Shift+double-click the slice, or 0)" aria-label="Reset zoom" onClick={v.onResetView}>
                     {ICONS.reset}
                   </button>
                 )}

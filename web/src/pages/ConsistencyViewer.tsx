@@ -30,7 +30,7 @@ import { EmptyState, IconAlert, RangeSlider, Segmented, Slider, Switch } from ".
 import { UnitCellGrid } from "../components/UnitCellGrid";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
-import { clampHalf, displayToSlice, fitViewport, sampleIndex, type SliceGeom, type Viewport } from "../components/viewport";
+import { clampHalf, displayToSlice, extentBounds, fitViewport, sampleIndex, type SliceGeom, type Viewport } from "../components/viewport";
 import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
 import { LayoutControl, Workspace } from "../components/Workspace";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
@@ -48,7 +48,13 @@ import {
 } from "../state/viewerStore";
 import { useStructureStore } from "../state/structureStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
-import { markersNear, usePlaneMarkers, useStructureModel, type PlaneAxis } from "../structure/useStructure";
+import {
+  markersNear,
+  structureBlockedText,
+  usePlaneMarkers,
+  useStructureModel,
+  type PlaneAxis,
+} from "../structure/useStructure";
 import { useGlow } from "../llm/highlight";
 
 const AXES: FixedAxis[] = ["H", "K", "L"];
@@ -293,6 +299,8 @@ export function ConsistencyViewer() {
   // The 3D-ΔPDF page's structure overlay, on this page's ΔPDF view.
   const structure = useStructureModel(meta?.lattice);
   const showStructure = useStructureStore((s) => s.show) && structure !== null;
+  // Why the overlay draws nothing (cell mismatch, too many atoms), as the 3D-ΔPDF page's legend says it.
+  const structureNote = structure ? structureBlockedText(structure, "on the 3D-ΔPDF page (Edit structure)") : null;
   const setShowStructure = useStructureStore((s) => s.setShow);
   const rDepth = useStructureStore((s) => s.depth) ?? (dpdfAxisInfo?.step ?? 0) / 2;
   const rHeader = rResult.data?.header;
@@ -338,6 +346,12 @@ export function ConsistencyViewer() {
     if (!meta) return { cx: 0, cy: 0, half: 1 };
     const range = { H: meta.h_range, K: meta.k_range, L: meta.l_range };
     return fitViewport({ x_axis: range[qx], y_axis: range[qy] }, qGeom);
+  }, [meta, qx, qy, qGeom]);
+  // Panning keeps each view's centre on its data.
+  const qBounds = useMemo(() => {
+    if (!meta) return undefined;
+    const range = { H: meta.h_range, K: meta.k_range, L: meta.l_range };
+    return extentBounds({ x_axis: range[qx], y_axis: range[qy] }, qGeom);
   }, [meta, qx, qy, qGeom]);
   const qViewport = qViews[plane] ?? qFit;
   const qStep = (ax: FixedAxis) => {
@@ -402,6 +416,7 @@ export function ConsistencyViewer() {
       viewport={qViewport}
       onViewport={(v) => setQView(plane, v)}
       fit={qFit}
+      bounds={qBounds}
       limit={qLimit}
       mode={clickMode}
       axes={qAxes}
@@ -547,6 +562,13 @@ export function ConsistencyViewer() {
             <Switch label="Structure" checked={showStructure} disabled={!structure} onChange={setShowStructure} />
           </div>
         </div>
+        {showStructure && structure && structureNote && (
+          <div className="ws-row">
+            <span className="struct-sub">
+              <b>{structure.def.name}</b>: {structureNote}
+            </span>
+          </div>
+        )}
       </div>
 
       {datasetsQ.isError && (
@@ -560,13 +582,13 @@ export function ConsistencyViewer() {
       {!datasetsQ.isError && usable.length === 0 && (
         <EmptyState
           title="No invertible volumes yet"
-          hint="Run the pipeline first — the flattened/backfilled volume feeds this back-FFT check."
+          hint="Run the pipeline first — the background-corrected (or backfilled) volume feeds this back-FFT check."
         />
       )}
       {!datasetsQ.isError && usable.length > 0 && dataset && !selectedUsable && (
         <EmptyState
           title="No invertible volume for this dataset"
-          hint="Run this dataset through backfill or flatten first — the flattened/backfilled volume feeds this back-FFT check."
+          hint="Run this dataset through backfill or background correction first — the background-corrected (or backfilled) volume feeds this back-FFT check."
         />
       )}
       {metaQ.isError && (
@@ -684,6 +706,7 @@ export function ConsistencyViewer() {
                   viewport={rViewport}
                   onViewport={(v) => setRView(dpdfPlane, v)}
                   fit={rFit}
+                  bounds={extentBounds(s.header, { sx: 1, sy: 1, angle: s.header.axes_angle ?? 90 })}
                   limit={rLimit}
                   mode={clickMode}
                   axes={{ sx: 1, sy: 1, xLabel: rx, yLabel: ry, unit: "Å", fovUnit: "Å" }}

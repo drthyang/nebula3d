@@ -52,8 +52,14 @@ beforeEach(() => {
 describe("startFresh", () => {
   it("clears the run's log, the tuning store, the views, the settings and the servers found refusing tools, and selects the run's dataset", async () => {
     // A server found refusing tools, as an earlier run finds one: it fails the
-    // request that carries tools, and the reply goes on without them.
-    const model = scriptedModel([{ fail: { status: 400, message: "scripted does not support tools" } }, { text: "No tools." }]);
+    // request that carries tools, and the reply goes on without them. Its first
+    // refusal is asked once more without stream_options (provider/client.ts:
+    // a server's first 400 may be about that field), and refused again.
+    const model = scriptedModel([
+      { fail: { status: 400, message: "scripted does not support tools" } },
+      { fail: { status: 400, message: "scripted does not support tools" } },
+      { text: "No tools." },
+    ]);
     const uninstall = model.install();
     try {
       const tool = { name: "t", description: "d", parameters: { type: "object", properties: {} }, run: async () => ({ result: {}, summary: "" }) };
@@ -61,7 +67,7 @@ describe("startFresh", () => {
     } finally {
       uninstall();
     }
-    expect(model.requests()).toBe(2);
+    expect(model.requests()).toBe(3);
     expect(toolsKnownUnsupported(SETTINGS)).toBe(true);
     // What an earlier run leaves in the app.
     usePipelineStore.setState({ flattenQ2: true, events: [EVENT], times: [1], terminal: "done", jobId: "job-1" });

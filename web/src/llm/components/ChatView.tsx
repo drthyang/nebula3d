@@ -5,14 +5,14 @@
 // optionally attach the rendered slice image when the vision opt-in is on.
 // The reply itself is driven by session.ts, so it outlives this component.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { COLORMAPS } from "../../colormaps/luts";
 import type { Slice } from "../../api/types";
 import { BrandGlyph } from "../../components/ui";
 import { useNavStore } from "../../state/navStore";
 import { toolsKnownUnsupported, type AgentStep } from "../agent";
-import { useChatStore } from "../chatStore";
+import { useChatStore, type ChatTurn } from "../chatStore";
 import {
   buildChatMessages,
   buildStageReviewMessages,
@@ -30,6 +30,7 @@ import { reportable } from "../report/collect";
 import { Markdown } from "./Markdown";
 import { ReportView } from "./ReportView";
 import { TuneProgress } from "./TuneProgress";
+import { uncountedText, usageText } from "../usage";
 import { verdictLine } from "../verdict";
 
 // One-click requests that have the model act: assess the run on the four
@@ -38,7 +39,7 @@ const ACTIONS = [
   {
     label: "Assess the run",
     prompt:
-      "Assess this reduction on four checks, each with its tool: (1) is the ring removal clean (assess_stage rings, radial_profile); (2) are the Bragg peaks removed cleanly (assess_stage punch); (3) did the punch and backfill add texture to reciprocal space (texture_check); (4) is Qmax inside the data coverage (qmax_coverage). Also report any other stage that misses its goal, such as the flatten floor. Run the pipeline first if outputs are missing.",
+      "Assess this reduction on four checks, each with its tool: (1) is the ring removal clean (assess_stage rings, radial_profile); (2) are the Bragg peaks removed cleanly (assess_stage punch); (3) did the punch and backfill add texture to reciprocal space (texture_check); (4) is Qmax inside the data coverage (qmax_coverage). Also report any other stage that misses its goal, such as the background correction's floor (the flatten stage). Run the pipeline first if outputs are missing.",
   },
   {
     label: "Tune for the best result",
@@ -67,6 +68,10 @@ function stageImage(stage: ReviewStage, ac: AssistantContext): string | null {
   return renderSliceToDataUrl(p.slice, { lut, vmax, diverging: p.diverging });
 }
 
+// A token count in a few characters: 950, 12.3k, 1.2M.
+const compactTokens = (n: number): string =>
+  n < 1000 ? String(n) : n < 1e6 ? `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}k` : `${(n / 1e6).toFixed(1)}M`;
+
 // A collapsible "thinking" panel for a reasoning-model chain-of-thought. While
 // live, the body auto-scrolls to the newest reasoning as it streams in.
 function Thinking({ text, live }: { text: string; live?: boolean }) {
@@ -93,8 +98,32 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
 // tense: they are long enough to be watched).
 const stepLabel = (s: AgentStep): string => {
   const facts = factsOf(s.name);
+  if (s.status === "stopped") return `${facts.runningLabel} (stopped)`;
   return s.status === "running" ? facts.runningLabel : facts.label;
 };
+
+// One step's row, opening to its arguments and the result the model read. The
+// result (often kilobytes of JSON) is put on the page only while it is open: a
+// long conversation would otherwise carry megabytes of hidden text that every
+// layout of the transcript walks.
+function StepDetail({ step: s }: { step: AgentStep }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>
+        <span className="ai-step-dot" aria-hidden="true" />
+        <span className="ai-step-name">{stepLabel(s)}</span>
+        {(s.progress ?? s.summary) && <span className="ai-step-summary">{s.progress ?? s.summary}</span>}
+      </summary>
+      {open && (
+        <pre className="ai-step-detail">
+          {JSON.stringify(s.args)}
+          {seen(s) ? `\n→ ${seen(s)}` : ""}
+        </pre>
+      )}
+    </details>
+  );
+}
 
 // The tool calls of one reply: a compact list, each row opening to the
 // arguments and the JSON the model read.  A viewer step can be reopened; a
@@ -110,17 +139,7 @@ function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
       <ol className="ai-step-list">
         {steps.map((s) => (
           <li key={s.id} className={`ai-step ai-step-${s.status}`}>
-            <details>
-              <summary>
-                <span className="ai-step-dot" aria-hidden="true" />
-                <span className="ai-step-name">{stepLabel(s)}</span>
-                {(s.progress ?? s.summary) && <span className="ai-step-summary">{s.progress ?? s.summary}</span>}
-              </summary>
-              <pre className="ai-step-detail">
-                {JSON.stringify(s.args)}
-                {seen(s) ? `\n→ ${seen(s)}` : ""}
-              </pre>
-            </details>
+            <StepDetail step={s} />
             {s.view && (
               <button type="button" className="ai-step-open" onClick={() => openView(s.view!)}>
                 Show
@@ -142,6 +161,67 @@ function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
     </details>
   );
 }
+
+// One finished turn of the transcript. A turn never changes once added, so it
+// renders once: without this, every streamed piece of a reply re-rendered (and
+// re-parsed the markdown of) every earlier turn, and a long conversation froze
+// the page while the model wrote.
+const PastTurn = memo(function PastTurn({
+  turn: t,
+  tuning,
+  canReport,
+  onReport,
+}: {
+  turn: ChatTurn;
+  tuning: boolean; // the tuning run's card goes under this turn
+  canReport: boolean;
+  onReport: (id: number) => void;
+}) {
+  if (t.role === "user") {
+    return (
+      <div className="ai-msg ai-msg-user">
+        <div className="ai-user-bubble">{t.content}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="ai-msg ai-msg-assistant">
+      <span className="ai-avatar" aria-hidden="true">
+        <BrandGlyph size={22} />
+      </span>
+      <div className="ai-msg-main">
+        {t.reasoning ? <Thinking text={t.reasoning} /> : null}
+        {t.steps?.length ? <Steps steps={t.steps} /> : null}
+        {tuning && <TuneProgress />}
+        {t.content && (
+          <div className="ai-answer">
+            <Markdown text={t.content} />
+          </div>
+        )}
+        {verdictLine(t.verdict) && (
+          <div
+            className={`ai-verdict ai-verdict-${t.verdict!.achieved === true ? "met" : t.verdict!.achieved === false ? "not-met" : "open"}`}
+            title="Computed from the checks this reply ran, by the report's rules; the model's words explain it"
+          >
+            {verdictLine(t.verdict)}
+          </div>
+        )}
+        {t.note && <div className="ai-note">{t.note}</div>}
+        {usageText(t.tokens) && <div className="ai-usage">{usageText(t.tokens)}</div>}
+        {canReport && (
+          <button
+            type="button"
+            className="ai-report-btn"
+            onClick={() => onReport(t.id)}
+            title="Measure the reduction again and open a report you can read and export (HTML, Markdown, PDF)"
+          >
+            Report
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
 
 export function ChatView({
   assistant,
@@ -166,6 +246,7 @@ export function ChatView({
   const error = useChatStore((s) => s.error);
   const setDraft = useChatStore((s) => s.setDraft);
   const clearChat = useChatStore((s) => s.clear);
+  const usage = useChatStore((s) => s.usage);
   const scrollRef = useRef<HTMLDivElement>(null);
   // The reply whose analysis report is open (its turn id).
   const [reportFor, setReportFor] = useState<number | null>(null);
@@ -275,48 +356,15 @@ export function ChatView({
             </span>
           </div>
         )}
-        {turns.map((t) =>
-          t.role === "user" ? (
-            <div key={t.id} className="ai-msg ai-msg-user">
-              <div className="ai-user-bubble">{t.content}</div>
-            </div>
-          ) : (
-            <div key={t.id} className="ai-msg ai-msg-assistant">
-              <span className="ai-avatar" aria-hidden="true">
-                <BrandGlyph size={22} />
-              </span>
-              <div className="ai-msg-main">
-                {t.reasoning ? <Thinking text={t.reasoning} /> : null}
-                {t.steps?.length ? <Steps steps={t.steps} /> : null}
-                {t.id === tuneTurn && <TuneProgress />}
-                {t.content && (
-                  <div className="ai-answer">
-                    <Markdown text={t.content} />
-                  </div>
-                )}
-                {verdictLine(t.verdict) && (
-                  <div
-                    className={`ai-verdict ai-verdict-${t.verdict!.achieved === true ? "met" : t.verdict!.achieved === false ? "not-met" : "open"}`}
-                    title="Computed from the checks this reply ran, by the report's rules; the model's words explain it"
-                  >
-                    {verdictLine(t.verdict)}
-                  </div>
-                )}
-                {t.note && <div className="ai-note">{t.note}</div>}
-                {reportable(t) && toolContext && !busy && (
-                  <button
-                    type="button"
-                    className="ai-report-btn"
-                    onClick={() => setReportFor(t.id)}
-                    title="Measure the reduction again and open a report you can read and export (HTML, Markdown, PDF)"
-                  >
-                    Report
-                  </button>
-                )}
-              </div>
-            </div>
-          ),
-        )}
+        {turns.map((t) => (
+          <PastTurn
+            key={t.id}
+            turn={t}
+            tuning={t.id === tuneTurn}
+            canReport={reportable(t) && Boolean(toolContext) && !busy}
+            onReport={setReportFor}
+          />
+        ))}
         {busy && live && (
           <div className="ai-msg ai-msg-assistant">
             <span className="ai-avatar ai-avatar-spin" aria-hidden="true">
@@ -436,6 +484,12 @@ export function ChatView({
             </svg>
             Vision
           </button>
+          {usage && (usage.requests > 0 || !!usage.uncounted) && (
+            <span className="ai-usage-total" title={`This conversation's model requests: ${usageText(usage)}`}>
+              {usage.requests > 0 && `${usage.estimated ? "≈ " : ""}${compactTokens(usage.input + usage.output)} tokens`}
+              {usage.requests > 0 ? (usage.uncounted ? ` ${uncountedText(usage)}` : "") : uncountedText(usage).slice(1)}
+            </span>
+          )}
           {turns.length > 0 && (
             <button
               type="button"

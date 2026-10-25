@@ -4,6 +4,8 @@
 // fields, loops, several data blocks) and the dotted CIF 2 / mmCIF tag
 // spelling (_atom_site.fract_x), and takes the first block that lists sites.
 
+import { CENTERINGS, normaliseMinus, type Centering } from "./symops";
+
 export interface Cell {
   a: number;
   b: number;
@@ -130,12 +132,54 @@ export function cifNumber(v: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** The element in a type symbol or label: "Cu2+" → "Cu", "O2-" → "O", "Sn1a" → "Sn". */
+/**
+ * A fractional coordinate as a person types it or a CIF writes it: a decimal
+ * ("0.25", ".5", "-0.125", "0.2500(4)" — a standard uncertainty is dropped, as
+ * in cifNumber) or a fraction ("1/3", "-1/4"), the notation the symmetry
+ * operations take too.  A typeset minus (−) reads as "-".  Null for anything
+ * else, including CIF's "?" and ".".
+ */
+export function parseCoordinate(text: string): number | null {
+  const t = normaliseMinus(text.trim()).replace(/\(\d+\)$/, "");
+  const m = /^([+-]?)(\d+)\s*\/\s*(\d+)$/.exec(t);
+  if (m) {
+    const den = Number(m[3]);
+    return den > 0 ? (m[1] === "-" ? -1 : 1) * (Number(m[2]) / den) : null;
+  }
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t)) return null;
+  const v = Number(t);
+  return Number.isFinite(v) ? v : null;
+}
+
+/**
+ * The element symbols up to Cf, with D for deuterium (common in neutron CIFs).
+ * The heavier ones are left out on purpose: no crystal structure has them, and
+ * their symbols (No, Nh, Fl, Ts, …) would capture all-capitals labels such as
+ * NO1 or NH1 that mean nitrogen.
+ */
+const ELEMENTS = new Set(
+  (
+    "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr " +
+    "Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb " +
+    "Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf D"
+  ).split(" "),
+);
+
+/**
+ * The element in a type symbol or label: "Cu2+" → "Cu", "O2-" → "O", "Sn1a" →
+ * "Sn", "NA" → "Na", "CL1-" → "Cl", "Ow1" → "O".  The first two letters are
+ * taken as the element when they name one (in any case: all-capitals type
+ * symbols such as NA, CL, CO, SI4+ are how older programs write Na, Cl, Co,
+ * Si — a type symbol names one atom type, never C + O), otherwise the first
+ * letter.  A symbol that names no element ("X", "Q1") keeps its first letter.
+ */
 export function elementOf(symbol: string): string {
-  const m = /^([A-Z][a-z]?)/.exec(symbol.trim());
-  if (m) return m[1];
-  const lower = /^([a-z])([a-z])?/.exec(symbol.trim());
-  return lower ? lower[1].toUpperCase() + (lower[2] ?? "") : symbol.trim();
+  const t = symbol.trim();
+  const m = /^([A-Za-z])([A-Za-z])?/.exec(t);
+  if (!m) return t;
+  const one = m[1].toUpperCase();
+  const two = m[2] ? one + m[2].toLowerCase() : null;
+  return two && ELEMENTS.has(two) ? two : one;
 }
 
 function findLoop(b: Block, tag: string): Loop | undefined {
@@ -178,7 +222,7 @@ export function parseCif(text: string): CifStructure {
   const sites: Site[] = [];
   loop.rows.forEach((row, n) => {
     if (iFlag >= 0 && row[iFlag].toLowerCase() === "dum") return; // dummy atoms
-    const [x, y, z] = [iX, iY, iZ].map((i) => (i >= 0 ? cifNumber(row[i]) : null));
+    const [x, y, z] = [iX, iY, iZ].map((i) => (i >= 0 ? parseCoordinate(row[i]) : null));
     const label = iLabel >= 0 ? row[iLabel] : `${iType >= 0 ? elementOf(row[iType]) : "X"}${n + 1}`;
     if (x === null || y === null || z === null) {
       warnings.push(`site ${label} has no complete position and was skipped`);
@@ -216,4 +260,26 @@ export function parseCif(text: string): CifStructure {
   }
 
   return { name: b.name, cell, sites, ops, spaceGroup, warnings };
+}
+
+/**
+ * The lattice centring of the CIF's space group, from the first letter of its
+ * Hermann–Mauguin symbol ("F m -3 m" → F) or Hall symbol ("-F 4 2 3" → F).  It
+ * is added to the listed operations, which some CIFs give as generators or
+ * coset representatives only; where the centring translations are listed too
+ * the group's closure makes adding them again harmless.  R is taken only on
+ * hexagonal axes (γ = 120°, α = β = 90°, or a ":H" setting): on rhombohedral
+ * axes (":R", or a = b = c with α = β = γ) the cell is primitive, and with no
+ * cell to tell, nothing is added.
+ */
+export function cifCentering(cif: Pick<CifStructure, "spaceGroup" | "cell">): Centering {
+  const sg = cif.spaceGroup?.trim().replace(/^-/, "").trim();
+  const letter = sg?.[0]?.toUpperCase() as Centering | undefined;
+  if (!letter || !CENTERINGS.includes(letter)) return "P";
+  if (letter !== "R") return letter;
+  if (/:\s*R\s*$/i.test(sg!)) return "P";
+  if (/:\s*H\s*$/i.test(sg!)) return "R";
+  const c = cif.cell;
+  const near = (v: number, w: number) => Math.abs(v - w) < 0.5;
+  return c && near(c.alpha, 90) && near(c.beta, 90) && near(c.gamma, 120) ? "R" : "P";
 }

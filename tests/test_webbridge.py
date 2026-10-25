@@ -79,6 +79,16 @@ def test_demo_input_is_labelled_synthetic_and_stored_float32(tmp_path):
     assert vol.data.dtype == np.float32 and vol.sigma.dtype == np.float32
 
 
+def test_datasets_give_the_raw_size_but_not_the_copy_time(tmp_path):
+    """A saved session checks its raw input against the file's size; the
+    in-memory copy's mtime is when the browser wrote it, so none is given."""
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    dataset_id = webbridge.make_demo_input(n=9)
+    (raw,) = (tmp_path / "work" / "raw").glob("*.nxs")
+    (ds,) = [d for d in json.loads(webbridge.datasets_json()) if d["id"] == dataset_id]
+    assert ds["raw_file"] == {"size": raw.stat().st_size, "mtime": None}
+
+
 def test_select_input_runs_the_named_dataset_not_the_last_loaded(tmp_path):
     """With two volumes loaded, a run reduces the one the UI names; a dataset
     the workspace does not hold (the worker was restarted) reports false so
@@ -123,6 +133,13 @@ def test_datasets_listing_has_all_stages(ran_pipeline):
     assert by_name["ringremoved"]["exists"]
     assert by_name["delta_pdf"]["exists"]
     assert by_name["delta_pdf"]["kind"] == "delta_pdf"
+    # Each output is dated, in the order the run wrote them; the raw input,
+    # which no stage writes, is not.
+    assert by_name["raw"]["mtime"] is None
+    assert by_name["ringremoved"]["mtime"] <= by_name["delta_pdf"]["mtime"]
+    # The ΔPDF says which output it was made from (its file records it).
+    assert by_name["delta_pdf"]["source"] in ("flattened", "backfilled")
+    assert by_name["backfilled"]["source"] is None
 
 
 def test_hkl_meta_and_slice(ran_pipeline):

@@ -7,6 +7,13 @@ export interface StageStatus {
   exists: boolean;
   kind: VolumeKind;
   volume_id: string;
+  // When the output was last written (POSIX seconds); null or absent when it
+  // does not exist, for the raw input, or from a server that does not say
+  // (api/stale.ts).
+  mtime?: number | null;
+  // The ΔPDF only: the output it was made from ("flattened", "backfilled", …,
+  // "raw"), as its file records it; null or absent when not known (api/stale.ts).
+  source?: string | null;
 }
 
 export interface Dataset {
@@ -15,6 +22,11 @@ export interface Dataset {
   raw_name: string;
   stem: string;
   stages: StageStatus[];
+  // The raw input file's size (bytes) and mtime (POSIX s; null in the
+  // browser build, whose copy's time is not the file's); null when it is not
+  // on disk, absent from a server that does not say. A saved session checks
+  // its input against it (state/session.ts).
+  raw_file?: { size: number; mtime: number | null } | null;
 }
 
 export interface DataRoot {
@@ -708,4 +720,8 @@ export interface JobEvent {
   status?: string;
   fraction?: number | null;
   message?: string;
+  // The job's own end, why it failed as the server said (state/pipelineStore
+  // finish): the page's log shows it; run_pipeline's result leaves it out, as
+  // the validation frozen at 812e686 does.
+  end?: true;
 }

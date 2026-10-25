@@ -27,7 +27,7 @@ import {
 import { UnitCellGrid } from "../components/UnitCellGrid";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
-import { clampHalf, displayToSlice, sampleIndex, type Viewport } from "../components/viewport";
+import { clampHalf, displayToSlice, extentBounds, sampleIndex, type Viewport } from "../components/viewport";
 import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
 import { LayoutControl, Workspace } from "../components/Workspace";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
@@ -175,8 +175,10 @@ export function DeltaPdfViewer() {
     ? Math.max(...[meta.x_range, meta.y_range, meta.z_range].map((r) => Math.max(Math.abs(r[0]), Math.abs(r[1]))))
     : 100;
   const voxel = meta && meta.shape[0] > 1 ? (meta.x_range[1] - meta.x_range[0]) / (meta.shape[0] - 1) : 0.5;
-  const limit = (h: number) => clampHalf(h, fullHalf, voxel);
   const fit = defaultDpdfView();
+  // Zooming out reaches the opening view however small the data: the first
+  // zoom step from it never jumps (as on the Q–R page).
+  const limit = (h: number) => clampHalf(h, Math.max(fullHalf, fit.half), voxel);
 
   // Structure overlay: pair vectors within ± depth of each cut (default half a
   // voxel along the cut axis, i.e. the vectors this slice holds).
@@ -326,6 +328,7 @@ export function DeltaPdfViewer() {
                   viewport={viewport}
                   onViewport={(v) => setView(p.plane, v)}
                   fit={fit}
+                  bounds={extentBounds(r.data.header, { sx: 1, sy: 1, angle: r.data.header.axes_angle ?? 90 })}
                   limit={limit}
                   mode={clickMode}
                   axes={{ sx: 1, sy: 1, xLabel: AX_LABEL[p.h], yLabel: AX_LABEL[p.v], unit: "Å", fovUnit: "Å" }}

@@ -12,14 +12,23 @@ import { useShallow } from "zustand/react/shallow";
 
 import type { Tab } from "../state/navStore";
 import { useDatasets } from "../api/hooks";
+import { staleOutputs } from "../api/stale";
 import type { JobEvent } from "../api/types";
 import { useDatasetStore } from "../state/datasetStore";
 import { STAGES, STAGE_LABELS, usePipelineStore } from "../state/pipelineStore";
+import { PYODIDE_MODE } from "../api/pyodideEngine";
 import { litStage, useHighlightKeys } from "../llm/highlight";
-import { logClass, warns } from "./executionLog";
+import { logClass, runOutputs, runPhase, stageInfo as infoOf, stageStates, warns, type Phase } from "./executionLog";
 
-type Phase = "idle" | "running" | "done" | "cancelled" | "error";
-type NodeState = "done" | "active" | "failed" | "cancelled" | "pending";
+// The output a stage writes (the consistency check's is the ΔPDF's).
+const STAGE_OUTPUT: Record<string, string> = {
+  rings: "ringremoved",
+  punch: "braggpunched",
+  backfill: "backfilled",
+  flatten: "flattened",
+  pdf: "delta_pdf",
+  pdf_check: "delta_pdf",
+};
 
 // ---------------------------------------------------------------------------
 // Formatting
@@ -77,20 +86,24 @@ function condense(events: JobEvent[], times: number[]): { ev: JobEvent; t: numbe
 
 export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const lit = useHighlightKeys();
-  const { events, times, terminal, running, flatten, jobId } = usePipelineStore(
+  const { events, times, terminal, running, reconnecting, flatten, jobId, lastRun } = usePipelineStore(
     useShallow((s) => ({
+      reconnecting: s.reconnecting,
       events: s.events,
       times: s.times,
       terminal: s.terminal,
       running: s.running,
       flatten: s.flatten,
       jobId: s.jobId,
+      lastRun: s.lastRun,
     })),
   );
   const run = usePipelineStore((s) => s.run);
   const cancel = usePipelineStore((s) => s.cancel);
 
-  const datasetId = useDatasetStore((s) => s.datasetId);
+  // The run's dataset (the sidebar's selection may have changed since).
+  const selectedId = useDatasetStore((s) => s.datasetId);
+  const datasetId = lastRun?.datasetId || selectedId;
   const datasetsQ = useDatasets();
   const dataset = useMemo(
     () => (datasetsQ.data ?? []).find((d) => d.id === datasetId),
@@ -112,53 +125,38 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
     if (running) logRef.current?.scrollTo(0, logRef.current.scrollHeight);
   }, [condensed, running]);
 
-  const visibleStages = STAGES.filter((s) => flatten || s !== "flatten");
+  // The flatten is shown as the run had it (the form may have changed since).
+  const visibleStages = STAGES.filter((s) => (lastRun?.flattenEnabled ?? flatten) || s !== "flatten");
 
   // Latest status / fraction / message + first & last timestamp per stage.
-  type SI = { status: string; fraction: number | null; message?: string; firstT: number; lastT: number };
-  const stageInfo: Record<string, SI> = {};
-  events.forEach((ev, i) => {
-    if (!ev.stage || !ev.status) return;
-    const cur = stageInfo[ev.stage];
-    if (!cur) {
-      stageInfo[ev.stage] = {
-        status: ev.status,
-        fraction: ev.fraction ?? null,
-        message: ev.message,
-        firstT: times[i],
-        lastT: times[i],
-      };
-    } else {
-      cur.status = ev.status;
-      cur.fraction = ev.fraction ?? null;
-      cur.message = ev.message ?? cur.message;
-      cur.lastT = times[i];
-    }
-  });
+  const stageInfo = infoOf(events, times);
+  const phase: Phase = runPhase(running, terminal, events.length);
 
-  // Phase.
-  const started = running || terminal != null || events.length > 0;
-  let phase: Phase = "idle";
-  if (terminal === "done") phase = "done";
-  else if (terminal === "cancelled") phase = "cancelled";
-  else if (terminal === "error") phase = "error";
-  else if (running || (started && terminal == null)) phase = "running";
-
-  // Active stage + overall completion.
-  let activeStage: string | null = null;
-  let activeFrac: number | null = null;
-  let doneCount = 0;
-  visibleStages.forEach((s) => {
-    const info = stageInfo[s];
-    if (!info) return;
-    if (info.status === "start" || info.status === "progress") {
-      activeStage = s;
-      activeFrac = info.fraction;
-    } else if (info.status === "done" || info.status === "skip") {
-      doneCount += 1;
-    }
+  // Each stage's state: the run's own stages (a reused output that is stale
+  // reads stale), and those it was not asked for (stale when it recomputed a
+  // stage before them and their output remains). A tuning trial writes into
+  // its own folder: the dataset's outputs are not what it ran on or wrote.
+  const mainOutputs = useMemo(() => runOutputs(lastRun, datasetsQ.data ?? [], selectedId ?? null), [lastRun, datasetsQ.data, selectedId]);
+  const stale = useMemo(() => staleOutputs(mainOutputs ?? []), [mainOutputs]);
+  const { states, inRun, doneCount, activeStage, activeFrac, staleAfter } = stageStates({
+    visible: visibleStages,
+    info: stageInfo,
+    phase,
+    runStages: lastRun?.stages ?? null,
+    hasOutput: (stage) => Boolean(mainOutputs?.some((d) => d.name === STAGE_OUTPUT[stage] && d.exists)),
+    isStale: (stage) => stale.has(STAGE_OUTPUT[stage]),
+    listingAfterRun: datasetsQ.dataUpdatedAt > (times[times.length - 1] ?? Infinity),
   });
-  const total = visibleStages.length || 1;
+  const staleInRun = inRun.filter((s) => states[s] === "stale");
+  const outputLabel = (output: string) => {
+    const by = Object.keys(STAGE_OUTPUT).find((st) => STAGE_OUTPUT[st] === output);
+    return by ? `${STAGE_LABELS[by]} output` : `${output} output`;
+  };
+  const staleWhy = (output: string) => {
+    const up = stale.get(output) ?? "";
+    return stale.has(up) ? `made from the ${outputLabel(up)}, itself stale` : `older than the ${outputLabel(up)}`;
+  };
+  const total = inRun.length || 1;
   const overall =
     phase === "done"
       ? 1
@@ -169,25 +167,14 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
       ? "#34c98e"
       : phase === "error"
         ? "#e8645a"
-        : phase === "cancelled"
+        : phase === "cancelled" || phase === "lost"
           ? "#8b94a3"
           : "#4f8ff7";
 
   // The stage that failed / was interrupted (for banner + node colouring).
   const interruptedStage =
-    visibleStages.find((s) => stageInfo[s]?.status === "error") ?? activeStage;
-  const interruptedNo = interruptedStage ? visibleStages.indexOf(interruptedStage) + 1 : 0;
-
-  function nodeState(stage: string): NodeState {
-    const info = stageInfo[stage];
-    if (!info) return "pending";
-    if (info.status === "done" || info.status === "skip") return "done";
-    if (info.status === "error") return "failed";
-    // start / progress with no terminal event:
-    if (phase === "cancelled") return "cancelled";
-    if (phase === "error") return "failed";
-    return "active";
-  }
+    inRun.find((s) => states[s] === "failed" || states[s] === "cancelled") ?? activeStage;
+  const interruptedNo = interruptedStage ? inRun.indexOf(interruptedStage) + 1 : 0;
 
   // Timing figures.
   const startT = times[0] ?? Date.now();
@@ -204,6 +191,7 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
     done: { text: "Completed", icon: "✓" },
     error: { text: "Failed", icon: "✕" },
     cancelled: { text: "Cancelled", icon: "–" },
+    lost: { text: "Connection lost", icon: "?" },
     idle: { text: "No run", icon: "▷" },
   };
   const lastError = [...events].reverse().find((e) => e.status === "error")?.message;
@@ -222,14 +210,21 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
   } else if (phase === "cancelled") {
     timingV = fmtMMSS(elapsed);
     timingL = "cancelled after";
+  } else if (phase === "lost") {
+    timingV = fmtMMSS(elapsed);
+    timingL = "followed for";
   }
 
   let overallLabel = "";
   if (phase === "running")
-    overallLabel = activeStage
-      ? `Stage ${visibleStages.indexOf(activeStage) + 1} of ${total} · ${STAGE_LABELS[activeStage]}`
-      : "Starting…";
-  else if (phase === "done") overallLabel = `${total} of ${total} stages complete`;
+    overallLabel = (activeStage
+      ? `Stage ${inRun.indexOf(activeStage) + 1} of ${total} · ${STAGE_LABELS[activeStage]}`
+      : "Starting…") + (reconnecting ? " · reconnecting to the server…" : "");
+  else if (phase === "done")
+    overallLabel = staleInRun.length
+      ? `${doneCount} of ${total} stages up to date · stale output: ${staleInRun.map((s) => STAGE_LABELS[s]).join(", ")}`
+      : `${total} of ${total} stages complete`;
+  else if (phase === "lost") overallLabel = `${doneCount} of ${total} stages complete when the connection was lost · how the run ended is not known yet`;
   else if (phase === "error")
     overallLabel = `Failed at stage ${interruptedNo} · ${interruptedStage ? STAGE_LABELS[interruptedStage] : ""}`;
   else if (phase === "cancelled")
@@ -245,7 +240,7 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
 
   // Per-stage display.
   function stageRow(stage: string, idx: number) {
-    const ns = nodeState(stage);
+    const ns = states[stage];
     const info = stageInfo[stage];
     const stepNo = idx + 1;
     let statusLabel: string;
@@ -269,6 +264,22 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
         statusLabel = "stopped";
         meta = info?.message ?? "halted";
         break;
+      case "stale":
+        statusLabel = "stale";
+        meta = staleAfter[stage]
+          ? `not in this run: its output was made before this run's ${STAGE_LABELS[staleAfter[stage]] ?? staleAfter[stage]}; run it again to update it`
+          : info?.status === "done"
+            ? `computed from a stale input: its output is ${staleWhy(STAGE_OUTPUT[stage])}; run the pipeline from the first stale stage with Force to update it`
+            : `reused its output, which is stale (${staleWhy(STAGE_OUTPUT[stage])}); run it again with Force to update it`;
+        break;
+      case "unknown":
+        statusLabel = "unknown";
+        meta = info ? "the connection was lost while it ran: not known whether it finished" : "not known: the connection was lost before it started";
+        break;
+      case "notrun":
+        statusLabel = "—";
+        meta = "not in this run";
+        break;
       default:
         if (phase === "error" || phase === "cancelled") {
           statusLabel = "—";
@@ -278,9 +289,9 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
           meta = "";
         }
     }
-    const dim = ns === "pending";
+    const dim = ns === "pending" || ns === "notrun";
     const nodeContent =
-      ns === "done" ? "✓" : ns === "failed" ? "✕" : ns === "cancelled" ? "–" : ns === "active" ? "" : String(stepNo);
+      ns === "done" ? "✓" : ns === "failed" ? "✕" : ns === "cancelled" ? "–" : ns === "unknown" ? "?" : ns === "active" ? "" : String(stepNo);
     const connectorDone = ns === "done";
     return (
       <div className={`exec-stage${litStage(lit, stage) ? " ai-glow" : ""}`} key={stage}>
@@ -294,14 +305,14 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
           <div className="exec-stage-top">
             <span className={`exec-stage-name${dim ? " dim" : ns === "cancelled" ? " cancelled" : ""}`}>
               <span className="exec-stage-no">
-                {stepNo}/{total}
+                {stepNo}/{visibleStages.length}
               </span>
               {STAGE_LABELS[stage]}
             </span>
             <span className={`exec-stage-status ${ns}`}>{statusLabel}</span>
           </div>
           {/* A summary that holds a warning reads as one: the ring removal's candidates left on a coarse grid. */}
-          {meta && <div className={`exec-stage-meta${dim ? " dim" : warns(meta) ? " warn" : ""}`}>{meta}</div>}
+          {meta && <div className={`exec-stage-meta${dim ? " dim" : warns(meta) || ns === "stale" ? " warn" : ""}`}>{meta}</div>}
           {ns === "active" && info?.fraction != null && (
             <div className="exec-stage-bar">
               <i style={{ width: `${Math.round(info.fraction * 100)}%` }} />
@@ -375,6 +386,11 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
                   </button>
                 </>
               )}
+              {phase === "lost" && (
+                <button type="button" className="exec-btn exec-btn-ghost" onClick={() => onNavigate("config")}>
+                  Back to Configure
+                </button>
+              )}
               {phase === "idle" && (
                 <button type="button" className="exec-btn exec-btn-primary" onClick={() => onNavigate("config")}>
                   Go to Configure →
@@ -430,9 +446,24 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
           <div className="exec-banner-txt">
             <span className="exec-banner-title">Run cancelled</span>
             <span className="exec-banner-body">
-              {interruptedStage
-                ? `Stopped during ${STAGE_LABELS[interruptedStage]}. Completed stages were saved and can be reused on the next run.`
-                : "The run was stopped before finishing. Completed stages were saved."}
+              {(interruptedStage ? `Stopped during ${STAGE_LABELS[interruptedStage]}. ` : "The run was stopped before finishing. ") +
+                (PYODIDE_MODE
+                  ? "Stopping the in-browser engine also discarded the outputs it held: the next run computes every stage again."
+                  : "Completed stages were saved and can be reused on the next run.")}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {phase === "lost" && (
+        <div className="exec-banner cancelled">
+          <span className="exec-banner-ico">?</span>
+          <div className="exec-banner-txt">
+            <span className="exec-banner-title">Connection to the run lost</span>
+            <span className="exec-banner-body">
+              {jobId
+                ? "The server could not be reached for a while, so it is not known whether the run is still going, finished or failed. The page keeps asking the server and shows how the run ended as soon as it answers; until then no other run starts, since this one may still be writing its outputs."
+                : "The connection to the server was lost during this run, so how it ended is not known. The Configure page lists the outputs on disk."}
             </span>
           </div>
         </div>

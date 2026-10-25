@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cifNumber, elementOf, parseCif, tokenize } from "../cif";
+import { cifCentering, cifNumber, elementOf, parseCif, parseCoordinate, tokenize, type Cell } from "../cif";
 
 // Rock salt, written the way structure databases write CIFs: uncertainties,
 // quoted operations, a text field and an anisotropic loop to skip.
@@ -125,5 +125,66 @@ describe("helpers", () => {
     expect(elementOf("Cu2+")).toBe("Cu");
     expect(elementOf("O2-")).toBe("O");
     expect(elementOf("Sn1a")).toBe("Sn");
+  });
+
+  it("reads all-capitals type symbols as the two-letter element they name", () => {
+    expect(["NA", "CL", "CO", "SI4+", "NB", "BA", "cl", "CL1-"].map(elementOf)).toEqual(["Na", "Cl", "Co", "Si", "Nb", "Ba", "Cl", "Cl"]);
+  });
+
+  it("falls back to one letter when two name no element (or only a superheavy one)", () => {
+    expect(["Ow1", "OH-", "NO1", "NH3", "C1", "X", "D1"].map(elementOf)).toEqual(["O", "O", "N", "N", "C", "X", "D"]);
+  });
+});
+
+describe("cifCentering", () => {
+  const cubic: Cell = { a: 4, b: 4, c: 4, alpha: 90, beta: 90, gamma: 90 };
+  const hex: Cell = { a: 4, b: 4, c: 9, alpha: 90, beta: 90, gamma: 120 };
+  const rho: Cell = { a: 4, b: 4, c: 4, alpha: 60, beta: 60, gamma: 60 };
+  it("takes the lattice letter of the Hermann–Mauguin or Hall symbol", () => {
+    expect(cifCentering({ spaceGroup: "F m -3 m", cell: cubic })).toBe("F");
+    expect(cifCentering({ spaceGroup: "Fm-3m", cell: cubic })).toBe("F");
+    expect(cifCentering({ spaceGroup: "-F 4 2 3", cell: cubic })).toBe("F");
+    expect(cifCentering({ spaceGroup: "I 4/m m m", cell: cubic })).toBe("I");
+    expect(cifCentering({ spaceGroup: "C 1 2/m 1", cell: cubic })).toBe("C");
+    expect(cifCentering({ spaceGroup: "P 63/m m c", cell: hex })).toBe("P");
+    expect(cifCentering({ spaceGroup: null, cell: cubic })).toBe("P");
+  });
+
+  it("adds R only on hexagonal axes", () => {
+    expect(cifCentering({ spaceGroup: "R -3 m", cell: hex })).toBe("R");
+    expect(cifCentering({ spaceGroup: "R -3 m :H", cell: null })).toBe("R");
+    expect(cifCentering({ spaceGroup: "R -3 m", cell: rho })).toBe("P");
+    expect(cifCentering({ spaceGroup: "R -3 m :R", cell: hex })).toBe("P");
+    expect(cifCentering({ spaceGroup: "R -3 m", cell: null })).toBe("P");
+  });
+});
+
+describe("parseCoordinate (a site's coordinate as typed)", () => {
+  it("reads decimals and signed fractions, the notation the symmetry operations take", () => {
+    expect(parseCoordinate("0.25")).toBe(0.25);
+    expect(parseCoordinate(" .5 ")).toBe(0.5);
+    expect(parseCoordinate("-0.125")).toBe(-0.125);
+    expect(parseCoordinate("1/3")).toBeCloseTo(1 / 3, 15);
+    expect(parseCoordinate("-1/4")).toBe(-0.25);
+    expect(parseCoordinate("+2 / 3")).toBeCloseTo(2 / 3, 15);
+    expect(parseCoordinate("1e-3")).toBe(0.001);
+  });
+
+  it("drops a standard uncertainty and reads a typeset minus", () => {
+    expect(parseCoordinate("0.5(2)")).toBe(0.5);
+    expect(parseCoordinate("0.2500(4)")).toBe(0.25);
+    expect(parseCoordinate("\u22120.25")).toBe(-0.25);
+    expect(parseCoordinate("\u22121/4")).toBe(-0.25);
+    expect(parseCoordinate("?")).toBeNull();
+  });
+
+  it("is how a CIF's coordinates are read, so fractions there are kept", () => {
+    const cif = parseCif("data_f\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nCl1 1/2 1/2 0.5(1)\n");
+    expect(cif.sites.map((s) => [s.x, s.y, s.z])).toEqual([[0.5, 0.5, 0.5]]);
+    expect(cif.warnings.filter((w) => /skipped/.test(w))).toEqual([]);
+  });
+
+  it("refuses what it cannot read, never giving NaN", () => {
+    for (const t of ["", "0,5", "1/0", "x", "1/3/4", "0.5.1", "1/", "/2", "0x10"]) expect(parseCoordinate(t)).toBeNull();
   });
 });

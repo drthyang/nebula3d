@@ -7,7 +7,7 @@ import { create } from "zustand";
 
 import type { Viewport } from "../components/viewport";
 
-/** Half-width (Å) a real-space view opens at; double-click returns to it. */
+/** Half-width (Å) a real-space view opens at; Reset zoom (or Shift+double-click) returns to it. */
 export const DEFAULT_DPDF_HALF = 40;
 
 export function defaultDpdfView(): Viewport {

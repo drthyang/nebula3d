@@ -16,7 +16,10 @@
 import {
   isMalformedOutput,
   isToolsUnsupported,
+  isUsageUnsupported,
+  refuseUsage,
   streamChat,
+  usageRefused,
   type ChatMessage,
   type TokenUsage,
   type ToolCall,
@@ -24,11 +27,12 @@ import {
 import { answerIssues, earlierSources, issuesNote, issuesPrompt } from "./answerChecks";
 import { fillReferences } from "./references";
 import { lastQuestion, toolsFor } from "./localTools";
-import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, StallError, type Failure } from "./recovery";
-import { baseTokens, estimateTokens, observeTokens } from "./provider/tokens";
+import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, STALL_MS, StallError, type Failure } from "./recovery";
+import { baseTokens, DATA_CHARS_PER_TOKEN, estimateTokens, observeTokens, PROSE_CHARS_PER_TOKEN } from "./provider/tokens";
 import { planWindow } from "./provider/window";
 import { seen, shorten, whole } from "./readings";
 import { runPolicyOf, type RunPolicy } from "./runPolicy";
+import { estimated, measured, notCounted, ranNothing, type Usage } from "./usage";
 import type { LlmSettings } from "./settings";
 import { skillsOn } from "./skills";
 import {
@@ -49,7 +53,9 @@ export interface AgentStep {
   id: string;
   name: string;
   args: Record<string, unknown>;
-  status: "running" | "done" | "error";
+  // "stopped": it was running when the reply ended (Stop, or an error), so
+  // it never finished; set by session.ts, never while the reply runs.
+  status: "running" | "done" | "error" | "stopped";
   summary?: string;
   progress?: string; // a running tool's live line (run_pipeline: stage, %, log)
   // The result's two readings (readings/): what the model read when the call
@@ -64,6 +70,10 @@ export interface AgentStep {
   // The checks' outcomes the tool judged (verdicts/), kept beside the result
   // and never in it: the model reads the result alone.
   outcomes?: Outcome[];
+  // Brought back from a saved session file (state/session.ts): shown, but
+  // never taken as evidence for a later reply's numbers (toolStepsIn), since
+  // the file could say anything.
+  restored?: true;
 }
 
 export interface AgentProgress {
@@ -109,10 +119,8 @@ export const CUT_OFF_NOTE =
 // is sent again, at most this many times in one reply.
 export const MALFORMED_RETRIES = 2;
 
-// A server that sends nothing for this long is taken as stuck: before the first
-// piece of a reply (loading the model and reading a long prompt on a busy
-// machine can take minutes), and between pieces.
-export const STALL_MS = { first: 300_000, idle: 120_000 };
+// A server that sends nothing for this long is taken as stuck (recovery.ts).
+export { STALL_MS };
 
 // Retries for failures a moment may cure, over the whole reply.
 export const MAX_RECOVERIES = 4;
@@ -155,10 +163,11 @@ function numberSources(convo: ChatMessage[], arrived: number, results: readonly 
 /**
  * The tool calls of a conversation's turns that ran, oldest first, as the
  * transcript keeps them: the next reply's number sources, each result as the
- * model read it (`seen`) while what it measured stands (earlierSources).
+ * model read it (`seen`) while what it measured stands (earlierSources). Not
+ * those restored from a session file.
  */
 export const toolStepsIn = (turns: readonly { steps?: readonly AgentStep[] }[]): AgentStep[] =>
-  turns.flatMap((t) => (t.steps ?? []).filter((s) => s.status === "done" && seen(s)));
+  turns.flatMap((t) => (t.steps ?? []).filter((s) => s.status === "done" && !s.restored && seen(s)));
 
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
@@ -177,6 +186,7 @@ export async function runAgent({
   retryDelaysMs = RETRY_DELAYS_MS,
   softBudget = policy.pruning?.softBudget,
   onTruncated,
+  onUsage,
 }: {
   messages: ChatMessage[];
   tools: AgentTool[];
@@ -198,6 +208,7 @@ export async function runAgent({
   // sent, retries included, and the server's stop reason (a validation run's
   // record keeps them, validationRun.ts).
   onTruncated?: (cut: { request: number; reason: string }) => void;
+  onUsage?: (u: Usage) => void; // each completed request's tokens, measured or estimated, and each one sent that did not complete (usage.ts)
 }): Promise<AgentResult> {
   // The reply's history, which the executor runs each round of calls over
   // (tools/round.ts): the tools the reply offers, runs and checks answers
@@ -272,6 +283,7 @@ export async function runAgent({
     let native: unknown;
     let cutOff = false;
     const reasoningBefore = reasoning;
+    let reported: TokenUsage | undefined; // the request's counts, as its server gave them
     const specs = useTools ? toolSpecs(offered) : undefined;
     if (policy.pruning && softBudget !== undefined && estimateTokens(baseTokens(convo, specs), windowKey) > softBudget) {
       compactOlder(policy.pruning.keepFull);
@@ -283,6 +295,7 @@ export async function runAgent({
     signal.addEventListener("abort", stopRequest, { once: true });
     let stalled = false;
     let heard = false; // a piece of the reply arrived
+    let dispatched = false; // the request went to the server
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     const watch = (ms: number) => {
       clearTimeout(watchdog);
@@ -302,6 +315,7 @@ export async function runAgent({
         note = note ? `${note} ${plan.refusal}` : plan.refusal;
         break;
       }
+      dispatched = true;
       sent += 1;
       for await (const delta of streamChat({
         baseUrl: settings.baseUrl,
@@ -312,11 +326,17 @@ export async function runAgent({
         signal: request.signal,
         tools: specs,
         toolChoice: useTools && (last || answerNow) ? "none" : undefined,
-        // A local server's counts calibrate the token estimate.
-        includeUsage: wantUsage || policy.local,
+        // Every server is asked for the request's counts: they are shown with
+        // the reply (usage.ts), and a local server's calibrate the token estimate.
+        includeUsage: !usageRefused(settings.baseUrl),
         numCtx: plan.numCtx,
         ...(policy.outputCap.loop != null ? { maxTokens: policy.outputCap.loop } : {}),
       })) {
+        // A request the provider dropped and sent again itself (anthropic.ts).
+        if (delta.discarded) {
+          onUsage?.(notCounted());
+          continue;
+        }
         heard = true;
         watch(stallMs.idle);
         if (delta.stopReason) onTruncated?.({ request: sent, reason: delta.stopReason });
@@ -327,6 +347,7 @@ export async function runAgent({
           tokens.cacheRead += delta.usage.cacheRead ?? 0;
           tokens.cacheWrite += delta.usage.cacheWrite ?? 0;
           tokens.requests += 1;
+          reported = delta.usage;
         }
         if (delta.content) roundText += delta.content;
         if (delta.reasoning) reasoning += delta.reasoning;
@@ -337,13 +358,34 @@ export async function runAgent({
       }
       requests += 1;
       attempts = 0;
+      // The request's tokens: as its server counted them, else by the estimate
+      // (the prompt as the window planning measures it; the reply's text,
+      // thinking and calls at the same rates), marked as one.
+      onUsage?.(
+        reported
+          ? measured(reported)
+          : estimated(
+              estimateTokens(baseTokens(convo, specs), windowKey),
+              (roundText.length + reasoning.length - reasoningBefore.length) / PROSE_CHARS_PER_TOKEN +
+                calls.reduce((n, c) => n + c.function.name.length + c.function.arguments.length, 0) / DATA_CHARS_PER_TOKEN,
+            ),
+      );
     } catch (e) {
+      // A request sent that did not complete has no counts: said apart (usage.ts).
+      if (dispatched && (heard || !ranNothing(e))) onUsage?.(notCounted());
       if (signal.aborted) throw e; // the reply was stopped
       if (useTools && round === 0 && !roundText && isToolsUnsupported(e)) {
         noTools.add(`${settings.baseUrl}|${settings.model}`);
         useTools = false;
         note = TOOLS_UNSUPPORTED_NOTE;
         round = -1; // the same request again, without tools
+        continue;
+      }
+      // A server that will not give token counts is asked again without them.
+      if (!roundText && isUsageUnsupported(e) && !usageRefused(settings.baseUrl)) {
+        refuseUsage(settings.baseUrl);
+        reasoning = reasoningBefore;
+        round -= 1; // the same request again
         continue;
       }
       if (isMalformedOutput(e) && retries < MALFORMED_RETRIES) {

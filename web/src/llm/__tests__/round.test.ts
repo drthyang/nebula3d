@@ -276,6 +276,29 @@ describe("runRound", () => {
     expect(runs).toEqual([]);
   });
 
+  it("keeps a call that failed because the reply was stopped as stopped, not as an error (run_pipeline cancels its run on Stop)", async () => {
+    const abort = new AbortController();
+    // As run_pipeline: Stop cancels the run, and the call then fails saying so.
+    const runs = tool("run_pipeline", (_args, _ctx, io) =>
+      new Promise((_resolve, reject) => io.signal?.addEventListener("abort", () => reject(new Error("the run was cancelled")))),
+    );
+    const steps: string[] = [];
+    const round = runRound([call("c1", "run_pipeline", {})], startReply(ctx, [runs]), {
+      signal: abort.signal,
+      onStep: (s) => steps.push(`${s.status}${s.summary ? ` ${s.summary}` : ""}`),
+    });
+    await vi.waitFor(() => expect(steps).toEqual(["running"]));
+    abort.abort();
+    const { results } = await round;
+    expect(results[0].step.status).toBe("stopped");
+    expect(steps).toEqual(["running", "stopped the run was cancelled"]);
+    // A call that fails on its own, with the reply going on, is still an error.
+    const fails = tool("fails", async () => {
+      throw new Error("no such stage");
+    });
+    expect((await runRound([call("c2", "fails", {})], startReply(ctx, [fails]))).results[0].step.status).toBe("error");
+  });
+
   // dpdf_contrast acts: it sets the 3D-ΔPDF viewer's ± colour limit, so the
   // limit the viewer shows is the one the last call set. A call pointed at an
   // earlier result instead of run would leave the model quoting a limit the

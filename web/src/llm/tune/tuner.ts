@@ -16,8 +16,10 @@ import { create } from "zustand";
 import { fetchDataset, promoteTrial, startTuningRun } from "../../api/client";
 import { queryClient } from "../../api/queryClient";
 import type { Dataset, TuningRun } from "../../api/types";
-import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
-import { completeChat, type ChatMessage, type UsageReport } from "../provider/client";
+import { pipelineBusy, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
+import { completeChat, type ChatMessage, type TokenUsage, type UsageReport } from "../provider/client";
+import { baseTokens, estimateTokens, PROSE_CHARS_PER_TOKEN } from "../provider/tokens";
+import { estimated, measured, notCounted, ranNothing, recordUsage } from "../usage";
 import type { LlmSettings } from "../settings";
 import {
   currentStageSettings,
@@ -38,7 +40,8 @@ export interface Trial {
   changes: Record<string, ParamValue>; // vs trial 1, as the model named them
   settings: Record<string, ParamValue>; // the stage's full settings
   why?: string;
-  status: "pending" | "running" | "done" | "error";
+  // "stopped": running when the tuning run ended; "skipped": queued, never run.
+  status: "pending" | "running" | "done" | "error" | "stopped" | "skipped";
   evaluation?: StageEvaluation;
   error?: string;
   seconds?: number;
@@ -114,17 +117,38 @@ const snapshot = (stage: TuneStage): Partial<PipelineConfig> => {
 /** The model the tuning asks, the output cap it asks for, and where each request's token counts go (TuneOptions). */
 type TuneModel = Pick<TuneOptions, "llm" | "onUsage" | "maxTokens">;
 
+// The model's reply as JSON, from one request read whole, as the validation
+// frozen at 812e686 runs its tuning (docs/evals.md, "The freeze"): only the
+// user's Stop ends it. Its tokens count into the reply that runs the tuning
+// and the conversation (usage.ts): as the server gave them, else estimated;
+// and the request's counts go to the caller's `onUsage` with its stop reason
+// (a validation run's, UsageReport).
 async function ask(messages: ChatMessage[], { llm, onUsage, maxTokens }: TuneModel, signal: AbortSignal): Promise<Record<string, unknown> | null> {
-  const text = await completeChat({
-    baseUrl: llm.baseUrl,
-    model: llm.model,
-    messages,
-    temperature: llm.temperature,
-    apiKey: llm.apiKey || undefined,
-    signal,
-    onUsage,
-    ...(maxTokens !== undefined ? { maxTokens } : {}),
-  });
+  let reported: TokenUsage | null = null;
+  let text: string;
+  try {
+    text = await completeChat({
+      baseUrl: llm.baseUrl,
+      model: llm.model,
+      messages,
+      temperature: llm.temperature,
+      apiKey: llm.apiKey || undefined,
+      signal,
+      onUsage: (u, stopReason) => {
+        reported = u;
+        onUsage?.(u, stopReason);
+      },
+      ...(maxTokens !== undefined ? { maxTokens } : {}),
+    });
+  } catch (e) {
+    if (!ranNothing(e)) recordUsage(notCounted()); // sent, never completed: said apart
+    throw e;
+  }
+  recordUsage(
+    reported
+      ? measured(reported)
+      : estimated(estimateTokens(baseTokens(messages), `${llm.baseUrl}|${llm.model}`), text.length / PROSE_CHARS_PER_TOKEN),
+  );
   return parseJsonReply(text);
 }
 
@@ -332,7 +356,7 @@ export interface TuneOptions {
 }
 
 export async function startTuning({ dataset, stages, trialsPerStage, llm, onUsage, maxTokens, skills = true }: TuneOptions): Promise<void> {
-  if (useTuneStore.getState().active || pipeline().running) return;
+  if (useTuneStore.getState().active || pipelineBusy(pipeline())) return;
   const abort = new AbortController();
   controller = abort;
   const cfg = pipeline();
@@ -405,8 +429,15 @@ export async function startTuning({ dataset, stages, trialsPerStage, llm, onUsag
     } else {
       useTuneStore.setState({ error: (e as Error).message });
     }
+    // Nothing is left running or queued: a trial that was running stopped,
+    // one still queued never ran.
     useTuneStore.setState((s) => ({
-      stages: s.stages.map((r) => (["waiting", "done", "skipped", "failed"].includes(r.status) ? r : { ...r, status: "failed" })),
+      stages: s.stages.map((r) => ({
+        ...(["waiting", "done", "skipped", "failed"].includes(r.status) ? r : { ...r, status: "failed" as const }),
+        trials: r.trials.map((t) =>
+          t.status === "running" ? { ...t, status: "stopped" as const } : t.status === "pending" ? { ...t, status: "skipped" as const } : t,
+        ),
+      })),
     }));
   } finally {
     if (controller === abort) controller = null;

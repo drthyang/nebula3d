@@ -8,10 +8,10 @@
 
 import { create } from "zustand";
 
-import { cancelJob, runPipeline } from "../api/client";
+import { cancelJob, fetchJob, runPipeline } from "../api/client";
 import { cancelPipeline, engine, PYODIDE_MODE } from "../api/pyodideEngine";
 import { queryClient } from "../api/queryClient";
-import type { JobEvent, StageParamsIn, TuningTrial } from "../api/types";
+import type { JobEvent, JobOut, StageParamsIn, TuningTrial } from "../api/types";
 import { useDatasetStore } from "./datasetStore";
 import { modulationRequest } from "./modulation";
 
@@ -25,7 +25,7 @@ export const STAGE_LABELS: Record<string, string> = {
   rings: "Ring removal",
   punch: "Bragg punch",
   backfill: "Backfill",
-  flatten: "Flatten",
+  flatten: "Background correction",
   pdf: "3D-ΔPDF",
   pdf_check: "Consistency check",
 };
@@ -120,16 +120,33 @@ export interface PipelineConfig {
   pdfQMax: string;
 }
 
+// What the last run was asked to do, kept beside its log: which dataset, which
+// stages, the settings it ran with (as the pipeline took them) and whether it
+// recomputed existing outputs. A saved session carries it (state/session.ts).
+export interface RunRecord {
+  datasetId: string;
+  stages: string[];
+  force: boolean;
+  flattenEnabled: boolean;
+  params: StageParamsIn;
+  tuning?: TuningTrial;
+}
+
 interface PipelineState extends PipelineConfig {
   // job execution
   jobId: string | null;
+  lastRun: RunRecord | null;
   running: boolean;
   events: JobEvent[];
   // Client arrival time of each event, index-aligned with `events`. Lives in the
   // store (not component state) so the elapsed timer and log wall-clock times
   // survive navigating away from the Execution page mid-run.
   times: number[];
+  // How the run ended: "done" | "error" | "cancelled", or "lost" (the
+  // connection to a native job was lost, its end is not known yet); null while it runs.
   terminal: string | null;
+  // A native run's progress stream dropped and the page is reaching the job again.
+  reconnecting: boolean;
   // actions
   patch: (p: Partial<PipelineConfig>) => void;
   run: () => Promise<void>;
@@ -137,7 +154,8 @@ interface PipelineState extends PipelineConfig {
   // job ended: "done" | "error" | "cancelled".  With `tuning`, the run is one
   // trial of the assistant's tuning run: its outputs go to the trial's own
   // folder and processed/ is only read.  `datasetId` defaults to the
-  // sidebar's selection; `force: false` reuses outputs that already exist.
+  // sidebar's selection; `force: false` reuses outputs that already exist;
+  // `params`/`flattenEnabled` replace the form's settings for this run.
   runStages: (stages: string[], opts?: RunOptions) => Promise<string>;
   cancel: () => Promise<void>;
 }
@@ -220,10 +238,12 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   pdfQMax: "",
 
   jobId: null,
+  lastRun: null,
   running: false,
   events: [],
   times: [],
   terminal: null,
+  reconnecting: false,
 
   patch: (p) => set(p),
 
@@ -253,6 +273,8 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     if (PYODIDE_MODE) {
       cancelPipeline();
       set({ terminal: "cancelled", running: false });
+      // The worker held the outputs (in memory): they went with it.
+      void queryClient.invalidateQueries();
       return;
     }
     const { jobId } = get();
@@ -263,12 +285,16 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
 type Setter = (p: Partial<PipelineState>) => void;
 type Getter = () => PipelineState;
 
-// Launch `stages` with the current form settings; native runs stream their
-// progress (and their end) over SSE after this returns.
+// Launch `stages` with the current form settings (or opts.params); native
+// runs stream their progress (and their end) over SSE after this returns.
 export interface RunOptions {
   tuning?: TuningTrial;
   datasetId?: string;
   force?: boolean; // runStages: recompute outputs that exist (default true)
+  // Run with these settings instead of the form's: a restored session
+  // recomputes its outputs with the settings of the run that made them.
+  params?: StageParamsIn;
+  flattenEnabled?: boolean;
 }
 
 async function start(
@@ -279,42 +305,39 @@ async function start(
   opts: RunOptions = {},
 ): Promise<void> {
   const s = get();
+  // The last run lost its connection while its job may still run (and write
+  // the same files): no other run starts until it is heard from.
+  if (pipelineBusy(s) && !s.running) return;
   const datasetId = opts.datasetId ?? useDatasetStore.getState().datasetId ?? "";
   closeStream();
-  set({ events: [], times: [], terminal: null, running: true, jobId: null });
-
-  const params = formToParams(s);
+  const params = opts.params ?? formToParams(s);
+  const flattenEnabled = opts.flattenEnabled ?? s.flatten;
+  set({
+    events: [],
+    times: [],
+    terminal: null,
+    running: true,
+    reconnecting: false,
+    jobId: null,
+    lastRun: { datasetId, stages, force, flattenEnabled, params, ...(opts.tuning ? { tuning: opts.tuning } : {}) },
+  });
 
   if (PYODIDE_MODE) {
-    await runInBrowser(datasetId, params, s.flatten, force, stages, set, get, opts.tuning);
+    await runInBrowser(datasetId, params, flattenEnabled, force, stages, set, get, opts.tuning);
     return;
   }
 
   try {
     const job = await runPipeline({
       dataset_id: datasetId,
-      flatten_enabled: s.flatten,
+      flatten_enabled: flattenEnabled,
       force,
       stages,
       params,
       tuning: opts.tuning,
     });
     set({ jobId: job.id });
-
-    es = new EventSource(`/api/pipeline/jobs/${job.id}/events`);
-    es.onmessage = (e) => {
-      const ev = JSON.parse(e.data) as JobEvent;
-      if (["done", "error", "cancelled"].includes(ev.type)) {
-        set({ terminal: ev.type, running: false });
-        closeStream();
-      } else {
-        set({ events: [...get().events, ev], times: [...get().times, Date.now()] });
-      }
-    };
-    es.onerror = () => {
-      closeStream();
-      set({ running: false });
-    };
+    follow(job.id, set, get);
   } catch (e) {
     set({
       terminal: "error",
@@ -324,6 +347,102 @@ async function start(
       ],
       times: [Date.now()],
     });
+  }
+}
+
+// A native job's end: its reason in the log (a failure's, where the page's
+// banner reads it), the run over, and the outputs it left read afresh.
+function finish(set: Setter, get: Getter, terminal: string, message?: string): void {
+  closeStream();
+  set({ reconnecting: false });
+  if (terminal === "error" && message) {
+    set({
+      events: [...get().events, { type: "progress", status: "error", message, end: true }],
+      times: [...get().times, Date.now()],
+    });
+  }
+  set({ terminal, running: false });
+  void queryClient.invalidateQueries();
+}
+
+// A dropped stream is followed again at once this many times in a row (any
+// event the stream brings resets the count); after that, after a pause.
+const RECONNECTS = 3;
+// While the server cannot be reached the run still counts as running (its job
+// may well be): only after this long is it shown as lost, never as failed.
+export const LOST_AFTER_MS = 45_000;
+// The longest pause between two looks at the job's status.
+const POLL_MAX_MS = 15_000;
+
+/** A run that lost its connection to the server while its job may still run: it holds the pipeline until the job is heard from. */
+export const pipelineBusy = (s: Pick<PipelineState, "running" | "terminal" | "jobId">): boolean =>
+  s.running || (s.terminal === "lost" && s.jobId !== null);
+
+// Follow a native job's progress stream to its end. The server replays a
+// job's events from its first on every connection, so a reconnection skips
+// those already logged.
+function follow(jobId: string, set: Setter, get: Getter, drops = 0): void {
+  const logged = get().events.length;
+  let replayed = 0;
+  let failures = drops;
+  const source = new EventSource(`/api/pipeline/jobs/${jobId}/events`);
+  es = source;
+  source.onmessage = (e) => {
+    failures = 0; // the stream works: a later drop starts the count afresh
+    if (get().reconnecting) set({ reconnecting: false });
+    const ev = JSON.parse(e.data) as JobEvent;
+    if (["done", "error", "cancelled"].includes(ev.type)) {
+      finish(set, get, ev.type, ev.message);
+    } else if (++replayed > logged) {
+      set({ events: [...get().events, ev], times: [...get().times, Date.now()] });
+    }
+  };
+  // The stream dropped before the job's end (the network, or the server
+  // restarted): the job's own status says what became of it.
+  source.onerror = () => {
+    if (es !== source) return; // ended, or replaced
+    closeStream();
+    void afterDrop(jobId, set, get, failures);
+  };
+}
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// Ask the server what became of the job, until it answers: still running ->
+// follow its stream again; ended -> that end; unknown (404: it restarted) ->
+// the run stopped. While the server cannot be reached the run stays running
+// (and holds the pipeline), and after LOST_AFTER_MS it is shown as lost: its
+// end is not known, so no stage is marked failed, and the page keeps asking
+// so that it shows the real end once the server answers.
+async function afterDrop(jobId: string, set: Setter, get: Getter, drops: number): Promise<void> {
+  const since = Date.now();
+  set({ reconnecting: true });
+  for (let wait = 1000, waited = false; ; wait = Math.min(wait * 2, POLL_MAX_MS), waited = true) {
+    let job: JobOut | null | undefined;
+    try {
+      job = await fetchJob(jobId);
+    } catch {
+      job = undefined; // the server cannot be reached
+    }
+    const s = get();
+    if (s.jobId !== jobId || !(s.running || s.terminal === "lost")) return; // another run started, or this one was settled
+    if (job === null) {
+      finish(set, get, "error", "The server no longer knows this run (it restarted), so the run stopped. Stages that completed before it were saved; run again to compute the rest.");
+      return;
+    }
+    if (job && job.status !== "running") {
+      finish(set, get, job.status, job.error ?? undefined);
+      return;
+    }
+    if (job && (drops < RECONNECTS || waited)) {
+      set({ running: true, terminal: null });
+      follow(jobId, set, get, drops + 1);
+      return;
+    }
+    if (!job && s.running && Date.now() - since >= LOST_AFTER_MS) {
+      set({ running: false, terminal: "lost", reconnecting: false });
+    }
+    await pause(wait);
   }
 }
 
@@ -461,6 +580,9 @@ async function runInBrowser(
     await queryClient.invalidateQueries();
     set({ terminal: "done", running: false });
   } catch (e) {
+    // Cancel ended it (cancel() already said so): the engine's rejection is
+    // that, not a failure.
+    if (get().terminal === "cancelled") return;
     log({ type: "progress", status: "error", message: (e as Error).message });
     set({ terminal: "error", running: false });
   }

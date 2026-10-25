@@ -16,7 +16,12 @@ import { oneOf } from "../shared/args";
 import { checkIdle } from "../shared/pipeline";
 import type { ChatTool } from "../types";
 
-const stageLabel = (stage?: string): string => (stage ? STAGE_LABELS[stage] ?? stage : "");
+// The stages as the tool's lines name them to the model: the console's labels
+// (STAGE_LABELS), but the flatten keeps the name the model's other texts give
+// it while the validation frozen at 812e686 waits for its live runs
+// (docs/evals.md, "The freeze"); the console calls it "Background correction".
+const TOOL_STAGE_LABELS: Record<string, string> = { ...STAGE_LABELS, flatten: "Flatten" };
+const stageLabel = (stage?: string): string => (stage ? TOOL_STAGE_LABELS[stage] ?? stage : "");
 
 // One log line: "Bragg punch 45% · fitting 312 peaks".
 const eventLine = (ev: JobEvent): string =>
@@ -88,7 +93,9 @@ export const run_pipeline: ChatTool = {
     const events = usePipelineStore.getState().events;
 
     if (ended !== "done") {
-      const failed = [...events].reverse().find((e) => e.status === "error");
+      // The job's own end (end: the server's reason for a failed job, shown on
+      // the Execution page) is not among the lines the model reads.
+      const failed = [...events].reverse().find((e) => e.status === "error" && !e.end);
       throw new Error(`the run ${ended === "cancelled" ? "was cancelled" : "failed"}${failed ? `: ${eventLine(failed)}` : ""}`);
     }
     // The last word on each stage: done = computed, skip = its output was reused.

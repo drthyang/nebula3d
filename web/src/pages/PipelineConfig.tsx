@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
 
-import { browseDataRoot, checkModulation, fetchMeta, fetchSlice, fetchVolumeCoverage, setDataRoot } from "../api/client";
+import { browseDataRoot, checkModulation, fetchDatasets, fetchMeta, fetchSlice, fetchVolumeCoverage, setDataRoot } from "../api/client";
 import {
   bootPercent,
   engine,
@@ -26,16 +26,20 @@ import {
   STAGE_NO,
   usePipelineStore,
   type PunchPlane,
+  pipelineBusy,
 } from "../state/pipelineStore";
 import { useHighlightKeys } from "../llm/highlight";
 import { datasetName } from "../api/datasetName";
+import { staleOutputs } from "../api/stale";
+import { useChatStore } from "../llm/chatStore";
+import { captureSession, parseSession, restoreSession, sessionFileName, useSessionNote, type SessionNote } from "../state/session";
 
 const DATASET_STAGE_BADGES = [
   { key: "raw", label: "Raw", group: "Input" },
   { key: "ringremoved", label: "Ring removed", group: "Cleanup" },
   { key: "braggpunched", label: "Bragg punched", group: "Cleanup" },
   { key: "backfilled", label: "Backfilled", group: "Cleanup" },
-  { key: "flattened", label: "Background flattened", group: "Cleanup" },
+  { key: "flattened", label: "Background corrected", group: "Cleanup" },
   { key: "delta_pdf", label: "3D-ΔPDF", group: "Output" },
 ] as const;
 
@@ -1112,6 +1116,18 @@ function BootProgressPanel({ status }: { status: BootStatus }) {
 
 // ---------------------------------------------------------------------------
 
+// Hand a text file to the browser's downloads.
+function downloadText(name: string, type: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
   const lit = useHighlightKeys();
   const datasetsQ = useDatasets();
@@ -1223,6 +1239,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       pdfQMin: st.pdfQMin,
       pdfQMax: st.pdfQMax,
       running: st.running,
+      // Also while a run that lost its connection may still be going on the server.
+      busy: pipelineBusy(st),
     })),
   );
   const patch = usePipelineStore((st) => st.patch);
@@ -1348,6 +1366,73 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     await run();
   };
 
+  // Save the analysis to a file, and bring one back (state/session.ts): the
+  // settings, the last run, the Pilot conversation; outputs that are not
+  // here any more are recomputed on request.
+  const sessionInputRef = useRef<HTMLInputElement>(null);
+  const chatBusy = useChatStore((st) => st.busy);
+  const sessionNote = useSessionNote((st) => st.note);
+  const setSessionNote = useSessionNote((st) => st.setNote);
+  const onSaveSession = async () => {
+    // The outputs as they are now, not as last fetched.
+    let now = datasets;
+    try {
+      now = await queryClient.fetchQuery({ queryKey: ["datasets"], queryFn: fetchDatasets, staleTime: 0 });
+    } catch {
+      // the server is unreachable: save what the page knows
+    }
+    const session = captureSession(now.find((d) => d.id === datasetId));
+    downloadText(sessionFileName(session), "application/json", JSON.stringify(session, null, 1));
+    setSessionNote({ kind: "ok", text: `Saved ${sessionFileName(session)}: the settings, the last run, the NEBULA Pilot conversation and the outputs present (${session.outputs.length}). The outputs themselves stay here; restoring recomputes any that are gone.` });
+  };
+  const onRestoreSession = async (file: File) => {
+    try {
+      const session = parseSession(await file.text());
+      // It replaces the conversation and the run's log: ask first when there
+      // is one to lose.
+      const turns = useChatStore.getState().turns.length;
+      const logged = usePipelineStore.getState().events.length;
+      if (turns || logged) {
+        const losing = [turns ? `the NEBULA Pilot conversation (${turns} message${turns === 1 ? "" : "s"})` : "", logged ? "the last run's log" : ""].filter(Boolean).join(" and ");
+        if (!window.confirm(`Restoring ${file.name} replaces ${losing} with the session's. Restore it?`)) return;
+      }
+      // The outputs as they are now, not as last fetched.
+      const now = await queryClient.fetchQuery({ queryKey: ["datasets"], queryFn: fetchDatasets, staleTime: 0 });
+      const label = (o: string) => DATASET_STAGE_BADGES.find((b) => b.key === o)?.label ?? o;
+      const result = restoreSession(session, now, label);
+      const when = session.saved ? new Date(session.saved).toLocaleString() : "earlier";
+      if (!result.datasetFound) {
+        setSessionNote({
+          kind: "warn",
+          text: PYODIDE_MODE
+            ? `This session's input, ${session.dataset?.rawName || session.dataset?.id}, is not loaded. Load it (Load volume…), then restore the session again.`
+            : `This session's input, ${session.dataset?.rawName || session.dataset?.id}, is not in this data folder. Point the data folder at the one that holds it, then restore the session again.`,
+        });
+        return;
+      }
+      const missing = result.missing.length
+        ? ` ${result.missing.length} of the outputs it had are not here: ${result.missing.map(label).join(", ")}.`
+        : "";
+      const warnings = result.warnings.length ? ` ${result.warnings.join(" ")}` : "";
+      setSessionNote({
+        kind: result.missing.length || result.warnings.length ? "warn" : "ok",
+        text: `Restored ${result.restored.join(", ")} from the session saved ${when}.${missing}${warnings}`,
+        ...(result.recompute.length && session.dataset
+          ? { recompute: { datasetId: session.dataset.id, stages: result.recompute, ...(result.recomputeWith ?? {}) } }
+          : {}),
+      });
+    } catch (e) {
+      setSessionNote({ kind: "error", text: `${file.name}: ${(e as Error).message}` });
+    }
+  };
+  const onRecompute = async ({ datasetId, stages, params, flattenEnabled }: NonNullable<SessionNote["recompute"]>) => {
+    setSessionNote(null);
+    onStarted();
+    // With the settings of the run that made the outputs, when the session
+    // knows them (params), else the form's.
+    await usePipelineStore.getState().runStages(stages, { datasetId, force: true, params, flattenEnabled });
+  };
+
   const applyDataRoot = async () => {
     const nextRoot = rootDraft.trim();
     if (!nextRoot) return;
@@ -1410,10 +1495,13 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     if (folderInputRef.current) folderInputRef.current.value = "";
   };
 
+  const stale = staleOutputs(selectedDataset?.stages ?? []);
   const stageStatus = DATASET_STAGE_BADGES.map((stage) => ({
     ...stage,
     exists: selectedDataset?.stages.some((s) => s.name === stage.key && s.exists) ?? false,
+    staleAfter: stale.get(stage.key),
   }));
+  const badgeLabel = (key: string) => DATASET_STAGE_BADGES.find((b) => b.key === key)?.label ?? key;
   const rootStatus = rootError
     ? rootError
     : rootNote ??
@@ -1434,13 +1522,19 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             {stageStatus.map((stage) => (
               <div
                 key={stage.key}
-                className={`dataset-stage-item ${stage.exists ? "ok" : "missing"}`}
-                title={`${stage.group} · ${stage.label}: ${stage.exists ? "available" : "missing"}`}
+                className={`dataset-stage-item ${stage.staleAfter ? "stale" : stage.exists ? "ok" : "missing"}`}
+                title={
+                  stage.staleAfter
+                    ? stale.has(stage.staleAfter)
+                      ? `${stage.group} · ${stage.label}: stale. It was made from ${badgeLabel(stage.staleAfter)}, which is itself stale; run the pipeline from the first stale stage with Force to update it.`
+                      : `${stage.group} · ${stage.label}: stale. It is older than ${badgeLabel(stage.staleAfter)}, so it was made before that stage last ran; run the pipeline from here with Force to update it.`
+                    : `${stage.group} · ${stage.label}: ${stage.exists ? "available" : "missing"}`
+                }
               >
                 <span className="dataset-stage-dot" />
                 <span className="dataset-stage-label">{stage.label}</span>
                 <span className="dataset-stage-state">
-                  {stage.exists ? "available" : "missing"}
+                  {stage.staleAfter ? "stale" : stage.exists ? "available" : "missing"}
                 </span>
               </div>
             ))}
@@ -1455,21 +1549,68 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               type="button"
               className="btn btn-primary"
               onClick={onRun}
-              disabled={s.running || !datasetId}
+              disabled={s.busy || !datasetId}
+              title={s.busy && !s.running ? "The last run lost its connection to the server and may still be going there: wait until it is heard from (Execution page)" : undefined}
             >
               {s.running && <span className="spin" />}
-              {s.running ? "Running…" : "Run pipeline"}
+              {s.running ? "Running…" : s.busy ? "Waiting for the last run…" : "Run pipeline"}
             </button>
             <button
               type="button"
               className="btn btn-ghost"
               onClick={onStarted}
-              disabled={!s.running}
+              disabled={!s.busy}
             >
               View execution →
             </button>
+            <input
+              ref={sessionInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="visually-hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void onRestoreSession(f);
+                if (sessionInputRef.current) sessionInputRef.current.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => void onSaveSession()}
+              title="Save the settings, the last run's log, the outputs present and the NEBULA Pilot conversation to a file"
+            >
+              Save session
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => sessionInputRef.current?.click()}
+              disabled={s.busy || chatBusy}
+              title={s.busy || chatBusy ? "Wait for the run or the reply to finish" : "Bring back a saved session: its settings, last run and conversation"}
+            >
+              Restore session…
+            </button>
           </div>
         </div>
+        {sessionNote && (
+          <div className={`session-note ${sessionNote.kind}`} role="status">
+            <span>{sessionNote.text}</span>
+            {sessionNote.recompute && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={s.busy}
+                onClick={() => void onRecompute(sessionNote.recompute!)}
+              >
+                Recompute them
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSessionNote(null)} aria-label="Dismiss">
+              ×
+            </button>
+          </div>
+        )}
 
         <div className="data-card-grid">
           {PYODIDE_MODE ? (
@@ -2258,7 +2399,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 <div className={`cfg-stage${s.flatten ? "" : " cfg-stage--off"}${lit.includes("flatten") ? " ai-glow-within" : ""}`}>
                   <StageHead
                     no={STAGE_NO.flatten}
-                    title="Flatten"
+                    title="Background correction"
                     enabled={s.flatten}
                     onToggle={(v) => patch({ flatten: v })}
                   >

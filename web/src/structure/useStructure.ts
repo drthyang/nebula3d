@@ -29,13 +29,43 @@ export interface StructureModel {
   def: StructureDef;
   error: string | null; // the operations could not be read
   nOps: number;
-  atoms: Atom[];
-  diffs: PairDiff[];
+  atoms: Atom[]; // empty on a cell mismatch: not expanded
+  diffs: PairDiff[]; // empty when nothing can be drawn (see `blocked`)
   elements: string[]; // in site order
   keys: string[]; // element pairs present, A–A, A–B, …
   fit: CellFit | null; // the CIF cell (axes permuted) against the ΔPDF's
   suggested: number | null; // the permutation that matches, when the current one does not
   mismatch: boolean; // the CIF cell does not fit the ΔPDF's: nothing is drawn
+  tooMany: boolean; // more than MAX_PAIR_ATOMS atoms per cell: nothing is drawn
+  density: number | null; // atoms per Å³ (on the CIF's cell, else the ΔPDF's)
+  tooDense: boolean; // denser than MAX_ATOM_DENSITY, no crystal: nothing is drawn
+}
+
+/**
+ * The most atoms per cell whose pair vectors are drawn.  The pairs are N²
+ * (2.5·10⁵ at 500 atoms; a P1 cell keeps every one as its own vector), found
+ * once and walked again for each slice of each view.  Measured on a P1 cell
+ * of 15 Å³ per atom (±15 Å slices, a shared 4-core machine): 500 atoms take
+ * ≲ 0.2 s to build and ≲ 0.1 s a slice; 1000 atoms 1.8 s and 0.2 s, 1500
+ * 1.8–10 s and 0.5 s with ~1 GB of memory.  Ordinary structures stay well
+ * below (rock salt 8, spinel 56, garnet 160 atoms); above it is a supercell,
+ * whose pair vectors are a cloud the ΔPDF could not resolve anyway.
+ */
+export const MAX_PAIR_ATOMS = 500;
+
+/**
+ * Atoms per Å³ past which a structure is no crystal (the densest solids hold
+ * ~0.18: diamond 0.176, Be 0.12; most are below 0.1).  Such a CIF has a cell
+ * that does not belong to its sites (a supercell's sites on the sub-cell's
+ * lattice, say), and the pair vectors per Å³ of the map, N²/V, grow past what
+ * a slice can draw: 300 atoms in a 4.2 Å cell blocked the page for 7 s.
+ */
+export const MAX_ATOM_DENSITY = 0.3;
+
+/** A cell's volume (Å³). */
+export function cellVolume(c: Cell): number {
+  const [ca, cb, cg] = [c.alpha, c.beta, c.gamma].map((x) => Math.cos((x * Math.PI) / 180));
+  return c.a * c.b * c.c * Math.sqrt(Math.max(0, 1 - ca * ca - cb * cb - cg * cg + 2 * ca * cb * cg));
 }
 
 /** The ΔPDF's cell, or null when it does not record the lengths. */
@@ -44,6 +74,12 @@ export function latticeCell(lat: Lattice | undefined): Cell | null {
   return { a: lat.a, b: lat.b, c: lat.c, alpha: lat.alpha ?? 90, beta: lat.beta ?? 90, gamma: lat.gamma ?? 90 };
 }
 
+/**
+ * The structure against the ΔPDF's cell `data`.  The pair differences — the
+ * costly part, N² in the atoms — are found only when they can be drawn: a
+ * ΔPDF cell to place them on, a CIF cell that fits it, no more than
+ * MAX_PAIR_ATOMS atoms and no more than MAX_ATOM_DENSITY atoms per Å³.
+ */
 export function buildModel(def: StructureDef, perm: number, data: Cell | null): StructureModel {
   let error: string | null = null;
   let ops = symmetryGroup("");
@@ -53,16 +89,22 @@ export function buildModel(def: StructureDef, perm: number, data: Cell | null): 
     error = (e as Error).message;
   }
   const p = PERMUTATIONS[perm] ?? PERMUTATIONS[0];
-  const atoms = permuteAtoms(expandSites(def.sites, ops), p);
-  const diffs = pairDifferences(atoms);
-  const elements = elementOrder(atoms);
-  const keys: string[] = [];
-  elements.forEach((a, i) => elements.slice(i).forEach((b) => {
-    const k = `${a}–${b}`;
-    if (diffs.some((d) => d.key === k)) keys.push(k);
-  }));
   const fit = def.cell && data ? cellFit(def.cell, data, p) : null;
   const best = def.cell && data ? bestPermutation(def.cell, data) : null;
+  const mismatch = fit !== null && !cellMatches(fit);
+  // Images of one site closer than DUPLICATE_TOLERANCE are one atom, on the
+  // CIF's cell (its own axes) or else the ΔPDF's.
+  const atoms = mismatch ? [] : permuteAtoms(expandSites(def.sites, ops, def.cell ?? data), p);
+  const tooMany = atoms.length > MAX_PAIR_ATOMS;
+  const vol = def.cell ?? data ? cellVolume((def.cell ?? data)!) : 0;
+  const density = vol > 0 && !mismatch ? atoms.length / vol : null;
+  const tooDense = density !== null && density > MAX_ATOM_DENSITY;
+  const diffs = data && !mismatch && !tooMany && !tooDense ? pairDifferences(atoms) : [];
+  // Every element pair occurs (an atom with itself gives A–A), so the keys
+  // follow from the elements without the pairs.
+  const elements = elementOrder(mismatch ? def.sites : atoms);
+  const keys: string[] = [];
+  elements.forEach((a, i) => elements.slice(i).forEach((b) => keys.push(`${a}–${b}`)));
   return {
     def,
     error,
@@ -73,8 +115,26 @@ export function buildModel(def: StructureDef, perm: number, data: Cell | null): 
     keys,
     fit,
     suggested: best !== null && best !== perm ? best : null,
-    mismatch: fit !== null && !cellMatches(fit),
+    mismatch,
+    tooMany,
+    density,
+    tooDense,
   };
+}
+
+/**
+ * Why no vectors are drawn, or null when they are.  `where` says where the
+ * axes are set ("in Edit structure").
+ */
+export function structureBlockedText(model: StructureModel, where = "in Edit structure"): string | null {
+  if (model.mismatch) return `its cell does not match this ΔPDF's, so no vectors are drawn — check the axes ${where}.`;
+  if (model.tooMany) {
+    return `${model.atoms.length} atoms per cell, more than the ${MAX_PAIR_ATOMS} whose pair vectors the overlay draws (N² pairs would stall the page), so no vectors are drawn.`;
+  }
+  if (model.tooDense) {
+    return `${model.atoms.length} atoms per cell is ${model.density!.toFixed(2)} atoms/Å³, denser than any crystal (≤ ${MAX_ATOM_DENSITY}) — check the cell and the sites; no vectors are drawn.`;
+  }
+  return null;
 }
 
 /** The stored structure against the ΔPDF's cell; null when none is loaded. */

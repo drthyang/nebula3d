@@ -22,6 +22,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from queue import Empty
 
 from nebula3d.pipeline import STAGES, PipelineParams, run_pipeline
 
@@ -61,6 +62,47 @@ def _worker(
         queue.put({"type": "done"})
     except Exception as exc:  # noqa: BLE001 - report any failure to the client
         queue.put({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
+
+
+# How often the drain looks at whether the worker is still alive while no event
+# arrives: the delay before a dead worker's job is reported as failed.
+_POLL_S = 1.0
+
+
+def _next_event(queue: mp.queues.Queue,
+                proc: mp.process.BaseProcess | None) -> dict | None:
+    """The worker's next event, or None once the worker has exited without one.
+
+    A worker that ends normally puts ``done`` or ``error`` before it exits, and
+    its queue is flushed as it exits; one the OS kills (the OOM killer) or that
+    crashes puts nothing, and waiting on the queue alone would wait forever.
+    """
+    while True:
+        try:
+            return queue.get(timeout=_POLL_S)
+        except Empty:
+            if proc is None or proc.is_alive():
+                continue
+        # Gone: anything it put before exiting is still read, once more.
+        try:
+            return queue.get(timeout=_POLL_S)
+        except Empty:
+            return None
+
+
+def _exit_message(proc: mp.process.BaseProcess | None) -> str:
+    """Why a job whose worker ended without a word failed, in its words."""
+    code = proc.exitcode if proc is not None else None
+    if code is not None and code < 0:
+        how = f"was killed (signal {-code})"
+    elif code is not None:
+        how = f"exited with code {code}"
+    else:
+        how = "ended"
+    why = (", most often because the system ran out of memory"
+           if code is not None and code == -9 else "")
+    return (f"the pipeline process {how} before the run finished{why}; "
+            "stages that completed were saved")
 
 
 @dataclass
@@ -126,7 +168,15 @@ class JobManager:
 
     def _drain(self, job: Job, queue: mp.queues.Queue) -> None:
         while True:
-            ev = queue.get()
+            ev = _next_event(queue, job._process)
+            if ev is None:
+                # The worker ended without its last word (killed by the OS, most
+                # often for memory, or crashed): the job ends with what it ran.
+                with job._lock:
+                    if job.status == "running":
+                        job.status = "error"
+                        job.error = _exit_message(job._process)
+                break
             with job._lock:
                 if ev["type"] == "progress":
                     job.events.append(ev)

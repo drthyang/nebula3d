@@ -16,6 +16,7 @@ import {
   listAnthropicModels,
   streamAnthropic,
 } from "./anthropic";
+import { StallError } from "../recovery";
 import { isLocalUrl, providerForUrl } from "./presets";
 import { baseTokens, estimateTokens, keepWindow, MIN_REPLY, ollamaWindow, REPLY_RESERVE } from "./tokens";
 
@@ -303,12 +304,31 @@ const postChat = async ({
     body.tools = tools;
     if (toolChoice) body.tool_choice = toolChoice;
   }
-  const response = await fetch(`${trimBase(baseUrl)}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
-    body: JSON.stringify(body),
-    signal,
-  });
+  const send = (b: Record<string, unknown>) =>
+    fetch(`${trimBase(baseUrl)}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+      body: JSON.stringify(b),
+      signal,
+    });
+  let response = await send(body);
+  const server = trimBase(baseUrl);
+  if (body.stream_options && !usageAnswered.has(server)) {
+    if (!response.ok && (response.status === 400 || response.status === 422)) {
+      // A request with stream_options, to a server not yet known to take it,
+      // refused as a bad request in whatever shape (a FastAPI `detail` list, a bare 400):
+      // asked once more without it, as before the counts were asked for. A
+      // request refused with a client error ran nothing, so nothing is
+      // repeated. Once it has answered either way, or taken the field, a
+      // later client error is not about the field.
+      void response.body?.cancel().catch(() => {});
+      const { stream_options: _asked, ...without } = body;
+      void _asked;
+      response = await send(without);
+      if (response.ok) refuseUsage(baseUrl);
+      usageAnswered.add(server);
+    } else if (response.ok) usageAnswered.add(server);
+  }
   if (!response.ok) throw await httpError(response);
   return response;
 };
@@ -324,6 +344,21 @@ export const isToolsUnsupported = (error: unknown): boolean => {
   const { status, message } = (error ?? {}) as HttpError;
   return status !== undefined && status >= 400 && status < 500 && /tool|function/i.test(message ?? "");
 };
+
+// A server that does not take stream_options (asked for the token counts)
+// refuses the request with a client error naming it.
+export const isUsageUnsupported = (error: unknown): boolean => {
+  const { status, message } = (error ?? {}) as HttpError;
+  return status !== undefined && status >= 400 && status < 500 && /stream_options|include_usage/i.test(message ?? "");
+};
+
+// Servers known (this session) to refuse stream_options: asked without it.
+const noUsage = new Set<string>();
+// Servers whose first request with stream_options has had its answer (taken,
+// or refused and asked again without it): a later client error is not about it.
+const usageAnswered = new Set<string>();
+export const usageRefused = (baseUrl: string): boolean => noUsage.has(trimBase(baseUrl));
+export const refuseUsage = (baseUrl: string): void => void noUsage.add(trimBase(baseUrl));
 
 // Ollama at its usual port goes through its own chat API (/api/chat), not /v1:
 // only there does a request set the model's context length. Otherwise Ollama
@@ -494,9 +529,23 @@ interface OllamaChunk {
   done?: boolean;
   done_reason?: string;
   prompt_eval_count?: number;
+  prompt_eval_cached_count?: number;
   eval_count?: number;
   error?: unknown;
 }
+
+// Ollama's counts: prompt_eval_count is the whole prompt, its cached part
+// included (its Go runner counts the prompt before the cache is matched), and
+// newer versions say that part, prompt_eval_cached_count. Null without them.
+const ollamaUsage = (chunk: OllamaChunk): TokenUsage | null => {
+  if (typeof chunk.prompt_eval_count !== "number") return null;
+  const cached = chunk.prompt_eval_cached_count;
+  return {
+    input: chunk.prompt_eval_count,
+    output: chunk.eval_count ?? 0,
+    ...(typeof cached === "number" && cached > 0 ? { cacheRead: cached } : {}),
+  };
+};
 
 // Ollama's stream is one JSON object a line: text and thinking in pieces, each
 // tool call whole, and the counts on the last line.
@@ -531,9 +580,7 @@ async function* streamOllama(args: Omit<PostChatArgs, "stream">): AsyncGenerator
     }
     if (chunk.done) {
       doneReason = chunk.done_reason;
-      if (typeof chunk.prompt_eval_count === "number") {
-        usage = { input: chunk.prompt_eval_count, output: chunk.eval_count ?? 0 };
-      }
+      usage = ollamaUsage(chunk) ?? undefined;
     }
   }
   try {
@@ -573,7 +620,31 @@ export interface StreamDelta {
   // Emitted once, after the stream ends, when the server reported the
   // request's token counts (includeUsage).
   usage?: TokenUsage;
+  // A request the provider's client dropped before its reply began and sent
+  // again itself (anthropic.ts): no counts for it.
+  discarded?: true;
 }
+
+interface OpenAiUsage {
+  prompt_tokens: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+}
+
+// An OpenAI-compatible server's counts. OpenAI also says how much of the
+// prompt it read from its cache. Gemini's endpoint leaves a thinking model's
+// thoughts out of completion_tokens but in total_tokens, so the reply's tokens
+// are what the total holds beyond the prompt, when that is more.
+const openAiUsage = (u: OpenAiUsage): TokenUsage => {
+  const cached = u.prompt_tokens_details?.cached_tokens;
+  const completion = u.completion_tokens ?? 0;
+  return {
+    input: u.prompt_tokens,
+    output: typeof u.total_tokens === "number" ? Math.max(completion, u.total_tokens - u.prompt_tokens) : completion,
+    ...(typeof cached === "number" && cached > 0 ? { cacheRead: cached } : {}),
+  };
+};
 
 export interface TokenUsage {
   input: number; // prompt tokens (an Anthropic request: input plus cache reads and writes)
@@ -688,10 +759,9 @@ export async function* streamChat({
         }
         // A failure after the 200 (Ollama, OpenRouter, LM Studio) arrives as an error chunk.
         if (parsed.error) throw streamedError(parsed.error);
-        // The token counts come in the last chunk (with no choices) when asked for.
-        if (parsed.usage && typeof parsed.usage.prompt_tokens === "number") {
-          usage = { input: parsed.usage.prompt_tokens, output: parsed.usage.completion_tokens ?? 0 };
-        }
+        // The token counts come in the last chunk (with no choices) when asked for;
+        // OpenAI also says how much of the prompt it read from its cache.
+        if (parsed.usage && typeof parsed.usage.prompt_tokens === "number") usage = openAiUsage(parsed.usage);
         const reason = parsed.choices?.[0]?.finish_reason;
         if (reason) finish = reason;
         const delta = parsed.choices?.[0]?.delta;
@@ -719,7 +789,68 @@ export async function* streamChat({
 // (evals/validationRun.ts).
 export type UsageReport = (usage: TokenUsage | null, stopReason?: string | null) => void;
 
-// Non-streaming completion, used where the whole reply is parsed at once.
+// A reply streamed and read whole, under the watchdog the agent loop keeps: a
+// server that sends nothing for `first` ms before the reply's first piece, or
+// for `idle` ms between pieces, is taken as stuck and the request ends with a
+// StallError. A non-streamed request has no pieces to watch: its first byte is
+// the whole reply, so only a stream tells a slow model from a stuck server.
+async function completeWatched(
+  args: Omit<PostChatArgs, "stream">,
+  stallMs: { first: number; idle: number },
+  onUsage?: UsageReport,
+): Promise<string> {
+  const request = new AbortController();
+  const stop = () => request.abort();
+  if (args.signal?.aborted) request.abort();
+  args.signal?.addEventListener("abort", stop, { once: true });
+  let stalled = false;
+  let heard = false;
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+  const watch = (ms: number) => {
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => {
+      stalled = true;
+      request.abort();
+    }, ms);
+  };
+  watch(stallMs.first);
+  let text = "";
+  let usage: TokenUsage | null = null;
+  let stopReason: string | null = null;
+  try {
+    for await (const delta of streamChat({ ...args, signal: request.signal, includeUsage: !usageRefused(args.baseUrl) })) {
+      heard = true;
+      watch(stallMs.idle);
+      if (delta.content) text += delta.content;
+      if (delta.usage) usage = delta.usage;
+      if (delta.stopReason) stopReason = delta.stopReason;
+    }
+  } catch (e) {
+    if (stalled && !args.signal?.aborted) throw new StallError(Math.round((heard ? stallMs.idle : stallMs.first) / 1000));
+    if (!heard && isUsageUnsupported(e) && !usageRefused(args.baseUrl)) {
+      // Asked again without the counts, which this server will not give.
+      refuseUsage(args.baseUrl);
+      clearTimeout(watchdog);
+      args.signal?.removeEventListener("abort", stop);
+      return completeWatched(args, stallMs, onUsage);
+    }
+    throw e;
+  } finally {
+    clearTimeout(watchdog);
+    args.signal?.removeEventListener("abort", stop);
+  }
+  onUsage?.(usage, stopReason);
+  if (!text) throw new Error("The model returned no message content");
+  return text;
+}
+
+// Completion read whole, used where the reply is parsed at once. Claude goes
+// through its SDK, which times a request out itself. Elsewhere, with `stallMs`
+// the reply is streamed under a stall watchdog (completeWatched; no caller asks
+// for it while the tuner's requests stay as the validation frozen at 812e686
+// runs them); without, it is one non-streamed request that only `signal` ends. `onUsage` is told the
+// request's token counts as the server gave them, or null when it gave none,
+// and its stop reason (UsageReport).
 export const completeChat = async ({
   baseUrl,
   model,
@@ -729,17 +860,19 @@ export const completeChat = async ({
   apiKey,
   numCtx,
   maxTokens,
+  stallMs,
   onUsage,
-}: Omit<PostChatArgs, "stream"> & { onUsage?: UsageReport }): Promise<string> => {
+}: Omit<PostChatArgs, "stream"> & {
+  stallMs?: { first: number; idle: number };
+  onUsage?: UsageReport;
+}): Promise<string> => {
   if (isAnthropicUrl(baseUrl)) return completeAnthropic({ baseUrl, model, messages, apiKey, signal, onUsage, maxTokens });
+  if (stallMs) return completeWatched({ baseUrl, model, messages, temperature, signal, apiKey, numCtx, maxTokens }, stallMs, onUsage);
   if (isOllamaUrl(baseUrl)) {
     const response = await postOllama({ baseUrl, model, messages, temperature, signal, numCtx, maxTokens }, false);
     const payload = (await response.json()) as OllamaChunk;
     if (payload.error) throw streamedError(payload.error);
-    onUsage?.(
-      typeof payload.prompt_eval_count === "number" ? { input: payload.prompt_eval_count, output: payload.eval_count ?? 0 } : null,
-      payload.done_reason ?? null,
-    );
+    onUsage?.(ollamaUsage(payload), payload.done_reason ?? null);
     if (typeof payload.message?.content !== "string") throw new Error("The model returned no message content");
     return payload.message.content;
   }
@@ -747,10 +880,7 @@ export const completeChat = async ({
   const payload = await response.json();
   // A whole reply carries its token counts unasked (OpenAI, LM Studio).
   const usage = payload?.usage;
-  onUsage?.(
-    usage && typeof usage.prompt_tokens === "number" ? { input: usage.prompt_tokens, output: usage.completion_tokens ?? 0 } : null,
-    payload?.choices?.[0]?.finish_reason ?? null,
-  );
+  onUsage?.(usage && typeof usage.prompt_tokens === "number" ? openAiUsage(usage) : null, payload?.choices?.[0]?.finish_reason ?? null);
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content !== "string") throw new Error("The model returned no message content");
   return content;

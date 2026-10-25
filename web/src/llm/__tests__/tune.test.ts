@@ -9,7 +9,7 @@ import { usePipelineStore, type RunOptions } from "../../state/pipelineStore";
 import { DEFAULT_SETTINGS } from "../settings";
 import { currentStageSettings, proposalToPatch, ProposalError, sampleParam, toFormValue } from "../tune/catalog";
 import { parseJsonReply, STAGE_GOALS, STAGE_GOALS_WITHOUT_SKILLS } from "../tune/prompts";
-import { startTuning, useTuneStore } from "../tune/tuner";
+import { startTuning, stopTuning, useTuneStore } from "../tune/tuner";
 
 const llm = vi.hoisted(() => ({ completeChat: vi.fn() }));
 vi.mock("../provider/client", async (importOriginal) => ({
@@ -219,14 +219,22 @@ describe("startTuning", () => {
     expect(llm.completeChat).toHaveBeenCalledTimes(2);
     for (const [args] of llm.completeChat.mock.calls) {
       expect(args).toMatchObject({ baseUrl: "http://run.invalid/v1", model: "run", apiKey: "k", temperature: 0.3, maxTokens: 16_000 });
-      expect(args.onUsage).toBe(onUsage);
+      // Each request's counts go on to the caller's onUsage with its stop reason
+      // (and to the reply's usage shown in the chat, usage.ts).
+      args.onUsage?.({ input: 812, output: 40 }, "stop");
     }
-    // Without one (the app), nothing is handed the counts, and no cap is asked: each transport asks its own.
+    expect(onUsage.mock.calls).toEqual([
+      [{ input: 812, output: 40 }, "stop"],
+      [{ input: 812, output: 40 }, "stop"],
+    ]);
+    // Without one (the app), the counts go to the chat's usage only, and no cap is asked: each transport asks its own.
+    onUsage.mockClear();
     llm.completeChat.mockReset().mockResolvedValue('{"candidates": []}');
     await startTuning({ dataset, stages: ["punch"], trialsPerStage: 2, llm: DEFAULT_SETTINGS });
     const [app] = llm.completeChat.mock.calls[0];
     expect(app).toMatchObject({ baseUrl: DEFAULT_SETTINGS.baseUrl, model: DEFAULT_SETTINGS.model });
-    expect(app.onUsage).toBeUndefined();
+    app.onUsage?.({ input: 1, output: 1 }, null);
+    expect(onUsage).not.toHaveBeenCalled();
     expect(app).not.toHaveProperty("maxTokens");
   });
 
@@ -277,5 +285,23 @@ describe("startTuning", () => {
     expect(stages[0].status).toBe("failed");
     expect(llm.completeChat).not.toHaveBeenCalled();
     expect(api.promoteTrial).not.toHaveBeenCalled();
+  });
+
+  it("leaves no trial running or queued when the user stops during a trial", async () => {
+    llm.completeChat.mockResolvedValueOnce('{"candidates": [{"changes": {"punchMinSig": 4}}, {"changes": {"punchMinSig": 6}}]}');
+    usePipelineStore.setState({
+      runStages: vi.fn(async (_stages: string[], opts?: RunOptions) => {
+        if (opts?.tuning?.trial === "punch-2") {
+          stopTuning(); // the user's Stop while trial 2 runs
+          return "cancelled";
+        }
+        return "done";
+      }),
+    });
+    await startTuning({ dataset, stages: ["punch"], trialsPerStage: 3, llm: DEFAULT_SETTINGS });
+    const { stages, active, finishedNote } = useTuneStore.getState();
+    expect(active).toBe(false);
+    expect(finishedNote).toMatch(/^Stopped/);
+    expect(stages[0].trials.map((t) => [t.n, t.status])).toEqual([[1, "done"], [2, "stopped"], [3, "skipped"]]);
   });
 });
