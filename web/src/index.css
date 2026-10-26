@@ -1005,7 +1005,7 @@ input[type="range"]::-moz-range-track {
    design_handoff_bragg_profile_Bragg/).  Axis colours: a* (H) #f1a73a,
    b* (K) #74a8ff, c* (L) #34c98e.  (Star-slash inside a comment ends it.)
    --------------------------------------------------------------------------- */
-.bragg-page { display: flex; min-width: 0; }
+.bragg-page { min-width: 0; }
 .bragg-card {
   flex: 1;
   min-width: 0;
@@ -1018,31 +1018,6 @@ input[type="range"]::-moz-range-track {
   flex-direction: column;
   gap: 14px;
 }
-
-/* title row → just the chips (the page header carries the title) */
-.bragg-title-row { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
-.bragg-chips { display: flex; align-items: center; gap: 10px; flex: none; }
-.bragg-toggle { display: inline-flex; align-items: center; font-size: 12px; }
-.bragg-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  background: #11161d;
-  border: 1px solid #2a323d;
-  border-radius: 7px;
-  padding: 6px 11px;
-}
-.bragg-chip-key { font: 600 9px/1 system-ui; letter-spacing: 0.07em; text-transform: uppercase; color: #6c7686; }
-.bragg-chip-select select {
-  background: transparent;
-  border: none;
-  color: #e8ebf0;
-  font: 600 12px ui-monospace, monospace;
-  cursor: pointer;
-  outline: none;
-}
-.bragg-chip-fit { color: #5a8f72; border-color: #20402f; font: 600 12px system-ui; }
-.bragg-chip-fit i { width: 7px; height: 7px; border-radius: 50%; background: #34c98e; }
 
 /* stat strip */
 .bragg-stats {
@@ -1067,8 +1042,28 @@ input[type="range"]::-moz-range-track {
 .bragg-stat-med span { font: 700 9px/1 system-ui; margin-right: 3px; }
 
 /* shared panels */
-.bragg-grid { display: grid; grid-template-columns: 1.62fr 1fr; gap: 12px; align-items: stretch; }
-@container main (max-width: 860px) { .bragg-grid { grid-template-columns: 1fr; } }
+/* The dashboard under the shared header: scatter and peak table on the left,
+   the selected peak's slices (the wide column) and the width histograms on the
+   right; one column, slices second, when the page is narrow. */
+.bragg-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  grid-template-areas:
+    "scatter detail"
+    "table hist";
+  gap: 12px;
+  align-items: stretch;
+}
+.bragg-main > .bragg-scatter { grid-area: scatter; }
+.bragg-main > .bragg-detail { grid-area: detail; }
+.bragg-main > .bragg-table { grid-area: table; }
+.bragg-main > .bragg-hist { grid-area: hist; }
+@container main (max-width: 860px) {
+  .bragg-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "scatter" "detail" "table" "hist";
+  }
+}
 .bragg-panel {
   background: #15191f;
   border: 1px solid #252c36;
@@ -1115,11 +1110,11 @@ input[type="range"]::-moz-range-track {
 
 /* histograms */
 .bragg-hist { gap: 11px; }
-.bragg-hist-row { display: flex; flex-direction: column; gap: 5px; }
+.bragg-hist-row { display: flex; flex-direction: column; gap: 5px; flex: 1; }
 .bragg-hist-label { display: flex; align-items: baseline; justify-content: space-between; }
 .bragg-hist-label > span:first-child { font: 700 11px system-ui; }
 .bragg-hist-med { font: 500 10px ui-monospace, monospace; color: #7e8a9c; }
-.bragg-bars { position: relative; height: 54px; display: flex; align-items: flex-end; gap: 1.5px; border-bottom: 1px solid #2a323d; }
+.bragg-bars { position: relative; flex: 1; min-height: 54px; display: flex; align-items: flex-end; gap: 1.5px; border-bottom: 1px solid #2a323d; }
 .bragg-bar { flex: 1; min-height: 1px; border-radius: 1px 1px 0 0; }
 .bragg-bar-fit { position: absolute; top: 0; bottom: 0; width: 1.5px; background: rgba(232, 235, 240, 0.55); transform: translateX(-50%); }
 .bragg-bar-meas { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px dashed #8b94a3; transform: translateX(-50%); }
@@ -1150,30 +1145,26 @@ input[type="range"]::-moz-range-track {
 .bragg-detail { gap: 11px; }
 .bragg-sel-hkl { font: 600 12px ui-monospace, monospace; color: #cfe0ff; }
 .bragg-sel-meta { font: 500 11px ui-monospace, monospace; color: #8b94a3; margin-top: -6px; }
-.bragg-view-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
-.bragg-sliders { display: flex; gap: 16px; align-items: flex-end; }
-.bragg-sliders > * { flex: 1; min-width: 0; }
-.bragg-cmap { display: flex; align-items: center; gap: 10px; }
-.bragg-ctl-label { font: 600 9px system-ui; letter-spacing: 0.07em; text-transform: uppercase; color: #6c7686; flex: none; }
 
-.bragg-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.bragg-tile { display: flex; flex-direction: column; gap: 5px; }
-.bragg-tile-canvas { position: relative; aspect-ratio: 1; border: 1px solid #252c36; border-radius: 7px; overflow: hidden; background: #000004; }
-.bragg-tile-canvas canvas { width: 100%; height: 100%; display: block; image-rendering: auto; }
-.bragg-tile-canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.bragg-tile-empty { display: flex; align-items: center; justify-content: center; color: #56627a; font: 500 10px system-ui; }
-.bragg-tile-label { font: 600 10px system-ui; text-align: center; }
+/* The three slices: a workspace (grid · focus with thumbnails · single, as on
+   the other viewer pages) sized to the panel instead of the window. */
+.bragg-ws { gap: 8px; }
+.bragg-ws.ws--focus { height: auto; aspect-ratio: 3 / 2; }
+.bragg-ws.ws--single { height: auto; aspect-ratio: 1 / 1; max-height: calc(100dvh - 160px); }
+.bragg-ws .view { background: #0d1014; border-color: #252c36; }
+.bragg-ws .view-head { border-bottom-color: #232a33; }
+.bragg-ws .view-badge { font-size: 9px; }
+.bragg-raster { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: #000004; }
+.bragg-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .bragg-cross { stroke: rgba(255, 255, 255, 0.25); stroke-width: 1; }
 .bragg-ell-fit { fill: none; stroke: #7fd4ff; stroke-width: 2.2; }
 .bragg-ell-meas { fill: none; stroke: rgba(255, 255, 255, 0.85); stroke-width: 1.6; stroke-dasharray: 5 4; }
 .bragg-ell-floor { fill: none; stroke: rgba(205, 212, 223, 0.55); stroke-width: 1.4; stroke-dasharray: 4 4; }
-.bragg-leg-row { display: flex; gap: 12px; }
+.bragg-leg-row { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.bragg-hover { margin-left: auto; font-family: ui-monospace, monospace; color: #a8b1bf; }
 .bragg-ell-leg-fit { width: 11px !important; height: 0 !important; border-radius: 0 !important; border-top: 2.2px solid #7fd4ff; }
 .bragg-ell-leg-meas { width: 11px !important; height: 0 !important; border-radius: 0 !important; border-top: 1.6px dashed #fff; }
 .bragg-ell-leg-floor { width: 11px !important; height: 0 !important; border-radius: 0 !important; border-top: 1.4px dashed #cdd4df; }
-
-.bragg-cmap select { background: #1b2027; border: 1px solid #333d4a; border-radius: 7px; color: #e8ebf0; font: 500 11px system-ui; padding: 5px 9px; cursor: pointer; }
-.bragg-cmap .cmap-bar { flex: 1; min-width: 0; height: 14px; border-radius: 4px; display: block; }
 
 .bragg-readout { display: grid; grid-template-columns: auto 1fr 1fr 1fr; gap: 6px 12px; align-items: center; padding-top: 8px; border-top: 1px solid #232a33; }
 .bragg-readout > span { font: 600 11px ui-monospace, monospace; color: #cdd4df; text-align: right; }
@@ -5037,10 +5028,6 @@ h6.md-h {
     padding: 14px;
     border-radius: 12px;
   }
-  .bragg-title-row {
-    justify-content: flex-start;
-  }
-  .bragg-chips,
   .bragg-panel-head,
   .bragg-legend {
     flex-wrap: wrap;
@@ -5921,6 +5908,8 @@ h6.md-h {
   .ws--focus[data-n],
   .ws--single[data-n] {
     height: auto;
+    aspect-ratio: auto;
+    max-height: none;
     grid-template: none / minmax(0, 1fr);
   }
   .ws > .view {

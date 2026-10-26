@@ -59,6 +59,11 @@ interface ViewerState {
   views: Record<string, Viewport>; // per plane, in Å⁻¹; absent → the whole slice
   colormap: string;
   divColormap: string;
+  // The Bragg page's peak tiles keep their own scale and limits: a window about
+  // one peak spans other values than a whole slice.  The limits are fractions
+  // of the selected peak's Auto vmax (components/braggView.ts); null → Auto.
+  braggScale: ScaleKind;
+  braggLevels: { lo: number; hi: number } | null;
   setFixedAxis: (a: FixedAxis) => void;
   setCutIndex: (i: number) => void;
   setFocus: (f: CutFocus | null) => void;
@@ -69,6 +74,8 @@ interface ViewerState {
   setView: (plane: string, v: Viewport | null) => void;
   setColormap: (c: string) => void;
   setDivColormap: (c: string) => void;
+  setBraggScale: (s: ScaleKind) => void;
+  setBraggLevels: (l: { lo: number; hi: number } | null) => void;
 }
 
 export const useViewerStore = create<ViewerState>((set) => ({
@@ -82,6 +89,8 @@ export const useViewerStore = create<ViewerState>((set) => ({
   views: {},
   colormap: "inferno",
   divColormap: "RdBu_r",
+  braggScale: "lin",
+  braggLevels: null,
   setFixedAxis: (fixedAxis) => set({ fixedAxis }),
   setCutIndex: (cutIndex) => set({ cutIndex }),
   setFocus: (focus) => set({ focus }),
@@ -98,4 +107,6 @@ export const useViewerStore = create<ViewerState>((set) => ({
     }),
   setColormap: (colormap) => set({ colormap }),
   setDivColormap: (divColormap) => set({ divColormap }),
+  setBraggScale: (braggScale) => set({ braggScale }),
+  setBraggLevels: (braggLevels) => set({ braggLevels }),
 }));
