@@ -22,6 +22,7 @@ import {
   visibleBounds,
   wheelZoomFactor,
   zoomAbout,
+  zoomLimit,
 } from "../viewport";
 
 const ortho = { sx: 1, sy: 1, angle: 90 };
@@ -136,6 +137,14 @@ describe("zoom and pan", () => {
     // An oblique section is held to its corners' box; the fit's square is the default.
     expect(extentBounds({ x_axis: [0, 4], y_axis: [0, 4] }, { sx: 1, sy: 1, angle: 120 }).x0).toBeCloseTo(-2);
     expect(viewportBounds({ cx: 1, cy: 2, half: 3 })).toEqual({ x0: -2, x1: 4, y0: -1, y1: 5 });
+  });
+
+  it("zooms out to at least a page's widest window however small the data (Multi-temp's 160 Å)", () => {
+    const small = zoomLimit(30, 0.5, 80);
+    expect(small(1e6)).toBeCloseTo(80, 12);
+    expect(small(40)).toBe(40);
+    expect(small(0)).toBeCloseTo(1.5, 12); // three voxels
+    expect(zoomLimit(200, 0.5, 80)(1e6)).toBeCloseTo(250, 12); // larger data: past the slice
   });
 
   it("clamps the half-width between a few voxels and past the slice", () => {

@@ -104,6 +104,15 @@ export function clampHalf(half: number, fullHalf: number, voxel: number): number
 }
 
 /**
+ * The half-widths a view can zoom to: clampHalf over the data's extent, and
+ * out to at least `widest` (e.g. the widest window a page used to offer).
+ */
+export function zoomLimit(fullHalf: number, voxel: number, widest = 0): (half: number) => number {
+  const reach = Math.max(fullHalf, widest / 1.25);
+  return (half) => clampHalf(half, reach, voxel);
+}
+
+/**
  * Half-extents of a `w`×`h`-px view: `half` spans the shorter side, and the
  * longer side shows more of the slice (as the NeXus Viewer's views do).
  */
