@@ -1,9 +1,11 @@
-// The interactive frame around one slice view, after the NeXus Viewer:
+// The interactive frame around one slice view: one zoom model on every slice
+// view, the same as the NeXus Viewer's.  A left click or drag acts by the
+// click mode (state/workspaceStore.ts):
 //   navigate — hover reads values; a click (or drag) calls onNavigate
-//   zoom     — a click zooms in 2× about the point (Alt-click zooms out); a
-//              drag zooms into the box
-//   move     — a drag pans
-// In every mode it behaves like an embedded map ("cooperative" gestures):
+//   box      — the one-shot box-zoom tool: a drag zooms into the box, then the
+//              mode returns to Navigate (Esc on the view cancels it)
+// Zoom and pan work in every mode, as on an embedded map ("cooperative"
+// gestures):
 //   wheel    — when the page around the view can scroll, a plain wheel (or a
 //              two-finger scroll) scrolls the page and a hint says "Use Ctrl +
 //              scroll to zoom" (⌘ on macOS); Ctrl/⌘ + wheel zooms about the
@@ -11,12 +13,11 @@
 //              Firefox, GestureEvents in Safari).  When the page cannot scroll
 //              (the view fills it) a plain wheel zooms.  A sideways scroll is
 //              the page's.
-//   drag     — a middle-button or Shift drag pans (and a drag in Move mode);
-//              the view's centre stays on the data (`bounds`), so it cannot be
-//              dragged off screen
-//   double-click — zooms in 2× at the pointer (Alt: out); Shift+double-click
-//              returns to `fit`, as do the header's Reset zoom and the 0 key.
-//              In Zoom mode its two clicks have zoomed already.
+//   drag     — a middle-button or Shift drag pans, and a two-finger touch drag
+//              pans and pinches; the view's centre stays on the data
+//              (`bounds`), so it cannot be dragged off screen
+//   double-click — returns to `fit` (the full view), as do the header's Reset
+//              zoom and the 0 key
 //   keys     — on the focused view, + / − zoom about the centre, the arrows
 //              pan, 0 resets; the view's + / − buttons zoom too.
 // The frame fills its view: the viewport's `half` spans the shorter side and a wide
@@ -27,7 +28,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import type { ClickMode } from "../state/workspaceStore";
+import { useWorkspaceStore } from "../state/workspaceStore";
 import { ViewSizeContext, type ViewSize } from "./viewSize";
 import {
   boxViewport,
@@ -84,7 +85,6 @@ interface Props {
   // The data's display extent: the view's centre stays inside it (default: `fit`'s square).
   bounds?: Bounds;
   limit: (half: number) => number;
-  mode: ClickMode;
   axes: AxisSpec;
   cursor: [number, number] | null; // display point under the pointer in any linked view
   onCursor?: (p: [number, number] | null) => void;
@@ -101,13 +101,14 @@ export function ViewFrame({
   fit,
   bounds,
   limit,
-  mode,
   axes,
   cursor,
   onCursor,
   onNavigate,
   children,
 }: Props) {
+  const mode = useWorkspaceStore((s) => s.clickMode);
+  const setMode = useWorkspaceStore((s) => s.setClickMode);
   const ref = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState<ViewSize>({ w: 0, h: 0 });
   const [box, setBox] = useState<[number, number, number, number] | null>(null);
@@ -221,7 +222,7 @@ export function ViewFrame({
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    // The left button acts by the mode; the middle one (or Shift) pans.
+    // The left button acts by the mode; the middle one (or Shift) pans in any mode.
     if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
     if (e.button === 1) e.preventDefault(); // no autoscroll
     const p = local(e);
@@ -234,7 +235,7 @@ export function ViewFrame({
       drag.current = null;
       setBox(null);
     } else {
-      drag.current = { x0: p[0], y0: p[1], v0: viewport, moved: false, pan: mode === "move" || e.button === 1 || e.shiftKey };
+      drag.current = { x0: p[0], y0: p[1], v0: viewport, moved: false, pan: e.button === 1 || e.shiftKey };
     }
   };
 
@@ -259,8 +260,8 @@ export function ViewFrame({
     dr.moved ||= Math.hypot(p[0] - dr.x0, p[1] - dr.y0) > 4;
     if (!dr.moved) return;
     if (dr.pan) emit(panBy(dr.v0, p[0] - dr.x0, p[1] - dr.y0, w, h));
-    else if (mode === "zoom") setBox([dr.x0, dr.y0, p[0], p[1]]);
-    else if (mode === "navigate") onNavigate?.(pt[0], pt[1]);
+    else if (mode === "box") setBox([dr.x0, dr.y0, p[0], p[1]]);
+    else onNavigate?.(pt[0], pt[1]);
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
@@ -278,34 +279,37 @@ export function ViewFrame({
     const pt = pixelToDisplay(viewport, p[0], p[1], w, h);
     if (dr.pan) {
       // panned (or a click with the pan button): nothing more
-    } else if (mode === "zoom") {
+    } else if (mode === "box") {
+      // One box zooms, then the tool hands back to Navigate; a click without a
+      // drag leaves it armed.
       if (dr.moved && box) {
         const a = pixelToDisplay(dr.v0, dr.x0, dr.y0, w, h);
         onViewport(settle(boxViewport(a, pt, limit, w, h)));
-      } else if (!dr.moved) {
-        onViewport(settle(zoomAbout(viewport, pt[0], pt[1], e.altKey ? 2 : 0.5, limit)));
+        setMode("navigate");
       }
-    } else if (mode === "navigate" && !dr.moved) {
+    } else if (!dr.moved) {
       onNavigate?.(pt[0], pt[1]);
     }
     setBox(null);
   };
 
-  // Double-click: in 2× at the pointer (Alt: out), as on a map; Shift: the full view.
-  const onDoubleClick = (e: React.MouseEvent) => {
-    if (e.shiftKey) return onViewport(fit);
-    if (mode === "zoom") return; // its two clicks have zoomed already
-    const p = local(e);
-    const { w, h } = rect();
-    const pt = pixelToDisplay(viewport, p[0], p[1], w, h);
-    onViewport(settle(zoomAbout(viewport, pt[0], pt[1], e.altKey ? 2 : 0.5, limit)));
-  };
+  // Double-click: back to the full view, in any mode (the NeXus Viewer's meaning).
+  const onDoubleClick = () => onViewport(fit);
 
   const zoomCentre = (k: number) => onViewport(settle(zoomAbout(viewport, viewport.cx, viewport.cy, k, limit)));
 
-  // Keys on the focused view: + / − zoom about the centre, the arrows pan a tenth of it, 0 resets.
+  // Keys on the focused view: + / − zoom about the centre, the arrows pan a tenth
+  // of it, 0 resets, Esc puts an armed box zoom away.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return; // the browser's own shortcuts (Ctrl + is the page zoom)
+    if (e.key === "Escape" && mode === "box") {
+      setMode("navigate");
+      setBox(null);
+      drag.current = null;
+      e.preventDefault();
+      e.stopPropagation(); // not also the single layout's Esc
+      return;
+    }
     const { w, h } = rect();
     const step = Math.min(w, h) / 10;
     const pan: Record<string, [number, number]> = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };

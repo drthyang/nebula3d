@@ -39,7 +39,6 @@ import {
   useViewerStore,
 } from "../state/viewerStore";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
-import { useWorkspaceStore } from "../state/workspaceStore";
 import { litStage, useHighlightKeys } from "../llm/highlight";
 
 const STAGE_ORDER = ["raw", "ringremoved", "braggpunched", "backfilled", "flattened"];
@@ -85,7 +84,6 @@ export function ReciprocalViewer() {
   const setScaleRef = useViewerStore((s) => s.setScaleRef);
   const setView = useViewerStore((s) => s.setView);
   const setColormap = useViewerStore((s) => s.setColormap);
-  const clickMode = useWorkspaceStore((s) => s.clickMode);
   const [cursor, setCursor] = useState<[number, number] | null>(null);
 
   const dataset = datasets.find((d) => d.id === datasetId);
@@ -337,7 +335,6 @@ export function ReciprocalViewer() {
                   fit={fit}
                   bounds={bounds}
                   limit={limit}
-                  mode={clickMode}
                   axes={{ sx: geom.sx, sy: geom.sy, xLabel: xAxis, yLabel: yAxis, unit: "r.l.u.", fovUnit: "Å⁻¹" }}
                   cursor={cursor}
                   onCursor={setCursor}

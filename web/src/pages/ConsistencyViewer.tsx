@@ -47,7 +47,6 @@ import {
   useViewerStore,
 } from "../state/viewerStore";
 import { useStructureStore } from "../state/structureStore";
-import { useWorkspaceStore } from "../state/workspaceStore";
 import {
   markersNear,
   structureBlockedText,
@@ -131,7 +130,6 @@ export function ConsistencyViewer() {
   const setDpdfColormap = useDpdfStore((s) => s.setColormap);
   const setGridlines = useDpdfStore((s) => s.setGridlines);
 
-  const clickMode = useWorkspaceStore((s) => s.clickMode);
 
   // Orientation: while linked the R plane follows the Q plane (H ↔ x, …).
   const [link, setLink] = useState(true);
@@ -418,7 +416,6 @@ export function ConsistencyViewer() {
       fit={qFit}
       bounds={qBounds}
       limit={qLimit}
-      mode={clickMode}
       axes={qAxes}
       cursor={qCursor}
       onCursor={setQCursor}
@@ -708,7 +705,6 @@ export function ConsistencyViewer() {
                   fit={rFit}
                   bounds={extentBounds(s.header, { sx: 1, sy: 1, angle: s.header.axes_angle ?? 90 })}
                   limit={rLimit}
-                  mode={clickMode}
                   axes={{ sx: 1, sy: 1, xLabel: rx, yLabel: ry, unit: "Å", fovUnit: "Å" }}
                   cursor={rCursor}
                   onCursor={setRCursor}
