@@ -1510,6 +1510,11 @@ input[type="range"]::-moz-range-track {
 .helptip-line {
   display: block;
 }
+/* the click modes' "?": the gestures, each on one line */
+.click-mode .helptip-bubble {
+  width: 300px;
+  max-width: min(300px, calc(100vw - 48px));
+}
 /* Configure help icons sit at the right edge of stage heads and control rows;
    open their bubbles leftward (anchored to the icon's right edge) so they stay
    inside the card instead of spilling past the page edge — a hidden,
