@@ -544,7 +544,7 @@ export function ConsistencyViewer() {
               scale={scale}
               onScale={setScale}
             />
-            <span className="ws-sep" />
+            {/* the Q and R badges set the two groups apart: no separator, which a wrap would strand */}
             <DisplayBar
               badge={<span className="qr-rt-badge qr-rt--r">R</span>}
               colormapLabel="R colormap"
