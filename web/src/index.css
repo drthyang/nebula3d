@@ -953,8 +953,13 @@ input[type="range"]::-moz-range-track {
 }
 @container main (max-width: 560px) {
   .multi-grid {
-    grid-template-columns: 44px repeat(3, minmax(0, 1fr));
+    grid-template-columns: 52px repeat(3, minmax(0, 1fr));
     gap: 6px;
+  }
+  .multi-grid .temp-badge {
+    padding: 3px 6px;
+    font-size: 11px;
+    white-space: nowrap;
   }
 }
 .multi-grid .col-head {
@@ -5124,6 +5129,12 @@ h6.md-h {
 @media (max-width: 599px), (max-width: 1099px) and (max-height: 500px) {
   :is(input[type="number"], input[type="text"], select, textarea) {
     font-size: 16px;
+  }
+  /* the colour limits keep "±2.32e+3" whole at that size */
+  .levels-bar .lv-num {
+    width: 112px;
+    padding-left: 8px;
+    padding-right: 8px;
   }
   .readout-edit input.value-input,
   .readout-edits .readout-edit input.value-input {
