@@ -27,7 +27,7 @@ import { qSection, reciprocalMetric } from "../components/reciprocal";
 import { SliceCanvas } from "../components/SliceCanvas";
 import { StructureHits, StructureOverlay } from "../components/StructureOverlay";
 import { EmptyState, IconAlert, RangeSlider, Segmented, Slider, Switch } from "../components/ui";
-import { UnitCellGrid } from "../components/UnitCellGrid";
+import { HklGrid, UnitCellGrid } from "../components/UnitCellGrid";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
 import { clampHalf, displayToSlice, extentBounds, fitViewport, sampleIndex, type SliceGeom, type Viewport } from "../components/viewport";
@@ -438,6 +438,7 @@ export function ConsistencyViewer() {
         latY={latY}
         latCut={latCut}
       />
+      {gridlines && <HklGrid viewport={qViewport} geom={qGeom} />}
     </ViewFrame>
   );
 
@@ -508,10 +509,16 @@ export function ConsistencyViewer() {
         </div>
       </div>
 
-      {/* ── Workspace header: click mode · orientation · layout, then Q and R display ── */}
+      {/* ── Workspace header: click mode · unit cells · orientation · layout, then Q and R display ── */}
       <div className="ws-head">
         <div className="ws-row">
           <ClickModeControl />
+          <Switch
+            label="Unit cells"
+            title="Dashed lines at integer h, k, l on the Q views and at the unit-cell edges on the ΔPDF view"
+            checked={gridlines}
+            onChange={setGridlines}
+          />
           <span className="ws-sep" />
           <Switch label="Link orientation" checked={link} onChange={toggleLink} />
           <span className="ws-group">
@@ -555,7 +562,6 @@ export function ConsistencyViewer() {
             </span>
             <LevelsBar lut={divLut} levels={rLv.levels} domain={rLv.domain} hist={rLv.hist} symmetric onChange={(l) => setRLimit(l.hi)} />
             <AutoButton active={rLv.isAuto} onClick={() => setRManual(null)} />
-            <Switch label="Unit cells" checked={gridlines} onChange={setGridlines} />
             <Switch label="Structure" checked={showStructure} disabled={!structure} onChange={setShowStructure} />
           </div>
         </div>

@@ -9,6 +9,7 @@ import {
   inPlaneRadius,
   latticeLabel,
   toDisplay,
+  gridSegments,
   unitCellSegments,
 } from "../oblique";
 
@@ -82,6 +83,41 @@ describe("unitCellSegments", () => {
 
   it("skips a family when its lattice spacing is unknown", () => {
     expect(unitCellSegments(10, null, null, 120)).toEqual([]);
+  });
+});
+
+describe("gridSegments", () => {
+  it("draws only the lines that cross an off-centre view, each spanning it", () => {
+    const segs = gridSegments({ x0: 37, x1: 49, y0: -3, y1: 2 }, 4, 5, 90);
+    expect(segs.filter(([x1, , x2]) => x1 === x2)).toEqual([
+      [40, -3, 40, 2],
+      [44, -3, 44, 2],
+      [48, -3, 48, 2],
+    ]);
+    expect(segs.filter(([, y1, , y2]) => y1 === y2)).toEqual([[37, 0, 49, 0]]);
+  });
+
+  it("keeps a slanted line that enters the view through its top or bottom edge only", () => {
+    const deg = 120;
+    const { cos, sin } = axesTrig(deg);
+    const cot = cos / sin; // negative: lines lean left going up
+    const b = { x0: 0, x1: 1, y0: 0, y1: 10 };
+    const segs = gridSegments(b, 2, null, deg);
+    for (const [x1, y1, x2, y2] of segs) {
+      expect(y1).toBe(0);
+      expect(y2).toBe(10);
+      // crosses the box somewhere along its height
+      expect(Math.max(x1, x2)).toBeGreaterThanOrEqual(b.x0);
+      expect(Math.min(x1, x2)).toBeLessThanOrEqual(b.x1);
+    }
+    // h = 2·k crosses X ∈ [0, 1] for some Y ∈ [0, 10] when 2k + 10·cot ≤ 1 and 2k ≥ 0
+    const expected = [];
+    for (let k = -10; k <= 10; k++) if (2 * k + Math.min(0, 10 * cot) <= 1 && 2 * k + Math.max(0, 10 * cot) >= 0) expected.push(k);
+    expect(segs.map(([x1, y1]) => Math.round((x1 - y1 * cot) / 2))).toEqual(expected);
+  });
+
+  it("matches unitCellSegments on the origin-centred square", () => {
+    expect(gridSegments({ x0: -6, x1: 6, y0: -6, y1: 6 }, 4, 3, 105)).toEqual(unitCellSegments(6, 4, 3, 105));
   });
 });
 

@@ -39,37 +39,60 @@ export function inPlaneRadius(h: number, v: number, angleDeg: number): number {
 
 export type Segment = [number, number, number, number]; // X1, Y1, X2, Y2 (Å)
 
+/** A display rectangle (viewport.ts's Bounds). */
+export interface Rect {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
+
+/** More lines than this in one family would be denser than the pixels; none are drawn. */
+export const MAX_GRID_LINES = 400;
+
 /**
- * Unit-cell lines over the square display window [-half, half]²: lines of
- * constant h at multiples of `latX` (running along the vertical axis, so
- * slanted by θ) and of constant v at multiples of `latY` (horizontal).  Each
- * segment spans the window's full height/width; the caller clips to the box.
+ * Lattice lines over the display rectangle `b`: lines of constant h at
+ * multiples of `latX` (running along the vertical axis, so slanted by θ) and of
+ * constant v at multiples of `latY` (horizontal), every one that crosses `b`.
+ * Each segment spans `b`'s full height/width; the caller clips to the box.
+ * With `latX`, `latY` the r.l.u. scales (2π/a, 2π/b in Å⁻¹, or 1 on an r.l.u.
+ * display) these are the lines of integer h, k, l (viewport.ts hklGridSegments).
  */
+export function gridSegments(b: Rect, latX: number | null, latY: number | null, angleDeg: number): Segment[] {
+  const { cos, sin } = axesTrig(angleDeg);
+  const cot = cos / sin;
+  const out: Segment[] = [];
+  if (latX && latX > 0) {
+    // h = k·latX runs X = k·latX + Y·cot θ over the rectangle's Y range.
+    const lo = Math.ceil((b.x0 - Math.max(b.y0 * cot, b.y1 * cot)) / latX) || 0; // never −0
+    const hi = Math.floor((b.x1 - Math.min(b.y0 * cot, b.y1 * cot)) / latX);
+    if (hi - lo < MAX_GRID_LINES) {
+      for (let k = lo; k <= hi; k++) {
+        const x0 = k * latX;
+        out.push([x0 + b.y0 * cot, b.y0, x0 + b.y1 * cot, b.y1]);
+      }
+    }
+  }
+  if (latY && latY > 0) {
+    // v = m·latY is the horizontal line Y = m·latY·sin θ.
+    const step = latY * sin;
+    const lo = Math.ceil(b.y0 / step) || 0;
+    const hi = Math.floor(b.y1 / step);
+    if (hi - lo < MAX_GRID_LINES) {
+      for (let m = lo; m <= hi; m++) out.push([b.x0, m * step, b.x1, m * step]);
+    }
+  }
+  return out;
+}
+
+/** Unit-cell lines over the square display window [-half, half]² (gridSegments). */
 export function unitCellSegments(
   half: number,
   latX: number | null,
   latY: number | null,
   angleDeg: number,
 ): Segment[] {
-  const { cos, sin } = axesTrig(angleDeg);
-  const cot = cos / sin;
-  const out: Segment[] = [];
-  if (latX && latX > 0) {
-    // h = k·latX crosses the window's Y range at X = k·latX + Y·cot θ.
-    const reach = half + half * Math.abs(cot);
-    for (let k = Math.ceil(-reach / latX); k <= Math.floor(reach / latX); k++) {
-      const x0 = k * latX;
-      out.push([x0 - half * cot, -half, x0 + half * cot, half]);
-    }
-  }
-  if (latY && latY > 0) {
-    // v = m·latY is the horizontal line Y = m·latY·sin θ.
-    const step = latY * sin;
-    for (let m = Math.ceil(-half / step); m <= Math.floor(half / step); m++) {
-      out.push([-half, m * step, half, m * step]);
-    }
-  }
-  return out;
+  return gridSegments({ x0: -half, x1: half, y0: -half, y1: half }, latX, latY, angleDeg);
 }
 
 /** "a=… b=… c=… Å", plus "· α=… β=… γ=…°" when the cell angles are known. */

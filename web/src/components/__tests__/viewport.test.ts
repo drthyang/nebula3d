@@ -11,6 +11,7 @@ import {
   displayToSlice,
   extentBounds,
   fitViewport,
+  hklGridSegments,
   niceStep,
   panBy,
   pixelToDisplay,
@@ -18,6 +19,7 @@ import {
   sliceToDisplay,
   viewExtent,
   viewportBounds,
+  visibleBounds,
   wheelZoomFactor,
   zoomAbout,
 } from "../viewport";
@@ -159,5 +161,71 @@ describe("niceStep", () => {
     expect(niceStep(10, 5)).toBe(2);
     expect(niceStep(24, 5)).toBe(5);
     expect(niceStep(0.6, 5)).toBeCloseTo(0.1);
+  });
+});
+
+// The "Unit cells" switch on the r.l.u. views (Reciprocal cleanup, Q–R, the
+// Bragg tiles): dashed lines at integer h, k, l that stay on the data.
+describe("hklGridSegments", () => {
+  const a = 4.2, b = 7.9;
+  const recip = { sx: (2 * Math.PI) / a, sy: (2 * Math.PI) / b, angle: 90 };
+  const isInt = (t: number) => Math.abs(t - Math.round(t)) < 1e-9;
+
+  it("draws a line at every integer h and k the view shows, and none between", () => {
+    const v = { cx: 2.7, cy: -1.1, half: 2.3 }; // Å⁻¹, off the origin
+    const w = 300, h = 200;
+    const box = visibleBounds(v, w, h);
+    const segs = hklGridSegments(box, recip);
+    const hs = segs.filter(([x1, , x2]) => x1 === x2).map(([X]) => displayToSlice(X, 0, recip)[0]);
+    const ks = segs.filter(([, y1, , y2]) => y1 === y2).map(([, Y]) => displayToSlice(0, Y, recip)[1]);
+    expect(hs.every(isInt)).toBe(true);
+    expect(ks.every(isInt)).toBe(true);
+    const [hLo, kLo] = displayToSlice(box.x0, box.y0, recip);
+    const [hHi, kHi] = displayToSlice(box.x1, box.y1, recip);
+    const ints = (lo: number, hi: number) => Array.from({ length: Math.floor(hi) - Math.ceil(lo) + 1 }, (_, i) => Math.ceil(lo) + i + 0);
+    expect(hs.map((t) => Math.round(t) + 0)).toEqual(ints(hLo, hHi));
+    expect(ks.map((t) => Math.round(t) + 0)).toEqual(ints(kLo, kHi));
+  });
+
+  it("keeps each line on its h while the view zooms and pans (pixel positions follow the viewport)", () => {
+    const w = 240, h = 240;
+    for (const v of [{ cx: 0, cy: 0, half: 4 }, { cx: 1.4, cy: 0.3, half: 0.9 }, { cx: -2.2, cy: 1.9, half: 0.35 }]) {
+      for (const [X1, Y1, X2] of hklGridSegments(visibleBounds(v, w, h), recip).filter(([x1, , x2]) => x1 === x2)) {
+        const hIdx = Math.round(displayToSlice(X1, Y1, recip)[0]);
+        // the line's pixel column is where the canvas draws h = hIdx
+        const [px] = displayToPixel(v, hIdx * recip.sx, 0, w, h);
+        expect(displayToPixel(v, X2, 0, w, h)[0]).toBeCloseTo(px, 9);
+        expect(px).toBeGreaterThanOrEqual(-1e-9);
+        expect(px).toBeLessThanOrEqual(w + 1e-9);
+      }
+    }
+  });
+
+  it("draws one r.l.u. apart on an r.l.u. display about a peak far from the origin", () => {
+    const g = { sx: 1, sy: 1, angle: 90 };
+    const segs = hklGridSegments(visibleBounds({ cx: 7.02, cy: -3.01, half: 0.6 }, 100, 100), g);
+    expect(segs.filter(([x1, , x2]) => x1 === x2).map(([X]) => X)).toEqual([7]);
+    expect(segs.filter(([, y1, , y2]) => y1 === y2).map(([, Y]) => Y)).toEqual([-3]);
+  });
+
+  it("slants the lines of integer h at a non-right display angle, as the slice is drawn", () => {
+    const g = { sx: 1.3, sy: 1.3, angle: 120 };
+    const box = visibleBounds({ cx: 0.4, cy: 0.2, half: 3 }, 200, 200);
+    const segs = hklGridSegments(box, g);
+    expect(segs.length).toBeGreaterThan(4);
+    for (const [X1, Y1, X2, Y2] of segs) {
+      const [h1, k1] = displayToSlice(X1, Y1, g);
+      const [h2, k2] = displayToSlice(X2, Y2, g);
+      // each segment holds one integer index along its whole length
+      if (Y1 === Y2) {
+        expect(isInt(k1) && Math.abs(k1 - k2) < 1e-9).toBe(true);
+      } else {
+        expect(isInt(h1) && Math.abs(h1 - h2) < 1e-9).toBe(true);
+      }
+    }
+  });
+
+  it("draws nothing rather than a line per pixel when the view spans too many cells", () => {
+    expect(hklGridSegments({ x0: -1e4, x1: 1e4, y0: -1, y1: 1 }, { sx: 1, sy: 1, angle: 90 }).every(([x1, , x2]) => x1 !== x2)).toBe(true);
   });
 });

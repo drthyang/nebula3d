@@ -26,7 +26,9 @@ import {
   MetaStrip,
   Segmented,
   Slider,
+  Switch,
 } from "../components/ui";
+import { HKL_GRID_TITLE, HklGrid } from "../components/UnitCellGrid";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
 import { clampHalf, extentBounds, fitViewport, sampleIndex, type SliceGeom } from "../components/viewport";
@@ -39,6 +41,7 @@ import {
   useViewerStore,
 } from "../state/viewerStore";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
+import { useDpdfStore } from "../state/dpdfStore";
 import { litStage, useHighlightKeys } from "../llm/highlight";
 
 const STAGE_ORDER = ["raw", "ringremoved", "braggpunched", "backfilled", "flattened"];
@@ -84,6 +87,9 @@ export function ReciprocalViewer() {
   const setScaleRef = useViewerStore((s) => s.setScaleRef);
   const setView = useViewerStore((s) => s.setView);
   const setColormap = useViewerStore((s) => s.setColormap);
+  // "Unit cells" is one setting across the pages: here the lines of integer h, k, l.
+  const gridlines = useDpdfStore((s) => s.gridlines);
+  const setGridlines = useDpdfStore((s) => s.setGridlines);
   const [cursor, setCursor] = useState<[number, number] | null>(null);
 
   const dataset = datasets.find((d) => d.id === datasetId);
@@ -235,10 +241,11 @@ export function ReciprocalViewer() {
         <span className="qr-desc">Each stage strips one artifact, leaving the diffuse signal</span>
       </div>
 
-      {/* ── Workspace header: click mode · plane · cut · layout, then the display bar ── */}
+      {/* ── Workspace header: click mode · unit cells · plane · cut · layout, then the display bar ── */}
       <div className="ws-head">
         <div className="ws-row">
           <ClickModeControl />
+          <Switch label="Unit cells" title={HKL_GRID_TITLE} checked={gridlines} onChange={setGridlines} />
           <span className="ws-sep" />
           <Segmented options={AXES} value={fixedAxis} onChange={(x) => setFixedAxis(x as FixedAxis)} />
           <div className="ws-cut">
@@ -353,6 +360,7 @@ export function ReciprocalViewer() {
                     latY={latY}
                     latCut={latCut}
                   />
+                  {gridlines && <HklGrid viewport={viewport} geom={geom} />}
                   {r.isFetching && <span className="spin vf-spin" />}
                 </ViewFrame>
               ) : (
