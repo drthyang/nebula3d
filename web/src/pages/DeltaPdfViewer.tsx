@@ -330,7 +330,6 @@ export function DeltaPdfViewer() {
                   fit={fit}
                   bounds={extentBounds(r.data.header, { sx: 1, sy: 1, angle: r.data.header.axes_angle ?? 90 })}
                   limit={limit}
-                  mode={clickMode}
                   axes={{ sx: 1, sy: 1, xLabel: AX_LABEL[p.h], yLabel: AX_LABEL[p.v], unit: "Å", fovUnit: "Å" }}
                   cursor={cursor?.plane === p.plane ? cursor.p : null}
                   onCursor={(pt) => setCursor(pt ? { plane: p.plane, p: pt } : null)}

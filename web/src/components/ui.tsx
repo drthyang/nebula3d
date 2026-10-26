@@ -191,15 +191,17 @@ export function Switch({
   label,
   checked,
   disabled = false,
+  title,
   onChange,
 }: {
   label: ReactNode;
   checked: boolean;
   disabled?: boolean;
+  title?: string;
   onChange: (b: boolean) => void;
 }) {
   return (
-    <label className={`switch${disabled ? " disabled" : ""}`}>
+    <label className={`switch${disabled ? " disabled" : ""}`} title={title}>
       <input
         type="checkbox"
         checked={checked}

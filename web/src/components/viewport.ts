@@ -7,7 +7,7 @@
 // and drawn with the vertical axis at θ (the slice's axes_angle) from the
 // horizontal one:  X = h + v·cos θ,  Y = v·sin θ.
 
-import { axesTrig } from "./oblique";
+import { axesTrig, gridSegments, type Segment } from "./oblique";
 
 export interface Viewport {
   cx: number;
@@ -66,6 +66,22 @@ export function fitViewport(ax: AxisExtent, g: SliceGeom): Viewport {
   return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, half: Math.max(x1 - x0, y1 - y0) / 2 || 1 };
 }
 
+/** The display rectangle a `w`×`h`-px view of `v` shows. */
+export function visibleBounds(v: Viewport, w: number, h: number): Bounds {
+  const { hx, hy } = viewExtent(v, w, h);
+  return { x0: v.cx - hx, x1: v.cx + hx, y0: v.cy - hy, y1: v.cy + hy };
+}
+
+/**
+ * The lines of integer h, k, l over the display rectangle `b` of an r.l.u.
+ * slice: x = n and y = m in slice units, drawn as the canvas and the ticks draw
+ * the slice (one r.l.u. is `sx` / `sy` display units, the vertical axis at the
+ * slice's angle), so they stay on the data while it is zoomed and panned.
+ */
+export function hklGridSegments(b: Bounds, g: SliceGeom): Segment[] {
+  return gridSegments(b, g.sx, g.sy, g.angle);
+}
+
 /** The square a viewport's `half` spans about its centre. */
 export const viewportBounds = (v: Viewport): Bounds => ({ x0: v.cx - v.half, x1: v.cx + v.half, y0: v.cy - v.half, y1: v.cy + v.half });
 
@@ -85,6 +101,15 @@ export function clampToBounds(v: Viewport, b: Bounds): Viewport {
 export function clampHalf(half: number, fullHalf: number, voxel: number): number {
   const lo = Math.max(voxel * 3, fullHalf / 400);
   return Math.min(fullHalf * 1.25, Math.max(lo, half));
+}
+
+/**
+ * The half-widths a view can zoom to: clampHalf over the data's extent, and
+ * out to at least `widest` (e.g. the widest window a page used to offer).
+ */
+export function zoomLimit(fullHalf: number, voxel: number, widest = 0): (half: number) => number {
+  const reach = Math.max(fullHalf, widest / 1.25);
+  return (half) => clampHalf(half, reach, voxel);
 }
 
 /**

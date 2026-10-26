@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useWorkspaceStore, type ClickMode } from "../state/workspaceStore";
+import { useWorkspaceStore } from "../state/workspaceStore";
 import {
   brightnessOf,
   fmtLevel,
@@ -14,30 +14,38 @@ import {
   type ScaleKind,
 } from "./colorScale";
 
-const CLICK_MODES: { mode: ClickMode; label: string; title: string }[] = [
-  { mode: "navigate", label: "Navigate", title: "Hover to read values; on 3D-ΔPDF a click moves the other two cuts" },
-  { mode: "zoom", label: "Zoom", title: "Click to zoom in 2× (Alt-click out); drag a box to zoom into it" },
-  { mode: "move", label: "Move", title: "Drag to pan" },
-];
+/** The zoom and pan gestures every view takes in any mode, for the tooltips. */
+export const VIEW_GESTURES =
+  "Wheel with Ctrl/⌘, or pinch, zooms; Shift-, middle- or two-finger drag pans; double-click resets the view";
 
-/** Navigate · Zoom · Move — shared by every viewer page and remembered. */
+/**
+ * Navigate (the default) and the one-shot Box zoom tool, shared by every viewer
+ * page: armed by its button, one box dragged on a view zooms into it and the
+ * views are back in Navigate. A second press (or Esc on the view) disarms it.
+ */
 export function ClickModeControl() {
   const mode = useWorkspaceStore((s) => s.clickMode);
   const setMode = useWorkspaceStore((s) => s.setClickMode);
   return (
     <div className="segmented" role="group" aria-label="Click mode">
-      {CLICK_MODES.map((m) => (
-        <button
-          key={m.mode}
-          type="button"
-          className={mode === m.mode ? "on" : ""}
-          title={m.title}
-          aria-pressed={mode === m.mode}
-          onClick={() => setMode(m.mode)}
-        >
-          {m.label}
-        </button>
-      ))}
+      <button
+        type="button"
+        className={mode === "navigate" ? "on" : ""}
+        title={`Navigate: hover reads values; on 3D-ΔPDF a click moves the other two cuts. ${VIEW_GESTURES}`}
+        aria-pressed={mode === "navigate"}
+        onClick={() => setMode("navigate")}
+      >
+        Navigate
+      </button>
+      <button
+        type="button"
+        className={mode === "box" ? "on" : ""}
+        title="Box zoom: drag a box on a view to zoom into it, then back to Navigate (Esc or a second press cancels)"
+        aria-pressed={mode === "box"}
+        onClick={() => setMode(mode === "box" ? "navigate" : "box")}
+      >
+        Box zoom
+      </button>
     </div>
   );
 }

@@ -1,19 +1,21 @@
-// Unit-cell gridline overlay (SVG) for the ΔPDF square-window viewer.  Draws
-// gray dashed lattice lines at integer multiples of the direct-lattice spacing
-// along each displayed axis, over a square [-half, +half] Å window.  For a
+// Unit-cell gridline overlay (SVG) for the slice views.  Draws gray dashed
+// lattice lines at integer multiples of a spacing along each displayed axis:
+// the direct-lattice spacings on a ΔPDF section (Å), or one r.l.u. on a
+// reciprocal-space slice (HklGrid: the lines of integer h, k, l).  For a
 // section whose axes meet at a non-right angle (e.g. a hexagonal ab-plane,
 // 120°) the lines follow that angle, matching SliceCanvas's oblique drawing —
-// see oblique.ts.  Renders into a normalized viewBox with a non-scaling stroke,
-// so it fills its square parent responsively — used both at a fixed px size
-// (single ΔPDF panel) and in the fluid multi-volume grid cells.
+// see oblique.ts.  Inside a ViewFrame the lines follow its viewport while it
+// is zoomed and panned (only those that cross the view are drawn); without
+// one they cover a square [-half, +half] window.  Renders into a normalized
+// viewBox with a non-scaling stroke, so it fills its parent responsively.
 
-import { unitCellSegments } from "./oblique";
+import { gridSegments } from "./oblique";
 import { useViewSize } from "./viewSize";
-import { viewExtent, type Viewport } from "./viewport";
+import { visibleBounds, type SliceGeom, type Viewport } from "./viewport";
 
 interface Props {
   half: number; // half-window in Å (box spans [-half, +half] on both axes)
-  viewport?: Viewport; // a panned / zoomed square view instead of [-half, half]²
+  viewport?: Viewport; // a panned / zoomed view instead of [-half, half]²
   latX: number | null;
   latY: number | null;
   angle?: number; // angle between the displayed axes (deg); the slice header's axes_angle
@@ -23,16 +25,14 @@ const VB = 1000; // normalized viewBox side; stroke stays 1px (non-scaling)
 
 export function UnitCellGrid({ half, viewport, latX, latY, angle = 90 }: Props) {
   const size = useViewSize();
-  const v = viewport ?? { cx: 0, cy: 0, half };
   // A viewport in a wide or tall view spans more along its longer side.
-  const { hx, hy } = viewport ? viewExtent(v, size.w, size.h) : { hx: v.half, hy: v.half };
-  const toX = (x: number) => ((x - (v.cx - hx)) / (2 * hx)) * VB;
+  const b = viewport ? visibleBounds(viewport, size.w, size.h) : { x0: -half, x1: half, y0: -half, y1: half };
+  const toX = (x: number) => ((x - b.x0) / (b.x1 - b.x0)) * VB;
   // canvas y is flipped (smallest y at the bottom), so mirror here too.
-  const toY = (y: number) => VB - ((y - (v.cy - hy)) / (2 * hy)) * VB;
+  const toY = (y: number) => VB - ((y - b.y0) / (b.y1 - b.y0)) * VB;
 
-  // Lines over an origin-centred square that covers the whole view; the svg clips.
-  const reach = Math.max(Math.abs(v.cx) + hx, Math.abs(v.cy) + hy);
-  const segments = unitCellSegments(reach, latX, latY, angle);
+  // The lines that cross the view, each spanning it; the svg clips the slanted ones.
+  const segments = gridSegments(b, latX, latY, angle);
 
   return (
     <svg
@@ -67,4 +67,17 @@ export function UnitCellGrid({ half, viewport, latX, latY, angle = 90 }: Props) 
       </g>
     </svg>
   );
+}
+
+/** The tooltip of the "Unit cells" switch on the reciprocal-space views. */
+export const HKL_GRID_TITLE = "Dashed lines at integer h, k, l (r.l.u.); one setting with the real-space unit cells";
+
+/**
+ * Dashed lines at integer h, k, l on an r.l.u. slice view (the "Unit cells"
+ * switch on the reciprocal-space views): one r.l.u. apart along each displayed
+ * axis, in the view's display units and at its axes angle — the geometry its
+ * canvas and ticks use (viewport.ts hklGridSegments).
+ */
+export function HklGrid({ viewport, geom }: { viewport: Viewport; geom: SliceGeom }) {
+  return <UnitCellGrid half={viewport.half} viewport={viewport} latX={geom.sx} latY={geom.sy} angle={geom.angle} />;
 }
