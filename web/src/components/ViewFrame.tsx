@@ -14,7 +14,8 @@
 //              (the view fills it) a plain wheel zooms.  A sideways scroll is
 //              the page's.
 //   drag     — a middle-button or Shift drag pans, and a two-finger touch drag
-//              pans and pinches; the view's centre stays on the data
+//              pans and pinches (iPad Safari's GestureEvents for that pinch are
+//              ignored, so it zooms once); the view's centre stays on the data
 //              (`bounds`), so it cannot be dragged off screen
 //   double-click — returns to `fit` (the full view), as do the header's Reset
 //              zoom and the 0 key
@@ -183,8 +184,15 @@ export function ViewFrame({
       live.current.onViewport(settle(zoomAbout(v, X, Y, wheelZoomFactor(e.deltaY, e.deltaMode, b.height), lim)));
     };
     // Safari's trackpad pinch: GestureEvents, scale relative to the gesture's start.
+    // A touch pinch on iPad sends GestureEvents too, besides its two pointers,
+    // which the pointer handlers already zoom by: while a pointer is down the
+    // GestureEvents are ignored, so the view zooms once.
     const onGestureStart = (e: Event) => {
       e.preventDefault();
+      if (pointers.current.size > 0) {
+        gesture.current = null;
+        return;
+      }
       const g = e as GestureLike;
       const b = el.getBoundingClientRect();
       const v = live.current.viewport;
@@ -195,7 +203,7 @@ export function ViewFrame({
       e.preventDefault();
       const g = gesture.current;
       const scale = (e as GestureLike).scale;
-      if (!g || !scale) return;
+      if (!g || !scale || pointers.current.size > 0) return;
       emit(zoomAbout(g.v0, g.at[0], g.at[1], 1 / scale, live.current.limit));
     };
     const onGestureEnd = (e: Event) => {
