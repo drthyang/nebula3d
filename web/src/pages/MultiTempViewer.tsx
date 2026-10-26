@@ -1,7 +1,10 @@
 // Multi-volume 3D-ΔPDF comparison — replaces
 // examples/explore_delta_pdf_multi.py.  Rows = files × columns = the
-// three orthoslice planes, with shared cut sliders and a per-plane colour scale
-// pooled across files (so related files are comparable within a column).
+// three orthoslice planes, with shared cut sliders and ONE ± colour range for
+// every cell (so related files are comparable), under the workspace header the
+// other viewer pages share (WorkspaceHeader, DisplayBar).  Auto is the
+// 3D-ΔPDF page's: the 99.9th percentile of |ΔPDF| over the centre sections,
+// the origin's disk left out (dpdfLevels.ts), pooled over every file.
 // Every cell is a ViewFrame, zoomed and panned like the other slice views, and
 // each plane has ONE viewport shared by every row: the temperatures are always
 // compared at the same scale and over the same window (THY-38).
@@ -12,30 +15,30 @@ import { keepPreviousData, useQueries } from "@tanstack/react-query";
 
 import { fetchDpdfSlice } from "../api/client";
 import { useDatasets, useDpdfMeta } from "../api/hooks";
+import type { Slice } from "../api/types";
 import { COLORMAPS, DIVERGING_NAMES, DIVERGING_NAME } from "../colormaps/luts";
-import { ClickModeControl } from "../components/DisplayBar";
+import { DisplayBar } from "../components/DisplayBar";
+import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../components/dpdfLevels";
 import { SliceCanvas } from "../components/SliceCanvas";
 import { UnitCellGrid } from "../components/UnitCellGrid";
+import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
+import { AUTO_TITLES } from "../components/viewerText";
 import { extentBounds, zoomLimit, type Viewport } from "../components/viewport";
-import {
-  ColormapBar,
-  EmptyState,
-  Field,
-  MetaStrip,
-  Slider,
-  Switch,
-} from "../components/ui";
+import { UnitCellsSwitch, WorkspaceHeader } from "../components/WorkspaceHeader";
+import { EmptyState, MetaStrip, Slider } from "../components/ui";
 import { latticeLabel } from "../components/oblique";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { defaultDpdfView, useDpdfStore } from "../state/dpdfStore";
-import { datasetName } from "../api/datasetName";
 
 const PLANES = [
   { key: "xy", label: "x_H – y_K", h: "x_H", v: "y_K" },
   { key: "xz", label: "x_H – z_L", h: "x_H", v: "z_L" },
   { key: "yz", label: "y_K – z_L", h: "y_K", v: "z_L" },
 ];
+
+/** The slices of a set of queries (useQueries' `combine`: stable while they are unchanged). */
+const sliceData = (rs: { data?: Slice }[]) => rs.map((r) => r.data);
 
 /** Half-width (Å) zooming out reaches at least: the old Window slider's widest, 160 Å. */
 const WIDEST_HALF = 80;
@@ -63,7 +66,6 @@ export function MultiTempViewer() {
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
   useInitializeDataset(datasets);
   const datasetId = useDatasetStore((s) => s.datasetId);
-  const setDataset = useDatasetStore((s) => s.setDataset);
   const temps = useMemo(
     () =>
       datasets
@@ -75,10 +77,11 @@ export function MultiTempViewer() {
   const cutX = useDpdfStore((s) => s.cutX);
   const cutY = useDpdfStore((s) => s.cutY);
   const cutZ = useDpdfStore((s) => s.cutZ);
-  // Hidden page (not routed): keeps its own contrast and views, outside the
-  // shared real-space store the routed viewers use.  One viewport per plane,
-  // shared by every temperature; it opens at ±40 Å, the old 80 Å window.
-  const [contrast, setContrast] = useState(1);
+  // Hidden page (not routed): keeps its own ± limit and views, outside the
+  // shared real-space store the routed viewers use (its limit is tagged with
+  // one dataset; this page shows several).  One viewport per plane, shared by
+  // every temperature; it opens at ±40 Å, the old 80 Å window.
+  const [manualLimit, setManualLimit] = useState<number | null>(null);
   const [views, setViews] = useState<Record<string, Viewport>>({});
   const setView = (plane: string, v: Viewport | null) =>
     setViews((all) => {
@@ -95,7 +98,6 @@ export function MultiTempViewer() {
   const setCutX = useDpdfStore((s) => s.setCutX);
   const setCutY = useDpdfStore((s) => s.setCutY);
   const setCutZ = useDpdfStore((s) => s.setCutZ);
-  const setGridlines = useDpdfStore((s) => s.setGridlines);
   const center = useDpdfStore((s) => s.center);
 
   const selectedDpdfDataset = temps.find((d) => d.id === datasetId);
@@ -141,15 +143,32 @@ export function MultiTempViewer() {
     })),
   });
 
-  // pooled robust scale per plane (column), across temperatures
-  const pooled: Record<string, number> = {};
-  PLANES.forEach((p, ci) => {
-    let m = 0;
-    temps.forEach((_, ri) => {
-      const rm = results[ri * PLANES.length + ci]?.data?.header.robust_max;
-      if (rm && Number.isFinite(rm)) m = Math.max(m, rm);
-    });
-    pooled[p.key] = m || 1;
+  // Auto from the centre sections of every file (the scale holds still while
+  // the cuts move), as on the 3D-ΔPDF page.
+  const centreValue: Record<string, number> = {
+    xy: axisValue(meta?.z_range, meta?.shape[2], meta ? Math.floor(meta.shape[2] / 2) : 0),
+    xz: axisValue(meta?.y_range, meta?.shape[1], meta ? Math.floor(meta.shape[1] / 2) : 0),
+    yz: axisValue(meta?.x_range, meta?.shape[0], meta ? Math.floor(meta.shape[0] / 2) : 0),
+  };
+  const centreSlices = useQueries({
+    queries: combos.map((c) => ({
+      queryKey: ["dpdfSlice", c.vid, c.plane, centreValue[c.plane]],
+      queryFn: () => fetchDpdfSlice(c.vid, c.plane, centreValue[c.plane]),
+      enabled: Boolean(meta) && Boolean(c.vid),
+      staleTime: Infinity,
+    })),
+    combine: sliceData, // a stable array while the slices are unchanged
+  });
+  const samples = useMemo(
+    () => (centreSlices.length > 0 && centreSlices.every(Boolean) ? centreSlices.map((d) => withoutOrigin(d!)) : null),
+    [centreSlices],
+  );
+  const lv = useLevels({
+    samples,
+    histData: results[0]?.data?.data,
+    signed: true,
+    percentile: DPDF_AUTO_PERCENTILE,
+    manual: manualLimit != null ? { lo: -manualLimit, hi: manualLimit } : null,
   });
 
   const lut = COLORMAPS[colormap] ?? COLORMAPS[DIVERGING_NAME];
@@ -161,78 +180,56 @@ export function MultiTempViewer() {
   const limit = zoomLimit(fullHalf, voxel, WIDEST_HALF);
 
   return (
-    <div className="page-body">
-      <div className="toolbar">
-        <ClickModeControl />
-        <Field label="Dataset">
-          <select
-            value={datasetId ?? ""}
-            onChange={(e) => setDataset(e.target.value)}
+    <div className="page-body qr-page">
+      {/* ── Workspace header (shared order): click mode · unit cells │ cuts ··· reset, then the display bar ── */}
+      <WorkspaceHeader
+        overlays={<UnitCellsSwitch kind="cell" />}
+        nav={
+          <div className="ws-cuts">
+            {([
+              ["x_H", xVal, cutX, setCutX, 0],
+              ["y_K", yVal, cutY, setCutY, 1],
+              ["z_L", zVal, cutZ, setCutZ, 2],
+            ] as const).map(([label, v, i, set, ax]) => (
+              <div key={label} className="ws-cut ws-cut--sm">
+                <Slider
+                  grow
+                  label={`Cut ${label}`}
+                  readout={meta ? `${v.toFixed(1)} Å` : "—"}
+                  min={0}
+                  max={meta ? meta.shape[ax] - 1 : 0}
+                  value={i}
+                  disabled={!meta}
+                  onChange={set}
+                />
+              </div>
+            ))}
+          </div>
+        }
+        end={
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            title="Every plane back to ±40 Å (double-click a view, or 0, resets one)"
+            onClick={() => setViews({})}
           >
-            {datasets.map((d) => (
-              <option key={d.id} value={d.id} title={d.raw_name}>
-                {datasetName(d, datasets)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Slider
-          grow
-          label="x_H"
-          readout={meta ? `${xVal.toFixed(1)} Å` : "—"}
-          min={0}
-          max={meta ? meta.shape[0] - 1 : 0}
-          value={cutX}
-          disabled={!meta}
-          onChange={setCutX}
-        />
-        <Slider
-          grow
-          label="y_K"
-          readout={meta ? `${yVal.toFixed(1)} Å` : "—"}
-          min={0}
-          max={meta ? meta.shape[1] - 1 : 0}
-          value={cutY}
-          disabled={!meta}
-          onChange={setCutY}
-        />
-        <Slider
-          grow
-          label="z_L"
-          readout={meta ? `${zVal.toFixed(1)} Å` : "—"}
-          min={0}
-          max={meta ? meta.shape[2] - 1 : 0}
-          value={cutZ}
-          disabled={!meta}
-          onChange={setCutZ}
-        />
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          title="Every plane back to ±40 Å (or double-click a view, or 0)"
-          onClick={() => setViews({})}
-        >
-          Reset views
-        </button>
-        <Slider
-          label="Contrast"
-          readout={`× ${contrast.toFixed(1)}`}
-          min={0.1}
-          max={20}
-          step={0.1}
-          value={contrast}
-          onChange={setContrast}
-        />
-        <Switch label="Unit cells" checked={gridlines} onChange={setGridlines} />
-        <Field label="Colormap">
-          <select value={colormap} onChange={(e) => setColormap(e.target.value)}>
-            {DIVERGING_NAMES.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <ColormapBar lut={lut} />
-        </Field>
-      </div>
+            Reset zoom
+          </button>
+        }
+        display={
+          <DisplayBar
+            colormap={colormap}
+            colormaps={DIVERGING_NAMES}
+            onColormap={setColormap}
+            lut={lut}
+            lv={lv}
+            onLevels={(l) => setManualLimit(Math.abs(l.hi))}
+            onAuto={() => setManualLimit(null)}
+            symmetric
+            autoTitle={AUTO_TITLES.dpdf}
+          />
+        }
+      />
 
       {datasetsQ.isSuccess && temps.length === 0 && (
         <EmptyState
@@ -242,10 +239,7 @@ export function MultiTempViewer() {
       )}
 
       {temps.length > 0 && (
-        <div
-          className="multi-grid"
-          style={{ gridTemplateColumns: `64px repeat(${PLANES.length}, 1fr)` }}
-        >
+        <div className="multi-grid">
           <div className="corner" />
           {PLANES.map((p) => (
             <div key={p.key} className="col-head">
@@ -277,7 +271,7 @@ export function MultiTempViewer() {
                         <SliceCanvas
                           slice={data}
                           lut={lut}
-                          vmax={contrast * pooled[p.key]}
+                          vmax={lv.levels.hi}
                           log={false}
                           diverging
                           viewport={viewport}

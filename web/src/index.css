@@ -944,11 +944,18 @@ input[type="range"]::-moz-range-track {
    multi-volume grid
    --------------------------------------------------------------------------- */
 
+/* files × planes over the full width of the page; the labels' column is narrow */
 .multi-grid {
   display: grid;
+  grid-template-columns: 64px repeat(3, minmax(0, 1fr));
   gap: 10px;
   align-items: center;
-  max-width: 860px;
+}
+@container main (max-width: 560px) {
+  .multi-grid {
+    grid-template-columns: 44px repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
 }
 .multi-grid .col-head {
   text-align: center;
@@ -5245,6 +5252,18 @@ h6.md-h {
 .ws-cut {
   flex: 1 1 280px;
   min-width: 200px;
+}
+/* several cuts in one header (the multi-volume page): one group that wraps */
+.ws-cuts {
+  flex: 1 1 520px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+.ws-cut--sm {
+  flex: 1 1 150px;
+  min-width: 140px;
 }
 .ws-group,
 .ws-field {
