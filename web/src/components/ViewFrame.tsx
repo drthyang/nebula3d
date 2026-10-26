@@ -85,6 +85,9 @@ interface Props {
   // The data's display extent: the view's centre stays inside it (default: `fit`'s square).
   bounds?: Bounds;
   limit: (half: number) => number;
+  // Returns to the full view (double-click, 0); default: onViewport(fit). Linked
+  // views whose shared state is more than this view's viewport reset it whole.
+  onReset?: () => void;
   axes: AxisSpec;
   cursor: [number, number] | null; // display point under the pointer in any linked view
   onCursor?: (p: [number, number] | null) => void;
@@ -101,6 +104,7 @@ export function ViewFrame({
   fit,
   bounds,
   limit,
+  onReset,
   axes,
   cursor,
   onCursor,
@@ -293,8 +297,9 @@ export function ViewFrame({
     setBox(null);
   };
 
+  const reset = () => (onReset ? onReset() : onViewport(fit));
   // Double-click: back to the full view, in any mode (the NeXus Viewer's meaning).
-  const onDoubleClick = () => onViewport(fit);
+  const onDoubleClick = reset;
 
   const zoomCentre = (k: number) => onViewport(settle(zoomAbout(viewport, viewport.cx, viewport.cy, k, limit)));
 
@@ -315,7 +320,7 @@ export function ViewFrame({
     const pan: Record<string, [number, number]> = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
     if (e.key === "+" || e.key === "=") zoomCentre(0.5);
     else if (e.key === "-" || e.key === "_") zoomCentre(2);
-    else if (e.key === "0") onViewport(fit);
+    else if (e.key === "0") reset();
     else if (pan[e.key]) onViewport(settle(panBy(viewport, pan[e.key][0], pan[e.key][1], w, h)));
     else return;
     e.preventDefault();

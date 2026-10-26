@@ -1,0 +1,201 @@
+// The Bragg-profile tiles as one linked view (THY-38): the fit window, the zoom
+// limits, how one tile's zoom or pan moves the other two, and — the
+// scientific requirement — that the fit ellipses stay registered to the data
+// they are drawn over at any zoom and pan.
+
+import { describe, expect, it } from "vitest";
+
+import type { BraggPeakWidth } from "../../api/types";
+import {
+  cursorFromTile,
+  ellipseInView,
+  fittedEllipse,
+  linkFromTile,
+  PEAK_ZOOM_OUT,
+  peakFitHalf,
+  peakHalfLimit,
+  tileBounds,
+  tileCursor,
+  tileViewport,
+  type Hkl,
+  type TileAxes,
+} from "../braggView";
+import { pixelToDisplay, zoomAbout, panBy, type Viewport } from "../viewport";
+
+const AB: TileAxes = { xa: 0, ya: 1 };
+const AC: TileAxes = { xa: 0, ya: 2 };
+const BC: TileAxes = { xa: 1, ya: 2 };
+
+function peak(over: Partial<BraggPeakWidth> = {}): BraggPeakWidth {
+  return {
+    index: 0,
+    source_node_hkl: null,
+    center_hkl: [2, -1, 3],
+    q_abs: 3,
+    intensity: 100,
+    local_background: 1,
+    width_hkl: [0.03, 0.05, 0.04],
+    width_q: [0.04, 0.05, 0.06],
+    principal_directions_hkl: [],
+    fit_kind: "moment",
+    ...over,
+  };
+}
+
+describe("the fit window", () => {
+  it("is 3.5× the widest fitted width, clamped to 0.08–0.6 r.l.u., as the page always opened", () => {
+    expect(peakFitHalf([0.03, 0.05, 0.04])).toBeCloseTo(0.175, 12);
+    expect(peakFitHalf([0.001, 0.002, 0.003])).toBeCloseTo(0.08, 12); // 0.02 floor × 3.5 = 0.07 → 0.08
+    expect(peakFitHalf([0.5, 0.1, 0.1])).toBe(0.6);
+    expect(peakFitHalf([-0.05, 0.01, 0.01])).toBeCloseTo(0.175, 12);
+    expect(peakFitHalf([NaN, 0.04, 0.01])).toBeCloseTo(0.14, 12);
+  });
+
+  it("zooms out at least as far as the old slider's ×0.1, and in at least as far as its ×4", () => {
+    const fit = 0.2;
+    const lim = peakHalfLimit(fit, 0.01);
+    expect(lim(1e9)).toBeCloseTo(fit * PEAK_ZOOM_OUT, 12);
+    expect(PEAK_ZOOM_OUT).toBeGreaterThanOrEqual(1 / Math.pow(2, -3.3)); // the slider's last stop
+    expect(lim(0)).toBeLessThanOrEqual(fit / 4);
+    expect(lim(0)).toBeGreaterThanOrEqual(2 * 0.01); // not below two voxels when that is closer than ×4
+    // a coarse grid never takes zooming in below the slider's ×4
+    expect(peakHalfLimit(fit, 1)(0)).toBeCloseTo(fit / 4, 12);
+    expect(lim(fit)).toBe(fit);
+  });
+});
+
+describe("one linked view for the three tiles", () => {
+  const c: Hkl = [2, -1, 3];
+
+  it("opens every tile on the peak at the fit window", () => {
+    for (const t of [AB, AC, BC]) {
+      const v = tileViewport(c, [0, 0, 0], 0.2, t);
+      expect([v.cx, v.cy, v.half]).toEqual([c[t.xa], c[t.ya], 0.2]);
+    }
+  });
+
+  it("zooms all three by the same factor when one zooms", () => {
+    const off: Hkl = [0, 0, 0];
+    const v = zoomAbout(tileViewport(c, off, 0.2, AB), 2.05, -0.97, 0.5, (h) => h);
+    const next = linkFromTile(c, off, AB, v);
+    for (const t of [AB, AC, BC]) expect(tileViewport(c, next.offset, next.half, t).half).toBeCloseTo(0.1, 12);
+  });
+
+  it("moves the other tiles through the same hkl point when one pans", () => {
+    const off: Hkl = [0, 0, 0.02];
+    const v = panBy(tileViewport(c, off, 0.2, AB), -40, 25, 200, 200); // pans in H and K
+    const { offset, half } = linkFromTile(c, off, AB, v);
+    const ab = tileViewport(c, offset, half, AB);
+    const ac = tileViewport(c, offset, half, AC);
+    const bc = tileViewport(c, offset, half, BC);
+    expect(ac.cx).toBeCloseTo(ab.cx, 12); // H shared by a*·b* and a*·c*
+    expect(bc.cx).toBeCloseTo(ab.cy, 12); // K shared by a*·b* and b*·c*
+    expect(offset[2]).toBe(0.02); // L untouched by a pan on the a*·b* tile
+    expect(ac.cy).toBeCloseTo(c[2] + 0.02, 12);
+    expect(bc.cy).toBeCloseTo(ac.cy, 12);
+  });
+
+  it("round-trips a tile's viewport", () => {
+    const off: Hkl = [0.01, -0.03, 0.05];
+    for (const t of [AB, AC, BC]) {
+      const v = tileViewport(c, off, 0.3, t);
+      const r = linkFromTile(c, off, t, v);
+      expect(r.offset[0]).toBeCloseTo(off[0], 12);
+      expect(r.offset[1]).toBeCloseTo(off[1], 12);
+      expect(r.offset[2]).toBeCloseTo(off[2], 12);
+      expect(r.half).toBe(0.3);
+    }
+  });
+
+  it("shares the crosshair as one hkl point, the hovered tile's plane through the peak", () => {
+    const q = cursorFromTile(c, AC, [2.1, 3.05]);
+    expect(q).toEqual([2.1, -1, 3.05]);
+    expect(tileCursor(q, AB)).toEqual([2.1, -1]);
+    expect(tileCursor(q, BC)).toEqual([-1, 3.05]);
+  });
+
+  it("keeps each tile's centre on the volume's ranges", () => {
+    const ranges = [[-6, 6], [4, -4], [-8, 8]] as const;
+    expect(tileBounds(ranges, BC)).toEqual({ x0: -4, x1: 4, y0: -8, y1: 8 });
+  });
+});
+
+// The ellipse an SVG <ellipse rx ry transform=rotate(angle cx cy)> draws, as
+// view pixels, for parameter t.
+function svgEllipsePoint(p: { cx: number; cy: number; rx: number; ry: number; angle: number }, t: number): [number, number] {
+  const a = (p.angle * Math.PI) / 180;
+  const x = p.rx * Math.cos(t), y = p.ry * Math.sin(t);
+  return [p.cx + x * Math.cos(a) - y * Math.sin(a), p.cy + x * Math.sin(a) + y * Math.cos(a)];
+}
+
+describe("the fit ellipses stay registered to the data", () => {
+  // A tilted ellipsoid: principal directions in hkl and their widths (r.l.u.).
+  const s = Math.SQRT1_2;
+  const tilted = peak({
+    principal_directions_hkl: [
+      [s, s, 0],
+      [-s, s, 0],
+      [0, 0, 1],
+    ],
+    principal_width_hkl: [0.06, 0.02, 0.03],
+  });
+  // The cross-section the ellipse must trace on the a*·b* plane: the precision
+  // matrix's in-plane block, x·M·x = 1 with x in r.l.u. (y up).
+  function precisionBlock(p: BraggPeakWidth, ix: number, iy: number) {
+    let a = 0, b = 0, c = 0;
+    p.principal_directions_hkl.forEach((d, i) => {
+      const inv = 1 / p.principal_width_hkl![i] ** 2;
+      a += inv * d[ix] * d[ix];
+      b += inv * d[ix] * d[iy];
+      c += inv * d[iy] * d[iy];
+    });
+    return { a, b, c };
+  }
+  const views: [Viewport, number, number][] = [
+    [{ cx: 2, cy: -1, half: 0.2 }, 180, 180], // fit, square
+    [{ cx: 2.03, cy: -0.98, half: 0.05 }, 180, 180], // zoomed in and panned
+    [{ cx: 1.7, cy: -1.4, half: 1.9 }, 180, 180], // zoomed out ×0.1, off centre
+    [{ cx: 2.01, cy: -1.02, half: 0.11 }, 260, 150], // a wide view
+  ];
+
+  it("traces the tilted fitted cross-section at every zoom and pan", () => {
+    const e = fittedEllipse(tilted, 0, 1);
+    const { a, b, c } = precisionBlock(tilted, 0, 1);
+    for (const [v, w, h] of views) {
+      const p = ellipseInView(e, [2, -1], v, w, h);
+      for (let k = 0; k < 16; k++) {
+        const [px, py] = svgEllipsePoint(p, (k / 16) * 2 * Math.PI);
+        // the r.l.u. point the raster draws under that pixel
+        const [X, Y] = pixelToDisplay(v, px, py, w, h);
+        const dx = X - 2, dy = Y + 1;
+        expect(a * dx * dx + 2 * b * dx * dy + c * dy * dy).toBeCloseTo(1, 9);
+      }
+    }
+  });
+
+  it("puts an axis-aligned ellipse's ends at centre ± its widths in r.l.u.", () => {
+    const e = { rx: 0.04, ry: 0.025 };
+    for (const [v, w, h] of views) {
+      const p = ellipseInView(e, [2, -1], v, w, h);
+      const right = pixelToDisplay(v, p.cx + p.rx, p.cy, w, h);
+      const top = pixelToDisplay(v, p.cx, p.cy - p.ry, w, h);
+      expect(right[0]).toBeCloseTo(2.04, 12);
+      expect(right[1]).toBeCloseTo(-1, 12);
+      expect(top[0]).toBeCloseTo(2, 12);
+      expect(top[1]).toBeCloseTo(-0.975, 12);
+    }
+  });
+
+  it("centres the ellipses on the peak's own pixel, wherever the view is", () => {
+    for (const [v, w, h] of views) {
+      const p = ellipseInView({ rx: 0.01, ry: 0.01 }, [2, -1], v, w, h);
+      const [X, Y] = pixelToDisplay(v, p.cx, p.cy, w, h);
+      expect(X).toBeCloseTo(2, 12);
+      expect(Y).toBeCloseTo(-1, 12);
+    }
+  });
+
+  it("falls back to the fitted widths when the principal axes are missing", () => {
+    expect(fittedEllipse(peak(), 0, 2)).toEqual({ rx: 0.03, ry: 0.04 });
+  });
+});

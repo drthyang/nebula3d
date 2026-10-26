@@ -2,16 +2,34 @@
 // peak widths of one dataset (see design_handoff_bragg_profile_Bragg/).  Reads the
 // BraggProfile and presents a stat strip, a width-vs-|Q| scatter, per-axis width
 // histograms, a sortable peak table, and a selected-peak detail with the real
-// intensity around the peak in three orthogonal slices + fit ellipses.
+// intensity around the peak in three orthogonal slices + fit ellipses, zoomed
+// and panned together as one linked view about the peak (components/braggView.ts).
 
 import { useEffect, useMemo, useState } from "react";
 
 import { useBraggProfile, useDatasets, useMeta } from "../api/hooks";
-import type { BraggPeakWidth } from "../api/types";
-import { BraggPeakSlice, type Ellipse } from "../components/BraggPeakSlice";
+import type { BraggPeakWidth, VolumeMeta } from "../api/types";
+import { BraggPeakSlice } from "../components/BraggPeakSlice";
+import {
+  cursorFromTile,
+  fittedEllipse,
+  linkFromTile,
+  peakFitHalf,
+  peakHalfLimit,
+  tileBounds,
+  tileCursor,
+  tileViewport,
+  type Ellipse,
+  type Hkl,
+  type TileAxes,
+} from "../components/braggView";
+import { ClickModeControl } from "../components/DisplayBar";
 import { ColormapBar, EmptyState, IconAlert, IconLattice, Slider, Switch } from "../components/ui";
+import { HKL_GRID_TITLE } from "../components/UnitCellGrid";
+import type { Viewport } from "../components/viewport";
 import { COLORMAPS, SEQUENTIAL_NAMES } from "../colormaps/luts";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
+import { useDpdfStore } from "../state/dpdfStore";
 import { useViewerStore } from "../state/viewerStore";
 import { useGlow } from "../llm/highlight";
 
@@ -50,7 +68,6 @@ const displayQ = (p: BraggPeakWidth, a: number): number | null => {
   if (m != null && Number.isFinite(m)) return m;
   return Number.isFinite(p.width_q[a]) ? p.width_q[a] : null;
 };
-const fittedHkl = (p: BraggPeakWidth, a: number) => p.width_hkl[a];
 const measuredHkl = (p: BraggPeakWidth, a: number): number | null => {
   const m = p.measured_width_hkl;
   if (m === undefined || m === null) return null;
@@ -163,37 +180,6 @@ function fitGaussian(values: number[], domain: [number, number], bins: number): 
     if (!improved) { stepM *= 0.55; stepS *= 0.55; }
   }
   return best;
-}
-
-// ---------------------------------------------------------------------------
-// Accurate fitted ellipse on a slice plane from the principal-axis ellipsoid.
-// The slice passes through the peak centre, so the cross-section is the 2×2
-// block of the precision matrix M = Σ (1/rᵢ²) vᵢ vᵢᵀ restricted to the in-plane
-// axes (ix, iy); its eigen-decomposition gives the (possibly tilted) ellipse.
-// Returns r.l.u. semi-axes (rx along `angle`, ry perpendicular) + SVG-space angle.
-// ---------------------------------------------------------------------------
-function fittedEllipse(peak: BraggPeakWidth, ix: number, iy: number): Ellipse {
-  const dirs = peak.principal_directions_hkl;
-  const rs = peak.principal_width_hkl;
-  if (dirs && dirs.length === 3 && rs && rs.length === 3) {
-    let a = 0, b = 0, c = 0;
-    for (let i = 0; i < 3; i++) {
-      const w = Math.abs(rs[i]);
-      if (!(w > 0) || !dirs[i]) continue;
-      const inv = 1 / (w * w);
-      const vx = dirs[i][ix], vy = dirs[i][iy];
-      a += inv * vx * vx; b += inv * vx * vy; c += inv * vy * vy;
-    }
-    const half = (a + c) / 2;
-    const d = Math.sqrt(((a - c) / 2) ** 2 + b * b);
-    const l1 = half + d, l2 = half - d;
-    if (l1 > 0 && l2 > 0) {
-      // SVG y points down, so negate the y-component of the eigenvector.
-      const angle = (Math.atan2(-(l1 - a), b) * 180) / Math.PI;
-      return { rx: 1 / Math.sqrt(l1), ry: 1 / Math.sqrt(l2), angle };
-    }
-  }
-  return { rx: Math.abs(fittedHkl(peak, ix)), ry: Math.abs(fittedHkl(peak, iy)) };
 }
 
 // ---------------------------------------------------------------------------
@@ -438,11 +424,20 @@ function PeakTable({
 // ---------------------------------------------------------------------------
 // Selected-peak detail — intensity slices + fit ellipses + readout
 // ---------------------------------------------------------------------------
+type Tile = TileAxes & { label: string; color: string; plane: string; xLabel: string; yLabel: string };
+const TILES: Tile[] = [
+  { label: "a*·b*", color: "#f1a73a", plane: "hk0", xa: 0, ya: 1, xLabel: "H", yLabel: "K" },
+  { label: "a*·c*", color: "#34c98e", plane: "h0l", xa: 0, ya: 2, xLabel: "H", yLabel: "L" },
+  { label: "b*·c*", color: "#74a8ff", plane: "0kl", xa: 1, ya: 2, xLabel: "K", yLabel: "L" },
+];
+const NO_OFFSET: Hkl = [0, 0, 0];
+
 function SelectedPeak({
   peak,
   peaks,
   axes,
   volumeId,
+  meta,
   colormap,
   setColormap,
 }: {
@@ -450,20 +445,37 @@ function SelectedPeak({
   peaks: BraggPeakWidth[];
   axes: Axis[];
   volumeId: string | undefined;
+  meta: VolumeMeta | undefined;
   colormap: string;
   setColormap: (c: string) => void;
 }) {
-  // Brightness in stops (right is brighter) and zoom in stops (right is closer),
-  // the same directions as the other viewer pages.
+  // Brightness in stops (right is brighter), the same direction as the other viewer pages.
   const [brightness, setBrightness] = useState(0);
-  const [zoomStops, setZoomStops] = useState(0);
-  const zoom = Math.pow(2, zoomStops);
   const lut = COLORMAPS[colormap] ?? COLORMAPS.inferno;
-  const [h, k, l] = peak.center_hkl;
+  const centre = peak.center_hkl;
+  const [h, k, l] = centre;
+  const gridlines = useDpdfStore((s) => s.gridlines);
+  const setGridlines = useDpdfStore((s) => s.setGridlines);
 
-  const maxW = Math.max(...peak.width_hkl.map(Math.abs), 0.02);
-  const baseHalf = Math.min(0.6, Math.max(0.08, maxW * 3.5));
-  const half = baseHalf / zoom; // ×2 shows half the width (closer); ×0.1 shows 10× the context
+  // One linked view for the three tiles: the hkl point they centre on, as an
+  // offset from the peak, and a zoom relative to the peak's fit window. Another
+  // peak opens centred on itself at the same zoom (as the Zoom slider kept it).
+  const fitHalf = peakFitHalf(peak.width_hkl);
+  const ranges = meta ? ([meta.h_range, meta.k_range, meta.l_range] as const) : null;
+  const voxel = meta
+    ? Math.min(...ranges!.map((r, i) => Math.abs(r[1] - r[0]) / Math.max(1, meta.shape[i] - 1)))
+    : 0;
+  const limit = peakHalfLimit(fitHalf, voxel);
+  const peakKey = centre.join(",");
+  const [link, setLink] = useState<{ peak: string; offset: Hkl; zoom: number }>({ peak: peakKey, offset: NO_OFFSET, zoom: 1 });
+  const offset = link.peak === peakKey ? link.offset : NO_OFFSET;
+  const half = limit(fitHalf * link.zoom);
+  const moveTile = (t: Tile) => (v: Viewport) => {
+    const next = linkFromTile(centre, offset, t, v);
+    setLink({ peak: peakKey, offset: next.offset, zoom: next.half / fitHalf });
+  };
+  const resetView = () => setLink({ peak: peakKey, offset: NO_OFFSET, zoom: 1 });
+  const [cursor, setCursor] = useState<Hkl | null>(null);
 
   const floorHkl = axes.map((a) => deriveFloor(peaks, a.i, true));
   const ell = (xa: number, ya: number, src: (p: BraggPeakWidth, a: number) => number | null): Ellipse | null => {
@@ -472,12 +484,7 @@ function SelectedPeak({
   };
   const floorEll = (xa: number, ya: number): Ellipse | null =>
     floorHkl[xa] != null && floorHkl[ya] != null ? { rx: floorHkl[xa]!, ry: floorHkl[ya]! } : null;
-
-  const tiles = [
-    { label: "a*·b*", color: "#f1a73a", plane: "hk0", value: l, cx: h, cy: k, xa: 0, ya: 1 },
-    { label: "a*·c*", color: "#34c98e", plane: "h0l", value: k, cx: h, cy: l, xa: 0, ya: 2 },
-    { label: "b*·c*", color: "#74a8ff", plane: "0kl", value: h, cx: k, cy: l, xa: 1, ya: 2 },
-  ];
+  const fixed: Record<string, number> = { hk0: l, h0l: k, "0kl": h };
 
   const glow = useGlow("bragg", "punch");
   return (
@@ -490,6 +497,18 @@ function SelectedPeak({
         |Q| {peak.q_abs.toFixed(3)} Å⁻¹ · I {peak.intensity != null ? Math.round(peak.intensity).toLocaleString() : "—"} · {peak.fit_kind || "fit"}
       </div>
 
+      <div className="bragg-view-row">
+        <ClickModeControl />
+        <Switch label="Unit cells" title={HKL_GRID_TITLE} checked={gridlines} onChange={setGridlines} />
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          title="Back to the window about the peak (double-click a tile, or 0)"
+          onClick={resetView}
+        >
+          Reset view
+        </button>
+      </div>
       <div className="bragg-sliders">
         <Slider
           label="Brightness"
@@ -501,28 +520,27 @@ function SelectedPeak({
           onChange={setBrightness}
           grow
         />
-        <Slider
-          label="Zoom"
-          readout={`× ${zoom < 1 ? zoom.toFixed(2) : zoom.toFixed(1)}`}
-          min={-3.3}
-          max={2}
-          step={0.1}
-          value={zoomStops}
-          onChange={setZoomStops}
-          grow
-        />
       </div>
 
       <div className="bragg-tiles">
-        {tiles.map((t) => (
+        {TILES.map((t) => (
           <BraggPeakSlice
             key={t.label}
             volumeId={volumeId}
             plane={t.plane}
-            value={t.value}
-            cx={t.cx}
-            cy={t.cy}
-            half={half}
+            value={fixed[t.plane]}
+            centre={[centre[t.xa], centre[t.ya]]}
+            viewport={tileViewport(centre, offset, half, t)}
+            onViewport={moveTile(t)}
+            onReset={resetView}
+            fit={tileViewport(centre, NO_OFFSET, fitHalf, t)}
+            bounds={ranges ? tileBounds(ranges, t) : undefined}
+            limit={limit}
+            cursor={cursor ? tileCursor(cursor, t) : null}
+            onCursor={(pt) => setCursor(pt ? cursorFromTile(centre, t, pt) : null)}
+            xLabel={t.xLabel}
+            yLabel={t.yLabel}
+            gridlines={gridlines}
             lut={lut}
             brightness={brightness}
             fitted={fittedEllipse(peak, t.xa, t.ya)}
@@ -716,7 +734,7 @@ export function BraggProfileViewer() {
             <div className="bragg-grid">
               <PeakTable peaks={peaks} axes={axes} order={order} selected={selected} sortKey={sortKey} onSort={setSortKey} onSelect={setSelected} />
               {selPeak && (
-                <SelectedPeak peak={selPeak} peaks={peaks} axes={axes} volumeId={sliceVolumeId} colormap={colormap} setColormap={setColormap} />
+                <SelectedPeak peak={selPeak} peaks={peaks} axes={axes} volumeId={sliceVolumeId} meta={meta.data} colormap={colormap} setColormap={setColormap} />
               )}
             </div>
 

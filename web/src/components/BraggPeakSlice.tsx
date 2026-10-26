@@ -1,31 +1,45 @@
-// One intensity-slice tile for the Bragg-profile selected-peak detail.
+// One intensity-slice tile for the Bragg-profile selected-peak detail, on the
+// shared ViewFrame: the three tiles are one linked view about the peak centre
+// (braggView.ts), zoomed and panned like every other slice view.
 //
-// SliceCanvas only crops symmetrically about the origin, but a Bragg peak sits at
-// an arbitrary center_hkl — so this renders a square window *centred on the peak*
-// by resampling the fetched slice in r.l.u. coordinates, then overlays the punch
-// fit ellipses (fitted / measured / |Q|-floor) and a centre crosshair as SVG.
+// The tile resamples the fetched slice in r.l.u. under each display pixel
+// (one scale on both axes, so a peak's shape is not stretched), then overlays
+// the punch fit ellipses (fitted / measured / |Q|-floor), a crosshair at the
+// peak centre and, with "Unit cells" on, dashed lines at integer h, k, l.  The
+// raster and the overlay map r.l.u. to pixels with the same viewport
+// (viewport.ts), so the ellipses stay registered to the data at any zoom.
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import { fetchSlice } from "../api/client";
 import type { Slice } from "../api/types";
+import { ellipseInView, RLU_GEOM, type Ellipse } from "./braggView";
+import { HklGrid } from "./UnitCellGrid";
+import { ViewFrame } from "./ViewFrame";
+import { useViewSize } from "./viewSize";
+import { displayToPixel, pixelToDisplay, type Bounds, type Viewport } from "./viewport";
 
-export interface Ellipse {
-  rx: number; // semi-axis along `angle` (r.l.u.); tile x when no angle
-  ry: number; // semi-axis perpendicular to `angle` (r.l.u.); tile y when no angle
-  angle?: number; // rotation in degrees (SVG space); omit for axis-aligned
-}
+export type { Ellipse } from "./braggView";
 
 interface Props {
   volumeId: string | undefined;
   plane: string; // "hk0" | "h0l" | "0kl"
   value: number; // fixed third-axis coordinate (r.l.u.)
-  cx: number; // peak centre along the tile x axis (r.l.u.)
-  cy: number; // peak centre along the tile y axis (r.l.u.)
-  half: number; // window half-extent (r.l.u.)
+  centre: [number, number]; // peak centre on the tile's x, y axes (r.l.u.)
+  viewport: Viewport; // this tile's view of the linked view (r.l.u.)
+  onViewport: (v: Viewport) => void;
+  onReset: () => void;
+  fit: Viewport; // the window the tile opens at, about the peak
+  bounds?: Bounds;
+  limit: (half: number) => number;
+  cursor: [number, number] | null;
+  onCursor: (p: [number, number] | null) => void;
+  xLabel: string;
+  yLabel: string;
+  gridlines: boolean;
   lut: Uint8ClampedArray;
-  brightness: number; // stops about the tile's p99: +1 halves vmax (brighter)
+  brightness: number; // stops about the fit window's p99: +1 halves vmax (brighter)
   fitted: Ellipse;
   measured?: Ellipse | null;
   floor?: Ellipse | null;
@@ -33,7 +47,8 @@ interface Props {
   axisColor: string;
 }
 
-const RASTER = 140; // square raster; CSS scales it to the tile
+const MAX_RASTER = 480; // raster px along the longer side; CSS scales it to the tile
+const VMAX_SAMPLES = 70; // per side of the fit window, for the colour limit
 
 // Nearest sample index, or -1 when the requested coordinate is *outside* the axis
 // range.  Returning -1 (rather than clamping to the edge index) keeps a zoomed-out
@@ -49,26 +64,20 @@ function nearest(axis: number[], v: number): number {
   return Math.max(0, Math.min(n - 1, Math.round(t)));
 }
 
-// Robust upper colour limit from the window samples (p99 keeps a single hot voxel
-// from blowing out the scale).  Brightness moves vmax in stops, as on the other
-// viewer pages: +1 halves vmax, so right on the knob is brighter.
-function windowVmax(
-  slice: Slice,
-  cx: number,
-  cy: number,
-  half: number,
-  brightness: number,
-): number {
+// Robust upper colour limit from the samples of the fit window about the peak
+// (p99 keeps a single hot voxel from blowing out the scale).  Taken from the
+// fit window, not the view, so the colours hold still while the tiles zoom and
+// pan.  Brightness moves vmax in stops, as on the other viewer pages: +1
+// halves vmax, so right on the knob is brighter.
+function windowVmax(slice: Slice, cx: number, cy: number, half: number, brightness: number): number {
   const { nx, x_axis: xs, y_axis: ys } = slice.header;
   const data = slice.data;
   const vals: number[] = [];
-  for (let py = 0; py < RASTER; py += 2) {
-    const yr = cy - half + ((py + 0.5) / RASTER) * 2 * half;
-    const iy = nearest(ys, yr);
+  for (let j = 0; j < VMAX_SAMPLES; j++) {
+    const iy = nearest(ys, cy - half + ((j + 0.5) / VMAX_SAMPLES) * 2 * half);
     if (iy < 0) continue;
-    for (let px = 0; px < RASTER; px += 2) {
-      const xr = cx - half + ((px + 0.5) / RASTER) * 2 * half;
-      const ix = nearest(xs, xr);
+    for (let i = 0; i < VMAX_SAMPLES; i++) {
+      const ix = nearest(xs, cx - half + ((i + 0.5) / VMAX_SAMPLES) * 2 * half);
       if (ix < 0) continue;
       const v = data[iy * nx + ix];
       if (Number.isFinite(v) && v > 0) vals.push(v);
@@ -80,43 +89,36 @@ function windowVmax(
   return Math.max(p99 * Math.pow(2, -brightness), 1e-9);
 }
 
-function SliceTile({
-  slice,
-  cx,
-  cy,
-  half,
-  lut,
-  brightness,
-  fitted,
-  measured,
-  floor,
-  axisLabel,
-  axisColor,
-  loading = false,
-}: Omit<Props, "volumeId" | "plane" | "value"> & { slice: Slice; loading?: boolean }) {
+/** The slice under each pixel of the view (nearest sample), no-data grey outside it. */
+function TileRaster({ slice, viewport, vmax, lut }: { slice: Slice; viewport: Viewport; vmax: number; lut: Uint8ClampedArray }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const { w, h } = useViewSize();
 
   useEffect(() => {
     const canvas = ref.current;
-    if (!canvas) return;
+    if (!canvas || !(w > 0 && h > 0)) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const { nx, x_axis: xs, y_axis: ys } = slice.header;
     const data = slice.data;
-    const vmax = windowVmax(slice, cx, cy, half, brightness);
-
-    canvas.width = RASTER;
-    canvas.height = RASTER;
-    const img = ctx.createImageData(RASTER, RASTER);
+    const k = Math.min(1, MAX_RASTER / Math.max(w, h));
+    const W = Math.max(1, Math.round(w * k));
+    const H = Math.max(1, Math.round(h * k));
+    canvas.width = W;
+    canvas.height = H;
+    const img = ctx.createImageData(W, H);
     const out = img.data;
-    for (let py = 0; py < RASTER; py++) {
-      // y flipped so +axis points up
-      const yr = cy + half - ((py + 0.5) / RASTER) * 2 * half;
-      const iy = nearest(ys, yr);
-      for (let px = 0; px < RASTER; px++) {
-        const xr = cx - half + ((px + 0.5) / RASTER) * 2 * half;
-        const ix = nearest(xs, xr);
-        const o = (py * RASTER + px) * 4;
+    // Raster pixel (px, py) covers view pixels ((px, py) + ½)·(w/W, h/H): its
+    // centre's display point is the r.l.u. sampled (pixelToDisplay, y up).
+    const iys = new Int32Array(H);
+    for (let py = 0; py < H; py++) iys[py] = nearest(ys, pixelToDisplay(viewport, w / 2, ((py + 0.5) * h) / H, w, h)[1]);
+    const ixs = new Int32Array(W);
+    for (let px = 0; px < W; px++) ixs[px] = nearest(xs, pixelToDisplay(viewport, ((px + 0.5) * w) / W, h / 2, w, h)[0]);
+    for (let py = 0; py < H; py++) {
+      const iy = iys[py];
+      for (let px = 0; px < W; px++) {
+        const ix = ixs[px];
+        const o = (py * W + px) * 4;
         // Outside the data extent (zoomed out past the volume edge): render as
         // an explicit no-data margin rather than smearing the boundary voxel.
         const v = iy < 0 || ix < 0 ? NaN : data[iy * nx + ix];
@@ -134,77 +136,104 @@ function SliceTile({
       }
     }
     ctx.putImageData(img, 0, 0);
-  }, [slice, cx, cy, half, lut, brightness]);
+  }, [slice, viewport, vmax, lut, w, h]);
 
-  // SVG overlay in a 0..200 box centred at 100; r.l.u. → px scale = 100/half.
-  const C = 100;
-  const s = 100 / half;
-  const ell = (e: Ellipse) => ({ rx: Math.max(0.5, e.rx * s), ry: Math.max(0.5, e.ry * s) });
-  const f = ell(fitted);
-  const m = measured ? ell(measured) : null;
-  const fl = floor ? ell(floor) : null;
+  return <canvas ref={ref} />;
+}
 
+/** The fit ellipses and the peak-centre crosshair, in the view's pixels. */
+function TileOverlay({
+  centre,
+  viewport,
+  fitted,
+  measured,
+  floor,
+}: Pick<Props, "centre" | "viewport" | "fitted" | "measured" | "floor">) {
+  const { w, h } = useViewSize();
+  const [X, Y] = displayToPixel(viewport, centre[0], centre[1], w, h);
+  const ell = (e: Ellipse, className: string) => {
+    const p = ellipseInView(e, centre, viewport, w, h);
+    return (
+      <ellipse
+        cx={p.cx}
+        cy={p.cy}
+        rx={Math.max(0.5, p.rx)}
+        ry={Math.max(0.5, p.ry)}
+        className={className}
+        transform={p.angle ? `rotate(${p.angle} ${p.cx} ${p.cy})` : undefined}
+      />
+    );
+  };
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true">
+      <line x1={X} y1={0} x2={X} y2={h} className="bragg-cross" />
+      <line x1={0} y1={Y} x2={w} y2={Y} className="bragg-cross" />
+      {floor && ell(floor, "bragg-ell-floor")}
+      {measured && ell(measured, "bragg-ell-meas")}
+      {ell(fitted, "bragg-ell-fit")}
+    </svg>
+  );
+}
+
+function TileShell({ label, color, children }: { label: ReactNode; color: string; children: ReactNode }) {
   return (
     <div className="bragg-tile">
-      <div className={`bragg-tile-canvas${loading ? " slice-loading" : ""}`}>
-        <canvas ref={ref} />
-        <svg viewBox="0 0 200 200" preserveAspectRatio="none">
-          <line x1={C} y1="0" x2={C} y2="200" className="bragg-cross" />
-          <line x1="0" y1={C} x2="200" y2={C} className="bragg-cross" />
-          {fl && (
-            <ellipse cx={C} cy={C} rx={fl.rx} ry={fl.ry} className="bragg-ell-floor" />
-          )}
-          {m && (
-            <ellipse cx={C} cy={C} rx={m.rx} ry={m.ry} className="bragg-ell-meas" />
-          )}
-          <ellipse
-            cx={C}
-            cy={C}
-            rx={f.rx}
-            ry={f.ry}
-            className="bragg-ell-fit"
-            transform={fitted.angle ? `rotate(${fitted.angle} ${C} ${C})` : undefined}
-          />
-        </svg>
-      </div>
-      <span className="bragg-tile-label" style={{ color: axisColor }}>
-        {axisLabel}
+      {children}
+      <span className="bragg-tile-label" style={{ color }}>
+        {label}
       </span>
     </div>
   );
 }
 
-export function BraggPeakSlice({ volumeId, plane, value, ...rest }: Props) {
+export function BraggPeakSlice({ volumeId, plane, value, ...p }: Props) {
   const q = useQuery({
     queryKey: ["braggSlice", volumeId, plane, value],
     queryFn: () => fetchSlice(volumeId as string, plane, value, true),
     enabled: !!volumeId,
     staleTime: 5 * 60 * 1000,
   });
+  const slice = q.data;
+  const [cx, cy] = p.centre;
+  const vmax = useMemo(
+    () => (slice ? windowVmax(slice, cx, cy, p.fit.half, p.brightness) : 1),
+    [slice, cx, cy, p.fit.half, p.brightness],
+  );
 
-  if (!volumeId || q.isError) {
+  if (!volumeId || q.isError || !slice) {
     return (
-      <div className="bragg-tile">
-        <div className="bragg-tile-canvas bragg-tile-empty">
-          <span>{!volumeId ? "no volume" : "slice failed"}</span>
-        </div>
-        <span className="bragg-tile-label" style={{ color: rest.axisColor }}>
-          {rest.axisLabel}
-        </span>
-      </div>
+      <TileShell label={p.axisLabel} color={p.axisColor}>
+        {!volumeId || q.isError ? (
+          <div className="bragg-tile-canvas bragg-tile-empty">
+            <span>{!volumeId ? "no volume" : "slice failed"}</span>
+          </div>
+        ) : (
+          <div className="bragg-tile-canvas">
+            <div className="skeleton" style={{ width: "100%", height: "100%" }} />
+          </div>
+        )}
+      </TileShell>
     );
   }
-  if (!q.data) {
-    return (
-      <div className="bragg-tile">
-        <div className="bragg-tile-canvas">
-          <div className="skeleton" style={{ width: "100%", height: "100%" }} />
-        </div>
-        <span className="bragg-tile-label" style={{ color: rest.axisColor }}>
-          {rest.axisLabel}
-        </span>
+  return (
+    <TileShell label={p.axisLabel} color={p.axisColor}>
+      <div className={`bragg-tile-canvas${q.isFetching ? " slice-loading" : ""}`}>
+        <ViewFrame
+          viewport={p.viewport}
+          onViewport={p.onViewport}
+          onReset={p.onReset}
+          fit={p.fit}
+          bounds={p.bounds}
+          limit={p.limit}
+          axes={{ sx: 1, sy: 1, xLabel: p.xLabel, yLabel: p.yLabel, unit: "r.l.u.", fovUnit: "r.l.u." }}
+          cursor={p.cursor}
+          onCursor={p.onCursor}
+        >
+          <TileRaster slice={slice} viewport={p.viewport} vmax={vmax} lut={p.lut} />
+          {p.gridlines && <HklGrid viewport={p.viewport} geom={RLU_GEOM} />}
+          <TileOverlay centre={p.centre} viewport={p.viewport} fitted={p.fitted} measured={p.measured} floor={p.floor} />
+        </ViewFrame>
       </div>
-    );
-  }
-  return <SliceTile slice={q.data} loading={q.isFetching} {...rest} />;
+    </TileShell>
+  );
 }
