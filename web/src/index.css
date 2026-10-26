@@ -1497,6 +1497,21 @@ input[type="range"]::-moz-range-track {
   opacity: 1;
   visibility: visible;
 }
+/* opening downwards, for a control near the top of the scrolling page */
+.helptip--below .helptip-bubble {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+.helptip--below .helptip-bubble::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--border-strong);
+}
+/* one gesture or fact per line */
+.helptip-line {
+  display: block;
+}
 /* Configure help icons sit at the right edge of stage heads and control rows;
    open their bubbles leftward (anchored to the icon's right edge) so they stay
    inside the card instead of spilling past the page edge — a hidden,
@@ -5930,6 +5945,10 @@ h6.md-h {
   }
   .lv-track {
     width: 130px;
+  }
+  /* header rows wrap here: a separator would start or end a line */
+  .ws-head .ws-sep {
+    display: none;
   }
 }
 

@@ -16,13 +16,7 @@ import { useDatasets } from "../api/hooks";
 import type { ConsistencySettings, Slice } from "../api/types";
 import { COLORMAPS, SEQUENTIAL_NAMES, DIVERGING_NAMES, DIVERGING_NAME } from "../colormaps/luts";
 import { fmtLevel } from "../components/colorScale";
-import {
-  AutoButton,
-  BrightnessKnob,
-  ClickModeControl,
-  LevelsBar,
-  ScaleControl,
-} from "../components/DisplayBar";
+import { AutoButton, DisplayBar, LevelsBar } from "../components/DisplayBar";
 import { qSection, reciprocalMetric } from "../components/reciprocal";
 import { SliceCanvas } from "../components/SliceCanvas";
 import { StructureHits, StructureOverlay } from "../components/StructureOverlay";
@@ -33,6 +27,8 @@ import { ViewFrame } from "../components/ViewFrame";
 import { clampHalf, displayToSlice, extentBounds, fitViewport, sampleIndex, type SliceGeom, type Viewport } from "../components/viewport";
 import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
 import { LayoutControl, Workspace } from "../components/Workspace";
+import { UnitCellsSwitch, WorkspaceHeader } from "../components/WorkspaceHeader";
+import { AUTO_TITLES, STRUCTURE_TITLE } from "../components/viewerText";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { defaultDpdfView, useDpdfStore } from "../state/dpdfStore";
 import {
@@ -128,7 +124,6 @@ export function ConsistencyViewer() {
   const setRManual = useDpdfStore((s) => s.setLimit);
   const setRView = useDpdfStore((s) => s.setView);
   const setDpdfColormap = useDpdfStore((s) => s.setColormap);
-  const setGridlines = useDpdfStore((s) => s.setGridlines);
 
 
   // Orientation: while linked the R plane follows the Q plane (H ↔ x, …).
@@ -509,70 +504,74 @@ export function ConsistencyViewer() {
         </div>
       </div>
 
-      {/* ── Workspace header: click mode · unit cells · orientation · layout, then Q and R display ── */}
-      <div className="ws-head">
-        <div className="ws-row">
-          <ClickModeControl />
-          <Switch
-            label="Unit cells"
-            title="Dashed lines at integer h, k, l on the Q views and at the unit-cell edges on the ΔPDF view"
-            checked={gridlines}
-            onChange={setGridlines}
-          />
-          <span className="ws-sep" />
-          <Switch label="Link orientation" checked={link} onChange={toggleLink} />
-          <span className="ws-group">
-            <span className="qr-rt-badge qr-rt--q">Q</span>
-            <Segmented options={AXES} value={fixedAxis} onChange={(x) => pickQAxis(x as FixedAxis)} />
-          </span>
-          <span className="ws-group">
-            <span className="qr-rt-badge qr-rt--r">R</span>
-            <Segmented options={REAL_AXES} value={dpdfFixedAxis} onChange={(x) => pickRAxis(x as RealAxis)} />
-          </span>
-          <span className={`ws-orient ${Q_TO_R_AXIS[fixedAxis] === dpdfFixedAxis ? "ok" : "warn"}`}>
-            {Q_TO_R_AXIS[fixedAxis] === dpdfFixedAxis ? `${plane} ↔ ${dpdfPlane}` : `different planes: ${plane} vs ${dpdfPlane}`}
-          </span>
-          <span className="ws-spacer" />
-          <LayoutControl state={layout} dispatch={dispatchLayout} />
-        </div>
-        <div className="ws-row ws-display">
-          <div className="ws-display-group">
+      {/* ── Workspace header (shared order): click mode · unit cells · structure │ orientation ··· layout, then Q and R display ── */}
+      <WorkspaceHeader
+        overlays={
+          <>
+            <UnitCellsSwitch kind="both" />
+            <Switch label="Structure" title={STRUCTURE_TITLE} checked={showStructure} disabled={!structure} onChange={setShowStructure} />
+          </>
+        }
+        nav={
+          <>
+            <Switch label="Link orientation" title="Keep the ΔPDF plane on the Q plane (H ↔ x, K ↔ y, L ↔ z)" checked={link} onChange={toggleLink} />
             <span className="ws-group">
               <span className="qr-rt-badge qr-rt--q">Q</span>
-              <select aria-label="Q colormap" value={colormap} onChange={(e) => setColormap(e.target.value)}>
-                {SEQUENTIAL_NAMES.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
+              <Segmented label="Q cut axis" options={AXES} value={fixedAxis} onChange={(x) => pickQAxis(x as FixedAxis)} />
             </span>
-            <LevelsBar lut={seqLut} levels={qLv.levels} domain={qLv.domain} hist={qLv.hist} scale={scale} onChange={setQLevels} />
-            <ScaleControl value={scale} onChange={setScale} />
-            <AutoButton active={qLv.isAuto} onClick={() => setQManual(null)} />
-            <BrightnessKnob autoHi={qLv.auto.hi} hi={qLv.levels.hi} onChange={(hi) => setQLevels({ lo: qLv.levels.lo, hi })} />
-          </div>
-          <span className="ws-sep" />
-          <div className="ws-display-group">
             <span className="ws-group">
               <span className="qr-rt-badge qr-rt--r">R</span>
-              <select aria-label="R colormap" value={dpdfColormap} onChange={(e) => setDpdfColormap(e.target.value)}>
-                {DIVERGING_NAMES.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
+              <Segmented label="ΔPDF cut axis" options={REAL_AXES} value={dpdfFixedAxis} onChange={(x) => pickRAxis(x as RealAxis)} />
             </span>
-            <LevelsBar lut={divLut} levels={rLv.levels} domain={rLv.domain} hist={rLv.hist} symmetric onChange={(l) => setRLimit(l.hi)} />
-            <AutoButton active={rLv.isAuto} onClick={() => setRManual(null)} />
-            <Switch label="Structure" checked={showStructure} disabled={!structure} onChange={setShowStructure} />
-          </div>
-        </div>
-        {showStructure && structure && structureNote && (
-          <div className="ws-row">
-            <span className="struct-sub">
-              <b>{structure.def.name}</b>: {structureNote}
+            <span className={`ws-orient ${Q_TO_R_AXIS[fixedAxis] === dpdfFixedAxis ? "ok" : "warn"}`}>
+              {Q_TO_R_AXIS[fixedAxis] === dpdfFixedAxis ? `${plane} ↔ ${dpdfPlane}` : `different planes: ${plane} vs ${dpdfPlane}`}
             </span>
-          </div>
-        )}
-      </div>
+          </>
+        }
+        end={<LayoutControl state={layout} dispatch={dispatchLayout} />}
+        display={
+          <>
+            <DisplayBar
+              badge={<span className="qr-rt-badge qr-rt--q">Q</span>}
+              colormapLabel="Q colormap"
+              colormap={colormap}
+              colormaps={SEQUENTIAL_NAMES}
+              onColormap={setColormap}
+              lut={seqLut}
+              lv={qLv}
+              onLevels={setQLevels}
+              onAuto={() => setQManual(null)}
+              scale={scale}
+              onScale={setScale}
+            />
+            <span className="ws-sep" />
+            <DisplayBar
+              badge={<span className="qr-rt-badge qr-rt--r">R</span>}
+              colormapLabel="R colormap"
+              colormap={dpdfColormap}
+              colormaps={DIVERGING_NAMES}
+              onColormap={setDpdfColormap}
+              lut={divLut}
+              lv={rLv}
+              onLevels={(l) => setRLimit(l.hi)}
+              onAuto={() => setRManual(null)}
+              symmetric
+              autoTitle={AUTO_TITLES.signed}
+            />
+          </>
+        }
+        notes={
+          showStructure &&
+          structure &&
+          structureNote && (
+            <div className="ws-row">
+              <span className="struct-sub">
+                <b>{structure.def.name}</b>: {structureNote}
+              </span>
+            </div>
+          )
+        }
+      />
 
       {datasetsQ.isError && (
         <EmptyState
@@ -779,7 +778,7 @@ export function ConsistencyViewer() {
                 <div className="ws-res-levels">
                   <span className="field-label">± range</span>
                   <LevelsBar lut={divLut} levels={resLv.levels} domain={resLv.domain} hist={resLv.hist} symmetric onChange={(l) => setResLimit(Math.abs(l.hi))} />
-                  <AutoButton active={resLv.isAuto} onClick={() => setResLimit(null)} />
+                  <AutoButton active={resLv.isAuto} onClick={() => setResLimit(null)} title={AUTO_TITLES.signed} />
                 </div>
               ),
               children: body(qResults[2], (s) => qFrame(s, { lut: divLut, lo: resLv.levels.lo, hi: resLv.levels.hi, diverging: true })),

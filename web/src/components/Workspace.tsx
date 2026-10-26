@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 
 import type { LayoutMode, LayoutState } from "./layout";
 import type { LayoutDispatch } from "./useWorkspaceLayout";
+import { RESET_ZOOM_TITLE } from "./viewerText";
 
 export interface WorkspaceView {
   id: string;
@@ -134,7 +135,7 @@ export function Workspace({
               <span className="view-actions">
                 {v.actions}
                 {v.onResetView && (
-                  <button type="button" className="icon-btn view-reset" title="Reset zoom (Shift+double-click the slice, or 0)" aria-label="Reset zoom" onClick={v.onResetView}>
+                  <button type="button" className="icon-btn view-reset" title={RESET_ZOOM_TITLE} aria-label="Reset zoom" onClick={v.onResetView}>
                     {ICONS.reset}
                   </button>
                 )}

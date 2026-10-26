@@ -11,7 +11,7 @@ import { useDatasets, useDpdfMeta, useDpdfSlice } from "../api/hooks";
 import type { Slice } from "../api/types";
 import { COLORMAPS, DIVERGING_NAMES, DIVERGING_NAME } from "../colormaps/luts";
 import { fmtLevel } from "../components/colorScale";
-import { AutoButton, BrightnessKnob, ClickModeControl, LevelsBar } from "../components/DisplayBar";
+import { DisplayBar } from "../components/DisplayBar";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../components/dpdfLevels";
 import { latticeLabel } from "../components/oblique";
 import { SliceCanvas } from "../components/SliceCanvas";
@@ -30,6 +30,8 @@ import { ViewFrame } from "../components/ViewFrame";
 import { clampHalf, displayToSlice, extentBounds, sampleIndex, type Viewport } from "../components/viewport";
 import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
 import { LayoutControl, Workspace } from "../components/Workspace";
+import { UnitCellsSwitch, WorkspaceHeader } from "../components/WorkspaceHeader";
+import { AUTO_TITLES, EDIT_STRUCTURE_TITLE, STRUCTURE_TITLE } from "../components/viewerText";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { defaultDpdfView, useDpdfStore } from "../state/dpdfStore";
 import { useStructureStore } from "../state/structureStore";
@@ -92,7 +94,6 @@ export function DeltaPdfViewer() {
   const setCutY = useDpdfStore((s) => s.setCutY);
   const setCutZ = useDpdfStore((s) => s.setCutZ);
   const setManual = useDpdfStore((s) => s.setLimit);
-  const setGridlines = useDpdfStore((s) => s.setGridlines);
   const setView = useDpdfStore((s) => s.setView);
   const center = useDpdfStore((s) => s.center);
   const clickMode = useWorkspaceStore((s) => s.clickMode);
@@ -241,40 +242,46 @@ export function DeltaPdfViewer() {
         </div>
       </div>
 
-      {/* ── Workspace header: click mode · unit cells · layout, then the display bar ── */}
-      <div className="ws-head">
-        <div className="ws-row">
-          <ClickModeControl />
-          <span className="ws-sep" />
-          <Switch label="Unit cells" checked={gridlines} onChange={setGridlines} />
-          <Switch label="Structure" checked={showStructure} disabled={!structure} onChange={setShowStructure} />
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            aria-expanded={structurePanel}
-            onClick={() => setStructurePanel((o) => !o)}
-          >
-            {structure ? "Edit structure…" : "Add structure…"}
-          </button>
-          <span className="ws-spacer" />
-          <LayoutControl state={layout} dispatch={dispatchLayout} />
-        </div>
-        {showStructure && structure && (
-          <div className="ws-row">
-            <StructureLegend model={structure} />
-          </div>
-        )}
-        <div className="ws-row ws-display">
-          <select aria-label="Colormap" value={colormap} onChange={(e) => setColormap(e.target.value)}>
-            {DIVERGING_NAMES.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <LevelsBar lut={lut} levels={lv.levels} domain={lv.domain} hist={lv.hist} symmetric onChange={(l) => setLimit(l.hi)} />
-          <AutoButton active={lv.isAuto} onClick={() => setManual(null)} />
-          <BrightnessKnob autoHi={lv.auto.hi} hi={lv.levels.hi} onChange={setLimit} />
-        </div>
-      </div>
+      {/* ── Workspace header (shared order): click mode · unit cells · structure ··· layout, then the display bar ── */}
+      <WorkspaceHeader
+        overlays={
+          <>
+            <UnitCellsSwitch kind="cell" />
+            <Switch label="Structure" title={STRUCTURE_TITLE} checked={showStructure} disabled={!structure} onChange={setShowStructure} />
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              title={EDIT_STRUCTURE_TITLE}
+              aria-expanded={structurePanel}
+              onClick={() => setStructurePanel((o) => !o)}
+            >
+              {structure ? "Edit structure…" : "Add structure…"}
+            </button>
+          </>
+        }
+        end={<LayoutControl state={layout} dispatch={dispatchLayout} />}
+        rows={
+          showStructure &&
+          structure && (
+            <div className="ws-row">
+              <StructureLegend model={structure} />
+            </div>
+          )
+        }
+        display={
+          <DisplayBar
+            colormap={colormap}
+            colormaps={DIVERGING_NAMES}
+            onColormap={setColormap}
+            lut={lut}
+            lv={lv}
+            onLevels={(l) => setLimit(l.hi)}
+            onAuto={() => setManual(null)}
+            symmetric
+            autoTitle={AUTO_TITLES.dpdf}
+          />
+        }
+      />
 
       {structurePanel && (
         <StructurePanel
