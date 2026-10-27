@@ -342,8 +342,9 @@ and zooms and pans by the same rules.
   they zoom together (the stages of Reciprocal cleanup, the three Bragg peak
   tiles, every temperature of one plane on the multi-volume page).
 - **Unit cell** (a switch beside the click modes; one setting for every
-  page): dashed lines at the unit-cell edges, in a colour the view's colormap
-  lacks (green on inferno, magenta on viridis, near-black on RdBu_r) — multiples of a, b, c on
+  page): dashed lines at the unit-cell edges, white or near-black against the
+  image's background (white on the sequential maps' dark low end, near-black
+  on the diverging maps' light centre) — multiples of a, b, c on
   the real-space views, and integer h, k, l on the r.l.u. views (Reciprocal
   cleanup, the Q–R page's Q views, the Bragg peak tiles), drawn at the slice's
   own scale and angle, so they stay on the data while it zooms and pans.
