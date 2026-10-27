@@ -371,9 +371,10 @@ and zooms and pans by the same rules.
   regions NEBULA Pilot marks for you to look at (`mark_region`,
   [pilot.md](pilot.md#tools)) are drawn on Reciprocal cleanup and 3D-ΔPDF:
   each mark's section by a view's cut (a one-voxel slab), a rectangle, an
-  ellipse or a ring per point, in the colour the view's colormap lacks (the
-  unit-cell lines' pick, solid) over a halo of the opposite lightness, with a
-  chip naming it. It follows the view's zoom and pan, oblique ΔPDF sections
+  ellipse or a ring per point, in a saturated colour the view's colormap
+  lacks (green on inferno, magenta on viridis, lime on RdBu_r; never the
+  unit-cell lines' white or near-black) over a dark halo, with a chip naming
+  it. It follows the view's zoom and pan, oblique ΔPDF sections
   included, and is clipped to the slice's voxels. On the cleanup page a mark
   is outlined, with its label, on the stage it was found in and drawn thin
   and dashed, with its id, on the other stages, at the same place. The Pilot
