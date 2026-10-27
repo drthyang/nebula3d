@@ -23,6 +23,8 @@ import {
   Switch,
   type ValueInputConfig,
 } from "../components/ui";
+import { RegionMarks, type MarkItem } from "../components/RegionMarks";
+import { sectionOf } from "../components/regionMark";
 import { UnitCellGrid } from "../components/UnitCellGrid";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
@@ -33,6 +35,7 @@ import { UnitCellsSwitch, WorkspaceHeader } from "../components/WorkspaceHeader"
 import { AUTO_TITLES, EDIT_STRUCTURE_TITLE, STRUCTURE_TITLE } from "../components/viewerText";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { defaultDpdfView, useDpdfStore } from "../state/dpdfStore";
+import { useMarkStore, visibleMarks } from "../state/markStore";
 import { useStructureStore } from "../state/structureStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import type { Marker } from "../structure/pairs";
@@ -72,6 +75,7 @@ const PLANES: { plane: "xy" | "xz" | "yz"; h: Ax; v: Ax; cut: Ax; badge: string;
 const AX_LABEL: Record<Ax, string> = { x: "x_H", y: "y_K", z: "z_L" };
 const AX_HUE: Record<Ax, string> = { x: "dpdf-cut--x", y: "dpdf-cut--y", z: "dpdf-cut--z" };
 const AX_LAT: Record<Ax, string> = { x: "a", y: "b", z: "c" };
+const AX_INDEX: Record<Ax, 0 | 1 | 2> = { x: 0, y: 1, z: 2 };
 
 export function DeltaPdfViewer() {
   const pdfLit = useGlow("pdf");
@@ -213,6 +217,24 @@ export function DeltaPdfViewer() {
       const r = range[a], n = shape[a];
       if (r && n) commitAngstrom(r, n, setIdx[a])(value);
     }
+  };
+
+  // The Pilot's ΔPDF marks (state/markStore.ts): each one's section by each
+  // view's cut, a one-voxel slab along its cut axis.
+  const allMarks = useMarkStore((s) => s.marks);
+  const showMarks = useMarkStore((s) => s.showAll);
+  const dpdfMarks = useMemo(
+    () => visibleMarks({ marks: allMarks, showAll: showMarks }, datasetId).filter((m) => m.where === "pdf"),
+    [allMarks, showMarks, datasetId],
+  );
+  const marksOn = (p: (typeof PLANES)[number]): MarkItem[] => {
+    const r = range[p.cut], n = shape[p.cut];
+    const slab = r && n && n > 1 ? (r[1] - r[0]) / (n - 1) / 2 : 0;
+    const axes = { u: AX_INDEX[p.h], v: AX_INDEX[p.v], cut: AX_INDEX[p.cut] };
+    return dpdfMarks.flatMap((mark) => {
+      const section = sectionOf(mark.region, axes, val(p.cut), slab);
+      return section ? [{ id: mark.id, label: mark.label, section, primary: true }] : [];
+    });
   };
 
   const valueAt = (s: Slice | undefined, pt: [number, number]) => {
@@ -357,6 +379,15 @@ export function DeltaPdfViewer() {
                       latY={lat[p.v]}
                       angle={r.data.header.axes_angle}
                       lut={lut}
+                    />
+                  )}
+                  {dpdfMarks.length > 0 && (
+                    <RegionMarks
+                      items={marksOn(p)}
+                      geom={{ sx: 1, sy: 1, angle: r.data.header.axes_angle ?? 90 }}
+                      viewport={viewport}
+                      lut={lut}
+                      extent={r.data.header}
                     />
                   )}
                   {showStructure && structure && (
