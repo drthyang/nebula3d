@@ -1,6 +1,6 @@
 // Display-bar controls shared by the viewer pages, after the NeXus Viewer's
-// workspace header: the click mode (with a "?" for the gestures every view
-// takes), the colour range around its bar (with the data's histogram behind it
+// workspace header: the click mode (with a "?" that opens the gesture card,
+// GestureHint.tsx), the colour range around its bar (with the data's histogram behind it
 // and a handle at each limit), the scale, Auto, and a Brightness knob that
 // moves the same vmax in stops about Auto.  DisplayBar puts them together in
 // one order for every page; the tooltips are one plain line each.
@@ -15,18 +15,33 @@ import {
   type Levels,
   type ScaleKind,
 } from "./colorScale";
-import { HelpTip } from "./ui";
+import { GestureHint } from "./GestureHint";
 import type { LevelsModel } from "./useLevels";
-import { AUTO_TITLES, BRIGHTNESS_TITLE, CLICK_MODE_TITLES, SCALE_TITLES, VIEW_GESTURES } from "./viewerText";
+import { AUTO_TITLES, BRIGHTNESS_TITLE, CLICK_MODE_TITLES, SCALE_TITLES } from "./viewerText";
 
 /**
  * Navigate (the default) and the one-shot Box zoom tool, shared by every viewer
  * page: armed by its button, one box dragged on a view zooms into it and the
- * views are back in Navigate. A second press (or Esc on the view) disarms it.
+ * views are back in Navigate. A second press, or Esc, disarms it.
  */
 export function ClickModeControl() {
   const mode = useWorkspaceStore((s) => s.clickMode);
   const setMode = useWorkspaceStore((s) => s.setClickMode);
+  // Esc puts an armed Box zoom away wherever focus is (the button just pressed,
+  // most often), before a layout's own Esc; a focused view handles its own
+  // (ViewFrame), and an open dialog (the gesture card) keeps Esc for itself.
+  useEffect(() => {
+    if (mode !== "box") return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target instanceof Element ? e.target : null;
+      if (e.key !== "Escape" || target?.closest(".vf, [role='dialog']")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setMode("navigate");
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [mode, setMode]);
   return (
     <span className="ws-group click-mode">
       <div className="segmented" role="group" aria-label="Click mode">
@@ -49,11 +64,7 @@ export function ClickModeControl() {
           Box zoom
         </button>
       </div>
-      <HelpTip placement="below">
-        {VIEW_GESTURES.map((line) => (
-          <span key={line} className="helptip-line">{line}</span>
-        ))}
-      </HelpTip>
+      <GestureHint />
     </span>
   );
 }

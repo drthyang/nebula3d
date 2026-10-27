@@ -278,7 +278,7 @@ so the two apps work the same way; the multi-volume grid has the same header
 and zooms and pans by the same rules.
 
 - **Header** (`components/WorkspaceHeader.tsx`), in one order on every page:
-  the click modes and a **?** that lists the gestures, the overlays (*Unit
+  the click modes and a **?** that opens the gesture card, the overlays (*Unit
   cells*, *Structure*), the page's own controls (plane, cut, orientation,
   filters), the layout switch at the right; under them the display bar. Each
   control has the same name and a one-line tooltip on every page. On phones
@@ -288,6 +288,19 @@ and zooms and pans by the same rules.
   scale (or ± limit); a tap opens it. Open or closed is remembered by the
   browser, for every page. Tablets and desktops show the display bar as
   before.
+- **Gesture card** (`components/GestureHint.tsx`): a click or tap on the
+  **?** (or Enter / Space on it) opens a card with one row per action — Zoom,
+  Move, Reset, Box zoom — each way drawn as key caps and pointer glyphs:
+  ⌘ or Ctrl + scroll, pinch or + / − to zoom; Shift + drag, a middle-drag or
+  the arrow keys to move; a double-click, 0 or *Reset zoom* to reset; *Box
+  zoom* then a drag, Esc to cancel. ⌘ shows on Apple platforms, Ctrl
+  elsewhere; a touch-only device (a coarse pointer with no hover) shows the
+  touch gestures instead: pinch, a two-finger drag, a double-tap. Esc, a
+  click outside it or its × closes it, and focus returns to the **?**; it
+  does not open on hover, where it would cover the display bar. Until the card has been opened once, the
+  **?** carries a small dot (remembered by the browser); nothing opens by
+  itself. The rows are the ones the views handle (`components/gestures.ts`,
+  `components/ViewFrame.tsx`).
 
 - **Layouts** (icons at the right of the workspace header): *Grid* (every view
   the same size), *Focus* (one large view; the others are thumbnails beside it —
@@ -299,22 +312,24 @@ and zooms and pans by the same rules.
   values, and on 3D-ΔPDF a click moves the other two cuts through the point;
   and the **Box zoom** tool — press it, drag a box on a view and the view
   zooms into the box, then the views are back in *Navigate* (press it again,
-  or Esc on the view, to put it away). No mode is remembered: a page opens in
+  or Esc, to put it away). No mode is remembered: a page opens in
   *Navigate*. Zoom and pan need no mode; in every mode the views behave like
   an embedded map ("cooperative" gestures):
   - **Wheel.** When the page can scroll, a plain wheel or two-finger scroll
-    over a view scrolls the page, and the view says *Use Ctrl + scroll to zoom*
-    (*⌘ + scroll* on macOS) for a moment; **Ctrl/⌘ + wheel** zooms about the
+    over a view scrolls the page, and the view says *Use [Ctrl] + scroll to
+    zoom* (*[⌘]* on Apple platforms, drawn as a key cap) for a moment; **Ctrl/⌘ + wheel** zooms about the
     pointer, and so does a trackpad **pinch** (Chrome, Edge and Firefox send it
     as Ctrl + wheel; Safari's pinch gestures are read too). When the page
     cannot scroll (the views fill the window), a plain wheel zooms. One wheel
     notch is a factor 2 in any browser; a trackpad zooms smoothly. A sideways
     scroll is left to the page.
   - **Drag.** A middle-button drag, a Shift+drag or a two-finger drag on a
-    touch screen pans. The view's centre stays on the data, so the slice
-    cannot be dragged off screen.
-  - **Double-click** returns to the full view, as do the header's *Reset
-    zoom* and the **0** key (the NeXus Viewer's meaning).
+    touch screen pans (a Shift+click does nothing; a trackpad's two-finger
+    scroll is the wheel above). The view's centre stays on the data, so the
+    slice cannot be dragged off screen.
+  - **Double-click** returns to the full view, as do a double-tap on a touch
+    screen, the header's *Reset zoom* and the **0** key (the NeXus Viewer's
+    meaning).
   - **Buttons and keys.** The **+ / −** buttons under the field-of-view chip
     zoom about the view's centre; on a focused view (click it or Tab to it)
     **+ / −** zoom, the **arrow keys** pan a tenth of the view, and **0**

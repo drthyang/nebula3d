@@ -17,8 +17,8 @@
 //              pans and pinches (iPad Safari's GestureEvents for that pinch are
 //              ignored, so it zooms once); the view's centre stays on the data
 //              (`bounds`), so it cannot be dragged off screen
-//   double-click — returns to `fit` (the full view), as do the header's Reset
-//              zoom and the 0 key
+//   double-click — returns to `fit` (the full view), as do a double-tap on a
+//              touch screen, the header's Reset zoom and the 0 key
 //   keys     — on the focused view, + / − zoom about the centre, the arrows
 //              pan, 0 resets; the view's + / − buttons zoom too.
 // The frame fills its view: the viewport's `half` spans the shorter side and a wide
@@ -30,6 +30,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useWorkspaceStore } from "../state/workspaceStore";
+import { Kbd } from "./Kbd";
+import { IS_MAC } from "./usePlatform";
 import { ViewSizeContext, type ViewSize } from "./viewSize";
 import {
   boxViewport,
@@ -46,10 +48,19 @@ import {
   type Viewport,
 } from "./viewport";
 
-const MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
-/** The hint a plain wheel shows over a view on a page that scrolls. */
-export const ZOOM_HINT = `Use ${MAC ? "⌘" : "Ctrl"} + scroll to zoom`;
+/** The hint a plain wheel shows over a view on a page that scrolls (its key drawn as a key cap). */
+function ZoomHint() {
+  return (
+    <span className="vf-hint-text">
+      Use {IS_MAC ? <Kbd name="Command">⌘</Kbd> : <Kbd>Ctrl</Kbd>} + scroll to zoom
+    </span>
+  );
+}
 const HINT_MS = 1500;
+// Two taps this close in time and place are a double-tap (a reset), as a
+// double-click is; browsers do not reliably send dblclick for one.
+const DOUBLE_TAP_MS = 320;
+const DOUBLE_TAP_PX = 30;
 
 /**
  * Whether the page around `el` can scroll vertically: an ancestor that scrolls
@@ -125,6 +136,8 @@ export function ViewFrame({
   const gesture = useRef<{ v0: Viewport; at: [number, number] } | null>(null);
   const [hint, setHint] = useState(false);
   const hintTimer = useRef(0);
+  const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
+  const tapReset = useRef(-Infinity); // when a double-tap last reset (a dblclick after it is the same gesture)
   // Latest props for the native listeners and the animation-frame flush.
   const live = useRef({ viewport, limit, onViewport, fit, bounds });
   live.current = { viewport, limit, onViewport, fit, bounds };
@@ -303,11 +316,27 @@ export function ViewFrame({
       onNavigate?.(pt[0], pt[1]);
     }
     setBox(null);
+    // A second tap close to the first, in time and place: back to the full view.
+    if (e.pointerType === "touch" && !dr.moved) {
+      const now = performance.now();
+      const prev = lastTap.current;
+      if (prev && now - prev.t < DOUBLE_TAP_MS && Math.hypot(p[0] - prev.x, p[1] - prev.y) < DOUBLE_TAP_PX) {
+        lastTap.current = null;
+        tapReset.current = now;
+        reset();
+      } else {
+        lastTap.current = { t: now, x: p[0], y: p[1] };
+      }
+    }
   };
 
   const reset = () => (onReset ? onReset() : onViewport(fit));
-  // Double-click: back to the full view, in any mode (the NeXus Viewer's meaning).
-  const onDoubleClick = reset;
+  // Double-click: back to the full view, in any mode (the NeXus Viewer's meaning);
+  // not again for the dblclick a browser may send after a double-tap.
+  const onDoubleClick = () => {
+    if (performance.now() - tapReset.current < 600) return;
+    reset();
+  };
 
   const zoomCentre = (k: number) => onViewport(settle(zoomAbout(viewport, viewport.cx, viewport.cy, k, limit)));
 
@@ -375,7 +404,7 @@ export function ViewFrame({
       )}
       {hint && (
         <div className="vf-hint" role="status">
-          {ZOOM_HINT}
+          <ZoomHint />
         </div>
       )}
     </div>

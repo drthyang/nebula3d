@@ -5,13 +5,8 @@
 
 import { fmtLevel, type ScaleKind } from "./colorScale";
 
-/** The zoom, pan and reset gestures every view takes in any mode (the click modes' "?"). */
-export const VIEW_GESTURES: readonly string[] = [
-  "Zoom: Ctrl/⌘ + wheel, pinch, or + / −",
-  "Pan: Shift-, middle- or two-finger drag, or the arrow keys",
-  "Reset: double-click a view, or 0",
-  "Box zoom: Esc or a second press puts it away",
-];
+/** The "?" beside the click modes: it opens the gesture card (GestureHint.tsx, gestures.ts). */
+export const GESTURE_HINT_TITLE = "Zoom, move and reset: the gestures";
 
 export const CLICK_MODE_TITLES = {
   navigate: "Navigate: hover reads values; on 3D-ΔPDF a click moves the other two cuts",
