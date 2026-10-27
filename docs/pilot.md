@@ -12,7 +12,8 @@ does not compute them. Getting it running is in
 ## Tools
 
 With *Tools* on, a reply is an agent loop of up to twelve rounds. The model
-calls 25 tools, which run in the browser against the same API the viewers use:
+calls 27 tools (26 with the skills off: no `read_skill`), which run in the
+browser against the same API the viewers use:
 
 - **Skills:** `read_skill` reads one of the user's methods (below).
 - **Reading:** `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
@@ -21,7 +22,8 @@ calls 25 tools, which run in the browser against the same API the viewers use:
   run's verdict as `{{achieved}}` would give it now, read before writing).
 - **Assessing:** `assess_stage`, `radial_profile`, `texture_check`,
   `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`.
-- **Display:** `dpdf_contrast`.
+- **Display:** `dpdf_contrast`, and `mark_region`, which marks a region in the
+  slice views for you to look at (below).
 - **Acting:** `update_settings`, `run_pipeline`, `tune_pipeline`,
   `show_in_viewer`, and `regrid_refined_ub`, which writes the raw volume
   regridded onto its refined UB as a new dataset, only when the user's latest
@@ -532,6 +534,27 @@ miss is a note.
     that stage on), `tune_pipeline` (below), and `show_in_viewer` (it acts on
     the view, as `dpdf_contrast` does). Neither run starts while another is
     going, and *Stop* cancels the one the model started.
+  - *Marking*: `mark_region` (THY-44) marks a finding in the slice views for
+    you to look at: a box or an ellipsoid (centre and half-widths) or up to 12
+    points (satellites at h ± q, say), in r.l.u. on a cleanup stage's output
+    (`raw`, `rings`, `punch`, `backfill`, `flatten`) or in Å along a, b, c on
+    the ΔPDF (`pdf`), with a short label. No mark without its evidence
+    (`llm/markEvidence.ts`): it cites the calls whose results show the region,
+    as an answer cites a number (`dpdf_peaks`, or `dpdf_peaks.features.0`), and
+    each must be a measuring tool's call (its facts' `measures`: not a skill,
+    the listing, the view, the settings, the log or the run's verdict) that ran
+    in this conversation, holds the field it names, and was not made stale by
+    a run that recomputed the marked stage; a session file's steps never
+    count. A region that is empty, outside the volume, or on a stage with no
+    output is refused too, with why, before anything moves. Otherwise the
+    console draws it and moves to it (`state/marks.ts`): the cleanup page cuts
+    across the region's thinnest axis in Å⁻¹ (or on the plane holding most of
+    its points), the 3D-ΔPDF cuts its three sections through it, and a view
+    zooms only where the region is too small to see or out of view. The
+    result says what was drawn: the views and cuts (on the cleanup page, every
+    stage's view on that plane), how many points each holds, what the volume
+    cut off, whether it zoomed, the evidence by step, and the mark's id
+    (M1, …), which the answer names. The same mark again is the same mark.
 - **Report** (`report/`, `components/ReportView.tsx`) — a reply that assessed,
   tuned or ran the pipeline gets a *Report* button. The report is measured
   afresh when opened (`report/collect.ts` runs the agent's own tools:
