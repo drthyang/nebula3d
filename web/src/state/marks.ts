@@ -20,7 +20,7 @@
 // a region too small to see, or out of view.
 
 import type { DeltaPdfMeta, VolumeMeta } from "../api/types";
-import { clipRegion, cutIndexFor, frameTarget, gridStep, gridValue, sectionBounds, sectionOf, type Axis, type MarkRegion, type PlaneAxes, type Vec3, type VolumeGrid } from "../components/regionMark";
+import { clipRegion, cutIndexFor, frameIn, gridStep, gridValue, sectionBounds, sectionOf, type Axis, type Frame, type MarkRegion, type PlaneAxes, type Vec3, type VolumeGrid } from "../components/regionMark";
 import { clampHalf, extentBounds, fitViewport, type SliceGeom, type Viewport } from "../components/viewport";
 import { defaultDpdfView, useDpdfStore } from "./dpdfStore";
 import { CLEANUP_WHERE, DPDF_MARK_PLANES, isReciprocal, shortLabel, useMarkStore, WHERE_OUTPUT, type DpdfMarkPlane, type Mark, type MarkView, type MarkWhere } from "./markStore";
@@ -173,21 +173,23 @@ export function planMark(spec: MarkSpec, volume: MarkVolume, now: ViewsNow): Mar
     const axes = { x_axis: grid.ranges[u], y_axis: grid.ranges[v] };
     const fit = fitViewport(axes, geom);
     const voxel = Math.min(step(u) * geom.sx, step(v) * geom.sy);
-    const current = now.views[plane] ?? fit;
-    const viewport = frameTarget(sectionBounds(section, geom), current, {
+    const frame: Frame = {
+      target: sectionBounds(section, geom),
       fit,
       data: extentBounds(axes, geom),
-      limit: (h) => clampHalf(h, fit.half, voxel),
-    });
+      minHalf: clampHalf(0, fit.half, voxel),
+      maxHalf: clampHalf(Infinity, fit.half, voxel),
+    };
+    const current = now.views[plane] ?? fit;
     const stages = CLEANUP_WHERE.filter((w) => volume.outputs.includes(WHERE_OUTPUT[w]));
     return {
       ok: true,
       region,
       clipped: clip.clipped,
-      view: { page: "cleanup", axis, value, viewport },
+      view: { page: "cleanup", axis, value, frame },
       drawn: [{ view: markPlaneLabel(plane, value), plane, cut: value, stages, ...(section.kind === "points" ? { points: section.pts.length } : {}) }],
       missed: [],
-      zoomed: zoomedIn(viewport, current),
+      zoomed: zoomedIn(frameIn(frame, current), current),
     };
   }
 
@@ -195,7 +197,7 @@ export function planMark(spec: MarkSpec, volume: MarkVolume, now: ViewsNow): Mar
   const index = ([0, 1, 2] as Axis[]).map((a) => cutIndexFor(region, grid, a).index) as Vec3;
   const fit = defaultDpdfView();
   const fullHalf = Math.max(...grid.ranges.map((r) => Math.max(Math.abs(r[0]), Math.abs(r[1]))));
-  const views: Partial<Record<DpdfMarkPlane, Viewport>> = {};
+  const frames: Partial<Record<DpdfMarkPlane, Frame>> = {};
   const drawn: DrawnView[] = [];
   const missed: DrawnView[] = [];
   let zoomed = false;
@@ -210,25 +212,30 @@ export function planMark(spec: MarkSpec, volume: MarkVolume, now: ViewsNow): Mar
     }
     drawn.push(section.kind === "points" ? { ...entry, points: section.pts.length } : entry);
     const geom: SliceGeom = { sx: 1, sy: 1, angle: cell[p.angle] ?? 90 };
-    const current = now.dpdfViews[plane] ?? fit;
-    const vp = frameTarget(sectionBounds(section, geom), current, {
-      fit: { ...fit, half: Math.max(fit.half, fullHalf) },
+    // The 3D-ΔPDF page's full view and zoom limits (DeltaPdfViewer).
+    const reach = Math.max(fullHalf, fit.half);
+    const frame: Frame = {
+      target: sectionBounds(section, geom),
+      fit,
       data: extentBounds({ x_axis: grid.ranges[p.u], y_axis: grid.ranges[p.v] }, geom),
-      // The 3D-ΔPDF page's zoom limits (DeltaPdfViewer).
-      limit: (h) => clampHalf(h, Math.max(fullHalf, fit.half), step(0)),
-    });
-    if (vp) views[plane] = vp;
-    zoomed ||= zoomedIn(vp, current);
+      minHalf: clampHalf(0, reach, step(0)),
+      maxHalf: clampHalf(Infinity, reach, step(0)),
+    };
+    frames[plane] = frame;
+    const current = now.dpdfViews[plane] ?? fit;
+    zoomed ||= zoomedIn(frameIn(frame, current), current);
   }
   if (!drawn.length) return { ok: false, reason: "the region meets none of the ΔPDF's three sections through it" };
-  return { ok: true, region, clipped: clip.clipped, view: { page: "dpdf", index, views }, drawn, missed, zoomed };
+  return { ok: true, region, clipped: clip.clipped, view: { page: "dpdf", index, frames }, drawn, missed, zoomed };
 }
 
 /**
- * Move the console to a mark: its page, its cuts and zoom, the cleanup
- * page's primary view on its stage (in the focus and single layouts), and
- * the mark shown again if it was hidden. A mark on another dataset than the
- * selected one is not shown (false): its cuts would land on other data.
+ * Move the console to a mark: its page and cuts, each view it is drawn on
+ * framed to it as that view is now (zoomed or panned only where it is too
+ * small to see or out of view), the cleanup page's primary view on its stage
+ * (in the focus and single layouts), and the mark shown again if it was
+ * hidden. A mark on another dataset than the selected one is not shown
+ * (false): its cuts would land on other data.
  */
 export function showMark(mark: Mark, datasetId: string | undefined): boolean {
   if (mark.datasetId !== datasetId) return false;
@@ -239,14 +246,17 @@ export function showMark(mark: Mark, datasetId: string | undefined): boolean {
     // The cleanup page snaps the focus to its grid once its metadata is in (openView does the same).
     vs.setFocus({ axis: v.axis, value: v.value });
     vs.setFixedAxis(v.axis);
-    if (v.viewport) vs.setView(AXIS_TO_PLANE[v.axis], v.viewport);
+    const plane = AXIS_TO_PLANE[v.axis];
+    const vp = frameIn(v.frame, vs.views[plane]);
+    if (vp) vs.setView(plane, vp);
     useMarkStore.getState().setLayoutRequest({ page: "cleanup", primary: WHERE_OUTPUT[mark.where] });
     useNavStore.getState().setTab("reciprocal");
   } else {
     const ds = useDpdfStore.getState();
     ds.center(...v.index);
     for (const plane of DPDF_MARK_PLANES) {
-      const vp = v.views[plane];
+      const f = v.frames[plane];
+      const vp = f && frameIn(f, ds.views[plane]);
       if (vp) ds.setView(plane, vp);
     }
     useNavStore.getState().setTab("dpdf");

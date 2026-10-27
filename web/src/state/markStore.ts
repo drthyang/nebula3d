@@ -12,8 +12,8 @@
 
 import { create } from "zustand";
 
-import { regionProblem, type MarkRegion, type Vec3 } from "../components/regionMark";
-import type { Viewport } from "../components/viewport";
+import { regionProblem, type Frame, type MarkRegion, type Vec3 } from "../components/regionMark";
+import type { Bounds, Viewport } from "../components/viewport";
 import type { FixedAxis } from "./viewerStore";
 
 /** Where a mark is drawn: the raw volume or a cleanup stage's output (reciprocal space), or the 3D-ΔPDF. */
@@ -58,10 +58,14 @@ export function regionText(region: MarkRegion, where: MarkWhere): string {
 export const DPDF_MARK_PLANES = ["xy", "xz", "yz"] as const;
 export type DpdfMarkPlane = (typeof DPDF_MARK_PLANES)[number];
 
-/** Where the console goes to show a mark: the page, its cuts and the views it zoomed. */
+/**
+ * Where the console goes to show a mark: the page, its cuts, and how each
+ * view it is drawn on frames it (regionMark.ts Frame: framed against the
+ * view as it is when the mark is shown).
+ */
 export type MarkView =
-  | { page: "cleanup"; axis: FixedAxis; value: number; viewport: Viewport | null } // the plane cut along `axis` at `value` r.l.u.
-  | { page: "dpdf"; index: Vec3; views: Partial<Record<DpdfMarkPlane, Viewport>> }; // the x, y, z cut indices
+  | { page: "cleanup"; axis: FixedAxis; value: number; frame: Frame } // the plane cut along `axis` at `value` r.l.u.
+  | { page: "dpdf"; index: Vec3; frames: Partial<Record<DpdfMarkPlane, Frame>> }; // the x, y, z cut indices
 
 export interface Mark {
   id: string; // "M1", "M2", … in the order they were made
@@ -92,6 +96,14 @@ const isStr = (v: unknown): v is string => typeof v === "string";
 const vec3 = (v: unknown): Vec3 | null => (Array.isArray(v) && v.length === 3 && v.every(isNum) ? ([v[0], v[1], v[2]] as Vec3) : null);
 const viewport = (v: unknown): Viewport | null =>
   isObj(v) && isNum(v.cx) && isNum(v.cy) && isNum(v.half) && v.half > 0 ? { cx: v.cx, cy: v.cy, half: v.half } : null;
+const bounds = (v: unknown): Bounds | null =>
+  isObj(v) && isNum(v.x0) && isNum(v.x1) && isNum(v.y0) && isNum(v.y1) && v.x0 <= v.x1 && v.y0 <= v.y1 ? { x0: v.x0, x1: v.x1, y0: v.y0, y1: v.y1 } : null;
+function frame(v: unknown): Frame | null {
+  if (!isObj(v)) return null;
+  const target = bounds(v.target), data = bounds(v.data), fit = viewport(v.fit);
+  if (!target || !data || !fit || !isNum(v.minHalf) || !isNum(v.maxHalf) || !(v.minHalf > 0) || !(v.maxHalf >= v.minHalf)) return null;
+  return { target, fit, data, minHalf: v.minHalf, maxHalf: v.maxHalf };
+}
 
 function readRegion(v: unknown): MarkRegion | null {
   if (!isObj(v)) return null;
@@ -109,20 +121,21 @@ function readRegion(v: unknown): MarkRegion | null {
 function readView(v: unknown): MarkView | null {
   if (!isObj(v)) return null;
   if (v.page === "cleanup") {
-    if (!(v.axis === "H" || v.axis === "K" || v.axis === "L") || !isNum(v.value)) return null;
-    return { page: "cleanup", axis: v.axis, value: v.value, viewport: viewport(v.viewport) };
+    const f = frame(v.frame);
+    if (!(v.axis === "H" || v.axis === "K" || v.axis === "L") || !isNum(v.value) || !f) return null;
+    return { page: "cleanup", axis: v.axis, value: v.value, frame: f };
   }
   if (v.page === "dpdf") {
     const index = vec3(v.index);
     if (!index || !index.every((i) => Number.isInteger(i) && i >= 0)) return null;
-    const views: Partial<Record<DpdfMarkPlane, Viewport>> = {};
-    if (isObj(v.views)) {
+    const frames: Partial<Record<DpdfMarkPlane, Frame>> = {};
+    if (isObj(v.frames)) {
       for (const p of DPDF_MARK_PLANES) {
-        const vp = viewport(v.views[p]);
-        if (vp) views[p] = vp;
+        const f = frame(v.frames[p]);
+        if (f) frames[p] = f;
       }
     }
-    return { page: "dpdf", index, views };
+    return { page: "dpdf", index, frames };
   }
   return null;
 }

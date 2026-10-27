@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { MarkRegion } from "../../components/regionMark";
+import { frameIn, MARGIN, MIN_VIEW_SHARE, type Frame, type MarkRegion } from "../../components/regionMark";
 import { openView } from "../../llm/tools/openView";
 import { useDatasetStore } from "../datasetStore";
 import { useDpdfStore } from "../dpdfStore";
@@ -32,6 +32,8 @@ const DPDF: MarkVolume = {
 const NOW: ViewsNow = { fixedAxis: "L", views: {}, dpdfViews: {} };
 const spec = (where: MarkSpec["where"], region: MarkRegion, label = "satellites"): MarkSpec => ({ where, region, label, evidence: ["dpdf_peaks"] });
 const SATELLITES: MarkRegion = { shape: "points", points: [[1.25, 0, 0], [0.75, 0, 0]] };
+// A frame as a file holds one (regionMark.ts Frame).
+const FRAME: Frame = { target: { x0: 1, x1: 2, y0: -1, y1: 0 }, fit: { cx: 0, cy: 0, half: 40 }, data: { x0: -20, x1: 20, y0: -20, y1: 20 }, minHalf: 1.5, maxHalf: 50 };
 
 function memoryStorage(): Storage {
   const m = new Map<string, string>();
@@ -91,15 +93,16 @@ describe("planMark on the cleanup page", () => {
     if (!plan.ok || plan.view.page !== "cleanup") return;
     expect(plan.zoomed).toBe(true);
     const s = (2 * Math.PI) / 4;
-    expect(plan.view.viewport!.cx).toBeCloseTo(1 * s, 12);
-    expect(plan.view.viewport!.cy).toBeCloseTo(1 * s, 12);
-    // A box 0.1 r.l.u. wide, 2.5 times over, or 6 % of the full view (±4 r.l.u.).
-    expect(plan.view.viewport!.half).toBeCloseTo(Math.max(0.05 * s * 2.5, 4 * s * 0.06), 12);
+    const vp = frameIn(plan.view.frame, undefined)!;
+    expect(vp.cx).toBeCloseTo(1 * s, 12);
+    expect(vp.cy).toBeCloseTo(1 * s, 12);
+    // A box 0.1 r.l.u. wide, MARGIN times over, or MIN_VIEW_SHARE of the full view (±4 r.l.u.).
+    expect(vp.half).toBeCloseTo(Math.max(0.05 * s * MARGIN, 4 * s * MIN_VIEW_SHARE), 12);
   });
 
   it("leaves the zoom alone when the region already shows well", () => {
     const plan = planMark(spec("flatten", { shape: "box", center: [0, 0, 0], half: [2, 2, 0.5] }), RECIP, NOW);
-    expect(plan.ok && plan.view.page === "cleanup" && plan.view.viewport).toBeNull();
+    expect(plan.ok && plan.view.page === "cleanup" && frameIn(plan.view.frame, undefined)).toBeNull();
     expect(plan.ok && plan.zoomed).toBe(false);
   });
 
@@ -147,7 +150,7 @@ describe("planMark on the 3D-ΔPDF page", () => {
     const plan = planMark(spec("pdf", { shape: "box", center: [10, 10, 0], half: [0.5, 0.5, 0.5] }), DPDF, NOW);
     expect(plan.ok).toBe(true);
     if (!plan.ok || plan.view.page !== "dpdf") return;
-    const xy = plan.view.views.xy!;
+    const xy = frameIn(plan.view.frames.xy!, undefined)!;
     expect(xy.cx).toBeCloseTo(5, 9);
     expect(xy.cy).toBeCloseTo(10 * Math.sin((2 * Math.PI) / 3), 9);
     expect(plan.zoomed).toBe(true);
@@ -169,7 +172,7 @@ describe("showing a mark", () => {
     const vs = useViewerStore.getState();
     expect(vs.fixedAxis).toBe("L");
     expect(vs.focus).toEqual({ axis: "L", value: plan.view.page === "cleanup" ? plan.view.value : NaN });
-    expect(vs.views.hk0).toEqual(plan.view.page === "cleanup" ? plan.view.viewport : null);
+    expect(vs.views.hk0).toEqual(plan.view.page === "cleanup" ? frameIn(plan.view.frame, undefined) : null);
     expect(useNavStore.getState().tab).toBe("reciprocal");
     expect(useMarkStore.getState().layoutRequest).toEqual({ page: "cleanup", primary: "flattened" });
   });
@@ -182,8 +185,26 @@ describe("showing a mark", () => {
     const ds = useDpdfStore.getState();
     expect([ds.cutX, ds.cutY, ds.cutZ]).toEqual([60, 60, 40]);
     expect(ds.centered).toBe(true);
-    expect(ds.views.xy).toEqual(plan.view.page === "dpdf" ? plan.view.views.xy : null);
+    expect(ds.views.xy).toEqual(plan.view.page === "dpdf" ? frameIn(plan.view.frames.xy!, undefined) : null);
     expect(useNavStore.getState().tab).toBe("dpdf");
+  });
+
+  it("frames the mark again against the view as it is when shown again", () => {
+    // Satellites that show well in the full view: placing the mark leaves the zoom alone.
+    const s = spec("flatten", { shape: "points", points: [[1.25, 0, 0], [-1.25, 0, 0]] });
+    const plan = planMark(s, RECIP, NOW);
+    if (!plan.ok) throw new Error(plan.reason);
+    const mark = placeMark(s, plan, "ds1");
+    expect(useViewerStore.getState().views.hk0).toBeUndefined();
+    // The user zooms into a corner far from them; the mark, shown from the list, brings them back into view.
+    useViewerStore.getState().setView("hk0", { cx: -5, cy: -5, half: 0.3 });
+    showMark(mark, "ds1");
+    const vp = useViewerStore.getState().views.hk0!;
+    const s1 = (2 * Math.PI) / 4;
+    expect(vp.cx).toBeCloseTo(0, 9);
+    expect(vp.cy).toBeCloseTo(0, 9);
+    expect(vp.cx - vp.half).toBeLessThan(-1.25 * s1);
+    expect(vp.cx + vp.half).toBeGreaterThan(1.25 * s1);
   });
 
   it("shows a hidden mark again, with the rest, and never a mark of another dataset", () => {
@@ -277,7 +298,7 @@ describe("reading marks back", () => {
     label: "a strong + feature",
     evidence: ["dpdf_peaks.features.0"],
     created: "2026-10-26T12:00:00.000Z",
-    view: { page: "dpdf", index: [10, 20, 30], views: { xy: { cx: 1, cy: 2, half: 3 } } },
+    view: { page: "dpdf", index: [10, 20, 30], frames: { xy: FRAME } },
   });
 
   it("reads a well-formed mark as it was", () => {
@@ -290,16 +311,18 @@ describe("reading marks back", () => {
     expect(readMark({ ...good(), where: "elsewhere" })).toBeNull();
     expect(readMark({ ...good(), region: { shape: "box", center: [0, 0, 0], half: [0, 1, 1] } })).toBeNull();
     expect(readMark({ ...good(), region: { shape: "points", points: [[0, 0]] } })).toBeNull();
-    expect(readMark({ ...good(), view: { page: "dpdf", index: [1.5, 2, 3], views: {} } })).toBeNull();
+    expect(readMark({ ...good(), view: { page: "dpdf", index: [1.5, 2, 3], frames: {} } })).toBeNull();
     // A ΔPDF mark must open the ΔPDF page, and a stage's the cleanup page.
-    expect(readMark({ ...good(), view: { page: "cleanup", axis: "L", value: 0, viewport: null } })).toBeNull();
+    expect(readMark({ ...good(), view: { page: "cleanup", axis: "L", value: 0, frame: FRAME } })).toBeNull();
+    // A cleanup view without its frame.
+    expect(readMark({ ...good(), where: "raw", view: { page: "cleanup", axis: "L", value: 0 } })).toBeNull();
     expect(readMark(null)).toBeNull();
   });
 
   it("drops what it does not know from a mark, and a malformed zoom", () => {
-    const m = readMark({ ...good(), extra: "<script>", view: { page: "dpdf", index: [1, 2, 3], views: { xy: { cx: 1, cy: 2, half: -1 }, zz: { cx: 0, cy: 0, half: 1 } } } });
+    const m = readMark({ ...good(), extra: "<script>", view: { page: "dpdf", index: [1, 2, 3], frames: { xy: { ...FRAME, minHalf: -1 }, zz: FRAME } } });
     expect(m).not.toHaveProperty("extra");
-    expect(m?.view).toEqual({ page: "dpdf", index: [1, 2, 3], views: {} });
+    expect(m?.view).toEqual({ page: "dpdf", index: [1, 2, 3], frames: {} });
   });
 
   it("reads each id once, the first", () => {
@@ -329,7 +352,7 @@ describe("a reload keeps the marks", () => {
       label: "pair",
       evidence: ["line_profile"],
       created: "",
-      view: { page: "cleanup", axis: "L", value: 0, viewport: null },
+      view: { page: "cleanup", axis: "L", value: 0, frame: FRAME },
     });
     first.useMarkStore.getState().setShowAll(false);
     vi.resetModules();

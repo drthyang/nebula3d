@@ -13,6 +13,7 @@ import {
   gridStep,
   gridValue,
   MARGIN,
+  MIN_VIEW_SHARE,
   regionProblem,
   sectionBounds,
   sectionDisplay,
@@ -270,12 +271,12 @@ describe("frameTarget: zoom to a region only where it helps", () => {
     const v = frameTarget({ x0: 5, x1: 6, y0: 1, y1: 1.5 }, fit, { fit, data, limit })!;
     expect(v.cx).toBe(5.5);
     expect(v.cy).toBe(1.25);
-    expect(v.half).toBe(Math.max(0.5 * MARGIN, 20 * 0.06));
+    expect(v.half).toBe(Math.max(0.5 * MARGIN, 20 * MIN_VIEW_SHARE));
   });
 
   it("closes in no further than a share of the full view on a single point", () => {
     const v = frameTarget({ x0: 5, x1: 5, y0: 1, y1: 1 }, fit, { fit, data, limit })!;
-    expect(v.half).toBeCloseTo(1.2, 12);
+    expect(v.half).toBeCloseTo(20 * MIN_VIEW_SHARE, 12);
   });
 
   it("pans to a region outside the view, and widens no further than the full view", () => {

@@ -4358,7 +4358,7 @@ body.ai-resizing iframe {
   width: 10px;
   height: 10px;
   border-radius: 3px;
-  box-shadow: 0 0 0 1px rgba(8, 10, 14, 0.7);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35); /* a near-black mark (RdBu_r) on the dark panel */
 }
 .ai-mark-id {
   flex: none;

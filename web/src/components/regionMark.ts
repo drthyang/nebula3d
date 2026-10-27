@@ -249,10 +249,28 @@ export function cutIndexFor(region: MarkRegion, grid: VolumeGrid, axis: Axis): {
 
 /** A region shorter than this share of a view's width is zoomed to. */
 export const SMALL_SHARE = 0.08;
-/** A region zoomed to spans 1/MARGIN of the view. */
-export const MARGIN = 2.5;
-/** A zoom never closes in past this share of the full view, so the region keeps its surroundings. */
-export const MIN_VIEW_SHARE = 0.06;
+/** A region zoomed to spans 1/MARGIN of the view: the rest is its surroundings. */
+export const MARGIN = 3;
+/** A zoom never closes in past this share of the full view, so a small region keeps its surroundings. */
+export const MIN_VIEW_SHARE = 0.1;
+
+/**
+ * How a view frames a region, fixed by the volume and the view: the region's
+ * section as a display rectangle (`target`), the view's full view (`fit`),
+ * the data's display extent and the view's zoom limits. A mark keeps it, so
+ * that showing the mark again frames it against the view as it is then.
+ */
+export interface Frame {
+  target: Bounds;
+  fit: Viewport;
+  data: Bounds;
+  minHalf: number;
+  maxHalf: number;
+}
+
+/** The viewport that shows a frame's region in a view now at `current` (absent: the full view), or null to leave it (frameTarget). */
+export const frameIn = (f: Frame, current: Viewport | undefined): Viewport | null =>
+  frameTarget(f.target, current ?? f.fit, { fit: f.fit, data: f.data, limit: (h) => Math.min(f.maxHalf, Math.max(f.minHalf, h)) });
 
 /**
  * The viewport that shows `target` (a section's display rectangle) in a view

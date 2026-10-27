@@ -155,7 +155,12 @@ describe("the Pilot's marked regions in a session", () => {
     label: "satellites at H = 1 ± 0.25",
     evidence: ["measure_reciprocal_cut"],
     created: "2026-10-26T12:00:00.000Z",
-    view: { page: "cleanup", axis: "L", value: 0, viewport: { cx: 1.5, cy: 0, half: 0.5 } },
+    view: {
+      page: "cleanup",
+      axis: "L",
+      value: 0,
+      frame: { target: { x0: 1.1, x1: 2, y0: 0, y1: 0 }, fit: { cx: 0, cy: 0, half: 6 }, data: { x0: -6, x1: 6, y0: -6, y1: 6 }, minHalf: 0.1, maxHalf: 7.5 },
+    },
     ...(hidden ? { hidden: true as const } : {}),
   });
 
