@@ -20,6 +20,7 @@ import {
   fitWindowSamples,
   fittedEllipse,
   linkFromTile,
+  peakColourHalf,
   peakFitHalf,
   peakHalfLimit,
   relativeLevels,
@@ -681,13 +682,13 @@ export function BraggProfileViewer() {
   // The tiles' one colour scale: Auto from the three fit windows about the
   // peak (braggView.ts), the user's limits relative to it.
   const slices = usePeakSlices(sliceVolumeId, selPeak?.center_hkl);
-  const fitHalf = selPeak ? peakFitHalf(selPeak.width_hkl) : 0;
+  const colourHalf = selPeak ? peakColourHalf(selPeak.width_hkl) : 0;
   const s0 = slices[0]?.data, s1 = slices[1]?.data, s2 = slices[2]?.data;
   const centre = selPeak?.center_hkl;
   const samples = useMemo(() => {
     if (!centre || !s0 || !s1 || !s2) return null;
-    return [s0, s1, s2].map((sl, i) => fitWindowSamples(sl, centre[TILES[i].xa], centre[TILES[i].ya], fitHalf));
-  }, [centre, s0, s1, s2, fitHalf]);
+    return [s0, s1, s2].map((sl, i) => fitWindowSamples(sl, centre[TILES[i].xa], centre[TILES[i].ya], colourHalf));
+  }, [centre, s0, s1, s2, colourHalf]);
   const pooled = useMemo(() => (samples ? Float32Array.from(samples.flatMap((x) => Array.from(x))) : null), [samples]);
   const autoHi = useMemo(
     () => autoLevels(samples ?? [], { scale, percentile: BRAGG_AUTO_PERCENTILE }).hi,

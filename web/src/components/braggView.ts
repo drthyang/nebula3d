@@ -6,8 +6,10 @@
 // offset from the peak centre, and a half-width: a tile on axes (xa, ya) shows
 // (centre + offset)[xa], [ya] at its centre, so zooming or panning one tile
 // moves the other two through the same point, and every tile zooms by the
-// same factor.  The fit view (reset) is the window the page always opened at:
-// 3.5× the peak's widest fitted width, clamped to 0.08–0.6 r.l.u.
+// same factor.  The fit view (reset) is 8× the peak's widest fitted width,
+// clamped to 0.25–1.2 r.l.u., so the peak opens with its surroundings in view;
+// the colour range is still sampled in the tighter window about the peak alone
+// (peakColourHalf), so a neighbouring node cannot dim it.
 //
 // The fit ellipses are r.l.u. shapes about the peak centre, drawn with the
 // same pixel mapping as the raster (viewport.ts), so they stay registered to
@@ -34,10 +36,16 @@ export interface Ellipse {
   angle?: number; // rotation in degrees (SVG space, y down); omit for axis-aligned
 }
 
-/** Half-width (r.l.u.) of the window a peak's tiles open at: 3.5× its widest fitted width, 0.08–0.6. */
+const widestWidth = (widthHkl: readonly number[]) => Math.max(...widthHkl.map(Math.abs).filter(Number.isFinite), 0.02);
+
+/** Half-width (r.l.u.) of the window a peak's tiles open at: 8× its widest fitted width, 0.25–1.2. */
 export function peakFitHalf(widthHkl: readonly number[]): number {
-  const maxW = Math.max(...widthHkl.map(Math.abs).filter(Number.isFinite), 0.02);
-  return Math.min(0.6, Math.max(0.08, maxW * 3.5));
+  return Math.min(1.2, Math.max(0.25, widestWidth(widthHkl) * 8));
+}
+
+/** Half-width (r.l.u.) of the window the colour range is sampled in: 3.5× the widest fitted width, 0.08–0.6. */
+export function peakColourHalf(widthHkl: readonly number[]): number {
+  return Math.min(0.6, Math.max(0.08, widestWidth(widthHkl) * 3.5));
 }
 
 /** Zooming out reaches 10× the fit window (the old Zoom slider stopped at ×0.1, 2^−3.3). */
@@ -45,11 +53,11 @@ export const PEAK_ZOOM_OUT = 10;
 
 /**
  * The half-widths the tiles can zoom to: out to PEAK_ZOOM_OUT × the fit
- * window; in to a few voxels (2 voxels or a sixteenth of the fit window), and
- * at least as far in as the old slider's ×4.
+ * window; in to a few voxels (2 voxels or a thirty-second of the fit window),
+ * and at least to an eighth of it.
  */
 export function peakHalfLimit(fitHalf: number, voxel: number): (half: number) => number {
-  const lo = Math.min(fitHalf / 4, Math.max(2 * voxel, fitHalf / 16));
+  const lo = Math.min(fitHalf / 8, Math.max(2 * voxel, fitHalf / 32));
   const hi = fitHalf * PEAK_ZOOM_OUT;
   return (half) => Math.min(hi, Math.max(lo, half));
 }

@@ -18,6 +18,7 @@ import {
   fittedEllipse,
   linkFromTile,
   PEAK_ZOOM_OUT,
+  peakColourHalf,
   peakFitHalf,
   peakHalfLimit,
   tileBounds,
@@ -50,12 +51,19 @@ function peak(over: Partial<BraggPeakWidth> = {}): BraggPeakWidth {
 }
 
 describe("the fit window", () => {
-  it("is 3.5× the widest fitted width, clamped to 0.08–0.6 r.l.u., as the page always opened", () => {
-    expect(peakFitHalf([0.03, 0.05, 0.04])).toBeCloseTo(0.175, 12);
-    expect(peakFitHalf([0.001, 0.002, 0.003])).toBeCloseTo(0.08, 12); // 0.02 floor × 3.5 = 0.07 → 0.08
-    expect(peakFitHalf([0.5, 0.1, 0.1])).toBe(0.6);
-    expect(peakFitHalf([-0.05, 0.01, 0.01])).toBeCloseTo(0.175, 12);
-    expect(peakFitHalf([NaN, 0.04, 0.01])).toBeCloseTo(0.14, 12);
+  it("opens at 8× the widest fitted width, clamped to 0.25–1.2 r.l.u.", () => {
+    expect(peakFitHalf([0.03, 0.05, 0.04])).toBeCloseTo(0.4, 12);
+    expect(peakFitHalf([0.001, 0.002, 0.003])).toBeCloseTo(0.25, 12); // 0.02 floor × 8 = 0.16 → 0.25
+    expect(peakFitHalf([0.5, 0.1, 0.1])).toBe(1.2);
+    expect(peakFitHalf([-0.05, 0.01, 0.01])).toBeCloseTo(0.4, 12);
+    expect(peakFitHalf([NaN, 0.04, 0.01])).toBeCloseTo(0.32, 12);
+  });
+
+  it("samples the colour range in the tighter window about the peak: 3.5×, 0.08–0.6", () => {
+    expect(peakColourHalf([0.03, 0.05, 0.04])).toBeCloseTo(0.175, 12);
+    expect(peakColourHalf([0.001, 0.002, 0.003])).toBeCloseTo(0.08, 12);
+    expect(peakColourHalf([0.5, 0.1, 0.1])).toBe(0.6);
+    for (const w of [[0.03, 0.05, 0.04], [0.001, 0.002, 0.003], [0.5, 0.1, 0.1]]) expect(peakColourHalf(w)).toBeLessThan(peakFitHalf(w));
   });
 
   it("zooms out at least as far as the old slider's ×0.1, and in at least as far as its ×4", () => {
@@ -63,10 +71,10 @@ describe("the fit window", () => {
     const lim = peakHalfLimit(fit, 0.01);
     expect(lim(1e9)).toBeCloseTo(fit * PEAK_ZOOM_OUT, 12);
     expect(PEAK_ZOOM_OUT).toBeGreaterThanOrEqual(1 / Math.pow(2, -3.3)); // the slider's last stop
-    expect(lim(0)).toBeLessThanOrEqual(fit / 4);
+    expect(lim(0)).toBeLessThanOrEqual(fit / 8);
     expect(lim(0)).toBeGreaterThanOrEqual(2 * 0.01); // not below two voxels when that is closer than ×4
-    // a coarse grid never takes zooming in below the slider's ×4
-    expect(peakHalfLimit(fit, 1)(0)).toBeCloseTo(fit / 4, 12);
+    // a coarse grid still zooms in to an eighth of the fit window
+    expect(peakHalfLimit(fit, 1)(0)).toBeCloseTo(fit / 8, 12);
     expect(lim(fit)).toBe(fit);
   });
 });
