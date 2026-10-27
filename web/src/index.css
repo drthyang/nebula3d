@@ -4268,6 +4268,141 @@ body.ai-resizing iframe {
   color: var(--text-2);
 }
 
+/* — the Pilot's marked regions (MarksList): one row each, click to show — */
+.ai-marks {
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 12px;
+}
+.ai-marks-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px 3px 4px;
+}
+.ai-marks-toggle {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+}
+.ai-marks-count {
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font: 600 10.5px var(--font-mono);
+}
+.ai-marks-act {
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-3);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ai-marks-act:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.ai-marks-act.ai-clear:hover {
+  color: var(--red);
+}
+.ai-mark-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 6px 6px;
+  border-top: 1px solid var(--border);
+  max-height: 168px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ai-mark {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ai-mark-go {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 5px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ai-mark-go:hover {
+  background: var(--surface-2);
+}
+.ai-mark-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(8, 10, 14, 0.7);
+}
+.ai-mark-id {
+  flex: none;
+  font: 600 11px var(--font-mono);
+  color: var(--text-2);
+}
+.ai-mark-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-mark-where {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.ai-mark-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-3);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ai-mark-icon:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.ai-mark-remove:hover {
+  color: var(--red);
+}
+.ai-mark.is-hidden .ai-mark-go {
+  opacity: 0.5;
+}
+
 /* — tool steps: what the model looked up, one line each — */
 .ai-steps {
   border: 1px solid var(--border);

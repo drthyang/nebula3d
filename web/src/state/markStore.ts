@@ -35,6 +35,26 @@ export const CLEANUP_WHERE: readonly MarkWhere[] = ["raw", "rings", "punch", "ba
 
 export const isReciprocal = (where: MarkWhere): boolean => where !== "pdf";
 
+/** Each `where` by its view's own name (ReciprocalViewer's STAGE_LABELS, and the ΔPDF page's). */
+export const WHERE_LABEL: Record<MarkWhere, string> = {
+  raw: "Raw",
+  rings: "Ring-removed",
+  punch: "Bragg-punched",
+  backfill: "Backfilled",
+  flatten: "Background-corrected",
+  pdf: "3D-ΔPDF",
+};
+
+const sig3 = (x: number) => String(Number(x.toPrecision(3)) + 0);
+const vecText = (v: readonly number[]) => `(${v.map(sig3).join(", ")})`;
+
+/** A region in words, for the user (the Pilot panel's list). */
+export function regionText(region: MarkRegion, where: MarkWhere): string {
+  const unit = isReciprocal(where) ? "r.l.u." : "Å";
+  if (region.shape === "points") return `${region.points.length} point${region.points.length === 1 ? "" : "s"}: ${region.points.map(vecText).join(" ")} ${unit}`;
+  return `${region.shape === "box" ? "Box" : "Ellipsoid"} at ${vecText(region.center)} ${unit}, half-widths ${vecText(region.half)}`;
+}
+
 export const DPDF_MARK_PLANES = ["xy", "xz", "yz"] as const;
 export type DpdfMarkPlane = (typeof DPDF_MARK_PLANES)[number];
 

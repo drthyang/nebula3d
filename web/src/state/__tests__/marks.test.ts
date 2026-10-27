@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MarkRegion } from "../../components/regionMark";
 import { useDpdfStore } from "../dpdfStore";
-import { readMark, readMarks, shortLabel, useMarkStore, visibleMarks, type Mark } from "../markStore";
+import { readMark, readMarks, regionText, shortLabel, useMarkStore, visibleMarks, type Mark } from "../markStore";
 import { markPlaneLabel, placeMark, planMark, showMark, type MarkSpec, type MarkVolume, type ViewsNow } from "../marks";
 import { useNavStore } from "../navStore";
 import { useViewerStore } from "../viewerStore";
@@ -334,5 +334,12 @@ describe("markPlaneLabel", () => {
     expect(markPlaneLabel("0kl", 1)).toBe("K–L plane at H = 1");
     expect(markPlaneLabel("h0l", -0.33333)).toBe("H–L plane at K = -0.3333");
     expect(markPlaneLabel("yz", 2.5)).toBe("ΔPDF y–z section at x = 2.5 Å");
+  });
+});
+
+describe("regionText", () => {
+  it("words a region for the panel's tooltip, in its space's unit", () => {
+    expect(regionText({ shape: "ellipsoid", center: [1, 0, 0.5], half: [0.1, 0.1, 0.05] }, "flatten")).toBe("Ellipsoid at (1, 0, 0.5) r.l.u., half-widths (0.1, 0.1, 0.05)");
+    expect(regionText({ shape: "points", points: [[2.5, 0, 0]] }, "pdf")).toBe("1 point: (2.5, 0, 0) Å");
   });
 });
