@@ -10,7 +10,13 @@ import { useStructureStore, type StructureDef } from "../state/structureStore";
 import { cifCentering, parseCif, parseCoordinate, type Site } from "../structure/cif";
 import { bestPermutation, CELL_TOLERANCE, cellMatches, permLabel, PERMUTATIONS } from "../structure/pairs";
 import { CENTERINGS, hasCentring, symmetryGroup, type Centering } from "../structure/symops";
-import { activeOrigin, latticeCell, structureBlockedText, type StructureModel } from "../structure/useStructure";
+import {
+  activeOrigin,
+  latticeCell,
+  structureBlockedText,
+  structureWarningText,
+  type StructureModel,
+} from "../structure/useStructure";
 import { Slider } from "./ui";
 import { GlyphIcon } from "./StructureOverlay";
 
@@ -192,7 +198,7 @@ export function StructurePanel({
         {def ? (
           <span className="struct-sub">
             <b>{def.name}</b> · {def.sites.length} site{def.sites.length === 1 ? "" : "s"} →{" "}
-            {model?.mismatch ? "not expanded (the cell does not match)" : `${model?.atoms.length ?? 0} atoms per cell`} ·{" "}
+            {model?.atoms.length ?? 0} atoms per cell ·{" "}
             {model?.nOps ?? 0} operations
           </span>
         ) : (
@@ -391,7 +397,12 @@ function CellCheck({
         {ok
           ? `matches the ΔPDF's (lengths within ${(model.fit.length * 100).toFixed(1)} %)`
           : `differs from the ΔPDF's by ${(model.fit.length * 100).toFixed(1)} % in length, ${model.fit.angle.toFixed(1)}° in angle (tolerance ${CELL_TOLERANCE.length * 100} %, ${CELL_TOLERANCE.angle}°)`}
-        . Vectors are placed on the ΔPDF's cell.
+        .{" "}
+        {ok
+          ? "Vectors are placed on the ΔPDF's cell."
+          : `The pair vectors are drawn at the CIF's own lengths (Å) along the ΔPDF's axes${
+              model.fit.angle > CELL_TOLERANCE.angle ? " — with the angles differing, those off the axes are approximate" : ""
+            }. Check that it is the same phase and axis setting.`}
       </span>
       <label className="struct-inline">
         ΔPDF a, b, c = CIF
@@ -417,7 +428,7 @@ export function StructureLegend({ model }: { model: StructureModel }) {
   const stored = useStructureStore((s) => s.origin);
   const origin = activeOrigin(model, stored);
   const keys = origin ? model.keys.filter((k) => model.diffs.some((d) => d.from === origin && d.key === k)) : model.keys;
-  const blocked = structureBlockedText(model, "in Edit structure");
+  const blocked = structureBlockedText(model);
   if (blocked) {
     return (
       <span className="struct-sub">
@@ -426,8 +437,14 @@ export function StructureLegend({ model }: { model: StructureModel }) {
     );
   }
   if (!keys.length) return <span className="struct-sub">No sites yet.</span>;
+  const warning = structureWarningText(model, "in Edit structure");
   return (
     <div className="struct-legend" role="group" aria-label="Element pairs">
+      {warning && (
+        <span className="struct-sub warn" title={`${model.def.name}: ${warning}`}>
+          CIF cell ≠ ΔPDF cell: pairs at the CIF's lengths
+        </span>
+      )}
       <span className="field-label">{origin ? `Vectors from ${origin}` : "Pair vectors"}</span>
       {keys.map((k) => {
         const off = hidden.includes(k);

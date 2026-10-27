@@ -6,6 +6,9 @@
 // with fractional components (u_a, u_b, u_c) is drawn at (u_a·a, u_b·b, u_c·c)
 // on the ΔPDF's own oblique grid — using the ΔPDF's cell, not the CIF's, so a
 // slightly different cell (another temperature) does not shift the markers.
+// A CIF cell outside CELL_TOLERANCE (a sub- or supercell, another setting) is
+// drawn at its own lengths instead, so each pair keeps its real distance
+// (useStructure.ts drawLat), with a warning.
 //
 // The pair differences r_j − r_i are found once per structure, modulo the
 // lattice; a slice then places every lattice translation of them that lies

@@ -50,6 +50,7 @@ import { useStructureStore } from "../state/structureStore";
 import {
   markersNear,
   structureBlockedText,
+  structureWarningText,
   usePlaneMarkers,
   useStructureModel,
   type PlaneAxis,
@@ -296,8 +297,12 @@ export function ConsistencyViewer() {
   // The 3D-ΔPDF page's structure overlay, on this page's ΔPDF view.
   const structure = useStructureModel(meta?.lattice);
   const showStructure = useStructureStore((s) => s.show) && structure !== null;
-  // Why the overlay draws nothing (cell mismatch, too many atoms), as the 3D-ΔPDF page's legend says it.
-  const structureNote = structure ? structureBlockedText(structure, "on the 3D-ΔPDF page (Edit structure)") : null;
+  // Why the overlay draws nothing (too many atoms, too dense), or the caution
+  // it draws under (a CIF cell that differs), as the 3D-ΔPDF page says it.
+  const structureNote = structure
+    ? (structureBlockedText(structure) ??
+      structureWarningText(structure, "on the 3D-ΔPDF page (Edit structure)"))
+    : null;
   const setShowStructure = useStructureStore((s) => s.setShow);
   const rDepth = useStructureStore((s) => s.depth) ?? (dpdfAxisInfo?.step ?? 0) / 2;
   const rHeader = rResult.data?.header;
