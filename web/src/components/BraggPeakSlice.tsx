@@ -6,7 +6,7 @@
 // The view resamples its slice in r.l.u. under each display pixel (one scale on
 // both axes, so a peak's shape is not stretched), then overlays the punch fit
 // ellipses (fitted / measured / |Q|-floor), a crosshair at the peak centre and,
-// with "Unit cells" on, dashed lines at integer h, k, l.  The raster and the
+// with "Unit cell" on, dashed lines at integer h, k, l.  The raster and the
 // overlay map r.l.u. to pixels with the same viewport (viewport.ts), so the
 // ellipses stay registered to the data at any zoom.
 
@@ -170,7 +170,7 @@ export function BraggPeakSlice({ slice, failed = false, ...p }: Props) {
       onCursor={p.onCursor}
     >
       <TileRaster slice={slice} viewport={p.viewport} lut={p.lut} levels={p.levels} scale={p.scale} soft={p.soft} />
-      {p.gridlines && <HklGrid viewport={p.viewport} geom={RLU_GEOM} />}
+      {p.gridlines && <HklGrid viewport={p.viewport} geom={RLU_GEOM} lut={p.lut} />}
       <TileOverlay centre={p.centre} viewport={p.viewport} fitted={p.fitted} measured={p.measured} floor={p.floor} />
     </ViewFrame>
   );

@@ -1,6 +1,6 @@
 - **One header on every viewer page.** Reciprocal cleanup, Bragg profile,
   3D-ΔPDF, Q–R and the multi-volume page share the workspace header, in one
-  order: the click modes with a **?** for the gestures, *Unit cells* and
+  order: the click modes with a **?** for the gestures, *Unit cell* and
   *Structure*, the page's own controls, the layout switch; then the display
   bar (colormap, vmin [bar] vmax, asinh / lin / log, Auto, Brightness). Each
   control has one name and a one-line tooltip on every page. **Bragg

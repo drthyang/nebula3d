@@ -11,6 +11,6 @@
   stay on the data at any zoom; the colours no longer change as the window
   does. **Multi-volume:** each plane has one view shared by every file, so
   they are always compared at the same scale; the *Window* slider is gone.
-  **Unit cells** on the r.l.u. views: the switch, one setting for every page,
+  **Unit cell** on the r.l.u. views: the switch, one setting for every page,
   draws dashed lines at integer h, k, l on Reciprocal cleanup, the Q–R page's
   Q views and the Bragg tiles, following the view as it zooms and pans.

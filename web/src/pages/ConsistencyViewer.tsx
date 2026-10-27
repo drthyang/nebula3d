@@ -433,7 +433,7 @@ export function ConsistencyViewer() {
         latY={latY}
         latCut={latCut}
       />
-      {gridlines && <HklGrid viewport={qViewport} geom={qGeom} />}
+      {gridlines && <HklGrid viewport={qViewport} geom={qGeom} lut={seqLut} />}
     </ViewFrame>
   );
 
@@ -729,6 +729,7 @@ export function ConsistencyViewer() {
                       latX={rLat[rx]}
                       latY={rLat[ry]}
                       angle={s.header.axes_angle}
+                      lut={divLut}
                     />
                   )}
                   {showStructure && structure && (

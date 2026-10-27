@@ -356,6 +356,7 @@ export function DeltaPdfViewer() {
                       latX={lat[p.h]}
                       latY={lat[p.v]}
                       angle={r.data.header.axes_angle}
+                      lut={lut}
                     />
                   )}
                   {showStructure && structure && (
