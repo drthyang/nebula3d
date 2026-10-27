@@ -21,11 +21,17 @@ interface Props {
   latY: number | null;
   angle?: number; // angle between the displayed axes (deg); the slice header's axes_angle
   lut: Uint8ClampedArray; // the view's colormap: the lines take a colour it lacks
+  dash?: string; // SVG dash pattern (px): DASH_CELL on real-space sections, DASH_HKL on r.l.u. views
 }
+
+/** Dashes on the real-space (ΔPDF) sections: the cell edges, a few Å apart. */
+export const DASH_CELL = "4 2";
+/** Dashes on the r.l.u. views: much tighter gaps, so the integer h, k, l lines read as lines at their scale. */
+export const DASH_HKL = "4 0.75";
 
 const VB = 1000; // normalized viewBox side; stroke stays 1px (non-scaling)
 
-export function UnitCellGrid({ half, viewport, latX, latY, angle = 90, lut }: Props) {
+export function UnitCellGrid({ half, viewport, latX, latY, angle = 90, lut, dash = DASH_CELL }: Props) {
   const size = useViewSize();
   // A viewport in a wide or tall view spans more along its longer side.
   const b = viewport ? visibleBounds(viewport, size.w, size.h) : { x0: -half, x1: half, y0: -half, y1: half };
@@ -53,7 +59,7 @@ export function UnitCellGrid({ half, viewport, latX, latY, angle = 90, lut }: Pr
       <g
         stroke={gridColor(lut)}
         strokeWidth={1}
-        strokeDasharray="4 2"
+        strokeDasharray={dash}
         shapeRendering={angle === 90 ? "crispEdges" : "geometricPrecision"}
       >
         {segments.map(([x1, y1, x2, y2], i) => (
@@ -78,5 +84,5 @@ export function UnitCellGrid({ half, viewport, latX, latY, angle = 90, lut }: Pr
  * canvas and ticks use (viewport.ts hklGridSegments).
  */
 export function HklGrid({ viewport, geom, lut }: { viewport: Viewport; geom: SliceGeom; lut: Uint8ClampedArray }) {
-  return <UnitCellGrid half={viewport.half} viewport={viewport} latX={geom.sx} latY={geom.sy} angle={geom.angle} lut={lut} />;
+  return <UnitCellGrid half={viewport.half} viewport={viewport} latX={geom.sx} latY={geom.sy} angle={geom.angle} lut={lut} dash={DASH_HKL} />;
 }
