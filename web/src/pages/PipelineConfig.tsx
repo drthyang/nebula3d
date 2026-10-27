@@ -1525,26 +1525,33 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
           <span className="card-title-rule" />
         </div>
         <div className="data-card-head">
-          <div className="dataset-stage-board" aria-label="Available dataset files">
-            {stageStatus.map((stage) => (
-              <div
-                key={stage.key}
-                className={`dataset-stage-item ${stage.staleAfter ? "stale" : stage.exists ? "ok" : "missing"}`}
-                title={
-                  stage.staleAfter
-                    ? stale.has(stage.staleAfter)
-                      ? `${stage.group} · ${stage.label}: stale. It was made from ${badgeLabel(stage.staleAfter)}, which is itself stale; run the pipeline from the first stale stage with Force to update it.`
-                      : `${stage.group} · ${stage.label}: stale. It is older than ${badgeLabel(stage.staleAfter)}, so it was made before that stage last ran; run the pipeline from here with Force to update it.`
-                    : `${stage.group} · ${stage.label}: ${stage.exists ? "available" : "missing"}`
-                }
-              >
-                <span className="dataset-stage-dot" />
-                <span className="dataset-stage-label">{stage.label}</span>
-                <span className="dataset-stage-state">
-                  {stage.staleAfter ? "stale" : stage.exists ? "available" : "missing"}
-                </span>
-              </div>
-            ))}
+          <div className="stage-track-wrap">
+            <ol className="stage-track" aria-label="Pipeline outputs on disk">
+              {stageStatus.map((stage) => {
+                const state = stage.staleAfter ? "stale" : stage.exists ? "ok" : "missing";
+                return (
+                  <li
+                    key={stage.key}
+                    className={`stage-step ${state}`}
+                    title={
+                      stage.staleAfter
+                        ? stale.has(stage.staleAfter)
+                          ? `${stage.group} · ${stage.label}: stale. It was made from ${badgeLabel(stage.staleAfter)}, which is itself stale; run the pipeline from the first stale stage with Force to update it.`
+                          : `${stage.group} · ${stage.label}: stale. It is older than ${badgeLabel(stage.staleAfter)}, so it was made before that stage last ran; run the pipeline from here with Force to update it.`
+                        : `${stage.group} · ${stage.label}: ${stage.exists ? "available" : "missing"}`
+                    }
+                  >
+                    <span className="stage-node" aria-hidden="true" />
+                    <span className="stage-name">{stage.label}</span>
+                    {state === "ok" ? (
+                      <span className="visually-hidden">available</span>
+                    ) : (
+                      <span className="stage-flag">{state}</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
           </div>
           <div className="data-actions">
             <Switch
