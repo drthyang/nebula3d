@@ -36,6 +36,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from nebula3d.core import HKLVolume
+from nebula3d.utils.counting import bincount
 
 #: Share of a shell's voxels that must hold counts for it to count as measured.
 HALF = 0.5
@@ -136,9 +137,9 @@ def q_coverage(vol: HKLVolume, q_step: float = 0.1, min_voxels: int = 50) -> QCo
         d = np.asarray(data[:, :, il])
         seen = np.asarray(mask[:, :, il], dtype=bool) & np.isfinite(d)
         held = (seen & (d != 0)).ravel()
-        total += np.bincount(bins, minlength=nbins)
-        counted += np.bincount(bins, weights=held, minlength=nbins).astype(np.int64)
-        measured += np.bincount(bins, weights=seen.ravel(), minlength=nbins).astype(np.int64)
+        total += bincount(bins, minlength=nbins)
+        counted += bincount(bins, weights=held, minlength=nbins).astype(np.int64)
+        measured += bincount(bins, weights=seen.ravel(), minlength=nbins).astype(np.int64)
     keep = total >= min_voxels
     q = ((np.arange(nbins)[keep] + 0.5) * q_step).astype(np.float64)
     share = (counted[keep] / total[keep]).astype(np.float64)

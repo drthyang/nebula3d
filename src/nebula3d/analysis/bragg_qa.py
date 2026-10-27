@@ -34,6 +34,7 @@ from scipy import ndimage
 
 from nebula3d.analysis.bragg import BraggRemover
 from nebula3d.core import HKLVolume
+from nebula3d.utils.counting import bincount
 
 #: Ring edges (Å⁻¹) outside each hole: ~one voxel per ring on CORELLI grids,
 #: the last ring is the local reference level.
@@ -66,7 +67,7 @@ def hole_census(
     lists the largest holes with their centre (axis coordinates).
     """
     labels, n = ndimage.label(punched, structure=np.ones((3, 3, 3), dtype=bool))
-    sizes = np.bincount(labels.ravel(), minlength=n + 1)[1:]
+    sizes = bincount(labels.ravel(), minlength=n + 1)[1:]
     total = int(sizes.sum())
     out: dict = {"n_holes": int(n), "punched_voxels": total,
                  "punched_fraction": float(punched.mean()) if punched.size else 0.0}
@@ -140,7 +141,7 @@ def hole_rings(
     nb = edges.size - 1
     labels, n = ndimage.label(punched, structure=np.ones((3, 3, 3), dtype=bool))
     index = np.arange(1, n + 1)
-    size = np.bincount(labels.ravel(), minlength=n + 1)[1:].astype(np.int64)
+    size = bincount(labels.ravel(), minlength=n + 1)[1:].astype(np.int64)
     data = vol.data
     peak = np.asarray(ndimage.maximum(np.where(punched, data, -np.inf), labels, index),
                       dtype=np.float64)
@@ -183,7 +184,7 @@ def hole_rings(
     sig = np.asarray(vol.sigma, dtype=np.float64)
     zin = (data[punched].astype(np.float64) - ref[labels[punched]]) / np.where(
         sig[punched] > 0, sig[punched], np.inf)
-    quiet = (np.bincount(labels[punched], weights=(np.abs(zin) < 1.0).astype(float),
+    quiet = (bincount(labels[punched], weights=(np.abs(zin) < 1.0).astype(float),
                          minlength=n + 1)[1:] / np.maximum(size, 1))
     return HoleRings(edges_q=edges, size=size, peak=peak, inside_sum=inside_sum,
                      median=median, p90=p90, count=count, noise=noise, fill=fill,
@@ -432,9 +433,9 @@ def refill_test(
     s0 = float(np.median(sig[sig > 0])) if np.any(sig > 0) else 1.0
     labels, n = ndimage.label(test, structure=np.ones((3, 3, 3), dtype=bool))
     lab = labels[test]
-    cnt = np.bincount(lab, minlength=n + 1)[1:]
-    mean_err = np.bincount(lab, weights=err_vals, minlength=n + 1)[1:] / np.maximum(cnt, 1)
-    sem = np.sqrt(np.bincount(lab, weights=sig * sig, minlength=n + 1)[1:]) / np.maximum(cnt, 1)
+    cnt = bincount(lab, minlength=n + 1)[1:]
+    mean_err = bincount(lab, weights=err_vals, minlength=n + 1)[1:] / np.maximum(cnt, 1)
+    sem = np.sqrt(bincount(lab, weights=sig * sig, minlength=n + 1)[1:]) / np.maximum(cnt, 1)
     ok = cnt >= 5
     out: dict = {
         "method": method, "n_voxels": int(test.sum()), "n_holes": int(ok.sum()),

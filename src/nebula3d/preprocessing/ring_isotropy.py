@@ -94,6 +94,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from nebula3d.core import HKLVolume, low_memory
+from nebula3d.utils.counting import bincount
 
 #: The |Q| bins across a ring's FWHM the test needs: two samples across a
 #: peak, the Nyquist rate (the module docstring, *Resolution*). The narrowest
@@ -396,7 +397,7 @@ def shell_isotropy(
             if inside.any():
                 keys.append(cell[inside] * np.int32(total_bins) + np.int32(offsets[s]) + b[inside])
                 vals.append(v[inside])
-        grid += np.bincount(np.concatenate(grid_keys), minlength=grid.size)
+        grid += bincount(np.concatenate(grid_keys), minlength=grid.size)
     grid_cells = grid.reshape(n_cells, total_bins)
     if not keys:
         return [ShellIsotropy(lay[0], lay[1], 0, np.nan, np.nan, np.nan, False,
@@ -404,7 +405,7 @@ def shell_isotropy(
     key = np.concatenate(keys)
     val = np.concatenate(vals)
     del keys, vals
-    count = np.bincount(key, minlength=n_cells * total_bins)
+    count = bincount(key, minlength=n_cells * total_bins)
     order = np.lexsort((val, key))
     sorted_vals = val[order]
     starts = np.zeros_like(count)
