@@ -167,7 +167,7 @@ describe("showing a mark", () => {
     const s = spec("flatten", { shape: "box", center: [1, 1, 0.5], half: [0.05, 0.05, 0.05] });
     const plan = planMark(s, RECIP, NOW);
     if (!plan.ok) throw new Error(plan.reason);
-    const mark = placeMark(s, plan, "ds1", new Date("2026-10-26T12:00:00Z"));
+    const { mark } = placeMark(s, plan, "ds1", new Date("2026-10-26T12:00:00Z"));
     expect(mark).toMatchObject({ id: "M1", datasetId: "ds1", where: "flatten", label: "satellites", evidence: ["dpdf_peaks"], created: "2026-10-26T12:00:00.000Z" });
     const vs = useViewerStore.getState();
     expect(vs.fixedAxis).toBe("L");
@@ -194,7 +194,7 @@ describe("showing a mark", () => {
     const s = spec("flatten", { shape: "points", points: [[1.25, 0, 0], [-1.25, 0, 0]] });
     const plan = planMark(s, RECIP, NOW);
     if (!plan.ok) throw new Error(plan.reason);
-    const mark = placeMark(s, plan, "ds1");
+    const { mark } = placeMark(s, plan, "ds1");
     expect(useViewerStore.getState().views.hk0).toBeUndefined();
     // The user zooms into a corner far from them; the mark, shown from the list, brings them back into view.
     useViewerStore.getState().setView("hk0", { cx: -5, cy: -5, half: 0.3 });
@@ -211,7 +211,7 @@ describe("showing a mark", () => {
     const s = spec("flatten", SATELLITES);
     const plan = planMark(s, RECIP, NOW);
     if (!plan.ok) throw new Error(plan.reason);
-    const mark = placeMark(s, plan, "ds1");
+    const { mark } = placeMark(s, plan, "ds1");
     useMarkStore.getState().toggle(mark.id);
     useMarkStore.getState().setShowAll(false);
     useNavStore.setState({ tab: "config" });
@@ -228,7 +228,7 @@ describe("the transcript's Show on a mark", () => {
     const s = spec("pdf", { shape: "points", points: [[2.5, 0, 0]] });
     const plan = planMark(s, DPDF, NOW);
     if (!plan.ok) throw new Error(plan.reason);
-    const mark = placeMark(s, plan, "ds1");
+    const { mark } = placeMark(s, plan, "ds1");
     useDatasetStore.setState({ datasetId: "ds1" });
     useNavStore.setState({ tab: "config" });
     openView({ view: "mark", label: `${mark.id} · ${mark.label}`, mark: mark.id });
@@ -245,14 +245,14 @@ describe("the mark store", () => {
     const s = spec("rings", { shape: "box", center: [0, 0, 0], half: [1, 1, 0.1] }, label);
     const plan = planMark(s, RECIP, NOW);
     if (!plan.ok) throw new Error(plan.reason);
-    return placeMark(s, plan, datasetId);
+    return placeMark(s, plan, datasetId).mark;
   };
 
   it("numbers marks in order and never reuses a number once cleared", () => {
-    expect([add().id, add().id]).toEqual(["M1", "M2"]);
+    expect([add("ds1", "one").id, add("ds1", "two").id]).toEqual(["M1", "M2"]);
     useMarkStore.getState().clear("ds1");
     expect(useMarkStore.getState().marks).toEqual([]);
-    expect(add().id).toBe("M3");
+    expect(add("ds1", "one").id).toBe("M3");
   });
 
   it("clears one dataset's marks, keeping the others'", () => {
@@ -262,9 +262,20 @@ describe("the mark store", () => {
     expect(useMarkStore.getState().marks.map((m) => m.datasetId)).toEqual(["ds2"]);
   });
 
+  it("adds the same mark once, and shows it again", () => {
+    const a = add();
+    useNavStore.setState({ tab: "config" });
+    expect(add().id).toBe(a.id);
+    expect(useMarkStore.getState().marks).toHaveLength(1);
+    expect(useNavStore.getState().tab).toBe("reciprocal");
+    // Another label, or another dataset, is another mark.
+    expect(add("ds1", "another reading").id).toBe("M2");
+    expect(add("ds2").id).toBe("M3");
+  });
+
   it("draws a dataset's shown marks: none of another dataset, none hidden, none while Hide all is on", () => {
-    const a = add("ds1");
-    add("ds1");
+    const a = add("ds1", "one");
+    add("ds1", "two");
     add("ds2");
     useMarkStore.getState().toggle(a.id);
     expect(visibleMarks(useMarkStore.getState(), "ds1").map((m) => m.id)).toEqual(["M2"]);
@@ -274,8 +285,8 @@ describe("the mark store", () => {
   });
 
   it("removes one mark", () => {
-    add();
-    const b = add();
+    add("ds1", "one");
+    const b = add("ds1", "two");
     useMarkStore.getState().remove("M1");
     expect(useMarkStore.getState().marks.map((m) => m.id)).toEqual([b.id]);
   });

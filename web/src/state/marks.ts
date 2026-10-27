@@ -123,6 +123,14 @@ export function markPlaneLabel(plane: string, value: number): string {
   return `${HKL_AXES[u]}–${HKL_AXES[v]} plane at ${axis} = ${sig(value)}`;
 }
 
+/** Why a mark on `where` cannot be drawn on a dataset with these outputs (its stage has none), or null. */
+export function outputProblem(where: MarkWhere, outputs: readonly string[]): string | null {
+  if (outputs.includes(WHERE_OUTPUT[where])) return null;
+  return isReciprocal(where)
+    ? `the ${where} stage has no output for this dataset yet (the cleanup page shows ${CLEANUP_WHERE.filter((w) => outputs.includes(WHERE_OUTPUT[w])).join(", ") || "none"}); run the pipeline first`
+    : "this dataset has no 3D-ΔPDF yet; run the pipeline through the ΔPDF stage first";
+}
+
 /** The axis the cleanup page cuts a region along (see the module's note). */
 function cleanupAxis(region: MarkRegion, grid: VolumeGrid, cell: Cell, current: FixedAxis): FixedAxis {
   const lat = [cell.a, cell.b, cell.c];
@@ -144,15 +152,8 @@ const zoomedIn = (next: Viewport | null, now: Viewport): boolean => next !== nul
  * console moves to show it; or why it cannot be drawn.
  */
 export function planMark(spec: MarkSpec, volume: MarkVolume, now: ViewsNow): MarkPlan {
-  const output = WHERE_OUTPUT[spec.where];
-  if (!volume.outputs.includes(output)) {
-    return {
-      ok: false,
-      reason: isReciprocal(spec.where)
-        ? `the ${spec.where} stage has no output for this dataset yet (the cleanup page shows ${CLEANUP_WHERE.filter((w) => volume.outputs.includes(WHERE_OUTPUT[w])).join(", ") || "none"}); run the pipeline first`
-        : "this dataset has no 3D-ΔPDF yet; run the pipeline through the ΔPDF stage first",
-    };
-  }
+  const missing = outputProblem(spec.where, volume.outputs);
+  if (missing) return { ok: false, reason: missing };
   const clip = clipRegion(spec.region, volume.grid);
   if (!clip.ok) return clip;
   const { region } = clip;
@@ -264,17 +265,29 @@ export function showMark(mark: Mark, datasetId: string | undefined): boolean {
   return true;
 }
 
-/** Add a planned mark to the store and show it. */
-export function placeMark(spec: MarkSpec, plan: Extract<MarkPlan, { ok: true }>, datasetId: string, now = new Date()): Mark {
+/**
+ * Add a planned mark to the store and show it. A mark the store holds
+ * already (the same dataset, stage, region and label) is shown again instead
+ * of added twice (`added` false).
+ */
+export function placeMark(spec: MarkSpec, plan: Extract<MarkPlan, { ok: true }>, datasetId: string, now = new Date()): { mark: Mark; added: boolean } {
+  const label = shortLabel(spec.label);
+  const same = useMarkStore
+    .getState()
+    .marks.find((m) => m.datasetId === datasetId && m.where === spec.where && m.label === label && JSON.stringify(m.region) === JSON.stringify(plan.region));
+  if (same) {
+    showMark(same, datasetId);
+    return { mark: same, added: false };
+  }
   const mark = useMarkStore.getState().add({
     datasetId,
     where: spec.where,
     region: plan.region,
-    label: shortLabel(spec.label),
+    label,
     evidence: spec.evidence,
     created: now.toISOString(),
     view: plan.view,
   });
   showMark(mark, datasetId);
-  return mark;
+  return { mark, added: true };
 }
