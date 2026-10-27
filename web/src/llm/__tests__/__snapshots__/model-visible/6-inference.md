@@ -1,6 +1,6 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 100 spans in 31 texts or sets: reading 29, evidence 51, remedy 20.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 101 spans in 31 texts or sets: reading 29, evidence 51, remedy 21.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -118,7 +118,7 @@ scientifically cautious; do not overstate certainty from summary statistics.
 
 ## prompts/system.ts: the system prompt, the tools' guidance
 
-26 spans: reading 18, evidence 5, remedy 3.
+27 spans: reading 18, evidence 5, remedy 4.
 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
 
@@ -137,7 +137,10 @@ compare_datasets across temperatures, configure_settings for the run settings. W
 suggest a change, name settings exactly as configure_settings returns them; never invent
 one. As each measurement or assessment finishes, the console moves to its figure (unless
 the user turned Follow off), so the user sees what you are looking at; when your answer
-rests on one figure, finish on it with show_in_viewer.
+rests on one figure, finish on it with show_in_viewer. mark_region draws a region on the
+slice views⟦remedy: : use it for a finding the user should look at (satellites, a ring
+left over, a ΔPDF feature), citing the calls that measured it⟧; name the mark it returns
+(M1, …) in your answer.
 You can also run and tune the analysis yourself; do it rather than telling the user to.
 When the user asks you to process, run or rerun the data, call run_pipeline; the user
 watches it on the Execution page. When stage outputs are missing, run_pipeline without

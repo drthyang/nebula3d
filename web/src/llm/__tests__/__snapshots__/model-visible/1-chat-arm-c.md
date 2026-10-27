@@ -96,7 +96,9 @@ compare_datasets across temperatures, configure_settings for the run settings. W
 suggest a change, name settings exactly as configure_settings returns them; never invent
 one. As each measurement or assessment finishes, the console moves to its figure (unless
 the user turned Follow off), so the user sees what you are looking at; when your answer
-rests on one figure, finish on it with show_in_viewer.
+rests on one figure, finish on it with show_in_viewer. mark_region draws a region on the
+slice views; name the mark it returns
+(M1, …) in your answer.
 You can also run and tune the analysis yourself; do it rather than telling the user to.
 When the user asks you to process, run or rerun the data, call run_pipeline; the user
 watches it on the Execution page. When stage outputs are missing, run_pipeline without
