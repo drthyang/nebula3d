@@ -6,9 +6,12 @@
   cite the measurements that show it (calls of measuring tools in the
   conversation, not stale after a rerun), and a region outside the volume or
   empty is refused with why. The console moves to it and draws it on every
-  view it crosses, in a colour the colormap lacks, with a label chip; it
-  follows zoom and pan, oblique sections included. The tool's result says
-  which views and cuts it was drawn on, so the answer names only a mark it
-  made (M1, …). The Pilot panel lists the marks: click one to go back to it,
-  hide or remove one, or hide or clear them all. Marks survive a reload and
-  are saved in session files.
+  view it crosses (Reciprocal cleanup, 3D-ΔPDF and the Q–R page), in a
+  colour the colormap lacks, with a label chip; it follows zoom and pan,
+  oblique sections included. The tool's result says which views and cuts it
+  was drawn on and the mark's id (M1, …), which the answer names; an answer
+  that names an id no call returned goes back to the model once, then is
+  noted under the reply. The Pilot panel lists the marks: click one to go
+  back to it, hide or remove one, or hide or clear them all; the chat's
+  Clear clears them with the conversation. Marks survive a reload and are
+  saved in session files.

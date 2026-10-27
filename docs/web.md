@@ -370,7 +370,8 @@ and zooms and pans by the same rules.
   and zoom by 3D-ΔPDF and Q–R; *Unit cell* by every page.
 - **Marked regions** (`components/RegionMarks.tsx`, `state/markStore.ts`): the
   regions NEBULA Pilot marks for you to look at (`mark_region`,
-  [pilot.md](pilot.md#tools)) are drawn on Reciprocal cleanup and 3D-ΔPDF:
+  [pilot.md](pilot.md#tools)) are drawn on Reciprocal cleanup, 3D-ΔPDF and
+  the Q–R page:
   each mark's section by a view's cut (a one-voxel slab), a rectangle, an
   ellipse or a ring per point, in a saturated colour the view's colormap
   lacks (green on inferno, magenta on viridis, lime on RdBu_r; never the
@@ -378,12 +379,16 @@ and zooms and pans by the same rules.
   it. It follows the view's zoom and pan, oblique ΔPDF sections
   included, and is clipped to the slice's voxels. On the cleanup page a mark
   is outlined, with its label, on the stage it was found in and drawn thin
-  and dashed, with its id, on the other stages, at the same place. The Pilot
+  and dashed, with its id, on the other stages, at the same place. On the
+  Q–R page a reciprocal mark is drawn on Data, Back-FFT and Residual, outlined
+  on Data when the round trip reads the stage it was found in (dashed
+  otherwise), and a ΔPDF mark on the round trip's ΔPDF view. The Pilot
   panel lists the dataset's marks above the chat: a click moves the console
   to one (its page, cuts and zoom, framed against the view as it is then, its
   stage brought forward in the focus and single layouts); each can be hidden
-  or removed, and *Hide all* / *Clear* act on all of them. Marks survive a
-  reload (sessionStorage) and are saved in a session file.
+  or removed, and *Hide all* / *Clear* act on all of them; the chat's *Clear*
+  clears every mark with the conversation. Marks survive a reload
+  (sessionStorage) and are saved in a session file.
 
 ### Structure overlay
 

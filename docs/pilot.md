@@ -102,6 +102,17 @@ Each is described under [How it works](#how-it-works).
   conditional or negated clause, a question, or one about asking or
   declaring is none). With the skills off the send-back names no tool,
   stage or skill (`answerChecks.ts`).
+- **A mark is named only once it is made.** An answer that names a marked
+  region by an id (M1, …) that no `mark_region` call in the conversation
+  returned goes back to the model once, then is noted under the reply
+  ("Names a mark that was never made: M3"). A call's id counts in its reply
+  and the later ones, a restored conversation's too; a call that failed
+  makes none. Only an id in the tool's form read as a mark counts: next to
+  a mark word ("marked as M2", "M1 marks the ring") or in the tool's
+  "M1 · label" form; not the M2 site, an irrep such as M2+, nor an id in a
+  clause that negates, asks or plans ("there is no M3"). It leans to a miss
+  over a false alarm: a bare "(M1)" beside a finding is not read
+  (`answerChecks.ts` `unmadeMarks`).
 - **Tuning cannot touch your results.** Each trial runs in its own folder,
   never in `processed/`; the model proposes settings only from a checked
   catalog, every trial is measured on three planes (a flatten's pedestal over
@@ -554,7 +565,9 @@ miss is a note.
     result says what was drawn: the views and cuts (on the cleanup page, every
     stage's view on that plane), how many points each holds, what the volume
     cut off, whether it zoomed, the evidence by step, and the mark's id
-    (M1, …), which the answer names. The same mark again is the same mark.
+    (M1, …), which the answer names; an answer that names an id no call
+    returned goes back ([Guardrails](#guardrails)). The same mark again is
+    the same mark.
 - **Report** (`report/`, `components/ReportView.tsx`) — a reply that assessed,
   tuned or ran the pipeline gets a *Report* button. The report is measured
   afresh when opened (`report/collect.ts` runs the agent's own tools:
